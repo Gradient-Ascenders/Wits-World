@@ -11,6 +11,6 @@ The project also includes an authoring console for managing events, questions, l
 Clone the repository:
 
 ```bash
-git clone https://github.com/gradient-ascent/Wits-World.git
+git clone https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World.git
 cd Wits-World
 ```
