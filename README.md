@@ -14,3 +14,11 @@ Clone the repository:
 git clone https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World.git
 cd Wits-World
 ```
+
+## AI Declaration
+
+This repository makes use of AI code generation using the following tools: ChatGPT-Web[GPT-5.6 Thinking].
+
+This repository does not use AI in-line editing tools.
+
+This repository does use AI code review.
