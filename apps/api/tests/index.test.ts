@@ -6,7 +6,7 @@ describe('API workspace scaffold', () => {
   it('identifies the API application workspace', () => {
     expect(apiWorkspace).toEqual({
       name: 'Wits World API',
-      status: 'database-ready',
+      status: 'api-foundation-ready',
     });
   });
 });
