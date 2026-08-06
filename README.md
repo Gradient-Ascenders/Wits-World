@@ -98,6 +98,8 @@ and browser verification.
 Database setup for Sprint 1 uses Neon PostgreSQL/PostGIS. See the
 [Neon database guide](docs/database/neon-postgis-setup.md) for environment
 variables, migrations, readiness checks, and troubleshooting.
+The [initial event schema](docs/database/event-schema.md) documents the event
+table, constraints, spatial index, and non-production Sprint 1 fixture.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch, verification, commit, and
 AI-attribution standards.

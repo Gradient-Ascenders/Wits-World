@@ -64,8 +64,44 @@ Run test-database migrations:
 npm run db:migrate:test --workspace @wits-world/api
 ```
 
-The first migration enables PostGIS. Event tables are intentionally left for
-issue #18.
+The first migration enables PostGIS. The second migration creates the initial
+event table and spatial index.
+
+## Seed data
+
+Apply migrations before seeds. Seed files are repeatable SQL fixtures tracked
+in `database/seeds`.
+
+Seed the development database:
+
+```bash
+npm run db:seed --workspace @wits-world/api
+```
+
+Seed the test database:
+
+```bash
+npm run db:seed:test --workspace @wits-world/api
+```
+
+The Sprint 1 demonstration event is provisional, non-production content. Its
+fixed identifier makes repeated seed runs update the fixture rather than create
+duplicates. See the [event-schema guide](event-schema.md) for its values and
+availability period.
+
+## Database integration test
+
+Run the destructive database integration test only against the separate Neon
+test branch configured by `TEST_DATABASE_URL`:
+
+```bash
+npm run test:database --workspace @wits-world/api
+```
+
+The test creates a uniquely named temporary database, applies all migrations,
+runs the seed twice, checks constraints and indexing, and drops only that
+temporary database in cleanup. The configured test database itself is not
+dropped or cleared.
 
 ## Check readiness
 
