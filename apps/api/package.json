@@ -9,8 +9,11 @@
     "db:check:test": "npm run build && node dist/database/check.js --test",
     "db:migrate": "npm run build && node dist/database/migrate.js",
     "db:migrate:test": "npm run build && node dist/database/migrate.js --test",
+    "db:seed": "npm run build && node dist/database/seed.js",
+    "db:seed:test": "npm run build && node dist/database/seed.js --test",
     "lint": "eslint src tests --max-warnings=0",
     "test": "vitest run",
+    "test:database": "RUN_DATABASE_INTEGRATION_TESTS=true vitest run tests/event-database.integration.test.ts",
     "type-check": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
