@@ -45,6 +45,42 @@ The application accepts HTTP and HTTPS API URLs. If the variable is absent,
 empty, malformed, or uses another protocol, the browser displays a clear setup
 screen instead of starting an incorrectly configured application.
 
+## Campus map foundation
+
+The web workspace uses [MapLibre GL JS](https://maplibre.org/maplibre-gl-js/docs/)
+6.2.0 as its map-rendering library. MapLibre GL JS is distributed under the
+[BSD 3-Clause license](https://github.com/maplibre/maplibre-gl-js/blob/main/LICENSE.txt).
+
+MapLibre renders map styles and tiles supplied by a separate provider. Installing
+MapLibre does not grant access to a production tile service. A production style
+URL, provider terms, attribution text, usage limits, and any required public
+configuration must be approved and documented before deployment.
+
+The current map adapter:
+
+- loads MapLibre only when the campus map is rendered;
+- leaves MapLibre's attribution control enabled and expanded;
+- provides 44px zoom controls;
+- presents map loading and failure states;
+- keeps event information in a separate semantic text list;
+- allows component tests to replace MapLibre with a local fake, avoiding live
+  tile requests.
+
+The production map route is not enabled yet. It is waiting for:
+
+- the approved event-discovery OpenAPI contract from Gitea issue #14;
+- the confirmed campus centre and seeded-event coordinates from Gitea issue
+  #18;
+- an approved map style and tile provider.
+
+Until those inputs exist, test coordinates and URLs must remain confined to
+automated tests and must not be presented as Wits campus data.
+
+MapLibre's standard browser bundle uses web workers. A future production Content
+Security Policy must account for the worker, image, style, and tile origins used
+by the approved configuration. The final directives belong with the deployment
+configuration rather than being guessed in this frontend scaffold.
+
 ## Routes
 
 - `/` presents the mobile-first Wits Quest home page.
@@ -61,6 +97,7 @@ outside issue #6.
 apps/web/
   src/
     components/   Application shell and reusable status states
+      exploration/ Provider-independent campus map and event-list presentation
     config/       Public environment validation
     pages/        Home, About, and not-found pages
     styles/       Mobile-first global styles
