@@ -11,25 +11,25 @@ automated testing, CI/CD, and public documentation.
 
 ## Repository and runtime
 
-| Technology | Purpose | Motivation |
-| --- | --- | --- |
-| Git and Gitea | Version control, issues, pull requests, reviews, and project tracking | Provides the required Git-compliant workflow and keeps development evidence linked to code changes |
-| npm workspaces | Monorepo package and application management | Allows the web, API, documentation, and shared packages to be managed from one repository while remaining independently buildable |
-| Node.js 24.14.1 | JavaScript and TypeScript runtime | Matches the version documented by the current repository setup |
-| npm 11.18.0 | Dependency and workspace management | Matches the package-manager version documented by the current repository setup |
-| TypeScript | Static typing across applications and shared packages | Reduces integration mistakes and allows contracts to be shared without removing runtime validation |
+| Technology      | Purpose                                                               | Motivation                                                                                                                        |
+| --------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Git and Gitea   | Version control, issues, pull requests, reviews, and project tracking | Provides the required Git-compliant workflow and keeps development evidence linked to code changes                                |
+| npm workspaces  | Monorepo package and application management                           | Allows the web, API, documentation, and shared packages to be managed from one repository while remaining independently buildable |
+| Node.js 24.14.1 | JavaScript and TypeScript runtime                                     | Matches the version documented by the current repository setup                                                                    |
+| npm 11.18.0     | Dependency and workspace management                                   | Matches the package-manager version documented by the current repository setup                                                    |
+| TypeScript      | Static typing across applications and shared packages                 | Reduces integration mistakes and allows contracts to be shared without removing runtime validation                                |
 
 Runtime and package-manager versions should remain pinned and documented so all
 team members and CI use compatible environments.
 
 ## Web application
 
-| Technology | Purpose | Motivation |
-| --- | --- | --- |
-| React | Player and author interfaces | Supports reusable components and clear separation of interface responsibilities |
-| Vite | Development server and production build tooling | Provides fast local development and a straightforward browser application build |
-| React Router | Client-side routing | Supports public and protected application routes |
-| Runtime environment validation | Validation of browser-visible configuration | Prevents the application from starting with malformed or missing public configuration |
+| Technology                     | Purpose                                         | Motivation                                                                            |
+| ------------------------------ | ----------------------------------------------- | ------------------------------------------------------------------------------------- |
+| React                          | Player and author interfaces                    | Supports reusable components and clear separation of interface responsibilities       |
+| Vite                           | Development server and production build tooling | Provides fast local development and a straightforward browser application build       |
+| React Router                   | Client-side routing                             | Supports public and protected application routes                                      |
+| Runtime environment validation | Validation of browser-visible configuration     | Prevents the application from starting with malformed or missing public configuration |
 
 The web application is located in `apps/web`.
 
@@ -41,13 +41,13 @@ ownership, or game outcomes.
 
 ## API application
 
-| Technology | Purpose | Motivation |
-| --- | --- | --- |
-| Fastify | Hand-written HTTP API | Provides explicit route registration, validation integration, plugin boundaries, structured logging, and test injection |
-| TypeScript | API types and implementation safety | Keeps route, service, and database interfaces explicit |
-| OpenAPI | Machine-readable API documentation | Documents request schemas, response schemas, authentication requirements, and errors |
-| Runtime schema validation | Validation of requests, responses, and configuration | TypeScript types alone do not validate untrusted runtime input |
-| Structured request identifiers | Correlation of requests and failures | Supports safe debugging without exposing internal details to clients |
+| Technology                     | Purpose                                              | Motivation                                                                                                              |
+| ------------------------------ | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Fastify                        | Hand-written HTTP API                                | Provides explicit route registration, validation integration, plugin boundaries, structured logging, and test injection |
+| TypeScript                     | API types and implementation safety                  | Keeps route, service, and database interfaces explicit                                                                  |
+| OpenAPI                        | Machine-readable API documentation                   | Documents request schemas, response schemas, authentication requirements, and errors                                    |
+| Runtime schema validation      | Validation of requests, responses, and configuration | TypeScript types alone do not validate untrusted runtime input                                                          |
+| Structured request identifiers | Correlation of requests and failures                 | Supports safe debugging without exposing internal details to clients                                                    |
 
 The API is located in `apps/api`.
 
@@ -67,12 +67,12 @@ The API is authoritative for:
 
 ## Database and geospatial processing
 
-| Technology | Purpose | Motivation |
-| --- | --- | --- |
-| PostgreSQL | Primary relational database | Provides transactions, constraints, indexing, mature tooling, and reliable relational integrity |
-| PostGIS | Geospatial event storage and distance calculations | Provides authoritative server-side geographic operations using stored event points |
-| Drizzle ORM | Typed relational queries and migrations where appropriate | Provides explicit schema definitions while retaining control over SQL |
-| Parameterised PostGIS SQL | Geospatial queries requiring database-specific functions | Keeps geospatial operations explicit and avoids trusting client-calculated distances |
+| Technology                | Purpose                                                   | Motivation                                                                                      |
+| ------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| PostgreSQL                | Primary relational database                               | Provides transactions, constraints, indexing, mature tooling, and reliable relational integrity |
+| PostGIS                   | Geospatial event storage and distance calculations        | Provides authoritative server-side geographic operations using stored event points              |
+| Drizzle ORM               | Typed relational queries and migrations where appropriate | Provides explicit schema definitions while retaining control over SQL                           |
+| Parameterised PostGIS SQL | Geospatial queries requiring database-specific functions  | Keeps geospatial operations explicit and avoids trusting client-calculated distances            |
 
 PostgreSQL/PostGIS stores the authoritative event location and radius.
 
@@ -113,11 +113,11 @@ repository.
 
 ## Maps and location
 
-| Technology | Purpose | Motivation |
-| --- | --- | --- |
-| MapLibre GL JS | Interactive browser map rendering | Provides an open-source client library that does not determine protected game outcomes |
-| Licensed tile and style provider | Visual map data | Supplies the presentation layer required by the map interface |
-| Browser Geolocation API | Device location claim | Allows the player to submit latitude, longitude, reported accuracy, and acquisition time |
+| Technology                       | Purpose                           | Motivation                                                                               |
+| -------------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------- |
+| MapLibre GL JS                   | Interactive browser map rendering | Provides an open-source client library that does not determine protected game outcomes   |
+| Licensed tile and style provider | Visual map data                   | Supplies the presentation layer required by the map interface                            |
+| Browser Geolocation API          | Device location claim             | Allows the player to submit latitude, longitude, reported accuracy, and acquisition time |
 
 The tile and style provider remains to be selected.
 
@@ -128,14 +128,14 @@ The API and PostgreSQL/PostGIS determine event eligibility.
 
 ## Testing
 
-| Technology | Purpose | Motivation |
-| --- | --- | --- |
-| Vitest | Unit and integration tests | Works effectively with the TypeScript and Vite ecosystem |
-| React Testing Library | Web interface behaviour tests | Encourages testing accessible behaviour rather than implementation details |
-| Fastify injection | API integration tests | Tests routes without requiring an external network listener |
-| Playwright | End-to-end browser journeys | Validates deployed or locally integrated player flows |
-| axe-core | Automated accessibility checks | Detects common accessibility defects during development |
-| Dedicated test database | Migration, query, and integration tests | Prevents tests from modifying normal development data |
+| Technology              | Purpose                                 | Motivation                                                                 |
+| ----------------------- | --------------------------------------- | -------------------------------------------------------------------------- |
+| Vitest                  | Unit and integration tests              | Works effectively with the TypeScript and Vite ecosystem                   |
+| React Testing Library   | Web interface behaviour tests           | Encourages testing accessible behaviour rather than implementation details |
+| Fastify injection       | API integration tests                   | Tests routes without requiring an external network listener                |
+| Playwright              | End-to-end browser journeys             | Validates deployed or locally integrated player flows                      |
+| axe-core                | Automated accessibility checks          | Detects common accessibility defects during development                    |
+| Dedicated test database | Migration, query, and integration tests | Prevents tests from modifying normal development data                      |
 
 Testing is part of implementation rather than a final-stage activity.
 
@@ -156,11 +156,11 @@ Sprint 1 testing must cover:
 
 ## Documentation
 
-| Technology | Purpose | Motivation |
-| --- | --- | --- |
-| Markdown and MDX | Version-controlled documentation source | Keeps documentation reviewable alongside code |
-| Docusaurus or the agreed equivalent | Public documentation website | Provides a static, account-free site generated from repository content |
-| Mermaid | Architecture and process diagrams | Keeps diagrams version-controlled and editable as text |
+| Technology                          | Purpose                                 | Motivation                                                             |
+| ----------------------------------- | --------------------------------------- | ---------------------------------------------------------------------- |
+| Markdown and MDX                    | Version-controlled documentation source | Keeps documentation reviewable alongside code                          |
+| Docusaurus or the agreed equivalent | Public documentation website            | Provides a static, account-free site generated from repository content |
+| Mermaid                             | Architecture and process diagrams       | Keeps diagrams version-controlled and editable as text                 |
 
 The documentation application is located in `apps/docs`.
 
@@ -208,11 +208,11 @@ support, security, and deployment workflow have been evaluated.
 
 The monorepo may contain supporting packages such as:
 
-| Package | Responsibility |
-| --- | --- |
-| `packages/contracts` | Shared API schemas or generated-safe types |
-| `packages/game-rules` | Pure card, deck, and battle rules |
-| `packages/config` | Shared linting, formatting, TypeScript, and testing configuration |
+| Package               | Responsibility                                                    |
+| --------------------- | ----------------------------------------------------------------- |
+| `packages/contracts`  | Shared API schemas or generated-safe types                        |
+| `packages/game-rules` | Pure card, deck, and battle rules                                 |
+| `packages/config`     | Shared linting, formatting, TypeScript, and testing configuration |
 
 Shared packages must not combine the web and API into a single deployable
 application.

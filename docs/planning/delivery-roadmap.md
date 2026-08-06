@@ -10,12 +10,12 @@ front-end, API, or database components.
 
 ## Delivery dates
 
-| Milestone | End date | Primary objective |
-| --- | --- | --- |
-| Sprint 1 | 25 August 2026 | Establish the project foundation and demonstrate the first deployed location-based vertical slice |
-| Sprint 2 | 15 September 2026 | Implement the central challenge, reward, collection, and battle features |
-| Sprint 3 | 29 September 2026 | Complete, integrate, review, and improve the product |
-| Final submission | 11 October 2026 | Deliver a stable, tested, documented, and deployed product |
+| Milestone        | End date          | Primary objective                                                                                 |
+| ---------------- | ----------------- | ------------------------------------------------------------------------------------------------- |
+| Sprint 1         | 25 August 2026    | Establish the project foundation and demonstrate the first deployed location-based vertical slice |
+| Sprint 2         | 15 September 2026 | Implement the central challenge, reward, collection, and battle features                          |
+| Sprint 3         | 29 September 2026 | Complete, integrate, review, and improve the product                                              |
+| Final submission | 11 October 2026   | Deliver a stable, tested, documented, and deployed product                                        |
 
 The official dates may be adjusted during the semester. The team must update
 this roadmap if the course timeline changes.

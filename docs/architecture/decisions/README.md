@@ -19,12 +19,12 @@ the selected technology.
 
 ## Current records
 
-| Record | Decision |
-| --- | --- |
-| [ADR-001](./ADR-001-monorepo.md) | Use a monorepo with independently buildable applications |
-| [ADR-002](./ADR-002-separate-web-api.md) | Keep the web application and API separate |
-| [ADR-003](./ADR-003-postgresql-postgis.md) | Use PostgreSQL and PostGIS for authoritative event data |
-| [ADR-004](./ADR-004-map-provider-boundary.md) | Keep map integration presentation-only |
+| Record                                        | Decision                                                 |
+| --------------------------------------------- | -------------------------------------------------------- |
+| [ADR-001](./ADR-001-monorepo.md)              | Use a monorepo with independently buildable applications |
+| [ADR-002](./ADR-002-separate-web-api.md)      | Keep the web application and API separate                |
+| [ADR-003](./ADR-003-postgresql-postgis.md)    | Use PostgreSQL and PostGIS for authoritative event data  |
+| [ADR-004](./ADR-004-map-provider-boundary.md) | Keep map integration presentation-only                   |
 
 ## Planned records
 
