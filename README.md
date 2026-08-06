@@ -104,9 +104,10 @@ AI-attribution standards.
 
 ## AI Declaration
 
-This repository uses AI code generation: ChatGPT-Web[GPT-5.6 Thinking] and
-Codex-CLI[gpt-5.6-sol medium].
+This repository uses AI code generation: ChatGPT-Web[GPT-5.6 Thinking],
+Codex-CLI[gpt-5.6-sol medium], and Codex-CLI[GPT-5].
 
-This repository uses AI inline editing: Codex-CLI[gpt-5.6-sol medium].
+This repository uses AI inline editing: Codex-CLI[gpt-5.6-sol medium] and
+Codex-CLI[GPT-5].
 
 This repository uses AI code review: Codex-CLI[gpt-5.6-sol medium].
