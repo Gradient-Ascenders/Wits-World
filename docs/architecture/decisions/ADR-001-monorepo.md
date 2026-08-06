@@ -10,8 +10,8 @@ Accepted
 
 ## Owners and reviewers
 
-**Owner:** Member 2 — API and Security Lead  
-**Reviewer:** Member 3 — Data and Infrastructure Lead
+- **Owner:** Member 2 — API and Security Lead
+- **Reviewer:** Member 3 — Data and Infrastructure Lead
 
 ## Context
 
@@ -112,11 +112,11 @@ dependencies, commands, or deployment units.
 
 ## Related work
 
-- S1-02 — Scaffold the monorepo and shared development standards
-- S1-04 — Document the initial architecture and delivery plan
-- S1-05 — Publish the initial documentation website
-- S1-06 — Scaffold the mobile-first React application
-- S1-07 — Scaffold the Fastify API with health and OpenAPI support
+- Scaffold the monorepo and shared development standards
+- Document the initial architecture and delivery plan
+- Publish the initial documentation website
+- Scaffold the mobile-first React application
+- Scaffold the Fastify API with health and OpenAPI support
 
 ---
 

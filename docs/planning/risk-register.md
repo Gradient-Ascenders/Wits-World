@@ -26,7 +26,7 @@ architecture decision.
 
 ## Risk register
 
-| ID   | Risk                                                                                                               | Likelihood | Impact | Owner           | Mitigation and response                                                                                                  | Status |
+| ID | Risk | Likelihood | Impact | Owner | Mitigation and response | Related work | Status |
 | ---- | ------------------------------------------------------------------------------------------------------------------ | ---------- | ------ | --------------- | ------------------------------------------------------------------------------------------------------------------------ | ------ |
 | R-01 | Unresolved client requirements are embedded as fixed implementation decisions                                      | Medium     | High   | Member 1        | Record decisions, unresolved questions, and follow-up actions; avoid hard-coding unconfirmed thresholds                  | Open   |
 | R-02 | Authentication-provider selection is delayed or incompatible with the React and Fastify architecture               | Medium     | High   | Member 2        | Compare providers early; verify SPA integration, token validation, account lifecycle, cost, issuer, and audience support | Open   |

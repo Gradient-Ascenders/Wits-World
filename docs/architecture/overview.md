@@ -2,10 +2,10 @@
 
 ## Document status
 
-**Issue:** S1-04 — Document the initial architecture and delivery plan  
-**Status:** Initial Sprint 1 architecture  
-**Owner:** Member 2 — API and Security Lead  
-**Reviewer:** Member 3 — Data and Infrastructure Lead
+- **Issue:** #5 — Document the initial architecture and delivery plan
+- **Status:** Initial Sprint 1 architecture
+- **Owner:** Member 2 — API and Security Lead
+- **Reviewer:** Member 3 — Data and Infrastructure Lead
 
 ## Project identity
 

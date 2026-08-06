@@ -36,11 +36,11 @@ resolved:
 - managed PostgreSQL/PostGIS hosting;
 - documentation hosting;
 - map tile and style provider;
-- database access and migration implementation;
 - role and permission representation;
 - location-data retention;
 - card and battle rules; and
 - production observability.
+- ADR-005-node-postgres-sql-migrations.md
 
 ## File naming
 

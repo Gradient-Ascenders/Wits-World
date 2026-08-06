@@ -10,8 +10,8 @@ Accepted
 
 ## Owners and reviewers
 
-**Owner:** Member 2 — API and Security Lead  
-**Reviewer:** Member 3 — Data and Infrastructure Lead
+- **Owner:** Member 2 — API and Security Lead
+- **Reviewer:** Member 3 — Data and Infrastructure Lead
 
 ## Context
 
@@ -113,10 +113,10 @@ eligibility model.
 
 ## Related work
 
-- S1-04 — Document the initial architecture and delivery plan
-- S1-15 — Expose event discovery and eligibility API endpoints
-- S1-16 — Render the campus map and seeded event
-- S1-17 — Submit browser geolocation and display eligibility
+- Document the initial architecture and delivery plan
+- Expose event discovery and eligibility API endpoints
+- Render the campus map and seeded event
+- Submit browser geolocation and display eligibility
 
 ---
 

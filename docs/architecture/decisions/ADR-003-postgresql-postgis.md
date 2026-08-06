@@ -10,8 +10,8 @@ Accepted
 
 ## Owners and reviewers
 
-**Owner:** Member 2 — API and Security Lead  
-**Reviewer:** Member 3 — Data and Infrastructure Lead
+- **Owner:** Member 2 — API and Security Lead
+- **Reviewer:** Member 3 — Data and Infrastructure Lead
 
 ## Context
 
@@ -128,11 +128,11 @@ integration to influence protected game logic.
 
 ## Related work
 
-- S1-04 — Document the initial architecture and delivery plan
-- S1-08 — Configure PostgreSQL and PostGIS development environments
-- S1-13 — Create the initial event migration and seed data
-- S1-14 — Implement the PostGIS event eligibility service
-- S1-15 — Expose event discovery and eligibility API endpoints
+- Document the initial architecture and delivery plan
+- Configure PostgreSQL and PostGIS development environments
+- Create the initial event migration and seed data
+- Implement the PostGIS event eligibility service
+- Expose event discovery and eligibility API endpoints
 
 ---
 

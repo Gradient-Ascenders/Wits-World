@@ -28,7 +28,7 @@ team members and CI use compatible environments.
 | ------------------------------ | ----------------------------------------------- | ------------------------------------------------------------------------------------- |
 | React                          | Player and author interfaces                    | Supports reusable components and clear separation of interface responsibilities       |
 | Vite                           | Development server and production build tooling | Provides fast local development and a straightforward browser application build       |
-| React Router                   | Client-side routing                             | Supports public and protected application routes                                      |
+| Wouter 3.10.0                  | Client-side routing                             | Supports public and protected application routes                                      |
 | Runtime environment validation | Validation of browser-visible configuration     | Prevents the application from starting with malformed or missing public configuration |
 
 The web application is located in `apps/web`.
@@ -67,14 +67,12 @@ The API is authoritative for:
 
 ## Database and geospatial processing
 
-| Technology                | Purpose                                                   | Motivation                                                                                      |
-| ------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| PostgreSQL                | Primary relational database                               | Provides transactions, constraints, indexing, mature tooling, and reliable relational integrity |
-| PostGIS                   | Geospatial event storage and distance calculations        | Provides authoritative server-side geographic operations using stored event points              |
-| Drizzle ORM               | Typed relational queries and migrations where appropriate | Provides explicit schema definitions while retaining control over SQL                           |
-| Parameterised PostGIS SQL | Geospatial queries requiring database-specific functions  | Keeps geospatial operations explicit and avoids trusting client-calculated distances            |
-
-PostgreSQL/PostGIS stores the authoritative event location and radius.
+| Technology                                                             | Purpose                                         | Motivation                                                                                    |
+| ---------------------------------------------------------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| node-postgres (`pg`)                                                   | PostgreSQL connection and parameterised queries | Matches the implemented API database layer and retains explicit control over SQL              |
+| Repository SQL migration runner                                        | Applies ordered SQL migrations                  | Matches the implemented migration approach and keeps database changes explicit and reviewable |
+| Parameterised PostGIS SQL                                              | Geospatial storage and calculations             | Keeps protected distance calculations server-side and prevents SQL injection                  |
+| PostgreSQL/PostGIS stores the authoritative event location and radius. |
 
 The browser submits a location claim. The API validates the claim and uses
 PostGIS-backed logic to determine distance and eligibility.

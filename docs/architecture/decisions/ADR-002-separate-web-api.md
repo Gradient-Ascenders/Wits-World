@@ -10,8 +10,8 @@ Accepted
 
 ## Owners and reviewers
 
-**Owner:** Member 2 — API and Security Lead  
-**Reviewer:** Member 3 — Data and Infrastructure Lead
+- **Owner:** Member 2 — API and Security Lead
+- **Reviewer:** Member 3 — Data and Infrastructure Lead
 
 ## Context
 
@@ -98,12 +98,12 @@ to be manipulated by the browser.
 
 ## Related work
 
-- S1-04 — Document the initial architecture and delivery plan
-- S1-06 — Scaffold the mobile-first React application
-- S1-07 — Scaffold the Fastify API with health and OpenAPI support
-- S1-11 — Integrate player sign-in and protected front-end routes
-- S1-12 — Validate authentication tokens on protected API routes
-- S1-15 — Expose event discovery and eligibility API endpoints
+- Document the initial architecture and delivery plan
+- Scaffold the mobile-first React application
+- Scaffold the Fastify API with health and OpenAPI support
+- Integrate player sign-in and protected front-end routes
+- Validate authentication tokens on protected API routes
+- Expose event discovery and eligibility API endpoints
 
 ---
 
