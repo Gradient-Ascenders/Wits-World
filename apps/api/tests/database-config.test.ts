@@ -69,6 +69,52 @@ describe('database configuration', () => {
         },
         target: 'test',
       }),
-    ).toThrow('TEST_DATABASE_URL must not match DATABASE_URL.');
+    ).toThrow(
+      'TEST_DATABASE_URL must use a different host, port, or database from DATABASE_URL.',
+    );
+  });
+
+  it('rejects equivalent database URLs with reordered options and different credentials', () => {
+    const equivalentTestUrl =
+      'postgres://test_owner:different@EXAMPLE.neon.tech:5432/neondb?channel_binding=require&sslmode=require';
+
+    expect(() =>
+      buildDatabaseConfig({
+        env: {
+          DATABASE_URL:
+            'postgresql://dev_owner:password@example.neon.tech/neondb?sslmode=require&channel_binding=require',
+          TEST_DATABASE_URL: equivalentTestUrl,
+        },
+        target: 'test',
+      }),
+    ).toThrow(
+      'TEST_DATABASE_URL must use a different host, port, or database from DATABASE_URL.',
+    );
+  });
+
+  it('rejects equivalent encoded database paths', () => {
+    expect(() =>
+      buildDatabaseConfig({
+        env: {
+          DATABASE_URL: neonUrl,
+          TEST_DATABASE_URL:
+            'postgresql://test_owner:password@example.neon.tech/neon%64b?sslmode=require',
+        },
+        target: 'test',
+      }),
+    ).toThrow(
+      'TEST_DATABASE_URL must use a different host, port, or database from DATABASE_URL.',
+    );
+  });
+
+  it('requires the development URL when validating a test target', () => {
+    expect(() =>
+      buildDatabaseConfig({
+        env: { TEST_DATABASE_URL: neonUrl },
+        target: 'test',
+      }),
+    ).toThrow(
+      'DATABASE_URL is required to verify TEST_DATABASE_URL uses a separate database.',
+    );
   });
 });

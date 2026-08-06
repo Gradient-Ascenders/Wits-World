@@ -11,6 +11,12 @@ export interface DatabaseConfig {
   variableName: 'DATABASE_URL' | 'TEST_DATABASE_URL';
 }
 
+interface DatabaseIdentity {
+  databasePath: string;
+  hostname: string;
+  port: string;
+}
+
 interface BuildDatabaseConfigOptions {
   env?: NodeJS.ProcessEnv;
   target?: DatabaseTarget;
@@ -37,10 +43,30 @@ export function buildDatabaseConfig({
     );
   }
 
-  validatePostgresConnectionString(connectionString, variableName);
+  const parsedUrl = parsePostgresConnectionString(
+    connectionString,
+    variableName,
+  );
 
-  if (target === 'test' && env.DATABASE_URL === connectionString) {
-    throw new Error('TEST_DATABASE_URL must not match DATABASE_URL.');
+  if (target === 'test') {
+    const developmentConnectionString = env.DATABASE_URL?.trim();
+
+    if (!developmentConnectionString) {
+      throw new Error(
+        'DATABASE_URL is required to verify TEST_DATABASE_URL uses a separate database.',
+      );
+    }
+
+    const developmentUrl = parsePostgresConnectionString(
+      developmentConnectionString,
+      'DATABASE_URL',
+    );
+
+    if (sameDatabaseIdentity(parsedUrl, developmentUrl)) {
+      throw new Error(
+        'TEST_DATABASE_URL must use a different host, port, or database from DATABASE_URL.',
+      );
+    }
   }
 
   return {
@@ -50,10 +76,10 @@ export function buildDatabaseConfig({
   };
 }
 
-function validatePostgresConnectionString(
+function parsePostgresConnectionString(
   connectionString: string,
   variableName: string,
-) {
+): URL {
   let parsedUrl: URL;
 
   try {
@@ -81,4 +107,25 @@ function validatePostgresConnectionString(
       `${variableName} must set sslmode=require for Neon connections.`,
     );
   }
+
+  return parsedUrl;
+}
+
+function sameDatabaseIdentity(left: URL, right: URL) {
+  const leftIdentity = getDatabaseIdentity(left);
+  const rightIdentity = getDatabaseIdentity(right);
+
+  return (
+    leftIdentity.hostname === rightIdentity.hostname &&
+    leftIdentity.port === rightIdentity.port &&
+    leftIdentity.databasePath === rightIdentity.databasePath
+  );
+}
+
+function getDatabaseIdentity(connectionUrl: URL): DatabaseIdentity {
+  return {
+    databasePath: decodeURIComponent(connectionUrl.pathname),
+    hostname: connectionUrl.hostname.toLowerCase(),
+    port: connectionUrl.port || '5432',
+  };
 }
