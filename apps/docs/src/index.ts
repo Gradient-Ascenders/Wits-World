@@ -1,4 +1,4 @@
 export const docsWorkspace = {
-  name: 'Wits Quest documentation',
+  name: 'Wits World documentation',
   status: 'scaffolded',
 } as const;

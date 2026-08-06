@@ -5,7 +5,7 @@ import { apiWorkspace } from '../src/index.js';
 describe('API workspace scaffold', () => {
   it('identifies the API application workspace', () => {
     expect(apiWorkspace).toEqual({
-      name: 'Wits Quest API',
+      name: 'Wits World API',
       status: 'scaffolded',
     });
   });

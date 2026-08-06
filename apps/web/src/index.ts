@@ -1,4 +1,4 @@
 export const webWorkspace = {
-  name: 'Wits Quest web',
+  name: 'Wits World web application',
   status: 'scaffolded',
 } as const;

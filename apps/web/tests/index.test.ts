@@ -5,7 +5,7 @@ import { webWorkspace } from '../src/index.js';
 describe('web workspace scaffold', () => {
   it('identifies the web application workspace', () => {
     expect(webWorkspace).toEqual({
-      name: 'Wits Quest web',
+      name: 'Wits World web application',
       status: 'scaffolded',
     });
   });

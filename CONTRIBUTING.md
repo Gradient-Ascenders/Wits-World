@@ -1,6 +1,10 @@
-# Contributing to Wits Quest
+# Contributing to Wits World
 
-This guide defines the shared development workflow for the Wits Quest monorepo.
+This guide defines the shared development workflow for the Wits World monorepo,
+the project repository for the Wits Quest game/topic.
+
+Use **Wits World** when referring to the project, repository, or development
+workspace. Use **Wits Quest** when referring to the game/topic itself.
 Issue-specific acceptance criteria and repository `AGENTS.md` instructions take
 precedence where they are more specific.
 
@@ -56,8 +60,8 @@ npm run build
 Application checks can also run independently, for example:
 
 ```bash
-npm test --workspace @wits-quest/web
-npm run build --workspace @wits-quest/api
+npm test --workspace @wits-world/web
+npm run build --workspace @wits-world/api
 ```
 
 ## Create coherent commits

@@ -1,6 +1,11 @@
-# Wits Quest
+# Wits World
 
-Wits Quest is a mobile-friendly, location-based campus exploration web game developed for the COMS3011A Software Design Project.
+Wits World is the project repository and product team workspace for Wits Quest,
+our mobile-friendly, location-based campus exploration web game developed for
+the COMS3011A Software Design Project.
+
+In this repository, **Wits World** refers to the project, repository, and
+development workspace. **Wits Quest** refers to the game/topic being built.
 
 Players explore the Wits campus, visit location-based events, answer challenges about university history, alumni and landmarks, and collect cards. These cards can be assembled into decks and used in turn-based matches against the computer.
 
@@ -74,9 +79,9 @@ Run shared checks from the repository root:
 Run one application command independently with npm's workspace flag:
 
 ```bash
-npm run build --workspace @wits-quest/web
-npm run build --workspace @wits-quest/api
-npm run build --workspace @wits-quest/docs
+npm run build --workspace @wits-world/web
+npm run build --workspace @wits-world/api
+npm run build --workspace @wits-world/docs
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch, verification, commit, and

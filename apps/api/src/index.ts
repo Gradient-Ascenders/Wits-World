@@ -1,4 +1,4 @@
 export const apiWorkspace = {
-  name: 'Wits Quest API',
+  name: 'Wits World API',
   status: 'scaffolded',
 } as const;

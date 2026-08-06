@@ -1,8 +1,8 @@
 {
-  "name": "wits-quest",
+  "name": "wits-world",
   "version": "0.0.0",
   "private": true,
-  "description": "Wits Quest monorepo",
+  "description": "Wits World project monorepo for the Wits Quest game",
   "workspaces": [
     "apps/*"
   ],
