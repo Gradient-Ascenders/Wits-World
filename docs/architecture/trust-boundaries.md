@@ -1,0 +1,235 @@
+# Trust Boundaries
+
+## Purpose
+
+This document identifies the system's security boundaries, the data that crosses
+them, and the component responsible for validating that data.
+
+## Core rule
+
+The browser is not authoritative.
+
+A browser-reported location is a claim supplied by a device that may be
+inaccurate, outdated, manipulated, or operating under poor location conditions.
+
+All browser-supplied values require server-side validation before they affect a
+protected operation.
+
+## Trust zones
+
+### Player device and browser
+
+The player device is an untrusted input environment.
+
+The browser may:
+
+- render the player interface;
+- display events and map information;
+- request geolocation after a clear user action;
+- obtain coordinates, reported accuracy, and acquisition time;
+- obtain an access token through the approved authentication flow;
+- submit requests to the API; and
+- display the API's response.
+
+The browser may not determine:
+
+- authenticated player identity;
+- application role;
+- event eligibility;
+- answer correctness;
+- reward eligibility;
+- card ownership;
+- deck validity;
+- legal battle actions; or
+- battle outcomes.
+
+### Authentication provider
+
+The authentication provider authenticates users and issues tokens.
+
+Before trusting a token, the API must validate:
+
+- its signature;
+- its issuer;
+- its audience;
+- its expiry; and
+- any claims required by the application.
+
+The API must derive player identity from the validated token.
+
+An identity value supplied separately in a request body or query parameter must
+not be treated as authoritative.
+
+The exact authentication provider and role-claim strategy remain open
+decisions.
+
+### Wits Quest API
+
+The Fastify API is the protected application authority.
+
+It is responsible for:
+
+- extracting bearer tokens;
+- validating authentication tokens;
+- deriving authenticated identity;
+- validating request parameters and bodies;
+- enforcing role-based authorisation;
+- enforcing object-level authorisation;
+- checking event publication and availability;
+- evaluating location claims;
+- calling parameterised database operations;
+- enforcing protected game rules; and
+- returning safe responses.
+
+The API must reject or ignore attempts to submit authoritative result fields
+such as:
+
+- `eligible`;
+- `isAuthor`;
+- `answerCorrect`;
+- `rewardCardId`;
+- `winner`; or
+- `matchResult`.
+
+### PostgreSQL/PostGIS
+
+PostgreSQL/PostGIS is the authoritative application data store.
+
+During Sprint 1, it stores:
+
+- authoritative event coordinates;
+- event radii;
+- event availability periods;
+- publication state; and
+- supporting timestamps and identifiers.
+
+PostGIS performs the authoritative distance calculation between:
+
+- the submitted browser location claim; and
+- the stored event point.
+
+Database constraints, indexes, and transactions must reinforce important
+application rules.
+
+### Map provider
+
+The map provider is an external presentation service.
+
+It may supply:
+
+- map tiles;
+- map styles;
+- attribution information; and
+- related visual presentation data.
+
+It must not:
+
+- decide whether an event is reachable;
+- authenticate users;
+- issue rewards;
+- determine event availability; or
+- replace the PostGIS distance calculation.
+
+A map failure must not remove the text-based event fallback.
+
+### CI/CD and deployment platforms
+
+CI/CD and hosting platforms are privileged delivery infrastructure.
+
+They may access:
+
+- deployment credentials;
+- environment variables;
+- build artefacts; and
+- deployment configuration.
+
+Required protections include:
+
+- storing secrets outside Git;
+- limiting access to deployment credentials;
+- redacting sensitive logs and screenshots;
+- independently building the web, API, and documentation applications; and
+- preventing unreviewed changes from being deployed.
+
+## Boundary crossings
+
+| From                    | To                      | Data crossing the boundary                   | Required validation                                       |
+| ----------------------- | ----------------------- | -------------------------------------------- | --------------------------------------------------------- |
+| Browser                 | Authentication provider | Login and consent requests                   | Provider-managed authentication flow                      |
+| Authentication provider | Browser                 | Access or identity token                     | Safe browser handling and no token logging                |
+| Browser                 | API                     | Bearer token and request data                | Token validation and runtime request validation           |
+| Browser geolocation     | API                     | Latitude, longitude, accuracy, and timestamp | Coordinate, accuracy, freshness, and plausibility checks  |
+| API                     | PostgreSQL/PostGIS      | SQL parameters and transaction operations    | Parameterised queries, constraints, and authorisation     |
+| PostgreSQL/PostGIS      | API                     | Event records and geospatial results         | Typed result handling and safe failure handling           |
+| Map provider            | Browser                 | Tiles, styles, and attribution               | Licensing, configuration validation, and failure handling |
+| CI/CD                   | Deployment platforms    | Builds, credentials, and configuration       | Secret management and restricted permissions              |
+
+## Browser-visible configuration
+
+Values placed in the web application's `VITE_` environment variables are
+browser-visible.
+
+Public configuration may include:
+
+- API base URL;
+- authentication domain or issuer;
+- public SPA client identifier; and
+- API audience identifier.
+
+Browser-visible configuration must not include:
+
+- authentication client secrets;
+- management API secrets;
+- database connection strings;
+- passwords;
+- private signing keys; or
+- other private credentials.
+
+## Sensitive information
+
+The following information must not appear in normal logs, commits, public
+documentation examples, screenshots, error responses, or browser bundles:
+
+- private authentication secrets;
+- database credentials;
+- private keys;
+- complete access tokens;
+- passwords;
+- accepted challenge answers;
+- unnecessary precise player locations; and
+- internal security configuration.
+
+## Location privacy
+
+The Basic implementation must not continuously track players.
+
+Location should be requested and processed only when it supports a legitimate
+operation, such as:
+
+- showing the player's current position;
+- checking event eligibility; or
+- submitting an event attempt.
+
+The final location-retention policy remains an open decision.
+
+Until that decision is resolved, processing a location claim must not be assumed
+to require permanent storage of the exact submitted coordinates.
+
+## Open security decisions
+
+The following decisions still require review:
+
+- authentication provider;
+- token role and permission representation;
+- acceptable location accuracy;
+- location-claim freshness threshold;
+- event radius for the Sprint 1 demonstration;
+- location-data retention;
+- deployed CORS origins;
+- production hosting platforms; and
+- operational logging and monitoring providers.
+
+---
+
+The preceding document was planned and generated with the assistance of:
+ChatGPT-Web[GPT-5.6 Thinking].
