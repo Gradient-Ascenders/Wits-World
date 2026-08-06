@@ -135,6 +135,12 @@ table, constraints, spatial index, and non-production Sprint 1 fixture.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch, verification, commit, and
 AI-attribution standards.
 
+## Continuous integration
+
+The repository uses Gitea Actions for automated formatting, linting, type checking, testing and builds.
+
+See [Continuous Integration](docs/testing/continuous-integration.md).
+
 ## AI Declaration
 
 This repository uses AI code generation: ChatGPT-Web[GPT-5.6 Thinking],
