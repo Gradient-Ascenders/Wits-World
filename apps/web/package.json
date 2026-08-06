@@ -1,0 +1,11 @@
+{
+  "name": "@wits-quest/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json",
+    "lint": "eslint src --max-warnings=0",
+    "type-check": "tsc --project tsconfig.json --noEmit"
+  }
+}
