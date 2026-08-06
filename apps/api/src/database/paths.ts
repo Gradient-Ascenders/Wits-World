@@ -25,3 +25,7 @@ export function findRepositoryRoot(startDirectory = process.cwd()) {
 export function getMigrationsDirectory(repositoryRoot = findRepositoryRoot()) {
   return resolve(repositoryRoot, 'database/migrations');
 }
+
+export function getSeedsDirectory(repositoryRoot = findRepositoryRoot()) {
+  return resolve(repositoryRoot, 'database/seeds');
+}
