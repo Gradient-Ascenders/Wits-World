@@ -1,0 +1,34 @@
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+
+import { App } from './App';
+import { ConfigurationErrorScreen } from './components/ConfigurationErrorScreen';
+import { ConfigurationError, loadWebConfig } from './config/environment';
+import './styles/global.css';
+
+const rootElement = document.getElementById('root');
+
+if (!rootElement) {
+  throw new Error('Wits Quest could not find its application root.');
+}
+
+const root = createRoot(rootElement);
+
+try {
+  loadWebConfig(import.meta.env);
+  root.render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+} catch (error) {
+  if (error instanceof ConfigurationError) {
+    root.render(
+      <StrictMode>
+        <ConfigurationErrorScreen message={error.message} />
+      </StrictMode>,
+    );
+  } else {
+    throw error;
+  }
+}
