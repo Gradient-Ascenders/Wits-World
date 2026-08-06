@@ -1,5 +1,5 @@
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   plugins: [react()],
@@ -10,5 +10,16 @@ export default defineConfig({
   preview: {
     port: 4173,
     strictPort: true,
+  },
+  test: {
+    clearMocks: true,
+    css: true,
+    environment: 'jsdom',
+    environmentOptions: {
+      jsdom: {
+        url: 'http://localhost/',
+      },
+    },
+    setupFiles: ['./tests/setup.ts'],
   },
 });
