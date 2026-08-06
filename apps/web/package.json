@@ -12,6 +12,7 @@
     "type-check": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
+    "maplibre-gl": "6.2.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "wouter": "3.10.0"
