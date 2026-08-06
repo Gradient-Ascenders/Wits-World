@@ -22,7 +22,7 @@ describe('Wits Quest application shell', () => {
     expect(
       await screen.findByRole('heading', {
         level: 1,
-        name: 'Explore with Wits Quest',
+        name: 'Explore campus through Wits Quest',
       }),
     ).toBeVisible();
     expect(screen.getByRole('banner')).toBeVisible();
@@ -30,9 +30,9 @@ describe('Wits Quest application shell', () => {
     expect(screen.getByRole('main')).toHaveAttribute('id', 'main-content');
     expect(screen.getByRole('contentinfo')).toBeVisible();
     expect(
-      screen.getByLabelText('Wits Quest, a Wits World project'),
+      screen.getByLabelText('Wits Quest home, a Wits World project'),
     ).toBeVisible();
-    expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Explore' })).toHaveAttribute(
       'aria-current',
       'page',
     );
@@ -44,7 +44,7 @@ describe('Wits Quest application shell', () => {
 
     await screen.findByRole('heading', {
       level: 1,
-      name: 'Explore with Wits Quest',
+      name: 'Explore campus through Wits Quest',
     });
 
     await user.tab();
@@ -53,7 +53,14 @@ describe('Wits Quest application shell', () => {
     ).toHaveFocus();
 
     await user.tab();
-    expect(screen.getByRole('link', { name: 'Home' })).toHaveFocus();
+    expect(
+      screen.getByRole('link', {
+        name: 'Wits Quest home, a Wits World project',
+      }),
+    ).toHaveFocus();
+
+    await user.tab();
+    expect(screen.getByRole('link', { name: 'Explore' })).toHaveFocus();
 
     await user.tab();
     const aboutLink = screen.getByRole('link', { name: 'About' });

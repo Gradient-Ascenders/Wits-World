@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { ConfigurationErrorScreen } from './components/ConfigurationErrorScreen';
 import { ConfigurationError, loadWebConfig } from './config/environment';
+import './styles/tokens.css';
 import './styles/global.css';
 
 const rootElement = document.getElementById('root');
