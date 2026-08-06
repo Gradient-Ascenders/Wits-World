@@ -27,3 +27,4 @@ Runs the repository-wide Prettier formatting check:
 
 ```bash
 npm run format:check
+```
