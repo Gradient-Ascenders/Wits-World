@@ -59,9 +59,9 @@ packages/       Shared configuration, contracts, and game rules
 tests/          Cross-application test fixtures and suites
 ```
 
-The application workspaces currently contain minimal TypeScript entry points.
-They establish independent build boundaries without pre-empting their dedicated
-implementation issues.
+The web workspace contains the Sprint 1 React application foundation. The API
+and documentation workspaces retain minimal TypeScript entry points until their
+dedicated implementation issues are completed.
 
 ## Development Commands
 
@@ -83,6 +83,17 @@ npm run build --workspace @wits-world/web
 npm run build --workspace @wits-world/api
 npm run build --workspace @wits-world/docs
 ```
+
+Start the Wits Quest web application after copying its environment example:
+
+```bash
+cp apps/web/.env.example apps/web/.env
+npm run dev --workspace @wits-world/web
+```
+
+The application is available at `http://localhost:5173`. See the
+[web application guide](apps/web/README.md) for routes, configuration, structure,
+and browser verification.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch, verification, commit, and
 AI-attribution standards.
