@@ -7,9 +7,12 @@ the COMS3011A Software Design Project.
 In this repository, **Wits World** refers to the project, repository, and
 development workspace. **Wits Quest** refers to the game/topic being built.
 
-Players explore the Wits campus, visit location-based events, answer challenges about university history, alumni and landmarks, and collect cards. These cards can be assembled into decks and used in turn-based matches against the computer.
+Players explore the Wits campus, visit location-based events, answer challenges
+about university history, alumni and landmarks, and collect cards. These cards
+can be assembled into decks and used in turn-based matches against the computer.
 
-The project also includes an authoring console for managing events, questions, locations and collectible cards.
+The project also includes an authoring console for managing events, questions,
+locations and collectible cards.
 
 ## Getting Started
 
@@ -43,13 +46,13 @@ cp apps/api/.env.example apps/api/.env
 ```
 
 The examples contain local development values only. Application-specific setup
-will be documented as each application is implemented.
+is documented in each application's README.
 
 ## Repository Structure
 
 ```text
 apps/
-  api/          Fastify API workspace (implementation tracked in issue #9)
+  api/          Fastify hand-written API with health, OpenAPI, safe errors, and database tooling
   docs/         Public documentation workspace (implementation tracked in issue #15)
   web/          React web workspace (implementation tracked in issue #6)
 database/       Database diagrams, migrations, and seed data
@@ -60,8 +63,10 @@ tests/          Cross-application test fixtures and suites
 ```
 
 The web workspace contains the Sprint 1 React application foundation. The API
-and documentation workspaces retain minimal TypeScript entry points until their
-dedicated implementation issues are completed.
+workspace contains the Fastify application foundation, PostgreSQL/PostGIS
+tooling, runtime configuration validation, health endpoint, versioned routes,
+safe error handling, and generated OpenAPI documentation. The documentation
+workspace remains under active implementation.
 
 ## Development Commands
 
@@ -84,6 +89,8 @@ npm run build --workspace @wits-world/api
 npm run build --workspace @wits-world/docs
 ```
 
+### Web application
+
 Start the Wits Quest web application after copying its environment example:
 
 ```bash
@@ -95,11 +102,35 @@ The application is available at `http://localhost:5173`. See the
 [web application guide](apps/web/README.md) for routes, configuration, structure,
 and browser verification.
 
+### API application
+
+Start the Wits World API after copying its environment example:
+
+```bash
+cp apps/api/.env.example apps/api/.env
+npm run dev --workspace @wits-world/api
+```
+
+The default API address is `http://127.0.0.1:3000`.
+
+- Health endpoint: `http://127.0.0.1:3000/health`
+- Versioned API root: `http://127.0.0.1:3000/api/v1/`
+- OpenAPI interface: `http://127.0.0.1:3000/documentation/`
+- OpenAPI JSON: `http://127.0.0.1:3000/documentation/json`
+
+See the [API guide](apps/api/README.md) for configuration, routes, errors,
+testing, and OpenAPI details.
+
+## Database Documentation
+
 Database setup for Sprint 1 uses Neon PostgreSQL/PostGIS. See the
 [Neon database guide](docs/database/neon-postgis-setup.md) for environment
 variables, migrations, readiness checks, and troubleshooting.
+
 The [initial event schema](docs/database/event-schema.md) documents the event
 table, constraints, spatial index, and non-production Sprint 1 fixture.
+
+## Contribution Guide
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch, verification, commit, and
 AI-attribution standards.
