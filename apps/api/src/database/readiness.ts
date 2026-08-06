@@ -1,7 +1,7 @@
 import type pg from 'pg';
 
 import type { DatabaseConfig } from '../config/database.js';
-import { withDatabaseClient } from './connection.js';
+import { type DatabaseClientRunner, withDatabaseClient } from './connection.js';
 
 export interface DatabaseReadiness {
   database: string;
@@ -12,8 +12,9 @@ export interface DatabaseReadiness {
 
 export async function checkDatabaseReadiness(
   databaseConfig: DatabaseConfig,
+  runWithClient: DatabaseClientRunner = withDatabaseClient,
 ): Promise<DatabaseReadiness> {
-  return withDatabaseClient(databaseConfig, async (client) => {
+  return runWithClient(databaseConfig, async (client) => {
     const connection = await client.query<{
       database: string;
       user: string;

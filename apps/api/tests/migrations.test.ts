@@ -1,14 +1,39 @@
-import { mkdtemp, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import type pg from 'pg';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { loadMigrationFiles } from '../src/database/migrations.js';
+import type { DatabaseConfig } from '../src/config/database.js';
+import type { DatabaseClientRunner } from '../src/database/connection.js';
+import {
+  loadMigrationFiles,
+  runMigrations,
+} from '../src/database/migrations.js';
+
+const databaseConfig: DatabaseConfig = {
+  connectionString:
+    'postgresql://owner:password@database.test/neondb?sslmode=require',
+  target: 'test',
+  variableName: 'TEST_DATABASE_URL',
+};
+const temporaryDirectories: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(
+    temporaryDirectories.splice(0).map((directory) =>
+      rm(directory, {
+        force: true,
+        recursive: true,
+      }),
+    ),
+  );
+});
 
 describe('migration file loading', () => {
   it('loads SQL migrations in filename order', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'wits-world-migrations-'));
+    const directory = await createTemporaryMigrationDirectory();
 
     await writeFile(join(directory, '0002_second.sql'), 'select 2;');
     await writeFile(join(directory, '0001_first.sql'), 'select 1;');
@@ -23,3 +48,122 @@ describe('migration file loading', () => {
     expect(migrationFiles[0]?.checksum).toHaveLength(64);
   });
 });
+
+describe('migration execution', () => {
+  it('applies an unapplied migration in a transaction', async () => {
+    const directory = await createTemporaryMigrationDirectory();
+    await writeFile(join(directory, '0001_first.sql'), 'select 1;');
+    const query = createMigrationQuery();
+
+    await expect(
+      runMigrations(databaseConfig, directory, createClientRunner(query)),
+    ).resolves.toEqual({
+      applied: ['0001_first.sql'],
+      skipped: [],
+    });
+
+    expect(query).toHaveBeenCalledWith('begin');
+    expect(query).toHaveBeenCalledWith('select 1;');
+    expect(query).toHaveBeenCalledWith(
+      'insert into public.schema_migrations (name, checksum) values ($1, $2)',
+      ['0001_first.sql', expect.stringMatching(/^[a-f0-9]{64}$/)],
+    );
+    expect(query).toHaveBeenCalledWith('commit');
+    expect(query).not.toHaveBeenCalledWith('rollback');
+    expect(query).toHaveBeenLastCalledWith(
+      'select pg_advisory_unlock($1)',
+      [9_160_001],
+    );
+  });
+
+  it('skips a migration whose stored checksum matches', async () => {
+    const directory = await createTemporaryMigrationDirectory();
+    await writeFile(join(directory, '0001_first.sql'), 'select 1;');
+    const [migrationFile] = await loadMigrationFiles(directory);
+    const query = createMigrationQuery([
+      {
+        checksum: migrationFile?.checksum ?? '',
+        name: '0001_first.sql',
+      },
+    ]);
+
+    await expect(
+      runMigrations(databaseConfig, directory, createClientRunner(query)),
+    ).resolves.toEqual({
+      applied: [],
+      skipped: ['0001_first.sql'],
+    });
+
+    expect(query).not.toHaveBeenCalledWith('begin');
+    expect(query).not.toHaveBeenCalledWith('select 1;');
+  });
+
+  it('rejects an applied migration whose checksum changed', async () => {
+    const directory = await createTemporaryMigrationDirectory();
+    await writeFile(join(directory, '0001_first.sql'), 'select 1;');
+    const query = createMigrationQuery([
+      { checksum: 'different-checksum', name: '0001_first.sql' },
+    ]);
+
+    await expect(
+      runMigrations(databaseConfig, directory, createClientRunner(query)),
+    ).rejects.toThrow(
+      'Migration 0001_first.sql has changed after being applied.',
+    );
+
+    expect(query).not.toHaveBeenCalledWith('begin');
+    expect(query).toHaveBeenLastCalledWith(
+      'select pg_advisory_unlock($1)',
+      [9_160_001],
+    );
+  });
+
+  it('rolls back a failed migration and releases the lock', async () => {
+    const directory = await createTemporaryMigrationDirectory();
+    await writeFile(join(directory, '0001_first.sql'), 'invalid migration;');
+    const query = createMigrationQuery([], 'invalid migration;');
+
+    await expect(
+      runMigrations(databaseConfig, directory, createClientRunner(query)),
+    ).rejects.toThrow('migration failed');
+
+    const statements = query.mock.calls.map(([statement]) => statement);
+    expect(statements).toContain('rollback');
+    expect(statements).not.toContain('commit');
+    expect(statements.at(-1)).toBe('select pg_advisory_unlock($1)');
+  });
+});
+
+async function createTemporaryMigrationDirectory() {
+  const directory = await mkdtemp(join(tmpdir(), 'wits-world-migrations-'));
+  temporaryDirectories.push(directory);
+  return directory;
+}
+
+function createMigrationQuery(
+  appliedMigrations: Array<{ checksum: string; name: string }> = [],
+  failingStatement?: string,
+) {
+  return vi.fn(async (statement: string) => {
+    if (statement === failingStatement) {
+      throw new Error('migration failed');
+    }
+
+    if (statement.startsWith('select name, checksum')) {
+      return { rows: appliedMigrations };
+    }
+
+    return { rows: [] };
+  });
+}
+
+function createClientRunner(query: ReturnType<typeof vi.fn>) {
+  const client = { query } as unknown as pg.PoolClient;
+
+  const runWithClient: DatabaseClientRunner = async (
+    _databaseConfig,
+    callback,
+  ) => callback(client);
+
+  return runWithClient;
+}

@@ -5,7 +5,7 @@ import { basename, resolve } from 'node:path';
 import type pg from 'pg';
 
 import type { DatabaseConfig } from '../config/database.js';
-import { withDatabaseClient } from './connection.js';
+import { type DatabaseClientRunner, withDatabaseClient } from './connection.js';
 import { getMigrationsDirectory } from './paths.js';
 
 const MIGRATION_LOCK_KEY = 9_160_001;
@@ -25,10 +25,11 @@ export interface MigrationResult {
 export async function runMigrations(
   databaseConfig: DatabaseConfig,
   migrationsDirectory = getMigrationsDirectory(),
+  runWithClient: DatabaseClientRunner = withDatabaseClient,
 ): Promise<MigrationResult> {
   const migrationFiles = await loadMigrationFiles(migrationsDirectory);
 
-  return withDatabaseClient(databaseConfig, async (client) => {
+  return runWithClient(databaseConfig, async (client) => {
     await client.query('select pg_advisory_lock($1)', [MIGRATION_LOCK_KEY]);
 
     try {

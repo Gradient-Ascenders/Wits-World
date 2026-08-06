@@ -4,6 +4,11 @@ import type { DatabaseConfig } from '../config/database.js';
 
 const { Pool } = pg;
 
+export type DatabaseClientRunner = <T>(
+  databaseConfig: DatabaseConfig,
+  callback: (client: pg.PoolClient) => Promise<T>,
+) => Promise<T>;
+
 export function createDatabasePool(databaseConfig: DatabaseConfig) {
   const connectionUrl = new URL(databaseConfig.connectionString);
   connectionUrl.searchParams.delete('sslmode');
@@ -18,10 +23,10 @@ export function createDatabasePool(databaseConfig: DatabaseConfig) {
   });
 }
 
-export async function withDatabaseClient<T>(
+export const withDatabaseClient: DatabaseClientRunner = async <T>(
   databaseConfig: DatabaseConfig,
   callback: (client: pg.PoolClient) => Promise<T>,
-) {
+) => {
   const pool = createDatabasePool(databaseConfig);
   const client = await pool.connect();
 
@@ -31,4 +36,4 @@ export async function withDatabaseClient<T>(
     client.release();
     await pool.end();
   }
-}
+};
