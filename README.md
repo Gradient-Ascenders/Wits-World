@@ -95,6 +95,10 @@ The application is available at `http://localhost:5173`. See the
 [web application guide](apps/web/README.md) for routes, configuration, structure,
 and browser verification.
 
+Database setup for Sprint 1 uses Neon PostgreSQL/PostGIS. See the
+[Neon database guide](docs/database/neon-postgis-setup.md) for environment
+variables, migrations, readiness checks, and troubleshooting.
+
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch, verification, commit, and
 AI-attribution standards.
 

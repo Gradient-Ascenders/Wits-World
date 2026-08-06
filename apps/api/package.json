@@ -5,8 +5,19 @@
   "type": "module",
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
+    "db:check": "npm run build && node dist/database/check.js",
+    "db:check:test": "npm run build && node dist/database/check.js --test",
+    "db:migrate": "npm run build && node dist/database/migrate.js",
+    "db:migrate:test": "npm run build && node dist/database/migrate.js --test",
     "lint": "eslint src tests --max-warnings=0",
     "test": "vitest run",
     "type-check": "tsc --project tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "pg": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.20.4"
   }
 }
