@@ -5,9 +5,11 @@ game/topic being developed by the Wits World project.
 
 The current application provides a responsive shell, Auth0 sign-in and sign-out,
 a protected campus map, authenticated published-event discovery, safe API
-access-token retrieval, configuration validation, loading presentation, and
-unexpected-error handling. It does not yet include browser geolocation,
-eligibility requests, challenges, cards, or battles.
+access-token retrieval, and a premium editorial home page. The home-page map,
+event status, and collectible cards are explicitly static product previews; the
+live seeded-event experience is available through the protected `/explore`
+route. The application does not yet include browser geolocation, eligibility
+requests, challenges, cards, or battles.
 
 ## Run locally
 
@@ -17,7 +19,7 @@ Use Node.js 24.14.1 and npm 11.18.0. From the repository root:
 nvm use
 npm ci
 cp apps/web/.env.example apps/web/.env
-npm run dev --workspace @wits-world/web
+npm run view
 ```
 
 Before starting the application, replace
@@ -164,6 +166,7 @@ apps/web/
     auth/         Auth0 provider integration and safe API-token access
     components/   Application shell and reusable status states
       exploration/ Provider-independent campus map and event-list presentation
+      home/        Decorative map, journey, and collectible-card previews
     config/       Public environment validation
     pages/        Home, About, and not-found pages
     styles/       Mobile-first global styles
@@ -189,13 +192,36 @@ npm run build
 The component tests use accessible roles and names. They cover application
 landmarks, routes, keyboard order, authentication loading and errors,
 authenticated event discovery, bearer-header use, response validation, loading,
-empty, retry, map-provider failure, map-independent event presentation, safe
-return paths, configuration failures, and the render-error fallback. Automated
-checks do not replace manual browser and keyboard testing.
+empty, retry, map-provider failure, map-independent event presentation, honest
+preview language, safe return paths, configuration failures, and the
+render-error fallback. Automated checks do not replace manual browser and
+keyboard testing.
 
 ### Manual browser checks
 
 With `apps/web/.env` configured and the development server running:
+
+#### Home page
+
+1. Open `/` at widths of 360px, 390px, 768px, and approximately 1280px. Confirm
+   that the brand, navigation, hero, journey stages, map preview, card preview,
+   project context, and footer remain readable without horizontal scrolling.
+2. At 390×844, confirm the hero heading wraps cleanly, the decorative map stays
+   inside its panel, the fixed navigation does not hide interactive content, and
+   the journey stages remain comfortably readable.
+3. At 1280×800, confirm the hero, mission preview, and collection preview use
+   two-column compositions without stretching body text or obscuring headings.
+4. Capture review screenshots under `.pr-screenshots/` at 390×844 and 1280×800.
+5. At 390px, press Tab. Confirm focus moves through Skip to main content, the
+   Wits Quest brand, Home, Explore, About, account control, Explore the campus,
+   and About the project with a visible outline. Activate the skip link and
+   confirm focus moves to the main landmark.
+6. Enable reduced-motion emulation and confirm transitions are effectively
+   removed without hiding information.
+7. Open an unknown route such as `/missing`. Confirm the not-found heading and
+   Return home link are available by keyboard.
+
+#### Authenticated campus map
 
 1. Start the API with its PostgreSQL/PostGIS environment and seeded Sprint 1
    event, then start the web application with the development Auth0 SPA Client

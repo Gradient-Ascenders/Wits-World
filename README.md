@@ -95,7 +95,7 @@ Start the Wits Quest web application after copying its environment example:
 
 ```bash
 cp apps/web/.env.example apps/web/.env
-npm run dev --workspace @wits-world/web
+npm run view
 ```
 
 The application is available at `http://localhost:5173`. See the

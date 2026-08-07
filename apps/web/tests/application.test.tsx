@@ -22,10 +22,14 @@ describe('Wits Quest application shell', () => {
     renderRoute('/');
 
     expect(
-      await screen.findByRole('heading', {
-        level: 1,
-        name: 'Explore campus through Wits Quest',
-      }),
+      await screen.findByRole(
+        'heading',
+        {
+          level: 1,
+          name: 'Explore Wits. Begin the quest.',
+        },
+        { timeout: 5_000 },
+      ),
     ).toBeVisible();
     expect(screen.getByRole('banner')).toBeVisible();
     expect(screen.getByRole('navigation', { name: 'Primary' })).toBeVisible();
@@ -47,10 +51,14 @@ describe('Wits Quest application shell', () => {
     const user = userEvent.setup();
     renderRoute('/');
 
-    await screen.findByRole('heading', {
-      level: 1,
-      name: 'Explore campus through Wits Quest',
-    });
+    await screen.findByRole(
+      'heading',
+      {
+        level: 1,
+        name: 'Explore Wits. Begin the quest.',
+      },
+      { timeout: 5_000 },
+    );
 
     await user.tab();
     expect(
@@ -88,6 +96,43 @@ describe('Wits Quest application shell', () => {
       screen.getByText(/browser location requests.*still to come/i),
     ).toBeVisible();
     expect(aboutLink).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('links to live exploration while presenting later gameplay as previews', async () => {
+    renderRoute('/');
+
+    expect(
+      await screen.findByRole(
+        'link',
+        { name: 'Explore the campus' },
+        { timeout: 5_000 },
+      ),
+    ).toHaveAttribute('href', '/explore');
+    expect(
+      screen.getByRole('heading', {
+        level: 2,
+        name: 'A campus journey with purpose',
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Explore' }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Discover' }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Collect' }),
+    ).toBeVisible();
+    expect(screen.getByText('Static interface preview')).toBeVisible();
+    expect(screen.getByText('Awaiting location')).toBeVisible();
+    expect(screen.getByText('Shown after a location check')).toBeVisible();
+    expect(
+      screen.getByRole('heading', {
+        level: 2,
+        name: 'Build a collection with a sense of place',
+      }),
+    ).toBeVisible();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
   it('renders a useful fallback for an unknown route', async () => {
