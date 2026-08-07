@@ -23,8 +23,8 @@ export default function HomePage() {
           <p className="information-panel__label">Sprint 1 player journey</p>
           <h2 id="foundation-title">The campus map comes first</h2>
           <p>
-            The first playable slice will present one campus event on a map and
-            in an accessible text list, with clear loading and failure states.
+            The first playable slice presents campus events on a map and in an
+            accessible text list, with clear loading and failure states.
           </p>
           <div aria-hidden="true" className="orbital-visual">
             <span className="orbital-visual__orbit orbital-visual__orbit--one" />

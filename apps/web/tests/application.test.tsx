@@ -38,6 +38,9 @@ describe('Wits Quest application shell', () => {
       'aria-current',
       'page',
     );
+    expect(
+      screen.getByText(/first playable slice presents campus events/i),
+    ).toBeVisible();
   });
 
   it('supports keyboard navigation to the skip link and primary routes', async () => {
@@ -77,6 +80,12 @@ describe('Wits Quest application shell', () => {
         level: 1,
         name: 'About Wits Quest',
       }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/supports authenticated event discovery/i),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/browser location requests.*still to come/i),
     ).toBeVisible();
     expect(aboutLink).toHaveAttribute('aria-current', 'page');
   });
