@@ -352,6 +352,101 @@ The suite covers:
 The production authentication path uses the Auth0 JWKS endpoint rather than the
 temporary test keys.
 
+## Browser-to-API access
+
+The Wits World web application and API are independently served applications.
+
+During local development:
+
+- the web application runs at `http://localhost:5173`;
+- the API runs at `http://127.0.0.1:3000`.
+
+Because these are different browser origins, the API uses a controlled CORS
+policy.
+
+### CORS configuration
+
+The approved browser origin is configured with:
+
+```env
+CORS_ALLOWED_ORIGIN=http://localhost:5173
+```
+
+The API requires one exact HTTP or HTTPS origin.
+
+Wildcard origins are not permitted.
+
+Examples that are rejected at startup include:
+
+```text
+*
+https://*.example.com
+https://example.com/path
+```
+
+Production deployments must provide their deployed web origin through
+`CORS_ALLOWED_ORIGIN`. A production origin must not be hard-coded into the
+application.
+
+### Allowed browser requests
+
+The current CORS policy permits:
+
+- `GET`;
+- `POST`;
+- the `Authorization` request header;
+- the `Content-Type` request header;
+- browser preflight requests.
+
+Cookie credentials are not enabled.
+
+Bearer authentication remains authoritative and unchanged. CORS does not
+authenticate a user and does not make protected routes public.
+
+For example:
+
+```http
+GET /api/v1/events
+Origin: http://localhost:5173
+Authorization: Bearer <access-token>
+```
+
+still requires a valid Auth0 access token.
+
+### Security boundary
+
+CORS is a browser security boundary, not API access control.
+
+A command-line client or another non-browser HTTP client is not prevented from
+sending requests by CORS. Protected API operations therefore continue to rely
+on server-side bearer-token validation and application authorisation.
+
+The API:
+
+- does not use `Access-Control-Allow-Origin: *`;
+- does not dynamically reflect arbitrary origins;
+- does not disable authentication for preflight support;
+- does not place bearer tokens in CORS configuration;
+- fails startup when the required allowed-origin configuration is missing or
+  malformed.
+
+### Local preflight verification
+
+With the API running, a local bearer-token preflight can be checked with:
+
+```bash
+curl -i -X OPTIONS http://127.0.0.1:3000/api/v1/events \
+  -H "Origin: http://localhost:5173" \
+  -H "Access-Control-Request-Method: GET" \
+  -H "Access-Control-Request-Headers: authorization"
+```
+
+The response should allow exactly the configured local origin and include
+support for the requested bearer `Authorization` header.
+
+An unapproved origin must not receive an applicable
+`Access-Control-Allow-Origin` response permitting browser access.
+
 ## Event discovery and location eligibility
 
 Authenticated players can discover published events and submit location claims
@@ -647,7 +742,6 @@ The API integration tests cover:
 
 The API foundation does not yet include:
 
-- CORS configuration;
 - production monitoring;
 - challenge, reward, card, deck, or battle operations.
 - challenge sessions, answer marking, and reward issuance beyond event
