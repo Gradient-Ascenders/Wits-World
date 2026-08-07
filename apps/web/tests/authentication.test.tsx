@@ -85,6 +85,30 @@ describe('player authentication', () => {
     });
   });
 
+  it('shows a recoverable authentication error on a public route', async () => {
+    const user = userEvent.setup();
+    const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
+    renderRoute(
+      '/',
+      createAuthValue({
+        error: new Error('provider-detail-that-must-not-be-shown'),
+        loginWithRedirect,
+      }),
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Sign-in is unavailable right now.',
+    );
+    expect(
+      screen.queryByText('provider-detail-that-must-not-be-shown'),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Try sign-in again' }));
+    expect(loginWithRedirect).toHaveBeenCalledWith({
+      appState: { returnTo: '/explore' },
+    });
+  });
+
   it('renders the protected route for an authenticated player', async () => {
     renderRoute(
       '/explore',

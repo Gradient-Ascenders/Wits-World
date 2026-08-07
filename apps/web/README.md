@@ -20,6 +20,12 @@ cp apps/web/.env.example apps/web/.env
 npm run dev --workspace @wits-world/web
 ```
 
+Before starting the application, replace
+`VITE_AUTH0_CLIENT_ID=replace-with-public-spa-client-id` in the ignored
+`apps/web/.env` file with the development SPA's public Client ID. Keep the
+committed development domain and API audience unless the approved Auth0
+configuration changes.
+
 Open `http://localhost:5173` in a browser. The development server uses a strict
 port and exits with an error if port 5173 is unavailable.
 
@@ -40,6 +46,10 @@ The preview server uses `http://localhost:4173`.
 | `VITE_AUTH0_DOMAIN`    | Yes      | Yes             | Auth0 tenant hostname without a protocol |
 | `VITE_AUTH0_CLIENT_ID` | Yes      | Yes             | Public Auth0 single-page application ID  |
 | `VITE_AUTH0_AUDIENCE`  | Yes      | Yes             | Audience identifying the Wits World API  |
+
+The committed `.env.example` contains the approved development domain and
+audience plus a safe Client ID placeholder. A fresh checkout must replace that
+placeholder in its ignored `.env` file before testing authentication.
 
 Only public values may use the `VITE_` prefix because Vite includes them in the
 browser bundle. Do not place tokens, passwords, private keys, or other secrets in
