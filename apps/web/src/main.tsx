@@ -21,7 +21,7 @@ try {
   root.render(
     <StrictMode>
       <PlayerAuthProvider config={config.auth}>
-        <App />
+        <App apiBaseUrl={config.apiBaseUrl} />
       </PlayerAuthProvider>
     </StrictMode>,
   );

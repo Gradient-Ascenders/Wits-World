@@ -11,7 +11,11 @@ const HomePage = lazy(() => import('./pages/HomePage'));
 const AboutPage = lazy(() => import('./pages/AboutPage'));
 const ExplorePage = lazy(() => import('./pages/ExplorePage'));
 
-export function AppRoutes() {
+interface AppRoutesProps {
+  apiBaseUrl: string;
+}
+
+export function AppRoutes({ apiBaseUrl }: AppRoutesProps) {
   return (
     <AppShell>
       <Suspense fallback={<LoadingState />}>
@@ -19,7 +23,7 @@ export function AppRoutes() {
           <Route path="/" component={HomePage} />
           <Route path="/explore">
             <ProtectedRoute>
-              <ExplorePage />
+              <ExplorePage apiBaseUrl={apiBaseUrl} />
             </ProtectedRoute>
           </Route>
           <Route path="/about" component={AboutPage} />
@@ -30,18 +34,20 @@ export function AppRoutes() {
   );
 }
 
-interface AppProps {
-  children?: ReactNode;
-}
+type AppProps =
+  | { apiBaseUrl: string; children?: never }
+  | { apiBaseUrl?: never; children: ReactNode };
 
-export function App({ children }: AppProps) {
+export function App(props: AppProps) {
+  if ('children' in props) {
+    return <ErrorBoundary>{props.children}</ErrorBoundary>;
+  }
+
   return (
     <ErrorBoundary>
-      {children ?? (
-        <Router>
-          <AppRoutes />
-        </Router>
-      )}
+      <Router>
+        <AppRoutes apiBaseUrl={props.apiBaseUrl} />
+      </Router>
     </ErrorBoundary>
   );
 }
