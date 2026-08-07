@@ -141,6 +141,12 @@ The repository uses Gitea Actions for automated formatting, linting, type checki
 
 See [Continuous Integration](docs/testing/continuous-integration.md).
 
+## Continuous deployment
+
+This repository uses Gitea Actions with Azure to deploy Web-Application.
+
+See [Continuous Deployment](docs/deployment/azure-deployment-setup.md).
+
 ## AI Declaration
 
 This repository uses AI code generation: ChatGPT-Web[GPT-5.6 Thinking],

@@ -116,3 +116,194 @@ jobs:
 
       - name: Build documentation application
         run: npm run build --workspace @wits-world/docs
+
+  deploy-api:
+    name: Deploy API to Azure
+    needs:
+      - repository-quality
+      - web
+      - api
+      - documentation
+    if: ${{ gitea.event_name == 'push' && gitea.ref == 'refs/heads/main' }}
+    runs-on: azure-deploy
+
+    env:
+      DEPLOY_SHA: ${{ gitea.sha }}
+      GITEA_JOB_TOKEN: ${{ gitea.token }}
+      REPOSITORY_URL: https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World.git
+      AZURE_RESOURCE_GROUP: witsworld-rg
+      AZURE_WEBAPP_NAME: witsworld-api
+
+    steps:
+      - name: Check out exact main commit
+        run: |
+          set -euo pipefail
+
+          DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
+
+          rm -rf "$DEPLOY_ROOT"
+          mkdir -p "$DEPLOY_ROOT/repository"
+
+          cd "$DEPLOY_ROOT/repository"
+
+          git init
+          git remote add origin "$REPOSITORY_URL"
+
+          AUTH_HEADER="$(
+            printf 'x-access-token:%s' "$GITEA_JOB_TOKEN" |
+              base64 -w0
+          )"
+
+          git \
+            -c "http.extraHeader=Authorization: Basic ${AUTH_HEADER}" \
+            fetch --depth=1 origin "$DEPLOY_SHA"
+
+          git checkout --detach FETCH_HEAD
+
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+
+          if [ "$ACTUAL_SHA" != "$DEPLOY_SHA" ]; then
+            echo "Expected commit: $DEPLOY_SHA"
+            echo "Fetched commit:  $ACTUAL_SHA"
+            echo "Refusing to deploy the wrong commit."
+            exit 1
+          fi
+
+      - name: Build production API package
+        run: |
+          set -euo pipefail
+
+          DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
+          cd "$DEPLOY_ROOT/repository"
+
+          docker run --rm \
+            -v "$PWD:/workspace" \
+            -w /workspace \
+            node:24-bookworm-slim \
+            sh -lc '
+              set -eu
+
+              npm install -g npm@11.18.0 >/dev/null
+
+              echo "Node: $(node --version)"
+              echo "npm:  $(npm --version)"
+
+              npm ci
+              npm run build --workspace @wits-world/api
+
+              test -f apps/api/dist/server.js
+
+              rm -rf node_modules
+
+              npm ci \
+                --omit=dev \
+                --workspace @wits-world/api
+            '
+
+          rm -rf "$DEPLOY_ROOT/package"
+          mkdir -p "$DEPLOY_ROOT/package/apps/api"
+
+          cp package.json package-lock.json \
+            "$DEPLOY_ROOT/package/"
+
+          cp apps/api/package.json \
+            "$DEPLOY_ROOT/package/apps/api/"
+
+          cp -a apps/api/dist \
+            "$DEPLOY_ROOT/package/apps/api/"
+
+          cp -a node_modules \
+            "$DEPLOY_ROOT/package/"
+
+          cp -a database \
+            "$DEPLOY_ROOT/package/"
+
+          (
+            cd "$DEPLOY_ROOT/package"
+            zip -qr "$DEPLOY_ROOT/witsworld-api-deploy.zip" .
+          )
+
+          test -s "$DEPLOY_ROOT/witsworld-api-deploy.zip"
+
+          unzip -l "$DEPLOY_ROOT/witsworld-api-deploy.zip" |
+            grep 'apps/api/dist/server.js'
+
+      - name: Authenticate to Azure
+        run: |
+          set -euo pipefail
+
+          az login --identity --output none
+          az account set --subscription "Azure for Students"
+
+          az webapp show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEBAPP_NAME" \
+            --query '{name:name,state:state}' \
+            --output table
+
+      - name: Deploy API to Azure
+        run: |
+          set -euo pipefail
+
+          DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
+
+          az webapp deploy \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEBAPP_NAME" \
+            --src-path "$DEPLOY_ROOT/witsworld-api-deploy.zip" \
+            --type zip \
+            --clean true \
+            --restart true \
+            --track-status false \
+            --output none
+
+      - name: Verify production health
+        run: |
+          set -euo pipefail
+
+          API_HOST="$(
+            az webapp show \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --name "$AZURE_WEBAPP_NAME" \
+              --query defaultHostName \
+              --output tsv
+          )"
+
+          HEALTH_BODY="$(mktemp)"
+
+          for attempt in $(seq 1 60); do
+            STATUS="$(
+              curl \
+                --silent \
+                --show-error \
+                --output "$HEALTH_BODY" \
+                --write-out '%{http_code}' \
+                --max-time 10 \
+                "https://${API_HOST}/health" || true
+            )"
+
+            if [ "$STATUS" = "200" ]; then
+              echo "Production API is healthy:"
+              cat "$HEALTH_BODY"
+              rm -f "$HEALTH_BODY"
+              exit 0
+            fi
+
+            echo "Health check ${attempt}/60 returned '${STATUS:-request-error}'."
+            sleep 10
+          done
+
+          echo "Production API did not become healthy."
+          rm -f "$HEALTH_BODY"
+
+          az webapp log startup show \
+            --name "$AZURE_WEBAPP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" || true
+
+          exit 1
+
+      - name: Clean deployment workspace
+        if: ${{ always() }}
+        run: |
+          az logout >/dev/null 2>&1 || true
+          rm -rf "/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
