@@ -1,0 +1,47 @@
+import { Auth0Provider, type AppState } from '@auth0/auth0-react';
+import type { ReactNode } from 'react';
+
+import type { AuthConfig } from '../config/environment';
+
+interface PlayerAuthProviderProps {
+  children: ReactNode;
+  config: AuthConfig;
+}
+
+export function getSafeReturnTo(appState?: AppState): string {
+  const returnTo = appState?.returnTo;
+
+  if (
+    typeof returnTo !== 'string' ||
+    !returnTo.startsWith('/') ||
+    returnTo.startsWith('//')
+  ) {
+    return '/';
+  }
+
+  return returnTo;
+}
+
+export function returnToWitsQuest(appState?: AppState): void {
+  window.history.replaceState({}, '', getSafeReturnTo(appState));
+  window.dispatchEvent(new PopStateEvent('popstate'));
+}
+
+export function PlayerAuthProvider({
+  children,
+  config,
+}: PlayerAuthProviderProps) {
+  return (
+    <Auth0Provider
+      authorizationParams={{
+        audience: config.audience,
+        redirect_uri: window.location.origin,
+      }}
+      clientId={config.clientId}
+      domain={config.domain}
+      onRedirectCallback={returnToWitsQuest}
+    >
+      {children}
+    </Auth0Provider>
+  );
+}

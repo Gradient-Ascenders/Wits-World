@@ -11,9 +11,12 @@ export default function HomePage() {
             This mobile-first foundation is ready for the map, location, and
             event-status work planned for Sprint 1.
           </p>
-          <Link className="button button--link" href="/about">
-            Learn about Wits Quest
-          </Link>
+          <div className="hero__actions">
+            <Link className="button button--link" href="/explore">
+              Explore the campus
+            </Link>
+            <Link href="/about">Learn about Wits Quest</Link>
+          </div>
         </div>
 
         <aside aria-labelledby="foundation-title" className="information-panel">
