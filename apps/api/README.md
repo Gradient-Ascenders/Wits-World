@@ -170,6 +170,186 @@ Route schemas must document:
 The OpenAPI plugin must be registered before API routes so their schemas are
 included in the generated document.
 
+## Authentication
+
+Protected API routes use Auth0 bearer access tokens.
+
+The development authentication configuration is:
+
+| Setting           | Value                                        |
+| ----------------- | -------------------------------------------- |
+| Auth0 domain      | `dev-5artxfvpdennq8qm.us.auth0.com`          |
+| Canonical issuer  | `https://dev-5artxfvpdennq8qm.us.auth0.com/` |
+| API audience      | `https://api.wits-world.invalid`             |
+| Signing algorithm | RS256                                        |
+
+The API derives the canonical issuer from `AUTH0_DOMAIN` and validates access
+tokens against the configured audience.
+
+Local configuration requires:
+
+```env
+AUTH0_DOMAIN=dev-5artxfvpdennq8qm.us.auth0.com
+AUTH0_AUDIENCE=https://api.wits-world.invalid
+```
+
+No Auth0 client secret is required for bearer-token validation.
+
+### Protected request format
+
+Protected routes expect an access token in the standard HTTP Authorization
+header:
+
+```http
+Authorization: Bearer <access-token>
+```
+
+The API validates:
+
+- the RS256 signature;
+- the exact issuer;
+- the configured audience;
+- token expiry;
+- the required identity claims.
+
+The API resolves signing keys through the configured Auth0 tenant's JWKS
+endpoint.
+
+The API does not trust identity values supplied through request bodies, query
+parameters, route parameters, or browser state.
+
+### External identity
+
+An authenticated external identity is represented by the pair:
+
+```text
+(iss, sub)
+```
+
+The `sub` claim alone is not treated as globally unique because an OIDC subject
+is scoped to its issuer.
+
+For the current development tenant, the issuer is exactly:
+
+```text
+https://dev-5artxfvpdennq8qm.us.auth0.com/
+```
+
+The scheme and trailing slash are part of the issuer identifier.
+
+The authenticated Fastify request context exposes:
+
+```typescript
+{
+  issuer: string;
+  subject: string;
+}
+```
+
+These values are populated only after successful token validation.
+
+Application roles and object-level permissions are separate from
+authentication. A valid Auth0 token does not automatically grant author or
+administrator privileges.
+
+### Authentication test route
+
+The current authentication foundation exposes:
+
+```http
+GET /api/v1/auth/me
+```
+
+This route is used to verify the authenticated external identity made available
+to protected API operations.
+
+Example successful response:
+
+```json
+{
+  "issuer": "https://dev-5artxfvpdennq8qm.us.auth0.com/",
+  "subject": "auth0|example-user",
+  "requestId": "server-generated-request-id"
+}
+```
+
+The example subject is illustrative and is not a real Auth0 user identifier.
+
+### Authentication failures
+
+Missing, malformed, expired, incorrectly signed, wrong-issuer, and
+wrong-audience access tokens are rejected with `401 Unauthorized`.
+
+Example:
+
+```json
+{
+  "type": "https://wits.world/problems/unauthorized",
+  "title": "Authentication required",
+  "status": 401,
+  "code": "UNAUTHORIZED",
+  "detail": "A valid bearer access token is required.",
+  "requestId": "server-generated-request-id"
+}
+```
+
+Authentication errors intentionally do not reveal:
+
+- the submitted token;
+- decoded token contents;
+- signature-validation details;
+- JWKS internals;
+- issuer comparison details;
+- audience comparison details;
+- stack traces.
+
+The API logger also redacts the `Authorization` request header.
+
+### OpenAPI
+
+The OpenAPI document defines the `bearerAuth` HTTP security scheme.
+
+Protected operations explicitly declare:
+
+```yaml
+security:
+  - bearerAuth: []
+```
+
+Public operations such as `GET /health` remain accessible without
+authentication.
+
+The interactive OpenAPI interface is available at:
+
+```text
+http://127.0.0.1:3000/documentation/
+```
+
+### Authentication tests
+
+The automated authentication tests generate temporary RSA key pairs and JWTs
+locally.
+
+They do not depend on the live Auth0 tenant and do not commit or store real
+access tokens.
+
+The suite covers:
+
+- missing bearer tokens;
+- malformed tokens;
+- invalid signatures;
+- expired tokens;
+- missing expiry claims;
+- incorrect issuers;
+- incorrect audiences;
+- valid authenticated identities;
+- prevention of request-body identity spoofing;
+- authentication runtime configuration;
+- the OpenAPI bearer security scheme.
+
+The production authentication path uses the Auth0 JWKS endpoint rather than the
+temporary test keys.
+
 ## Error-response model
 
 Errors use a consistent JSON structure:
@@ -256,5 +436,5 @@ Those capabilities are introduced through later tracked issues.
 
 ---
 
-The preceding document was planned and generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking].
+The preceding document was planned, generated, and edited with the assistance
+of: ChatGPT-Web[GPT-5.6 Thinking], ChatGPT-Web[GPT-5.6 Sol].
