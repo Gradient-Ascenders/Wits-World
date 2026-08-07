@@ -22,7 +22,7 @@ describe('Wits Quest application shell', () => {
     expect(
       await screen.findByRole('heading', {
         level: 1,
-        name: 'Explore campus through Wits Quest',
+        name: 'Explore Wits. Begin the quest.',
       }),
     ).toBeVisible();
     expect(screen.getByRole('banner')).toBeVisible();
@@ -44,7 +44,7 @@ describe('Wits Quest application shell', () => {
 
     await screen.findByRole('heading', {
       level: 1,
-      name: 'Explore campus through Wits Quest',
+      name: 'Explore Wits. Begin the quest.',
     });
 
     await user.tab();
