@@ -1,25 +1,36 @@
+import { randomUUID } from 'node:crypto';
+
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import Fastify, { type FastifyInstance } from 'fastify';
 
+import {
+  createAccessTokenVerifier,
+  type AccessTokenVerifier,
+} from './auth/access-token-verifier.js';
+import { registerAuthentication } from './auth/authentication.js';
 import type { ApiConfig } from './config/api.js';
+import type { AuthConfig } from './config/auth.js';
 import { registerErrorHandlers } from './errors/error-handler.js';
 import { apiV1Routes } from './routes/api-v1.js';
+import { authenticationRoutes } from './routes/authentication.js';
 import { healthRoutes } from './routes/health.js';
 
-import { randomUUID } from 'node:crypto';
-
 export interface BuildAppOptions {
+  authConfig: AuthConfig;
   config?: Pick<ApiConfig, 'logLevel'>;
   logger?: boolean;
+  accessTokenVerifier?: AccessTokenVerifier;
 }
 
 export async function buildApp({
+  authConfig,
   config = {
     logLevel: 'info',
   },
   logger = true,
-}: BuildAppOptions = {}): Promise<FastifyInstance> {
+  accessTokenVerifier,
+}: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: logger
       ? {
@@ -37,6 +48,9 @@ export async function buildApp({
     genReqId: () => randomUUID(),
   });
 
+  const verifier = accessTokenVerifier ?? createAccessTokenVerifier(authConfig);
+
+  registerAuthentication(app, verifier);
   registerErrorHandlers(app);
 
   await app.register(swagger, {
@@ -52,7 +66,22 @@ export async function buildApp({
           name: 'System',
           description: 'API health and version information.',
         },
+        {
+          name: 'Authentication',
+          description: 'Authenticated API identity operations.',
+        },
       ],
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type: 'http',
+            scheme: 'bearer',
+            bearerFormat: 'JWT',
+            description:
+              'Auth0 bearer access token issued for the Wits World API.',
+          },
+        },
+      },
     },
   });
 
@@ -66,6 +95,9 @@ export async function buildApp({
 
   await app.register(healthRoutes);
   await app.register(apiV1Routes, {
+    prefix: '/api/v1',
+  });
+  await app.register(authenticationRoutes, {
     prefix: '/api/v1',
   });
 

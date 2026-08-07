@@ -1,13 +1,22 @@
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { AuthConfig } from '../src/config/auth.js';
 
 import { buildApp } from '../src/app.js';
 
 describe('Fastify API application', () => {
   let app: FastifyInstance;
 
+  const testAuthConfig: AuthConfig = {
+    domain: 'auth.example.test',
+    issuer: 'https://auth.example.test/',
+    audience: 'https://api.example.test',
+    jwksUrl: new URL('https://auth.example.test/.well-known/jwks.json'),
+  };
+
   beforeEach(async () => {
     app = await buildApp({
+      authConfig: testAuthConfig,
       logger: false,
     });
   });
