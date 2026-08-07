@@ -76,6 +76,39 @@ describe('Wits Quest application shell', () => {
     expect(aboutLink).toHaveAttribute('aria-current', 'page');
   });
 
+  it('presents the planned gameplay loop without claiming live functionality', async () => {
+    renderRoute('/');
+
+    expect(
+      await screen.findByRole('link', { name: 'Discover how it works' }),
+    ).toHaveAttribute('href', '#how-it-works');
+    expect(
+      screen.getByRole('heading', {
+        level: 2,
+        name: 'A campus journey with purpose',
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Explore' }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Discover' }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Collect' }),
+    ).toBeVisible();
+    expect(screen.getByText('Static interface preview')).toBeVisible();
+    expect(screen.getByText('Awaiting location')).toBeVisible();
+    expect(screen.getByText('Shown after a location check')).toBeVisible();
+    expect(
+      screen.getByRole('heading', {
+        level: 2,
+        name: 'Build a collection with a sense of place',
+      }),
+    ).toBeVisible();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
   it('renders a useful fallback for an unknown route', async () => {
     renderRoute('/route-that-does-not-exist');
 

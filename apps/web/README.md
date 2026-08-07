@@ -4,9 +4,11 @@ This workspace contains the mobile-first React foundation for Wits Quest, the
 game/topic being developed by the Wits World project.
 
 The current application provides a responsive shell, basic client-side routing,
-configuration validation, loading presentation, and unexpected-error handling.
-It does not yet include authentication, the campus map, events, geolocation,
-challenges, cards, or battles.
+configuration validation, loading presentation, unexpected-error handling, and
+a premium editorial home page that previews the planned player journey. The
+home-page map, event status, and collectible cards are explicitly static product
+previews; authentication, live events, geolocation, challenges, collections, and
+battles are not enabled yet.
 
 ## Run locally
 
@@ -98,6 +100,7 @@ apps/web/
   src/
     components/   Application shell and reusable status states
       exploration/ Provider-independent campus map and event-list presentation
+      home/        Decorative map, journey, and collectible-card previews
     config/       Public environment validation
     pages/        Home, About, and not-found pages
     styles/       Mobile-first global styles
@@ -121,26 +124,34 @@ npm run build
 ```
 
 The component tests use accessible roles and names. They cover application
-landmarks, routes, keyboard order, configuration failures, loading status, and
-the render-error fallback. Automated checks do not replace manual browser and
-keyboard testing.
+landmarks, routes, keyboard order, honest preview language, configuration
+failures, loading status, and the render-error fallback. Automated checks do not
+replace manual browser and keyboard testing.
 
 ### Manual browser checks
 
 With `apps/web/.env` configured and the development server running:
 
 1. Open `/` at widths of 360px, 390px, 768px, and approximately 1280px. Confirm
-   that the header, navigation, heading, content panel, and footer remain readable
-   without horizontal scrolling.
-2. Capture review screenshots at 390×844 and 1280×800.
-3. At 390px, press Tab. Confirm the skip link becomes visible first, followed by
-   visibly focused Home and About links. Press Enter on About and confirm the
-   `/about` heading appears.
-4. Open an unknown route such as `/missing`. Confirm the not-found heading and
+   that the brand, navigation, hero, journey stages, map preview, card preview,
+   project context, and footer remain readable without horizontal scrolling.
+2. At 390×844, confirm the hero heading wraps cleanly, the decorative map stays
+   inside its panel, the fixed navigation does not hide interactive content, and
+   the journey stages remain comfortably readable.
+3. At 1280×800, confirm the hero, mission preview, and collection preview use
+   two-column compositions without stretching body text or obscuring headings.
+4. Capture review screenshots under `.pr-screenshots/` at 390×844 and 1280×800.
+5. At 390px, press Tab. Confirm focus moves through Skip to main content, the
+   Wits Quest brand, Explore, About, Discover how it works, and About the project
+   with a visible outline. Activate the skip link and confirm focus moves to the
+   main landmark.
+6. Enable reduced-motion emulation and confirm transitions are effectively
+   removed without hiding information.
+7. Open an unknown route such as `/missing`. Confirm the not-found heading and
    Return home link are available by keyboard.
-5. Stop the server, temporarily move the ignored `apps/web/.env` file elsewhere,
+8. Stop the server, temporarily move the ignored `apps/web/.env` file elsewhere,
    and restart. Confirm the setup screen names `VITE_API_BASE_URL` and explains
    how to restore configuration. Put the ignored file back afterward.
 
 The preceding document was generated and edited with the assistance of:
-Codex-CLI[gpt-5.6-sol medium].
+Codex-CLI[gpt-5.6-sol medium], Codex-CLI[GPT-5].
