@@ -25,6 +25,7 @@ the selected technology.
 | [ADR-002](./ADR-002-separate-web-api.md)      | Keep the web application and API separate                |
 | [ADR-003](./ADR-003-postgresql-postgis.md)    | Use PostgreSQL and PostGIS for authoritative event data  |
 | [ADR-004](./ADR-004-map-provider-boundary.md) | Keep map integration presentation-only                   |
+| [ADR-005](./ADR-005-auth0-authentication.md)  | Use Auth0 for authentication                             |
 
 ## Planned records
 
