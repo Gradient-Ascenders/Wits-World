@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { App } from './App';
+import { PlayerAuthProvider } from './auth/AuthProvider';
 import { ConfigurationErrorScreen } from './components/ConfigurationErrorScreen';
 import { ConfigurationError, loadWebConfig } from './config/environment';
 import './styles/tokens.css';
@@ -16,10 +17,12 @@ if (!rootElement) {
 const root = createRoot(rootElement);
 
 try {
-  loadWebConfig(import.meta.env);
+  const config = loadWebConfig(import.meta.env);
   root.render(
     <StrictMode>
-      <App />
+      <PlayerAuthProvider config={config.auth}>
+        <App />
+      </PlayerAuthProvider>
     </StrictMode>,
   );
 } catch (error) {

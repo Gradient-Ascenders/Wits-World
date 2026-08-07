@@ -11,9 +11,12 @@ export default function HomePage() {
             Discover location-based events through a player experience built for
             quick decisions, clear status information, and small screens.
           </p>
-          <Link className="button button--link" href="/about">
-            How Wits Quest works
-          </Link>
+          <div className="hero__actions">
+            <Link className="button button--link" href="/explore">
+              Explore the campus
+            </Link>
+            <Link href="/about">Learn about Wits Quest</Link>
+          </div>
         </div>
 
         <aside aria-labelledby="foundation-title" className="information-panel">

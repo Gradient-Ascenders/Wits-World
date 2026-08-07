@@ -32,7 +32,7 @@ describe('Wits Quest application shell', () => {
     expect(
       screen.getByLabelText('Wits Quest home, a Wits World project'),
     ).toBeVisible();
-    expect(screen.getByRole('link', { name: 'Explore' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute(
       'aria-current',
       'page',
     );
@@ -58,6 +58,9 @@ describe('Wits Quest application shell', () => {
         name: 'Wits Quest home, a Wits World project',
       }),
     ).toHaveFocus();
+
+    await user.tab();
+    expect(screen.getByRole('link', { name: 'Home' })).toHaveFocus();
 
     await user.tab();
     expect(screen.getByRole('link', { name: 'Explore' })).toHaveFocus();
