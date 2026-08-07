@@ -848,22 +848,24 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .collection-section {
-    grid-template-columns: minmax(0, 0.9fr) minmax(24rem, 1.1fr);
-    gap: clamp(var(--space-7), 8vw, 7rem);
-  }
-
   .collectible-preview {
     min-height: 39rem;
-  }
-
-  .preview-card {
-    width: min(19vw, 15rem);
   }
 
   .project-context {
     grid-template-columns: minmax(0, 1fr) minmax(20rem, 0.7fr);
     gap: clamp(var(--space-7), 7vw, 7rem);
+  }
+}
+
+@media (min-width: 64rem) {
+  .collection-section {
+    grid-template-columns: minmax(0, 0.9fr) minmax(24rem, 1.1fr);
+    gap: clamp(var(--space-7), 8vw, 7rem);
+  }
+
+  .preview-card {
+    width: min(19vw, 15rem);
   }
 }
 
