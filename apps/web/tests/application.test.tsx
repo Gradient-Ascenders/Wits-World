@@ -5,12 +5,14 @@ import { Router } from 'wouter';
 
 import { AppRoutes } from '../src/App';
 
+const apiBaseUrl = 'https://api.example.test/api/v1';
+
 function renderRoute(path: string) {
   window.history.replaceState({}, '', path);
 
   return render(
     <Router>
-      <AppRoutes />
+      <AppRoutes apiBaseUrl={apiBaseUrl} />
     </Router>,
   );
 }
@@ -22,7 +24,7 @@ describe('Wits Quest application shell', () => {
     expect(
       await screen.findByRole('heading', {
         level: 1,
-        name: 'Explore with Wits Quest',
+        name: 'Explore campus through Wits Quest',
       }),
     ).toBeVisible();
     expect(screen.getByRole('banner')).toBeVisible();
@@ -30,12 +32,15 @@ describe('Wits Quest application shell', () => {
     expect(screen.getByRole('main')).toHaveAttribute('id', 'main-content');
     expect(screen.getByRole('contentinfo')).toBeVisible();
     expect(
-      screen.getByLabelText('Wits Quest, a Wits World project'),
+      screen.getByLabelText('Wits Quest home, a Wits World project'),
     ).toBeVisible();
     expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute(
       'aria-current',
       'page',
     );
+    expect(
+      screen.getByText(/first playable slice presents campus events/i),
+    ).toBeVisible();
   });
 
   it('supports keyboard navigation to the skip link and primary routes', async () => {
@@ -44,12 +49,19 @@ describe('Wits Quest application shell', () => {
 
     await screen.findByRole('heading', {
       level: 1,
-      name: 'Explore with Wits Quest',
+      name: 'Explore campus through Wits Quest',
     });
 
     await user.tab();
     expect(
       screen.getByRole('link', { name: 'Skip to main content' }),
+    ).toHaveFocus();
+
+    await user.tab();
+    expect(
+      screen.getByRole('link', {
+        name: 'Wits Quest home, a Wits World project',
+      }),
     ).toHaveFocus();
 
     await user.tab();
@@ -68,6 +80,12 @@ describe('Wits Quest application shell', () => {
         level: 1,
         name: 'About Wits Quest',
       }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/supports authenticated event discovery/i),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/browser location requests.*still to come/i),
     ).toBeVisible();
     expect(aboutLink).toHaveAttribute('aria-current', 'page');
   });

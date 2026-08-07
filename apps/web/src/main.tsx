@@ -5,6 +5,7 @@ import { App } from './App';
 import { PlayerAuthProvider } from './auth/AuthProvider';
 import { ConfigurationErrorScreen } from './components/ConfigurationErrorScreen';
 import { ConfigurationError, loadWebConfig } from './config/environment';
+import './styles/tokens.css';
 import './styles/global.css';
 
 const rootElement = document.getElementById('root');
@@ -20,7 +21,7 @@ try {
   root.render(
     <StrictMode>
       <PlayerAuthProvider config={config.auth}>
-        <App />
+        <App apiBaseUrl={config.apiBaseUrl} />
       </PlayerAuthProvider>
     </StrictMode>,
   );
