@@ -1,13 +1,17 @@
 import { buildApp } from './app.js';
 import { buildApiConfig } from './config/api.js';
 import { loadApiEnvironment } from './config/database.js';
+import { buildAuthConfig } from './config/auth.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
 
   const config = buildApiConfig();
+  const authConfig = buildAuthConfig();
+
   const app = await buildApp({
     config,
+    authConfig,
   });
 
   try {
