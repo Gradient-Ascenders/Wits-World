@@ -13,6 +13,8 @@ import { AppRoutes } from '../src/App';
 import { getSafeReturnTo } from '../src/auth/AuthProvider';
 import { useApiAccessToken } from '../src/auth/useApiAccessToken';
 
+const apiBaseUrl = 'https://api.example.test/api/v1';
+
 function createAuthValue(
   overrides: Partial<Auth0ContextInterface> = {},
 ): Auth0ContextInterface {
@@ -29,7 +31,7 @@ function renderRoute(path: string, authValue: Auth0ContextInterface) {
   return render(
     <Auth0Context.Provider value={authValue}>
       <Router>
-        <AppRoutes />
+        <AppRoutes apiBaseUrl={apiBaseUrl} />
       </Router>
     </Auth0Context.Provider>,
   );
@@ -121,7 +123,7 @@ describe('player authentication', () => {
     expect(
       await screen.findByRole('heading', {
         level: 1,
-        name: 'Explore the campus',
+        name: 'Explore the campus map',
       }),
     ).toBeVisible();
     expect(screen.getByText('Signed in as')).toHaveTextContent(

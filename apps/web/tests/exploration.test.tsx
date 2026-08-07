@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { CampusExplorer } from '../src/components/exploration/CampusExplorer';
@@ -46,7 +47,7 @@ describe('campus exploration', () => {
         discovery={{
           events: [
             {
-              availability: 'Available during the test window',
+              availability: 'active',
               id: 'event-test-1',
               latitude: 0.001,
               longitude: 0.002,
@@ -57,6 +58,7 @@ describe('campus exploration', () => {
         }}
         mapConfiguration={configuration}
         mapFactory={createSuccessfulMapFactory([testPoint])}
+        onRetry={vi.fn()}
       />,
     );
 
@@ -67,7 +69,7 @@ describe('campus exploration', () => {
       screen.getByRole('heading', { level: 2, name: 'Nearby events' }),
     ).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Test event' })).toBeVisible();
-    expect(screen.getByText('Available during the test window')).toBeVisible();
+    expect(screen.getByText('Available now')).toBeVisible();
 
     await waitFor(() => {
       expect(
@@ -86,7 +88,7 @@ describe('campus exploration', () => {
         discovery={{
           events: [
             {
-              availability: 'Available during the test window',
+              availability: 'active',
               id: 'event-test-1',
               latitude: 0.001,
               longitude: 0.002,
@@ -97,6 +99,7 @@ describe('campus exploration', () => {
         }}
         mapConfiguration={configuration}
         mapFactory={failingMapFactory}
+        onRetry={vi.fn()}
       />,
     );
 
@@ -104,12 +107,15 @@ describe('campus exploration', () => {
     expect(screen.getByRole('heading', { name: 'Test event' })).toBeVisible();
   });
 
-  it('announces event loading and API failure states', () => {
+  it('announces event loading and offers API failure recovery', async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
     const { rerender } = render(
       <CampusExplorer
         discovery={{ status: 'loading' }}
         mapConfiguration={configuration}
         mapFactory={createSuccessfulMapFactory()}
+        onRetry={onRetry}
       />,
     );
 
@@ -126,6 +132,7 @@ describe('campus exploration', () => {
         }}
         mapConfiguration={configuration}
         mapFactory={createSuccessfulMapFactory()}
+        onRetry={onRetry}
       />,
     );
 
@@ -133,5 +140,48 @@ describe('campus exploration', () => {
     expect(
       screen.getByText('Try again when a connection is available.'),
     ).toBeVisible();
+
+    await user.click(
+      screen.getByRole('button', { name: 'Try loading events again' }),
+    );
+    expect(onRetry).toHaveBeenCalledOnce();
+  });
+
+  it('presents empty and non-active event states in text', () => {
+    const { rerender } = render(
+      <CampusExplorer
+        discovery={{ status: 'empty' }}
+        mapConfiguration={configuration}
+        mapFactory={createSuccessfulMapFactory()}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByText('No published events are available.'),
+    ).toBeVisible();
+
+    rerender(
+      <CampusExplorer
+        discovery={{
+          events: [
+            { ...testPoint, availability: 'upcoming', title: 'Future event' },
+            {
+              ...testPoint,
+              availability: 'ended',
+              id: 'event-test-2',
+              title: 'Past event',
+            },
+          ],
+          status: 'ready',
+        }}
+        mapConfiguration={configuration}
+        mapFactory={createSuccessfulMapFactory()}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Upcoming')).toBeVisible();
+    expect(screen.getByText('Ended')).toBeVisible();
   });
 });
