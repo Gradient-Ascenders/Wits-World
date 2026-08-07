@@ -11,15 +11,21 @@ interface PlayerAuthProviderProps {
 export function getSafeReturnTo(appState?: AppState): string {
   const returnTo = appState?.returnTo;
 
-  if (
-    typeof returnTo !== 'string' ||
-    !returnTo.startsWith('/') ||
-    returnTo.startsWith('//')
-  ) {
+  if (typeof returnTo !== 'string' || !returnTo.startsWith('/')) {
     return '/';
   }
 
-  return returnTo;
+  try {
+    const target = new URL(returnTo, window.location.origin);
+
+    if (target.origin !== window.location.origin) {
+      return '/';
+    }
+
+    return `${target.pathname}${target.search}${target.hash}`;
+  } catch {
+    return '/';
+  }
 }
 
 export function returnToWitsQuest(appState?: AppState): void {

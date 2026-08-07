@@ -153,6 +153,7 @@ describe('player authentication', () => {
       '/explore?event=demo',
     );
     expect(getSafeReturnTo({ returnTo: '//malicious.example' })).toBe('/');
+    expect(getSafeReturnTo({ returnTo: '/\\malicious.example' })).toBe('/');
     expect(getSafeReturnTo({ returnTo: 'https://malicious.example' })).toBe(
       '/',
     );
