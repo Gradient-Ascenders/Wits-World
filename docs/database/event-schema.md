@@ -79,6 +79,9 @@ event placement. The Great Hall location can be cross-checked against the
 The seed uses an upsert on the fixed UUID. Running it repeatedly restores the
 documented fixture values and does not create additional rows for this event.
 
+The server-side distance, availability, and radius rules are documented in the
+[event eligibility calculation](./event-eligibility.md).
+
 ## Commands and review evidence
 
 Run migrations and seeds from the repository root:

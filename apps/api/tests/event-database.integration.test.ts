@@ -6,8 +6,12 @@ import {
   type DatabaseConfig,
 } from '../src/config/database.js';
 import { withDatabaseClient } from '../src/database/connection.js';
-import { runMigrations } from '../src/database/migrations.js';
+import {
+  runMigrations,
+  type MigrationResult,
+} from '../src/database/migrations.js';
 import { runSeeds } from '../src/database/seeds.js';
+import { createEventEligibilityService } from '../src/events/event-eligibility.js';
 
 const DEMO_EVENT_ID = '00000000-0000-4000-8000-000000000018';
 const runIntegrationTests =
@@ -15,6 +19,7 @@ const runIntegrationTests =
 
 describe.skipIf(!runIntegrationTests)('event database integration', () => {
   let administrationConfig: DatabaseConfig;
+  let migrationResult: MigrationResult;
   let temporaryConfig: DatabaseConfig;
   let temporaryDatabaseName: string;
 
@@ -33,7 +38,11 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
       ...administrationConfig,
       connectionString: temporaryUrl.toString(),
     };
-  });
+
+    migrationResult = await runMigrations(temporaryConfig);
+    await runSeeds(temporaryConfig);
+    await runSeeds(temporaryConfig);
+  }, 30_000);
 
   afterAll(async () => {
     if (!administrationConfig || !temporaryDatabaseName) {
@@ -45,16 +54,13 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         `drop database if exists ${temporaryDatabaseName} with (force)`,
       );
     });
-  });
+  }, 30_000);
 
   it('migrates an empty database and enforces the event fixture contract', async () => {
-    await expect(runMigrations(temporaryConfig)).resolves.toEqual({
+    expect(migrationResult).toEqual({
       applied: ['0001_enable_postgis.sql', '0002_create_events.sql'],
       skipped: [],
     });
-
-    await runSeeds(temporaryConfig);
-    await runSeeds(temporaryConfig);
 
     await withDatabaseClient(temporaryConfig, async (client) => {
       const seededEvent = await client.query<{
@@ -124,6 +130,113 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
       expect(locationIndex.rows[0]?.indexdef.toLowerCase()).toContain(
         'using gist (location)',
       );
+    });
+  }, 30_000);
+
+  it('calculates authoritative event eligibility with PostGIS', async () => {
+    const evaluatedAt = new Date('2026-08-10T12:00:00.000Z');
+
+    await withDatabaseClient(temporaryConfig, async (client) => {
+      await client.query(
+        `insert into public.events (
+           id, title, location, radius_metres, starts_at, ends_at, is_published
+         ) values
+           ($1, 'Unpublished test event',
+            st_setsrid(st_makepoint(28.03038, -26.19205), 4326)::geography,
+            75, $5, $6, false),
+           ($2, 'Future test event',
+            st_setsrid(st_makepoint(28.03038, -26.19205), 4326)::geography,
+            75, $6, $7, true),
+           ($3, 'Ended test event',
+            st_setsrid(st_makepoint(28.03038, -26.19205), 4326)::geography,
+            75, $4, $5, true)
+         on conflict (id) do nothing`,
+        [
+          '00000000-0000-4000-8000-000000000019',
+          '00000000-0000-4000-8000-000000000020',
+          '00000000-0000-4000-8000-000000000021',
+          '2026-08-01T00:00:00.000Z',
+          '2026-08-05T00:00:00.000Z',
+          '2026-08-15T00:00:00.000Z',
+          '2026-08-20T00:00:00.000Z',
+        ],
+      );
+
+      const service = createEventEligibilityService(client, {
+        clock: () => evaluatedAt,
+      });
+      const eventCentre = await service.evaluate({
+        eventId: DEMO_EVENT_ID,
+        latitude: -26.19205,
+        longitude: 28.03038,
+      });
+      const outsideRadius = await service.evaluate({
+        eventId: DEMO_EVENT_ID,
+        latitude: -26.19205,
+        longitude: 28.032,
+      });
+
+      expect(eventCentre).toMatchObject({
+        outcome: 'evaluated',
+        eligible: true,
+        radiusMetres: 75,
+      });
+      expect(outsideRadius).toMatchObject({
+        outcome: 'evaluated',
+        eligible: false,
+        radiusMetres: 75,
+      });
+
+      if (
+        eventCentre.outcome !== 'evaluated' ||
+        outsideRadius.outcome !== 'evaluated'
+      ) {
+        throw new Error('Expected evaluated eligibility results.');
+      }
+
+      expect(eventCentre.distanceMetres).toBeCloseTo(0, 3);
+      expect(outsideRadius.distanceMetres).toBeGreaterThan(75);
+
+      await expect(
+        service.evaluate({
+          eventId: '00000000-0000-4000-8000-000000000019',
+          latitude: -26.19205,
+          longitude: 28.03038,
+        }),
+      ).resolves.toMatchObject({
+        outcome: 'unavailable',
+        reason: 'unpublished',
+      });
+      await expect(
+        service.evaluate({
+          eventId: '00000000-0000-4000-8000-000000000020',
+          latitude: -26.19205,
+          longitude: 28.03038,
+        }),
+      ).resolves.toMatchObject({
+        outcome: 'unavailable',
+        reason: 'not_started',
+      });
+      await expect(
+        service.evaluate({
+          eventId: '00000000-0000-4000-8000-000000000021',
+          latitude: -26.19205,
+          longitude: 28.03038,
+        }),
+      ).resolves.toMatchObject({
+        outcome: 'unavailable',
+        reason: 'ended',
+      });
+      await expect(
+        service.evaluate({
+          eventId: '00000000-0000-4000-8000-000000000099',
+          latitude: -26.19205,
+          longitude: 28.03038,
+        }),
+      ).resolves.toEqual({
+        outcome: 'not_found',
+        eventId: '00000000-0000-4000-8000-000000000099',
+      });
     });
   }, 30_000);
 });
