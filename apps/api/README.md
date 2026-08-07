@@ -13,8 +13,9 @@ The current foundation provides:
 - generated OpenAPI documentation; and
 - API integration tests.
 
-Authentication, event endpoints, challenge rules, rewards, cards, and battles are
-implemented in later issues.
+Bearer-token authentication is implemented in the API. Domain-specific protected
+routes, local-user provisioning, application authorisation, event endpoints,
+challenge rules, rewards, cards, and battles are introduced in later issues.
 
 ## Requirements
 
@@ -426,8 +427,8 @@ The API integration tests cover:
 The API foundation does not yet include:
 
 - CORS configuration;
-- authentication-token validation;
-- protected application routes;
+- protected Wits Quest domain routes beyond the `/api/v1/auth/me`
+  authentication fixture;
 - event discovery or eligibility routes;
 - production monitoring;
 - challenge, reward, card, deck, or battle operations.
