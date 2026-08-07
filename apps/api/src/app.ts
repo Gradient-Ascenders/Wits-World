@@ -59,6 +59,11 @@ export async function buildApp({
         }
       : false,
     genReqId: () => randomUUID(),
+    ajv: {
+      customOptions: {
+        removeAdditional: false,
+      },
+    },
   });
 
   const verifier = accessTokenVerifier ?? createAccessTokenVerifier(authConfig);
