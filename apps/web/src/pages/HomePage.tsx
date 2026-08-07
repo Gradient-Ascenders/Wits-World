@@ -22,9 +22,9 @@ export default function HomePage() {
             growing collection inspired by Wits stories and landmarks.
           </p>
           <div className="hero__actions">
-            <a className="button button--link" href="#how-it-works">
-              Discover how it works
-            </a>
+            <Link className="button button--link" href="/explore">
+              Explore the campus
+            </Link>
             <Link className="text-link" href="/about">
               About the project
             </Link>
@@ -48,8 +48,9 @@ export default function HomePage() {
           <p className="eyebrow">Gameplay preview</p>
           <h2 id="journey-title">A campus journey with purpose</h2>
           <p>
-            Wits Quest is being built around a clear loop: explore the campus,
-            discover a challenge, and grow a meaningful collection.
+            The first playable slice presents campus events on a map and in an
+            accessible text list. Later slices will extend that journey through
+            challenges and a meaningful collection.
           </p>
         </div>
 
@@ -107,7 +108,7 @@ export default function HomePage() {
           <p className="eyebrow">Sprint 1 experience preview</p>
           <h2 id="mission-title">The campus map comes first</h2>
           <p className="mission-preview__summary">
-            The first playable slice will pair a campus event map with the same
+            The first playable slice pairs a campus event map with the same
             essential information in text. The API remains authoritative for
             reachability.
           </p>

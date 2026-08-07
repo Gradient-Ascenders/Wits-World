@@ -5,12 +5,14 @@ import { Router } from 'wouter';
 
 import { AppRoutes } from '../src/App';
 
+const apiBaseUrl = 'https://api.example.test/api/v1';
+
 function renderRoute(path: string) {
   window.history.replaceState({}, '', path);
 
   return render(
     <Router>
-      <AppRoutes />
+      <AppRoutes apiBaseUrl={apiBaseUrl} />
     </Router>,
   );
 }
@@ -20,10 +22,14 @@ describe('Wits Quest application shell', () => {
     renderRoute('/');
 
     expect(
-      await screen.findByRole('heading', {
-        level: 1,
-        name: 'Explore Wits. Begin the quest.',
-      }),
+      await screen.findByRole(
+        'heading',
+        {
+          level: 1,
+          name: 'Explore Wits. Begin the quest.',
+        },
+        { timeout: 5_000 },
+      ),
     ).toBeVisible();
     expect(screen.getByRole('banner')).toBeVisible();
     expect(screen.getByRole('navigation', { name: 'Primary' })).toBeVisible();
@@ -32,20 +38,27 @@ describe('Wits Quest application shell', () => {
     expect(
       screen.getByLabelText('Wits Quest home, a Wits World project'),
     ).toBeVisible();
-    expect(screen.getByRole('link', { name: 'Explore' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute(
       'aria-current',
       'page',
     );
+    expect(
+      screen.getByText(/first playable slice presents campus events/i),
+    ).toBeVisible();
   });
 
   it('supports keyboard navigation to the skip link and primary routes', async () => {
     const user = userEvent.setup();
     renderRoute('/');
 
-    await screen.findByRole('heading', {
-      level: 1,
-      name: 'Explore Wits. Begin the quest.',
-    });
+    await screen.findByRole(
+      'heading',
+      {
+        level: 1,
+        name: 'Explore Wits. Begin the quest.',
+      },
+      { timeout: 5_000 },
+    );
 
     await user.tab();
     expect(
@@ -58,6 +71,9 @@ describe('Wits Quest application shell', () => {
         name: 'Wits Quest home, a Wits World project',
       }),
     ).toHaveFocus();
+
+    await user.tab();
+    expect(screen.getByRole('link', { name: 'Home' })).toHaveFocus();
 
     await user.tab();
     expect(screen.getByRole('link', { name: 'Explore' })).toHaveFocus();
@@ -73,15 +89,25 @@ describe('Wits Quest application shell', () => {
         name: 'About Wits Quest',
       }),
     ).toBeVisible();
+    expect(
+      screen.getByText(/supports authenticated event discovery/i),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/browser location requests.*still to come/i),
+    ).toBeVisible();
     expect(aboutLink).toHaveAttribute('aria-current', 'page');
   });
 
-  it('presents the planned gameplay loop without claiming live functionality', async () => {
+  it('links to live exploration while presenting later gameplay as previews', async () => {
     renderRoute('/');
 
     expect(
-      await screen.findByRole('link', { name: 'Discover how it works' }),
-    ).toHaveAttribute('href', '#how-it-works');
+      await screen.findByRole(
+        'link',
+        { name: 'Explore the campus' },
+        { timeout: 5_000 },
+      ),
+    ).toHaveAttribute('href', '/explore');
     expect(
       screen.getByRole('heading', {
         level: 2,

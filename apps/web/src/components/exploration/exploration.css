@@ -124,7 +124,7 @@
 }
 
 .event-list__state p {
-  margin: 0;
+  margin: 0 0 var(--space-4);
 }
 
 .event-list__items {
@@ -166,9 +166,19 @@
   font-weight: 800;
 }
 
-.status-badge--info {
-  color: var(--colour-status-info);
-  background: rgb(84 168 255 / 8%);
+.status-badge--active {
+  color: var(--colour-status-success);
+  background: rgb(57 184 121 / 8%);
+}
+
+.status-badge--upcoming {
+  color: var(--colour-status-warning);
+  background: rgb(225 169 58 / 8%);
+}
+
+.status-badge--ended {
+  color: var(--colour-text-muted);
+  background: rgb(127 139 157 / 8%);
 }
 
 .maplibregl-ctrl-group {

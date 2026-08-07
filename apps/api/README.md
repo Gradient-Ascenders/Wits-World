@@ -13,9 +13,10 @@ The current foundation provides:
 - generated OpenAPI documentation; and
 - API integration tests.
 
-Bearer-token authentication is implemented in the API. Domain-specific protected
-routes, local-user provisioning, application authorisation, event endpoints,
-challenge rules, rewards, cards, and battles are introduced in later issues.
+Bearer-token authentication, protected event discovery, and server-side location
+eligibility are implemented in the API. Local-user provisioning, application
+authorisation beyond authentication, challenge sessions, answer marking,
+rewards, cards, and battles are introduced in later issues.
 
 ## Requirements
 
@@ -351,6 +352,321 @@ The suite covers:
 The production authentication path uses the Auth0 JWKS endpoint rather than the
 temporary test keys.
 
+## Browser-to-API access
+
+The Wits World web application and API are independently served applications.
+
+During local development:
+
+- the web application runs at `http://localhost:5173`;
+- the API runs at `http://127.0.0.1:3000`.
+
+Because these are different browser origins, the API uses a controlled CORS
+policy.
+
+### CORS configuration
+
+The approved browser origin is configured with:
+
+```env
+CORS_ALLOWED_ORIGIN=http://localhost:5173
+```
+
+The API requires one exact HTTP or HTTPS origin.
+
+Wildcard origins are not permitted.
+
+Examples that are rejected at startup include:
+
+```text
+*
+https://*.example.com
+https://example.com/path
+```
+
+Production deployments must provide their deployed web origin through
+`CORS_ALLOWED_ORIGIN`. A production origin must not be hard-coded into the
+application.
+
+### Allowed browser requests
+
+The current CORS policy permits:
+
+- `GET`;
+- `POST`;
+- the `Authorization` request header;
+- the `Content-Type` request header;
+- browser preflight requests.
+
+Cookie credentials are not enabled.
+
+Bearer authentication remains authoritative and unchanged. CORS does not
+authenticate a user and does not make protected routes public.
+
+For example:
+
+```http
+GET /api/v1/events
+Origin: http://localhost:5173
+Authorization: Bearer <access-token>
+```
+
+still requires a valid Auth0 access token.
+
+### Security boundary
+
+CORS is a browser security boundary, not API access control.
+
+A command-line client or another non-browser HTTP client is not prevented from
+sending requests by CORS. Protected API operations therefore continue to rely
+on server-side bearer-token validation and application authorisation.
+
+The API:
+
+- does not use `Access-Control-Allow-Origin: *`;
+- does not dynamically reflect arbitrary origins;
+- does not disable authentication for preflight support;
+- does not place bearer tokens in CORS configuration;
+- fails startup when the required allowed-origin configuration is missing or
+  malformed.
+
+### Local preflight verification
+
+With the API running, a local bearer-token preflight can be checked with:
+
+```bash
+curl -i -X OPTIONS http://127.0.0.1:3000/api/v1/events \
+  -H "Origin: http://localhost:5173" \
+  -H "Access-Control-Request-Method: GET" \
+  -H "Access-Control-Request-Headers: authorization"
+```
+
+The response should allow exactly the configured local origin and include
+support for the requested bearer `Authorization` header.
+
+An unapproved origin must not receive an applicable
+`Access-Control-Allow-Origin` response permitting browser access.
+
+## Event discovery and location eligibility
+
+Authenticated players can discover published events and submit location claims
+for server-side eligibility evaluation.
+
+Both event endpoints require a valid bearer access token.
+
+### Event discovery
+
+```http
+GET /api/v1/events
+```
+
+The endpoint returns published event information intended for the player map and
+event list.
+
+Example response:
+
+```json
+{
+  "events": [
+    {
+      "eventId": "00000000-0000-4000-8000-000000000018",
+      "title": "Sprint 1 Demo - Wits Great Hall",
+      "description": "A player-safe event description.",
+      "latitude": -26.19205,
+      "longitude": 28.03038,
+      "radiusMetres": 75,
+      "startsAt": "2026-08-01T00:00:00.000Z",
+      "endsAt": "2026-08-20T00:00:00.000Z",
+      "availability": "active"
+    }
+  ],
+  "requestId": "server-generated-request-id"
+}
+```
+
+Player discovery exposes only information required to understand and locate an
+event.
+
+It does not expose:
+
+- accepted challenge answers;
+- private author information;
+- unpublished events;
+- audit information;
+- reward decisions;
+- internal eligibility data.
+
+Published events may have an availability value of:
+
+- `active`;
+- `upcoming`;
+- `ended`.
+
+### Event eligibility
+
+```http
+POST /api/v1/events/{eventId}/eligibility
+```
+
+The browser submits a location **claim**:
+
+```json
+{
+  "latitude": -26.19205,
+  "longitude": 28.03038,
+  "accuracyMetres": 10,
+  "acquiredAt": "2026-08-10T11:59:30.000Z"
+}
+```
+
+The browser does not decide whether it is eligible.
+
+Fields such as the following are not part of the request contract and are
+rejected:
+
+```json
+{
+  "eligible": true,
+  "reachable": true,
+  "distanceMetres": 5
+}
+```
+
+The API validates the request and delegates authoritative event distance,
+radius, publication, and availability evaluation to the server-side PostGIS
+eligibility service.
+
+### Eligibility outcomes
+
+A clearly reachable claim returns:
+
+```json
+{
+  "eventId": "00000000-0000-4000-8000-000000000018",
+  "status": "reachable",
+  "reachable": true,
+  "requestId": "server-generated-request-id"
+}
+```
+
+A clearly unreachable claim returns:
+
+```json
+{
+  "eventId": "00000000-0000-4000-8000-000000000018",
+  "status": "unreachable",
+  "reachable": false,
+  "requestId": "server-generated-request-id"
+}
+```
+
+An uncertain location claim returns a safe retry result rather than accusing the
+player of cheating:
+
+```json
+{
+  "eventId": "00000000-0000-4000-8000-000000000018",
+  "status": "retry",
+  "reachable": null,
+  "reason": "location_accuracy",
+  "requestId": "server-generated-request-id"
+}
+```
+
+Retry reasons currently include:
+
+- `location_accuracy`;
+- `stale_location`;
+- `future_acquisition_time`.
+
+An event that has not started or has ended returns `status: "unavailable"`.
+
+Unpublished events return the same `404 EVENT_NOT_FOUND` response as nonexistent
+events so that private content is not disclosed.
+
+### Accuracy-aware boundary
+
+The API combines the reported device accuracy with the authoritative PostGIS
+distance and event radius.
+
+Conceptually:
+
+```text
+distance + accuracy <= radius
+    -> clearly reachable
+
+distance - accuracy > radius
+    -> clearly unreachable
+
+otherwise
+    -> ambiguous; retry
+```
+
+The browser-reported accuracy remains an untrusted claim. This calculation
+reduces false certainty near an event boundary; it does not make browser
+geolocation tamper-proof.
+
+### Location freshness
+
+The current Sprint 1 implementation uses a **provisional** maximum location
+claim age of 120 seconds.
+
+This is a development recommendation rather than a confirmed product
+requirement and should be revisited after physical-device and campus field
+testing.
+
+Malformed timestamps are rejected. Future or stale timestamps produce a safe
+retry outcome without running the PostGIS eligibility query.
+
+### Privacy and trust boundary
+
+Location is submitted only when required for an eligibility operation.
+
+The current endpoint does not continuously track the player.
+
+The API treats latitude, longitude, accuracy, and acquisition time as
+browser-supplied claims. It independently determines:
+
+- event existence;
+- publication state;
+- availability;
+- authoritative event coordinates;
+- event radius;
+- distance from the claimed location;
+- final reachability outcome.
+
+Authentication establishes the external `(iss, sub)` identity independently of
+location data.
+
+A valid access token does not make a browser-provided location trustworthy.
+
+### Event API tests
+
+Automated API tests cover:
+
+- authentication requirements;
+- player-safe event discovery;
+- omission of private event fields;
+- reachable claims;
+- unreachable claims;
+- ambiguous-accuracy retry behaviour;
+- stale claims;
+- future acquisition timestamps;
+- invalid coordinates;
+- invalid accuracy values;
+- malformed timestamps;
+- nonexistent events;
+- unpublished events;
+- inactive events;
+- rejection of browser-supplied eligibility decisions;
+- OpenAPI bearer protection.
+
+The HTTP integration tests use injected event services and do not require a
+live database.
+
+The existing PostGIS integration tests separately verify authoritative distance,
+radius, publication, and availability behaviour against PostgreSQL/PostGIS.
+
 ## Error-response model
 
 Errors use a consistent JSON structure:
@@ -426,12 +742,10 @@ The API integration tests cover:
 
 The API foundation does not yet include:
 
-- CORS configuration;
-- protected Wits Quest domain routes beyond the `/api/v1/auth/me`
-  authentication fixture;
-- event discovery or eligibility routes;
 - production monitoring;
 - challenge, reward, card, deck, or battle operations.
+- challenge sessions, answer marking, and reward issuance beyond event
+  discovery and location eligibility;
 
 Those capabilities are introduced through later tracked issues.
 

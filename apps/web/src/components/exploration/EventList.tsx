@@ -1,5 +1,7 @@
+import type { PlayerEventAvailability } from '../../api/events';
+
 export interface EventPresentation {
-  availability: string;
+  availability: PlayerEventAvailability;
   id: string;
   latitude: number;
   longitude: number;
@@ -14,9 +16,16 @@ export type EventDiscoveryState =
 
 interface EventListProps {
   discovery: EventDiscoveryState;
+  onRetry: () => void;
 }
 
-export function EventList({ discovery }: EventListProps) {
+const availabilityLabels: Record<PlayerEventAvailability, string> = {
+  active: 'Available now',
+  ended: 'Ended',
+  upcoming: 'Upcoming',
+};
+
+export function EventList({ discovery, onRetry }: EventListProps) {
   return (
     <section aria-labelledby="nearby-events-title" className="event-list">
       <div className="section-heading">
@@ -36,6 +45,9 @@ export function EventList({ discovery }: EventListProps) {
         <div className="event-list__state" role="alert">
           <strong>Events are unavailable right now.</strong>
           <p>{discovery.message}</p>
+          <button className="button" onClick={onRetry} type="button">
+            Try loading events again
+          </button>
         </div>
       ) : null}
 
@@ -52,10 +64,11 @@ export function EventList({ discovery }: EventListProps) {
             <li className="event-summary" key={event.id}>
               <div>
                 <h3>{event.title}</h3>
-                <p>{event.availability}</p>
               </div>
-              <span className="status-badge status-badge--info">
-                Published event
+              <span
+                className={`status-badge status-badge--${event.availability}`}
+              >
+                {availabilityLabels[event.availability]}
               </span>
             </li>
           ))}

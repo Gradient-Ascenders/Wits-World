@@ -8,13 +8,14 @@ export default function AboutPage() {
         by the Wits World project.
       </p>
       <p>
-        The Sprint 1 foundation will support a campus map, browser location
-        requests, nearby events, and clear explanations of whether an event is
-        reachable.
+        The Sprint 1 foundation supports authenticated event discovery on a
+        campus map, with the same event information available in an accessible
+        text list.
       </p>
       <p>
-        This initial application shell does not yet include the map,
-        authentication, event data, challenges, cards, or battles.
+        Browser location requests and server-evaluated reachability are still to
+        come. Challenges, cards, and battles are also outside the current player
+        experience.
       </p>
       <hr />
       <h2>Designed for clear decisions</h2>

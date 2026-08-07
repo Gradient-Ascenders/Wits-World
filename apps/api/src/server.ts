@@ -1,17 +1,34 @@
 import { buildApp } from './app.js';
 import { buildApiConfig } from './config/api.js';
-import { loadApiEnvironment } from './config/database.js';
 import { buildAuthConfig } from './config/auth.js';
+import { buildDatabaseConfig, loadApiEnvironment } from './config/database.js';
+import { createDatabasePool } from './database/connection.js';
+import { createEventDiscoveryService } from './events/event-discovery.js';
+import { createEventEligibilityService } from './events/event-eligibility.js';
+import { buildCorsConfig } from './config/cors.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
 
   const config = buildApiConfig();
   const authConfig = buildAuthConfig();
+  const corsConfig = buildCorsConfig();
+  const databaseConfig = buildDatabaseConfig();
+
+  const database = createDatabasePool(databaseConfig);
 
   const app = await buildApp({
     config,
     authConfig,
+    corsConfig,
+    eventServices: {
+      discovery: createEventDiscoveryService(database),
+      eligibility: createEventEligibilityService(database),
+    },
+  });
+
+  app.addHook('onClose', async () => {
+    await database.end();
   });
 
   try {
@@ -34,6 +51,7 @@ async function startServer(): Promise<void> {
       'Wits World API failed to start',
     );
 
+    await app.close();
     process.exitCode = 1;
   }
 }

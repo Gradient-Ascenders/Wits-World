@@ -1,5 +1,12 @@
 export interface WebConfig {
   apiBaseUrl: string;
+  auth: AuthConfig;
+}
+
+export interface AuthConfig {
+  audience: string;
+  clientId: string;
+  domain: string;
 }
 
 export class ConfigurationError extends Error {
@@ -11,16 +18,48 @@ export class ConfigurationError extends Error {
 
 type PublicEnvironment = Record<string, boolean | string | undefined>;
 
-export function loadWebConfig(environment: PublicEnvironment): WebConfig {
-  const rawApiBaseUrl = environment.VITE_API_BASE_URL;
+function readRequiredValue(
+  environment: PublicEnvironment,
+  key: string,
+): string {
+  const value = environment[key];
 
-  if (typeof rawApiBaseUrl !== 'string' || rawApiBaseUrl.trim() === '') {
+  if (typeof value !== 'string' || value.trim() === '') {
     throw new ConfigurationError(
-      'VITE_API_BASE_URL is required to start the web application.',
+      `${key} is required to start the web application.`,
     );
   }
 
-  const apiBaseUrl = rawApiBaseUrl.trim();
+  return value.trim();
+}
+
+function validateAuth0Domain(domain: string): string {
+  let parsedUrl: URL;
+
+  try {
+    parsedUrl = new URL(`https://${domain}`);
+  } catch {
+    throw new ConfigurationError(
+      'VITE_AUTH0_DOMAIN must be a valid Auth0 hostname without a protocol or path.',
+    );
+  }
+
+  if (
+    parsedUrl.hostname !== domain ||
+    parsedUrl.pathname !== '/' ||
+    parsedUrl.search !== '' ||
+    parsedUrl.hash !== ''
+  ) {
+    throw new ConfigurationError(
+      'VITE_AUTH0_DOMAIN must be a valid Auth0 hostname without a protocol or path.',
+    );
+  }
+
+  return domain;
+}
+
+export function loadWebConfig(environment: PublicEnvironment): WebConfig {
+  const apiBaseUrl = readRequiredValue(environment, 'VITE_API_BASE_URL');
   let parsedUrl: URL;
 
   try {
@@ -37,7 +76,18 @@ export function loadWebConfig(environment: PublicEnvironment): WebConfig {
     );
   }
 
+  const domain = validateAuth0Domain(
+    readRequiredValue(environment, 'VITE_AUTH0_DOMAIN'),
+  );
+  const clientId = readRequiredValue(environment, 'VITE_AUTH0_CLIENT_ID');
+  const audience = readRequiredValue(environment, 'VITE_AUTH0_AUDIENCE');
+
   return {
     apiBaseUrl: apiBaseUrl.replace(/\/+$/, ''),
+    auth: {
+      audience,
+      clientId,
+      domain,
+    },
   };
 }

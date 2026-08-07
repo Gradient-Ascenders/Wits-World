@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { Link, useRoute } from 'wouter';
 
+import { AccountControl } from './auth/AccountControl';
+
 interface AppShellProps {
   children: ReactNode;
 }
@@ -52,13 +54,17 @@ export function AppShell({ children }: AppShellProps) {
           <nav aria-label="Primary" className="primary-navigation">
             <ul className="primary-navigation__list">
               <li>
-                <NavigationLink href="/">Explore</NavigationLink>
+                <NavigationLink href="/">Home</NavigationLink>
+              </li>
+              <li>
+                <NavigationLink href="/explore">Explore</NavigationLink>
               </li>
               <li>
                 <NavigationLink href="/about">About</NavigationLink>
               </li>
             </ul>
           </nav>
+          <AccountControl />
         </div>
       </header>
 

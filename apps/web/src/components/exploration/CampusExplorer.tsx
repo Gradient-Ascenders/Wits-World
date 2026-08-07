@@ -13,6 +13,7 @@ interface CampusExplorerProps {
   discovery: EventDiscoveryState;
   mapConfiguration: MapConfiguration;
   mapFactory?: MapFactory;
+  onRetry: () => void;
 }
 
 function toMapPoints(events: readonly EventPresentation[]): MapPoint[] {
@@ -28,6 +29,7 @@ export function CampusExplorer({
   discovery,
   mapConfiguration,
   mapFactory,
+  onRetry,
 }: CampusExplorerProps) {
   const points = useMemo(
     () => (discovery.status === 'ready' ? toMapPoints(discovery.events) : []),
@@ -52,7 +54,7 @@ export function CampusExplorer({
         mapFactory={mapFactory}
         points={points}
       />
-      <EventList discovery={discovery} />
+      <EventList discovery={discovery} onRetry={onRetry} />
     </section>
   );
 }
