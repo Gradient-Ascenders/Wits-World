@@ -39,10 +39,11 @@ will validate them before deriving the authenticated identity.
 
 ### Tenant
 
-| Setting | Value                                 |
-| ------- | ------------------------------------- |
-| Domain  | `dev-5artxfvpdennq8qm.us.auth0.com`   |
-| Purpose | Wits World development authentication |
+| Setting          | Value                                        |
+| ---------------- | -------------------------------------------- |
+| Domain           | `dev-5artxfvpdennq8qm.us.auth0.com`          |
+| Canonical issuer | `https://dev-5artxfvpdennq8qm.us.auth0.com/` |
+| Purpose          | Wits World development authentication        |
 
 The domain is configuration rather than a secret. Tenant administration
 credentials, passwords, tokens, and Management API credentials remain private.
@@ -73,12 +74,19 @@ send HTTP requests to that address.
 
 ## Token contract
 
+The canonical development issuer is:
+
+`https://dev-5artxfvpdennq8qm.us.auth0.com/`
+
+Issuer validation is an exact comparison. The scheme and trailing slash are
+part of the issuer identifier and must not be removed or normalised away.
+
 The API will accept only access tokens that satisfy all required checks,
 including:
 
 - a valid signature from the configured Auth0 tenant;
-- the expected issuer derived from
-  `dev-5artxfvpdennq8qm.us.auth0.com`;
+- an `iss` claim exactly equal to
+  `https://dev-5artxfvpdennq8qm.us.auth0.com/`;
 - the audience `https://api.wits-world.invalid`;
 - a supported signing algorithm;
 - an unexpired validity period;
@@ -99,13 +107,38 @@ API-token-validation issue.
 
 ## Identity mapping
 
-The validated Auth0 `sub` claim will be the stable external-identity key used to
-find or create the corresponding Wits World user.
-
-The database must enforce that one Auth0 subject maps to at most one local user.
-
 Auth0 user metadata will not be treated as the authoritative source for gameplay
 or application data.
+
+## External identity contract
+
+Wits World identifies an externally authenticated principal using the pair
+`(iss, sub)`, not the `sub` claim alone.
+
+For the current development tenant, the canonical issuer is:
+
+`https://dev-5artxfvpdennq8qm.us.auth0.com/`
+
+The issuer must be compared exactly, including the `https://` scheme and trailing
+slash. The subject is meaningful only within that issuer's namespace.
+
+The API must obtain both values from a successfully validated access token. It
+must not accept either value from request-body, query-string, or other
+browser-controlled identity fields.
+
+**Recommendation for the Data and Infrastructure Lead:** when the local user
+schema is introduced, persist both the authentication issuer and subject and
+enforce uniqueness over the pair, conceptually:
+
+`UNIQUE (auth_issuer, auth_subject)`
+
+The exact database column names and migration belong to the relevant data-model
+work and must be coordinated with the Data and Infrastructure Lead.
+
+A future Auth0 tenant change creates a different issuer namespace. Wits World
+must therefore perform an explicit identity migration or account-linking process
+when moving existing users between issuers. It must not assume that matching
+`sub` values from two different issuers refer to the same person.
 
 ## Role strategy
 
@@ -268,20 +301,25 @@ risk.
 
 ## Follow-up work
 
-This ADR enables, but does not implement:
+The following existing Gitea issues implement this decision:
 
-- React Auth0 SDK integration;
-- sign-in and registration journeys;
-- sign-out;
-- protected React routes;
-- access-token acquisition;
-- Fastify access-token validation;
+- [Gitea #8 — Integrate player sign-in and protected front-end routes](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/8)
+  Implements the React Auth0 integration, sign-in, sign-out, protected routes,
+  authentication states, and safe API access-token retrieval.
+
+- [Gitea #13 — Validate authentication tokens on protected API routes](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/13)
+  Implements Fastify bearer-token validation, exact issuer validation, audience
+  validation, signature and expiry validation, authenticated request context,
+  safe authentication errors, and the OpenAPI security scheme.
+
+Additional later work will cover:
+
 - local-user provisioning;
 - role and object-level authorisation;
-- password-reset integration;
+- password-reset application integration;
 - account deletion;
-- production Auth0 resources;
-- deployment callback and origin configuration.
+- production Auth0 configuration;
+- Wits institutional SSO if approved and available.
 
 ## Confirmation required
 

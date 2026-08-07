@@ -62,6 +62,63 @@ The providers were compared using the following criteria:
 | Provider coupling                | Moderate                             | Higher                        | Moderate                                               |
 | Fit for current architecture     | Strong                               | Strong                        | Technically strong but operationally expensive         |
 
+## Cost and free-tier evaluation
+
+Provider pricing and limits were reviewed on 7 August 2026. These values are
+time-sensitive and must be rechecked before production deployment or if the
+project's expected user count changes.
+
+| Provider | Free-tier or software cost                                                | Important constraints                                                                                                                                                                                                                      | Cost impact on Wits World                                                                                                                                                                                                                       |
+| -------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Auth0    | Free plan at $0 for up to 25,000 external monthly active users            | The Free plan includes one tenant, three administrators/contributors, one day of log retention, and lower API rate limits. Paid self-service plans provide higher limits and additional environment and security features.                 | Suitable for development and the currently identified project scope. The one-tenant Free-plan limit is important: strict separation into dedicated development and production tenants may require a paid plan or a later architecture decision. |
+| Clerk    | Hobby plan at $0 for up to 50,000 monthly retained users                  | Clerk measures monthly retained users rather than Auth0-style monthly active users. Paid Pro currently starts at $25/month when billed monthly. Some production security and customisation features require a paid plan.                   | The free user allowance is larger than Auth0's, but this does not outweigh the architectural preference for Auth0's explicit issuer-and-audience API boundary and the team's selected integration approach.                                     |
+| Keycloak | No software licence fee; Keycloak is open source under Apache License 2.0 | There is no hosted Keycloak free tier supplied by the project itself. The team would be responsible for compute, persistent storage, database infrastructure, TLS, email delivery, backups, monitoring, updates, and security maintenance. | The licence cost is zero, but infrastructure and operational effort would be transferred to the team. This creates substantially more work than a hosted provider for the current project.                                                      |
+
+### Auth0 account-deletion constraints
+
+Account deletion requires use of the Auth0 Management API from trusted backend
+code.
+
+Auth0's user-deletion endpoint permanently deletes a user and requires an
+appropriately scoped Management API access token. The backend should use only
+the minimum required permission for this operation.
+
+On the Auth0 Free subscription, the Management API currently has a burst and
+sustained limit of two requests per second. Account deletion is expected to be a
+low-frequency user action, so this limit does not prevent the planned Wits World
+account-deletion journey. The eventual implementation must nevertheless handle
+rate limiting and temporary provider failures safely instead of assuming that a
+Management API request always succeeds.
+
+Management API credentials and access tokens must remain server-side. They must
+not be included in the React application or exposed through a `VITE_`
+environment variable.
+
+The account-deletion implementation must also account for the fact that deleting
+the local Wits World account state and deleting the Auth0 identity cannot form
+one atomic transaction.
+
+### Why Auth0 remains suitable
+
+Auth0 remains the selected provider despite Clerk's larger current free user
+allowance and Keycloak's zero software licence cost.
+
+The current project has no requirement approaching Auth0's 25,000-user Free-plan
+limit. Auth0 provides the required registration, sign-in, password-reset and
+account-management capabilities while fitting the separate React SPA and
+Fastify API architecture.
+
+Its issuer-and-audience token model also provides a clear security boundary for
+the hand-written API. The team avoids operating an identity server while
+retaining local control over application roles and authorisation.
+
+The primary cost-related limitation is the Auth0 Free plan's single-tenant
+allowance. Production environment isolation must therefore be reconsidered when
+deployment configuration is finalised. If separate production and development
+tenants become mandatory, the team must evaluate the then-current Auth0 paid
+plan or reconsider the provider decision rather than silently exceeding the
+selected free-tier assumptions.
+
 ## Auth0
 
 ### Advantages
@@ -187,9 +244,35 @@ Wits World will be authoritative for:
 - matches;
 - publication actions.
 
-The validated Auth0 `sub` claim will identify the external account. The database
-will contain at most one local user for each Auth0 subject.
+## External identity contract
 
+Wits World identifies an externally authenticated principal using the pair
+`(iss, sub)`, not the `sub` claim alone.
+
+For the current development tenant, the canonical issuer is:
+
+`https://dev-5artxfvpdennq8qm.us.auth0.com/`
+
+The issuer must be compared exactly, including the `https://` scheme and trailing
+slash. The subject is meaningful only within that issuer's namespace.
+
+The API must obtain both values from a successfully validated access token. It
+must not accept either value from request-body, query-string, or other
+browser-controlled identity fields.
+
+**Recommendation for the Data and Infrastructure Lead:** when the local user
+schema is introduced, persist both the authentication issuer and subject and
+enforce uniqueness over the pair, conceptually:
+
+`UNIQUE (auth_issuer, auth_subject)`
+
+The exact database column names and migration belong to the relevant data-model
+work and must be coordinated with the Data and Infrastructure Lead.
+
+A future Auth0 tenant change creates a different issuer namespace. Wits World
+must therefore perform an explicit identity migration or account-linking process
+when moving existing users between issuers. It must not assume that matching
+`sub` values from two different issuers refer to the same person.
 New local users will receive the `player` role by default. The browser will not
 be allowed to submit or select its own role. Author and administrator roles will
 be granted through protected application processes.
@@ -286,6 +369,16 @@ This decision does not yet implement:
 Those changes belong to their corresponding implementation issues.
 
 ---
+
+## Sources
+
+- https://auth0.com/pricing?utm_source=chatgpt.com
+- https://dev.auth0.com/docs/troubleshoot/customer-support/operational-policies/rate-limit-policy/rate-limit-configurations/free-public
+- https://auth0.com/docs/api/management/v2/users/delete-users-by-id?utm_source=chatgpt.com
+- https://auth0.com/docs/secure/tokens/access-tokens/management-api-access-tokens?utm_source=chatgpt.com
+- https://clerk.com/articles/clerk-pricing-explained?utm_source=chatgpt.com
+- https://clerk.com/changelog/2026-02-05-new-plans-more-value?utm_source=chatgpt.com
+- https://github.com/keycloak/keycloak?utm_source=chatgpt.com
 
 The preceding document was planned and generated with the assistance of:
 ChatGPT-Web[GPT-5.6 Thinking].
