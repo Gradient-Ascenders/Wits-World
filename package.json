@@ -17,10 +17,12 @@
     "format:check": "prettier --check .",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "type-check": "npm run type-check --workspaces --if-present"
+    "type-check": "npm run type-check --workspaces --if-present",
+    "verify": "npm run format && npm run format:check && npm run lint && npm run type-check && npm test && npm run build"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@types/node": "24.13.3",
     "eslint": "10.0.1",
     "prettier": "3.9.6",
     "typescript": "6.0.3",
