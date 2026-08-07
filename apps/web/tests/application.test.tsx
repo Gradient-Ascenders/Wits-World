@@ -56,6 +56,9 @@ describe('Wits Quest application shell', () => {
     expect(screen.getByRole('link', { name: 'Home' })).toHaveFocus();
 
     await user.tab();
+    expect(screen.getByRole('link', { name: 'Explore' })).toHaveFocus();
+
+    await user.tab();
     const aboutLink = screen.getByRole('link', { name: 'About' });
     expect(aboutLink).toHaveFocus();
 
