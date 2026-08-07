@@ -105,6 +105,36 @@ to be manipulated by the browser.
 - Validate authentication tokens on protected API routes
 - Expose event discovery and eligibility API endpoints
 
+## Browser-to-API boundary
+
+For the Sprint 1 vertical slice, independently served web and API applications
+will communicate using a controlled API-owned CORS policy.
+
+The API receives one exact allowed browser origin from the environment:
+
+```text
+CORS_ALLOWED_ORIGIN
+```
+
+For local development the approved value is:
+
+```text
+http://localhost:5173
+```
+
+The CORS policy permits the browser methods and headers currently required by
+the hand-written API, including bearer `Authorization` requests.
+
+Wildcard production access is prohibited.
+
+A same-origin gateway remains a possible future deployment architecture, but it
+is not required for the Sprint 1 vertical slice. Introducing one would add
+deployment and routing infrastructure without removing the need for explicit
+trust-boundary configuration.
+
+CORS does not replace authentication or authorisation. Protected API routes
+continue to validate Auth0 bearer access tokens independently.
+
 ---
 
 The preceding document was planned and generated with the assistance of:
