@@ -20,6 +20,9 @@ import type { EventDiscoveryService } from './events/event-discovery.js';
 import type { EventEligibilityService } from './events/event-eligibility.js';
 import { eventRoutes } from './routes/events.js';
 
+import cors from '@fastify/cors';
+import type { CorsConfig } from './config/cors.js';
+
 export interface EventServices {
   discovery: EventDiscoveryService;
   eligibility: EventEligibilityService;
@@ -33,6 +36,7 @@ export interface BuildAppOptions {
   logger?: boolean;
   accessTokenVerifier?: AccessTokenVerifier;
   eventServices?: EventServices;
+  corsConfig?: CorsConfig;
 }
 
 export async function buildApp({
@@ -43,6 +47,7 @@ export async function buildApp({
   logger = true,
   accessTokenVerifier,
   eventServices,
+  corsConfig,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: logger
@@ -119,6 +124,18 @@ export async function buildApp({
   await app.register(apiV1Routes, {
     prefix: '/api/v1',
   });
+
+  if (corsConfig) {
+    await app.register(cors, {
+      origin: [corsConfig.allowedOrigin],
+      methods: ['GET', 'POST'],
+      allowedHeaders: ['Authorization', 'Content-Type'],
+      credentials: false,
+      preflight: true,
+      strictPreflight: true,
+      hideOptionsRoute: true,
+    });
+  }
   await app.register(authenticationRoutes, {
     prefix: '/api/v1',
   });

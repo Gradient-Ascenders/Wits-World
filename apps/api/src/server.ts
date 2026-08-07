@@ -5,12 +5,14 @@ import { buildDatabaseConfig, loadApiEnvironment } from './config/database.js';
 import { createDatabasePool } from './database/connection.js';
 import { createEventDiscoveryService } from './events/event-discovery.js';
 import { createEventEligibilityService } from './events/event-eligibility.js';
+import { buildCorsConfig } from './config/cors.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
 
   const config = buildApiConfig();
   const authConfig = buildAuthConfig();
+  const corsConfig = buildCorsConfig();
   const databaseConfig = buildDatabaseConfig();
 
   const database = createDatabasePool(databaseConfig);
@@ -18,6 +20,7 @@ async function startServer(): Promise<void> {
   const app = await buildApp({
     config,
     authConfig,
+    corsConfig,
     eventServices: {
       discovery: createEventDiscoveryService(database),
       eligibility: createEventEligibilityService(database),
