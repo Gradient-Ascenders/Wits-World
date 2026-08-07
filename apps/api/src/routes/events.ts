@@ -82,7 +82,7 @@ export const eventRoutes: FastifyPluginAsync<EventRoutesOptions> = async (
   app.get(
     '/events',
     {
-      preHandler: app.authenticate,
+      onRequest: app.authenticate,
       schema: {
         operationId: 'listPlayerEvents',
         summary: 'List published events for players',
@@ -188,7 +188,7 @@ export const eventRoutes: FastifyPluginAsync<EventRoutesOptions> = async (
   }>(
     '/events/:eventId/eligibility',
     {
-      preHandler: app.authenticate,
+      onRequest: app.authenticate,
       schema: {
         operationId: 'evaluateEventEligibility',
         summary: 'Evaluate a player location claim for an event',

@@ -139,6 +139,25 @@ describe('event eligibility API', () => {
     expect(eligibilityEvaluate).not.toHaveBeenCalled();
   });
 
+  it('authenticates before validating a malformed eligibility request', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/events/not-a-uuid/eligibility',
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({
+      status: 401,
+      code: 'UNAUTHORIZED',
+      title: 'Authentication required',
+      detail: 'A valid bearer access token is required.',
+      requestId: expect.any(String),
+    });
+
+    expect(eligibilityEvaluate).not.toHaveBeenCalled();
+  });
+
   it('returns reachable when the accuracy envelope is clearly inside the radius', async () => {
     eligibilityEvaluate.mockResolvedValue({
       outcome: 'evaluated',
