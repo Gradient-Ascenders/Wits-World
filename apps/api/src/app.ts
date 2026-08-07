@@ -16,11 +16,23 @@ import { apiV1Routes } from './routes/api-v1.js';
 import { authenticationRoutes } from './routes/authentication.js';
 import { healthRoutes } from './routes/health.js';
 
+import type { EventDiscoveryService } from './events/event-discovery.js';
+import type { EventEligibilityService } from './events/event-eligibility.js';
+import { eventRoutes } from './routes/events.js';
+
+export interface EventServices {
+  discovery: EventDiscoveryService;
+  eligibility: EventEligibilityService;
+  clock?: () => Date;
+  maxLocationClaimAgeMs?: number;
+}
+
 export interface BuildAppOptions {
   authConfig: AuthConfig;
   config?: Pick<ApiConfig, 'logLevel'>;
   logger?: boolean;
   accessTokenVerifier?: AccessTokenVerifier;
+  eventServices?: EventServices;
 }
 
 export async function buildApp({
@@ -30,6 +42,7 @@ export async function buildApp({
   },
   logger = true,
   accessTokenVerifier,
+  eventServices,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: logger
@@ -46,6 +59,11 @@ export async function buildApp({
         }
       : false,
     genReqId: () => randomUUID(),
+    ajv: {
+      customOptions: {
+        removeAdditional: false,
+      },
+    },
   });
 
   const verifier = accessTokenVerifier ?? createAccessTokenVerifier(authConfig);
@@ -69,6 +87,10 @@ export async function buildApp({
         {
           name: 'Authentication',
           description: 'Authenticated API identity operations.',
+        },
+        {
+          name: 'Events',
+          description: 'Player-safe event discovery and location eligibility.',
         },
       ],
       components: {
@@ -100,6 +122,16 @@ export async function buildApp({
   await app.register(authenticationRoutes, {
     prefix: '/api/v1',
   });
+
+  if (eventServices) {
+    await app.register(eventRoutes, {
+      prefix: '/api/v1',
+      discoveryService: eventServices.discovery,
+      eligibilityService: eventServices.eligibility,
+      clock: eventServices.clock,
+      maxLocationClaimAgeMs: eventServices.maxLocationClaimAgeMs,
+    });
+  }
 
   return app;
 }
