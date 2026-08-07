@@ -18,7 +18,7 @@ Use Node.js 24.14.1 and npm 11.18.0. From the repository root:
 nvm use
 npm ci
 cp apps/web/.env.example apps/web/.env
-npm run dev --workspace @wits-world/web
+npm run view
 ```
 
 Open `http://localhost:5173` in a browser. The development server uses a strict

@@ -12,6 +12,7 @@
   },
   "packageManager": "npm@11.18.0",
   "scripts": {
+    "view": "npm run dev --workspace @wits-world/web",
     "build": "npm run build --workspaces --if-present",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
