@@ -97,6 +97,7 @@ export function EventList({
               {event.availability === 'active' ? (
                 <EligibilityStatus
                   eventId={event.id}
+                  eventTitle={event.title}
                   isAnyCheckBusy={eligibilityBusy}
                   onCheck={onCheckEligibility}
                   state={eligibility[event.id] ?? { status: 'idle' }}
@@ -112,6 +113,7 @@ export function EventList({
 
 interface EligibilityStatusProps {
   eventId: string;
+  eventTitle: string;
   isAnyCheckBusy: boolean;
   onCheck: (eventId: string) => void;
   state: EventEligibilityState;
@@ -167,6 +169,7 @@ const eligibilityMessages: Record<
 
 function EligibilityStatus({
   eventId,
+  eventTitle,
   isAnyCheckBusy,
   onCheck,
   state,
@@ -178,6 +181,7 @@ function EligibilityStatus({
           Check whether this event is reachable from your reported location.
         </p>
         <button
+          aria-label={`Check reachability for ${eventTitle}`}
           className="button"
           disabled={isAnyCheckBusy}
           onClick={() => onCheck(eventId)}
@@ -219,6 +223,7 @@ function EligibilityStatus({
       <strong>{content.title}</strong>
       <p>{content.message}</p>
       <button
+        aria-label={`Check reachability again for ${eventTitle}`}
         className="button button--quiet"
         disabled={isAnyCheckBusy}
         onClick={() => onCheck(eventId)}

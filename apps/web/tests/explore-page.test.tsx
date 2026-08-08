@@ -221,7 +221,7 @@ describe('player location eligibility', () => {
       );
 
       const action = await screen.findByRole('button', {
-        name: 'Check reachability',
+        name: `Check reachability for ${event.title}`,
       });
       expect(locationClaimProvider).not.toHaveBeenCalled();
 
@@ -249,7 +249,9 @@ describe('player location eligibility', () => {
 
     renderExplore(createMapFactory(), createAuthValue(), locationClaimProvider);
     await user.click(
-      await screen.findByRole('button', { name: 'Check reachability' }),
+      await screen.findByRole('button', {
+        name: `Check reachability for ${event.title}`,
+      }),
     );
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -277,13 +279,19 @@ describe('player location eligibility', () => {
 
     renderExplore(createMapFactory(), createAuthValue(), locationClaimProvider);
     await user.click(
-      await screen.findByRole('button', { name: 'Check reachability' }),
+      await screen.findByRole('button', {
+        name: `Check reachability for ${event.title}`,
+      }),
     );
 
     expect(
       await screen.findByText('Getting your location took too long.'),
     ).toBeVisible();
-    await user.click(screen.getByRole('button', { name: 'Check again' }));
+    await user.click(
+      screen.getByRole('button', {
+        name: `Check reachability again for ${event.title}`,
+      }),
+    );
 
     expect(
       await screen.findByText(
@@ -324,13 +332,49 @@ describe('player location eligibility', () => {
 
       renderExplore(createMapFactory());
       await user.click(
-        await screen.findByRole('button', { name: 'Check reachability' }),
+        await screen.findByRole('button', {
+          name: `Check reachability for ${event.title}`,
+        }),
       );
 
       expect(await screen.findByText(message)).toBeVisible();
-      expect(screen.getByRole('button', { name: 'Check again' })).toBeEnabled();
+      expect(
+        screen.getByRole('button', {
+          name: `Check reachability again for ${event.title}`,
+        }),
+      ).toBeEnabled();
     },
   );
+
+  it('presents an event removed after discovery as unavailable', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(discoveryResponse())
+        .mockResolvedValueOnce(new Response(null, { status: 404 })),
+    );
+
+    renderExplore(createMapFactory());
+    await user.click(
+      await screen.findByRole('button', {
+        name: `Check reachability for ${event.title}`,
+      }),
+    );
+
+    expect(
+      await screen.findByText('This event is not available right now.'),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        'Its availability may have changed since the event list loaded.',
+      ),
+    ).toBeVisible();
+    expect(
+      screen.queryByText('Reachability could not be checked.'),
+    ).not.toBeInTheDocument();
+  });
 
   it('shows a safe API failure and retry action', async () => {
     const user = userEvent.setup();
@@ -346,7 +390,9 @@ describe('player location eligibility', () => {
 
     renderExplore(createMapFactory());
     await user.click(
-      await screen.findByRole('button', { name: 'Check reachability' }),
+      await screen.findByRole('button', {
+        name: `Check reachability for ${event.title}`,
+      }),
     );
 
     expect(
@@ -355,7 +401,11 @@ describe('player location eligibility', () => {
     expect(
       screen.queryByText('private upstream detail'),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Check again' })).toBeEnabled();
+    expect(
+      screen.getByRole('button', {
+        name: `Check reachability again for ${event.title}`,
+      }),
+    ).toBeEnabled();
   });
 
   it('aborts an eligibility request when the page unmounts', async () => {
@@ -375,7 +425,9 @@ describe('player location eligibility', () => {
     const user = userEvent.setup();
     const view = renderExplore(createMapFactory());
     await user.click(
-      await screen.findByRole('button', { name: 'Check reachability' }),
+      await screen.findByRole('button', {
+        name: `Check reachability for ${event.title}`,
+      }),
     );
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     const signal = fetchMock.mock.calls[1]?.[1]?.signal;

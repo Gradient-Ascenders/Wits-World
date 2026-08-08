@@ -204,6 +204,23 @@ describe('event eligibility client', () => {
     });
   });
 
+  it('classifies an event removed after discovery as unavailable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(null, { status: 404 })),
+    );
+
+    await expect(
+      evaluateEventEligibility({
+        apiBaseUrl,
+        claim,
+        eventId: event.eventId,
+        getAccessToken: vi.fn().mockResolvedValue('access-token'),
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toMatchObject({ failure: 'event-unavailable' });
+  });
+
   it.each([
     ['a non-success response', new Response(null, { status: 503 })],
     [

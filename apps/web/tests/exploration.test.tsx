@@ -113,6 +113,49 @@ describe('campus exploration', () => {
     expect(screen.getByRole('heading', { name: 'Test event' })).toBeVisible();
   });
 
+  it('identifies each active event in its reachability action name', () => {
+    render(
+      <CampusExplorer
+        discovery={{
+          events: [
+            { ...testPoint, availability: 'active', title: 'Great Hall' },
+            {
+              ...testPoint,
+              availability: 'active',
+              id: 'event-test-2',
+              title: 'Origins Centre',
+            },
+          ],
+          status: 'ready',
+        }}
+        eligibility={{}}
+        eligibilityBusy={false}
+        mapConfiguration={configuration}
+        mapFactory={createSuccessfulMapFactory([
+          { ...testPoint, label: 'Great Hall' },
+          {
+            ...testPoint,
+            id: 'event-test-2',
+            label: 'Origins Centre',
+          },
+        ])}
+        onCheckEligibility={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', {
+        name: 'Check reachability for Great Hall',
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('button', {
+        name: 'Check reachability for Origins Centre',
+      }),
+    ).toBeVisible();
+  });
+
   it('announces event loading and offers API failure recovery', async () => {
     const user = userEvent.setup();
     const onRetry = vi.fn();
@@ -202,7 +245,7 @@ describe('campus exploration', () => {
     expect(screen.getByText('Upcoming')).toBeVisible();
     expect(screen.getByText('Ended')).toBeVisible();
     expect(
-      screen.queryByRole('button', { name: 'Check reachability' }),
+      screen.queryByRole('button', { name: /Check reachability for/ }),
     ).not.toBeInTheDocument();
   });
 });

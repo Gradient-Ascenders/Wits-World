@@ -102,6 +102,13 @@ function toEligibilityFailure(error: unknown): EventEligibilityState {
     return { status: 'authorization-error' };
   }
 
+  if (
+    error instanceof EventEligibilityError &&
+    error.failure === 'event-unavailable'
+  ) {
+    return { status: 'event-unavailable' };
+  }
+
   return { status: 'api-error' };
 }
 

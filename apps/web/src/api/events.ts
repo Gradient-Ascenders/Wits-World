@@ -40,7 +40,8 @@ export type EventEligibilityResult =
     }
   | { reason: 'ended' | 'not_started'; status: 'unavailable' };
 
-export type EventEligibilityFailure = 'authorization' | 'unavailable';
+export type EventEligibilityFailure =
+  'authorization' | 'event-unavailable' | 'unavailable';
 
 export class EventEligibilityError extends Error {
   public constructor(public readonly failure: EventEligibilityFailure) {
@@ -145,6 +146,10 @@ export async function evaluateEventEligibility({
 
   if (response.status === 401) {
     throw new EventEligibilityError('authorization');
+  }
+
+  if (response.status === 404) {
+    throw new EventEligibilityError('event-unavailable');
   }
 
   if (!response.ok) {
