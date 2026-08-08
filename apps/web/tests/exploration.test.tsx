@@ -56,8 +56,11 @@ describe('campus exploration', () => {
           ],
           status: 'ready',
         }}
+        eligibility={{}}
+        eligibilityBusy={false}
         mapConfiguration={configuration}
         mapFactory={createSuccessfulMapFactory([testPoint])}
+        onCheckEligibility={vi.fn()}
         onRetry={vi.fn()}
       />,
     );
@@ -97,8 +100,11 @@ describe('campus exploration', () => {
           ],
           status: 'ready',
         }}
+        eligibility={{}}
+        eligibilityBusy={false}
         mapConfiguration={configuration}
         mapFactory={failingMapFactory}
+        onCheckEligibility={vi.fn()}
         onRetry={vi.fn()}
       />,
     );
@@ -113,8 +119,11 @@ describe('campus exploration', () => {
     const { rerender } = render(
       <CampusExplorer
         discovery={{ status: 'loading' }}
+        eligibility={{}}
+        eligibilityBusy={false}
         mapConfiguration={configuration}
         mapFactory={createSuccessfulMapFactory()}
+        onCheckEligibility={vi.fn()}
         onRetry={onRetry}
       />,
     );
@@ -130,8 +139,11 @@ describe('campus exploration', () => {
           message: 'Try again when a connection is available.',
           status: 'error',
         }}
+        eligibility={{}}
+        eligibilityBusy={false}
         mapConfiguration={configuration}
         mapFactory={createSuccessfulMapFactory()}
+        onCheckEligibility={vi.fn()}
         onRetry={onRetry}
       />,
     );
@@ -151,8 +163,11 @@ describe('campus exploration', () => {
     const { rerender } = render(
       <CampusExplorer
         discovery={{ status: 'empty' }}
+        eligibility={{}}
+        eligibilityBusy={false}
         mapConfiguration={configuration}
         mapFactory={createSuccessfulMapFactory()}
+        onCheckEligibility={vi.fn()}
         onRetry={vi.fn()}
       />,
     );
@@ -175,8 +190,11 @@ describe('campus exploration', () => {
           ],
           status: 'ready',
         }}
+        eligibility={{}}
+        eligibilityBusy={false}
         mapConfiguration={configuration}
         mapFactory={createSuccessfulMapFactory()}
+        onCheckEligibility={vi.fn()}
         onRetry={vi.fn()}
       />,
     );

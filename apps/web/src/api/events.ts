@@ -1,4 +1,5 @@
 import type { ApiAccessTokenProvider } from '../auth/useApiAccessToken';
+import type { LocationClaim } from '../browser-location';
 
 export type PlayerEventAvailability = 'active' | 'ended' | 'upcoming';
 
@@ -25,6 +26,33 @@ export class EventDiscoveryError extends Error {
 
 interface ListPlayerEventsOptions {
   apiBaseUrl: string;
+  getAccessToken: ApiAccessTokenProvider;
+  signal: AbortSignal;
+}
+
+export type EventEligibilityResult =
+  | { status: 'reachable' }
+  | { status: 'unreachable' }
+  | {
+      reason:
+        'future_acquisition_time' | 'location_accuracy' | 'stale_location';
+      status: 'retry';
+    }
+  | { reason: 'ended' | 'not_started'; status: 'unavailable' };
+
+export type EventEligibilityFailure = 'authorization' | 'unavailable';
+
+export class EventEligibilityError extends Error {
+  public constructor(public readonly failure: EventEligibilityFailure) {
+    super('Event eligibility could not be checked.');
+    this.name = 'EventEligibilityError';
+  }
+}
+
+interface EvaluateEventEligibilityOptions {
+  apiBaseUrl: string;
+  claim: LocationClaim;
+  eventId: string;
   getAccessToken: ApiAccessTokenProvider;
   signal: AbortSignal;
 }
@@ -79,6 +107,61 @@ export async function listPlayerEvents({
   return parseEventResponse(payload);
 }
 
+export async function evaluateEventEligibility({
+  apiBaseUrl,
+  claim,
+  eventId,
+  getAccessToken,
+  signal,
+}: EvaluateEventEligibilityOptions): Promise<EventEligibilityResult> {
+  let accessToken: string;
+
+  try {
+    accessToken = await getAccessToken();
+  } catch {
+    throw new EventEligibilityError('authorization');
+  }
+
+  let response: Response;
+
+  try {
+    response = await fetch(`${apiBaseUrl}/events/${eventId}/eligibility`, {
+      body: JSON.stringify(claim),
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      method: 'POST',
+      signal,
+    });
+  } catch (error) {
+    if (signal.aborted) {
+      throw error;
+    }
+
+    throw new EventEligibilityError('unavailable');
+  }
+
+  if (response.status === 401) {
+    throw new EventEligibilityError('authorization');
+  }
+
+  if (!response.ok) {
+    throw new EventEligibilityError('unavailable');
+  }
+
+  let payload: unknown;
+
+  try {
+    payload = await response.json();
+  } catch {
+    throw new EventEligibilityError('unavailable');
+  }
+
+  return parseEligibilityResponse(payload, eventId);
+}
+
 function parseEventResponse(payload: unknown): PlayerEvent[] {
   if (!isRecord(payload) || !Array.isArray(payload.events)) {
     throw new EventDiscoveryError('unavailable');
@@ -124,6 +207,53 @@ function parseEvent(value: unknown): PlayerEvent {
   };
 }
 
+function parseEligibilityResponse(
+  payload: unknown,
+  expectedEventId: string,
+): EventEligibilityResult {
+  if (
+    !isRecord(payload) ||
+    payload.eventId !== expectedEventId ||
+    typeof payload.requestId !== 'string'
+  ) {
+    throw new EventEligibilityError('unavailable');
+  }
+
+  if (
+    payload.status === 'reachable' &&
+    payload.reachable === true &&
+    payload.reason === undefined
+  ) {
+    return { status: 'reachable' };
+  }
+
+  if (
+    payload.status === 'unreachable' &&
+    payload.reachable === false &&
+    payload.reason === undefined
+  ) {
+    return { status: 'unreachable' };
+  }
+
+  if (
+    payload.status === 'retry' &&
+    payload.reachable === null &&
+    isRetryReason(payload.reason)
+  ) {
+    return { reason: payload.reason, status: 'retry' };
+  }
+
+  if (
+    payload.status === 'unavailable' &&
+    payload.reachable === false &&
+    isUnavailableReason(payload.reason)
+  ) {
+    return { reason: payload.reason, status: 'unavailable' };
+  }
+
+  throw new EventEligibilityError('unavailable');
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -147,4 +277,18 @@ function isDateTime(value: unknown): value is string {
 
 function isAvailability(value: unknown): value is PlayerEventAvailability {
   return value === 'active' || value === 'upcoming' || value === 'ended';
+}
+
+function isRetryReason(
+  value: unknown,
+): value is 'future_acquisition_time' | 'location_accuracy' | 'stale_location' {
+  return (
+    value === 'future_acquisition_time' ||
+    value === 'location_accuracy' ||
+    value === 'stale_location'
+  );
+}
+
+function isUnavailableReason(value: unknown): value is 'ended' | 'not_started' {
+  return value === 'ended' || value === 'not_started';
 }
