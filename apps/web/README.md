@@ -8,8 +8,9 @@ a protected campus map, authenticated published-event discovery, safe API
 access-token retrieval, and a premium editorial home page. The home-page map,
 event status, and collectible cards are explicitly static product previews; the
 live seeded-event experience is available through the protected `/explore`
-route. The application does not yet include browser geolocation, eligibility
-requests, challenges, cards, or battles.
+route. The protected experience includes one-shot browser geolocation and
+API-authoritative event eligibility. It does not yet include challenges, cards,
+or battles.
 
 ## Run locally
 
@@ -133,9 +134,10 @@ availability is always written as text and does not rely on marker colour. A
 failed API request provides a retry action; a failed tile or style request leaves
 the event list available.
 
-The map does not request or send the player's browser location. Browser
-geolocation and the API-authoritative eligibility request belong to Gitea issue
-#21.
+The map does not request or send the player's browser location. The event list
+requests a fresh position only after the player selects an active event's Check
+reachability action. The reported coordinates are sent to the Wits World API,
+not to the map provider.
 
 MapLibre's standard browser bundle uses web workers. A future production Content
 Security Policy must account for workers and the OpenFreeMap image, style, glyph,
@@ -145,6 +147,27 @@ OpenFreeMap's public service is external, provided as-is, and does not offer an
 availability guarantee. Wits Quest therefore retains its map-independent event
 list and a clear map-provider failure state. Provider terms and privacy behavior
 must be reviewed again before production deployment.
+
+## Browser location and eligibility
+
+The `/explore` event list calls the protected
+`POST /api/v1/events/:eventId/eligibility` endpoint after a clear player action.
+Each request contains the browser-reported latitude, longitude, accuracy, and
+acquisition time. The browser uses a ten-second timeout, asks for high accuracy,
+and does not accept a cached reading. A retry requests a new reading; the
+application does not poll or track location continuously.
+
+The browser treats the reading as a claim. It does not calculate authoritative
+distance, compare the event radius, or decide reachability. Reachable,
+unreachable, inaccurate, stale, unavailable, and failure states come from the
+API or browser boundary and are displayed with accessible text rather than
+colour alone.
+
+The location values are not written to React state, browser storage, logs, or
+the map provider. Permission can be denied without losing access to event
+discovery. See the
+[player location and eligibility journey](../../docs/requirements/player-location-journey.md)
+for the full flow, privacy boundary, browser limitations, and evidence steps.
 
 ## Routes
 
@@ -192,10 +215,11 @@ npm run build
 The component tests use accessible roles and names. They cover application
 landmarks, routes, keyboard order, authentication loading and errors,
 authenticated event discovery, bearer-header use, response validation, loading,
-empty, retry, map-provider failure, map-independent event presentation, honest
-preview language, safe return paths, configuration failures, and the
-render-error fallback. Automated checks do not replace manual browser and
-keyboard testing.
+empty, retry, map-provider failure, map-independent event presentation,
+user-triggered geolocation, location claim construction, authoritative
+eligibility outcomes, permission and timeout failures, honest preview language,
+safe return paths, configuration failures, and the render-error fallback.
+Automated checks do not replace manual browser and keyboard testing.
 
 ### Manual browser checks
 
@@ -261,6 +285,31 @@ With `apps/web/.env` configured and the development server running:
 13. Capture the authenticated map at 390×844 and 1280×800 under
     `.pr-screenshots/issue-12/`, along with keyboard and failure-state evidence
     required by the Gitea issue.
+
+#### Authenticated location eligibility
+
+1. Use a real phone with the deployed HTTPS application and API. Sign in with a
+   development player, open `/explore`, and confirm no location permission prompt
+   appears before an action.
+2. At approximately 390px wide, confirm the active event includes Check
+   reachability with no horizontal overflow. Confirm upcoming and ended events
+   remain readable without requesting location.
+3. Select Check reachability and grant permission. Confirm the requesting and
+   checking states are announced, followed by the exact reachable, unreachable,
+   or retry result returned by the API.
+4. Select Check again and confirm a new one-shot request occurs without ongoing
+   location updates.
+5. Reset the browser's site permission, deny location, and confirm the denial
+   explanation, Check again action, map, and event list remain usable.
+6. Press Tab with a connected keyboard. Confirm visible focus reaches the event
+   action in logical order and the result does not rely on colour alone.
+7. Repeat the layout check at 360px, 768px, and approximately 1280px. Confirm the
+   status panel, text, button, event badge, map attribution, and navigation do not
+   overlap or cause horizontal scrolling.
+8. Record the actual device, operating system, browser version, permission state,
+   and API outcome. Store screenshots under `.pr-screenshots/issue-21/` and
+   attach them to the pull request without exposing tokens or precise location
+   values.
 
 The preceding document was generated and edited with the assistance of:
 Codex-CLI[gpt-5.6-sol medium] and Codex-CLI[GPT-5].
