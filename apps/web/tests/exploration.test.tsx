@@ -201,5 +201,8 @@ describe('campus exploration', () => {
 
     expect(screen.getByText('Upcoming')).toBeVisible();
     expect(screen.getByText('Ended')).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Check reachability' }),
+    ).not.toBeInTheDocument();
   });
 });
