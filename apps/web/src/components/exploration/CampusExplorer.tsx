@@ -4,6 +4,7 @@ import { CampusMap } from './CampusMap';
 import {
   EventList,
   type EventDiscoveryState,
+  type EventEligibilityState,
   type EventPresentation,
 } from './EventList';
 import type { MapConfiguration, MapFactory, MapPoint } from './map-provider';
@@ -11,8 +12,11 @@ import './exploration.css';
 
 interface CampusExplorerProps {
   discovery: EventDiscoveryState;
+  eligibility: Readonly<Record<string, EventEligibilityState | undefined>>;
+  eligibilityBusy: boolean;
   mapConfiguration: MapConfiguration;
   mapFactory?: MapFactory;
+  onCheckEligibility: (eventId: string) => void;
   onRetry: () => void;
 }
 
@@ -27,8 +31,11 @@ function toMapPoints(events: readonly EventPresentation[]): MapPoint[] {
 
 export function CampusExplorer({
   discovery,
+  eligibility,
+  eligibilityBusy,
   mapConfiguration,
   mapFactory,
+  onCheckEligibility,
   onRetry,
 }: CampusExplorerProps) {
   const points = useMemo(
@@ -54,7 +61,13 @@ export function CampusExplorer({
         mapFactory={mapFactory}
         points={points}
       />
-      <EventList discovery={discovery} onRetry={onRetry} />
+      <EventList
+        discovery={discovery}
+        eligibility={eligibility}
+        eligibilityBusy={eligibilityBusy}
+        onCheckEligibility={onCheckEligibility}
+        onRetry={onRetry}
+      />
     </section>
   );
 }

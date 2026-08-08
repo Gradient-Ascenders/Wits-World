@@ -136,11 +136,16 @@
 }
 
 .event-summary {
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: var(--space-3);
   padding: var(--space-4) 0;
   border-top: 1px solid rgb(179 189 204 / 14%);
+}
+
+.event-summary__heading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
 .event-summary h3 {
@@ -152,6 +157,46 @@
 .event-summary p {
   margin: 0;
   color: var(--colour-text-secondary);
+}
+
+.eligibility-status {
+  display: grid;
+  max-width: 32rem;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--colour-border-subtle);
+  border-radius: var(--radius-md);
+  background: rgb(13 27 49 / 72%);
+}
+
+.eligibility-status strong {
+  color: var(--colour-text-primary);
+}
+
+.eligibility-status .button {
+  width: 100%;
+}
+
+.eligibility-status--loading {
+  border-color: rgb(84 168 255 / 42%);
+}
+
+.eligibility-status--reachable {
+  border-color: rgb(57 184 121 / 48%);
+}
+
+.eligibility-status--location-stale,
+.eligibility-status--location-timeout,
+.eligibility-status--location-uncertain,
+.eligibility-status--event-unavailable {
+  border-color: rgb(225 169 58 / 48%);
+}
+
+.eligibility-status--api-error,
+.eligibility-status--authorization-error,
+.eligibility-status--location-denied,
+.eligibility-status--location-unavailable {
+  border-color: rgb(220 91 101 / 48%);
 }
 
 .status-badge {
@@ -218,8 +263,15 @@
   }
 
   .event-summary {
-    flex-direction: row;
+    grid-template-columns: minmax(12rem, 0.7fr) minmax(20rem, 1.3fr);
     align-items: center;
-    justify-content: space-between;
+  }
+
+  .eligibility-status {
+    justify-self: end;
+  }
+
+  .eligibility-status .button {
+    width: fit-content;
   }
 }

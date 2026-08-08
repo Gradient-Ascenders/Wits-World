@@ -56,8 +56,11 @@ describe('campus exploration', () => {
           ],
           status: 'ready',
         }}
+        eligibility={{}}
+        eligibilityBusy={false}
         mapConfiguration={configuration}
         mapFactory={createSuccessfulMapFactory([testPoint])}
+        onCheckEligibility={vi.fn()}
         onRetry={vi.fn()}
       />,
     );
@@ -97,8 +100,11 @@ describe('campus exploration', () => {
           ],
           status: 'ready',
         }}
+        eligibility={{}}
+        eligibilityBusy={false}
         mapConfiguration={configuration}
         mapFactory={failingMapFactory}
+        onCheckEligibility={vi.fn()}
         onRetry={vi.fn()}
       />,
     );
@@ -107,14 +113,60 @@ describe('campus exploration', () => {
     expect(screen.getByRole('heading', { name: 'Test event' })).toBeVisible();
   });
 
+  it('identifies each active event in its reachability action name', () => {
+    render(
+      <CampusExplorer
+        discovery={{
+          events: [
+            { ...testPoint, availability: 'active', title: 'Great Hall' },
+            {
+              ...testPoint,
+              availability: 'active',
+              id: 'event-test-2',
+              title: 'Origins Centre',
+            },
+          ],
+          status: 'ready',
+        }}
+        eligibility={{}}
+        eligibilityBusy={false}
+        mapConfiguration={configuration}
+        mapFactory={createSuccessfulMapFactory([
+          { ...testPoint, label: 'Great Hall' },
+          {
+            ...testPoint,
+            id: 'event-test-2',
+            label: 'Origins Centre',
+          },
+        ])}
+        onCheckEligibility={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', {
+        name: 'Check reachability for Great Hall',
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('button', {
+        name: 'Check reachability for Origins Centre',
+      }),
+    ).toBeVisible();
+  });
+
   it('announces event loading and offers API failure recovery', async () => {
     const user = userEvent.setup();
     const onRetry = vi.fn();
     const { rerender } = render(
       <CampusExplorer
         discovery={{ status: 'loading' }}
+        eligibility={{}}
+        eligibilityBusy={false}
         mapConfiguration={configuration}
         mapFactory={createSuccessfulMapFactory()}
+        onCheckEligibility={vi.fn()}
         onRetry={onRetry}
       />,
     );
@@ -130,8 +182,11 @@ describe('campus exploration', () => {
           message: 'Try again when a connection is available.',
           status: 'error',
         }}
+        eligibility={{}}
+        eligibilityBusy={false}
         mapConfiguration={configuration}
         mapFactory={createSuccessfulMapFactory()}
+        onCheckEligibility={vi.fn()}
         onRetry={onRetry}
       />,
     );
@@ -151,8 +206,11 @@ describe('campus exploration', () => {
     const { rerender } = render(
       <CampusExplorer
         discovery={{ status: 'empty' }}
+        eligibility={{}}
+        eligibilityBusy={false}
         mapConfiguration={configuration}
         mapFactory={createSuccessfulMapFactory()}
+        onCheckEligibility={vi.fn()}
         onRetry={vi.fn()}
       />,
     );
@@ -175,13 +233,19 @@ describe('campus exploration', () => {
           ],
           status: 'ready',
         }}
+        eligibility={{}}
+        eligibilityBusy={false}
         mapConfiguration={configuration}
         mapFactory={createSuccessfulMapFactory()}
+        onCheckEligibility={vi.fn()}
         onRetry={vi.fn()}
       />,
     );
 
     expect(screen.getByText('Upcoming')).toBeVisible();
     expect(screen.getByText('Ended')).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: /Check reachability for/ }),
+    ).not.toBeInTheDocument();
   });
 });
