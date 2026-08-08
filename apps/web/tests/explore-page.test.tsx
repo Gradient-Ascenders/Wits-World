@@ -289,7 +289,7 @@ describe('player location eligibility', () => {
     ).toBeVisible();
     await user.click(
       screen.getByRole('button', {
-        name: `Check reachability again for ${event.title}`,
+        name: `Check again for ${event.title}`,
       }),
     );
 
@@ -340,7 +340,7 @@ describe('player location eligibility', () => {
       expect(await screen.findByText(message)).toBeVisible();
       expect(
         screen.getByRole('button', {
-          name: `Check reachability again for ${event.title}`,
+          name: `Check again for ${event.title}`,
         }),
       ).toBeEnabled();
     },
@@ -403,7 +403,7 @@ describe('player location eligibility', () => {
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole('button', {
-        name: `Check reachability again for ${event.title}`,
+        name: `Check again for ${event.title}`,
       }),
     ).toBeEnabled();
   });

@@ -223,7 +223,7 @@ function EligibilityStatus({
       <strong>{content.title}</strong>
       <p>{content.message}</p>
       <button
-        aria-label={`Check reachability again for ${eventTitle}`}
+        aria-label={`Check again for ${eventTitle}`}
         className="button button--quiet"
         disabled={isAnyCheckBusy}
         onClick={() => onCheck(eventId)}
