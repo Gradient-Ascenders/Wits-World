@@ -308,8 +308,20 @@ jobs:
       - name: Clean deployment workspace
         if: ${{ always() }}
         run: |
+          set -euo pipefail
+
+          DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
+
           az logout >/dev/null 2>&1 || true
-          rm -rf "/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
+
+          if [ -d "$DEPLOY_ROOT" ]; then
+            docker run --rm \
+              -v "$DEPLOY_ROOT:/cleanup" \
+              node:24-bookworm-slim \
+              sh -lc 'rm -rf /cleanup/* /cleanup/.[!.]* /cleanup/..?*'
+
+            rm -rf "$DEPLOY_ROOT"
+          fi
 
   deploy-web:
     name: Deploy Web to Azure
@@ -508,5 +520,17 @@ jobs:
       - name: Clean deployment workspace
         if: ${{ always() }}
         run: |
+          set -euo pipefail
+
+          DEPLOY_ROOT="/tmp/witsworld-web-deploy-${DEPLOY_SHA}"
+
           az logout >/dev/null 2>&1 || true
-          rm -rf "/tmp/witsworld-web-deploy-${DEPLOY_SHA}"
+
+          if [ -d "$DEPLOY_ROOT" ]; then
+            docker run --rm \
+              -v "$DEPLOY_ROOT:/cleanup" \
+              node:24-bookworm-slim \
+              sh -lc 'rm -rf /cleanup/* /cleanup/.[!.]* /cleanup/..?*'
+
+            rm -rf "$DEPLOY_ROOT"
+          fi
