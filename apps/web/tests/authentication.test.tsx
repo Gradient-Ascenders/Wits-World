@@ -15,6 +15,25 @@ import { useApiAccessToken } from '../src/auth/useApiAccessToken';
 
 const apiBaseUrl = 'https://api.example.test/api/v1';
 
+vi.mock(
+  '../src/components/exploration/map-provider',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../src/components/exploration/map-provider')
+      >();
+
+    return {
+      ...actual,
+      createMapLibreMap: vi.fn(async () => ({
+        onError: vi.fn(),
+        onLoad: vi.fn(),
+        remove: vi.fn(),
+      })),
+    };
+  },
+);
+
 function createAuthValue(
   overrides: Partial<Auth0ContextInterface> = {},
 ): Auth0ContextInterface {
