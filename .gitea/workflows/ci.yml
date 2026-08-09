@@ -4,6 +4,9 @@ on:
   pull_request:
     branches:
       - main
+  push:
+    branches:
+      - main
 
 jobs:
   repository-quality:
@@ -307,3 +310,203 @@ jobs:
         run: |
           az logout >/dev/null 2>&1 || true
           rm -rf "/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
+
+  deploy-web:
+    name: Deploy Web to Azure
+    needs:
+      - deploy-api
+    if: ${{ gitea.event_name == 'push' && gitea.ref == 'refs/heads/main' }}
+    runs-on: azure-deploy
+
+    env:
+      DEPLOY_SHA: ${{ gitea.sha }}
+      GITEA_JOB_TOKEN: ${{ gitea.token }}
+      REPOSITORY_URL: https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World.git
+      AZURE_RESOURCE_GROUP: witsworld-rg
+      AZURE_WEBAPP_NAME: witsworld-web
+
+      VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+      VITE_AUTH0_DOMAIN: ${{ vars.VITE_AUTH0_DOMAIN }}
+      VITE_AUTH0_CLIENT_ID: ${{ vars.VITE_AUTH0_CLIENT_ID }}
+      VITE_AUTH0_AUDIENCE: ${{ vars.VITE_AUTH0_AUDIENCE }}
+
+    steps:
+      - name: Check out exact main commit
+        run: |
+          set -euo pipefail
+
+          DEPLOY_ROOT="/tmp/witsworld-web-deploy-${DEPLOY_SHA}"
+
+          rm -rf "$DEPLOY_ROOT"
+          mkdir -p "$DEPLOY_ROOT/repository"
+
+          cd "$DEPLOY_ROOT/repository"
+
+          git init
+          git remote add origin "$REPOSITORY_URL"
+
+          AUTH_HEADER="$(
+            printf 'x-access-token:%s' "$GITEA_JOB_TOKEN" |
+              base64 -w0
+          )"
+
+          git \
+            -c "http.extraHeader=Authorization: Basic ${AUTH_HEADER}" \
+            fetch --depth=1 origin "$DEPLOY_SHA"
+
+          git checkout --detach FETCH_HEAD
+
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+
+          if [ "$ACTUAL_SHA" != "$DEPLOY_SHA" ]; then
+            echo "Expected commit: $DEPLOY_SHA"
+            echo "Fetched commit:  $ACTUAL_SHA"
+            echo "Refusing to deploy the wrong commit."
+            exit 1
+          fi
+
+      - name: Validate production web configuration
+        run: |
+          set -euo pipefail
+
+          for variable in \
+            VITE_API_BASE_URL \
+            VITE_AUTH0_DOMAIN \
+            VITE_AUTH0_CLIENT_ID \
+            VITE_AUTH0_AUDIENCE
+          do
+            if [ -z "${!variable:-}" ]; then
+              echo "${variable} is not configured."
+              exit 1
+            fi
+          done
+
+      - name: Build production web package
+        run: |
+          set -euo pipefail
+
+          DEPLOY_ROOT="/tmp/witsworld-web-deploy-${DEPLOY_SHA}"
+          cd "$DEPLOY_ROOT/repository"
+
+          docker run --rm \
+            -e VITE_API_BASE_URL \
+            -e VITE_AUTH0_DOMAIN \
+            -e VITE_AUTH0_CLIENT_ID \
+            -e VITE_AUTH0_AUDIENCE \
+            -v "$PWD:/workspace" \
+            -w /workspace \
+            node:24-bookworm-slim \
+            sh -lc '
+              set -eu
+
+              npm install -g npm@11.18.0 >/dev/null
+
+              echo "Node: $(node --version)"
+              echo "npm:  $(npm --version)"
+
+              npm ci
+              npm run build --workspace @wits-world/web
+
+              test -f apps/web/dist/index.html
+              test -d apps/web/dist/assets
+            '
+
+          (
+            cd apps/web/dist
+            zip -qr "$DEPLOY_ROOT/witsworld-web-deploy.zip" .
+          )
+
+          test -s "$DEPLOY_ROOT/witsworld-web-deploy.zip"
+
+          unzip -l "$DEPLOY_ROOT/witsworld-web-deploy.zip" |
+            grep 'index.html'
+
+          unzip -l "$DEPLOY_ROOT/witsworld-web-deploy.zip" |
+            grep 'assets/'
+
+      - name: Authenticate to Azure
+        run: |
+          set -euo pipefail
+
+          az login --identity --output none
+          az account set --subscription "Azure for Students"
+
+          az webapp show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEBAPP_NAME" \
+            --query '{name:name,state:state}' \
+            --output table
+
+      - name: Deploy web application to Azure
+        run: |
+          set -euo pipefail
+
+          DEPLOY_ROOT="/tmp/witsworld-web-deploy-${DEPLOY_SHA}"
+
+          az webapp deploy \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEBAPP_NAME" \
+            --src-path "$DEPLOY_ROOT/witsworld-web-deploy.zip" \
+            --type zip \
+            --clean true \
+            --restart true \
+            --track-status false \
+            --output none
+
+      - name: Verify production website
+        run: |
+          set -euo pipefail
+
+          WEB_HOST="$(
+            az webapp show \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --name "$AZURE_WEBAPP_NAME" \
+              --query defaultHostName \
+              --output tsv
+          )"
+
+          for attempt in $(seq 1 60); do
+            ROOT_STATUS="$(
+              curl \
+                --silent \
+                --show-error \
+                --output /dev/null \
+                --write-out '%{http_code}' \
+                --max-time 10 \
+                "https://${WEB_HOST}/" || true
+            )"
+
+            ABOUT_STATUS="$(
+              curl \
+                --silent \
+                --show-error \
+                --output /dev/null \
+                --write-out '%{http_code}' \
+                --max-time 10 \
+                "https://${WEB_HOST}/about" || true
+            )"
+
+            if [ "$ROOT_STATUS" = "200" ] && [ "$ABOUT_STATUS" = "200" ]; then
+              echo "Production website is healthy."
+              echo "Home:  HTTP ${ROOT_STATUS}"
+              echo "About: HTTP ${ABOUT_STATUS}"
+              exit 0
+            fi
+
+            echo "Website check ${attempt}/60: home=${ROOT_STATUS:-request-error}, about=${ABOUT_STATUS:-request-error}."
+            sleep 10
+          done
+
+          echo "Production website did not become healthy."
+
+          az webapp log startup show \
+            --name "$AZURE_WEBAPP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" || true
+
+          exit 1
+
+      - name: Clean deployment workspace
+        if: ${{ always() }}
+        run: |
+          az logout >/dev/null 2>&1 || true
+          rm -rf "/tmp/witsworld-web-deploy-${DEPLOY_SHA}"
