@@ -1,3 +1,7 @@
+import { copyFile, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
@@ -10,8 +14,15 @@ import {
   runMigrations,
   type MigrationResult,
 } from '../src/database/migrations.js';
+import { getMigrationsDirectory } from '../src/database/paths.js';
+import {
+  checkDatabaseReadiness,
+  type DatabaseReadiness,
+} from '../src/database/readiness.js';
 import { runSeeds } from '../src/database/seeds.js';
+import { createEventDiscoveryService } from '../src/events/event-discovery.js';
 import { createEventEligibilityService } from '../src/events/event-eligibility.js';
+import { evaluateReachabilityWithAccuracy } from '../src/events/location-claim.js';
 
 const DEMO_EVENT_ID = '00000000-0000-4000-8000-000000000018';
 const runIntegrationTests =
@@ -20,6 +31,8 @@ const runIntegrationTests =
 describe.skipIf(!runIntegrationTests)('event database integration', () => {
   let administrationConfig: DatabaseConfig;
   let migrationResult: MigrationResult;
+  let readiness: DatabaseReadiness;
+  let rerunMigrationResult: MigrationResult;
   let temporaryConfig: DatabaseConfig;
   let temporaryDatabaseName: string;
 
@@ -40,9 +53,11 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
     };
 
     migrationResult = await runMigrations(temporaryConfig);
+    readiness = await checkDatabaseReadiness(temporaryConfig);
     await runSeeds(temporaryConfig);
     await runSeeds(temporaryConfig);
-  }, 30_000);
+    rerunMigrationResult = await runMigrations(temporaryConfig);
+  }, 45_000);
 
   afterAll(async () => {
     if (!administrationConfig || !temporaryDatabaseName) {
@@ -60,6 +75,14 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
     expect(migrationResult).toEqual({
       applied: ['0001_enable_postgis.sql', '0002_create_events.sql'],
       skipped: [],
+    });
+    expect(rerunMigrationResult).toEqual({
+      applied: [],
+      skipped: ['0001_enable_postgis.sql', '0002_create_events.sql'],
+    });
+    expect(readiness).toMatchObject({
+      database: temporaryDatabaseName,
+      postgisVersion: expect.stringContaining('POSTGIS='),
     });
 
     await withDatabaseClient(temporaryConfig, async (client) => {
@@ -133,7 +156,24 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
     });
   }, 30_000);
 
-  it('calculates authoritative event eligibility with PostGIS', async () => {
+  it('discovers the seeded event through the database service', async () => {
+    await withDatabaseClient(temporaryConfig, async (client) => {
+      const service = createEventDiscoveryService(client, {
+        clock: () => new Date('2026-08-10T12:00:00.000Z'),
+      });
+
+      await expect(service.list()).resolves.toEqual([
+        expect.objectContaining({
+          availability: 'active',
+          eventId: DEMO_EVENT_ID,
+          radiusMetres: 75,
+          title: 'Sprint 1 Demo - Wits Great Hall',
+        }),
+      ]);
+    });
+  }, 30_000);
+
+  it('produces reachable, unreachable, and ambiguous results from PostGIS distances', async () => {
     const evaluatedAt = new Date('2026-08-10T12:00:00.000Z');
 
     await withDatabaseClient(temporaryConfig, async (client) => {
@@ -162,6 +202,25 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         ],
       );
 
+      const boundaryPoint = await client.query<{
+        latitude: number;
+        longitude: number;
+      }>(
+        `select st_y(projected.location::geometry) as latitude,
+                st_x(projected.location::geometry) as longitude
+           from public.events event
+          cross join lateral (
+            select st_project(event.location, 70, radians(90)) as location
+          ) projected
+          where event.id = $1`,
+        [DEMO_EVENT_ID],
+      );
+      const boundaryCoordinates = boundaryPoint.rows[0];
+
+      if (!boundaryCoordinates) {
+        throw new Error('Expected a projected boundary test point.');
+      }
+
       const service = createEventEligibilityService(client, {
         clock: () => evaluatedAt,
       });
@@ -175,6 +234,11 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         latitude: -26.19205,
         longitude: 28.032,
       });
+      const ambiguousBoundary = await service.evaluate({
+        eventId: DEMO_EVENT_ID,
+        latitude: boundaryCoordinates.latitude,
+        longitude: boundaryCoordinates.longitude,
+      });
 
       expect(eventCentre).toMatchObject({
         outcome: 'evaluated',
@@ -186,16 +250,48 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         eligible: false,
         radiusMetres: 75,
       });
+      expect(ambiguousBoundary).toMatchObject({
+        outcome: 'evaluated',
+        eligible: true,
+        radiusMetres: 75,
+      });
 
       if (
         eventCentre.outcome !== 'evaluated' ||
-        outsideRadius.outcome !== 'evaluated'
+        outsideRadius.outcome !== 'evaluated' ||
+        ambiguousBoundary.outcome !== 'evaluated'
       ) {
         throw new Error('Expected evaluated eligibility results.');
       }
 
       expect(eventCentre.distanceMetres).toBeCloseTo(0, 3);
       expect(outsideRadius.distanceMetres).toBeGreaterThan(75);
+      expect(ambiguousBoundary.distanceMetres).toBeCloseTo(70, 3);
+      expect(
+        evaluateReachabilityWithAccuracy(
+          eventCentre.distanceMetres,
+          eventCentre.radiusMetres,
+          10,
+        ),
+      ).toEqual({ status: 'reachable', reachable: true });
+      expect(
+        evaluateReachabilityWithAccuracy(
+          outsideRadius.distanceMetres,
+          outsideRadius.radiusMetres,
+          10,
+        ),
+      ).toEqual({ status: 'unreachable', reachable: false });
+      expect(
+        evaluateReachabilityWithAccuracy(
+          ambiguousBoundary.distanceMetres,
+          ambiguousBoundary.radiusMetres,
+          10,
+        ),
+      ).toEqual({
+        status: 'retry',
+        reachable: null,
+        reason: 'location_accuracy',
+      });
 
       await expect(
         service.evaluate({
@@ -239,7 +335,96 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
       });
     });
   }, 30_000);
+
+  it('rolls back a failed migration and succeeds on a corrected rerun', async () => {
+    const migrationDirectory = await createRecoveryMigrationDirectory();
+    const recoveryMigrationPath = join(
+      migrationDirectory,
+      '9999_rehearsal_recovery.sql',
+    );
+
+    try {
+      await writeFile(
+        recoveryMigrationPath,
+        `create table public.rehearsal_recovery_marker (id integer primary key);
+select * from public.rehearsal_missing_relation;
+`,
+      );
+
+      await expect(
+        runMigrations(temporaryConfig, migrationDirectory),
+      ).rejects.toThrow();
+
+      await withDatabaseClient(temporaryConfig, async (client) => {
+        const failedState = await client.query<{
+          marker: string | null;
+          migration_count: string;
+        }>(
+          `select to_regclass('public.rehearsal_recovery_marker')::text as marker,
+                  (select count(*)::text
+                     from public.schema_migrations
+                    where name = '9999_rehearsal_recovery.sql') as migration_count`,
+        );
+
+        expect(failedState.rows[0]).toEqual({
+          marker: null,
+          migration_count: '0',
+        });
+      });
+
+      await writeFile(
+        recoveryMigrationPath,
+        'create table public.rehearsal_recovery_marker (id integer primary key);\n',
+      );
+
+      await expect(
+        runMigrations(temporaryConfig, migrationDirectory),
+      ).resolves.toEqual({
+        applied: ['9999_rehearsal_recovery.sql'],
+        skipped: ['0001_enable_postgis.sql', '0002_create_events.sql'],
+      });
+      await runSeeds(temporaryConfig);
+
+      await withDatabaseClient(temporaryConfig, async (client) => {
+        const recoveredState = await client.query<{
+          event_count: string;
+          marker: string | null;
+          migration_count: string;
+        }>(
+          `select to_regclass('public.rehearsal_recovery_marker')::text as marker,
+                  (select count(*)::text
+                     from public.schema_migrations
+                    where name = '9999_rehearsal_recovery.sql') as migration_count,
+                  (select count(*)::text
+                     from public.events
+                    where id = $1) as event_count`,
+          [DEMO_EVENT_ID],
+        );
+
+        expect(recoveredState.rows[0]).toEqual({
+          event_count: '1',
+          marker: 'rehearsal_recovery_marker',
+          migration_count: '1',
+        });
+      });
+    } finally {
+      await rm(migrationDirectory, { force: true, recursive: true });
+    }
+  }, 45_000);
 });
+
+async function createRecoveryMigrationDirectory() {
+  const directory = await mkdtemp(join(tmpdir(), 'wits-world-recovery-'));
+  const migrationsDirectory = getMigrationsDirectory();
+
+  await Promise.all(
+    ['0001_enable_postgis.sql', '0002_create_events.sql'].map((name) =>
+      copyFile(join(migrationsDirectory, name), join(directory, name)),
+    ),
+  );
+
+  return directory;
+}
 
 interface InvalidEventOverrides {
   endsAt?: string;
