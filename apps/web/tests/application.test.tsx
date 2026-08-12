@@ -101,7 +101,7 @@ describe('Wits Quest application shell', () => {
       screen.getByText(/supports authenticated event discovery/i),
     ).toBeVisible();
     expect(
-      screen.getByText(/browser location requests.*still to come/i),
+      screen.getByText(/request a browser location reading/i),
     ).toBeVisible();
     expect(aboutLink).toHaveAttribute('aria-current', 'page');
   });
