@@ -13,7 +13,7 @@ export default defineConfig({
   },
   test: {
     clearMocks: true,
-    css: true,
+    css: false,
     environment: 'jsdom',
     environmentOptions: {
       jsdom: {
