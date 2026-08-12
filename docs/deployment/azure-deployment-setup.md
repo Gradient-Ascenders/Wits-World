@@ -1178,7 +1178,7 @@ Remaining work is limited to items that are either final validation steps or int
 - Merge the Azure continuation branch and verify that both API and Web production deployment jobs pass from `main`.
 - Re-test the live frontend after the first automated web deployment.
 - Validate the full Auth0 login/logout production flow once the application login UI is implemented.
-- Define the production database migration/seed operational procedure as the database evolves.
+- Rehearse and approve the documented production database release procedure before the first database-dependent release.
 - Deploy the documentation site using static hosting once the real Docusaurus site is ready.
 - Review Azure Cost Management periodically for the App Service Plan, runner VM, disk, and networking usage.
 - Consider a custom domain later if required.
@@ -1220,6 +1220,15 @@ Before considering a production release healthy:
 - [ ] `/api/v1/` returned HTTP 200 when smoke-tested.
 - [ ] `CORS_ALLOWED_ORIGIN` matches the exact production web origin.
 - [ ] No secrets appeared in workflow logs.
+
+### Database
+
+- [ ] The database release target and exact database name were confirmed before any write.
+- [ ] The guarded database release procedure completed for the exact release commit.
+- [ ] PostGIS and migration verification passed.
+- [ ] Demonstration seeding was either separately approved and verified or deliberately skipped.
+- [ ] No database connection URL or credential appeared in evidence or logs.
+- [ ] The authenticated deployed event-discovery path returned the intended seeded event when seeding was approved.
 
 ### Web
 
