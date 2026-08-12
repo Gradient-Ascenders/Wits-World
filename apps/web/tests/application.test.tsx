@@ -35,9 +35,17 @@ describe('Wits Quest application shell', () => {
     expect(screen.getByRole('navigation', { name: 'Primary' })).toBeVisible();
     expect(screen.getByRole('main')).toHaveAttribute('id', 'main-content');
     expect(screen.getByRole('contentinfo')).toBeVisible();
-    expect(
-      screen.getByLabelText('Wits Quest home, a Wits World project'),
-    ).toBeVisible();
+    const brandLink = screen.getByLabelText(
+      'Wits Quest home, a Wits World project',
+    );
+    const brandSeal = brandLink.querySelector('img');
+
+    expect(brandLink).toBeVisible();
+    expect(brandSeal).toHaveAttribute('aria-hidden', 'true');
+    expect(brandSeal).toHaveAttribute(
+      'src',
+      expect.stringContaining('wits-world-campus-seal-transparent.svg'),
+    );
     expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute(
       'aria-current',
       'page',

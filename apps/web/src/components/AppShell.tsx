@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Link, useRoute } from 'wouter';
 
 import { AccountControl } from './auth/AccountControl';
+import { CampusSeal } from './branding/CampusSeal';
 
 interface AppShellProps {
   children: ReactNode;
@@ -40,9 +41,7 @@ export function AppShell({ children }: AppShellProps) {
             className="product-name"
             href="/"
           >
-            <span aria-hidden="true" className="product-name__mark">
-              WQ
-            </span>
+            <CampusSeal className="product-name__mark" decorative />
             <span className="product-name__wordmark">
               <span className="product-name__game">Wits Quest</span>
               <span className="product-name__project">
