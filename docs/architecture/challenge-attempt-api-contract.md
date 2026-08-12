@@ -13,7 +13,13 @@ issuance is deliberately deferred to the linked
 which will extend the completed-attempt transaction without allowing the browser
 to choose a reward.
 
-## Approved quiz rules
+## Approved product decisions
+
+The quiz format, thresholds, expiry, retry, and feedback rules below were
+confirmed by the team in the
+[issue #46 product decision record](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/46#issuecomment-2732).
+This contract translates those approved decisions into HTTP behavior; it does
+not independently choose the game rules.
 
 - Each event has one pool of multiple-choice questions.
 - Starting an attempt selects exactly five distinct questions from the pool.
