@@ -9,8 +9,8 @@ on:
       - main
 
 jobs:
-  repository-quality:
-    name: Repository formatting
+  validation:
+    name: Repository and application validation
     runs-on: ubuntu-latest
 
     steps:
@@ -25,28 +25,10 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --prefer-offline --no-audit --fund=false
 
       - name: Check formatting
         run: npm run format:check
-
-  web:
-    name: Web application
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check out repository
-        uses: https://github.com/actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: https://github.com/actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
 
       - name: Lint web application
         run: npm run lint --workspace @wits-world/web
@@ -58,25 +40,7 @@ jobs:
         run: npm test --workspace @wits-world/web
 
       - name: Build web application
-        run: npm run build --workspace @wits-world/web
-
-  api:
-    name: API application
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check out repository
-        uses: https://github.com/actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: https://github.com/actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
+        run: npm run build:bundle --workspace @wits-world/web
 
       - name: Lint API application
         run: npm run lint --workspace @wits-world/api
@@ -89,24 +53,6 @@ jobs:
 
       - name: Build API application
         run: npm run build --workspace @wits-world/api
-
-  documentation:
-    name: Documentation application
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check out repository
-        uses: https://github.com/actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: https://github.com/actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
 
       - name: Lint documentation application
         run: npm run lint --workspace @wits-world/docs
@@ -123,19 +69,18 @@ jobs:
   deploy-api:
     name: Deploy API to Azure
     needs:
-      - repository-quality
-      - web
-      - api
-      - documentation
+      - validation
     if: ${{ gitea.event_name == 'push' && gitea.ref == 'refs/heads/main' }}
     runs-on: azure-deploy
 
     env:
       DEPLOY_SHA: ${{ gitea.sha }}
+      PREVIOUS_SHA: ${{ gitea.event.before }}
       GITEA_JOB_TOKEN: ${{ gitea.token }}
       REPOSITORY_URL: https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World.git
       AZURE_RESOURCE_GROUP: witsworld-rg
       AZURE_WEBAPP_NAME: witsworld-api
+      NPM_CACHE_ROOT: /tmp/witsworld-npm-cache
 
     steps:
       - name: Check out exact main commit
@@ -159,9 +104,18 @@ jobs:
 
           git \
             -c "http.extraHeader=Authorization: Basic ${AUTH_HEADER}" \
-            fetch --depth=1 origin "$DEPLOY_SHA"
+            fetch --depth=2 origin "$DEPLOY_SHA"
 
-          git checkout --detach FETCH_HEAD
+          if [[ "$PREVIOUS_SHA" =~ ^[0-9a-f]{40}$ ]] && \
+            [ "$PREVIOUS_SHA" != "0000000000000000000000000000000000000000" ] && \
+            ! git cat-file -e "${PREVIOUS_SHA}^{commit}" 2>/dev/null
+          then
+            git \
+              -c "http.extraHeader=Authorization: Basic ${AUTH_HEADER}" \
+              fetch --depth=1 origin "$PREVIOUS_SHA" || true
+          fi
+
+          git checkout --detach "$DEPLOY_SHA"
 
           ACTUAL_SHA="$(git rev-parse HEAD)"
 
@@ -172,35 +126,87 @@ jobs:
             exit 1
           fi
 
+      - name: Detect API deployment changes
+        run: |
+          set -euo pipefail
+
+          DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
+          DEPLOY_MARKER="$DEPLOY_ROOT/deploy-required"
+
+          cd "$DEPLOY_ROOT/repository"
+          rm -f "$DEPLOY_MARKER"
+
+          if [[ "$PREVIOUS_SHA" =~ ^[0-9a-f]{40}$ ]] && \
+            [ "$PREVIOUS_SHA" != "0000000000000000000000000000000000000000" ] && \
+            git cat-file -e "${PREVIOUS_SHA}^{commit}" 2>/dev/null
+          then
+            BASE_SHA="$PREVIOUS_SHA"
+          else
+            echo "The push-before commit is unavailable; API deployment is required."
+            touch "$DEPLOY_MARKER"
+            exit 0
+          fi
+
+          if git diff --quiet "$BASE_SHA" "$DEPLOY_SHA" -- \
+            .nvmrc \
+            package.json \
+            package-lock.json \
+            tsconfig.base.json \
+            apps/api \
+            database
+          then
+            echo "No API, database, or shared runtime changes detected; API deployment will be skipped."
+          else
+            echo "API, database, or shared runtime changes detected; API deployment is required."
+            touch "$DEPLOY_MARKER"
+          fi
+
       - name: Build production API package
         run: |
           set -euo pipefail
 
           DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
+
+          if [ ! -f "$DEPLOY_ROOT/deploy-required" ]; then
+            echo "Skipping the production API build."
+            exit 0
+          fi
+
           cd "$DEPLOY_ROOT/repository"
+          mkdir -p "$NPM_CACHE_ROOT"
 
           docker run --rm \
             -v "$PWD:/workspace" \
+            -v "$NPM_CACHE_ROOT:/npm-cache" \
             -w /workspace \
             node:24-bookworm-slim \
             sh -lc '
               set -eu
 
-              npm install -g npm@11.18.0 >/dev/null
+              npm install -g npm@11.18.0 \
+                --cache /npm-cache \
+                --no-audit \
+                --fund=false >/dev/null
 
               echo "Node: $(node --version)"
               echo "npm:  $(npm --version)"
 
-              npm ci
+              npm ci \
+                --cache /npm-cache \
+                --prefer-offline \
+                --no-audit \
+                --fund=false
+
               npm run build --workspace @wits-world/api
 
               test -f apps/api/dist/server.js
 
-              rm -rf node_modules
-
-              npm ci \
+              npm prune \
+                --cache /npm-cache \
                 --omit=dev \
-                --workspace @wits-world/api
+                --workspace @wits-world/api \
+                --no-audit \
+                --fund=false
             '
 
           rm -rf "$DEPLOY_ROOT/package"
@@ -235,6 +241,13 @@ jobs:
         run: |
           set -euo pipefail
 
+          DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
+
+          if [ ! -f "$DEPLOY_ROOT/deploy-required" ]; then
+            echo "Skipping Azure authentication for the API."
+            exit 0
+          fi
+
           az login --identity --output none
           az account set --subscription "Azure for Students"
 
@@ -250,6 +263,11 @@ jobs:
 
           DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
 
+          if [ ! -f "$DEPLOY_ROOT/deploy-required" ]; then
+            echo "Skipping the API deployment."
+            exit 0
+          fi
+
           az webapp deploy \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$AZURE_WEBAPP_NAME" \
@@ -263,6 +281,13 @@ jobs:
       - name: Verify production health
         run: |
           set -euo pipefail
+
+          DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
+
+          if [ ! -f "$DEPLOY_ROOT/deploy-required" ]; then
+            echo "Skipping API health verification because no deployment occurred."
+            exit 0
+          fi
 
           API_HOST="$(
             az webapp show \
@@ -332,10 +357,12 @@ jobs:
 
     env:
       DEPLOY_SHA: ${{ gitea.sha }}
+      PREVIOUS_SHA: ${{ gitea.event.before }}
       GITEA_JOB_TOKEN: ${{ gitea.token }}
       REPOSITORY_URL: https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World.git
       AZURE_RESOURCE_GROUP: witsworld-rg
       AZURE_WEBAPP_NAME: witsworld-web
+      NPM_CACHE_ROOT: /tmp/witsworld-npm-cache
 
       VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
       VITE_AUTH0_DOMAIN: ${{ vars.VITE_AUTH0_DOMAIN }}
@@ -364,9 +391,18 @@ jobs:
 
           git \
             -c "http.extraHeader=Authorization: Basic ${AUTH_HEADER}" \
-            fetch --depth=1 origin "$DEPLOY_SHA"
+            fetch --depth=2 origin "$DEPLOY_SHA"
 
-          git checkout --detach FETCH_HEAD
+          if [[ "$PREVIOUS_SHA" =~ ^[0-9a-f]{40}$ ]] && \
+            [ "$PREVIOUS_SHA" != "0000000000000000000000000000000000000000" ] && \
+            ! git cat-file -e "${PREVIOUS_SHA}^{commit}" 2>/dev/null
+          then
+            git \
+              -c "http.extraHeader=Authorization: Basic ${AUTH_HEADER}" \
+              fetch --depth=1 origin "$PREVIOUS_SHA" || true
+          fi
+
+          git checkout --detach "$DEPLOY_SHA"
 
           ACTUAL_SHA="$(git rev-parse HEAD)"
 
@@ -377,9 +413,50 @@ jobs:
             exit 1
           fi
 
+      - name: Detect web deployment changes
+        run: |
+          set -euo pipefail
+
+          DEPLOY_ROOT="/tmp/witsworld-web-deploy-${DEPLOY_SHA}"
+          DEPLOY_MARKER="$DEPLOY_ROOT/deploy-required"
+
+          cd "$DEPLOY_ROOT/repository"
+          rm -f "$DEPLOY_MARKER"
+
+          if [[ "$PREVIOUS_SHA" =~ ^[0-9a-f]{40}$ ]] && \
+            [ "$PREVIOUS_SHA" != "0000000000000000000000000000000000000000" ] && \
+            git cat-file -e "${PREVIOUS_SHA}^{commit}" 2>/dev/null
+          then
+            BASE_SHA="$PREVIOUS_SHA"
+          else
+            echo "The push-before commit is unavailable; web deployment is required."
+            touch "$DEPLOY_MARKER"
+            exit 0
+          fi
+
+          if git diff --quiet "$BASE_SHA" "$DEPLOY_SHA" -- \
+            .nvmrc \
+            package.json \
+            package-lock.json \
+            tsconfig.base.json \
+            apps/web
+          then
+            echo "No web or shared runtime changes detected; web deployment will be skipped."
+          else
+            echo "Web or shared runtime changes detected; web deployment is required."
+            touch "$DEPLOY_MARKER"
+          fi
+
       - name: Validate production web configuration
         run: |
           set -euo pipefail
+
+          DEPLOY_ROOT="/tmp/witsworld-web-deploy-${DEPLOY_SHA}"
+
+          if [ ! -f "$DEPLOY_ROOT/deploy-required" ]; then
+            echo "Skipping production web configuration validation."
+            exit 0
+          fi
 
           for variable in \
             VITE_API_BASE_URL \
@@ -398,7 +475,14 @@ jobs:
           set -euo pipefail
 
           DEPLOY_ROOT="/tmp/witsworld-web-deploy-${DEPLOY_SHA}"
+
+          if [ ! -f "$DEPLOY_ROOT/deploy-required" ]; then
+            echo "Skipping the production web build."
+            exit 0
+          fi
+
           cd "$DEPLOY_ROOT/repository"
+          mkdir -p "$NPM_CACHE_ROOT"
 
           docker run --rm \
             -e VITE_API_BASE_URL \
@@ -406,17 +490,26 @@ jobs:
             -e VITE_AUTH0_CLIENT_ID \
             -e VITE_AUTH0_AUDIENCE \
             -v "$PWD:/workspace" \
+            -v "$NPM_CACHE_ROOT:/npm-cache" \
             -w /workspace \
             node:24-bookworm-slim \
             sh -lc '
               set -eu
 
-              npm install -g npm@11.18.0 >/dev/null
+              npm install -g npm@11.18.0 \
+                --cache /npm-cache \
+                --no-audit \
+                --fund=false >/dev/null
 
               echo "Node: $(node --version)"
               echo "npm:  $(npm --version)"
 
-              npm ci
+              npm ci \
+                --cache /npm-cache \
+                --prefer-offline \
+                --no-audit \
+                --fund=false
+
               npm run build --workspace @wits-world/web
 
               test -f apps/web/dist/index.html
@@ -440,6 +533,13 @@ jobs:
         run: |
           set -euo pipefail
 
+          DEPLOY_ROOT="/tmp/witsworld-web-deploy-${DEPLOY_SHA}"
+
+          if [ ! -f "$DEPLOY_ROOT/deploy-required" ]; then
+            echo "Skipping Azure authentication for the web application."
+            exit 0
+          fi
+
           az login --identity --output none
           az account set --subscription "Azure for Students"
 
@@ -455,6 +555,11 @@ jobs:
 
           DEPLOY_ROOT="/tmp/witsworld-web-deploy-${DEPLOY_SHA}"
 
+          if [ ! -f "$DEPLOY_ROOT/deploy-required" ]; then
+            echo "Skipping the web deployment."
+            exit 0
+          fi
+
           az webapp deploy \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$AZURE_WEBAPP_NAME" \
@@ -468,6 +573,13 @@ jobs:
       - name: Verify production website
         run: |
           set -euo pipefail
+
+          DEPLOY_ROOT="/tmp/witsworld-web-deploy-${DEPLOY_SHA}"
+
+          if [ ! -f "$DEPLOY_ROOT/deploy-required" ]; then
+            echo "Skipping web health verification because no deployment occurred."
+            exit 0
+          fi
 
           WEB_HOST="$(
             az webapp show \

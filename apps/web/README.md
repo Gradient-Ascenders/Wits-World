@@ -219,7 +219,9 @@ empty, retry, map-provider failure, map-independent event presentation,
 user-triggered geolocation, location claim construction, authoritative
 eligibility outcomes, permission and timeout failures, honest preview language,
 safe return paths, configuration failures, and the render-error fallback.
-Automated checks do not replace manual browser and keyboard testing.
+Vitest does not transform application stylesheets, keeping these jsdom tests
+focused on semantics and behaviour without expensive CSS matching. Automated
+checks do not replace manual visual, responsive, browser, and keyboard testing.
 
 ### Manual browser checks
 

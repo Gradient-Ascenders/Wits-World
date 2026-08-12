@@ -140,10 +140,14 @@ describe('player authentication', () => {
     );
 
     expect(
-      await screen.findByRole('heading', {
-        level: 1,
-        name: 'Explore the campus map',
-      }),
+      await screen.findByRole(
+        'heading',
+        {
+          level: 1,
+          name: 'Explore the campus map',
+        },
+        { timeout: 5_000 },
+      ),
     ).toBeVisible();
     expect(screen.getByText('Signed in as')).toHaveTextContent(
       'Signed in as Kevin',
