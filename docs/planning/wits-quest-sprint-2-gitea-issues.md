@@ -23,13 +23,13 @@ the dependency lists below are a readable planning snapshot.
 
 ## Workload summary
 
-| Member             | Primary Sprint 2 work                                                  |    Estimate |
-| ------------------ | ---------------------------------------------------------------------- | ----------: |
-| `kevin-ebrahim`    | Product decisions, challenge/collection/deck/battle UI, author console |     13 days |
-| `Tyron-Van-Tonder` | Identity, challenge APIs, collection API, author APIs                  |     11 days |
-| `Uzair`            | Challenge/reward migrations, atomic rewards, match persistence         |      7 days |
-| `Caleb_P`          | Card/deck/battle rules, seed content, release quality                  |     12 days |
-| **Total**          |                                                                        | **43 days** |
+| Member             | Primary Sprint 2 work                                                                        |    Estimate |
+| ------------------ | -------------------------------------------------------------------------------------------- | ----------: |
+| `kevin-ebrahim`    | Product decisions, challenge/collection/deck/battle UI, author console                       |     13 days |
+| `Tyron-Van-Tonder` | Identity, challenge APIs, collection API, author APIs                                        |     11 days |
+| `Uzair`            | Challenge/reward migrations, card catalogue, atomic rewards, match persistence, seed content |     11 days |
+| `Caleb_P`          | Deck and battle rules, release quality                                                       |      8 days |
+| **Total**          |                                                                                              | **43 days** |
 
 The total exceeds the original approximately five-day allocation per member.
 Sprint planning should split the dependency graph across iterations rather than
@@ -48,7 +48,7 @@ silently reducing testing, security, accessibility, or documentation scope.
 | `S2-07`     | [#68](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/68) | Build the timed challenge and result player experience          | `kevin-ebrahim`    |   2 days |
 | `S2-08`     | [#69](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/69) | Expose the authenticated player card collection API             | `Tyron-Van-Tonder` | 1.5 days |
 | `S2-09`     | [#70](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/70) | Build the card collection and starter selection experience      | `kevin-ebrahim`    |   2 days |
-| `S2-10`     | [#71](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/71) | Implement the Basic card catalogue and starter grant rules      | `Caleb_P`          |   2 days |
+| `S2-10`     | [#71](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/71) | Implement the Basic card catalogue and starter grant rules      | `Uzair`            |   2 days |
 | `S2-11`     | [#72](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/72) | Implement saved deck persistence, validation, and selection API | `Caleb_P`          | 2.5 days |
 | `S2-12`     | [#73](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/73) | Build the saved deck management and selection experience        | `kevin-ebrahim`    |   2 days |
 | `S2-13`     | [#74](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/74) | Implement deterministic Basic CPU battle rules                  | `Caleb_P`          | 2.5 days |
@@ -56,7 +56,7 @@ silently reducing testing, security, accessibility, or documentation scope.
 | `S2-15`     | [#76](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/76) | Build the CPU battle and completed match history experience     | `kevin-ebrahim`    | 2.5 days |
 | `S2-16`     | [#77](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/77) | Implement protected author content APIs                         | `Tyron-Van-Tonder` |   3 days |
 | `S2-17`     | [#78](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/78) | Build the protected Basic author console                        | `kevin-ebrahim`    |   3 days |
-| `S2-18`     | [#79](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/79) | Seed a demonstrable and verified Basic game journey             | `Caleb_P`          |   2 days |
+| `S2-18`     | [#79](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/79) | Seed a demonstrable and verified Basic game journey             | `Uzair`            |   2 days |
 | `S2-19`     | [#80](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/80) | Validate, harden, document, and release the complete Basic tier | `Caleb_P`          |   3 days |
 
 ---
@@ -319,7 +319,7 @@ Let players choose their starter type and browse every owned card copy.
 - **Gitea:** [#71](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/71)
 - **Project column:** `Backlog`
 - **Milestone:** `Sprint 2`
-- **Assignee:** `Caleb_P - Cards, Game Systems and Quality Lead`
+- **Assignee:** `Uzair - Data and Infrastructure Lead`
 - **Reviewer:** `Uzair - Data and Infrastructure Lead`
 - **Labels:** `High Priority`, `backend`, `database`, `documentation`, `feature`, `testing`
 - **Estimate:** `2 days`
@@ -532,7 +532,7 @@ Provide authors a protected interface for managing complete playable content.
 - **Gitea:** [#79](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/79)
 - **Project column:** `Backlog`
 - **Milestone:** `Sprint 2`
-- **Assignee:** `Caleb_P - Cards, Game Systems and Quality Lead`
+- **Assignee:** `Uzair - Data and Infrastructure Lead`
 - **Reviewer:** `kevin-ebrahim - Product and Player Experience Lead`
 - **Labels:** `High Priority`, `database`, `documentation`, `feature`, `research`, `testing`
 - **Estimate:** `2 days`
