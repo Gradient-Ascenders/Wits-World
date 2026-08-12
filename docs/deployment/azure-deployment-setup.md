@@ -808,9 +808,12 @@ Deploy API to Azure
 Deploy Web to Azure
 ```
 
-Both jobs compare the pushed commit with the push event's preceding commit. If
-that commit is unavailable, the first parent is used. If no safe comparison is
-available, the workflow deploys conservatively.
+Both jobs compare the pushed commit with the push event's `before` commit. The
+workflow uses that commit only when it is a valid, available Git commit. If the
+event omits it, supplies the all-zero SHA, or the commit cannot be fetched, the
+workflow deploys conservatively. It does not substitute the pushed commit's
+first parent because that parent may cover only the final commit in a
+multi-commit push.
 
 Documentation-only changes therefore complete validation without installing
 deployment dependencies, authenticating to Azure, restarting either App
@@ -987,13 +990,13 @@ This ensures that successful ZIP upload alone is not considered a successful pro
 Expected jobs:
 
 ```text
-Repository formatting       PASS
-Web application             PASS
-API application             PASS
-Documentation application   PASS
-Deploy API to Azure         SKIPPED
-Deploy Web to Azure         SKIPPED
+Repository and application validation   PASS
+Deploy API to Azure                     SKIPPED
+Deploy Web to Azure                     SKIPPED
 ```
+
+The validation job still exposes separately named formatting, Web, API, and
+Documentation steps so a failure identifies the affected validation area.
 
 Production must not be modified by a pull-request workflow.
 
@@ -1002,30 +1005,37 @@ Production must not be modified by a pull-request workflow.
 Expected jobs:
 
 ```text
-Repository formatting       PASS
-Web application             PASS
-API application             PASS
-Documentation application   PASS
-Deploy API to Azure         PASS
-Deploy Web to Azure         PASS
+Repository and application validation   PASS
+Deploy API to Azure                     PASS
+Deploy Web to Azure                     PASS
 ```
+
+Each deployment job passes after either completing its application deployment
+or safely skipping all build, authentication, deployment, and health-check
+work when the push comparison proves that application is unaffected.
 
 Expected deployment order:
 
 ```text
 Check out exact main commit
-Build production API package
-Authenticate to Azure
-Deploy API to Azure
-Verify production API health
+Detect API deployment changes
+├── API unaffected: skip remaining API deployment work
+└── API affected or comparison unavailable:
+    ├── Build and prune production API package
+    ├── Authenticate to Azure
+    ├── Deploy API to Azure
+    └── Verify production API health
 Clean API deployment workspace
         ↓
 Check out exact main commit
-Validate production web configuration
-Build production web package
-Authenticate to Azure
-Deploy web application to Azure
-Verify production website
+Detect web deployment changes
+├── Web unaffected: skip remaining web deployment work
+└── Web affected or comparison unavailable:
+    ├── Validate production web configuration
+    ├── Build production web package
+    ├── Authenticate to Azure
+    ├── Deploy web application to Azure
+    └── Verify production website
 Clean web deployment workspace
 ```
 
