@@ -82,29 +82,17 @@ location-history feature.
 - Automated tests mock browser and API boundaries. They do not validate Auth0
   tenant settings, real-device accuracy, or field conditions on campus.
 
-## Manual mobile evidence
+## Field-test evidence and current limitation
 
-Use a real phone with the deployed HTTPS application and API, an authenticated
-development player, and the active Sprint 1 seeded event.
+The controlled real-device procedure, sanitised results record, and threshold
+decision status for Sprint 1 are maintained in
+[the location eligibility field-test protocol](location-eligibility-field-test.md).
 
-1. Open `/explore` and confirm that no location prompt appears before selecting
-   **Check reachability**.
-2. Capture the active event and action at a narrow mobile width.
-3. Select the action, grant permission, and capture the resulting reachable,
-   unreachable, or safe retry state exactly as observed.
-4. Select **Check again** and confirm that the browser performs another one-shot
-   request rather than continuously updating the page.
-5. Reset the site's location permission, deny the next request, and confirm that
-   the explanation and retry action remain readable while the map-independent
-   event information stays available.
-6. Navigate with a Bluetooth keyboard or the platform's equivalent accessibility
-   controls and confirm visible focus and an understandable announcement for the
-   status change.
-7. Record the device, operating-system version, browser/version, route, observed
-   permission state, and actual API outcome. Do not include tokens or precise
-   coordinates in screenshots or notes.
-8. Store review images under `.pr-screenshots/issue-21/` and attach them to the
-   pull request without committing the folder.
+As of 12 August 2026, no real-device campus observations are recorded in this
+repository. The seeded `75 m` radius, two-minute claim freshness value, and
+accuracy handling therefore remain provisional. Automated tests verify the
+browser/API contract but cannot calibrate these values for real campus
+conditions.
 
 The preceding document was planned, generated, and edited with the assistance
 of: Codex-CLI[GPT-5].
