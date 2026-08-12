@@ -9,6 +9,7 @@
     "db:check:test": "npm run build && node dist/database/check.js --test",
     "db:migrate": "npm run build && node dist/database/migrate.js",
     "db:migrate:test": "npm run build && node dist/database/migrate.js --test",
+    "db:release": "npm run build && node dist/database/release.js",
     "db:seed": "npm run build && node dist/database/seed.js",
     "db:seed:test": "npm run build && node dist/database/seed.js --test",
     "dev": "tsx watch src/server.ts",

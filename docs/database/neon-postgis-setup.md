@@ -120,6 +120,27 @@ npm run db:check:test --workspace @wits-world/api
 The readiness check connects using environment configuration and queries
 `postgis_full_version()`. If PostGIS is missing, run migrations first.
 
+## Release procedure
+
+The individual development and test commands above remain useful during local
+work. Preparing a release target uses the guarded
+[Sprint 1 database release procedure](database-release-procedure.md), which adds
+readiness-before-write, exact database-name confirmation, post-migration
+verification, and a separate demonstration-seed decision.
+
+The release command is not part of CI and does not run automatically during an
+Azure deployment:
+
+```bash
+npm run db:release --workspace @wits-world/api -- \
+  --target test \
+  --confirm-database <test-database-name> \
+  --seed-demo-event
+```
+
+Use the production target only with explicit release authority. Never substitute
+`DATABASE_URL` for `TEST_DATABASE_URL` during isolated rehearsal.
+
 ## Troubleshooting
 
 - `password authentication failed`: reset the Neon role password and update the
@@ -131,4 +152,4 @@ The readiness check connects using environment configuration and queries
   database or branch.
 
 The preceding document was generated and edited with the assistance of:
-Codex-CLI[GPT-5].
+Codex-CLI[GPT-5] and Codex[GPT-5].
