@@ -11,6 +11,12 @@ The HTTP behavior is defined by the
 This design extends the existing `events` relation; it does not replace or alter
 the Sprint 1 event columns and eligibility rules.
 
+The catalogue vocabulary, duplicate-ownership policy, coin bands, reward odds,
+and selection behavior used below were confirmed by the team in the
+[issue #49 product decision record](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/49#issuecomment-2748).
+They are inputs to this persistence proposal rather than rules chosen by the
+schema design.
+
 Decks, battles, selling, evolution, and starter-card assignment remain future
 work. The schema keeps enough identity and ownership information to add those
 features without treating a card definition as an owned card.
