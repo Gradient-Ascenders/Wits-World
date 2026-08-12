@@ -787,16 +787,6 @@
 }
 
 @media (min-width: 48rem) {
-  .hero {
-    min-height: 39rem;
-    grid-template-columns: minmax(0, 1.05fr) minmax(22rem, 0.95fr);
-    gap: clamp(var(--space-7), 6vw, 6rem);
-  }
-
-  .hero-map {
-    min-height: 34rem;
-  }
-
   .journey-stages {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -859,6 +849,16 @@
 }
 
 @media (min-width: 64rem) {
+  .hero {
+    min-height: 39rem;
+    grid-template-columns: minmax(0, 1.05fr) minmax(22rem, 0.95fr);
+    gap: clamp(var(--space-7), 6vw, 6rem);
+  }
+
+  .hero-map {
+    min-height: 34rem;
+  }
+
   .collection-section {
     grid-template-columns: minmax(0, 0.9fr) minmax(24rem, 1.1fr);
     gap: clamp(var(--space-7), 8vw, 7rem);
