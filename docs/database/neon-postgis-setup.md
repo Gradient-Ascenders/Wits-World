@@ -99,9 +99,12 @@ npm run test:database --workspace @wits-world/api
 ```
 
 The test creates a uniquely named temporary database, applies all migrations,
-runs the seed twice, checks constraints and indexing, and drops only that
-temporary database in cleanup. The configured test database itself is not
-dropped or cleared.
+runs migrations and seeds repeatedly, checks discovery and accuracy-aware
+PostGIS eligibility, rehearses a transactional migration failure and recovery,
+and drops only that temporary database in cleanup. The configured test database
+itself is not dropped or cleared. Follow the
+[PostGIS recovery rehearsal](postgis-recovery-rehearsal.md) when collecting
+release evidence.
 
 ## Check readiness
 
@@ -153,4 +156,4 @@ Use the production target only with explicit release authority. Never substitute
   database or branch.
 
 The preceding document was generated and edited with the assistance of:
-Codex-CLI[GPT-5] and Codex[GPT-5].
+Codex-CLI[GPT-5], Codex[GPT-5], and Codex[GPT-5.6 Sol].

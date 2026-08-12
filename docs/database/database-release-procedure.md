@@ -69,6 +69,10 @@ Run the database integration suite against the isolated test target:
 npm run test:database --workspace @wits-world/api
 ```
 
+Use the separate [PostGIS recovery rehearsal](postgis-recovery-rehearsal.md) to
+validate event discovery, accuracy-aware eligibility, transactional failure,
+and corrected rerun behaviour in the disposable database.
+
 Store sanitised output outside the repository, for example under `/tmp`. Review
 it before attaching it to the issue or pull request. Evidence may include target
 type, database name, migration filenames and counts, PostGIS version, and test
@@ -142,4 +146,4 @@ subject to the selected Neon plan and are not created by this procedure.
 - authenticated deployed-event verification.
 
 This procedure was planned, generated, edited, and verified with the assistance
-of Codex[GPT-5].
+of Codex[GPT-5] and Codex[GPT-5.6 Sol].

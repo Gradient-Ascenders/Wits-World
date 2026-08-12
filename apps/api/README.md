@@ -140,6 +140,10 @@ npm run db:release --workspace @wits-world/api -- \
 See the
 [Sprint 1 database release procedure](../../docs/database/database-release-procedure.md)
 for approval, production, verification, evidence, and recovery requirements.
+Use the
+[PostGIS recovery rehearsal](../../docs/database/postgis-recovery-rehearsal.md)
+to prove fresh setup, idempotent reruns, eligibility outcomes, and transactional
+failure recovery against a disposable test database.
 
 ### Versioned API root
 
