@@ -766,16 +766,20 @@ Authentication UI/login-flow validation is deferred until the application login 
 
 ## 18. Continuous Integration
 
-The repository has four independent CI jobs:
+The repository has one container-isolated validation job:
 
 ```text
-Repository formatting
-Web application
-API application
-Documentation application
+Repository and application validation
 ```
 
-These run using Docker-backed `ubuntu-latest` jobs on the self-hosted Gitea runner.
+The job checks out and installs the npm workspace once, then runs independently
+named formatting, Web, API, and Documentation steps. This preserves clear
+application-specific failures without repeating checkout, Node setup, cache
+restore, and `npm ci` four times on the resource-constrained runner.
+
+The validation job uses the Docker-backed `ubuntu-latest` label on the
+self-hosted Gitea runner. The host-only `azure-deploy` label remains exclusive
+to post-validation production deployment.
 
 The workflow runs for:
 
@@ -789,7 +793,9 @@ push:
     - main
 ```
 
-This allows pull requests to be validated without deployment and allows merges/pushes to `main` to trigger production deployment after validation succeeds.
+This allows pull requests to be validated without deployment and allows
+merges/pushes to `main` to evaluate production deployment only after validation
+succeeds.
 
 ---
 
@@ -802,31 +808,49 @@ Deploy API to Azure
 Deploy Web to Azure
 ```
 
+Both jobs compare the pushed commit with the push event's preceding commit. If
+that commit is unavailable, the first parent is used. If no safe comparison is
+available, the workflow deploys conservatively.
+
+Documentation-only changes therefore complete validation without installing
+deployment dependencies, authenticating to Azure, restarting either App
+Service, or running unnecessary production health polling.
+
 ### 19.1 API deployment
 
-The API deployment depends on all four CI jobs.
+The API deployment depends on the validation job.
 
 Conceptually:
 
 ```text
 Push to main
       │
-      ├── Repository formatting
-      ├── Web application
-      ├── API application
-      └── Documentation application
-              │
-              │ all successful
+      └── Repository and application validation
+              │ success
               ▼
         Deploy API to Azure
               │
               ├── Fetch exact main commit
-              ├── Build production API
-              ├── Package runtime files
-              ├── az login --identity
-              ├── Deploy ZIP
-              └── Verify /health
+              ├── Compare API-relevant paths
+              ├── Skip when the API is unaffected
+              └── When required:
+                  ├── Build production API
+                  ├── Prune development dependencies
+                  ├── Package runtime files
+                  ├── az login --identity
+                  ├── Deploy ZIP
+                  └── Verify /health
 ```
+
+API deployment is required when the comparison includes changes under
+`apps/api` or `database`, or changes to `.nvmrc`, `package.json`,
+`package-lock.json`, or `tsconfig.base.json`.
+
+The build container reuses the host's `/tmp/witsworld-npm-cache` as npm's
+content cache. It still runs a clean, lockfile-controlled install. After the API
+build, `npm prune --omit=dev --workspace @wits-world/api` converts that install
+to the production dependency set instead of deleting `node_modules` and
+performing a second clean install.
 
 The deployment condition is:
 
@@ -846,14 +870,22 @@ Deploy API to Azure
 Deploy Web to Azure
         │
         ├── Fetch exact main commit
-        ├── Validate Vite build variables
-        ├── Build frontend in Node Docker container
-        ├── Create ZIP on Linux
-        ├── az login --identity
-        ├── Deploy ZIP
-        ├── Verify /
-        └── Verify /about
+        ├── Compare web-relevant paths
+        ├── Skip when the web application is unaffected
+        └── When required:
+            ├── Validate Vite build variables
+            ├── Build frontend in Node Docker container
+            ├── Create ZIP on Linux
+            ├── az login --identity
+            ├── Deploy ZIP
+            ├── Verify /
+            └── Verify /about
 ```
+
+Web deployment is required when the comparison includes changes under
+`apps/web`, or changes to `.nvmrc`, `package.json`, `package-lock.json`, or
+`tsconfig.base.json`. Its build container uses the same persistent npm content
+cache as the API deployment.
 
 The frontend package is created from the **contents** of `apps/web/dist`, so Azure receives:
 
@@ -868,7 +900,9 @@ rather than a nested `dist` directory.
 
 ```text
 Pull request -> CI runs -> production deployment skipped
-Push/merge to main -> CI runs -> API deployment -> web deployment
+Push/merge to main -> CI runs -> API change check -> Web change check
+Affected application -> build -> deploy -> health verification
+Unaffected application -> deployment steps skipped
 ```
 
 ---
@@ -900,7 +934,8 @@ No Azure passwords or publish profiles stored in Gitea
 Managed identity scoped only to witsworld-api and witsworld-web
 Normal CI container access to Azure IMDS blocked
 Deployment allowed only for pushes to main
-Deployment waits for required CI jobs
+Deployment waits for the required validation job
+Missing comparison data triggers deployment rather than an unsafe skip
 Main branch protected through PR workflow
 Frontend build values stored as Gitea Variables
 Temporary deployment workspaces removed after jobs complete
@@ -1304,6 +1339,7 @@ This document was drafted and updated with assistance from:
 
 ```text
 ChatGPT-Web[GPT-5.6 Sol]
+Codex-CLI[GPT-5]
 ```
 
 Review the document against the current repository and Azure configuration before committing it. Keep the declaration if required by the project's AI attribution policy.
