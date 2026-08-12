@@ -125,8 +125,9 @@ The readiness check connects using environment configuration and queries
 The individual development and test commands above remain useful during local
 work. Preparing a release target uses the guarded
 [Sprint 1 database release procedure](database-release-procedure.md), which adds
-readiness-before-write, exact database-name confirmation, post-migration
-verification, and a separate demonstration-seed decision.
+a read-only connection and PostGIS availability inspection before writes, exact
+database-name confirmation, installed-PostGIS readiness verification after
+migrations, and a separate demonstration-seed decision.
 
 The release command is not part of CI and does not run automatically during an
 Azure deployment:

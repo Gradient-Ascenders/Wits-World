@@ -28,7 +28,7 @@ const readiness = {
 };
 
 describe('database release procedure', () => {
-  it('runs migrations, readiness, optional seeding, and verification in order', async () => {
+  it('runs migrations before installed-PostGIS readiness, optional seeding, and verification', async () => {
     const stages: string[] = [];
     const onInspection = vi.fn(() => stages.push('inspection-reported'));
     const inspectTarget = vi.fn(async () => {
