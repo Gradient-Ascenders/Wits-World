@@ -15,6 +15,7 @@ export default defineConfig({
     clearMocks: true,
     css: true,
     environment: 'jsdom',
+    fileParallelism: false,
     environmentOptions: {
       jsdom: {
         url: 'http://localhost/',

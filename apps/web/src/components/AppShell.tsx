@@ -42,10 +42,11 @@ export function AppShell({ children }: AppShellProps) {
             href="/"
           >
             <CampusSeal className="product-name__mark" decorative />
-            <span className="product-name__wordmark">
-              <span className="product-name__game">Wits Quest</span>
-              <span className="product-name__project">
-                A Wits World project
+            <span className="product-name__wordmark" aria-hidden="true">
+              <span className="product-name__title">Wits World</span>
+              <span className="product-name__tagline">
+                Explore <span aria-hidden="true">·</span> Discover{' '}
+                <span aria-hidden="true">·</span> Achieve
               </span>
             </span>
           </Link>
