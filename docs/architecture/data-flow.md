@@ -188,6 +188,10 @@ After Sprint 1, the same authority model will be extended to:
 
 These later operations remain server-authoritative.
 
+The proposed start, resume, answer, timeout, and player-safe response boundaries
+for the first MCQ format are defined in the
+[challenge and attempt API contract](challenge-attempt-api-contract.md).
+
 ---
 
 The preceding document was planned and generated with the assistance of:

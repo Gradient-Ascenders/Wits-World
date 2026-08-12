@@ -686,6 +686,14 @@ live database.
 The existing PostGIS integration tests separately verify authoritative distance,
 radius, publication, and availability behaviour against PostgreSQL/PostGIS.
 
+## Proposed challenge API
+
+The Sprint 2 MCQ start, resume, answer-locking, timeout, and player-safe feedback
+contract is documented in the
+[challenge and attempt API contract](../../docs/architecture/challenge-attempt-api-contract.md).
+It is a reviewed proposal, not an implemented endpoint set. Accepted answers,
+scores, and eventual rewards remain server-authoritative.
+
 ## Error-response model
 
 Errors use a consistent JSON structure:
