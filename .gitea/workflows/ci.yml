@@ -141,10 +141,8 @@ jobs:
             git cat-file -e "${PREVIOUS_SHA}^{commit}" 2>/dev/null
           then
             BASE_SHA="$PREVIOUS_SHA"
-          elif git rev-parse "${DEPLOY_SHA}^" >/dev/null 2>&1; then
-            BASE_SHA="$(git rev-parse "${DEPLOY_SHA}^")"
           else
-            echo "No comparison commit is available; API deployment is required."
+            echo "The push-before commit is unavailable; API deployment is required."
             touch "$DEPLOY_MARKER"
             exit 0
           fi
@@ -430,10 +428,8 @@ jobs:
             git cat-file -e "${PREVIOUS_SHA}^{commit}" 2>/dev/null
           then
             BASE_SHA="$PREVIOUS_SHA"
-          elif git rev-parse "${DEPLOY_SHA}^" >/dev/null 2>&1; then
-            BASE_SHA="$(git rev-parse "${DEPLOY_SHA}^")"
           else
-            echo "No comparison commit is available; web deployment is required."
+            echo "The push-before commit is unavailable; web deployment is required."
             touch "$DEPLOY_MARKER"
             exit 0
           fi
