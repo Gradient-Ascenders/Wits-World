@@ -761,12 +761,39 @@ Use restrained decorative motifs such as:
 
 Do not allow decorative elements to compete with interface controls.
 
-**Confirm:** Rights and approval for use of the official Wits crest, logos,
-photography and branding must be confirmed before they are included in the
-public application.
+The supplied Wits World Campus Seal is approved project branding for the public
+application as recorded below. This approval does not extend to the official
+Wits University crest, logos, photography or other university branding, whose
+rights and approval must still be confirmed before use.
 
 Generated mockups are references only and must not be treated as approved
 university branding.
+
+### 16.1 Wits World Campus Seal
+
+**Approved project asset:** The Wits World Campus Seal supplied on 12 August
+2026 is the selected project logo. Treat both canonical SVG variants as final
+artwork:
+
+- `apps/web/src/assets/branding/wits-world-campus-seal-transparent.svg` is for
+  headers and other dark application surfaces;
+- `apps/web/src/assets/branding/wits-world-campus-seal.svg` includes its own
+  dark backing and is for the browser favicon or contexts where the surrounding
+  background cannot be controlled.
+
+Preserve the SVG vector data, gradients, colours, geometry, embedded provenance
+metadata and `321:347` aspect ratio. Render the asset through an ordinary image
+element rather than copying its paths into JSX. Use a width with `height: auto`
+and do not crop, stretch, recolour, animate or add strong effects.
+
+For normal application surfaces, keep the seal at least `2.75rem` wide; favicon
+rendering is the exception. Supply meaningful alternative text when the seal is
+the only branding label. Use empty alternative text and `aria-hidden="true"`
+when it duplicates an already labelled brand link.
+
+The canonical files retain embedded C2PA provenance metadata identifying
+Recraft AI as the asset-generation source. Do not strip or rewrite that metadata
+without a demonstrated technical reason and explicit approval.
 
 ---
 
@@ -913,7 +940,7 @@ and component foundations rather than creating separate visual systems.
 ## AI declaration
 
 The preceding document was generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking], and reviewed with the assistance of:
+ChatGPT-Web[GPT-5.6 Thinking], and reviewed and edited with the assistance of:
 Codex-CLI[GPT-5].
 
 Update this declaration when other AI tools materially review, edit or generate
