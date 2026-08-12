@@ -99,9 +99,12 @@ npm run test:database --workspace @wits-world/api
 ```
 
 The test creates a uniquely named temporary database, applies all migrations,
-runs the seed twice, checks constraints and indexing, and drops only that
-temporary database in cleanup. The configured test database itself is not
-dropped or cleared.
+runs migrations and seeds repeatedly, checks discovery and accuracy-aware
+PostGIS eligibility, rehearses a transactional migration failure and recovery,
+and drops only that temporary database in cleanup. The configured test database
+itself is not dropped or cleared. Follow the
+[PostGIS recovery rehearsal](postgis-recovery-rehearsal.md) when collecting
+release evidence.
 
 ## Check readiness
 
@@ -120,6 +123,28 @@ npm run db:check:test --workspace @wits-world/api
 The readiness check connects using environment configuration and queries
 `postgis_full_version()`. If PostGIS is missing, run migrations first.
 
+## Release procedure
+
+The individual development and test commands above remain useful during local
+work. Preparing a release target uses the guarded
+[Sprint 1 database release procedure](database-release-procedure.md), which adds
+a read-only connection and PostGIS availability inspection before writes, exact
+database-name confirmation, installed-PostGIS readiness verification after
+migrations, and a separate demonstration-seed decision.
+
+The release command is not part of CI and does not run automatically during an
+Azure deployment:
+
+```bash
+npm run db:release --workspace @wits-world/api -- \
+  --target test \
+  --confirm-database <test-database-name> \
+  --seed-demo-event
+```
+
+Use the production target only with explicit release authority. Never substitute
+`DATABASE_URL` for `TEST_DATABASE_URL` during isolated rehearsal.
+
 ## Troubleshooting
 
 - `password authentication failed`: reset the Neon role password and update the
@@ -131,4 +156,4 @@ The readiness check connects using environment configuration and queries
   database or branch.
 
 The preceding document was generated and edited with the assistance of:
-Codex-CLI[GPT-5].
+Codex-CLI[GPT-5], Codex[GPT-5], and Codex[GPT-5.6 Sol].

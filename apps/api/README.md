@@ -126,6 +126,25 @@ Database readiness is checked separately through:
 npm run db:check --workspace @wits-world/api
 ```
 
+Release preparation uses a guarded command that requires an explicit test or
+production target and exact database-name confirmation. Demonstration seeding is
+disabled unless separately requested:
+
+```bash
+npm run db:release --workspace @wits-world/api -- \
+  --target test \
+  --confirm-database <test-database-name> \
+  --seed-demo-event
+```
+
+See the
+[Sprint 1 database release procedure](../../docs/database/database-release-procedure.md)
+for approval, production, verification, evidence, and recovery requirements.
+Use the
+[PostGIS recovery rehearsal](../../docs/database/postgis-recovery-rehearsal.md)
+to prove fresh setup, idempotent reruns, eligibility outcomes, and transactional
+failure recovery against a disposable test database.
+
 ### Versioned API root
 
 ```http

@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 import { config as loadDotenv } from 'dotenv';
 
-export type DatabaseTarget = 'development' | 'test';
+export type DatabaseTarget = 'development' | 'production' | 'test';
 
 export interface DatabaseConfig {
   connectionString: string;

@@ -14,6 +14,19 @@ describe('database configuration', () => {
     });
   });
 
+  it('loads the production database URL as an explicit target', () => {
+    expect(
+      buildDatabaseConfig({
+        env: { DATABASE_URL: neonUrl },
+        target: 'production',
+      }),
+    ).toEqual({
+      connectionString: neonUrl,
+      target: 'production',
+      variableName: 'DATABASE_URL',
+    });
+  });
+
   it('loads a separate test database URL', () => {
     const testUrl =
       'postgresql://neondb_owner:password@example.neon.tech/neondb_test?sslmode=require';
