@@ -155,4 +155,5 @@ Codex-CLI[gpt-5.6-sol medium], and Codex-CLI[GPT-5].
 This repository uses AI inline editing: Codex-CLI[gpt-5.6-sol medium] and
 Codex-CLI[GPT-5].
 
-This repository uses AI code review: Codex-CLI[gpt-5.6-sol medium].
+This repository uses AI code review: Codex-CLI[gpt-5.6-sol medium] and
+Codex-CLI[GPT-5].

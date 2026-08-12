@@ -9,8 +9,8 @@ on:
       - main
 
 jobs:
-  repository-quality:
-    name: Repository formatting
+  validation:
+    name: Repository and application validation
     runs-on: ubuntu-latest
 
     steps:
@@ -25,28 +25,10 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --prefer-offline --no-audit --fund=false
 
       - name: Check formatting
         run: npm run format:check
-
-  web:
-    name: Web application
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check out repository
-        uses: https://github.com/actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: https://github.com/actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
 
       - name: Lint web application
         run: npm run lint --workspace @wits-world/web
@@ -58,25 +40,7 @@ jobs:
         run: npm test --workspace @wits-world/web
 
       - name: Build web application
-        run: npm run build --workspace @wits-world/web
-
-  api:
-    name: API application
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check out repository
-        uses: https://github.com/actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: https://github.com/actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
+        run: npm run build:bundle --workspace @wits-world/web
 
       - name: Lint API application
         run: npm run lint --workspace @wits-world/api
@@ -89,24 +53,6 @@ jobs:
 
       - name: Build API application
         run: npm run build --workspace @wits-world/api
-
-  documentation:
-    name: Documentation application
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check out repository
-        uses: https://github.com/actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: https://github.com/actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
 
       - name: Lint documentation application
         run: npm run lint --workspace @wits-world/docs
@@ -123,10 +69,7 @@ jobs:
   deploy-api:
     name: Deploy API to Azure
     needs:
-      - repository-quality
-      - web
-      - api
-      - documentation
+      - validation
     if: ${{ gitea.event_name == 'push' && gitea.ref == 'refs/heads/main' }}
     runs-on: azure-deploy
 
