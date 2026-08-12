@@ -46,6 +46,9 @@ describe('Wits Quest application shell', () => {
       'src',
       expect.stringContaining('wits-world-campus-seal-transparent.svg'),
     );
+    expect(brandLink).toContainElement(brandSeal);
+    expect(brandLink).toHaveTextContent('Wits World');
+    expect(brandLink).toHaveTextContent('Explore · Discover · Achieve');
     expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute(
       'aria-current',
       'page',
@@ -101,7 +104,7 @@ describe('Wits Quest application shell', () => {
       screen.getByText(/supports authenticated event discovery/i),
     ).toBeVisible();
     expect(
-      screen.getByText(/browser location requests.*still to come/i),
+      screen.getByText(/request a browser location reading/i),
     ).toBeVisible();
     expect(aboutLink).toHaveAttribute('aria-current', 'page');
   });

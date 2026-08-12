@@ -778,18 +778,23 @@ artwork:
 - `apps/web/src/assets/branding/wits-world-campus-seal-transparent.svg` is for
   headers and other dark application surfaces;
 - `apps/web/src/assets/branding/wits-world-campus-seal.svg` includes its own
-  dark backing and is for the browser favicon or contexts where the surrounding
-  background cannot be controlled.
+  dark backing and is for contexts where the surrounding background cannot be
+  controlled;
+- `apps/web/src/assets/branding/wits-world-favicon.svg` is the simplified,
+  code-native small-size mark used in browser tabs.
 
 Preserve the SVG vector data, gradients, colours, geometry, embedded provenance
 metadata and `321:347` aspect ratio. Render the asset through an ordinary image
 element rather than copying its paths into JSX. Use a width with `height: auto`
 and do not crop, stretch, recolour, animate or add strong effects.
 
-For normal application surfaces, keep the seal at least `2.75rem` wide; favicon
-rendering is the exception. Supply meaningful alternative text when the seal is
-the only branding label. Use empty alternative text and `aria-hidden="true"`
-when it duplicates an already labelled brand link.
+For normal application surfaces, keep the seal at least `2.75rem` wide. The
+application header uses it at `5.5rem` to `6.5rem` beside a Wits World wordmark
+and the short “Explore · Discover · Achieve” line. At favicon size, use the
+simplified W/star mark rather than shrinking the detailed seal. Supply meaningful
+alternative text when the seal is the only branding label. Use empty alternative
+text and `aria-hidden="true"` when it duplicates an already labelled brand
+link.
 
 The canonical files retain embedded C2PA provenance metadata identifying
 Recraft AI as the asset-generation source. Do not strip or rewrite that metadata

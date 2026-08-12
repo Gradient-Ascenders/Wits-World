@@ -13,9 +13,9 @@ export default function AboutPage() {
         text list.
       </p>
       <p>
-        Browser location requests and server-evaluated reachability are still to
-        come. Challenges, cards, and battles are also outside the current player
-        experience.
+        Players can request a browser location reading and receive an
+        API-evaluated reachability result for an active event. Challenges,
+        cards, and battles remain outside the current player experience.
       </p>
       <hr />
       <h2>Designed for clear decisions</h2>
