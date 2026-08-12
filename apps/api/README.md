@@ -18,6 +18,11 @@ eligibility are implemented in the API. Local-user provisioning, application
 authorisation beyond authentication, challenge sessions, answer marking,
 rewards, cards, and battles are introduced in later issues.
 
+The proposed contracts for that later work are documented in the
+[challenge attempt API contract](../../docs/architecture/challenge-attempt-api-contract.md)
+and the
+[challenge, reward, and card persistence design](../../docs/database/challenge-reward-persistence-design.md).
+
 ## Requirements
 
 Use:

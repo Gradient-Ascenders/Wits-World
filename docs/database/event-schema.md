@@ -4,6 +4,11 @@ The Sprint 1 event schema stores the minimum authoritative event data required
 for server-side discovery and location eligibility. It does not include
 challenges, rewards, campaigns, or a full publication workflow.
 
+The proposed Sprint 2
+[challenge, reward, and card persistence design](./challenge-reward-persistence-design.md)
+extends this relation through foreign keys. It does not rewrite the event schema
+or change the existing discovery and eligibility behavior.
+
 ## Entity relationship view
 
 ```mermaid

@@ -137,6 +137,9 @@ above only to keep the example readable.
 `completionReason` is `answered` when all five choices were locked before the
 deadline and `timeout` when expiry finalized the attempt. Unanswered questions
 count as incorrect. The response does not identify which answers were correct.
+The completed response gains a server-generated `reward` object when the
+[challenge, reward, and card persistence design](../database/challenge-reward-persistence-design.md)
+is implemented.
 
 ## Start or resume an attempt
 
@@ -295,6 +298,10 @@ Future implementation work must add:
 - the transactional completion and reward model from issue #49;
 - player UI for timed questions, reconnecting, and completion; and
 - unit, integration, concurrency, security-exposure, and OpenAPI tests.
+
+The proposed storage relations, reward calculation, and atomic finalization
+boundary are specified in the
+[challenge, reward, and card persistence design](../database/challenge-reward-persistence-design.md).
 
 This contract was planned, generated, edited, and reviewed with the assistance
 of Codex[GPT-5.6 Sol].
