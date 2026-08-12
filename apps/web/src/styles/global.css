@@ -134,30 +134,32 @@ a:hover {
 }
 
 .product-name__mark {
-  width: clamp(2.75rem, 4vw, 3rem);
+  width: clamp(5.5rem, 15vw, 6.5rem);
   flex: 0 0 auto;
 }
 
 .product-name__wordmark {
   display: flex;
   flex-direction: column;
+  line-height: 1;
 }
 
-.product-name__game {
+.product-name__title {
   font-family: var(--font-heading);
-  font-size: var(--text-xl);
+  font-size: clamp(1.15rem, 2.3vw, 1.65rem);
   font-weight: 700;
-  letter-spacing: 0.015em;
-  line-height: 1.05;
+  letter-spacing: 0.035em;
+  white-space: nowrap;
 }
 
-.product-name__project {
-  margin-top: var(--space-1);
-  color: var(--colour-text-muted);
-  font-size: 0.6875rem;
+.product-name__tagline {
+  margin-top: 0.4rem;
+  color: var(--colour-gold-400);
+  font-size: clamp(0.5rem, 1vw, 0.625rem);
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .primary-navigation {
