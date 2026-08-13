@@ -14,6 +14,7 @@ import { getSafeReturnTo } from '../src/auth/AuthProvider';
 import { useApiAccessToken } from '../src/auth/useApiAccessToken';
 
 const apiBaseUrl = 'https://api.example.test/api/v1';
+const mapboxAccessToken = 'pk.test-token';
 
 vi.mock(
   '../src/components/exploration/map-provider',
@@ -25,10 +26,11 @@ vi.mock(
 
     return {
       ...actual,
-      createMapLibreMap: vi.fn(async () => ({
+      createMapboxMap: vi.fn(async () => ({
         onError: vi.fn(),
         onLoad: vi.fn(),
         remove: vi.fn(),
+        setReportedLocation: vi.fn(),
         setPoints: vi.fn(),
       })),
     };
@@ -51,7 +53,10 @@ function renderRoute(path: string, authValue: Auth0ContextInterface) {
   return render(
     <Auth0Context.Provider value={authValue}>
       <Router>
-        <AppRoutes apiBaseUrl={apiBaseUrl} />
+        <AppRoutes
+          apiBaseUrl={apiBaseUrl}
+          mapboxAccessToken={mapboxAccessToken}
+        />
       </Router>
     </Auth0Context.Provider>,
   );

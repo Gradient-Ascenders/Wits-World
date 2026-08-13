@@ -6,13 +6,17 @@ import { Router } from 'wouter';
 import { AppRoutes } from '../src/App';
 
 const apiBaseUrl = 'https://api.example.test/api/v1';
+const mapboxAccessToken = 'pk.test-token';
 
 function renderRoute(path: string) {
   window.history.replaceState({}, '', path);
 
   return render(
     <Router>
-      <AppRoutes apiBaseUrl={apiBaseUrl} />
+      <AppRoutes
+        apiBaseUrl={apiBaseUrl}
+        mapboxAccessToken={mapboxAccessToken}
+      />
     </Router>,
   );
 }

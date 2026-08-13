@@ -83,7 +83,8 @@ The following still require review and selection:
 - PostgreSQL/PostGIS hosting provider;
 - documentation hosting provider;
 - authentication provider;
-- map tile and style provider;
+- map tile and style provider formal acceptance (Mapbox Standard is the current
+  implementation candidate);
 - production domain names;
 - production CORS origins;
 - secret-management approach;
@@ -96,4 +97,5 @@ decision has been recorded.
 ---
 
 The preceding document was planned and generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking].
+ChatGPT-Web[GPT-5.6 Thinking] and updated with:
+Codex-CLI[GPT-5].

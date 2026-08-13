@@ -13,9 +13,10 @@ const ExplorePage = lazy(() => import('./pages/ExplorePage'));
 
 interface AppRoutesProps {
   apiBaseUrl: string;
+  mapboxAccessToken: string;
 }
 
-export function AppRoutes({ apiBaseUrl }: AppRoutesProps) {
+export function AppRoutes({ apiBaseUrl, mapboxAccessToken }: AppRoutesProps) {
   return (
     <AppShell>
       <Suspense fallback={<LoadingState />}>
@@ -23,7 +24,10 @@ export function AppRoutes({ apiBaseUrl }: AppRoutesProps) {
           <Route path="/" component={HomePage} />
           <Route path="/explore">
             <ProtectedRoute>
-              <ExplorePage apiBaseUrl={apiBaseUrl} />
+              <ExplorePage
+                apiBaseUrl={apiBaseUrl}
+                mapboxAccessToken={mapboxAccessToken}
+              />
             </ProtectedRoute>
           </Route>
           <Route path="/about" component={AboutPage} />
@@ -35,7 +39,11 @@ export function AppRoutes({ apiBaseUrl }: AppRoutesProps) {
 }
 
 type AppProps =
-  | { apiBaseUrl: string; children?: never }
+  | {
+      apiBaseUrl: string;
+      children?: never;
+      mapboxAccessToken: string;
+    }
   | { apiBaseUrl?: never; children: ReactNode };
 
 export function App(props: AppProps) {
@@ -46,7 +54,10 @@ export function App(props: AppProps) {
   return (
     <ErrorBoundary>
       <Router>
-        <AppRoutes apiBaseUrl={props.apiBaseUrl} />
+        <AppRoutes
+          apiBaseUrl={props.apiBaseUrl}
+          mapboxAccessToken={props.mapboxAccessToken}
+        />
       </Router>
     </ErrorBoundary>
   );

@@ -15,8 +15,10 @@ Accepted
 
 ## Context
 
-The Wits Quest player experience requires a campus map displaying the player's
-position and nearby events.
+The Wits Quest player experience requires a campus map displaying nearby events.
+The browser may collect a reported location only after a player action for the
+protected eligibility request; that reported location is not rendered or sent
+to the map provider.
 
 The browser must integrate with a map library and a licensed tile or style
 provider.
@@ -36,17 +38,12 @@ The system must also remain usable when map tiles fail to load.
 
 Use the browser map integration only for presentation and navigation.
 
-MapLibre GL JS is the intended client-side rendering library.
-
-The final tile and style provider will be selected separately based on:
-
-- licensing;
-- attribution requirements;
-- campus coverage;
-- cost and free-tier limits;
-- availability;
-- privacy; and
-- configuration requirements.
+The current implementation uses Mapbox GL JS v3 with
+`mapbox://styles/mapbox/standard`, Mapbox Standard's 3D configuration, and the
+existing provider-neutral adapter boundary. This implementation choice remains
+subject to formal client/lecturer external-service acceptance, production token
+and CSP review, and confirmation of a licensed Wits campus dataset. See the
+[Mapbox Standard migration boundary](../mapbox-standard-migration.md).
 
 The current provider comparison and Wits-campus trial requirements are recorded
 in the [map-provider evaluation](../map-provider-evaluation.md). That evaluation
@@ -121,9 +118,11 @@ eligibility model.
 - Expose event discovery and eligibility API endpoints
 - Render the campus map and seeded event
 - Submit browser geolocation and display eligibility
+- Migrate `/explore` from OpenFreeMap/MapLibre to Mapbox Standard 3D (#92)
 - [Evaluate the production map provider](../map-provider-evaluation.md)
 
 ---
 
 The preceding document was planned and generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking].
+ChatGPT-Web[GPT-5.6 Thinking] and updated with:
+Codex-CLI[GPT-5].

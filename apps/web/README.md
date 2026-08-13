@@ -59,16 +59,19 @@ The preview server uses `http://localhost:4173`.
 
 ## Environment configuration
 
-| Variable               | Required | Browser-visible | Purpose                                  |
-| ---------------------- | -------- | --------------- | ---------------------------------------- |
-| `VITE_API_BASE_URL`    | Yes      | Yes             | Base URL reserved for the Wits World API |
-| `VITE_AUTH0_DOMAIN`    | Yes      | Yes             | Auth0 tenant hostname without a protocol |
-| `VITE_AUTH0_CLIENT_ID` | Yes      | Yes             | Public Auth0 single-page application ID  |
-| `VITE_AUTH0_AUDIENCE`  | Yes      | Yes             | Audience identifying the Wits World API  |
+| Variable                   | Required | Browser-visible | Purpose                                  |
+| -------------------------- | -------- | --------------- | ---------------------------------------- |
+| `VITE_API_BASE_URL`        | Yes      | Yes             | Base URL reserved for the Wits Quest API |
+| `VITE_AUTH0_DOMAIN`        | Yes      | Yes             | Auth0 tenant hostname without a protocol |
+| `VITE_AUTH0_CLIENT_ID`     | Yes      | Yes             | Public Auth0 single-page application ID  |
+| `VITE_AUTH0_AUDIENCE`      | Yes      | Yes             | Audience identifying the Wits World API  |
+| `VITE_MAPBOX_ACCESS_TOKEN` | Yes      | Yes             | URL-restricted public Mapbox `pk.` token |
 
 The committed `.env.example` contains the approved development domain and
-audience plus a safe Client ID placeholder. A fresh checkout must replace that
-placeholder in its ignored `.env` file before testing authentication.
+audience plus safe Client ID and Mapbox token placeholders. A fresh checkout
+must replace those placeholders in its ignored `.env` file before testing
+authentication or the live map. Mapbox token scope and URL-restriction guidance
+is recorded in [Mapbox operations](../../docs/deployment/mapbox-operations.md).
 
 Only public values may use the `VITE_` prefix because Vite includes them in the
 browser bundle. Do not place tokens, passwords, private keys, or other secrets in
@@ -117,36 +120,32 @@ Known limitations:
 
 ## Campus map and event discovery
 
-The web workspace uses [MapLibre GL JS](https://maplibre.org/maplibre-gl-js/docs/)
-6.2.0 as its map-rendering library. MapLibre GL JS is distributed under the
-[BSD 3-Clause license](https://github.com/maplibre/maplibre-gl-js/blob/main/LICENSE.txt).
-
-The Sprint 1 map uses OpenFreeMap's public Liberty style at
-`https://tiles.openfreemap.org/styles/liberty`. OpenFreeMap requires attribution
-and identifies the expected wording as “OpenFreeMap © OpenMapTiles Data from
-OpenStreetMap.” MapLibre displays the attribution supplied by the style and the
-application keeps its attribution control visible and expanded.
-
-- [OpenFreeMap quick start and style URL](https://openfreemap.org/quick_start/)
-- [OpenFreeMap terms of service](https://openfreemap.org/tos/)
-- [OpenFreeMap privacy policy](https://openfreemap.org/privacy/)
+The web workspace uses [Mapbox GL JS](https://docs.mapbox.com/mapbox-gl-js/)
+3.28.1 with Mapbox Standard at `mapbox://styles/mapbox/standard`. Mapbox GL JS
+is lazy-loaded only when the protected campus map is mounted. Mapbox attribution
+is rendered visibly and expanded in the map controls.
 
 The current map adapter:
 
-- loads MapLibre only when the campus map is rendered;
-- bundles MapLibre's module worker through Vite and configures its generated URL
-  before constructing the map;
+- loads Mapbox GL JS only when the campus map is rendered;
+- uses Mapbox Standard's dusk configuration with 3D buildings, landmarks,
+  objects, trees, and pedestrian roads where the provider supplies coverage;
+- starts at zoom 16.5, pitch 52, and bearing 20 around the approved Sprint 1
+  event area, with a keyboard-accessible reset bearing/pitch control;
 - updates event markers without destroying and recreating the WebGL map;
-- keeps the map host sized when MapLibre's runtime class and stylesheet arrive;
-- leaves MapLibre's attribution control enabled and expanded;
+- keeps the map host sized when Mapbox's runtime class and stylesheet arrive;
+- leaves Mapbox's attribution control enabled and expanded;
 - provides 44px zoom controls;
 - presents map loading and failure states, treating WebGL context loss or a
   load that does not complete within 15 seconds as a provider failure;
 - keeps event information in a separate semantic text list;
 - centres the initial view on the confirmed Sprint 1 Great Hall event point at
   longitude `28.03038`, latitude `-26.19205`;
-- allows component tests to replace MapLibre with a local fake, avoiding live
-  tile requests.
+- allows component tests to replace Mapbox with a local fake, avoiding live
+  provider requests;
+- accepts a future licensed Wits campus GeoJSON layer through the adapter
+  boundary, using only stored `heightM` values for custom building extrusion;
+  no Wits campus geometry is currently bundled.
 
 The protected `/explore` route obtains an Auth0 access token on demand and calls
 `GET /api/v1/events`. It validates the player-safe response before presenting
@@ -160,15 +159,12 @@ requests a fresh position only after the player selects an active event's Check
 reachability action. The reported coordinates are sent to the Wits World API,
 not to the map provider.
 
-MapLibre uses a same-origin module worker emitted by the Vite build. A future
-production Content Security Policy must account for that worker and the
-OpenFreeMap image, style, glyph, and tile origins. The final directives belong
-with deployment configuration.
-
-OpenFreeMap's public service is external, provided as-is, and does not offer an
-availability guarantee. Wits World therefore retains its map-independent event
-list and a clear map-provider failure state. Provider terms and privacy behavior
-must be reviewed again before production deployment.
+The production Content Security Policy must account for Mapbox's `blob:` worker,
+image data, WebAssembly evaluation, and `api.mapbox.com` style/tile/glyph/image
+requests. The deployment guidance, current map-load pricing, usage monitoring,
+and absence of a configurable hard monthly spending cap are recorded in
+[Mapbox operations](../../docs/deployment/mapbox-operations.md). Formal external
+service acceptance and licensed campus-data approval remain pending.
 
 ## Browser location and eligibility
 
@@ -284,20 +280,21 @@ With `apps/web/.env` configured and the development server running:
    no horizontal overflow, the map remains usable, and the event list remains
    readable without covering map attribution or controls.
 5. Confirm “Sprint 1 Demo - Wits Great Hall” appears as a marker and as a text
-   list item with an explicit availability label. Confirm the map attribution
-   identifies OpenFreeMap, OpenMapTiles, and OpenStreetMap.
+   list item with an explicit availability label. Confirm the expanded Mapbox
+   attribution remains readable and the Standard dusk preset presents depth
+   without obscuring the event.
 6. Refresh `/explore`. Confirm the protected-route and event-loading states are
    announced and are replaced by the authenticated map without flashing event
    data while authentication is unresolved.
 7. Stop the API and use Try loading events again. Confirm the safe API error and
    retry action remain keyboard-accessible and no server or token detail appears.
-8. Restore the API, then block `tiles.openfreemap.org` or work offline. Confirm
-   the map failure is announced while the Great Hall event remains available in
-   the text list.
+8. Restore the API, then block Mapbox style/tile requests or work offline.
+   Confirm the map failure is announced while the Great Hall event remains
+   available in the text list.
 9. Press Tab from the top of `/explore`. Confirm visible focus follows the skip
-   link, Home, Explore, About, account controls, MapLibre controls, and any retry
-   action in a logical order. Confirm the event can be discovered without using
-   the map.
+   link, Home, Explore, About, account controls, Mapbox controls including reset
+   bearing/pitch, and any retry action in a logical order. Confirm the event can
+   be discovered without using the map.
 10. Activate Sign out. Confirm Auth0 returns to `/` and reopening `/explore`
     requires sign-in again.
 11. Open an unknown route such as `/missing`. Confirm the not-found heading and

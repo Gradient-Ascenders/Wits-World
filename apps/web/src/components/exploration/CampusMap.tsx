@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 
 import {
-  createMapLibreMap,
+  createMapboxMap,
   type MapConfiguration,
+  type MapCoordinate,
   type MapController,
   type MapFactory,
   type MapPoint,
@@ -12,6 +13,7 @@ interface CampusMapProps {
   configuration: MapConfiguration;
   mapFactory?: MapFactory;
   points: readonly MapPoint[];
+  reportedLocation?: MapCoordinate | null;
 }
 
 type MapStatus = 'error' | 'loading' | 'ready';
@@ -20,19 +22,26 @@ const MAP_LOAD_TIMEOUT_MS = 15_000;
 
 export function CampusMap({
   configuration,
-  mapFactory = createMapLibreMap,
+  mapFactory = createMapboxMap,
   points,
+  reportedLocation = null,
 }: CampusMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const controllerRef = useRef<MapController | null>(null);
   const pointsRef = useRef(points);
+  const reportedLocationRef = useRef<MapCoordinate | null>(reportedLocation);
   const [status, setStatus] = useState<MapStatus>('loading');
 
   pointsRef.current = points;
+  reportedLocationRef.current = reportedLocation;
 
   useEffect(() => {
     controllerRef.current?.setPoints(points);
   }, [points]);
+
+  useEffect(() => {
+    controllerRef.current?.setReportedLocation(reportedLocation);
+  }, [reportedLocation]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -67,6 +76,7 @@ export function CampusMap({
         controller = map;
         controllerRef.current = map;
         map.setPoints(pointsRef.current);
+        map.setReportedLocation(reportedLocationRef.current);
         map.onLoad(() => {
           if (active) {
             window.clearTimeout(loadTimeout);
@@ -101,7 +111,7 @@ export function CampusMap({
   return (
     <div className="campus-map">
       <div
-        aria-label="Interactive campus map. Event information is also available in the nearby events list."
+        aria-label="Interactive campus map using Mapbox Standard 3D. Event information is also available in the nearby events list."
         className="campus-map__canvas"
         ref={containerRef}
         role="region"

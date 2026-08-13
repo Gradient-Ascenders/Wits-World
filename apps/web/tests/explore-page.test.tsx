@@ -15,6 +15,7 @@ import { BrowserLocationError } from '../src/browser-location';
 import ExplorePage from '../src/pages/ExplorePage';
 
 const apiBaseUrl = 'https://api.example.test/api/v1';
+const mapboxAccessToken = 'pk.test-token';
 const event = {
   availability: 'active',
   description: null,
@@ -44,7 +45,10 @@ function createAuthValue(
   } as Auth0ContextInterface;
 }
 
-function createMapFactory(setPoints = vi.fn()): MapFactory {
+function createMapFactory(
+  setPoints = vi.fn(),
+  setReportedLocation = vi.fn(),
+): MapFactory {
   return vi.fn(async () => {
     const controller: MapController = {
       onError: vi.fn(),
@@ -52,6 +56,7 @@ function createMapFactory(setPoints = vi.fn()): MapFactory {
         listener();
       },
       remove: vi.fn(),
+      setReportedLocation,
       setPoints,
     };
 
@@ -70,6 +75,7 @@ function renderExplore(
         apiBaseUrl={apiBaseUrl}
         locationClaimProvider={locationClaimProvider}
         mapFactory={mapFactory}
+        mapboxAccessToken={mapboxAccessToken}
       />
     </Auth0Context.Provider>,
   );
@@ -127,9 +133,20 @@ describe('authenticated campus event discovery', () => {
     await waitFor(() => {
       const latestCall = vi.mocked(mapFactory).mock.lastCall;
       expect(latestCall?.[1]).toEqual({
+        accessToken: mapboxAccessToken,
+        bearing: 20,
         center: [28.03038, -26.19205],
-        styleUrl: 'https://tiles.openfreemap.org/styles/liberty',
-        zoom: 16,
+        pitch: 52,
+        standardConfig: {
+          lightPreset: 'dusk',
+          show3dBuildings: true,
+          show3dLandmarks: true,
+          show3dObjects: true,
+          show3dTrees: true,
+          showPedestrianRoads: true,
+        },
+        styleUrl: 'mapbox://styles/mapbox/standard',
+        zoom: 16.5,
       });
       expect(setPoints).toHaveBeenCalledWith([
         {
@@ -210,6 +227,11 @@ describe('player location eligibility', () => {
     async (apiResult, expectedMessage) => {
       const user = userEvent.setup();
       const locationClaimProvider = vi.fn().mockResolvedValue(claim);
+      const setReportedLocation = vi.fn();
+      const reportedLocation = {
+        latitude: claim.latitude,
+        longitude: claim.longitude,
+      };
       const fetchMock = vi
         .fn()
         .mockResolvedValueOnce(discoveryResponse())
@@ -217,7 +239,7 @@ describe('player location eligibility', () => {
       vi.stubGlobal('fetch', fetchMock);
 
       renderExplore(
-        createMapFactory(),
+        createMapFactory(vi.fn(), setReportedLocation),
         createAuthValue(),
         locationClaimProvider,
       );
@@ -226,11 +248,13 @@ describe('player location eligibility', () => {
         name: `Check reachability for ${event.title}`,
       });
       expect(locationClaimProvider).not.toHaveBeenCalled();
+      expect(setReportedLocation).not.toHaveBeenCalledWith(reportedLocation);
 
       await user.click(action);
 
       expect(await screen.findByText(expectedMessage)).toBeVisible();
       expect(locationClaimProvider).toHaveBeenCalledOnce();
+      expect(setReportedLocation).toHaveBeenCalledWith(reportedLocation);
       expect(fetchMock).toHaveBeenLastCalledWith(
         `${apiBaseUrl}/events/${event.eventId}/eligibility`,
         expect.objectContaining({

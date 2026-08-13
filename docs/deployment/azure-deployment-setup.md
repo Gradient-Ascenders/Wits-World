@@ -297,6 +297,7 @@ VITE_API_BASE_URL
 VITE_AUTH0_DOMAIN
 VITE_AUTH0_CLIENT_ID
 VITE_AUTH0_AUDIENCE
+VITE_MAPBOX_ACCESS_TOKEN
 ```
 
 These values are supplied during the Vite build performed by Gitea Actions.
@@ -304,6 +305,9 @@ These values are supplied during the Vite build performed by Gitea Actions.
 They are intentionally stored as Gitea Variables rather than Azure App Service runtime settings because Vite embeds `VITE_*` configuration into the generated browser bundle at build time.
 
 `VITE_*` values are browser-visible configuration and must not contain secrets.
+The Mapbox value is intentionally a public `pk.` token; restrict it to the
+approved localhost and deployed web origins and keep only the required public
+read scopes. See [Mapbox operations](./mapbox-operations.md).
 
 ---
 
@@ -700,6 +704,7 @@ VITE_API_BASE_URL
 VITE_AUTH0_DOMAIN
 VITE_AUTH0_CLIENT_ID
 VITE_AUTH0_AUDIENCE
+VITE_MAPBOX_ACCESS_TOKEN
 ```
 
 Successful build output:
@@ -1172,6 +1177,7 @@ VITE_API_BASE_URL
 VITE_AUTH0_DOMAIN
 VITE_AUTH0_CLIENT_ID
 VITE_AUTH0_AUDIENCE
+VITE_MAPBOX_ACCESS_TOKEN
 ```
 
 ### Docker unexpectedly authenticates to Azure
