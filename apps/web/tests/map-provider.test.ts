@@ -8,14 +8,18 @@ import {
 const mapboxState = vi.hoisted(() => ({
   addLayer: vi.fn(),
   addSource: vi.fn(),
+  canvasContainer: null as HTMLDivElement | null,
   controls: [] as Array<{ onAdd?: (map: unknown) => HTMLElement }>,
   handlers: new Map<string, (...args: never[]) => void>(),
   isLoaded: false,
   jumpTo: vi.fn(),
   mapConstructor: vi.fn(),
+  markerConstructor: vi.fn(),
   markerRemove: vi.fn(),
+  off: vi.fn(),
   on: vi.fn(),
   once: vi.fn(),
+  project: vi.fn(() => ({ x: 120, y: 80 })),
   remove: vi.fn(),
 }));
 
@@ -44,6 +48,10 @@ vi.mock('mapbox-gl/esm', () => ({
       return undefined;
     }
 
+    public getCanvasContainer() {
+      return mapboxState.canvasContainer ?? document.createElement('div');
+    }
+
     public jumpTo = mapboxState.jumpTo;
 
     public loaded() {
@@ -60,9 +68,17 @@ vi.mock('mapbox-gl/esm', () => ({
       mapboxState.handlers.set(event, listener);
     };
 
+    public off = mapboxState.off;
+
+    public project = mapboxState.project;
+
     public remove = mapboxState.remove;
   },
   Marker: class {
+    public constructor() {
+      mapboxState.markerConstructor();
+    }
+
     public addTo() {
       return this;
     }
@@ -94,6 +110,7 @@ const configuration = {
 };
 
 beforeEach(() => {
+  mapboxState.canvasContainer = document.createElement('div');
   mapboxState.controls.length = 0;
   mapboxState.handlers.clear();
   mapboxState.isLoaded = false;
@@ -101,9 +118,12 @@ beforeEach(() => {
   mapboxState.addSource.mockClear();
   mapboxState.jumpTo.mockClear();
   mapboxState.mapConstructor.mockClear();
+  mapboxState.markerConstructor.mockClear();
   mapboxState.markerRemove.mockClear();
+  mapboxState.off.mockClear();
   mapboxState.on.mockClear();
   mapboxState.once.mockClear();
+  mapboxState.project.mockClear();
   mapboxState.remove.mockClear();
 });
 
@@ -187,6 +207,39 @@ describe('Mapbox Standard provider', () => {
 
     expect(mapboxState.on).toHaveBeenCalledWith('error', listener);
     expect(mapboxState.on).toHaveBeenCalledWith('webglcontextlost', listener);
+  });
+
+  it('renders the reported location as a local overlay without a Mapbox marker', async () => {
+    const controller = await createMapboxMap(
+      document.createElement('div'),
+      configuration,
+      [],
+      new AbortController().signal,
+    );
+
+    controller.setReportedLocation({
+      latitude: -26.19205,
+      longitude: 28.03038,
+    });
+
+    const pointer = mapboxState.canvasContainer?.querySelector(
+      '[data-map-reported-location]',
+    );
+    expect(pointer).toHaveAttribute('aria-hidden', 'true');
+    expect(pointer).toHaveAttribute('title', 'Reported location');
+    expect(mapboxState.project).toHaveBeenCalledWith([28.03038, -26.19205]);
+    expect(pointer).toHaveStyle(
+      'transform: translate3d(120px, 80px, 0) translate(-50%, -100%)',
+    );
+    expect(mapboxState.markerConstructor).not.toHaveBeenCalled();
+
+    controller.setReportedLocation(null);
+
+    expect(
+      mapboxState.canvasContainer?.querySelector(
+        '[data-map-reported-location]',
+      ),
+    ).not.toBeInTheDocument();
   });
 
   it('provides an accessible reset control for bearing and pitch', async () => {
@@ -320,8 +373,17 @@ describe('Mapbox Standard provider', () => {
       new AbortController().signal,
     );
 
+    controller.setReportedLocation({
+      latitude: -26.19205,
+      longitude: 28.03038,
+    });
     controller.remove();
     expect(mapboxState.markerRemove).toHaveBeenCalledOnce();
+    expect(
+      mapboxState.canvasContainer?.querySelector(
+        '[data-map-reported-location]',
+      ),
+    ).not.toBeInTheDocument();
     expect(mapboxState.remove).toHaveBeenCalledOnce();
   });
 });

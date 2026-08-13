@@ -103,6 +103,29 @@
   content: '';
 }
 
+.reported-location-pointer {
+  position: absolute;
+  z-index: 3;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 0.1875rem solid var(--colour-text-primary);
+  border-radius: 50% 50% 50% 0;
+  background: var(--colour-blue-500);
+  box-shadow:
+    0 0 0 0.25rem rgb(5 11 22 / 78%),
+    var(--glow-blue);
+  pointer-events: none;
+  transform-origin: center bottom;
+}
+
+.reported-location-pointer::after {
+  position: absolute;
+  inset: 0.45rem;
+  border-radius: 50%;
+  background: var(--colour-text-primary);
+  content: '';
+}
+
 .event-list {
   padding: var(--space-5);
   border-top: 1px solid var(--colour-border-subtle);

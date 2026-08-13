@@ -51,6 +51,7 @@ function createSuccessfulMapFactory(
         listener();
       },
       remove: vi.fn(),
+      setReportedLocation: vi.fn(),
       setPoints: vi.fn(),
     };
 
@@ -119,6 +120,7 @@ describe('campus exploration', () => {
         listener();
       },
       remove: vi.fn(),
+      setReportedLocation: vi.fn(),
       setPoints,
     }));
     const sharedProps = {
@@ -196,6 +198,7 @@ describe('campus exploration', () => {
       onError: vi.fn(),
       onLoad: vi.fn(),
       remove: vi.fn(),
+      setReportedLocation: vi.fn(),
       setPoints: vi.fn(),
     }));
 

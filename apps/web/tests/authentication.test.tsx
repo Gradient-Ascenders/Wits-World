@@ -30,6 +30,7 @@ vi.mock(
         onError: vi.fn(),
         onLoad: vi.fn(),
         remove: vi.fn(),
+        setReportedLocation: vi.fn(),
         setPoints: vi.fn(),
       })),
     };

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   createMapboxMap,
   type MapConfiguration,
+  type MapCoordinate,
   type MapController,
   type MapFactory,
   type MapPoint,
@@ -12,6 +13,7 @@ interface CampusMapProps {
   configuration: MapConfiguration;
   mapFactory?: MapFactory;
   points: readonly MapPoint[];
+  reportedLocation?: MapCoordinate | null;
 }
 
 type MapStatus = 'error' | 'loading' | 'ready';
@@ -22,17 +24,24 @@ export function CampusMap({
   configuration,
   mapFactory = createMapboxMap,
   points,
+  reportedLocation = null,
 }: CampusMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const controllerRef = useRef<MapController | null>(null);
   const pointsRef = useRef(points);
+  const reportedLocationRef = useRef<MapCoordinate | null>(reportedLocation);
   const [status, setStatus] = useState<MapStatus>('loading');
 
   pointsRef.current = points;
+  reportedLocationRef.current = reportedLocation;
 
   useEffect(() => {
     controllerRef.current?.setPoints(points);
   }, [points]);
+
+  useEffect(() => {
+    controllerRef.current?.setReportedLocation(reportedLocation);
+  }, [reportedLocation]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -67,6 +76,7 @@ export function CampusMap({
         controller = map;
         controllerRef.current = map;
         map.setPoints(pointsRef.current);
+        map.setReportedLocation(reportedLocationRef.current);
         map.onLoad(() => {
           if (active) {
             window.clearTimeout(loadTimeout);

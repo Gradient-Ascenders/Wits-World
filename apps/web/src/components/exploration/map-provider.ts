@@ -12,6 +12,11 @@ export interface MapPoint {
   longitude: number;
 }
 
+export interface MapCoordinate {
+  latitude: number;
+  longitude: number;
+}
+
 export type MapboxLightPreset = 'dawn' | 'day' | 'dusk' | 'night';
 
 export interface MapboxStandardConfiguration extends Record<string, unknown> {
@@ -73,6 +78,7 @@ export interface MapController {
   onError: (listener: () => void) => void;
   onLoad: (listener: () => void) => void;
   remove: () => void;
+  setReportedLocation: (coordinate: MapCoordinate | null) => void;
   setPoints: (points: readonly MapPoint[]) => void;
 }
 
@@ -294,6 +300,60 @@ function createController(
   map: MapboxMap,
   setPoints: (points: readonly MapPoint[]) => void,
 ): MapController {
+  let reportedLocation: MapCoordinate | null = null;
+  let reportedLocationPointer: HTMLSpanElement | undefined;
+  let reportedLocationListenersAttached = false;
+
+  const updateReportedLocationPointer = (): void => {
+    if (reportedLocationPointer === undefined || reportedLocation === null) {
+      return;
+    }
+
+    const projectedPoint = map.project([
+      reportedLocation.longitude,
+      reportedLocation.latitude,
+    ]);
+    reportedLocationPointer.style.transform = `translate3d(${projectedPoint.x}px, ${projectedPoint.y}px, 0) translate(-50%, -100%)`;
+  };
+
+  const detachReportedLocationListeners = (): void => {
+    if (!reportedLocationListenersAttached) {
+      return;
+    }
+
+    map.off('move', updateReportedLocationPointer);
+    map.off('resize', updateReportedLocationPointer);
+    reportedLocationListenersAttached = false;
+  };
+
+  const setReportedLocation = (coordinate: MapCoordinate | null): void => {
+    reportedLocation = coordinate;
+
+    if (coordinate === null) {
+      reportedLocationPointer?.remove();
+      reportedLocationPointer = undefined;
+      detachReportedLocationListeners();
+      return;
+    }
+
+    if (reportedLocationPointer === undefined) {
+      reportedLocationPointer = document.createElement('span');
+      reportedLocationPointer.className = 'reported-location-pointer';
+      reportedLocationPointer.dataset.mapReportedLocation = 'true';
+      reportedLocationPointer.setAttribute('aria-hidden', 'true');
+      reportedLocationPointer.title = 'Reported location';
+      map.getCanvasContainer().append(reportedLocationPointer);
+    }
+
+    if (!reportedLocationListenersAttached) {
+      map.on('move', updateReportedLocationPointer);
+      map.on('resize', updateReportedLocationPointer);
+      reportedLocationListenersAttached = true;
+    }
+
+    updateReportedLocationPointer();
+  };
+
   return {
     onError(listener) {
       map.on('error', listener);
@@ -308,9 +368,11 @@ function createController(
       map.once('load', listener);
     },
     remove() {
+      setReportedLocation(null);
       setPoints([]);
       map.remove();
     },
+    setReportedLocation,
     setPoints,
   };
 }

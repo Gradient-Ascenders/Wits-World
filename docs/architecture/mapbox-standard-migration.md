@@ -86,8 +86,12 @@ Mapbox; those coordinates go only to the protected Wits Quest eligibility API.
 
 The map disables Mapbox performance metrics collection in the constructor. No
 Mapbox geolocation control is installed, so there is no provider-side location
-request. See [Mapbox operations](../deployment/mapbox-operations.md) for token,
-CSP, pricing, monitoring, and deployment notes.
+request. After the player explicitly requests a reachability check, the map
+may show the resulting reported location as a transient, browser-only DOM
+overlay. It is positioned with the map's local screen projection, never as a
+Mapbox marker or source, and is removed with the map controller. See [Mapbox
+operations](../deployment/mapbox-operations.md) for token, CSP, pricing,
+monitoring, and deployment notes.
 
 ## Official implementation references
 

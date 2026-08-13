@@ -20,6 +20,7 @@ import type {
   EventEligibilityState,
 } from '../components/exploration/EventList';
 import type {
+  MapCoordinate,
   MapConfiguration,
   MapFactory,
 } from '../components/exploration/map-provider';
@@ -140,6 +141,8 @@ export default function ExplorePage({
   >({});
   const [checkingEventId, setCheckingEventId] = useState<string | null>(null);
   const eligibilityRequest = useRef<AbortController | null>(null);
+  const reportedLocationRef = useRef<MapCoordinate | null>(null);
+  const [, setReportedLocationRevision] = useState(0);
   const mounted = useRef(true);
   const mapConfiguration = useMemo(
     () => ({ ...CAMPUS_MAP_CONFIGURATION, accessToken: mapboxAccessToken }),
@@ -181,6 +184,7 @@ export default function ExplorePage({
     return () => {
       mounted.current = false;
       eligibilityRequest.current?.abort();
+      reportedLocationRef.current = null;
     };
   }, []);
 
@@ -204,6 +208,14 @@ export default function ExplorePage({
         if (!mounted.current || controller.signal.aborted) {
           return;
         }
+
+        // Keep the coordinate in an ephemeral ref. The revision only causes
+        // the map prop to refresh; the location is never persisted in state.
+        reportedLocationRef.current = {
+          latitude: claim.latitude,
+          longitude: claim.longitude,
+        };
+        setReportedLocationRevision((revision) => revision + 1);
 
         setEligibility((current) => ({
           ...current,
@@ -250,6 +262,7 @@ export default function ExplorePage({
       mapFactory={mapFactory}
       onCheckEligibility={(eventId) => void checkEligibility(eventId)}
       onRetry={() => setAttempt((current) => current + 1)}
+      reportedLocation={reportedLocationRef.current}
     />
   );
 }
