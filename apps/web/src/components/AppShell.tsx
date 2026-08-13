@@ -36,11 +36,7 @@ export function AppShell({ children }: AppShellProps) {
 
       <header className="site-header">
         <div className="site-header__inner">
-          <Link
-            aria-label="Wits Quest home, a Wits World project"
-            className="product-name"
-            href="/"
-          >
+          <Link aria-label="Wits World home" className="product-name" href="/">
             <CampusSeal className="product-name__mark" decorative />
             <span className="product-name__wordmark" aria-hidden="true">
               <span className="product-name__title">Wits World</span>
@@ -74,8 +70,8 @@ export function AppShell({ children }: AppShellProps) {
 
       <footer className="site-footer">
         <p>
-          <strong>Wits Quest</strong> is the campus exploration game developed
-          by the Wits World project.
+          <strong>Wits World</strong> is the project behind Wits Quest, our
+          campus exploration game.
         </p>
       </footer>
     </div>

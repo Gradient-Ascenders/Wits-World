@@ -1,7 +1,8 @@
 # Wits World Web Application
 
-This workspace contains the mobile-first React foundation for Wits Quest, the
-game/topic being developed by the Wits World project.
+This workspace contains the mobile-first Wits World web application. Wits World
+is the project and primary public brand; Wits Quest is the campus-exploration
+game/topic the project is building.
 
 The current application provides a responsive shell, Auth0 sign-in and sign-out,
 a protected campus map, authenticated published-event discovery, safe API
@@ -32,6 +33,21 @@ configuration changes.
 Open `http://localhost:5173` in a browser. The development server uses a strict
 port and exits with an error if port 5173 is unavailable.
 
+### Public branding asset
+
+The approved Campus Seal is copied byte-for-byte to
+`/branding/wits-world-campus-seal-transparent.svg` so externally hosted
+interfaces such as Auth0 Universal Login can load it over HTTPS after the web
+application is deployed. The canonical source remains
+`src/assets/branding/wits-world-campus-seal-transparent.svg`.
+
+The supplied Quest Marker variants are also copied byte-for-byte to
+`/branding/wits-world-quest-marker.svg` and
+`/branding/wits-world-quest-marker-transparent.svg`. Both paths are public so
+external interfaces can load the selected artwork without application
+authentication. The browser favicon remains the simplified W/star mark at
+`src/assets/branding/wits-world-favicon.svg`.
+
 To inspect the production build locally:
 
 ```bash
@@ -45,7 +61,7 @@ The preview server uses `http://localhost:4173`.
 
 | Variable               | Required | Browser-visible | Purpose                                  |
 | ---------------------- | -------- | --------------- | ---------------------------------------- |
-| `VITE_API_BASE_URL`    | Yes      | Yes             | Base URL reserved for the Wits Quest API |
+| `VITE_API_BASE_URL`    | Yes      | Yes             | Base URL reserved for the Wits World API |
 | `VITE_AUTH0_DOMAIN`    | Yes      | Yes             | Auth0 tenant hostname without a protocol |
 | `VITE_AUTH0_CLIENT_ID` | Yes      | Yes             | Public Auth0 single-page application ID  |
 | `VITE_AUTH0_AUDIENCE`  | Yes      | Yes             | Audience identifying the Wits World API  |
@@ -65,7 +81,7 @@ of starting an incorrectly configured application.
 
 ## Player authentication
 
-Wits Quest uses Auth0 Universal Login. The browser application is a public
+Wits World uses Auth0 Universal Login. The browser application is a public
 single-page application and must not be configured with an Auth0 client secret.
 The Auth0 provider requests access tokens for the audience configured by
 `VITE_AUTH0_AUDIENCE` and keeps the SDK's default in-memory cache. Tokens are not
@@ -150,7 +166,7 @@ OpenFreeMap image, style, glyph, and tile origins. The final directives belong
 with deployment configuration.
 
 OpenFreeMap's public service is external, provided as-is, and does not offer an
-availability guarantee. Wits Quest therefore retains its map-independent event
+availability guarantee. Wits World therefore retains its map-independent event
 list and a clear map-provider failure state. Provider terms and privacy behavior
 must be reviewed again before production deployment.
 
@@ -177,7 +193,7 @@ for the full flow, privacy boundary, browser limitations, and evidence steps.
 
 ## Routes
 
-- `/` presents the mobile-first Wits Quest home page.
+- `/` presents the mobile-first Wits World home page.
 - `/explore` requires Auth0 sign-in and contains the Sprint 1 player experience.
 - `/about` explains the Wits World project and Wits Quest game/topic distinction.
 - Any unknown route presents a page-not-found message and a link home.
@@ -245,7 +261,7 @@ With `apps/web/.env` configured and the development server running:
    two-column compositions without stretching body text or obscuring headings.
 4. Capture review screenshots under `.pr-screenshots/` at 390×844 and 1280×800.
 5. At 390px, press Tab. Confirm focus moves through Skip to main content, the
-   Wits Quest brand, Home, Explore, About, account control, Explore the campus,
+   Wits World brand, Home, Explore, About, account control, Explore the campus,
    and About the project with a visible outline. Activate the skip link and
    confirm focus moves to the main landmark.
 6. Enable reduced-motion emulation and confirm transitions are effectively
