@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -14,6 +17,11 @@ const configuration: MapConfiguration = {
   styleUrl: 'https://maps.example.test/style.json',
   zoom: 14,
 };
+
+const explorationStyles = readFileSync(
+  resolve(process.cwd(), 'src/components/exploration/exploration.css'),
+  'utf8',
+);
 
 const testPoint = {
   id: 'event-test-1',
@@ -46,6 +54,12 @@ afterEach(() => {
 });
 
 describe('campus exploration', () => {
+  it('keeps the map host positioned when MapLibre adds its class', () => {
+    expect(explorationStyles).toMatch(
+      /\.campus-map\s*>\s*\.campus-map__canvas\s*{[^}]*position:\s*absolute\s*!important;/,
+    );
+  });
+
   it('presents a loaded event on the map and in the text fallback', async () => {
     render(
       <CampusExplorer

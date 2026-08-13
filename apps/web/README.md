@@ -121,6 +121,7 @@ The current map adapter:
 - bundles MapLibre's module worker through Vite and configures its generated URL
   before constructing the map;
 - updates event markers without destroying and recreating the WebGL map;
+- keeps the map host sized when MapLibre's runtime class and stylesheet arrive;
 - leaves MapLibre's attribution control enabled and expanded;
 - provides 44px zoom controls;
 - presents map loading and failure states, treating WebGL context loss or a
