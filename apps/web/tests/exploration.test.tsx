@@ -13,7 +13,18 @@ import type {
 } from '../src/components/exploration/map-provider';
 
 const configuration: MapConfiguration = {
+  accessToken: 'pk.test-token',
+  bearing: 20,
   center: [0, 0],
+  pitch: 52,
+  standardConfig: {
+    lightPreset: 'dusk',
+    show3dBuildings: true,
+    show3dLandmarks: true,
+    show3dObjects: true,
+    show3dTrees: true,
+    showPedestrianRoads: true,
+  },
   styleUrl: 'https://maps.example.test/style.json',
   zoom: 14,
 };
@@ -54,7 +65,7 @@ afterEach(() => {
 });
 
 describe('campus exploration', () => {
-  it('keeps the map host positioned when MapLibre adds its class', () => {
+  it('keeps the map host positioned when Mapbox adds its class', () => {
     expect(explorationStyles).toMatch(
       /\.campus-map\s*>\s*\.campus-map__canvas\s*{[^}]*position:\s*absolute\s*!important;/,
     );

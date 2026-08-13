@@ -36,7 +36,8 @@ resolved:
 - web and API hosting;
 - managed PostgreSQL/PostGIS hosting;
 - documentation hosting;
-- map tile and style provider;
+- map tile and style provider formal acceptance (Mapbox Standard is the current
+  implementation candidate);
 - role and permission representation;
 - location-data retention;
 - card and battle rules; and

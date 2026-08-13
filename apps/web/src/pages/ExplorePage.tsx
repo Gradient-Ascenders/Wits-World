@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   EventDiscoveryError,
@@ -25,15 +25,27 @@ import type {
 } from '../components/exploration/map-provider';
 
 const CAMPUS_MAP_CONFIGURATION: MapConfiguration = {
+  accessToken: '',
+  bearing: 20,
   center: [28.03038, -26.19205],
-  styleUrl: 'https://tiles.openfreemap.org/styles/liberty',
-  zoom: 16,
+  pitch: 52,
+  standardConfig: {
+    lightPreset: 'dusk',
+    show3dBuildings: true,
+    show3dLandmarks: true,
+    show3dObjects: true,
+    show3dTrees: true,
+    showPedestrianRoads: true,
+  },
+  styleUrl: 'mapbox://styles/mapbox/standard',
+  zoom: 16.5,
 };
 
 interface ExplorePageProps {
   apiBaseUrl: string;
   locationClaimProvider?: LocationClaimProvider;
   mapFactory?: MapFactory;
+  mapboxAccessToken: string;
 }
 
 function toDiscoveryState(events: PlayerEvent[]): EventDiscoveryState {
@@ -116,6 +128,7 @@ export default function ExplorePage({
   apiBaseUrl,
   locationClaimProvider = requestBrowserLocation,
   mapFactory,
+  mapboxAccessToken,
 }: ExplorePageProps) {
   const getAccessToken = useApiAccessToken();
   const [attempt, setAttempt] = useState(0);
@@ -128,6 +141,10 @@ export default function ExplorePage({
   const [checkingEventId, setCheckingEventId] = useState<string | null>(null);
   const eligibilityRequest = useRef<AbortController | null>(null);
   const mounted = useRef(true);
+  const mapConfiguration = useMemo(
+    () => ({ ...CAMPUS_MAP_CONFIGURATION, accessToken: mapboxAccessToken }),
+    [mapboxAccessToken],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -229,7 +246,7 @@ export default function ExplorePage({
       discovery={discovery}
       eligibility={eligibility}
       eligibilityBusy={checkingEventId !== null}
-      mapConfiguration={CAMPUS_MAP_CONFIGURATION}
+      mapConfiguration={mapConfiguration}
       mapFactory={mapFactory}
       onCheckEligibility={(eventId) => void checkEligibility(eventId)}
       onRetry={() => setAttempt((current) => current + 1)}

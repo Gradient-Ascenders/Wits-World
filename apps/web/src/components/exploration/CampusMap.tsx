@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import {
-  createMapLibreMap,
+  createMapboxMap,
   type MapConfiguration,
   type MapController,
   type MapFactory,
@@ -20,7 +20,7 @@ const MAP_LOAD_TIMEOUT_MS = 15_000;
 
 export function CampusMap({
   configuration,
-  mapFactory = createMapLibreMap,
+  mapFactory = createMapboxMap,
   points,
 }: CampusMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -101,7 +101,7 @@ export function CampusMap({
   return (
     <div className="campus-map">
       <div
-        aria-label="Interactive campus map. Event information is also available in the nearby events list."
+        aria-label="Interactive campus map using Mapbox Standard 3D. Event information is also available in the nearby events list."
         className="campus-map__canvas"
         ref={containerRef}
         role="region"

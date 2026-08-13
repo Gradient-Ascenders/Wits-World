@@ -39,7 +39,7 @@
 }
 
 .campus-map > .campus-map__canvas {
-  /* Keep this absolute after MapLibre's later runtime positioning rule. */
+  /* Keep this absolute after Mapbox GL JS's later runtime positioning rule. */
   position: absolute !important;
   inset: 0;
 }
@@ -205,7 +205,7 @@
   border-color: rgb(220 91 101 / 48%);
 }
 
-.maplibregl-ctrl-group {
+.mapboxgl-ctrl-group {
   overflow: hidden;
   border: 1px solid var(--colour-border-default);
   border-radius: var(--radius-sm);
@@ -213,12 +213,26 @@
   box-shadow: var(--shadow-panel);
 }
 
-.maplibregl-ctrl-group button {
+.mapboxgl-ctrl-group button {
   width: var(--touch-target-min);
   height: var(--touch-target-min);
 }
 
-.maplibregl-ctrl-attrib {
+.mapboxgl-ctrl-reset-view {
+  display: grid;
+  place-items: center;
+  color: var(--colour-text-primary);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.mapboxgl-ctrl-reset-view:focus-visible {
+  outline: 0.1875rem solid var(--colour-blue-300);
+  outline-offset: -0.1875rem;
+}
+
+.mapboxgl-ctrl-attrib {
+  max-width: min(100%, 28rem);
   color: #1d2532;
   font-size: 0.6875rem;
 }

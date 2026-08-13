@@ -111,13 +111,16 @@ repository.
 
 ## Maps and location
 
-| Technology                       | Purpose                           | Motivation                                                                               |
-| -------------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------- |
-| MapLibre GL JS                   | Interactive browser map rendering | Provides an open-source client library that does not determine protected game outcomes   |
-| Licensed tile and style provider | Visual map data                   | Supplies the presentation layer required by the map interface                            |
-| Browser Geolocation API          | Device location claim             | Allows the player to submit latitude, longitude, reported accuracy, and acquisition time |
+| Technology                   | Purpose                           | Motivation                                                                               |
+| ---------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------- |
+| Mapbox GL JS 3.28.1          | Interactive browser map rendering | Provides Mapbox Standard 3D presentation without determining protected game outcomes     |
+| Mapbox Standard              | Public basemap style              | Supplies the dusk/night-capable visual presentation and 3D basemap configuration         |
+| Licensed Wits campus dataset | Optional project-owned map layer  | Adds verified campus features only after licensing and provenance review                 |
+| Browser Geolocation API      | Device location claim             | Allows the player to submit latitude, longitude, reported accuracy, and acquisition time |
 
-The tile and style provider remains to be selected.
+Mapbox Standard is the current implementation candidate for issue #92. Formal
+external-service acceptance, production configuration review, and a licensed
+Wits campus dataset remain to be selected or confirmed.
 
 Map rendering is not authoritative. A marker appearing near an event does not
 grant access to that event.
@@ -249,4 +252,5 @@ record.
 ---
 
 The preceding document was planned and generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking].
+ChatGPT-Web[GPT-5.6 Thinking] and updated with:
+Codex-CLI[GPT-5].

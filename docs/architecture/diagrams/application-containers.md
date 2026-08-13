@@ -92,6 +92,9 @@ The exact provider remains to be selected.
 
 ### Map provider
 
+Mapbox Standard is the current implementation candidate; formal external-service
+acceptance and the licensed project-owned campus layer remain pending.
+
 The map provider:
 
 - supplies map tiles;
@@ -112,4 +115,5 @@ The documentation application:
 ---
 
 The preceding document was planned and generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking].
+ChatGPT-Web[GPT-5.6 Thinking] and updated with:
+Codex-CLI[GPT-5].

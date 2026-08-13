@@ -53,7 +53,8 @@ flowchart LR
 The following external providers have not yet been selected:
 
 - authentication provider;
-- map tile and style provider;
+- map tile and style provider formal acceptance (Mapbox Standard is the current
+  implementation candidate);
 - web host;
 - API host;
 - database host; and
@@ -62,4 +63,5 @@ The following external providers have not yet been selected:
 ---
 
 The preceding document was planned and generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking].
+ChatGPT-Web[GPT-5.6 Thinking] and updated with:
+Codex-CLI[GPT-5].

@@ -15,6 +15,7 @@ import { BrowserLocationError } from '../src/browser-location';
 import ExplorePage from '../src/pages/ExplorePage';
 
 const apiBaseUrl = 'https://api.example.test/api/v1';
+const mapboxAccessToken = 'pk.test-token';
 const event = {
   availability: 'active',
   description: null,
@@ -70,6 +71,7 @@ function renderExplore(
         apiBaseUrl={apiBaseUrl}
         locationClaimProvider={locationClaimProvider}
         mapFactory={mapFactory}
+        mapboxAccessToken={mapboxAccessToken}
       />
     </Auth0Context.Provider>,
   );
@@ -127,9 +129,20 @@ describe('authenticated campus event discovery', () => {
     await waitFor(() => {
       const latestCall = vi.mocked(mapFactory).mock.lastCall;
       expect(latestCall?.[1]).toEqual({
+        accessToken: mapboxAccessToken,
+        bearing: 20,
         center: [28.03038, -26.19205],
-        styleUrl: 'https://tiles.openfreemap.org/styles/liberty',
-        zoom: 16,
+        pitch: 52,
+        standardConfig: {
+          lightPreset: 'dusk',
+          show3dBuildings: true,
+          show3dLandmarks: true,
+          show3dObjects: true,
+          show3dTrees: true,
+          showPedestrianRoads: true,
+        },
+        styleUrl: 'mapbox://styles/mapbox/standard',
+        zoom: 16.5,
       });
       expect(setPoints).toHaveBeenCalledWith([
         {

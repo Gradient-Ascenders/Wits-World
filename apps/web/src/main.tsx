@@ -21,7 +21,10 @@ try {
   root.render(
     <StrictMode>
       <PlayerAuthProvider config={config.auth}>
-        <App apiBaseUrl={config.apiBaseUrl} />
+        <App
+          apiBaseUrl={config.apiBaseUrl}
+          mapboxAccessToken={config.mapboxAccessToken}
+        />
       </PlayerAuthProvider>
     </StrictMode>,
   );

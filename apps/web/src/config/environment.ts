@@ -1,6 +1,7 @@
 export interface WebConfig {
   apiBaseUrl: string;
   auth: AuthConfig;
+  mapboxAccessToken: string;
 }
 
 export interface AuthConfig {
@@ -58,6 +59,16 @@ function validateAuth0Domain(domain: string): string {
   return domain;
 }
 
+function validateMapboxAccessToken(token: string): string {
+  if (!token.startsWith('pk.')) {
+    throw new ConfigurationError(
+      'VITE_MAPBOX_ACCESS_TOKEN must be a public Mapbox pk. token.',
+    );
+  }
+
+  return token;
+}
+
 export function loadWebConfig(environment: PublicEnvironment): WebConfig {
   const apiBaseUrl = readRequiredValue(environment, 'VITE_API_BASE_URL');
   let parsedUrl: URL;
@@ -81,6 +92,9 @@ export function loadWebConfig(environment: PublicEnvironment): WebConfig {
   );
   const clientId = readRequiredValue(environment, 'VITE_AUTH0_CLIENT_ID');
   const audience = readRequiredValue(environment, 'VITE_AUTH0_AUDIENCE');
+  const mapboxAccessToken = validateMapboxAccessToken(
+    readRequiredValue(environment, 'VITE_MAPBOX_ACCESS_TOKEN'),
+  );
 
   return {
     apiBaseUrl: apiBaseUrl.replace(/\/+$/, ''),
@@ -89,5 +103,6 @@ export function loadWebConfig(environment: PublicEnvironment): WebConfig {
       clientId,
       domain,
     },
+    mapboxAccessToken,
   };
 }

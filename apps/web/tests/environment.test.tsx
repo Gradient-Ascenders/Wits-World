@@ -9,6 +9,7 @@ const validEnvironment = {
   VITE_AUTH0_AUDIENCE: 'https://api.wits-world.invalid',
   VITE_AUTH0_CLIENT_ID: 'public-spa-client-id',
   VITE_AUTH0_DOMAIN: 'dev-5artxfvpdennq8qm.us.auth0.com',
+  VITE_MAPBOX_ACCESS_TOKEN: 'pk.test-token',
 };
 
 describe('web configuration', () => {
@@ -42,21 +43,37 @@ describe('web configuration', () => {
         clientId: 'public-spa-client-id',
         domain: 'dev-5artxfvpdennq8qm.us.auth0.com',
       },
+      mapboxAccessToken: 'pk.test-token',
     });
   });
 
-  it.each(['VITE_AUTH0_DOMAIN', 'VITE_AUTH0_CLIENT_ID', 'VITE_AUTH0_AUDIENCE'])(
-    'rejects missing public authentication configuration: %s',
-    (key) => {
-      expect(() =>
-        loadWebConfig({ ...validEnvironment, [key]: undefined }),
-      ).toThrow(
-        new ConfigurationError(
-          `${key} is required to start the web application.`,
-        ),
-      );
-    },
-  );
+  it.each([
+    'VITE_AUTH0_DOMAIN',
+    'VITE_AUTH0_CLIENT_ID',
+    'VITE_AUTH0_AUDIENCE',
+    'VITE_MAPBOX_ACCESS_TOKEN',
+  ])('rejects missing public authentication configuration: %s', (key) => {
+    expect(() =>
+      loadWebConfig({ ...validEnvironment, [key]: undefined }),
+    ).toThrow(
+      new ConfigurationError(
+        `${key} is required to start the web application.`,
+      ),
+    );
+  });
+
+  it('rejects a secret Mapbox token in browser configuration', () => {
+    expect(() =>
+      loadWebConfig({
+        ...validEnvironment,
+        VITE_MAPBOX_ACCESS_TOKEN: 'sk.secret-token',
+      }),
+    ).toThrow(
+      new ConfigurationError(
+        'VITE_MAPBOX_ACCESS_TOKEN must be a public Mapbox pk. token.',
+      ),
+    );
+  });
 
   it.each([
     'https://dev-5artxfvpdennq8qm.us.auth0.com',
