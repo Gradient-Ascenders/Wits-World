@@ -17,3 +17,4 @@ Install dependencies from the repository root:
 
 ```bash
 npm ci
+```
