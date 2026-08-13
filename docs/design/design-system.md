@@ -1,11 +1,11 @@
-# Wits Quest Design System
+# Wits World Design System
 
 **Status:** Draft design recommendation  
 **Applies to:** `apps/web`  
-**Last updated:** 2026-08-06
+**Last updated:** 2026-08-13
 
-This document is the visual and interaction source of truth for the Wits Quest
-player application and author console.
+This document is the visual and interaction source of truth for the Wits World
+player application and author console for the Wits Quest game/topic.
 
 It describes the intended design philosophy, tokens, reusable components,
 responsive behaviour, accessibility requirements and screen-specific patterns.
@@ -42,6 +42,11 @@ The following labels are used throughout this document:
 ---
 
 ## 2. Product context
+
+Wits World is the project, application and primary public brand. Wits Quest is
+the location-based campus exploration game/topic being built by Wits World. UI
+chrome, browser metadata and general application states should therefore lead
+with Wits World; use Wits Quest when copy specifically discusses the game.
 
 **Brief requirement:** Wits Quest is a mobile-friendly, location-based campus
 exploration game.
@@ -82,8 +87,8 @@ dashboard. It must support the complete journey.
 
 ### 3.1 Core identity
 
-**Recommendation:** Wits Quest should feel like a premium futuristic academic
-product combining:
+**Recommendation:** The Wits World experience for Wits Quest should feel like a
+premium futuristic academic product combining:
 
 - university heritage;
 - scientific precision;
@@ -780,8 +785,8 @@ artwork:
 - `apps/web/src/assets/branding/wits-world-campus-seal.svg` includes its own
   dark backing and is for contexts where the surrounding background cannot be
   controlled;
-- `apps/web/src/assets/branding/wits-world-favicon.svg` is retained as the
-  previous simplified, code-native small-size mark.
+- `apps/web/src/assets/branding/wits-world-favicon.svg` is the selected
+  simplified, code-native W/star mark used in browser tabs.
 
 Preserve the SVG vector data, gradients, colours, geometry, embedded provenance
 metadata and `321:347` aspect ratio. Render the asset through an ordinary image
@@ -791,7 +796,7 @@ and do not crop, stretch, recolour, animate or add strong effects.
 For normal application surfaces, keep the seal at least `2.75rem` wide. The
 application header uses it at `5.5rem` to `6.5rem` beside a Wits World wordmark
 and the short “Explore · Discover · Achieve” line. At favicon size, use the
-selected Quest Marker rather than shrinking the detailed seal. Supply meaningful
+simplified W/star mark rather than shrinking the detailed seal. Supply meaningful
 alternative text when the seal is the only branding label. Use empty alternative
 text and `aria-hidden="true"` when it duplicates an already labelled brand
 link.
@@ -802,13 +807,12 @@ without a demonstrated technical reason and explicit approval.
 
 ### 16.2 Wits World Quest Marker
 
-The supplied Quest Marker variants are the selected browser-tab and external
-branding artwork for this release. Preserve their SVG vector data, geometry,
+The supplied Quest Marker variants are external branding artwork for this
+release. Preserve their SVG vector data, geometry,
 colours and `242:326` aspect ratio. The source files remain in
 `docs/design/references/`; the web deployment exposes byte-identical copies at
 `/branding/wits-world-quest-marker.svg` and
-`/branding/wits-world-quest-marker-transparent.svg`. The transparent-named
-variant is the favicon referenced by `apps/web/index.html`.
+`/branding/wits-world-quest-marker-transparent.svg`.
 
 ---
 
