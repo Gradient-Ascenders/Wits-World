@@ -45,6 +45,10 @@ subject to formal client/lecturer external-service acceptance, production token
 and CSP review, and confirmation of a licensed Wits campus dataset. See the
 [Mapbox Standard migration boundary](../mapbox-standard-migration.md).
 
+The current provider comparison and Wits-campus trial requirements are recorded
+in the [map-provider evaluation](../map-provider-evaluation.md). That evaluation
+does not change this ADR's presentation-only trust boundary.
+
 Authoritative event data comes from the Wits Quest API.
 
 Authoritative distance and eligibility decisions come from the API and
@@ -115,6 +119,7 @@ eligibility model.
 - Render the campus map and seeded event
 - Submit browser geolocation and display eligibility
 - Migrate `/explore` from OpenFreeMap/MapLibre to Mapbox Standard 3D (#92)
+- [Evaluate the production map provider](../map-provider-evaluation.md)
 
 ---
 

@@ -47,7 +47,7 @@ architecture decision.
 | R-17 | Tests pass in isolation but the deployed vertical journey fails | Medium | High | Member 4 | Add deployment smoke tests and end-to-end validation across the deployed web, API, authentication, and database | Open |
 | R-18 | Duplicate reward submissions later issue the same event reward more than once | Medium | High | Members 2 and 3 | Use idempotency, unique constraints, transactions, and concurrency tests during reward implementation | Open |
 | R-19 | Accepted challenge answers or author-only data are exposed to players | Medium | High | Member 2 | Define player-safe response schemas; separate author routes; add exposure tests and object-level authorisation | Open |
-| R-20 | Card, deck, and battle rules remain unresolved too late for implementation | Medium | High | Member 4 | Resolve and document deterministic rules before Sprint 2 implementation; keep rules pure and testable | Open |
+| R-20 | Card, deck, and battle rules remain unresolved too late for implementation | Medium | High | Member 4 | Resolve `BASIC-08` through `BASIC-10` in the [Basic-tier decision register](../requirements/basic-tier-decision-register.md) before dependent Sprint 2 implementation; keep rules pure and testable | Open |
 | R-21 | The team begins intermediate or advanced features before completing the Basic journey | Medium | High | Member 1 | Apply the stretch-feature gate; review roadmap and critical issues during planning | Open |
 | R-22 | Documentation diverges from the implemented architecture | Medium | Medium | All members | Include documentation updates in the Definition of Done and review documentation during pull requests | Open |
 | R-23 | Insufficient stakeholder, meeting, testing, or Scrum evidence reduces milestone marks | Medium | High | Member 1 | Maintain linked minutes, issue activity, review evidence, test results, screenshots, decisions, and evidence indexes | Open |
@@ -56,7 +56,7 @@ architecture decision.
 | R-26 | Reduced development time later in the semester threatens completion | High | High | All members | Complete architecture and blockers early; prioritise Basic vertical slices; avoid unnecessary scope expansion | Open |
 | R-27 | A team member does not have meaningful version-control contributions | Low | High | Member 1 | Assign accountable issue ownership and ensure all members contribute reviewed commits | Open |
 | R-28 | Location or identity data is retained longer or more precisely than necessary | Medium | High | Member 2 | Define retention and deletion behaviour; minimise stored precision; restrict access; avoid continuous tracking | Open |
-| R-29 | Account deletion conflicts with audit, match, or reward integrity | Medium | High | Members 2 and 3 | Define deletion and anonymisation rules before implementation; document retained records and privacy implications | Open |
+| R-29 | Account deletion conflicts with audit, match, or reward integrity | Medium | High | Members 2 and 3 | Resolve `BASIC-12` in the [Basic-tier decision register](../requirements/basic-tier-decision-register.md) before implementation; document deletion, pseudonymisation, retention, and privacy implications | Open |
 | R-30 | Free-tier hosting inactivity, quotas, or service limits interrupt demonstrations | Medium | High | Member 3 | Record service limitations; add pre-demonstration smoke checks; maintain repeatable deployment and recovery steps | Open |
 
 ## Highest-priority risks

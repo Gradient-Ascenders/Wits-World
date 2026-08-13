@@ -322,7 +322,9 @@ A later account-deletion feature must coordinate:
 The browser must not receive an Auth0 Management API credential.
 
 The exact deletion and retention workflow requires a separate design before the
-account-deletion endpoint is implemented.
+account-deletion endpoint is implemented. The required data-class decisions,
+owners, and implementation gate are tracked as `BASIC-12` in the
+[Basic-tier decision register](../requirements/basic-tier-decision-register.md).
 
 ## Unresolved decisions
 
@@ -350,6 +352,9 @@ until the web and API deployment domains are confirmed.
 
 The team still needs confirmation about which gameplay, audit, and authoring
 records must be deleted, anonymised, or retained when an account is deleted.
+This remains an explicit blocker rather than an implementation default; see
+`BASIC-12` in the
+[Basic-tier decision register](../requirements/basic-tier-decision-register.md).
 
 ## Implementation boundaries
 

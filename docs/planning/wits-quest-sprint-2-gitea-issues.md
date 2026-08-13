@@ -78,6 +78,11 @@ silently reducing testing, security, accessibility, or documentation scope.
 Close the product decisions that cannot safely be invented before the remaining
 Basic journey is implemented.
 
+The working consolidation artifact is the
+[Basic-tier decision register](../requirements/basic-tier-decision-register.md),
+with confirmed gameplay rules collected in
+[Wits Quest Basic Game Rules](../requirements/basic-game-rules.md).
+
 ### Included
 
 - Challenge retry and failed-attempt behaviour

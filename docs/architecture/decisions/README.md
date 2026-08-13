@@ -27,6 +27,10 @@ the selected technology.
 | [ADR-004](./ADR-004-map-provider-boundary.md) | Keep map integration presentation-only                   |
 | [ADR-005](./ADR-005-auth0-authentication.md)  | Use Auth0 for authentication                             |
 
+Cross-cutting Basic product decisions and unresolved implementation gates are
+tracked in the
+[Basic-tier decision register](../../requirements/basic-tier-decision-register.md).
+
 ## Planned records
 
 Additional decision records should be created when the following choices are
