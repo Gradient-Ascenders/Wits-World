@@ -2,10 +2,10 @@ export default function AboutPage() {
   return (
     <article className="content-page">
       <p className="eyebrow">The player experience</p>
-      <h1>About Wits Quest</h1>
+      <h1>About Wits World</h1>
       <p className="lead">
-        Wits Quest is the location-based campus exploration game being developed
-        by the Wits World project.
+        Wits World is the project developing Wits Quest, our location-based
+        campus exploration game.
       </p>
       <p>
         The Sprint 1 foundation supports authenticated event discovery on a
