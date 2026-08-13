@@ -1,0 +1,112 @@
+/**
+ * Wits World documentation theme.
+ */
+
+:root {
+  --ww-bg: #050b16;
+  --ww-bg-secondary: #081426;
+  --ww-surface: #0d1b31;
+
+  --ww-text: #f7f3e7;
+  --ww-text-secondary: #b3bdcc;
+
+  --ww-gold: #d4af37;
+  --ww-gold-soft: #e0c46c;
+  --ww-gold-muted: #9d8130;
+
+  --ww-blue: #2a6bff;
+  --ww-blue-bright: #54a8ff;
+
+  --ww-border-subtle: rgba(212, 175, 55, 0.2);
+
+  --ifm-color-primary: #b69328;
+  --ifm-color-primary-dark: #a48224;
+  --ifm-color-primary-darker: #9b7b22;
+  --ifm-color-primary-darkest: #80651c;
+  --ifm-color-primary-light: #c8a231;
+  --ifm-color-primary-lighter: #d0aa39;
+  --ifm-color-primary-lightest: #dcc15f;
+
+  --ifm-background-color: #fbfaf6;
+  --ifm-navbar-height: 64px;
+
+  --ifm-font-family-base:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif;
+}
+
+[data-theme='dark'] {
+  --ifm-background-color: var(--ww-bg);
+  --ifm-background-surface-color: var(--ww-bg-secondary);
+
+  --ifm-color-primary: var(--ww-gold);
+  --ifm-color-primary-dark: #c29f32;
+  --ifm-color-primary-darker: #b99730;
+  --ifm-color-primary-darkest: #997c27;
+  --ifm-color-primary-light: var(--ww-gold-soft);
+  --ifm-color-primary-lighter: #e4cb7b;
+  --ifm-color-primary-lightest: #ecda9e;
+
+  --ifm-font-color-base: var(--ww-text);
+  --ifm-heading-color: var(--ww-text);
+
+  --ifm-navbar-background-color: #07101e;
+  --ifm-footer-background-color: #050b16;
+
+  --ifm-toc-border-color: rgba(212, 175, 55, 0.14);
+  --ifm-color-emphasis-200: rgba(212, 175, 55, 0.16);
+}
+
+.navbar {
+  border-bottom: 1px solid var(--ww-border-subtle);
+  box-shadow: none;
+}
+
+.navbar__title {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.footer {
+  border-top: 1px solid var(--ww-border-subtle);
+}
+
+[data-theme='dark'] .menu__link--active,
+[data-theme='dark'] .menu__link--active:not(.menu__link--sublist) {
+  color: var(--ww-gold-soft);
+}
+
+[data-theme='dark'] .theme-doc-sidebar-container {
+  border-right-color: rgba(212, 175, 55, 0.14);
+}
+
+[data-theme='dark'] code {
+  border: 1px solid rgba(212, 175, 55, 0.12);
+}
+
+.navbar__logo {
+  height: 36px;
+  margin-right: 10px;
+}
+
+.navbar__logo img {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+}
+
+.footer {
+  background: #050b16;
+}
+
+.footer__title {
+  color: var(--ww-text);
+}
+
+.footer__link-item {
+  color: var(--ww-text-secondary);
+}
+
+.footer__link-item:hover {
+  color: var(--ww-gold-soft);
+}
