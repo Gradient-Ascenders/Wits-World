@@ -4,3 +4,7 @@ node_modules/
 package-lock.json
 AGENTS.md
 .playwright-mcp/
+
+# Docusaurus generated output
+apps/docs/build/
+apps/docs/.docusaurus/
