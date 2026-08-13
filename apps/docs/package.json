@@ -16,7 +16,7 @@
     "lint": "eslint src docusaurus.config.ts sidebars.ts --max-warnings=0",
     "type-check": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "deploy:cloudflare": "wrangler pages deploy build --project-name=wits-world-docs --branch=main"
+    "deploy:cloudflare": "wrangler pages deploy build --project-name=wits-world-docs"
   },
   "dependencies": {
     "@docusaurus/core": "3.10.2",
