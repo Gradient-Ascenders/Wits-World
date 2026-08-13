@@ -97,7 +97,7 @@ describe('web configuration', () => {
     expect(
       screen.getByRole('heading', {
         level: 1,
-        name: 'Wits Quest is not configured yet',
+        name: 'Wits World is not configured yet',
       }),
     ).toBeVisible();
     expect(screen.getByText('VITE_API_BASE_URL is required.')).toBeVisible();

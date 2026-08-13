@@ -1,7 +1,8 @@
 # Wits World Web Application
 
-This workspace contains the mobile-first React foundation for Wits Quest, the
-game/topic being developed by the Wits World project.
+This workspace contains the mobile-first Wits World web application. Wits World
+is the project and primary public brand; Wits Quest is the campus-exploration
+game/topic the project is building.
 
 The current application provides a responsive shell, Auth0 sign-in and sign-out,
 a protected campus map, authenticated published-event discovery, safe API
@@ -42,10 +43,10 @@ application is deployed. The canonical source remains
 
 The supplied Quest Marker variants are also copied byte-for-byte to
 `/branding/wits-world-quest-marker.svg` and
-`/branding/wits-world-quest-marker-transparent.svg`. The transparent-named
-variant is the browser favicon and is referenced from `index.html`; both paths
-are public so external interfaces can load the selected artwork without
-application authentication.
+`/branding/wits-world-quest-marker-transparent.svg`. Both paths are public so
+external interfaces can load the selected artwork without application
+authentication. The browser favicon remains the simplified W/star mark at
+`src/assets/branding/wits-world-favicon.svg`.
 
 To inspect the production build locally:
 
@@ -83,7 +84,7 @@ of starting an incorrectly configured application.
 
 ## Player authentication
 
-Wits Quest uses Auth0 Universal Login. The browser application is a public
+Wits World uses Auth0 Universal Login. The browser application is a public
 single-page application and must not be configured with an Auth0 client secret.
 The Auth0 provider requests access tokens for the audience configured by
 `VITE_AUTH0_AUDIENCE` and keeps the SDK's default in-memory cache. Tokens are not
@@ -188,7 +189,7 @@ for the full flow, privacy boundary, browser limitations, and evidence steps.
 
 ## Routes
 
-- `/` presents the mobile-first Wits Quest home page.
+- `/` presents the mobile-first Wits World home page.
 - `/explore` requires Auth0 sign-in and contains the Sprint 1 player experience.
 - `/about` explains the Wits World project and Wits Quest game/topic distinction.
 - Any unknown route presents a page-not-found message and a link home.
@@ -256,7 +257,7 @@ With `apps/web/.env` configured and the development server running:
    two-column compositions without stretching body text or obscuring headings.
 4. Capture review screenshots under `.pr-screenshots/` at 390×844 and 1280×800.
 5. At 390px, press Tab. Confirm focus moves through Skip to main content, the
-   Wits Quest brand, Home, Explore, About, account control, Explore the campus,
+   Wits World brand, Home, Explore, About, account control, Explore the campus,
    and About the project with a visible outline. Activate the skip link and
    confirm focus moves to the main landmark.
 6. Enable reduced-motion emulation and confirm transitions are effectively

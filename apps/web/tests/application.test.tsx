@@ -21,7 +21,7 @@ function renderRoute(path: string) {
   );
 }
 
-describe('Wits Quest application shell', () => {
+describe('Wits World application shell', () => {
   it('renders the home route with accessible landmarks and project context', async () => {
     renderRoute('/');
 
@@ -39,9 +39,7 @@ describe('Wits Quest application shell', () => {
     expect(screen.getByRole('navigation', { name: 'Primary' })).toBeVisible();
     expect(screen.getByRole('main')).toHaveAttribute('id', 'main-content');
     expect(screen.getByRole('contentinfo')).toBeVisible();
-    const brandLink = screen.getByLabelText(
-      'Wits Quest home, a Wits World project',
-    );
+    const brandLink = screen.getByLabelText('Wits World home');
     const brandSeal = brandLink.querySelector('img');
 
     expect(brandLink).toBeVisible();
@@ -83,7 +81,7 @@ describe('Wits Quest application shell', () => {
     await user.tab();
     expect(
       screen.getByRole('link', {
-        name: 'Wits Quest home, a Wits World project',
+        name: 'Wits World home',
       }),
     ).toHaveFocus();
 
@@ -101,7 +99,7 @@ describe('Wits Quest application shell', () => {
     expect(
       await screen.findByRole('heading', {
         level: 1,
-        name: 'About Wits Quest',
+        name: 'About Wits World',
       }),
     ).toBeVisible();
     expect(

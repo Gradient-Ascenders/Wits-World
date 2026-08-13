@@ -20,7 +20,7 @@ export class ErrorBoundary extends Component<
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error(
-      'Wits Quest encountered an unexpected rendering error.',
+      'Wits World encountered an unexpected rendering error.',
       error,
       errorInfo,
     );
@@ -42,11 +42,11 @@ export class ErrorBoundary extends Component<
             <p className="eyebrow">Unexpected error</p>
             <h1 id="unexpected-error-title">Something went wrong</h1>
             <p>
-              Wits Quest could not display this page. Reload the application and
+              Wits World could not display this page. Reload the application and
               try again.
             </p>
             <button className="button" onClick={this.reloadPage} type="button">
-              Reload Wits Quest
+              Reload Wits World
             </button>
           </div>
         </main>
