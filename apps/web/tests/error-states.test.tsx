@@ -13,7 +13,7 @@ describe('application status states', () => {
     render(<LoadingState />);
 
     expect(screen.getByRole('status')).toHaveTextContent(
-      'Loading this Wits Quest page…',
+      'Loading this Wits World page…',
     );
   });
 
@@ -31,7 +31,7 @@ describe('application status states', () => {
       screen.getByRole('heading', { level: 1, name: 'Something went wrong' }),
     ).toBeVisible();
     expect(
-      screen.getByRole('button', { name: 'Reload Wits Quest' }),
+      screen.getByRole('button', { name: 'Reload Wits World' }),
     ).toBeEnabled();
   });
 });

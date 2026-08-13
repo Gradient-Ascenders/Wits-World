@@ -32,7 +32,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
       <section aria-live="polite" className="auth-state" role="status">
         <p className="eyebrow">Player access</p>
         <h1>Checking your sign-in status</h1>
-        <p>Please wait while Wits Quest restores your session.</p>
+        <p>Please wait while Wits World restores your session.</p>
       </section>
     );
   }
@@ -57,7 +57,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     return (
       <section className="auth-state">
         <p className="eyebrow">Player access</p>
-        <h1>Sign in to explore Wits Quest</h1>
+        <h1>Sign in to explore Wits World</h1>
         <p>
           Continue to Auth0's secure sign-in page, then return here to open the
           protected campus experience.

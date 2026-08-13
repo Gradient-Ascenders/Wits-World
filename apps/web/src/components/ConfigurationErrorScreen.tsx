@@ -13,7 +13,7 @@ export function ConfigurationErrorScreen({
     >
       <div className="standalone-state__panel">
         <p className="eyebrow">Setup needed</p>
-        <h1 id="configuration-error-title">Wits Quest is not configured yet</h1>
+        <h1 id="configuration-error-title">Wits World is not configured yet</h1>
         <p>{message}</p>
         <p>
           Copy <code>apps/web/.env.example</code> to <code>apps/web/.env</code>,

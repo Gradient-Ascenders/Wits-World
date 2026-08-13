@@ -11,7 +11,7 @@ import './styles/global.css';
 const rootElement = document.getElementById('root');
 
 if (!rootElement) {
-  throw new Error('Wits Quest could not find its application root.');
+  throw new Error('Wits World could not find its application root.');
 }
 
 const root = createRoot(rootElement);

@@ -13,7 +13,7 @@ export default function HomePage() {
     <div className="home-page">
       <section aria-labelledby="home-title" className="hero">
         <div className="hero__content">
-          <p className="eyebrow">Wits Quest / Campus exploration</p>
+          <p className="eyebrow">Wits World / Campus exploration</p>
           <h1 id="home-title">
             Explore Wits. <span>Begin the quest.</span>
           </h1>
@@ -29,7 +29,7 @@ export default function HomePage() {
               About the project
             </Link>
           </div>
-          <ul aria-label="Wits Quest product themes" className="hero__signals">
+          <ul aria-label="Wits World product themes" className="hero__signals">
             <li>Map-led</li>
             <li>Location-aware</li>
             <li>Cards to collect</li>
@@ -176,7 +176,7 @@ export default function HomePage() {
             result.
           </p>
           <Link className="text-link text-link--arrow" href="/about">
-            Read about Wits Quest
+            Read about Wits World
           </Link>
         </div>
       </section>

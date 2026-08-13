@@ -1,11 +1,11 @@
-# Wits Quest Design System
+# Wits World Design System
 
 **Status:** Draft design recommendation  
 **Applies to:** `apps/web`  
-**Last updated:** 2026-08-06
+**Last updated:** 2026-08-13
 
-This document is the visual and interaction source of truth for the Wits Quest
-player application and author console.
+This document is the visual and interaction source of truth for the Wits World
+player application and author console for the Wits Quest game/topic.
 
 It describes the intended design philosophy, tokens, reusable components,
 responsive behaviour, accessibility requirements and screen-specific patterns.
@@ -42,6 +42,11 @@ The following labels are used throughout this document:
 ---
 
 ## 2. Product context
+
+Wits World is the project, application and primary public brand. Wits Quest is
+the location-based campus exploration game/topic being built by Wits World. UI
+chrome, browser metadata and general application states should therefore lead
+with Wits World; use Wits Quest when copy specifically discusses the game.
 
 **Brief requirement:** Wits Quest is a mobile-friendly, location-based campus
 exploration game.
@@ -82,8 +87,8 @@ dashboard. It must support the complete journey.
 
 ### 3.1 Core identity
 
-**Recommendation:** Wits Quest should feel like a premium futuristic academic
-product combining:
+**Recommendation:** The Wits World experience for Wits Quest should feel like a
+premium futuristic academic product combining:
 
 - university heritage;
 - scientific precision;
