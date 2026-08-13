@@ -2,25 +2,35 @@
 
 ## Status and scope
 
-This document defines the proposed Sprint 2 HTTP contract for accepting an event
-quiz, resuming it, locking answers, and receiving server-generated score
-feedback. It resolves issue #46 as a design contract only. The endpoints and
-schemas described here are not implemented yet.
+This document defines the Sprint 2 HTTP contract for accepting an event quiz,
+resuming it, locking answers, and receiving a server-generated completion and
+reward result. It resolves issue #46 as a design contract only. The endpoints
+and schemas described here are not implemented yet.
 
-The first supported challenge format is a timed multiple-choice quiz. Reward
-issuance is deliberately deferred to the linked
-[persistence foundation issue](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/49),
-which will extend the completed-attempt transaction without allowing the browser
-to choose a reward.
+The only challenge format supported in the Basic scope is a timed
+multiple-choice quiz. The API retains a `format` discriminator so additional
+formats can be introduced in a later tier or future scope without redesigning
+the contract. This supersedes earlier Sprint 2 planning references to two
+challenge formats.
+
+Reward persistence and issuance will be implemented separately by the linked
+[persistence foundation issue](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/49).
+This contract nevertheless defines the player-safe reward result returned after
+completion. The browser never chooses correctness, score, coin value, rarity,
+card definitions, or reward outcomes.
 
 ## Approved product decisions
 
-The quiz format, thresholds, expiry, retry, and feedback rules below were
-confirmed by the team in the
-[issue #46 product decision record](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/46#issuecomment-2732).
-This contract translates those approved decisions into HTTP behavior; it does
-not independently choose the game rules.
+The quiz format, thresholds, expiry, retry, feedback, and reward-contract rules
+below were confirmed by the team in the
+[issue #46 product decision record](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/46#issuecomment-2732)
+and subsequent Sprint 2 decisions. This contract translates those approved
+decisions into HTTP behavior; it does not independently choose the game rules.
 
+- Basic supports only the `multiple_choice` challenge format. Additional
+  challenge formats are deferred to a later tier or future scope.
+- The API retains a challenge-format discriminator so future formats can be
+  added without redesigning the contract.
 - Each event has one pool of multiple-choice questions.
 - Starting an attempt selects exactly five distinct questions from the pool.
 - Each question has difficulty `1`, `2`, or `3`, four preset choices, and one
@@ -28,22 +38,32 @@ not independently choose the game rules.
 - Choice order is shuffled once per attempt and persisted.
 - A player may complete an event quiz only once.
 - An answer is locked when accepted by the API and cannot be changed.
-- The API reports only the final number correct. It does not reveal correctness
-  per question or accepted choices.
+- After completion, the API reports only the final score and persisted reward
+  outcome as player feedback. It does not return per-question correctness,
+  selected answers, correct answers, accepted choices, or explanations.
+- Completion and its reward result are retry-safe. Repeated requests return the
+  persisted completion and reward without rerolling or issuing duplicate
+  rewards.
+- The score-based reward system supersedes the earlier simplified one-card-per-event
+  planning rule. A player still receives only one completed attempt and one
+  persisted reward result per event, although that result may contain coins and
+  zero, one, or two awarded cards according to the server-side reward policy.
 - An event remains available to other players after one player completes it.
 
 The selected questions determine the deadline:
 
-| Average difficulty   | Time limit  |
-| -------------------- | ----------- |
-| `<= 1.5`             | 90 seconds  |
-| `> 1.5` and `<= 2.5` | 120 seconds |
-| `> 2.5`              | 150 seconds |
+| Average difficulty    | Time limit  |
+| --------------------- | ----------- |
+| `>= 1.0` and `<= 1.5` | 90 seconds  |
+| `> 1.5` and `<= 2.5`  | 120 seconds |
+| `> 2.5` and `<= 3.0`  | 150 seconds |
 
 An attempt started while the event is active may use its full quiz deadline even
 if the event closes during that period. Refreshing, reconnecting, or repeating
 the start request returns the same active attempt with the original questions,
-choice order, locked answers, and deadline.
+choice order, locked answers, and deadline. If the attempt has already
+completed, repeated start or fetch requests return the same persisted completion
+and reward result.
 
 ## Authority and privacy
 
@@ -56,10 +76,11 @@ request that creates the attempt. The browser may submit a location claim, but i
 may not submit `reachable`, `answerCorrect`, `score`, `coins`, `rewardCardId`, or
 similar authoritative fields.
 
-Question prompts and choices are player-visible. Accepted-choice records,
-marking queries, reward rolls, and other players' attempts are never returned.
-Exact submitted location values are evaluated for the start request but are not
-persisted by this contract.
+Question prompts and choices are player-visible while an attempt is in progress.
+Accepted-choice records, marking queries, reward rolls, internal reward-policy
+inputs, and other players' attempts are never returned. Exact submitted location
+values are evaluated for the start request but are not persisted by this
+contract.
 
 ## Shared representations
 
@@ -97,8 +118,9 @@ Every response includes the existing server-generated `requestId`.
 ```
 
 The source question identifier, difficulty, accepted choice, and per-question
-correctness are absent. On resume, `selectedChoiceId` and `answeredAt` contain
-the player's already locked answer where one exists.
+correctness are absent. On resume while the attempt is still in progress,
+`selectedChoiceId` and `answeredAt` contain the player's already locked answer
+where one exists. These fields are not returned after completion.
 
 ### In-progress attempt
 
@@ -117,8 +139,9 @@ the player's already locked answer where one exists.
 }
 ```
 
-`questions` always contains five player-safe question objects; it is abbreviated
-above only to keep the example readable.
+`questions` always contains exactly five player-safe question objects; it is
+abbreviated above only to keep the example readable. Each question contains
+exactly four choices.
 
 ### Completed attempt
 
@@ -128,24 +151,44 @@ above only to keep the example readable.
   "eventId": "00000000-0000-4000-8000-000000000018",
   "format": "multiple_choice",
   "status": "completed",
-  "startedAt": "2026-09-01T10:00:00.000Z",
-  "deadline": "2026-09-01T10:02:00.000Z",
   "completedAt": "2026-09-01T10:01:25.000Z",
   "completionReason": "answered",
   "totalQuestions": 5,
-  "answeredCount": 5,
   "scoreCorrect": 3,
-  "questions": [],
+  "reward": {
+    "coinsAwarded": 37,
+    "cards": [
+      {
+        "ownedCardId": "51000000-0000-4000-8000-000000000001",
+        "cardDefinitionId": "50000000-0000-4000-8000-000000000009",
+        "name": "Campus Spark",
+        "category": "creature",
+        "affinity": "spark",
+        "rarity": "common"
+      }
+    ]
+  },
   "requestId": "server-generated-request-id"
 }
 ```
 
-`completionReason` is `answered` when all five choices were locked before the
-deadline and `timeout` when expiry finalized the attempt. Unanswered questions
-count as incorrect. The response does not identify which answers were correct.
-The completed response gains a server-generated `reward` object when the
-[challenge, reward, and card persistence design](../database/challenge-reward-persistence-design.md)
-is implemented.
+`scoreCorrect` is an integer from `0` through `5`. `reward.coinsAwarded` is the
+persisted coin award and `reward.cards` contains zero, one, or two persisted
+card awards according to the server-side reward policy.
+
+The completed representation retains non-sensitive resource metadata so clients
+can correlate the result with the attempt and event and distinguish the
+completed state. `completionReason` is `answered` when all five answers were
+accepted before expiry and `timeout` when expiry finalized the attempt.
+
+The completed player-facing result does not return questions, selected choices,
+answer timestamps, per-question correctness, accepted choices, correct answers,
+or explanations. `requestId` remains present because it is part of the existing
+API-wide response envelope.
+
+The reward result is reconstructed from persisted completion and ownership data.
+Repeated requests return the same completed representation and never reroll or
+issue another reward.
 
 ## Start or resume an attempt
 
@@ -172,8 +215,10 @@ fields are rejected.
 - `201 Created` returns a newly created in-progress attempt.
 - `200 OK` returns the player's existing in-progress attempt without changing
   its timer or content.
-- Concurrent start requests converge on the same attempt.
-- A completed event returns `409 EVENT_ALREADY_COMPLETED`.
+- `200 OK` returns the player's persisted completion and reward result when the
+  event was already completed.
+- Concurrent start requests converge on the same persisted attempt.
+- A completed event never creates another attempt or rerolls its reward.
 
 Before creating an attempt, the API confirms that the event exists, is
 published, is active at start time, is clearly reachable from the submitted
@@ -187,15 +232,17 @@ GET /api/v1/challenge-attempts/{attemptId}
 Authorization: Bearer <access-token>
 ```
 
-The route returns `200 OK` with the current in-progress or completed
-representation. It is the resume and status-polling operation.
+The route returns `200 OK` with the current in-progress representation or the
+persisted completed score-and-reward result. It is the resume and status-polling
+operation.
 
 Only the player derived from the token may retrieve the attempt. A missing or
 different player's attempt returns the same `404 ATTEMPT_NOT_FOUND` response so
 ownership is not disclosed.
 
 If the deadline has passed but asynchronous finalization has not completed, the
-request may finalize the attempt defensively before returning it.
+request finalizes the attempt defensively before returning the persisted
+completed result.
 
 ## Lock an answer
 
@@ -217,15 +264,20 @@ Request body:
 The question must belong to the authenticated player's attempt and the choice
 must belong to that selected question.
 
-- `200 OK` returns the updated attempt.
-- Repeating the same question and choice is idempotent and returns the current
-  attempt.
+- `200 OK` returns the updated in-progress attempt after an accepted answer.
+- Repeating the same already-accepted question and choice is idempotent and
+  returns the current persisted attempt state.
+- If that accepted answer already caused completion, an exact retry returns the
+  same persisted completion and reward result.
 - Submitting a different choice for an answered question returns
   `409 ANSWER_LOCKED`.
-- The fifth accepted answer finalizes and returns the completed attempt.
-- An answer at or after the deadline is not accepted. The API ensures timeout
-  finalization and returns `409 ATTEMPT_COMPLETED`; the browser then fetches the
-  completed representation.
+- The fifth accepted answer finalizes the attempt and returns the persisted
+  completion and reward result.
+- An answer received at or after the deadline is not accepted. The API finalizes
+  the timed-out attempt, counts unanswered questions as incorrect, and returns
+  the persisted completion and reward result.
+- A new answer submitted to an attempt that had already completed before the
+  request returns `409 ATTEMPT_COMPLETED`.
 
 The server receipt time decides whether the answer met the deadline. A browser
 timestamp is not accepted as proof of an on-time answer.
@@ -238,57 +290,68 @@ must be safe to retry and safe to run concurrently with the fifth answer.
 
 Request handlers also check expiry before accepting answers or returning stale
 state. Database row locking and the persistence constraints proposed by issue
-#49 are responsible for ensuring that completion happens once.
+#49 are responsible for ensuring that completion happens once. The fifth-answer
+path, timeout finalizer, and defensive request finalization must converge on the
+same persisted completion and reward result.
 
 The worker's scheduling interval is an operational setting, not part of the HTTP
 contract. The authoritative deadline remains the stored attempt deadline.
 
 ## OpenAPI-compatible schema summary
 
-| Field                  | Schema rule                                       |
-| ---------------------- | ------------------------------------------------- |
-| `eventId`, `attemptId` | string, UUID                                      |
-| `attemptQuestionId`    | string, UUID                                      |
-| `choiceId`             | string, UUID                                      |
-| `latitude`             | finite number, `-90` through `90`                 |
-| `longitude`            | finite number, `-180` through `180`               |
-| `accuracyMetres`       | finite number, minimum `0`                        |
-| `acquiredAt`           | string, date-time                                 |
-| `format`               | enum: `multiple_choice`                           |
-| `status`               | enum: `in_progress`, `completed`                  |
-| `completionReason`     | enum: `answered`, `timeout`                       |
-| `position`             | integer, `1` through `5`                          |
-| `totalQuestions`       | integer, constant `5`                             |
-| `answeredCount`        | integer, `0` through `5`                          |
-| `scoreCorrect`         | integer, `0` through `5`; completed attempts only |
-| request object schemas | `additionalProperties: false`                     |
+| Field                  | Schema rule                                          |
+| ---------------------- | ---------------------------------------------------- |
+| `eventId`, `attemptId` | string, UUID                                         |
+| `attemptQuestionId`    | string, UUID                                         |
+| `choiceId`             | string, UUID                                         |
+| `latitude`             | finite number, `-90` through `90`                    |
+| `longitude`            | finite number, `-180` through `180`                  |
+| `accuracyMetres`       | finite number, minimum `0`                           |
+| `acquiredAt`           | string, date-time                                    |
+| `format`               | enum: `multiple_choice`                              |
+| `status`               | enum: `in_progress`, `completed`                     |
+| `position`             | integer, `1` through `5`                             |
+| `totalQuestions`       | integer, constant `5`                                |
+| `answeredCount`        | integer, `0` through `5`; in-progress responses only |
+| `questions`            | array, exactly `5` items; in-progress responses only |
+| question `choices`     | array, exactly `4` items                             |
+| `scoreCorrect`         | integer, `0` through `5`; completed results only     |
+| `reward.coinsAwarded`  | integer, minimum `0`                                 |
+| `reward.cards`         | array, `0` through `2` items                         |
+| card `category`        | enum: `creature`, `power`                            |
+| card `affinity`        | enum: `wit`, `grit`, `spark`, `spirit`, `mystic`     |
+| card `rarity`          | enum: `common`, `rare`, `epic`, `legendary`          |
+| request object schemas | `additionalProperties: false`                        |
+| `completionReason`     | enum: `answered`, `timeout`; completed attempts only |
+| `completedAt`          | string, date-time; completed attempts only           |
 
-The implementation should use a discriminated response schema so completed-only
-fields cannot appear on an in-progress response.
+The implementation should use separate OpenAPI-compatible response schemas for
+the in-progress attempt representation and the completed score-and-reward
+result so fields that are allowed during an active quiz cannot leak into the
+post-completion payload.
 
 ## Error contract
 
 Errors use the existing problem response with `type`, `title`, `status`, `code`,
 `detail`, `requestId`, and optional `validation` fields.
 
-| HTTP | Code                       | Meaning                                                   |
-| ---- | -------------------------- | --------------------------------------------------------- |
-| 400  | `INVALID_LOCATION_CLAIM`   | Coordinates, accuracy, or acquisition time are malformed. |
-| 400  | `INVALID_CHALLENGE_ANSWER` | The question or choice relationship is invalid.           |
-| 401  | `AUTHENTICATION_REQUIRED`  | No valid access token established identity.               |
-| 403  | `EVENT_NOT_REACHABLE`      | The claim is clearly outside the event radius.            |
-| 404  | `EVENT_NOT_FOUND`          | Event is missing or unpublished.                          |
-| 404  | `ATTEMPT_NOT_FOUND`        | Attempt is missing or belongs to another player.          |
-| 409  | `EVENT_NOT_ACTIVE`         | Event has not started or has ended before acceptance.     |
-| 409  | `CHALLENGE_UNAVAILABLE`    | Fewer than five usable questions are configured.          |
-| 409  | `EVENT_ALREADY_COMPLETED`  | This player already completed the event quiz.             |
-| 409  | `ANSWER_LOCKED`            | A different choice was already locked for the question.   |
-| 409  | `ATTEMPT_COMPLETED`        | The attempt was already completed or timed out.           |
-| 422  | `LOCATION_RETRY_REQUIRED`  | The claim is stale, future-dated, or accuracy-ambiguous.  |
+| HTTP | Code                       | Meaning                                                     |
+| ---- | -------------------------- | ----------------------------------------------------------- |
+| 400  | `INVALID_LOCATION_CLAIM`   | Coordinates, accuracy, or acquisition time are malformed.   |
+| 400  | `INVALID_CHALLENGE_ANSWER` | The question or choice relationship is invalid.             |
+| 401  | `UNAUTHORIZED`             | No valid access token established identity.                 |
+| 403  | `EVENT_NOT_REACHABLE`      | The claim is clearly outside the event radius.              |
+| 404  | `EVENT_NOT_FOUND`          | Event is missing or unpublished.                            |
+| 404  | `ATTEMPT_NOT_FOUND`        | Attempt is missing or belongs to another player.            |
+| 409  | `EVENT_NOT_ACTIVE`         | Event has not started or has ended before acceptance.       |
+| 409  | `CHALLENGE_UNAVAILABLE`    | Fewer than five usable questions are configured.            |
+| 409  | `ANSWER_LOCKED`            | A different choice was already locked for the question.     |
+| 409  | `ATTEMPT_COMPLETED`        | A new answer was submitted to an already completed attempt. |
+| 422  | `LOCATION_RETRY_REQUIRED`  | The claim is stale, future-dated, or accuracy-ambiguous.    |
 
 Unexpected database or worker failures use the existing safe `500` response and
-request identifier. Responses never expose SQL, accepted answers, reward rolls,
-tokens, or location details.
+request identifier. Responses never expose SQL, accepted answers, correct
+answers, per-question correctness, reward rolls, tokens, or location details.
 
 ## Compatibility and follow-up work
 
@@ -301,7 +364,8 @@ Future implementation work must add:
 
 - Fastify schemas and handlers for these three operations;
 - database-backed question selection, attempt persistence, and expiry work;
-- the transactional completion and reward model from issue #49;
+- the transactional implementation of the completion and reward contract from
+  issue #49;
 - player UI for timed questions, reconnecting, and completion; and
 - unit, integration, concurrency, security-exposure, and OpenAPI tests.
 
@@ -310,4 +374,4 @@ boundary are specified in the
 [challenge, reward, and card persistence design](../database/challenge-reward-persistence-design.md).
 
 This contract was planned, generated, edited, and reviewed with the assistance
-of Codex[GPT-5.6 Sol].
+of Codex[GPT-5.6 Sol] and ChatGPT-Web[GPT-5.6 Sol].
