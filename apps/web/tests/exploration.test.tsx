@@ -28,10 +28,11 @@ function createSuccessfulMapFactory(
   return vi.fn(async (_container, _configuration, points) => {
     const controller: MapController = {
       onError: vi.fn(),
-      onLoad(listener) {
+      onLoad(listener: () => void) {
         listener();
       },
       remove: vi.fn(),
+      setPoints: vi.fn(),
     };
 
     expect(points).toEqual(expectedPoints);
@@ -85,6 +86,52 @@ describe('campus exploration', () => {
     });
   });
 
+  it('updates event markers without recreating the WebGL map', async () => {
+    const setPoints = vi.fn();
+    const mapFactory: MapFactory = vi.fn(async () => ({
+      onError: vi.fn(),
+      onLoad(listener: () => void) {
+        listener();
+      },
+      remove: vi.fn(),
+      setPoints,
+    }));
+    const sharedProps = {
+      eligibility: {},
+      eligibilityBusy: false,
+      mapConfiguration: configuration,
+      mapFactory,
+      onCheckEligibility: vi.fn(),
+      onRetry: vi.fn(),
+    };
+    const { rerender } = render(
+      <CampusExplorer {...sharedProps} discovery={{ status: 'loading' }} />,
+    );
+
+    await waitFor(() => expect(mapFactory).toHaveBeenCalledOnce());
+
+    rerender(
+      <CampusExplorer
+        {...sharedProps}
+        discovery={{
+          events: [
+            {
+              availability: 'active',
+              id: 'event-test-1',
+              latitude: 0.001,
+              longitude: 0.002,
+              title: 'Test event',
+            },
+          ],
+          status: 'ready',
+        }}
+      />,
+    );
+
+    await waitFor(() => expect(setPoints).toHaveBeenCalledWith([testPoint]));
+    expect(mapFactory).toHaveBeenCalledOnce();
+  });
+
   it('keeps the event list available when the map fails', async () => {
     const failingMapFactory: MapFactory = vi.fn(async () => {
       throw new Error('Expected map failure');
@@ -124,6 +171,7 @@ describe('campus exploration', () => {
       onError: vi.fn(),
       onLoad: vi.fn(),
       remove: vi.fn(),
+      setPoints: vi.fn(),
     }));
 
     render(

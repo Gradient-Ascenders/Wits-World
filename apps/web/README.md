@@ -120,10 +120,11 @@ The current map adapter:
 - loads MapLibre only when the campus map is rendered;
 - bundles MapLibre's module worker through Vite and configures its generated URL
   before constructing the map;
+- updates event markers without destroying and recreating the WebGL map;
 - leaves MapLibre's attribution control enabled and expanded;
 - provides 44px zoom controls;
-- presents map loading and failure states, treating a load that does not
-  complete within 15 seconds as a provider failure;
+- presents map loading and failure states, treating WebGL context loss or a
+  load that does not complete within 15 seconds as a provider failure;
 - keeps event information in a separate semantic text list;
 - centres the initial view on the confirmed Sprint 1 Great Hall event point at
   longitude `28.03038`, latitude `-26.19205`;

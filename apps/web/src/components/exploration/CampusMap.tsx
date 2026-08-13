@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   createMapLibreMap,
   type MapConfiguration,
+  type MapController,
   type MapFactory,
   type MapPoint,
 } from './map-provider';
@@ -23,12 +24,21 @@ export function CampusMap({
   points,
 }: CampusMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const controllerRef = useRef<MapController | null>(null);
+  const pointsRef = useRef(points);
   const [status, setStatus] = useState<MapStatus>('loading');
+
+  pointsRef.current = points;
+
+  useEffect(() => {
+    controllerRef.current?.setPoints(points);
+  }, [points]);
 
   useEffect(() => {
     const container = containerRef.current;
+    const abortController = new AbortController();
     let active = true;
-    let removeMap: (() => void) | undefined;
+    let controller: MapController | undefined;
 
     if (!container) {
       return;
@@ -42,14 +52,21 @@ export function CampusMap({
 
     setStatus('loading');
 
-    void mapFactory(container, configuration, points)
+    void mapFactory(
+      container,
+      configuration,
+      pointsRef.current,
+      abortController.signal,
+    )
       .then((map) => {
         if (!active) {
           map.remove();
           return;
         }
 
-        removeMap = map.remove;
+        controller = map;
+        controllerRef.current = map;
+        map.setPoints(pointsRef.current);
         map.onLoad(() => {
           if (active) {
             window.clearTimeout(loadTimeout);
@@ -72,10 +89,14 @@ export function CampusMap({
 
     return () => {
       active = false;
+      abortController.abort();
       window.clearTimeout(loadTimeout);
-      removeMap?.();
+      if (controllerRef.current === controller) {
+        controllerRef.current = null;
+      }
+      controller?.remove();
     };
-  }, [configuration, mapFactory, points]);
+  }, [configuration, mapFactory]);
 
   return (
     <div className="campus-map">

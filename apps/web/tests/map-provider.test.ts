@@ -5,6 +5,8 @@ import { createMapLibreMap } from '../src/components/exploration/map-provider';
 const mapLibreState = vi.hoisted(() => ({
   isLoaded: false,
   mapConstructor: vi.fn(),
+  markerRemove: vi.fn(),
+  on: vi.fn(),
   once: vi.fn(),
   setWorkerUrl: vi.fn(),
 }));
@@ -25,7 +27,7 @@ vi.mock('maplibre-gl', () => ({
       return mapLibreState.isLoaded;
     }
 
-    public on() {}
+    public on = mapLibreState.on;
 
     public once = mapLibreState.once;
 
@@ -35,6 +37,8 @@ vi.mock('maplibre-gl', () => ({
     public addTo() {
       return this;
     }
+
+    public remove = mapLibreState.markerRemove;
 
     public setLngLat() {
       return this;
@@ -53,13 +57,20 @@ const configuration = {
 beforeEach(() => {
   mapLibreState.isLoaded = false;
   mapLibreState.mapConstructor.mockClear();
+  mapLibreState.markerRemove.mockClear();
+  mapLibreState.on.mockClear();
   mapLibreState.once.mockClear();
   mapLibreState.setWorkerUrl.mockClear();
 });
 
 describe('MapLibre provider', () => {
   it("configures Vite's bundled worker before constructing the map", async () => {
-    await createMapLibreMap(document.createElement('div'), configuration, []);
+    await createMapLibreMap(
+      document.createElement('div'),
+      configuration,
+      [],
+      new AbortController().signal,
+    );
 
     expect(mapLibreState.setWorkerUrl).toHaveBeenCalledWith(
       '/assets/maplibre-worker.test.js',
@@ -75,6 +86,7 @@ describe('MapLibre provider', () => {
       document.createElement('div'),
       configuration,
       [],
+      new AbortController().signal,
     );
     const listener = vi.fn();
 
@@ -89,6 +101,7 @@ describe('MapLibre provider', () => {
       document.createElement('div'),
       configuration,
       [],
+      new AbortController().signal,
     );
     const listener = vi.fn();
 
@@ -96,5 +109,36 @@ describe('MapLibre provider', () => {
 
     expect(listener).not.toHaveBeenCalled();
     expect(mapLibreState.once).toHaveBeenCalledWith('load', listener);
+  });
+
+  it('reports both provider errors and WebGL context loss', async () => {
+    const controller = await createMapLibreMap(
+      document.createElement('div'),
+      configuration,
+      [],
+      new AbortController().signal,
+    );
+    const listener = vi.fn();
+
+    controller.onError(listener);
+
+    expect(mapLibreState.on).toHaveBeenCalledWith('error', listener);
+    expect(mapLibreState.on).toHaveBeenCalledWith('webglcontextlost', listener);
+  });
+
+  it('does not construct an obsolete map after asynchronous imports finish', async () => {
+    const abortController = new AbortController();
+    abortController.abort();
+
+    await expect(
+      createMapLibreMap(
+        document.createElement('div'),
+        configuration,
+        [],
+        abortController.signal,
+      ),
+    ).rejects.toThrow('Map creation was cancelled.');
+
+    expect(mapLibreState.mapConstructor).not.toHaveBeenCalled();
   });
 });

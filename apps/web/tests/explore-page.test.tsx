@@ -44,7 +44,7 @@ function createAuthValue(
   } as Auth0ContextInterface;
 }
 
-function createMapFactory(): MapFactory {
+function createMapFactory(setPoints = vi.fn()): MapFactory {
   return vi.fn(async () => {
     const controller: MapController = {
       onError: vi.fn(),
@@ -52,6 +52,7 @@ function createMapFactory(): MapFactory {
         listener();
       },
       remove: vi.fn(),
+      setPoints,
     };
 
     return controller;
@@ -98,7 +99,8 @@ afterEach(() => {
 
 describe('authenticated campus event discovery', () => {
   it('loads the seeded event into the map and text fallback', async () => {
-    const mapFactory = createMapFactory();
+    const setPoints = vi.fn();
+    const mapFactory = createMapFactory(setPoints);
     vi.stubGlobal(
       'fetch',
       vi
@@ -129,7 +131,7 @@ describe('authenticated campus event discovery', () => {
         styleUrl: 'https://tiles.openfreemap.org/styles/liberty',
         zoom: 16,
       });
-      expect(latestCall?.[2]).toEqual([
+      expect(setPoints).toHaveBeenCalledWith([
         {
           id: event.eventId,
           label: event.title,
