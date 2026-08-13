@@ -11,6 +11,50 @@ No browser may submit or calculate an authoritative identity, eligibility,
 correctness, score, reward, deck validity, legal battle action, battle outcome,
 or ownership result.
 
+## Roles, authority, and account lifecycle
+
+### Roles and authoring
+
+- Basic has only two roles: Player and Author. There is no separate
+  Administrator role in Basic.
+- New accounts receive the Player role. Author assignment and revocation happen
+  out-of-band through the database or deployment process; no browser or API
+  operation may grant or change roles.
+- Authors may create, edit, publish, retire, and manage all Basic content,
+  including content created by other Authors.
+- Players cannot access author endpoints, accepted answers, or unpublished
+  content.
+- Author create, edit, publish, and retire actions record the acting Author and
+  timestamp in the audit trail. In-app role management and advanced
+  administration are deferred beyond Basic.
+
+### Account deletion and re-registration
+
+- Deletion requires recent authentication and explicit permanent-deletion
+  confirmation. Access locks immediately; Basic has no deletion grace period.
+- The Auth0 account is permanently deleted. The local record remains only as an
+  anonymised tombstone such as `Deleted player`; the Auth0 subject, name, email,
+  and other identifying data are removed.
+- Player-owned cards, decks, active-deck selection, coin balance, and starter
+  selection are permanently deleted.
+- Completed challenges, reward records, coin transactions, matches, and
+  anonymous final results are retained for integrity and aggregate statistics.
+  Individual answers and answer snapshots are deleted. Anonymous gameplay
+  history is retained indefinitely unless a later formal retention rule is
+  established.
+- Published events, questions, and cards remain available. Authored-content
+  ownership transfers to a system-owned account, and `Deleted author` is shown
+  where needed.
+- Auth0 or database cleanup failures trigger idempotent automatic retry and an
+  operational alert while the account remains locked. The workflow is marked
+  pending until cleanup completes.
+- A person may register again as a completely new player with no previous
+  progress, cards, coins, or decks.
+- A minimal deletion audit record is retained for `12 months` and contains only
+  a random deletion ID, request/completion timestamps, status, and applicable
+  failure reason. It contains no email, Auth0 subject, name, location, or other
+  identifying data.
+
 ## Event challenge
 
 ### Start and resume
@@ -94,8 +138,24 @@ of rerolling.
 - Every awarded duplicate is a separate owned copy.
 - The catalogue is server-managed data; React artwork or display metadata never
   defines gameplay values.
-- The valid HP, power, move/effect, type-cycle, and modifier values are blocked
-  pending `BASIC-09` in the decision register.
+
+### Attributes, moves, effects, and type modifiers
+
+- HP and Creature Power are set per card during catalogue authoring. There are
+  no fixed rarity-wide stat ranges.
+- Move types are Basic, Wit, Grit, Spark, Spirit, and Mystic.
+- Effect types are Damage, Debuff, Heal, and Buff. Damage and Debuff target the
+  opponent; Heal and Buff target the user's active Creature.
+- `effectValue` is optional and represents the magnitude of a Damage, Debuff,
+  Heal, or Buff effect.
+- `power` is the resource cost consumed from the Creature's remaining Power.
+  A move is legal only when the Creature has enough remaining Power.
+- Only Damage is affected by type advantage or disadvantage. The type cycle is
+  Wit -> Grit -> Spark -> Spirit -> Mystic -> Wit. Advantage is `1.5x`,
+  disadvantage is `0.75x`, and unrelated matchups use `1.0x`.
+- Power cards also have one of the five types. Per-card HP, Power, damage,
+  healing, buff, and debuff values are decided during authoring. Catalogue
+  validation enforces data types and allowed enum values.
 
 ## Starter grant
 
@@ -125,22 +185,30 @@ the client may present the same values but must not decide deck validity.
 
 ## CPU battles
 
-The Basic release requires a deterministic, server-authoritative CPU match and
-private completed-match history. However, battle mechanics are not yet approved.
-The following must be decided together before implementation:
+The Basic release uses a move-based, server-authoritative CPU match and private
+completed-match history. It does not use direct attribute comparison.
 
-- attribute comparison versus creature moves;
-- affinity advantage order and modifier values;
-- initial creature and first-player selection;
-- legal player and CPU actions;
-- Power-card timing, targets, effects, and discard behavior;
-- ties and timeouts;
-- defeat, replacement, and inability-to-replace behavior;
-- CPU action policy and the injected randomness boundary; and
-- win, loss, draw, and termination conditions.
-
-Issue #74 and dependent match work must remain blocked rather than choosing
-defaults for these rules.
+- The server flips a coin to choose the first player.
+- Player and CPU actions use the same legal-action rules. A turn allows either
+  one legal Creature move or one Power card.
+- A Power card may be played only while an active Creature is on the board. It
+  is discarded immediately after use, cannot be reused during that battle, and
+  may define multiple authored effects.
+- The PvP turn timer is `1 minute`; the CPU match turn timer is `1.5 minutes`.
+  The shared rule remains configurable.
+- If the timer expires without a selected move or action, the turn ends without
+  an action.
+- The CPU selects randomly from legal actions using server-side randomness.
+  Difficulty levels and machine-learning behaviour are deferred.
+- Ties are not possible in the current move-based system.
+- A defeated Creature cannot return. Replacement is mandatory, does not consume
+  the replacement player's normal turn, and voluntary switching is not allowed.
+- A player loses when all of their Creatures are defeated.
+- The browser submits only an intended action identifier, such as a move ID or
+  Power-card ID. It never submits damage, HP, Power, effects, multipliers,
+  random results, round outcomes, winner, or completion status. The server loads
+  card definitions, calculates effects, performs required randomness, and
+  resolves the authoritative outcome.
 
 ## Basic exclusions
 
