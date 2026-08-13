@@ -147,6 +147,13 @@ exactly four choices.
 
 ```json
 {
+  "attemptId": "31000000-0000-4000-8000-000000000001",
+  "eventId": "00000000-0000-4000-8000-000000000018",
+  "format": "multiple_choice",
+  "status": "completed",
+  "completedAt": "2026-09-01T10:01:25.000Z",
+  "completionReason": "answered",
+  "totalQuestions": 5,
   "scoreCorrect": 3,
   "reward": {
     "coinsAwarded": 37,
@@ -166,17 +173,22 @@ exactly four choices.
 ```
 
 `scoreCorrect` is an integer from `0` through `5`. `reward.coinsAwarded` is the
-persisted non-negative coin award and `reward.cards` contains zero, one, or two
-persisted card awards according to the server-side reward policy.
+persisted coin award and `reward.cards` contains zero, one, or two persisted
+card awards according to the server-side reward policy.
+
+The completed representation retains non-sensitive resource metadata so clients
+can correlate the result with the attempt and event and distinguish the
+completed state. `completionReason` is `answered` when all five answers were
+accepted before expiry and `timeout` when expiry finalized the attempt.
 
 The completed player-facing result does not return questions, selected choices,
 answer timestamps, per-question correctness, accepted choices, correct answers,
 or explanations. `requestId` remains present because it is part of the existing
 API-wide response envelope.
 
-The reward result is reconstructed from persisted completion, wallet, and owned
-card data. Repeated requests return the same result and never reroll or issue
-another reward.
+The reward result is reconstructed from persisted completion and ownership data.
+Repeated requests return the same completed representation and never reroll or
+issue another reward.
 
 ## Start or resume an attempt
 
@@ -287,29 +299,31 @@ contract. The authoritative deadline remains the stored attempt deadline.
 
 ## OpenAPI-compatible schema summary
 
-| Field                  | Schema rule                                      |
-| ---------------------- | ------------------------------------------------ |
-| `eventId`, `attemptId` | string, UUID                                     |
-| `attemptQuestionId`    | string, UUID                                     |
-| `choiceId`             | string, UUID                                     |
-| `latitude`             | finite number, `-90` through `90`                |
-| `longitude`            | finite number, `-180` through `180`              |
-| `accuracyMetres`       | finite number, minimum `0`                       |
-| `acquiredAt`           | string, date-time                                |
-| `format`               | enum: `multiple_choice`                          |
-| `status`               | enum: `in_progress` for in-progress responses    |
-| `position`             | integer, `1` through `5`                         |
-| `totalQuestions`       | integer, constant `5`                            |
-| `answeredCount`        | integer, `0` through `5`                         |
-| `questions`            | array, exactly `5` items                         |
-| question `choices`     | array, exactly `4` items                         |
-| `scoreCorrect`         | integer, `0` through `5`; completed results only |
-| `reward.coinsAwarded`  | integer, minimum `0`                             |
-| `reward.cards`         | array, `0` through `2` items                     |
-| card `category`        | enum: `creature`, `power`                        |
-| card `affinity`        | enum: `wit`, `grit`, `spark`, `spirit`, `mystic` |
-| card `rarity`          | enum: `common`, `rare`, `epic`, `legendary`      |
-| request object schemas | `additionalProperties: false`                    |
+| Field                  | Schema rule                                          |
+| ---------------------- | ---------------------------------------------------- |
+| `eventId`, `attemptId` | string, UUID                                         |
+| `attemptQuestionId`    | string, UUID                                         |
+| `choiceId`             | string, UUID                                         |
+| `latitude`             | finite number, `-90` through `90`                    |
+| `longitude`            | finite number, `-180` through `180`                  |
+| `accuracyMetres`       | finite number, minimum `0`                           |
+| `acquiredAt`           | string, date-time                                    |
+| `format`               | enum: `multiple_choice`                              |
+| `status`               | enum: `in_progress`, `completed`                     |
+| `position`             | integer, `1` through `5`                             |
+| `totalQuestions`       | integer, constant `5`                                |
+| `answeredCount`        | integer, `0` through `5`; in-progress responses only |
+| `questions`            | array, exactly `5` items; in-progress responses only |
+| question `choices`     | array, exactly `4` items                             |
+| `scoreCorrect`         | integer, `0` through `5`; completed results only     |
+| `reward.coinsAwarded`  | integer, minimum `0`                                 |
+| `reward.cards`         | array, `0` through `2` items                         |
+| card `category`        | enum: `creature`, `power`                            |
+| card `affinity`        | enum: `wit`, `grit`, `spark`, `spirit`, `mystic`     |
+| card `rarity`          | enum: `common`, `rare`, `epic`, `legendary`          |
+| request object schemas | `additionalProperties: false`                        |
+| `completionReason`     | enum: `answered`, `timeout`; completed attempts only |
+| `completedAt`          | string, date-time; completed attempts only           |
 
 The implementation should use separate OpenAPI-compatible response schemas for
 the in-progress attempt representation and the completed score-and-reward
