@@ -15,6 +15,8 @@ interface CampusMapProps {
 
 type MapStatus = 'error' | 'loading' | 'ready';
 
+const MAP_LOAD_TIMEOUT_MS = 15_000;
+
 export function CampusMap({
   configuration,
   mapFactory = createMapLibreMap,
@@ -32,6 +34,12 @@ export function CampusMap({
       return;
     }
 
+    const loadTimeout = window.setTimeout(() => {
+      if (active) {
+        setStatus('error');
+      }
+    }, MAP_LOAD_TIMEOUT_MS);
+
     setStatus('loading');
 
     void mapFactory(container, configuration, points)
@@ -44,23 +52,27 @@ export function CampusMap({
         removeMap = map.remove;
         map.onLoad(() => {
           if (active) {
+            window.clearTimeout(loadTimeout);
             setStatus('ready');
           }
         });
         map.onError(() => {
           if (active) {
+            window.clearTimeout(loadTimeout);
             setStatus('error');
           }
         });
       })
       .catch(() => {
         if (active) {
+          window.clearTimeout(loadTimeout);
           setStatus('error');
         }
       });
 
     return () => {
       active = false;
+      window.clearTimeout(loadTimeout);
       removeMap?.();
     };
   }, [configuration, mapFactory, points]);

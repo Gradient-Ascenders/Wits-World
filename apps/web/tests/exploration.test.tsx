@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CampusExplorer } from '../src/components/exploration/CampusExplorer';
 import type {
@@ -39,6 +39,10 @@ function createSuccessfulMapFactory(
     return controller;
   });
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('campus exploration', () => {
   it('presents a loaded event on the map and in the text fallback', async () => {
@@ -110,6 +114,49 @@ describe('campus exploration', () => {
     );
 
     expect(await screen.findByText('The map could not load.')).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Test event' })).toBeVisible();
+  });
+
+  it('stops waiting when the map provider never completes loading', async () => {
+    vi.useFakeTimers();
+
+    const stalledMapFactory: MapFactory = vi.fn(async () => ({
+      onError: vi.fn(),
+      onLoad: vi.fn(),
+      remove: vi.fn(),
+    }));
+
+    render(
+      <CampusExplorer
+        discovery={{
+          events: [
+            {
+              availability: 'active',
+              id: 'event-test-1',
+              latitude: 0.001,
+              longitude: 0.002,
+              title: 'Test event',
+            },
+          ],
+          status: 'ready',
+        }}
+        eligibility={{}}
+        eligibilityBusy={false}
+        mapConfiguration={configuration}
+        mapFactory={stalledMapFactory}
+        onCheckEligibility={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Loading the campus map…')).toBeVisible();
+
+    await act(async () => {
+      await Promise.resolve();
+      vi.advanceTimersByTime(15_000);
+    });
+
+    expect(screen.getByText('The map could not load.')).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Test event' })).toBeVisible();
   });
 

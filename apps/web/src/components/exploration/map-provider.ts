@@ -31,6 +31,11 @@ function createController(map: MapLibreMap): MapController {
       map.on('error', listener);
     },
     onLoad(listener) {
+      if (map.loaded()) {
+        listener();
+        return;
+      }
+
       map.once('load', listener);
     },
     remove() {
