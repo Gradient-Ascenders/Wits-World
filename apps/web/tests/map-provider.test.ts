@@ -4,11 +4,21 @@ import { createMapLibreMap } from '../src/components/exploration/map-provider';
 
 const mapLibreState = vi.hoisted(() => ({
   isLoaded: false,
+  mapConstructor: vi.fn(),
   once: vi.fn(),
+  setWorkerUrl: vi.fn(),
+}));
+
+vi.mock('maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url', () => ({
+  default: '/assets/maplibre-worker.test.js',
 }));
 
 vi.mock('maplibre-gl', () => ({
   Map: class {
+    constructor() {
+      mapLibreState.mapConstructor();
+    }
+
     public addControl() {}
 
     public loaded() {
@@ -31,6 +41,7 @@ vi.mock('maplibre-gl', () => ({
     }
   },
   NavigationControl: class {},
+  setWorkerUrl: mapLibreState.setWorkerUrl,
 }));
 
 const configuration = {
@@ -41,9 +52,23 @@ const configuration = {
 
 beforeEach(() => {
   mapLibreState.isLoaded = false;
+  mapLibreState.mapConstructor.mockClear();
+  mapLibreState.once.mockClear();
+  mapLibreState.setWorkerUrl.mockClear();
 });
 
 describe('MapLibre provider', () => {
+  it("configures Vite's bundled worker before constructing the map", async () => {
+    await createMapLibreMap(document.createElement('div'), configuration, []);
+
+    expect(mapLibreState.setWorkerUrl).toHaveBeenCalledWith(
+      '/assets/maplibre-worker.test.js',
+    );
+    expect(mapLibreState.setWorkerUrl.mock.invocationCallOrder[0]).toBeLessThan(
+      mapLibreState.mapConstructor.mock.invocationCallOrder[0]!,
+    );
+  });
+
   it('reports a map that loaded before the consumer registered its listener', async () => {
     mapLibreState.isLoaded = true;
     const controller = await createMapLibreMap(

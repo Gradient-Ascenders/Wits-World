@@ -1,4 +1,5 @@
 import type { Map as MapLibreMap } from 'maplibre-gl';
+import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 
 export interface MapPoint {
   id: string;
@@ -51,6 +52,8 @@ export const createMapLibreMap: MapFactory = async (
 ) => {
   const maplibre = await import('maplibre-gl');
   await import('maplibre-gl/dist/maplibre-gl.css');
+
+  maplibre.setWorkerUrl(mapLibreWorkerUrl);
 
   const map = new maplibre.Map({
     attributionControl: { compact: false },
