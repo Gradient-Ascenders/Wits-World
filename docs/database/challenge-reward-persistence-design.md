@@ -316,7 +316,8 @@ unapproved one-to-three-hour duration limit. Exact retention periods for answers
 attempt snapshots, and completed rewards remain unresolved. Account deletion
 also needs a policy that removes or pseudonymizes identity data without breaking
 the immutable coin and reward audit trail. These decisions must be made before
-production migration rollout.
+production migration rollout and are tracked as `BASIC-12` in the
+[Basic-tier decision register](../requirements/basic-tier-decision-register.md).
 
 This design was planned, generated, edited, and reviewed with the assistance of
 Codex[GPT-5.6 Sol].

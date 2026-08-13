@@ -204,7 +204,9 @@ database transaction, the implementation must support partial-failure recovery
 or an explicit deletion state.
 
 The exact sequencing, reauthentication requirement, retention rules, and audit
-behaviour will be designed in the account-deletion issue.
+behaviour remain blocked by `BASIC-12` in the
+[Basic-tier decision register](../../requirements/basic-tier-decision-register.md)
+and must be resolved before the account-deletion endpoint is implemented.
 
 ## Environment configuration
 
@@ -323,6 +325,8 @@ Additional later work will cover:
 
 ## Confirmation required
 
+The Basic-tier items below are tracked with named owners and evidence in the
+[Basic-tier decision register](../../requirements/basic-tier-decision-register.md).
 The team must still confirm:
 
 - whether Wits SSO is available or required;

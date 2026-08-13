@@ -903,24 +903,26 @@ Before completing significant frontend work, verify:
 
 ---
 
-## 20. Items requiring confirmation
+## 20. Product-decision status
 
-The following decisions are not final:
+The [Basic-tier decision register](../requirements/basic-tier-decision-register.md)
+is authoritative for the status, owner, date, and evidence of Basic product
+decisions. In summary:
 
-- official permission to use Wits branding and the crest;
-- final heading and body fonts;
-- final production colour values;
-- approved photography and artwork sources;
-- final card categories;
-- final card attributes;
-- rarity names and rarity distribution;
-- deck size and duplicate rules;
-- CPU battle rules and tie behaviour;
-- author and administrator role boundaries;
-- whether profiles, achievements and leaderboards are included;
-- whether a formal review-and-publish workflow is included.
+- the original Wits World Campus Seal and implemented typography/colour baseline
+  are the approved Basic presentation; official university marks are not used;
+- current artwork must retain its recorded provenance and production art without
+  confirmed rights remains excluded;
+- card categories, affinities, rarity names, reward distribution, starter
+  composition, deck composition, and duplicate ownership are confirmed;
+- card stat ranges, move/effect values, rarity point values, affinity modifiers,
+  CPU battle resolution, ties, privileged-role assignment, and account-retention
+  behavior remain explicit blockers; and
+- profiles, achievements, leaderboards, and a formal review-and-publish workflow
+  are outside Basic unless a later approved issue changes the scope.
 
-Until confirmed, implementations should remain easy to adjust.
+Blocked implementations must remain adjustable and must not fill missing values
+with UI or code defaults.
 
 ---
 
