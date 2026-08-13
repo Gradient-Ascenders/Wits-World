@@ -43,10 +43,10 @@ application is deployed. The canonical source remains
 
 The supplied Quest Marker variants are also copied byte-for-byte to
 `/branding/wits-world-quest-marker.svg` and
-`/branding/wits-world-quest-marker-transparent.svg`. The transparent-named
-variant is the browser favicon and is referenced from `index.html`; both paths
-are public so external interfaces can load the selected artwork without
-application authentication.
+`/branding/wits-world-quest-marker-transparent.svg`. Both paths are public so
+external interfaces can load the selected artwork without application
+authentication. The browser favicon remains the simplified W/star mark at
+`src/assets/branding/wits-world-favicon.svg`.
 
 To inspect the production build locally:
 

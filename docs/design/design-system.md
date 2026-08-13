@@ -785,8 +785,8 @@ artwork:
 - `apps/web/src/assets/branding/wits-world-campus-seal.svg` includes its own
   dark backing and is for contexts where the surrounding background cannot be
   controlled;
-- `apps/web/src/assets/branding/wits-world-favicon.svg` is retained as the
-  previous simplified, code-native small-size mark.
+- `apps/web/src/assets/branding/wits-world-favicon.svg` is the selected
+  simplified, code-native W/star mark used in browser tabs.
 
 Preserve the SVG vector data, gradients, colours, geometry, embedded provenance
 metadata and `321:347` aspect ratio. Render the asset through an ordinary image
@@ -796,7 +796,7 @@ and do not crop, stretch, recolour, animate or add strong effects.
 For normal application surfaces, keep the seal at least `2.75rem` wide. The
 application header uses it at `5.5rem` to `6.5rem` beside a Wits World wordmark
 and the short “Explore · Discover · Achieve” line. At favicon size, use the
-selected Quest Marker rather than shrinking the detailed seal. Supply meaningful
+simplified W/star mark rather than shrinking the detailed seal. Supply meaningful
 alternative text when the seal is the only branding label. Use empty alternative
 text and `aria-hidden="true"` when it duplicates an already labelled brand
 link.
@@ -807,13 +807,12 @@ without a demonstrated technical reason and explicit approval.
 
 ### 16.2 Wits World Quest Marker
 
-The supplied Quest Marker variants are the selected browser-tab and external
-branding artwork for this release. Preserve their SVG vector data, geometry,
+The supplied Quest Marker variants are external branding artwork for this
+release. Preserve their SVG vector data, geometry,
 colours and `242:326` aspect ratio. The source files remain in
 `docs/design/references/`; the web deployment exposes byte-identical copies at
 `/branding/wits-world-quest-marker.svg` and
-`/branding/wits-world-quest-marker-transparent.svg`. The transparent-named
-variant is the favicon referenced by `apps/web/index.html`.
+`/branding/wits-world-quest-marker-transparent.svg`.
 
 ---
 
