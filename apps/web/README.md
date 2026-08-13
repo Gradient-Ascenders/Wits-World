@@ -118,9 +118,14 @@ application keeps its attribution control visible and expanded.
 The current map adapter:
 
 - loads MapLibre only when the campus map is rendered;
+- bundles MapLibre's module worker through Vite and configures its generated URL
+  before constructing the map;
+- updates event markers without destroying and recreating the WebGL map;
+- keeps the map host sized when MapLibre's runtime class and stylesheet arrive;
 - leaves MapLibre's attribution control enabled and expanded;
 - provides 44px zoom controls;
-- presents map loading and failure states;
+- presents map loading and failure states, treating WebGL context loss or a
+  load that does not complete within 15 seconds as a provider failure;
 - keeps event information in a separate semantic text list;
 - centres the initial view on the confirmed Sprint 1 Great Hall event point at
   longitude `28.03038`, latitude `-26.19205`;
@@ -139,9 +144,10 @@ requests a fresh position only after the player selects an active event's Check
 reachability action. The reported coordinates are sent to the Wits World API,
 not to the map provider.
 
-MapLibre's standard browser bundle uses web workers. A future production Content
-Security Policy must account for workers and the OpenFreeMap image, style, glyph,
-and tile origins. The final directives belong with deployment configuration.
+MapLibre uses a same-origin module worker emitted by the Vite build. A future
+production Content Security Policy must account for that worker and the
+OpenFreeMap image, style, glyph, and tile origins. The final directives belong
+with deployment configuration.
 
 OpenFreeMap's public service is external, provided as-is, and does not offer an
 availability guarantee. Wits Quest therefore retains its map-independent event

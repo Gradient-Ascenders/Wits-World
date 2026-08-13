@@ -38,8 +38,9 @@
   box-shadow: var(--shadow-panel);
 }
 
-.campus-map__canvas {
-  position: absolute;
+.campus-map > .campus-map__canvas {
+  /* Keep this absolute after MapLibre's later runtime positioning rule. */
+  position: absolute !important;
   inset: 0;
 }
 

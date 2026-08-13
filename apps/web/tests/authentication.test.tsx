@@ -29,6 +29,7 @@ vi.mock(
         onError: vi.fn(),
         onLoad: vi.fn(),
         remove: vi.fn(),
+        setPoints: vi.fn(),
       })),
     };
   },

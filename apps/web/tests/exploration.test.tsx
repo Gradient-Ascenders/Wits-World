@@ -1,6 +1,9 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CampusExplorer } from '../src/components/exploration/CampusExplorer';
 import type {
@@ -15,6 +18,11 @@ const configuration: MapConfiguration = {
   zoom: 14,
 };
 
+const explorationStyles = readFileSync(
+  resolve(process.cwd(), 'src/components/exploration/exploration.css'),
+  'utf8',
+);
+
 const testPoint = {
   id: 'event-test-1',
   label: 'Test event',
@@ -28,10 +36,11 @@ function createSuccessfulMapFactory(
   return vi.fn(async (_container, _configuration, points) => {
     const controller: MapController = {
       onError: vi.fn(),
-      onLoad(listener) {
+      onLoad(listener: () => void) {
         listener();
       },
       remove: vi.fn(),
+      setPoints: vi.fn(),
     };
 
     expect(points).toEqual(expectedPoints);
@@ -40,7 +49,17 @@ function createSuccessfulMapFactory(
   });
 }
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe('campus exploration', () => {
+  it('keeps the map host positioned when MapLibre adds its class', () => {
+    expect(explorationStyles).toMatch(
+      /\.campus-map\s*>\s*\.campus-map__canvas\s*{[^}]*position:\s*absolute\s*!important;/,
+    );
+  });
+
   it('presents a loaded event on the map and in the text fallback', async () => {
     render(
       <CampusExplorer
@@ -81,6 +100,52 @@ describe('campus exploration', () => {
     });
   });
 
+  it('updates event markers without recreating the WebGL map', async () => {
+    const setPoints = vi.fn();
+    const mapFactory: MapFactory = vi.fn(async () => ({
+      onError: vi.fn(),
+      onLoad(listener: () => void) {
+        listener();
+      },
+      remove: vi.fn(),
+      setPoints,
+    }));
+    const sharedProps = {
+      eligibility: {},
+      eligibilityBusy: false,
+      mapConfiguration: configuration,
+      mapFactory,
+      onCheckEligibility: vi.fn(),
+      onRetry: vi.fn(),
+    };
+    const { rerender } = render(
+      <CampusExplorer {...sharedProps} discovery={{ status: 'loading' }} />,
+    );
+
+    await waitFor(() => expect(mapFactory).toHaveBeenCalledOnce());
+
+    rerender(
+      <CampusExplorer
+        {...sharedProps}
+        discovery={{
+          events: [
+            {
+              availability: 'active',
+              id: 'event-test-1',
+              latitude: 0.001,
+              longitude: 0.002,
+              title: 'Test event',
+            },
+          ],
+          status: 'ready',
+        }}
+      />,
+    );
+
+    await waitFor(() => expect(setPoints).toHaveBeenCalledWith([testPoint]));
+    expect(mapFactory).toHaveBeenCalledOnce();
+  });
+
   it('keeps the event list available when the map fails', async () => {
     const failingMapFactory: MapFactory = vi.fn(async () => {
       throw new Error('Expected map failure');
@@ -110,6 +175,50 @@ describe('campus exploration', () => {
     );
 
     expect(await screen.findByText('The map could not load.')).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Test event' })).toBeVisible();
+  });
+
+  it('stops waiting when the map provider never completes loading', async () => {
+    vi.useFakeTimers();
+
+    const stalledMapFactory: MapFactory = vi.fn(async () => ({
+      onError: vi.fn(),
+      onLoad: vi.fn(),
+      remove: vi.fn(),
+      setPoints: vi.fn(),
+    }));
+
+    render(
+      <CampusExplorer
+        discovery={{
+          events: [
+            {
+              availability: 'active',
+              id: 'event-test-1',
+              latitude: 0.001,
+              longitude: 0.002,
+              title: 'Test event',
+            },
+          ],
+          status: 'ready',
+        }}
+        eligibility={{}}
+        eligibilityBusy={false}
+        mapConfiguration={configuration}
+        mapFactory={stalledMapFactory}
+        onCheckEligibility={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Loading the campus map…')).toBeVisible();
+
+    await act(async () => {
+      await Promise.resolve();
+      vi.advanceTimersByTime(15_000);
+    });
+
+    expect(screen.getByText('The map could not load.')).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Test event' })).toBeVisible();
   });
 
