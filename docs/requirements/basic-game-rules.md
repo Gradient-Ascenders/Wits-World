@@ -48,10 +48,11 @@ or ownership result.
   answered question is rejected.
 - Server receipt time decides whether an answer met the deadline.
 - At expiry, unanswered questions count as incorrect and the attempt completes.
-- The issue #46 decision record specifies only the final number correct, while
-  issues #66 and #68 require more detailed feedback. This contradiction is
-  blocked as `BASIC-03`; no implementation may choose between them until the
-  product decision is recorded. Accepted choices remain private in every case.
+- On completion, the API returns only the final number correct (`0`-`5`) and the
+  reward outcome. It does not reveal per-question correctness, the player's
+  accepted choices, correct answers, or explanations. The 2026-08-13 product
+  decision recorded as `BASIC-03` supersedes the conflicting feedback wording in
+  issues #66 and #68.
 - Scores from zero through five are completed attempts. A low score does not
   create another attempt.
 

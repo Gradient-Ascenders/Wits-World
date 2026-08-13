@@ -48,6 +48,10 @@ The final tile and style provider will be selected separately based on:
 - privacy; and
 - configuration requirements.
 
+The current provider comparison and Wits-campus trial requirements are recorded
+in the [map-provider evaluation](../map-provider-evaluation.md). That evaluation
+does not change this ADR's presentation-only trust boundary.
+
 Authoritative event data comes from the Wits Quest API.
 
 Authoritative distance and eligibility decisions come from the API and
@@ -117,6 +121,7 @@ eligibility model.
 - Expose event discovery and eligibility API endpoints
 - Render the campus map and seeded event
 - Submit browser geolocation and display eligibility
+- [Evaluate the production map provider](../map-provider-evaluation.md)
 
 ---
 
