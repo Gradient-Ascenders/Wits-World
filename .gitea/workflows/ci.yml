@@ -368,6 +368,7 @@ jobs:
       VITE_AUTH0_DOMAIN: ${{ vars.VITE_AUTH0_DOMAIN }}
       VITE_AUTH0_CLIENT_ID: ${{ vars.VITE_AUTH0_CLIENT_ID }}
       VITE_AUTH0_AUDIENCE: ${{ vars.VITE_AUTH0_AUDIENCE }}
+      VITE_MAPBOX_ACCESS_TOKEN: ${{ vars.VITE_MAPBOX_ACCESS_TOKEN }}
 
     steps:
       - name: Check out exact main commit
@@ -462,7 +463,8 @@ jobs:
             VITE_API_BASE_URL \
             VITE_AUTH0_DOMAIN \
             VITE_AUTH0_CLIENT_ID \
-            VITE_AUTH0_AUDIENCE
+            VITE_AUTH0_AUDIENCE \
+            VITE_MAPBOX_ACCESS_TOKEN
           do
             if [ -z "${!variable:-}" ]; then
               echo "${variable} is not configured."
@@ -489,6 +491,7 @@ jobs:
             -e VITE_AUTH0_DOMAIN \
             -e VITE_AUTH0_CLIENT_ID \
             -e VITE_AUTH0_AUDIENCE \
+            -e VITE_MAPBOX_ACCESS_TOKEN \
             -v "$PWD:/workspace" \
             -v "$NPM_CACHE_ROOT:/npm-cache" \
             -w /workspace \
