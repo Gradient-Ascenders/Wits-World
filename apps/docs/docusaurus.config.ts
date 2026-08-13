@@ -14,7 +14,7 @@ const config: Config = {
   },
 
   // Set the production url of your site here
-  url: process.env.DOCS_SITE_URL ?? 'http://localhost:3000',
+  url: process.env.DOCS_SITE_URL ?? 'https://wits-world-docs.pages.dev',
 
   baseUrl: '/',
 

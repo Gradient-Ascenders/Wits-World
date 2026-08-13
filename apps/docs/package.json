@@ -15,7 +15,8 @@
     "typecheck": "tsc",
     "lint": "eslint src docusaurus.config.ts sidebars.ts --max-warnings=0",
     "type-check": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "deploy:cloudflare": "wrangler pages deploy build --project-name=wits-world-docs"
   },
   "dependencies": {
     "@docusaurus/core": "3.10.2",
@@ -32,11 +33,12 @@
     "@docusaurus/tsconfig": "3.10.2",
     "@docusaurus/types": "3.10.2",
     "@types/react": "^19.0.0",
-    "typescript": "~6.0.2"
+    "typescript": "~6.0.2",
+    "wrangler": "^4.123.0"
   },
   "browserslist": {
     "production": [
-      "\u003e0.5%",
+      ">0.5%",
       "not dead",
       "not op_mini all"
     ],
@@ -47,6 +49,6 @@
     ]
   },
   "engines": {
-    "node": "\u003e=20.0"
+    "node": ">=20.0"
   }
 }
