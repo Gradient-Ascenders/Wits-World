@@ -19,6 +19,10 @@ dist/
 coverage/
 *.tsbuildinfo
 
+# Docusaurus generated output
+apps/docs/build/
+apps/docs/.docusaurus/
+
 # Tool caches
 .vite/
 .vitest/
