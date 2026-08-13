@@ -32,6 +32,21 @@ configuration changes.
 Open `http://localhost:5173` in a browser. The development server uses a strict
 port and exits with an error if port 5173 is unavailable.
 
+### Public branding asset
+
+The approved Campus Seal is copied byte-for-byte to
+`/branding/wits-world-campus-seal-transparent.svg` so externally hosted
+interfaces such as Auth0 Universal Login can load it over HTTPS after the web
+application is deployed. The canonical source remains
+`src/assets/branding/wits-world-campus-seal-transparent.svg`.
+
+The supplied Quest Marker variants are also copied byte-for-byte to
+`/branding/wits-world-quest-marker.svg` and
+`/branding/wits-world-quest-marker-transparent.svg`. The transparent-named
+variant is the browser favicon and is referenced from `index.html`; both paths
+are public so external interfaces can load the selected artwork without
+application authentication.
+
 To inspect the production build locally:
 
 ```bash
