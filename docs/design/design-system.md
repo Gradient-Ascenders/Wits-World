@@ -915,8 +915,8 @@ decisions. In summary:
   confirmed rights remains excluded;
 - card categories, affinities, rarity names, reward distribution, starter
   composition, deck composition, and duplicate ownership are confirmed;
-- card stat ranges, move/effect values, rarity point values, affinity modifiers,
-  CPU battle resolution, ties, privileged-role assignment, and account-retention
+- card stat ranges, move/effect values, affinity modifiers, CPU battle
+  resolution, ties, privileged-role assignment, and account-retention
   behavior remain explicit blockers; and
 - profiles, achievements, leaderboards, and a formal review-and-publish workflow
   are outside Basic unless a later approved issue changes the scope.

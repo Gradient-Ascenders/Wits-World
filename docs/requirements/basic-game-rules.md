@@ -110,7 +110,9 @@ of rerolling.
 ## Saved decks
 
 - A deck contains five owned copies: three Creature and two Power cards.
-- The deck has a ten-point rarity cap.
+- A deck's five cards may total no more than ten points. Common cards cost `1`
+  point, Rare cards `2`, Epic cards `3`, and Legendary cards `4`; the fixed
+  rarity value applies equally to Creature and Power cards.
 - A player may reuse one owned copy across multiple saved decks.
 - Two copies of a definition in the same deck require two separately owned
   copies.
@@ -118,8 +120,8 @@ of rerolling.
 - A match snapshots its deck and card values; later deck or catalogue edits do
   not alter active or completed matches.
 
-The point value for each rarity remains blocked by `BASIC-08`. A client may show
-the cap, but neither client nor server implementation may guess those values.
+The API validates the point total using the server-authoritative card rarity;
+the client may present the same values but must not decide deck validity.
 
 ## CPU battles
 
