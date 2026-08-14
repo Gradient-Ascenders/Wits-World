@@ -18,8 +18,8 @@ The team must not implement its own password-authentication system. It also does
 not want to operate a dedicated identity server during the Basic delivery
 period.
 
-Authentication must remain separate from application authorisation. Successfully
-authenticating a user must not automatically grant author, administrator,
+Authentication must remain separate from application authorisation.
+Successfully authenticating a user must not automatically grant author,
 ownership, reward, or gameplay permissions.
 
 ## Decision
@@ -126,14 +126,13 @@ The API must obtain both values from a successfully validated access token. It
 must not accept either value from request-body, query-string, or other
 browser-controlled identity fields.
 
-**Recommendation for the Data and Infrastructure Lead:** when the local user
-schema is introduced, persist both the authentication issuer and subject and
-enforce uniqueness over the pair, conceptually:
+The local `players` table persists both the authentication issuer and subject
+and enforces uniqueness over the pair:
 
 `UNIQUE (auth_issuer, auth_subject)`
 
-The exact database column names and migration belong to the relevant data-model
-work and must be coordinated with the Data and Infrastructure Lead.
+New authenticated identities are provisioned as local Player records by the
+Fastify API. Browser-controlled identity fields are never used for this mapping.
 
 A future Auth0 tenant change creates a different issuer namespace. Wits World
 must therefore perform an explicit identity migration or account-linking process
@@ -142,26 +141,26 @@ when moving existing users between issuers. It must not assume that matching
 
 ## Role strategy
 
-Auth0 will authenticate the user, while Wits World will authorise application
-actions.
+Auth0 authenticates the user, while Wits World authorises application actions.
 
-Initial Wits World roles are:
+The Basic tier has exactly two local application roles:
 
 - `player`;
-- `author`;
-- `administrator`.
+- `author`.
 
 A newly provisioned local user receives the `player` role.
 
-Application roles will be stored in PostgreSQL and checked by the Fastify API.
+Application roles are stored in PostgreSQL and checked by the Fastify API.
 The browser cannot grant, change, or assert its own role.
 
-Author and administrator access requires a protected role-assignment process.
-Possession of a valid Auth0 token alone does not grant either role.
+Author assignment and revocation are out-of-band operational actions through
+the database or deployment process. Basic does not expose a browser or API
+operation for changing roles.
 
-Auth0 RBAC, Auth0 roles, and custom namespaced role claims are deferred. This
-decision may be revisited when local application roles no longer meet an
-identified requirement.
+There is no separate Administrator role in the Basic tier. Administrator
+permissions and in-application role management are deferred beyond Basic.
+
+Auth0 RBAC, Auth0 roles, and custom namespaced role claims remain deferred.
 
 ## Registration and sign-in
 
@@ -188,25 +187,57 @@ feature is considered complete.
 
 ## Account deletion
 
-The Basic product must provide an account-deletion journey.
+`BASIC-12` defines the Basic-tier deletion and retention policy.
 
-Deletion will require trusted backend coordination between:
+Permanent deletion requires:
 
-- the local Wits World user and related data;
-- the Auth0 user account;
-- the project's retention and audit requirements.
+- an authenticated API access token;
+- recent Auth0 authentication no older than five minutes;
+- a separately validated Auth0 ID token carrying the reauthentication
+  `auth_time`;
+- an exact `(iss, sub)` match between the API identity and reauthentication
+  proof; and
+- explicit permanent-deletion confirmation.
 
-Any Auth0 Management API credential required for deletion must be stored only in
-trusted server-side secret configuration.
+The ID token is used only as secondary reauthentication evidence. It is never
+accepted as the API bearer access token.
 
-Because local database changes and Auth0 user deletion cannot form one atomic
-database transaction, the implementation must support partial-failure recovery
-or an explicit deletion state.
+Once a deletion request is accepted, the local player is immediately moved to
+`deletion_pending`, which prevents further authenticated application access.
 
-The exact sequencing, reauthentication requirement, retention rules, and audit
-behaviour remain blocked by `BASIC-12` in the
-[Basic-tier decision register](../../requirements/basic-tier-decision-register.md)
-and must be resolved before the account-deletion endpoint is implemented.
+A trusted server-side Auth0 Management API Machine-to-Machine application,
+granted only the `delete:users` permission, deletes the external Auth0 account.
+Management API credentials are server-only secrets.
+
+Successful local cleanup anonymises the local player into a deleted tombstone
+by removing the Auth0 issuer, subject, and application role. The deletion
+request is then unlinked from that tombstone.
+
+Because Auth0 deletion and PostgreSQL cleanup cannot form one atomic
+transaction, incomplete deletions are persisted as `pending` or
+`retry_pending`. A database-backed retry processor runs on API startup and at a
+configured interval. Failures produce operational alerts containing only the
+random deletion identifier and a safe failure category.
+
+The retained deletion audit contains only:
+
+- a random deletion ID;
+- request timestamp;
+- completion timestamp;
+- status; and
+- an applicable safe failure reason.
+
+Completed deletion audits are retained for twelve months and then removed.
+
+As later Basic data models for cards, decks, balances, starter selections,
+challenge answers, authored content, and gameplay history are introduced, their
+deletion or retention handling must follow `BASIC-12` before the complete Basic
+release is declared compliant.
+
+The player-facing registration, password-reset, and permanent-deletion journey
+remains separate Product and Player Experience frontend work and must be linked
+back to the account-lifecycle issue before that user-facing acceptance work is
+considered complete.
 
 ## Environment configuration
 
@@ -226,10 +257,28 @@ The API will use:
 ```text
 AUTH0_DOMAIN
 AUTH0_AUDIENCE
+AUTH0_SPA_CLIENT_ID
+AUTH0_MANAGEMENT_CLIENT_ID
+AUTH0_MANAGEMENT_CLIENT_SECRET
 ```
 
-Additional private server configuration must be introduced only when a later
-feature requires it. Management credentials must never use a `VITE_` prefix.
+`AUTH0_SPA_CLIENT_ID` is public application identity configuration and is used
+by the API to validate the audience of reauthentication ID tokens.
+
+`AUTH0_MANAGEMENT_CLIENT_ID` and `AUTH0_MANAGEMENT_CLIENT_SECRET` belong only to
+the trusted API environment. The Management application is granted only the
+`delete:users` permission.
+
+The account-deletion retry scheduler additionally uses:
+
+```text
+ACCOUNT_DELETION_RETRY_INTERVAL_MS
+```
+
+The committed development default is one minute. This is an operational retry
+cadence, not the recent-authentication security threshold.
+
+Management credentials must never use a `VITE_` prefix.
 
 Local real values belong in ignored `.env` files. Committed `.env.example` files
 contain safe configuration or placeholders.
@@ -245,6 +294,12 @@ contain safe configuration or placeholders.
 - Registration and password reset can use hosted Auth0 interfaces.
 - The team avoids operating an identity server.
 - Authentication remains separate from local application authorisation.
+- Local Player and Author permissions remain under server-side application
+  control.
+- Permanent deletion uses explicit reauthentication and trusted server-side
+  Auth0 administration.
+- Partial deletion failures can recover automatically from durable database
+  state.
 - A later production tenant can use the same architectural contract with
   different configuration.
 
@@ -258,6 +313,8 @@ contain safe configuration or placeholders.
   changing.
 - Local and external user deletion cannot be performed as one atomic
   transaction.
+- Permanent deletion requires additional lifecycle, retry, and audit
+  infrastructure.
 - Provider pricing and service limits must be reviewed before production
   release.
 
@@ -291,14 +348,19 @@ risk.
 2. Never place a private credential in a `VITE_` variable.
 3. Validate API tokens on the server.
 4. Validate signature, issuer, audience, algorithm, and time-based claims.
-5. Use the validated `sub` claim as the external identity.
+5. Use the validated `(iss, sub)` pair as the canonical external identity.
 6. Perform local role and object-level authorisation after authentication.
 7. Do not trust roles or user IDs supplied by the browser.
 8. Do not expose detailed token-validation failures to the client.
-9. Do not log bearer tokens.
+9. Do not log bearer tokens or reauthentication tokens.
 10. Use explicit callback, logout, and web-origin allowlists.
 11. Keep development and production Auth0 resources separate.
-12. Treat Wits SSO as unresolved until confirmed by the appropriate
+12. Use Auth0 ID tokens only as separately validated reauthentication evidence,
+    never as API bearer access tokens.
+13. Keep Auth0 Management API credentials in trusted server-side configuration
+    and grant only the permissions required by the application.
+14. Keep deletion failures retryable while the affected account remains locked.
+15. Treat Wits SSO as unresolved until confirmed by the appropriate
     stakeholder.
 
 ## Follow-up work
@@ -314,12 +376,14 @@ The following existing Gitea issues implement this decision:
   validation, signature and expiry validation, authenticated request context,
   safe authentication errors, and the OpenAPI security scheme.
 
-Additional later work will cover:
+Gitea #63 implements the local identity, Basic role, account lifecycle, recent
+reauthentication, trusted Auth0 deletion, anonymisation, and automatic retry
+backend foundations.
 
-- local-user provisioning;
-- role and object-level authorisation;
-- password-reset application integration;
-- account deletion;
+Additional work still covers:
+
+- player-facing registration, password-reset, and deletion controls;
+- extending deletion cleanup as later Basic player-owned data models are added;
 - production Auth0 configuration;
 - Wits institutional SSO if approved and available.
 
@@ -331,12 +395,10 @@ The team must still confirm:
 
 - whether Wits SSO is available or required;
 - production web and API domains;
-- account-deletion retention requirements;
 - whether email verification is required before gameplay;
-- whether any institutional restrictions apply to Auth0;
-- how author and administrator roles are initially assigned.
+- whether any institutional restrictions apply to Auth0.
 
 ---
 
 The preceding document was planned and generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking].
+ChatGPT-Web[GPT-5.6 Thinking] and ChatGPT-Web[GPT-5.6 Sol].

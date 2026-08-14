@@ -14,6 +14,7 @@ describe('API configuration', () => {
       host: '127.0.0.1',
       port: 3000,
       logLevel: 'info',
+      accountDeletionRetryIntervalMs: 60000,
     });
   });
 
@@ -56,6 +57,34 @@ describe('API configuration', () => {
       }),
     ).toThrow(
       'LOG_LEVEL must be one of: fatal, error, warn, info, debug, trace, silent.',
+    );
+  });
+
+  it('reads a configured account deletion retry interval', () => {
+    const config = buildApiConfig({
+      env: {
+        HOST: '127.0.0.1',
+        PORT: '3000',
+        LOG_LEVEL: 'info',
+        ACCOUNT_DELETION_RETRY_INTERVAL_MS: '15000',
+      },
+    });
+
+    expect(config.accountDeletionRetryIntervalMs).toBe(15000);
+  });
+
+  it('rejects an invalid account deletion retry interval', () => {
+    expect(() =>
+      buildApiConfig({
+        env: {
+          HOST: '127.0.0.1',
+          PORT: '3000',
+          LOG_LEVEL: 'info',
+          ACCOUNT_DELETION_RETRY_INTERVAL_MS: '0',
+        },
+      }),
+    ).toThrow(
+      'ACCOUNT_DELETION_RETRY_INTERVAL_MS must be an integer of at least 1000 milliseconds.',
     );
   });
 });

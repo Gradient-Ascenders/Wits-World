@@ -82,7 +82,7 @@ export const eventRoutes: FastifyPluginAsync<EventRoutesOptions> = async (
   app.get(
     '/events',
     {
-      onRequest: app.authenticate,
+      onRequest: [app.authenticate, app.requireActivePlayer],
       schema: {
         operationId: 'listPlayerEvents',
         summary: 'List published events for players',
@@ -169,6 +169,7 @@ export const eventRoutes: FastifyPluginAsync<EventRoutesOptions> = async (
             },
           },
           401: apiErrorSchema,
+          403: apiErrorSchema,
         },
       },
     },
@@ -188,7 +189,7 @@ export const eventRoutes: FastifyPluginAsync<EventRoutesOptions> = async (
   }>(
     '/events/:eventId/eligibility',
     {
-      onRequest: app.authenticate,
+      onRequest: [app.authenticate, app.requireActivePlayer],
       schema: {
         operationId: 'evaluateEventEligibility',
         summary: 'Evaluate a player location claim for an event',
@@ -277,6 +278,7 @@ export const eventRoutes: FastifyPluginAsync<EventRoutesOptions> = async (
           },
           400: apiErrorSchema,
           401: apiErrorSchema,
+          403: apiErrorSchema,
           404: apiErrorSchema,
         },
       },
