@@ -2,9 +2,11 @@
 
 ## Status and scope
 
-This document proposes the Sprint 2 persistence foundation for event quizzes,
-reward issuance, player wallets, and owned card copies. It resolves issue #49 as
-a design artifact only: no migration, worker, or API implementation is included.
+This document records the Sprint 2 persistence foundation for event quizzes,
+reward issuance, player wallets, and owned card copies. Issue #49 was the design
+input; issue #64 implements the migration layer described here. Challenge and
+reward routes, finalization services, and authoring workflows remain separate
+issues.
 
 The HTTP behavior is defined by the
 [challenge and attempt API contract](../architecture/challenge-attempt-api-contract.md).
@@ -65,8 +67,8 @@ All identifiers are UUIDs. All timestamps are `timestamptz`. Foreign keys use
 
 ### `players`
 
-`players` stores `id`, canonical `identity_issuer`, `identity_subject`, and audit
-timestamps. `UNIQUE (identity_issuer, identity_subject)` prevents two local
+`players` stores `id`, canonical `auth_issuer`, `auth_subject`, and audit
+timestamps. `UNIQUE (auth_issuer, auth_subject)` prevents two local
 players from representing the same external identity. No access token is stored.
 
 ### `event_challenges`
@@ -125,11 +127,16 @@ validation that requires exactly five rows before creation commits.
 `attempt_question_choices` stores an API-facing ID, attempt question, source
 choice, display position from `1` through `4`, and text snapshot. Unique
 constraints on display position and source choice persist one shuffled order.
+Snapshot rows are immutable once their parent attempt is completed; database
+triggers reject inserts, updates, and deletes that would change a finalized
+attempt's question or choice snapshot.
 
 `attempt_answers` uses `attempt_question_id` as its primary key and stores the
 selected attempt choice plus server receipt time. A composite relationship proves
-that the choice belongs to the question. The primary key locks one answer;
-correctness is calculated only during finalization and is not stored here.
+that the choice belongs to the question. The primary key locks one answer, and
+database triggers prevent updates or deletes after submission and reject new
+answers after the parent attempt is finalized. Correctness is calculated only
+during finalization and is not stored here.
 
 ### `card_definitions`
 
@@ -148,7 +155,8 @@ selection uses only active definitions.
 A completion stores `id`, unique `attempt_id`, player, event, score, average
 difficulty, non-negative coins awarded, `reward_policy_version`, and completion
 time. `UNIQUE (player_id, event_id)` independently protects the player/event
-boundary. Policy inputs are snapshots so historical rewards stay explainable
+boundary. Finalized completion rows and their matching completed attempts are
+immutable. Policy inputs are snapshots so historical rewards stay explainable
 after balance changes.
 
 ### Wallet and coin ledger
@@ -168,8 +176,9 @@ nullable source completion, acquisition kind, and acquisition time. Acquisition
 kind initially supports `event_reward` and later `starter`.
 
 There is deliberately no uniqueness constraint on player and card definition.
-Two identical rewards create two ownership rows, and one completion may award
-multiple rows.
+The partial event-reward index permits one event-reward row per completion while
+allowing duplicate card definitions from separate acquisitions, such as two
+starter copies or rewards from different events.
 
 ## Attempt creation transaction
 
@@ -206,7 +215,11 @@ coins = min + round(((averageDifficulty - 1) / 2) * (max - min))
 | `2`     | `20-30`   | None                           |
 | `3`     | `30-40`   | One Common                     |
 | `4`     | `40-50`   | One card: 75% Common, 25% Rare |
-| `5`     | `50-75`   | 80% one card, 20% two cards    |
+| `5`     | `50-75`   | One event-reward card in Basic |
+
+Issue #64 deliberately persists one event-reward card per completion. A future
+multi-card reward policy needs a separate reward-row model before it can be
+enabled without weakening the one-completion guarantee.
 
 Each card awarded for five correct answers rolls rarity independently: 45%
 Common, 40% Rare, 14% Epic, and 1% Legendary. After rarity selection, one active
@@ -233,7 +246,7 @@ same transaction:
 3. Calculate score and rewards from the attempt snapshots.
 4. Insert the event completion.
 5. Insert and apply a positive coin ledger credit.
-6. Insert zero, one, or two owned-card rows.
+6. Insert zero or one event-reward ownership row.
 7. Mark the attempt completed with its reason, score, and timestamp.
 8. Commit, then return the persisted result.
 
@@ -284,18 +297,27 @@ enough qualifying definitions before offering an affinity.
 
 ## Migration and implementation order
 
-A future implementation should add migrations in dependency order:
+Issue #64 adds the migration layer in dependency order:
 
-1. Players and identity uniqueness.
-2. Challenge authoring tables and restricted answer keys.
-3. Attempts, snapshots, and locked answers.
-4. Card definitions and owned copies.
-5. Event completions, wallets, and ledger entries.
-6. Roles, grants, indexes, checks, and publication validation.
+1. `0003_create_players.sql` stores the local identity boundary.
+2. `0004_create_account_deletion_requests.sql` adds the account-lifecycle
+   relationship required by the existing player model.
+3. `0005_create_challenge_definitions.sql` adds event challenges, questions,
+   choices, private answer keys, publication validation, and content
+   immutability.
+4. `0006_create_challenge_attempts.sql` adds attempts, five-question snapshots,
+   shuffled four-choice snapshots, and locked answers.
+5. `0007_create_cards_rewards_and_ownership.sql` adds card definitions,
+   completions, wallets, coin ledger entries, and owned card copies.
+
+The database integration suite applies all seven migrations to an empty
+PostgreSQL/PostGIS database and checks that a second run is a no-op. The
+migrations intentionally do not seed production trivia, cards, or a challenge;
+those records are authored by later issues.
 
 The existing Sprint 1 demo event carries over as an unchanged `events` row. It
 has no challenge until a separate draft `event_challenges` row and at least five
-valid questions are deliberately authored and published. Applying these future
+valid questions are deliberately authored and published. Applying these
 migrations therefore must not make the seed discoverable as a challenge or
 change its current discovery and eligibility behavior.
 
