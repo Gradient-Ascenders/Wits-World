@@ -12,6 +12,7 @@ import { createAuth0ManagementClient } from './auth/auth0-management-client.js';
 import { createAccountDeletionLifecycle } from './players/account-deletion-lifecycle.js';
 import { createAccountDeletionRetryProcessor } from './players/account-deletion-retry-processor.js';
 import { createAccountDeletionRetryScheduler } from './players/account-deletion-retry-scheduler.js';
+import { createReauthenticationTokenVerifier } from './auth/reauthentication-token-verifier.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
@@ -21,6 +22,8 @@ async function startServer(): Promise<void> {
   const authManagementConfig = buildAuthManagementConfig({
     authConfig,
   });
+  const reauthenticationVerifier =
+    createReauthenticationTokenVerifier(authConfig);
   const corsConfig = buildCorsConfig();
   const databaseConfig = buildDatabaseConfig();
 
@@ -36,6 +39,13 @@ async function startServer(): Promise<void> {
     authConfig,
     corsConfig,
     playerIdentityService: createPlayerIdentityService(database),
+
+    accountDeletionServices: {
+      reauthenticationVerifier,
+      managementClient: auth0ManagementClient,
+      lifecycle: accountDeletionLifecycle,
+    },
+
     eventServices: {
       discovery: createEventDiscoveryService(database),
       eligibility: createEventEligibilityService(database),
