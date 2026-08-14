@@ -130,8 +130,9 @@ constraints on display position and source choice persist one shuffled order.
 
 `attempt_answers` uses `attempt_question_id` as its primary key and stores the
 selected attempt choice plus server receipt time. A composite relationship proves
-that the choice belongs to the question. The primary key locks one answer;
-correctness is calculated only during finalization and is not stored here.
+that the choice belongs to the question. The primary key locks one answer, and a
+database trigger prevents updates or deletes after submission. Correctness is
+calculated only during finalization and is not stored here.
 
 ### `card_definitions`
 
@@ -150,7 +151,8 @@ selection uses only active definitions.
 A completion stores `id`, unique `attempt_id`, player, event, score, average
 difficulty, non-negative coins awarded, `reward_policy_version`, and completion
 time. `UNIQUE (player_id, event_id)` independently protects the player/event
-boundary. Policy inputs are snapshots so historical rewards stay explainable
+boundary. Finalized completion rows and their matching completed attempts are
+immutable. Policy inputs are snapshots so historical rewards stay explainable
 after balance changes.
 
 ### Wallet and coin ledger
@@ -170,8 +172,9 @@ nullable source completion, acquisition kind, and acquisition time. Acquisition
 kind initially supports `event_reward` and later `starter`.
 
 There is deliberately no uniqueness constraint on player and card definition.
-Two identical rewards create two ownership rows, and one completion may award
-multiple rows.
+The partial event-reward index permits one event-reward row per completion while
+allowing duplicate card definitions from separate acquisitions, such as two
+starter copies or rewards from different events.
 
 ## Attempt creation transaction
 
@@ -208,7 +211,11 @@ coins = min + round(((averageDifficulty - 1) / 2) * (max - min))
 | `2`     | `20-30`   | None                           |
 | `3`     | `30-40`   | One Common                     |
 | `4`     | `40-50`   | One card: 75% Common, 25% Rare |
-| `5`     | `50-75`   | 80% one card, 20% two cards    |
+| `5`     | `50-75`   | One event-reward card in Basic |
+
+Issue #64 deliberately persists one event-reward card per completion. A future
+multi-card reward policy needs a separate reward-row model before it can be
+enabled without weakening the one-completion guarantee.
 
 Each card awarded for five correct answers rolls rarity independently: 45%
 Common, 40% Rare, 14% Epic, and 1% Legendary. After rarity selection, one active
@@ -235,7 +242,7 @@ same transaction:
 3. Calculate score and rewards from the attempt snapshots.
 4. Insert the event completion.
 5. Insert and apply a positive coin ledger credit.
-6. Insert zero, one, or two owned-card rows.
+6. Insert zero or one event-reward ownership row.
 7. Mark the attempt completed with its reason, score, and timestamp.
 8. Commit, then return the persisted result.
 

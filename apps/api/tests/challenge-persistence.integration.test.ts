@@ -316,10 +316,25 @@ describe.skipIf(!runIntegrationTests)(
             [firstAttemptQuestion.rows[0]?.id, firstQuestion.rows[0]?.id],
           ),
         ).rejects.toThrow();
+        await expect(
+          client.query(
+            `update public.attempt_answers
+                set answered_at = now()
+              where attempt_question_id = $1`,
+            [firstAttemptQuestion.rows[0]?.id],
+          ),
+        ).rejects.toThrow();
+        await expect(
+          client.query(
+            `delete from public.attempt_answers
+              where attempt_question_id = $1`,
+            [firstAttemptQuestion.rows[0]?.id],
+          ),
+        ).rejects.toThrow();
       });
     }, 45_000);
 
-    it('stores one completion, prevents duplicate coin credits, and allows duplicate cards', async () => {
+    it('stores one completion, prevents duplicate rewards, and allows separate duplicate acquisitions', async () => {
       await withDatabaseClient(temporaryConfig, async (client) => {
         const cardResult = await client.query(
           `insert into public.card_definitions (
@@ -367,6 +382,41 @@ describe.skipIf(!runIntegrationTests)(
         const completionId = completion.rows[0]?.id;
         expect(completionId).toBeTruthy();
 
+        await expect(
+          client.query(
+            `update public.challenge_attempts
+                set score_correct = 4
+              where id = $1`,
+            [ATTEMPT_ID],
+          ),
+        ).rejects.toThrow();
+        await expect(
+          client.query(
+            `update public.challenge_attempts
+                set average_difficulty = 1.00
+              where id = $1`,
+            [ATTEMPT_ID],
+          ),
+        ).rejects.toThrow();
+        await expect(
+          client.query(`delete from public.challenge_attempts where id = $1`, [
+            ATTEMPT_ID,
+          ]),
+        ).rejects.toThrow();
+        await expect(
+          client.query(
+            `update public.event_completions
+                set score_correct = 4
+              where id = $1`,
+            [completionId],
+          ),
+        ).rejects.toThrow();
+        await expect(
+          client.query(`delete from public.event_completions where id = $1`, [
+            completionId,
+          ]),
+        ).rejects.toThrow();
+
         await client.query(
           `insert into public.player_wallets (player_id, coin_balance)
          values ($1, 63)`,
@@ -391,9 +441,24 @@ describe.skipIf(!runIntegrationTests)(
           `insert into public.player_cards (
            player_id, card_definition_id, source_completion_id,
            acquisition_kind
-         ) values ($1, $2, $3, 'event_reward'),
-                  ($1, $2, $3, 'event_reward')`,
+         ) values ($1, $2, $3, 'event_reward')`,
           [PLAYER_ID, CARD_ID, completionId],
+        );
+        await expect(
+          client.query(
+            `insert into public.player_cards (
+             player_id, card_definition_id, source_completion_id,
+             acquisition_kind
+           ) values ($1, $2, $3, 'event_reward')`,
+            [PLAYER_ID, CARD_ID, completionId],
+          ),
+        ).rejects.toThrow();
+        await client.query(
+          `insert into public.player_cards (
+           player_id, card_definition_id, acquisition_kind
+         ) values ($1, $2, 'starter'),
+                  ($1, $2, 'starter')`,
+          [PLAYER_ID, CARD_ID],
         );
 
         const ownedCards = await client.query<{ count: string }>(
@@ -402,7 +467,15 @@ describe.skipIf(!runIntegrationTests)(
           where player_id = $1 and card_definition_id = $2`,
           [PLAYER_ID, CARD_ID],
         );
-        expect(ownedCards.rows[0]?.count).toBe('2');
+        expect(ownedCards.rows[0]?.count).toBe('3');
+
+        const eventRewardCards = await client.query<{ count: string }>(
+          `select count(*)::text as count
+             from public.player_cards
+            where source_completion_id = $1`,
+          [completionId],
+        );
+        expect(eventRewardCards.rows[0]?.count).toBe('1');
 
         await expect(
           client.query(

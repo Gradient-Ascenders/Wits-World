@@ -131,6 +131,22 @@ create table public.attempt_answers (
     on delete restrict
 );
 
+create function public.prevent_attempt_answer_mutation()
+returns trigger
+language plpgsql
+as $$
+begin
+  raise exception
+    'Attempt answer % is immutable after submission',
+    old.attempt_question_id
+    using errcode = '55006';
+end;
+$$;
+
+create trigger attempt_answers_immutability
+before update or delete on public.attempt_answers
+for each row execute function public.prevent_attempt_answer_mutation();
+
 create function public.validate_attempt_snapshot(
   attempt_id_to_validate uuid
 )

@@ -137,6 +137,11 @@ create index player_cards_player_acquired_idx
 create index player_cards_definition_idx
   on public.player_cards (card_definition_id);
 
+create unique index player_cards_event_reward_completion_unique_idx
+  on public.player_cards (source_completion_id)
+  where acquisition_kind = 'event_reward'
+    and source_completion_id is not null;
+
 create function public.validate_event_completion()
 returns trigger
 language plpgsql
@@ -190,6 +195,35 @@ begin
   return new;
 end;
 $$;
+
+create function public.prevent_finalized_challenge_record_mutation()
+returns trigger
+language plpgsql
+as $$
+begin
+  if tg_table_name = 'challenge_attempts'
+     and old.status <> 'completed' then
+    if tg_op = 'delete' then
+      return old;
+    end if;
+
+    return new;
+  end if;
+
+  raise exception
+    'Finalized challenge record % is immutable',
+    old.id
+    using errcode = '55006';
+end;
+$$;
+
+create trigger completed_attempt_mutation_guard
+before update or delete on public.challenge_attempts
+for each row execute function public.prevent_finalized_challenge_record_mutation();
+
+create trigger event_completion_mutation_guard
+before update or delete on public.event_completions
+for each row execute function public.prevent_finalized_challenge_record_mutation();
 
 create constraint trigger event_completion_integrity
 after insert or update on public.event_completions
