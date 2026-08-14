@@ -154,19 +154,15 @@ The published site is available at
 │   └── web/          React/Vite player web application
 ├── database/
 │   ├── migrations/   Ordered PostgreSQL/PostGIS migrations
-│   ├── seeds/        Repeatable development and test fixtures
-│   └── diagrams/     Database diagrams and future schema material
+│   └── seeds/        Repeatable development and test fixtures
 ├── docs/             Architecture, requirements, design, planning, and operations
-├── infrastructure/   Reserved roots for container, deployment, and environment work
-├── packages/         Reserved roots for shared config, contracts, and game rules
-├── tests/             Reserved roots for cross-application fixtures and test types
 ├── .gitea/workflows/ Continuous integration and deployment workflows
 └── CONTRIBUTING.md   Branch, verification, commit, and AI-attribution standards
 ~~~
 
-The `infrastructure/`, `packages/`, and repository-level `tests/` directories
-currently contain placeholders. Application tests live beside their respective
-workspaces in `apps/web/tests` and `apps/api/tests`.
+Future shared packages, infrastructure, cross-application tests, and database
+diagrams should be added when they contain active material. Application tests
+live beside their respective workspaces in `apps/web/tests` and `apps/api/tests`.
 
 ## Development commands
 
