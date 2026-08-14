@@ -4,6 +4,13 @@
 
 # Wits World
 
+[![Build](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/actions/workflows/ci.yml)
+[![Coverage report](https://img.shields.io/badge/coverage-CI%20artifact-6f42c1?logo=vitest&logoColor=white)](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/actions/workflows/ci.yml)
+[![Documentation](https://img.shields.io/badge/docs-live-2ea44f?logo=readthedocs&logoColor=white)](https://wits-world-docs.pages.dev/)
+[![Azure Web App](https://img.shields.io/badge/Azure-Live-0078D4?logo=microsoftazure&logoColor=white)](https://witsworld-web-fqabhufqgvapapgq.southafricanorth-01.azurewebsites.net/)
+![Node.js](https://img.shields.io/badge/Node.js-24.14.1-339933?logo=node.js&logoColor=white)
+![npm](https://img.shields.io/badge/npm-11.18.0-CB3837?logo=npm&logoColor=white)
+
 Wits World is the project repository and development workspace for **Wits
 Quest**, a mobile-friendly, location-based campus exploration game built for
 the COMS3011A Software Design Project.
@@ -33,14 +40,14 @@ be treated as implemented features of the current Sprint 1 slice.
 
 ## Architecture at a glance
 
-| Area | Responsibility |
-| --- | --- |
-| `apps/web` | React/Vite player interface, authentication flow, map presentation, and browser interactions |
-| `apps/api` | Fastify HTTP API, bearer-token validation, event discovery, eligibility, OpenAPI, and safe errors |
-| PostgreSQL/PostGIS | Authoritative event data, coordinates, radii, and distance calculations |
-| Auth0 | External identity authentication and access-token issuance |
-| Mapbox | Map tiles and visual presentation; it does not decide eligibility |
-| `apps/docs` | Docusaurus site generated from the repository-level `docs/` directory |
+| Area               | Responsibility                                                                                    |
+| ------------------ | ------------------------------------------------------------------------------------------------- |
+| `apps/web`         | React/Vite player interface, authentication flow, map presentation, and browser interactions      |
+| `apps/api`         | Fastify HTTP API, bearer-token validation, event discovery, eligibility, OpenAPI, and safe errors |
+| PostgreSQL/PostGIS | Authoritative event data, coordinates, radii, and distance calculations                           |
+| Auth0              | External identity authentication and access-token issuance                                        |
+| Mapbox             | Map tiles and visual presentation; it does not decide eligibility                                 |
+| `apps/docs`        | Docusaurus site generated from the repository-level `docs/` directory                             |
 
 The browser submits a location claim. The API validates it, obtains the event's
 authoritative location from PostgreSQL/PostGIS, and returns the eligibility
@@ -58,19 +65,19 @@ never authoritative.
 The repository pins the Node.js version in `.nvmrc` and the npm version in
 `package.json`. With [nvm](https://github.com/nvm-sh/nvm), use:
 
-~~~bash
+```bash
 nvm install
 nvm use
-~~~
+```
 
 ### Install dependencies
 
-~~~bash
+```bash
 git clone https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World.git
 cd Wits-World
 nvm use
 npm ci
-~~~
+```
 
 Local `.env` files are ignored by Git. Copy only the examples needed for the
 workspace you are running.
@@ -79,10 +86,10 @@ workspace you are running.
 
 For the quickest UI-only start:
 
-~~~bash
+```bash
 cp apps/web/.env.example apps/web/.env
 npm run view
-~~~
+```
 
 Open <http://localhost:5173>. Before testing authentication or the live map,
 replace the public Auth0 SPA Client ID and Mapbox `pk.` token in
@@ -102,23 +109,23 @@ development and test database targets.
 
 In one terminal, configure and start the API:
 
-~~~bash
+```bash
 cp apps/api/.env.example apps/api/.env
 # Set DATABASE_URL, TEST_DATABASE_URL, Auth0 values, and CORS_ALLOWED_ORIGIN.
 npm run db:migrate --workspace @wits-world/api
 npm run db:seed --workspace @wits-world/api
 npm run api
-~~~
+```
 
 The API listens on <http://127.0.0.1:3000>.
 
 In a second terminal, configure and start the web application:
 
-~~~bash
+```bash
 cp apps/web/.env.example apps/web/.env
 # Set the public Auth0 Client ID and Mapbox token.
 npm run view
-~~~
+```
 
 The API exposes these useful local endpoints:
 
@@ -136,9 +143,9 @@ authentication, migrations, seeds, and troubleshooting.
 The documentation site does not currently require environment variables. Start
 it on port 3001 so it can run alongside the API:
 
-~~~bash
+```bash
 npm run start --workspace @wits-world/docs -- --port 3001
-~~~
+```
 
 Open <http://localhost:3001>. Docusaurus reads its content from `docs/`.
 The published site is available at
@@ -146,7 +153,7 @@ The published site is available at
 
 ## Repository structure
 
-~~~text
+```text
 .
 ├── apps/
 │   ├── api/          Fastify API, authentication, event routes, and DB tooling
@@ -158,7 +165,7 @@ The published site is available at
 ├── docs/             Architecture, requirements, design, planning, and operations
 ├── .gitea/workflows/ Continuous integration and deployment workflows
 └── CONTRIBUTING.md   Branch, verification, commit, and AI-attribution standards
-~~~
+```
 
 Future shared packages, infrastructure, cross-application tests, and database
 diagrams should be added when they contain active material. Application tests
@@ -168,25 +175,26 @@ live beside their respective workspaces in `apps/web/tests` and `apps/api/tests`
 
 Run these commands from the repository root:
 
-| Command | Purpose |
-| --- | --- |
-| `npm run view` | Start the web development server |
-| `npm run api` | Start the API development server |
-| `npm run build` | Build all workspaces that expose a build script |
-| `npm run lint` | Lint all application workspaces |
-| `npm run type-check` | Type-check all application workspaces |
-| `npm test` | Run all workspace test suites |
-| `npm run format:check` | Check Prettier formatting without changing files |
-| `npm run format` | Apply Prettier formatting across the repository |
-| `npm run verify` | Format, then run formatting checks, linting, type checks, tests, and builds |
+| Command                | Purpose                                                                     |
+| ---------------------- | --------------------------------------------------------------------------- |
+| `npm run view`         | Start the web development server                                            |
+| `npm run api`          | Start the API development server                                            |
+| `npm run build`        | Build all workspaces that expose a build script                             |
+| `npm run lint`         | Lint all application workspaces                                             |
+| `npm run type-check`   | Type-check all application workspaces                                       |
+| `npm test`             | Run all workspace test suites                                               |
+| `npm run coverage`     | Run web/API tests with V8 coverage and write reports under `coverage/`      |
+| `npm run format:check` | Check Prettier formatting without changing files                            |
+| `npm run format`       | Apply Prettier formatting across the repository                             |
+| `npm run verify`       | Format, then run formatting checks, linting, type checks, tests, and builds |
 
 For a single workspace, use npm's workspace flag:
 
-~~~bash
+```bash
 npm test --workspace @wits-world/web
 npm run build --workspace @wits-world/api
 npm run build --workspace @wits-world/docs
-~~~
+```
 
 `npm run verify` intentionally formats files first. Use
 `npm run format:check` when you need a read-only CI-style formatting check.
@@ -195,20 +203,20 @@ npm run build --workspace @wits-world/docs
 
 After configuring `apps/api/.env`:
 
-~~~bash
+```bash
 npm run db:check --workspace @wits-world/api
 npm run db:migrate --workspace @wits-world/api
 npm run db:seed --workspace @wits-world/api
-~~~
+```
 
 Test-database variants use `TEST_DATABASE_URL`:
 
-~~~bash
+```bash
 npm run db:check:test --workspace @wits-world/api
 npm run db:migrate:test --workspace @wits-world/api
 npm run db:seed:test --workspace @wits-world/api
 npm run test:database --workspace @wits-world/api
-~~~
+```
 
 The database integration test creates and removes temporary test data. Run it
 only with a disposable test target; `TEST_DATABASE_URL` must not identify the
@@ -219,20 +227,20 @@ defines the guarded workflow for release targets.
 
 Start with the guide that matches your task:
 
-| Topic | Guide |
-| --- | --- |
-| Web configuration and player flows | [Web application guide](apps/web/README.md) |
-| API routes, authentication, errors, and eligibility | [API guide](apps/api/README.md) |
-| System boundaries and responsibilities | [Architecture overview](docs/architecture/overview.md) |
-| Technology choices | [Technology stack](docs/architecture/technology-stack.md) |
-| Player location journey | [Location and eligibility journey](docs/requirements/player-location-journey.md) |
-| Event schema and spatial rules | [Event schema](docs/database/event-schema.md) and [event eligibility](docs/database/event-eligibility.md) |
-| Local Neon/PostGIS setup | [Neon/PostGIS guide](docs/database/neon-postgis-setup.md) |
-| Design foundations | [Design system](docs/design/design-system.md) |
-| Delivery status and risks | [Delivery roadmap](docs/planning/delivery-roadmap.md) and [risk register](docs/planning/risk-register.md) |
-| CI checks | [Continuous integration](docs/testing/continuous-integration.md) |
-| Azure deployment | [Azure deployment setup](docs/deployment/azure-deployment-setup.md) |
-| Published documentation | [wits-world-docs.pages.dev](https://wits-world-docs.pages.dev/) |
+| Topic                                               | Guide                                                                                                     |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Web configuration and player flows                  | [Web application guide](apps/web/README.md)                                                               |
+| API routes, authentication, errors, and eligibility | [API guide](apps/api/README.md)                                                                           |
+| System boundaries and responsibilities              | [Architecture overview](docs/architecture/overview.md)                                                    |
+| Technology choices                                  | [Technology stack](docs/architecture/technology-stack.md)                                                 |
+| Player location journey                             | [Location and eligibility journey](docs/requirements/player-location-journey.md)                          |
+| Event schema and spatial rules                      | [Event schema](docs/database/event-schema.md) and [event eligibility](docs/database/event-eligibility.md) |
+| Local Neon/PostGIS setup                            | [Neon/PostGIS guide](docs/database/neon-postgis-setup.md)                                                 |
+| Design foundations                                  | [Design system](docs/design/design-system.md)                                                             |
+| Delivery status and risks                           | [Delivery roadmap](docs/planning/delivery-roadmap.md) and [risk register](docs/planning/risk-register.md) |
+| CI checks                                           | [Continuous integration](docs/testing/continuous-integration.md)                                          |
+| Azure deployment                                    | [Azure deployment setup](docs/deployment/azure-deployment-setup.md)                                       |
+| Published documentation                             | [wits-world-docs.pages.dev](https://wits-world-docs.pages.dev/)                                           |
 
 ## CI/CD
 
@@ -240,9 +248,14 @@ Gitea Actions validates pull requests and pushes to `main` with formatting,
 linting, type checking, tests, and builds for the web, API, and documentation
 workspaces.
 
+The web and API tests collect V8 coverage during the same CI test pass. Gitea
+uploads the HTML, LCOV, and JSON summary files as the `coverage-reports`
+artifact. The coverage badge above indicates that CI publishes a report; it is
+not a percentage badge.
+
 Successful pushes to `main` can deploy the independently hosted applications:
 
-- the web application and API deploy to Azure App Service;
+- the web application deploys to [Azure App Service](https://witsworld-web-fqabhufqgvapapgq.southafricanorth-01.azurewebsites.net/), and the API deploys separately;
 - the documentation site deploys to Cloudflare Pages; and
 - production configuration and credentials remain outside the repository.
 
@@ -261,9 +274,9 @@ pull-request evidence, accessibility expectations, and AI attribution.
 This repository contains AI-assisted code, documentation, planning, and review.
 This README was reviewed and edited with assistance from:
 
-~~~text
+```text
 Codex[GPT-5]
-~~~
+```
 
 Previously recorded AI tools and models that materially contributed to the
 repository include ChatGPT-Web[GPT-5.6 Thinking], Codex-CLI[gpt-5.6-sol

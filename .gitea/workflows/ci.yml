@@ -36,8 +36,8 @@ jobs:
       - name: Type-check web application
         run: npm run type-check --workspace @wits-world/web
 
-      - name: Test web application
-        run: npm test --workspace @wits-world/web
+      - name: Test web application with coverage
+        run: npm run test:coverage --workspace @wits-world/web
 
       - name: Build web application
         run: npm run build:bundle --workspace @wits-world/web
@@ -48,8 +48,8 @@ jobs:
       - name: Type-check API application
         run: npm run type-check --workspace @wits-world/api
 
-      - name: Test API application
-        run: npm test --workspace @wits-world/api
+      - name: Test API application with coverage
+        run: npm run test:coverage --workspace @wits-world/api
 
       - name: Build API application
         run: npm run build --workspace @wits-world/api
@@ -65,6 +65,15 @@ jobs:
 
       - name: Build documentation application
         run: npm run build --workspace @wits-world/docs
+
+      - name: Upload coverage reports
+        if: ${{ always() }}
+        uses: https://github.com/actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: coverage/
+          if-no-files-found: warn
+          retention-days: 14
 
   deploy-api:
     name: Deploy API to Azure
