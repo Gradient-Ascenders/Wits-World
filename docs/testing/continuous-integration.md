@@ -32,7 +32,8 @@ its host-only `azure-deploy` label. That runner provides the proven Azure CLI,
 Docker, managed-identity, filesystem, and networking environment used by the
 deployment jobs.
 
-The documentation deployment workflow also uses `wits-world-ci`. It runs only
+The documentation deployment workflow runs on the `wits-world-c220-01` runner
+through its `wits-world-ci` label. It runs only
 for pushes to `main` and exposes its Cloudflare credentials only to its deploy
 step.
 

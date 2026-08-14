@@ -523,7 +523,8 @@ azure-deploy  -> VM host
 ```
 
 Normal validation no longer targets the shared `ubuntu-latest` label. The
-repository-scoped C220 runner advertises only this dedicated Docker label:
+repository-scoped `wits-world-c220-01` runner advertises only this dedicated
+Docker label:
 
 ```yaml
 wits-world-ci:docker://docker.gitea.com/runner-images:ubuntu-latest
