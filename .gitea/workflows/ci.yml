@@ -201,10 +201,14 @@ jobs:
 
               test -f apps/api/dist/server.js
 
-              npm prune \
+              rm -rf node_modules
+
+              npm ci \
                 --cache /npm-cache \
+                --prefer-offline \
                 --omit=dev \
                 --workspace @wits-world/api \
+                --include-workspace-root=false \
                 --no-audit \
                 --fund=false
             '
