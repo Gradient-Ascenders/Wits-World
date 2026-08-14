@@ -650,7 +650,7 @@ Production dependencies were installed with the project's required npm version:
 ```bash
 docker run --rm   -v "$PWD:/workspace"   -w /workspace   node:24-bookworm-slim   sh -lc '
     npm install -g npm@11.18.0 >/dev/null
-    npm ci --omit=dev --workspace @wits-world/api
+    npm ci --omit=dev --workspace @wits-world/api --include-workspace-root=false
   '
 ```
 
@@ -843,7 +843,7 @@ Push to main
               ├── Skip when the API is unaffected
               └── When required:
                   ├── Build production API
-                  ├── Prune development dependencies
+                  ├── Install API-only production dependencies
                   ├── Package runtime files
                   ├── az login --identity
                   ├── Deploy ZIP
@@ -855,10 +855,13 @@ API deployment is required when the comparison includes changes under
 `package-lock.json`, or `tsconfig.base.json`.
 
 The build container reuses the host's `/tmp/witsworld-npm-cache` as npm's
-content cache. It still runs a clean, lockfile-controlled install. After the API
-build, `npm prune --omit=dev --workspace @wits-world/api` converts that install
-to the production dependency set instead of deleting `node_modules` and
-performing a second clean install.
+content cache. It first runs a clean, lockfile-controlled monorepo install so
+the API can be built. After the API build, it deletes that development tree and
+runs a second clean, lockfile-controlled install with
+`--omit=dev --workspace @wits-world/api --include-workspace-root=false`. The
+deployment ZIP therefore contains only the API workspace's production
+dependency tree, rather than the frontend and documentation dependencies as
+well.
 
 The deployment condition is:
 
