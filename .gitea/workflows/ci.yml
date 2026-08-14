@@ -126,6 +126,151 @@ jobs:
       - name: Build documentation application
         run: npm run build --workspace @wits-world/docs
 
+      - name: Detect web deployment changes for candidate artifact
+        id: candidate_web_changes
+        env:
+          DEPLOY_SHA: ${{ gitea.sha }}
+          PREVIOUS_SHA: ${{ gitea.event.before }}
+        run: |
+          set -euo pipefail
+
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+
+          if [ "$ACTUAL_SHA" != "$DEPLOY_SHA" ]; then
+            echo "Expected commit: $DEPLOY_SHA"
+            echo "Checked-out commit: $ACTUAL_SHA"
+            echo "Refusing to produce an artifact for the wrong commit."
+            exit 1
+          fi
+
+          if [[ "$PREVIOUS_SHA" =~ ^[0-9a-f]{40}$ ]] && \
+            [ "$PREVIOUS_SHA" != "0000000000000000000000000000000000000000" ]
+          then
+            if ! git cat-file -e "${PREVIOUS_SHA}^{commit}" 2>/dev/null; then
+              git fetch --no-tags --depth=1 origin "$PREVIOUS_SHA" || true
+            fi
+          fi
+
+          if [[ "$PREVIOUS_SHA" =~ ^[0-9a-f]{40}$ ]] && \
+            [ "$PREVIOUS_SHA" != "0000000000000000000000000000000000000000" ] && \
+            git cat-file -e "${PREVIOUS_SHA}^{commit}" 2>/dev/null
+          then
+            BASE_SHA="$PREVIOUS_SHA"
+          else
+            echo "The push-before commit is unavailable; a candidate web artifact is required."
+            echo "required=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          set +e
+          git diff --quiet "$BASE_SHA" "$DEPLOY_SHA" -- \
+            .gitea/workflows/ci.yml \
+            .nvmrc \
+            package.json \
+            package-lock.json \
+            tsconfig.base.json \
+            apps/web
+          DIFF_STATUS=$?
+          set -e
+
+          case "$DIFF_STATUS" in
+            0)
+              echo "No web or shared runtime changes detected; no candidate web artifact is required."
+              echo "required=false" >> "$GITHUB_OUTPUT"
+              ;;
+            1)
+              echo "Web or shared runtime changes detected; a candidate web artifact is required."
+              echo "required=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "The web change comparison failed; defaulting to producing a candidate artifact."
+              echo "required=true" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      - name: Validate candidate production web configuration
+        if: ${{ steps.candidate_web_changes.outputs.required == 'true' }}
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_AUTH0_DOMAIN: ${{ vars.VITE_AUTH0_DOMAIN }}
+          VITE_AUTH0_CLIENT_ID: ${{ vars.VITE_AUTH0_CLIENT_ID }}
+          VITE_AUTH0_AUDIENCE: ${{ vars.VITE_AUTH0_AUDIENCE }}
+          VITE_MAPBOX_ACCESS_TOKEN: ${{ vars.VITE_MAPBOX_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          for variable in \
+            VITE_API_BASE_URL \
+            VITE_AUTH0_DOMAIN \
+            VITE_AUTH0_CLIENT_ID \
+            VITE_AUTH0_AUDIENCE \
+            VITE_MAPBOX_ACCESS_TOKEN
+          do
+            if [ -z "${!variable:-}" ]; then
+              echo "${variable} is not configured."
+              exit 1
+            fi
+          done
+
+      - name: Build candidate production web application
+        if: ${{ steps.candidate_web_changes.outputs.required == 'true' }}
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_AUTH0_DOMAIN: ${{ vars.VITE_AUTH0_DOMAIN }}
+          VITE_AUTH0_CLIENT_ID: ${{ vars.VITE_AUTH0_CLIENT_ID }}
+          VITE_AUTH0_AUDIENCE: ${{ vars.VITE_AUTH0_AUDIENCE }}
+          VITE_MAPBOX_ACCESS_TOKEN: ${{ vars.VITE_MAPBOX_ACCESS_TOKEN }}
+        run: npm run build --workspace @wits-world/web
+
+      - name: Package candidate production web artifact
+        if: ${{ steps.candidate_web_changes.outputs.required == 'true' }}
+        env:
+          DEPLOY_SHA: ${{ gitea.sha }}
+        run: |
+          set -euo pipefail
+
+          CANDIDATE_ROOT="/tmp/witsworld-web-candidate-${DEPLOY_SHA}"
+
+          rm -rf "$CANDIDATE_ROOT"
+          mkdir -p "$CANDIDATE_ROOT"
+
+          test -f apps/web/dist/index.html
+          test -d apps/web/dist/assets
+
+          (
+            cd apps/web/dist
+            zip -qr "$CANDIDATE_ROOT/witsworld-web-deploy.zip" .
+          )
+
+          printf '%s\n' "$DEPLOY_SHA" > "$CANDIDATE_ROOT/commit-sha.txt"
+
+          (
+            cd "$CANDIDATE_ROOT"
+            sha256sum witsworld-web-deploy.zip > witsworld-web-deploy.zip.sha256
+          )
+
+          test -s "$CANDIDATE_ROOT/witsworld-web-deploy.zip"
+          unzip -t "$CANDIDATE_ROOT/witsworld-web-deploy.zip" >/dev/null
+
+          unzip -l "$CANDIDATE_ROOT/witsworld-web-deploy.zip" |
+            grep 'index.html'
+
+          unzip -l "$CANDIDATE_ROOT/witsworld-web-deploy.zip" |
+            grep 'assets/'
+
+      - name: Upload candidate production web artifact
+        if: ${{ steps.candidate_web_changes.outputs.required == 'true' }}
+        # Keep the known-working v3 protocol until v4 is verified on this Gitea instance.
+        uses: https://github.com/actions/upload-artifact@v3
+        with:
+          name: web-deploy-${{ gitea.sha }}
+          path: |
+            /tmp/witsworld-web-candidate-${{ gitea.sha }}/witsworld-web-deploy.zip
+            /tmp/witsworld-web-candidate-${{ gitea.sha }}/commit-sha.txt
+            /tmp/witsworld-web-candidate-${{ gitea.sha }}/witsworld-web-deploy.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
+
   validation:
     name: Repository and application validation
     needs:
@@ -553,6 +698,7 @@ jobs:
           fi
 
       - name: Detect web deployment changes
+        id: web_deployment_changes
         run: |
           set -euo pipefail
 
@@ -570,6 +716,7 @@ jobs:
           else
             echo "The push-before commit is unavailable; web deployment is required."
             touch "$DEPLOY_MARKER"
+            echo "required=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -582,9 +729,11 @@ jobs:
             apps/web
           then
             echo "No web or shared runtime changes detected; web deployment will be skipped."
+            echo "required=false" >> "$GITHUB_OUTPUT"
           else
             echo "Web or shared runtime changes detected; web deployment is required."
             touch "$DEPLOY_MARKER"
+            echo "required=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Validate production web configuration
@@ -770,6 +919,107 @@ jobs:
             --resource-group "$AZURE_RESOURCE_GROUP" || true
 
           exit 1
+
+      - name: Download candidate production web artifact
+        if: ${{ steps.web_deployment_changes.outputs.required == 'true' }}
+        # Keep the known-working v3 protocol until v4 is verified on this Gitea instance.
+        uses: https://github.com/actions/download-artifact@v3
+        with:
+          name: web-deploy-${{ gitea.sha }}
+          path: /tmp/witsworld-web-deploy-${{ gitea.sha }}/c220-candidate
+
+      - name: Compare C220 and Azure production web outputs
+        if: ${{ steps.web_deployment_changes.outputs.required == 'true' }}
+        env:
+          DEPLOY_SHA: ${{ gitea.sha }}
+        run: |
+          set -euo pipefail
+
+          DEPLOY_ROOT="/tmp/witsworld-web-deploy-${DEPLOY_SHA}"
+          AZURE_DIST="$DEPLOY_ROOT/repository/apps/web/dist"
+          CANDIDATE_ROOT="$DEPLOY_ROOT/c220-candidate"
+          CANDIDATE_DIST="$CANDIDATE_ROOT/dist"
+          COMPARISON_ROOT="$DEPLOY_ROOT/equivalence"
+
+          test -f "$CANDIDATE_ROOT/commit-sha.txt"
+          test -f "$CANDIDATE_ROOT/witsworld-web-deploy.zip"
+          test -f "$CANDIDATE_ROOT/witsworld-web-deploy.zip.sha256"
+
+          CANDIDATE_SHA="$(tr -d '\r\n' < "$CANDIDATE_ROOT/commit-sha.txt")"
+
+          if [ "$CANDIDATE_SHA" != "$DEPLOY_SHA" ]; then
+            echo "Expected candidate commit: $DEPLOY_SHA"
+            echo "Artifact candidate commit: $CANDIDATE_SHA"
+            echo "The candidate artifact belongs to a different commit."
+            exit 1
+          fi
+
+          (
+            cd "$CANDIDATE_ROOT"
+            sha256sum --check witsworld-web-deploy.zip.sha256
+          )
+
+          rm -rf "$CANDIDATE_DIST" "$COMPARISON_ROOT"
+          mkdir -p "$CANDIDATE_DIST" "$COMPARISON_ROOT"
+          unzip -q "$CANDIDATE_ROOT/witsworld-web-deploy.zip" -d "$CANDIDATE_DIST"
+
+          test -f "$AZURE_DIST/index.html"
+          test -d "$AZURE_DIST/assets"
+          test -f "$CANDIDATE_DIST/index.html"
+          test -d "$CANDIDATE_DIST/assets"
+
+          (
+            cd "$AZURE_DIST"
+            find . -type f -printf '%P\n' | LC_ALL=C sort
+          ) > "$COMPARISON_ROOT/azure-files.txt"
+
+          (
+            cd "$CANDIDATE_DIST"
+            find . -type f -printf '%P\n' | LC_ALL=C sort
+          ) > "$COMPARISON_ROOT/c220-files.txt"
+
+          (
+            cd "$AZURE_DIST"
+            find . -type f -print0 |
+              LC_ALL=C sort -z |
+              xargs -0 -r sha256sum
+          ) > "$COMPARISON_ROOT/azure-sha256.txt"
+
+          (
+            cd "$CANDIDATE_DIST"
+            find . -type f -print0 |
+              LC_ALL=C sort -z |
+              xargs -0 -r sha256sum
+          ) > "$COMPARISON_ROOT/c220-sha256.txt"
+
+          DIFFERENCES=0
+
+          if ! diff -u \
+            "$COMPARISON_ROOT/azure-files.txt" \
+            "$COMPARISON_ROOT/c220-files.txt"
+          then
+            echo "The sorted generated-file lists differ."
+            DIFFERENCES=1
+          else
+            echo "The sorted generated-file lists are identical."
+          fi
+
+          if ! diff -u \
+            "$COMPARISON_ROOT/azure-sha256.txt" \
+            "$COMPARISON_ROOT/c220-sha256.txt"
+          then
+            echo "The generated-file SHA-256 hashes differ."
+            DIFFERENCES=1
+          else
+            echo "Every generated file has an identical SHA-256 hash."
+          fi
+
+          if [ "$DIFFERENCES" -ne 0 ]; then
+            echo "The C220 candidate is not equivalent to the Azure-produced output."
+            exit 1
+          fi
+
+          echo "The C220 candidate is byte-for-byte equivalent to the Azure-produced output."
 
       - name: Clean deployment workspace
         if: ${{ always() }}
