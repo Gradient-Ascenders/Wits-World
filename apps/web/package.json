@@ -10,7 +10,7 @@
     "lint": "eslint src tests --max-warnings=0",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage --coverage.provider=v8 --coverage.reporter=text --coverage.reporter=json-summary --coverage.reporter=lcov --coverage.reportsDirectory=../../coverage/web",
+    "test:coverage": "vitest run --coverage",
     "type-check": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {

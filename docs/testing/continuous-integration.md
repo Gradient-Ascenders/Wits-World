@@ -63,6 +63,12 @@ non-triggering `coverage-badge` branch. The README loads that file directly, so
 its percentage reflects the latest successful web and API coverage run without
 executing either test suite twice.
 
+Coverage scope is explicit in each workspace configuration. The API includes
+`src/**/*.ts`, and the web application includes `src/**/*.{ts,tsx}`. Only
+TypeScript declaration files are excluded. Entrypoints and production modules
+that are never imported by tests therefore remain in the published coverage
+denominator rather than disappearing from the report.
+
 The artifact step intentionally pins `actions/upload-artifact` to v3. The
 current Gitea 1.24 and `act_runner` 0.2.12 stack does not support the v4
 artifact protocol; upgrade the action only after the server and runner have
