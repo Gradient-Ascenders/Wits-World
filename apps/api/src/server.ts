@@ -13,6 +13,7 @@ import { createAccountDeletionLifecycle } from './players/account-deletion-lifec
 import { createAccountDeletionRetryProcessor } from './players/account-deletion-retry-processor.js';
 import { createAccountDeletionRetryScheduler } from './players/account-deletion-retry-scheduler.js';
 import { createReauthenticationTokenVerifier } from './auth/reauthentication-token-verifier.js';
+import { createChallengeAttemptStartService } from './challenges/challenge-attempt-start.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
@@ -34,11 +35,18 @@ async function startServer(): Promise<void> {
   const auth0ManagementClient =
     createAuth0ManagementClient(authManagementConfig);
 
+  const challengeAttemptStartService =
+    createChallengeAttemptStartService(database);
+
   const app = await buildApp({
     config,
     authConfig,
     corsConfig,
     playerIdentityService: createPlayerIdentityService(database),
+
+    challengeAttemptServices: {
+      start: challengeAttemptStartService,
+    },
 
     accountDeletionServices: {
       reauthenticationVerifier,

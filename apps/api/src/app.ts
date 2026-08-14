@@ -32,6 +32,9 @@ import type { AccountDeletionLifecycle } from './players/account-deletion-lifecy
 import { createAccountDeletionCoordinator } from './players/account-deletion-coordinator.js';
 import { accountDeletionRoutes } from './routes/account-deletion.js';
 
+import type { ChallengeAttemptStartService } from './challenges/challenge-attempt-start.js';
+import { challengeAttemptRoutes } from './routes/challenge-attempts.js';
+
 export interface EventServices {
   discovery: EventDiscoveryService;
   eligibility: EventEligibilityService;
@@ -48,12 +51,17 @@ export interface BuildAppOptions {
   corsConfig?: CorsConfig;
   playerIdentityService?: PlayerIdentityService;
   accountDeletionServices?: AccountDeletionServices;
+  challengeAttemptServices?: ChallengeAttemptServices;
 }
 
 export interface AccountDeletionServices {
   reauthenticationVerifier: ReauthenticationTokenVerifier;
   managementClient: Auth0ManagementClient;
   lifecycle: AccountDeletionLifecycle;
+}
+
+export interface ChallengeAttemptServices {
+  start: ChallengeAttemptStartService;
 }
 
 export async function buildApp({
@@ -67,6 +75,7 @@ export async function buildApp({
   corsConfig,
   playerIdentityService,
   accountDeletionServices,
+  challengeAttemptServices,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: logger
@@ -107,6 +116,12 @@ export async function buildApp({
     );
   }
 
+  if (challengeAttemptServices && !playerIdentityService) {
+    throw new Error(
+      'Challenge attempt services require a player identity service.',
+    );
+  }
+
   registerErrorHandlers(app);
 
   await app.register(swagger, {
@@ -129,6 +144,10 @@ export async function buildApp({
         {
           name: 'Events',
           description: 'Player-safe event discovery and location eligibility.',
+        },
+        {
+          name: 'Challenges',
+          description: 'Timed event challenge attempts and player quiz state.',
         },
       ],
       components: {
@@ -197,6 +216,13 @@ export async function buildApp({
       eligibilityService: eventServices.eligibility,
       clock: eventServices.clock,
       maxLocationClaimAgeMs: eventServices.maxLocationClaimAgeMs,
+    });
+  }
+
+  if (challengeAttemptServices) {
+    await app.register(challengeAttemptRoutes, {
+      prefix: '/api/v1',
+      startService: challengeAttemptServices.start,
     });
   }
 
