@@ -23,6 +23,15 @@ import { eventRoutes } from './routes/events.js';
 import cors from '@fastify/cors';
 import type { CorsConfig } from './config/cors.js';
 
+import type { PlayerIdentityService } from './players/player-identity.js';
+import { registerAuthorization } from './auth/authorization.js';
+
+import type { Auth0ManagementClient } from './auth/auth0-management-client.js';
+import type { ReauthenticationTokenVerifier } from './auth/reauthentication-token-verifier.js';
+import type { AccountDeletionLifecycle } from './players/account-deletion-lifecycle.js';
+import { createAccountDeletionCoordinator } from './players/account-deletion-coordinator.js';
+import { accountDeletionRoutes } from './routes/account-deletion.js';
+
 export interface EventServices {
   discovery: EventDiscoveryService;
   eligibility: EventEligibilityService;
@@ -37,6 +46,14 @@ export interface BuildAppOptions {
   accessTokenVerifier?: AccessTokenVerifier;
   eventServices?: EventServices;
   corsConfig?: CorsConfig;
+  playerIdentityService?: PlayerIdentityService;
+  accountDeletionServices?: AccountDeletionServices;
+}
+
+export interface AccountDeletionServices {
+  reauthenticationVerifier: ReauthenticationTokenVerifier;
+  managementClient: Auth0ManagementClient;
+  lifecycle: AccountDeletionLifecycle;
 }
 
 export async function buildApp({
@@ -48,6 +65,8 @@ export async function buildApp({
   accessTokenVerifier,
   eventServices,
   corsConfig,
+  playerIdentityService,
+  accountDeletionServices,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: logger
@@ -58,6 +77,9 @@ export async function buildApp({
               'req.headers.authorization',
               'request.headers.authorization',
               'headers.authorization',
+              'req.body.reauthenticationToken',
+              'request.body.reauthenticationToken',
+              'body.reauthenticationToken',
             ],
             censor: '[REDACTED]',
           },
@@ -74,6 +96,17 @@ export async function buildApp({
   const verifier = accessTokenVerifier ?? createAccessTokenVerifier(authConfig);
 
   registerAuthentication(app, verifier);
+
+  if (playerIdentityService) {
+    registerAuthorization(app, playerIdentityService);
+  }
+
+  if (accountDeletionServices && !playerIdentityService) {
+    throw new Error(
+      'Account deletion services require a player identity service.',
+    );
+  }
+
   registerErrorHandlers(app);
 
   await app.register(swagger, {
@@ -136,9 +169,26 @@ export async function buildApp({
       hideOptionsRoute: true,
     });
   }
-  await app.register(authenticationRoutes, {
-    prefix: '/api/v1',
-  });
+
+  if (accountDeletionServices) {
+    const accountDeletionCoordinator = createAccountDeletionCoordinator(
+      accountDeletionServices.reauthenticationVerifier,
+      accountDeletionServices.managementClient,
+      accountDeletionServices.lifecycle,
+      app.log,
+    );
+
+    await app.register(accountDeletionRoutes, {
+      prefix: '/api/v1',
+      coordinator: accountDeletionCoordinator,
+    });
+  }
+
+  if (playerIdentityService) {
+    await app.register(authenticationRoutes, {
+      prefix: '/api/v1',
+    });
+  }
 
   if (eventServices) {
     await app.register(eventRoutes, {

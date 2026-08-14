@@ -6,28 +6,68 @@ import { createDatabasePool } from './database/connection.js';
 import { createEventDiscoveryService } from './events/event-discovery.js';
 import { createEventEligibilityService } from './events/event-eligibility.js';
 import { buildCorsConfig } from './config/cors.js';
+import { createPlayerIdentityService } from './players/player-identity.js';
+import { buildAuthManagementConfig } from './config/auth-management.js';
+import { createAuth0ManagementClient } from './auth/auth0-management-client.js';
+import { createAccountDeletionLifecycle } from './players/account-deletion-lifecycle.js';
+import { createAccountDeletionRetryProcessor } from './players/account-deletion-retry-processor.js';
+import { createAccountDeletionRetryScheduler } from './players/account-deletion-retry-scheduler.js';
+import { createReauthenticationTokenVerifier } from './auth/reauthentication-token-verifier.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
 
   const config = buildApiConfig();
   const authConfig = buildAuthConfig();
+  const authManagementConfig = buildAuthManagementConfig({
+    authConfig,
+  });
+  const reauthenticationVerifier =
+    createReauthenticationTokenVerifier(authConfig);
   const corsConfig = buildCorsConfig();
   const databaseConfig = buildDatabaseConfig();
 
   const database = createDatabasePool(databaseConfig);
 
+  const accountDeletionLifecycle = createAccountDeletionLifecycle(database);
+
+  const auth0ManagementClient =
+    createAuth0ManagementClient(authManagementConfig);
+
   const app = await buildApp({
     config,
     authConfig,
     corsConfig,
+    playerIdentityService: createPlayerIdentityService(database),
+
+    accountDeletionServices: {
+      reauthenticationVerifier,
+      managementClient: auth0ManagementClient,
+      lifecycle: accountDeletionLifecycle,
+    },
+
     eventServices: {
       discovery: createEventDiscoveryService(database),
       eligibility: createEventEligibilityService(database),
     },
   });
 
+  const accountDeletionRetryProcessor = createAccountDeletionRetryProcessor(
+    auth0ManagementClient,
+    accountDeletionLifecycle,
+    app.log,
+  );
+
+  const accountDeletionRetryScheduler = createAccountDeletionRetryScheduler(
+    accountDeletionRetryProcessor,
+    app.log,
+    {
+      intervalMs: config.accountDeletionRetryIntervalMs,
+    },
+  );
+
   app.addHook('onClose', async () => {
+    await accountDeletionRetryScheduler.stop();
     await database.end();
   });
 
@@ -36,6 +76,8 @@ async function startServer(): Promise<void> {
       host: config.host,
       port: config.port,
     });
+
+    accountDeletionRetryScheduler.start();
 
     app.log.info(
       {

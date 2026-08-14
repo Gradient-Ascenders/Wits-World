@@ -13,6 +13,7 @@ const authConfig: AuthConfig = {
   domain: 'auth.example.test',
   issuer: 'https://auth.example.test/',
   audience: 'https://api.example.test',
+  spaClientId: 'wits-world-spa-client',
   jwksUrl: new URL('https://auth.example.test/.well-known/jwks.json'),
 };
 
@@ -23,6 +24,12 @@ const corsConfig: CorsConfig = {
 const authenticatedIdentity = {
   issuer: authConfig.issuer,
   subject: 'auth0|cors-test-player',
+};
+
+const activeLocalPlayer = {
+  id: '00000000-0000-4000-8000-000000000102',
+  role: 'player' as const,
+  lifecycleStatus: 'active' as const,
 };
 
 let app: FastifyInstance;
@@ -39,6 +46,9 @@ beforeEach(async () => {
     authConfig,
     corsConfig,
     accessTokenVerifier,
+    playerIdentityService: {
+      resolve: vi.fn(async () => activeLocalPlayer),
+    },
     eventServices: {
       discovery: {
         async list() {

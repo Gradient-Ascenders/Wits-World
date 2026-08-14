@@ -73,12 +73,22 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
 
   it('migrates an empty database and enforces the event fixture contract', async () => {
     expect(migrationResult).toEqual({
-      applied: ['0001_enable_postgis.sql', '0002_create_events.sql'],
+      applied: [
+        '0001_enable_postgis.sql',
+        '0002_create_events.sql',
+        '0003_create_players.sql',
+        '0004_create_account_deletion_requests.sql',
+      ],
       skipped: [],
     });
     expect(rerunMigrationResult).toEqual({
       applied: [],
-      skipped: ['0001_enable_postgis.sql', '0002_create_events.sql'],
+      skipped: [
+        '0001_enable_postgis.sql',
+        '0002_create_events.sql',
+        '0003_create_players.sql',
+        '0004_create_account_deletion_requests.sql',
+      ],
     });
     expect(readiness).toMatchObject({
       database: temporaryDatabaseName,
@@ -381,7 +391,12 @@ select * from public.rehearsal_missing_relation;
         runMigrations(temporaryConfig, migrationDirectory),
       ).resolves.toEqual({
         applied: ['9999_rehearsal_recovery.sql'],
-        skipped: ['0001_enable_postgis.sql', '0002_create_events.sql'],
+        skipped: [
+          '0001_enable_postgis.sql',
+          '0002_create_events.sql',
+          '0003_create_players.sql',
+          '0004_create_account_deletion_requests.sql',
+        ],
       });
       await runSeeds(temporaryConfig);
 
@@ -418,7 +433,12 @@ async function createRecoveryMigrationDirectory() {
   const migrationsDirectory = getMigrationsDirectory();
 
   await Promise.all(
-    ['0001_enable_postgis.sql', '0002_create_events.sql'].map((name) =>
+    [
+      '0001_enable_postgis.sql',
+      '0002_create_events.sql',
+      '0003_create_players.sql',
+      '0004_create_account_deletion_requests.sql',
+    ].map((name) =>
       copyFile(join(migrationsDirectory, name), join(directory, name)),
     ),
   );

@@ -17,7 +17,7 @@
     "lint": "eslint src tests --max-warnings=0",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage --coverage.provider=v8 --coverage.reporter=text --coverage.reporter=json-summary --coverage.reporter=lcov --coverage.reportsDirectory=../../coverage/api",
-    "test:database": "RUN_DATABASE_INTEGRATION_TESTS=true vitest run tests/event-database.integration.test.ts",
+    "test:database": "RUN_DATABASE_INTEGRATION_TESTS=true vitest run tests/event-database.integration.test.ts tests/player-database.integration.test.ts",
     "type-check": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {

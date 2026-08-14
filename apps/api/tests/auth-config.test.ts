@@ -5,6 +5,7 @@ import { buildAuthConfig } from '../src/config/auth.js';
 const validEnvironment: NodeJS.ProcessEnv = {
   AUTH0_DOMAIN: 'dev-5artxfvpdennq8qm.us.auth0.com',
   AUTH0_AUDIENCE: 'https://api.wits-world.invalid',
+  AUTH0_SPA_CLIENT_ID: 'wits-world-spa-client',
 };
 
 describe('authentication configuration', () => {
@@ -17,6 +18,7 @@ describe('authentication configuration', () => {
       domain: 'dev-5artxfvpdennq8qm.us.auth0.com',
       issuer: 'https://dev-5artxfvpdennq8qm.us.auth0.com/',
       audience: 'https://api.wits-world.invalid',
+      spaClientId: 'wits-world-spa-client',
       jwksUrl: new URL(
         'https://dev-5artxfvpdennq8qm.us.auth0.com/.well-known/jwks.json',
       ),
@@ -80,5 +82,16 @@ describe('authentication configuration', () => {
         },
       }),
     ).toThrow('AUTH0_AUDIENCE must be a valid HTTPS URI.');
+  });
+
+  it('rejects a missing AUTH0_SPA_CLIENT_ID value', () => {
+    expect(() =>
+      buildAuthConfig({
+        env: {
+          AUTH0_DOMAIN: 'auth.example.test',
+          AUTH0_AUDIENCE: 'https://api.example.test',
+        },
+      }),
+    ).toThrow('AUTH0_SPA_CLIENT_ID is required to start the API.');
   });
 });

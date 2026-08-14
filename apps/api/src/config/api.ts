@@ -16,6 +16,13 @@ export interface ApiConfig {
   logLevel: ApiLogLevel;
 }
 
+export interface ApiConfig {
+  host: string;
+  port: number;
+  logLevel: ApiLogLevel;
+  accountDeletionRetryIntervalMs: number;
+}
+
 interface BuildApiConfigOptions {
   env?: NodeJS.ProcessEnv;
 }
@@ -29,6 +36,13 @@ export function buildApiConfig({
 
   const port = Number(portValue);
 
+  const accountDeletionRetryIntervalValue =
+    env.ACCOUNT_DELETION_RETRY_INTERVAL_MS?.trim() ?? '60000';
+
+  const accountDeletionRetryIntervalMs = Number(
+    accountDeletionRetryIntervalValue,
+  );
+
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {
     throw new Error('PORT must be an integer between 1 and 65535.');
   }
@@ -37,10 +51,20 @@ export function buildApiConfig({
     throw new Error(`LOG_LEVEL must be one of: ${apiLogLevels.join(', ')}.`);
   }
 
+  if (
+    !Number.isInteger(accountDeletionRetryIntervalMs) ||
+    accountDeletionRetryIntervalMs < 1000
+  ) {
+    throw new Error(
+      'ACCOUNT_DELETION_RETRY_INTERVAL_MS must be an integer of at least 1000 milliseconds.',
+    );
+  }
+
   return {
     host,
     port,
     logLevel: logLevelValue,
+    accountDeletionRetryIntervalMs,
   };
 }
 
