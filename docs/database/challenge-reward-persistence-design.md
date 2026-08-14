@@ -2,9 +2,11 @@
 
 ## Status and scope
 
-This document proposes the Sprint 2 persistence foundation for event quizzes,
-reward issuance, player wallets, and owned card copies. It resolves issue #49 as
-a design artifact only: no migration, worker, or API implementation is included.
+This document records the Sprint 2 persistence foundation for event quizzes,
+reward issuance, player wallets, and owned card copies. Issue #49 was the design
+input; issue #64 implements the migration layer described here. Challenge and
+reward routes, finalization services, and authoring workflows remain separate
+issues.
 
 The HTTP behavior is defined by the
 [challenge and attempt API contract](../architecture/challenge-attempt-api-contract.md).
@@ -65,8 +67,8 @@ All identifiers are UUIDs. All timestamps are `timestamptz`. Foreign keys use
 
 ### `players`
 
-`players` stores `id`, canonical `identity_issuer`, `identity_subject`, and audit
-timestamps. `UNIQUE (identity_issuer, identity_subject)` prevents two local
+`players` stores `id`, canonical `auth_issuer`, `auth_subject`, and audit
+timestamps. `UNIQUE (auth_issuer, auth_subject)` prevents two local
 players from representing the same external identity. No access token is stored.
 
 ### `event_challenges`
@@ -284,18 +286,27 @@ enough qualifying definitions before offering an affinity.
 
 ## Migration and implementation order
 
-A future implementation should add migrations in dependency order:
+Issue #64 adds the migration layer in dependency order:
 
-1. Players and identity uniqueness.
-2. Challenge authoring tables and restricted answer keys.
-3. Attempts, snapshots, and locked answers.
-4. Card definitions and owned copies.
-5. Event completions, wallets, and ledger entries.
-6. Roles, grants, indexes, checks, and publication validation.
+1. `0003_create_players.sql` stores the local identity boundary.
+2. `0004_create_account_deletion_requests.sql` adds the account-lifecycle
+   relationship required by the existing player model.
+3. `0005_create_challenge_definitions.sql` adds event challenges, questions,
+   choices, private answer keys, publication validation, and content
+   immutability.
+4. `0006_create_challenge_attempts.sql` adds attempts, five-question snapshots,
+   shuffled four-choice snapshots, and locked answers.
+5. `0007_create_cards_rewards_and_ownership.sql` adds card definitions,
+   completions, wallets, coin ledger entries, and owned card copies.
+
+The database integration suite applies all seven migrations to an empty
+PostgreSQL/PostGIS database and checks that a second run is a no-op. The
+migrations intentionally do not seed production trivia, cards, or a challenge;
+those records are authored by later issues.
 
 The existing Sprint 1 demo event carries over as an unchanged `events` row. It
 has no challenge until a separate draft `event_challenges` row and at least five
-valid questions are deliberately authored and published. Applying these future
+valid questions are deliberately authored and published. Applying these
 migrations therefore must not make the seed discoverable as a challenge or
 change its current discovery and eligibility behavior.
 
