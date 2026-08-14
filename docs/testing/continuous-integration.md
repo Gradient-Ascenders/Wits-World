@@ -55,7 +55,13 @@ npm run build --workspace @wits-world/docs
 The web and API test steps collect V8 coverage during the same test run; they
 do not execute a second test pass. HTML, LCOV, and JSON summary reports are
 uploaded together as the `coverage-reports` workflow artifact. The root
-`npm run coverage` command reproduces both coverage runs locally.
+`npm run coverage` command reproduces both coverage runs locally and generates
+`coverage/coverage.svg` from their combined line totals.
+
+After successful `main` validation, CI publishes the generated SVG to the
+non-triggering `coverage-badge` branch. The README loads that file directly, so
+its percentage reflects the latest successful web and API coverage run without
+executing either test suite twice.
 
 The artifact step intentionally pins `actions/upload-artifact` to v3. The
 current Gitea 1.24 and `act_runner` 0.2.12 stack does not support the v4

@@ -5,7 +5,7 @@
 # Wits World
 
 [![Build](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/actions/workflows/ci.yml)
-[![Coverage report](https://img.shields.io/badge/coverage-CI%20artifact-6f42c1?logo=vitest&logoColor=white)](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/actions/workflows/ci.yml)
+[![Coverage](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/raw/branch/coverage-badge/coverage.svg)](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/actions/workflows/ci.yml)
 [![Documentation](https://img.shields.io/badge/docs-live-2ea44f?logo=readthedocs&logoColor=white)](https://wits-world-docs.pages.dev/)
 [![Azure Web App](https://img.shields.io/badge/Azure-Live-0078D4?logo=microsoftazure&logoColor=white)](https://witsworld-web-fqabhufqgvapapgq.southafricanorth-01.azurewebsites.net/)
 ![Node.js](https://img.shields.io/badge/Node.js-24.14.1-339933?logo=node.js&logoColor=white)
@@ -250,8 +250,8 @@ workspaces.
 
 The web and API tests collect V8 coverage during the same CI test pass. Gitea
 uploads the HTML, LCOV, and JSON summary files as the `coverage-reports`
-artifact. The coverage badge above indicates that CI publishes a report; it is
-not a percentage badge.
+artifact. After a successful push to `main`, the badge above is refreshed with
+weighted line coverage across both applications.
 
 Successful pushes to `main` can deploy the independently hosted applications:
 
