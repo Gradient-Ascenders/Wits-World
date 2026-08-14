@@ -2,6 +2,7 @@ export interface AuthConfig {
   domain: string;
   issuer: string;
   audience: string;
+  spaClientId: string;
   jwksUrl: URL;
 }
 
@@ -16,6 +17,8 @@ export function buildAuthConfig({
   const audience = requireEnvironmentValue(env, 'AUTH0_AUDIENCE');
 
   const domainUrl = parseAuth0Domain(domain);
+
+  const spaClientId = requireEnvironmentValue(env, 'AUTH0_SPA_CLIENT_ID');
   validateAudience(audience);
 
   const issuer = domainUrl.toString();
@@ -24,6 +27,7 @@ export function buildAuthConfig({
     domain,
     issuer,
     audience,
+    spaClientId,
     jwksUrl: new URL('.well-known/jwks.json', issuer),
   };
 }

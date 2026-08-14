@@ -13,6 +13,7 @@ const authConfig: AuthConfig = {
   domain: 'auth.example.test',
   issuer: 'https://auth.example.test/',
   audience: 'https://api.example.test',
+  spaClientId: 'wits-world-spa-client',
   jwksUrl: new URL('https://auth.example.test/.well-known/jwks.json'),
 };
 
