@@ -15,9 +15,17 @@ import type {
 import { ApiError } from '../errors/api-error.js';
 import { InvalidEventCoordinatesError } from '../events/event-eligibility.js';
 import { InvalidLocationClaimError } from '../events/location-claim.js';
+import {
+  ChallengeAnswerLockedError,
+  ChallengeAttemptCompletedError,
+  ChallengeAttemptNotFoundError,
+  InvalidChallengeAnswerError,
+} from '../challenges/challenge-answer-lock.js';
+import type { ChallengeAnswerSubmissionService } from '../challenges/challenge-answer-submission.js';
 
 interface ChallengeAttemptRoutesOptions {
   startService: ChallengeAttemptStartService;
+  answerSubmissionService?: ChallengeAnswerSubmissionService;
 }
 
 interface StartAttemptParams {
@@ -29,6 +37,15 @@ interface StartAttemptBody {
   longitude: number;
   accuracyMetres: number;
   acquiredAt: string;
+}
+
+interface SubmitAnswerParams {
+  attemptId: string;
+}
+
+interface SubmitAnswerBody {
+  attemptQuestionId: string;
+  choiceId: string;
 }
 
 const apiErrorSchema = {
@@ -318,7 +335,7 @@ const completedAttemptResponseSchema = {
 
 export const challengeAttemptRoutes: FastifyPluginAsync<
   ChallengeAttemptRoutesOptions
-> = async (app, { startService }) => {
+> = async (app, { startService, answerSubmissionService }) => {
   app.post<{
     Params: StartAttemptParams;
     Body: StartAttemptBody;
@@ -421,6 +438,94 @@ export const challengeAttemptRoutes: FastifyPluginAsync<
       return reply.code(200).send(withRequestId(result.attempt, request.id));
     },
   );
+
+  if (answerSubmissionService) {
+    app.post<{
+      Params: SubmitAnswerParams;
+      Body: SubmitAnswerBody;
+    }>(
+      '/challenge-attempts/:attemptId/answers',
+      {
+        onRequest: [app.authenticate, app.requireActivePlayer],
+        schema: {
+          operationId: 'submitChallengeAnswer',
+          summary: 'Submit and lock a challenge answer',
+          description:
+            'Locks one answer using server receipt time and returns the updated persisted attempt state. Fifth answers and expired attempts finalize synchronously through the atomic completion boundary.',
+          tags: ['Challenges'],
+          security: [
+            {
+              bearerAuth: [],
+            },
+          ],
+          params: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['attemptId'],
+            properties: {
+              attemptId: {
+                type: 'string',
+                format: 'uuid',
+              },
+            },
+          },
+          body: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['attemptQuestionId', 'choiceId'],
+            properties: {
+              attemptQuestionId: {
+                type: 'string',
+                format: 'uuid',
+              },
+              choiceId: {
+                type: 'string',
+                format: 'uuid',
+              },
+            },
+          },
+          response: {
+            200: {
+              oneOf: [
+                inProgressAttemptResponseSchema,
+                completedAttemptResponseSchema,
+              ],
+            },
+            400: apiErrorSchema,
+            401: apiErrorSchema,
+            403: apiErrorSchema,
+            404: apiErrorSchema,
+            409: apiErrorSchema,
+            500: apiErrorSchema,
+          },
+        },
+      },
+      async (request, reply) => {
+        const player = request.player;
+
+        if (!player) {
+          throw new Error(
+            'Active player authorization did not establish a local player.',
+          );
+        }
+
+        let attempt;
+
+        try {
+          attempt = await answerSubmissionService.submitAnswer({
+            playerId: player.id,
+            attemptId: request.params.attemptId,
+            attemptQuestionId: request.body.attemptQuestionId,
+            choiceId: request.body.choiceId,
+          });
+        } catch (error) {
+          throw mapChallengeAnswerError(error);
+        }
+
+        return reply.code(200).send(withRequestId(attempt, request.id));
+      },
+    );
+  }
 };
 
 function withRequestId<
@@ -493,4 +598,46 @@ function mapChallengeStartError(error: unknown): Error {
   return error instanceof Error
     ? error
     : new Error('Challenge start failed unexpectedly.');
+}
+
+function mapChallengeAnswerError(error: unknown): Error {
+  if (error instanceof InvalidChallengeAnswerError) {
+    return new ApiError({
+      statusCode: 400,
+      code: 'INVALID_CHALLENGE_ANSWER',
+      title: 'Invalid challenge answer',
+      detail: error.message,
+    });
+  }
+
+  if (error instanceof ChallengeAttemptNotFoundError) {
+    return new ApiError({
+      statusCode: 404,
+      code: 'ATTEMPT_NOT_FOUND',
+      title: 'Challenge attempt not found',
+      detail: error.message,
+    });
+  }
+
+  if (error instanceof ChallengeAnswerLockedError) {
+    return new ApiError({
+      statusCode: 409,
+      code: 'ANSWER_LOCKED',
+      title: 'Challenge answer locked',
+      detail: error.message,
+    });
+  }
+
+  if (error instanceof ChallengeAttemptCompletedError) {
+    return new ApiError({
+      statusCode: 409,
+      code: 'ATTEMPT_COMPLETED',
+      title: 'Challenge attempt completed',
+      detail: error.message,
+    });
+  }
+
+  return error instanceof Error
+    ? error
+    : new Error('Challenge answer submission failed unexpectedly.');
 }
