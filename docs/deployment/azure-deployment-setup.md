@@ -891,14 +891,16 @@ if: ${{ gitea.event_name == 'push' && gitea.ref == 'refs/heads/main' }}
 
 ### 19.2 Web deployment
 
-The web deployment runs after the API deployment succeeds:
+The web deployment depends directly on the validation job, independently of
+the API deployment. An API deployment failure must not prevent an unrelated
+frontend release from reaching production:
 
 ```text
-Deploy API to Azure
+Repository and application validation
         │
         │ success
         ▼
-Deploy Web to Azure
+  Deploy Web to Azure
         │
         ├── Fetch exact main commit
         ├── Compare web-relevant paths
@@ -914,9 +916,11 @@ Deploy Web to Azure
 ```
 
 Web deployment is required when the comparison includes changes under
-`apps/web`, or changes to `.nvmrc`, `package.json`, `package-lock.json`, or
-`tsconfig.base.json`. Its build container uses the same persistent npm content
-cache as the API deployment.
+`apps/web`, changes to `.gitea/workflows/ci.yml`, or changes to `.nvmrc`,
+`package.json`, `package-lock.json`, or `tsconfig.base.json`. Including the
+workflow file makes a deployment-pipeline repair trigger a fresh frontend
+release instead of leaving a previously skipped build stale. Its build
+container uses the same persistent npm content cache as the API deployment.
 
 The frontend package is created from the **contents** of `apps/web/dist`, so Azure receives:
 
@@ -1053,38 +1057,38 @@ Each deployment job passes after either completing its application deployment
 or safely skipping all build, authentication, deployment, and health-check
 work when the push comparison proves that application is unaffected.
 
-Expected deployment order:
+Expected deployment paths after validation (the jobs are independent and may
+be queued by runner capacity):
 
 ```text
 Parallel validation categories
         ↓
 Combined validation gate and coverage badge publication
-        ↓
-Check out exact main commit
-Detect API deployment changes
-├── API unaffected: skip remaining API deployment work
-└── API affected or comparison unavailable:
-    ├── Build and prune production API package
-    ├── Authenticate to Azure
-    ├── Deploy API to Azure
-    └── Verify production API health
-Clean API deployment workspace
-        ↓
-Check out exact main commit
-Detect web deployment changes
-├── Web unaffected: skip remaining web deployment work
-└── Web affected or comparison unavailable:
-    ├── Validate production web configuration
-    ├── Build production web package
-    ├── Authenticate to Azure
-    ├── Deploy web application to Azure
-    └── Verify production website
-Clean web deployment workspace
+├── Check out exact main commit
+│   Detect API deployment changes
+│   ├── API unaffected: skip remaining API deployment work
+│   └── API affected or comparison unavailable:
+│       ├── Build and prune production API package
+│       ├── Authenticate to Azure
+│       ├── Deploy API to Azure
+│       └── Verify production API health
+│   Clean API deployment workspace
+└── Check out exact main commit
+    Detect web deployment changes
+    ├── Web unaffected: skip remaining web deployment work
+    └── Web affected or comparison unavailable:
+        ├── Validate production web configuration
+        ├── Build production web package
+        ├── Authenticate to Azure
+        ├── Deploy web application to Azure
+        └── Verify production website
+    Clean web deployment workspace
 ```
 
 The API main-branch deployment path has already been validated successfully.
 
-The new combined API + Web post-merge deployment path remains to be proven after the Azure continuation branch is merged.
+The independent API and Web post-merge deployment paths remain to be proven
+after the Azure continuation branch is merged.
 
 ---
 
@@ -1365,7 +1369,7 @@ Manual production frontend deployment                DONE
 Frontend SPA route validation                        DONE
 Frontend browser smoke testing                       DONE
 Gitea frontend continuous-deployment workflow        IMPLEMENTED
-Combined API + Web main-branch deployment proof      PENDING FINAL MERGE TEST
+Independent API + Web main-branch deployment proof   PENDING FINAL MERGE TEST
 
 Repository-scoped Gitea runner VM                    DONE
 Docker-based CI execution                            DONE

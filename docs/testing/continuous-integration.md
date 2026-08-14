@@ -80,8 +80,9 @@ npm run build --workspace @wits-world/docs
 ```
 
 The final validation job needs all five jobs. It therefore succeeds only when
-formatting, lint, type-checking, tests, and builds all pass. API deployment
-depends on this combined gate, and Web deployment remains after API deployment.
+formatting, lint, type-checking, tests, and builds all pass. API and Web
+deployment both depend directly on this combined gate and remain independent
+of each other.
 
 The duplicated clean installs trade additional aggregate work for substantially
 lower elapsed time on the 44-core C220. They remain bounded to up to five
