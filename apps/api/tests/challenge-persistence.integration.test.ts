@@ -462,10 +462,9 @@ describe.skipIf(!runIntegrationTests)(
           ),
         ).rejects.toThrow();
         await expect(
-          client.query(
-            `delete from public.attempt_questions where id = $1`,
-            [finalizedQuestion?.question_id],
-          ),
+          client.query(`delete from public.attempt_questions where id = $1`, [
+            finalizedQuestion?.question_id,
+          ]),
         ).rejects.toThrow();
         await expect(
           client.query(
