@@ -58,6 +58,11 @@ export interface ChallengeAttemptReader {
     playerId: string,
     eventId: string,
   ): Promise<PlayerSafeChallengeAttempt | null>;
+
+  findByPlayerAndAttempt(
+    playerId: string,
+    attemptId: string,
+  ): Promise<PlayerSafeChallengeAttempt | null>;
 }
 
 export interface ChallengeAttemptQueryable {
@@ -113,40 +118,103 @@ export function createChallengeAttemptReader(
 ): ChallengeAttemptReader {
   return {
     async findByPlayerAndEvent(playerId, eventId) {
-      const attemptResult = await database.query<AttemptRow>(
-        `
-          select
-            attempt.id::text as attempt_id,
-            attempt.event_id::text as event_id,
-            challenge.format,
-            attempt.status,
-            attempt.started_at,
-            attempt.deadline,
-            attempt.completed_at,
-            attempt.completion_reason,
-            attempt.score_correct
-          from public.challenge_attempts attempt
-          join public.event_challenges challenge
-            on challenge.id = attempt.challenge_id
-          where attempt.player_id = $1::uuid
-            and attempt.event_id = $2::uuid
-        `,
-        [playerId, eventId],
+      const attempt = await findAttemptByPlayerAndEvent(
+        database,
+        playerId,
+        eventId,
       );
-
-      const attempt = attemptResult.rows[0];
 
       if (!attempt) {
         return null;
       }
 
-      if (attempt.status === 'completed') {
-        return loadCompletedAttempt(database, playerId, attempt);
+      return loadPlayerSafeAttempt(database, playerId, attempt);
+    },
+
+    async findByPlayerAndAttempt(playerId, attemptId) {
+      const attempt = await findAttemptByPlayerAndAttempt(
+        database,
+        playerId,
+        attemptId,
+      );
+
+      if (!attempt) {
+        return null;
       }
 
-      return loadInProgressAttempt(database, attempt);
+      return loadPlayerSafeAttempt(database, playerId, attempt);
     },
   };
+}
+
+async function findAttemptByPlayerAndEvent(
+  database: ChallengeAttemptQueryable,
+  playerId: string,
+  eventId: string,
+): Promise<AttemptRow | null> {
+  const result = await database.query<AttemptRow>(
+    `
+      select
+        attempt.id::text as attempt_id,
+        attempt.event_id::text as event_id,
+        challenge.format,
+        attempt.status,
+        attempt.started_at,
+        attempt.deadline,
+        attempt.completed_at,
+        attempt.completion_reason,
+        attempt.score_correct
+      from public.challenge_attempts attempt
+      join public.event_challenges challenge
+        on challenge.id = attempt.challenge_id
+      where attempt.player_id = $1::uuid
+        and attempt.event_id = $2::uuid
+    `,
+    [playerId, eventId],
+  );
+
+  return result.rows[0] ?? null;
+}
+
+async function findAttemptByPlayerAndAttempt(
+  database: ChallengeAttemptQueryable,
+  playerId: string,
+  attemptId: string,
+): Promise<AttemptRow | null> {
+  const result = await database.query<AttemptRow>(
+    `
+      select
+        attempt.id::text as attempt_id,
+        attempt.event_id::text as event_id,
+        challenge.format,
+        attempt.status,
+        attempt.started_at,
+        attempt.deadline,
+        attempt.completed_at,
+        attempt.completion_reason,
+        attempt.score_correct
+      from public.challenge_attempts attempt
+      join public.event_challenges challenge
+        on challenge.id = attempt.challenge_id
+      where attempt.player_id = $1::uuid
+        and attempt.id = $2::uuid
+    `,
+    [playerId, attemptId],
+  );
+
+  return result.rows[0] ?? null;
+}
+
+function loadPlayerSafeAttempt(
+  database: ChallengeAttemptQueryable,
+  playerId: string,
+  attempt: AttemptRow,
+): Promise<PlayerSafeChallengeAttempt> {
+  if (attempt.status === 'completed') {
+    return loadCompletedAttempt(database, playerId, attempt);
+  }
+
+  return loadInProgressAttempt(database, attempt);
 }
 
 async function loadInProgressAttempt(
