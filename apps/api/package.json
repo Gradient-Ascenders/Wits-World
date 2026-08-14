@@ -17,7 +17,7 @@
     "lint": "eslint src tests --max-warnings=0",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "test:database": "RUN_DATABASE_INTEGRATION_TESTS=true vitest run tests/event-database.integration.test.ts tests/player-database.integration.test.ts tests/challenge-persistence.integration.test.ts",
+    "test:database": "RUN_DATABASE_INTEGRATION_TESTS=true vitest run tests/event-database.integration.test.ts tests/player-database.integration.test.ts tests/challenge-persistence.integration.test.ts tests/challenge-attempt-database.integration.test.ts",
     "type-check": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
