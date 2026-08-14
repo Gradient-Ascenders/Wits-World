@@ -77,6 +77,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0001_enable_postgis.sql',
         '0002_create_events.sql',
         '0003_create_players.sql',
+        '0004_create_account_deletion_requests.sql',
       ],
       skipped: [],
     });
@@ -86,6 +87,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0001_enable_postgis.sql',
         '0002_create_events.sql',
         '0003_create_players.sql',
+        '0004_create_account_deletion_requests.sql',
       ],
     });
     expect(readiness).toMatchObject({
@@ -393,6 +395,7 @@ select * from public.rehearsal_missing_relation;
           '0001_enable_postgis.sql',
           '0002_create_events.sql',
           '0003_create_players.sql',
+          '0004_create_account_deletion_requests.sql',
         ],
       });
       await runSeeds(temporaryConfig);
@@ -434,6 +437,7 @@ async function createRecoveryMigrationDirectory() {
       '0001_enable_postgis.sql',
       '0002_create_events.sql',
       '0003_create_players.sql',
+      '0004_create_account_deletion_requests.sql',
     ].map((name) =>
       copyFile(join(migrationsDirectory, name), join(directory, name)),
     ),
