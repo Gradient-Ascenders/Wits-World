@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - main
+    paths:
+      - apps/docs/**
+      - docs/**
+      - package.json
+      - package-lock.json
+      - .nvmrc
+      - .gitea/workflows/docs-deploy.yml
 
 jobs:
   deploy-docs:
