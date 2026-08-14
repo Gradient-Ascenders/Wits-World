@@ -24,6 +24,86 @@ describe('challenge attempt reader', () => {
     expect(query).toHaveBeenCalledOnce();
   });
 
+  it('returns null when the player does not own the requested attempt', async () => {
+    const query = vi.fn().mockResolvedValueOnce({
+      rows: [],
+    });
+
+    const reader = createChallengeAttemptReader(createQueryable(query));
+
+    await expect(
+      reader.findByPlayerAndAttempt(PLAYER_ID, ATTEMPT_ID),
+    ).resolves.toBeNull();
+
+    expect(query).toHaveBeenCalledOnce();
+
+    const [statement, values] = query.mock.calls[0] ?? [];
+
+    expect(String(statement)).toContain('attempt.player_id = $1::uuid');
+    expect(String(statement)).toContain('attempt.id = $2::uuid');
+    expect(values).toEqual([PLAYER_ID, ATTEMPT_ID]);
+  });
+
+  it('loads a completed attempt by authenticated player and attempt id', async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            attempt_id: ATTEMPT_ID,
+            event_id: EVENT_ID,
+            format: 'multiple_choice',
+            status: 'completed',
+            started_at: new Date('2026-09-01T10:00:00.000Z'),
+            deadline: new Date('2026-09-01T10:02:00.000Z'),
+            completed_at: new Date('2026-09-01T10:01:30.000Z'),
+            completion_reason: 'answered',
+            score_correct: 4,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            completion_id: '41000000-0000-4000-8000-000000000066',
+            coins_awarded: 40,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: [],
+      });
+
+    const reader = createChallengeAttemptReader(createQueryable(query));
+
+    const attempt = await reader.findByPlayerAndAttempt(PLAYER_ID, ATTEMPT_ID);
+
+    expect(attempt).toEqual({
+      attemptId: ATTEMPT_ID,
+      eventId: EVENT_ID,
+      format: 'multiple_choice',
+      status: 'completed',
+      completedAt: '2026-09-01T10:01:30.000Z',
+      completionReason: 'answered',
+      totalQuestions: 5,
+      scoreCorrect: 4,
+      reward: {
+        coinsAwarded: 40,
+        cards: [],
+      },
+    });
+
+    expect(attempt).not.toHaveProperty('questions');
+    expect(attempt).not.toHaveProperty('selectedChoiceId');
+    expect(attempt).not.toHaveProperty('answeredAt');
+
+    const [statement, values] = query.mock.calls[0] ?? [];
+
+    expect(String(statement)).toContain('attempt.player_id = $1::uuid');
+    expect(String(statement)).toContain('attempt.id = $2::uuid');
+    expect(values).toEqual([PLAYER_ID, ATTEMPT_ID]);
+  });
+
   it('loads an in-progress attempt using only player-safe snapshots', async () => {
     const query = vi
       .fn()

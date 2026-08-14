@@ -19,6 +19,14 @@ import type { AuthConfig } from '../src/config/auth.js';
 import { InvalidLocationClaimError } from '../src/events/location-claim.js';
 import type { PlayerIdentityService } from '../src/players/player-identity.js';
 
+import {
+  ChallengeAnswerLockedError,
+  ChallengeAttemptCompletedError,
+  ChallengeAttemptNotFoundError,
+  InvalidChallengeAnswerError,
+} from '../src/challenges/challenge-answer-lock.js';
+import type { ChallengeAnswerSubmissionService } from '../src/challenges/challenge-answer-submission.js';
+
 const EVENT_ID = '00000000-0000-4000-8000-000000000018';
 const PLAYER_ID = '00000000-0000-4000-8000-000000000101';
 const ATTEMPT_ID = '31000000-0000-4000-8000-000000000001';
@@ -47,12 +55,17 @@ let playerResolve: ReturnType<typeof vi.fn<PlayerIdentityService['resolve']>>;
 let startOrResume: ReturnType<
   typeof vi.fn<ChallengeAttemptStartService['startOrResume']>
 >;
+let submitAnswer: ReturnType<
+  typeof vi.fn<ChallengeAnswerSubmissionService['submitAnswer']>
+>;
 
 beforeEach(async () => {
   playerResolve = vi.fn<PlayerIdentityService['resolve']>();
   playerResolve.mockResolvedValue(activePlayer);
 
   startOrResume = vi.fn<ChallengeAttemptStartService['startOrResume']>();
+
+  submitAnswer = vi.fn<ChallengeAnswerSubmissionService['submitAnswer']>();
 
   const accessTokenVerifier: AccessTokenVerifier = {
     verify: vi.fn().mockResolvedValue(authenticatedIdentity),
@@ -67,6 +80,9 @@ beforeEach(async () => {
     challengeAttemptServices: {
       start: {
         startOrResume,
+      },
+      answerSubmission: {
+        submitAnswer,
       },
     },
     logger: false,
@@ -287,6 +303,234 @@ describe('challenge attempt start API', () => {
   });
 });
 
+describe('challenge answer submission API', () => {
+  it('requires authentication before submitting an answer', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/challenge-attempts/${ATTEMPT_ID}/answers`,
+      payload: validAnswer(),
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({
+      status: 401,
+      code: 'UNAUTHORIZED',
+    });
+
+    expect(submitAnswer).not.toHaveBeenCalled();
+  });
+
+  it('authenticates before validating a malformed answer request', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/challenge-attempts/not-a-uuid/answers',
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({
+      status: 401,
+      code: 'UNAUTHORIZED',
+    });
+
+    expect(submitAnswer).not.toHaveBeenCalled();
+  });
+
+  it('rejects a deletion-pending player before answer submission', async () => {
+    playerResolve.mockResolvedValue({
+      ...activePlayer,
+      lifecycleStatus: 'deletion_pending',
+    });
+
+    const response = await authenticatedAnswerRequest();
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      status: 403,
+      code: 'ACCOUNT_UNAVAILABLE',
+      requestId: expect.any(String),
+    });
+
+    expect(submitAnswer).not.toHaveBeenCalled();
+  });
+
+  it('submits an answer using only the authenticated local player identity', async () => {
+    const attempt = inProgressAttempt();
+
+    submitAnswer.mockResolvedValue(attempt);
+
+    const response = await authenticatedAnswerRequest();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      ...attempt,
+      requestId: expect.any(String),
+    });
+
+    expect(submitAnswer).toHaveBeenCalledWith({
+      playerId: PLAYER_ID,
+      attemptId: ATTEMPT_ID,
+      attemptQuestionId: '32000000-0000-4000-8000-000000000001',
+      choiceId: '33000000-0000-4000-0001-000000000001',
+    });
+  });
+
+  it('returns a final-score-only completed representation', async () => {
+    const attempt = completedAttempt();
+
+    submitAnswer.mockResolvedValue(attempt);
+
+    const response = await authenticatedAnswerRequest();
+
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json<Record<string, unknown>>();
+
+    expect(body).toEqual({
+      ...attempt,
+      requestId: expect.any(String),
+    });
+
+    expect(body).not.toHaveProperty('questions');
+    expect(body).not.toHaveProperty('answeredCount');
+    expect(body).not.toHaveProperty('selectedChoiceId');
+    expect(body).not.toHaveProperty('answeredAt');
+    expect(body).not.toHaveProperty('answerCorrect');
+    expect(body).not.toHaveProperty('correctAnswers');
+    expect(body).not.toHaveProperty('acceptedChoiceId');
+  });
+
+  it('rejects browser-supplied authoritative answer fields', async () => {
+    const response = await authenticatedAnswerRequest({
+      ...validAnswer(),
+      playerId: PLAYER_ID,
+      receivedAt: '2026-09-01T10:00:30.000Z',
+      answerCorrect: true,
+      scoreCorrect: 5,
+      coinsAwarded: 1000,
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      status: 400,
+      code: 'VALIDATION_ERROR',
+    });
+
+    expect(submitAnswer).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed attempt, question, and choice identifiers', async () => {
+    const invalidAttempt = await authenticatedAnswerRequest(
+      validAnswer(),
+      'not-a-uuid',
+    );
+
+    expect(invalidAttempt.statusCode).toBe(400);
+    expect(submitAnswer).not.toHaveBeenCalled();
+
+    const invalidBody = await authenticatedAnswerRequest({
+      attemptQuestionId: 'not-a-uuid',
+      choiceId: 'also-not-a-uuid',
+    });
+
+    expect(invalidBody.statusCode).toBe(400);
+    expect(submitAnswer).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      error: new InvalidChallengeAnswerError(),
+      status: 400,
+      code: 'INVALID_CHALLENGE_ANSWER',
+    },
+    {
+      error: new ChallengeAttemptNotFoundError(),
+      status: 404,
+      code: 'ATTEMPT_NOT_FOUND',
+    },
+    {
+      error: new ChallengeAnswerLockedError(),
+      status: 409,
+      code: 'ANSWER_LOCKED',
+    },
+    {
+      error: new ChallengeAttemptCompletedError(),
+      status: 409,
+      code: 'ATTEMPT_COMPLETED',
+    },
+  ])(
+    'maps answer submission failures to $status $code',
+    async ({ error, status, code }) => {
+      submitAnswer.mockRejectedValue(error);
+
+      const response = await authenticatedAnswerRequest();
+
+      expect(response.statusCode).toBe(status);
+      expect(response.json()).toMatchObject({
+        status,
+        code,
+        requestId: expect.any(String),
+      });
+    },
+  );
+
+  it('uses the existing generic internal error response when finalization fails', async () => {
+    submitAnswer.mockRejectedValue(new Error('reward transaction failed'));
+
+    const response = await authenticatedAnswerRequest();
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({
+      type: 'https://wits.world/problems/internal-error',
+      title: 'Internal server error',
+      status: 500,
+      code: 'INTERNAL_ERROR',
+      detail: 'The server could not complete the request.',
+      requestId: expect.any(String),
+    });
+
+    expect(response.body).not.toContain('reward transaction failed');
+  });
+
+  it('documents answer submission as bearer-protected', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/documentation/json',
+    });
+
+    expect(response.statusCode).toBe(200);
+
+    const document = response.json<{
+      paths: Record<
+        string,
+        {
+          post?: {
+            security?: Array<Record<string, unknown>>;
+            responses?: Record<string, unknown>;
+          };
+        }
+      >;
+    }>();
+
+    const operation =
+      document.paths['/api/v1/challenge-attempts/{attemptId}/answers']?.post;
+
+    expect(operation?.security).toEqual([
+      {
+        bearerAuth: [],
+      },
+    ]);
+
+    expect(operation?.responses).toHaveProperty('200');
+    expect(operation?.responses).toHaveProperty('400');
+    expect(operation?.responses).toHaveProperty('401');
+    expect(operation?.responses).toHaveProperty('403');
+    expect(operation?.responses).toHaveProperty('404');
+    expect(operation?.responses).toHaveProperty('409');
+    expect(operation?.responses).toHaveProperty('500');
+  });
+});
+
 function validLocationClaim() {
   return {
     latitude: -26.19205,
@@ -302,6 +546,27 @@ async function authenticatedStartRequest(
   return app.inject({
     method: 'POST',
     url: `/api/v1/events/${EVENT_ID}/challenge-attempts`,
+    headers: {
+      authorization: 'Bearer test-access-token',
+    },
+    payload,
+  });
+}
+
+function validAnswer() {
+  return {
+    attemptQuestionId: '32000000-0000-4000-8000-000000000001',
+    choiceId: '33000000-0000-4000-0001-000000000001',
+  };
+}
+
+async function authenticatedAnswerRequest(
+  payload: Record<string, unknown> = validAnswer(),
+  attemptId = ATTEMPT_ID,
+) {
+  return app.inject({
+    method: 'POST',
+    url: `/api/v1/challenge-attempts/${attemptId}/answers`,
     headers: {
       authorization: 'Bearer test-access-token',
     },

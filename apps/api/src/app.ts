@@ -35,6 +35,8 @@ import { accountDeletionRoutes } from './routes/account-deletion.js';
 import type { ChallengeAttemptStartService } from './challenges/challenge-attempt-start.js';
 import { challengeAttemptRoutes } from './routes/challenge-attempts.js';
 
+import type { ChallengeAnswerSubmissionService } from './challenges/challenge-answer-submission.js';
+
 export interface EventServices {
   discovery: EventDiscoveryService;
   eligibility: EventEligibilityService;
@@ -62,6 +64,7 @@ export interface AccountDeletionServices {
 
 export interface ChallengeAttemptServices {
   start: ChallengeAttemptStartService;
+  answerSubmission?: ChallengeAnswerSubmissionService;
 }
 
 export async function buildApp({
@@ -223,6 +226,7 @@ export async function buildApp({
     await app.register(challengeAttemptRoutes, {
       prefix: '/api/v1',
       startService: challengeAttemptServices.start,
+      answerSubmissionService: challengeAttemptServices.answerSubmission,
     });
   }
 

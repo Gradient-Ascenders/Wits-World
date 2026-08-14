@@ -15,12 +15,32 @@ import {
 } from '../src/database/connection.js';
 import { runMigrations } from '../src/database/migrations.js';
 
+import {
+  ChallengeAnswerLockedError,
+  ChallengeAttemptNotFoundError,
+  InvalidChallengeAnswerError,
+  lockChallengeAnswer,
+  type LockChallengeAnswerInput,
+} from '../src/challenges/challenge-answer-lock.js';
+
 const EVENT_ID = '00000000-0000-4000-8000-000000000065';
 const CHALLENGE_ID = '30000000-0000-4000-8000-000000000065';
 
 const CREATE_PLAYER_ID = '00000000-0000-4000-8000-000000000165';
 const RESUME_PLAYER_ID = '00000000-0000-4000-8000-000000000166';
 const CONCURRENT_PLAYER_ID = '00000000-0000-4000-8000-000000000167';
+
+const ANSWER_PLAYER_ID = '00000000-0000-4000-8000-000000000168';
+const DUPLICATE_PLAYER_ID = '00000000-0000-4000-8000-000000000169';
+
+const WRONG_OWNER_PLAYER_ID = '00000000-0000-4000-8000-000000000170';
+const WRONG_OWNER_INTRUDER_ID = '00000000-0000-4000-8000-000000000171';
+
+const BINDING_PLAYER_ID = '00000000-0000-4000-8000-000000000172';
+const CONCURRENT_ANSWER_PLAYER_ID = '00000000-0000-4000-8000-000000000173';
+const EXPIRED_ANSWER_PLAYER_ID = '00000000-0000-4000-8000-000000000174';
+
+const ANSWER_RECEIVED_AT = new Date('2026-09-01T10:01:00.000Z');
 
 const STARTED_AT = new Date('2026-09-01T10:00:00.000Z');
 
@@ -414,6 +434,329 @@ describe.skipIf(!runIntegrationTests)(
         choice_count: '20',
       });
     }, 30_000);
+
+    it('persists an accepted answer using the server receipt timestamp', async () => {
+      const attempt = await createAttemptForPlayer(
+        pool,
+        ANSWER_PLAYER_ID,
+        'answer-persist',
+      );
+
+      const question = attempt.questions[0];
+      const choice = question?.choices[0];
+
+      if (!question || !choice) {
+        throw new Error('Expected a persisted challenge question and choice.');
+      }
+
+      const result = await submitNonFinalizingAnswer(pool, {
+        playerId: ANSWER_PLAYER_ID,
+        attemptId: attempt.attemptId,
+        attemptQuestionId: question.attemptQuestionId,
+        choiceId: choice.choiceId,
+        receivedAt: ANSWER_RECEIVED_AT,
+      });
+
+      expect(result).toEqual({
+        outcome: 'accepted',
+        answeredCount: 1,
+        finalizationReason: null,
+      });
+
+      const persisted = await pool.query<{
+        answered_at: Date;
+        selected_choice_id: string;
+      }>(
+        `
+          select
+            answer.selected_choice_id::text,
+            answer.answered_at
+          from public.attempt_answers answer
+          join public.attempt_questions question
+            on question.id = answer.attempt_question_id
+          where question.attempt_id = $1::uuid
+        `,
+        [attempt.attemptId],
+      );
+
+      expect(persisted.rows).toHaveLength(1);
+      expect(persisted.rows[0]?.selected_choice_id).toBe(choice.choiceId);
+      expect(persisted.rows[0]?.answered_at.toISOString()).toBe(
+        ANSWER_RECEIVED_AT.toISOString(),
+      );
+    }, 30_000);
+
+    it('treats the same persisted answer as idempotent', async () => {
+      const attempt = await createAttemptForPlayer(
+        pool,
+        DUPLICATE_PLAYER_ID,
+        'answer-duplicate',
+      );
+
+      const question = attempt.questions[0];
+      const choice = question?.choices[0];
+
+      if (!question || !choice) {
+        throw new Error('Expected a persisted challenge question and choice.');
+      }
+
+      const input: LockChallengeAnswerInput = {
+        playerId: DUPLICATE_PLAYER_ID,
+        attemptId: attempt.attemptId,
+        attemptQuestionId: question.attemptQuestionId,
+        choiceId: choice.choiceId,
+        receivedAt: ANSWER_RECEIVED_AT,
+      };
+
+      await expect(
+        submitNonFinalizingAnswer(pool, input),
+      ).resolves.toMatchObject({
+        outcome: 'accepted',
+        answeredCount: 1,
+      });
+
+      await expect(
+        submitNonFinalizingAnswer(pool, {
+          ...input,
+          receivedAt: new Date('2026-09-01T10:01:10.000Z'),
+        }),
+      ).resolves.toEqual({
+        outcome: 'idempotent',
+        answeredCount: 1,
+        finalizationReason: null,
+      });
+
+      const persisted = await countPersistedAnswers(pool, attempt.attemptId);
+
+      expect(persisted).toBe(1);
+    }, 30_000);
+
+    it('rejects a different choice after an answer has been locked', async () => {
+      const attempt = await createAttemptForPlayer(
+        pool,
+        '00000000-0000-4000-8000-000000000175',
+        'answer-locked',
+      );
+
+      const question = attempt.questions[0];
+      const firstChoice = question?.choices[0];
+      const secondChoice = question?.choices[1];
+
+      if (!question || !firstChoice || !secondChoice) {
+        throw new Error('Expected two persisted challenge choices.');
+      }
+
+      await submitNonFinalizingAnswer(pool, {
+        playerId: '00000000-0000-4000-8000-000000000175',
+        attemptId: attempt.attemptId,
+        attemptQuestionId: question.attemptQuestionId,
+        choiceId: firstChoice.choiceId,
+        receivedAt: ANSWER_RECEIVED_AT,
+      });
+
+      await expect(
+        submitNonFinalizingAnswer(pool, {
+          playerId: '00000000-0000-4000-8000-000000000175',
+          attemptId: attempt.attemptId,
+          attemptQuestionId: question.attemptQuestionId,
+          choiceId: secondChoice.choiceId,
+          receivedAt: new Date('2026-09-01T10:01:05.000Z'),
+        }),
+      ).rejects.toBeInstanceOf(ChallengeAnswerLockedError);
+
+      const persisted = await pool.query<{
+        selected_choice_id: string;
+      }>(
+        `
+          select answer.selected_choice_id::text
+          from public.attempt_answers answer
+          join public.attempt_questions question
+            on question.id = answer.attempt_question_id
+          where question.attempt_id = $1::uuid
+        `,
+        [attempt.attemptId],
+      );
+
+      expect(persisted.rows).toEqual([
+        {
+          selected_choice_id: firstChoice.choiceId,
+        },
+      ]);
+    }, 30_000);
+
+    it('does not allow another player to submit against an owned attempt', async () => {
+      const attempt = await createAttemptForPlayer(
+        pool,
+        WRONG_OWNER_PLAYER_ID,
+        'answer-owner',
+      );
+
+      await insertPlayer(pool, WRONG_OWNER_INTRUDER_ID, 'answer-intruder');
+
+      const question = attempt.questions[0];
+      const choice = question?.choices[0];
+
+      if (!question || !choice) {
+        throw new Error('Expected a persisted challenge question and choice.');
+      }
+
+      await expect(
+        submitNonFinalizingAnswer(pool, {
+          playerId: WRONG_OWNER_INTRUDER_ID,
+          attemptId: attempt.attemptId,
+          attemptQuestionId: question.attemptQuestionId,
+          choiceId: choice.choiceId,
+          receivedAt: ANSWER_RECEIVED_AT,
+        }),
+      ).rejects.toBeInstanceOf(ChallengeAttemptNotFoundError);
+
+      expect(await countPersistedAnswers(pool, attempt.attemptId)).toBe(0);
+    }, 30_000);
+
+    it('rejects a choice belonging to a different attempt question', async () => {
+      const attempt = await createAttemptForPlayer(
+        pool,
+        BINDING_PLAYER_ID,
+        'answer-binding',
+      );
+
+      const firstQuestion = attempt.questions[0];
+      const secondQuestion = attempt.questions[1];
+      const wrongChoice = secondQuestion?.choices[0];
+
+      if (!firstQuestion || !secondQuestion || !wrongChoice) {
+        throw new Error('Expected persisted challenge questions and choices.');
+      }
+
+      await expect(
+        submitNonFinalizingAnswer(pool, {
+          playerId: BINDING_PLAYER_ID,
+          attemptId: attempt.attemptId,
+          attemptQuestionId: firstQuestion.attemptQuestionId,
+          choiceId: wrongChoice.choiceId,
+          receivedAt: ANSWER_RECEIVED_AT,
+        }),
+      ).rejects.toBeInstanceOf(InvalidChallengeAnswerError);
+
+      expect(await countPersistedAnswers(pool, attempt.attemptId)).toBe(0);
+    }, 30_000);
+
+    it('serializes concurrent different-choice submissions so exactly one answer wins', async () => {
+      const attempt = await createAttemptForPlayer(
+        pool,
+        CONCURRENT_ANSWER_PLAYER_ID,
+        'answer-concurrent',
+      );
+
+      const question = attempt.questions[0];
+      const firstChoice = question?.choices[0];
+      const secondChoice = question?.choices[1];
+
+      if (!question || !firstChoice || !secondChoice) {
+        throw new Error('Expected two persisted challenge choices.');
+      }
+
+      const firstInput: LockChallengeAnswerInput = {
+        playerId: CONCURRENT_ANSWER_PLAYER_ID,
+        attemptId: attempt.attemptId,
+        attemptQuestionId: question.attemptQuestionId,
+        choiceId: firstChoice.choiceId,
+        receivedAt: ANSWER_RECEIVED_AT,
+      };
+
+      const secondInput: LockChallengeAnswerInput = {
+        ...firstInput,
+        choiceId: secondChoice.choiceId,
+      };
+
+      const results = await Promise.allSettled([
+        submitNonFinalizingAnswer(pool, firstInput),
+        submitNonFinalizingAnswer(pool, secondInput),
+      ]);
+
+      const fulfilled = results.filter(
+        (result) => result.status === 'fulfilled',
+      );
+      const rejected = results.filter((result) => result.status === 'rejected');
+
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+
+      if (fulfilled[0]?.status !== 'fulfilled') {
+        throw new Error('Expected one successful concurrent answer.');
+      }
+
+      if (rejected[0]?.status !== 'rejected') {
+        throw new Error('Expected one rejected concurrent answer.');
+      }
+
+      expect(fulfilled[0].value).toMatchObject({
+        outcome: 'accepted',
+        answeredCount: 1,
+      });
+
+      expect(rejected[0].reason).toBeInstanceOf(ChallengeAnswerLockedError);
+
+      const persisted = await pool.query<{
+        selected_choice_id: string;
+      }>(
+        `
+          select answer.selected_choice_id::text
+          from public.attempt_answers answer
+          join public.attempt_questions question
+            on question.id = answer.attempt_question_id
+          where question.attempt_id = $1::uuid
+        `,
+        [attempt.attemptId],
+      );
+
+      expect(persisted.rows).toHaveLength(1);
+      expect([firstChoice.choiceId, secondChoice.choiceId]).toContain(
+        persisted.rows[0]?.selected_choice_id,
+      );
+    }, 30_000);
+
+    it('does not persist an answer received at the deadline', async () => {
+      const attempt = await createAttemptForPlayer(
+        pool,
+        EXPIRED_ANSWER_PLAYER_ID,
+        'answer-expired',
+      );
+
+      const question = attempt.questions[0];
+      const choice = question?.choices[0];
+
+      if (!question || !choice) {
+        throw new Error('Expected a persisted challenge question and choice.');
+      }
+
+      const client = await pool.connect();
+
+      try {
+        await client.query('begin');
+
+        const result = await lockChallengeAnswer(client, {
+          playerId: EXPIRED_ANSWER_PLAYER_ID,
+          attemptId: attempt.attemptId,
+          attemptQuestionId: question.attemptQuestionId,
+          choiceId: choice.choiceId,
+          receivedAt: new Date(attempt.deadline),
+        });
+
+        expect(result).toEqual({
+          outcome: 'expired',
+          finalizationReason: 'timeout',
+        });
+
+        // #67 will perform timeout completion/reward finalization atomically.
+        // Until that finalizer exists, do not commit a timeout result.
+        await client.query('rollback');
+      } finally {
+        client.release();
+      }
+
+      expect(await countPersistedAnswers(pool, attempt.attemptId)).toBe(0);
+    }, 30_000);
   },
 );
 
@@ -426,6 +769,83 @@ function validInput(playerId: string): StartChallengeAttemptInput {
     accuracyMetres: 10,
     acquiredAt: '2026-09-01T09:59:30.000Z',
   };
+}
+
+async function createAttemptForPlayer(
+  pool: ReturnType<typeof createDatabasePool>,
+  playerId: string,
+  subjectSuffix: string,
+) {
+  await insertPlayer(pool, playerId, subjectSuffix);
+
+  const service = createChallengeAttemptStartService(pool, {
+    clock: () => STARTED_AT,
+    randomIndex: () => 0,
+  });
+
+  const result = await service.startOrResume(validInput(playerId));
+
+  if (result.outcome !== 'created') {
+    throw new Error('Expected a newly created challenge attempt.');
+  }
+
+  return result.attempt;
+}
+
+async function submitNonFinalizingAnswer(
+  pool: ReturnType<typeof createDatabasePool>,
+  input: LockChallengeAnswerInput,
+) {
+  const client = await pool.connect();
+
+  try {
+    await client.query('begin');
+
+    const result = await lockChallengeAnswer(client, input);
+
+    if (
+      result.outcome === 'expired' ||
+      ('finalizationReason' in result && result.finalizationReason !== null)
+    ) {
+      throw new Error(
+        'Test helper cannot commit an answer requiring finalization.',
+      );
+    }
+
+    await client.query('commit');
+
+    return result;
+  } catch (error) {
+    try {
+      await client.query('rollback');
+    } catch {
+      // Preserve the original test failure.
+    }
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function countPersistedAnswers(
+  pool: ReturnType<typeof createDatabasePool>,
+  attemptId: string,
+): Promise<number> {
+  const result = await pool.query<{
+    answer_count: number;
+  }>(
+    `
+      select count(answer.attempt_question_id)::int as answer_count
+      from public.attempt_questions question
+      join public.attempt_answers answer
+        on answer.attempt_question_id = question.id
+      where question.attempt_id = $1::uuid
+    `,
+    [attemptId],
+  );
+
+  return result.rows[0]?.answer_count ?? 0;
 }
 
 async function insertPlayer(

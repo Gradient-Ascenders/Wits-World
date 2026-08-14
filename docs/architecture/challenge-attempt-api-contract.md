@@ -8,8 +8,16 @@ reward result. It originated as the design contract for issue #46.
 
 The server-authoritative start/resume operation,
 `POST /api/v1/events/{eventId}/challenge-attempts`, is implemented by issue #65.
-The attempt-fetch, answer-submission, expiry-finalisation, completion, and reward
-operations remain follow-up implementation work under their linked Sprint 2
+
+Issue #66 implements the answer-submission contract,
+`POST /api/v1/challenge-attempts/{attemptId}/answers`, including authenticated
+attempt/question/choice binding, immutable answer locking, server-receipt
+deadline enforcement, private server-side marking, final-score calculation, and
+the transaction coordinator used by fifth-answer and timeout finalisation.
+
+The concrete atomic completion/reward finaliser and its production server wiring
+remain follow-up work under issue #67. Attempt fetch and defensive/background
+expiry finalisation also remain follow-up work under their linked Sprint 2
 issues.
 
 The only challenge format supported in the Basic scope is a timed
@@ -287,6 +295,28 @@ must belong to that selected question.
 The server receipt time decides whether the answer met the deadline. A browser
 timestamp is not accepted as proof of an on-time answer.
 
+### Answer-submission implementation boundary
+
+Issue #66 implements answer validation, locking, timing, marking, and transaction
+coordination. Correctness is derived only from persisted answer snapshots and the
+private server-side answer-key relation. The browser never submits correctness,
+score, accepted answers, or finalisation timestamps.
+
+An accepted answer is immutable. Repeating the same question and choice is
+idempotent; submitting a different choice for that question is rejected. The
+attempt row is locked while answer state is inspected and changed so concurrent
+submissions serialize against the same attempt.
+
+When the fifth answer is accepted, or when server receipt time is at or beyond
+the deadline, the submission coordinator calculates the authoritative final
+score and invokes the atomic completion finaliser inside the same transaction.
+If finalisation fails, the transaction rolls back and the API uses the existing
+safe `500 INTERNAL_ERROR` response with a request identifier.
+
+The concrete completion/reward finaliser is supplied by issue #67. No placeholder
+completion, zero-reward completion, asynchronous `202` state, or partially
+committed fifth-answer state is introduced by issue #66.
+
 ## Expiry finalization
 
 A background finalizer will claim expired in-progress attempts in bounded
@@ -370,14 +400,30 @@ database-backed five-question selection, persisted choice shuffling, authoritati
 event/location checks, deadline calculation, and concurrency-safe attempt
 creation.
 
+Issue #66 implements:
+
+- the authenticated answer-submission HTTP contract;
+- player/attempt/question/choice ownership and binding checks;
+- immutable and idempotent answer locking;
+- concurrent submission serialization;
+- server-receipt deadline enforcement;
+- private server-side multiple-choice marking;
+- unanswered-question-as-incorrect score calculation;
+- fifth-answer and timeout finalisation detection;
+- the transaction coordinator and atomic-finaliser interface;
+- player-safe final-score-only response handling; and
+- unit, integration, concurrency, security-exposure, and OpenAPI coverage for
+  those behaviours.
+
 Remaining implementation work must add:
 
-- the authenticated attempt-fetch and answer-submission operations;
-- expiry detection and defensive/background finalisation;
-- the transactional implementation of the completion and reward contract from
-  issue #49;
-- player UI for timed questions, reconnecting, and completion; and
-- unit, integration, concurrency, security-exposure, and OpenAPI tests.
+- the authenticated attempt-fetch operation;
+- defensive/background expiry finalisation;
+- the concrete idempotent atomic completion/reward finaliser from issue #67;
+- production server wiring of that finaliser into answer submission;
+- end-to-end fifth-answer, timeout, retry, and reward persistence verification
+  once the #67 finaliser exists; and
+- player UI for timed questions, reconnecting, and completion.
 
 The proposed storage relations, reward calculation, and atomic finalization
 boundary are specified in the
