@@ -4,8 +4,13 @@
 
 This document defines the Sprint 2 HTTP contract for accepting an event quiz,
 resuming it, locking answers, and receiving a server-generated completion and
-reward result. It resolves issue #46 as a design contract only. The endpoints
-and schemas described here are not implemented yet.
+reward result. It originated as the design contract for issue #46.
+
+The server-authoritative start/resume operation,
+`POST /api/v1/events/{eventId}/challenge-attempts`, is implemented by issue #65.
+The attempt-fetch, answer-submission, expiry-finalisation, completion, and reward
+operations remain follow-up implementation work under their linked Sprint 2
+issues.
 
 The only challenge format supported in the Basic scope is a timed
 multiple-choice quiz. The API retains a `format` discriminator so additional
@@ -360,10 +365,15 @@ The existing `GET /api/v1/events` and
 Challenge start performs its own fresh location evaluation; a previous
 eligibility response is not authorization to start later.
 
-Future implementation work must add:
+Issue #65 implements the authenticated challenge start/resume route,
+database-backed five-question selection, persisted choice shuffling, authoritative
+event/location checks, deadline calculation, and concurrency-safe attempt
+creation.
 
-- Fastify schemas and handlers for these three operations;
-- database-backed question selection, attempt persistence, and expiry work;
+Remaining implementation work must add:
+
+- the authenticated attempt-fetch and answer-submission operations;
+- expiry detection and defensive/background finalisation;
 - the transactional implementation of the completion and reward contract from
   issue #49;
 - player UI for timed questions, reconnecting, and completion; and
