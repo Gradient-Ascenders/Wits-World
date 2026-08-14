@@ -4,12 +4,12 @@ export const authenticationRoutes: FastifyPluginAsync = async (app) => {
   app.get(
     '/auth/me',
     {
-      preHandler: app.authenticate,
+      preHandler: [app.authenticate, app.requireActivePlayer],
       schema: {
-        operationId: 'getAuthenticatedIdentity',
-        summary: 'Get the authenticated external identity',
+        operationId: 'getCurrentPlayer',
+        summary: 'Get the current player',
         description:
-          'Returns the validated external identity for the bearer access token.',
+          'Resolves the authenticated Auth0 identity to the current local Wits World player.',
         tags: ['Authentication'],
         security: [
           {
@@ -20,13 +20,19 @@ export const authenticationRoutes: FastifyPluginAsync = async (app) => {
           200: {
             type: 'object',
             additionalProperties: false,
-            required: ['issuer', 'subject', 'requestId'],
+            required: ['id', 'role', 'lifecycleStatus', 'requestId'],
             properties: {
-              issuer: {
+              id: {
                 type: 'string',
+                format: 'uuid',
               },
-              subject: {
+              role: {
                 type: 'string',
+                enum: ['player', 'author'],
+              },
+              lifecycleStatus: {
+                type: 'string',
+                enum: ['active', 'deletion_pending', 'deleted'],
               },
               requestId: {
                 type: 'string',
@@ -71,17 +77,18 @@ export const authenticationRoutes: FastifyPluginAsync = async (app) => {
       },
     },
     async (request) => {
-      const identity = request.auth;
+      const player = request.player;
 
-      if (!identity) {
+      if (!player) {
         throw new Error(
-          'Authenticated request context was not set by the authentication pre-handler.',
+          'Active player context was not set by the authorisation pre-handler.',
         );
       }
 
       return {
-        issuer: identity.issuer,
-        subject: identity.subject,
+        id: player.id,
+        role: player.role,
+        lifecycleStatus: player.lifecycleStatus,
         requestId: request.id,
       };
     },

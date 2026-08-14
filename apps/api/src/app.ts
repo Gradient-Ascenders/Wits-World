@@ -23,6 +23,9 @@ import { eventRoutes } from './routes/events.js';
 import cors from '@fastify/cors';
 import type { CorsConfig } from './config/cors.js';
 
+import type { PlayerIdentityService } from './players/player-identity.js';
+import { registerAuthorization } from './auth/authorization.js';
+
 export interface EventServices {
   discovery: EventDiscoveryService;
   eligibility: EventEligibilityService;
@@ -37,6 +40,7 @@ export interface BuildAppOptions {
   accessTokenVerifier?: AccessTokenVerifier;
   eventServices?: EventServices;
   corsConfig?: CorsConfig;
+  playerIdentityService?: PlayerIdentityService;
 }
 
 export async function buildApp({
@@ -48,6 +52,7 @@ export async function buildApp({
   accessTokenVerifier,
   eventServices,
   corsConfig,
+  playerIdentityService,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: logger
@@ -74,6 +79,11 @@ export async function buildApp({
   const verifier = accessTokenVerifier ?? createAccessTokenVerifier(authConfig);
 
   registerAuthentication(app, verifier);
+
+  if (playerIdentityService) {
+    registerAuthorization(app, playerIdentityService);
+  }
+
   registerErrorHandlers(app);
 
   await app.register(swagger, {
@@ -136,9 +146,11 @@ export async function buildApp({
       hideOptionsRoute: true,
     });
   }
-  await app.register(authenticationRoutes, {
-    prefix: '/api/v1',
-  });
+  if (playerIdentityService) {
+    await app.register(authenticationRoutes, {
+      prefix: '/api/v1',
+    });
+  }
 
   if (eventServices) {
     await app.register(eventRoutes, {

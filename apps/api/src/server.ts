@@ -6,6 +6,7 @@ import { createDatabasePool } from './database/connection.js';
 import { createEventDiscoveryService } from './events/event-discovery.js';
 import { createEventEligibilityService } from './events/event-eligibility.js';
 import { buildCorsConfig } from './config/cors.js';
+import { createPlayerIdentityService } from './players/player-identity.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
@@ -21,6 +22,7 @@ async function startServer(): Promise<void> {
     config,
     authConfig,
     corsConfig,
+    playerIdentityService: createPlayerIdentityService(database),
     eventServices: {
       discovery: createEventDiscoveryService(database),
       eligibility: createEventEligibilityService(database),

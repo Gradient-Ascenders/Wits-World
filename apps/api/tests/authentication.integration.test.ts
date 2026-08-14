@@ -1,10 +1,20 @@
 import type { FastifyInstance } from 'fastify';
 import { generateKeyPair, SignJWT } from 'jose';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
 import { createAccessTokenVerifier } from '../src/auth/access-token-verifier.js';
 import { buildApp } from '../src/app.js';
 import type { AuthConfig } from '../src/config/auth.js';
+
+import type { PlayerIdentityService } from '../src/players/player-identity.js';
 
 const authConfig: AuthConfig = {
   domain: 'auth.example.test',
@@ -18,10 +28,17 @@ const tokenIdentity = {
   subject: 'auth0|player-123',
 };
 
+const localPlayer = {
+  id: '6fe7dc26-cdea-4275-a2df-861724137cbc',
+  role: 'player' as const,
+  lifecycleStatus: 'active' as const,
+};
+
 let privateKey: CryptoKey;
 let publicKey: CryptoKey;
 let unrelatedPrivateKey: CryptoKey;
 let app: FastifyInstance;
+let playerIdentityService: PlayerIdentityService;
 
 beforeAll(async () => {
   const trustedKeyPair = await generateKeyPair('RS256');
@@ -33,11 +50,16 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  playerIdentityService = {
+    resolve: vi.fn().mockResolvedValue(localPlayer),
+  };
+
   app = await buildApp({
     authConfig,
     accessTokenVerifier: createAccessTokenVerifier(authConfig, {
       verificationKey: publicKey,
     }),
+    playerIdentityService,
     logger: false,
   });
 });
@@ -127,17 +149,21 @@ describe('API bearer authentication', () => {
     expect(response.body).not.toContain(token);
   });
 
-  it('makes the validated issuer and subject available to a protected route', async () => {
+  it('resolves the current local player from the validated token identity', async () => {
     const token = await createToken();
 
     const response = await authenticatedRequest(token);
 
     expect(response.statusCode).toBe(200);
+
     expect(response.json()).toEqual({
-      issuer: tokenIdentity.issuer,
-      subject: tokenIdentity.subject,
+      id: localPlayer.id,
+      role: 'player',
+      lifecycleStatus: 'active',
       requestId: expect.any(String),
     });
+
+    expect(playerIdentityService.resolve).toHaveBeenCalledWith(tokenIdentity);
   });
 
   it('does not allow request-body identity data to override the validated token identity', async () => {
@@ -201,12 +227,69 @@ describe('API bearer authentication', () => {
 
     expect(document.components?.securitySchemes).toHaveProperty('bearerAuth');
 
-    expect(document.paths['/api/v1/auth/me']?.get?.security).toEqual([
-      {
-        bearerAuth: [],
-      },
-    ]);
+    expect(document.paths['/api/v1/auth/me']?.get).toMatchObject({
+      operationId: 'getCurrentPlayer',
+    });
   });
+
+  it('does not pass browser-controlled identity data to local player resolution', async () => {
+    const token = await createToken();
+
+    app.post(
+      '/test/current-player',
+      {
+        preHandler: app.authenticate,
+      },
+      async (request) => {
+        if (!request.auth) {
+          throw new Error('Authenticated identity missing.');
+        }
+
+        return playerIdentityService.resolve(request.auth);
+      },
+    );
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/test/current-player',
+      headers: {
+        authorization: `Bearer ${token}`,
+      },
+      payload: {
+        issuer: 'https://attacker.example.test/',
+        subject: 'attacker-controlled-subject',
+        role: 'author',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+
+    expect(playerIdentityService.resolve).toHaveBeenCalledWith(tokenIdentity);
+  });
+});
+
+describe('API bearer authentication', () => {
+  // existing tests...
+
+  it('rejects a deletion-pending current player even with a valid token', async () => {
+    vi.mocked(playerIdentityService.resolve).mockResolvedValue({
+      ...localPlayer,
+      lifecycleStatus: 'deletion_pending',
+    });
+
+    const token = await createToken();
+
+    const response = await authenticatedRequest(token);
+
+    expect(response.statusCode).toBe(403);
+
+    expect(response.json()).toMatchObject({
+      status: 403,
+      code: 'ACCOUNT_UNAVAILABLE',
+    });
+  });
+
+  // existing tests...
 });
 
 interface CreateTokenOptions {
