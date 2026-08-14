@@ -1,159 +1,274 @@
+<p align="center">
+  <img src="apps/web/src/assets/branding/wits-world-campus-seal-transparent.svg" alt="Wits World campus seal" width="160" />
+</p>
+
 # Wits World
 
-Wits World is the project repository and product team workspace for Wits Quest,
-our mobile-friendly, location-based campus exploration web game developed for
+Wits World is the project repository and development workspace for **Wits
+Quest**, a mobile-friendly, location-based campus exploration game built for
 the COMS3011A Software Design Project.
 
-In this repository, **Wits World** refers to the project, repository, and
-development workspace. **Wits Quest** refers to the game/topic being built.
+The names are intentional:
 
-Players explore the Wits campus, visit location-based events, answer challenges
-about university history, alumni and landmarks, and collect cards. These cards
-can be assembled into decks and used in turn-based matches against the computer.
+- **Wits World** means the repository, project, and technical workspace.
+- **Wits Quest** means the game and player experience being built.
 
-The project also includes an authoring console for managing events, questions,
-locations and collectible cards.
+## Current status
 
-## Getting Started
+Wits Quest is intended to let players explore campus events, complete
+university-themed challenges, collect cards, build decks, and play turn-based
+matches. The repository currently implements the first vertical slice of that
+journey:
+
+- Auth0 sign-in and sign-out for the player web application;
+- a responsive Wits World home page and protected `/explore` route;
+- published event discovery through a versioned Fastify API;
+- Mapbox campus-map presentation with an accessible text event list;
+- one-shot browser geolocation requested only after a player action; and
+- server-authoritative event eligibility backed by PostgreSQL/PostGIS.
+
+Challenges and answer marking, rewards, collectible cards, deck management,
+CPU battles, and complete authoring workflows are planned work. They should not
+be treated as implemented features of the current Sprint 1 slice.
+
+## Architecture at a glance
+
+| Area | Responsibility |
+| --- | --- |
+| `apps/web` | React/Vite player interface, authentication flow, map presentation, and browser interactions |
+| `apps/api` | Fastify HTTP API, bearer-token validation, event discovery, eligibility, OpenAPI, and safe errors |
+| PostgreSQL/PostGIS | Authoritative event data, coordinates, radii, and distance calculations |
+| Auth0 | External identity authentication and access-token issuance |
+| Mapbox | Map tiles and visual presentation; it does not decide eligibility |
+| `apps/docs` | Docusaurus site generated from the repository-level `docs/` directory |
+
+The browser submits a location claim. The API validates it, obtains the event's
+authoritative location from PostgreSQL/PostGIS, and returns the eligibility
+decision. Browser state, map markers, and client-supplied eligibility values are
+never authoritative.
+
+## Getting started
 
 ### Prerequisites
 
 - [Git](https://git-scm.com/)
-- [Node.js](https://nodejs.org/) 24.14.1
-- npm 11.18.0
+- Node.js `24.14.1`
+- npm `11.18.0`
 
-The repository includes an `.nvmrc` file for users of
-[nvm](https://github.com/nvm-sh/nvm).
+The repository pins the Node.js version in `.nvmrc` and the npm version in
+`package.json`. With [nvm](https://github.com/nvm-sh/nvm), use:
 
-### Installation
-
-Clone the repository and install the locked dependencies:
-
-```bash
-git clone https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World.git
-cd Wits-World
+~~~bash
 nvm install
 nvm use
+~~~
+
+### Install dependencies
+
+~~~bash
+git clone https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World.git
+cd Wits-World
+nvm use
 npm ci
-```
+~~~
 
-Copy only the environment examples needed for the application you are running.
-Local `.env` files are ignored by Git.
+Local `.env` files are ignored by Git. Copy only the examples needed for the
+workspace you are running.
 
-```bash
-cp apps/web/.env.example apps/web/.env
-cp apps/api/.env.example apps/api/.env
-```
+### Run the web application
 
-The examples contain local development values only. Application-specific setup
-is documented in each application's README.
+For the quickest UI-only start:
 
-## Repository Structure
-
-```text
-apps/
-  api/          Fastify hand-written API with health, OpenAPI, safe errors, and database tooling
-  docs/         Public documentation workspace (implementation tracked in issue #15)
-  web/          React web workspace (implementation tracked in issue #6)
-database/       Database diagrams, migrations, and seed data
-docs/           Version-controlled project and assessment documentation
-infrastructure/ Local and deployment infrastructure
-packages/       Shared configuration, contracts, and game rules
-tests/          Cross-application test fixtures and suites
-```
-
-The web workspace contains the Sprint 1 React application foundation. The API
-workspace contains the Fastify application foundation, PostgreSQL/PostGIS
-tooling, runtime configuration validation, health endpoint, versioned routes,
-safe error handling, and generated OpenAPI documentation. The documentation
-workspace remains under active implementation.
-
-## Development Commands
-
-Run shared checks from the repository root:
-
-| Command                | Purpose                                                       |
-| ---------------------- | ------------------------------------------------------------- |
-| `npm run build`        | Build every application workspace                             |
-| `npm run lint`         | Lint every application workspace                              |
-| `npm run type-check`   | Type-check every application workspace without emitting files |
-| `npm test`             | Run every application workspace test suite                    |
-| `npm run format:check` | Check formatting across the repository                        |
-| `npm run format`       | Apply the repository formatting rules                         |
-
-Run one application command independently with npm's workspace flag:
-
-```bash
-npm run build --workspace @wits-world/web
-npm run build --workspace @wits-world/api
-npm run build --workspace @wits-world/docs
-```
-
-### Web application
-
-Start the Wits Quest web application after copying its environment example:
-
-```bash
+~~~bash
 cp apps/web/.env.example apps/web/.env
 npm run view
-```
+~~~
 
-The application is available at `http://localhost:5173`. See the
-[web application guide](apps/web/README.md) for routes, configuration, structure,
-and browser verification.
+Open <http://localhost:5173>. Before testing authentication or the live map,
+replace the public Auth0 SPA Client ID and Mapbox `pk.` token in
+`apps/web/.env`. All `VITE_` values are browser-visible and must never contain
+secrets.
 
-### API application
+The web application can display its setup state without a complete
+configuration, but the protected event experience also needs a running API.
+See the [web application guide](apps/web/README.md) for configuration,
+authentication, map behaviour, routes, and browser checks.
 
-Start the Wits World API after copying its environment example:
+### Run the full local slice
 
-```bash
+The API uses Neon PostgreSQL/PostGIS for development. A local Docker or
+self-hosted PostgreSQL setup is not configured in this repository. Use separate
+development and test database targets.
+
+In one terminal, configure and start the API:
+
+~~~bash
 cp apps/api/.env.example apps/api/.env
-npm run dev --workspace @wits-world/api
-```
+# Set DATABASE_URL, TEST_DATABASE_URL, Auth0 values, and CORS_ALLOWED_ORIGIN.
+npm run db:migrate --workspace @wits-world/api
+npm run db:seed --workspace @wits-world/api
+npm run api
+~~~
 
-The default API address is `http://127.0.0.1:3000`.
+The API listens on <http://127.0.0.1:3000>.
 
-- Health endpoint: `http://127.0.0.1:3000/health`
-- Versioned API root: `http://127.0.0.1:3000/api/v1/`
-- OpenAPI interface: `http://127.0.0.1:3000/documentation/`
-- OpenAPI JSON: `http://127.0.0.1:3000/documentation/json`
+In a second terminal, configure and start the web application:
 
-See the [API guide](apps/api/README.md) for configuration, routes, errors,
-testing, and OpenAPI details.
+~~~bash
+cp apps/web/.env.example apps/web/.env
+# Set the public Auth0 Client ID and Mapbox token.
+npm run view
+~~~
 
-## Database Documentation
+The API exposes these useful local endpoints:
 
-Database setup for Sprint 1 uses Neon PostgreSQL/PostGIS. See the
-[Neon database guide](docs/database/neon-postgis-setup.md) for environment
-variables, migrations, readiness checks, and troubleshooting.
+- Health: <http://127.0.0.1:3000/health>
+- Versioned API root: <http://127.0.0.1:3000/api/v1/>
+- OpenAPI UI: <http://127.0.0.1:3000/documentation/>
+- OpenAPI JSON: <http://127.0.0.1:3000/documentation/json>
 
-The [initial event schema](docs/database/event-schema.md) documents the event
-table, constraints, spatial index, and non-production Sprint 1 fixture.
+See the [API guide](apps/api/README.md) and [Neon/PostGIS setup
+guide](docs/database/neon-postgis-setup.md) for required values,
+authentication, migrations, seeds, and troubleshooting.
 
-## Contribution Guide
+### Run the documentation site
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch, verification, commit, and
-AI-attribution standards.
+The documentation site does not currently require environment variables. Start
+it on port 3001 so it can run alongside the API:
 
-## Continuous integration
+~~~bash
+npm run start --workspace @wits-world/docs -- --port 3001
+~~~
 
-The repository uses Gitea Actions for automated formatting, linting, type checking, testing and builds.
+Open <http://localhost:3001>. Docusaurus reads its content from `docs/`.
+The published site is available at
+[wits-world-docs.pages.dev](https://wits-world-docs.pages.dev/).
 
-See [Continuous Integration](docs/testing/continuous-integration.md).
+## Repository structure
 
-## Continuous deployment
+~~~text
+.
+├── apps/
+│   ├── api/          Fastify API, authentication, event routes, and DB tooling
+│   ├── docs/         Docusaurus documentation application
+│   └── web/          React/Vite player web application
+├── database/
+│   ├── migrations/   Ordered PostgreSQL/PostGIS migrations
+│   ├── seeds/        Repeatable development and test fixtures
+│   └── diagrams/     Database diagrams and future schema material
+├── docs/             Architecture, requirements, design, planning, and operations
+├── infrastructure/   Reserved roots for container, deployment, and environment work
+├── packages/         Reserved roots for shared config, contracts, and game rules
+├── tests/             Reserved roots for cross-application fixtures and test types
+├── .gitea/workflows/ Continuous integration and deployment workflows
+└── CONTRIBUTING.md   Branch, verification, commit, and AI-attribution standards
+~~~
 
-This repository uses Gitea Actions with Azure to deploy Web-Application.
+The `infrastructure/`, `packages/`, and repository-level `tests/` directories
+currently contain placeholders. Application tests live beside their respective
+workspaces in `apps/web/tests` and `apps/api/tests`.
 
-See [Continuous Deployment](docs/deployment/azure-deployment-setup.md).
+## Development commands
 
-## AI Declaration
+Run these commands from the repository root:
 
-This repository uses AI code generation: ChatGPT-Web[GPT-5.6 Thinking],
-Codex-CLI[gpt-5.6-sol medium], and Codex-CLI[GPT-5].
+| Command | Purpose |
+| --- | --- |
+| `npm run view` | Start the web development server |
+| `npm run api` | Start the API development server |
+| `npm run build` | Build all workspaces that expose a build script |
+| `npm run lint` | Lint all application workspaces |
+| `npm run type-check` | Type-check all application workspaces |
+| `npm test` | Run all workspace test suites |
+| `npm run format:check` | Check Prettier formatting without changing files |
+| `npm run format` | Apply Prettier formatting across the repository |
+| `npm run verify` | Format, then run formatting checks, linting, type checks, tests, and builds |
 
-This repository uses AI inline editing: Codex-CLI[gpt-5.6-sol medium] and
-Codex-CLI[GPT-5].
+For a single workspace, use npm's workspace flag:
 
-This repository uses AI code review: Codex-CLI[gpt-5.6-sol medium] and
-Codex-CLI[GPT-5].
+~~~bash
+npm test --workspace @wits-world/web
+npm run build --workspace @wits-world/api
+npm run build --workspace @wits-world/docs
+~~~
+
+`npm run verify` intentionally formats files first. Use
+`npm run format:check` when you need a read-only CI-style formatting check.
+
+### Database commands
+
+After configuring `apps/api/.env`:
+
+~~~bash
+npm run db:check --workspace @wits-world/api
+npm run db:migrate --workspace @wits-world/api
+npm run db:seed --workspace @wits-world/api
+~~~
+
+Test-database variants use `TEST_DATABASE_URL`:
+
+~~~bash
+npm run db:check:test --workspace @wits-world/api
+npm run db:migrate:test --workspace @wits-world/api
+npm run db:seed:test --workspace @wits-world/api
+npm run test:database --workspace @wits-world/api
+~~~
+
+The database integration test creates and removes temporary test data. Run it
+only with a disposable test target; `TEST_DATABASE_URL` must not identify the
+development database. The [database release procedure](docs/database/database-release-procedure.md)
+defines the guarded workflow for release targets.
+
+## Documentation map
+
+Start with the guide that matches your task:
+
+| Topic | Guide |
+| --- | --- |
+| Web configuration and player flows | [Web application guide](apps/web/README.md) |
+| API routes, authentication, errors, and eligibility | [API guide](apps/api/README.md) |
+| System boundaries and responsibilities | [Architecture overview](docs/architecture/overview.md) |
+| Technology choices | [Technology stack](docs/architecture/technology-stack.md) |
+| Player location journey | [Location and eligibility journey](docs/requirements/player-location-journey.md) |
+| Event schema and spatial rules | [Event schema](docs/database/event-schema.md) and [event eligibility](docs/database/event-eligibility.md) |
+| Local Neon/PostGIS setup | [Neon/PostGIS guide](docs/database/neon-postgis-setup.md) |
+| Design foundations | [Design system](docs/design/design-system.md) |
+| Delivery status and risks | [Delivery roadmap](docs/planning/delivery-roadmap.md) and [risk register](docs/planning/risk-register.md) |
+| CI checks | [Continuous integration](docs/testing/continuous-integration.md) |
+| Azure deployment | [Azure deployment setup](docs/deployment/azure-deployment-setup.md) |
+| Published documentation | [wits-world-docs.pages.dev](https://wits-world-docs.pages.dev/) |
+
+## CI/CD
+
+Gitea Actions validates pull requests and pushes to `main` with formatting,
+linting, type checking, tests, and builds for the web, API, and documentation
+workspaces.
+
+Successful pushes to `main` can deploy the independently hosted applications:
+
+- the web application and API deploy to Azure App Service;
+- the documentation site deploys to Cloudflare Pages; and
+- production configuration and credentials remain outside the repository.
+
+See the [CI guide](docs/testing/continuous-integration.md) and [Azure
+deployment guide](docs/deployment/azure-deployment-setup.md) for operational
+details.
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before starting work. It covers the
+issue-based workflow, branch naming, quality checks, commit prefixes,
+pull-request evidence, accessibility expectations, and AI attribution.
+
+## AI declaration
+
+This repository contains AI-assisted code, documentation, planning, and review.
+This README was reviewed and edited with assistance from:
+
+~~~text
+Codex[GPT-5]
+~~~
+
+Previously recorded AI tools and models that materially contributed to the
+repository include ChatGPT-Web[GPT-5.6 Thinking], Codex-CLI[gpt-5.6-sol
+medium], and Codex-CLI[GPT-5].
