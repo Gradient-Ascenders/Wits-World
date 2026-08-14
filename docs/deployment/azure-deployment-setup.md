@@ -501,7 +501,7 @@ Idle when no job is running
 
 ## 13. Runner Labels
 
-Normal CI jobs execute inside Docker containers:
+The Azure runner retains its existing Docker labels for compatibility:
 
 ```yaml
 ubuntu-latest:docker://docker.gitea.com/runner-images:ubuntu-latest
@@ -515,14 +515,23 @@ A dedicated host-execution label is configured for production deployment:
 azure-deploy:host
 ```
 
-This gives the runner two execution modes:
+This gives the Azure runner two execution modes:
 
 ```text
 ubuntu-*      -> Docker container
 azure-deploy  -> VM host
 ```
 
-Normal validation jobs remain containerised, while privileged production deployment jobs execute on the VM host and can use its Azure managed identity.
+Normal validation no longer targets the shared `ubuntu-latest` label. The
+repository-scoped C220 runner advertises only this dedicated Docker label:
+
+```yaml
+wits-world-ci:docker://docker.gitea.com/runner-images:ubuntu-latest
+```
+
+The dedicated label makes CI runner selection deterministic. Privileged
+production deployment jobs continue to execute on the Azure VM host and can use
+its managed identity.
 
 ---
 
@@ -771,20 +780,28 @@ Authentication UI/login-flow validation is deferred until the application login 
 
 ## 18. Continuous Integration
 
-The repository has one container-isolated validation job:
+The repository runs five independent container-isolated validation jobs on the
+dedicated C220 runner:
 
 ```text
-Repository and application validation
+format ─────┐
+lint ───────┤
+type-check ─┼── Repository and application validation
+test ───────┤
+build ──────┘
 ```
 
-The job checks out and installs the npm workspace once, then runs independently
-named formatting, Web, API, and Documentation steps. This preserves clear
-application-specific failures without repeating checkout, Node setup, cache
-restore, and `npm ci` four times on the resource-constrained runner.
+Each job checks out the repository, restores the lockfile-keyed npm download
+cache, and performs a clean `npm ci`. The additional aggregate setup work allows
+formatting, linting, type-checking, tests, and builds to execute concurrently on
+the 44-core server. With a runner capacity of five, up to five CI or
+documentation-deployment jobs can execute concurrently; a validation job may
+briefly queue when the documentation deployment is also running.
 
-The validation job uses the Docker-backed `ubuntu-latest` label on the
-self-hosted Gitea runner. The host-only `azure-deploy` label remains exclusive
-to post-validation production deployment.
+The final validation job depends on all five jobs. Coverage badge publication
+and API deployment occur only after that combined gate passes. The host-only
+`azure-deploy` label remains exclusive to post-validation production
+deployment.
 
 The workflow runs for:
 
@@ -826,14 +843,17 @@ Service, or running unnecessary production health polling.
 
 ### 19.1 API deployment
 
-The API deployment depends on the validation job.
+The API deployment depends on the combined validation gate.
 
 Conceptually:
 
 ```text
 Push to main
       │
-      └── Repository and application validation
+      └── Parallel format, lint, type-check, test, and build jobs
+              │ success
+              ▼
+          Combined validation gate
               │ success
               ▼
         Deploy API to Azure
@@ -945,7 +965,7 @@ No Azure passwords or publish profiles stored in Gitea
 Managed identity scoped only to witsworld-api and witsworld-web
 Normal CI container access to Azure IMDS blocked
 Deployment allowed only for pushes to main
-Deployment waits for the required validation job
+Deployment waits for all required validation jobs and the combined gate
 Missing comparison data triggers deployment rather than an unsafe skip
 Main branch protected through PR workflow
 Frontend build values stored as Gitea Variables
@@ -998,13 +1018,19 @@ This ensures that successful ZIP upload alone is not considered a successful pro
 Expected jobs:
 
 ```text
+Check repository formatting             PASS
+Lint applications                       PASS
+Type-check applications                 PASS
+Test applications with coverage         PASS
+Build applications                      PASS
 Repository and application validation   PASS
 Deploy API to Azure                     SKIPPED
 Deploy Web to Azure                     SKIPPED
 ```
 
-The validation job still exposes separately named formatting, Web, API, and
-Documentation steps so a failure identifies the affected validation area.
+The five validation categories can run concurrently and still expose a clear
+failure boundary. The combined validation job passes only when all categories
+pass.
 
 Production must not be modified by a pull-request workflow.
 
@@ -1013,6 +1039,11 @@ Production must not be modified by a pull-request workflow.
 Expected jobs:
 
 ```text
+Check repository formatting             PASS
+Lint applications                       PASS
+Type-check applications                 PASS
+Test applications with coverage         PASS
+Build applications                      PASS
 Repository and application validation   PASS
 Deploy API to Azure                     PASS
 Deploy Web to Azure                     PASS
@@ -1025,6 +1056,10 @@ work when the push comparison proves that application is unaffected.
 Expected deployment order:
 
 ```text
+Parallel validation categories
+        ↓
+Combined validation gate and coverage badge publication
+        ↓
 Check out exact main commit
 Detect API deployment changes
 ├── API unaffected: skip remaining API deployment work
@@ -1260,7 +1295,7 @@ Before considering a production release healthy:
 
 ### CI and deployment
 
-- [ ] All four CI jobs are green.
+- [ ] All five parallel validation jobs and the combined gate are green.
 - [ ] Production deployment ran only from `main`.
 - [ ] Runner authenticated with `az login --identity`.
 - [ ] Exact expected commit was deployed.

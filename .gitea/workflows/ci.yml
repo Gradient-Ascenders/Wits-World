@@ -9,9 +9,9 @@ on:
       - main
 
 jobs:
-  validation:
-    name: Repository and application validation
-    runs-on: ubuntu-latest
+  format:
+    name: Check repository formatting
+    runs-on: wits-world-ci
 
     steps:
       - name: Check out repository
@@ -30,44 +30,139 @@ jobs:
       - name: Check formatting
         run: npm run format:check
 
-      - name: Lint web application
-        run: npm run lint --workspace @wits-world/web
+  lint:
+    name: Lint applications
+    runs-on: wits-world-ci
 
-      - name: Type-check web application
-        run: npm run type-check --workspace @wits-world/web
+    steps:
+      - name: Check out repository
+        uses: https://github.com/actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: https://github.com/actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit --fund=false
+
+      - name: Lint applications
+        run: npm run lint
+
+  type-check:
+    name: Type-check applications
+    runs-on: wits-world-ci
+
+    steps:
+      - name: Check out repository
+        uses: https://github.com/actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: https://github.com/actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit --fund=false
+
+      - name: Type-check applications
+        run: npm run type-check
+
+  test:
+    name: Test applications with coverage
+    runs-on: wits-world-ci
+
+    steps:
+      - name: Check out repository
+        uses: https://github.com/actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: https://github.com/actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit --fund=false
 
       - name: Test web application with coverage
         run: npm run test:coverage --workspace @wits-world/web
 
-      - name: Build web application
-        run: npm run build:bundle --workspace @wits-world/web
-
-      - name: Lint API application
-        run: npm run lint --workspace @wits-world/api
-
-      - name: Type-check API application
-        run: npm run type-check --workspace @wits-world/api
-
       - name: Test API application with coverage
         run: npm run test:coverage --workspace @wits-world/api
-
-      - name: Build API application
-        run: npm run build --workspace @wits-world/api
-
-      - name: Lint documentation application
-        run: npm run lint --workspace @wits-world/docs
-
-      - name: Type-check documentation application
-        run: npm run type-check --workspace @wits-world/docs
 
       - name: Test documentation application
         run: npm test --workspace @wits-world/docs
 
+      - name: Generate coverage badge
+        run: npm run coverage:badge
+
+      - name: Upload coverage reports
+        if: ${{ always() }}
+        # Keep the known-working v3 protocol until v4 is verified on this Gitea instance.
+        uses: https://github.com/actions/upload-artifact@v3
+        with:
+          name: coverage-reports
+          path: coverage/
+          if-no-files-found: warn
+          retention-days: 14
+
+  build:
+    name: Build applications
+    runs-on: wits-world-ci
+
+    steps:
+      - name: Check out repository
+        uses: https://github.com/actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: https://github.com/actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit --fund=false
+
+      - name: Build web application
+        run: npm run build:bundle --workspace @wits-world/web
+
+      - name: Build API application
+        run: npm run build --workspace @wits-world/api
+
       - name: Build documentation application
         run: npm run build --workspace @wits-world/docs
 
-      - name: Generate coverage badge
-        run: npm run coverage:badge
+  validation:
+    name: Repository and application validation
+    needs:
+      - format
+      - lint
+      - type-check
+      - test
+      - build
+    runs-on: wits-world-ci
+
+    steps:
+      - name: Confirm validation gates passed
+        run: echo "All repository and application validation jobs passed."
+
+      - name: Check out repository for coverage publication
+        if: ${{ gitea.event_name == 'push' && gitea.ref == 'refs/heads/main' }}
+        uses: https://github.com/actions/checkout@v4
+
+      - name: Download coverage reports
+        if: ${{ gitea.event_name == 'push' && gitea.ref == 'refs/heads/main' }}
+        uses: https://github.com/actions/download-artifact@v3
+        with:
+          name: coverage-reports
+          path: coverage
 
       - name: Publish live coverage badge
         if: ${{ gitea.event_name == 'push' && gitea.ref == 'refs/heads/main' }}
@@ -117,16 +212,6 @@ jobs:
           git \
             -c "http.extraHeader=Authorization: Basic ${AUTH_HEADER}" \
             push origin HEAD:coverage-badge
-
-      - name: Upload coverage reports
-        if: ${{ always() }}
-        # Gitea 1.24 with act_runner 0.2.12 does not support the v4 artifact protocol.
-        uses: https://github.com/actions/upload-artifact@v3
-        with:
-          name: coverage-reports
-          path: coverage/
-          if-no-files-found: warn
-          retention-days: 14
 
   deploy-api:
     name: Deploy API to Azure

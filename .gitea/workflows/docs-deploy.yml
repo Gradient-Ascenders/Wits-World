@@ -8,7 +8,7 @@ on:
 jobs:
   deploy-docs:
     name: Deploy documentation to Cloudflare Pages
-    runs-on: ubuntu-latest
+    runs-on: wits-world-ci
 
     steps:
       - name: Check out repository
@@ -17,11 +17,12 @@ jobs:
       - name: Set up Node.js
         uses: https://github.com/actions/setup-node@v4
         with:
-          node-version-file: '.nvmrc'
+          node-version-file: .nvmrc
           cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --prefer-offline --no-audit --fund=false
 
       - name: Build documentation
         run: npm run build --workspace @wits-world/docs
