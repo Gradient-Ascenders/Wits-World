@@ -355,7 +355,7 @@ jobs:
   deploy-web:
     name: Deploy Web to Azure
     needs:
-      - deploy-api
+      - validation
     if: ${{ gitea.event_name == 'push' && gitea.ref == 'refs/heads/main' }}
     runs-on: azure-deploy
 
@@ -440,6 +440,7 @@ jobs:
           fi
 
           if git diff --quiet "$BASE_SHA" "$DEPLOY_SHA" -- \
+            .gitea/workflows/ci.yml \
             .nvmrc \
             package.json \
             package-lock.json \
