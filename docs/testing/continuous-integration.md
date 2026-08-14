@@ -40,17 +40,39 @@ npm ci --prefer-offline --no-audit --fund=false
 npm run format:check
 npm run lint --workspace @wits-world/web
 npm run type-check --workspace @wits-world/web
-npm test --workspace @wits-world/web
+npm run test:coverage --workspace @wits-world/web
 npm run build:bundle --workspace @wits-world/web
 npm run lint --workspace @wits-world/api
 npm run type-check --workspace @wits-world/api
-npm test --workspace @wits-world/api
+npm run test:coverage --workspace @wits-world/api
 npm run build --workspace @wits-world/api
 npm run lint --workspace @wits-world/docs
 npm run type-check --workspace @wits-world/docs
 npm test --workspace @wits-world/docs
 npm run build --workspace @wits-world/docs
 ```
+
+The web and API test steps collect V8 coverage during the same test run; they
+do not execute a second test pass. HTML, LCOV, and JSON summary reports are
+uploaded together as the `coverage-reports` workflow artifact. The root
+`npm run coverage` command reproduces both coverage runs locally and generates
+`coverage/coverage.svg` from their combined line totals.
+
+After successful `main` validation, CI publishes the generated SVG to the
+non-triggering `coverage-badge` branch. The README loads that file directly, so
+its percentage reflects the latest successful web and API coverage run without
+executing either test suite twice.
+
+Coverage scope is explicit in each workspace configuration. The API includes
+`src/**/*.ts`, and the web application includes `src/**/*.{ts,tsx}`. Only
+TypeScript declaration files are excluded. Entrypoints and production modules
+that are never imported by tests therefore remain in the published coverage
+denominator rather than disappearing from the report.
+
+The artifact step intentionally pins `actions/upload-artifact` to v3. The
+current Gitea 1.24 and `act_runner` 0.2.12 stack does not support the v4
+artifact protocol; upgrade the action only after the server and runner have
+been verified with that protocol.
 
 The web workspace's `build:bundle` command runs Vite after its dedicated
 type-check step. The normal `build` command still performs both type-checking and
@@ -81,5 +103,5 @@ to a version where the desired queue controls are verified.
 This document was reviewed and edited with assistance from:
 
 ```text
-Codex-CLI[GPT-5]
+Codex-CLI[GPT-5] and Codex[GPT-5]
 ```
