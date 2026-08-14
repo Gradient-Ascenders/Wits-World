@@ -13,6 +13,8 @@ import type {
   EventEligibilityService,
 } from '../src/events/event-eligibility.js';
 
+import type { PlayerIdentityService } from '../src/players/player-identity.js';
+
 const EVENT_ID = '00000000-0000-4000-8000-000000000018';
 
 const authConfig: AuthConfig = {
@@ -26,6 +28,12 @@ const authConfig: AuthConfig = {
 const authenticatedIdentity = {
   issuer: authConfig.issuer,
   subject: 'auth0|player-123',
+};
+
+const activeLocalPlayer = {
+  id: '00000000-0000-4000-8000-000000000101',
+  role: 'player' as const,
+  lifecycleStatus: 'active' as const,
 };
 
 const receivedAt = new Date('2026-08-10T12:00:00.000Z');
@@ -45,10 +53,12 @@ const activeEvent: PlayerEvent = {
 let app: FastifyInstance;
 let discoveryList: ReturnType<typeof createDiscoveryMock>;
 let eligibilityEvaluate: ReturnType<typeof createEligibilityMock>;
+let playerResolve: ReturnType<typeof createPlayerResolveMock>;
 
 beforeEach(async () => {
   discoveryList = createDiscoveryMock();
   eligibilityEvaluate = createEligibilityMock();
+  playerResolve = createPlayerResolveMock();
 
   const discoveryService: EventDiscoveryService = {
     list: discoveryList,
@@ -65,6 +75,9 @@ beforeEach(async () => {
   app = await buildApp({
     authConfig,
     accessTokenVerifier,
+    playerIdentityService: {
+      resolve: playerResolve,
+    },
     eventServices: {
       discovery: discoveryService,
       eligibility: eligibilityService,
@@ -91,6 +104,28 @@ describe('event discovery API', () => {
       status: 401,
       code: 'UNAUTHORIZED',
     });
+    expect(discoveryList).not.toHaveBeenCalled();
+  });
+
+  it('rejects a deletion-pending player before event discovery', async () => {
+    playerResolve.mockResolvedValue({
+      ...activeLocalPlayer,
+      lifecycleStatus: 'deletion_pending',
+    });
+
+    const response = await authenticatedRequest({
+      method: 'GET',
+      url: '/api/v1/events',
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      status: 403,
+      code: 'ACCOUNT_UNAVAILABLE',
+      requestId: expect.any(String),
+    });
+
+    expect(playerResolve).toHaveBeenCalledWith(authenticatedIdentity);
     expect(discoveryList).not.toHaveBeenCalled();
   });
 
@@ -137,6 +172,25 @@ describe('event eligibility API', () => {
     });
 
     expect(response.statusCode).toBe(401);
+    expect(eligibilityEvaluate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a deletion-pending player before evaluating eligibility', async () => {
+    playerResolve.mockResolvedValue({
+      ...activeLocalPlayer,
+      lifecycleStatus: 'deletion_pending',
+    });
+
+    const response = await authenticatedEligibilityRequest();
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      status: 403,
+      code: 'ACCOUNT_UNAVAILABLE',
+      requestId: expect.any(String),
+    });
+
+    expect(playerResolve).toHaveBeenCalledWith(authenticatedIdentity);
     expect(eligibilityEvaluate).not.toHaveBeenCalled();
   });
 
@@ -461,6 +515,13 @@ function createEligibilityMock() {
     distanceMetres: 20,
     radiusMetres: 75,
   }));
+}
+
+function createPlayerResolveMock() {
+  const resolve: PlayerIdentityService['resolve'] = async () =>
+    activeLocalPlayer;
+
+  return vi.fn(resolve);
 }
 
 function validLocationClaim() {

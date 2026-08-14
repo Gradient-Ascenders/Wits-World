@@ -26,6 +26,12 @@ const authenticatedIdentity = {
   subject: 'auth0|cors-test-player',
 };
 
+const activeLocalPlayer = {
+  id: '00000000-0000-4000-8000-000000000102',
+  role: 'player' as const,
+  lifecycleStatus: 'active' as const,
+};
+
 let app: FastifyInstance;
 let verifyAccessToken: ReturnType<typeof createVerifyAccessTokenMock>;
 
@@ -40,6 +46,9 @@ beforeEach(async () => {
     authConfig,
     corsConfig,
     accessTokenVerifier,
+    playerIdentityService: {
+      resolve: vi.fn(async () => activeLocalPlayer),
+    },
     eventServices: {
       discovery: {
         async list() {
