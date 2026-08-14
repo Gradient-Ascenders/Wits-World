@@ -645,13 +645,6 @@ jobs:
       REPOSITORY_URL: https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World.git
       AZURE_RESOURCE_GROUP: witsworld-rg
       AZURE_WEBAPP_NAME: witsworld-web
-      NPM_CACHE_ROOT: /tmp/witsworld-npm-cache
-
-      VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
-      VITE_AUTH0_DOMAIN: ${{ vars.VITE_AUTH0_DOMAIN }}
-      VITE_AUTH0_CLIENT_ID: ${{ vars.VITE_AUTH0_CLIENT_ID }}
-      VITE_AUTH0_AUDIENCE: ${{ vars.VITE_AUTH0_AUDIENCE }}
-      VITE_MAPBOX_ACCESS_TOKEN: ${{ vars.VITE_MAPBOX_ACCESS_TOKEN }}
 
     steps:
       - name: Check out exact main commit
@@ -736,89 +729,46 @@ jobs:
             echo "required=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Validate production web configuration
+      - name: Download production web artifact
+        if: ${{ steps.web_deployment_changes.outputs.required == 'true' }}
+        # Keep the known-working v3 protocol until v4 is verified on this Gitea instance.
+        uses: https://github.com/actions/download-artifact@v3
+        with:
+          name: web-deploy-${{ gitea.sha }}
+          path: /tmp/witsworld-web-deploy-${{ gitea.sha }}
+
+      - name: Verify production web artifact
+        if: ${{ steps.web_deployment_changes.outputs.required == 'true' }}
         run: |
           set -euo pipefail
 
           DEPLOY_ROOT="/tmp/witsworld-web-deploy-${DEPLOY_SHA}"
 
-          if [ ! -f "$DEPLOY_ROOT/deploy-required" ]; then
-            echo "Skipping production web configuration validation."
-            exit 0
+          test -f "$DEPLOY_ROOT/commit-sha.txt"
+          test -f "$DEPLOY_ROOT/witsworld-web-deploy.zip"
+          test -f "$DEPLOY_ROOT/witsworld-web-deploy.zip.sha256"
+
+          ARTIFACT_SHA="$(tr -d '\r\n' < "$DEPLOY_ROOT/commit-sha.txt")"
+
+          if [ "$ARTIFACT_SHA" != "$DEPLOY_SHA" ]; then
+            echo "Expected artifact commit: $DEPLOY_SHA"
+            echo "Downloaded artifact commit: $ARTIFACT_SHA"
+            echo "Refusing to deploy an artifact for a different commit."
+            exit 1
           fi
-
-          for variable in \
-            VITE_API_BASE_URL \
-            VITE_AUTH0_DOMAIN \
-            VITE_AUTH0_CLIENT_ID \
-            VITE_AUTH0_AUDIENCE \
-            VITE_MAPBOX_ACCESS_TOKEN
-          do
-            if [ -z "${!variable:-}" ]; then
-              echo "${variable} is not configured."
-              exit 1
-            fi
-          done
-
-      - name: Build production web package
-        run: |
-          set -euo pipefail
-
-          DEPLOY_ROOT="/tmp/witsworld-web-deploy-${DEPLOY_SHA}"
-
-          if [ ! -f "$DEPLOY_ROOT/deploy-required" ]; then
-            echo "Skipping the production web build."
-            exit 0
-          fi
-
-          cd "$DEPLOY_ROOT/repository"
-          mkdir -p "$NPM_CACHE_ROOT"
-
-          docker run --rm \
-            -e VITE_API_BASE_URL \
-            -e VITE_AUTH0_DOMAIN \
-            -e VITE_AUTH0_CLIENT_ID \
-            -e VITE_AUTH0_AUDIENCE \
-            -e VITE_MAPBOX_ACCESS_TOKEN \
-            -v "$PWD:/workspace" \
-            -v "$NPM_CACHE_ROOT:/npm-cache" \
-            -w /workspace \
-            node:24-bookworm-slim \
-            sh -lc '
-              set -eu
-
-              npm install -g npm@11.18.0 \
-                --cache /npm-cache \
-                --no-audit \
-                --fund=false >/dev/null
-
-              echo "Node: $(node --version)"
-              echo "npm:  $(npm --version)"
-
-              npm ci \
-                --cache /npm-cache \
-                --prefer-offline \
-                --no-audit \
-                --fund=false
-
-              npm run build --workspace @wits-world/web
-
-              test -f apps/web/dist/index.html
-              test -d apps/web/dist/assets
-            '
 
           (
-            cd apps/web/dist
-            zip -qr "$DEPLOY_ROOT/witsworld-web-deploy.zip" .
+            cd "$DEPLOY_ROOT"
+            sha256sum --check witsworld-web-deploy.zip.sha256
           )
 
-          test -s "$DEPLOY_ROOT/witsworld-web-deploy.zip"
+          unzip -t "$DEPLOY_ROOT/witsworld-web-deploy.zip" >/dev/null
 
-          unzip -l "$DEPLOY_ROOT/witsworld-web-deploy.zip" |
-            grep 'index.html'
+          unzip -Z1 "$DEPLOY_ROOT/witsworld-web-deploy.zip" |
+            grep -Fx 'index.html'
 
-          unzip -l "$DEPLOY_ROOT/witsworld-web-deploy.zip" |
-            grep 'assets/'
+          unzip -Z1 "$DEPLOY_ROOT/witsworld-web-deploy.zip" |
+            grep -E '^assets/.+'
 
       - name: Authenticate to Azure
         run: |
@@ -920,107 +870,6 @@ jobs:
 
           exit 1
 
-      - name: Download candidate production web artifact
-        if: ${{ steps.web_deployment_changes.outputs.required == 'true' }}
-        # Keep the known-working v3 protocol until v4 is verified on this Gitea instance.
-        uses: https://github.com/actions/download-artifact@v3
-        with:
-          name: web-deploy-${{ gitea.sha }}
-          path: /tmp/witsworld-web-deploy-${{ gitea.sha }}/c220-candidate
-
-      - name: Compare C220 and Azure production web outputs
-        if: ${{ steps.web_deployment_changes.outputs.required == 'true' }}
-        env:
-          DEPLOY_SHA: ${{ gitea.sha }}
-        run: |
-          set -euo pipefail
-
-          DEPLOY_ROOT="/tmp/witsworld-web-deploy-${DEPLOY_SHA}"
-          AZURE_DIST="$DEPLOY_ROOT/repository/apps/web/dist"
-          CANDIDATE_ROOT="$DEPLOY_ROOT/c220-candidate"
-          CANDIDATE_DIST="$CANDIDATE_ROOT/dist"
-          COMPARISON_ROOT="$DEPLOY_ROOT/equivalence"
-
-          test -f "$CANDIDATE_ROOT/commit-sha.txt"
-          test -f "$CANDIDATE_ROOT/witsworld-web-deploy.zip"
-          test -f "$CANDIDATE_ROOT/witsworld-web-deploy.zip.sha256"
-
-          CANDIDATE_SHA="$(tr -d '\r\n' < "$CANDIDATE_ROOT/commit-sha.txt")"
-
-          if [ "$CANDIDATE_SHA" != "$DEPLOY_SHA" ]; then
-            echo "Expected candidate commit: $DEPLOY_SHA"
-            echo "Artifact candidate commit: $CANDIDATE_SHA"
-            echo "The candidate artifact belongs to a different commit."
-            exit 1
-          fi
-
-          (
-            cd "$CANDIDATE_ROOT"
-            sha256sum --check witsworld-web-deploy.zip.sha256
-          )
-
-          rm -rf "$CANDIDATE_DIST" "$COMPARISON_ROOT"
-          mkdir -p "$CANDIDATE_DIST" "$COMPARISON_ROOT"
-          unzip -q "$CANDIDATE_ROOT/witsworld-web-deploy.zip" -d "$CANDIDATE_DIST"
-
-          test -f "$AZURE_DIST/index.html"
-          test -d "$AZURE_DIST/assets"
-          test -f "$CANDIDATE_DIST/index.html"
-          test -d "$CANDIDATE_DIST/assets"
-
-          (
-            cd "$AZURE_DIST"
-            find . -type f -printf '%P\n' | LC_ALL=C sort
-          ) > "$COMPARISON_ROOT/azure-files.txt"
-
-          (
-            cd "$CANDIDATE_DIST"
-            find . -type f -printf '%P\n' | LC_ALL=C sort
-          ) > "$COMPARISON_ROOT/c220-files.txt"
-
-          (
-            cd "$AZURE_DIST"
-            find . -type f -print0 |
-              LC_ALL=C sort -z |
-              xargs -0 -r sha256sum
-          ) > "$COMPARISON_ROOT/azure-sha256.txt"
-
-          (
-            cd "$CANDIDATE_DIST"
-            find . -type f -print0 |
-              LC_ALL=C sort -z |
-              xargs -0 -r sha256sum
-          ) > "$COMPARISON_ROOT/c220-sha256.txt"
-
-          DIFFERENCES=0
-
-          if ! diff -u \
-            "$COMPARISON_ROOT/azure-files.txt" \
-            "$COMPARISON_ROOT/c220-files.txt"
-          then
-            echo "The sorted generated-file lists differ."
-            DIFFERENCES=1
-          else
-            echo "The sorted generated-file lists are identical."
-          fi
-
-          if ! diff -u \
-            "$COMPARISON_ROOT/azure-sha256.txt" \
-            "$COMPARISON_ROOT/c220-sha256.txt"
-          then
-            echo "The generated-file SHA-256 hashes differ."
-            DIFFERENCES=1
-          else
-            echo "Every generated file has an identical SHA-256 hash."
-          fi
-
-          if [ "$DIFFERENCES" -ne 0 ]; then
-            echo "The C220 candidate is not equivalent to the Azure-produced output."
-            exit 1
-          fi
-
-          echo "The C220 candidate is byte-for-byte equivalent to the Azure-produced output."
-
       - name: Clean deployment workspace
         if: ${{ always() }}
         run: |
@@ -1031,10 +880,5 @@ jobs:
           az logout >/dev/null 2>&1 || true
 
           if [ -d "$DEPLOY_ROOT" ]; then
-            docker run --rm \
-              -v "$DEPLOY_ROOT:/cleanup" \
-              node:24-bookworm-slim \
-              sh -lc 'rm -rf /cleanup/* /cleanup/.[!.]* /cleanup/..?*'
-
             rm -rf "$DEPLOY_ROOT"
           fi
