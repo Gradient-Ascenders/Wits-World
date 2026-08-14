@@ -10,6 +10,7 @@
     "lint": "eslint src tests --max-warnings=0",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "type-check": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {

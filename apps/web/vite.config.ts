@@ -13,6 +13,13 @@ export default defineConfig({
   },
   test: {
     clearMocks: true,
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: ['src/**/*.d.ts'],
+      reporter: ['text', 'json-summary', 'lcov'],
+      reportsDirectory: '../../coverage/web',
+    },
     css: false,
     environment: 'jsdom',
     fileParallelism: false,
