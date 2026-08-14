@@ -147,6 +147,123 @@ create trigger attempt_answers_immutability
 before update or delete on public.attempt_answers
 for each row execute function public.prevent_attempt_answer_mutation();
 
+create function public.prevent_finalized_attempt_snapshot_mutation()
+returns trigger
+language plpgsql
+as $$
+declare
+  old_attempt_id uuid;
+  new_attempt_id uuid;
+  snapshot_id uuid;
+  attempt_status text;
+begin
+  if tg_table_name = 'attempt_questions' then
+    snapshot_id := coalesce(new.id, old.id);
+
+    if tg_op <> 'INSERT' then
+      old_attempt_id := old.attempt_id;
+    end if;
+
+    if tg_op <> 'DELETE' then
+      new_attempt_id := new.attempt_id;
+    end if;
+  elsif tg_table_name = 'attempt_question_choices' then
+    snapshot_id := coalesce(new.id, old.id);
+
+    if tg_op <> 'INSERT' then
+      select attempt_id
+        into old_attempt_id
+        from public.attempt_questions
+       where id = old.attempt_question_id;
+    end if;
+
+    if tg_op <> 'DELETE' then
+      select attempt_id
+        into new_attempt_id
+        from public.attempt_questions
+       where id = new.attempt_question_id;
+    end if;
+  else
+    raise exception
+      'Unexpected table % for finalized attempt snapshot guard',
+      tg_table_name
+      using errcode = '0A000';
+  end if;
+
+  if old_attempt_id is not null then
+    select status
+      into attempt_status
+      from public.challenge_attempts
+     where id = old_attempt_id;
+
+    if attempt_status = 'completed' then
+      raise exception
+        'Attempt snapshot % is immutable after finalization',
+        snapshot_id
+        using errcode = '55006';
+    end if;
+  end if;
+
+  if new_attempt_id is not null
+     and new_attempt_id is distinct from old_attempt_id then
+    select status
+      into attempt_status
+      from public.challenge_attempts
+     where id = new_attempt_id;
+
+    if attempt_status = 'completed' then
+      raise exception
+        'Attempt snapshot % is immutable after finalization',
+        snapshot_id
+        using errcode = '55006';
+    end if;
+  end if;
+
+  if tg_op = 'DELETE' then
+    return old;
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger attempt_questions_finalization_guard
+before insert or update or delete on public.attempt_questions
+for each row execute function public.prevent_finalized_attempt_snapshot_mutation();
+
+create trigger attempt_question_choices_finalization_guard
+before insert or update or delete on public.attempt_question_choices
+for each row execute function public.prevent_finalized_attempt_snapshot_mutation();
+
+create function public.prevent_finalized_attempt_answer_insert()
+returns trigger
+language plpgsql
+as $$
+declare
+  attempt_status text;
+begin
+  select attempts.status
+    into attempt_status
+    from public.attempt_questions questions
+    join public.challenge_attempts attempts
+      on attempts.id = questions.attempt_id
+   where questions.id = new.attempt_question_id;
+
+  if attempt_status = 'completed' then
+    raise exception
+      'Attempt answer % cannot be inserted after finalization',
+      new.attempt_question_id
+      using errcode = '55006';
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger attempt_answers_finalization_guard
+before insert on public.attempt_answers
+for each row execute function public.prevent_finalized_attempt_answer_insert();
+
 create function public.validate_attempt_snapshot(
   attempt_id_to_validate uuid
 )

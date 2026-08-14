@@ -417,6 +417,79 @@ describe.skipIf(!runIntegrationTests)(
           ]),
         ).rejects.toThrow();
 
+        const finalizedSnapshot = await client.query<{
+          choice_id: string;
+          question_id: string;
+        }>(
+          `select
+             questions.id as question_id,
+             choices.id as choice_id
+           from public.attempt_questions questions
+           join public.attempt_question_choices choices
+             on choices.attempt_question_id = questions.id
+          where questions.attempt_id = $1
+            and questions.position = 1
+            and choices.display_position = 1`,
+          [ATTEMPT_ID],
+        );
+        const unansweredSnapshot = await client.query<{
+          choice_id: string;
+          question_id: string;
+        }>(
+          `select
+             questions.id as question_id,
+             choices.id as choice_id
+           from public.attempt_questions questions
+           join public.attempt_question_choices choices
+             on choices.attempt_question_id = questions.id
+          where questions.attempt_id = $1
+            and questions.position = 2
+            and choices.display_position = 1`,
+          [ATTEMPT_ID],
+        );
+
+        const finalizedQuestion = finalizedSnapshot.rows[0];
+        const unansweredQuestion = unansweredSnapshot.rows[0];
+        expect(finalizedQuestion).toBeDefined();
+        expect(unansweredQuestion).toBeDefined();
+
+        await expect(
+          client.query(
+            `update public.attempt_questions
+                set prompt_snapshot = 'Changed after completion'
+              where id = $1`,
+            [finalizedQuestion?.question_id],
+          ),
+        ).rejects.toThrow();
+        await expect(
+          client.query(
+            `delete from public.attempt_questions where id = $1`,
+            [finalizedQuestion?.question_id],
+          ),
+        ).rejects.toThrow();
+        await expect(
+          client.query(
+            `update public.attempt_question_choices
+                set choice_text_snapshot = 'Changed after completion'
+              where id = $1`,
+            [finalizedQuestion?.choice_id],
+          ),
+        ).rejects.toThrow();
+        await expect(
+          client.query(
+            `delete from public.attempt_question_choices where id = $1`,
+            [finalizedQuestion?.choice_id],
+          ),
+        ).rejects.toThrow();
+        await expect(
+          client.query(
+            `insert into public.attempt_answers (
+             attempt_question_id, selected_choice_id
+           ) values ($1, $2)`,
+            [unansweredQuestion?.question_id, unansweredQuestion?.choice_id],
+          ),
+        ).rejects.toThrow();
+
         await client.query(
           `insert into public.player_wallets (player_id, coin_balance)
          values ($1, 63)`,

@@ -127,12 +127,16 @@ validation that requires exactly five rows before creation commits.
 `attempt_question_choices` stores an API-facing ID, attempt question, source
 choice, display position from `1` through `4`, and text snapshot. Unique
 constraints on display position and source choice persist one shuffled order.
+Snapshot rows are immutable once their parent attempt is completed; database
+triggers reject inserts, updates, and deletes that would change a finalized
+attempt's question or choice snapshot.
 
 `attempt_answers` uses `attempt_question_id` as its primary key and stores the
 selected attempt choice plus server receipt time. A composite relationship proves
-that the choice belongs to the question. The primary key locks one answer, and a
-database trigger prevents updates or deletes after submission. Correctness is
-calculated only during finalization and is not stored here.
+that the choice belongs to the question. The primary key locks one answer, and
+database triggers prevent updates or deletes after submission and reject new
+answers after the parent attempt is finalized. Correctness is calculated only
+during finalization and is not stored here.
 
 ### `card_definitions`
 
