@@ -57,6 +57,11 @@ do not execute a second test pass. HTML, LCOV, and JSON summary reports are
 uploaded together as the `coverage-reports` workflow artifact. The root
 `npm run coverage` command reproduces both coverage runs locally.
 
+The artifact step intentionally pins `actions/upload-artifact` to v3. The
+current Gitea 1.24 and `act_runner` 0.2.12 stack does not support the v4
+artifact protocol; upgrade the action only after the server and runner have
+been verified with that protocol.
+
 The web workspace's `build:bundle` command runs Vite after its dedicated
 type-check step. The normal `build` command still performs both type-checking and
 bundling for local and production use.
