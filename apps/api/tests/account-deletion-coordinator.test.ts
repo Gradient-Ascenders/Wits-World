@@ -342,6 +342,7 @@ function createLifecycle(
     request: async () => pendingRequest,
     markRetryPending: async () => retryRequest,
     complete: async () => completedRequest,
+    listProcessable: async () => [],
     purgeExpiredCompleted: async () => 0,
     ...overrides,
   };

@@ -29,6 +29,12 @@ interface AccountDeletionLifecycleOptions {
   createId?: () => string;
 }
 
+export interface AccountDeletionWorkItem {
+  deletionId: string;
+  identity: AuthenticatedIdentity;
+  status: 'pending' | 'retry_pending';
+}
+
 export interface AccountDeletionLifecycle {
   request(identity: AuthenticatedIdentity): Promise<AccountDeletionRequest>;
 
@@ -40,6 +46,8 @@ export interface AccountDeletionLifecycle {
   complete(deletionRequestId: string): Promise<AccountDeletionRequest>;
 
   purgeExpiredCompleted(): Promise<number>;
+
+  listProcessable(limit?: number): Promise<AccountDeletionWorkItem[]>;
 }
 
 export function createAccountDeletionLifecycle(
@@ -276,6 +284,54 @@ export function createAccountDeletionLifecycle(
       } catch (error) {
         await client.query('rollback');
         throw error;
+      } finally {
+        client.release();
+      }
+    },
+
+    async listProcessable(limit = 25) {
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+        throw new Error(
+          'Account deletion processing limit must be between 1 and 100.',
+        );
+      }
+
+      const client = await database.connect();
+
+      try {
+        const result = await client.query<{
+          deletion_request_id: string;
+          status: 'pending' | 'retry_pending';
+          auth_issuer: string;
+          auth_subject: string;
+        }>(
+          `
+            select
+              deletion.id as deletion_request_id,
+              deletion.status,
+              player.auth_issuer,
+              player.auth_subject
+            from public.account_deletion_requests deletion
+            join public.players player
+              on player.deletion_request_id = deletion.id
+            where deletion.status in ('pending', 'retry_pending')
+              and player.lifecycle_status = 'deletion_pending'
+              and player.auth_issuer is not null
+              and player.auth_subject is not null
+            order by deletion.requested_at asc, deletion.id asc
+            limit $1
+          `,
+          [limit],
+        );
+
+        return result.rows.map((row) => ({
+          deletionId: row.deletion_request_id,
+          identity: {
+            issuer: row.auth_issuer,
+            subject: row.auth_subject,
+          },
+          status: row.status,
+        }));
       } finally {
         client.release();
       }

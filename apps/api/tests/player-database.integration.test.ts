@@ -712,6 +712,47 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
       ]);
     });
   });
+
+  it('discovers pending deletion work for automatic retry', async () => {
+    await withDatabaseClient(temporaryConfig, async (client) => {
+      const issuer = 'https://auth.example.test/';
+      const subject = 'auth0|restart-delete';
+
+      await client.query(
+        `insert into public.players (
+          id,
+          auth_issuer,
+          auth_subject,
+          role,
+          lifecycle_status
+        ) values ($1, $2, $3, 'player', 'active')`,
+        ['00000000-0000-4000-8000-000000000150', issuer, subject],
+      );
+
+      const lifecycle = createAccountDeletionLifecycle(
+        createPoolFacade(client),
+        {
+          createId: () => '00000000-0000-4000-8000-000000000250',
+        },
+      );
+
+      const requested = await lifecycle.request({
+        issuer,
+        subject,
+      });
+
+      const work = await lifecycle.listProcessable();
+
+      expect(work).toContainEqual({
+        deletionId: requested.id,
+        identity: {
+          issuer,
+          subject,
+        },
+        status: 'pending',
+      });
+    });
+  });
 });
 
 function createPoolFacade(
