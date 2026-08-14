@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   ChallengeEventNotReachableError,
   ChallengeLocationRetryRequiredError,
+  ChallengeEventNotActiveError,
+  ChallengeEventNotFoundError,
   createChallengeAttemptStartService,
   type ChallengeAttemptDatabase,
   type ChallengeAttemptTransactionClient,
@@ -180,6 +182,49 @@ describe('challenge attempt start service', () => {
 
     expect(snapshotInsertCalls).toHaveLength(0);
   });
+
+  it('treats an unpublished event as not found before loading challenge content', async () => {
+    const fixture = createDatabaseFixture({
+      eventAvailability: 'unpublished',
+    });
+
+    const service = createChallengeAttemptStartService(fixture.database, {
+      clock: () => startedAt,
+      randomIndex: () => 0,
+    });
+
+    await expect(service.startOrResume(validInput())).rejects.toBeInstanceOf(
+      ChallengeEventNotFoundError,
+    );
+
+    const sql = executedSql(fixture.query);
+
+    expect(sql).toContain('with claim as');
+    expect(sql).not.toContain('from public.challenge_questions question');
+    expect(sql).not.toContain('insert into public.challenge_attempts');
+  });
+
+  it('rejects an ended event before loading challenge content', async () => {
+    const fixture = createDatabaseFixture({
+      eventAvailability: 'ended',
+    });
+
+    const service = createChallengeAttemptStartService(fixture.database, {
+      clock: () => startedAt,
+      randomIndex: () => 0,
+    });
+
+    await expect(service.startOrResume(validInput())).rejects.toMatchObject({
+      name: 'ChallengeEventNotActiveError',
+      reason: 'ended',
+    } satisfies Partial<ChallengeEventNotActiveError>);
+
+    const sql = executedSql(fixture.query);
+
+    expect(sql).toContain('with claim as');
+    expect(sql).not.toContain('from public.challenge_questions question');
+    expect(sql).not.toContain('insert into public.challenge_attempts');
+  });
 });
 
 function validInput() {
@@ -198,6 +243,7 @@ interface DatabaseFixtureOptions {
   conflictOnAttemptInsert?: boolean;
   distanceMetres?: number;
   withinRadius?: boolean;
+  eventAvailability?: 'available' | 'unpublished' | 'not_started' | 'ended';
 }
 
 function createDatabaseFixture({
@@ -205,6 +251,7 @@ function createDatabaseFixture({
   conflictOnAttemptInsert = false,
   distanceMetres = 0,
   withinRadius = true,
+  eventAvailability = 'available',
 }: DatabaseFixtureOptions = {}) {
   let attemptAvailable = existingAttempt;
   const release = vi.fn();
@@ -300,7 +347,7 @@ function createDatabaseFixture({
           {
             event_id: EVENT_ID,
             radius_metres: 75,
-            availability: 'available',
+            availability: eventAvailability,
             distance_metres: distanceMetres,
             within_radius: withinRadius,
           },
