@@ -24,8 +24,8 @@ wits-world-ci:docker://docker.gitea.com/runner-images:ubuntu-latest
 ```
 
 The dedicated label prevents normal CI jobs from being scheduled randomly on
-the older Azure runner. With a runner capacity of five, up to five CI or
-documentation-deployment jobs can execute concurrently.
+the older Azure runner. With a runner capacity of 15, all five CI validation
+categories can execute concurrently while capacity remains for other work.
 
 Production API and Web deployment remains on `witsworld-azure-runner` through
 its host-only `azure-deploy` label. That runner provides the proven Azure CLI,
@@ -85,8 +85,8 @@ deployment both depend directly on this combined gate and remain independent
 of each other.
 
 The duplicated clean installs trade additional aggregate work for substantially
-lower elapsed time on the 44-core C220. They remain bounded to up to five
-concurrent jobs rather than creating a job for every workspace and command.
+lower elapsed time on the 44-core C220. The five validation jobs can execute
+concurrently rather than creating a job for every workspace and command.
 
 ## Coverage and artifacts
 
@@ -142,5 +142,5 @@ manually until server-side queue controls are upgraded and verified.
 This document was reviewed and edited with assistance from:
 
 ```text
-Codex-CLI[GPT-5] and Codex[GPT-5]
+Codex-CLI[GPT-5], Codex[GPT-5], and ChatGPT-Web[GPT-5.6 Sol]
 ```

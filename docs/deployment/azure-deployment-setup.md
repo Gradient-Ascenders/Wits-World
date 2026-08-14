@@ -794,9 +794,9 @@ build ──────┘
 Each job checks out the repository, restores the lockfile-keyed npm download
 cache, and performs a clean `npm ci`. The additional aggregate setup work allows
 formatting, linting, type-checking, tests, and builds to execute concurrently on
-the 44-core server. With a runner capacity of five, up to five CI or
-documentation-deployment jobs can execute concurrently; a validation job may
-briefly queue when the documentation deployment is also running.
+the 44-core server. With a runner capacity of 15, all five validation categories
+can execute concurrently while capacity remains for documentation deployment or
+other work.
 
 The final validation job depends on all five jobs. Coverage badge publication
 and API deployment occur only after that combined gate passes. The host-only
