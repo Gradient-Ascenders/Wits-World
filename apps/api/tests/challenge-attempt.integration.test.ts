@@ -27,6 +27,11 @@ import {
 } from '../src/challenges/challenge-answer-lock.js';
 import type { ChallengeAnswerSubmissionService } from '../src/challenges/challenge-answer-submission.js';
 
+import {
+  ChallengeAttemptFetchNotFoundError,
+  type ChallengeAttemptFetchService,
+} from '../src/challenges/challenge-attempt-fetch.js';
+
 const EVENT_ID = '00000000-0000-4000-8000-000000000018';
 const PLAYER_ID = '00000000-0000-4000-8000-000000000101';
 const ATTEMPT_ID = '31000000-0000-4000-8000-000000000001';
@@ -58,12 +63,17 @@ let startOrResume: ReturnType<
 let submitAnswer: ReturnType<
   typeof vi.fn<ChallengeAnswerSubmissionService['submitAnswer']>
 >;
+let fetchAttempt: ReturnType<
+  typeof vi.fn<ChallengeAttemptFetchService['fetchAttempt']>
+>;
 
 beforeEach(async () => {
   playerResolve = vi.fn<PlayerIdentityService['resolve']>();
   playerResolve.mockResolvedValue(activePlayer);
 
   startOrResume = vi.fn<ChallengeAttemptStartService['startOrResume']>();
+
+  fetchAttempt = vi.fn<ChallengeAttemptFetchService['fetchAttempt']>();
 
   submitAnswer = vi.fn<ChallengeAnswerSubmissionService['submitAnswer']>();
 
@@ -80,6 +90,9 @@ beforeEach(async () => {
     challengeAttemptServices: {
       start: {
         startOrResume,
+      },
+      fetch: {
+        fetchAttempt,
       },
       answerSubmission: {
         submitAnswer,
@@ -531,6 +544,155 @@ describe('challenge answer submission API', () => {
   });
 });
 
+describe('challenge attempt fetch API', () => {
+  it('requires authentication before fetching an attempt', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/challenge-attempts/${ATTEMPT_ID}`,
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(fetchAttempt).not.toHaveBeenCalled();
+  });
+
+  it('rejects a deletion-pending player before fetching an attempt', async () => {
+    playerResolve.mockResolvedValue({
+      ...activePlayer,
+      lifecycleStatus: 'deletion_pending',
+    });
+
+    const response = await authenticatedFetchRequest();
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      code: 'ACCOUNT_UNAVAILABLE',
+    });
+
+    expect(fetchAttempt).not.toHaveBeenCalled();
+  });
+
+  it('derives attempt ownership from the authenticated player', async () => {
+    const attempt = inProgressAttempt();
+
+    fetchAttempt.mockResolvedValue(attempt);
+
+    const response = await authenticatedFetchRequest();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      ...attempt,
+      requestId: expect.any(String),
+    });
+
+    expect(fetchAttempt).toHaveBeenCalledWith({
+      playerId: PLAYER_ID,
+      attemptId: ATTEMPT_ID,
+    });
+  });
+
+  it('returns a persisted completed timeout result without question details', async () => {
+    const attempt: CompletedChallengeAttempt = {
+      ...completedAttempt(),
+      completionReason: 'timeout',
+    };
+
+    fetchAttempt.mockResolvedValue(attempt);
+
+    const response = await authenticatedFetchRequest();
+
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json<Record<string, unknown>>();
+
+    expect(body).toEqual({
+      ...attempt,
+      requestId: expect.any(String),
+    });
+
+    expect(body).not.toHaveProperty('questions');
+    expect(body).not.toHaveProperty('answeredCount');
+    expect(body).not.toHaveProperty('acceptedChoiceId');
+    expect(body).not.toHaveProperty('correctAnswers');
+  });
+
+  it('maps missing and cross-player attempts to the same safe 404', async () => {
+    fetchAttempt.mockRejectedValue(new ChallengeAttemptFetchNotFoundError());
+
+    const response = await authenticatedFetchRequest();
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({
+      status: 404,
+      code: 'ATTEMPT_NOT_FOUND',
+      requestId: expect.any(String),
+    });
+  });
+
+  it('rejects a malformed attempt identifier', async () => {
+    const response = await authenticatedFetchRequest('not-a-uuid');
+
+    expect(response.statusCode).toBe(400);
+    expect(fetchAttempt).not.toHaveBeenCalled();
+  });
+
+  it('uses the generic safe 500 response when defensive finalization fails', async () => {
+    fetchAttempt.mockRejectedValue(
+      new Error('timeout reward transaction failed'),
+    );
+
+    const response = await authenticatedFetchRequest();
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({
+      type: 'https://wits.world/problems/internal-error',
+      title: 'Internal server error',
+      status: 500,
+      code: 'INTERNAL_ERROR',
+      detail: 'The server could not complete the request.',
+      requestId: expect.any(String),
+    });
+
+    expect(response.body).not.toContain('timeout reward transaction failed');
+  });
+
+  it('documents fetch/resume as bearer-protected', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/documentation/json',
+    });
+
+    expect(response.statusCode).toBe(200);
+
+    const document = response.json<{
+      paths: Record<
+        string,
+        {
+          get?: {
+            security?: Array<Record<string, unknown>>;
+            responses?: Record<string, unknown>;
+          };
+        }
+      >;
+    }>();
+
+    const operation =
+      document.paths['/api/v1/challenge-attempts/{attemptId}']?.get;
+
+    expect(operation?.security).toEqual([
+      {
+        bearerAuth: [],
+      },
+    ]);
+
+    expect(operation?.responses).toHaveProperty('200');
+    expect(operation?.responses).toHaveProperty('400');
+    expect(operation?.responses).toHaveProperty('401');
+    expect(operation?.responses).toHaveProperty('403');
+    expect(operation?.responses).toHaveProperty('404');
+    expect(operation?.responses).toHaveProperty('500');
+  });
+});
+
 function validLocationClaim() {
   return {
     latitude: -26.19205,
@@ -630,4 +792,14 @@ function completedAttempt(): CompletedChallengeAttempt {
       ],
     },
   };
+}
+
+async function authenticatedFetchRequest(attemptId = ATTEMPT_ID) {
+  return app.inject({
+    method: 'GET',
+    url: `/api/v1/challenge-attempts/${attemptId}`,
+    headers: {
+      authorization: 'Bearer test-access-token',
+    },
+  });
 }

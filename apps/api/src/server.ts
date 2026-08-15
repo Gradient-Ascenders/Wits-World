@@ -18,6 +18,7 @@ import { createStarterGrantService } from './cards/starter-grant.js';
 import { createChallengeAnswerSubmissionService } from './challenges/challenge-answer-submission.js';
 import { createChallengeAttemptCompletionFinalizer } from './challenges/challenge-attempt-completion-finalizer.js';
 import { createCardCollectionService } from './cards/card-collection.js';
+import { createChallengeAttemptFetchService } from './challenges/challenge-attempt-fetch.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
@@ -49,6 +50,12 @@ async function startServer(): Promise<void> {
     createChallengeAnswerSubmissionService(database, {
       finalizer: challengeAttemptCompletionFinalizer,
     });
+  const challengeAttemptFetchService = createChallengeAttemptFetchService(
+    database,
+    {
+      finalizer: challengeAttemptCompletionFinalizer,
+    },
+  );
 
   const app = await buildApp({
     config,
@@ -58,6 +65,7 @@ async function startServer(): Promise<void> {
 
     challengeAttemptServices: {
       start: challengeAttemptStartService,
+      fetch: challengeAttemptFetchService,
       answerSubmission: challengeAnswerSubmissionService,
     },
 

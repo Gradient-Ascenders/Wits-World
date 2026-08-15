@@ -15,10 +15,14 @@ attempt/question/choice binding, immutable answer locking, server-receipt
 deadline enforcement, private server-side marking, final-score calculation, and
 the transaction coordinator used by fifth-answer and timeout finalisation.
 
-The concrete atomic completion/reward finaliser and its production server wiring
-remain follow-up work under issue #67. Attempt fetch and defensive/background
-expiry finalisation also remain follow-up work under their linked Sprint 2
-issues.
+Issue #67 implements the concrete atomic completion/reward finaliser and its
+production server wiring.
+
+The authenticated attempt-fetch operation,
+`GET /api/v1/challenge-attempts/{attemptId}`, now implements resume/status
+retrieval and defensive request-time expiry finalisation through that same
+atomic completion boundary. Background expiry processing remains separate
+follow-up work.
 
 The only challenge format supported in the Basic scope is a timed
 multiple-choice quiz. The API retains a `format` discriminator so additional
@@ -415,15 +419,23 @@ Issue #66 implements:
 - unit, integration, concurrency, security-exposure, and OpenAPI coverage for
   those behaviours.
 
-Remaining implementation work must add:
+Issue #67 implements:
 
-- the authenticated attempt-fetch operation;
-- defensive/background expiry finalisation;
-- the concrete idempotent atomic completion/reward finaliser from issue #67;
-- production server wiring of that finaliser into answer submission;
-- end-to-end fifth-answer, timeout, retry, and reward persistence verification
-  once the #67 finaliser exists; and
-- player UI for timed questions, reconnecting, and completion.
+- the concrete idempotent atomic completion/reward finaliser;
+- production server wiring of that finaliser into answer submission; and
+- atomic reward persistence with retry and concurrency protection.
+
+The attempt-fetch follow-up implements:
+
+- the authenticated `GET /api/v1/challenge-attempts/{attemptId}` operation;
+- ownership-safe resume and status retrieval using the player derived from the
+  validated token;
+- defensive request-time timeout finalisation through the same atomic finaliser;
+- persisted completed-result retries without rerolling rewards; and
+- database-backed timeout and concurrent-fetch verification.
+
+Remaining implementation work includes background expiry processing and the
+player UI for timed questions, reconnecting, and completion.
 
 The proposed storage relations, reward calculation, and atomic finalization
 boundary are specified in the
