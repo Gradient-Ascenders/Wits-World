@@ -11,6 +11,12 @@ import {
 } from '../src/database/connection.js';
 import { runMigrations } from '../src/database/migrations.js';
 
+import {
+  createDeckService,
+  DeckNotFoundError,
+  DeckOwnedCardNotFoundError,
+} from '../src/cards/deck-service.js';
+
 const PLAYER_ID = '81000000-0000-4000-8000-000000000001';
 const OTHER_PLAYER_ID = '81000000-0000-4000-8000-000000000002';
 
@@ -20,6 +26,14 @@ const OTHER_GRANT_ID = '82000000-0000-4000-8000-000000000002';
 const FIRST_DECK_ID = '83000000-0000-4000-8000-000000000001';
 const SECOND_DECK_ID = '83000000-0000-4000-8000-000000000002';
 const OTHER_DECK_ID = '83000000-0000-4000-8000-000000000003';
+
+const SERVICE_PLAYER_ID = '81000000-0000-4000-8000-000000000010';
+
+const SERVICE_GRANT_ID = '82000000-0000-4000-8000-000000000010';
+
+const CONCURRENT_SERVICE_PLAYER_ID = '81000000-0000-4000-8000-000000000011';
+
+const CONCURRENT_SERVICE_GRANT_ID = '82000000-0000-4000-8000-000000000011';
 
 const runIntegrationTests =
   process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';
@@ -71,6 +85,22 @@ describe.skipIf(!runIntegrationTests)(
         subject: 'deck-other-player',
         cardNumberStart: 6,
         cardCount: 1,
+      });
+
+      await seedPlayerCollection({
+        playerId: SERVICE_PLAYER_ID,
+        grantId: SERVICE_GRANT_ID,
+        subject: 'deck-service-player',
+        cardNumberStart: 11,
+        cardCount: 5,
+      });
+
+      await seedPlayerCollection({
+        playerId: CONCURRENT_SERVICE_PLAYER_ID,
+        grantId: CONCURRENT_SERVICE_GRANT_ID,
+        subject: 'deck-service-concurrent',
+        cardNumberStart: 16,
+        cardCount: 5,
       });
 
       await pool.query(
@@ -427,6 +457,253 @@ describe.skipIf(!runIntegrationTests)(
 
       expect(await playerOwnedCardIds(PLAYER_ID)).toEqual(before);
     });
+
+    it('creates, lists, updates, selects, and deletes a legal saved deck through the service', async () => {
+      const service = createDeckService(pool);
+
+      const ownedCardIds = await playerOwnedCardIds(SERVICE_PLAYER_ID);
+
+      expect(ownedCardIds).toHaveLength(5);
+
+      const created = await service.createDeck({
+        playerId: SERVICE_PLAYER_ID,
+        name: '  Campus Five  ',
+        ownedCardIds,
+      });
+
+      expect(created).toMatchObject({
+        name: 'Campus Five',
+        isSelected: false,
+        totalPoints: 5,
+      });
+
+      expect(created.cards.map((card) => card.ownedCardId)).toEqual(
+        ownedCardIds,
+      );
+
+      expect(created.cards.map((card) => card.position)).toEqual([
+        1, 2, 3, 4, 5,
+      ]);
+
+      await expect(service.listDecks(SERVICE_PLAYER_ID)).resolves.toEqual([
+        created,
+      ]);
+
+      const selected = await service.selectDeck(
+        SERVICE_PLAYER_ID,
+        created.deckId,
+      );
+
+      expect(selected).toMatchObject({
+        deckId: created.deckId,
+        name: 'Campus Five',
+        isSelected: true,
+        totalPoints: 5,
+      });
+
+      const afterSelection = await service.listDecks(SERVICE_PLAYER_ID);
+
+      expect(afterSelection).toHaveLength(1);
+      expect(afterSelection[0]?.isSelected).toBe(true);
+
+      const reversed = [...ownedCardIds].reverse();
+
+      const updated = await service.updateDeck({
+        playerId: SERVICE_PLAYER_ID,
+        deckId: created.deckId,
+        name: 'Updated Campus Five',
+        ownedCardIds: reversed,
+      });
+
+      expect(updated).toMatchObject({
+        deckId: created.deckId,
+        name: 'Updated Campus Five',
+        isSelected: true,
+        totalPoints: 5,
+      });
+
+      expect(updated.cards.map((card) => card.ownedCardId)).toEqual(reversed);
+
+      const afterUpdate = await service.listDecks(SERVICE_PLAYER_ID);
+
+      expect(afterUpdate).toHaveLength(1);
+
+      expect(afterUpdate[0]).toMatchObject({
+        deckId: created.deckId,
+        name: 'Updated Campus Five',
+        isSelected: true,
+      });
+
+      await service.deleteDeck(SERVICE_PLAYER_ID, created.deckId);
+
+      await expect(service.listDecks(SERVICE_PLAYER_ID)).resolves.toEqual([]);
+
+      const selection = await pool.query<{
+        selection_count: number;
+      }>(
+        `
+            select count(*)::int as selection_count
+            from public.player_deck_selections
+            where player_id = $1::uuid
+            `,
+        [SERVICE_PLAYER_ID],
+      );
+
+      expect(selection.rows[0]?.selection_count).toBe(0);
+
+      expect(await playerOwnedCardIds(SERVICE_PLAYER_ID)).toEqual(ownedCardIds);
+    }, 45_000);
+
+    it('rejects cross-player card copies without persisting a deck', async () => {
+      const service = createDeckService(pool);
+
+      const ownedCardIds = await playerOwnedCardIds(SERVICE_PLAYER_ID);
+
+      const otherPlayerCards = await playerOwnedCardIds(OTHER_PLAYER_ID);
+
+      const otherOwnedCardId = otherPlayerCards[0];
+
+      if (!otherOwnedCardId) {
+        throw new Error('Expected another player owned card.');
+      }
+
+      const attemptedCards = [...ownedCardIds.slice(0, 4), otherOwnedCardId];
+
+      await expect(
+        service.createDeck({
+          playerId: SERVICE_PLAYER_ID,
+          name: 'Cross-player deck',
+          ownedCardIds: attemptedCards,
+        }),
+      ).rejects.toBeInstanceOf(DeckOwnedCardNotFoundError);
+
+      const persisted = await pool.query<{
+        deck_count: number;
+      }>(
+        `
+            select count(*)::int as deck_count
+            from public.player_decks
+            where player_id = $1::uuid
+                and name = 'Cross-player deck'
+            `,
+        [SERVICE_PLAYER_ID],
+      );
+
+      expect(persisted.rows[0]?.deck_count).toBe(0);
+    }, 30_000);
+
+    it('does not expose another player saved deck through mutation operations', async () => {
+      const service = createDeckService(pool);
+
+      const cards = await playerOwnedCardIds(SERVICE_PLAYER_ID);
+
+      await expect(
+        service.updateDeck({
+          playerId: SERVICE_PLAYER_ID,
+          deckId: OTHER_DECK_ID,
+          name: 'Stolen deck',
+          ownedCardIds: cards,
+        }),
+      ).rejects.toBeInstanceOf(DeckNotFoundError);
+
+      await expect(
+        service.selectDeck(SERVICE_PLAYER_ID, OTHER_DECK_ID),
+      ).rejects.toBeInstanceOf(DeckNotFoundError);
+
+      await expect(
+        service.deleteDeck(SERVICE_PLAYER_ID, OTHER_DECK_ID),
+      ).rejects.toBeInstanceOf(DeckNotFoundError);
+
+      const otherDeck = await pool.query<{
+        name: string;
+      }>(
+        `
+            select name
+            from public.player_decks
+            where id = $1::uuid
+                and player_id = $2::uuid
+            `,
+        [OTHER_DECK_ID, OTHER_PLAYER_ID],
+      );
+
+      expect(otherDeck.rows).toEqual([
+        {
+          name: 'Other player deck',
+        },
+      ]);
+    }, 30_000);
+
+    it('serializes concurrent deck updates into one complete persisted version', async () => {
+      const service = createDeckService(pool);
+
+      const original = await playerOwnedCardIds(CONCURRENT_SERVICE_PLAYER_ID);
+
+      const created = await service.createDeck({
+        playerId: CONCURRENT_SERVICE_PLAYER_ID,
+        name: 'Concurrent deck',
+        ownedCardIds: original,
+      });
+
+      const firstOrder = [
+        original[1]!,
+        original[0]!,
+        original[2]!,
+        original[4]!,
+        original[3]!,
+      ];
+
+      const secondOrder = [
+        original[2]!,
+        original[1]!,
+        original[0]!,
+        original[3]!,
+        original[4]!,
+      ];
+
+      const results = await Promise.all([
+        service.updateDeck({
+          playerId: CONCURRENT_SERVICE_PLAYER_ID,
+          deckId: created.deckId,
+          name: 'Concurrent version A',
+          ownedCardIds: firstOrder,
+        }),
+        service.updateDeck({
+          playerId: CONCURRENT_SERVICE_PLAYER_ID,
+          deckId: created.deckId,
+          name: 'Concurrent version B',
+          ownedCardIds: secondOrder,
+        }),
+      ]);
+
+      expect(results).toHaveLength(2);
+
+      const persisted = await service.listDecks(CONCURRENT_SERVICE_PLAYER_ID);
+
+      expect(persisted).toHaveLength(1);
+
+      const finalDeck = persisted[0];
+
+      if (!finalDeck) {
+        throw new Error('Expected the concurrent deck to persist.');
+      }
+
+      const finalOwnedCardIds = finalDeck.cards.map((card) => card.ownedCardId);
+
+      if (finalDeck.name === 'Concurrent version A') {
+        expect(finalOwnedCardIds).toEqual(firstOrder);
+      } else if (finalDeck.name === 'Concurrent version B') {
+        expect(finalOwnedCardIds).toEqual(secondOrder);
+      } else {
+        throw new Error(
+          'Concurrent deck update persisted an unexpected version.',
+        );
+      }
+
+      expect(finalDeck.cards).toHaveLength(5);
+      expect(finalDeck.totalPoints).toBe(5);
+
+      await service.deleteDeck(CONCURRENT_SERVICE_PLAYER_ID, created.deckId);
+    }, 45_000);
 
     async function playerOwnedCardIds(playerId: string): Promise<string[]> {
       const result = await pool.query<{
