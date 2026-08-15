@@ -271,6 +271,145 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Detect API deployment changes for candidate artifact
+        id: candidate_api_changes
+        env:
+          DEPLOY_SHA: ${{ gitea.sha }}
+          PREVIOUS_SHA: ${{ gitea.event.before }}
+        run: |
+          set -euo pipefail
+
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+
+          if [ "$ACTUAL_SHA" != "$DEPLOY_SHA" ]; then
+            echo "Expected commit: $DEPLOY_SHA"
+            echo "Checked-out commit: $ACTUAL_SHA"
+            echo "Refusing to produce an artifact for the wrong commit."
+            exit 1
+          fi
+
+          if [[ "$PREVIOUS_SHA" =~ ^[0-9a-f]{40}$ ]] && \
+            [ "$PREVIOUS_SHA" != "0000000000000000000000000000000000000000" ]
+          then
+            if ! git cat-file -e "${PREVIOUS_SHA}^{commit}" 2>/dev/null; then
+              git fetch --no-tags --depth=1 origin "$PREVIOUS_SHA" || true
+            fi
+          fi
+
+          if [[ "$PREVIOUS_SHA" =~ ^[0-9a-f]{40}$ ]] && \
+            [ "$PREVIOUS_SHA" != "0000000000000000000000000000000000000000" ] && \
+            git cat-file -e "${PREVIOUS_SHA}^{commit}" 2>/dev/null
+          then
+            BASE_SHA="$PREVIOUS_SHA"
+          else
+            echo "The push-before commit is unavailable; a candidate API artifact is required."
+            echo "required=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          set +e
+          git diff --quiet "$BASE_SHA" "$DEPLOY_SHA" -- \
+            .gitea/workflows/ci.yml \
+            .nvmrc \
+            package.json \
+            package-lock.json \
+            tsconfig.base.json \
+            apps/api \
+            database
+          DIFF_STATUS=$?
+          set -e
+
+          case "$DIFF_STATUS" in
+            0)
+              echo "No API, database, or shared runtime changes detected; no candidate API artifact is required."
+              echo "required=false" >> "$GITHUB_OUTPUT"
+              ;;
+            1)
+              echo "API, database, or shared runtime changes detected; a candidate API artifact is required."
+              echo "required=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "The API change comparison failed; defaulting to producing a candidate artifact."
+              echo "required=true" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      - name: Package candidate production API artifact
+        if: ${{ steps.candidate_api_changes.outputs.required == 'true' }}
+        env:
+          DEPLOY_SHA: ${{ gitea.sha }}
+        run: |
+          set -euo pipefail
+
+          CANDIDATE_ROOT="/tmp/witsworld-api-candidate-${DEPLOY_SHA}"
+
+          rm -rf "$CANDIDATE_ROOT"
+          mkdir -p "$CANDIDATE_ROOT/package/apps/api"
+
+          test -f apps/api/dist/server.js
+
+          rm -rf node_modules
+
+          npm install -g npm@11.18.0 \
+            --no-audit \
+            --fund=false >/dev/null
+
+          echo "npm: $(npm --version)"
+
+          npm ci \
+            --prefer-offline \
+            --omit=dev \
+            --workspace @wits-world/api \
+            --include-workspace-root=false \
+            --no-audit \
+            --fund=false
+
+          cp package.json package-lock.json \
+            "$CANDIDATE_ROOT/package/"
+
+          cp apps/api/package.json \
+            "$CANDIDATE_ROOT/package/apps/api/"
+
+          cp -a apps/api/dist \
+            "$CANDIDATE_ROOT/package/apps/api/"
+
+          cp -a node_modules \
+            "$CANDIDATE_ROOT/package/"
+
+          cp -a database \
+            "$CANDIDATE_ROOT/package/"
+
+          (
+            cd "$CANDIDATE_ROOT/package"
+            zip -qr "$CANDIDATE_ROOT/witsworld-api-deploy.zip" .
+          )
+
+          printf '%s\n' "$DEPLOY_SHA" > "$CANDIDATE_ROOT/commit-sha.txt"
+
+          (
+            cd "$CANDIDATE_ROOT"
+            sha256sum witsworld-api-deploy.zip > witsworld-api-deploy.zip.sha256
+          )
+
+          test -s "$CANDIDATE_ROOT/witsworld-api-deploy.zip"
+          unzip -t "$CANDIDATE_ROOT/witsworld-api-deploy.zip" >/dev/null
+
+          unzip -l "$CANDIDATE_ROOT/witsworld-api-deploy.zip" |
+            grep 'apps/api/dist/server.js'
+
+      - name: Upload candidate production API artifact
+        if: ${{ steps.candidate_api_changes.outputs.required == 'true' }}
+        # Keep the known-working v3 protocol until v4 is verified on this Gitea instance.
+        uses: https://github.com/actions/upload-artifact@v3
+        with:
+          name: api-deploy-${{ gitea.sha }}
+          path: |
+            /tmp/witsworld-api-candidate-${{ gitea.sha }}/witsworld-api-deploy.zip
+            /tmp/witsworld-api-candidate-${{ gitea.sha }}/commit-sha.txt
+            /tmp/witsworld-api-candidate-${{ gitea.sha }}/witsworld-api-deploy.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
+
   validation:
     name: Repository and application validation
     needs:
@@ -406,6 +545,7 @@ jobs:
           fi
 
       - name: Detect API deployment changes
+        id: api_deployment_changes
         run: |
           set -euo pipefail
 
@@ -423,10 +563,12 @@ jobs:
           else
             echo "The push-before commit is unavailable; API deployment is required."
             touch "$DEPLOY_MARKER"
+            echo "required=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           if git diff --quiet "$BASE_SHA" "$DEPLOY_SHA" -- \
+            .gitea/workflows/ci.yml \
             .nvmrc \
             package.json \
             package-lock.json \
@@ -435,9 +577,11 @@ jobs:
             database
           then
             echo "No API, database, or shared runtime changes detected; API deployment will be skipped."
+            echo "required=false" >> "$GITHUB_OUTPUT"
           else
             echo "API, database, or shared runtime changes detected; API deployment is required."
             touch "$DEPLOY_MARKER"
+            echo "required=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build production API package
@@ -519,6 +663,140 @@ jobs:
 
           unzip -l "$DEPLOY_ROOT/witsworld-api-deploy.zip" |
             grep 'apps/api/dist/server.js'
+
+      - name: Download candidate production API artifact
+        if: ${{ steps.api_deployment_changes.outputs.required == 'true' }}
+        # Keep the known-working v3 protocol until v4 is verified on this Gitea instance.
+        uses: https://github.com/actions/download-artifact@v3
+        with:
+          name: api-deploy-${{ gitea.sha }}
+          path: /tmp/witsworld-api-deploy-${{ gitea.sha }}/c220-candidate
+
+      - name: Compare candidate and Azure-built API packages
+        if: ${{ steps.api_deployment_changes.outputs.required == 'true' }}
+        run: |
+          set -euo pipefail
+
+          DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
+          CANDIDATE_ROOT="$DEPLOY_ROOT/c220-candidate"
+          COMPARISON_ROOT="$DEPLOY_ROOT/equivalence"
+
+          test -f "$CANDIDATE_ROOT/commit-sha.txt"
+          test -f "$CANDIDATE_ROOT/witsworld-api-deploy.zip"
+          test -f "$CANDIDATE_ROOT/witsworld-api-deploy.zip.sha256"
+
+          ARTIFACT_SHA="$(tr -d '\r\n' < "$CANDIDATE_ROOT/commit-sha.txt")"
+
+          if [ "$ARTIFACT_SHA" != "$DEPLOY_SHA" ]; then
+            echo "Expected artifact commit: $DEPLOY_SHA"
+            echo "Downloaded artifact commit: $ARTIFACT_SHA"
+            echo "Refusing to compare an artifact for a different commit."
+            exit 1
+          fi
+
+          (
+            cd "$CANDIDATE_ROOT"
+            sha256sum --check witsworld-api-deploy.zip.sha256
+          )
+
+          unzip -t "$CANDIDATE_ROOT/witsworld-api-deploy.zip" >/dev/null
+
+          for required_path in \
+            package.json \
+            package-lock.json \
+            apps/api/package.json \
+            apps/api/dist/server.js
+          do
+            unzip -Z1 "$CANDIDATE_ROOT/witsworld-api-deploy.zip" |
+              grep -Fx "$required_path"
+          done
+
+          unzip -Z1 "$CANDIDATE_ROOT/witsworld-api-deploy.zip" |
+            grep -E '^node_modules/.+'
+
+          unzip -Z1 "$CANDIDATE_ROOT/witsworld-api-deploy.zip" |
+            grep -E '^database/(migrations|seeds)/.+'
+
+          rm -rf "$COMPARISON_ROOT"
+          mkdir -p "$COMPARISON_ROOT/candidate" "$COMPARISON_ROOT/azure"
+
+          unzip -q "$CANDIDATE_ROOT/witsworld-api-deploy.zip" \
+            -d "$COMPARISON_ROOT/candidate"
+          unzip -q "$DEPLOY_ROOT/witsworld-api-deploy.zip" \
+            -d "$COMPARISON_ROOT/azure"
+
+          (
+            cd "$COMPARISON_ROOT/candidate"
+            find . -mindepth 1 -printf '%y %P\n' | LC_ALL=C sort
+          ) > "$COMPARISON_ROOT/candidate-paths.txt"
+
+          (
+            cd "$COMPARISON_ROOT/azure"
+            find . -mindepth 1 -printf '%y %P\n' | LC_ALL=C sort
+          ) > "$COMPARISON_ROOT/azure-paths.txt"
+
+          (
+            cd "$COMPARISON_ROOT/candidate"
+            find . -type l -printf '%P -> %l\n' | LC_ALL=C sort
+          ) > "$COMPARISON_ROOT/candidate-symlinks.txt"
+
+          (
+            cd "$COMPARISON_ROOT/azure"
+            find . -type l -printf '%P -> %l\n' | LC_ALL=C sort
+          ) > "$COMPARISON_ROOT/azure-symlinks.txt"
+
+          DIFFERENCES=0
+
+          if ! diff -u \
+            "$COMPARISON_ROOT/azure-paths.txt" \
+            "$COMPARISON_ROOT/candidate-paths.txt"
+          then
+            echo "Candidate and Azure-built API package path lists differ."
+            DIFFERENCES=1
+          else
+            echo "Candidate and Azure-built API package path lists are identical."
+          fi
+
+          if ! diff -u \
+            "$COMPARISON_ROOT/azure-symlinks.txt" \
+            "$COMPARISON_ROOT/candidate-symlinks.txt"
+          then
+            echo "Candidate and Azure-built API package symlink targets differ."
+            DIFFERENCES=1
+          else
+            echo "Candidate and Azure-built API package symlink targets are identical."
+          fi
+
+          (
+            cd "$COMPARISON_ROOT/candidate"
+            find . -type f -print0 |
+              LC_ALL=C sort -z |
+              xargs -0 -r sha256sum
+          ) > "$COMPARISON_ROOT/candidate-files.sha256"
+
+          (
+            cd "$COMPARISON_ROOT/azure"
+            find . -type f -print0 |
+              LC_ALL=C sort -z |
+              xargs -0 -r sha256sum
+          ) > "$COMPARISON_ROOT/azure-files.sha256"
+
+          if ! diff -u \
+            "$COMPARISON_ROOT/azure-files.sha256" \
+            "$COMPARISON_ROOT/candidate-files.sha256"
+          then
+            echo "Candidate and Azure-built API package file hashes differ."
+            DIFFERENCES=1
+          else
+            echo "Every candidate API package file has an identical SHA-256 hash."
+          fi
+
+          if [ "$DIFFERENCES" -ne 0 ]; then
+            echo "The C220 candidate API package is not equivalent to the Azure-built package."
+            exit 1
+          fi
+
+          echo "The C220 candidate API package is byte-for-byte equivalent to the Azure-built package."
 
       - name: Authenticate to Azure
         run: |
