@@ -15,6 +15,7 @@
   "scripts": {
     "view": "npm run dev --workspace @wits-world/web",
     "api": "npm run dev --workspace @wits-world/api",
+    "db": "npm run db:setup --workspace @wits-world/api",
     "build": "npm run build --workspaces --if-present",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
