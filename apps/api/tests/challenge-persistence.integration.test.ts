@@ -84,6 +84,7 @@ describe.skipIf(!runIntegrationTests)(
           '0007_create_cards_rewards_and_ownership.sql',
           '0008_allow_multiple_event_reward_cards.sql',
           '0009_create_card_catalogue_and_starter_grants.sql',
+          '0010_add_card_modifier_metadata.sql',
         ],
         skipped: [],
       });
@@ -100,6 +101,7 @@ describe.skipIf(!runIntegrationTests)(
           '0007_create_cards_rewards_and_ownership.sql',
           '0008_allow_multiple_event_reward_cards.sql',
           '0009_create_card_catalogue_and_starter_grants.sql',
+          '0010_add_card_modifier_metadata.sql',
         ],
       });
     }, 30_000);

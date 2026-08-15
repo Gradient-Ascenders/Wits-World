@@ -86,6 +86,9 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
     expect(migrationResult.applied).toContain(
       '0009_create_card_catalogue_and_starter_grants.sql',
     );
+    expect(migrationResult.applied).toContain(
+      '0010_add_card_modifier_metadata.sql',
+    );
   });
 
   it('seeds 3 Common Creatures and 2 Common Power cards for each affinity', async () => {
@@ -162,6 +165,63 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
         affinity: 'spark',
       }),
     ).rejects.toBeInstanceOf(StarterAlreadyClaimedError);
+  });
+
+  it('seeds modifier metadata for battle-ready Buff effects', async () => {
+    await withDatabaseClient(temporaryConfig, async (client) => {
+      const result = await client.query<{
+        effect_value: number | null;
+        modifier_duration_turns: number | null;
+        modifier_operation: string | null;
+        modifier_stat: string | null;
+      }>(
+        `select effect.effect_value,
+                effect.modifier_stat,
+                effect.modifier_operation,
+                effect.modifier_duration_turns
+           from public.card_effects effect
+           join public.card_definitions definition
+             on definition.id = effect.card_definition_id
+          where definition.name = 'Spark Legendary Power'
+            and effect.effect_type = 'buff'
+          order by effect.position`,
+      );
+
+      expect(result.rows).toEqual([
+        {
+          effect_value: 3,
+          modifier_duration_turns: null,
+          modifier_operation: 'multiply',
+          modifier_stat: 'damage_multiplier',
+        },
+      ]);
+    });
+  });
+
+  it('rejects Buff effects without modifier metadata at database level', async () => {
+    await withDatabaseClient(temporaryConfig, async (client) => {
+      const powerCard = await client.query<{ id: string }>(
+        `select id::text as id
+           from public.card_definitions
+          where category = 'power'
+          limit 1`,
+      );
+
+      await expect(
+        client.query(
+          `insert into public.card_effects (
+             id, card_definition_id, position, effect_type, effect_value
+           ) values (
+             '71000000-0000-4000-8000-000000000002',
+             $1,
+             99,
+             'buff',
+             3
+           )`,
+          [powerCard.rows[0]?.id],
+        ),
+      ).rejects.toThrow();
+    });
   });
 
   it('converges concurrent starter requests on one grant', async () => {

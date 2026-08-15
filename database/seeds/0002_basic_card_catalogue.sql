@@ -139,7 +139,8 @@ on conflict (id) do update set
 
 insert into public.card_moves (
   id, card_definition_id, position, name, move_type, effect_type,
-  effect_value, power_cost
+  effect_value, modifier_stat, modifier_operation, modifier_duration_turns,
+  power_cost
 )
 select
   md5('wits-world-basic-move:' || id::text || ':basic')::uuid,
@@ -149,6 +150,9 @@ select
   'basic',
   'damage',
   10,
+  null,
+  null,
+  null,
   1
 from basic_seed_cards
 where category = 'creature'
@@ -159,11 +163,15 @@ on conflict (id) do update set
   move_type = excluded.move_type,
   effect_type = excluded.effect_type,
   effect_value = excluded.effect_value,
+  modifier_stat = excluded.modifier_stat,
+  modifier_operation = excluded.modifier_operation,
+  modifier_duration_turns = excluded.modifier_duration_turns,
   power_cost = excluded.power_cost;
 
 insert into public.card_moves (
   id, card_definition_id, position, name, move_type, effect_type,
-  effect_value, power_cost
+  effect_value, modifier_stat, modifier_operation, modifier_duration_turns,
+  power_cost
 )
 select
   md5('wits-world-basic-move:' || id::text || ':affinity')::uuid,
@@ -173,6 +181,9 @@ select
   affinity,
   'damage',
   15,
+  null,
+  null,
+  null,
   2
 from basic_seed_cards
 where category = 'creature'
@@ -183,38 +194,55 @@ on conflict (id) do update set
   move_type = excluded.move_type,
   effect_type = excluded.effect_type,
   effect_value = excluded.effect_value,
+  modifier_stat = excluded.modifier_stat,
+  modifier_operation = excluded.modifier_operation,
+  modifier_duration_turns = excluded.modifier_duration_turns,
   power_cost = excluded.power_cost;
 
 insert into public.card_effects (
-  id, card_definition_id, position, effect_type, effect_value
+  id, card_definition_id, position, effect_type, effect_value,
+  modifier_stat, modifier_operation, modifier_duration_turns
 )
 select
   md5('wits-world-basic-effect:' || id::text || ':primary')::uuid,
   id,
   1,
   'heal',
-  15
+  15,
+  null,
+  null,
+  null
 from basic_seed_cards
 where category = 'power'
 on conflict (id) do update set
   card_definition_id = excluded.card_definition_id,
   position = excluded.position,
   effect_type = excluded.effect_type,
-  effect_value = excluded.effect_value;
+  effect_value = excluded.effect_value,
+  modifier_stat = excluded.modifier_stat,
+  modifier_operation = excluded.modifier_operation,
+  modifier_duration_turns = excluded.modifier_duration_turns;
 
 insert into public.card_effects (
-  id, card_definition_id, position, effect_type, effect_value
+  id, card_definition_id, position, effect_type, effect_value,
+  modifier_stat, modifier_operation, modifier_duration_turns
 )
 select
   md5('wits-world-basic-effect:' || id::text || ':secondary')::uuid,
   id,
   2,
   'buff',
-  3
+  3,
+  'damage_multiplier',
+  'multiply',
+  null
 from basic_seed_cards
 where name = 'Spark Legendary Power'
 on conflict (id) do update set
   card_definition_id = excluded.card_definition_id,
   position = excluded.position,
   effect_type = excluded.effect_type,
-  effect_value = excluded.effect_value;
+  effect_value = excluded.effect_value,
+  modifier_stat = excluded.modifier_stat,
+  modifier_operation = excluded.modifier_operation,
+  modifier_duration_turns = excluded.modifier_duration_turns;

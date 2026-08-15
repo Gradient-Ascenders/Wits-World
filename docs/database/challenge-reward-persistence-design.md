@@ -20,7 +20,7 @@ They are inputs to this persistence proposal rather than rules chosen by the
 schema design.
 
 Decks, battles, selling, and evolution remain future work. The Basic starter
-grant is implemented by migration `0009` and the protected
+grant is implemented by migrations `0009` and `0010` and the protected
 `POST /api/v1/cards/starter` endpoint. The schema keeps enough identity and
 ownership information to add later features without treating a card definition
 as an owned card.
@@ -151,12 +151,16 @@ active state, and audit timestamps. Creature definitions also store positive
 - Rarity is `common`, `rare`, `epic`, or `legendary`.
 
 Creature moves are stored in `card_moves` with an ordered position, name, move
-type, effect type, optional effect value, and non-negative Power cost. Power-card
-effects are stored in `card_effects` with an ordered position, effect type, and
-optional effect value. Child-table triggers enforce that moves belong to
-Creatures and effects belong to Power cards. A category-change trigger prevents
-an existing Creature from being changed into a Power card, or vice versa, while
-its child rows remain.
+type, effect type, optional effect value, modifier target/operation metadata,
+optional damage-modifier duration, and non-negative Power cost. Power-card
+effects are stored in `card_effects` with the same ordered effect and modifier
+fields. Buff and Debuff rows require an authored modifier target and operation;
+HP/Power modifiers use `add`, damage-strength modifiers use `multiply`, and only
+damage-strength modifiers may define a positive duration. Damage and Heal rows
+cannot define modifier metadata. Child-table triggers enforce that moves belong
+to Creatures and effects belong to Power cards. A category-change trigger
+prevents an existing Creature from being changed into a Power card, or vice
+versa, while its child rows remain.
 
 The move/effect vocabulary is `basic`, `wit`, `grit`, `spark`, `spirit`, and
 `mystic` for move types, and `damage`, `debuff`, `heal`, and `buff` for effect
@@ -343,8 +347,10 @@ Issue #64 adds the migration layer in dependency order:
 7. `0009_create_card_catalogue_and_starter_grants.sql` adds Creature stats,
    normalized moves/effects, starter grants, starter ownership provenance, and
    the constraints that keep those records consistent.
+8. `0010_add_card_modifier_metadata.sql` adds authored Buff/Debuff modifier
+   targets, operations, durations, and battle-readiness constraints.
 
-The database integration suite applies all nine migrations to an empty
+The database integration suite applies all ten migrations to an empty
 PostgreSQL/PostGIS database and checks that a second run is a no-op. The
 `0002_basic_card_catalogue.sql` seed is repeatable and provides deterministic
 demonstration cards for all starter affinities plus non-Common examples for
@@ -378,4 +384,4 @@ production migration rollout and are tracked as `BASIC-12` in the
 [Basic-tier decision register](../requirements/basic-tier-decision-register.md).
 
 This design was planned, generated, edited, and reviewed with the assistance of
-Codex[GPT-5.6 Sol].
+Codex[GPT-5.6 Sol] and Codex-CLI[gpt-5.6-sol medium].

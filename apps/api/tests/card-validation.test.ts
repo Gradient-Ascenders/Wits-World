@@ -46,6 +46,24 @@ describe('card definition validation', () => {
     expect(() => validateCardDefinition(validPower)).not.toThrow();
   });
 
+  it('accepts explicit null modifier metadata for direct effects', () => {
+    expect(() =>
+      validateCardDefinition({
+        ...validPower,
+        effects: [
+          {
+            position: 1,
+            effectType: 'heal',
+            effectValue: 10,
+            modifierStat: null,
+            modifierOperation: null,
+            modifierDurationTurns: null,
+          },
+        ],
+      }),
+    ).not.toThrow();
+  });
+
   it('does not impose rarity-wide stat ranges', () => {
     expect(() =>
       validateCardDefinition({
@@ -96,11 +114,63 @@ describe('card definition validation', () => {
         ...validPower,
         effects: [
           { position: 1, effectType: 'damage' },
-          { position: 2, effectType: 'debuff' },
+          {
+            position: 2,
+            effectType: 'debuff',
+            modifierStat: 'hp',
+            modifierOperation: 'add',
+          },
           { position: 3, effectType: 'heal' },
-          { position: 4, effectType: 'buff' },
+          {
+            position: 4,
+            effectType: 'buff',
+            modifierStat: 'damage_multiplier',
+            modifierOperation: 'multiply',
+          },
         ],
       }),
     ).not.toThrow();
+  });
+
+  it('requires modifier metadata for Buff and Debuff effects', () => {
+    expect(() =>
+      validateCardDefinition({
+        ...validPower,
+        effects: [{ position: 1, effectType: 'buff', effectValue: 3 }],
+      }),
+    ).toThrow('effects require modifier metadata');
+  });
+
+  it('validates modifier operation, target, and duration combinations', () => {
+    expect(() =>
+      validateCardDefinition({
+        ...validPower,
+        effects: [
+          {
+            position: 1,
+            effectType: 'buff',
+            effectValue: 3,
+            modifierStat: 'damage_multiplier',
+            modifierOperation: 'add',
+          },
+        ],
+      }),
+    ).toThrow('requires multiply');
+
+    expect(() =>
+      validateCardDefinition({
+        ...validPower,
+        effects: [
+          {
+            position: 1,
+            effectType: 'buff',
+            effectValue: 3,
+            modifierStat: 'hp',
+            modifierOperation: 'add',
+            modifierDurationTurns: 2,
+          },
+        ],
+      }),
+    ).toThrow('Only damage-strength modifiers can define a duration');
   });
 });

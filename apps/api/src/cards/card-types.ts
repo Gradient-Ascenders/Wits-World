@@ -24,6 +24,14 @@ export const effectTypes = ['damage', 'debuff', 'heal', 'buff'] as const;
 
 export type EffectType = (typeof effectTypes)[number];
 
+export const modifierStats = ['hp', 'power', 'damage_multiplier'] as const;
+
+export type ModifierStat = (typeof modifierStats)[number];
+
+export const modifierOperations = ['add', 'multiply'] as const;
+
+export type ModifierOperation = (typeof modifierOperations)[number];
+
 export interface CardMove {
   id: string;
   position: number;
@@ -31,6 +39,9 @@ export interface CardMove {
   moveType: MoveType;
   effectType: EffectType;
   effectValue: number | null;
+  modifierStat: ModifierStat | null;
+  modifierOperation: ModifierOperation | null;
+  modifierDurationTurns: number | null;
   powerCost: number;
 }
 
@@ -39,6 +50,9 @@ export interface CardEffect {
   position: number;
   effectType: EffectType;
   effectValue: number | null;
+  modifierStat: ModifierStat | null;
+  modifierOperation: ModifierOperation | null;
+  modifierDurationTurns: number | null;
 }
 
 export interface CardDefinition {

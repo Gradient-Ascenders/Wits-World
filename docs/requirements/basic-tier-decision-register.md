@@ -23,6 +23,16 @@ The linked Gitea issue or comment is the evidence source. Approval of this
 register consolidates those sources; it does not retrospectively invent a
 stakeholder decision.
 
+### BASIC-09 modifier amendment
+
+The explicit BASIC-09/#74 amendment records the battle-ready Buff/Debuff
+contract: authored modifier targets are `hp`, `power`, or `damage_multiplier`;
+HP and Power use `add`; damage strength uses `multiply`; `effectValue` is the
+magnitude and is a percentage for damage strength; only damage-strength
+modifiers may define `durationTurns`; and missing required modifier metadata is
+invalid battle data. The catalogue, API, seed, and game-rules adapter must carry
+these fields rather than infer them. See [issue #74 comment 4832](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/74#issuecomment-4832).
+
 ## Decision register
 
 | ID         | Topic                                               | Status on 2026-08-14                              | Decision or blocker                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Owner                                               | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -82,4 +92,4 @@ not guess a blocked value. In particular:
   superseded, and accepted answers remain private.
 
 This register was planned, generated, and edited with the assistance of
-Codex-CLI[GPT-5].
+Codex-CLI[GPT-5] and Codex-CLI[gpt-5.6-sol medium].
