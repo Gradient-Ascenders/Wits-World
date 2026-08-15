@@ -13,6 +13,7 @@ export default defineConfig({
   },
   test: {
     clearMocks: true,
+    include: ['tests/**/*.{test,spec}.{ts,tsx}'],
     coverage: {
       provider: 'v8',
       include: ['src/**/*.{ts,tsx}'],
