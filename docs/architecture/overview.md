@@ -58,7 +58,9 @@ The repository uses a monorepo containing independently buildable applications:
 
 - `apps/web` — React, Vite, and TypeScript web application;
 - `apps/api` — Fastify and TypeScript hand-written HTTP API;
-- `apps/docs` — public documentation application.
+- `apps/docs` — public documentation application; and
+- `packages/game-rules` — dependency-free pure Basic battle rules shared by the
+  API and later match integrations.
 
 The web application and API communicate through versioned HTTP endpoints.
 
@@ -86,6 +88,7 @@ validated by the API.
 | ----------------------- | --------------------------------------------------------- | --------------------------------------------------------------------- |
 | `apps/web`              | Mobile-first player and author interface                  | Not authoritative for identity, eligibility, rewards, or game results |
 | `apps/api`              | Hand-written HTTP API and protected application rules     | Authoritative for authenticated operations and eligibility decisions  |
+| `packages/game-rules`   | Pure battle state transitions and legal-action validation | Authoritative rules consumed by the API; no browser authority         |
 | PostgreSQL/PostGIS      | Persistent application and geospatial data                | Authoritative store for event coordinates and distance calculations   |
 | Authentication provider | Registration, sign-in, password reset, and token issuance | Authoritative for external identity authentication                    |
 | Map provider            | Map tiles, styles, and visual presentation                | Presentation only                                                     |
@@ -227,4 +230,4 @@ implemented during Sprint 1.
 ---
 
 The preceding document was planned and generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking].
+ChatGPT-Web[GPT-5.6 Thinking] and Codex-CLI[gpt-5.6-sol medium].

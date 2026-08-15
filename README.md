@@ -40,14 +40,15 @@ be treated as implemented features of the current Sprint 1 slice.
 
 ## Architecture at a glance
 
-| Area               | Responsibility                                                                                    |
-| ------------------ | ------------------------------------------------------------------------------------------------- |
-| `apps/web`         | React/Vite player interface, authentication flow, map presentation, and browser interactions      |
-| `apps/api`         | Fastify HTTP API, bearer-token validation, event discovery, eligibility, OpenAPI, and safe errors |
-| PostgreSQL/PostGIS | Authoritative event data, coordinates, radii, and distance calculations                           |
-| Auth0              | External identity authentication and access-token issuance                                        |
-| Mapbox             | Map tiles and visual presentation; it does not decide eligibility                                 |
-| `apps/docs`        | Docusaurus site generated from the repository-level `docs/` directory                             |
+| Area                  | Responsibility                                                                                    |
+| --------------------- | ------------------------------------------------------------------------------------------------- |
+| `apps/web`            | React/Vite player interface, authentication flow, map presentation, and browser interactions      |
+| `apps/api`            | Fastify HTTP API, bearer-token validation, event discovery, eligibility, OpenAPI, and safe errors |
+| `packages/game-rules` | Pure server-consumable Creature and Power-card battle rules and deterministic state transitions   |
+| PostgreSQL/PostGIS    | Authoritative event data, coordinates, radii, and distance calculations                           |
+| Auth0                 | External identity authentication and access-token issuance                                        |
+| Mapbox                | Map tiles and visual presentation; it does not decide eligibility                                 |
+| `apps/docs`           | Docusaurus site generated from the repository-level `docs/` directory                             |
 
 The browser submits a location claim. The API validates it, obtains the event's
 authoritative location from PostgreSQL/PostGIS, and returns the eligibility
@@ -159,6 +160,8 @@ The published site is available at
 │   ├── api/          Fastify API, authentication, event routes, and DB tooling
 │   ├── docs/         Docusaurus documentation application
 │   └── web/          React/Vite player web application
+├── packages/
+│   └── game-rules/   Pure Basic battle rules and deterministic state transitions
 ├── database/
 │   ├── migrations/   Ordered PostgreSQL/PostGIS migrations
 │   └── seeds/        Repeatable development and test fixtures
@@ -167,9 +170,8 @@ The published site is available at
 └── CONTRIBUTING.md   Branch, verification, commit, and AI-attribution standards
 ```
 
-Future shared packages, infrastructure, cross-application tests, and database
-diagrams should be added when they contain active material. Application tests
-live beside their respective workspaces in `apps/web/tests` and `apps/api/tests`.
+Application tests live beside their respective workspaces in `apps/web/tests`,
+`apps/api/tests`, and `packages/game-rules/tests`.
 
 ## Development commands
 

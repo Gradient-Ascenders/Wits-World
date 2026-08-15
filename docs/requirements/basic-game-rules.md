@@ -148,6 +148,18 @@ of rerolling.
   opponent; Heal and Buff target the user's active Creature.
 - `effectValue` is optional and represents the magnitude of a Damage, Debuff,
   Heal, or Buff effect.
+- A battle-ready Buff or Debuff declares a modifier target (`hp`, `power`, or
+  `damage_multiplier`) and operation (`add` or `multiply`). HP and Power
+  modifiers apply immediately and are clamped to the Creature's valid range.
+- Damage-strength modifiers use `effectValue` as a percentage, apply to future
+  Damage effects, and may define `durationTurns`. A duration counts the
+  affected Creature's subsequent turns; an omitted duration lasts for the rest
+  of the match.
+- Multiple damage modifiers are multiplied together. Base Damage, the type
+  multiplier, and active damage modifiers are multiplied and floored once at
+  the end. Damage cannot become negative.
+- Effects are applied in their authored order. An effect that lacks the data
+  required to execute is invalid catalogue data and cannot be used in a battle.
 - `power` is the resource cost consumed from the Creature's remaining Power.
   A move is legal only when the Creature has enough remaining Power.
 - Only Damage is affected by type advantage or disadvantage. The type cycle is
@@ -210,6 +222,11 @@ completed-match history. It does not use direct attribute comparison.
   card definitions, calculates effects, performs required randomness, and
   resolves the authoritative outcome.
 
+The pure implementation lives in `packages/game-rules`. It accepts validated
+card/deck snapshots, returns a new battle state for every legal action, and
+receives randomness through an injected integer source. Match persistence and
+HTTP coordination remain API responsibilities.
+
 ## Basic exclusions
 
 The following are not Basic game rules: PvP, matchmaking, ratings, spectators,
@@ -218,4 +235,4 @@ anti-cheat trust scoring, territory control, seasons, advanced analytics, or an
 advanced author review workflow.
 
 This document was planned, generated, and edited with the assistance of
-Codex-CLI[GPT-5].
+Codex-CLI[gpt-5.6-sol medium].
