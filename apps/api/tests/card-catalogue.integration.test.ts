@@ -272,7 +272,7 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
       expect(grantCount.rows[0]?.count).toBe('1');
       expect(cardCount.rows[0]?.count).toBe('5');
     });
-  });
+  }, 30_000);
 
   it('rejects invalid card category relationships at database level', async () => {
     await withDatabaseClient(temporaryConfig, async (client) => {

@@ -39,6 +39,8 @@ import type { ChallengeAnswerSubmissionService } from './challenges/challenge-an
 import type { StarterGrantService } from './cards/starter-grant.js';
 import { cardRoutes } from './routes/cards.js';
 
+import type { CardCollectionService } from './cards/card-collection.js';
+
 export interface EventServices {
   discovery: EventDiscoveryService;
   eligibility: EventEligibilityService;
@@ -72,6 +74,7 @@ export interface ChallengeAttemptServices {
 
 export interface CardServices {
   starterGrant: StarterGrantService;
+  collection: CardCollectionService;
 }
 
 export async function buildApp({
@@ -250,6 +253,7 @@ export async function buildApp({
     await app.register(cardRoutes, {
       prefix: '/api/v1',
       starterGrantService: cardServices.starterGrant,
+      collectionService: cardServices.collection,
     });
   }
 

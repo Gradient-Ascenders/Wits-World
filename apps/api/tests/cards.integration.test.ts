@@ -10,6 +10,7 @@ import type {
 } from '../src/cards/starter-grant.js';
 import type { OwnedCard } from '../src/cards/card-types.js';
 import type { PlayerIdentityService } from '../src/players/player-identity.js';
+import type { CardCollectionService } from '../src/cards/card-collection.js';
 
 const authConfig: AuthConfig = {
   domain: 'auth.example.test',
@@ -46,10 +47,20 @@ let selectStarter: ReturnType<
   typeof vi.fn<StarterGrantService['selectStarter']>
 >;
 
+let listOwnedCards: ReturnType<
+  typeof vi.fn<CardCollectionService['listOwnedCards']>
+>;
+
+let resolvePlayer: ReturnType<typeof vi.fn<PlayerIdentityService['resolve']>>;
+
 beforeEach(async () => {
   selectStarter = vi
     .fn<StarterGrantService['selectStarter']>()
     .mockResolvedValue(selection);
+
+  listOwnedCards = vi
+    .fn<CardCollectionService['listOwnedCards']>()
+    .mockResolvedValue([]);
 
   const accessTokenVerifier: AccessTokenVerifier = {
     verify: vi.fn().mockResolvedValue({
@@ -58,12 +69,20 @@ beforeEach(async () => {
     }),
   };
 
+  resolvePlayer = vi
+    .fn<PlayerIdentityService['resolve']>()
+    .mockResolvedValue(activeLocalPlayer);
+
   const playerIdentityService: PlayerIdentityService = {
-    resolve: vi.fn().mockResolvedValue(activeLocalPlayer),
+    resolve: resolvePlayer,
   };
 
   const starterGrantService: StarterGrantService = {
     selectStarter,
+  };
+
+  const collectionService: CardCollectionService = {
+    listOwnedCards,
   };
 
   app = await buildApp({
@@ -72,6 +91,7 @@ beforeEach(async () => {
     playerIdentityService,
     cardServices: {
       starterGrant: starterGrantService,
+      collection: collectionService,
     },
     logger: false,
   });
@@ -142,6 +162,126 @@ describe('starter selection API', () => {
   );
 });
 
+describe('card collection API', () => {
+  it('requires authentication', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/cards/collection',
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(listOwnedCards).not.toHaveBeenCalled();
+  });
+
+  it('derives collection ownership from the authenticated player', async () => {
+    const response = await authenticatedCollectionRequest();
+
+    expect(response.statusCode).toBe(200);
+
+    expect(listOwnedCards).toHaveBeenCalledWith(activeLocalPlayer.id);
+  });
+
+  it('rejects a client-supplied player identity query', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url:
+        '/api/v1/cards/collection' +
+        '?playerId=00000000-0000-4000-8000-000000009999',
+      headers: {
+        authorization: 'Bearer test-access-token',
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(listOwnedCards).not.toHaveBeenCalled();
+  });
+
+  it('rejects deletion-pending players', async () => {
+    resolvePlayer.mockResolvedValueOnce({
+      ...activeLocalPlayer,
+      lifecycleStatus: 'deletion_pending',
+    });
+
+    const response = await authenticatedCollectionRequest();
+
+    expect(response.statusCode).toBe(403);
+    expect(listOwnedCards).not.toHaveBeenCalled();
+  });
+
+  it('returns an empty collection', async () => {
+    const response = await authenticatedCollectionRequest();
+
+    expect(response.statusCode).toBe(200);
+
+    expect(response.json()).toEqual({
+      cards: [],
+      requestId: expect.any(String),
+    });
+  });
+
+  it('returns duplicate owned copies independently', async () => {
+    const starterCard = buildTestCard(1);
+
+    const rewardedCopy: OwnedCard = {
+      ...starterCard,
+      ownedCardId: '00000000-0000-4000-8000-000000000690',
+      acquisitionKind: 'event_reward',
+      acquiredAt: '2026-08-15T12:00:00.000Z',
+    };
+
+    listOwnedCards.mockResolvedValueOnce([rewardedCopy, starterCard]);
+
+    const response = await authenticatedCollectionRequest();
+
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json();
+
+    expect(body.cards).toHaveLength(2);
+
+    expect(
+      body.cards.map(
+        (card: { cardDefinitionId: string }) => card.cardDefinitionId,
+      ),
+    ).toEqual([starterCard.cardDefinitionId, starterCard.cardDefinitionId]);
+
+    expect(
+      new Set(
+        body.cards.map((card: { ownedCardId: string }) => card.ownedCardId),
+      ).size,
+    ).toBe(2);
+
+    expect(body.cards[0].acquisitionKind).toBe('event_reward');
+    expect(body.cards[1].acquisitionKind).toBe('starter');
+  });
+
+  it('does not expose player or source provenance identifiers', async () => {
+    listOwnedCards.mockResolvedValueOnce([buildTestCard(1)]);
+
+    const response = await authenticatedCollectionRequest();
+
+    expect(response.statusCode).toBe(200);
+
+    const card = response.json().cards[0];
+
+    expect(card).not.toHaveProperty('playerId');
+    expect(card).not.toHaveProperty('sourceCompletionId');
+    expect(card).not.toHaveProperty('sourceStarterGrantId');
+  });
+
+  it('documents the collection endpoint as bearer authenticated', async () => {
+    await app.ready();
+
+    const document = app.swagger();
+
+    const operation = document.paths?.['/api/v1/cards/collection']?.get;
+
+    expect(operation).toBeDefined();
+    expect(operation?.operationId).toBe('listOwnedCards');
+    expect(operation?.security).toEqual([{ bearerAuth: [] }]);
+  });
+});
+
 async function authenticatedRequest(payload: Record<string, unknown>) {
   return app.inject({
     method: 'POST',
@@ -171,4 +311,14 @@ function buildTestCard(index: number): OwnedCard {
     acquisitionKind: 'starter',
     acquiredAt: '2026-08-15T08:00:00.000Z',
   };
+}
+
+async function authenticatedCollectionRequest() {
+  return app.inject({
+    method: 'GET',
+    url: '/api/v1/cards/collection',
+    headers: {
+      authorization: 'Bearer test-access-token',
+    },
+  });
 }
