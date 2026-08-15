@@ -36,12 +36,22 @@ export interface CompletedChallengeCard {
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
 }
 
+export interface CompletedChallengeQuestionReview {
+  attemptQuestionId: string;
+  correctChoice: ChallengeChoice;
+  isCorrect: boolean;
+  position: number;
+  prompt: string;
+  selectedChoice: ChallengeChoice | null;
+}
+
 export interface CompletedChallengeAttempt {
   attemptId: string;
   completedAt: string;
   completionReason: 'answered' | 'timeout';
   eventId: string;
   format: 'multiple_choice';
+  review: CompletedChallengeQuestionReview[];
   reward: { cards: CompletedChallengeCard[]; coinsAwarded: number };
   scoreCorrect: number;
   status: 'completed';
@@ -288,7 +298,7 @@ function parseInProgressAttempt(
     !isAnswerCount(payload.answeredCount) ||
     !Array.isArray(payload.questions) ||
     payload.questions.length !== 5 ||
-    hasForbiddenQuestionFeedback(payload)
+    hasForbiddenActiveAttemptFeedback(payload)
   ) {
     throw new ChallengeApiError('unavailable');
   }
@@ -328,7 +338,7 @@ function parseQuestion(payload: unknown): ChallengeQuestion {
     payload.choices.length !== 4 ||
     !isNullableUuid(payload.selectedChoiceId) ||
     !isNullableDateTime(payload.answeredAt) ||
-    hasForbiddenQuestionFeedback(payload)
+    hasForbiddenActiveAttemptFeedback(payload)
   ) {
     throw new ChallengeApiError('unavailable');
   }
@@ -359,7 +369,7 @@ function parseChoice(payload: unknown): ChallengeChoice {
     !isUuid(payload.choiceId) ||
     typeof payload.text !== 'string' ||
     payload.text.trim() === '' ||
-    hasForbiddenQuestionFeedback(payload)
+    hasForbiddenActiveAttemptFeedback(payload)
   ) {
     throw new ChallengeApiError('unavailable');
   }
@@ -371,6 +381,19 @@ function parseCompletedAttempt(
   payload: Record<string, unknown>,
 ): CompletedChallengeAttempt {
   if (
+    !hasOnlyKeys(payload, [
+      'attemptId',
+      'completedAt',
+      'completionReason',
+      'eventId',
+      'format',
+      'requestId',
+      'review',
+      'reward',
+      'scoreCorrect',
+      'status',
+      'totalQuestions',
+    ]) ||
     !isUuid(payload.attemptId) ||
     !isUuid(payload.eventId) ||
     payload.format !== 'multiple_choice' ||
@@ -378,11 +401,24 @@ function parseCompletedAttempt(
     !isCompletionReason(payload.completionReason) ||
     payload.totalQuestions !== 5 ||
     !isAnswerCount(payload.scoreCorrect) ||
+    !Array.isArray(payload.review) ||
+    payload.review.length !== 5 ||
     !isRecord(payload.reward) ||
+    !hasOnlyKeys(payload.reward, ['cards', 'coinsAwarded']) ||
     !isNonNegativeInteger(payload.reward.coinsAwarded) ||
     !Array.isArray(payload.reward.cards) ||
-    payload.reward.cards.length > 2 ||
-    hasForbiddenQuestionFeedback(payload)
+    payload.reward.cards.length > 2
+  ) {
+    throw new ChallengeApiError('unavailable');
+  }
+
+  const review = payload.review.map(parseCompletedQuestionReview);
+
+  if (
+    new Set(review.map((question) => question.position)).size !== 5 ||
+    !review.every((question, index) => question.position === index + 1) ||
+    review.filter((question) => question.isCorrect).length !==
+      payload.scoreCorrect
   ) {
     throw new ChallengeApiError('unavailable');
   }
@@ -393,6 +429,7 @@ function parseCompletedAttempt(
     completionReason: payload.completionReason,
     eventId: payload.eventId,
     format: 'multiple_choice',
+    review,
     reward: {
       cards: payload.reward.cards.map(parseRewardCard),
       coinsAwarded: payload.reward.coinsAwarded,
@@ -403,9 +440,70 @@ function parseCompletedAttempt(
   };
 }
 
+function parseCompletedQuestionReview(
+  payload: unknown,
+): CompletedChallengeQuestionReview {
+  if (
+    !isRecord(payload) ||
+    !hasOnlyKeys(payload, [
+      'attemptQuestionId',
+      'position',
+      'prompt',
+      'selectedChoice',
+      'correctChoice',
+      'isCorrect',
+    ]) ||
+    !isUuid(payload.attemptQuestionId) ||
+    !isQuestionPosition(payload.position) ||
+    typeof payload.prompt !== 'string' ||
+    payload.prompt.trim() === '' ||
+    (payload.selectedChoice !== null && !isRecord(payload.selectedChoice)) ||
+    !isRecord(payload.correctChoice) ||
+    typeof payload.isCorrect !== 'boolean'
+  ) {
+    throw new ChallengeApiError('unavailable');
+  }
+
+  const selectedChoice =
+    payload.selectedChoice === null
+      ? null
+      : parseCompletedReviewChoice(payload.selectedChoice);
+  const correctChoice = parseCompletedReviewChoice(payload.correctChoice);
+
+  return {
+    attemptQuestionId: payload.attemptQuestionId,
+    correctChoice,
+    isCorrect: payload.isCorrect,
+    position: payload.position,
+    prompt: payload.prompt,
+    selectedChoice,
+  };
+}
+
+function parseCompletedReviewChoice(payload: Record<string, unknown>) {
+  if (
+    !hasOnlyKeys(payload, ['choiceId', 'text']) ||
+    !isUuid(payload.choiceId) ||
+    typeof payload.text !== 'string' ||
+    payload.text.trim() === ''
+  ) {
+    throw new ChallengeApiError('unavailable');
+  }
+
+  return { choiceId: payload.choiceId, text: payload.text };
+}
+
 function parseRewardCard(payload: unknown): CompletedChallengeCard {
   if (
     !isRecord(payload) ||
+    !hasOnlyKeys(payload, [
+      'affinity',
+      'cardDefinitionId',
+      'category',
+      'name',
+      'ownedCardId',
+      'rarity',
+    ]) ||
     !isUuid(payload.ownedCardId) ||
     !isUuid(payload.cardDefinitionId) ||
     typeof payload.name !== 'string' ||
@@ -427,16 +525,32 @@ function parseRewardCard(payload: unknown): CompletedChallengeCard {
   };
 }
 
-function hasForbiddenQuestionFeedback(
+function hasForbiddenActiveAttemptFeedback(
   payload: Record<string, unknown>,
 ): boolean {
   return [
     'acceptedChoiceId',
     'answerCorrect',
+    'answerKey',
+    'cards',
+    'coinsAwarded',
     'correctAnswer',
     'correctAnswers',
+    'correctChoice',
+    'correctChoiceId',
     'explanation',
+    'isCorrect',
+    'review',
+    'reward',
+    'scoreCorrect',
   ].some((key) => key in payload);
+}
+
+function hasOnlyKeys(
+  payload: Record<string, unknown>,
+  allowedKeys: readonly string[],
+): boolean {
+  return Object.keys(payload).every((key) => allowedKeys.includes(key));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

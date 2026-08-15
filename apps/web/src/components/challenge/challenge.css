@@ -143,6 +143,86 @@
   border-top: 1px solid var(--colour-border-subtle);
 }
 
+.challenge-result__review {
+  margin: var(--space-6) 0;
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--colour-border-subtle);
+}
+
+.challenge-review {
+  display: grid;
+  gap: var(--space-4);
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.challenge-review__item {
+  padding: var(--space-4);
+  border: 1px solid var(--colour-border-default);
+  border-left-width: 0.25rem;
+  border-radius: var(--radius-md);
+  background: var(--colour-background-secondary);
+}
+
+.challenge-review__item--correct {
+  border-left-color: var(--colour-status-success);
+}
+
+.challenge-review__item--incorrect {
+  border-left-color: var(--colour-status-danger);
+}
+
+.challenge-review__item--unanswered {
+  border-left-color: var(--colour-status-warning);
+}
+
+.challenge-review__heading {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.challenge-review__heading h3,
+.challenge-review__status,
+.challenge-review__prompt,
+.challenge-review__answers,
+.challenge-review__answers dd {
+  margin: 0;
+}
+
+.challenge-review__status {
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.challenge-review__prompt {
+  margin-top: var(--space-3);
+  font-weight: 700;
+}
+
+.challenge-review__answers {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.challenge-review__answers div {
+  min-width: 0;
+}
+
+.challenge-review__answers dt {
+  margin-bottom: var(--space-1);
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.challenge-review__answers dd {
+  overflow-wrap: anywhere;
+}
+
 .challenge-result__cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
@@ -174,6 +254,10 @@
 @media (min-width: 48rem) {
   .challenge-header {
     align-items: center;
+  }
+
+  .challenge-review__answers {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

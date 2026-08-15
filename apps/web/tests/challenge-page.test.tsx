@@ -3,7 +3,14 @@ import {
   initialContext,
   type Auth0ContextInterface,
 } from '@auth0/auth0-react';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Route, Router } from 'wouter';
@@ -47,7 +54,9 @@ describe('timed player challenge', () => {
     expect(
       await screen.findByRole('heading', { name: 'Question 1' }),
     ).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Question 1' })).toHaveFocus();
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Question 1' })).toHaveFocus(),
+    );
     expect(screen.getByRole('status')).toHaveTextContent(
       'Challenge ready. Question 1 of 5.',
     );
@@ -75,12 +84,17 @@ describe('timed player challenge', () => {
     expect(
       await screen.findByRole('heading', { name: 'Question 2' }),
     ).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Question 2' })).toHaveFocus();
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Question 2' })).toHaveFocus(),
+    );
     expect(screen.getByRole('status')).toHaveTextContent(
       'Answer saved. Question 2 of 5.',
     );
     expect(
       screen.queryByText(/correct answer|incorrect answer|explanation/i),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: 'Review your answers' }),
     ).not.toBeInTheDocument();
   });
 
@@ -151,7 +165,7 @@ describe('timed player challenge', () => {
     expect(screen.getByRole('button', { name: 'Submit answer' })).toHaveFocus();
   });
 
-  it('renders the persisted final score and reward result without question feedback', async () => {
+  it('renders the persisted final score, rewards, and authoritative answer review', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(jsonResponse(completedAttempt())),
@@ -177,8 +191,18 @@ describe('timed player challenge', () => {
       screen.getByRole('list', { name: 'Earned cards' }),
     ).toHaveTextContent('Campus Spark');
     expect(
-      screen.queryByText(/correct answer|incorrect answer|explanation/i),
-    ).not.toBeInTheDocument();
+      screen.getByRole('heading', { name: 'Review your answers' }),
+    ).toBeVisible();
+
+    const review = screen.getByRole('list', { name: 'Answer review' });
+    const questions = within(review).getAllByRole('listitem');
+
+    expect(questions).toHaveLength(5);
+    expect(within(questions[0]!).getByText('Correct')).toBeVisible();
+    expect(within(questions[0]!).getAllByText('Choice 1.2')).toHaveLength(2);
+    expect(within(questions[3]!).getByText('Incorrect')).toBeVisible();
+    expect(within(questions[3]!).getByText('Choice 4.1')).toBeVisible();
+    expect(within(questions[3]!).getByText('Choice 4.2')).toBeVisible();
   });
 
   it('renders a persisted result with no new cards without inventing a reward', async () => {
@@ -227,6 +251,13 @@ describe('timed player challenge', () => {
       screen.getByRole('heading', { name: 'Your challenge result' }),
     ).toBeVisible();
     expect(screen.getByText(/Time ran out/)).toBeVisible();
+    const review = screen.getByRole('list', { name: 'Answer review' });
+    const unansweredQuestion = within(review).getAllByRole('listitem')[3]!;
+
+    expect(
+      within(unansweredQuestion).getAllByText('Not answered'),
+    ).toHaveLength(2);
+    expect(within(unansweredQuestion).getByText('Choice 4.2')).toBeVisible();
     expect(fetchMock).toHaveBeenLastCalledWith(
       `${apiBaseUrl}/challenge-attempts/${attemptId}`,
       expect.objectContaining({ method: 'GET' }),
@@ -778,11 +809,38 @@ function completedAttempt(
     eventId,
     format: 'multiple_choice',
     requestId: 'request-completed',
+    review: completedReview(completionReason),
     reward,
     scoreCorrect: 3,
     status: 'completed',
     totalQuestions: 5,
   };
+}
+
+function completedReview(completionReason: 'answered' | 'timeout') {
+  return Array.from({ length: 5 }, (_, index) => {
+    const position = index + 1;
+    const isUnanswered = completionReason === 'timeout' && position > 3;
+    const isCorrect = !isUnanswered && position <= 3;
+    const selectedChoiceNumber = isCorrect ? 2 : 1;
+
+    return {
+      attemptQuestionId: questionId(position),
+      position,
+      prompt: `Question ${position}`,
+      selectedChoice: isUnanswered
+        ? null
+        : {
+            choiceId: choiceId(position, selectedChoiceNumber),
+            text: `Choice ${position}.${selectedChoiceNumber}`,
+          },
+      correctChoice: {
+        choiceId: choiceId(position, 2),
+        text: `Choice ${position}.2`,
+      },
+      isCorrect,
+    };
+  });
 }
 
 function jsonResponse(payload: object): Response {

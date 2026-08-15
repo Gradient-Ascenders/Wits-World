@@ -65,6 +65,53 @@ export function ChallengeResult({ attempt, headingRef }: ChallengeResultProps) {
         )}
       </section>
 
+      <section
+        aria-labelledby="challenge-review-title"
+        className="challenge-result__review"
+      >
+        <p className="eyebrow">Completed challenge</p>
+        <h2 id="challenge-review-title">Review your answers</h2>
+        <ol aria-label="Answer review" className="challenge-review">
+          {attempt.review.map((question) => {
+            const answerState =
+              question.selectedChoice === null
+                ? 'Not answered'
+                : question.isCorrect
+                  ? 'Correct'
+                  : 'Incorrect';
+
+            return (
+              <li
+                className={`challenge-review__item challenge-review__item--${
+                  question.selectedChoice === null
+                    ? 'unanswered'
+                    : question.isCorrect
+                      ? 'correct'
+                      : 'incorrect'
+                }`}
+                key={question.attemptQuestionId}
+              >
+                <div className="challenge-review__heading">
+                  <h3>Question {question.position}</h3>
+                  <p className="challenge-review__status">{answerState}</p>
+                </div>
+                <p className="challenge-review__prompt">{question.prompt}</p>
+                <dl className="challenge-review__answers">
+                  <div>
+                    <dt>Your answer</dt>
+                    <dd>{question.selectedChoice?.text ?? 'Not answered'}</dd>
+                  </div>
+                  <div>
+                    <dt>Correct answer</dt>
+                    <dd>{question.correctChoice.text}</dd>
+                  </div>
+                </dl>
+              </li>
+            );
+          })}
+        </ol>
+      </section>
+
       <Link className="button button--link" href="/explore">
         Return to explore
       </Link>

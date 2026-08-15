@@ -12,8 +12,8 @@ live seeded-event experience is available through the protected `/explore`
 route. The protected experience includes one-shot browser geolocation and
 API-authoritative event eligibility and the protected timed challenge journey.
 Challenges restore their server-owned attempt, submit answer intent only, and
-display the persisted final score and rewards. Card collection and battles remain
-outside the live player flow.
+display the persisted final score, rewards, and completed answer review. Card
+collection and battles remain outside the live player flow.
 
 ## Run locally
 
@@ -238,9 +238,14 @@ attempt. The browser sends only the chosen `attemptQuestionId` and `choiceId`.
 It derives its timer from the absolute server deadline and reloads an attempt
 through `GET /api/v1/challenge-attempts/:attemptId` after refresh or timeout.
 
-Basic uses final-score-only feedback. Do not add per-question correctness,
-correct-answer, accepted-choice, or explanation UI. The final result may show
-only the persisted score, coins, and awarded card metadata returned by the API.
+During an in-progress Basic attempt, keep feedback neutral: show “Answer saved”
+and never render correctness, correct choices, answer keys, explanations, score,
+or reward information. Once the API authoritatively completes the attempt, the
+final result renders only the persisted score, reward, and answer-review data in
+that completed response. The browser does not compare choices or mark answers.
+Unanswered timeout items use “Not answered” while still displaying the completed
+response's correct choice. Explanations remain absent until the authoritative
+content model and completed API contract support them.
 
 The production-like browser flow requires an authenticated player and an active
 event with a published challenge containing five valid questions. The current

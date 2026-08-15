@@ -56,14 +56,25 @@ describe('challenge attempt client', () => {
     vi.stubGlobal('fetch', fetchMock);
     const controller = new AbortController();
 
-    await expect(
-      getChallengeAttempt({
-        apiBaseUrl,
-        attemptId,
-        getAccessToken: vi.fn().mockResolvedValue('access-token'),
-        signal: controller.signal,
-      }),
-    ).resolves.toMatchObject({ status: 'completed', scoreCorrect: 3 });
+    const attempt = await getChallengeAttempt({
+      apiBaseUrl,
+      attemptId,
+      getAccessToken: vi.fn().mockResolvedValue('access-token'),
+      signal: controller.signal,
+    });
+
+    expect(attempt).toMatchObject({ status: 'completed', scoreCorrect: 3 });
+
+    if (attempt.status !== 'completed') {
+      throw new Error('Expected a completed attempt.');
+    }
+
+    expect(attempt.review[0]).toMatchObject({
+      position: 1,
+      selectedChoice: { text: 'Choice 1.2' },
+      correctChoice: { text: 'Choice 1.2' },
+      isCorrect: true,
+    });
 
     expect(fetchMock).toHaveBeenCalledWith(
       `${apiBaseUrl}/challenge-attempts/${attemptId}`,
@@ -105,14 +116,68 @@ describe('challenge attempt client', () => {
     );
   });
 
-  it('rejects an active fixture that leaks answer feedback', async () => {
+  it.each([
+    { answerCorrect: true },
+    { scoreCorrect: 1 },
+    { reward: { cards: [], coinsAwarded: 10 } },
+    { review: completedReview() },
+  ])('rejects an active fixture that leaks answer feedback', async (leak) => {
     vi.stubGlobal(
       'fetch',
-      vi
-        .fn()
-        .mockResolvedValue(
-          jsonResponse({ ...activeAttempt(), answerCorrect: true }),
-        ),
+      vi.fn().mockResolvedValue(jsonResponse({ ...activeAttempt(), ...leak })),
+    );
+
+    await expect(
+      getChallengeAttempt({
+        apiBaseUrl,
+        attemptId,
+        getAccessToken: vi.fn().mockResolvedValue('access-token'),
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toBeInstanceOf(ChallengeApiError);
+  });
+
+  it('accepts authoritative review only after completion', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse(completedAttempt())),
+    );
+
+    const result = await getChallengeAttempt({
+      apiBaseUrl,
+      attemptId,
+      getAccessToken: vi.fn().mockResolvedValue('access-token'),
+      signal: new AbortController().signal,
+    });
+
+    expect(result.status).toBe('completed');
+
+    if (result.status !== 'completed') {
+      throw new Error('Expected a completed attempt.');
+    }
+
+    expect(result.review[0]).toMatchObject({
+      selectedChoice: { choiceId: choiceId(1, 2) },
+      correctChoice: { choiceId: choiceId(1, 2) },
+      isCorrect: true,
+    });
+  });
+
+  it('rejects uncontracted answer-key data in a completed review', async () => {
+    const completed = completedAttempt();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          ...completed,
+          review: completed.review.map((question, index) =>
+            index === 0
+              ? { ...question, acceptedChoiceId: choiceId(1, 2) }
+              : question,
+          ),
+        }),
+      ),
     );
 
     await expect(
@@ -194,6 +259,7 @@ function completedAttempt() {
     eventId,
     format: 'multiple_choice',
     requestId: 'request-completed',
+    review: completedReview(),
     reward: {
       cards: [],
       coinsAwarded: 37,
@@ -202,6 +268,29 @@ function completedAttempt() {
     status: 'completed',
     totalQuestions: 5,
   };
+}
+
+function completedReview() {
+  return Array.from({ length: 5 }, (_, index) => {
+    const position = index + 1;
+    const isCorrect = position <= 3;
+    const selectedChoiceNumber = isCorrect ? 2 : 1;
+
+    return {
+      attemptQuestionId: questionId(position),
+      position,
+      prompt: `Question ${position}`,
+      selectedChoice: {
+        choiceId: choiceId(position, selectedChoiceNumber),
+        text: `Choice ${position}.${selectedChoiceNumber}`,
+      },
+      correctChoice: {
+        choiceId: choiceId(position, 2),
+        text: `Choice ${position}.2`,
+      },
+      isCorrect,
+    };
+  });
 }
 
 function jsonResponse(payload: object, status = 200): Response {
