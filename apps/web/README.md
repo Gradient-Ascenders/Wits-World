@@ -13,7 +13,8 @@ route. The protected experience includes one-shot browser geolocation and
 API-authoritative event eligibility and the protected timed challenge journey.
 Challenges restore their server-owned attempt, submit answer intent only, and
 display the persisted final score, rewards, and completed answer review. Card
-collection and battles remain outside the live player flow.
+starter selection and collection browsing are available through the protected
+`/collection` route. Battles remain outside the live player flow.
 
 ## Run locally
 
@@ -204,6 +205,9 @@ for the full flow, privacy boundary, browser limitations, and evidence steps.
 - `/explore` requires Auth0 sign-in and contains the Sprint 1 player experience.
 - `/challenge-attempts/:attemptId` requires Auth0 sign-in and restores an owned
   timed challenge through the API; it never reuses or stores a location claim.
+- `/collection` requires Auth0 sign-in, offers the one-time starter-affinity
+  journey when no starter-owned copy is present, and renders every owned card
+  copy returned by the API.
 - `/about` explains the Wits World project and Wits Quest game/topic distinction.
 - Any unknown route presents a page-not-found message and a link home.
 
@@ -219,6 +223,7 @@ apps/web/
     api/          Typed player-safe API clients and response validation
     auth/         Auth0 provider integration and safe API-token access
     components/   Application shell and reusable status states
+      cards/       Semantic owned-card presentation and collection styling
       exploration/ Provider-independent campus map and event-list presentation
       home/        Decorative map, journey, and collectible-card previews
     config/       Public environment validation
@@ -253,6 +258,51 @@ development seed now provides that challenge and the active reward catalogue;
 use the documented development geolocation override when testing locally. Never
 persist browser locations, tokens, answer keys, or rewards in browser storage.
 
+## Starter selection and card collection
+
+The protected `/collection` route first requests
+`GET /api/v1/cards/collection` with the current Auth0 bearer token. The browser
+renders the returned list in its server order and uses `ownedCardId` as the
+identity of each displayed copy. Two records with the same `cardDefinitionId`
+remain two separate list items; copy labels explain the duplicate count without
+combining or inventing ownership records.
+
+When the returned ownership records contain no starter copy, the route offers
+the five affinities supported by the API. Selecting one sends only its `affinity`
+to `POST /api/v1/cards/starter`. The browser does not generate cards, decide
+whether the player is eligible, or predict the result. It disables and
+synchronously locks submission while the request is active. A successful `200`
+or `201` response reveals exactly the five owned cards returned by the server,
+then a fresh collection request replaces that result when the player continues.
+An authoritative `STARTER_ALREADY_CLAIMED` response explains that the original
+choice remains in effect and offers a collection refresh.
+
+Collection loading, empty, token-expired, and network/API failure states are
+announced in text. Token expiry provides a new Auth0 sign-in action that returns
+to `/collection`; general failures provide a fresh retry. Cards are semantic
+articles rather than controls. Category, affinity, rarity, Creature HP and
+Power, move type/effect/cost, Power-card effects, acquisition kind, duplicate
+copy position, and inactive-catalogue ownership are written as text and never
+depend on art or colour alone. The starter-result heading receives focus after
+the important transition.
+
+### Card artwork and attribution
+
+The current repeatable Basic catalogue seed sets `image_url` to `null` and is
+documented as demonstration content rather than final production artwork in the
+[challenge, reward, and card persistence design](../../docs/database/challenge-reward-persistence-design.md).
+The collection therefore uses a decorative CSS fallback when no artwork URL is
+supplied; that fallback carries no gameplay meaning.
+
+The design system is the current artwork-governance source of truth: existing
+asset provenance must be retained, and production art without confirmed rights
+is excluded. Before a catalogue author sets a non-null card `image_url`, the
+artwork's source, confirmed rights, and any required attribution must be recorded
+in the project's approved asset-provenance documentation. Do not infer a licence
+or ownership claim from the image URL. The browser renders a supplied card image
+with alternative text naming the card, while all gameplay information remains
+available separately as semantic text.
+
 ## Verification
 
 Run automated checks from the repository root:
@@ -272,6 +322,11 @@ empty, retry, map-provider failure, map-independent event presentation,
 user-triggered geolocation, location claim construction, authoritative
 eligibility outcomes, permission and timeout failures, honest preview language,
 safe return paths, configuration failures, and the render-error fallback.
+Card tests additionally cover authenticated API requests and response
+validation, starter selection and result focus, double-submit prevention,
+already-claimed behaviour, collection loading and empty states, populated and
+duplicate-copy presentation, textual gameplay information, session expiry, and
+general failure recovery.
 Vitest does not transform application stylesheets, keeping these jsdom tests
 focused on semantics and behaviour without expensive CSS matching. Automated
 checks do not replace manual visual, responsive, browser, and keyboard testing.
@@ -292,9 +347,9 @@ With `apps/web/.env` configured and the development server running:
    two-column compositions without stretching body text or obscuring headings.
 4. Capture review screenshots under `.pr-screenshots/` at 390×844 and 1280×800.
 5. At 390px, press Tab. Confirm focus moves through Skip to main content, the
-   Wits World brand, Home, Explore, About, account control, Explore the campus,
-   and About the project with a visible outline. Activate the skip link and
-   confirm focus moves to the main landmark.
+   Wits World brand, Home, Explore, Collection, About, account control, Explore
+   the campus, and About the project with a visible outline. Activate the skip
+   link and confirm focus moves to the main landmark.
 6. Enable reduced-motion emulation and confirm transitions are effectively
    removed without hiding information.
 7. Open an unknown route such as `/missing`. Confirm the not-found heading and
@@ -327,9 +382,9 @@ With `apps/web/.env` configured and the development server running:
    Confirm the map failure is announced while the Great Hall event remains
    available in the text list.
 9. Press Tab from the top of `/explore`. Confirm visible focus follows the skip
-   link, Home, Explore, About, account controls, Mapbox controls including reset
-   bearing/pitch, and any retry action in a logical order. Confirm the event can
-   be discovered without using the map.
+   link, Home, Explore, Collection, About, account controls, Mapbox controls
+   including reset bearing/pitch, and any retry action in a logical order.
+   Confirm the event can be discovered without using the map.
 10. Activate Sign out. Confirm Auth0 returns to `/` and reopening `/explore`
     requires sign-in again.
 11. Open an unknown route such as `/missing`. Confirm the not-found heading and
@@ -366,6 +421,46 @@ With `apps/web/.env` configured and the development server running:
    and API outcome. Store screenshots under `.pr-screenshots/issue-21/` and
    attach them to the pull request without exposing tokens or precise location
    values.
+
+#### Authenticated starter and collection
+
+1. Start PostgreSQL/PostGIS and prepare the development database using the API
+   workspace's documented migration and seed commands. Start the API with
+   `npm run dev --workspace @wits-world/api`, then start the browser application
+   with `npm run dev --workspace @wits-world/web`.
+2. Sign in as a development player and open
+   `http://localhost:5173/collection`. For a player without a starter grant,
+   confirm the loading announcement is followed by the five-affinity choice and
+   the explicit empty-collection state.
+3. Use Tab and arrow keys to select an affinity, then activate Choose this
+   affinity. Confirm the action becomes disabled while pending, the result
+   heading receives visible focus, and exactly the five server-returned cards
+   appear. Activate View my collection and confirm a fresh collection load.
+4. Repeat the same-affinity request only through an intentional API retry and
+   confirm the persisted grant is shown. If the server reports
+   `STARTER_ALREADY_CLAIMED` for a different affinity, confirm no fictional
+   result appears and Load my collection recovers the owned copies.
+5. Use a development player with duplicate rewards. Confirm every owned copy is
+   a separate card article and the duplicate labels state “Copy 1 of N” through
+   “Copy N of N”. Confirm Creature HP/Power, moves, and Power-card effects are
+   understandable with images disabled and without relying on colour.
+6. Check the empty, populated, duplicate, API-error, and session-expired states
+   at 360×800, 390×844, 768×1024, and 1280×800. At every width confirm
+   `document.documentElement.scrollWidth <= document.documentElement.clientWidth`,
+   long names and move descriptions wrap, art keeps its aspect ratio, and the
+   fixed mobile navigation does not cover the final action.
+7. Stop the API and use Try loading again after restoring it. Expire or revoke
+   the development session and confirm Sign in again returns to `/collection`.
+   Check the browser console after each recovery; no token, raw server detail,
+   failed unhandled promise, or card ownership identifier should be logged.
+8. Starting from the top of the route, verify visible keyboard focus follows
+   the skip link, brand, primary navigation, account control, affinity radios,
+   primary action, and recovery actions in DOM order. Inspect the accessibility
+   tree to confirm the owned-copy list, card articles, headings, attribute
+   definition lists, move/effect lists, alerts, and statuses have useful names.
+9. Capture disposable review screenshots outside tracked source files (or under
+   the repository's ignored `.pr-screenshots/issue-70/` convention) and do not
+   include account details, tokens, or other private data.
 
 The preceding document was generated and edited with the assistance of:
 Codex-CLI[gpt-5.6-sol medium], Codex-CLI[GPT-5], and Codex[GPT-5].
