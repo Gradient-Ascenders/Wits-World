@@ -10,6 +10,7 @@ import {
   runMigrations,
   type MigrationResult,
 } from '../src/database/migrations.js';
+import { createChallengeAttemptCompletionFinalizer } from '../src/challenges/challenge-attempt-completion-finalizer.js';
 
 const runIntegrationTests =
   process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';
@@ -19,8 +20,11 @@ const EVENT_ID = '20000000-0000-4000-8000-000000000001';
 const CHALLENGE_ID = '30000000-0000-4000-8000-000000000001';
 const INVALID_CHALLENGE_ID = '30000000-0000-4000-8000-000000000002';
 const ATTEMPT_ID = '40000000-0000-4000-8000-000000000001';
+const CONCURRENT_PLAYER_ID = '10000000-0000-4000-8000-000000000002';
+const CONCURRENT_ATTEMPT_ID = '40000000-0000-4000-8000-000000000002';
 const CARD_ID = '50000000-0000-4000-8000-000000000001';
 const STARTER_GRANT_ID = '60000000-0000-4000-8000-000000000001';
+const SECOND_CARD_ID = '50000000-0000-4000-8000-000000000002';
 
 describe.skipIf(!runIntegrationTests)(
   'challenge persistence integration',
@@ -71,6 +75,7 @@ describe.skipIf(!runIntegrationTests)(
           '0005_create_challenge_definitions.sql',
           '0006_create_challenge_attempts.sql',
           '0007_create_cards_rewards_and_ownership.sql',
+          '0008_allow_multiple_event_reward_cards.sql',
           '0009_create_card_catalogue_and_starter_grants.sql',
         ],
         skipped: [],
@@ -86,6 +91,7 @@ describe.skipIf(!runIntegrationTests)(
           '0005_create_challenge_definitions.sql',
           '0006_create_challenge_attempts.sql',
           '0007_create_cards_rewards_and_ownership.sql',
+          '0008_allow_multiple_event_reward_cards.sql',
           '0009_create_card_catalogue_and_starter_grants.sql',
         ],
       });
@@ -337,42 +343,34 @@ describe.skipIf(!runIntegrationTests)(
       });
     }, 45_000);
 
-    it('stores one completion, prevents duplicate rewards, and keeps ownership sources distinct', async () => {
+    it('finalizes one completion, prevents duplicate coins, and allows duplicate card grants', async () => {
       await withDatabaseClient(temporaryConfig, async (client) => {
         const cardResult = await client.query(
           `insert into public.card_definitions (
            id, name, category, affinity, rarity, hp, power, description
-         ) values ($1, 'Persistence Spark', 'creature', 'spark', 'common',
-                   100, 10,
-                   'A card used by the persistence test')
+         ) values
+           ($1, 'Persistence Spark', 'creature', 'spark', 'common', 100, 10,
+            'A card used by the persistence test'),
+           ($2, 'Persistence Spark Copy', 'creature', 'spark', 'common', 110, 12,
+            'A second card used by the persistence test')
          returning id`,
-          [CARD_ID],
+          [CARD_ID, SECOND_CARD_ID],
         );
-        expect(cardResult.rows).toHaveLength(1);
+        expect(cardResult.rows).toHaveLength(2);
+
+        const finalizer = createChallengeAttemptCompletionFinalizer({
+          randomInt: () => 0,
+        });
 
         await client.query('begin');
         try {
-          await client.query(
-            `update public.challenge_attempts
-              set status = 'completed',
-                  completed_at = '2026-08-10T12:01:00Z',
-                  completion_reason = 'answered',
-                  score_correct = 5,
-                  updated_at = now()
-            where id = $1`,
-            [ATTEMPT_ID],
-          );
-          await client.query(
-            `insert into public.event_completions (
-             attempt_id, player_id, event_id, score_correct,
-             average_difficulty, coins_awarded, reward_policy_version,
-             completed_at
-           ) values (
-             $1, $2, $3, 5, 2.00, 63, 'basic-v1',
-             '2026-08-10T12:01:00Z'
-           )`,
-            [ATTEMPT_ID, PLAYER_ID, EVENT_ID],
-          );
+          await finalizer.finalizeAttempt(client, {
+            playerId: PLAYER_ID,
+            attemptId: ATTEMPT_ID,
+            completionReason: 'answered',
+            scoreCorrect: 5,
+            completedAt: new Date('2026-08-10T12:01:00Z'),
+          });
           await client.query('commit');
         } catch (error) {
           await client.query('rollback');
@@ -385,6 +383,21 @@ describe.skipIf(!runIntegrationTests)(
         );
         const completionId = completion.rows[0]?.id;
         expect(completionId).toBeTruthy();
+
+        await client.query('begin');
+        try {
+          await finalizer.finalizeAttempt(client, {
+            playerId: PLAYER_ID,
+            attemptId: ATTEMPT_ID,
+            completionReason: 'answered',
+            scoreCorrect: 5,
+            completedAt: new Date('2026-08-10T12:01:00Z'),
+          });
+          await client.query('commit');
+        } catch (error) {
+          await client.query('rollback');
+          throw error;
+        }
 
         await expect(
           client.query(
@@ -493,17 +506,20 @@ describe.skipIf(!runIntegrationTests)(
           ),
         ).rejects.toThrow();
 
-        await client.query(
-          `insert into public.player_wallets (player_id, coin_balance)
-         values ($1, 63)`,
+        const wallet = await client.query<{ coin_balance: number }>(
+          `select coin_balance from public.player_wallets where player_id = $1`,
           [PLAYER_ID],
         );
-        await client.query(
-          `insert into public.coin_ledger_entries (
-           player_id, amount, reason, completion_id
-         ) values ($1, 63, 'event_reward', $2)`,
-          [PLAYER_ID, completionId],
+        expect(wallet.rows[0]?.coin_balance).toBe(63);
+
+        const ledger = await client.query<{ count: string }>(
+          `select count(*)::text as count
+             from public.coin_ledger_entries
+            where completion_id = $1`,
+          [completionId],
         );
+        expect(ledger.rows[0]?.count).toBe('1');
+
         await expect(
           client.query(
             `insert into public.coin_ledger_entries (
@@ -513,22 +529,6 @@ describe.skipIf(!runIntegrationTests)(
           ),
         ).rejects.toThrow();
 
-        await client.query(
-          `insert into public.player_cards (
-           player_id, card_definition_id, source_completion_id,
-           acquisition_kind
-         ) values ($1, $2, $3, 'event_reward')`,
-          [PLAYER_ID, CARD_ID, completionId],
-        );
-        await expect(
-          client.query(
-            `insert into public.player_cards (
-             player_id, card_definition_id, source_completion_id,
-             acquisition_kind
-           ) values ($1, $2, $3, 'event_reward')`,
-            [PLAYER_ID, CARD_ID, completionId],
-          ),
-        ).rejects.toThrow();
         await client.query(
           `insert into public.player_starter_grants (id, player_id, affinity)
            values ($1, $2, 'spark')`,
@@ -557,7 +557,7 @@ describe.skipIf(!runIntegrationTests)(
           where player_id = $1 and card_definition_id = $2`,
           [PLAYER_ID, CARD_ID],
         );
-        expect(ownedCards.rows[0]?.count).toBe('2');
+        expect(ownedCards.rows[0]?.count).toBe('3');
 
         const eventRewardCards = await client.query<{ count: string }>(
           `select count(*)::text as count
@@ -565,7 +565,7 @@ describe.skipIf(!runIntegrationTests)(
             where source_completion_id = $1`,
           [completionId],
         );
-        expect(eventRewardCards.rows[0]?.count).toBe('1');
+        expect(eventRewardCards.rows[0]?.count).toBe('2');
 
         await expect(
           client.query(
@@ -576,6 +576,145 @@ describe.skipIf(!runIntegrationTests)(
             [ATTEMPT_ID, PLAYER_ID, EVENT_ID],
           ),
         ).rejects.toThrow();
+      });
+    }, 45_000);
+
+    it('converges repeated finalization on one completion and reward', async () => {
+      await withDatabaseClient(temporaryConfig, async (client) => {
+        await client.query(
+          `insert into public.players (
+           id, auth_issuer, auth_subject, role
+         ) values ($1, 'https://issuer.example/', 'subject-concurrent', 'player')`,
+          [CONCURRENT_PLAYER_ID],
+        );
+
+        await client.query('begin');
+        try {
+          await client.query(
+            `insert into public.challenge_attempts (
+             id, player_id, event_id, challenge_id,
+             started_at, deadline, time_limit_seconds, average_difficulty
+           ) values (
+             $1, $2, $3, $4,
+             '2026-08-10T12:00:00Z', '2026-08-10T12:02:00Z', 120, 2.00
+           )`,
+            [
+              CONCURRENT_ATTEMPT_ID,
+              CONCURRENT_PLAYER_ID,
+              EVENT_ID,
+              CHALLENGE_ID,
+            ],
+          );
+
+          for (
+            let questionNumber = 1;
+            questionNumber <= 5;
+            questionNumber += 1
+          ) {
+            const sourceQuestionId = `31000000-0000-4000-8000-${String(
+              questionNumber,
+            ).padStart(12, '0')}`;
+            const attemptQuestionId = `43000000-0000-4000-8000-${String(
+              questionNumber,
+            ).padStart(12, '0')}`;
+
+            await client.query(
+              `insert into public.attempt_questions (
+               id, attempt_id, source_question_id, position,
+               prompt_snapshot, difficulty_snapshot
+             ) values ($1, $2, $3, $4, $5, 2)`,
+              [
+                attemptQuestionId,
+                CONCURRENT_ATTEMPT_ID,
+                sourceQuestionId,
+                questionNumber,
+                `Concurrent persistence question ${questionNumber}`,
+              ],
+            );
+
+            for (let choiceNumber = 1; choiceNumber <= 4; choiceNumber += 1) {
+              const sourceChoiceId = `32000000-0000-4000-8000-${String(
+                questionNumber * 10 + choiceNumber,
+              ).padStart(12, '0')}`;
+              const attemptChoiceId = `44000000-0000-4000-8000-${String(
+                questionNumber * 10 + choiceNumber,
+              ).padStart(12, '0')}`;
+
+              await client.query(
+                `insert into public.attempt_question_choices (
+                 id, attempt_question_id, source_question_id,
+                 source_choice_id, display_position, choice_text_snapshot
+               ) values ($1, $2, $3, $4, $5, $6)`,
+                [
+                  attemptChoiceId,
+                  attemptQuestionId,
+                  sourceQuestionId,
+                  sourceChoiceId,
+                  choiceNumber,
+                  `Concurrent choice ${choiceNumber}`,
+                ],
+              );
+            }
+          }
+
+          await client.query('commit');
+        } catch (error) {
+          await client.query('rollback');
+          throw error;
+        }
+
+        const finalizer = createChallengeAttemptCompletionFinalizer({
+          randomInt: () => 0,
+        });
+        const input = {
+          playerId: CONCURRENT_PLAYER_ID,
+          attemptId: CONCURRENT_ATTEMPT_ID,
+          completionReason: 'answered' as const,
+          scoreCorrect: 5,
+          completedAt: new Date('2026-08-10T12:01:00Z'),
+        };
+
+        await client.query('begin');
+        try {
+          await finalizer.finalizeAttempt(client, input);
+          await client.query('commit');
+        } catch (error) {
+          await client.query('rollback');
+          throw error;
+        }
+
+        await client.query('begin');
+        try {
+          await finalizer.finalizeAttempt(client, input);
+          await client.query('commit');
+        } catch (error) {
+          await client.query('rollback');
+          throw error;
+        }
+
+        const completionCount = await client.query<{ count: string }>(
+          `select count(*)::text as count
+             from public.event_completions
+            where attempt_id = $1`,
+          [CONCURRENT_ATTEMPT_ID],
+        );
+        expect(completionCount.rows[0]?.count).toBe('1');
+
+        const ledgerCount = await client.query<{ count: string }>(
+          `select count(*)::text as count
+             from public.coin_ledger_entries
+            where player_id = $1`,
+          [CONCURRENT_PLAYER_ID],
+        );
+        expect(ledgerCount.rows[0]?.count).toBe('1');
+
+        const cardCount = await client.query<{ count: string }>(
+          `select count(*)::text as count
+             from public.player_cards
+            where player_id = $1`,
+          [CONCURRENT_PLAYER_ID],
+        );
+        expect(cardCount.rows[0]?.count).toBe('2');
       });
     }, 45_000);
   },

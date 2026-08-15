@@ -195,9 +195,10 @@ definition from being inserted twice for one starter grant without preventing
 duplicate copies from later events.
 
 There is deliberately no uniqueness constraint on player and card definition.
-The partial event-reward index permits one event-reward row per completion while
-allowing duplicate card definitions from separate acquisitions, such as two
-starter copies or rewards from different events.
+The event-reward completion index allows the one- or two-card reward result to
+store multiple owned-card rows for one completion while keeping lookups fast.
+Duplicate card definitions remain valid across separate acquisitions, such as
+two starter copies or rewards from different events.
 
 ## Attempt creation transaction
 
@@ -234,11 +235,12 @@ coins = min + round(((averageDifficulty - 1) / 2) * (max - min))
 | `2`     | `20-30`   | None                           |
 | `3`     | `30-40`   | One Common                     |
 | `4`     | `40-50`   | One card: 75% Common, 25% Rare |
-| `5`     | `50-75`   | One event-reward card in Basic |
+| `5`     | `50-75`   | 80% one card, 20% two cards    |
 
-Issue #64 deliberately persists one event-reward card per completion. A future
-multi-card reward policy needs a separate reward-row model before it can be
-enabled without weakening the one-completion guarantee.
+Issue #67 persists one or two event-reward card rows per completion according to
+the approved Basic reward policy. The completion and coin-ledger uniqueness
+constraints remain the idempotency boundary, while the ownership query returns
+all cards linked to the persisted completion.
 
 Each card awarded for five correct answers rolls rarity independently: 45%
 Common, 40% Rare, 14% Epic, and 1% Legendary. After rarity selection, one active
@@ -265,7 +267,7 @@ same transaction:
 3. Calculate score and rewards from the attempt snapshots.
 4. Insert the event completion.
 5. Insert and apply a positive coin ledger credit.
-6. Insert zero or one event-reward ownership row.
+6. Insert zero, one, or two event-reward ownership rows.
 7. Mark the attempt completed with its reason, score, and timestamp.
 8. Commit, then return the persisted result.
 
@@ -336,14 +338,13 @@ Issue #64 adds the migration layer in dependency order:
    shuffled four-choice snapshots, and locked answers.
 5. `0007_create_cards_rewards_and_ownership.sql` adds card definitions,
    completions, wallets, coin ledger entries, and owned card copies.
-6. The `0008` event-reward migration from issue #67 must run before the
-   catalogue migration when that branch is merged; it permits the confirmed
-   reward-card multiplicity without changing starter ownership rules.
+6. `0008_allow_multiple_event_reward_cards.sql` allows the approved perfect
+   score reward to persist two event-reward card copies for one completion.
 7. `0009_create_card_catalogue_and_starter_grants.sql` adds Creature stats,
    normalized moves/effects, starter grants, starter ownership provenance, and
    the constraints that keep those records consistent.
 
-The database integration suite applies the migrations to an empty
+The database integration suite applies all nine migrations to an empty
 PostgreSQL/PostGIS database and checks that a second run is a no-op. The
 `0002_basic_card_catalogue.sql` seed is repeatable and provides deterministic
 demonstration cards for all starter affinities plus non-Common examples for
