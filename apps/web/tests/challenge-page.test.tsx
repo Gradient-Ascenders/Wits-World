@@ -545,14 +545,12 @@ describe('timed player challenge', () => {
 
   it('reloads authoritative progress after an answer lock conflict', async () => {
     const user = userEvent.setup();
-    vi.stubGlobal(
-      'fetch',
-      vi
-        .fn()
-        .mockResolvedValueOnce(jsonResponse(activeAttempt()))
-        .mockResolvedValueOnce(problemResponse('ANSWER_LOCKED', 409))
-        .mockResolvedValueOnce(jsonResponse(activeAttempt(1))),
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(activeAttempt()))
+      .mockResolvedValueOnce(problemResponse('ANSWER_LOCKED', 409))
+      .mockResolvedValueOnce(jsonResponse(activeAttempt(1)));
+    vi.stubGlobal('fetch', fetchMock);
 
     renderChallenge();
     await user.click(await screen.findByRole('radio', { name: 'Choice 1.2' }));
@@ -564,6 +562,14 @@ describe('timed player challenge', () => {
     expect(screen.getByRole('status')).toHaveTextContent(
       'Challenge ready. Question 2 of 5.',
     );
+    for (const radio of screen.getAllByRole('radio')) {
+      expect(radio).not.toBeChecked();
+    }
+    expect(
+      screen.getByRole('button', { name: 'Submit answer' }),
+    ).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Submit answer' }));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it('loads the persisted result after an already-completed conflict', async () => {

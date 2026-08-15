@@ -114,6 +114,12 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
         }
       }
 
+      if (
+        currentQuestionId(currentAttempt) !== currentQuestionId(nextAttempt)
+      ) {
+        setSelectedChoiceId(null);
+      }
+
       attemptRef.current = nextAttempt;
       latestAppliedGeneration.current = Math.max(
         latestAppliedGeneration.current,
@@ -682,6 +688,19 @@ function toChallengeError(error: unknown): ChallengeApiError {
 function isTerminalChallengeError(error: ChallengeApiError): boolean {
   return (
     error.failure === 'attempt-not-found' || error.failure === 'authorization'
+  );
+}
+
+function currentQuestionId(
+  attempt: PlayerSafeChallengeAttempt | null,
+): string | null {
+  if (attempt?.status !== 'in_progress') {
+    return null;
+  }
+
+  return (
+    attempt.questions.find((question) => question.selectedChoiceId === null)
+      ?.attemptQuestionId ?? null
   );
 }
 
