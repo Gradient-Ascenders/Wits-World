@@ -35,6 +35,15 @@ export interface CompletedChallengeCard {
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
 }
 
+export interface CompletedChallengeReviewEntry {
+  attemptQuestionId: string;
+  position: number;
+  prompt: string;
+  selectedChoice: PlayerSafeChallengeChoice | null;
+  correctChoice: PlayerSafeChallengeChoice;
+  isCorrect: boolean;
+}
+
 export interface CompletedChallengeAttempt {
   attemptId: string;
   eventId: string;
@@ -48,6 +57,7 @@ export interface CompletedChallengeAttempt {
     coinsAwarded: number;
     cards: CompletedChallengeCard[];
   };
+  review: CompletedChallengeReviewEntry[];
 }
 
 export type PlayerSafeChallengeAttempt =
@@ -111,6 +121,17 @@ interface RewardCardRow extends pg.QueryResultRow {
   name: string;
   owned_card_id: string;
   rarity: CompletedChallengeCard['rarity'];
+}
+
+interface CompletedReviewRow extends pg.QueryResultRow {
+  attempt_question_id: string;
+  correct_choice_id: string;
+  correct_choice_text: string;
+  is_correct: boolean;
+  position: number;
+  prompt_snapshot: string;
+  selected_choice_id: string | null;
+  selected_choice_text: string | null;
 }
 
 export function createChallengeAttemptReader(
@@ -349,6 +370,66 @@ async function loadCompletedAttempt(
     [playerId, completion.completion_id],
   );
 
+  const reviewResult = await database.query<CompletedReviewRow>(
+    `
+      select
+        question.id::text as attempt_question_id,
+        question.position,
+        question.prompt_snapshot,
+        selected_choice.id::text as selected_choice_id,
+        selected_choice.choice_text_snapshot as selected_choice_text,
+        correct_choice.id::text as correct_choice_id,
+        correct_choice.choice_text_snapshot as correct_choice_text,
+        coalesce(
+          selected_choice.source_choice_id = answer_key.accepted_choice_id,
+          false
+        ) as is_correct
+      from public.attempt_questions question
+      left join public.attempt_answers answer
+        on answer.attempt_question_id = question.id
+      left join public.attempt_question_choices selected_choice
+        on selected_choice.attempt_question_id = question.id
+       and selected_choice.id = answer.selected_choice_id
+      join private.challenge_answer_keys answer_key
+        on answer_key.question_id = question.source_question_id
+      join public.attempt_question_choices correct_choice
+        on correct_choice.attempt_question_id = question.id
+       and correct_choice.source_choice_id = answer_key.accepted_choice_id
+      where question.attempt_id = $1::uuid
+      order by question.position
+    `,
+    [attempt.attempt_id],
+  );
+
+  const review = reviewResult.rows.map((entry) => ({
+    attemptQuestionId: entry.attempt_question_id,
+    position: entry.position,
+    prompt: entry.prompt_snapshot,
+    selectedChoice:
+      entry.selected_choice_id === null
+        ? null
+        : {
+            choiceId: entry.selected_choice_id,
+            text: requireSelectedChoiceText(entry),
+          },
+    correctChoice: {
+      choiceId: entry.correct_choice_id,
+      text: entry.correct_choice_text,
+    },
+    isCorrect: entry.is_correct,
+  }));
+
+  if (
+    review.length !== 5 ||
+    review.some((entry, index) => entry.position !== index + 1) ||
+    review.filter((entry) => entry.isCorrect).length !==
+      attempt.score_correct ||
+    (attempt.completion_reason === 'answered' &&
+      review.some((entry) => entry.selectedChoice === null))
+  ) {
+    throw new Error('Completed challenge attempt review is inconsistent.');
+  }
+
   return {
     attemptId: attempt.attempt_id,
     eventId: attempt.event_id,
@@ -369,5 +450,14 @@ async function loadCompletedAttempt(
         rarity: card.rarity,
       })),
     },
+    review,
   };
+}
+
+function requireSelectedChoiceText(entry: CompletedReviewRow): string {
+  if (entry.selected_choice_text === null) {
+    throw new Error('Completed challenge attempt review is inconsistent.');
+  }
+
+  return entry.selected_choice_text;
 }
