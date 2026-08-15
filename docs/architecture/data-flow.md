@@ -4,10 +4,11 @@
 
 This document describes the Sprint 1 authentication, event-discovery, and
 location-eligibility flow, together with the Sprint 2 authenticated card
-collection extension.
+collection and saved-deck extensions.
 
-Challenge answering, reward finalization, deck management, and battles are
-documented separately or remain later work.
+Challenge answering, reward finalization, saved-deck persistence, and later
+battle flows are documented in their linked architecture and database
+contracts.
 
 ## Application startup
 
@@ -160,9 +161,9 @@ GET /api/v1/cards/collection
    providing a deterministic tie-breaker.
 
 A `player_cards.id` identifies one individual owned copy. Multiple ownership rows
-may therefore have the same `card_definition_id`. Those rows represent legitimate
-duplicate copies and must remain distinguishable in collection and later deck
-operations.
+may therefore have the same `card_definition_id`. Those rows represent
+legitimate duplicate copies and must remain distinguishable in collection and
+later deck operations.
 
 Catalogue activity and ownership are separate concepts. An inactive card
 definition is not eligible for new reward or starter selection, but an already
@@ -183,6 +184,71 @@ challenge data such as:
 An empty owned collection is returned successfully as an empty `cards` array.
 Missing authentication or an inactive local-player lifecycle is rejected before
 the collection query runs.
+
+## Saved-deck flow
+
+The protected deck endpoints operate only on the authenticated active player's
+saved decks and owned card copies.
+
+```text
+Validated bearer token
+        |
+        v
+Authenticated local player
+        |
+        v
+name + ownedCardIds
+        |
+        v
+public.player_cards
+  scoped by player_id
+        |
+        v
+public.card_definitions
+ category + rarity
+        |
+        v
+server deck rules
+        |
+        v
+public.player_decks
+        |
+        +----> public.player_deck_cards
+        |
+        +----> public.player_deck_selections
+```
+
+1. The browser authenticates with a bearer access token.
+2. The API derives the active player's local ID from the authenticated context.
+3. Create and update requests contain a deck name and exactly five
+   `ownedCardIds`.
+4. The API resolves every submitted copy through `player_cards` scoped to the
+   authenticated player.
+5. The API loads category and rarity from the authoritative card definition.
+6. The API validates:
+   - five cards exactly;
+   - no repeated owned copy;
+   - three Creature cards;
+   - two Power cards; and
+   - a maximum of ten rarity points.
+7. A valid mutation is committed transactionally.
+8. Active selection stores at most one selected saved deck for the player.
+9. List responses expose only decks belonging to the authenticated player.
+
+The client does not submit authoritative player identity, ownership, category,
+rarity, point totals, or deck validity.
+
+One owned copy may be referenced by more than one saved deck. Two copies of one
+card definition in the same deck are valid only when their `ownedCardId` values
+are different.
+
+Saved decks remain mutable. Match creation must copy the selected deck and
+required authoritative card state into match-owned snapshots before battle
+begins. Later deck or catalogue changes must not alter that snapshot.
+
+The schema, API operations, concurrency behavior, and match-snapshot boundary
+are defined in the
+[saved deck persistence and API design](../database/saved-deck-persistence-design.md).
 
 ## Failure handling
 
@@ -250,12 +316,8 @@ Any later decision to store location claims must document:
 
 The same authority model also applies to later Basic operations:
 
-1. create or resume a challenge session;
-2. submit and mark answers on the server;
-3. finalize a challenge and issue rewards atomically;
-4. validate card and deck ownership;
-5. enforce CPU battle actions; and
-6. store completed match rounds and results.
+1. enforce CPU battle actions; and
+2. store completed match rounds and results.
 
 These operations remain server-authoritative.
 
@@ -267,7 +329,11 @@ Challenge, reward, starter-card, and owned-copy persistence semantics are define
 in the
 [challenge, reward, and card persistence design](../database/challenge-reward-persistence-design.md).
 
+Saved-deck persistence, validation, selection, and the match-snapshot handoff are
+defined in the
+[saved deck persistence and API design](../database/saved-deck-persistence-design.md).
+
 ---
 
 The preceding document was planned and generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking].
+ChatGPT-Web[GPT-5.6 Thinking] and ChatGPT-Web[GPT-5.6 Sol].
