@@ -59,8 +59,8 @@ The main player journey is:
 4. Submit a location claim.
 5. Open an eligible challenge.
 6. Answer a university-related question.
-7. Receive answer feedback.
-8. Earn the event's card once when successful.
+7. Receive a neutral answer-saved confirmation, then the final result.
+8. Receive server-determined rewards when the challenge is complete.
 9. View the card collection.
 10. Create or select a deck.
 11. Complete a turn-based match against the CPU.
@@ -504,17 +504,17 @@ Each interactive component must account for:
 
 The interface must communicate event states through text, icons and colour.
 
-| State               | Meaning                             | Suggested presentation                 |
-| ------------------- | ----------------------------------- | -------------------------------------- |
-| In range            | Player may request access           | Green status with location icon        |
-| Too far             | Outside the accepted area           | Muted status with distance             |
-| Location uncertain  | Accuracy is insufficient            | Amber warning and retry action         |
-| Permission required | Browser location unavailable        | Explanation and enable-location action |
-| Upcoming            | Event is not active yet             | Date or countdown                      |
-| Expired             | Availability period has ended       | Muted expired label                    |
-| Completed           | Reward already earned               | Check icon and completed text          |
-| Unavailable         | Event cannot currently be attempted | Explanation where safe                 |
-| Loading             | Status is still being checked       | Skeleton or progress indicator         |
+| State               | Meaning                                | Suggested presentation                 |
+| ------------------- | -------------------------------------- | -------------------------------------- |
+| In range            | Player may request access              | Green status with location icon        |
+| Too far             | Outside the accepted area              | Muted status with distance             |
+| Location uncertain  | Accuracy is insufficient               | Amber warning and retry action         |
+| Permission required | Browser location unavailable           | Explanation and enable-location action |
+| Upcoming            | Event is not active yet                | Date or countdown                      |
+| Expired             | Availability period has ended          | Muted expired label                    |
+| Completed           | Saved challenge result already present | Check icon and completed text          |
+| Unavailable         | Event cannot currently be attempted    | Explanation where safe                 |
+| Loading             | Status is still being checked          | Skeleton or progress indicator         |
 
 Do not accuse a player of cheating when their location is merely inaccurate or
 ambiguous.
@@ -561,10 +561,14 @@ Prioritise:
 - answer controls;
 - submit action;
 - clear selected state;
-- answer feedback;
-- correct-answer explanation.
+- neutral answer-saved confirmation; and
+- final score and persisted rewards after completion.
 
-Accepted answers must never be revealed before submission.
+Basic-tier challenge feedback is final-score-only. It must not reveal
+per-question correctness, accepted choices, correct answers, or explanations.
+This follows `BASIC-03` in the Basic-tier decision register and supersedes older
+challenge-feedback wording in planning material. Accepted answers must never be
+revealed before submission.
 
 ### 12.4 Reward reveal
 
@@ -713,7 +717,7 @@ Recommended uses:
 - selected marker emphasis;
 - card reveal;
 - progress changes;
-- successful answer feedback;
+- answer-saved confirmation;
 - battle outcome;
 - modal and bottom-sheet movement.
 

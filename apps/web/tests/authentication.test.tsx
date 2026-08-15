@@ -88,6 +88,26 @@ describe('player authentication', () => {
     });
   });
 
+  it('protects a direct challenge route and preserves it after sign-in', async () => {
+    const user = userEvent.setup();
+    const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
+    const challengePath =
+      '/challenge-attempts/31000000-0000-4000-8000-000000000001';
+
+    renderRoute(challengePath, createAuthValue({ loginWithRedirect }));
+
+    expect(
+      screen.getByRole('button', { name: 'Sign in to explore' }),
+    ).toBeVisible();
+    await user.click(
+      screen.getByRole('button', { name: 'Sign in to explore' }),
+    );
+
+    expect(loginWithRedirect).toHaveBeenCalledWith({
+      appState: { returnTo: challengePath },
+    });
+  });
+
   it('shows a safe recoverable message for an authentication error', async () => {
     const user = userEvent.setup();
     const loginWithRedirect = vi.fn().mockResolvedValue(undefined);

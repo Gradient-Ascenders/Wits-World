@@ -27,6 +27,8 @@ export type EventEligibilityState =
   | { status: 'location-uncertain' }
   | { status: 'location-unavailable' }
   | { status: 'reachable' }
+  | { status: 'starting' }
+  | { status: 'start-error' }
   | { status: 'unreachable' };
 
 interface EventListProps {
@@ -34,6 +36,7 @@ interface EventListProps {
   eligibility: Readonly<Record<string, EventEligibilityState | undefined>>;
   eligibilityBusy: boolean;
   onCheckEligibility: (eventId: string) => void;
+  onStartChallenge?: (eventId: string) => void;
   onRetry: () => void;
 }
 
@@ -48,6 +51,7 @@ export function EventList({
   eligibility,
   eligibilityBusy,
   onCheckEligibility,
+  onStartChallenge = () => undefined,
   onRetry,
 }: EventListProps) {
   return (
@@ -100,6 +104,7 @@ export function EventList({
                   eventTitle={event.title}
                   isAnyCheckBusy={eligibilityBusy}
                   onCheck={onCheckEligibility}
+                  onStart={onStartChallenge}
                   state={eligibility[event.id] ?? { status: 'idle' }}
                 />
               ) : null}
@@ -116,11 +121,15 @@ interface EligibilityStatusProps {
   eventTitle: string;
   isAnyCheckBusy: boolean;
   onCheck: (eventId: string) => void;
+  onStart: (eventId: string) => void;
   state: EventEligibilityState;
 }
 
 const eligibilityMessages: Record<
-  Exclude<EventEligibilityState['status'], 'checking' | 'idle' | 'locating'>,
+  Exclude<
+    EventEligibilityState['status'],
+    'checking' | 'idle' | 'locating' | 'reachable' | 'starting'
+  >,
   { message: string; title: string }
 > = {
   'api-error': {
@@ -157,9 +166,10 @@ const eligibilityMessages: Record<
       'Check that location services are available on this device, then try again.',
     title: 'Your browser could not provide a usable location.',
   },
-  reachable: {
-    message: 'You may continue exploring without continuous location tracking.',
-    title: 'This event is reachable from your reported location.',
+  'start-error': {
+    message:
+      'Check your connection and confirm your reported location again before starting.',
+    title: 'The challenge could not start.',
   },
   unreachable: {
     message: 'Move closer to the event and check again when you are ready.',
@@ -172,6 +182,7 @@ function EligibilityStatus({
   eventTitle,
   isAnyCheckBusy,
   onCheck,
+  onStart,
   state,
 }: EligibilityStatusProps) {
   if (state.status === 'idle') {
@@ -210,9 +221,57 @@ function EligibilityStatus({
     );
   }
 
+  if (state.status === 'starting') {
+    return (
+      <div
+        aria-live="polite"
+        className="eligibility-status eligibility-status--loading"
+        role="status"
+      >
+        <strong>Starting your challenge…</strong>
+        <p>
+          Wits World is checking the event again before opening your attempt.
+        </p>
+      </div>
+    );
+  }
+
+  if (state.status === 'reachable') {
+    return (
+      <div
+        aria-live="polite"
+        className="eligibility-status eligibility-status--reachable"
+        role="status"
+      >
+        <strong>This event is reachable from your reported location.</strong>
+        <p>
+          Start when you are ready. Wits World checks a fresh reported location
+          before opening the timed challenge.
+        </p>
+        <button
+          aria-label={`Start challenge for ${eventTitle}`}
+          className="button"
+          disabled={isAnyCheckBusy}
+          onClick={() => onStart(eventId)}
+          type="button"
+        >
+          Start challenge
+        </button>
+        <button
+          aria-label={`Check again for ${eventTitle}`}
+          className="button button--quiet"
+          disabled={isAnyCheckBusy}
+          onClick={() => onCheck(eventId)}
+          type="button"
+        >
+          Check again
+        </button>
+      </div>
+    );
+  }
+
   const content = eligibilityMessages[state.status];
-  const isOutcome =
-    state.status === 'reachable' || state.status === 'unreachable';
+  const isOutcome = state.status === 'unreachable';
 
   return (
     <div

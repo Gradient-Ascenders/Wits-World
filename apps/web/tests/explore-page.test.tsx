@@ -68,6 +68,7 @@ function renderExplore(
   mapFactory: MapFactory,
   authValue = createAuthValue(),
   locationClaimProvider = vi.fn().mockResolvedValue(claim),
+  onChallengeStarted = vi.fn(),
 ) {
   return render(
     <Auth0Context.Provider value={authValue}>
@@ -76,6 +77,7 @@ function renderExplore(
         locationClaimProvider={locationClaimProvider}
         mapFactory={mapFactory}
         mapboxAccessToken={mapboxAccessToken}
+        onChallengeStarted={onChallengeStarted}
       />
     </Auth0Context.Provider>,
   );
@@ -434,6 +436,216 @@ describe('player location eligibility', () => {
     ).toBeEnabled();
   });
 
+  it('starts a challenge only after the API reports the event reachable', async () => {
+    const user = userEvent.setup();
+    const locationClaimProvider = vi.fn().mockResolvedValue(claim);
+    const onChallengeStarted = vi.fn();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(discoveryResponse())
+      .mockResolvedValueOnce(
+        eligibilityResponse({ reachable: true, status: 'reachable' }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            answeredCount: 0,
+            attemptId: '31000000-0000-4000-8000-000000000001',
+            deadline: '2099-09-01T10:02:00.000Z',
+            eventId: event.eventId,
+            format: 'multiple_choice',
+            questions: Array.from({ length: 5 }, (_, index) => ({
+              answeredAt: null,
+              attemptQuestionId: `32000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+              choices: Array.from({ length: 4 }, (_, choiceIndex) => ({
+                choiceId: `33000000-0000-4000-${String(index + 1).padStart(4, '0')}-${String(choiceIndex + 1).padStart(12, '0')}`,
+                text: `Choice ${choiceIndex + 1}`,
+              })),
+              position: index + 1,
+              prompt: `Question ${index + 1}`,
+              selectedChoiceId: null,
+            })),
+            requestId: 'request-start',
+            startedAt: '2099-09-01T10:00:00.000Z',
+            status: 'in_progress',
+            totalQuestions: 5,
+          }),
+          { headers: { 'Content-Type': 'application/json' }, status: 201 },
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderExplore(
+      createMapFactory(),
+      createAuthValue(),
+      locationClaimProvider,
+      onChallengeStarted,
+    );
+
+    await user.click(
+      await screen.findByRole('button', {
+        name: `Check reachability for ${event.title}`,
+      }),
+    );
+    await user.click(
+      await screen.findByRole('button', {
+        name: `Start challenge for ${event.title}`,
+      }),
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(locationClaimProvider).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `${apiBaseUrl}/events/${event.eventId}/challenge-attempts`,
+      expect.objectContaining({ body: JSON.stringify(claim), method: 'POST' }),
+    );
+    expect(onChallengeStarted).toHaveBeenCalledWith(
+      '31000000-0000-4000-8000-000000000001',
+    );
+  });
+
+  it('preserves a fresh-start reachability failure for the player', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(discoveryResponse())
+      .mockResolvedValueOnce(
+        eligibilityResponse({ reachable: true, status: 'reachable' }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 'EVENT_NOT_REACHABLE',
+            detail: 'Safe test detail.',
+            requestId: 'request-start-rejected',
+            status: 403,
+            title: 'Event not reachable',
+            type: 'https://wits.world/problems/event-not-reachable',
+          }),
+          { headers: { 'Content-Type': 'application/json' }, status: 403 },
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderExplore(createMapFactory());
+    await user.click(
+      await screen.findByRole('button', {
+        name: `Check reachability for ${event.title}`,
+      }),
+    );
+    await user.click(
+      await screen.findByRole('button', {
+        name: `Start challenge for ${event.title}`,
+      }),
+    );
+
+    expect(
+      await screen.findByText(
+        'This event is not reachable from your reported location.',
+      ),
+    ).toBeVisible();
+    expect(
+      screen.queryByText('The challenge could not start.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [
+      'a denied browser location',
+      new BrowserLocationError('denied'),
+      undefined,
+      'Location permission was denied.',
+    ],
+    [
+      'a timed-out browser location',
+      new BrowserLocationError('timeout'),
+      undefined,
+      'Getting your location took too long.',
+    ],
+    [
+      'an unavailable browser location',
+      new BrowserLocationError('unavailable'),
+      undefined,
+      'Your browser could not provide a usable location.',
+    ],
+    [
+      'an authentication failure',
+      undefined,
+      problemResponse('UNAUTHENTICATED', 401),
+      'Your session could not check this event.',
+    ],
+    [
+      'an unavailable event',
+      undefined,
+      problemResponse('CHALLENGE_UNAVAILABLE', 409),
+      'This event is not available right now.',
+    ],
+    [
+      'a stale location request',
+      undefined,
+      problemResponse('LOCATION_RETRY_REQUIRED', 409),
+      'That location reading could not be used.',
+    ],
+    [
+      'a network failure',
+      undefined,
+      new TypeError('network interrupted'),
+      'The challenge could not start.',
+    ],
+  ] as const)(
+    'preserves %s when starting a challenge',
+    async (_name, locationError, startError, expectedTitle) => {
+      const user = userEvent.setup();
+      const locationClaimProvider = vi
+        .fn()
+        .mockResolvedValueOnce(claim)
+        .mockImplementationOnce(() => {
+          if (locationError !== undefined) {
+            return Promise.reject(locationError);
+          }
+
+          return Promise.resolve(claim);
+        });
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(discoveryResponse())
+        .mockResolvedValueOnce(
+          eligibilityResponse({ reachable: true, status: 'reachable' }),
+        );
+
+      if (startError instanceof Response) {
+        fetchMock.mockResolvedValueOnce(startError);
+      } else if (startError !== undefined) {
+        fetchMock.mockRejectedValueOnce(startError);
+      }
+
+      vi.stubGlobal('fetch', fetchMock);
+      renderExplore(
+        createMapFactory(),
+        createAuthValue(),
+        locationClaimProvider,
+      );
+
+      await user.click(
+        await screen.findByRole('button', {
+          name: `Check reachability for ${event.title}`,
+        }),
+      );
+      await user.click(
+        await screen.findByRole('button', {
+          name: `Start challenge for ${event.title}`,
+        }),
+      );
+
+      expect(await screen.findByText(expectedTitle)).toBeVisible();
+      expect(
+        screen.getByRole('button', {
+          name: `Check again for ${event.title}`,
+        }),
+      ).toBeEnabled();
+    },
+  );
+
   it('aborts an eligibility request when the page unmounts', async () => {
     const fetchMock = vi
       .fn()
@@ -463,3 +675,17 @@ describe('player location eligibility', () => {
     expect(signal?.aborted).toBe(true);
   });
 });
+
+function problemResponse(code: string, status: number): Response {
+  return new Response(
+    JSON.stringify({
+      code,
+      detail: 'Safe test problem.',
+      requestId: 'request-start-problem',
+      status,
+      title: 'Challenge start problem',
+      type: 'https://wits.world/problems/challenge-start',
+    }),
+    { headers: { 'Content-Type': 'application/json' }, status },
+  );
+}

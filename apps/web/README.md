@@ -10,8 +10,10 @@ access-token retrieval, and a premium editorial home page. The home-page map,
 event status, and collectible cards are explicitly static product previews; the
 live seeded-event experience is available through the protected `/explore`
 route. The protected experience includes one-shot browser geolocation and
-API-authoritative event eligibility. It does not yet include challenges, cards,
-or battles.
+API-authoritative event eligibility and the protected timed challenge journey.
+Challenges restore their server-owned attempt, submit answer intent only, and
+display the persisted final score and rewards. Card collection and battles remain
+outside the live player flow.
 
 ## Run locally
 
@@ -191,6 +193,8 @@ for the full flow, privacy boundary, browser limitations, and evidence steps.
 
 - `/` presents the mobile-first Wits World home page.
 - `/explore` requires Auth0 sign-in and contains the Sprint 1 player experience.
+- `/challenge-attempts/:attemptId` requires Auth0 sign-in and restores an owned
+  timed challenge through the API; it never reuses or stores a location claim.
 - `/about` explains the Wits World project and Wits Quest game/topic distinction.
 - Any unknown route presents a page-not-found message and a link home.
 
@@ -211,12 +215,29 @@ apps/web/
     config/       Public environment validation
     pages/        Home, About, and not-found pages
     styles/       Mobile-first global styles
-    App.tsx       Routing and application error boundary
+  App.tsx       Routing and application error boundary
     main.tsx      Configuration-aware browser entry point
   tests/          Component, routing, error, and configuration tests
   index.html      Vite HTML entry point
   vite.config.ts  Development, preview, build, and test configuration
 ```
+
+## Timed challenge development
+
+The Basic challenge is a server-authoritative, five-question multiple-choice
+attempt. The browser sends only the chosen `attemptQuestionId` and `choiceId`.
+It derives its timer from the absolute server deadline and reloads an attempt
+through `GET /api/v1/challenge-attempts/:attemptId` after refresh or timeout.
+
+Basic uses final-score-only feedback. Do not add per-question correctness,
+correct-answer, accepted-choice, or explanation UI. The final result may show
+only the persisted score, coins, and awarded card metadata returned by the API.
+
+The production-like browser flow requires an authenticated player and an active
+event with a published challenge containing five valid questions. The current
+demo event seed has no challenge, so use a safe local authoring/test setup before
+capturing screenshots. Never persist browser locations, tokens, answer keys, or
+rewards in browser storage.
 
 ## Verification
 
