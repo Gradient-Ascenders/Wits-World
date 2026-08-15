@@ -46,6 +46,25 @@ describe('challenge reward policy', () => {
     expect(result.cardRarities).toEqual(['rare']);
   });
 
+  it.each([
+    [0, 'common'],
+    [74, 'common'],
+    [75, 'rare'],
+    [99, 'rare'],
+  ])(
+    'selects the score-four rarity at weighted roll %s when both are available',
+    (rarityRoll, expectedRarity) => {
+      const result = calculateChallengeRewardPlan(
+        4,
+        2,
+        ['common', 'rare'],
+        () => rarityRoll,
+      );
+
+      expect(result.cardRarities).toEqual([expectedRarity]);
+    },
+  );
+
   it('supports the two-card perfect-score outcome', () => {
     const result = calculateChallengeRewardPlan(5, 2, ['common'], () => 0);
 
