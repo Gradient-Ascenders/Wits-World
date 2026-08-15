@@ -49,6 +49,44 @@ describe('card API client', () => {
     );
   });
 
+  it('accepts canonical UUIDs produced by the deterministic card catalogue seed', async () => {
+    const cardDefinitionId = '740b5400-8362-b728-3b76-9d232077732d';
+    const moveId = 'eca9b943-9e05-834e-c85c-1175001d897c';
+    const card = buildCard(1);
+    const firstMove = card.moves[0];
+
+    expect(firstMove).toBeDefined();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          cards: [
+            {
+              ...card,
+              cardDefinitionId,
+              moves: [{ ...firstMove!, id: moveId }],
+            },
+          ],
+          requestId: 'collection-request',
+        }),
+      ),
+    );
+
+    await expect(
+      listOwnedCards({
+        apiBaseUrl,
+        getAccessToken,
+        signal: new AbortController().signal,
+      }),
+    ).resolves.toMatchObject([
+      {
+        cardDefinitionId,
+        moves: [{ id: moveId }],
+      },
+    ]);
+  });
+
   it('submits only the selected affinity and returns the server grant', async () => {
     const cards = buildStarterCards('spark');
     const fetchMock = vi.fn().mockResolvedValue(
