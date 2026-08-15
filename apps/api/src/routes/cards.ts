@@ -40,6 +40,9 @@ const moveSchema = {
     'moveType',
     'effectType',
     'effectValue',
+    'modifierStat',
+    'modifierOperation',
+    'modifierDurationTurns',
     'powerCost',
   ],
   properties: {
@@ -55,6 +58,21 @@ const moveSchema = {
       enum: ['damage', 'debuff', 'heal', 'buff'],
     },
     effectValue: { anyOf: [{ type: 'integer', minimum: 0 }, { type: 'null' }] },
+    modifierStat: {
+      anyOf: [
+        {
+          type: 'string',
+          enum: ['hp', 'power', 'damage_multiplier'],
+        },
+        { type: 'null' },
+      ],
+    },
+    modifierOperation: {
+      anyOf: [{ type: 'string', enum: ['add', 'multiply'] }, { type: 'null' }],
+    },
+    modifierDurationTurns: {
+      anyOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }],
+    },
     powerCost: { type: 'integer', minimum: 0 },
   },
 } as const;
@@ -62,7 +80,15 @@ const moveSchema = {
 const effectSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['id', 'position', 'effectType', 'effectValue'],
+  required: [
+    'id',
+    'position',
+    'effectType',
+    'effectValue',
+    'modifierStat',
+    'modifierOperation',
+    'modifierDurationTurns',
+  ],
   properties: {
     id: { type: 'string', format: 'uuid' },
     position: { type: 'integer', minimum: 1 },
@@ -71,6 +97,21 @@ const effectSchema = {
       enum: ['damage', 'debuff', 'heal', 'buff'],
     },
     effectValue: { anyOf: [{ type: 'integer', minimum: 0 }, { type: 'null' }] },
+    modifierStat: {
+      anyOf: [
+        {
+          type: 'string',
+          enum: ['hp', 'power', 'damage_multiplier'],
+        },
+        { type: 'null' },
+      ],
+    },
+    modifierOperation: {
+      anyOf: [{ type: 'string', enum: ['add', 'multiply'] }, { type: 'null' }],
+    },
+    modifierDurationTurns: {
+      anyOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }],
+    },
   },
 } as const;
 

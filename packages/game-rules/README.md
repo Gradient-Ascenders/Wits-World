@@ -7,6 +7,10 @@ The API supplies validated card/deck snapshots and an injected random source.
 Each accepted action returns a new `BattleState` and a transition result. The
 same legal-action validator is used for player and CPU actions.
 
+Catalogue adapters must map the API/database modifier fields into the nested
+`BattleEffect.modifier` shape. The engine rejects Buff/Debuff data when the
+authored target, operation, or required value is missing.
+
 The package currently covers:
 
 - simultaneous initial Creature selection and server-side first-player choice;

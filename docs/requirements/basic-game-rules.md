@@ -160,6 +160,8 @@ of rerolling.
   the end. Damage cannot become negative.
 - Effects are applied in their authored order. An effect that lacks the data
   required to execute is invalid catalogue data and cannot be used in a battle.
+- The target/operation/percentage/duration contract is the explicit
+  BASIC-09/#74 amendment recorded in [issue #74 comment 4832](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/74#issuecomment-4832).
 - `power` is the resource cost consumed from the Creature's remaining Power.
   A move is legal only when the Creature has enough remaining Power.
 - Only Damage is affected by type advantage or disadvantage. The type cycle is

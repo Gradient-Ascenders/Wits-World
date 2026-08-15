@@ -3,10 +3,14 @@ import {
   cardCategories,
   cardRarities,
   effectTypes,
+  modifierOperations,
+  modifierStats,
   moveTypes,
   type CardCategory,
   type CardDefinition,
   type EffectType,
+  type ModifierOperation,
+  type ModifierStat,
   type MoveType,
 } from './card-types.js';
 
@@ -29,6 +33,9 @@ export interface CardMoveInput {
   moveType: MoveType;
   effectType: EffectType;
   effectValue?: number | null;
+  modifierStat?: ModifierStat | null;
+  modifierOperation?: ModifierOperation | null;
+  modifierDurationTurns?: number | null;
   powerCost: number;
 }
 
@@ -36,6 +43,9 @@ export interface CardEffectInput {
   position: number;
   effectType: EffectType;
   effectValue?: number | null;
+  modifierStat?: ModifierStat | null;
+  modifierOperation?: ModifierOperation | null;
+  modifierDurationTurns?: number | null;
 }
 
 export class InvalidCardDefinitionError extends Error {
@@ -104,6 +114,7 @@ function validateMoves(moves: CardMoveInput[]): void {
     assertEnum(move.moveType, moveTypes, 'Move type');
     assertEnum(move.effectType, effectTypes, 'Move effect type');
     assertOptionalNonNegativeInteger(move.effectValue, 'Move effect value');
+    validateEffectModifier(move);
     assertNonNegativeInteger(move.powerCost, 'Move Power cost');
   }
 }
@@ -116,6 +127,69 @@ function validateEffects(effects: CardEffectInput[]): void {
     assertUniquePosition(positions, effect.position, 'effect');
     assertEnum(effect.effectType, effectTypes, 'Effect type');
     assertOptionalNonNegativeInteger(effect.effectValue, 'Effect value');
+    validateEffectModifier(effect);
+  }
+}
+
+function validateEffectModifier(
+  effect: Pick<
+    CardMoveInput | CardEffectInput,
+    | 'effectType'
+    | 'modifierStat'
+    | 'modifierOperation'
+    | 'modifierDurationTurns'
+  >,
+): void {
+  const hasModifierData = [
+    effect.modifierStat,
+    effect.modifierOperation,
+    effect.modifierDurationTurns,
+  ].some((value) => value !== undefined && value !== null);
+
+  if (effect.effectType === 'damage' || effect.effectType === 'heal') {
+    if (hasModifierData) {
+      throw new InvalidCardDefinitionError(
+        `${effect.effectType} effects cannot define modifier metadata.`,
+      );
+    }
+
+    return;
+  }
+
+  if (!effect.modifierStat || !effect.modifierOperation) {
+    throw new InvalidCardDefinitionError(
+      `${effect.effectType} effects require modifier metadata.`,
+    );
+  }
+
+  assertEnum(effect.modifierStat, modifierStats, 'Modifier stat');
+  assertEnum(
+    effect.modifierOperation,
+    modifierOperations,
+    'Modifier operation',
+  );
+  assertOptionalPositiveInteger(
+    effect.modifierDurationTurns,
+    'Modifier duration in turns',
+  );
+
+  if (
+    effect.modifierStat !== 'damage_multiplier' &&
+    effect.modifierDurationTurns !== undefined &&
+    effect.modifierDurationTurns !== null
+  ) {
+    throw new InvalidCardDefinitionError(
+      'Only damage-strength modifiers can define a duration.',
+    );
+  }
+
+  const expectedOperation =
+    effect.modifierStat === 'damage_multiplier' ? 'multiply' : 'add';
+
+  if (effect.modifierOperation !== expectedOperation) {
+    throw new InvalidCardDefinitionError(
+      `Modifier stat ${effect.modifierStat} requires ${expectedOperation}.`,
+    );
   }
 }
 
@@ -163,6 +237,12 @@ function assertNonNegativeInteger(
 function assertOptionalNonNegativeInteger(value: unknown, label: string): void {
   if (value !== null && value !== undefined) {
     assertNonNegativeInteger(value, label);
+  }
+}
+
+function assertOptionalPositiveInteger(value: unknown, label: string): void {
+  if (value !== null && value !== undefined) {
+    assertPositiveInteger(value, label);
   }
 }
 

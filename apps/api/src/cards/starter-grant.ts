@@ -286,6 +286,9 @@ async function loadStarterGrantResult(
               'moveType', move.move_type,
               'effectType', move.effect_type,
               'effectValue', move.effect_value,
+              'modifierStat', move.modifier_stat,
+              'modifierOperation', move.modifier_operation,
+              'modifierDurationTurns', move.modifier_duration_turns,
               'powerCost', move.power_cost
             ) order by move.position
           )
@@ -298,7 +301,10 @@ async function loadStarterGrantResult(
               'id', effect.id::text,
               'position', effect.position,
               'effectType', effect.effect_type,
-              'effectValue', effect.effect_value
+              'effectValue', effect.effect_value,
+              'modifierStat', effect.modifier_stat,
+              'modifierOperation', effect.modifier_operation,
+              'modifierDurationTurns', effect.modifier_duration_turns
             ) order by effect.position
           )
           from public.card_effects effect
