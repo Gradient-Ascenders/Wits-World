@@ -23,6 +23,9 @@ import {
   type LockChallengeAnswerInput,
 } from '../src/challenges/challenge-answer-lock.js';
 
+import { createChallengeAttemptFetchService } from '../src/challenges/challenge-attempt-fetch.js';
+import { createChallengeAttemptCompletionFinalizer } from '../src/challenges/challenge-attempt-completion-finalizer.js';
+
 const EVENT_ID = '00000000-0000-4000-8000-000000000065';
 const CHALLENGE_ID = '30000000-0000-4000-8000-000000000065';
 
@@ -39,6 +42,8 @@ const WRONG_OWNER_INTRUDER_ID = '00000000-0000-4000-8000-000000000171';
 const BINDING_PLAYER_ID = '00000000-0000-4000-8000-000000000172';
 const CONCURRENT_ANSWER_PLAYER_ID = '00000000-0000-4000-8000-000000000173';
 const EXPIRED_ANSWER_PLAYER_ID = '00000000-0000-4000-8000-000000000174';
+
+const FETCH_TIMEOUT_PLAYER_ID = '00000000-0000-4000-8000-000000000176';
 
 const ANSWER_RECEIVED_AT = new Date('2026-09-01T10:01:00.000Z');
 
@@ -748,8 +753,8 @@ describe.skipIf(!runIntegrationTests)(
           finalizationReason: 'timeout',
         });
 
-        // #67 will perform timeout completion/reward finalization atomically.
-        // Until that finalizer exists, do not commit a timeout result.
+        // This test isolates answer-lock expiry classification. Defensive timeout
+        // completion through the concrete finalizer is covered by the fetch test below.
         await client.query('rollback');
       } finally {
         client.release();
@@ -757,6 +762,155 @@ describe.skipIf(!runIntegrationTests)(
 
       expect(await countPersistedAnswers(pool, attempt.attemptId)).toBe(0);
     }, 30_000);
+
+    it('defensively finalizes an expired fetched attempt exactly once', async () => {
+      const attempt = await createAttemptForPlayer(
+        pool,
+        FETCH_TIMEOUT_PLAYER_ID,
+        'fetch-timeout',
+      );
+
+      const acceptedChoice = await pool.query<{
+        attempt_question_id: string;
+        choice_id: string;
+      }>(
+        `
+          select
+            question.id::text as attempt_question_id,
+            choice.id::text as choice_id
+          from public.attempt_questions question
+          join public.attempt_question_choices choice
+            on choice.attempt_question_id = question.id
+          join private.challenge_answer_keys answer_key
+            on answer_key.question_id = question.source_question_id
+          and answer_key.accepted_choice_id = choice.source_choice_id
+          where question.attempt_id = $1::uuid
+            and question.position = 1
+          limit 1
+        `,
+        [attempt.attemptId],
+      );
+
+      const accepted = acceptedChoice.rows[0];
+
+      if (!accepted) {
+        throw new Error(
+          'Expected an accepted persisted choice for timeout scoring.',
+        );
+      }
+
+      await submitNonFinalizingAnswer(pool, {
+        playerId: FETCH_TIMEOUT_PLAYER_ID,
+        attemptId: attempt.attemptId,
+        attemptQuestionId: accepted.attempt_question_id,
+        choiceId: accepted.choice_id,
+        receivedAt: ANSWER_RECEIVED_AT,
+      });
+
+      expect(await countPersistedAnswers(pool, attempt.attemptId)).toBe(1);
+
+      const finalizer = createChallengeAttemptCompletionFinalizer({
+        randomInt: () => 0,
+      });
+
+      const fetchService = createChallengeAttemptFetchService(pool, {
+        finalizer,
+        clock: () => new Date(attempt.deadline),
+      });
+
+      const input = {
+        playerId: FETCH_TIMEOUT_PLAYER_ID,
+        attemptId: attempt.attemptId,
+      };
+
+      const [first, second] = await Promise.all([
+        fetchService.fetchAttempt(input),
+        fetchService.fetchAttempt(input),
+      ]);
+
+      expect(first).toEqual(second);
+
+      expect(first).toMatchObject({
+        attemptId: attempt.attemptId,
+        eventId: EVENT_ID,
+        status: 'completed',
+        completionReason: 'timeout',
+        totalQuestions: 5,
+        scoreCorrect: 1,
+        reward: {
+          coinsAwarded: expect.any(Number),
+          cards: [],
+        },
+      });
+
+      if (first.status !== 'completed') {
+        throw new Error('Expected timeout fetch to return completed state.');
+      }
+
+      expect(first.reward.coinsAwarded).toBeGreaterThan(0);
+
+      const persisted = await pool.query<{
+        card_count: string;
+        coins_awarded: number;
+        completion_count: string;
+        completion_reason: string;
+        ledger_count: string;
+        score_correct: number;
+        status: string;
+        wallet_balance: number;
+      }>(
+        `
+          select
+            attempt.status,
+            attempt.completion_reason,
+            attempt.score_correct,
+            (
+              select count(*)::text
+              from public.event_completions completion
+              where completion.attempt_id = attempt.id
+            ) as completion_count,
+            (
+              select completion.coins_awarded
+              from public.event_completions completion
+              where completion.attempt_id = attempt.id
+            ) as coins_awarded,
+            (
+              select count(*)::text
+              from public.coin_ledger_entries ledger
+              join public.event_completions completion
+                on completion.id = ledger.completion_id
+              where completion.attempt_id = attempt.id
+            ) as ledger_count,
+            (
+              select wallet.coin_balance
+              from public.player_wallets wallet
+              where wallet.player_id = attempt.player_id
+            ) as wallet_balance,
+            (
+              select count(*)::text
+              from public.player_cards owned
+              join public.event_completions completion
+                on completion.id = owned.source_completion_id
+              where completion.attempt_id = attempt.id
+            ) as card_count
+          from public.challenge_attempts attempt
+          where attempt.id = $1::uuid
+            and attempt.player_id = $2::uuid
+        `,
+        [attempt.attemptId, FETCH_TIMEOUT_PLAYER_ID],
+      );
+
+      expect(persisted.rows[0]).toEqual({
+        status: 'completed',
+        completion_reason: 'timeout',
+        score_correct: 1,
+        completion_count: '1',
+        coins_awarded: first.reward.coinsAwarded,
+        ledger_count: '1',
+        wallet_balance: first.reward.coinsAwarded,
+        card_count: '0',
+      });
+    }, 45_000);
   },
 );
 
