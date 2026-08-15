@@ -61,13 +61,16 @@ The preview server uses `http://localhost:4173`.
 
 ## Environment configuration
 
-| Variable                   | Required | Browser-visible | Purpose                                  |
-| -------------------------- | -------- | --------------- | ---------------------------------------- |
-| `VITE_API_BASE_URL`        | Yes      | Yes             | Base URL reserved for the Wits Quest API |
-| `VITE_AUTH0_DOMAIN`        | Yes      | Yes             | Auth0 tenant hostname without a protocol |
-| `VITE_AUTH0_CLIENT_ID`     | Yes      | Yes             | Public Auth0 single-page application ID  |
-| `VITE_AUTH0_AUDIENCE`      | Yes      | Yes             | Audience identifying the Wits World API  |
-| `VITE_MAPBOX_ACCESS_TOKEN` | Yes      | Yes             | URL-restricted public Mapbox `pk.` token |
+| Variable                   | Required | Browser-visible  | Purpose                                            |
+| -------------------------- | -------- | ---------------- | -------------------------------------------------- |
+| `VITE_API_BASE_URL`        | Yes      | Yes              | Base URL reserved for the Wits Quest API           |
+| `VITE_AUTH0_DOMAIN`        | Yes      | Yes              | Auth0 tenant hostname without a protocol           |
+| `VITE_AUTH0_CLIENT_ID`     | Yes      | Yes              | Public Auth0 single-page application ID            |
+| `VITE_AUTH0_AUDIENCE`      | Yes      | Yes              | Audience identifying the Wits World API            |
+| `VITE_MAPBOX_ACCESS_TOKEN` | Yes      | Yes              | URL-restricted public Mapbox `pk.` token           |
+| `VITE_DEV_GEO_LAT`         | No       | Development only | Override latitude for local flow testing           |
+| `VITE_DEV_GEO_LNG`         | No       | Development only | Override longitude for local flow testing          |
+| `VITE_DEV_GEO_ACCURACY`    | No       | Development only | Override accuracy in metres for local flow testing |
 
 The committed `.env.example` contains the approved development domain and
 audience plus safe Client ID and Mapbox token placeholders. A fresh checkout
@@ -78,6 +81,12 @@ is recorded in [Mapbox operations](../../docs/deployment/mapbox-operations.md).
 Only public values may use the `VITE_` prefix because Vite includes them in the
 browser bundle. Do not place tokens, passwords, private keys, or other secrets in
 this workspace's environment file.
+
+For local location-gated flow testing, place all three optional
+`VITE_DEV_GEO_LAT`, `VITE_DEV_GEO_LNG`, and `VITE_DEV_GEO_ACCURACY` values in
+ignored `.env.local`. They are used only by the Vite development build; production
+builds always use browser geolocation. Leave any value unset to retain normal
+browser geolocation behavior.
 
 The application accepts HTTP and HTTPS API URLs. The Auth0 domain must be a
 hostname without a protocol, path, query, or fragment. If required configuration
