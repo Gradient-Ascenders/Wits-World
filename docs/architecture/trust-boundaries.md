@@ -88,6 +88,9 @@ such as:
 - `isAuthor`;
 - `answerCorrect`;
 - `rewardCardId`;
+- `playerId` as an ownership claim;
+- `deckTotalPoints`;
+- `cardRarity` or `cardCategory` as deck-validation input;
 - `winner`; or
 - `matchResult`.
 
@@ -102,6 +105,20 @@ During Sprint 1, it stores:
 - event availability periods;
 - publication state; and
 - supporting timestamps and identifiers.
+
+Sprint 2 extends this authority boundary with protected gameplay state,
+including:
+
+- owned card-copy identities;
+- card definitions and gameplay metadata;
+- saved decks;
+- exact saved-deck membership by owned-copy ID; and
+- the player's active deck selection.
+
+Database relationships prevent a saved deck from referencing another player's
+owned copy or being selected by another player. Application validation enforces
+the complete five-card composition and rarity-point rules before deck mutations
+commit.
 
 PostGIS performs the authoritative distance calculation between:
 
