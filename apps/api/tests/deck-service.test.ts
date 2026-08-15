@@ -44,6 +44,45 @@ describe('saved deck service', () => {
     expect(executedCommands(fixture.query)).toEqual(['begin', 'commit']);
   });
 
+  it('accepts uppercase owned-card UUIDs returned canonically by PostgreSQL', async () => {
+    const fixture = createFixture();
+
+    const canonicalOwnedCardIds = [
+      'aa000000-0000-4000-8000-000000000001',
+      'ab000000-0000-4000-8000-000000000002',
+      'ac000000-0000-4000-8000-000000000003',
+      'ad000000-0000-4000-8000-000000000004',
+      'ae000000-0000-4000-8000-000000000005',
+    ];
+
+    const rows = authoritativeCards().map((row, index) => ({
+      ...row,
+      owned_card_id: canonicalOwnedCardIds[index]!,
+    }));
+
+    fixture.query.mockImplementation(
+      successfulImplementation({
+        ownedRows: rows,
+      }),
+    );
+
+    const service = createDeckService(fixture.database);
+
+    const deck = await service.createDeck({
+      playerId: PLAYER_ID,
+      name: 'Uppercase UUIDs',
+      ownedCardIds: canonicalOwnedCardIds.map((ownedCardId) =>
+        ownedCardId.toUpperCase(),
+      ),
+    });
+
+    expect(deck.cards.map((card) => card.ownedCardId)).toEqual(
+      canonicalOwnedCardIds,
+    );
+
+    expect(executedCommands(fixture.query)).toEqual(['begin', 'commit']);
+  });
+
   it('rejects an unavailable or cross-player owned copy and rolls back', async () => {
     const fixture = createFixture();
 
@@ -84,6 +123,38 @@ describe('saved deck service', () => {
       service.createDeck({
         playerId: PLAYER_ID,
         name: 'Duplicate copy',
+        ownedCardIds: ids,
+      }),
+    ).rejects.toMatchObject({
+      code: 'DECK_COPY_DUPLICATED',
+    });
+
+    expect(executedSql(fixture.query)).not.toContain(
+      'from public.player_cards owned',
+    );
+
+    expect(executedCommands(fixture.query)).toEqual(['begin', 'rollback']);
+  });
+
+  it('rejects the same owned UUID twice when only the casing differs', async () => {
+    const fixture = createFixture();
+
+    fixture.query.mockImplementation(successfulImplementation());
+
+    const ids = [
+      'aa000000-0000-4000-8000-000000000001',
+      'ab000000-0000-4000-8000-000000000002',
+      'ac000000-0000-4000-8000-000000000003',
+      'ad000000-0000-4000-8000-000000000004',
+      'AD000000-0000-4000-8000-000000000004',
+    ];
+
+    const service = createDeckService(fixture.database);
+
+    await expect(
+      service.createDeck({
+        playerId: PLAYER_ID,
+        name: 'Case duplicate',
         ownedCardIds: ids,
       }),
     ).rejects.toMatchObject({

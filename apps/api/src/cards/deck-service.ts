@@ -324,7 +324,11 @@ async function resolveOwnedDeckCards(
     );
   }
 
-  if (new Set(ownedCardIds).size !== ownedCardIds.length) {
+  const normalizedOwnedCardIds = ownedCardIds.map((ownedCardId) =>
+    ownedCardId.toLowerCase(),
+  );
+
+  if (new Set(normalizedOwnedCardIds).size !== normalizedOwnedCardIds.length) {
     throw new DeckRuleViolationError(
       'DECK_COPY_DUPLICATED',
       'The same owned card copy cannot appear twice in one deck.',
@@ -346,18 +350,18 @@ async function resolveOwnedDeckCards(
         where owned.player_id = $1::uuid
           and owned.id = any($2::uuid[])
       `,
-    [playerId, [...ownedCardIds]],
+    [playerId, normalizedOwnedCardIds],
   );
 
-  if (result.rows.length !== ownedCardIds.length) {
+  if (result.rows.length !== normalizedOwnedCardIds.length) {
     throw new DeckOwnedCardNotFoundError();
   }
 
   const cardsByOwnedId = new Map(
-    result.rows.map((row) => [row.owned_card_id, row]),
+    result.rows.map((row) => [row.owned_card_id.toLowerCase(), row]),
   );
 
-  return ownedCardIds.map((ownedCardId, index) => {
+  return normalizedOwnedCardIds.map((ownedCardId, index) => {
     const row = cardsByOwnedId.get(ownedCardId);
 
     if (!row) {
