@@ -88,6 +88,7 @@ describe.skipIf(!runIntegrationTests)(
           '0011_create_saved_decks.sql',
           '0012_add_author_content_foundation.sql',
           '0013_harden_author_challenge_lifecycle.sql',
+          '0014_add_card_authoring_lifecycle.sql',
         ],
         skipped: [],
       });
@@ -108,6 +109,7 @@ describe.skipIf(!runIntegrationTests)(
           '0011_create_saved_decks.sql',
           '0012_add_author_content_foundation.sql',
           '0013_harden_author_challenge_lifecycle.sql',
+          '0014_add_card_authoring_lifecycle.sql',
         ],
       });
     }, 30_000);
@@ -362,12 +364,12 @@ describe.skipIf(!runIntegrationTests)(
       await withDatabaseClient(temporaryConfig, async (client) => {
         const cardResult = await client.query(
           `insert into public.card_definitions (
-           id, name, category, affinity, rarity, hp, power, description
+           id, name, category, affinity, rarity, hp, power, description, is_active, authoring_status
          ) values
            ($1, 'Persistence Spark', 'creature', 'spark', 'common', 100, 10,
-            'A card used by the persistence test'),
+            'A card used by the persistence test', true, 'published'),
            ($2, 'Persistence Spark Copy', 'creature', 'spark', 'common', 110, 12,
-            'A second card used by the persistence test')
+            'A second card used by the persistence test', true, 'published')
          returning id`,
           [CARD_ID, SECOND_CARD_ID],
         );
@@ -714,7 +716,9 @@ describe.skipIf(!runIntegrationTests)(
         try {
           await client.query(
             `update public.card_definitions
-                set is_active = false
+                set authoring_status = 'retired',
+                    is_active = false,
+                    updated_at = now()
               where rarity = 'common'`,
           );
           await expect(

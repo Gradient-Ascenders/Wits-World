@@ -446,6 +446,109 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
     expect(powerCard?.effects[0]).toHaveProperty('modifierOperation');
     expect(powerCard?.effects[0]).toHaveProperty('modifierDurationTurns');
   });
+
+  it('keeps seeded active cards published in the authoring lifecycle', async () => {
+    await withDatabaseClient(temporaryConfig, async (client) => {
+      const result = await client.query<{
+        invalid_count: string;
+      }>(
+        `
+          select count(*)::text as invalid_count
+          from public.card_definitions
+          where is_active is distinct from (authoring_status = 'published')
+        `,
+      );
+
+      expect(result.rows[0]?.invalid_count).toBe('0');
+    });
+  });
+
+  it('prevents published card content from being edited directly', async () => {
+    await withDatabaseClient(temporaryConfig, async (client) => {
+      const card = await client.query<{
+        id: string;
+      }>(
+        `
+          select id::text as id
+          from public.card_definitions
+          where authoring_status = 'published'
+          order by id
+          limit 1
+        `,
+      );
+
+      const cardId = card.rows[0]?.id;
+
+      if (!cardId) {
+        throw new Error('Expected a published seeded card.');
+      }
+
+      await expect(
+        client.query(
+          `
+            update public.card_definitions
+            set name = name || ' changed',
+                updated_at = now()
+            where id = $1::uuid
+          `,
+          [cardId],
+        ),
+      ).rejects.toThrow();
+    });
+  });
+
+  it('allows published cards to retire but prevents republication', async () => {
+    await withDatabaseClient(temporaryConfig, async (client) => {
+      await client.query('begin');
+
+      try {
+        const card = await client.query<{
+          id: string;
+        }>(
+          `
+            select id::text as id
+            from public.card_definitions
+            where authoring_status = 'published'
+            order by id
+            limit 1
+            for update
+          `,
+        );
+
+        const cardId = card.rows[0]?.id;
+
+        if (!cardId) {
+          throw new Error('Expected a published seeded card.');
+        }
+
+        await client.query(
+          `
+            update public.card_definitions
+            set authoring_status = 'retired',
+                is_active = false,
+                updated_at = now()
+            where id = $1::uuid
+          `,
+          [cardId],
+        );
+
+        await expect(
+          client.query(
+            `
+              update public.card_definitions
+              set authoring_status = 'published',
+                  is_active = true,
+                  updated_at = now()
+              where id = $1::uuid
+            `,
+            [cardId],
+          ),
+        ).rejects.toThrow();
+      } finally {
+        await client.query('rollback');
+      }
+    });
+  });
 });
 
 async function insertCataloguePlayer(
