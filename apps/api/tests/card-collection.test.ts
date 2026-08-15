@@ -177,6 +177,28 @@ describe('card collection service', () => {
     expect(sql).not.toContain('source_completion_id');
     expect(sql).not.toContain('source_starter_grant_id');
   });
+
+  it('loads modifier metadata for moves and effects', async () => {
+    const fixture = createFixture([]);
+
+    const service = createCardCollectionService(fixture.database);
+
+    await service.listOwnedCards(PLAYER_ID);
+
+    const sql = executedSql(fixture.query);
+
+    expect(sql).toContain("'modifierstat', move.modifier_stat");
+    expect(sql).toContain("'modifieroperation', move.modifier_operation");
+    expect(sql).toContain(
+      "'modifierdurationturns', move.modifier_duration_turns",
+    );
+
+    expect(sql).toContain("'modifierstat', effect.modifier_stat");
+    expect(sql).toContain("'modifieroperation', effect.modifier_operation");
+    expect(sql).toContain(
+      "'modifierdurationturns', effect.modifier_duration_turns",
+    );
+  });
 });
 
 function createFixture(rows: pg.QueryResultRow[]) {

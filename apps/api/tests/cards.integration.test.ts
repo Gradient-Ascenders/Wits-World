@@ -280,6 +280,72 @@ describe('card collection API', () => {
     expect(operation?.operationId).toBe('listOwnedCards');
     expect(operation?.security).toEqual([{ bearerAuth: [] }]);
   });
+
+  it('returns populated card modifier metadata through response validation', async () => {
+    const creatureCard: OwnedCard = {
+      ...buildTestCard(1),
+      moves: [
+        {
+          id: '00000000-0000-4000-8000-000000000691',
+          position: 1,
+          name: 'Power Surge',
+          moveType: 'wit',
+          effectType: 'buff',
+          effectValue: 10,
+          modifierStat: 'power',
+          modifierOperation: 'add',
+          modifierDurationTurns: 2,
+          powerCost: 5,
+        },
+      ],
+      effects: [],
+    };
+
+    const powerCard: OwnedCard = {
+      ...buildTestCard(4),
+      moves: [],
+      effects: [
+        {
+          id: '00000000-0000-4000-8000-000000000692',
+          position: 1,
+          effectType: 'buff',
+          effectValue: 10,
+          modifierStat: 'damage_multiplier',
+          modifierOperation: 'multiply',
+          modifierDurationTurns: null,
+        },
+      ],
+    };
+
+    listOwnedCards.mockResolvedValueOnce([creatureCard, powerCard]);
+
+    const response = await authenticatedCollectionRequest();
+
+    expect(response.statusCode).toBe(200);
+
+    expect(response.json().cards).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          moves: [
+            expect.objectContaining({
+              modifierStat: 'power',
+              modifierOperation: 'add',
+              modifierDurationTurns: 2,
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          effects: [
+            expect.objectContaining({
+              modifierStat: 'damage_multiplier',
+              modifierOperation: 'multiply',
+              modifierDurationTurns: null,
+            }),
+          ],
+        }),
+      ]),
+    );
+  });
 });
 
 async function authenticatedRequest(payload: Record<string, unknown>) {

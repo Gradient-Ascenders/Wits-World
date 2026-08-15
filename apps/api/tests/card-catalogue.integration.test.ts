@@ -429,6 +429,10 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
 
     expect(creature?.moves.length).toBeGreaterThan(0);
 
+    expect(creature?.moves[0]).toHaveProperty('modifierStat');
+    expect(creature?.moves[0]).toHaveProperty('modifierOperation');
+    expect(creature?.moves[0]).toHaveProperty('modifierDurationTurns');
+
     expect(powerCard).toMatchObject({
       hp: null,
       power: null,
@@ -437,6 +441,10 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
     });
 
     expect(powerCard?.effects.length).toBeGreaterThan(0);
+
+    expect(powerCard?.effects[0]).toHaveProperty('modifierStat');
+    expect(powerCard?.effects[0]).toHaveProperty('modifierOperation');
+    expect(powerCard?.effects[0]).toHaveProperty('modifierDurationTurns');
   });
 });
 
