@@ -102,6 +102,11 @@ describe('browser-to-API CORS policy', () => {
     );
 
     expect(response.headers['access-control-allow-methods']).toContain('GET');
+    expect(response.headers['access-control-allow-methods']).toContain('POST');
+    expect(response.headers['access-control-allow-methods']).toContain('PUT');
+    expect(response.headers['access-control-allow-methods']).toContain(
+      'DELETE',
+    );
 
     expect(response.headers['access-control-allow-headers']).toContain(
       'Authorization',

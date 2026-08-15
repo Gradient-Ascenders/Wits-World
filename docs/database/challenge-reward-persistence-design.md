@@ -19,11 +19,17 @@ and selection behavior used below were confirmed by the team in the
 They are inputs to this persistence proposal rather than rules chosen by the
 schema design.
 
-Decks, battles, selling, and evolution remain future work. The Basic starter
-grant is implemented by migrations `0009` and `0010` and the protected
-`POST /api/v1/cards/starter` endpoint. The schema keeps enough identity and
-ownership information to add later features without treating a card definition
-as an owned card.
+Battles, selling, and evolution remain later work. The Basic starter grant is
+implemented by migrations `0009` and `0010` and the protected
+`POST /api/v1/cards/starter` endpoint.
+
+Saved deck persistence and selection are implemented by migration `0011` and
+the protected `/api/v1/decks` operations. Their schema and authority boundary
+are documented in the
+[saved deck persistence and API design](saved-deck-persistence-design.md).
+
+The ownership model continues to distinguish an individual `player_cards` copy
+from its shared card definition.
 
 ## Required invariants
 
@@ -363,8 +369,11 @@ Issue #64 adds the migration layer in dependency order:
    the constraints that keep those records consistent.
 8. `0010_add_card_modifier_metadata.sql` adds authored Buff/Debuff modifier
    targets, operations, durations, and battle-readiness constraints.
+9. `0011_create_saved_decks.sql` adds saved decks, exact owned-copy
+   memberships, ownership-safe composite relationships, deterministic positions,
+   and one active deck selection per player.
 
-The database integration suite applies all ten migrations to an empty
+The database integration suite applies all eleven migrations to an empty
 PostgreSQL/PostGIS database and checks that a second run is a no-op. The
 `0002_basic_card_catalogue.sql` seed is repeatable and provides deterministic
 demonstration cards for all starter affinities plus non-Common examples for

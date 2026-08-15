@@ -43,6 +43,9 @@ import type { CardCollectionService } from './cards/card-collection.js';
 
 import type { ChallengeAttemptFetchService } from './challenges/challenge-attempt-fetch.js';
 
+import type { DeckService } from './cards/deck-service.js';
+import { deckRoutes } from './routes/decks.js';
+
 export interface EventServices {
   discovery: EventDiscoveryService;
   eligibility: EventEligibilityService;
@@ -78,6 +81,7 @@ export interface ChallengeAttemptServices {
 export interface CardServices {
   starterGrant: StarterGrantService;
   collection: CardCollectionService;
+  decks?: DeckService;
 }
 
 export async function buildApp({
@@ -174,6 +178,10 @@ export async function buildApp({
           name: 'Cards',
           description: 'Player card catalogue and starter selection.',
         },
+        {
+          name: 'Decks',
+          description: 'Player saved decks and active deck selection.',
+        },
       ],
       components: {
         securitySchemes: {
@@ -205,7 +213,7 @@ export async function buildApp({
   if (corsConfig) {
     await app.register(cors, {
       origin: [corsConfig.allowedOrigin],
-      methods: ['GET', 'POST'],
+      methods: ['GET', 'POST', 'PUT', 'DELETE'],
       allowedHeaders: ['Authorization', 'Content-Type'],
       credentials: false,
       preflight: true,
@@ -259,6 +267,13 @@ export async function buildApp({
       starterGrantService: cardServices.starterGrant,
       collectionService: cardServices.collection,
     });
+
+    if (cardServices.decks) {
+      await app.register(deckRoutes, {
+        prefix: '/api/v1',
+        service: cardServices.decks,
+      });
+    }
   }
 
   return app;
