@@ -350,13 +350,22 @@ jobs:
 
           rm -rf node_modules
 
-          npm install -g npm@11.18.0 \
+          NPM_TOOL_ROOT="$(mktemp -d /tmp/witsworld-api-npm.XXXXXX)"
+          trap 'rm -rf "$NPM_TOOL_ROOT"' EXIT
+
+          npm install \
+            --prefix "$NPM_TOOL_ROOT" \
+            --no-save \
+            npm@11.18.0 \
             --no-audit \
             --fund=false >/dev/null
 
-          echo "npm: $(npm --version)"
+          NPM_CLI="$NPM_TOOL_ROOT/node_modules/npm/bin/npm-cli.js"
+          test -f "$NPM_CLI"
 
-          npm ci \
+          echo "npm: $(node "$NPM_CLI" --version)"
+
+          node "$NPM_CLI" ci \
             --prefer-offline \
             --omit=dev \
             --workspace @wits-world/api \
