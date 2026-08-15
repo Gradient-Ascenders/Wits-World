@@ -198,7 +198,7 @@ Open or resume the correct event quiz only after authoritative eligibility.
 
 ### Purpose
 
-Mark quiz answers on the server and return useful learning feedback safely.
+Mark quiz answers on the server while keeping Basic player feedback safe.
 
 ### Acceptance criteria
 
@@ -206,8 +206,10 @@ Mark quiz answers on the server and return useful learning feedback safely.
 - [ ] Attempt, event, question, and authenticated player are bound together
 - [ ] Each question affects the score at most once
 - [ ] Unanswered questions become incorrect after the deadline
-- [ ] Correct and incorrect responses reveal safe answer/explanation feedback
-- [ ] Correct, incorrect, malformed, duplicate, concurrent, expired, and ownership tests pass
+- [ ] Accepted answers produce neutral saved-progress feedback only
+- [ ] Completed Basic results reveal only the final score and reward outcome, never
+      per-question correctness, accepted choices, correct answers, or explanations
+- [ ] Marking, malformed, duplicate, concurrent, expired, and ownership tests pass
 
 ---
 
@@ -259,8 +261,9 @@ Let eligible mobile players complete a quiz and understand its result.
 
 - [ ] The browser submits answer intent, never correctness, score, or rewards
 - [ ] The timer uses the server deadline and refresh resumes the attempt
-- [ ] Correct, incorrect, timeout, expired, duplicate, and reward states are clear
-- [ ] Feedback includes the correct answer or explanation
+- [ ] Saved-progress, timeout, expired, duplicate, and reward states are clear
+- [ ] Basic feedback is final-score-only: no per-question correctness, accepted
+      choices, correct answers, or explanations
 - [ ] Keyboard, touch, screen-reader, and required responsive widths work
 - [ ] UI tests cover active, result, timeout, reward, and failure states
 
