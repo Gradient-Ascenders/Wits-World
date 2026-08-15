@@ -20,6 +20,7 @@ import { createChallengeAttemptCompletionFinalizer } from './challenges/challeng
 import { createCardCollectionService } from './cards/card-collection.js';
 import { createChallengeAttemptFetchService } from './challenges/challenge-attempt-fetch.js';
 import { createDeckService } from './cards/deck-service.js';
+import { createAuthorEventService } from './events/author-event-service.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
@@ -58,6 +59,7 @@ async function startServer(): Promise<void> {
     },
   );
   const deckService = createDeckService(database);
+  const authorEventService = createAuthorEventService(database);
 
   const app = await buildApp({
     config,
@@ -86,6 +88,10 @@ async function startServer(): Promise<void> {
     eventServices: {
       discovery: createEventDiscoveryService(database),
       eligibility: createEventEligibilityService(database),
+    },
+
+    authorContentServices: {
+      events: authorEventService,
     },
   });
 

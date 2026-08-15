@@ -46,6 +46,9 @@ import type { ChallengeAttemptFetchService } from './challenges/challenge-attemp
 import type { DeckService } from './cards/deck-service.js';
 import { deckRoutes } from './routes/decks.js';
 
+import type { AuthorEventService } from './events/author-event-service.js';
+import { authorEventRoutes } from './routes/author-events.js';
+
 export interface EventServices {
   discovery: EventDiscoveryService;
   eligibility: EventEligibilityService;
@@ -64,6 +67,7 @@ export interface BuildAppOptions {
   accountDeletionServices?: AccountDeletionServices;
   challengeAttemptServices?: ChallengeAttemptServices;
   cardServices?: CardServices;
+  authorContentServices?: AuthorContentServices;
 }
 
 export interface AccountDeletionServices {
@@ -84,6 +88,10 @@ export interface CardServices {
   decks?: DeckService;
 }
 
+export interface AuthorContentServices {
+  events?: AuthorEventService;
+}
+
 export async function buildApp({
   authConfig,
   config = {
@@ -97,6 +105,7 @@ export async function buildApp({
   accountDeletionServices,
   challengeAttemptServices,
   cardServices,
+  authorContentServices,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: logger
@@ -147,6 +156,12 @@ export async function buildApp({
     throw new Error('Card services require a player identity service.');
   }
 
+  if (authorContentServices && !playerIdentityService) {
+    throw new Error(
+      'Author content services require a player identity service.',
+    );
+  }
+
   registerErrorHandlers(app);
 
   await app.register(swagger, {
@@ -181,6 +196,10 @@ export async function buildApp({
         {
           name: 'Decks',
           description: 'Player saved decks and active deck selection.',
+        },
+        {
+          name: 'Authoring',
+          description: 'Protected Author-only Basic content management.',
         },
       ],
       components: {
@@ -249,6 +268,13 @@ export async function buildApp({
       eligibilityService: eventServices.eligibility,
       clock: eventServices.clock,
       maxLocationClaimAgeMs: eventServices.maxLocationClaimAgeMs,
+    });
+  }
+
+  if (authorContentServices?.events) {
+    await app.register(authorEventRoutes, {
+      prefix: '/api/v1',
+      service: authorContentServices.events,
     });
   }
 
