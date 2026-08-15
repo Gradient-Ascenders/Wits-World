@@ -248,10 +248,10 @@ response's correct choice. Explanations remain absent until the authoritative
 content model and completed API contract support them.
 
 The production-like browser flow requires an authenticated player and an active
-event with a published challenge containing five valid questions. The current
-demo event seed has no challenge, so use a safe local authoring/test setup before
-capturing screenshots. Never persist browser locations, tokens, answer keys, or
-rewards in browser storage.
+event with a published challenge containing five valid questions. The Great Hall
+development seed now provides that challenge and the active reward catalogue;
+use the documented development geolocation override when testing locally. Never
+persist browser locations, tokens, answer keys, or rewards in browser storage.
 
 ## Verification
 
@@ -368,4 +368,4 @@ With `apps/web/.env` configured and the development server running:
    values.
 
 The preceding document was generated and edited with the assistance of:
-Codex-CLI[gpt-5.6-sol medium] and Codex-CLI[GPT-5].
+Codex-CLI[gpt-5.6-sol medium], Codex-CLI[GPT-5], and Codex[GPT-5].

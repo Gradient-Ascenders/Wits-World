@@ -564,11 +564,13 @@ Prioritise:
 - neutral answer-saved confirmation; and
 - final score and persisted rewards after completion.
 
-Basic-tier challenge feedback is final-score-only. It must not reveal
-per-question correctness, accepted choices, correct answers, or explanations.
-This follows `BASIC-03` in the Basic-tier decision register and supersedes older
-challenge-feedback wording in planning material. Accepted answers must never be
-revealed before submission.
+Marking is server-authoritative. While the timed attempt is active, challenge UI
+must not reveal correctness or answer keys; saved-answer feedback remains neutral.
+After authoritative completion, it presents the five-question review with the
+player's answer, the correct answer, and server-derived correctness. Do not
+invent explanations: the current content model has none. This follows
+`BASIC-03` in the Basic-tier decision register. The browser never calculates the
+review itself.
 
 ### 12.4 Reward reveal
 
@@ -966,7 +968,7 @@ and component foundations rather than creating separate visual systems.
 
 The preceding document was generated with the assistance of:
 ChatGPT-Web[GPT-5.6 Thinking], and reviewed and edited with the assistance of:
-Codex-CLI[GPT-5].
+Codex-CLI[GPT-5], Codex[GPT-5].
 
 Update this declaration when other AI tools materially review, edit or generate
 parts of this document.

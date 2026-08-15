@@ -4,18 +4,18 @@
 
 This journey implements issue #68 for the Wits Quest Basic tier.
 
-`BASIC-03` is authoritative: Basic returns only the final score (`0`–`5`) and
-the persisted reward outcome. It does **not** reveal per-question correctness,
-accepted choices, correct answers, or explanations. This supersedes the older,
-conflicting feedback wording in issue #68 and earlier design/planning material.
+`BASIC-03` is authoritative: marking is server-authoritative. During an active
+timed attempt, no correctness or answer key is revealed. After authoritative
+completion, the player receives a five-question review containing their locked
+answer (or `null` when timeout left it unanswered), the correct answer, and
+server-derived correctness. The current content model has no explanation field.
 
 The browser renders player-safe API state. It does not decide eligibility,
 deadline validity, answer correctness, score, completion, coin amounts, card
 selection, or reward ownership.
 
-The frontend is prepared for Tyron's confirmed attempt-read route below. That
-backend route must be deployed before refresh, resume, and timeout
-reconciliation can work in a running environment.
+The browser renders the same completed review returned by the API; it does not
+compare answers or calculate correctness itself.
 
 ## Journey
 
@@ -35,7 +35,8 @@ reconciliation can work in a running environment.
    “Answer saved” confirmation and advances to the first server-unanswered
    question. It does not reveal whether that answer was correct.
 7. A fifth accepted answer, or expiry, returns the persisted completed result:
-   final score, coins, and zero to two awarded cards.
+   final score, coins, zero to two awarded cards, and the five-question answer
+   review.
 8. Reopening or refreshing the route always reloads authoritative attempt state.
    A completed result is rendered as already saved to the player account; the
    browser does not claim that a repeat response created a new reward.
@@ -76,11 +77,11 @@ its own clock.
 
 ## Local evidence
 
-The current event seed does not include a published five-question challenge.
-Manual evidence therefore requires an authenticated local player, an active
-published event, a published challenge with five valid questions, active reward
-cards, and a reported location the API accepts. Capture 360px, 390px, 768px,
-and desktop evidence under ignored `.pr-screenshots/`. Do not capture access
-tokens, precise location values, answer keys, or other players' data.
+The Great Hall development seed includes an active published event, a published
+five-question challenge, and active reward cards. Manual evidence still requires
+an authenticated local player and a reported location the API accepts. Capture
+360px, 390px, 768px, and desktop evidence under ignored `.pr-screenshots/`. Do
+not capture access tokens, precise location values, answer keys, or other
+players' data.
 
 This document was planned and edited with assistance from Codex[GPT-5].

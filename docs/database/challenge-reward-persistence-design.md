@@ -413,11 +413,13 @@ demonstration cards for all starter affinities plus non-Common examples for
 catalogue/reward testing. The seed does not claim to be final production card
 artwork or balance.
 
-The existing Sprint 1 demo event carries over as an unchanged `events` row. It
-has no challenge until a separate draft `event_challenges` row and at least five
-valid questions are deliberately authored and published. Applying these
-migrations therefore must not make the seed discoverable as a challenge or
-change its current discovery and eligibility behavior.
+The existing Sprint 1 demo event carries over as an unchanged `events` row.
+For local development, `0003_sprint_1_demo_challenge.sql` supplies one
+deterministic published challenge with five valid questions, immutable private
+answer keys, and the existing seeded reward catalogue. It makes the real
+challenge flow demonstrable without changing event discovery or eligibility
+rules. The fixture is non-production content; authoring changes to published
+questions still require replacements rather than mutation.
 
 Schema-only migrations may be reversed before challenge data is written. After
 attempts or rewards exist, rollback cannot safely drop ownership, ledger, or

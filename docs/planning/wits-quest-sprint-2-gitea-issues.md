@@ -207,8 +207,9 @@ Mark quiz answers on the server while keeping Basic player feedback safe.
 - [ ] Each question affects the score at most once
 - [ ] Unanswered questions become incorrect after the deadline
 - [ ] Accepted answers produce neutral saved-progress feedback only
-- [ ] Completed Basic results reveal only the final score and reward outcome, never
-      per-question correctness, accepted choices, correct answers, or explanations
+- [ ] Active Basic responses reveal no correctness or answer key; completed
+      results reveal the score, reward outcome, and five-question answer review
+      without explanations
 - [ ] Marking, malformed, duplicate, concurrent, expired, and ownership tests pass
 
 ---
@@ -262,8 +263,8 @@ Let eligible mobile players complete a quiz and understand its result.
 - [ ] The browser submits answer intent, never correctness, score, or rewards
 - [ ] The timer uses the server deadline and refresh resumes the attempt
 - [ ] Saved-progress, timeout, expired, duplicate, and reward states are clear
-- [ ] Basic feedback is final-score-only: no per-question correctness, accepted
-      choices, correct answers, or explanations
+- [ ] Active feedback is neutral; authoritative completion reveals the five
+      server-derived answer-review entries without explanations
 - [ ] Keyboard, touch, screen-reader, and required responsive widths work
 - [ ] UI tests cover active, result, timeout, reward, and failure states
 
@@ -608,5 +609,5 @@ Every Sprint 2 implementation issue is complete only when:
 This issue plan was prepared and reviewed with assistance from:
 
 ```text
-Codex-CLI[GPT-5.6 Sol]
+Codex-CLI[GPT-5.6 Sol], Codex[GPT-5]
 ```
