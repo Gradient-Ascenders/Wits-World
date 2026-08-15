@@ -1,16 +1,21 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type pg from 'pg';
 
 import {
   buildDatabaseConfig,
   loadApiEnvironment,
   type DatabaseConfig,
 } from '../src/config/database.js';
-import { withDatabaseClient } from '../src/database/connection.js';
+import {
+  createDatabasePool,
+  withDatabaseClient,
+} from '../src/database/connection.js';
 import {
   runMigrations,
   type MigrationResult,
 } from '../src/database/migrations.js';
 import { createChallengeAttemptCompletionFinalizer } from '../src/challenges/challenge-attempt-completion-finalizer.js';
+import { RewardCatalogUnavailableError } from '../src/challenges/challenge-reward-policy.js';
 
 const runIntegrationTests =
   process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';
@@ -22,6 +27,8 @@ const INVALID_CHALLENGE_ID = '30000000-0000-4000-8000-000000000002';
 const ATTEMPT_ID = '40000000-0000-4000-8000-000000000001';
 const CONCURRENT_PLAYER_ID = '10000000-0000-4000-8000-000000000002';
 const CONCURRENT_ATTEMPT_ID = '40000000-0000-4000-8000-000000000002';
+const ROLLBACK_PLAYER_ID = '10000000-0000-4000-8000-000000000003';
+const ROLLBACK_ATTEMPT_ID = '40000000-0000-4000-8000-000000000003';
 const CARD_ID = '50000000-0000-4000-8000-000000000001';
 const STARTER_GRANT_ID = '60000000-0000-4000-8000-000000000001';
 const SECOND_CARD_ID = '50000000-0000-4000-8000-000000000002';
@@ -579,7 +586,7 @@ describe.skipIf(!runIntegrationTests)(
       });
     }, 45_000);
 
-    it('converges repeated finalization on one completion and reward', async () => {
+    it('converges concurrent finalization on one completion and reward', async () => {
       await withDatabaseClient(temporaryConfig, async (client) => {
         await client.query(
           `insert into public.players (
@@ -587,111 +594,60 @@ describe.skipIf(!runIntegrationTests)(
          ) values ($1, 'https://issuer.example/', 'subject-concurrent', 'player')`,
           [CONCURRENT_PLAYER_ID],
         );
-
-        await client.query('begin');
-        try {
-          await client.query(
-            `insert into public.challenge_attempts (
-             id, player_id, event_id, challenge_id,
-             started_at, deadline, time_limit_seconds, average_difficulty
-           ) values (
-             $1, $2, $3, $4,
-             '2026-08-10T12:00:00Z', '2026-08-10T12:02:00Z', 120, 2.00
-           )`,
-            [
-              CONCURRENT_ATTEMPT_ID,
-              CONCURRENT_PLAYER_ID,
-              EVENT_ID,
-              CHALLENGE_ID,
-            ],
-          );
-
-          for (
-            let questionNumber = 1;
-            questionNumber <= 5;
-            questionNumber += 1
-          ) {
-            const sourceQuestionId = `31000000-0000-4000-8000-${String(
-              questionNumber,
-            ).padStart(12, '0')}`;
-            const attemptQuestionId = `43000000-0000-4000-8000-${String(
-              questionNumber,
-            ).padStart(12, '0')}`;
-
-            await client.query(
-              `insert into public.attempt_questions (
-               id, attempt_id, source_question_id, position,
-               prompt_snapshot, difficulty_snapshot
-             ) values ($1, $2, $3, $4, $5, 2)`,
-              [
-                attemptQuestionId,
-                CONCURRENT_ATTEMPT_ID,
-                sourceQuestionId,
-                questionNumber,
-                `Concurrent persistence question ${questionNumber}`,
-              ],
-            );
-
-            for (let choiceNumber = 1; choiceNumber <= 4; choiceNumber += 1) {
-              const sourceChoiceId = `32000000-0000-4000-8000-${String(
-                questionNumber * 10 + choiceNumber,
-              ).padStart(12, '0')}`;
-              const attemptChoiceId = `44000000-0000-4000-8000-${String(
-                questionNumber * 10 + choiceNumber,
-              ).padStart(12, '0')}`;
-
-              await client.query(
-                `insert into public.attempt_question_choices (
-                 id, attempt_question_id, source_question_id,
-                 source_choice_id, display_position, choice_text_snapshot
-               ) values ($1, $2, $3, $4, $5, $6)`,
-                [
-                  attemptChoiceId,
-                  attemptQuestionId,
-                  sourceQuestionId,
-                  sourceChoiceId,
-                  choiceNumber,
-                  `Concurrent choice ${choiceNumber}`,
-                ],
-              );
-            }
-          }
-
-          await client.query('commit');
-        } catch (error) {
-          await client.query('rollback');
-          throw error;
-        }
-
-        const finalizer = createChallengeAttemptCompletionFinalizer({
-          randomInt: () => 0,
-        });
-        const input = {
-          playerId: CONCURRENT_PLAYER_ID,
+        await insertAttemptWithSnapshots(client, {
           attemptId: CONCURRENT_ATTEMPT_ID,
-          completionReason: 'answered' as const,
-          scoreCorrect: 5,
-          completedAt: new Date('2026-08-10T12:01:00Z'),
-        };
+          playerId: CONCURRENT_PLAYER_ID,
+          attemptQuestionPrefix: '43000000-0000-4000-8000',
+          attemptChoicePrefix: '44000000-0000-4000-8000',
+          promptPrefix: 'Concurrent persistence question',
+        });
+      });
 
-        await client.query('begin');
-        try {
-          await finalizer.finalizeAttempt(client, input);
-          await client.query('commit');
-        } catch (error) {
-          await client.query('rollback');
-          throw error;
-        }
+      const pool = createDatabasePool(temporaryConfig);
+      const [firstClient, secondClient] = await Promise.all([
+        pool.connect(),
+        pool.connect(),
+      ]);
+      const finalizer = createChallengeAttemptCompletionFinalizer({
+        randomInt: () => 0,
+      });
+      const input = {
+        playerId: CONCURRENT_PLAYER_ID,
+        attemptId: CONCURRENT_ATTEMPT_ID,
+        completionReason: 'answered' as const,
+        scoreCorrect: 5,
+        completedAt: new Date('2026-08-10T12:01:00Z'),
+      };
 
-        await client.query('begin');
-        try {
-          await finalizer.finalizeAttempt(client, input);
-          await client.query('commit');
-        } catch (error) {
-          await client.query('rollback');
-          throw error;
-        }
+      try {
+        await Promise.all([
+          firstClient.query('begin'),
+          secondClient.query('begin'),
+        ]);
 
+        // Keep the winning transaction open while the second finalizer races
+        // on the completion uniqueness constraint.
+        await finalizer.finalizeAttempt(firstClient, input);
+        const concurrentFinalization = finalizer.finalizeAttempt(
+          secondClient,
+          input,
+        );
+        await firstClient.query('commit');
+        await concurrentFinalization;
+        await secondClient.query('commit');
+      } catch (error) {
+        await Promise.allSettled([
+          firstClient.query('rollback'),
+          secondClient.query('rollback'),
+        ]);
+        throw error;
+      } finally {
+        firstClient.release();
+        secondClient.release();
+        await pool.end();
+      }
+
+      await withDatabaseClient(temporaryConfig, async (client) => {
         const completionCount = await client.query<{ count: string }>(
           `select count(*)::text as count
              from public.event_completions
@@ -699,6 +655,14 @@ describe.skipIf(!runIntegrationTests)(
           [CONCURRENT_ATTEMPT_ID],
         );
         expect(completionCount.rows[0]?.count).toBe('1');
+
+        const wallet = await client.query<{ coin_balance: number }>(
+          `select coin_balance
+             from public.player_wallets
+            where player_id = $1`,
+          [CONCURRENT_PLAYER_ID],
+        );
+        expect(wallet.rows[0]?.coin_balance).toBe(63);
 
         const ledgerCount = await client.query<{ count: string }>(
           `select count(*)::text as count
@@ -717,5 +681,165 @@ describe.skipIf(!runIntegrationTests)(
         expect(cardCount.rows[0]?.count).toBe('2');
       });
     }, 45_000);
+
+    it('rolls back unavailable catalogue rewards without completing the attempt', async () => {
+      await withDatabaseClient(temporaryConfig, async (client) => {
+        await client.query(
+          `insert into public.players (
+           id, auth_issuer, auth_subject, role
+         ) values ($1, 'https://issuer.example/', 'subject-rollback', 'player')`,
+          [ROLLBACK_PLAYER_ID],
+        );
+        await insertAttemptWithSnapshots(client, {
+          attemptId: ROLLBACK_ATTEMPT_ID,
+          playerId: ROLLBACK_PLAYER_ID,
+          attemptQuestionPrefix: '45000000-0000-4000-8000',
+          attemptChoicePrefix: '46000000-0000-4000-8000',
+          promptPrefix: 'Rollback persistence question',
+        });
+
+        const finalizer = createChallengeAttemptCompletionFinalizer({
+          randomInt: () => 0,
+        });
+
+        await client.query('begin');
+        try {
+          await client.query(
+            `update public.card_definitions
+                set is_active = false
+              where rarity = 'common'`,
+          );
+          await expect(
+            finalizer.finalizeAttempt(client, {
+              playerId: ROLLBACK_PLAYER_ID,
+              attemptId: ROLLBACK_ATTEMPT_ID,
+              completionReason: 'answered',
+              scoreCorrect: 3,
+              completedAt: new Date('2026-08-10T12:01:00Z'),
+            }),
+          ).rejects.toBeInstanceOf(RewardCatalogUnavailableError);
+        } finally {
+          await client.query('rollback');
+        }
+
+        const attempt = await client.query<{ status: string }>(
+          `select status from public.challenge_attempts where id = $1`,
+          [ROLLBACK_ATTEMPT_ID],
+        );
+        expect(attempt.rows[0]?.status).toBe('in_progress');
+
+        const completionCount = await client.query<{ count: string }>(
+          `select count(*)::text as count
+             from public.event_completions
+            where attempt_id = $1`,
+          [ROLLBACK_ATTEMPT_ID],
+        );
+        expect(completionCount.rows[0]?.count).toBe('0');
+
+        const walletCount = await client.query<{ count: string }>(
+          `select count(*)::text as count
+             from public.player_wallets
+            where player_id = $1`,
+          [ROLLBACK_PLAYER_ID],
+        );
+        expect(walletCount.rows[0]?.count).toBe('0');
+
+        const ledgerCount = await client.query<{ count: string }>(
+          `select count(*)::text as count
+             from public.coin_ledger_entries
+            where player_id = $1`,
+          [ROLLBACK_PLAYER_ID],
+        );
+        expect(ledgerCount.rows[0]?.count).toBe('0');
+
+        const cardCount = await client.query<{ count: string }>(
+          `select count(*)::text as count
+             from public.player_cards
+            where player_id = $1`,
+          [ROLLBACK_PLAYER_ID],
+        );
+        expect(cardCount.rows[0]?.count).toBe('0');
+      });
+    }, 45_000);
   },
 );
+
+interface AttemptFixtureOptions {
+  attemptChoicePrefix: string;
+  attemptId: string;
+  attemptQuestionPrefix: string;
+  playerId: string;
+  promptPrefix: string;
+}
+
+async function insertAttemptWithSnapshots(
+  client: pg.PoolClient,
+  options: AttemptFixtureOptions,
+): Promise<void> {
+  await client.query('begin');
+
+  try {
+    await client.query(
+      `insert into public.challenge_attempts (
+       id, player_id, event_id, challenge_id,
+       started_at, deadline, time_limit_seconds, average_difficulty
+     ) values (
+       $1, $2, $3, $4,
+       '2026-08-10T12:00:00Z', '2026-08-10T12:02:00Z', 120, 2.00
+     )`,
+      [options.attemptId, options.playerId, EVENT_ID, CHALLENGE_ID],
+    );
+
+    for (let questionNumber = 1; questionNumber <= 5; questionNumber += 1) {
+      const sourceQuestionId = `31000000-0000-4000-8000-${String(
+        questionNumber,
+      ).padStart(12, '0')}`;
+      const attemptQuestionId = `${options.attemptQuestionPrefix}-${String(
+        questionNumber,
+      ).padStart(12, '0')}`;
+
+      await client.query(
+        `insert into public.attempt_questions (
+         id, attempt_id, source_question_id, position,
+         prompt_snapshot, difficulty_snapshot
+       ) values ($1, $2, $3, $4, $5, 2)`,
+        [
+          attemptQuestionId,
+          options.attemptId,
+          sourceQuestionId,
+          questionNumber,
+          `${options.promptPrefix} ${questionNumber}`,
+        ],
+      );
+
+      for (let choiceNumber = 1; choiceNumber <= 4; choiceNumber += 1) {
+        const sourceChoiceId = `32000000-0000-4000-8000-${String(
+          questionNumber * 10 + choiceNumber,
+        ).padStart(12, '0')}`;
+        const attemptChoiceId = `${options.attemptChoicePrefix}-${String(
+          questionNumber * 10 + choiceNumber,
+        ).padStart(12, '0')}`;
+
+        await client.query(
+          `insert into public.attempt_question_choices (
+           id, attempt_question_id, source_question_id,
+           source_choice_id, display_position, choice_text_snapshot
+         ) values ($1, $2, $3, $4, $5, $6)`,
+          [
+            attemptChoiceId,
+            attemptQuestionId,
+            sourceQuestionId,
+            sourceChoiceId,
+            choiceNumber,
+            `Fixture choice ${choiceNumber}`,
+          ],
+        );
+      }
+    }
+
+    await client.query('commit');
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  }
+}

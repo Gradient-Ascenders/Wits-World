@@ -52,6 +52,46 @@ describe('challenge reward policy', () => {
     expect(result.cardRarities).toEqual(['common', 'common']);
   });
 
+  it.each([
+    [0, ['common', 'common']],
+    [1, ['common']],
+    [4, ['common']],
+  ])(
+    'respects the perfect-score 20%% two-card boundary with roll %s',
+    (cardCountRoll, expectedCards) => {
+      const result = calculateChallengeRewardPlan(
+        5,
+        2,
+        ['common'],
+        (maxExclusive) => (maxExclusive === 5 ? cardCountRoll : 0),
+      );
+
+      expect(result.cardRarities).toEqual(expectedCards);
+    },
+  );
+
+  it.each([
+    [0, 'common'],
+    [44, 'common'],
+    [45, 'rare'],
+    [84, 'rare'],
+    [85, 'epic'],
+    [98, 'epic'],
+    [99, 'legendary'],
+  ])(
+    'selects the score-five rarity at weighted roll %s',
+    (rarityRoll, expectedRarity) => {
+      const result = calculateChallengeRewardPlan(
+        5,
+        2,
+        allRarities,
+        (maxExclusive) => (maxExclusive === 5 ? 1 : rarityRoll),
+      );
+
+      expect(result.cardRarities).toEqual([expectedRarity]);
+    },
+  );
+
   it('fails a guaranteed Common reward when the catalogue is empty', () => {
     expect(() => calculateChallengeRewardPlan(3, 2, [], () => 0)).toThrow(
       RewardCatalogUnavailableError,
