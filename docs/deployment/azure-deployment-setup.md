@@ -240,6 +240,9 @@ The API App Service has the following application settings configured:
 ```text
 AUTH0_AUDIENCE
 AUTH0_DOMAIN
+AUTH0_MANAGEMENT_CLIENT_ID
+AUTH0_MANAGEMENT_CLIENT_SECRET
+AUTH0_SPA_CLIENT_ID
 CORS_ALLOWED_ORIGIN
 DATABASE_URL
 HOST
@@ -257,11 +260,36 @@ LOG_LEVEL = info
 NODE_ENV  = production
 ```
 
-`DATABASE_URL` is a secret and must never be committed.
+`DATABASE_URL` and `AUTH0_MANAGEMENT_CLIENT_SECRET` are secrets and must never
+be committed.
 
-`AUTH0_DOMAIN` and `AUTH0_AUDIENCE` are environment-specific authentication configuration and should be managed through deployment/environment configuration rather than duplicated unnecessarily in source.
+`AUTH0_DOMAIN`, `AUTH0_AUDIENCE`, and `AUTH0_SPA_CLIENT_ID` are
+environment-specific authentication configuration. The Auth0 Management client
+ID and secret are server-only machine-to-machine credentials used by API
+account-lifecycle operations. All five values are API runtime settings and
+belong in Azure App Service rather than in the deployment ZIP.
 
-### 7.1 Production CORS origin
+### 7.1 Runtime configuration incident
+
+An API deployment completed successfully but repeatedly returned HTTP 503
+because the new process exited during startup with
+`AUTH0_SPA_CLIENT_ID is required to start the API.` The related Management API
+settings had been introduced by the same application work and also required a
+production audit. Production was corrected by configuring these App Service
+settings without exposing their values:
+
+```text
+AUTH0_SPA_CLIENT_ID
+AUTH0_MANAGEMENT_CLIENT_ID
+AUTH0_MANAGEMENT_CLIENT_SECRET
+```
+
+The operational rule is that every newly required API environment variable
+must be added to and verified in Azure App Service before deploying code that
+requires it. Artifact migration improves package production and transfer; it
+cannot repair missing runtime configuration.
+
+### 7.2 Production CORS origin
 
 The API allows the exact production frontend origin:
 
@@ -272,7 +300,7 @@ https://witsworld-web-fqabhufqgvapapgq.southafricanorth-01.azurewebsites.net
 
 A wildcard origin is not used.
 
-### 7.2 PORT
+### 7.3 PORT
 
 A custom `PORT` setting is not configured manually.
 
@@ -308,6 +336,15 @@ They are intentionally stored as Gitea Variables rather than Azure App Service r
 The Mapbox value is intentionally a public `pk.` token; restrict it to the
 approved localhost and deployed web origins and keep only the required public
 read scopes. See [Mapbox operations](./mapbox-operations.md).
+
+Configuration ownership is intentionally separated:
+
+| Location                   | Responsibility                                                                                    |
+| -------------------------- | ------------------------------------------------------------------------------------------------- |
+| Gitea Variables            | Public frontend build-time `VITE_*` configuration consumed by the C220 production Web build.      |
+| Gitea Secrets              | Sensitive values consumed by CI itself, such as documentation-deployment credentials.             |
+| Azure App Service settings | API runtime configuration and secrets, including Auth0 Management credentials and `DATABASE_URL`. |
+| Azure managed identity     | Azure deployment authentication available only on the host-executed `azure-deploy` runner.        |
 
 ---
 
@@ -454,10 +491,13 @@ Docker Compose
 Azure CLI
 zip/unzip
 curl
+Node.js
 Gitea act_runner
 ```
 
-Node.js and npm are not installed directly on the host. Build jobs use versioned Node Docker images.
+Node.js is installed directly on the host so JavaScript-based Gitea actions can
+run on the `azure-deploy` label. It is action infrastructure only: the Azure
+runner does not use host Node or npm to build the Web or API applications.
 
 Verified versions during setup included:
 
@@ -467,6 +507,7 @@ Docker:     29.7.2
 Azure CLI:  2.89.0
 zip:        3.0
 curl:       8.5.0
+Node.js:    18.19.1
 ```
 
 ### 12.2 act_runner
@@ -792,33 +833,34 @@ test ───────┤
 build ──────┘
 ```
 
-Each job checks out the repository, restores the lockfile-keyed npm download
-cache, and performs a clean `npm ci`. The additional aggregate setup work allows
-formatting, linting, type-checking, tests, and builds to execute concurrently on
-the 44-core server. With a runner capacity of 15, all five validation categories
-can execute concurrently while capacity remains for documentation deployment or
-other work.
+Each job checks out the repository and performs a clean `npm ci`. The C220 has
+44 physical cores, 88 logical CPUs, and runner capacity 15, so formatting,
+linting, type checking, tests, and builds can execute concurrently while
+capacity remains for other work. These parallel jobs increase aggregate runner
+work, but aggregate job-minutes are not sequential workflow wall-clock time.
+
+`setup-node` npm caching is intentionally disabled. The Gitea Actions cache
+endpoint repeatedly timed out during both restore and post-job save, increasing
+normal validation from approximately 2 minutes 20 seconds to roughly 6 minutes
+50 seconds. Keep the cache disabled unless the server-side cache path is
+repaired and retested.
 
 The final validation job depends on all five jobs. Coverage badge publication
 and API deployment occur only after that combined gate passes. The host-only
 `azure-deploy` label remains exclusive to post-validation production
 deployment.
 
-The workflow runs for:
+The workflows are separated by event:
 
-```yaml
-pull_request:
-  branches:
-    - main
-
-push:
-  branches:
-    - main
+```text
+pr-validation.yml -> pull requests targeting main; C220 validation only
+ci.yml            -> pushes to main; C220 validation/artifacts and deployment
 ```
 
-This allows pull requests to be validated without deployment and allows
-merges/pushes to `main` to evaluate production deployment only after validation
-succeeds.
+Pull-request workflows contain no Azure jobs, so PR completion does not depend
+on Azure runner availability. Documentation deployment also uses the C220; its
+setup-node cache is disabled and its main trigger is path-filtered so unrelated
+API/Web changes do not deploy Docs.
 
 ---
 
@@ -844,84 +886,64 @@ Service, or running unnecessary production health polling.
 
 ### 19.1 API deployment
 
-The API deployment depends on the combined validation gate.
+For API-relevant pushes, the C220 `build` job reuses its existing dependency
+installation and compiled `apps/api/dist`. After all validation builds finish,
+it uses a job-local npm 11.18.0 CLI to materialize the API-only production
+dependency tree and packages the compiled API, package metadata, production
+`node_modules`, database migrations, and seeds.
 
-Conceptually:
+The artifact is bound to the exact pushed commit:
 
 ```text
-Push to main
-      │
-      └── Parallel format, lint, type-check, test, and build jobs
-              │ success
-              ▼
-          Combined validation gate
-              │ success
-              ▼
-        Deploy API to Azure
-              │
-              ├── Fetch exact main commit
-              ├── Compare API-relevant paths
-              ├── Skip when the API is unaffected
-              └── When required:
-                  ├── Build production API
-                  ├── Install API-only production dependencies
-                  ├── Package runtime files
-                  ├── az login --identity
-                  ├── Deploy ZIP
-                  └── Verify /health
+api-deploy-${{ gitea.sha }}
+├── witsworld-api-deploy.zip
+├── commit-sha.txt
+└── witsworld-api-deploy.zip.sha256
 ```
 
 API deployment is required when the comparison includes changes under
-`apps/api` or `database`, or changes to `.nvmrc`, `package.json`,
-`package-lock.json`, or `tsconfig.base.json`.
+`apps/api` or `database`, changes to `.gitea/workflows/ci.yml`, or changes to
+`.nvmrc`, `package.json`, `package-lock.json`, or `tsconfig.base.json`. A CI
+workflow change can alter API packaging, artifact contents, or deployment
+logic, so it conservatively requires a fresh API artifact and deployment.
 
-The build container reuses the host's `/tmp/witsworld-npm-cache` as npm's
-content cache. It first runs a clean, lockfile-controlled monorepo install so
-the API can be built. After the API build, it deletes that development tree and
-runs a second clean, lockfile-controlled install with
-`--omit=dev --workspace @wits-world/api --include-workspace-root=false`. The
-deployment ZIP therefore contains only the API workspace's production
-dependency tree, rather than the frontend and documentation dependencies as
-well.
+After the combined validation gate succeeds, Azure checks out the exact main
+SHA and repeats the same change detection. When required it downloads
+`api-deploy-${{ gitea.sha }}`, verifies the recorded commit, ZIP checksum and
+integrity, and requires the API entry point, direct runtime dependencies,
+migrations, and seeds. Only then does it authenticate with managed identity,
+deploy the ZIP, and verify `/health`.
 
-The deployment condition is:
+The Azure runner performs no API dependency installation, TypeScript build,
+production dependency materialization, or ZIP construction. Stage 1 proved the
+C220 and former Azure packages had identical path types, symlink targets, and
+per-file SHA-256 hashes. Stage 2 made the C220 artifact authoritative. The
+authoritative Azure job measured approximately 56 seconds, down from about 3
+minutes 45 seconds in the Stage 1 control path.
 
-```yaml
-if: ${{ gitea.event_name == 'push' && gitea.ref == 'refs/heads/main' }}
-```
+During migration, a global npm pin in the C220 packaging step briefly removed
+the shared setup-node npm executable used by a parallel test job. npm 11.18.0
+is now installed in a job-local temporary directory and invoked directly, so
+packaging cannot mutate another job's toolchain.
 
 ### 19.2 Web deployment
 
-The web deployment depends directly on the validation job, independently of
-the API deployment. An API deployment failure must not prevent an unrelated
-frontend release from reaching production:
+For Web-relevant pushes, the C220 `build` job reuses its installed dependencies,
+validates the public production `VITE_*` configuration, runs the production Web
+build, and packages the contents of `apps/web/dist`:
 
 ```text
-Repository and application validation
-        │
-        │ success
-        ▼
-  Deploy Web to Azure
-        │
-        ├── Fetch exact main commit
-        ├── Compare web-relevant paths
-        ├── Skip when the web application is unaffected
-        └── When required:
-            ├── Validate Vite build variables
-            ├── Build frontend in Node Docker container
-            ├── Create ZIP on Linux
-            ├── az login --identity
-            ├── Deploy ZIP
-            ├── Verify /
-            └── Verify /about
+web-deploy-${{ gitea.sha }}
+├── witsworld-web-deploy.zip
+├── commit-sha.txt
+└── witsworld-web-deploy.zip.sha256
 ```
 
 Web deployment is required when the comparison includes changes under
 `apps/web`, changes to `.gitea/workflows/ci.yml`, or changes to `.nvmrc`,
 `package.json`, `package-lock.json`, or `tsconfig.base.json`. Including the
 workflow file makes a deployment-pipeline repair trigger a fresh frontend
-release instead of leaving a previously skipped build stale. Its build
-container uses the same persistent npm content cache as the API deployment.
+release instead of leaving a previously skipped build stale.
 
 The frontend package is created from the **contents** of `apps/web/dist`, so Azure receives:
 
@@ -932,13 +954,27 @@ The frontend package is created from the **contents** of `apps/web/dist`, so Azu
 
 rather than a nested `dist` directory.
 
+After validation, Azure downloads the SHA-named artifact, verifies its commit
+metadata, checksum, ZIP integrity, `index.html`, and assets, authenticates with
+managed identity, deploys, and verifies `/` and `/about`. Azure performs no Web
+`npm ci`, TypeScript build, Vite build, ZIP construction, or Docker build.
+
+Stage 1 proved every generated C220 file was byte-for-byte identical to the
+former Azure-built output. Stage 2 made that artifact authoritative. Measured
+Azure Web deployment fell from approximately 3 minutes 20–32 seconds to roughly
+46–59 seconds.
+
+Both applications use the verified Gitea 1.24.7-compatible
+`upload-artifact@v3` and `download-artifact@v3` actions. Do not switch to v4
+without a separate compatibility test on this installation.
+
 ### 19.3 Pull request versus main behaviour
 
 ```text
-Pull request -> CI runs -> production deployment skipped
-Push/merge to main -> CI runs -> API change check -> Web change check
-Affected application -> build -> deploy -> health verification
-Unaffected application -> deployment steps skipped
+Pull request -> pr-validation.yml -> C220 validation gate -> done
+Push/merge to main -> ci.yml -> C220 validation and affected artifacts
+Affected application -> validation gate -> Azure verify/deploy/health check
+Unaffected application -> artifact production and deployment work skipped
 ```
 
 ---
@@ -973,9 +1009,19 @@ Deployment allowed only for pushes to main
 Deployment waits for all required validation jobs and the combined gate
 Missing comparison data triggers deployment rather than an unsafe skip
 Main branch protected through PR workflow
-Frontend build values stored as Gitea Variables
+Web/API artifact names and metadata bound to the exact main commit SHA
+Deployment ZIP checksums, integrity, and required files verified before authentication
+Public frontend build values stored as Gitea Variables and scoped to C220 build steps
+API runtime configuration and secrets stored in Azure App Service settings
+Azure deployment credentials confined to the runner's managed identity
 Temporary deployment workspaces removed after jobs complete
 ```
+
+Vite embeds `VITE_*` values in the browser bundle, so they are public build-time
+configuration rather than deployment credentials. Gitea Secrets are reserved
+for sensitive values consumed by CI itself. API runtime values—including Auth0
+Management credentials—remain App Service settings, and Azure authentication
+remains confined to the host-only deployment runner.
 
 ---
 
@@ -1029,15 +1075,14 @@ Type-check applications                 PASS
 Test applications with coverage         PASS
 Build applications                      PASS
 Repository and application validation   PASS
-Deploy API to Azure                     SKIPPED
-Deploy Web to Azure                     SKIPPED
 ```
 
 The five validation categories can run concurrently and still expose a clear
 failure boundary. The combined validation job passes only when all categories
 pass.
 
-Production must not be modified by a pull-request workflow.
+The pull-request workflow contains no Azure jobs. Production cannot be modified
+by a PR run, and PR completion cannot wait behind Azure runner work.
 
 ### Merge/push to `main`
 
@@ -1063,33 +1108,33 @@ be queued by runner capacity):
 
 ```text
 Parallel validation categories
-        ↓
+├── Format, lint, type-check, and test
+└── Build
+    ├── Existing validation builds
+    ├── Web production artifact when required
+    └── API production artifact when required
+            │
+            ▼
 Combined validation gate and coverage badge publication
-├── Check out exact main commit
-│   Detect API deployment changes
-│   ├── API unaffected: skip remaining API deployment work
-│   └── API affected or comparison unavailable:
-│       ├── Build and prune production API package
-│       ├── Authenticate to Azure
-│       ├── Deploy API to Azure
-│       └── Verify production API health
-│   Clean API deployment workspace
-└── Check out exact main commit
-    Detect web deployment changes
-    ├── Web unaffected: skip remaining web deployment work
-    └── Web affected or comparison unavailable:
-        ├── Validate production web configuration
-        ├── Build production web package
-        ├── Authenticate to Azure
-        ├── Deploy web application to Azure
-        └── Verify production website
-    Clean web deployment workspace
+├── Azure API job
+│   ├── Check exact SHA and API changes
+│   ├── Download and verify SHA-bound API artifact
+│   ├── Managed-identity authentication and ZIP deployment
+│   ├── Verify API health
+│   └── Clean workspace
+└── Azure Web job
+    ├── Check exact SHA and Web changes
+    ├── Download and verify SHA-bound Web artifact
+    ├── Managed-identity authentication and ZIP deployment
+    ├── Verify / and /about
+    └── Clean workspace
 ```
 
-The API main-branch deployment path has already been validated successfully.
-
-The independent API and Web post-merge deployment paths remain to be proven
-after the Azure continuation branch is merged.
+Both authoritative artifact paths have been validated in production. Under
+normal conditions the applications reach healthy production roughly 3–3.5
+minutes after merge. The measured Azure Web job fell from about 3 minutes
+20–32 seconds to 46–59 seconds; the API Stage 1 control job took about 3 minutes
+45 seconds and its authoritative path took about 56 seconds.
 
 ---
 
@@ -1193,7 +1238,8 @@ assets\file.js
 
 Recreating the deployment ZIP on Linux resolved the problem.
 
-The automated web deployment now creates the ZIP on the runner VM, preventing recurrence.
+The automated Web deployment now creates the ZIP on the Linux-based C220
+runner, preventing recurrence while keeping the Azure runner deployment-only.
 
 ### Missing API environment variables
 

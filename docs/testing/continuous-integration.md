@@ -1,45 +1,74 @@
 # Continuous Integration
 
-Wits World uses Gitea Actions for continuous integration. The primary workflow
-is defined in `/.gitea/workflows/ci.yml`.
+Wits World uses Gitea Actions for pull-request validation, main-branch
+validation and deployment, and documentation deployment.
 
-## Triggers
+## Workflows and triggers
 
-Continuous integration runs for:
+The workflows are separated by event so pull requests have no dependency on
+the deployment runner:
 
-- every push to `main`; and
-- every pull request targeting `main`.
+| Workflow                              | Trigger                                 | Responsibility                                                                                                      |
+| ------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `/.gitea/workflows/pr-validation.yml` | Pull requests targeting `main`          | Runs repository and application validation only. It contains no Azure jobs.                                         |
+| `/.gitea/workflows/ci.yml`            | Pushes to `main`                        | Runs validation, publishes coverage, creates production artifacts when required, and deploys affected applications. |
+| `/.gitea/workflows/docs-deploy.yml`   | Documentation-relevant pushes to `main` | Builds and deploys the documentation site to Cloudflare Pages.                                                      |
 
-Pull-request runs validate proposed changes but cannot deploy. A successful
-push to `main` may continue into the production deployment jobs described in
-the [Azure deployment guide](../deployment/azure-deployment-setup.md).
+The resulting flow is:
+
+```text
+Pull request
+    ↓
+C220 PR validation
+    ↓
+done — no Azure jobs
+
+Push to main
+    ↓
+C220 validation/build
+    ├── Web production artifact when required
+    └── API production artifact when required
+              ↓
+         validation gate
+              ↓
+        Azure runner
+        ├── verify artifact
+        ├── managed identity authentication
+        ├── deploy
+        └── health check
+```
+
+Keeping Azure jobs out of the pull-request workflow lets a PR finish as soon as
+its C220 validation gate succeeds. A busy Azure runner cannot add a deployment
+scheduling tail to pull-request feedback.
 
 ## Runners
 
-Normal validation runs on the repository-scoped `wits-world-c220-01` runner
-through the dedicated Docker label:
+### C220 validation and packaging runner
+
+Validation, documentation deployment, and production Web/API artifact creation
+use the repository-scoped `wits-world-c220-01` runner through this Docker label:
 
 ```text
 wits-world-ci:docker://docker.gitea.com/runner-images:ubuntu-latest
 ```
 
-The dedicated label prevents normal CI jobs from being scheduled randomly on
-the older Azure runner. With a runner capacity of 15, all five CI validation
-categories can execute concurrently while capacity remains for other work.
+The host has 44 physical CPU cores, 88 logical CPUs, and runner capacity 15.
+Each job receives an isolated Docker container, but concurrent jobs share the
+host's CPU, memory bandwidth, storage, Docker overlay filesystem, and package
+download data.
 
-Production API and Web deployment remains on `witsworld-azure-runner` through
-its host-only `azure-deploy` label. That runner provides the proven Azure CLI,
-Docker, managed-identity, filesystem, and networking environment used by the
-deployment jobs.
+### Azure deployment runner
 
-The documentation deployment workflow runs on the `wits-world-c220-01` runner
-through its `wits-world-ci` label. It runs only
-for pushes to `main` and exposes its Cloudflare credentials only to its deploy
-step.
+Production deployment uses the two-core `witsworld-azure-runner` through its
+host-only `azure-deploy` label. It provides Azure CLI, managed-identity access,
+and production networking. It downloads and verifies deployable artifacts; it
+does not install the monorepo dependencies, compile either application, or
+construct production packages.
 
 ## Parallel validation
 
-The CI workflow splits independent verification into five jobs:
+Both validation workflows contain the same five independent C220 jobs:
 
 ```text
 format ─────┐
@@ -49,94 +78,163 @@ test ───────┤
 build ──────┘
 ```
 
-Each job checks out the repository, restores npm's download cache, and runs a
-clean lockfile-controlled install:
+Each job checks out the repository and performs a clean, lockfile-controlled
+installation:
 
 ```bash
 npm ci --prefer-offline --no-audit --fund=false
 ```
 
-The jobs then run the following existing repository commands:
+The jobs run the existing formatting, linting, type-checking, coverage, tests,
+and validation-build commands. The final validation job needs all five jobs;
+main deployment cannot begin unless every category succeeds.
 
-```bash
-# format
-npm run format:check
+The duplicated clean installations increase aggregate Gitea job-minutes, but
+the five jobs execute concurrently on the C220. Aggregate job-minutes measure
+total runner work and must not be interpreted as sequential workflow wall-clock
+latency. Consolidating these five jobs remains deliberately deferred pending
+new contention measurements.
 
-# lint
-npm run lint
+## npm cache status
 
-# type-check
-npm run type-check
+`actions/setup-node` npm caching is deliberately disabled in CI and Docs
+deployment. On this Gitea installation, cache restore and post-job save calls
+consistently timed out through the Actions cache endpoint. Cache-enabled jobs
+typically spent about 2 minutes 15 seconds in setup and another 2 minutes 17
+seconds in the post-job path, even when the actual validation command took only
+seconds.
 
-# test
-npm run test:coverage --workspace @wits-world/web
-npm run test:coverage --workspace @wits-world/api
-npm test --workspace @wits-world/docs
-npm run coverage:badge
+Removing the cache inputs reduced normal PR/main validation from roughly 6
+minutes 50 seconds to approximately 2 minutes 20 seconds. The workflows retain
+`npm ci --prefer-offline`, but do not cache `node_modules` or ask `setup-node` to
+restore/save npm's content cache. Keep caching disabled unless the Gitea cache
+infrastructure is repaired and a controlled restore/save test proves it
+reliable.
 
-# build
-npm run build:bundle --workspace @wits-world/web
-npm run build --workspace @wits-world/api
-npm run build --workspace @wits-world/docs
+## Coverage artifacts and badge
+
+The Web and API test steps collect V8 coverage during the test run. Reports and
+the combined coverage badge are uploaded as `coverage-reports`. On a successful
+push to `main`, the validation gate downloads that artifact and publishes the
+SVG to the non-triggering `coverage-badge` branch. Pull requests upload coverage
+for inspection but do not publish the live badge.
+
+## Production artifacts
+
+For an affected application, the existing C220 `build` job reuses its full
+dependency installation and packages the production output after all normal
+validation builds. It first verifies that the checked-out commit equals
+`${{ gitea.sha }}`.
+
+The Web build receives its production `VITE_*` values only on the relevant
+configuration-validation and build steps. Its artifact is:
+
+```text
+web-deploy-${{ gitea.sha }}
+├── witsworld-web-deploy.zip
+├── commit-sha.txt
+└── witsworld-web-deploy.zip.sha256
 ```
 
-The final validation job needs all five jobs. It therefore succeeds only when
-formatting, lint, type-checking, tests, and builds all pass. API and Web
-deployment both depend directly on this combined gate and remain independent
-of each other.
+The ZIP contains the contents of `apps/web/dist`, with `index.html` and
+`assets/` at its root.
 
-The duplicated clean installs trade additional aggregate work for substantially
-lower elapsed time on the 44-core C220. The five validation jobs can execute
-concurrently rather than creating a job for every workspace and command.
+The API validation build has already compiled `apps/api/dist`. After the other
+build work is complete, the job uses an isolated npm 11.18.0 CLI to materialize
+the API-only production dependency tree and packages the compiled API, root and
+API package metadata, production `node_modules`, migrations, and seeds:
 
-## Coverage and artifacts
+```text
+api-deploy-${{ gitea.sha }}
+├── witsworld-api-deploy.zip
+├── commit-sha.txt
+└── witsworld-api-deploy.zip.sha256
+```
 
-The web and API test steps collect V8 coverage during the test run; they do not
-execute a second test pass. HTML, LCOV, and JSON summary reports are uploaded
-together as the `coverage-reports` artifact. The test job also generates
-`coverage/coverage.svg` from the combined line totals.
+The job-local npm CLI is important: a Stage 2 test briefly installed npm
+globally into setup-node's shared toolcache and caused the parallel coverage
+job to lose its npm executable. Isolating the packaging CLI prevents one C220
+container from mutating tooling used by another.
 
-On a successful push to `main`, the final validation job downloads that artifact
-and publishes the SVG to the non-triggering `coverage-badge` branch. Keeping the
-publication behind the combined gate prevents a passing test job from updating
-the live badge when another required validation job failed.
+The Azure jobs independently verify the exact checked-out main SHA and repeat
+the application change check. When deployment is required they download the
+SHA-named artifact, verify `commit-sha.txt`, verify the ZIP SHA-256 and
+integrity, and require known runtime files before authenticating. Azure deploys
+that verified ZIP and performs the existing production health checks. It runs
+no Web/API `npm ci`, TypeScript build, Vite build, or production package build.
 
-Coverage scope is explicit in each workspace configuration. The API includes
-`src/**/*.ts`, and the web application includes `src/**/*.{ts,tsx}`. Only
-TypeScript declaration files are excluded. Production modules that are never
-imported by tests therefore remain in the published coverage denominator.
+Web change detection covers its application and shared build inputs, including
+`/.gitea/workflows/ci.yml`. API detection also includes that workflow file, in
+addition to `apps/api`, `database`, and its shared runtime/build inputs. A CI
+workflow change can alter API packaging, artifact contents, or deployment logic,
+so it must conservatively require a fresh API artifact and deployment. If
+comparison data is unavailable, both paths require artifact production and
+deployment.
 
-The workflow retains `actions/upload-artifact@v3` and
-`actions/download-artifact@v3` as the known-working protocol. Gitea Runner 3.x
-supports the stock v4 artifact protocol, but v4 should be enabled only after an
-artifact upload and download have been verified against this repository's
-actual Gitea server configuration.
+## Configuration and credential boundaries
 
-## Dependency caching
+Configuration is stored according to when and where it is consumed:
 
-`setup-node` caches npm's content-addressed download cache using
-`package-lock.json`; it does not cache `node_modules`. Every job still performs
-`npm ci`, so stale installed dependency trees cannot cross jobs or branches and
-the lockfile remains authoritative.
+| Location                   | Purpose                                                                                              |
+| -------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Gitea Variables            | Public frontend build-time `VITE_*` configuration embedded into the browser bundle on C220.          |
+| Gitea Secrets              | Sensitive values required directly by CI steps, such as documentation-deployment credentials.        |
+| Azure App Service settings | API runtime configuration and secrets, including database and Auth0 server/management configuration. |
+| Azure managed identity     | Azure deployment credentials, available only to the host-executed Azure deployment jobs.             |
 
-`--prefer-offline` reuses verified cached package data when available, while
-`--no-audit --fund=false` avoids unrelated install-time network work and output.
-Dependency vulnerability review remains an explicit `npm audit` activity.
+`VITE_*` values are browser-visible and must not contain secrets. Conversely,
+API runtime variables must exist in the App Service environment; packaging an
+application does not transfer runtime settings. The API startup failure caused
+by missing `AUTH0_SPA_CLIENT_ID`, `AUTH0_MANAGEMENT_CLIENT_ID`, and
+`AUTH0_MANAGEMENT_CLIENT_SECRET` established this operational requirement.
 
-Docker base images and downloaded actions are managed by the runner's existing
-cache. The workflow does not introduce a custom runner image, registry mirror,
-or host-mounted `node_modules` cache.
+## Documentation deployment
 
-## Compatibility and throughput boundaries
+`docs-deploy.yml` runs on `wits-world-ci`, with setup-node caching disabled. Its
+push-to-`main` trigger is path-filtered to:
 
-The C220 runs Gitea Runner 3.1.0. The workflows do not depend on newer job-level
-syntax, privileged container options, or host execution for normal CI. The
-artifact v3 compatibility pin is retained until the v4 path is proven on the
-live instance.
+```text
+apps/docs/**
+docs/**
+package.json
+package-lock.json
+.nvmrc
+.gitea/workflows/docs-deploy.yml
+```
 
-Gitea 1.24 does not reliably honour workflow `concurrency`, so superseded runs
-cannot be assumed to cancel automatically. Stale queued runs must be cancelled
-manually until server-side queue controls are upgraded and verified.
+Unrelated API- or Web-only pushes do not start documentation deployment.
+Cloudflare credentials remain scoped to the deployment step.
+
+## Measured results
+
+Normal observed timings after the migration are:
+
+| Path                               | Before              | Final observed result |
+| ---------------------------------- | ------------------- | --------------------- |
+| PR/main C220 validation wall-clock | about 6m50s         | about 2m20s           |
+| Azure Web deployment job           | about 3m20s–3m32s   | about 46–59s          |
+| Azure API deployment job           | about 3m45s Stage 1 | about 56s             |
+| Normal merge to healthy Web/API    | longer rebuild path | about 3–3.5 minutes   |
+
+The Web and API Stage 1 comparisons established byte-for-byte equivalence by
+comparing extracted file lists and per-file SHA-256 hashes. Stage 2 then made
+the C220 artifacts authoritative.
+
+## Artifact compatibility and throughput boundaries
+
+The workflows intentionally retain fully qualified
+`actions/upload-artifact@v3` and `actions/download-artifact@v3`. Upload,
+download, and cross-runner deployment were verified against Gitea 1.24.7. Do
+not switch to v4 without a separate compatibility test.
+
+The Azure host has Node.js 18.19.1 on the `act_runner` service PATH so
+JavaScript actions can execute. That host runtime is action infrastructure, not
+an application build environment.
+
+Gitea 1.24.7 does not reliably honour workflow `concurrency`, so superseded
+runs cannot be assumed to cancel automatically. Runner capacity and workflow
+parallelism must also be tuned together; changing the five-job design requires
+new measurements before changing capacity 15.
 
 ## AI declaration
 
