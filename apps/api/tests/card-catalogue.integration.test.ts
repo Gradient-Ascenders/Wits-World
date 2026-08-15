@@ -19,8 +19,13 @@ import {
   StarterAlreadyClaimedError,
 } from '../src/cards/starter-grant.js';
 
+import { createCardCollectionService } from '../src/cards/card-collection.js';
+
 const PLAYER_ID = '70000000-0000-4000-8000-000000000001';
 const CONCURRENT_PLAYER_ID = '70000000-0000-4000-8000-000000000002';
+const COLLECTION_PLAYER_ID = '70000000-0000-4000-8000-000000000003';
+const OTHER_COLLECTION_PLAYER_ID = '70000000-0000-4000-8000-000000000004';
+const EMPTY_COLLECTION_PLAYER_ID = '70000000-0000-4000-8000-000000000005';
 
 const runIntegrationTests =
   process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';
@@ -32,6 +37,7 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
   let temporaryDatabaseName: string;
   let cataloguePool: ReturnType<typeof createDatabasePool>;
   let starterService: ReturnType<typeof createStarterGrantService>;
+  let collectionService: ReturnType<typeof createCardCollectionService>;
 
   beforeAll(async () => {
     loadApiEnvironment();
@@ -55,6 +61,7 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
 
     cataloguePool = createDatabasePool(temporaryConfig);
     starterService = createStarterGrantService(cataloguePool);
+    collectionService = createCardCollectionService(cataloguePool);
 
     await withDatabaseClient(temporaryConfig, async (client) => {
       await client.query(
@@ -265,7 +272,7 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
       expect(grantCount.rows[0]?.count).toBe('1');
       expect(cardCount.rows[0]?.count).toBe('5');
     });
-  });
+  }, 30_000);
 
   it('rejects invalid card category relationships at database level', async () => {
     await withDatabaseClient(temporaryConfig, async (client) => {
@@ -288,4 +295,181 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
       ).rejects.toThrow();
     });
   });
+  it('returns an empty collection for a player with no owned cards', async () => {
+    await insertCataloguePlayer(
+      temporaryConfig,
+      EMPTY_COLLECTION_PLAYER_ID,
+      'empty-collection-player',
+    );
+
+    await expect(
+      collectionService.listOwnedCards(EMPTY_COLLECTION_PLAYER_ID),
+    ).resolves.toEqual([]);
+  });
+
+  it('returns only the authenticated player owned copies in stable newest-first order', async () => {
+    await insertCataloguePlayer(
+      temporaryConfig,
+      COLLECTION_PLAYER_ID,
+      'collection-player',
+    );
+    await insertCataloguePlayer(
+      temporaryConfig,
+      OTHER_COLLECTION_PLAYER_ID,
+      'other-collection-player',
+    );
+
+    const ownGrant = await starterService.selectStarter({
+      playerId: COLLECTION_PLAYER_ID,
+      affinity: 'spark',
+    });
+
+    const otherGrant = await starterService.selectStarter({
+      playerId: OTHER_COLLECTION_PLAYER_ID,
+      affinity: 'spark',
+    });
+
+    expect(ownGrant.grant.cards).toHaveLength(5);
+    expect(otherGrant.grant.cards).toHaveLength(5);
+
+    // Both players deliberately own the same five definitions. Their individual
+    // ownership-copy identifiers must nevertheless remain isolated.
+    expect(
+      new Set(ownGrant.grant.cards.map((card) => card.cardDefinitionId)),
+    ).toEqual(
+      new Set(otherGrant.grant.cards.map((card) => card.cardDefinitionId)),
+    );
+
+    await withDatabaseClient(temporaryConfig, async (client) => {
+      await client.query(
+        `
+          with ranked as (
+            select
+              id,
+              row_number() over (order by id) as position
+            from public.player_cards
+            where player_id = $1::uuid
+          )
+          update public.player_cards owned
+          set acquired_at =
+            '2026-08-15T10:00:00.000Z'::timestamptz
+            + (ranked.position::int * interval '1 minute')
+          from ranked
+          where owned.id = ranked.id
+        `,
+        [COLLECTION_PLAYER_ID],
+      );
+    });
+
+    const cards = await collectionService.listOwnedCards(COLLECTION_PLAYER_ID);
+
+    expect(cards).toHaveLength(5);
+
+    const expected = await cataloguePool.query<{
+      acquired_at: Date;
+      card_definition_id: string;
+      owned_card_id: string;
+    }>(
+      `
+        select
+          id::text as owned_card_id,
+          card_definition_id::text as card_definition_id,
+          acquired_at
+        from public.player_cards
+        where player_id = $1::uuid
+        order by acquired_at desc, id desc
+      `,
+      [COLLECTION_PLAYER_ID],
+    );
+
+    expect(cards.map((card) => card.ownedCardId)).toEqual(
+      expected.rows.map((card) => card.owned_card_id),
+    );
+
+    expect(cards.map((card) => card.cardDefinitionId)).toEqual(
+      expected.rows.map((card) => card.card_definition_id),
+    );
+
+    expect(cards.map((card) => card.acquiredAt)).toEqual(
+      expected.rows.map((card) => card.acquired_at.toISOString()),
+    );
+
+    const otherOwnership = new Set(
+      otherGrant.grant.cards.map((card) => card.ownedCardId),
+    );
+
+    expect(cards.some((card) => otherOwnership.has(card.ownedCardId))).toBe(
+      false,
+    );
+
+    expect(cards.every((card) => card.acquisitionKind === 'starter')).toBe(
+      true,
+    );
+
+    expect(cards.every((card) => !('playerId' in card))).toBe(true);
+    expect(cards.every((card) => !('sourceStarterGrantId' in card))).toBe(true);
+    expect(cards.every((card) => !('sourceCompletionId' in card))).toBe(true);
+  }, 30_000);
+
+  it('loads gameplay and display metadata from the shared catalogue model', async () => {
+    const cards = await collectionService.listOwnedCards(COLLECTION_PLAYER_ID);
+
+    const creature = cards.find((card) => card.category === 'creature');
+    const powerCard = cards.find((card) => card.category === 'power');
+
+    expect(creature).toBeDefined();
+    expect(powerCard).toBeDefined();
+
+    expect(creature).toMatchObject({
+      hp: expect.any(Number),
+      power: expect.any(Number),
+      moves: expect.any(Array),
+      effects: [],
+    });
+
+    expect(creature?.moves.length).toBeGreaterThan(0);
+
+    expect(creature?.moves[0]).toHaveProperty('modifierStat');
+    expect(creature?.moves[0]).toHaveProperty('modifierOperation');
+    expect(creature?.moves[0]).toHaveProperty('modifierDurationTurns');
+
+    expect(powerCard).toMatchObject({
+      hp: null,
+      power: null,
+      moves: [],
+      effects: expect.any(Array),
+    });
+
+    expect(powerCard?.effects.length).toBeGreaterThan(0);
+
+    expect(powerCard?.effects[0]).toHaveProperty('modifierStat');
+    expect(powerCard?.effects[0]).toHaveProperty('modifierOperation');
+    expect(powerCard?.effects[0]).toHaveProperty('modifierDurationTurns');
+  });
 });
+
+async function insertCataloguePlayer(
+  config: DatabaseConfig,
+  playerId: string,
+  subject: string,
+) {
+  await withDatabaseClient(config, async (client) => {
+    await client.query(
+      `
+        insert into public.players (
+          id,
+          auth_issuer,
+          auth_subject,
+          role
+        )
+        values (
+          $1::uuid,
+          'https://issuer.example/',
+          $2,
+          'player'
+        )
+      `,
+      [playerId, subject],
+    );
+  });
+}

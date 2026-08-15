@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
+import type { CardCollectionService } from '../cards/card-collection.js';
 
 import { ApiError } from '../errors/api-error.js';
 import {
@@ -10,6 +11,7 @@ import type { CardAffinity } from '../cards/card-types.js';
 
 interface CardRoutesOptions {
   starterGrantService: StarterGrantService;
+  collectionService: CardCollectionService;
 }
 
 interface StarterBody {
@@ -115,7 +117,7 @@ const effectSchema = {
   },
 } as const;
 
-const cardSchema = {
+const ownedCardSchema = {
   type: 'object',
   additionalProperties: false,
   required: [
@@ -152,8 +154,22 @@ const cardSchema = {
     isActive: { type: 'boolean' },
     moves: { type: 'array', items: moveSchema },
     effects: { type: 'array', items: effectSchema },
-    acquisitionKind: { type: 'string', const: 'starter' },
+    acquisitionKind: {
+      type: 'string',
+      enum: ['event_reward', 'starter'],
+    },
     acquiredAt: { type: 'string', format: 'date-time' },
+  },
+} as const;
+
+const starterCardSchema = {
+  ...ownedCardSchema,
+  properties: {
+    ...ownedCardSchema.properties,
+    acquisitionKind: {
+      type: 'string',
+      const: 'starter',
+    },
   },
 } as const;
 
@@ -168,15 +184,76 @@ const starterResponseSchema = {
       enum: ['wit', 'grit', 'spark', 'spirit', 'mystic'],
     },
     grantedAt: { type: 'string', format: 'date-time' },
-    cards: { type: 'array', minItems: 5, maxItems: 5, items: cardSchema },
+    cards: {
+      type: 'array',
+      minItems: 5,
+      maxItems: 5,
+      items: starterCardSchema,
+    },
     requestId: { type: 'string' },
+  },
+} as const;
+
+const collectionResponseSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['cards', 'requestId'],
+  properties: {
+    cards: {
+      type: 'array',
+      items: ownedCardSchema,
+    },
+    requestId: {
+      type: 'string',
+    },
   },
 } as const;
 
 export const cardRoutes: FastifyPluginAsync<CardRoutesOptions> = async (
   app,
-  { starterGrantService },
+  { starterGrantService, collectionService },
 ) => {
+  app.get(
+    '/cards/collection',
+    {
+      preHandler: [app.authenticate, app.requireActivePlayer],
+      schema: {
+        operationId: 'listOwnedCards',
+        summary: 'List the current player card collection',
+        description:
+          'Returns every card copy owned by the authenticated player with player-safe catalogue and acquisition metadata.',
+        tags: ['Cards'],
+        security: [{ bearerAuth: [] }],
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {},
+        },
+        response: {
+          200: collectionResponseSchema,
+          401: apiErrorSchema,
+          403: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const player = request.player;
+
+      if (!player) {
+        throw new Error(
+          'Active player context was not set by the authorisation pre-handler.',
+        );
+      }
+
+      const cards = await collectionService.listOwnedCards(player.id);
+
+      return reply.status(200).send({
+        cards,
+        requestId: request.id,
+      });
+    },
+  );
+
   app.post<{ Body: StarterBody }>(
     '/cards/starter',
     {

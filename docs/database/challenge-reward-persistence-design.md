@@ -204,6 +204,20 @@ store multiple owned-card rows for one completion while keeping lookups fast.
 Duplicate card definitions remain valid across separate acquisitions, such as
 two starter copies or rewards from different events.
 
+The protected `GET /api/v1/cards/collection` endpoint exposes this ownership
+model directly. It derives the player only from the validated authenticated
+context and returns one response entry for every matching `player_cards` row.
+Two rows that reference the same `card_definition_id` therefore remain two
+distinct owned copies through their different owned-card IDs.
+
+The collection joins each ownership row to the shared definition and its
+Creature moves or Power-card effects. `acquisition_kind` and `acquired_at` are
+safe collection metadata. Raw ownership provenance such as
+`source_completion_id` and `source_starter_grant_id`, as well as reward-policy
+and challenge-answer internals, are not exposed by the collection response.
+Inactive definitions remain visible when already owned even though reward and
+starter selection use only active definitions.
+
 ## Attempt creation transaction
 
 Starting an attempt performs these operations atomically:
@@ -384,4 +398,4 @@ production migration rollout and are tracked as `BASIC-12` in the
 [Basic-tier decision register](../requirements/basic-tier-decision-register.md).
 
 This design was planned, generated, edited, and reviewed with the assistance of
-Codex[GPT-5.6 Sol] and Codex-CLI[gpt-5.6-sol medium].
+Codex[GPT-5.6 Sol], Codex-CLI[gpt-5.6-sol medium], and ChatGPT-Web[GPT-5.6 Sol].
