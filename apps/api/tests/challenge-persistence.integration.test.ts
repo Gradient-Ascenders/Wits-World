@@ -20,6 +20,7 @@ const CHALLENGE_ID = '30000000-0000-4000-8000-000000000001';
 const INVALID_CHALLENGE_ID = '30000000-0000-4000-8000-000000000002';
 const ATTEMPT_ID = '40000000-0000-4000-8000-000000000001';
 const CARD_ID = '50000000-0000-4000-8000-000000000001';
+const STARTER_GRANT_ID = '60000000-0000-4000-8000-000000000001';
 
 describe.skipIf(!runIntegrationTests)(
   'challenge persistence integration',
@@ -70,6 +71,7 @@ describe.skipIf(!runIntegrationTests)(
           '0005_create_challenge_definitions.sql',
           '0006_create_challenge_attempts.sql',
           '0007_create_cards_rewards_and_ownership.sql',
+          '0009_create_card_catalogue_and_starter_grants.sql',
         ],
         skipped: [],
       });
@@ -84,6 +86,7 @@ describe.skipIf(!runIntegrationTests)(
           '0005_create_challenge_definitions.sql',
           '0006_create_challenge_attempts.sql',
           '0007_create_cards_rewards_and_ownership.sql',
+          '0009_create_card_catalogue_and_starter_grants.sql',
         ],
       });
     }, 30_000);
@@ -334,12 +337,13 @@ describe.skipIf(!runIntegrationTests)(
       });
     }, 45_000);
 
-    it('stores one completion, prevents duplicate rewards, and allows separate duplicate acquisitions', async () => {
+    it('stores one completion, prevents duplicate rewards, and keeps ownership sources distinct', async () => {
       await withDatabaseClient(temporaryConfig, async (client) => {
         const cardResult = await client.query(
           `insert into public.card_definitions (
-           id, name, category, affinity, rarity, description
+           id, name, category, affinity, rarity, hp, power, description
          ) values ($1, 'Persistence Spark', 'creature', 'spark', 'common',
+                   100, 10,
                    'A card used by the persistence test')
          returning id`,
           [CARD_ID],
@@ -526,12 +530,26 @@ describe.skipIf(!runIntegrationTests)(
           ),
         ).rejects.toThrow();
         await client.query(
-          `insert into public.player_cards (
-           player_id, card_definition_id, acquisition_kind
-         ) values ($1, $2, 'starter'),
-                  ($1, $2, 'starter')`,
-          [PLAYER_ID, CARD_ID],
+          `insert into public.player_starter_grants (id, player_id, affinity)
+           values ($1, $2, 'spark')`,
+          [STARTER_GRANT_ID, PLAYER_ID],
         );
+        await client.query(
+          `insert into public.player_cards (
+           player_id, card_definition_id, source_starter_grant_id,
+           acquisition_kind
+         ) values ($1, $2, $3, 'starter')`,
+          [PLAYER_ID, CARD_ID, STARTER_GRANT_ID],
+        );
+        await expect(
+          client.query(
+            `insert into public.player_cards (
+             player_id, card_definition_id, source_starter_grant_id,
+             acquisition_kind
+           ) values ($1, $2, $3, 'starter')`,
+            [PLAYER_ID, CARD_ID, STARTER_GRANT_ID],
+          ),
+        ).rejects.toThrow();
 
         const ownedCards = await client.query<{ count: string }>(
           `select count(*)::text as count
@@ -539,7 +557,7 @@ describe.skipIf(!runIntegrationTests)(
           where player_id = $1 and card_definition_id = $2`,
           [PLAYER_ID, CARD_ID],
         );
-        expect(ownedCards.rows[0]?.count).toBe('3');
+        expect(ownedCards.rows[0]?.count).toBe('2');
 
         const eventRewardCards = await client.query<{ count: string }>(
           `select count(*)::text as count

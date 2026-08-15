@@ -81,6 +81,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0005_create_challenge_definitions.sql',
         '0006_create_challenge_attempts.sql',
         '0007_create_cards_rewards_and_ownership.sql',
+        '0009_create_card_catalogue_and_starter_grants.sql',
       ],
       skipped: [],
     });
@@ -94,6 +95,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0005_create_challenge_definitions.sql',
         '0006_create_challenge_attempts.sql',
         '0007_create_cards_rewards_and_ownership.sql',
+        '0009_create_card_catalogue_and_starter_grants.sql',
       ],
     });
     expect(readiness).toMatchObject({
