@@ -38,3 +38,8 @@ pnpm-debug.log*
 # Temporary files
 *.tmp
 *.swp
+
+# Playwright authenticated browser state
+apps/web/playwright/.auth/
+apps/web/playwright-report/
+apps/web/playwright/test-results/

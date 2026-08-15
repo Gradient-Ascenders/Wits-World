@@ -119,6 +119,30 @@ Authenticated API clients obtain a token on demand through
 `useApiAccessToken`. Callers must place that token only in the standard
 `Authorization: Bearer` request header and must not log or persist it.
 
+### Real authentication end-to-end test
+
+The Playwright suite signs in through the development tenant's real Auth0
+Universal Login page and calls the real local API. Put only the dedicated test
+player credentials in the ignored `apps/web/.env.e2e.local` file:
+
+```dotenv
+E2E_USER_EMAIL=player@example.com
+E2E_USER_PASSWORD=replace-with-the-test-player-password
+```
+
+From the repository root, run:
+
+```bash
+npm run test:e2e:auth --workspace @wits-world/web
+npm run test:e2e --workspace @wits-world/web
+npm run test:e2e:headed --workspace @wits-world/web
+```
+
+Playwright starts the real web and API development services when they are not
+already running. The setup project saves reusable browser state under the
+ignored `playwright/.auth/` directory. Credentials are loaded by the Playwright
+Node process and must never use a `VITE_` prefix.
+
 Known limitations:
 
 - sign-in, sign-out, and silent token retrieval depend on Auth0 availability;
@@ -126,8 +150,8 @@ Known limitations:
   or incorrect Allowed Web Origins may prevent silent session restoration;
 - changing the local port requires matching callback, logout, and web-origin
   entries in Auth0;
-- automated tests mock Auth0 and do not prove that tenant configuration is
-  correct.
+- unit tests mock Auth0; the Playwright end-to-end test requires the real
+  development tenant, API, database test branch, and network access.
 
 ## Campus map and event discovery
 
