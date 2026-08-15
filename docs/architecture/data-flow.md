@@ -3,10 +3,11 @@
 ## Scope
 
 This document describes the Sprint 1 authentication, event-discovery, and
-location-eligibility flow.
+location-eligibility flow, together with the Sprint 2 authenticated card
+collection extension.
 
-Challenge answering, card rewards, deck management, and battles are outside the
-Sprint 1 data flow.
+Challenge answering, reward finalization, deck management, and battles are
+documented separately or remain later work.
 
 ## Application startup
 
@@ -112,6 +113,77 @@ the player to retry.
 
 It should not automatically accuse the player of cheating.
 
+## Card-collection flow
+
+The protected collection endpoint returns the complete owned-card collection for
+the authenticated active player.
+
+```text
+Validated bearer token
+        |
+        v
+Authenticated local player
+        |
+        v
+request.player.id
+        |
+        v
+public.player_cards
+        |
+        v
+public.card_definitions
+     /             \
+    v               v
+card_moves      card_effects
+     \             /
+      v           v
+       OwnedCard[]
+           |
+           v
+GET /api/v1/cards/collection
+```
+
+1. The browser requests `GET /api/v1/cards/collection` with a bearer access
+   token.
+2. The API validates the token and resolves the active local player.
+3. Player identity comes only from the authenticated server-side player
+   context. The endpoint accepts no player identifier in its path, query string,
+   or request body.
+4. The API queries `player_cards` using the authenticated player's local ID.
+5. Each matching ownership row is joined to its shared `card_definitions`
+   record.
+6. Creature definitions load their ordered `card_moves`; Power definitions load
+   their ordered `card_effects`.
+7. The API returns each owned copy separately using the shared `OwnedCard`
+   representation.
+8. Results are ordered by acquisition time newest first, with the owned-card ID
+   providing a deterministic tie-breaker.
+
+A `player_cards.id` identifies one individual owned copy. Multiple ownership rows
+may therefore have the same `card_definition_id`. Those rows represent legitimate
+duplicate copies and must remain distinguishable in collection and later deck
+operations.
+
+Catalogue activity and ownership are separate concepts. An inactive card
+definition is not eligible for new reward or starter selection, but an already
+owned inactive card remains part of the player's collection.
+
+The browser-visible collection includes safe acquisition metadata such as
+`acquisitionKind` and `acquiredAt`. It does not expose internal provenance or
+challenge data such as:
+
+- `player_id`;
+- `source_completion_id`;
+- `source_starter_grant_id`;
+- challenge attempt identifiers;
+- accepted answers;
+- reward-policy internals; or
+- server-side reward randomness.
+
+An empty owned collection is returned successfully as an empty `cards` array.
+Missing authentication or an inactive local-player lifecycle is rejected before
+the collection query runs.
+
 ## Failure handling
 
 ### Authentication failure
@@ -176,21 +248,24 @@ Any later decision to store location claims must document:
 
 ## Later Basic data flow
 
-After Sprint 1, the same authority model will be extended to:
+The same authority model also applies to later Basic operations:
 
-1. create a challenge session;
-2. submit an answer;
-3. mark the answer on the server;
-4. issue a one-time card reward in a transaction;
-5. validate card and deck ownership;
-6. enforce CPU battle actions; and
-7. store completed match rounds and results.
+1. create or resume a challenge session;
+2. submit and mark answers on the server;
+3. finalize a challenge and issue rewards atomically;
+4. validate card and deck ownership;
+5. enforce CPU battle actions; and
+6. store completed match rounds and results.
 
-These later operations remain server-authoritative.
+These operations remain server-authoritative.
 
 The proposed start, resume, answer, timeout, and player-safe response boundaries
 for the first MCQ format are defined in the
 [challenge and attempt API contract](challenge-attempt-api-contract.md).
+
+Challenge, reward, starter-card, and owned-copy persistence semantics are defined
+in the
+[challenge, reward, and card persistence design](../database/challenge-reward-persistence-design.md).
 
 ---
 
