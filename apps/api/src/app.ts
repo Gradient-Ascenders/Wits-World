@@ -41,6 +41,8 @@ import { cardRoutes } from './routes/cards.js';
 
 import type { CardCollectionService } from './cards/card-collection.js';
 
+import type { ChallengeAttemptFetchService } from './challenges/challenge-attempt-fetch.js';
+
 export interface EventServices {
   discovery: EventDiscoveryService;
   eligibility: EventEligibilityService;
@@ -69,6 +71,7 @@ export interface AccountDeletionServices {
 
 export interface ChallengeAttemptServices {
   start: ChallengeAttemptStartService;
+  fetch?: ChallengeAttemptFetchService;
   answerSubmission?: ChallengeAnswerSubmissionService;
 }
 
@@ -245,6 +248,7 @@ export async function buildApp({
     await app.register(challengeAttemptRoutes, {
       prefix: '/api/v1',
       startService: challengeAttemptServices.start,
+      fetchService: challengeAttemptServices.fetch,
       answerSubmissionService: challengeAttemptServices.answerSubmission,
     });
   }

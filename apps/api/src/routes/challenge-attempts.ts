@@ -23,8 +23,14 @@ import {
 } from '../challenges/challenge-answer-lock.js';
 import type { ChallengeAnswerSubmissionService } from '../challenges/challenge-answer-submission.js';
 
+import {
+  ChallengeAttemptFetchNotFoundError,
+  type ChallengeAttemptFetchService,
+} from '../challenges/challenge-attempt-fetch.js';
+
 interface ChallengeAttemptRoutesOptions {
   startService: ChallengeAttemptStartService;
+  fetchService?: ChallengeAttemptFetchService;
   answerSubmissionService?: ChallengeAnswerSubmissionService;
 }
 
@@ -335,7 +341,7 @@ const completedAttemptResponseSchema = {
 
 export const challengeAttemptRoutes: FastifyPluginAsync<
   ChallengeAttemptRoutesOptions
-> = async (app, { startService, answerSubmissionService }) => {
+> = async (app, { startService, fetchService, answerSubmissionService }) => {
   app.post<{
     Params: StartAttemptParams;
     Body: StartAttemptBody;
@@ -438,6 +444,84 @@ export const challengeAttemptRoutes: FastifyPluginAsync<
       return reply.code(200).send(withRequestId(result.attempt, request.id));
     },
   );
+
+  if (fetchService) {
+    app.get<{
+      Params: SubmitAnswerParams;
+    }>(
+      '/challenge-attempts/:attemptId',
+      {
+        onRequest: [app.authenticate, app.requireActivePlayer],
+        schema: {
+          operationId: 'fetchChallengeAttempt',
+          summary: 'Fetch the current challenge attempt state',
+          description:
+            'Returns the authenticated player persisted in-progress or completed attempt. Expired in-progress attempts are finalized synchronously before the completed result is returned.',
+          tags: ['Challenges'],
+          security: [
+            {
+              bearerAuth: [],
+            },
+          ],
+          params: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['attemptId'],
+            properties: {
+              attemptId: {
+                type: 'string',
+                format: 'uuid',
+              },
+            },
+          },
+          response: {
+            200: {
+              oneOf: [
+                inProgressAttemptResponseSchema,
+                completedAttemptResponseSchema,
+              ],
+            },
+            400: apiErrorSchema,
+            401: apiErrorSchema,
+            403: apiErrorSchema,
+            404: apiErrorSchema,
+            500: apiErrorSchema,
+          },
+        },
+      },
+      async (request, reply) => {
+        const player = request.player;
+
+        if (!player) {
+          throw new Error(
+            'Active player authorization did not establish a local player.',
+          );
+        }
+
+        let attempt;
+
+        try {
+          attempt = await fetchService.fetchAttempt({
+            playerId: player.id,
+            attemptId: request.params.attemptId,
+          });
+        } catch (error) {
+          if (error instanceof ChallengeAttemptFetchNotFoundError) {
+            throw new ApiError({
+              statusCode: 404,
+              code: 'ATTEMPT_NOT_FOUND',
+              title: 'Challenge attempt not found',
+              detail: 'The requested challenge attempt was not found.',
+            });
+          }
+
+          throw error;
+        }
+
+        return reply.code(200).send(withRequestId(attempt, request.id));
+      },
+    );
+  }
 
   if (answerSubmissionService) {
     app.post<{
