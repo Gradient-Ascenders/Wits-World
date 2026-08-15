@@ -411,6 +411,9 @@ describe('challenge answer submission API', () => {
     expect(body).not.toHaveProperty('answerCorrect');
     expect(body).not.toHaveProperty('correctAnswers');
     expect(body).not.toHaveProperty('acceptedChoiceId');
+    expect(body).not.toHaveProperty('explanation');
+    expect(response.body).not.toContain('acceptedChoiceId');
+    expect(response.body).not.toContain('explanation');
   });
 
   it('rejects browser-supplied authoritative answer fields', async () => {
@@ -613,6 +616,9 @@ describe('challenge attempt fetch API', () => {
     expect(body).not.toHaveProperty('answeredCount');
     expect(body).not.toHaveProperty('acceptedChoiceId');
     expect(body).not.toHaveProperty('correctAnswers');
+    expect(body).not.toHaveProperty('explanation');
+    expect(response.body).not.toContain('acceptedChoiceId');
+    expect(response.body).not.toContain('explanation');
   });
 
   it('maps missing and cross-player attempts to the same safe 404', async () => {

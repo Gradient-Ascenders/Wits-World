@@ -87,6 +87,7 @@ describe.skipIf(!runIntegrationTests)(
           '0010_add_card_modifier_metadata.sql',
           '0011_create_saved_decks.sql',
           '0012_add_author_content_foundation.sql',
+          '0013_harden_author_challenge_lifecycle.sql',
         ],
         skipped: [],
       });
@@ -106,6 +107,7 @@ describe.skipIf(!runIntegrationTests)(
           '0010_add_card_modifier_metadata.sql',
           '0011_create_saved_decks.sql',
           '0012_add_author_content_foundation.sql',
+          '0013_harden_author_challenge_lifecycle.sql',
         ],
       });
     }, 30_000);

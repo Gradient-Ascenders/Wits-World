@@ -49,6 +49,9 @@ import { deckRoutes } from './routes/decks.js';
 import type { AuthorEventService } from './events/author-event-service.js';
 import { authorEventRoutes } from './routes/author-events.js';
 
+import type { AuthorChallengeService } from './challenges/author-challenge-service.js';
+import { authorChallengeRoutes } from './routes/author-challenges.js';
+
 export interface EventServices {
   discovery: EventDiscoveryService;
   eligibility: EventEligibilityService;
@@ -90,6 +93,7 @@ export interface CardServices {
 
 export interface AuthorContentServices {
   events?: AuthorEventService;
+  challenges?: AuthorChallengeService;
 }
 
 export async function buildApp({
@@ -275,6 +279,13 @@ export async function buildApp({
     await app.register(authorEventRoutes, {
       prefix: '/api/v1',
       service: authorContentServices.events,
+    });
+  }
+
+  if (authorContentServices?.challenges) {
+    await app.register(authorChallengeRoutes, {
+      prefix: '/api/v1',
+      service: authorContentServices.challenges,
     });
   }
 
