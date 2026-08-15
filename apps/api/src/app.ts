@@ -36,6 +36,8 @@ import type { ChallengeAttemptStartService } from './challenges/challenge-attemp
 import { challengeAttemptRoutes } from './routes/challenge-attempts.js';
 
 import type { ChallengeAnswerSubmissionService } from './challenges/challenge-answer-submission.js';
+import type { StarterGrantService } from './cards/starter-grant.js';
+import { cardRoutes } from './routes/cards.js';
 
 export interface EventServices {
   discovery: EventDiscoveryService;
@@ -54,6 +56,7 @@ export interface BuildAppOptions {
   playerIdentityService?: PlayerIdentityService;
   accountDeletionServices?: AccountDeletionServices;
   challengeAttemptServices?: ChallengeAttemptServices;
+  cardServices?: CardServices;
 }
 
 export interface AccountDeletionServices {
@@ -65,6 +68,10 @@ export interface AccountDeletionServices {
 export interface ChallengeAttemptServices {
   start: ChallengeAttemptStartService;
   answerSubmission?: ChallengeAnswerSubmissionService;
+}
+
+export interface CardServices {
+  starterGrant: StarterGrantService;
 }
 
 export async function buildApp({
@@ -79,6 +86,7 @@ export async function buildApp({
   playerIdentityService,
   accountDeletionServices,
   challengeAttemptServices,
+  cardServices,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: logger
@@ -125,6 +133,10 @@ export async function buildApp({
     );
   }
 
+  if (cardServices && !playerIdentityService) {
+    throw new Error('Card services require a player identity service.');
+  }
+
   registerErrorHandlers(app);
 
   await app.register(swagger, {
@@ -151,6 +163,10 @@ export async function buildApp({
         {
           name: 'Challenges',
           description: 'Timed event challenge attempts and player quiz state.',
+        },
+        {
+          name: 'Cards',
+          description: 'Player card catalogue and starter selection.',
         },
       ],
       components: {
@@ -227,6 +243,13 @@ export async function buildApp({
       prefix: '/api/v1',
       startService: challengeAttemptServices.start,
       answerSubmissionService: challengeAttemptServices.answerSubmission,
+    });
+  }
+
+  if (cardServices) {
+    await app.register(cardRoutes, {
+      prefix: '/api/v1',
+      starterGrantService: cardServices.starterGrant,
     });
   }
 

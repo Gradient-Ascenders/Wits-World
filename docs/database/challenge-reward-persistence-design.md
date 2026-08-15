@@ -19,9 +19,11 @@ and selection behavior used below were confirmed by the team in the
 They are inputs to this persistence proposal rather than rules chosen by the
 schema design.
 
-Decks, battles, selling, evolution, and starter-card assignment remain future
-work. The schema keeps enough identity and ownership information to add those
-features without treating a card definition as an owned card.
+Decks, battles, selling, and evolution remain future work. The Basic starter
+grant is implemented by migration `0009` and the protected
+`POST /api/v1/cards/starter` endpoint. The schema keeps enough identity and
+ownership information to add later features without treating a card definition
+as an owned card.
 
 ## Required invariants
 
@@ -141,14 +143,26 @@ during finalization and is not stored here.
 ### `card_definitions`
 
 A card definition stores `id`, nonblank `name`, `category`, `affinity`, `rarity`,
-active state, and audit timestamps.
+active state, and audit timestamps. Creature definitions also store positive
+`hp` and non-negative `power`; Power definitions keep both stats null.
 
 - Category is `creature` or `power`.
 - Affinity is `wit`, `grit`, `spark`, `spirit`, or `mystic`.
 - Rarity is `common`, `rare`, `epic`, or `legendary`.
 
-Gameplay stats, moves, effects, and evolution links are deferred. Reward
-selection uses only active definitions.
+Creature moves are stored in `card_moves` with an ordered position, name, move
+type, effect type, optional effect value, and non-negative Power cost. Power-card
+effects are stored in `card_effects` with an ordered position, effect type, and
+optional effect value. Child-table triggers enforce that moves belong to
+Creatures and effects belong to Power cards. A category-change trigger prevents
+an existing Creature from being changed into a Power card, or vice versa, while
+its child rows remain.
+
+The move/effect vocabulary is `basic`, `wit`, `grit`, `spark`, `spirit`, and
+`mystic` for move types, and `damage`, `debuff`, `heal`, and `buff` for effect
+types. Damage is the only effect affected by the affinity multiplier; the
+server-side type rule is implemented in `apps/api/src/cards/card-rules.ts`.
+Reward and starter selection use only active definitions.
 
 ### `event_completions`
 
@@ -172,8 +186,13 @@ zero-coin completion inserts no ledger row.
 ### `player_cards`
 
 Each row represents one owned copy and stores `id`, player, card definition,
-nullable source completion, acquisition kind, and acquisition time. Acquisition
-kind initially supports `event_reward` and later `starter`.
+nullable source completion, optional starter grant, acquisition kind, and
+acquisition time. Acquisition kind supports `event_reward` and `starter`.
+
+Starter rows must reference `player_starter_grants`, while event-reward rows
+must reference a completion. A partial unique index prevents the same card
+definition from being inserted twice for one starter grant without preventing
+duplicate copies from later events.
 
 There is deliberately no uniqueness constraint on player and card definition.
 The partial event-reward index permits one event-reward row per completion while
@@ -287,13 +306,21 @@ The completed attempt gains a server-generated reward result:
 The response is reconstructed from persisted rows. The browser never submits
 any field in `reward`.
 
-## Future starter-card extension
+## Starter-card grant
 
-Starter assignment can reuse definitions and owned copies. After affinity
-selection, one transaction selects three distinct active Common creatures and
-two distinct active Common power cards of that affinity, inserts five owned
-copies, and records a separate one-time starter grant. The catalog must have
-enough qualifying definitions before offering an affinity.
+The protected `POST /api/v1/cards/starter` endpoint derives the player from the
+validated access token. The request contains only the selected affinity. One
+transaction locks or creates the player's `player_starter_grants` row, selects
+three distinct active Common Creatures and two distinct active Common Power
+cards of that affinity, inserts five owned copies, and returns the persisted
+grant.
+
+The same affinity can be submitted again safely: the API returns the original
+grant and cards with HTTP `200`. A different affinity returns a conflict, and
+the database's unique player constraint prevents concurrent requests from
+creating two starter selections. The seed contains the minimum five Common
+cards for each of the five affinities; the starter API refuses an affinity if
+its catalogue is incomplete.
 
 ## Migration and implementation order
 
@@ -309,11 +336,19 @@ Issue #64 adds the migration layer in dependency order:
    shuffled four-choice snapshots, and locked answers.
 5. `0007_create_cards_rewards_and_ownership.sql` adds card definitions,
    completions, wallets, coin ledger entries, and owned card copies.
+6. The `0008` event-reward migration from issue #67 must run before the
+   catalogue migration when that branch is merged; it permits the confirmed
+   reward-card multiplicity without changing starter ownership rules.
+7. `0009_create_card_catalogue_and_starter_grants.sql` adds Creature stats,
+   normalized moves/effects, starter grants, starter ownership provenance, and
+   the constraints that keep those records consistent.
 
-The database integration suite applies all seven migrations to an empty
+The database integration suite applies the migrations to an empty
 PostgreSQL/PostGIS database and checks that a second run is a no-op. The
-migrations intentionally do not seed production trivia, cards, or a challenge;
-those records are authored by later issues.
+`0002_basic_card_catalogue.sql` seed is repeatable and provides deterministic
+demonstration cards for all starter affinities plus non-Common examples for
+catalogue/reward testing. The seed does not claim to be final production card
+artwork or balance.
 
 The existing Sprint 1 demo event carries over as an unchanged `events` row. It
 has no challenge until a separate draft `event_challenges` row and at least five

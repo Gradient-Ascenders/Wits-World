@@ -14,6 +14,7 @@ import { createAccountDeletionRetryProcessor } from './players/account-deletion-
 import { createAccountDeletionRetryScheduler } from './players/account-deletion-retry-scheduler.js';
 import { createReauthenticationTokenVerifier } from './auth/reauthentication-token-verifier.js';
 import { createChallengeAttemptStartService } from './challenges/challenge-attempt-start.js';
+import { createStarterGrantService } from './cards/starter-grant.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
@@ -37,6 +38,7 @@ async function startServer(): Promise<void> {
 
   const challengeAttemptStartService =
     createChallengeAttemptStartService(database);
+  const starterGrantService = createStarterGrantService(database);
 
   const app = await buildApp({
     config,
@@ -46,6 +48,10 @@ async function startServer(): Promise<void> {
 
     challengeAttemptServices: {
       start: challengeAttemptStartService,
+    },
+
+    cardServices: {
+      starterGrant: starterGrantService,
     },
 
     accountDeletionServices: {
