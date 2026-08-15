@@ -417,6 +417,15 @@ function parseCompletedAttempt(
   if (
     new Set(review.map((question) => question.position)).size !== 5 ||
     !review.every((question, index) => question.position === index + 1) ||
+    !review.every((question) =>
+      question.selectedChoice === null
+        ? !question.isCorrect
+        : question.isCorrect ===
+          (question.selectedChoice.choiceId ===
+            question.correctChoice.choiceId),
+    ) ||
+    (payload.completionReason === 'answered' &&
+      review.some((question) => question.selectedChoice === null)) ||
     review.filter((question) => question.isCorrect).length !==
       payload.scoreCorrect
   ) {

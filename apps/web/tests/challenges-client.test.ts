@@ -163,6 +163,118 @@ describe('challenge attempt client', () => {
     });
   });
 
+  it('rejects an unanswered review item marked correct', async () => {
+    const completed = completedAttempt();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          ...completed,
+          completionReason: 'timeout',
+          review: completed.review.map((question, index) =>
+            index === 0
+              ? { ...question, selectedChoice: null, isCorrect: true }
+              : question,
+          ),
+        }),
+      ),
+    );
+
+    await expectCompletedAttemptToBeRejected();
+  });
+
+  it('rejects matching selected and correct choices marked incorrect', async () => {
+    const completed = completedAttempt();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          ...completed,
+          review: completed.review.map((question, index) =>
+            index === 0 ? { ...question, isCorrect: false } : question,
+          ),
+          scoreCorrect: 2,
+        }),
+      ),
+    );
+
+    await expectCompletedAttemptToBeRejected();
+  });
+
+  it('rejects different selected and correct choices marked correct', async () => {
+    const completed = completedAttempt();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          ...completed,
+          review: completed.review.map((question, index) =>
+            index === 3 ? { ...question, isCorrect: true } : question,
+          ),
+          scoreCorrect: 4,
+        }),
+      ),
+    );
+
+    await expectCompletedAttemptToBeRejected();
+  });
+
+  it('rejects an answered completion with an unanswered review item', async () => {
+    const completed = completedAttempt();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          ...completed,
+          review: completed.review.map((question, index) =>
+            index === 3 ? { ...question, selectedChoice: null } : question,
+          ),
+        }),
+      ),
+    );
+
+    await expectCompletedAttemptToBeRejected();
+  });
+
+  it('accepts a timeout completion with unanswered review items', async () => {
+    const completed = completedAttempt();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          ...completed,
+          completionReason: 'timeout',
+          review: completed.review.map((question, index) =>
+            index >= 3 ? { ...question, selectedChoice: null } : question,
+          ),
+        }),
+      ),
+    );
+
+    const result = await getChallengeAttempt({
+      apiBaseUrl,
+      attemptId,
+      getAccessToken: vi.fn().mockResolvedValue('access-token'),
+      signal: new AbortController().signal,
+    });
+
+    expect(result).toMatchObject({
+      completionReason: 'timeout',
+      review: [
+        {},
+        {},
+        {},
+        { isCorrect: false, selectedChoice: null },
+        { isCorrect: false, selectedChoice: null },
+      ],
+    });
+  });
+
   it('rejects uncontracted answer-key data in a completed review', async () => {
     const completed = completedAttempt();
 
@@ -298,6 +410,17 @@ function jsonResponse(payload: object, status = 200): Response {
     headers: { 'Content-Type': 'application/json' },
     status,
   });
+}
+
+async function expectCompletedAttemptToBeRejected() {
+  await expect(
+    getChallengeAttempt({
+      apiBaseUrl,
+      attemptId,
+      getAccessToken: vi.fn().mockResolvedValue('access-token'),
+      signal: new AbortController().signal,
+    }),
+  ).rejects.toBeInstanceOf(ChallengeApiError);
 }
 
 function questionId(position: number): string {
