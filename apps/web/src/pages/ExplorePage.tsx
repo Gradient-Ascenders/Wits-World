@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { ChallengeApiError, startChallengeAttempt } from '../api/challenges';
 import {
   EventDiscoveryError,
   EventEligibilityError,
@@ -47,6 +48,7 @@ interface ExplorePageProps {
   locationClaimProvider?: LocationClaimProvider;
   mapFactory?: MapFactory;
   mapboxAccessToken: string;
+  onChallengeStarted?: (attemptId: string) => void;
 }
 
 function toDiscoveryState(events: PlayerEvent[]): EventDiscoveryState {
@@ -130,6 +132,7 @@ export default function ExplorePage({
   locationClaimProvider = requestBrowserLocation,
   mapFactory,
   mapboxAccessToken,
+  onChallengeStarted = navigateToChallenge,
 }: ExplorePageProps) {
   const getAccessToken = useApiAccessToken();
   const [attempt, setAttempt] = useState(0);
@@ -140,7 +143,9 @@ export default function ExplorePage({
     Record<string, EventEligibilityState | undefined>
   >({});
   const [checkingEventId, setCheckingEventId] = useState<string | null>(null);
+  const [startingEventId, setStartingEventId] = useState<string | null>(null);
   const eligibilityRequest = useRef<AbortController | null>(null);
+  const challengeStartRequest = useRef<AbortController | null>(null);
   const reportedLocationRef = useRef<MapCoordinate | null>(null);
   const [, setReportedLocationRevision] = useState(0);
   const mounted = useRef(true);
@@ -184,6 +189,7 @@ export default function ExplorePage({
     return () => {
       mounted.current = false;
       eligibilityRequest.current?.abort();
+      challengeStartRequest.current?.abort();
       reportedLocationRef.current = null;
     };
   }, []);
@@ -253,16 +259,118 @@ export default function ExplorePage({
     [apiBaseUrl, getAccessToken, locationClaimProvider],
   );
 
+  const startChallenge = useCallback(
+    async (eventId: string) => {
+      if (
+        eligibilityRequest.current !== null ||
+        challengeStartRequest.current !== null ||
+        startingEventId !== null
+      ) {
+        return;
+      }
+
+      const controller = new AbortController();
+      challengeStartRequest.current = controller;
+      setStartingEventId(eventId);
+      setEligibility((current) => ({
+        ...current,
+        [eventId]: { status: 'starting' },
+      }));
+
+      try {
+        const claim = await locationClaimProvider();
+
+        if (!mounted.current || controller.signal.aborted) {
+          return;
+        }
+
+        const challengeAttempt = await startChallengeAttempt({
+          apiBaseUrl,
+          claim,
+          eventId,
+          getAccessToken,
+          signal: controller.signal,
+        });
+
+        if (!controller.signal.aborted) {
+          onChallengeStarted(challengeAttempt.attemptId);
+        }
+      } catch (error) {
+        if (mounted.current && !controller.signal.aborted) {
+          setEligibility((current) => ({
+            ...current,
+            [eventId]: toChallengeStartFailure(error),
+          }));
+        }
+      } finally {
+        if (challengeStartRequest.current === controller) {
+          challengeStartRequest.current = null;
+        }
+
+        if (mounted.current && !controller.signal.aborted) {
+          setStartingEventId(null);
+        }
+      }
+    },
+    [
+      apiBaseUrl,
+      getAccessToken,
+      locationClaimProvider,
+      onChallengeStarted,
+      startingEventId,
+    ],
+  );
+
   return (
     <CampusExplorer
       discovery={discovery}
       eligibility={eligibility}
-      eligibilityBusy={checkingEventId !== null}
+      eligibilityBusy={checkingEventId !== null || startingEventId !== null}
       mapConfiguration={mapConfiguration}
       mapFactory={mapFactory}
       onCheckEligibility={(eventId) => void checkEligibility(eventId)}
+      onStartChallenge={(eventId) => void startChallenge(eventId)}
       onRetry={() => setAttempt((current) => current + 1)}
       reportedLocation={reportedLocationRef.current}
     />
   );
+}
+
+function toChallengeStartFailure(error: unknown): EventEligibilityState {
+  if (error instanceof BrowserLocationError) {
+    if (error.failure === 'denied') {
+      return { status: 'location-denied' };
+    }
+
+    if (error.failure === 'timeout') {
+      return { status: 'location-timeout' };
+    }
+
+    return { status: 'location-unavailable' };
+  }
+
+  if (error instanceof ChallengeApiError) {
+    if (error.failure === 'authorization') {
+      return { status: 'authorization-error' };
+    }
+
+    if (error.failure === 'event-not-reachable') {
+      return { status: 'unreachable' };
+    }
+
+    if (error.failure === 'event-unavailable') {
+      return { status: 'event-unavailable' };
+    }
+
+    if (error.failure === 'location-retry') {
+      return { status: 'location-stale' };
+    }
+  }
+
+  return { status: 'start-error' };
+}
+
+function navigateToChallenge(attemptId: string): void {
+  window.history.pushState({}, '', `/challenge-attempts/${attemptId}`);
+  window.dispatchEvent(new PopStateEvent('popstate'));
 }

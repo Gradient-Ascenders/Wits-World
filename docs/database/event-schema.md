@@ -83,6 +83,9 @@ event placement. The Great Hall location can be cross-checked against the
 
 The seed uses an upsert on the fixed UUID. Running it repeatedly restores the
 documented fixture values and does not create additional rows for this event.
+`0003_sprint_1_demo_challenge.sql` adds the associated deterministic published
+five-question challenge; its immutable choices and private answer keys use fixed
+IDs with conflict-safe inserts.
 
 The server-side distance, availability, and radius rules are documented in the
 [event eligibility calculation](./event-eligibility.md).
@@ -122,4 +125,4 @@ psql "$TEST_DATABASE_URL" -c \
 Do not paste database URLs, passwords, or other secrets into issue evidence.
 
 The preceding document was generated and edited with the assistance of:
-Codex-CLI[GPT-5].
+Codex-CLI[GPT-5], Codex[GPT-5].

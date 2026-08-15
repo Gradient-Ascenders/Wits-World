@@ -25,6 +25,7 @@ import {
 
 import { createChallengeAttemptFetchService } from '../src/challenges/challenge-attempt-fetch.js';
 import { createChallengeAttemptCompletionFinalizer } from '../src/challenges/challenge-attempt-completion-finalizer.js';
+import { createChallengeAnswerSubmissionService } from '../src/challenges/challenge-answer-submission.js';
 
 const EVENT_ID = '00000000-0000-4000-8000-000000000065';
 const CHALLENGE_ID = '30000000-0000-4000-8000-000000000065';
@@ -44,6 +45,7 @@ const CONCURRENT_ANSWER_PLAYER_ID = '00000000-0000-4000-8000-000000000173';
 const EXPIRED_ANSWER_PLAYER_ID = '00000000-0000-4000-8000-000000000174';
 
 const FETCH_TIMEOUT_PLAYER_ID = '00000000-0000-4000-8000-000000000176';
+const FIFTH_ANSWER_PLAYER_ID = '00000000-0000-4000-8000-000000000177';
 
 const ANSWER_RECEIVED_AT = new Date('2026-09-01T10:01:00.000Z');
 
@@ -763,6 +765,109 @@ describe.skipIf(!runIntegrationTests)(
       expect(await countPersistedAnswers(pool, attempt.attemptId)).toBe(0);
     }, 30_000);
 
+    it('returns one stable completed review from the fifth answer and completed GET', async () => {
+      const attempt = await createAttemptForPlayer(
+        pool,
+        FIFTH_ANSWER_PLAYER_ID,
+        'fifth-answer-review',
+      );
+
+      const answerChoices = await pool.query<{
+        attempt_question_id: string;
+        choice_id: string;
+      }>(
+        `
+          select distinct on (question.position)
+            question.id::text as attempt_question_id,
+            choice.id::text as choice_id
+          from public.attempt_questions question
+          join public.attempt_question_choices choice
+            on choice.attempt_question_id = question.id
+          join private.challenge_answer_keys answer_key
+            on answer_key.question_id = question.source_question_id
+          where question.attempt_id = $1::uuid
+            and choice.source_choice_id <> answer_key.accepted_choice_id
+          order by question.position, choice.display_position
+        `,
+        [attempt.attemptId],
+      );
+
+      expect(answerChoices.rows).toHaveLength(5);
+
+      const finalizer = createChallengeAttemptCompletionFinalizer({
+        randomInt: () => 0,
+      });
+      const answerService = createChallengeAnswerSubmissionService(pool, {
+        finalizer,
+        clock: () => ANSWER_RECEIVED_AT,
+      });
+      const submissionResults: Awaited<
+        ReturnType<typeof answerService.submitAnswer>
+      >[] = [];
+
+      for (const [index, answer] of answerChoices.rows.entries()) {
+        const result = await answerService.submitAnswer({
+          playerId: FIFTH_ANSWER_PLAYER_ID,
+          attemptId: attempt.attemptId,
+          attemptQuestionId: answer.attempt_question_id,
+          choiceId: answer.choice_id,
+        });
+        submissionResults.push(result);
+
+        if (index < 4) {
+          expect(result.status).toBe('in_progress');
+          expect(result).not.toHaveProperty('review');
+          expect(result).not.toHaveProperty('scoreCorrect');
+          expect(result).not.toHaveProperty('reward');
+        }
+      }
+
+      const fifthAnswer = answerChoices.rows[4];
+
+      if (!fifthAnswer) {
+        throw new Error('Expected the fifth persisted answer choice.');
+      }
+
+      const completedFromPost = submissionResults[4];
+
+      if (!completedFromPost || completedFromPost.status !== 'completed') {
+        throw new Error('Expected the fifth answer to complete the attempt.');
+      }
+
+      expect(completedFromPost.completionReason).toBe('answered');
+      expect(completedFromPost.review).toHaveLength(5);
+      expect(
+        completedFromPost.review.every(
+          (entry) =>
+            entry.selectedChoice !== null &&
+            entry.selectedChoice.choiceId !== entry.correctChoice.choiceId &&
+            entry.isCorrect === false,
+        ),
+      ).toBe(true);
+      expect(completedFromPost.scoreCorrect).toBe(0);
+
+      const fetchService = createChallengeAttemptFetchService(pool, {
+        finalizer,
+        clock: () => {
+          throw new Error('Completed GET must not consult the clock.');
+        },
+      });
+
+      const completedFromGet = await fetchService.fetchAttempt({
+        playerId: FIFTH_ANSWER_PLAYER_ID,
+        attemptId: attempt.attemptId,
+      });
+      const completedRetry = await answerService.submitAnswer({
+        playerId: FIFTH_ANSWER_PLAYER_ID,
+        attemptId: attempt.attemptId,
+        attemptQuestionId: fifthAnswer.attempt_question_id,
+        choiceId: fifthAnswer.choice_id,
+      });
+
+      expect(completedFromGet).toEqual(completedFromPost);
+      expect(completedRetry).toEqual(completedFromPost);
+    }, 45_000);
+
     it('defensively finalizes an expired fetched attempt exactly once', async () => {
       const attempt = await createAttemptForPlayer(
         pool,
@@ -848,6 +953,31 @@ describe.skipIf(!runIntegrationTests)(
       }
 
       expect(first.reward.coinsAwarded).toBeGreaterThan(0);
+      expect(first.review).toHaveLength(5);
+      expect(first.review[0]).toMatchObject({
+        attemptQuestionId: accepted.attempt_question_id,
+        selectedChoice: {
+          choiceId: accepted.choice_id,
+        },
+        correctChoice: {
+          choiceId: accepted.choice_id,
+        },
+        isCorrect: true,
+      });
+      expect(
+        first.review
+          .slice(1)
+          .every(
+            (entry) =>
+              entry.selectedChoice === null && entry.isCorrect === false,
+          ),
+      ).toBe(true);
+      expect(
+        first.review.every((entry) => entry.correctChoice.text.length > 0),
+      ).toBe(true);
+      expect(first.review.filter((entry) => entry.isCorrect)).toHaveLength(
+        first.scoreCorrect,
+      );
 
       const persisted = await pool.query<{
         card_count: string;

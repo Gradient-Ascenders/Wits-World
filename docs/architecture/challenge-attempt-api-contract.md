@@ -55,9 +55,12 @@ decisions into HTTP behavior; it does not independently choose the game rules.
 - Choice order is shuffled once per attempt and persisted.
 - A player may complete an event quiz only once.
 - An answer is locked when accepted by the API and cannot be changed.
-- After completion, the API reports only the final score and persisted reward
-  outcome as player feedback. It does not return per-question correctness,
-  selected answers, correct answers, accepted choices, or explanations.
+- Marking is server-authoritative. Answer feedback is withheld while the timed
+  attempt is active and revealed only after authoritative completion.
+- A completed result includes the final score, persisted reward outcome, and
+  exactly five ordered review entries containing the persisted selected choice
+  (or `null` after timeout), the authoritative correct choice, and
+  server-derived correctness. The model has no explanation field.
 - Completion and its reward result are retry-safe. Repeated requests return the
   persisted completion and reward without rerolling or issuing duplicate
   rewards.
@@ -134,10 +137,11 @@ Every response includes the existing server-generated `requestId`.
 }
 ```
 
-The source question identifier, difficulty, accepted choice, and per-question
-correctness are absent. On resume while the attempt is still in progress,
-`selectedChoiceId` and `answeredAt` contain the player's already locked answer
-where one exists. These fields are not returned after completion.
+The source question identifier, difficulty, answer key, correct choice, and
+per-question correctness are absent. On resume while the attempt is still in
+progress, `selectedChoiceId` and `answeredAt` contain the player's already
+locked answer where one exists. The completed representation uses the separate
+review shape below and does not return answer timestamps.
 
 ### In-progress attempt
 
@@ -185,6 +189,78 @@ exactly four choices.
       }
     ]
   },
+  "review": [
+    {
+      "attemptQuestionId": "32000000-0000-4000-8000-000000000001",
+      "position": 1,
+      "prompt": "Which library is located on East Campus?",
+      "selectedChoice": {
+        "choiceId": "33000000-0000-4000-8000-000000000001",
+        "text": "Wartenweiler Library"
+      },
+      "correctChoice": {
+        "choiceId": "33000000-0000-4000-8000-000000000001",
+        "text": "Wartenweiler Library"
+      },
+      "isCorrect": true
+    },
+    {
+      "attemptQuestionId": "32000000-0000-4000-8000-000000000002",
+      "position": 2,
+      "prompt": "Question 2",
+      "selectedChoice": {
+        "choiceId": "33000000-0000-4000-8000-000000000005",
+        "text": "Choice 2.1"
+      },
+      "correctChoice": {
+        "choiceId": "33000000-0000-4000-8000-000000000005",
+        "text": "Choice 2.1"
+      },
+      "isCorrect": true
+    },
+    {
+      "attemptQuestionId": "32000000-0000-4000-8000-000000000003",
+      "position": 3,
+      "prompt": "Question 3",
+      "selectedChoice": {
+        "choiceId": "33000000-0000-4000-8000-000000000009",
+        "text": "Choice 3.1"
+      },
+      "correctChoice": {
+        "choiceId": "33000000-0000-4000-8000-000000000009",
+        "text": "Choice 3.1"
+      },
+      "isCorrect": true
+    },
+    {
+      "attemptQuestionId": "32000000-0000-4000-8000-000000000004",
+      "position": 4,
+      "prompt": "Question 4",
+      "selectedChoice": {
+        "choiceId": "33000000-0000-4000-8000-000000000013",
+        "text": "Choice 4.1"
+      },
+      "correctChoice": {
+        "choiceId": "33000000-0000-4000-8000-000000000014",
+        "text": "Choice 4.2"
+      },
+      "isCorrect": false
+    },
+    {
+      "attemptQuestionId": "32000000-0000-4000-8000-000000000005",
+      "position": 5,
+      "prompt": "Question 5",
+      "selectedChoice": {
+        "choiceId": "33000000-0000-4000-8000-000000000017",
+        "text": "Choice 5.1"
+      },
+      "correctChoice": {
+        "choiceId": "33000000-0000-4000-8000-000000000018",
+        "text": "Choice 5.2"
+      },
+      "isCorrect": false
+    }
+  ],
   "requestId": "server-generated-request-id"
 }
 ```
@@ -198,9 +274,15 @@ can correlate the result with the attempt and event and distinguish the
 completed state. `completionReason` is `answered` when all five answers were
 accepted before expiry and `timeout` when expiry finalized the attempt.
 
-The completed player-facing result does not return questions, selected choices,
-answer timestamps, per-question correctness, accepted choices, correct answers,
-or explanations. `requestId` remains present because it is part of the existing
+`review` always contains exactly five entries ordered by `position`.
+`selectedChoice` comes from the immutable locked answer and is `null` only for
+questions left unanswered when timeout completes the attempt. `correctChoice`
+comes from the attempt's immutable choice snapshot selected by the private
+server-side answer key. `isCorrect` is derived by the server; unanswered entries
+are false, and its true count agrees with `scoreCorrect`. An `answered`
+completion has five non-null selected choices. Source question/choice IDs,
+answer timestamps, the private answer-key identifier, and explanations are not
+returned. `requestId` remains present because it is part of the existing
 API-wide response envelope.
 
 The reward result is reconstructed from persisted completion and ownership data.
@@ -232,8 +314,8 @@ fields are rejected.
 - `201 Created` returns a newly created in-progress attempt.
 - `200 OK` returns the player's existing in-progress attempt without changing
   its timer or content.
-- `200 OK` returns the player's persisted completion and reward result when the
-  event was already completed.
+- `200 OK` returns the player's persisted completion, reward, and review result
+  when the event was already completed.
 - Concurrent start requests converge on the same persisted attempt.
 - A completed event never creates another attempt or rerolls its reward.
 
@@ -250,8 +332,8 @@ Authorization: Bearer <access-token>
 ```
 
 The route returns `200 OK` with the current in-progress representation or the
-persisted completed score-and-reward result. It is the resume and status-polling
-operation.
+persisted completed score, reward, and review result. It is the resume and
+status-polling operation.
 
 Only the player derived from the token may retrieve the attempt. A missing or
 different player's attempt returns the same `404 ATTEMPT_NOT_FOUND` response so
@@ -285,14 +367,14 @@ must belong to that selected question.
 - Repeating the same already-accepted question and choice is idempotent and
   returns the current persisted attempt state.
 - If that accepted answer already caused completion, an exact retry returns the
-  same persisted completion and reward result.
+  same persisted completion, reward, and review result.
 - Submitting a different choice for an answered question returns
   `409 ANSWER_LOCKED`.
 - The fifth accepted answer finalizes the attempt and returns the persisted
-  completion and reward result.
+  completion, reward, and review result.
 - An answer received at or after the deadline is not accepted. The API finalizes
   the timed-out attempt, counts unanswered questions as incorrect, and returns
-  the persisted completion and reward result.
+  the persisted completion, reward, and review result.
 - A new answer submitted to an attempt that had already completed before the
   request returns `409 ATTEMPT_COMPLETED`.
 
@@ -331,7 +413,7 @@ Request handlers also check expiry before accepting answers or returning stale
 state. Database row locking and the persistence constraints proposed by issue
 #49 are responsible for ensuring that completion happens once. The fifth-answer
 path, timeout finalizer, and defensive request finalization must converge on the
-same persisted completion and reward result.
+same persisted completion, reward, and review result.
 
 The worker's scheduling interval is an operational setting, not part of the HTTP
 contract. The authoritative deadline remains the stored attempt deadline.
@@ -357,6 +439,10 @@ contract. The authoritative deadline remains the stored attempt deadline.
 | `scoreCorrect`         | integer, `0` through `5`; completed results only     |
 | `reward.coinsAwarded`  | integer, minimum `0`                                 |
 | `reward.cards`         | array, `0` through `2` items                         |
+| `review`               | array, exactly `5` items; completed results only     |
+| `selectedChoice`       | choice object or `null`; completed review only       |
+| `correctChoice`        | choice object; completed review only                 |
+| `isCorrect`            | boolean; completed review only                       |
 | card `category`        | enum: `creature`, `power`                            |
 | card `affinity`        | enum: `wit`, `grit`, `spark`, `spirit`, `mystic`     |
 | card `rarity`          | enum: `common`, `rare`, `epic`, `legendary`          |
@@ -364,10 +450,10 @@ contract. The authoritative deadline remains the stored attempt deadline.
 | `completionReason`     | enum: `answered`, `timeout`; completed attempts only |
 | `completedAt`          | string, date-time; completed attempts only           |
 
-The implementation should use separate OpenAPI-compatible response schemas for
-the in-progress attempt representation and the completed score-and-reward
-result so fields that are allowed during an active quiz cannot leak into the
-post-completion payload.
+The implementation uses separate OpenAPI-compatible response schemas for the
+in-progress attempt representation and the completed score, reward, and review
+result. Review, correctness, correct choices, score, and rewards exist only in
+the completed schema and cannot leak into the active payload.
 
 ## Error contract
 
@@ -389,8 +475,10 @@ Errors use the existing problem response with `type`, `title`, `status`, `code`,
 | 422  | `LOCATION_RETRY_REQUIRED`  | The claim is stale, future-dated, or accuracy-ambiguous.    |
 
 Unexpected database or worker failures use the existing safe `500` response and
-request identifier. Responses never expose SQL, accepted answers, correct
-answers, per-question correctness, reward rolls, tokens, or location details.
+request identifier. Error and active-attempt responses never expose SQL, answer
+keys, correct answers, per-question correctness, reward rolls, tokens, or
+location details. Completed success responses reveal only the review fields
+defined above.
 
 ## Compatibility and follow-up work
 
@@ -415,7 +503,7 @@ Issue #66 implements:
 - unanswered-question-as-incorrect score calculation;
 - fifth-answer and timeout finalisation detection;
 - the transaction coordinator and atomic-finaliser interface;
-- player-safe final-score-only response handling; and
+- player-safe active-response withholding and completed-review handling; and
 - unit, integration, concurrency, security-exposure, and OpenAPI coverage for
   those behaviours.
 
@@ -442,4 +530,4 @@ boundary are specified in the
 [challenge, reward, and card persistence design](../database/challenge-reward-persistence-design.md).
 
 This contract was planned, generated, edited, and reviewed with the assistance
-of Codex[GPT-5.6 Sol] and ChatGPT-Web[GPT-5.6 Sol].
+of Codex[GPT-5.6 Sol], Codex[GPT-5], and ChatGPT-Web[GPT-5.6 Sol].

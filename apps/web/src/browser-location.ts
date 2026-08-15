@@ -20,6 +20,12 @@ export type LocationClaimProvider = () => Promise<LocationClaim>;
 const LOCATION_TIMEOUT_MS = 10_000;
 
 export function requestBrowserLocation(): Promise<LocationClaim> {
+  const developmentOverride = getDevelopmentLocationOverride();
+
+  if (developmentOverride !== null) {
+    return Promise.resolve(developmentOverride);
+  }
+
   if (!('geolocation' in navigator) || navigator.geolocation === undefined) {
     return Promise.reject(new BrowserLocationError('unsupported'));
   }
@@ -46,6 +52,48 @@ export function requestBrowserLocation(): Promise<LocationClaim> {
       },
     );
   });
+}
+
+function getDevelopmentLocationOverride(): LocationClaim | null {
+  if (!import.meta.env.DEV) {
+    return null;
+  }
+
+  const latitude = readDevelopmentCoordinate(import.meta.env.VITE_DEV_GEO_LAT);
+  const longitude = readDevelopmentCoordinate(import.meta.env.VITE_DEV_GEO_LNG);
+  const accuracyMetres = readDevelopmentCoordinate(
+    import.meta.env.VITE_DEV_GEO_ACCURACY,
+  );
+
+  if (
+    latitude === null ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude === null ||
+    longitude < -180 ||
+    longitude > 180 ||
+    accuracyMetres === null ||
+    accuracyMetres < 0
+  ) {
+    return null;
+  }
+
+  return {
+    accuracyMetres,
+    acquiredAt: new Date().toISOString(),
+    latitude,
+    longitude,
+  };
+}
+
+function readDevelopmentCoordinate(value: string | undefined): number | null {
+  if (value === undefined || value.trim() === '') {
+    return null;
+  }
+
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function toLocationClaim(position: GeolocationPosition): LocationClaim | null {

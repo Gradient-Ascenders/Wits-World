@@ -43,6 +43,8 @@ describe('challenge attempt fetch service', () => {
       }),
     ).resolves.toEqual(inProgressAttempt());
 
+    expect(inProgressAttempt()).not.toHaveProperty('review');
+
     expect(fixture.finalizeAttempt).not.toHaveBeenCalled();
     expect(executedSql(fixture.query)).toContain('for update');
     expect(executedSql(fixture.query)).toContain('and player_id = $2::uuid');
@@ -114,6 +116,20 @@ describe('challenge attempt fetch service', () => {
     });
 
     expect(result.status).toBe('completed');
+
+    if (result.status !== 'completed') {
+      throw new Error('Expected timeout finalization to return completion.');
+    }
+
+    expect(result.review).toHaveLength(5);
+    expect(result.review.slice(3)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ selectedChoice: null, isCorrect: false }),
+      ]),
+    );
+    expect(result.review.filter((entry) => entry.isCorrect)).toHaveLength(
+      result.scoreCorrect,
+    );
 
     expect(fixture.finalizeAttempt).toHaveBeenCalledWith(fixture.client, {
       playerId: PLAYER_ID,
@@ -298,6 +314,29 @@ function queryImplementation({
       };
     }
 
+    const attempt =
+      typeof safeAttempt === 'function' ? safeAttempt() : safeAttempt;
+
+    if (sql.includes('as correct_choice_id')) {
+      const review =
+        attempt?.status === 'completed'
+          ? attempt.review
+          : completedAttempt().review;
+
+      return {
+        rows: review.map((entry) => ({
+          attempt_question_id: entry.attemptQuestionId,
+          position: entry.position,
+          prompt_snapshot: entry.prompt,
+          selected_choice_id: entry.selectedChoice?.choiceId ?? null,
+          selected_choice_text: entry.selectedChoice?.text ?? null,
+          correct_choice_id: entry.correctChoice.choiceId,
+          correct_choice_text: entry.correctChoice.text,
+          is_correct: entry.isCorrect,
+        })),
+      };
+    }
+
     if (sql.includes('private.challenge_answer_keys')) {
       return {
         rows: [
@@ -310,9 +349,6 @@ function queryImplementation({
         ],
       };
     }
-
-    const attempt =
-      typeof safeAttempt === 'function' ? safeAttempt() : safeAttempt;
 
     if (sql.includes('from public.challenge_attempts attempt')) {
       if (!attempt) {
@@ -448,6 +484,34 @@ function completedAttempt(
       coinsAwarded: 37,
       cards: [],
     },
+    review: Array.from({ length: 5 }, (_, index) => {
+      const position = index + 1;
+      const answered = reason === 'answered' || position <= 3;
+      const selectedChoiceNumber = position <= 3 ? 2 : 1;
+
+      return {
+        attemptQuestionId: `32000000-0000-4000-8000-${String(position).padStart(12, '0')}`,
+        position,
+        prompt: `Question ${position}`,
+        selectedChoice: answered
+          ? {
+              choiceId: `33000000-0000-4000-${String(position).padStart(
+                4,
+                '0',
+              )}-${String(selectedChoiceNumber).padStart(12, '0')}`,
+              text: `Choice ${position}.${selectedChoiceNumber}`,
+            }
+          : null,
+        correctChoice: {
+          choiceId: `33000000-0000-4000-${String(position).padStart(
+            4,
+            '0',
+          )}-000000000002`,
+          text: `Choice ${position}.2`,
+        },
+        isCorrect: answered && selectedChoiceNumber === 2,
+      };
+    }),
   };
 }
 

@@ -92,11 +92,12 @@ or ownership result.
   answered question is rejected.
 - Server receipt time decides whether an answer met the deadline.
 - At expiry, unanswered questions count as incorrect and the attempt completes.
-- On completion, the API returns only the final number correct (`0`-`5`) and the
-  reward outcome. It does not reveal per-question correctness, the player's
-  accepted choices, correct answers, or explanations. The 2026-08-13 product
-  decision recorded as `BASIC-03` supersedes the conflicting feedback wording in
-  issues #66 and #68.
+- Marking is server-authoritative. During an active timed attempt, the API does
+  not reveal correctness or answer keys. After authoritative completion, it
+  returns the final score and reward outcome plus five ordered review entries
+  containing the player's locked answer (or `null` after timeout), the correct
+  answer, and server-derived correctness. The current content model has no
+  explanation field.
 - Scores from zero through five are completed attempts. A low score does not
   create another attempt.
 
@@ -237,4 +238,4 @@ anti-cheat trust scoring, territory control, seasons, advanced analytics, or an
 advanced author review workflow.
 
 This document was planned, generated, and edited with the assistance of
-Codex-CLI[gpt-5.6-sol medium].
+Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5].

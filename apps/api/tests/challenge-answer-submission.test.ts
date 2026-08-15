@@ -36,6 +36,9 @@ describe('challenge answer submission coordinator', () => {
       status: 'in_progress',
       answeredCount: 1,
     });
+    expect(result).not.toHaveProperty('review');
+    expect(result).not.toHaveProperty('scoreCorrect');
+    expect(result).not.toHaveProperty('reward');
 
     expect(fixture.finalizeAttempt).not.toHaveBeenCalled();
 
@@ -95,6 +98,18 @@ describe('challenge answer submission coordinator', () => {
       scoreCorrect: 4,
     });
 
+    if (result.status !== 'completed') {
+      throw new Error('Expected the fifth answer to complete the attempt.');
+    }
+
+    expect(result.review).toHaveLength(5);
+    expect(result.review.every((entry) => entry.selectedChoice !== null)).toBe(
+      true,
+    );
+    expect(result.review.filter((entry) => entry.isCorrect)).toHaveLength(
+      result.scoreCorrect,
+    );
+
     expect(transactionCommands(fixture.query)).toEqual(['begin', 'commit']);
   });
 
@@ -131,6 +146,7 @@ describe('challenge answer submission coordinator', () => {
     const fixture = createFixture({
       initialStatus: 'completed',
       existingChoiceId: CHOICE_ID,
+      answerCount: 5,
     });
 
     const service = createChallengeAnswerSubmissionService(fixture.database, {
@@ -144,6 +160,12 @@ describe('challenge answer submission coordinator', () => {
       attemptId: ATTEMPT_ID,
       status: 'completed',
     });
+
+    if (result.status !== 'completed') {
+      throw new Error('Expected a completed retry result.');
+    }
+
+    expect(result.review).toHaveLength(5);
 
     expect(fixture.finalizeAttempt).not.toHaveBeenCalled();
 
@@ -224,6 +246,8 @@ function createFixture({
   finalizerFailure,
 }: FixtureOptions = {}) {
   let status: 'in_progress' | 'completed' = initialStatus;
+  let completionReason: 'answered' | 'timeout' | null =
+    initialStatus === 'completed' ? 'answered' : null;
 
   const query = vi.fn(
     async (
@@ -257,7 +281,13 @@ function createFixture({
         }
 
         return {
-          rows: [attemptRow(status, scoreCorrect)],
+          rows: [attemptRow(status, scoreCorrect, completionReason)],
+        };
+      }
+
+      if (statement.includes('as correct_choice_id')) {
+        return {
+          rows: completedReviewRows(answerCount, scoreCorrect),
         };
       }
 
@@ -364,7 +394,10 @@ function createFixture({
   };
 
   const finalizeAttempt = vi.fn(
-    async (finalizationDatabase: ChallengeAnswerSubmissionQueryable) => {
+    async (
+      finalizationDatabase: ChallengeAnswerSubmissionQueryable,
+      input: { completionReason: 'answered' | 'timeout' },
+    ) => {
       expect(finalizationDatabase).toBe(client);
 
       if (finalizerFailure) {
@@ -373,6 +406,7 @@ function createFixture({
 
       if (becomeCompletedAfterFinalizer) {
         status = 'completed';
+        completionReason = input.completionReason;
       }
     },
   );
@@ -392,7 +426,11 @@ function createFixture({
   };
 }
 
-function attemptRow(status: 'in_progress' | 'completed', scoreCorrect: number) {
+function attemptRow(
+  status: 'in_progress' | 'completed',
+  scoreCorrect: number,
+  completionReason: 'answered' | 'timeout' | null,
+) {
   return {
     attempt_id: ATTEMPT_ID,
     event_id: EVENT_ID,
@@ -402,7 +440,7 @@ function attemptRow(status: 'in_progress' | 'completed', scoreCorrect: number) {
     deadline: DEADLINE,
     completed_at:
       status === 'completed' ? new Date('2026-09-01T10:01:00.000Z') : null,
-    completion_reason: status === 'completed' ? 'answered' : null,
+    completion_reason: status === 'completed' ? completionReason : null,
     score_correct: status === 'completed' ? scoreCorrect : null,
   };
 }
@@ -441,6 +479,34 @@ function inProgressChoiceRows() {
       choice_text_snapshot: `Choice ${questionIndex + 1}.${choiceIndex + 1}`,
     })),
   ).flat();
+}
+
+function completedReviewRows(answerCount: number, scoreCorrect: number) {
+  return Array.from({ length: 5 }, (_, index) => {
+    const position = index + 1;
+    const answered = position <= answerCount;
+    const selectedChoiceNumber = position <= scoreCorrect ? 2 : 1;
+
+    return {
+      attempt_question_id: `32000000-0000-4000-8000-${String(position).padStart(12, '0')}`,
+      position,
+      prompt_snapshot: `Question ${position}`,
+      selected_choice_id: answered
+        ? `33000000-0000-4000-${String(position).padStart(4, '0')}-${String(
+            selectedChoiceNumber,
+          ).padStart(12, '0')}`
+        : null,
+      selected_choice_text: answered
+        ? `Choice ${position}.${selectedChoiceNumber}`
+        : null,
+      correct_choice_id: `33000000-0000-4000-${String(position).padStart(
+        4,
+        '0',
+      )}-000000000002`,
+      correct_choice_text: `Choice ${position}.2`,
+      is_correct: answered && position <= scoreCorrect,
+    };
+  });
 }
 
 function validInput() {
