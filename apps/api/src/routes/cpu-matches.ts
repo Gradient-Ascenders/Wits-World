@@ -176,6 +176,16 @@ const matchResponseSchema = {
   },
 } as const;
 
+const activeMatchResponseSchema = {
+  ...matchResponseSchema,
+  properties: {
+    ...matchResponseSchema.properties,
+    status: { const: 'active' },
+    winner: { type: 'null' },
+    completedAt: { type: 'null' },
+  },
+} as const;
+
 const historyResponseSchema = {
   type: 'object',
   additionalProperties: false,
@@ -247,6 +257,41 @@ export const cpuMatchRoutes: FastifyPluginAsync<CpuMatchRoutesOptions> = async (
         });
 
         return reply.status(201).send({
+          ...match,
+          requestId: request.id,
+        });
+      } catch (error) {
+        throw mapMatchError(error);
+      }
+    },
+  );
+
+  app.get(
+    '/matches/cpu',
+    {
+      preHandler: [app.authenticate, app.requireActivePlayer],
+      schema: {
+        operationId: 'getActiveCpuMatch',
+        summary: 'Read the current active CPU match',
+        description:
+          "Returns the authenticated player's current unfinished CPU match without creating or advancing it. Returns CPU_MATCH_NOT_FOUND when none exists.",
+        tags: ['Matches'],
+        security: [{ bearerAuth: [] }],
+        querystring: emptyQuerySchema,
+        response: {
+          200: activeMatchResponseSchema,
+          401: apiErrorSchema,
+          403: apiErrorSchema,
+          404: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const player = requirePlayer(request);
+
+      try {
+        const match = await service.getActiveMatch(player.id);
+        return reply.status(200).send({
           ...match,
           requestId: request.id,
         });

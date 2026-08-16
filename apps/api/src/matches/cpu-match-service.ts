@@ -169,6 +169,7 @@ export interface CpuMatchHistory {
 
 export interface CpuMatchService {
   createMatch(input: CreateCpuMatchInput): Promise<CpuMatchResponse>;
+  getActiveMatch(playerId: string): Promise<CpuMatchResponse>;
   getMatch(playerId: string, matchId: string): Promise<CpuMatchResponse>;
   submitAction(input: SubmitCpuMatchActionInput): Promise<CpuMatchResponse>;
   listHistory(playerId: string): Promise<readonly CpuMatchHistory[]>;
@@ -234,6 +235,10 @@ interface MatchRow extends pg.QueryResultRow {
   winner: 'player' | 'cpu' | null;
   started_at: Date;
   completed_at: Date | null;
+}
+
+interface ActiveMatchRow extends MatchRow {
+  latest_action: BattleActionResult | null;
 }
 
 interface MatchIdentityRow extends pg.QueryResultRow {
@@ -407,6 +412,64 @@ export function createCpuMatchService(
           throw new CpuMatchAlreadyActiveError();
         }
         throw mapBattleSetupError(error);
+      } finally {
+        client.release();
+      }
+    },
+
+    async getActiveMatch(playerId) {
+      const client = await database.connect();
+
+      try {
+        const result = await client.query<ActiveMatchRow>(
+          `
+            select
+              match.id::text,
+              match.player_id::text,
+              match.status,
+              match.state,
+              match.version,
+              match.turn_started_at,
+              match.turn_deadline,
+              match.winner,
+              match.started_at,
+              match.completed_at,
+              (
+                select action.result
+                from public.cpu_match_actions action
+                where action.match_id = match.id
+                order by action.sequence desc
+                limit 1
+              ) as latest_action
+            from public.cpu_matches match
+            where match.player_id = $1::uuid
+              and match.status = 'active'
+          `,
+          [playerId],
+        );
+
+        if (result.rows.length > 1) {
+          throw new Error(
+            'CPU match active-state invariant was violated for a player.',
+          );
+        }
+
+        const match = result.rows[0];
+        if (!match) {
+          throw new CpuMatchNotFoundError();
+        }
+
+        return createResponse({
+          matchId: match.id,
+          status: match.status,
+          version: match.version,
+          state: match.state,
+          winner: match.winner,
+          startedAt: match.started_at,
+          completedAt: match.completed_at,
+          turnDeadline: match.turn_deadline,
+          lastAction: match.latest_action,
+        });
       } finally {
         client.release();
       }

@@ -135,6 +135,87 @@ describe('CPU match service', () => {
     ).toHaveLength(2);
   });
 
+  it('recovers one active match and its latest action in one read snapshot', async () => {
+    const state = createBattleState(deck('player'), deck('cpu'));
+    const query = vi.fn(async (statement: string, values?: unknown[]) => {
+      expect(values).toEqual([PLAYER_ID]);
+      expect(statement).toContain("match.status = 'active'");
+      expect(statement).toContain('select action.result');
+      expect(statement).toContain('order by action.sequence desc');
+
+      return {
+        rows: [
+          {
+            id: MATCH_ID,
+            player_id: PLAYER_ID,
+            status: 'active',
+            state,
+            version: 3,
+            turn_started_at: new Date('2026-08-16T00:00:00.000Z'),
+            turn_deadline: new Date('2026-08-16T00:01:30.000Z'),
+            winner: null,
+            started_at: new Date('2026-08-15T23:59:00.000Z'),
+            completed_at: null,
+            latest_action: null,
+          },
+        ],
+      };
+    });
+    const service = createCpuMatchService(fakeDatabase(query));
+
+    const recovered = await service.getActiveMatch(PLAYER_ID);
+
+    expect(recovered).toMatchObject({
+      matchId: MATCH_ID,
+      status: 'active',
+      version: 3,
+      winner: null,
+      completedAt: null,
+      lastAction: null,
+      state: {
+        phase: 'initial_selection',
+        turnDeadline: '2026-08-16T00:01:30.000Z',
+      },
+    });
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(
+      query.mock.calls.some(([statement]) =>
+        /\b(begin|commit|update|insert|delete)\b/i.test(statement),
+      ),
+    ).toBe(false);
+  });
+
+  it('fails safely if the one-active-match invariant is violated', async () => {
+    const state = createBattleState(deck('player'), deck('cpu'));
+    const row = {
+      id: MATCH_ID,
+      player_id: PLAYER_ID,
+      status: 'active' as const,
+      state,
+      version: 0,
+      turn_started_at: null,
+      turn_deadline: null,
+      winner: null,
+      started_at: new Date('2026-08-16T00:00:00.000Z'),
+      completed_at: null,
+      latest_action: null,
+    };
+    const query = vi.fn().mockResolvedValue({
+      rows: [
+        row,
+        {
+          ...row,
+          id: 'a2000000-0000-4000-8000-000000000002',
+        },
+      ],
+    });
+    const service = createCpuMatchService(fakeDatabase(query));
+
+    await expect(service.getActiveMatch(PLAYER_ID)).rejects.toThrow(
+      'active-state invariant was violated',
+    );
+  });
+
   it('rejects a stale action before writing a round or action', async () => {
     const state = createBattleState(deck('player'), deck('cpu'));
     const query = vi.fn(async (statement: string) => {
