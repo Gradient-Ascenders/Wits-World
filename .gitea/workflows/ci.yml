@@ -83,7 +83,7 @@ jobs:
         run: npm run test:coverage --workspace @wits-world/web
 
       - name: Test API application with coverage
-        run: npm run test:coverage --workspace @wits-world/api
+        run: npm run validate:api:coverage
 
       - name: Test documentation application
         run: npm test --workspace @wits-world/docs
@@ -121,7 +121,7 @@ jobs:
         run: npm run build:bundle --workspace @wits-world/web
 
       - name: Build API application
-        run: npm run build --workspace @wits-world/api
+        run: npm run validate:api:build
 
       - name: Build documentation application
         run: npm run build --workspace @wits-world/docs
@@ -315,6 +315,8 @@ jobs:
             package-lock.json \
             tsconfig.base.json \
             apps/api \
+            packages/game-rules \
+            scripts/prepare-api.mjs \
             database
           DIFF_STATUS=$?
           set -e
@@ -385,6 +387,21 @@ jobs:
           cp -a node_modules \
             "$ARTIFACT_ROOT/package/"
 
+          GAME_RULES_RUNTIME_PACKAGE="$ARTIFACT_ROOT/package/node_modules/@wits-world/game-rules"
+
+          test -L "$GAME_RULES_RUNTIME_PACKAGE"
+          rm "$GAME_RULES_RUNTIME_PACKAGE"
+          mkdir -p "$GAME_RULES_RUNTIME_PACKAGE"
+
+          cp packages/game-rules/package.json \
+            "$GAME_RULES_RUNTIME_PACKAGE/"
+
+          cp -a packages/game-rules/dist \
+            "$GAME_RULES_RUNTIME_PACKAGE/"
+
+          test -f "$GAME_RULES_RUNTIME_PACKAGE/dist/src/index.js"
+          test ! -L "$GAME_RULES_RUNTIME_PACKAGE"
+
           cp -a database \
             "$ARTIFACT_ROOT/package/"
 
@@ -402,6 +419,18 @@ jobs:
 
           test -s "$ARTIFACT_ROOT/witsworld-api-deploy.zip"
           unzip -t "$ARTIFACT_ROOT/witsworld-api-deploy.zip" >/dev/null
+
+          RUNTIME_SMOKE_ROOT="$(mktemp -d /tmp/witsworld-api-runtime.XXXXXX)"
+          trap 'rm -rf "$NPM_TOOL_ROOT" "$RUNTIME_SMOKE_ROOT"' EXIT
+
+          unzip -q "$ARTIFACT_ROOT/witsworld-api-deploy.zip" \
+            -d "$RUNTIME_SMOKE_ROOT"
+
+          (
+            cd "$RUNTIME_SMOKE_ROOT"
+            node --input-type=module \
+              --eval "await import('@wits-world/game-rules'); console.log('Imported @wits-world/game-rules from the API artifact')"
+          )
 
           unzip -l "$ARTIFACT_ROOT/witsworld-api-deploy.zip" |
             grep 'apps/api/dist/server.js'
@@ -582,6 +611,8 @@ jobs:
             package-lock.json \
             tsconfig.base.json \
             apps/api \
+            packages/game-rules \
+            scripts/prepare-api.mjs \
             database
           then
             echo "No API, database, or shared runtime changes detected; API deployment will be skipped."
@@ -632,6 +663,8 @@ jobs:
             package-lock.json \
             apps/api/package.json \
             apps/api/dist/server.js \
+            node_modules/@wits-world/game-rules/package.json \
+            node_modules/@wits-world/game-rules/dist/src/index.js \
             node_modules/@fastify/cors/package.json \
             node_modules/@fastify/swagger/package.json \
             node_modules/@fastify/swagger-ui/package.json \

@@ -177,19 +177,22 @@ Application tests live beside their respective workspaces in `apps/web/tests`,
 
 Run these commands from the repository root:
 
-| Command                | Purpose                                                                     |
-| ---------------------- | --------------------------------------------------------------------------- |
-| `npm run view`         | Start the web development server                                            |
-| `npm run api`          | Start the API development server                                            |
-| `npm run db`           | Check, migrate, and seed the development database                           |
-| `npm run build`        | Build all workspaces that expose a build script                             |
-| `npm run lint`         | Lint all application workspaces                                             |
-| `npm run type-check`   | Type-check all application workspaces                                       |
-| `npm test`             | Run all workspace test suites                                               |
-| `npm run coverage`     | Run web/API tests with V8 coverage and write reports under `coverage/`      |
-| `npm run format:check` | Check Prettier formatting without changing files                            |
-| `npm run format`       | Apply Prettier formatting across the repository                             |
-| `npm run verify`       | Format, then run formatting checks, linting, type checks, tests, and builds |
+| Command                         | Purpose                                                                     |
+| ------------------------------- | --------------------------------------------------------------------------- |
+| `npm run view`                  | Start the web development server                                            |
+| `npm run api`                   | Start the API development server                                            |
+| `npm run db`                    | Check, migrate, and seed the development database                           |
+| `npm run prepare:api`           | Clean and build shared workspace packages required by the API               |
+| `npm run validate:api:coverage` | Prepare shared API dependencies and run API coverage tests                  |
+| `npm run validate:api:build`    | Prepare shared API dependencies and build the API                           |
+| `npm run build`                 | Build all workspaces that expose a build script                             |
+| `npm run lint`                  | Lint all application workspaces                                             |
+| `npm run type-check`            | Type-check all application workspaces                                       |
+| `npm test`                      | Run all workspace test suites                                               |
+| `npm run coverage`              | Run web/API tests with V8 coverage and write reports under `coverage/`      |
+| `npm run format:check`          | Check Prettier formatting without changing files                            |
+| `npm run format`                | Apply Prettier formatting across the repository                             |
+| `npm run verify`                | Format, then run formatting checks, linting, type checks, tests, and builds |
 
 For a single workspace, use npm's workspace flag:
 

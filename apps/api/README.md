@@ -755,6 +755,14 @@ npm test --workspace @wits-world/api
 npm run build --workspace @wits-world/api
 ```
 
+To validate the API from a clean shared-dependency build state, use the
+repository-level commands:
+
+```powershell
+npm run validate:api:coverage
+npm run validate:api:build
+```
+
 Run repository-wide checks before opening a pull request:
 
 ```powershell
