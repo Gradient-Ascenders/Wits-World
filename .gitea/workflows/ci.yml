@@ -79,9 +79,6 @@ jobs:
       - name: Install dependencies
         run: npm ci --prefer-offline --no-audit --fund=false
 
-      - name: Build shared game rules package
-        run: npm run prepare:game-rules
-
       - name: Test web application with coverage
         run: npm run test:coverage --workspace @wits-world/web
 
@@ -119,9 +116,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci --prefer-offline --no-audit --fund=false
-
-      - name: Build shared game rules package
-        run: npm run prepare:game-rules
 
       - name: Build web application
         run: npm run build:bundle --workspace @wits-world/web
