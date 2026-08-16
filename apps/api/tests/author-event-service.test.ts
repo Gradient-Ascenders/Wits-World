@@ -39,6 +39,8 @@ describe('author event service', () => {
       longitude: 28.03038,
       radiusMetres: 75,
       isPublished: false,
+      authoringStatus: 'draft',
+      retiredAt: null,
     });
 
     expect(executedCommands(fixture.query)).toEqual(['begin', 'commit']);
@@ -266,6 +268,23 @@ function successfulImplementation() {
     }
 
     if (
+      sql.includes('select') &&
+      sql.includes('is_published') &&
+      sql.includes('retired_at') &&
+      sql.includes('from public.events') &&
+      sql.includes('for update')
+    ) {
+      return {
+        rows: [
+          {
+            is_published: false,
+            retired_at: null,
+          },
+        ],
+      };
+    }
+
+    if (
       sql.includes('insert into public.events') ||
       sql.includes('update public.events')
     ) {
@@ -301,6 +320,7 @@ function authorEventRow() {
     is_published: false,
     created_at: new Date('2026-08-15T20:00:00.000Z'),
     updated_at: new Date('2026-08-15T20:00:00.000Z'),
+    retired_at: null,
   };
 }
 

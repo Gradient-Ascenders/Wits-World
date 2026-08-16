@@ -4,9 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../src/app.js';
 import type { AccessTokenVerifier } from '../src/auth/access-token-verifier.js';
 import type { AuthConfig } from '../src/config/auth.js';
-import type {
-  AuthorEvent,
-  AuthorEventService,
+import {
+  AuthorEventNotReadyError,
+  AuthorEventStateConflictError,
+  type AuthorEvent,
+  type AuthorEventService,
 } from '../src/events/author-event-service.js';
 import type { PlayerIdentityService } from '../src/players/player-identity.js';
 
@@ -50,6 +52,8 @@ const authoredEvent: AuthorEvent = {
   isPublished: false,
   createdAt: '2026-08-15T20:00:00.000Z',
   updatedAt: '2026-08-15T20:00:00.000Z',
+  authoringStatus: 'draft',
+  retiredAt: null,
 };
 
 let app: FastifyInstance;
@@ -57,12 +61,16 @@ let listEvents: ReturnType<typeof createListEventsMock>;
 let createEvent: ReturnType<typeof createCreateEventMock>;
 let updateEvent: ReturnType<typeof createUpdateEventMock>;
 let playerResolve: ReturnType<typeof createPlayerResolveMock>;
+let publishEvent: ReturnType<typeof createPublishEventMock>;
+let retireEvent: ReturnType<typeof createRetireEventMock>;
 
 beforeEach(async () => {
   listEvents = createListEventsMock();
   createEvent = createCreateEventMock();
   updateEvent = createUpdateEventMock();
   playerResolve = createPlayerResolveMock();
+  publishEvent = createPublishEventMock();
+  retireEvent = createRetireEventMock();
 
   const accessTokenVerifier: AccessTokenVerifier = {
     verify: vi.fn().mockResolvedValue(authenticatedIdentity),
@@ -72,6 +80,8 @@ beforeEach(async () => {
     listEvents,
     createEvent,
     updateEvent,
+    publishEvent,
+    retireEvent,
   };
 
   app = await buildApp({
@@ -257,6 +267,125 @@ describe('author event API', () => {
 
     expect(createEvent).not.toHaveBeenCalled();
   });
+
+  it('publishes an event using only the authenticated Author identity', async () => {
+    const response = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/author/events/${EVENT_ID}/publish`,
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(200);
+
+    expect(publishEvent).toHaveBeenCalledWith(AUTHOR_ID, EVENT_ID);
+
+    expect(response.json()).toMatchObject({
+      event: {
+        eventId: EVENT_ID,
+        isPublished: true,
+        authoringStatus: 'published',
+        retiredAt: null,
+      },
+      requestId: expect.any(String),
+    });
+  });
+
+  it('retires an event using only the authenticated Author identity', async () => {
+    const response = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/author/events/${EVENT_ID}/retire`,
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(200);
+
+    expect(retireEvent).toHaveBeenCalledWith(AUTHOR_ID, EVENT_ID);
+
+    expect(response.json()).toMatchObject({
+      event: {
+        eventId: EVENT_ID,
+        isPublished: false,
+        authoringStatus: 'retired',
+        retiredAt: expect.any(String),
+      },
+    });
+  });
+
+  it('rejects a Player attempting to publish event content', async () => {
+    playerResolve.mockResolvedValue(activePlayer);
+
+    const response = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/author/events/${EVENT_ID}/publish`,
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(403);
+
+    expect(response.json()).toMatchObject({
+      code: 'AUTHOR_REQUIRED',
+    });
+
+    expect(publishEvent).not.toHaveBeenCalled();
+  });
+
+  it('maps publication readiness failures to 422', async () => {
+    publishEvent.mockRejectedValue(
+      new AuthorEventNotReadyError(
+        'An event requires one published challenge before publication.',
+      ),
+    );
+
+    const response = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/author/events/${EVENT_ID}/publish`,
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(422);
+
+    expect(response.json()).toMatchObject({
+      code: 'CONTENT_NOT_READY',
+    });
+  });
+
+  it('maps invalid event lifecycle transitions to 409', async () => {
+    publishEvent.mockRejectedValue(
+      new AuthorEventStateConflictError('The event is already published.'),
+    );
+
+    const response = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/author/events/${EVENT_ID}/publish`,
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(409);
+
+    expect(response.json()).toMatchObject({
+      code: 'CONTENT_STATE_CONFLICT',
+    });
+  });
+
+  it('maps editing published or retired events to 409', async () => {
+    updateEvent.mockRejectedValue(
+      new AuthorEventStateConflictError(
+        'Published events cannot be edited; retire the event and create a replacement instead.',
+      ),
+    );
+
+    const response = await authenticatedRequest({
+      method: 'PUT',
+      url: `/api/v1/author/events/${EVENT_ID}`,
+      payload: validEventBody(),
+    });
+
+    expect(response.statusCode).toBe(409);
+
+    expect(response.json()).toMatchObject({
+      code: 'CONTENT_STATE_CONFLICT',
+    });
+  });
 });
 
 describe('author event OpenAPI documentation', () => {
@@ -299,6 +428,22 @@ describe('author event OpenAPI documentation', () => {
 
     expect(
       document.paths['/api/v1/author/events/{eventId}']?.put?.security,
+    ).toEqual([
+      {
+        bearerAuth: [],
+      },
+    ]);
+
+    expect(
+      document.paths['/api/v1/author/events/{eventId}/publish']?.post?.security,
+    ).toEqual([
+      {
+        bearerAuth: [],
+      },
+    ]);
+
+    expect(
+      document.paths['/api/v1/author/events/{eventId}/retire']?.post?.security,
     ).toEqual([
       {
         bearerAuth: [],
@@ -360,4 +505,21 @@ async function authenticatedRequest(options: {
     headers,
     payload: options.payload,
   });
+}
+
+function createPublishEventMock() {
+  return vi.fn(async (): Promise<AuthorEvent> => ({
+    ...authoredEvent,
+    isPublished: true,
+    authoringStatus: 'published',
+  }));
+}
+
+function createRetireEventMock() {
+  return vi.fn(async (): Promise<AuthorEvent> => ({
+    ...authoredEvent,
+    isPublished: false,
+    authoringStatus: 'retired',
+    retiredAt: '2026-08-16T00:00:00.000Z',
+  }));
 }

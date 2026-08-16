@@ -88,6 +88,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0012_add_author_content_foundation.sql',
         '0013_harden_author_challenge_lifecycle.sql',
         '0014_add_card_authoring_lifecycle.sql',
+        '0015_add_event_authoring_lifecycle.sql',
       ],
       skipped: [],
     });
@@ -108,6 +109,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0012_add_author_content_foundation.sql',
         '0013_harden_author_challenge_lifecycle.sql',
         '0014_add_card_authoring_lifecycle.sql',
+        '0015_add_event_authoring_lifecycle.sql',
       ],
     });
     expect(readiness).toMatchObject({

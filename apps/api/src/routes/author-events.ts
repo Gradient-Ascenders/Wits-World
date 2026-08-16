@@ -3,6 +3,8 @@ import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { ApiError } from '../errors/api-error.js';
 import {
   AuthorEventNotFoundError,
+  AuthorEventNotReadyError,
+  AuthorEventStateConflictError,
   InvalidAuthorEventError,
   type AuthorEventService,
 } from '../events/author-event-service.js';
@@ -82,6 +84,8 @@ const authorEventSchema = {
     'isPublished',
     'createdAt',
     'updatedAt',
+    'authoringStatus',
+    'retiredAt',
   ],
   properties: {
     eventId: {
@@ -92,14 +96,8 @@ const authorEventSchema = {
       type: 'string',
     },
     description: {
-      anyOf: [
-        {
-          type: 'string',
-        },
-        {
-          type: 'null',
-        },
-      ],
+      type: 'string',
+      nullable: true,
     },
     latitude: {
       type: 'number',
@@ -125,6 +123,15 @@ const authorEventSchema = {
     },
     isPublished: {
       type: 'boolean',
+    },
+    authoringStatus: {
+      type: 'string',
+      enum: ['draft', 'published', 'retired'],
+    },
+    retiredAt: {
+      type: 'string',
+      format: 'date-time',
+      nullable: true,
     },
     createdAt: {
       type: 'string',
@@ -154,15 +161,9 @@ const authorEventBodySchema = {
       minLength: 1,
     },
     description: {
-      anyOf: [
-        {
-          type: 'string',
-          minLength: 1,
-        },
-        {
-          type: 'null',
-        },
-      ],
+      type: 'string',
+      minLength: 1,
+      nullable: true,
     },
     latitude: {
       type: 'number',
@@ -199,6 +200,12 @@ const authorEventParamsSchema = {
       format: 'uuid',
     },
   },
+} as const;
+
+const emptyBodySchema = {
+  type: 'object',
+  additionalProperties: false,
+  maxProperties: 0,
 } as const;
 
 export const authorEventRoutes: FastifyPluginAsync<
@@ -380,7 +387,103 @@ export const authorEventRoutes: FastifyPluginAsync<
       }
     },
   );
+
+  app.post<{
+    Params: AuthorEventParams;
+    Body: Record<string, never>;
+  }>(
+    '/author/events/:eventId/publish',
+    {
+      onRequest: authorGuards,
+      schema: {
+        operationId: 'publishAuthorEvent',
+        summary: 'Publish a ready event',
+        description:
+          'Publishes a draft event only after its Basic challenge and reward catalogue dependencies are ready.',
+        tags: ['Authoring'],
+        security: [
+          {
+            bearerAuth: [],
+          },
+        ],
+        params: authorEventParamsSchema,
+        body: emptyBodySchema,
+        response: lifecycleEventResponses(),
+      },
+    },
+    async (request) => {
+      const author = requireResolvedAuthor(request);
+
+      try {
+        return {
+          event: await service.publishEvent(author.id, request.params.eventId),
+          requestId: request.id,
+        };
+      } catch (error) {
+        throwAuthorEventError(error);
+      }
+    },
+  );
+
+  app.post<{
+    Params: AuthorEventParams;
+    Body: Record<string, never>;
+  }>(
+    '/author/events/:eventId/retire',
+    {
+      onRequest: authorGuards,
+      schema: {
+        operationId: 'retireAuthorEvent',
+        summary: 'Retire an event',
+        description:
+          'Removes an event from player publication while preserving its immutable authored record.',
+        tags: ['Authoring'],
+        security: [
+          {
+            bearerAuth: [],
+          },
+        ],
+        params: authorEventParamsSchema,
+        body: emptyBodySchema,
+        response: lifecycleEventResponses(),
+      },
+    },
+    async (request) => {
+      const author = requireResolvedAuthor(request);
+
+      try {
+        return {
+          event: await service.retireEvent(author.id, request.params.eventId),
+          requestId: request.id,
+        };
+      } catch (error) {
+        throwAuthorEventError(error);
+      }
+    },
+  );
 };
+
+function lifecycleEventResponses() {
+  return {
+    200: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['event', 'requestId'],
+      properties: {
+        event: authorEventSchema,
+        requestId: {
+          type: 'string',
+        },
+      },
+    },
+    400: apiErrorSchema,
+    401: apiErrorSchema,
+    403: apiErrorSchema,
+    404: apiErrorSchema,
+    409: apiErrorSchema,
+    422: apiErrorSchema,
+  } as const;
+}
 
 function requireResolvedAuthor(
   request: FastifyRequest,
@@ -410,6 +513,24 @@ function throwAuthorEventError(error: unknown): never {
       code: 'EVENT_NOT_FOUND',
       title: 'Event not found',
       detail: 'The requested event was not found.',
+    });
+  }
+
+  if (error instanceof AuthorEventStateConflictError) {
+    throw new ApiError({
+      statusCode: 409,
+      code: 'CONTENT_STATE_CONFLICT',
+      title: 'Content state conflict',
+      detail: error.message,
+    });
+  }
+
+  if (error instanceof AuthorEventNotReadyError) {
+    throw new ApiError({
+      statusCode: 422,
+      code: 'CONTENT_NOT_READY',
+      title: 'Content not ready',
+      detail: error.message,
     });
   }
 

@@ -1,5 +1,7 @@
 import type pg from 'pg';
 
+export type AuthorEventStatus = 'draft' | 'published' | 'retired';
+
 export interface AuthorEvent {
   eventId: string;
   title: string;
@@ -10,6 +12,8 @@ export interface AuthorEvent {
   startsAt: string;
   endsAt: string;
   isPublished: boolean;
+  authoringStatus: AuthorEventStatus;
+  retiredAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -33,6 +37,10 @@ export interface AuthorEventService {
   listEvents(): Promise<AuthorEvent[]>;
   createEvent(input: AuthorEventInput): Promise<AuthorEvent>;
   updateEvent(input: UpdateAuthorEventInput): Promise<AuthorEvent>;
+
+  publishEvent(actorPlayerId: string, eventId: string): Promise<AuthorEvent>;
+
+  retireEvent(actorPlayerId: string, eventId: string): Promise<AuthorEvent>;
 }
 
 export interface AuthorEventDatabase {
@@ -63,6 +71,7 @@ interface AuthorEventRow extends pg.QueryResultRow {
   is_published: boolean;
   created_at: Date;
   updated_at: Date;
+  retired_at: Date | null;
 }
 
 export class AuthorEventNotFoundError extends Error {
@@ -77,6 +86,30 @@ export class InvalidAuthorEventError extends Error {
     super(message);
     this.name = 'InvalidAuthorEventError';
   }
+}
+
+export class AuthorEventStateConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AuthorEventStateConflictError';
+  }
+}
+
+export class AuthorEventNotReadyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AuthorEventNotReadyError';
+  }
+}
+
+interface AuthorEventLockRow extends pg.QueryResultRow {
+  is_published: boolean;
+  retired_at: Date | null;
+}
+
+interface EventPublicationReadinessRow extends pg.QueryResultRow {
+  published_challenge_count: number;
+  active_common_count: number;
 }
 
 export function createAuthorEventService(
@@ -99,6 +132,7 @@ export function createAuthorEventService(
               event.starts_at,
               event.ends_at,
               event.is_published,
+              event.retired_at,
               event.created_at,
               event.updated_at
             from public.events event
@@ -150,6 +184,7 @@ export function createAuthorEventService(
               starts_at,
               ends_at,
               is_published,
+              retired_at,
               created_at,
               updated_at
           `,
@@ -185,6 +220,20 @@ export function createAuthorEventService(
       const validated = validateAuthorEventInput(input);
 
       return withTransaction(database, async (client) => {
+        const locked = await lockEvent(client, validated.eventId);
+
+        if (locked.retired_at !== null) {
+          throw new AuthorEventStateConflictError(
+            'Retired events cannot be edited.',
+          );
+        }
+
+        if (locked.is_published) {
+          throw new AuthorEventStateConflictError(
+            'Published events cannot be edited; retire the event and create a replacement instead.',
+          );
+        }
+
         const result = await client.query<AuthorEventRow>(
           `
             update public.events
@@ -213,6 +262,7 @@ export function createAuthorEventService(
               starts_at,
               ends_at,
               is_published,
+              retired_at,
               created_at,
               updated_at
           `,
@@ -244,14 +294,171 @@ export function createAuthorEventService(
         return mapAuthorEvent(row);
       });
     },
+
+    async publishEvent(actorPlayerId, eventId) {
+      return withTransaction(database, async (client) => {
+        const locked = await lockEvent(client, eventId);
+
+        if (locked.retired_at !== null) {
+          throw new AuthorEventStateConflictError(
+            'Retired events cannot be republished.',
+          );
+        }
+
+        if (locked.is_published) {
+          throw new AuthorEventStateConflictError(
+            'The event is already published.',
+          );
+        }
+
+        const readiness = await client.query<EventPublicationReadinessRow>(
+          `
+              select
+                (
+                  select count(*)::int
+                  from public.event_challenges challenge
+                  where challenge.event_id = $1::uuid
+                    and challenge.status = 'published'
+                ) as published_challenge_count,
+                (
+                  select count(*)::int
+                  from public.card_definitions card
+                  where card.rarity = 'common'
+                    and card.is_active = true
+                ) as active_common_count
+            `,
+          [eventId],
+        );
+
+        const state = readiness.rows[0];
+
+        if (!state || state.published_challenge_count !== 1) {
+          throw new AuthorEventNotReadyError(
+            'An event requires one published challenge before publication.',
+          );
+        }
+
+        if (state.active_common_count < 1) {
+          throw new AuthorEventNotReadyError(
+            'At least one active Common reward card is required before event publication.',
+          );
+        }
+
+        const result = await client.query<AuthorEventRow>(
+          `
+            update public.events
+            set
+              is_published = true,
+              updated_at = now()
+            where id = $1::uuid
+            returning
+              id::text as event_id,
+              title,
+              description,
+              st_y(location::geometry) as latitude,
+              st_x(location::geometry) as longitude,
+              radius_metres,
+              starts_at,
+              ends_at,
+              is_published,
+              retired_at,
+              created_at,
+              updated_at
+          `,
+          [eventId],
+        );
+
+        const row = result.rows[0];
+
+        if (!row) {
+          throw new AuthorEventNotFoundError();
+        }
+
+        await insertAudit(client, actorPlayerId, eventId, 'publish');
+
+        return mapAuthorEvent(row);
+      });
+    },
+
+    async retireEvent(actorPlayerId, eventId) {
+      return withTransaction(database, async (client) => {
+        const locked = await lockEvent(client, eventId);
+
+        if (locked.retired_at !== null) {
+          throw new AuthorEventStateConflictError(
+            'The event is already retired.',
+          );
+        }
+
+        const result = await client.query<AuthorEventRow>(
+          `
+            update public.events
+            set
+              is_published = false,
+              retired_at = now(),
+              updated_at = now()
+            where id = $1::uuid
+            returning
+              id::text as event_id,
+              title,
+              description,
+              st_y(location::geometry) as latitude,
+              st_x(location::geometry) as longitude,
+              radius_metres,
+              starts_at,
+              ends_at,
+              is_published,
+              retired_at,
+              created_at,
+              updated_at
+          `,
+          [eventId],
+        );
+
+        const row = result.rows[0];
+
+        if (!row) {
+          throw new AuthorEventNotFoundError();
+        }
+
+        await insertAudit(client, actorPlayerId, eventId, 'retire');
+
+        return mapAuthorEvent(row);
+      });
+    },
   };
+}
+
+async function lockEvent(
+  client: AuthorEventTransactionClient,
+  eventId: string,
+): Promise<AuthorEventLockRow> {
+  const result = await client.query<AuthorEventLockRow>(
+    `
+      select
+        is_published,
+        retired_at
+      from public.events
+      where id = $1::uuid
+      for update
+    `,
+    [eventId],
+  );
+
+  const row = result.rows[0];
+
+  if (!row) {
+    throw new AuthorEventNotFoundError();
+  }
+
+  return row;
 }
 
 async function insertAudit(
   client: AuthorEventTransactionClient,
   actorPlayerId: string,
   eventId: string,
-  action: 'create' | 'edit',
+  action: 'create' | 'edit' | 'publish' | 'retire',
 ): Promise<void> {
   await client.query(
     `
@@ -347,6 +554,13 @@ function validateAuthorEventInput<T extends AuthorEventInput>(
 }
 
 function mapAuthorEvent(row: AuthorEventRow): AuthorEvent {
+  const authoringStatus: AuthorEventStatus =
+    row.retired_at !== null
+      ? 'retired'
+      : row.is_published
+        ? 'published'
+        : 'draft';
+
   return {
     eventId: row.event_id,
     title: row.title,
@@ -357,6 +571,8 @@ function mapAuthorEvent(row: AuthorEventRow): AuthorEvent {
     startsAt: row.starts_at.toISOString(),
     endsAt: row.ends_at.toISOString(),
     isPublished: row.is_published,
+    authoringStatus,
+    retiredAt: row.retired_at?.toISOString() ?? null,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
