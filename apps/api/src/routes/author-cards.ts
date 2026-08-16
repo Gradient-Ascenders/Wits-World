@@ -147,6 +147,7 @@ const moveBodySchema = {
     name: {
       type: 'string',
       minLength: 1,
+      pattern: '\\S',
     },
     moveType: {
       type: 'string',
@@ -187,46 +188,112 @@ const effectBodySchema = {
   },
 } as const;
 
-const cardBodySchema = {
+const nullIntegerSchema = {
+  type: 'integer',
+  enum: [null],
+  nullable: true,
+} as const;
+
+const cardBodyCommonProperties = {
+  name: {
+    type: 'string',
+    minLength: 1,
+    pattern: '\\S',
+  },
+  affinity: {
+    type: 'string',
+    enum: ['wit', 'grit', 'spark', 'spirit', 'mystic'],
+  },
+  rarity: {
+    type: 'string',
+    enum: ['common', 'rare', 'epic', 'legendary'],
+  },
+  description: {
+    type: 'string',
+    minLength: 1,
+    pattern: '\\S',
+    nullable: true,
+  },
+  imageUrl: {
+    type: 'string',
+    minLength: 1,
+    pattern: '\\S',
+    nullable: true,
+  },
+} as const;
+
+const creatureCardBodySchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['name', 'category', 'affinity', 'rarity', 'hp', 'power'],
+  required: ['name', 'category', 'affinity', 'rarity', 'hp', 'power', 'moves'],
   properties: {
-    name: {
-      type: 'string',
-      minLength: 1,
-    },
+    ...cardBodyCommonProperties,
     category: {
       type: 'string',
-      enum: ['creature', 'power'],
+      enum: ['creature'],
     },
-    affinity: {
-      type: 'string',
-      enum: ['wit', 'grit', 'spark', 'spirit', 'mystic'],
+    hp: {
+      type: 'integer',
+      minimum: 1,
     },
-    rarity: {
-      type: 'string',
-      enum: ['common', 'rare', 'epic', 'legendary'],
-    },
-    hp: nullableNonNegativeIntegerSchema,
-    power: nullableNonNegativeIntegerSchema,
-    description: {
-      type: 'string',
-      nullable: true,
-    },
-    imageUrl: {
-      type: 'string',
-      nullable: true,
+    power: {
+      type: 'integer',
+      minimum: 0,
     },
     moves: {
       type: 'array',
+      minItems: 1,
       items: moveBodySchema,
+      description:
+        'Creature cards require at least one move. Move positions must be unique.',
     },
     effects: {
       type: 'array',
+      maxItems: 0,
       items: effectBodySchema,
+      description: 'Creature cards cannot define Power-card effects.',
     },
   },
+} as const;
+
+const powerCardBodySchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'name',
+    'category',
+    'affinity',
+    'rarity',
+    'hp',
+    'power',
+    'effects',
+  ],
+  properties: {
+    ...cardBodyCommonProperties,
+    category: {
+      type: 'string',
+      enum: ['power'],
+    },
+    hp: nullIntegerSchema,
+    power: nullIntegerSchema,
+    moves: {
+      type: 'array',
+      maxItems: 0,
+      items: moveBodySchema,
+      description: 'Power cards cannot define Creature moves.',
+    },
+    effects: {
+      type: 'array',
+      minItems: 1,
+      items: effectBodySchema,
+      description:
+        'Power cards require at least one effect. Effect positions must be unique.',
+    },
+  },
+} as const;
+
+const cardBodySchema = {
+  oneOf: [creatureCardBodySchema, powerCardBodySchema],
 } as const;
 
 const cardMoveSchema = {

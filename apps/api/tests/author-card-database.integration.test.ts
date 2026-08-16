@@ -187,6 +187,65 @@ describe.skipIf(!runIntegrationTests)(
       expect(listed.some((card) => card.id === created.id)).toBe(true);
     }, 45_000);
 
+    it('rejects blank optional metadata before persistence', async () => {
+      const service = createAuthorCardService(pool);
+
+      const invalidCards = [
+        {
+          name: 'Blank Description Card',
+          description: '   ',
+          imageUrl: null,
+        },
+        {
+          name: 'Blank Image URL Card',
+          description: null,
+          imageUrl: '   ',
+        },
+      ];
+
+      for (const invalid of invalidCards) {
+        await expect(
+          service.createCard({
+            actorPlayerId: AUTHOR_ONE_ID,
+            name: invalid.name,
+            category: 'creature',
+            affinity: 'wit',
+            rarity: 'common',
+            hp: 100,
+            power: 10,
+            description: invalid.description,
+            imageUrl: invalid.imageUrl,
+            moves: [
+              {
+                position: 1,
+                name: 'Valid Move',
+                moveType: 'basic',
+                effectType: 'damage',
+                effectValue: 10,
+                powerCost: 1,
+              },
+            ],
+            effects: [],
+          }),
+        ).rejects.toBeInstanceOf(InvalidCardDefinitionError);
+      }
+
+      const persisted = await pool.query<{
+        card_count: number;
+      }>(
+        `
+          select count(*)::int as card_count
+          from public.card_definitions
+          where name in (
+            'Blank Description Card',
+            'Blank Image URL Card'
+          )
+        `,
+      );
+
+      expect(persisted.rows[0]?.card_count).toBe(0);
+    });
+
     it('allows another Author to replace a Creature draft with a Power definition', async () => {
       const service = createAuthorCardService(pool);
 

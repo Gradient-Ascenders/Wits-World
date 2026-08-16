@@ -376,28 +376,83 @@ describe('author card API', () => {
     expect(service.createCard).not.toHaveBeenCalled();
   });
 
-  it('preserves null Power-card fields through request validation', async () => {
-    const body = {
-      name: 'Campus Recovery',
-      category: 'power' as const,
-      affinity: 'spirit' as const,
-      rarity: 'common' as const,
-      hp: null,
-      power: null,
-      description: null,
-      imageUrl: null,
-      moves: [],
-      effects: [
-        {
-          position: 1,
-          effectType: 'heal' as const,
-          effectValue: 15,
-          modifierStat: null,
-          modifierOperation: null,
-          modifierDurationTurns: null,
+  it('rejects category-specific card shapes before calling the service', async () => {
+    const powerBody = validPowerBody();
+
+    const invalidBodies: Array<Record<string, unknown>> = [
+      {
+        ...validCreatureBody(),
+        hp: 0,
+      },
+      {
+        ...validCreatureBody(),
+        moves: [],
+      },
+      {
+        ...validCreatureBody(),
+        effects: [
+          {
+            position: 1,
+            effectType: 'heal',
+            effectValue: 10,
+          },
+        ],
+      },
+      {
+        ...powerBody,
+        hp: 100,
+      },
+      {
+        ...powerBody,
+        moves: validCreatureBody().moves,
+      },
+      {
+        ...powerBody,
+        effects: [],
+      },
+    ];
+
+    for (const payload of invalidBodies) {
+      service.createCard.mockClear();
+
+      const response = await authenticatedRequest({
+        method: 'POST',
+        url: '/api/v1/author/cards',
+        payload,
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(service.createCard).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each([
+    ['description', { description: '   ' }],
+    ['image URL', { imageUrl: '   ' }],
+  ])(
+    'rejects blank optional %s metadata with a safe 400',
+    async (_label, override) => {
+      const response = await authenticatedRequest({
+        method: 'POST',
+        url: '/api/v1/author/cards',
+        payload: {
+          ...validCreatureBody(),
+          ...override,
         },
-      ],
-    };
+      });
+
+      expect(response.statusCode).toBe(400);
+
+      expect(response.json()).toMatchObject({
+        code: 'VALIDATION_ERROR',
+      });
+
+      expect(service.createCard).not.toHaveBeenCalled();
+    },
+  );
+
+  it('preserves null Power-card fields through request validation', async () => {
+    const body = validPowerBody();
 
     const response = await authenticatedRequest({
       method: 'POST',
@@ -451,6 +506,90 @@ describe('author card OpenAPI documentation', () => {
       ]);
     }
   });
+
+  it('documents the category-specific card request rules', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/documentation/json',
+    });
+
+    expect(response.statusCode).toBe(200);
+
+    const document = response.json<{
+      paths: Record<
+        string,
+        {
+          post?: {
+            requestBody?: {
+              content?: {
+                'application/json'?: {
+                  schema?: {
+                    oneOf?: Array<{
+                      required?: string[];
+                      properties?: Record<
+                        string,
+                        {
+                          enum?: unknown[];
+                          minimum?: number;
+                          minItems?: number;
+                          maxItems?: number;
+                        }
+                      >;
+                    }>;
+                  };
+                };
+              };
+            };
+          };
+        }
+      >;
+    }>();
+
+    const branches =
+      document.paths['/api/v1/author/cards']?.post?.requestBody?.content?.[
+        'application/json'
+      ]?.schema?.oneOf;
+
+    expect(branches).toHaveLength(2);
+
+    const creature = branches?.find((branch) =>
+      branch.properties?.category?.enum?.includes('creature'),
+    );
+
+    const power = branches?.find((branch) =>
+      branch.properties?.category?.enum?.includes('power'),
+    );
+
+    expect(creature).toMatchObject({
+      required: expect.arrayContaining(['hp', 'power', 'moves']),
+      properties: {
+        hp: {
+          minimum: 1,
+        },
+        power: {
+          minimum: 0,
+        },
+        moves: {
+          minItems: 1,
+        },
+        effects: {
+          maxItems: 0,
+        },
+      },
+    });
+
+    expect(power).toMatchObject({
+      required: expect.arrayContaining(['hp', 'power', 'effects']),
+      properties: {
+        moves: {
+          maxItems: 0,
+        },
+        effects: {
+          minItems: 1,
+        },
+      },
+    });
+  });
 });
 
 function createServiceMock() {
@@ -498,6 +637,27 @@ function validCreatureBody() {
       },
     ],
     effects: [],
+  };
+}
+
+function validPowerBody() {
+  return {
+    name: 'Campus Recovery',
+    category: 'power' as const,
+    affinity: 'spirit' as const,
+    rarity: 'common' as const,
+    hp: null,
+    power: null,
+    description: 'A restorative Power card.',
+    imageUrl: null,
+    moves: [],
+    effects: [
+      {
+        position: 1,
+        effectType: 'heal' as const,
+        effectValue: 15,
+      },
+    ],
   };
 }
 

@@ -342,8 +342,8 @@ function normalizeAndValidateCard(
     rarity: input.rarity,
     hp: input.hp,
     power: input.power,
-    description: normalizeOptionalText(input.description),
-    imageUrl: normalizeOptionalText(input.imageUrl),
+    description: normalizeOptionalText(input.description, 'Card description'),
+    imageUrl: normalizeOptionalText(input.imageUrl, 'Card image URL'),
     moves: (input.moves ?? []).map((move) => ({
       ...move,
       name: move.name.trim(),
@@ -358,12 +358,21 @@ function normalizeAndValidateCard(
 
 function normalizeOptionalText(
   value: string | null | undefined,
+  label: string,
 ): string | null {
   if (value === null || value === undefined) {
     return null;
   }
 
-  return value.trim();
+  const normalized = value.trim();
+
+  if (normalized.length === 0) {
+    throw new InvalidCardDefinitionError(
+      `${label} must not be blank when provided.`,
+    );
+  }
+
+  return normalized;
 }
 
 async function lockCard(
