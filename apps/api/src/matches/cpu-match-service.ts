@@ -7,6 +7,7 @@ import {
   chooseCpuAction,
   createBattleState,
   getLegalActions,
+  InvalidBattleSetupError,
   validateBattleDeck,
   type BattleAction,
   type BattleActionResult,
@@ -20,7 +21,10 @@ import {
   type RandomInt,
 } from '@wits-world/game-rules';
 
-import { validateBasicDeck } from '../cards/deck-rules.js';
+import {
+  DeckRuleViolationError,
+  validateBasicDeck,
+} from '../cards/deck-rules.js';
 import type {
   CardAffinity,
   CardCategory,
@@ -191,6 +195,13 @@ export class CpuMatchDeckError extends Error {
   }
 }
 
+class CpuMatchSetupError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CpuMatchSetupError';
+  }
+}
+
 export class CpuMatchActionError extends Error {
   constructor(message: string) {
     super(message);
@@ -345,7 +356,11 @@ export function createCpuMatchService(
         const cpuDeck = await buildBattleDeck(client, cpuCards, 'cpu');
 
         validateBattleDeck(playerDeck);
-        validateBattleDeck(cpuDeck);
+        try {
+          validateBattleDeck(cpuDeck);
+        } catch (error) {
+          throw mapCpuMatchSetupError(error);
+        }
 
         const state = createBattleState(playerDeck, cpuDeck);
         const startedAt = clock.now();
@@ -784,7 +799,7 @@ async function loadCpuDeckCards(client: CpuMatchClient): Promise<CpuCardRow[]> {
 
   const cards = [...creatures.rows, ...powers.rows];
   if (cards.length !== 5) {
-    throw new CpuMatchDeckError(
+    throw new CpuMatchSetupError(
       'The active catalogue does not contain a complete CPU deck.',
     );
   }
@@ -853,7 +868,7 @@ async function buildBattleDeck(
 
     if (card.category === 'creature') {
       if (card.hp === null || card.power === null) {
-        throw new CpuMatchDeckError(
+        throw new CpuMatchSetupError(
           `Creature ${card.name} has incomplete stats.`,
         );
       }
@@ -982,7 +997,7 @@ function snapshotDeck(
         : deck.powerCards[powerIndex++];
 
     if (!card) {
-      throw new CpuMatchDeckError('The match deck snapshot is incomplete.');
+      throw new CpuMatchSetupError('The match deck snapshot is incomplete.');
     }
 
     return {
@@ -1257,11 +1272,30 @@ function mapBattleSetupError(error: unknown): Error {
     return error;
   }
 
-  if (error instanceof Error) {
+  if (
+    error instanceof DeckRuleViolationError ||
+    error instanceof InvalidBattleSetupError
+  ) {
     return new CpuMatchDeckError(error.message);
   }
 
-  return new CpuMatchDeckError('The selected decks cannot start a CPU match.');
+  if (error instanceof Error) {
+    return error;
+  }
+
+  return new Error('CPU match creation failed unexpectedly.');
+}
+
+function mapCpuMatchSetupError(error: unknown): CpuMatchSetupError {
+  if (error instanceof CpuMatchSetupError) {
+    return error;
+  }
+
+  if (error instanceof Error) {
+    return new CpuMatchSetupError(error.message);
+  }
+
+  return new CpuMatchSetupError('The CPU deck setup is invalid.');
 }
 
 function mapActionError(error: unknown): Error {

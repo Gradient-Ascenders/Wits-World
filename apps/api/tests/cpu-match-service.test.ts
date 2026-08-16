@@ -9,6 +9,7 @@ import {
 
 import {
   createCpuMatchService,
+  CpuMatchDeckError,
   CpuMatchVersionConflictError,
   type CpuMatchClient,
   type CpuMatchDatabase,
@@ -18,6 +19,29 @@ const PLAYER_ID = 'a1000000-0000-4000-8000-000000000001';
 const MATCH_ID = 'a2000000-0000-4000-8000-000000000001';
 
 describe('CPU match service', () => {
+  it('preserves unexpected create failures as internal errors', async () => {
+    const databaseError = new Error(
+      'duplicate key value violates unique constraint',
+    );
+    const query = vi.fn(async (statement: string) => {
+      if (statement === 'begin') {
+        return { rows: [] };
+      }
+
+      throw databaseError;
+    });
+
+    const service = createCpuMatchService(fakeDatabase(query));
+
+    await expect(
+      service.createMatch({
+        playerId: PLAYER_ID,
+        deckId: 'a6000000-0000-4000-8000-000000000001',
+      }),
+    ).rejects.toBe(databaseError);
+    expect(databaseError).not.toBeInstanceOf(CpuMatchDeckError);
+  });
+
   it('applies the player action and server CPU action in one transaction', async () => {
     const state = createBattleState(deck('player'), deck('cpu'));
     const query = vi.fn(async (statement: string) => {

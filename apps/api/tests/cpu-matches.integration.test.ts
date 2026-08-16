@@ -101,6 +101,26 @@ describe('CPU match API', () => {
     });
   });
 
+  it('returns a safe 500 for unexpected match creation failures', async () => {
+    service.createMatch.mockRejectedValueOnce(
+      new Error('duplicate key value violates unique constraint'),
+    );
+
+    const response = await authenticatedRequest({
+      method: 'POST',
+      url: '/api/v1/matches/cpu',
+      payload: { deckId: DECK_ID },
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toMatchObject({
+      status: 500,
+      code: 'INTERNAL_ERROR',
+      detail: 'The server could not complete the request.',
+    });
+    expect(response.body).not.toContain('duplicate key');
+  });
+
   it('rejects client-supplied player and battle result fields', async () => {
     const response = await authenticatedRequest({
       method: 'POST',

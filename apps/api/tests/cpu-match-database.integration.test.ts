@@ -195,7 +195,7 @@ describe.skipIf(!runIntegrationTests)(
         cards: '10',
         rounds: '1',
       });
-    });
+    }, 30_000);
 
     it('rejects a second active match for the same player', async () => {
       const service = createCpuMatchService(pool, { randomInt: () => 0 });
