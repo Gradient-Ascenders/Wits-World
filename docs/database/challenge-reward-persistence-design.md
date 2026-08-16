@@ -4,9 +4,10 @@
 
 This document records the Sprint 2 persistence foundation for event quizzes,
 reward issuance, player wallets, and owned card copies. Issue #49 was the design
-input; issue #64 implements the migration layer described here. Challenge and
-reward routes, finalization services, and authoring workflows remain separate
-issues.
+input; issue #64 implements the migration layer described here. Challenge and reward routes and finalization services are implemented by their
+respective Sprint 2 issues. Protected Author content management is implemented
+by issue #77, including event, challenge, question, and card lifecycle
+operations and audit persistence.
 
 The HTTP behavior is defined by the
 [challenge and attempt API contract](../architecture/challenge-attempt-api-contract.md).
@@ -45,6 +46,15 @@ from its shared card definition.
 - Each awarded duplicate is a separate owned-card row.
 - Browser input never determines correctness, score, coin value, rarity, or
   awarded card definition.
+- Player routes never expose private accepted answers, correct-answer
+  relationships, or Author-only explanation content.
+- Author content mutations derive the acting Author from the authenticated
+  server context and record create, edit, publish, and retire actions in the
+  audit trail.
+- Published questions, challenges, cards, and newly authored events cannot
+  silently return to draft.
+- A newly authored event becomes player-visible only after publication verifies
+  one valid published challenge and at least one active Common reward card.
 
 ## Relationship view
 
@@ -91,12 +101,18 @@ least five valid published questions.
 ### `challenge_questions` and `challenge_choices`
 
 A question stores its challenge, nonblank prompt, difficulty from `1` through
-`3`, status, and audit timestamps. Each choice stores its question, nonblank
+`3`, optional draft explanation, status, and audit timestamps. Publication
+requires a nonblank explanation. Each choice stores its question, nonblank
 text, and an authoring position from `1` through `4`.
 
 `UNIQUE (question_id, authoring_position)` and a deferred publish-time check
 ensure exactly four choices. Published questions and choices are immutable;
 editing creates replacement rows so active attempts retain stable source data.
+
+Draft questions may replace their choices and accepted-answer relationship
+transactionally. Once published, their authored content, choices, answer key,
+and explanation are immutable; later authoring uses replacement content rather
+than mutating the published definition.
 
 ### `private.challenge_answer_keys`
 
@@ -106,8 +122,10 @@ belongs to the same question.
 
 This table lives in a restricted schema. Public read queries have no direct
 `SELECT` permission; marking uses a narrowly scoped service query or database
-function. Keys must never appear in browser responses, logs, client fixtures, or
-analytics exports.
+function. Player-facing responses, logs, player fixtures, and analytics exports
+must never expose accepted-answer relationships. Protected Author endpoints may
+return the accepted answer required to create and manage question content only
+after authentication, active-account validation, and Author authorization.
 
 ### `challenge_attempts`
 
@@ -152,6 +170,15 @@ A card definition stores `id`, nonblank `name`, `category`, `affinity`, `rarity`
 active state, and audit timestamps. Creature definitions also store positive
 `hp` and non-negative `power`; Power definitions keep both stats null.
 
+Issue #77 adds `authoring_status` with `draft`, `published`, and `retired`
+states. Draft cards are inactive and editable. Publication changes the card to
+published and active only after the persisted definition passes the same
+Creature/Power validation used by the application. Published and retired
+definition content, moves, and effects are immutable. Retirement makes the card
+inactive but preserves the definition so existing `player_cards` ownership rows
+continue to resolve their shared catalogue data. Retired cards cannot be
+republished.
+
 - Category is `creature` or `power`.
 - Affinity is `wit`, `grit`, `spark`, `spirit`, or `mystic`.
 - Rarity is `common`, `rare`, `epic`, or `legendary`.
@@ -173,6 +200,31 @@ The move/effect vocabulary is `basic`, `wit`, `grit`, `spark`, `spirit`, and
 types. Damage is the only effect affected by the affinity multiplier; the
 server-side type rule is implemented in `apps/api/src/cards/card-rules.ts`.
 Reward and starter selection use only active definitions.
+
+### Event authoring lifecycle
+
+Issue #77 extends the existing event relation with nullable `retired_at` while
+preserving `is_published` as the player-facing visibility flag.
+
+The Author lifecycle is:
+
+- draft: `is_published = false` and `retired_at is null`;
+- published: `is_published = true` and `retired_at is null`;
+- retired: `is_published = false` and `retired_at is not null`.
+
+A newly authored draft may be published only when it has exactly one published
+challenge and the catalogue contains at least one active Common card required
+by the Basic reward policy. Challenge publication already proves that at least
+five valid published questions exist.
+
+Published event content is immutable and cannot return to draft. Retirement
+removes the event from player discovery without deleting it, and retirement is
+irreversible. The published challenge associated with a live published event
+cannot be retired until the event itself has been retired.
+
+The original Sprint 1 published demonstration event remains a compatibility
+fixture. The new publication-readiness checks guard Author-driven draft-to-
+published transitions rather than retroactively invalidating that legacy row.
 
 ### `event_completions`
 
@@ -273,9 +325,10 @@ category are not weighted.
 
 If a positive-probability rarity has no active definitions, its probability is
 redistributed proportionally across the other available positive-probability
-rarities. A guaranteed Common reward requires at least one active Common card;
-otherwise completion fails and retries after catalog repair. Catalog readiness
-should alert before an event is published.
+rarities. A guaranteed Common reward requires at least one active Common card; otherwise
+completion fails and retries after catalogue repair. Issue #77 therefore
+requires at least one active Common definition before a newly authored event may
+be published.
 
 Random decisions use a server-side cryptographically secure source. Award count,
 rarity, and definitions become durable through completion and ownership rows, so
@@ -372,8 +425,20 @@ Issue #64 adds the migration layer in dependency order:
 9. `0011_create_saved_decks.sql` adds saved decks, exact owned-copy
    memberships, ownership-safe composite relationships, deterministic positions,
    and one active deck selection per player.
+10. `0012_add_author_content_foundation.sql` adds question explanations,
+    immutable Author-content audit records, and database enforcement that audit
+    actors are active Authors.
+11. `0013_harden_author_challenge_lifecycle.sql` hardens question and challenge
+    immutability and lifecycle transitions used by protected challenge
+    authoring.
+12. `0014_add_card_authoring_lifecycle.sql` adds explicit draft, published, and
+    retired card states, active-state consistency, and published-card content
+    immutability.
+13. `0015_add_event_authoring_lifecycle.sql` adds event retirement, publication
+    readiness validation, published-event immutability, and protection against
+    retiring the challenge beneath a live published event.
 
-The database integration suite applies all eleven migrations to an empty
+The database integration suite applies all fifteen migrations to an empty
 PostgreSQL/PostGIS database and checks that a second run is a no-op. The
 `0002_basic_card_catalogue.sql` seed is repeatable and provides deterministic
 demonstration cards for all starter affinities plus non-Common examples for

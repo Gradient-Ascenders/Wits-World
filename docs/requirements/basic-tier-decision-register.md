@@ -86,7 +86,12 @@ not guess a blocked value. In particular:
   server-authoritative battle rules, including configurable timers and
   server-side randomness; and
 - #77 must enforce the two-role Player/Author model, out-of-band role changes,
-  and Author audit records; and
+  shared Author management of Basic content, protected access to private
+  accepted-answer data, and Author audit records. Content lifecycle transitions
+  remain server-authoritative: questions must be complete before publication,
+  challenges require at least five valid published questions, newly authored
+  events require a published challenge and a viable Common reward catalogue,
+  and Authors cannot submit authoritative reward outcomes; and
 - #66 and #68 must implement `BASIC-03` final-score-only feedback; the conflicting
   per-question, correct-answer, and explanation wording in those issue bodies is
   superseded, and accepted answers remain private.
