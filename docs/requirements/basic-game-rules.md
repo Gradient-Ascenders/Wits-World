@@ -28,6 +28,38 @@ or ownership result.
   timestamp in the audit trail. In-app role management and advanced
   administration are deferred beyond Basic.
 
+### Author content lifecycle
+
+- Author-created events, challenges, questions, and cards begin as draft content
+  and do not become player-visible merely because they have been created.
+- A multiple-choice question may be published only when it has exactly four
+  choices, exactly one private accepted choice, a difficulty from `1` through
+  `3`, and a nonblank explanation. Published question content is immutable;
+  later changes require replacement content.
+- A challenge may be published only when it contains at least five valid
+  published questions. A published challenge cannot return to draft.
+- A newly authored event may be published only when it has one valid published
+  challenge and the active catalogue contains at least one Common card required
+  by the Basic reward policy.
+- Published event content is immutable. Retiring an event removes it from
+  player discovery without deleting its authored record, and a retired event
+  cannot be republished. The published challenge belonging to a live published
+  event cannot be retired until the event itself has been retired.
+- Card definitions use draft, published, and retired authoring states. Only
+  published cards are active for starter and reward selection. Retiring a card
+  removes it from future catalogue selection without deleting owned copies that
+  already reference that definition.
+- Protected Author APIs may return private accepted-answer information and
+  explanations required for content management. Player APIs never expose
+  private answer-key identifiers or explanations. During an active timed
+  attempt they also withhold correct answers and per-question correctness;
+  after authoritative completion the defined five-question review may return
+  the player's selected choice, the correct choice, and server-derived
+  correctness.
+- Authors do not configure authoritative coin values, reward rarity outcomes, or
+  awarded card definitions. Basic rewards remain server-authoritative and are
+  calculated from the approved score policy.
+
 ### Account deletion and re-registration
 
 - Deletion requires recent authentication and explicit permanent-deletion
@@ -96,7 +128,7 @@ or ownership result.
   not reveal correctness or answer keys. After authoritative completion, it
   returns the final score and reward outcome plus five ordered review entries
   containing the player's locked answer (or `null` after timeout), the correct
-  answer, and server-derived correctness. The current content model has no
+  answer, and server-derived correctness. The completed Player review has no
   explanation field.
 - Scores from zero through five are completed attempts. A low score does not
   create another attempt.

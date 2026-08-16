@@ -86,6 +86,10 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0010_add_card_modifier_metadata.sql',
         '0011_create_saved_decks.sql',
         '0012_create_cpu_matches.sql',
+        '0013_add_author_content_foundation.sql',
+        '0014_harden_author_challenge_lifecycle.sql',
+        '0015_add_card_authoring_lifecycle.sql',
+        '0016_add_event_authoring_lifecycle.sql',
       ],
       skipped: [],
     });
@@ -104,6 +108,10 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0010_add_card_modifier_metadata.sql',
         '0011_create_saved_decks.sql',
         '0012_create_cpu_matches.sql',
+        '0013_add_author_content_foundation.sql',
+        '0014_harden_author_challenge_lifecycle.sql',
+        '0015_add_card_authoring_lifecycle.sql',
+        '0016_add_event_authoring_lifecycle.sql',
       ],
     });
     expect(readiness).toMatchObject({

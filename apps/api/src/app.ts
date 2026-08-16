@@ -48,6 +48,15 @@ import { deckRoutes } from './routes/decks.js';
 import type { CpuMatchService } from './matches/cpu-match-service.js';
 import { cpuMatchRoutes } from './routes/cpu-matches.js';
 
+import type { AuthorEventService } from './events/author-event-service.js';
+import { authorEventRoutes } from './routes/author-events.js';
+
+import type { AuthorChallengeService } from './challenges/author-challenge-service.js';
+import { authorChallengeRoutes } from './routes/author-challenges.js';
+
+import type { AuthorCardService } from './cards/author-card-service.js';
+import { authorCardRoutes } from './routes/author-cards.js';
+
 export interface EventServices {
   discovery: EventDiscoveryService;
   eligibility: EventEligibilityService;
@@ -66,6 +75,7 @@ export interface BuildAppOptions {
   accountDeletionServices?: AccountDeletionServices;
   challengeAttemptServices?: ChallengeAttemptServices;
   cardServices?: CardServices;
+  authorContentServices?: AuthorContentServices;
   cpuMatchService?: CpuMatchService;
 }
 
@@ -87,6 +97,12 @@ export interface CardServices {
   decks?: DeckService;
 }
 
+export interface AuthorContentServices {
+  events?: AuthorEventService;
+  challenges?: AuthorChallengeService;
+  cards?: AuthorCardService;
+}
+
 export async function buildApp({
   authConfig,
   config = {
@@ -100,6 +116,7 @@ export async function buildApp({
   accountDeletionServices,
   challengeAttemptServices,
   cardServices,
+  authorContentServices,
   cpuMatchService,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
@@ -151,6 +168,11 @@ export async function buildApp({
     throw new Error('Card services require a player identity service.');
   }
 
+  if (authorContentServices && !playerIdentityService) {
+    throw new Error(
+      'Author content services require a player identity service.',
+    );
+  }
   if (cpuMatchService && !playerIdentityService) {
     throw new Error('CPU match services require a player identity service.');
   }
@@ -189,6 +211,10 @@ export async function buildApp({
         {
           name: 'Decks',
           description: 'Player saved decks and active deck selection.',
+        },
+        {
+          name: 'Authoring',
+          description: 'Protected Author-only Basic content management.',
         },
         {
           name: 'Matches',
@@ -261,6 +287,27 @@ export async function buildApp({
       eligibilityService: eventServices.eligibility,
       clock: eventServices.clock,
       maxLocationClaimAgeMs: eventServices.maxLocationClaimAgeMs,
+    });
+  }
+
+  if (authorContentServices?.events) {
+    await app.register(authorEventRoutes, {
+      prefix: '/api/v1',
+      service: authorContentServices.events,
+    });
+  }
+
+  if (authorContentServices?.challenges) {
+    await app.register(authorChallengeRoutes, {
+      prefix: '/api/v1',
+      service: authorContentServices.challenges,
+    });
+  }
+
+  if (authorContentServices?.cards) {
+    await app.register(authorCardRoutes, {
+      prefix: '/api/v1',
+      service: authorContentServices.cards,
     });
   }
 
