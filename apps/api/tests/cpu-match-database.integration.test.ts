@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { QueryResultRow } from 'pg';
 
 import {
   buildDatabaseConfig,
@@ -14,6 +15,7 @@ import { runSeeds } from '../src/database/seeds.js';
 import {
   createCpuMatchService,
   CpuMatchNotFoundError,
+  type CpuMatchDatabase,
 } from '../src/matches/cpu-match-service.js';
 
 const PLAYER_ID = 'b1000000-0000-4000-8000-000000000001';
@@ -306,11 +308,12 @@ describe.skipIf(!runIntegrationTests)(
       expect(first.version).toBe(1);
     });
 
-    it('reads direct match state and latest action from the same committed snapshot', async () => {
+    it('keeps a direct read coherent when a commit lands between possible read round trips', async () => {
       const service = createCpuMatchService(pool, { randomInt: () => 0 });
       const before = await service.getMatch(PLAYER_ID, matchId);
       const updatingClient = await pool.connect();
       let committed = false;
+      let matchReadCount = 0;
 
       try {
         await updatingClient.query('begin');
@@ -339,13 +342,49 @@ describe.skipIf(!runIntegrationTests)(
           [matchId],
         );
 
-        const whileUncommitted = await service.getMatch(PLAYER_ID, matchId);
-        expect(whileUncommitted.version).toBe(before.version);
-        expect(whileUncommitted.state.turnNumber).toBe(before.state.turnNumber);
-        expect(whileUncommitted.lastAction).toEqual(before.lastAction);
+        // Commit after the first query has captured its rows. A coherent
+        // one-statement read remains old/old; the former second action lookup
+        // would instead observe the new action and return a mixed response.
+        const commitDuringReadDatabase: CpuMatchDatabase = {
+          connect: async () => {
+            const readClient = await pool.connect();
 
-        await updatingClient.query('commit');
-        committed = true;
+            return {
+              query: async <T extends QueryResultRow>(
+                statement: string,
+                values?: unknown[],
+              ) => {
+                const result = await readClient.query<T>(statement, values);
+
+                if (statement.includes('from public.cpu_matches')) {
+                  matchReadCount += 1;
+                  if (!committed) {
+                    await updatingClient.query('commit');
+                    committed = true;
+                  }
+                }
+
+                return result;
+              },
+              release: () => readClient.release(),
+            };
+          },
+        };
+        const concurrentService = createCpuMatchService(
+          commitDuringReadDatabase,
+          { randomInt: () => 0 },
+        );
+
+        const readAcrossCommit = await concurrentService.getMatch(
+          PLAYER_ID,
+          matchId,
+        );
+
+        expect(committed).toBe(true);
+        expect(matchReadCount).toBe(1);
+        expect(readAcrossCommit.version).toBe(before.version);
+        expect(readAcrossCommit.state.turnNumber).toBe(before.state.turnNumber);
+        expect(readAcrossCommit.lastAction).toEqual(before.lastAction);
 
         const after = await service.getMatch(PLAYER_ID, matchId);
         expect(after.version).toBe(before.version + 1);

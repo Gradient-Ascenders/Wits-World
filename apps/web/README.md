@@ -15,8 +15,8 @@ Challenges restore their server-owned attempt, submit answer intent only, and
 display the persisted final score, rewards, and completed answer review. Card
 starter selection and collection browsing are available through the protected
 `/collection` route. Saved-deck building, management, and active selection are
-available through `/decks`. CPU battle presentation remains outside the live
-player flow.
+available through `/decks`. Server-authoritative CPU battles and private
+completed-match history are available through the protected `/matches` routes.
 
 ## Run locally
 
@@ -247,6 +247,12 @@ for the full flow, privacy boundary, browser limitations, and evidence steps.
   copy returned by the API.
 - `/decks` requires Auth0 sign-in, loads saved decks and the owned collection,
   and supports server-authoritative deck CRUD and active selection.
+- `/matches` requires Auth0 sign-in, resumes the current active CPU match before
+  offering creation from the selected saved deck.
+- `/matches/:matchId` requires Auth0 sign-in and renders the ownership-scoped
+  authoritative active or completed CPU match state.
+- `/matches/history` requires Auth0 sign-in and lists the authenticated player's
+  private completed CPU matches.
 - `/about` explains the Wits World project and Wits Quest game/topic distinction.
 - Any unknown route presents a page-not-found message and a link home.
 

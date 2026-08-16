@@ -232,6 +232,55 @@ describe('CPU match API client', () => {
     });
   });
 
+  it('rejects active, identity-bearing, incomplete, and malformed nested history successes', async () => {
+    const item = historyItem();
+    const round = item.rounds[0]!;
+    const action = round.actions[0]!;
+    const missingCompletedAt: Record<string, unknown> = { ...item };
+    delete missingCompletedAt.completedAt;
+    const malformedItems: unknown[] = [
+      { ...item, status: 'active' },
+      { ...item, winner: null },
+      { ...item, playerId: uuid(1600) },
+      missingCompletedAt,
+      { ...item, rounds: [{ ...round, roundNumber: 0 }] },
+      {
+        ...item,
+        rounds: [
+          {
+            ...round,
+            actions: [
+              {
+                ...action,
+                result: { ...action.result, winner: 'browser' },
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const fetchMock = vi.fn();
+
+    for (const [index, malformed] of malformedItems.entries()) {
+      fetchMock.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            matches: [malformed],
+            requestId: `malformed-history-${index}`,
+          }),
+          { status: 200 },
+        ),
+      );
+    }
+    vi.stubGlobal('fetch', fetchMock);
+
+    for (let index = 0; index < malformedItems.length; index += 1) {
+      await expect(listCpuMatchHistory(options())).rejects.toMatchObject({
+        failure: 'unavailable',
+      });
+    }
+  });
+
   it('maps authorization and stale-action problems without exposing response internals', async () => {
     const fetchMock = vi
       .fn()
