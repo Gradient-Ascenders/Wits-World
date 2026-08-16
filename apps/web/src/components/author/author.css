@@ -190,6 +190,7 @@
 
 .author-form__grid {
   display: grid;
+  align-items: start;
   gap: var(--space-4);
 }
 

@@ -54,6 +54,7 @@ export function AuthorLocationMap({
       <CampusMap
         accessibleLabel="Event placement map. Select a point to update the coordinate inputs. Latitude and longitude fields provide the complete keyboard-accessible alternative."
         configuration={configuration}
+        errorDescription="Use the labelled latitude and longitude fields to continue placing the event."
         mapFactory={mapFactory}
         onCoordinateSelect={onChange}
         points={points}

@@ -12,6 +12,7 @@ import {
 interface CampusMapProps {
   accessibleLabel?: string;
   configuration: MapConfiguration;
+  errorDescription?: string;
   mapFactory?: MapFactory;
   onCoordinateSelect?: (coordinate: MapCoordinate) => void;
   points: readonly MapPoint[];
@@ -25,6 +26,7 @@ const MAP_LOAD_TIMEOUT_MS = 15_000;
 export function CampusMap({
   accessibleLabel = 'Interactive campus map using Mapbox Standard 3D. Event information is also available in the nearby events list.',
   configuration,
+  errorDescription = 'Use the nearby events list to continue exploring.',
   mapFactory = createMapboxMap,
   onCoordinateSelect,
   points,
@@ -60,6 +62,7 @@ export function CampusMap({
     const abortController = new AbortController();
     let active = true;
     let controller: MapController | undefined;
+    let loaded = false;
 
     if (!container) {
       return;
@@ -94,11 +97,18 @@ export function CampusMap({
         );
         map.onLoad(() => {
           if (active) {
+            loaded = true;
             window.clearTimeout(loadTimeout);
             setStatus('ready');
           }
         });
         map.onError(() => {
+          if (active && !loaded) {
+            window.clearTimeout(loadTimeout);
+            setStatus('error');
+          }
+        });
+        map.onFatalError?.(() => {
           if (active) {
             window.clearTimeout(loadTimeout);
             setStatus('error');
@@ -142,7 +152,7 @@ export function CampusMap({
       {status === 'error' ? (
         <div className="map-state map-state--error" role="alert">
           <strong>The map could not load.</strong>
-          <span>Use the nearby events list to continue exploring.</span>
+          <span>{errorDescription}</span>
         </div>
       ) : null}
     </div>

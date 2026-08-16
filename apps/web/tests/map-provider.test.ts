@@ -194,19 +194,24 @@ describe('Mapbox Standard provider', () => {
     expect(mapboxState.once).toHaveBeenCalledWith('load', listener);
   });
 
-  it('reports provider errors and WebGL context loss', async () => {
+  it('reports recoverable provider errors separately from WebGL context loss', async () => {
     const controller = await createMapboxMap(
       document.createElement('div'),
       configuration,
       [],
       new AbortController().signal,
     );
-    const listener = vi.fn();
+    const recoverableListener = vi.fn();
+    const fatalListener = vi.fn();
 
-    controller.onError(listener);
+    controller.onError(recoverableListener);
+    controller.onFatalError?.(fatalListener);
 
-    expect(mapboxState.on).toHaveBeenCalledWith('error', listener);
-    expect(mapboxState.on).toHaveBeenCalledWith('webglcontextlost', listener);
+    expect(mapboxState.on).toHaveBeenCalledWith('error', recoverableListener);
+    expect(mapboxState.on).toHaveBeenCalledWith(
+      'webglcontextlost',
+      fatalListener,
+    );
   });
 
   it('renders the reported location as a local overlay without a Mapbox marker', async () => {

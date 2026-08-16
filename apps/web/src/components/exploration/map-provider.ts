@@ -77,6 +77,7 @@ export interface MapConfiguration {
 
 export interface MapController {
   onError: (listener: () => void) => void;
+  onFatalError?: (listener: () => void) => void;
   onLoad: (listener: () => void) => void;
   remove: () => void;
   setReportedLocation: (coordinate: MapCoordinate | null) => void;
@@ -370,6 +371,8 @@ function createController(
   return {
     onError(listener) {
       map.on('error', listener);
+    },
+    onFatalError(listener) {
       map.on('webglcontextlost', listener);
     },
     onLoad(listener) {

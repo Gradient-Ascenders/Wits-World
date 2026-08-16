@@ -68,6 +68,16 @@ test('the author form remains keyboard-usable without map interaction at respons
   await page.keyboard.press('Tab');
   await expect(page.getByLabel('Description (optional)')).toBeFocused();
 
+  await page.getByLabel('Starts at').fill('2026-09-01T08:00');
+  await page.getByRole('button', { name: 'Create draft event' }).click();
+  await expect(page.getByText('Enter a valid end time.')).toBeVisible();
+
+  const startsAtBox = await page.getByLabel('Starts at').boundingBox();
+  const endsAtBox = await page.getByLabel('Ends at').boundingBox();
+  expect(startsAtBox).not.toBeNull();
+  expect(endsAtBox).not.toBeNull();
+  expect(startsAtBox!.y).toBeCloseTo(endsAtBox!.y, 0);
+
   for (const viewport of [
     { height: 800, width: 360 },
     { height: 844, width: 390 },

@@ -15,6 +15,7 @@ import type {
   AuthorEvent,
   AuthorQuestion,
 } from '../src/api/author';
+import { AuthorLocationMap } from '../src/components/author/AuthorLocationMap';
 import { EventWorkspace } from '../src/components/author/EventWorkspace';
 
 const apiBaseUrl = 'https://api.example.test/api/v1';
@@ -49,6 +50,27 @@ vi.mock(
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Basic author console', () => {
+  it('keeps accessible coordinate editing guidance when the author map fails', async () => {
+    render(
+      <AuthorLocationMap
+        coordinate={{ latitude: -26.19205, longitude: 28.03038 }}
+        mapboxAccessToken={mapboxAccessToken}
+        mapFactory={vi.fn(async () => {
+          throw new Error('Expected map failure');
+        })}
+        onChange={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText('The map could not load.')).toBeVisible();
+    expect(
+      screen.getByText(
+        'Use the labelled latitude and longitude fields to continue placing the event.',
+      ),
+    ).toBeVisible();
+    expect(screen.queryByText(/nearby events list/i)).not.toBeInTheDocument();
+  });
+
   it('shows role-aware navigation and loads protected content for an Author', async () => {
     const fetchMock = installAuthorApi();
     renderAuthorRoute();

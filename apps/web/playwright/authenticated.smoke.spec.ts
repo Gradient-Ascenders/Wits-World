@@ -8,6 +8,7 @@ test('loads the protected app with data from the real API', async ({
 }) => {
   const consoleErrors: string[] = [];
   const failedRequests: { reason: string; url: string }[] = [];
+  const mapboxResponseErrors: { path: string; status: number }[] = [];
 
   page.on('console', (message) => {
     const location = message.location();
@@ -30,6 +31,15 @@ test('loads the protected app with data from the real API', async ({
       reason: request.failure()?.errorText ?? 'unknown',
       url: `${url.origin}${url.pathname}`,
     });
+  });
+  page.on('response', (response) => {
+    const url = new URL(response.url());
+    if (url.hostname === 'api.mapbox.com' && response.status() >= 400) {
+      mapboxResponseErrors.push({
+        path: url.pathname,
+        status: response.status(),
+      });
+    }
   });
 
   const eventsResponse = page.waitForResponse(
@@ -67,6 +77,11 @@ test('loads the protected app with data from the real API', async ({
   await expect(
     page.getByRole('heading', { name: 'Nearby events' }),
   ).toBeVisible();
+  await expect(page.getByText('Loading the campus map…')).toHaveCount(0, {
+    timeout: 30_000,
+  });
+  expect(mapboxResponseErrors).toEqual([]);
+  await expect(page.getByText('The map could not load.')).toHaveCount(0);
   await expect(page.getByText('Events are unavailable right now.')).toHaveCount(
     0,
   );
