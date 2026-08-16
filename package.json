@@ -19,7 +19,7 @@
     "prepare:api": "node scripts/prepare-api.mjs",
     "validate:api:build": "npm run prepare:api && npm run build --workspace @wits-world/api",
     "validate:api:coverage": "npm run prepare:api && npm run test:coverage --workspace @wits-world/api",
-    "build": "npm run prepare:api && npm run build --workspace @wits-world/web --workspace @wits-world/api --workspace @wits-world/docs",
+    "build": "npm run prepare:api && npm run build --workspaces --if-present",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "npm run lint --workspaces --if-present",

@@ -611,6 +611,8 @@ jobs:
             package-lock.json \
             tsconfig.base.json \
             apps/api \
+            packages/game-rules \
+            scripts/prepare-api.mjs \
             database
           then
             echo "No API, database, or shared runtime changes detected; API deployment will be skipped."
