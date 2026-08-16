@@ -300,6 +300,73 @@ describe('saved deck management page', () => {
     ).toBeGreaterThan(0);
   });
 
+  it('blocks a second deck action while a mutation is unresolved', async () => {
+    const user = userEvent.setup();
+    const firstDeck = buildSavedDeck();
+    const secondDeck = buildSavedDeck({
+      deckId: '00000000-0000-4000-8000-000000000901',
+      name: 'Second deck',
+    });
+    let resolveSelection!: (response: Response) => void;
+    const selectionResponse = new Promise<Response>((resolve) => {
+      resolveSelection = resolve;
+    });
+    const fetchMock = vi.fn(
+      (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? 'GET';
+
+        if (url.endsWith('/cards/collection')) {
+          return Promise.resolve(collectionResponse(buildStarterCards('wit')));
+        }
+
+        if (url.endsWith('/decks') && method === 'GET') {
+          return Promise.resolve(deckListResponse([firstDeck, secondDeck]));
+        }
+
+        if (
+          url.endsWith(`/${firstDeck.deckId}/selection`) &&
+          method === 'PUT'
+        ) {
+          return selectionResponse;
+        }
+
+        throw new Error(`Unexpected request: ${method} ${url}`);
+      },
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderDecks();
+    const selectButtons = await screen.findAllByRole('button', {
+      name: 'Make active',
+    });
+    await user.click(selectButtons[0]!);
+
+    expect(
+      await screen.findByRole('button', { name: 'Selecting…' }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: 'Create a deck' }),
+    ).toBeDisabled();
+    expect(selectButtons[1]).toBeDisabled();
+    for (const button of screen.getAllByRole('button', {
+      name: 'Edit or rename',
+    })) {
+      expect(button).toBeDisabled();
+    }
+    for (const button of screen.getAllByRole('button', { name: 'Delete' })) {
+      expect(button).toBeDisabled();
+    }
+
+    await user.click(selectButtons[1]!);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    resolveSelection(deckResponse({ ...firstDeck, isSelected: true }));
+    expect(
+      await screen.findByText(`${firstDeck.name} is now your active deck.`),
+    ).toBeVisible();
+  });
+
   it('keeps focus on the add control when the final card completes preflight', async () => {
     const user = userEvent.setup();
     const cards = buildStarterCards('wit');

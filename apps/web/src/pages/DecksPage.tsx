@@ -158,6 +158,10 @@ export default function DecksPage({
   }
 
   function beginCreate() {
+    if (pending !== null) {
+      return;
+    }
+
     setActionError(null);
     setDeleteConfirmation(null);
     setNotice(null);
@@ -166,6 +170,10 @@ export default function DecksPage({
   }
 
   function beginEdit(deck: SavedDeck) {
+    if (pending !== null) {
+      return;
+    }
+
     setActionError(null);
     setDeleteConfirmation(null);
     setNotice(null);
@@ -234,7 +242,7 @@ export default function DecksPage({
               }
             : current,
         );
-        setDraft(null);
+        setDraft((current) => (current === draft ? null : current));
         setNotice(
           draft.mode === 'create'
             ? `${saved.name} was created.`
@@ -327,9 +335,9 @@ export default function DecksPage({
               }
             : current,
         );
-        if (draft?.deckId === deck.deckId) {
-          setDraft(null);
-        }
+        setDraft((current) =>
+          current?.deckId === deck.deckId ? null : current,
+        );
         setDeleteConfirmation(null);
         setNotice(
           `${deck.name} was deleted. Your owned cards were not removed.`,
@@ -414,6 +422,7 @@ export default function DecksPage({
   }
 
   const activeDeck = state.decks.find((deck) => deck.isSelected) ?? null;
+  const isMutationPending = pending !== null;
 
   return (
     <div className="decks-page">
@@ -450,7 +459,12 @@ export default function DecksPage({
               Your saved decks
             </h2>
           </div>
-          <button className="button" onClick={beginCreate} type="button">
+          <button
+            className="button"
+            disabled={isMutationPending}
+            onClick={beginCreate}
+            type="button"
+          >
             Create a deck
           </button>
         </div>
@@ -474,7 +488,7 @@ export default function DecksPage({
                       : undefined
                   }
                   isConfirmingDelete={deleteConfirmation === deck.deckId}
-                  isPending={pending?.deckId === deck.deckId}
+                  isMutationPending={isMutationPending}
                   onCancelDelete={() => setDeleteConfirmation(null)}
                   onConfirmDelete={() => void confirmDelete(deck)}
                   onDelete={() => {
@@ -499,6 +513,7 @@ export default function DecksPage({
           cards={state.cards}
           draft={draft}
           headingRef={editorHeading}
+          isMutationPending={isMutationPending}
           isSaving={pending?.kind === 'save'}
           onCancel={cancelEdit}
           onChange={setDraft}
@@ -585,7 +600,7 @@ function SavedDeckCard({
   deck,
   deleteButtonRef,
   isConfirmingDelete,
-  isPending,
+  isMutationPending,
   onCancelDelete,
   onConfirmDelete,
   onDelete,
@@ -596,7 +611,7 @@ function SavedDeckCard({
   deck: SavedDeck;
   deleteButtonRef?: RefObject<HTMLButtonElement | null>;
   isConfirmingDelete: boolean;
-  isPending: boolean;
+  isMutationPending: boolean;
   onCancelDelete: () => void;
   onConfirmDelete: () => void;
   onDelete: () => void;
@@ -686,7 +701,7 @@ function SavedDeckCard({
           <div>
             <button
               className="button button--danger"
-              disabled={isPending}
+              disabled={isMutationPending}
               onClick={onConfirmDelete}
               ref={deleteButtonRef}
               type="button"
@@ -695,7 +710,7 @@ function SavedDeckCard({
             </button>
             <button
               className="button button--quiet"
-              disabled={isPending}
+              disabled={isMutationPending}
               onClick={cancelDelete}
               type="button"
             >
@@ -707,7 +722,7 @@ function SavedDeckCard({
         <div className="saved-deck-card__actions">
           <button
             className="button"
-            disabled={deck.isSelected || isPending}
+            disabled={deck.isSelected || isMutationPending}
             onClick={onSelect}
             type="button"
           >
@@ -719,7 +734,7 @@ function SavedDeckCard({
           </button>
           <button
             className="button button--quiet"
-            disabled={isPending}
+            disabled={isMutationPending}
             onClick={onEdit}
             type="button"
           >
@@ -727,7 +742,7 @@ function SavedDeckCard({
           </button>
           <button
             className="button button--quiet"
-            disabled={isPending}
+            disabled={isMutationPending}
             onClick={onDelete}
             ref={deleteControl}
             type="button"
@@ -744,6 +759,7 @@ function DeckEditor({
   cards,
   draft,
   headingRef,
+  isMutationPending,
   isSaving,
   onCancel,
   onChange,
@@ -752,6 +768,7 @@ function DeckEditor({
   cards: OwnedCard[];
   draft: DeckDraft;
   headingRef: RefObject<HTMLHeadingElement | null>;
+  isMutationPending: boolean;
   isSaving: boolean;
   onCancel: () => void;
   onChange: (draft: DeckDraft) => void;
@@ -827,7 +844,7 @@ function DeckEditor({
                   draft.name.trim() === '' ? 'deck-name-error' : undefined
                 }
                 aria-invalid={draft.name.trim() === ''}
-                disabled={isSaving}
+                disabled={isMutationPending}
                 maxLength={80}
                 onChange={(event) =>
                   onChange({ ...draft, name: event.currentTarget.value })
@@ -877,7 +894,7 @@ function DeckEditor({
                         </span>
                         <button
                           className="button button--quiet"
-                          disabled={isSaving}
+                          disabled={isMutationPending}
                           onClick={() => removeAt(index)}
                           type="button"
                         >
@@ -938,7 +955,7 @@ function DeckEditor({
                                 aria-label={`Add a copy of ${card.name}`}
                                 className="button"
                                 disabled={
-                                  isSaving ||
+                                  isMutationPending ||
                                   remaining === 0 ||
                                   draft.ownedCardIds.length >=
                                     basicDeckRules.deckSize
@@ -951,7 +968,7 @@ function DeckEditor({
                               <button
                                 aria-label={`Remove a copy of ${card.name}`}
                                 className="button button--quiet"
-                                disabled={isSaving || used === 0}
+                                disabled={isMutationPending || used === 0}
                                 onClick={() => removeDefinition(group)}
                                 type="button"
                               >
@@ -975,7 +992,9 @@ function DeckEditor({
         <div className="deck-editor__actions">
           <button
             className="button"
-            disabled={isSaving || !summary.isValid || draft.name.trim() === ''}
+            disabled={
+              isMutationPending || !summary.isValid || draft.name.trim() === ''
+            }
             type="submit"
           >
             {isSaving
@@ -986,7 +1005,7 @@ function DeckEditor({
           </button>
           <button
             className="button button--quiet"
-            disabled={isSaving}
+            disabled={isMutationPending}
             onClick={onCancel}
             type="button"
           >

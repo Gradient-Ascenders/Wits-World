@@ -156,11 +156,17 @@ export async function selectSavedDeck({
   deckId,
   ...options
 }: DeckMutationOptions): Promise<SavedDeck> {
-  return saveDeckRequest({
+  const selected = await saveDeckRequest({
     ...options,
     method: 'PUT',
     path: `/decks/${encodeURIComponent(deckId)}/selection`,
   });
+
+  if (selected.deckId !== deckId || !selected.isSelected) {
+    throw new DeckApiError('unavailable');
+  }
+
+  return selected;
 }
 
 export async function deleteSavedDeck({

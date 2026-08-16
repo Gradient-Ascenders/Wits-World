@@ -143,6 +143,27 @@ describe('saved deck API client', () => {
     );
   });
 
+  it.each([
+    buildSavedDeck({ isSelected: false }),
+    buildSavedDeck({
+      deckId: '00000000-0000-4000-8000-000000000901',
+      isSelected: true,
+    }),
+  ])(
+    'rejects a selection response that does not select the requested deck',
+    async (responseDeck) => {
+      const requested = buildSavedDeck();
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(deckResponse(responseDeck)),
+      );
+
+      await expect(
+        selectSavedDeck({ ...requestOptions(), deckId: requested.deckId }),
+      ).rejects.toMatchObject({ failure: 'unavailable' });
+    },
+  );
+
   it('rejects a delete response that does not match the empty 204 contract', async () => {
     const deck = buildSavedDeck();
     vi.stubGlobal(
