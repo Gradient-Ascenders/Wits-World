@@ -143,13 +143,13 @@ npm run test:e2e --workspace @wits-world/web
 npm run test:e2e:headed --workspace @wits-world/web
 ```
 
-Playwright starts the real web and API development services when they are not
-already running. It starts Vite in the dedicated `e2e` mode so Auth0 can cache
-the test player's session in local storage. The setup project saves that
-token-bearing browser state under the ignored `playwright/.auth/` directory for
-the dependent smoke test. Treat this directory as sensitive and delete it when
-it is no longer needed. Credentials are loaded by the Playwright Node process
-and must never use a `VITE_` prefix.
+Playwright may reuse an existing local API service, but it always starts its own
+Vite server in the dedicated `e2e` mode so Auth0 can cache the test player's
+session in local storage. Stop any other service using port 5173 before running
+the suite. The setup project saves the token-bearing browser state under the
+ignored `playwright/.auth/` directory for the dependent smoke test. Treat this
+directory as sensitive and delete it when it is no longer needed. Credentials
+are loaded by the Playwright Node process and must never use a `VITE_` prefix.
 
 The credentialed live-Auth0 suite does not run in the current CI workflow. If
 it is added to CI, run `npx playwright install chromium` after `npm ci` and

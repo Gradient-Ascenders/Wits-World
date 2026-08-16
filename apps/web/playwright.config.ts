@@ -44,7 +44,7 @@ export default defineConfig({
     {
       command: 'npm run dev --workspace @wits-world/web -- --mode e2e',
       cwd: repositoryRoot,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 120_000,
       url: 'http://localhost:5173',
     },
