@@ -65,7 +65,7 @@ export function AppShell({ children }: AppShellProps) {
                 <NavigationLink href="/decks">Decks</NavigationLink>
               </li>
               <li>
-                <NavigationLink href="/about">About</NavigationLink>
+                <NavigationLink href="/matches">Battles</NavigationLink>
               </li>
               {currentPlayer.status === 'ready' &&
               currentPlayer.player.role === 'author' ? (

@@ -1,0 +1,180 @@
+import { useAuth0 } from '@auth0/auth0-react';
+import { useEffect, useRef, useState } from 'react';
+import { Link } from 'wouter';
+
+import {
+  listCpuMatchHistory,
+  MatchApiError,
+  type CpuMatchHistoryItem,
+} from '../api/matches';
+import { useApiAccessToken } from '../auth/useApiAccessToken';
+import { MatchErrorState } from '../components/matches/MatchErrorState';
+import './matches.css';
+
+type HistoryState =
+  | { status: 'loading' }
+  | { matches: CpuMatchHistoryItem[]; status: 'ready' }
+  | { error: MatchApiError; status: 'error' };
+
+export default function MatchHistoryPage({
+  apiBaseUrl,
+}: {
+  apiBaseUrl: string;
+}) {
+  const getAccessToken = useApiAccessToken();
+  const { loginWithRedirect } = useAuth0();
+  const [state, setState] = useState<HistoryState>({ status: 'loading' });
+  const [revision, setRevision] = useState(0);
+  const [reauthFailed, setReauthFailed] = useState(false);
+  const resultHeading = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setState({ status: 'loading' });
+
+    void listCpuMatchHistory({
+      apiBaseUrl,
+      getAccessToken,
+      signal: controller.signal,
+    })
+      .then((matches) => {
+        if (!controller.signal.aborted) {
+          setState({ matches, status: 'ready' });
+        }
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setState({ error: toMatchError(error), status: 'error' });
+        }
+      });
+
+    return () => controller.abort();
+  }, [apiBaseUrl, getAccessToken, revision]);
+
+  useEffect(() => {
+    if (state.status !== 'loading') {
+      resultHeading.current?.focus();
+    }
+  }, [state.status]);
+
+  async function startSignIn() {
+    setReauthFailed(false);
+    try {
+      await loginWithRedirect({
+        appState: { returnTo: '/matches/history' },
+      });
+    } catch {
+      setReauthFailed(true);
+    }
+  }
+
+  if (state.status === 'loading') {
+    return (
+      <div className="matches-page">
+        <section aria-live="polite" className="match-state-panel" role="status">
+          <p className="eyebrow">Match history</p>
+          <h1>Loading your completed matches</h1>
+          <p>Retrieving private, persisted CPU results…</p>
+        </section>
+      </div>
+    );
+  }
+
+  if (state.status === 'error') {
+    return (
+      <div className="matches-page">
+        <MatchErrorState
+          error={state.error}
+          onRetry={() => setRevision((value) => value + 1)}
+          onSignIn={startSignIn}
+          reauthFailed={reauthFailed}
+          ref={resultHeading}
+          title="Match history could not load"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="matches-page">
+      <header className="matches-page__header">
+        <p className="eyebrow">Private match record</p>
+        <h1
+          ref={(node) => {
+            resultHeading.current = node;
+          }}
+          tabIndex={-1}
+        >
+          Completed CPU matches
+        </h1>
+        <p className="lead">
+          These results are stored by the server and available only through your
+          authenticated player account.
+        </p>
+      </header>
+
+      <div className="match-page-actions">
+        <Link className="button" href="/matches">
+          Continue or start a battle
+        </Link>
+      </div>
+
+      {state.matches.length === 0 ? (
+        <section className="match-empty" aria-labelledby="empty-history-title">
+          <h2 id="empty-history-title">No completed matches yet</h2>
+          <p>Finish a CPU battle and its persisted result will appear here.</p>
+        </section>
+      ) : (
+        <ol aria-label="Completed CPU matches" className="match-history-list">
+          {state.matches.map((match) => (
+            <li key={match.matchId}>
+              <article>
+                <div>
+                  <p className="eyebrow">CPU opponent</p>
+                  <h2>
+                    {match.winner === 'player' ? 'Victory' : 'CPU victory'}
+                  </h2>
+                </div>
+                <dl>
+                  <div>
+                    <dt>Result</dt>
+                    <dd>
+                      {match.winner === 'player' ? 'Player won' : 'CPU won'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Completed</dt>
+                    <dd>{formatDate(match.completedAt)}</dd>
+                  </div>
+                  <div>
+                    <dt>Submitted rounds</dt>
+                    <dd>{match.rounds.length}</dd>
+                  </div>
+                </dl>
+                <Link
+                  className="button button--quiet"
+                  href={`/matches/${match.matchId}`}
+                >
+                  View saved match
+                </Link>
+              </article>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value));
+}
+
+function toMatchError(error: unknown) {
+  return error instanceof MatchApiError
+    ? error
+    : new MatchApiError('unavailable');
+}

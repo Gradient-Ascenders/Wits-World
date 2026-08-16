@@ -237,7 +237,7 @@ interface MatchRow extends pg.QueryResultRow {
   completed_at: Date | null;
 }
 
-interface ActiveMatchRow extends MatchRow {
+interface MatchViewRow extends MatchRow {
   latest_action: BattleActionResult | null;
 }
 
@@ -247,10 +247,6 @@ interface MatchIdentityRow extends pg.QueryResultRow {
 
 interface ActionResponseRow extends pg.QueryResultRow {
   response: CpuMatchResponse;
-}
-
-interface LatestActionRow extends pg.QueryResultRow {
-  result: BattleActionResult;
 }
 
 interface RoundIdentityRow extends pg.QueryResultRow {
@@ -421,32 +417,9 @@ export function createCpuMatchService(
       const client = await database.connect();
 
       try {
-        const result = await client.query<ActiveMatchRow>(
-          `
-            select
-              match.id::text,
-              match.player_id::text,
-              match.status,
-              match.state,
-              match.version,
-              match.turn_started_at,
-              match.turn_deadline,
-              match.winner,
-              match.started_at,
-              match.completed_at,
-              (
-                select action.result
-                from public.cpu_match_actions action
-                where action.match_id = match.id
-                order by action.sequence desc
-                limit 1
-              ) as latest_action
-            from public.cpu_matches match
-            where match.player_id = $1::uuid
-              and match.status = 'active'
-          `,
-          [playerId],
-        );
+        const result = await loadMatchView(client, playerId, {
+          activeOnly: true,
+        });
 
         if (result.rows.length > 1) {
           throw new Error(
@@ -479,8 +452,12 @@ export function createCpuMatchService(
       const client = await database.connect();
 
       try {
-        const match = await loadMatch(client, playerId, matchId, false);
-        const latest = await loadLatestAction(client, matchId);
+        const result = await loadMatchView(client, playerId, { matchId });
+        const match = result.rows[0];
+
+        if (!match) {
+          throw new CpuMatchNotFoundError();
+        }
 
         return createResponse({
           matchId: match.id,
@@ -491,7 +468,7 @@ export function createCpuMatchService(
           startedAt: match.started_at,
           completedAt: match.completed_at,
           turnDeadline: match.turn_deadline,
-          lastAction: latest,
+          lastAction: match.latest_action,
         });
       } finally {
         client.release();
@@ -1112,22 +1089,41 @@ async function loadMatch(
   return match;
 }
 
-async function loadLatestAction(
+async function loadMatchView(
   client: CpuMatchClient,
-  matchId: string,
-): Promise<BattleActionResult | null> {
-  const result = await client.query<LatestActionRow>(
-    `
-      select result
-      from public.cpu_match_actions
-      where match_id = $1::uuid
-      order by sequence desc
-      limit 1
-    `,
-    [matchId],
-  );
+  playerId: string,
+  filter: { activeOnly: true } | { matchId: string },
+): Promise<{ rows: MatchViewRow[] }> {
+  const activeOnly = 'activeOnly' in filter;
+  const matchId = 'matchId' in filter ? filter.matchId : null;
 
-  return result.rows[0]?.result ?? null;
+  return client.query<MatchViewRow>(
+    `
+      select
+        match.id::text,
+        match.player_id::text,
+        match.status,
+        match.state,
+        match.version,
+        match.turn_started_at,
+        match.turn_deadline,
+        match.winner,
+        match.started_at,
+        match.completed_at,
+        (
+          select action.result
+          from public.cpu_match_actions action
+          where action.match_id = match.id
+          order by action.sequence desc
+          limit 1
+        ) as latest_action
+      from public.cpu_matches match
+      where match.player_id = $1::uuid
+        and ($2::uuid is null or match.id = $2::uuid)
+        and ($3::boolean = false or match.status = 'active')
+    `,
+    [playerId, matchId, activeOnly],
+  );
 }
 
 async function loadHistoryRounds(

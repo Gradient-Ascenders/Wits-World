@@ -229,7 +229,10 @@ describe('saved deck management page', () => {
     const startButton = screen.getByRole('button', { name: 'Start CPU match' });
     startButton.focus();
     await user.keyboard('{Enter}');
-    expect(onStartMatch).toHaveBeenCalledWith(decks[0]!.deckId);
+    expect(onStartMatch).toHaveBeenCalledWith(
+      decks[0]!.deckId,
+      expect.any(AbortSignal),
+    );
 
     const deleteControl = screen.getByRole('button', { name: 'Delete' });
     deleteControl.focus();

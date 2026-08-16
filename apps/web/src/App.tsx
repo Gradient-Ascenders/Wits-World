@@ -1,6 +1,8 @@
 import { lazy, Suspense, type ReactNode } from 'react';
-import { Route, Router, Switch } from 'wouter';
+import { Route, Router, Switch, useLocation } from 'wouter';
 
+import { recoverOrCreateCpuMatch } from './api/matches';
+import { useApiAccessToken } from './auth/useApiAccessToken';
 import { AppShell } from './components/AppShell';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoadingState } from './components/LoadingState';
@@ -16,6 +18,9 @@ const ChallengePage = lazy(() => import('./pages/ChallengePage'));
 const CollectionPage = lazy(() => import('./pages/CollectionPage'));
 const AuthorConsolePage = lazy(() => import('./pages/AuthorConsolePage'));
 const DecksPage = lazy(() => import('./pages/DecksPage'));
+const MatchEntryPage = lazy(() => import('./pages/MatchEntryPage'));
+const CpuMatchPage = lazy(() => import('./pages/CpuMatchPage'));
+const MatchHistoryPage = lazy(() => import('./pages/MatchHistoryPage'));
 
 interface AppRoutesProps {
   apiBaseUrl: string;
@@ -49,7 +54,22 @@ export function AppRoutes({ apiBaseUrl, mapboxAccessToken }: AppRoutesProps) {
             </Route>
             <Route path="/decks">
               <ProtectedRoute destination="manage your saved decks">
-                <DecksPage apiBaseUrl={apiBaseUrl} />
+                <DecksRoute apiBaseUrl={apiBaseUrl} />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/matches/history">
+              <ProtectedRoute destination="view your match history">
+                <MatchHistoryPage apiBaseUrl={apiBaseUrl} />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/matches/:matchId">
+              <ProtectedRoute destination="continue your CPU battle">
+                <CpuMatchPage apiBaseUrl={apiBaseUrl} />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/matches">
+              <ProtectedRoute destination="play a CPU battle">
+                <MatchEntryPage apiBaseUrl={apiBaseUrl} />
               </ProtectedRoute>
             </Route>
             <Route path="/author">
@@ -68,6 +88,28 @@ export function AppRoutes({ apiBaseUrl, mapboxAccessToken }: AppRoutesProps) {
         </Suspense>
       </AppShell>
     </CurrentPlayerProvider>
+  );
+}
+
+function DecksRoute({ apiBaseUrl }: { apiBaseUrl: string }) {
+  const getAccessToken = useApiAccessToken();
+  const [, navigate] = useLocation();
+
+  return (
+    <DecksPage
+      apiBaseUrl={apiBaseUrl}
+      onStartMatch={async (deckId, signal) => {
+        const match = await recoverOrCreateCpuMatch({
+          apiBaseUrl,
+          deckId,
+          getAccessToken,
+          signal,
+        });
+        if (!signal.aborted) {
+          navigate(`/matches/${match.matchId}`);
+        }
+      }}
+    />
   );
 }
 
