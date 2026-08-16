@@ -62,9 +62,11 @@ export function EventWorkspace({
   const [loadError, setLoadError] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [dirtyEventId, setDirtyEventId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const feedbackRef = useRef<HTMLDivElement>(null);
   const requestRef = useRef<AbortController | null>(null);
+  const selectedIdRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     requestRef.current?.abort();
@@ -80,11 +82,14 @@ export function EventWorkspace({
       });
       if (controller.signal.aborted) return;
       setEvents(nextEvents);
-      setSelectedId((current) =>
-        current && nextEvents.some((event) => event.eventId === current)
-          ? current
-          : (nextEvents[0]?.eventId ?? null),
-      );
+      setSelectedId((current) => {
+        const next =
+          current && nextEvents.some((event) => event.eventId === current)
+            ? current
+            : (nextEvents[0]?.eventId ?? null);
+        selectedIdRef.current = next;
+        return next;
+      });
       setState('ready');
       setLoadError('');
     } catch (error) {
@@ -112,10 +117,24 @@ export function EventWorkspace({
         ? current.map((item) => (item.eventId === event.eventId ? event : item))
         : [event, ...current];
     });
+    selectedIdRef.current = event.eventId;
     setSelectedId(event.eventId);
     setCreating(false);
-    if (notice) announce(notice, setMessage, feedbackRef);
+    setDirtyEventId((current) => (current === event.eventId ? null : current));
+    if (notice)
+      announce(
+        notice,
+        setMessage,
+        feedbackRef,
+        () => selectedIdRef.current === event.eventId,
+      );
   }
+
+  const updateEventDirty = useCallback((eventId: string, dirty: boolean) => {
+    setDirtyEventId((current) =>
+      dirty ? eventId : current === eventId ? null : current,
+    );
+  }, []);
 
   return (
     <section
@@ -130,8 +149,10 @@ export function EventWorkspace({
         <button
           className="button"
           onClick={() => {
+            selectedIdRef.current = null;
             setCreating(true);
             setSelectedId(null);
+            setMessage('');
           }}
           type="button"
         >
@@ -184,8 +205,10 @@ export function EventWorkspace({
                       }
                       className="author-record-list__item"
                       onClick={() => {
+                        selectedIdRef.current = event.eventId;
                         setCreating(false);
                         setSelectedId(event.eventId);
+                        setMessage('');
                       }}
                       type="button"
                     >
@@ -206,9 +229,12 @@ export function EventWorkspace({
                 key="new-event"
                 mapFactory={mapFactory}
                 mapboxAccessToken={mapboxAccessToken}
+                onDirtyChange={updateEventDirty}
                 onCancel={() => {
+                  selectedIdRef.current = events[0]?.eventId ?? null;
                   setCreating(false);
                   setSelectedId(events[0]?.eventId ?? null);
+                  setMessage('');
                 }}
                 onSaved={updateEvent}
               />
@@ -218,9 +244,10 @@ export function EventWorkspace({
                   apiBaseUrl={apiBaseUrl}
                   event={selected}
                   getAccessToken={getAccessToken}
-                  key={selected.eventId}
+                  key={`${selected.eventId}:${selected.updatedAt}:${selected.authoringStatus}`}
                   mapFactory={mapFactory}
                   mapboxAccessToken={mapboxAccessToken}
+                  onDirtyChange={updateEventDirty}
                   onSaved={updateEvent}
                 />
                 <ChallengeWorkspace
@@ -228,7 +255,9 @@ export function EventWorkspace({
                   cards={cards}
                   cardsState={cardsState}
                   event={selected}
+                  eventDirty={dirtyEventId === selected.eventId}
                   getAccessToken={getAccessToken}
+                  key={selected.eventId}
                   onEventChanged={updateEvent}
                   onOpenCards={onOpenCards}
                   onReloadCards={onReloadCards}
@@ -249,6 +278,7 @@ interface EventFormProps {
   mapFactory?: MapFactory;
   mapboxAccessToken: string;
   onCancel?: () => void;
+  onDirtyChange: (eventId: string, dirty: boolean) => void;
   onSaved: (event: AuthorEvent, notice?: string) => void;
 }
 
@@ -269,6 +299,7 @@ function EventForm({
   mapFactory,
   mapboxAccessToken,
   onCancel,
+  onDirtyChange,
   onSaved,
 }: EventFormProps) {
   const [draft, setDraft] = useState<EventDraft>(() => eventDraft(event));
@@ -278,13 +309,33 @@ function EventForm({
   const [confirmRetire, setConfirmRetire] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const feedbackRef = useRef<HTMLDivElement>(null);
+  const operationRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     setDraft(eventDraft(event));
     setErrors({});
     setApiError(null);
     setConfirmRetire(false);
-  }, [event?.eventId]);
+  }, [event]);
+
+  useEffect(
+    () => () => {
+      operationRef.current?.abort();
+      operationRef.current = null;
+    },
+    [],
+  );
+
+  const dirty = Boolean(
+    event && JSON.stringify(draft) !== JSON.stringify(eventDraft(event)),
+  );
+
+  useEffect(() => {
+    if (event) onDirtyChange(event.eventId, dirty);
+    return () => {
+      if (event) onDirtyChange(event.eventId, false);
+    };
+  }, [dirty, event, onDirtyChange]);
 
   const coordinate = parseCoordinate(draft.latitude, draft.longitude);
   const editable =
@@ -312,6 +363,9 @@ function EventForm({
 
     setBusy(true);
     setApiError(null);
+    operationRef.current?.abort();
+    const controller = new AbortController();
+    operationRef.current = controller;
 
     try {
       const saved = event
@@ -320,19 +374,26 @@ function EventForm({
             eventId: event.eventId,
             getAccessToken,
             input: result.input,
-            signal: new AbortController().signal,
+            signal: controller.signal,
           })
         : await createAuthorEvent({
             apiBaseUrl,
             getAccessToken,
             input: result.input,
-            signal: new AbortController().signal,
+            signal: controller.signal,
           });
+      if (controller.signal.aborted || operationRef.current !== controller)
+        return;
       onSaved(saved, event ? 'Event changes saved.' : 'Draft event created.');
     } catch (error) {
+      if (controller.signal.aborted || operationRef.current !== controller)
+        return;
       handleOperationError(error, setApiError, setErrors, formRef, feedbackRef);
     } finally {
-      setBusy(false);
+      if (operationRef.current === controller) {
+        operationRef.current = null;
+        if (!controller.signal.aborted) setBusy(false);
+      }
     }
   }
 
@@ -340,20 +401,30 @@ function EventForm({
     if (!event) return;
     setBusy(true);
     setApiError(null);
+    operationRef.current?.abort();
+    const controller = new AbortController();
+    operationRef.current = controller;
 
     try {
       const next = await retireAuthorEvent({
         apiBaseUrl,
         eventId: event.eventId,
         getAccessToken,
-        signal: new AbortController().signal,
+        signal: controller.signal,
       });
+      if (controller.signal.aborted || operationRef.current !== controller)
+        return;
       onSaved(next, 'Event retired.');
       setConfirmRetire(false);
     } catch (error) {
+      if (controller.signal.aborted || operationRef.current !== controller)
+        return;
       handleOperationError(error, setApiError, setErrors, formRef, feedbackRef);
     } finally {
-      setBusy(false);
+      if (operationRef.current === controller) {
+        operationRef.current = null;
+        if (!controller.signal.aborted) setBusy(false);
+      }
     }
   }
 
@@ -594,6 +665,7 @@ interface ChallengeWorkspaceProps {
   cards: readonly AuthorCard[];
   cardsState: 'error' | 'loading' | 'ready';
   event: AuthorEvent;
+  eventDirty: boolean;
   getAccessToken: ApiAccessTokenProvider;
   onEventChanged: (event: AuthorEvent) => void;
   onOpenCards: () => void;
@@ -605,6 +677,7 @@ function ChallengeWorkspace({
   cards,
   cardsState,
   event,
+  eventDirty,
   getAccessToken,
   onEventChanged,
   onOpenCards,
@@ -616,18 +689,31 @@ function ChallengeWorkspace({
     null,
   );
   const [state, setState] = useState<LoadState>('loading');
+  const [questionsState, setQuestionsState] = useState<LoadState>('loading');
+  const [questionsError, setQuestionsError] = useState<AuthorApiError | null>(
+    null,
+  );
   const [apiError, setApiError] = useState<AuthorApiError | null>(null);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmRetire, setConfirmRetire] = useState(false);
   const feedbackRef = useRef<HTMLDivElement>(null);
   const challengeRequestRef = useRef<AbortController | null>(null);
+  const questionRequestRef = useRef<AbortController | null>(null);
+  const operationRef = useRef<AbortController | null>(null);
+  const selectedChallengeIdRef = useRef<string | null>(null);
 
   const loadChallenges = useCallback(async () => {
     challengeRequestRef.current?.abort();
     const controller = new AbortController();
     challengeRequestRef.current = controller;
     setState('loading');
+    setChallenges([]);
+    selectedChallengeIdRef.current = null;
+    setSelectedChallengeId(null);
+    setQuestions([]);
+    setQuestionsState('loading');
+    setQuestionsError(null);
     setApiError(null);
 
     try {
@@ -639,14 +725,17 @@ function ChallengeWorkspace({
       });
       if (controller.signal.aborted) return;
       setChallenges(next);
-      setSelectedChallengeId((current) =>
-        current && next.some((challenge) => challenge.challengeId === current)
-          ? current
-          : (next.find((challenge) => challenge.status !== 'retired')
-              ?.challengeId ??
-            next[0]?.challengeId ??
-            null),
-      );
+      setSelectedChallengeId((current) => {
+        const nextId =
+          current && next.some((challenge) => challenge.challengeId === current)
+            ? current
+            : (next.find((challenge) => challenge.status !== 'retired')
+                ?.challengeId ??
+              next[0]?.challengeId ??
+              null);
+        selectedChallengeIdRef.current = nextId;
+        return nextId;
+      });
       setState('ready');
     } catch (error) {
       if (controller.signal.aborted) return;
@@ -657,30 +746,47 @@ function ChallengeWorkspace({
 
   useEffect(() => {
     void loadChallenges();
-    return () => challengeRequestRef.current?.abort();
+    return () => {
+      challengeRequestRef.current?.abort();
+      questionRequestRef.current?.abort();
+      operationRef.current?.abort();
+      operationRef.current = null;
+    };
   }, [loadChallenges]);
 
-  useEffect(() => {
+  const loadQuestions = useCallback(async () => {
+    questionRequestRef.current?.abort();
+    setQuestions([]);
+    setQuestionsError(null);
     if (!selectedChallengeId) {
-      setQuestions([]);
+      setQuestionsState('ready');
       return;
     }
-
     const controller = new AbortController();
-    void listAuthorQuestions({
-      apiBaseUrl,
-      challengeId: selectedChallengeId,
-      getAccessToken,
-      signal: controller.signal,
-    })
-      .then((next) => {
-        if (!controller.signal.aborted) setQuestions(next);
-      })
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted) setApiError(toAuthorError(error));
+    questionRequestRef.current = controller;
+    setQuestionsState('loading');
+    try {
+      const next = await listAuthorQuestions({
+        apiBaseUrl,
+        challengeId: selectedChallengeId,
+        getAccessToken,
+        signal: controller.signal,
       });
-    return () => controller.abort();
+      if (controller.signal.aborted) return;
+      setQuestions(next);
+      setQuestionsState('ready');
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      setQuestions([]);
+      setQuestionsError(toAuthorError(error));
+      setQuestionsState('error');
+    }
   }, [apiBaseUrl, getAccessToken, selectedChallengeId]);
+
+  useEffect(() => {
+    void loadQuestions();
+    return () => questionRequestRef.current?.abort();
+  }, [loadQuestions]);
 
   useEffect(() => setConfirmRetire(false), [selectedChallengeId]);
 
@@ -688,57 +794,108 @@ function ChallengeWorkspace({
     challenges.find(
       (challenge) => challenge.challengeId === selectedChallengeId,
     ) ?? null;
-  const publishedQuestions = questions.filter(
-    (question) => question.status === 'published',
-  ).length;
+  const publishedQuestions =
+    questionsState === 'ready'
+      ? questions.filter(
+          (question) =>
+            question.challengeId === selectedChallengeId &&
+            question.status === 'published',
+        ).length
+      : 0;
   const hasActiveCommon = cards.some(
     (card) =>
       card.authoringStatus === 'published' &&
       card.isActive &&
       card.rarity === 'common',
   );
+  const hasAuthoritativeCommon = cardsState === 'ready' && hasActiveCommon;
 
-  async function createChallenge() {
+  function beginOperation() {
+    operationRef.current?.abort();
+    const controller = new AbortController();
+    operationRef.current = controller;
     setBusy(true);
     setApiError(null);
+    return controller;
+  }
+
+  function finishOperation(controller: AbortController) {
+    if (operationRef.current !== controller) return false;
+    operationRef.current = null;
+    if (!controller.signal.aborted) setBusy(false);
+    return !controller.signal.aborted;
+  }
+
+  function selectChallenge(challengeId: string, invalidateOperation = true) {
+    if (invalidateOperation) {
+      operationRef.current?.abort();
+      operationRef.current = null;
+      setBusy(false);
+    }
+    setConfirmRetire(false);
+    selectedChallengeIdRef.current = challengeId;
+    setSelectedChallengeId(challengeId);
+    setQuestions([]);
+    setQuestionsState('loading');
+    setQuestionsError(null);
+    setMessage('');
+    setApiError(null);
+  }
+
+  async function createChallenge() {
+    const controller = beginOperation();
+    let completedChallengeId: string | null = null;
     try {
       const challenge = await createAuthorChallenge({
         apiBaseUrl,
         eventId: event.eventId,
         getAccessToken,
-        signal: new AbortController().signal,
+        signal: controller.signal,
       });
+      if (controller.signal.aborted || operationRef.current !== controller)
+        return;
       setChallenges((current) => [...current, challenge]);
-      setSelectedChallengeId(challenge.challengeId);
-      setQuestions([]);
+      selectChallenge(challenge.challengeId, false);
+      completedChallengeId = challenge.challengeId;
       setMessage('Draft challenge associated with this event.');
     } catch (error) {
+      if (controller.signal.aborted || operationRef.current !== controller)
+        return;
       setApiError(toAuthorError(error));
     } finally {
-      setBusy(false);
-      window.setTimeout(() => feedbackRef.current?.focus());
+      if (
+        finishOperation(controller) &&
+        selectedChallengeIdRef.current === completedChallengeId
+      )
+        window.setTimeout(() => feedbackRef.current?.focus());
     }
   }
 
   async function challengeLifecycle(action: 'publish' | 'retire') {
     if (!selected) return;
-    setBusy(true);
-    setApiError(null);
+    const controller = beginOperation();
+    const challengeId = selected.challengeId;
     try {
       const next =
         action === 'publish'
           ? await publishAuthorChallenge({
               apiBaseUrl,
-              challengeId: selected.challengeId,
+              challengeId,
               getAccessToken,
-              signal: new AbortController().signal,
+              signal: controller.signal,
             })
           : await retireAuthorChallenge({
               apiBaseUrl,
-              challengeId: selected.challengeId,
+              challengeId,
               getAccessToken,
-              signal: new AbortController().signal,
+              signal: controller.signal,
             });
+      if (
+        controller.signal.aborted ||
+        operationRef.current !== controller ||
+        selectedChallengeId !== challengeId
+      )
+        return;
       setChallenges((current) =>
         current.map((item) =>
           item.challengeId === next.challengeId ? next : item,
@@ -749,32 +906,41 @@ function ChallengeWorkspace({
       );
       setConfirmRetire(false);
     } catch (error) {
+      if (controller.signal.aborted || operationRef.current !== controller)
+        return;
       setApiError(toAuthorError(error));
     } finally {
-      setBusy(false);
-      window.setTimeout(() => feedbackRef.current?.focus());
+      if (
+        finishOperation(controller) &&
+        selectedChallengeIdRef.current === challengeId
+      )
+        window.setTimeout(() => feedbackRef.current?.focus());
     }
   }
 
   async function publishEvent() {
-    setBusy(true);
-    setApiError(null);
+    if (eventDirty) return;
+    const controller = beginOperation();
     try {
       const next = await publishAuthorEvent({
         apiBaseUrl,
         eventId: event.eventId,
         getAccessToken,
-        signal: new AbortController().signal,
+        signal: controller.signal,
       });
+      if (controller.signal.aborted || operationRef.current !== controller)
+        return;
       onEventChanged(next);
       setMessage(
         'Event published and available to the player API according to its active times.',
       );
     } catch (error) {
+      if (controller.signal.aborted || operationRef.current !== controller)
+        return;
       setApiError(toAuthorError(error));
     } finally {
-      setBusy(false);
-      window.setTimeout(() => feedbackRef.current?.focus());
+      if (finishOperation(controller))
+        window.setTimeout(() => feedbackRef.current?.focus());
     }
   }
 
@@ -817,7 +983,10 @@ function ChallengeWorkspace({
         >
           {publishedQuestions} of at least 5 in the selected challenge.
         </ReadinessItem>
-        <ReadinessItem ready={hasActiveCommon} title="Common reward catalogue">
+        <ReadinessItem
+          ready={hasAuthoritativeCommon}
+          title="Common reward catalogue"
+        >
           {cardsState === 'loading'
             ? 'Checking catalogue…'
             : cardsState === 'error'
@@ -852,7 +1021,8 @@ function ChallengeWorkspace({
         {event.authoringStatus === 'draft' ? (
           <button
             className="button"
-            disabled={busy}
+            aria-describedby={eventDirty ? 'event-publish-dirty' : undefined}
+            disabled={busy || eventDirty}
             onClick={() => void publishEvent()}
             type="button"
           >
@@ -860,6 +1030,11 @@ function ChallengeWorkspace({
           </button>
         ) : null}
       </div>
+      {eventDirty ? (
+        <p className="author-notice" id="event-publish-dirty" role="status">
+          Save event changes before publishing.
+        </p>
+      ) : null}
 
       {state === 'loading' ? (
         <p className="author-state" role="status">
@@ -890,7 +1065,7 @@ function ChallengeWorkspace({
           <label htmlFor="event-challenge">Challenge</label>
           <select
             id="event-challenge"
-            onChange={(change) => setSelectedChallengeId(change.target.value)}
+            onChange={(change) => selectChallenge(change.target.value)}
             value={selectedChallengeId ?? ''}
           >
             {challenges.map((challenge, index) => (
@@ -950,13 +1125,36 @@ function ChallengeWorkspace({
               </div>
             </div>
           ) : null}
-          <QuestionWorkspace
-            apiBaseUrl={apiBaseUrl}
-            challenge={selected}
-            getAccessToken={getAccessToken}
-            onQuestionsChange={setQuestions}
-            questions={questions}
-          />
+          {questionsState === 'loading' ? (
+            <p className="author-state" role="status">
+              Loading challenge questions…
+            </p>
+          ) : null}
+          {questionsState === 'error' ? (
+            <div className="author-state author-state--error" role="alert">
+              <strong>Questions are unavailable.</strong>
+              <p>{questionsError?.detail}</p>
+              <button
+                className="button button--quiet"
+                onClick={() => void loadQuestions()}
+                type="button"
+              >
+                Reload questions
+              </button>
+            </div>
+          ) : null}
+          {questionsState === 'ready' ? (
+            <QuestionWorkspace
+              apiBaseUrl={apiBaseUrl}
+              challenge={selected}
+              getAccessToken={getAccessToken}
+              key={selected.challengeId}
+              onQuestionsChange={setQuestions}
+              questions={questions.filter(
+                (question) => question.challengeId === selected.challengeId,
+              )}
+            />
+          ) : null}
         </>
       ) : null}
     </section>
@@ -981,6 +1179,7 @@ function QuestionWorkspace({
   const [selectedId, setSelectedId] = useState<string | 'new'>('new');
   const [message, setMessage] = useState('');
   const feedbackRef = useRef<HTMLDivElement>(null);
+  const selectedIdRef = useRef<string | 'new'>('new');
   const selected = questions.find(
     (question) => question.questionId === selectedId,
   );
@@ -989,8 +1188,10 @@ function QuestionWorkspace({
     if (
       selectedId !== 'new' &&
       !questions.some((question) => question.questionId === selectedId)
-    )
+    ) {
       setSelectedId('new');
+      selectedIdRef.current = 'new';
+    }
   }, [questions, selectedId]);
 
   function updateQuestion(question: AuthorQuestion, notice?: string) {
@@ -1004,8 +1205,15 @@ function QuestionWorkspace({
           )
         : [...questions, question],
     );
+    selectedIdRef.current = question.questionId;
     setSelectedId(question.questionId);
-    if (notice) announce(notice, setMessage, feedbackRef);
+    if (notice)
+      announce(
+        notice,
+        setMessage,
+        feedbackRef,
+        () => selectedIdRef.current === question.questionId,
+      );
   }
 
   return (
@@ -1018,7 +1226,11 @@ function QuestionWorkspace({
         <button
           className="button button--quiet"
           disabled={challenge.status === 'retired'}
-          onClick={() => setSelectedId('new')}
+          onClick={() => {
+            selectedIdRef.current = 'new';
+            setSelectedId('new');
+            setMessage('');
+          }}
           type="button"
         >
           Create question
@@ -1038,7 +1250,11 @@ function QuestionWorkspace({
                   selectedId === question.questionId ? 'true' : undefined
                 }
                 className="question-tabs__item"
-                onClick={() => setSelectedId(question.questionId)}
+                onClick={() => {
+                  selectedIdRef.current = question.questionId;
+                  setSelectedId(question.questionId);
+                  setMessage('');
+                }}
                 type="button"
               >
                 Q{index + 1} <StatusBadge status={question.status} />
@@ -1052,6 +1268,11 @@ function QuestionWorkspace({
         apiBaseUrl={apiBaseUrl}
         challenge={challenge}
         getAccessToken={getAccessToken}
+        key={
+          selected
+            ? `${selected.questionId}:${selected.updatedAt}:${selected.status}`
+            : 'new-question'
+        }
         onSaved={updateQuestion}
         question={selected}
       />
@@ -1083,13 +1304,27 @@ function QuestionForm({
   const [confirmRetire, setConfirmRetire] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const feedbackRef = useRef<HTMLDivElement>(null);
+  const operationRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     setDraft(questionDraft(question));
     setErrors({});
     setApiError(null);
     setConfirmRetire(false);
-  }, [question?.questionId]);
+  }, [question]);
+
+  useEffect(
+    () => () => {
+      operationRef.current?.abort();
+      operationRef.current = null;
+    },
+    [],
+  );
+
+  const dirty = Boolean(
+    question &&
+    JSON.stringify(draft) !== JSON.stringify(questionDraft(question)),
+  );
 
   const editable =
     challenge.status !== 'retired' &&
@@ -1109,6 +1344,9 @@ function QuestionForm({
     }
     setBusy(true);
     setApiError(null);
+    operationRef.current?.abort();
+    const controller = new AbortController();
+    operationRef.current = controller;
     try {
       const saved = question
         ? await updateAuthorQuestion({
@@ -1116,30 +1354,40 @@ function QuestionForm({
             getAccessToken,
             input: draft,
             questionId: question.questionId,
-            signal: new AbortController().signal,
+            signal: controller.signal,
           })
         : await createAuthorQuestion({
             apiBaseUrl,
             challengeId: challenge.challengeId,
             getAccessToken,
             input: draft,
-            signal: new AbortController().signal,
+            signal: controller.signal,
           });
+      if (controller.signal.aborted || operationRef.current !== controller)
+        return;
       onSaved(
         saved,
         question ? 'Question changes saved.' : 'Draft question created.',
       );
     } catch (error) {
+      if (controller.signal.aborted || operationRef.current !== controller)
+        return;
       handleOperationError(error, setApiError, setErrors, formRef, feedbackRef);
     } finally {
-      setBusy(false);
+      if (operationRef.current === controller) {
+        operationRef.current = null;
+        if (!controller.signal.aborted) setBusy(false);
+      }
     }
   }
 
   async function lifecycle(action: 'publish' | 'retire') {
-    if (!question) return;
+    if (!question || (action === 'publish' && dirty)) return;
     setBusy(true);
     setApiError(null);
+    operationRef.current?.abort();
+    const controller = new AbortController();
+    operationRef.current = controller;
     try {
       const next =
         action === 'publish'
@@ -1147,23 +1395,30 @@ function QuestionForm({
               apiBaseUrl,
               getAccessToken,
               questionId: question.questionId,
-              signal: new AbortController().signal,
+              signal: controller.signal,
             })
           : await retireAuthorQuestion({
               apiBaseUrl,
               getAccessToken,
               questionId: question.questionId,
-              signal: new AbortController().signal,
+              signal: controller.signal,
             });
+      if (controller.signal.aborted || operationRef.current !== controller)
+        return;
       onSaved(
         next,
         action === 'publish' ? 'Question published.' : 'Question retired.',
       );
       setConfirmRetire(false);
     } catch (error) {
+      if (controller.signal.aborted || operationRef.current !== controller)
+        return;
       handleOperationError(error, setApiError, setErrors, formRef, feedbackRef);
     } finally {
-      setBusy(false);
+      if (operationRef.current === controller) {
+        operationRef.current = null;
+        if (!controller.signal.aborted) setBusy(false);
+      }
     }
   }
 
@@ -1308,7 +1563,8 @@ function QuestionForm({
         {question?.status === 'draft' ? (
           <button
             className="button button--quiet"
-            disabled={busy}
+            aria-describedby={dirty ? 'question-publish-dirty' : undefined}
+            disabled={busy || dirty}
             onClick={() => void lifecycle('publish')}
             type="button"
           >
@@ -1326,6 +1582,11 @@ function QuestionForm({
           </button>
         ) : null}
       </div>
+      {dirty ? (
+        <p className="author-notice" id="question-publish-dirty" role="status">
+          Unsaved question changes. Save before publishing.
+        </p>
+      ) : null}
       {confirmRetire ? (
         <div className="author-confirmation" role="alert">
           <strong>Retire this question?</strong>
@@ -1589,9 +1850,13 @@ function announce(
   message: string,
   setMessage: (message: string) => void,
   feedbackRef: React.RefObject<HTMLDivElement | null>,
+  isCurrent: () => boolean = () => true,
 ) {
   window.setTimeout(() => {
+    if (!isCurrent()) return;
     setMessage(message);
-    window.setTimeout(() => feedbackRef.current?.focus());
+    window.setTimeout(() => {
+      if (isCurrent()) feedbackRef.current?.focus();
+    });
   });
 }

@@ -43,11 +43,13 @@ export function CardWorkspace({
   const [selectedId, setSelectedId] = useState<string | 'new'>('new');
   const [message, setMessage] = useState('');
   const feedbackRef = useRef<HTMLDivElement>(null);
+  const selectedIdRef = useRef<string | 'new'>('new');
   const selected = cards.find((card) => card.id === selectedId);
 
   useEffect(() => {
     if (selectedId !== 'new' && !cards.some((card) => card.id === selectedId)) {
       setSelectedId('new');
+      selectedIdRef.current = 'new';
     }
   }, [cards, selectedId]);
 
@@ -58,8 +60,15 @@ export function CardWorkspace({
         ? cards.map((item) => (item.id === card.id ? card : item))
         : [card, ...cards],
     );
+    selectedIdRef.current = card.id;
     setSelectedId(card.id);
-    if (notice) announce(notice, setMessage, feedbackRef);
+    if (notice)
+      announce(
+        notice,
+        setMessage,
+        feedbackRef,
+        () => selectedIdRef.current === card.id,
+      );
   }
 
   return (
@@ -74,7 +83,11 @@ export function CardWorkspace({
         </div>
         <button
           className="button"
-          onClick={() => setSelectedId('new')}
+          onClick={() => {
+            selectedIdRef.current = 'new';
+            setSelectedId('new');
+            setMessage('');
+          }}
           type="button"
         >
           Create card
@@ -117,7 +130,11 @@ export function CardWorkspace({
                   <button
                     aria-current={selectedId === card.id ? 'true' : undefined}
                     className="author-record-list__item"
-                    onClick={() => setSelectedId(card.id)}
+                    onClick={() => {
+                      selectedIdRef.current = card.id;
+                      setSelectedId(card.id);
+                      setMessage('');
+                    }}
                     type="button"
                   >
                     <span>{card.name}</span>
@@ -136,6 +153,11 @@ export function CardWorkspace({
               apiBaseUrl={apiBaseUrl}
               card={selected}
               getAccessToken={getAccessToken}
+              key={
+                selected
+                  ? `${selected.id}:${selected.updatedAt}:${selected.authoringStatus}`
+                  : 'new-card'
+              }
               onSaved={updateCard}
             />
           </div>
@@ -192,15 +214,27 @@ function CardForm({
   const [confirmRetire, setConfirmRetire] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const feedbackRef = useRef<HTMLDivElement>(null);
+  const operationRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     setDraft(cardDraft(card));
     setErrors({});
     setApiError(null);
     setConfirmRetire(false);
-  }, [card?.id]);
+  }, [card]);
+
+  useEffect(
+    () => () => {
+      operationRef.current?.abort();
+      operationRef.current = null;
+    },
+    [],
+  );
 
   const editable = !card || card.authoringStatus === 'draft';
+  const dirty = Boolean(
+    card && JSON.stringify(draft) !== JSON.stringify(cardDraft(card)),
+  );
 
   async function save(submission: FormEvent) {
     submission.preventDefault();
@@ -218,6 +252,9 @@ function CardForm({
 
     setBusy(true);
     setApiError(null);
+    operationRef.current?.abort();
+    const controller = new AbortController();
+    operationRef.current = controller;
 
     try {
       const saved = card
@@ -226,26 +263,36 @@ function CardForm({
             cardId: card.id,
             getAccessToken,
             input: result.input,
-            signal: new AbortController().signal,
+            signal: controller.signal,
           })
         : await createAuthorCard({
             apiBaseUrl,
             getAccessToken,
             input: result.input,
-            signal: new AbortController().signal,
+            signal: controller.signal,
           });
+      if (controller.signal.aborted || operationRef.current !== controller)
+        return;
       onSaved(saved, card ? 'Card changes saved.' : 'Draft card created.');
     } catch (error) {
+      if (controller.signal.aborted || operationRef.current !== controller)
+        return;
       handleCardError(error, setApiError, setErrors, formRef, feedbackRef);
     } finally {
-      setBusy(false);
+      if (operationRef.current === controller) {
+        operationRef.current = null;
+        if (!controller.signal.aborted) setBusy(false);
+      }
     }
   }
 
   async function lifecycle(action: 'publish' | 'retire') {
-    if (!card) return;
+    if (!card || (action === 'publish' && dirty)) return;
     setBusy(true);
     setApiError(null);
+    operationRef.current?.abort();
+    const controller = new AbortController();
+    operationRef.current = controller;
     try {
       const next =
         action === 'publish'
@@ -253,14 +300,16 @@ function CardForm({
               apiBaseUrl,
               cardId: card.id,
               getAccessToken,
-              signal: new AbortController().signal,
+              signal: controller.signal,
             })
           : await retireAuthorCard({
               apiBaseUrl,
               cardId: card.id,
               getAccessToken,
-              signal: new AbortController().signal,
+              signal: controller.signal,
             });
+      if (controller.signal.aborted || operationRef.current !== controller)
+        return;
       onSaved(
         next,
         action === 'publish'
@@ -269,9 +318,14 @@ function CardForm({
       );
       setConfirmRetire(false);
     } catch (error) {
+      if (controller.signal.aborted || operationRef.current !== controller)
+        return;
       handleCardError(error, setApiError, setErrors, formRef, feedbackRef);
     } finally {
-      setBusy(false);
+      if (operationRef.current === controller) {
+        operationRef.current = null;
+        if (!controller.signal.aborted) setBusy(false);
+      }
     }
   }
 
@@ -611,7 +665,8 @@ function CardForm({
           {card?.authoringStatus === 'draft' ? (
             <button
               className="button button--quiet"
-              disabled={busy}
+              aria-describedby={dirty ? 'card-publish-dirty' : undefined}
+              disabled={busy || dirty}
               onClick={() => void lifecycle('publish')}
               type="button"
             >
@@ -629,6 +684,11 @@ function CardForm({
             </button>
           ) : null}
         </div>
+        {dirty ? (
+          <p className="author-notice" id="card-publish-dirty" role="status">
+            Unsaved card changes. Save before publishing.
+          </p>
+        ) : null}
         {confirmRetire ? (
           <div className="author-confirmation" role="alert">
             <strong>Retire this card definition?</strong>
@@ -692,6 +752,11 @@ function MoveEditor({
           name={`move-${index}-name`}
         >
           <input
+            aria-describedby={
+              errors[`move${index}Name`]
+                ? `move-${index}-name-error`
+                : undefined
+            }
             aria-invalid={Boolean(errors[`move${index}Name`])}
             id={`move-${index}-name`}
             onChange={(change) =>
@@ -726,6 +791,11 @@ function MoveEditor({
           name={`move-${index}-cost`}
         >
           <input
+            aria-describedby={
+              errors[`move${index}PowerCost`]
+                ? `move-${index}-cost-error`
+                : undefined
+            }
             aria-invalid={Boolean(errors[`move${index}PowerCost`])}
             id={`move-${index}-cost`}
             min="0"
@@ -833,6 +903,11 @@ function EffectEditor({
           name={`${prefix}-${index}-effect-value`}
         >
           <input
+            aria-describedby={
+              errors[`${prefix}${index}EffectValue`]
+                ? `${prefix}-${index}-effect-value-error`
+                : undefined
+            }
             aria-invalid={Boolean(errors[`${prefix}${index}EffectValue`])}
             id={`${prefix}-${index}-effect-value`}
             min="0"
@@ -852,6 +927,11 @@ function EffectEditor({
               name={`${prefix}-${index}-modifier-stat`}
             >
               <select
+                aria-describedby={
+                  errors[`${prefix}${index}Modifier`]
+                    ? `${prefix}-${index}-modifier-stat-error`
+                    : undefined
+                }
                 aria-invalid={Boolean(errors[`${prefix}${index}Modifier`])}
                 id={`${prefix}-${index}-modifier-stat`}
                 onChange={(change) =>
@@ -882,6 +962,11 @@ function EffectEditor({
                 name={`${prefix}-${index}-duration`}
               >
                 <input
+                  aria-describedby={
+                    errors[`${prefix}${index}Duration`]
+                      ? `${prefix}-${index}-duration-error`
+                      : undefined
+                  }
                   aria-invalid={Boolean(errors[`${prefix}${index}Duration`])}
                   id={`${prefix}-${index}-duration`}
                   min="1"
@@ -1178,9 +1263,13 @@ function announce(
   message: string,
   setMessage: (message: string) => void,
   feedbackRef: React.RefObject<HTMLDivElement | null>,
+  isCurrent: () => boolean = () => true,
 ) {
   window.setTimeout(() => {
+    if (!isCurrent()) return;
     setMessage(message);
-    window.setTimeout(() => feedbackRef.current?.focus());
+    window.setTimeout(() => {
+      if (isCurrent()) feedbackRef.current?.focus();
+    });
   });
 }

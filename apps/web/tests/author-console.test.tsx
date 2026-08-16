@@ -3,12 +3,19 @@ import {
   initialContext,
   type Auth0ContextInterface,
 } from '@auth0/auth0-react';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Router } from 'wouter';
 
 import { AppRoutes } from '../src/App';
+import type {
+  AuthorCard,
+  AuthorChallenge,
+  AuthorEvent,
+  AuthorQuestion,
+} from '../src/api/author';
+import { EventWorkspace } from '../src/components/author/EventWorkspace';
 
 const apiBaseUrl = 'https://api.example.test/api/v1';
 const mapboxAccessToken = 'pk.test-token';
@@ -417,16 +424,513 @@ describe('Basic author console', () => {
     expect(screen.getByText('Try again later.')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
   });
+
+  it('clears Event A content while Event B challenges are loading', async () => {
+    const user = userEvent.setup();
+    const eventB = eventFixture({
+      eventId: '10000000-0000-4000-8000-000000000002',
+      title: 'Library trail',
+    });
+    const pending = deferred<Response>();
+    installAuthorApi({
+      challenges: [challengeFixture()],
+      events: [eventFixture(), eventB],
+      questions: [questionFixture(1, 'draft')],
+      handleRequest: ({ path }) =>
+        path === `/author/events/${eventB.eventId}/challenges`
+          ? pending.promise
+          : undefined,
+    });
+    renderAuthorRoute();
+
+    expect(await screen.findByRole('button', { name: /Q1/ })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: /Library trail/ }));
+
+    expect(screen.getByText('Loading event challenges…')).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: /Q1/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Publish challenge' }),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', { name: /Great Hall history/ }),
+    );
+    expect(await screen.findByRole('button', { name: /Q1/ })).toBeVisible();
+
+    await act(async () => {
+      pending.resolve(
+        jsonResponse({ challenges: [], requestId: 'request-event-b' }),
+      );
+      await pending.promise;
+    });
+    expect(screen.getByRole('button', { name: /Q1/ })).toBeVisible();
+    expect(screen.getByLabelText('Event title')).toHaveValue(
+      'Great Hall history',
+    );
+  });
+
+  it('does not leave Event A content actionable when Event B challenges fail', async () => {
+    const user = userEvent.setup();
+    const eventB = eventFixture({
+      eventId: '10000000-0000-4000-8000-000000000002',
+      title: 'Library trail',
+    });
+    const pending = deferred<Response>();
+    installAuthorApi({
+      challenges: [challengeFixture()],
+      events: [eventFixture(), eventB],
+      questions: [questionFixture(1, 'draft')],
+      handleRequest: ({ path }) =>
+        path === `/author/events/${eventB.eventId}/challenges`
+          ? pending.promise
+          : undefined,
+    });
+    renderAuthorRoute();
+
+    expect(await screen.findByRole('button', { name: /Q1/ })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: /Library trail/ }));
+    await act(async () => {
+      pending.resolve(
+        problemResponse(500, 'INTERNAL_ERROR', 'Event B failed to load.'),
+      );
+      await pending.promise;
+    });
+
+    expect(await screen.findByText('Event B failed to load.')).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: /Q1/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Publish challenge' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('clears Challenge A questions while Challenge B questions are loading', async () => {
+    const user = userEvent.setup();
+    const challengeB = challengeFixture({
+      challengeId: '20000000-0000-4000-8000-000000000002',
+    });
+    const pending = deferred<Response>();
+    installAuthorApi({
+      challenges: [challengeFixture(), challengeB],
+      questions: [questionFixture(1, 'draft')],
+      handleRequest: ({ path }) =>
+        path === `/author/challenges/${challengeB.challengeId}/questions`
+          ? pending.promise
+          : undefined,
+    });
+    renderAuthorRoute();
+
+    expect(await screen.findByRole('button', { name: /Q1/ })).toBeVisible();
+    await user.selectOptions(
+      screen.getByLabelText('Challenge'),
+      challengeB.challengeId,
+    );
+
+    expect(screen.getByText('Loading challenge questions…')).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: /Q1/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Question prompt')).not.toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('Challenge'), challengeId);
+    expect(await screen.findByRole('button', { name: /Q1/ })).toBeVisible();
+
+    await act(async () => {
+      pending.resolve(
+        jsonResponse({
+          questions: [questionFixture(2, 'draft', challengeB.challengeId)],
+          requestId: 'request-challenge-b',
+        }),
+      );
+      await pending.promise;
+    });
+    await user.click(screen.getByRole('button', { name: /Q1/ }));
+    expect(screen.getByLabelText('Question prompt')).toHaveValue('Question 1');
+  });
+
+  it('does not leave Challenge A questions actionable when Challenge B questions fail', async () => {
+    const user = userEvent.setup();
+    const challengeB = challengeFixture({
+      challengeId: '20000000-0000-4000-8000-000000000002',
+    });
+    const pending = deferred<Response>();
+    installAuthorApi({
+      challenges: [challengeFixture(), challengeB],
+      questions: [questionFixture(1, 'draft')],
+      handleRequest: ({ path }) =>
+        path === `/author/challenges/${challengeB.challengeId}/questions`
+          ? pending.promise
+          : undefined,
+    });
+    renderAuthorRoute();
+
+    expect(await screen.findByRole('button', { name: /Q1/ })).toBeVisible();
+    await user.selectOptions(
+      screen.getByLabelText('Challenge'),
+      challengeB.challengeId,
+    );
+    await act(async () => {
+      pending.resolve(
+        problemResponse(500, 'INTERNAL_ERROR', 'Challenge B failed to load.'),
+      );
+      await pending.promise;
+    });
+
+    expect(await screen.findByText('Questions are unavailable.')).toBeVisible();
+    expect(screen.getByText('Challenge B failed to load.')).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: /Q1/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Question prompt')).not.toBeInTheDocument();
+  });
+
+  it('requires unsaved event changes to be saved before publication', async () => {
+    const user = userEvent.setup();
+    const fetchMock = installAuthorApi();
+    renderAuthorRoute();
+
+    const title = await screen.findByLabelText('Event title');
+    await user.type(title, ' unsaved');
+    const publish = screen.getByRole('button', {
+      name: 'Ask API to publish event',
+    });
+    expect(publish).toBeDisabled();
+    expect(publish).toHaveAccessibleDescription(
+      'Save event changes before publishing.',
+    );
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith('/publish'),
+      ),
+    ).toBe(false);
+  });
+
+  it('requires unsaved question changes to be saved before publication', async () => {
+    const user = userEvent.setup();
+    const fetchMock = installAuthorApi({
+      challenges: [challengeFixture()],
+      questions: [questionFixture(1, 'draft')],
+    });
+    renderAuthorRoute();
+
+    await user.click(await screen.findByRole('button', { name: /Q1/ }));
+    await user.type(screen.getByLabelText('Question prompt'), ' unsaved');
+    const publish = screen.getByRole('button', { name: 'Publish question' });
+    expect(publish).toBeDisabled();
+    expect(publish).toHaveAccessibleDescription(
+      'Unsaved question changes. Save before publishing.',
+    );
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith('/publish'),
+      ),
+    ).toBe(false);
+  });
+
+  it('requires unsaved card changes to be saved before publication', async () => {
+    const user = userEvent.setup();
+    const fetchMock = installAuthorApi({ cards: [cardFixture()] });
+    renderAuthorRoute();
+
+    await screen.findByRole('heading', { name: 'Author console' });
+    await user.click(screen.getByRole('button', { name: 'Card catalogue' }));
+    await user.click(screen.getByRole('button', { name: /Campus Owl/ }));
+    await user.type(screen.getByLabelText('Card name'), ' unsaved');
+    const publish = screen.getByRole('button', { name: 'Publish card' });
+    expect(publish).toBeDisabled();
+    expect(publish).toHaveAccessibleDescription(
+      'Unsaved card changes. Save before publishing.',
+    );
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith('/publish'),
+      ),
+    ).toBe(false);
+  });
+
+  it('resets event, question, and card forms to lifecycle response data after save and publish', async () => {
+    const user = userEvent.setup();
+    installAuthorApi({
+      cards: [cardFixture()],
+      challenges: [challengeFixture()],
+      questions: [questionFixture(1, 'draft')],
+    });
+    renderAuthorRoute();
+
+    const eventTitle = await screen.findByLabelText('Event title');
+    await user.clear(eventTitle);
+    await user.type(eventTitle, 'Saved event title');
+    await user.click(screen.getByRole('button', { name: 'Save event' }));
+    await screen.findByText('Event changes saved.');
+    await user.click(
+      screen.getByRole('button', { name: 'Ask API to publish event' }),
+    );
+    expect(await screen.findByLabelText('Event title')).toHaveValue(
+      'Saved event title',
+    );
+    expect(screen.getByLabelText('Event title')).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: /Q1/ }));
+    const prompt = screen.getByLabelText('Question prompt');
+    await user.clear(prompt);
+    await user.type(prompt, 'Saved question prompt');
+    await user.click(screen.getByRole('button', { name: 'Save question' }));
+    await screen.findByText('Question changes saved.');
+    await user.click(screen.getByRole('button', { name: 'Publish question' }));
+    expect(await screen.findByLabelText('Question prompt')).toHaveValue(
+      'Saved question prompt',
+    );
+    expect(screen.getByLabelText('Question prompt')).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: 'Card catalogue' }));
+    await user.click(screen.getByRole('button', { name: /Campus Owl/ }));
+    const cardName = screen.getByLabelText('Card name');
+    await user.clear(cardName);
+    await user.type(cardName, 'Saved card name');
+    await user.click(screen.getByRole('button', { name: 'Save card' }));
+    await screen.findByText('Card changes saved.');
+    await user.click(screen.getByRole('button', { name: 'Publish card' }));
+    expect(await screen.findByLabelText('Card name')).toHaveValue(
+      'Saved card name',
+    );
+    expect(screen.getByLabelText('Card name')).toBeDisabled();
+  });
+
+  it('keeps Event B selected and edited when a delayed Event A save completes', async () => {
+    const user = userEvent.setup();
+    const eventB = eventFixture({
+      eventId: '10000000-0000-4000-8000-000000000002',
+      title: 'Library trail',
+    });
+    const pending = deferred<Response>();
+    installAuthorApi({
+      events: [eventFixture(), eventB],
+      handleRequest: ({ method, path }) => {
+        if (path === `/author/events/${eventId}` && method === 'PUT')
+          return pending.promise;
+        if (path === `/author/events/${eventB.eventId}/challenges`)
+          return jsonResponse({ challenges: [], requestId: 'request-event-b' });
+        return undefined;
+      },
+    });
+    renderAuthorRoute();
+
+    const title = await screen.findByLabelText('Event title');
+    await user.clear(title);
+    await user.type(title, 'Delayed Event A');
+    await user.click(screen.getByRole('button', { name: 'Save event' }));
+    await user.click(screen.getByRole('button', { name: /Library trail/ }));
+    const eventBTitle = await screen.findByLabelText('Event title');
+    await user.type(eventBTitle, ' local edit');
+
+    await act(async () => {
+      pending.resolve(
+        jsonResponse({
+          event: eventFixture({ title: 'Delayed Event A' }),
+          requestId: 'request-event-a-save',
+        }),
+      );
+      await pending.promise;
+    });
+
+    expect(screen.getByLabelText('Event title')).toHaveValue(
+      'Library trail local edit',
+    );
+    expect(screen.getByLabelText('Event title')).toHaveFocus();
+    expect(
+      screen.getByRole('button', { name: /Library trail/ }),
+    ).toHaveAttribute('aria-current', 'true');
+    expect(screen.queryByText('Event changes saved.')).not.toBeInTheDocument();
+  });
+
+  it('keeps Card B selected and edited when a delayed Card A save completes', async () => {
+    const user = userEvent.setup();
+    const cardB = cardFixture({
+      id: '50000000-0000-4000-8000-000000000002',
+      name: 'Library Fox',
+    });
+    const pending = deferred<Response>();
+    installAuthorApi({
+      cards: [cardFixture(), cardB],
+      handleRequest: ({ method, path }) =>
+        path === `/author/cards/${cardFixture().id}` && method === 'PUT'
+          ? pending.promise
+          : undefined,
+    });
+    renderAuthorRoute();
+
+    await screen.findByRole('heading', { name: 'Author console' });
+    await user.click(screen.getByRole('button', { name: 'Card catalogue' }));
+    await user.click(screen.getByRole('button', { name: /Campus Owl/ }));
+    await user.type(screen.getByLabelText('Card name'), ' delayed');
+    await user.click(screen.getByRole('button', { name: 'Save card' }));
+    await user.click(screen.getByRole('button', { name: /Library Fox/ }));
+    await user.type(screen.getByLabelText('Card name'), ' local edit');
+
+    await act(async () => {
+      pending.resolve(
+        jsonResponse({
+          card: cardFixture({ name: 'Campus Owl delayed' }),
+          requestId: 'request-card-a-save',
+        }),
+      );
+      await pending.promise;
+    });
+
+    expect(screen.getByLabelText('Card name')).toHaveValue(
+      'Library Fox local edit',
+    );
+    expect(screen.getByLabelText('Card name')).toHaveFocus();
+    expect(screen.getByRole('button', { name: /Library Fox/ })).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+    expect(screen.queryByText('Card changes saved.')).not.toBeInTheDocument();
+  });
+
+  it('keeps Question B selected and edited when a delayed Question A save completes', async () => {
+    const user = userEvent.setup();
+    const questionA = questionFixture(1, 'draft');
+    const questionB = questionFixture(2, 'draft');
+    const pending = deferred<Response>();
+    installAuthorApi({
+      challenges: [challengeFixture()],
+      questions: [questionA, questionB],
+      handleRequest: ({ method, path }) =>
+        path === `/author/questions/${questionA.questionId}` && method === 'PUT'
+          ? pending.promise
+          : undefined,
+    });
+    renderAuthorRoute();
+
+    await user.click(await screen.findByRole('button', { name: /Q1/ }));
+    await user.type(screen.getByLabelText('Question prompt'), ' delayed');
+    await user.click(screen.getByRole('button', { name: 'Save question' }));
+    await user.click(screen.getByRole('button', { name: /Q2/ }));
+    await user.type(screen.getByLabelText('Question prompt'), ' local edit');
+
+    await act(async () => {
+      pending.resolve(
+        jsonResponse({
+          question: { ...questionA, prompt: 'Question 1 delayed' },
+          requestId: 'request-question-a-save',
+        }),
+      );
+      await pending.promise;
+    });
+
+    expect(screen.getByLabelText('Question prompt')).toHaveValue(
+      'Question 2 local edit',
+    );
+    expect(screen.getByLabelText('Question prompt')).toHaveFocus();
+    expect(screen.getByRole('button', { name: /Q2/ })).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+    expect(
+      screen.queryByText('Question changes saved.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('associates nested card validation messages with each affected control', async () => {
+    const user = userEvent.setup();
+    installAuthorApi({ cards: [] });
+    renderAuthorRoute();
+
+    await screen.findByRole('heading', { name: 'Author console' });
+    await user.click(screen.getByRole('button', { name: 'Card catalogue' }));
+    await user.type(screen.getByLabelText('Card name'), 'Validation card');
+    await user.clear(screen.getByLabelText('Power cost'));
+    await user.type(screen.getByLabelText('Power cost'), '-1');
+    await user.clear(screen.getByLabelText('Effect value (optional)'));
+    await user.type(screen.getByLabelText('Effect value (optional)'), '-1');
+    await user.click(screen.getByRole('button', { name: 'Create draft card' }));
+
+    expect(screen.getByLabelText('Move name')).toHaveAccessibleDescription(
+      'Enter a move name.',
+    );
+    expect(screen.getByLabelText('Power cost')).toHaveAccessibleDescription(
+      'Enter a non-negative whole number.',
+    );
+    expect(
+      screen.getByLabelText('Effect value (optional)'),
+    ).toHaveAccessibleDescription('Enter a non-negative whole number.');
+
+    await user.type(screen.getByLabelText('Move name'), 'Study');
+    await user.clear(screen.getByLabelText('Power cost'));
+    await user.type(screen.getByLabelText('Power cost'), '0');
+    await user.clear(screen.getByLabelText('Effect value (optional)'));
+    await user.type(screen.getByLabelText('Effect value (optional)'), '0');
+    await user.selectOptions(screen.getByLabelText('Effect type'), 'buff');
+    await user.click(screen.getByRole('button', { name: 'Create draft card' }));
+    expect(screen.getByLabelText('Modifier stat')).toHaveAccessibleDescription(
+      'Buff and debuff effects require modifier metadata.',
+    );
+
+    await user.selectOptions(
+      screen.getByLabelText('Modifier stat'),
+      'damage_multiplier',
+    );
+    await user.type(screen.getByLabelText('Duration in turns (optional)'), '0');
+    await user.click(screen.getByRole('button', { name: 'Create draft card' }));
+    expect(
+      screen.getByLabelText('Duration in turns (optional)'),
+    ).toHaveAccessibleDescription('Enter a positive whole number.');
+  });
+
+  it('reports Common catalogue readiness only for a successful authoritative load', async () => {
+    installAuthorApi();
+    const cards = [
+      cardFixture({ authoringStatus: 'published', isActive: true }),
+    ];
+    const props = {
+      apiBaseUrl,
+      cards,
+      getAccessToken: vi.fn().mockResolvedValue('access-token'),
+      mapboxAccessToken,
+      onOpenCards: vi.fn(),
+      onReloadCards: vi.fn(),
+    };
+    const view = render(<EventWorkspace {...props} cardsState="loading" />);
+
+    expect(
+      await screen.findByText('Incomplete — Common reward catalogue'),
+    ).toBeVisible();
+    expect(
+      screen.queryByText('Ready — Common reward catalogue'),
+    ).not.toBeInTheDocument();
+
+    view.rerender(<EventWorkspace {...props} cardsState="error" />);
+    expect(screen.getByText('Catalogue could not be checked.')).toBeVisible();
+    expect(
+      screen.queryByText('Ready — Common reward catalogue'),
+    ).not.toBeInTheDocument();
+
+    view.rerender(<EventWorkspace {...props} cardsState="ready" />);
+    expect(screen.getByText('Ready — Common reward catalogue')).toBeVisible();
+  });
 });
 
 interface ApiOptions {
-  cards?: object[];
-  challenges?: object[];
-  events?: object[];
+  cards?: AuthorCard[];
+  challenges?: AuthorChallenge[];
+  events?: AuthorEvent[];
   eventsError?: Response;
+  handleRequest?: (
+    request: RequestDetails,
+  ) => Promise<Response> | Response | undefined;
   publishEventError?: Response;
-  questions?: object[];
+  questions?: AuthorQuestion[];
   updateEventError?: Response;
+}
+
+interface RequestDetails {
+  init?: RequestInit;
+  method: string;
+  path: string;
 }
 
 function installAuthorApi(options: ApiOptions = {}) {
@@ -440,6 +944,8 @@ function installAuthorApi(options: ApiOptions = {}) {
       const url = new URL(String(input));
       const path = url.pathname.replace('/api/v1', '');
       const method = init?.method ?? 'GET';
+      const overridden = options.handleRequest?.({ init, method, path });
+      if (overridden !== undefined) return overridden;
 
       if (path === '/auth/me') {
         return jsonResponse({
@@ -478,8 +984,14 @@ function installAuthorApi(options: ApiOptions = {}) {
       if (path === `/author/events/${eventId}` && method === 'PUT') {
         if (options.updateEventError) return options.updateEventError.clone();
         const body = JSON.parse(String(init?.body));
+        const event = { ...eventFixture(), ...body };
+        events.splice(
+          events.findIndex((item) => item.eventId === eventId),
+          1,
+          event,
+        );
         return jsonResponse({
-          event: { ...eventFixture(), ...body },
+          event,
           requestId: 'request-event-update',
         });
       }
@@ -487,7 +999,8 @@ function installAuthorApi(options: ApiOptions = {}) {
         if (options.publishEventError) return options.publishEventError.clone();
         return jsonResponse({
           event: {
-            ...eventFixture(),
+            ...(events.find((item) => item.eventId === eventId) ??
+              eventFixture()),
             authoringStatus: 'published',
             isPublished: true,
           },
@@ -545,29 +1058,64 @@ function installAuthorApi(options: ApiOptions = {}) {
           position: index + 1,
           text,
         }));
+        const question = {
+          ...baseQuestion,
+          ...body,
+          acceptedChoiceId: choices[body.acceptedChoicePosition - 1].choiceId,
+          choices,
+        };
+        questions.splice(
+          questions.findIndex(
+            (item) => item.questionId === question.questionId,
+          ),
+          1,
+          question,
+        );
         return jsonResponse({
-          question: {
-            ...baseQuestion,
-            ...body,
-            acceptedChoiceId: choices[body.acceptedChoicePosition - 1].choiceId,
-            choices,
-          },
+          question,
           requestId: 'request-question-update',
+        });
+      }
+      if (path.startsWith('/author/questions/') && path.endsWith('/publish')) {
+        const questionId = path.split('/')[3]!;
+        const question = {
+          ...(questions.find((item) => item.questionId === questionId) ??
+            questionFixture(1, 'draft')),
+          status: 'published',
+        };
+        return jsonResponse({
+          question,
+          requestId: 'request-question-publish',
         });
       }
       if (path === `/author/cards/${cardFixture().id}` && method === 'PUT') {
         const body = JSON.parse(String(init?.body));
+        const card = {
+          ...cardFixture(),
+          ...body,
+          moves: body.moves.map((move: object) => ({
+            id: cardFixture().moves[0]!.id,
+            ...move,
+          })),
+        };
+        cards.splice(
+          cards.findIndex((item) => item.id === card.id),
+          1,
+          card,
+        );
         return jsonResponse({
-          card: {
-            ...cardFixture(),
-            ...body,
-            moves: body.moves.map((move: object) => ({
-              id: cardFixture().moves[0]!.id,
-              ...move,
-            })),
-          },
+          card,
           requestId: 'request-card-update',
         });
+      }
+      if (path === `/author/cards/${cardFixture().id}/publish`) {
+        const card = {
+          ...(cards.find((item) => item.id === cardFixture().id) ??
+            cardFixture()),
+          authoringStatus: 'published',
+          isActive: true,
+        };
+        return jsonResponse({ card, requestId: 'request-card-publish' });
       }
 
       throw new Error(`Unexpected ${method} request: ${path}`);
@@ -601,7 +1149,7 @@ function authenticatedAuthor(): Auth0ContextInterface {
   } as Auth0ContextInterface;
 }
 
-function eventFixture() {
+function eventFixture(overrides: Partial<AuthorEvent> = {}): AuthorEvent {
   return {
     authoringStatus: 'draft',
     createdAt: '2026-08-16T08:00:00.000Z',
@@ -616,10 +1164,13 @@ function eventFixture() {
     startsAt: '2026-09-01T08:00:00.000Z',
     title: 'Great Hall history',
     updatedAt: '2026-08-16T08:00:00.000Z',
+    ...overrides,
   };
 }
 
-function challengeFixture() {
+function challengeFixture(
+  overrides: Partial<AuthorChallenge> = {},
+): AuthorChallenge {
   return {
     challengeId,
     createdAt: '2026-08-16T08:00:00.000Z',
@@ -627,15 +1178,20 @@ function challengeFixture() {
     format: 'multiple_choice',
     status: 'draft',
     updatedAt: '2026-08-16T08:00:00.000Z',
+    ...overrides,
   };
 }
 
-function questionFixture(position: number, status: 'draft' | 'published') {
+function questionFixture(
+  position: number,
+  status: 'draft' | 'published',
+  parentChallengeId = challengeId,
+): AuthorQuestion {
   const questionId = `40000000-0000-4000-8000-${String(position).padStart(12, '0')}`;
   return {
     acceptedChoiceId: `41000000-0000-4000-8000-${String(position * 10 + 2).padStart(12, '0')}`,
     acceptedChoicePosition: 2,
-    challengeId,
+    challengeId: parentChallengeId,
     choices: [1, 2, 3, 4].map((choicePosition) => ({
       choiceId: `41000000-0000-4000-8000-${String(position * 10 + choicePosition).padStart(12, '0')}`,
       position: choicePosition,
@@ -651,7 +1207,7 @@ function questionFixture(position: number, status: 'draft' | 'published') {
   };
 }
 
-function cardFixture() {
+function cardFixture(overrides: Partial<AuthorCard> = {}): AuthorCard {
   return {
     affinity: 'wit',
     authoringStatus: 'draft',
@@ -681,7 +1237,18 @@ function cardFixture() {
     power: 20,
     rarity: 'common',
     updatedAt: '2026-08-16T08:00:00.000Z',
+    ...overrides,
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
 }
 
 function problemResponse(
