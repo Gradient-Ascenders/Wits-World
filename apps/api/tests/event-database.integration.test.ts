@@ -28,6 +28,74 @@ const DEMO_EVENT_ID = '00000000-0000-4000-8000-000000000018';
 const runIntegrationTests =
   process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';
 
+async function insertLegacyPublishedDemoQuestion(
+  config: DatabaseConfig,
+): Promise<void> {
+  await withDatabaseClient(config, async (client) => {
+    await client.query('begin');
+
+    try {
+      await client.query(
+        `insert into public.challenge_questions (
+           id, challenge_id, prompt, difficulty, explanation, status
+         ) values (
+           md5('wits-world-sprint-1-demo-question:great-hall-campus')::uuid,
+           md5('wits-world-sprint-1-demo-challenge')::uuid,
+           'On which Wits campus is the Great Hall located?',
+           1,
+           null,
+           'draft'
+         )`,
+      );
+      await client.query(
+        `insert into public.challenge_choices (
+           id, question_id, authoring_position, choice_text
+         )
+         select
+           md5(
+             'wits-world-sprint-1-demo-choice:great-hall-campus:' ||
+             choice.authoring_position
+           )::uuid,
+           md5(
+             'wits-world-sprint-1-demo-question:great-hall-campus'
+           )::uuid,
+           choice.authoring_position,
+           choice.choice_text
+         from (
+           values
+             (1, 'West Campus'),
+             (2, 'East Campus'),
+             (3, 'Parktown Campus'),
+             (4, 'Education Campus')
+         ) choice(authoring_position, choice_text)`,
+      );
+      await client.query(
+        `insert into private.challenge_answer_keys (
+           question_id, accepted_choice_id
+         ) values (
+           md5(
+             'wits-world-sprint-1-demo-question:great-hall-campus'
+           )::uuid,
+           md5(
+             'wits-world-sprint-1-demo-choice:great-hall-campus:2'
+           )::uuid
+         )`,
+      );
+      await client.query(
+        `update public.challenge_questions
+            set status = 'published', updated_at = now()
+          where id = md5(
+            'wits-world-sprint-1-demo-question:great-hall-campus'
+          )::uuid`,
+      );
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    }
+  });
+}
+
 describe.skipIf(!runIntegrationTests)('event database integration', () => {
   let administrationConfig: DatabaseConfig;
   let migrationResult: MigrationResult;
@@ -55,6 +123,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
     migrationResult = await runMigrations(temporaryConfig);
     readiness = await checkDatabaseReadiness(temporaryConfig);
     await runBasicDemoSeeds(temporaryConfig);
+    await insertLegacyPublishedDemoQuestion(temporaryConfig);
     await runBasicDemoSeeds(temporaryConfig);
     rerunMigrationResult = await runMigrations(temporaryConfig);
   }, 45_000);
@@ -229,6 +298,8 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         choice_count: string;
         challenge_count: string;
         key_count: string;
+        legacy_retired_question_count: string;
+        nonblank_explanation_count: string;
         published_question_count: string;
         valid_question_count: string;
       }>(
@@ -238,8 +309,27 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
             count(distinct question.id) filter (
               where question.status = 'published'
             )::text as published_question_count,
-            count(distinct choice.id)::text as choice_count,
-            count(distinct answer_key.question_id)::text as key_count,
+            count(distinct question.id) filter (
+              where question.status = 'published'
+                and btrim(question.explanation) <> ''
+            )::text as nonblank_explanation_count,
+            count(distinct choice.id) filter (
+              where question.status = 'published'
+            )::text as choice_count,
+            count(distinct answer_key.question_id) filter (
+              where question.status = 'published'
+            )::text as key_count,
+            (
+              select count(*)::text
+              from public.challenge_questions legacy_question
+              join public.event_challenges legacy_challenge
+                on legacy_challenge.id = legacy_question.challenge_id
+              where legacy_challenge.event_id = $1::uuid
+                and legacy_question.id = md5(
+                  'wits-world-sprint-1-demo-question:great-hall-campus'
+                )::uuid
+                and legacy_question.status = 'retired'
+            ) as legacy_retired_question_count,
             (
               select count(*)::text
               from (
@@ -256,6 +346,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
                   on answer_key.question_id = question.id
                 where challenge.event_id = $1::uuid
                   and challenge.status = 'published'
+                  and question.status = 'published'
                 group by question.id
               ) question_integrity
               where choice_count = 4
@@ -277,9 +368,11 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
       expect(seededChallenge.rows).toEqual([
         {
           challenge_count: '1',
-          published_question_count: '5',
           choice_count: '20',
           key_count: '5',
+          legacy_retired_question_count: '1',
+          nonblank_explanation_count: '5',
+          published_question_count: '5',
           valid_question_count: '5',
         },
       ]);

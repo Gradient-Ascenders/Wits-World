@@ -48,9 +48,13 @@ already-completed state is player-specific and is created in an isolated test
 player rather than being inserted into the shared demo seed.
 
 The Great Hall challenge contains five distinct published multiple-choice
-questions. Each question has four choices and one private answer key. The
-server chooses and snapshots the five questions; the seed does not expose
-answer keys through player-facing data.
+questions. Each question has four choices, one private answer key, and a
+nonblank post-completion explanation. The current questions use versioned IDs.
+When upgrading a database that contains the original immutable published
+fixtures, the seed inserts the replacements first and retires the original
+question rows without deleting historical references. The server chooses and
+snapshots the five questions; the seed does not expose answer keys through
+player-facing data.
 
 The base catalogue contains three Common Creature cards and two Common Power
 cards for each of Wit, Grit, Spark, Spirit, and Mystic. It also contains cards
@@ -69,8 +73,10 @@ before production publication. Their source pages are official Wits domains:
   supports the venue description.
 - [Wits contact information](https://www.wits.ac.za/about-wits/contact-us/)
   supports the University of the Witwatersrand name and Johannesburg location.
+- [Wits Kudu Card information](https://www.wits.ac.za/about-wits/visitor-information/access-to-campus/application--renewal-of-kudu-cards/)
+  explicitly places Wartenweiler Library on East Campus.
 - [Wits library contact information](https://www.wits.ac.za/library/contact-us/)
-  supports the Wartenweiler Library entry.
+  supports the Wartenweiler Library contact entry.
 - [Wits library services](https://www.wits.ac.za/library/)
   provides the public library context.
 
@@ -88,3 +94,6 @@ grant, Basic deck validation, reward catalogue, and CPU match fixture path.
 Do not run the Basic demo seed against production without an explicit release
 decision. Never include database URLs, credentials, access tokens, or player
 identity data in evidence.
+
+The preceding document was planned, generated, and edited with the assistance
+of Codex[GPT-5.6 Sol].

@@ -10,48 +10,51 @@ values (
   'multiple_choice',
   'published'
 )
-on conflict (id) do update
-set event_id = excluded.event_id,
-    format = excluded.format,
-    status = excluded.status,
-    updated_at = now();
+on conflict (id) do nothing;
 
 create temporary table sprint_1_demo_challenge_questions (
   question_key text primary key,
   prompt text not null,
-  difficulty smallint not null
+  difficulty smallint not null,
+  explanation text not null
 ) on commit drop;
 
 insert into sprint_1_demo_challenge_questions (
   question_key,
   prompt,
-  difficulty
+  difficulty,
+  explanation
 )
 values
   (
     'great-hall-campus',
     'On which Wits campus is the Great Hall located?',
-    1
+    1,
+    'The Great Hall is on the University''s Braamfontein East Campus.'
   ),
   (
     'university-name',
     'What does the name Wits stand for?',
-    1
+    1,
+    'Wits is the common short name for the University of the Witwatersrand.'
   ),
   (
     'great-hall-ceremonies',
     'Which Wits building is used for major ceremonies and graduations?',
-    1
+    1,
+    'The Great Hall hosts major University ceremonies, including graduations.'
   ),
   (
     'east-campus-library',
     'Which library is located on Wits East Campus?',
-    1
+    1,
+    'Wartenweiler Library is located on Wits East Campus.'
   ),
   (
     'wits-city',
     'Which city is home to the University of the Witwatersrand?',
-    1
+    1,
+    'The University of the Witwatersrand is located in Johannesburg.'
   );
 
 insert into public.challenge_questions (
@@ -59,21 +62,18 @@ insert into public.challenge_questions (
   challenge_id,
   prompt,
   difficulty,
+  explanation,
   status
 )
 select
-  md5('wits-world-sprint-1-demo-question:' || question_key)::uuid,
+  md5('wits-world-sprint-1-demo-question-v2:' || question_key)::uuid,
   md5('wits-world-sprint-1-demo-challenge')::uuid,
   prompt,
   difficulty,
+  explanation,
   'published'
 from sprint_1_demo_challenge_questions
-on conflict (id) do update
-set challenge_id = excluded.challenge_id,
-    prompt = excluded.prompt,
-    difficulty = excluded.difficulty,
-    status = excluded.status,
-    updated_at = now();
+on conflict (id) do nothing;
 
 create temporary table sprint_1_demo_challenge_choices (
   question_key text not null
@@ -121,10 +121,10 @@ insert into public.challenge_choices (
 )
 select
   md5(
-    'wits-world-sprint-1-demo-choice:' || choice.question_key || ':' ||
+    'wits-world-sprint-1-demo-choice-v2:' || choice.question_key || ':' ||
     choice.authoring_position
   )::uuid,
-  md5('wits-world-sprint-1-demo-question:' || choice.question_key)::uuid,
+  md5('wits-world-sprint-1-demo-question-v2:' || choice.question_key)::uuid,
   choice.authoring_position,
   choice.choice_text
 from sprint_1_demo_challenge_choices choice
@@ -135,11 +135,26 @@ insert into private.challenge_answer_keys (
   accepted_choice_id
 )
 select
-  md5('wits-world-sprint-1-demo-question:' || choice.question_key)::uuid,
+  md5('wits-world-sprint-1-demo-question-v2:' || choice.question_key)::uuid,
   md5(
-    'wits-world-sprint-1-demo-choice:' || choice.question_key || ':' ||
+    'wits-world-sprint-1-demo-choice-v2:' || choice.question_key || ':' ||
     choice.authoring_position
   )::uuid
 from sprint_1_demo_challenge_choices choice
 where choice.is_correct = true
 on conflict (question_id) do nothing;
+
+-- Published fixture content is immutable. Retire the original question IDs only
+-- after their versioned replacements and private answer keys exist, preserving
+-- any historical references held by attempts.
+update public.challenge_questions
+set status = 'retired',
+    updated_at = now()
+where challenge_id = md5('wits-world-sprint-1-demo-challenge')::uuid
+  and id in (
+    select md5(
+      'wits-world-sprint-1-demo-question:' || question_key
+    )::uuid
+    from sprint_1_demo_challenge_questions
+  )
+  and status = 'published';

@@ -281,10 +281,11 @@ pull-request evidence, accessibility expectations, and AI attribution.
 ## AI declaration
 
 This repository uses AI code generation: ChatGPT-Web[GPT-5.6 Thinking],
-Codex-CLI[gpt-5.6-sol medium], Codex-CLI[GPT-5], and Codex[GPT-5].
+Codex-CLI[gpt-5.6-sol medium], Codex-CLI[GPT-5], Codex[GPT-5], and
+Codex[GPT-5.6 Sol].
 
 This repository uses AI inline editing: Codex-CLI[gpt-5.6-sol medium],
-Codex-CLI[GPT-5], and Codex[GPT-5].
+Codex-CLI[GPT-5], Codex[GPT-5], and Codex[GPT-5.6 Sol].
 
 This repository uses AI code review: Codex-CLI[gpt-5.6-sol medium],
 Codex-CLI[GPT-5], Codex[GPT-5], and ChatGPT-Web[GPT-5.6 Sol].

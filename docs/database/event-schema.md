@@ -159,4 +159,4 @@ psql "$TEST_DATABASE_URL" -c \
 Do not paste database URLs, passwords, or other secrets into issue evidence.
 
 The preceding document was generated and edited with the assistance of:
-Codex-CLI[GPT-5], Codex[GPT-5].
+Codex-CLI[GPT-5], Codex[GPT-5], Codex[GPT-5.6 Sol].
