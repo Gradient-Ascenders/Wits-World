@@ -84,10 +84,17 @@ Seed the test database:
 npm run db:seed:test --workspace @wits-world/api
 ```
 
-The Sprint 1 demonstration event is provisional, non-production content. Its
-fixed identifier makes repeated seed runs update the fixture rather than create
-duplicates. See the [event-schema guide](event-schema.md) for its values and
-availability period.
+The Basic demonstration events and challenge are provisional, non-production
+content. Their fixed identifiers make repeated demo-seed runs update the
+fixtures rather than create duplicates. Run the following when the complete
+Basic journey is required:
+
+```bash
+npm run db:seed:test --workspace @wits-world/api -- --basic-demo
+```
+
+See the [Basic demo seed guide](basic-demo-seed.md) and [event-schema
+guide](event-schema.md) for fixture values and availability periods.
 
 ## Database integration test
 
@@ -139,7 +146,7 @@ Azure deployment:
 npm run db:release --workspace @wits-world/api -- \
   --target test \
   --confirm-database <test-database-name> \
-  --seed-demo-event
+  --seed-basic-demo
 ```
 
 Use the production target only with explicit release authority. Never substitute

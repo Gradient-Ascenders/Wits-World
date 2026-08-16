@@ -3,11 +3,21 @@ import type pg from 'pg';
 import type { DatabaseConfig } from '../config/database.js';
 import { type DatabaseClientRunner, withDatabaseClient } from './connection.js';
 import { runMigrations, type MigrationResult } from './migrations.js';
-import { getMigrationsDirectory, getSeedsDirectory } from './paths.js';
+import {
+  getBasicDemoSeedsDirectory,
+  getMigrationsDirectory,
+  getSeedsDirectory,
+} from './paths.js';
 import { checkDatabaseReadiness, type DatabaseReadiness } from './readiness.js';
-import { runSeeds, type SeedResult } from './seeds.js';
+import { runBasicDemoSeeds, type SeedResult } from './seeds.js';
 
-const DEMO_EVENT_ID = '00000000-0000-4000-8000-000000000018';
+const BASIC_DEMO_EVENT_IDS = [
+  '00000000-0000-4000-8000-000000000018',
+  '00000000-0000-4000-8000-000000000019',
+  '00000000-0000-4000-8000-000000000020',
+  '00000000-0000-4000-8000-000000000021',
+];
+const BASIC_DEMO_CHALLENGE_ID = '04b3f8bb-92ad-cd03-1d4c-11942a9d6551';
 
 export interface DatabaseReleaseInspection {
   database: string;
@@ -16,7 +26,8 @@ export interface DatabaseReleaseInspection {
 }
 
 export interface DatabaseReleaseVerification {
-  demoEventCount?: number;
+  basicDemoEventCount?: number;
+  basicDemoChallengeCount?: number;
   migrationCount: number;
 }
 
@@ -31,7 +42,7 @@ export interface DatabaseReleaseResult {
 interface DatabaseReleaseOptions {
   confirmDatabase: string;
   databaseConfig: DatabaseConfig;
-  includeDemoSeed: boolean;
+  includeBasicDemoSeed: boolean;
   onInspection?: (inspection: DatabaseReleaseInspection) => void;
 }
 
@@ -40,8 +51,9 @@ interface DatabaseReleaseDependencies {
   inspectTarget?: typeof inspectDatabaseReleaseTarget;
   migrationsDirectory?: string;
   runMigrationFiles?: typeof runMigrations;
-  runSeedFiles?: typeof runSeeds;
+  runBasicDemoSeedFiles?: typeof runBasicDemoSeeds;
   seedsDirectory?: string;
+  basicDemoSeedsDirectory?: string;
   verifyRelease?: typeof verifyDatabaseRelease;
 }
 
@@ -49,7 +61,7 @@ export async function runDatabaseRelease(
   {
     confirmDatabase,
     databaseConfig,
-    includeDemoSeed,
+    includeBasicDemoSeed,
     onInspection = () => undefined,
   }: DatabaseReleaseOptions,
   {
@@ -57,8 +69,9 @@ export async function runDatabaseRelease(
     inspectTarget = inspectDatabaseReleaseTarget,
     migrationsDirectory = getMigrationsDirectory(),
     runMigrationFiles = runMigrations,
-    runSeedFiles = runSeeds,
+    runBasicDemoSeedFiles = runBasicDemoSeeds,
     seedsDirectory = getSeedsDirectory(),
+    basicDemoSeedsDirectory = getBasicDemoSeedsDirectory(),
     verifyRelease = verifyDatabaseRelease,
   }: DatabaseReleaseDependencies = {},
 ): Promise<DatabaseReleaseResult> {
@@ -76,13 +89,17 @@ export async function runDatabaseRelease(
     migrationsDirectory,
   );
   const readiness = await checkReadiness(databaseConfig);
-  const seeds = includeDemoSeed
-    ? await runSeedFiles(databaseConfig, seedsDirectory)
+  const seeds = includeBasicDemoSeed
+    ? await runBasicDemoSeedFiles(
+        databaseConfig,
+        seedsDirectory,
+        basicDemoSeedsDirectory,
+      )
     : null;
   const verification = await verifyRelease(databaseConfig, {
     expectedMigrationCount:
       migrations.applied.length + migrations.skipped.length,
-    verifyDemoEvent: includeDemoSeed,
+    verifyBasicDemo: includeBasicDemoSeed,
   });
 
   return {
@@ -125,8 +142,8 @@ export async function verifyDatabaseRelease(
   databaseConfig: DatabaseConfig,
   {
     expectedMigrationCount,
-    verifyDemoEvent,
-  }: { expectedMigrationCount: number; verifyDemoEvent: boolean },
+    verifyBasicDemo,
+  }: { expectedMigrationCount: number; verifyBasicDemo: boolean },
   runWithClient: DatabaseClientRunner = withDatabaseClient,
 ): Promise<DatabaseReleaseVerification> {
   return runWithClient(databaseConfig, async (client) => {
@@ -141,26 +158,48 @@ export async function verifyDatabaseRelease(
       );
     }
 
-    if (!verifyDemoEvent) {
+    if (!verifyBasicDemo) {
       return { migrationCount };
     }
 
-    const demoEvent = await client.query<{ count: string }>(
+    const demoEvents = await client.query<{ count: string }>(
       `select count(*)::text as count
          from public.events
-        where id = $1
+        where id = any($1::uuid[])
           and is_published = true`,
-      [DEMO_EVENT_ID],
+      [BASIC_DEMO_EVENT_IDS],
     );
-    const demoEventCount = parseCount(demoEvent, 'demo event');
+    const demoEventCount = parseCount(demoEvents, 'Basic demo event');
 
-    if (demoEventCount !== 1) {
+    if (demoEventCount !== BASIC_DEMO_EVENT_IDS.length) {
       throw new Error(
-        `Database verification failed: expected one published Sprint 1 demo event, found ${demoEventCount}.`,
+        `Database verification failed: expected ${BASIC_DEMO_EVENT_IDS.length} published Basic demo events, found ${demoEventCount}.`,
       );
     }
 
-    return { demoEventCount, migrationCount };
+    const challenges = await client.query<{ count: string }>(
+      `select count(*)::text as count
+         from public.event_challenges
+        where id = $1::uuid
+          and status = 'published'`,
+      [BASIC_DEMO_CHALLENGE_ID],
+    );
+    const basicDemoChallengeCount = parseCount(
+      challenges,
+      'Basic demo challenge',
+    );
+
+    if (basicDemoChallengeCount !== 1) {
+      throw new Error(
+        `Database verification failed: expected one published Basic demo challenge, found ${basicDemoChallengeCount}.`,
+      );
+    }
+
+    return {
+      basicDemoEventCount: demoEventCount,
+      basicDemoChallengeCount,
+      migrationCount,
+    };
   });
 }
 
