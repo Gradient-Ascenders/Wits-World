@@ -138,7 +138,7 @@ describe('CPU match service', () => {
   it('recovers one active match and its latest action in one read snapshot', async () => {
     const state = createBattleState(deck('player'), deck('cpu'));
     const query = vi.fn(async (statement: string, values?: unknown[]) => {
-      expect(values).toEqual([PLAYER_ID]);
+      expect(values).toEqual([PLAYER_ID, null, true]);
       expect(statement).toContain("match.status = 'active'");
       expect(statement).toContain('select action.result');
       expect(statement).toContain('order by action.sequence desc');
@@ -184,6 +184,76 @@ describe('CPU match service', () => {
       ),
     ).toBe(false);
   });
+
+  it.each([
+    {
+      completedAt: null,
+      phase: 'initial_selection' as const,
+      status: 'active' as const,
+      winner: null,
+    },
+    {
+      completedAt: new Date('2026-08-16T00:04:00.000Z'),
+      phase: 'completed' as const,
+      status: 'completed' as const,
+      winner: 'player' as const,
+    },
+  ])(
+    'reads a $status match and latest action through one ownership-scoped statement',
+    async ({ completedAt, phase, status, winner }) => {
+      const state = {
+        ...createBattleState(deck('player'), deck('cpu')),
+        phase,
+        winner,
+      };
+      const latestAction = {
+        action: { type: 'timeout' as const },
+        defeatedCreatureId: null,
+        effects: [],
+        side: 'cpu' as const,
+        turnEnded: true,
+        winner,
+      };
+      const query = vi.fn(async (statement: string, values?: unknown[]) => {
+        expect(values).toEqual([PLAYER_ID, MATCH_ID, false]);
+        expect(statement).toContain('match.player_id = $1::uuid');
+        expect(statement).toContain('match.id = $2::uuid');
+        expect(statement).toContain('select action.result');
+        expect(statement).toContain('order by action.sequence desc');
+
+        return {
+          rows: [
+            {
+              completed_at: completedAt,
+              id: MATCH_ID,
+              latest_action: latestAction,
+              player_id: PLAYER_ID,
+              started_at: new Date('2026-08-16T00:00:00.000Z'),
+              state,
+              status,
+              turn_deadline: null,
+              turn_started_at: null,
+              version: 4,
+              winner,
+            },
+          ],
+        };
+      });
+      const service = createCpuMatchService(fakeDatabase(query));
+
+      const response = await service.getMatch(PLAYER_ID, MATCH_ID);
+
+      expect(response).toMatchObject({
+        completedAt: completedAt?.toISOString() ?? null,
+        lastAction: latestAction,
+        matchId: MATCH_ID,
+        status,
+        version: 4,
+        winner,
+      });
+      expect(query).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it('fails safely if the one-active-match invariant is violated', async () => {
     const state = createBattleState(deck('player'), deck('cpu'));

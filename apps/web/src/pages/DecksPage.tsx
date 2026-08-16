@@ -20,6 +20,7 @@ import {
   updateSavedDeck,
   type SavedDeck,
 } from '../api/decks';
+import { MatchApiError } from '../api/matches';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { CollectibleCard } from '../components/cards/CollectibleCard';
 import '../components/cards/cards.css';
@@ -27,7 +28,7 @@ import './decks.css';
 
 interface DecksPageProps {
   apiBaseUrl: string;
-  onStartMatch?: (deckId: string) => void;
+  onStartMatch?: (deckId: string, signal: AbortSignal) => Promise<void> | void;
 }
 
 type DecksState =
@@ -54,7 +55,7 @@ interface DraftSummary {
 
 type PendingOperation = {
   deckId?: string;
-  kind: 'delete' | 'save' | 'select';
+  kind: 'delete' | 'save' | 'select' | 'start';
 } | null;
 
 // BASIC-07 and BASIC-08 are mirrored for immediate explanation only. The API
@@ -83,6 +84,7 @@ export default function DecksPage({
   const [draft, setDraft] = useState<DeckDraft | null>(null);
   const [pending, setPending] = useState<PendingOperation>(null);
   const [actionError, setActionError] = useState<DeckApiError | null>(null);
+  const [matchError, setMatchError] = useState<MatchApiError | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState<string | null>(
     null,
@@ -135,13 +137,14 @@ export default function DecksPage({
   }, [draft?.deckId, draft?.mode]);
 
   useEffect(() => {
-    if (actionError !== null) {
+    if (actionError !== null || matchError !== null) {
       actionAlert.current?.focus();
     }
-  }, [actionError]);
+  }, [actionError, matchError]);
 
   const reload = useCallback(() => {
     setActionError(null);
+    setMatchError(null);
     setReauthFailed(false);
     setState({ status: 'loading' });
     setRevision((value) => value + 1);
@@ -163,6 +166,7 @@ export default function DecksPage({
     }
 
     setActionError(null);
+    setMatchError(null);
     setDeleteConfirmation(null);
     setNotice(null);
     setReauthFailed(false);
@@ -175,6 +179,7 @@ export default function DecksPage({
     }
 
     setActionError(null);
+    setMatchError(null);
     setDeleteConfirmation(null);
     setNotice(null);
     setReauthFailed(false);
@@ -267,6 +272,7 @@ export default function DecksPage({
     const controller = new AbortController();
     mutationRequest.current = controller;
     setActionError(null);
+    setMatchError(null);
     setNotice(null);
     setReauthFailed(false);
     setPending({ deckId: deck.deckId, kind: 'select' });
@@ -312,6 +318,7 @@ export default function DecksPage({
     const controller = new AbortController();
     mutationRequest.current = controller;
     setActionError(null);
+    setMatchError(null);
     setNotice(null);
     setReauthFailed(false);
     setPending({ deckId: deck.deckId, kind: 'delete' });
@@ -347,6 +354,30 @@ export default function DecksPage({
     } catch (error) {
       if (!controller.signal.aborted) {
         await handleMutationError(error, deck.deckId);
+      }
+    } finally {
+      finishMutation(controller);
+    }
+  }
+
+  async function startMatch(deck: SavedDeck) {
+    if (pending !== null || !onStartMatch) {
+      return;
+    }
+
+    const controller = new AbortController();
+    mutationRequest.current = controller;
+    setActionError(null);
+    setMatchError(null);
+    setNotice(null);
+    setReauthFailed(false);
+    setPending({ deckId: deck.deckId, kind: 'start' });
+
+    try {
+      await onStartMatch(deck.deckId, controller.signal);
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setMatchError(toMatchApiError(error));
       }
     } finally {
       finishMutation(controller);
@@ -445,10 +476,25 @@ export default function DecksPage({
         />
       ) : null}
 
+      {matchError ? (
+        <MatchStartError
+          error={matchError}
+          onRetry={activeDeck ? () => void startMatch(activeDeck) : undefined}
+          onSignIn={startSignIn}
+          reauthFailed={reauthFailed}
+          ref={actionAlert}
+        />
+      ) : null}
+
       <SelectedDeckHandoff
         deck={activeDeck}
         headingRef={activeDeckHeading}
-        onStartMatch={onStartMatch}
+        isStarting={pending?.kind === 'start'}
+        onStartMatch={
+          onStartMatch && activeDeck
+            ? () => void startMatch(activeDeck)
+            : undefined
+        }
       />
 
       <section aria-labelledby="saved-decks-title" className="saved-decks">
@@ -561,10 +607,12 @@ function RulesPanel() {
 export function SelectedDeckHandoff({
   deck,
   headingRef,
+  isStarting = false,
   onStartMatch,
 }: {
   deck: SavedDeck | null;
   headingRef?: RefObject<HTMLHeadingElement | null>;
+  isStarting?: boolean;
   onStartMatch?: (deckId: string) => void;
 }) {
   return (
@@ -586,10 +634,11 @@ export function SelectedDeckHandoff({
       {deck && onStartMatch ? (
         <button
           className="button"
+          disabled={isStarting}
           onClick={() => onStartMatch(deck.deckId)}
           type="button"
         >
-          Start CPU match
+          {isStarting ? 'Starting CPU match…' : 'Start CPU match'}
         </button>
       ) : null}
     </section>
@@ -617,7 +666,7 @@ function SavedDeckCard({
   onDelete: () => void;
   onEdit: () => void;
   onSelect: () => void;
-  pendingKind?: 'delete' | 'save' | 'select';
+  pendingKind?: 'delete' | 'save' | 'select' | 'start';
 }) {
   const deleteControl = useRef<HTMLButtonElement | null>(null);
   const restoreDeleteFocusAfterCancel = useRef(false);
@@ -1116,6 +1165,50 @@ const DeckActionError = forwardRef<
   );
 });
 
+const MatchStartError = forwardRef<
+  HTMLDivElement,
+  {
+    error: MatchApiError;
+    onRetry?: () => void;
+    onSignIn: () => Promise<void>;
+    reauthFailed: boolean;
+  }
+>(function MatchStartError({ error, onRetry, onSignIn, reauthFailed }, ref) {
+  const message =
+    error.failure === 'authorization'
+      ? 'Your session expired before the match could be opened. Sign in again to reconcile your active match.'
+      : error.failure === 'deck-invalid'
+        ? 'The server no longer accepts this selected deck for a CPU match. Review and reselect it before trying again.'
+        : 'The match could not be opened after a bounded active-match check. Check your connection and try again; Wits World will reconcile before creating anything.';
+
+  return (
+    <div className="deck-action-error" ref={ref} role="alert" tabIndex={-1}>
+      <strong>CPU match not opened.</strong> {message}
+      {error.options.requestId ? (
+        <small> Support reference: {error.options.requestId}</small>
+      ) : null}
+      {error.failure === 'authorization' ? (
+        <>
+          <button
+            className="button"
+            onClick={() => void onSignIn()}
+            type="button"
+          >
+            Sign in again
+          </button>
+          {reauthFailed ? (
+            <small>Sign-in could not start. Try again.</small>
+          ) : null}
+        </>
+      ) : onRetry ? (
+        <button className="button" onClick={onRetry} type="button">
+          Reconcile and try again
+        </button>
+      ) : null}
+    </div>
+  );
+});
+
 function summarizeDraft(draft: DeckDraft, cards: OwnedCard[]): DraftSummary {
   const cardsById = new Map(cards.map((card) => [card.ownedCardId, card]));
   const selectedCards = draft.ownedCardIds
@@ -1210,6 +1303,12 @@ function toDeckApiError(error: unknown) {
   }
 
   return new DeckApiError('unavailable');
+}
+
+function toMatchApiError(error: unknown) {
+  return error instanceof MatchApiError
+    ? error
+    : new MatchApiError('unavailable');
 }
 
 function titleCase(value: string) {

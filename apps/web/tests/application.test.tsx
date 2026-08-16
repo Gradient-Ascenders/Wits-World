@@ -1,6 +1,11 @@
-import { render, screen } from '@testing-library/react';
+import {
+  Auth0Context,
+  initialContext,
+  type Auth0ContextInterface,
+} from '@auth0/auth0-react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Router } from 'wouter';
 
 import { AppRoutes } from '../src/App';
@@ -12,12 +17,22 @@ function renderRoute(path: string) {
   window.history.replaceState({}, '', path);
 
   return render(
-    <Router>
-      <AppRoutes
-        apiBaseUrl={apiBaseUrl}
-        mapboxAccessToken={mapboxAccessToken}
-      />
-    </Router>,
+    <Auth0Context.Provider
+      value={
+        {
+          ...initialContext,
+          isLoading: false,
+          loginWithRedirect: vi.fn().mockResolvedValue(undefined),
+        } as unknown as Auth0ContextInterface
+      }
+    >
+      <Router>
+        <AppRoutes
+          apiBaseUrl={apiBaseUrl}
+          mapboxAccessToken={mapboxAccessToken}
+        />
+      </Router>
+    </Auth0Context.Provider>,
   );
 }
 
@@ -98,23 +113,16 @@ describe('Wits World application shell', () => {
     expect(screen.getByRole('link', { name: 'Decks' })).toHaveFocus();
 
     await user.tab();
-    const aboutLink = screen.getByRole('link', { name: 'About' });
-    expect(aboutLink).toHaveFocus();
+    const battlesLink = screen.getByRole('link', { name: 'Battles' });
+    expect(battlesLink).toHaveFocus();
 
     await user.keyboard('{Enter}');
     expect(
       await screen.findByRole('heading', {
-        level: 1,
-        name: 'About Wits World',
+        name: 'Sign in to play a CPU battle',
       }),
     ).toBeVisible();
-    expect(
-      screen.getByText(/supports authenticated event discovery/i),
-    ).toBeVisible();
-    expect(
-      screen.getByText(/request a browser location reading/i),
-    ).toBeVisible();
-    expect(aboutLink).toHaveAttribute('aria-current', 'page');
+    expect(battlesLink).toHaveAttribute('aria-current', 'page');
   });
 
   it('links to live exploration while presenting later gameplay as previews', async () => {
@@ -151,7 +159,9 @@ describe('Wits World application shell', () => {
         name: 'Build a collection with a sense of place',
       }),
     ).toBeVisible();
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole('main')).queryByRole('button'),
+    ).not.toBeInTheDocument();
   });
 
   it('renders a useful fallback for an unknown route', async () => {
