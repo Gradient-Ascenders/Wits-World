@@ -74,7 +74,8 @@ The API is responsible for protected decisions, including:
 - event eligibility;
 - protected game rules;
 - authorisation; and
-- safe API responses.
+- safe API responses;
+- CPU match state, legal actions, random CPU decisions, and match results.
 
 The map integration is used for presentation. It does not determine whether an
 event is reachable.

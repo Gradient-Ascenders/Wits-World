@@ -116,6 +116,10 @@ published fixture already contains its documented values. The Sprint 2
 lifecycle guard treats published event content as immutable, so the seed is not
 an administrative mechanism for rewriting a live published event.
 
+`database/seeds/0003_sprint_1_demo_challenge.sql` adds the associated
+deterministic published five-question challenge; its immutable choices and
+private answer keys use fixed IDs with conflict-safe inserts.
+
 The server-side distance, availability, and radius rules are documented in the
 [event eligibility calculation](./event-eligibility.md).
 
@@ -154,4 +158,4 @@ psql "$TEST_DATABASE_URL" -c \
 Do not paste database URLs, passwords, or other secrets into issue evidence.
 
 The preceding document was generated and edited with the assistance of:
-Codex-CLI[GPT-5].
+Codex-CLI[GPT-5], Codex[GPT-5].

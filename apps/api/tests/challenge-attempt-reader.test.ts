@@ -72,6 +72,9 @@ describe('challenge attempt reader', () => {
       })
       .mockResolvedValueOnce({
         rows: [],
+      })
+      .mockResolvedValueOnce({
+        rows: completedReviewRows({ scoreCorrect: 4 }),
       });
 
     const reader = createChallengeAttemptReader(createQueryable(query));
@@ -91,6 +94,7 @@ describe('challenge attempt reader', () => {
         coinsAwarded: 40,
         cards: [],
       },
+      review: completedReview({ scoreCorrect: 4 }),
     });
 
     expect(attempt).not.toHaveProperty('questions');
@@ -226,6 +230,9 @@ describe('challenge attempt reader', () => {
             rarity: 'common',
           },
         ],
+      })
+      .mockResolvedValueOnce({
+        rows: completedReviewRows({ scoreCorrect: 3 }),
       });
 
     const reader = createChallengeAttemptReader(createQueryable(query));
@@ -254,11 +261,105 @@ describe('challenge attempt reader', () => {
           },
         ],
       },
+      review: completedReview({ scoreCorrect: 3 }),
     });
 
     expect(attempt).not.toHaveProperty('questions');
     expect(attempt).not.toHaveProperty('selectedChoiceId');
     expect(attempt).not.toHaveProperty('answeredAt');
+  });
+
+  it('returns unanswered timeout review entries as incorrect with the correct choice', async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            attempt_id: ATTEMPT_ID,
+            event_id: EVENT_ID,
+            format: 'multiple_choice',
+            status: 'completed',
+            started_at: new Date('2026-09-01T10:00:00.000Z'),
+            deadline: new Date('2026-09-01T10:02:00.000Z'),
+            completed_at: new Date('2026-09-01T10:02:00.000Z'),
+            completion_reason: 'timeout',
+            score_correct: 1,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            completion_id: '41000000-0000-4000-8000-000000000001',
+            coins_awarded: 25,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: completedReviewRows({ scoreCorrect: 1, answeredCount: 2 }),
+      });
+
+    const reader = createChallengeAttemptReader(createQueryable(query));
+    const attempt = await reader.findByPlayerAndAttempt(PLAYER_ID, ATTEMPT_ID);
+
+    if (!attempt || attempt.status !== 'completed') {
+      throw new Error('Expected a completed attempt.');
+    }
+
+    expect(attempt.review).toHaveLength(5);
+    expect(attempt.review[2]).toEqual({
+      attemptQuestionId: '32000000-0000-4000-8000-000000000003',
+      position: 3,
+      prompt: 'Question 3',
+      selectedChoice: null,
+      correctChoice: {
+        choiceId: '33000000-0000-4000-0003-000000000002',
+        text: 'Choice 3.2',
+      },
+      isCorrect: false,
+    });
+    expect(attempt.review.filter((entry) => entry.isCorrect)).toHaveLength(
+      attempt.scoreCorrect,
+    );
+  });
+
+  it('rejects completed review data that disagrees with the persisted score', async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            attempt_id: ATTEMPT_ID,
+            event_id: EVENT_ID,
+            format: 'multiple_choice',
+            status: 'completed',
+            started_at: new Date('2026-09-01T10:00:00.000Z'),
+            deadline: new Date('2026-09-01T10:02:00.000Z'),
+            completed_at: new Date('2026-09-01T10:01:25.000Z'),
+            completion_reason: 'answered',
+            score_correct: 4,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            completion_id: '41000000-0000-4000-8000-000000000001',
+            coins_awarded: 40,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: completedReviewRows({ scoreCorrect: 3 }),
+      });
+
+    const reader = createChallengeAttemptReader(createQueryable(query));
+
+    await expect(
+      reader.findByPlayerAndAttempt(PLAYER_ID, ATTEMPT_ID),
+    ).rejects.toThrow('Completed challenge attempt review is inconsistent.');
   });
 
   it('rejects an incomplete persisted in-progress snapshot', async () => {
@@ -329,4 +430,61 @@ function createQueryable(
   return {
     query: query as ChallengeAttemptQueryable['query'],
   };
+}
+
+function completedReviewRows({
+  scoreCorrect,
+  answeredCount = 5,
+}: {
+  scoreCorrect: number;
+  answeredCount?: number;
+}) {
+  return Array.from({ length: 5 }, (_, index) => {
+    const position = index + 1;
+    const selectedChoiceNumber = position <= scoreCorrect ? 2 : 1;
+    const answered = position <= answeredCount;
+
+    return {
+      attempt_question_id: `32000000-0000-4000-8000-${String(position).padStart(12, '0')}`,
+      position,
+      prompt_snapshot: `Question ${position}`,
+      selected_choice_id: answered
+        ? `33000000-0000-4000-${String(position).padStart(4, '0')}-${String(
+            selectedChoiceNumber,
+          ).padStart(12, '0')}`
+        : null,
+      selected_choice_text: answered
+        ? `Choice ${position}.${selectedChoiceNumber}`
+        : null,
+      correct_choice_id: `33000000-0000-4000-${String(position).padStart(
+        4,
+        '0',
+      )}-000000000002`,
+      correct_choice_text: `Choice ${position}.2`,
+      is_correct: answered && selectedChoiceNumber === 2,
+    };
+  });
+}
+
+function completedReview(options: {
+  scoreCorrect: number;
+  answeredCount?: number;
+}) {
+  return completedReviewRows(options).map((entry) => ({
+    attemptQuestionId: entry.attempt_question_id,
+    position: entry.position,
+    prompt: entry.prompt_snapshot,
+    selectedChoice:
+      entry.selected_choice_id === null
+        ? null
+        : {
+            choiceId: entry.selected_choice_id,
+            text: entry.selected_choice_text,
+          },
+    correctChoice: {
+      choiceId: entry.correct_choice_id,
+      text: entry.correct_choice_text,
+    },
+    isCorrect: entry.is_correct,
+  }));
 }

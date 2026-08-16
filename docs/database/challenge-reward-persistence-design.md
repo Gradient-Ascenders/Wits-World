@@ -46,8 +46,14 @@ from its shared card definition.
 - Each awarded duplicate is a separate owned-card row.
 - Browser input never determines correctness, score, coin value, rarity, or
   awarded card definition.
-- Player routes never expose private accepted answers, correct-answer
-  relationships, or Author-only explanation content.
+- Marking is server-authoritative. While a timed attempt is active, Player
+  routes do not expose correct choices, per-question correctness, private
+  answer-key relationships, or explanations.
+- After authoritative completion, the Player review may expose the player's
+  selected choice, the correct choice, and per-question correctness. The review
+  is reconstructed from immutable question/choice snapshots, persisted locked
+  answers, and the private answer key; private answer-key source identifiers
+  remain private and explanations remain excluded from Player responses.
 - Author content mutations derive the acting Author from the authenticated
   server context and record create, edit, publish, and retire actions in the
   audit trail.
@@ -346,7 +352,8 @@ same transaction:
 5. Insert and apply a positive coin ledger credit.
 6. Insert zero, one, or two event-reward ownership rows.
 7. Mark the attempt completed with its reason, score, and timestamp.
-8. Commit, then return the persisted result.
+8. Commit, then return the persisted score/reward result with the review derived
+   from the same authoritative attempt state.
 
 Any failure rolls back every effect. Constraints make retries converge on one
 completion instead of issuing additional coins or cards. The expiry worker
@@ -381,6 +388,34 @@ The completed attempt gains a server-generated reward result:
   }
 }
 ```
+
+It also gains exactly five review entries in persisted question order:
+
+```ts
+review: Array<{
+  attemptQuestionId: string;
+  position: number;
+  prompt: string;
+  selectedChoice: { choiceId: string; text: string } | null;
+  correctChoice: { choiceId: string; text: string };
+  isCorrect: boolean;
+}>;
+```
+
+The selected and correct choice IDs are attempt-choice snapshot IDs, so they
+match the choices shown during the attempt without exposing source authoring IDs
+or the private `accepted_choice_id`. `selectedChoice` is read from the immutable
+`attempt_answers` row and is `null` when timeout leaves a question unanswered.
+The correct snapshot is selected by joining the attempt question's source row to
+`private.challenge_answer_keys`, then matching the accepted source choice back
+to that attempt's persisted shuffled choices. The server derives `isCorrect`;
+unanswered entries are false and the number of true entries must equal the
+persisted `score_correct`. An `answered` completion must have five non-null
+selected choices. The completed Player review has no explanation field; Author-only question
+explanations are not exposed through Player challenge responses.
+
+No review, correct choice, correctness, score, or reward field is returned while
+the attempt is `in_progress`.
 
 The response is reconstructed from persisted rows. The browser never submits
 any field in `reward`.
@@ -425,31 +460,37 @@ Issue #64 adds the migration layer in dependency order:
 9. `0011_create_saved_decks.sql` adds saved decks, exact owned-copy
    memberships, ownership-safe composite relationships, deterministic positions,
    and one active deck selection per player.
-10. `0013_add_author_content_foundation.sql` adds question explanations,
+10. `0012_create_cpu_matches.sql` adds server-authoritative CPU match state,
+    immutable card snapshots, ordered rounds/actions, and private completed
+    history.
+11. `0013_add_author_content_foundation.sql` adds question explanations,
     immutable Author-content audit records, and database enforcement that audit
     actors are active Authors.
-11. `0014_harden_author_challenge_lifecycle.sql` hardens question and challenge
+12. `0014_harden_author_challenge_lifecycle.sql` hardens question and challenge
     immutability and lifecycle transitions used by protected challenge
     authoring.
-12. `0015_add_card_authoring_lifecycle.sql` adds explicit draft, published, and
+13. `0015_add_card_authoring_lifecycle.sql` adds explicit draft, published, and
     retired card states, active-state consistency, and published-card content
     immutability.
-13. `0016_add_event_authoring_lifecycle.sql` adds event retirement, publication
+14. `0016_add_event_authoring_lifecycle.sql` adds event retirement, publication
     readiness validation, published-event immutability, and protection against
     retiring the challenge beneath a live published event.
 
-The database integration suite applies all fifteen migrations to an empty
+The database integration suite applies all sixteen migrations to an empty
+PostgreSQL/PostGIS database and checks that a second run is a no-op.
 PostgreSQL/PostGIS database and checks that a second run is a no-op. The
 `0002_basic_card_catalogue.sql` seed is repeatable and provides deterministic
 demonstration cards for all starter affinities plus non-Common examples for
 catalogue/reward testing. The seed does not claim to be final production card
 artwork or balance.
 
-The existing Sprint 1 demo event carries over as an unchanged `events` row. It
-has no challenge until a separate draft `event_challenges` row and at least five
-valid questions are deliberately authored and published. Applying these
-migrations therefore must not make the seed discoverable as a challenge or
-change its current discovery and eligibility behavior.
+The existing Sprint 1 demo event carries over as an unchanged `events` row.
+For local development, `0003_sprint_1_demo_challenge.sql` supplies one
+deterministic published challenge with five valid questions, immutable private
+answer keys, and the existing seeded reward catalogue. It makes the real
+challenge flow demonstrable without changing event discovery or eligibility
+rules. The fixture is non-production content; authoring changes to published
+questions still require replacements rather than mutation.
 
 Schema-only migrations may be reversed before challenge data is written. After
 attempts or rewards exist, rollback cannot safely drop ownership, ledger, or
@@ -461,7 +502,8 @@ deletion while attempts reference it.
 Repository tests must cover concurrent start, duplicate answers, deadline races,
 concurrent timeout workers, completion retry, rollback, unavailable rarity pools,
 and duplicate awards. API tests must prove answer keys and correctness details
-never cross the response boundary.
+never cross the response boundary while an attempt is active, and that only the
+defined review fields reveal them after completion.
 
 The event rule remains `starts_at < ends_at`; this design does not introduce an
 unapproved one-to-three-hour duration limit. Exact retention periods for answers,
@@ -472,4 +514,5 @@ production migration rollout and are tracked as `BASIC-12` in the
 [Basic-tier decision register](../requirements/basic-tier-decision-register.md).
 
 This design was planned, generated, edited, and reviewed with the assistance of
-Codex[GPT-5.6 Sol], Codex-CLI[gpt-5.6-sol medium], and ChatGPT-Web[GPT-5.6 Sol].
+Codex[GPT-5.6 Sol], Codex-CLI[gpt-5.6-sol medium], Codex[GPT-5], and
+ChatGPT-Web[GPT-5.6 Sol].

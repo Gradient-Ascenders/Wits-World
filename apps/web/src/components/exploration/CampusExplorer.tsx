@@ -22,6 +22,7 @@ interface CampusExplorerProps {
   mapConfiguration: MapConfiguration;
   mapFactory?: MapFactory;
   onCheckEligibility: (eventId: string) => void;
+  onStartChallenge?: (eventId: string) => void;
   onRetry: () => void;
   reportedLocation?: MapCoordinate | null;
 }
@@ -42,6 +43,7 @@ export function CampusExplorer({
   mapConfiguration,
   mapFactory,
   onCheckEligibility,
+  onStartChallenge = () => undefined,
   onRetry,
   reportedLocation = null,
 }: CampusExplorerProps) {
@@ -74,6 +76,7 @@ export function CampusExplorer({
         eligibility={eligibility}
         eligibilityBusy={eligibilityBusy}
         onCheckEligibility={onCheckEligibility}
+        onStartChallenge={onStartChallenge}
         onRetry={onRetry}
       />
     </section>

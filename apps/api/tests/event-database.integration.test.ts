@@ -85,6 +85,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0009_create_card_catalogue_and_starter_grants.sql',
         '0010_add_card_modifier_metadata.sql',
         '0011_create_saved_decks.sql',
+        '0012_create_cpu_matches.sql',
         '0013_add_author_content_foundation.sql',
         '0014_harden_author_challenge_lifecycle.sql',
         '0015_add_card_authoring_lifecycle.sql',
@@ -106,6 +107,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0009_create_card_catalogue_and_starter_grants.sql',
         '0010_add_card_modifier_metadata.sql',
         '0011_create_saved_decks.sql',
+        '0012_create_cpu_matches.sql',
         '0013_add_author_content_foundation.sql',
         '0014_harden_author_challenge_lifecycle.sql',
         '0015_add_card_authoring_lifecycle.sql',
@@ -201,6 +203,69 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
           radiusMetres: 75,
           title: 'Sprint 1 Demo - Wits Great Hall',
         }),
+      ]);
+    });
+  }, 30_000);
+
+  it('seeds one published five-question challenge for the Great Hall event', async () => {
+    await withDatabaseClient(temporaryConfig, async (client) => {
+      const seededChallenge = await client.query<{
+        choice_count: string;
+        challenge_count: string;
+        key_count: string;
+        published_question_count: string;
+        valid_question_count: string;
+      }>(
+        `
+          select
+            count(distinct challenge.id)::text as challenge_count,
+            count(distinct question.id) filter (
+              where question.status = 'published'
+            )::text as published_question_count,
+            count(distinct choice.id)::text as choice_count,
+            count(distinct answer_key.question_id)::text as key_count,
+            (
+              select count(*)::text
+              from (
+                select
+                  question.id,
+                  count(distinct choice.id) as choice_count,
+                  count(distinct answer_key.question_id) as key_count
+                from public.event_challenges challenge
+                join public.challenge_questions question
+                  on question.challenge_id = challenge.id
+                left join public.challenge_choices choice
+                  on choice.question_id = question.id
+                left join private.challenge_answer_keys answer_key
+                  on answer_key.question_id = question.id
+                where challenge.event_id = $1::uuid
+                  and challenge.status = 'published'
+                group by question.id
+              ) question_integrity
+              where choice_count = 4
+                and key_count = 1
+            ) as valid_question_count
+          from public.event_challenges challenge
+          left join public.challenge_questions question
+            on question.challenge_id = challenge.id
+          left join public.challenge_choices choice
+            on choice.question_id = question.id
+          left join private.challenge_answer_keys answer_key
+            on answer_key.question_id = question.id
+          where challenge.event_id = $1::uuid
+            and challenge.status = 'published'
+        `,
+        [DEMO_EVENT_ID],
+      );
+
+      expect(seededChallenge.rows).toEqual([
+        {
+          challenge_count: '1',
+          published_question_count: '5',
+          choice_count: '20',
+          key_count: '5',
+          valid_question_count: '5',
+        },
       ]);
     });
   }, 30_000);

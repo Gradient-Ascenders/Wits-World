@@ -198,7 +198,7 @@ Open or resume the correct event quiz only after authoritative eligibility.
 
 ### Purpose
 
-Mark quiz answers on the server and return useful learning feedback safely.
+Mark quiz answers on the server while keeping Basic player feedback safe.
 
 ### Acceptance criteria
 
@@ -206,8 +206,11 @@ Mark quiz answers on the server and return useful learning feedback safely.
 - [ ] Attempt, event, question, and authenticated player are bound together
 - [ ] Each question affects the score at most once
 - [ ] Unanswered questions become incorrect after the deadline
-- [ ] Correct and incorrect responses reveal safe answer/explanation feedback
-- [ ] Correct, incorrect, malformed, duplicate, concurrent, expired, and ownership tests pass
+- [ ] Accepted answers produce neutral saved-progress feedback only
+- [ ] Active Basic responses reveal no correctness or answer key; completed
+      results reveal the score, reward outcome, and five-question answer review
+      without explanations
+- [ ] Marking, malformed, duplicate, concurrent, expired, and ownership tests pass
 
 ---
 
@@ -259,8 +262,9 @@ Let eligible mobile players complete a quiz and understand its result.
 
 - [ ] The browser submits answer intent, never correctness, score, or rewards
 - [ ] The timer uses the server deadline and refresh resumes the attempt
-- [ ] Correct, incorrect, timeout, expired, duplicate, and reward states are clear
-- [ ] Feedback includes the correct answer or explanation
+- [ ] Saved-progress, timeout, expired, duplicate, and reward states are clear
+- [ ] Active feedback is neutral; authoritative completion reveals the five
+      server-derived answer-review entries without explanations
 - [ ] Keyboard, touch, screen-reader, and required responsive widths work
 - [ ] UI tests cover active, result, timeout, reward, and failure states
 
@@ -605,5 +609,5 @@ Every Sprint 2 implementation issue is complete only when:
 This issue plan was prepared and reviewed with assistance from:
 
 ```text
-Codex-CLI[GPT-5.6 Sol]
+Codex-CLI[GPT-5.6 Sol], Codex[GPT-5]
 ```

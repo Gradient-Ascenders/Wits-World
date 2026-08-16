@@ -267,6 +267,40 @@ const rewardCardSchema = {
   },
 } as const;
 
+const completedReviewEntrySchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'attemptQuestionId',
+    'position',
+    'prompt',
+    'selectedChoice',
+    'correctChoice',
+    'isCorrect',
+  ],
+  properties: {
+    attemptQuestionId: {
+      type: 'string',
+      format: 'uuid',
+    },
+    position: {
+      type: 'integer',
+      minimum: 1,
+      maximum: 5,
+    },
+    prompt: {
+      type: 'string',
+    },
+    selectedChoice: {
+      anyOf: [playerSafeChoiceSchema, { type: 'null' }],
+    },
+    correctChoice: playerSafeChoiceSchema,
+    isCorrect: {
+      type: 'boolean',
+    },
+  },
+} as const;
+
 const completedAttemptResponseSchema = {
   type: 'object',
   additionalProperties: false,
@@ -280,6 +314,7 @@ const completedAttemptResponseSchema = {
     'totalQuestions',
     'scoreCorrect',
     'reward',
+    'review',
     'requestId',
   ],
   properties: {
@@ -332,6 +367,12 @@ const completedAttemptResponseSchema = {
           items: rewardCardSchema,
         },
       },
+    },
+    review: {
+      type: 'array',
+      minItems: 5,
+      maxItems: 5,
+      items: completedReviewEntrySchema,
     },
     requestId: {
       type: 'string',

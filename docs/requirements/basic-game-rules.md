@@ -49,9 +49,13 @@ or ownership result.
   published cards are active for starter and reward selection. Retiring a card
   removes it from future catalogue selection without deleting owned copies that
   already reference that definition.
-- Protected Author APIs may return private accepted-answer information required
-  for content management. Player APIs never expose accepted answers,
-  per-question correctness, correct answers, or explanations.
+- Protected Author APIs may return private accepted-answer information and
+  explanations required for content management. Player APIs never expose
+  private answer-key identifiers or explanations. During an active timed
+  attempt they also withhold correct answers and per-question correctness;
+  after authoritative completion the defined five-question review may return
+  the player's selected choice, the correct choice, and server-derived
+  correctness.
 - Authors do not configure authoritative coin values, reward rarity outcomes, or
   awarded card definitions. Basic rewards remain server-authoritative and are
   calculated from the approved score policy.
@@ -120,11 +124,12 @@ or ownership result.
   answered question is rejected.
 - Server receipt time decides whether an answer met the deadline.
 - At expiry, unanswered questions count as incorrect and the attempt completes.
-- On completion, the API returns only the final number correct (`0`-`5`) and the
-  reward outcome. It does not reveal per-question correctness, the player's
-  accepted choices, correct answers, or explanations. The 2026-08-13 product
-  decision recorded as `BASIC-03` supersedes the conflicting feedback wording in
-  issues #66 and #68.
+- Marking is server-authoritative. During an active timed attempt, the API does
+  not reveal correctness or answer keys. After authoritative completion, it
+  returns the final score and reward outcome plus five ordered review entries
+  containing the player's locked answer (or `null` after timeout), the correct
+  answer, and server-derived correctness. The completed Player review has no
+  explanation field.
 - Scores from zero through five are completed attempts. A low score does not
   create another attempt.
 
@@ -265,4 +270,4 @@ anti-cheat trust scoring, territory control, seasons, advanced analytics, or an
 advanced author review workflow.
 
 This document was planned, generated, and edited with the assistance of
-Codex-CLI[gpt-5.6-sol medium].
+Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5].

@@ -10,8 +10,10 @@ access-token retrieval, and a premium editorial home page. The home-page map,
 event status, and collectible cards are explicitly static product previews; the
 live seeded-event experience is available through the protected `/explore`
 route. The protected experience includes one-shot browser geolocation and
-API-authoritative event eligibility. It does not yet include challenges, cards,
-or battles.
+API-authoritative event eligibility and the protected timed challenge journey.
+Challenges restore their server-owned attempt, submit answer intent only, and
+display the persisted final score, rewards, and completed answer review. Card
+collection and battles remain outside the live player flow.
 
 ## Run locally
 
@@ -59,13 +61,16 @@ The preview server uses `http://localhost:4173`.
 
 ## Environment configuration
 
-| Variable                   | Required | Browser-visible | Purpose                                  |
-| -------------------------- | -------- | --------------- | ---------------------------------------- |
-| `VITE_API_BASE_URL`        | Yes      | Yes             | Base URL reserved for the Wits Quest API |
-| `VITE_AUTH0_DOMAIN`        | Yes      | Yes             | Auth0 tenant hostname without a protocol |
-| `VITE_AUTH0_CLIENT_ID`     | Yes      | Yes             | Public Auth0 single-page application ID  |
-| `VITE_AUTH0_AUDIENCE`      | Yes      | Yes             | Audience identifying the Wits World API  |
-| `VITE_MAPBOX_ACCESS_TOKEN` | Yes      | Yes             | URL-restricted public Mapbox `pk.` token |
+| Variable                   | Required | Browser-visible  | Purpose                                            |
+| -------------------------- | -------- | ---------------- | -------------------------------------------------- |
+| `VITE_API_BASE_URL`        | Yes      | Yes              | Base URL reserved for the Wits Quest API           |
+| `VITE_AUTH0_DOMAIN`        | Yes      | Yes              | Auth0 tenant hostname without a protocol           |
+| `VITE_AUTH0_CLIENT_ID`     | Yes      | Yes              | Public Auth0 single-page application ID            |
+| `VITE_AUTH0_AUDIENCE`      | Yes      | Yes              | Audience identifying the Wits World API            |
+| `VITE_MAPBOX_ACCESS_TOKEN` | Yes      | Yes              | URL-restricted public Mapbox `pk.` token           |
+| `VITE_DEV_GEO_LAT`         | No       | Development only | Override latitude for local flow testing           |
+| `VITE_DEV_GEO_LNG`         | No       | Development only | Override longitude for local flow testing          |
+| `VITE_DEV_GEO_ACCURACY`    | No       | Development only | Override accuracy in metres for local flow testing |
 
 The committed `.env.example` contains the approved development domain and
 audience plus safe Client ID and Mapbox token placeholders. A fresh checkout
@@ -76,6 +81,12 @@ is recorded in [Mapbox operations](../../docs/deployment/mapbox-operations.md).
 Only public values may use the `VITE_` prefix because Vite includes them in the
 browser bundle. Do not place tokens, passwords, private keys, or other secrets in
 this workspace's environment file.
+
+For local location-gated flow testing, place all three optional
+`VITE_DEV_GEO_LAT`, `VITE_DEV_GEO_LNG`, and `VITE_DEV_GEO_ACCURACY` values in
+ignored `.env.local`. They are used only by the Vite development build; production
+builds always use browser geolocation. Leave any value unset to retain normal
+browser geolocation behavior.
 
 The application accepts HTTP and HTTPS API URLs. The Auth0 domain must be a
 hostname without a protocol, path, query, or fragment. If required configuration
@@ -191,6 +202,8 @@ for the full flow, privacy boundary, browser limitations, and evidence steps.
 
 - `/` presents the mobile-first Wits World home page.
 - `/explore` requires Auth0 sign-in and contains the Sprint 1 player experience.
+- `/challenge-attempts/:attemptId` requires Auth0 sign-in and restores an owned
+  timed challenge through the API; it never reuses or stores a location claim.
 - `/about` explains the Wits World project and Wits Quest game/topic distinction.
 - Any unknown route presents a page-not-found message and a link home.
 
@@ -211,12 +224,34 @@ apps/web/
     config/       Public environment validation
     pages/        Home, About, and not-found pages
     styles/       Mobile-first global styles
-    App.tsx       Routing and application error boundary
+  App.tsx       Routing and application error boundary
     main.tsx      Configuration-aware browser entry point
   tests/          Component, routing, error, and configuration tests
   index.html      Vite HTML entry point
   vite.config.ts  Development, preview, build, and test configuration
 ```
+
+## Timed challenge development
+
+The Basic challenge is a server-authoritative, five-question multiple-choice
+attempt. The browser sends only the chosen `attemptQuestionId` and `choiceId`.
+It derives its timer from the absolute server deadline and reloads an attempt
+through `GET /api/v1/challenge-attempts/:attemptId` after refresh or timeout.
+
+During an in-progress Basic attempt, keep feedback neutral: show “Answer saved”
+and never render correctness, correct choices, answer keys, explanations, score,
+or reward information. Once the API authoritatively completes the attempt, the
+final result renders only the persisted score, reward, and answer-review data in
+that completed response. The browser does not compare choices or mark answers.
+Unanswered timeout items use “Not answered” while still displaying the completed
+response's correct choice. Explanations remain absent until the authoritative
+content model and completed API contract support them.
+
+The production-like browser flow requires an authenticated player and an active
+event with a published challenge containing five valid questions. The Great Hall
+development seed now provides that challenge and the active reward catalogue;
+use the documented development geolocation override when testing locally. Never
+persist browser locations, tokens, answer keys, or rewards in browser storage.
 
 ## Verification
 
@@ -333,4 +368,4 @@ With `apps/web/.env` configured and the development server running:
    values.
 
 The preceding document was generated and edited with the assistance of:
-Codex-CLI[gpt-5.6-sol medium] and Codex-CLI[GPT-5].
+Codex-CLI[gpt-5.6-sol medium], Codex-CLI[GPT-5], and Codex[GPT-5].

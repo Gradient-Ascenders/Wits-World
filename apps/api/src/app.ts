@@ -45,6 +45,8 @@ import type { ChallengeAttemptFetchService } from './challenges/challenge-attemp
 
 import type { DeckService } from './cards/deck-service.js';
 import { deckRoutes } from './routes/decks.js';
+import type { CpuMatchService } from './matches/cpu-match-service.js';
+import { cpuMatchRoutes } from './routes/cpu-matches.js';
 
 import type { AuthorEventService } from './events/author-event-service.js';
 import { authorEventRoutes } from './routes/author-events.js';
@@ -74,6 +76,7 @@ export interface BuildAppOptions {
   challengeAttemptServices?: ChallengeAttemptServices;
   cardServices?: CardServices;
   authorContentServices?: AuthorContentServices;
+  cpuMatchService?: CpuMatchService;
 }
 
 export interface AccountDeletionServices {
@@ -114,6 +117,7 @@ export async function buildApp({
   challengeAttemptServices,
   cardServices,
   authorContentServices,
+  cpuMatchService,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: logger
@@ -169,6 +173,9 @@ export async function buildApp({
       'Author content services require a player identity service.',
     );
   }
+  if (cpuMatchService && !playerIdentityService) {
+    throw new Error('CPU match services require a player identity service.');
+  }
 
   registerErrorHandlers(app);
 
@@ -208,6 +215,10 @@ export async function buildApp({
         {
           name: 'Authoring',
           description: 'Protected Author-only Basic content management.',
+        },
+        {
+          name: 'Matches',
+          description: 'Server-authoritative CPU matches and private history.',
         },
       ],
       components: {
@@ -322,6 +333,13 @@ export async function buildApp({
         service: cardServices.decks,
       });
     }
+  }
+
+  if (cpuMatchService) {
+    await app.register(cpuMatchRoutes, {
+      prefix: '/api/v1',
+      service: cpuMatchService,
+    });
   }
 
   return app;

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   BrowserLocationError,
@@ -6,10 +6,32 @@ import {
 } from '../src/browser-location';
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
 
 describe('browser location claims', () => {
+  beforeEach(() => {
+    vi.stubEnv('VITE_DEV_GEO_LAT', '');
+    vi.stubEnv('VITE_DEV_GEO_LNG', '');
+    vi.stubEnv('VITE_DEV_GEO_ACCURACY', '');
+  });
+
+  it('uses configured development coordinates without calling browser geolocation', async () => {
+    const getCurrentPosition = vi.fn();
+    vi.stubEnv('VITE_DEV_GEO_LAT', '-33.9249');
+    vi.stubEnv('VITE_DEV_GEO_LNG', '18.4241');
+    vi.stubEnv('VITE_DEV_GEO_ACCURACY', '10');
+    vi.stubGlobal('navigator', { geolocation: { getCurrentPosition } });
+
+    await expect(requestBrowserLocation()).resolves.toMatchObject({
+      accuracyMetres: 10,
+      latitude: -33.9249,
+      longitude: 18.4241,
+    });
+    expect(getCurrentPosition).not.toHaveBeenCalled();
+  });
+
   it('requests a fresh high-accuracy position after invocation', async () => {
     const getCurrentPosition = vi.fn((success: PositionCallback) => {
       success(createPosition());
@@ -32,6 +54,38 @@ describe('browser location claims', () => {
         timeout: 10_000,
       },
     );
+  });
+
+  it('uses browser geolocation outside development even when override values exist', async () => {
+    const browserPosition = createPosition({
+      coords: {
+        accuracy: 7,
+        altitude: null,
+        altitudeAccuracy: null,
+        heading: null,
+        latitude: 1,
+        longitude: 2,
+        speed: null,
+        toJSON: vi.fn(),
+      },
+      timestamp: Date.parse('2026-08-08T11:00:00.000Z'),
+    });
+    const getCurrentPosition = vi.fn((success: PositionCallback) => {
+      success(browserPosition);
+    });
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('VITE_DEV_GEO_LAT', '-33.9249');
+    vi.stubEnv('VITE_DEV_GEO_LNG', '18.4241');
+    vi.stubEnv('VITE_DEV_GEO_ACCURACY', '10');
+    vi.stubGlobal('navigator', { geolocation: { getCurrentPosition } });
+
+    await expect(requestBrowserLocation()).resolves.toEqual({
+      accuracyMetres: 7,
+      acquiredAt: '2026-08-08T11:00:00.000Z',
+      latitude: 1,
+      longitude: 2,
+    });
+    expect(getCurrentPosition).toHaveBeenCalledOnce();
   });
 
   it.each([

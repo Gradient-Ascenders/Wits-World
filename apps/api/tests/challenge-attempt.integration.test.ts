@@ -158,6 +158,7 @@ describe('challenge attempt start API', () => {
       ...attempt,
       requestId: expect.any(String),
     });
+    expectActivePayloadToWithholdReview(response.json());
 
     expect(startOrResume).toHaveBeenCalledWith({
       playerId: PLAYER_ID,
@@ -184,9 +185,10 @@ describe('challenge attempt start API', () => {
       ...attempt,
       requestId: expect.any(String),
     });
+    expectActivePayloadToWithholdReview(response.json());
   });
 
-  it('returns a completed result without question or answer details', async () => {
+  it('returns a completed result with completed-only answer review', async () => {
     const attempt = completedAttempt();
 
     startOrResume.mockResolvedValue({
@@ -209,6 +211,7 @@ describe('challenge attempt start API', () => {
     expect(body).not.toHaveProperty('answeredCount');
     expect(body).not.toHaveProperty('selectedChoiceId');
     expect(body).not.toHaveProperty('answeredAt');
+    expect(body).toHaveProperty('review', attempt.review);
   });
 
   it('rejects client-supplied player and authoritative eligibility fields', async () => {
@@ -379,6 +382,7 @@ describe('challenge answer submission API', () => {
       ...attempt,
       requestId: expect.any(String),
     });
+    expectActivePayloadToWithholdReview(response.json());
 
     expect(submitAnswer).toHaveBeenCalledWith({
       playerId: PLAYER_ID,
@@ -388,7 +392,7 @@ describe('challenge answer submission API', () => {
     });
   });
 
-  it('returns a final-score-only completed representation', async () => {
+  it('returns the completed representation with five review entries', async () => {
     const attempt = completedAttempt();
 
     submitAnswer.mockResolvedValue(attempt);
@@ -412,8 +416,9 @@ describe('challenge answer submission API', () => {
     expect(body).not.toHaveProperty('correctAnswers');
     expect(body).not.toHaveProperty('acceptedChoiceId');
     expect(body).not.toHaveProperty('explanation');
-    expect(response.body).not.toContain('acceptedChoiceId');
-    expect(response.body).not.toContain('explanation');
+    expect(response.body).not.toContain('"acceptedChoiceId"');
+    expect(response.body).not.toContain('"explanation"');
+    expect(body).toHaveProperty('review', attempt.review);
   });
 
   it('rejects browser-supplied authoritative answer fields', async () => {
@@ -544,6 +549,7 @@ describe('challenge answer submission API', () => {
     expect(operation?.responses).toHaveProperty('404');
     expect(operation?.responses).toHaveProperty('409');
     expect(operation?.responses).toHaveProperty('500');
+    expectCompletedOnlyReviewSchema(operation?.responses?.['200']);
   });
 });
 
@@ -586,6 +592,7 @@ describe('challenge attempt fetch API', () => {
       ...attempt,
       requestId: expect.any(String),
     });
+    expectActivePayloadToWithholdReview(response.json());
 
     expect(fetchAttempt).toHaveBeenCalledWith({
       playerId: PLAYER_ID,
@@ -593,11 +600,8 @@ describe('challenge attempt fetch API', () => {
     });
   });
 
-  it('returns a persisted completed timeout result without question details', async () => {
-    const attempt: CompletedChallengeAttempt = {
-      ...completedAttempt(),
-      completionReason: 'timeout',
-    };
+  it('returns a persisted completed timeout result with unanswered review entries', async () => {
+    const attempt = completedAttempt('timeout');
 
     fetchAttempt.mockResolvedValue(attempt);
 
@@ -617,8 +621,14 @@ describe('challenge attempt fetch API', () => {
     expect(body).not.toHaveProperty('acceptedChoiceId');
     expect(body).not.toHaveProperty('correctAnswers');
     expect(body).not.toHaveProperty('explanation');
-    expect(response.body).not.toContain('acceptedChoiceId');
-    expect(response.body).not.toContain('explanation');
+    expect(response.body).not.toContain('"acceptedChoiceId"');
+    expect(response.body).not.toContain('"explanation"');
+
+    expect(body).toHaveProperty('review', attempt.review);
+    expect(attempt.review[4]).toMatchObject({
+      selectedChoice: null,
+      isCorrect: false,
+    });
   });
 
   it('maps missing and cross-player attempts to the same safe 404', async () => {
@@ -774,14 +784,16 @@ function inProgressAttempt(): InProgressChallengeAttempt {
   };
 }
 
-function completedAttempt(): CompletedChallengeAttempt {
+function completedAttempt(
+  completionReason: 'answered' | 'timeout' = 'answered',
+): CompletedChallengeAttempt {
   return {
     attemptId: ATTEMPT_ID,
     eventId: EVENT_ID,
     format: 'multiple_choice',
     status: 'completed',
     completedAt: '2026-09-01T10:01:25.000Z',
-    completionReason: 'answered',
+    completionReason,
     totalQuestions: 5,
     scoreCorrect: 3,
     reward: {
@@ -797,7 +809,97 @@ function completedAttempt(): CompletedChallengeAttempt {
         },
       ],
     },
+    review: Array.from({ length: 5 }, (_, index) => {
+      const position = index + 1;
+      const answered = completionReason === 'answered' || position <= 3;
+      const selectedChoiceNumber = position <= 3 ? 2 : 1;
+
+      return {
+        attemptQuestionId: `32000000-0000-4000-8000-${String(position).padStart(12, '0')}`,
+        position,
+        prompt: `Question ${position}`,
+        selectedChoice: answered
+          ? {
+              choiceId: `33000000-0000-4000-${String(position).padStart(
+                4,
+                '0',
+              )}-${String(selectedChoiceNumber).padStart(12, '0')}`,
+              text: `Choice ${position}.${selectedChoiceNumber}`,
+            }
+          : null,
+        correctChoice: {
+          choiceId: `33000000-0000-4000-${String(position).padStart(
+            4,
+            '0',
+          )}-000000000002`,
+          text: `Choice ${position}.2`,
+        },
+        isCorrect: answered && selectedChoiceNumber === 2,
+      };
+    }),
   };
+}
+
+function expectActivePayloadToWithholdReview(body: unknown): void {
+  expect(body).not.toHaveProperty('review');
+  expect(body).not.toHaveProperty('scoreCorrect');
+  expect(body).not.toHaveProperty('reward');
+  expect(body).not.toHaveProperty('correctChoice');
+  expect(body).not.toHaveProperty('isCorrect');
+  expect(JSON.stringify(body)).not.toContain('acceptedChoice');
+  expect(JSON.stringify(body)).not.toContain('explanation');
+}
+
+function expectCompletedOnlyReviewSchema(response: unknown): void {
+  interface ResponseSchema {
+    oneOf?: Array<{
+      required?: string[];
+      properties?: Record<
+        string,
+        {
+          enum?: string[];
+          minItems?: number;
+          maxItems?: number;
+          items?: { required?: string[] };
+        }
+      >;
+    }>;
+  }
+
+  const schema = (
+    response as {
+      content?: {
+        'application/json'?: {
+          schema?: ResponseSchema;
+        };
+      };
+    }
+  ).content?.['application/json']?.schema;
+
+  const inProgress = schema?.oneOf?.find((candidate) =>
+    candidate.properties?.status?.enum?.includes('in_progress'),
+  );
+  const completed = schema?.oneOf?.find((candidate) =>
+    candidate.properties?.status?.enum?.includes('completed'),
+  );
+
+  expect(inProgress?.properties).not.toHaveProperty('review');
+  expect(inProgress?.properties).not.toHaveProperty('scoreCorrect');
+  expect(completed?.required).toContain('review');
+  expect(completed?.properties?.review).toMatchObject({
+    minItems: 5,
+    maxItems: 5,
+    items: {
+      required: [
+        'attemptQuestionId',
+        'position',
+        'prompt',
+        'selectedChoice',
+        'correctChoice',
+        'isCorrect',
+      ],
+    },
+  });
 }
 
 async function authenticatedFetchRequest(attemptId = ATTEMPT_ID) {
