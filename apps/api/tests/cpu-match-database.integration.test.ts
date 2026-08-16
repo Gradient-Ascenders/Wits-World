@@ -11,9 +11,14 @@ import {
 } from '../src/database/connection.js';
 import { runMigrations } from '../src/database/migrations.js';
 import { runSeeds } from '../src/database/seeds.js';
-import { createCpuMatchService } from '../src/matches/cpu-match-service.js';
+import {
+  createCpuMatchService,
+  CpuMatchNotFoundError,
+} from '../src/matches/cpu-match-service.js';
 
 const PLAYER_ID = 'b1000000-0000-4000-8000-000000000001';
+const OTHER_PLAYER_ID = 'b1000000-0000-4000-8000-000000000002';
+const VISIBILITY_PLAYER_ID = 'b1000000-0000-4000-8000-000000000003';
 const GRANT_ID = 'b2000000-0000-4000-8000-000000000001';
 const DECK_ID = 'b3000000-0000-4000-8000-000000000001';
 const OWNED_CARD_IDS = [1, 2, 3, 4, 5].map(
@@ -30,6 +35,7 @@ describe.skipIf(!runIntegrationTests)(
     let temporaryConfig: DatabaseConfig;
     let temporaryDatabaseName: string;
     let pool: ReturnType<typeof createDatabasePool>;
+    let matchId: string;
 
     beforeAll(async () => {
       loadApiEnvironment();
@@ -55,9 +61,12 @@ describe.skipIf(!runIntegrationTests)(
         `
         insert into public.players (
           id, auth_issuer, auth_subject, role
-        ) values ($1, 'https://issuer.example/', 'cpu-match-player', 'player')
+        ) values
+          ($1, 'https://issuer.example/', 'cpu-match-player', 'player'),
+          ($2, 'https://issuer.example/', 'other-cpu-match-player', 'player'),
+          ($3, 'https://issuer.example/', 'visibility-cpu-match-player', 'player')
       `,
-        [PLAYER_ID],
+        [PLAYER_ID, OTHER_PLAYER_ID, VISIBILITY_PLAYER_ID],
       );
 
       await pool.query(
@@ -147,7 +156,7 @@ describe.skipIf(!runIntegrationTests)(
       });
     }, 30_000);
 
-    it('creates a match, snapshots cards, and persists the first transition', async () => {
+    it('recovers after a committed create response is discarded without creating another match', async () => {
       const service = createCpuMatchService(pool, {
         clock: { now: () => new Date('2026-08-16T00:00:00.000Z') },
         randomInt: () => 0,
@@ -157,6 +166,33 @@ describe.skipIf(!runIntegrationTests)(
         playerId: PLAYER_ID,
         deckId: DECK_ID,
       });
+      matchId = created.matchId;
+
+      const recoveredAfterLostResponse =
+        await service.getActiveMatch(PLAYER_ID);
+
+      expect(recoveredAfterLostResponse).toMatchObject({
+        matchId: created.matchId,
+        status: created.status,
+        version: created.version,
+        winner: created.winner,
+        completedAt: created.completedAt,
+        state: created.state,
+        lastAction: created.lastAction,
+      });
+      expect(recoveredAfterLostResponse.matchId).toBe(matchId);
+
+      const activeMatchCount = await pool.query<{ count: string }>(
+        `
+          select count(*)::text as count
+          from public.cpu_matches
+          where player_id = $1::uuid
+            and status = 'active'
+        `,
+        [PLAYER_ID],
+      );
+      expect(activeMatchCount.rows[0]?.count).toBe('1');
+
       const initialAction = created.state.legalActions[0];
 
       expect(initialAction).toMatchObject({
@@ -165,7 +201,7 @@ describe.skipIf(!runIntegrationTests)(
 
       const transitioned = await service.submitAction({
         playerId: PLAYER_ID,
-        matchId: created.matchId,
+        matchId,
         submissionId: 'b5000000-0000-4000-8000-000000000001',
         expectedVersion: created.version,
         action: initialAction as {
@@ -176,6 +212,10 @@ describe.skipIf(!runIntegrationTests)(
 
       expect(transitioned.version).toBe(1);
       expect(transitioned.state.phase).toBe('active');
+
+      const recoveredAfterAction = await service.getActiveMatch(PLAYER_ID);
+      expect(recoveredAfterAction).toEqual(transitioned);
+      expect(recoveredAfterAction.matchId).toBe(matchId);
 
       const counts = await pool.query<{
         actions: string;
@@ -197,6 +237,75 @@ describe.skipIf(!runIntegrationTests)(
       });
     }, 30_000);
 
+    it('hides an uncommitted creation and recovers that exact match after commit', async () => {
+      const creatingClient = await pool.connect();
+      const service = createCpuMatchService(pool, { randomInt: () => 0 });
+      let visibilityMatchId: string | undefined;
+      let committed = false;
+
+      try {
+        await creatingClient.query('begin');
+        const inserted = await creatingClient.query<{ id: string }>(
+          `
+            insert into public.cpu_matches (player_id, state)
+            select $1::uuid, state
+            from public.cpu_matches
+            where id = $2::uuid
+            returning id::text
+          `,
+          [VISIBILITY_PLAYER_ID, matchId],
+        );
+        visibilityMatchId = inserted.rows[0]?.id;
+
+        expect(visibilityMatchId).toBeDefined();
+        await expect(
+          service.getActiveMatch(VISIBILITY_PLAYER_ID),
+        ).rejects.toBeInstanceOf(CpuMatchNotFoundError);
+
+        await creatingClient.query('commit');
+        committed = true;
+
+        const recovered = await service.getActiveMatch(VISIBILITY_PLAYER_ID);
+        expect(recovered.matchId).toBe(visibilityMatchId);
+      } finally {
+        if (!committed) {
+          await creatingClient.query('rollback');
+        }
+        creatingClient.release();
+
+        if (committed && visibilityMatchId) {
+          await pool.query(
+            'delete from public.cpu_matches where id = $1::uuid',
+            [visibilityMatchId],
+          );
+        }
+      }
+    });
+
+    it('isolates recovery by authenticated player ownership', async () => {
+      const service = createCpuMatchService(pool, { randomInt: () => 0 });
+
+      await expect(
+        service.getActiveMatch(OTHER_PLAYER_ID),
+      ).rejects.toBeInstanceOf(CpuMatchNotFoundError);
+
+      const ownerMatch = await service.getActiveMatch(PLAYER_ID);
+      expect(ownerMatch.matchId).toBe(matchId);
+    });
+
+    it('returns the same persisted match to concurrent recovery reads', async () => {
+      const service = createCpuMatchService(pool, { randomInt: () => 0 });
+
+      const [first, second] = await Promise.all([
+        service.getActiveMatch(PLAYER_ID),
+        service.getActiveMatch(PLAYER_ID),
+      ]);
+
+      expect(first).toEqual(second);
+      expect(first.matchId).toBe(matchId);
+      expect(first.version).toBe(1);
+    });
+
     it('rejects a second active match for the same player', async () => {
       const service = createCpuMatchService(pool, { randomInt: () => 0 });
 
@@ -206,6 +315,41 @@ describe.skipIf(!runIntegrationTests)(
           deckId: DECK_ID,
         }),
       ).rejects.toThrow('already has an active CPU match');
+    });
+
+    it('does not recover a completed match as active', async () => {
+      await pool.query(
+        `
+          update public.cpu_matches
+             set status = 'completed',
+                 state = state || '{
+                   "phase": "completed",
+                   "currentSide": null,
+                   "replacementSide": null,
+                   "winner": "player"
+                 }'::jsonb,
+                 winner = 'player',
+                 turn_started_at = null,
+                 turn_deadline = null,
+                 completed_at = now(),
+                 updated_at = now()
+           where id = $1::uuid
+        `,
+        [matchId],
+      );
+
+      const service = createCpuMatchService(pool, { randomInt: () => 0 });
+
+      await expect(service.getActiveMatch(PLAYER_ID)).rejects.toBeInstanceOf(
+        CpuMatchNotFoundError,
+      );
+
+      const completed = await service.getMatch(PLAYER_ID, matchId);
+      expect(completed).toMatchObject({
+        matchId,
+        status: 'completed',
+        winner: 'player',
+      });
     });
 
     it('keeps the stored match after the saved deck is deleted', async () => {

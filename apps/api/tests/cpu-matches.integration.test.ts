@@ -4,10 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AccessTokenVerifier } from '../src/auth/access-token-verifier.js';
 import { buildApp } from '../src/app.js';
 import type { AuthConfig } from '../src/config/auth.js';
-import type {
-  CpuMatchHistory,
-  CpuMatchResponse,
-  CpuMatchService,
+import {
+  CpuMatchNotFoundError,
+  type CpuMatchHistory,
+  type CpuMatchResponse,
+  type CpuMatchService,
 } from '../src/matches/cpu-match-service.js';
 import type { PlayerIdentityService } from '../src/players/player-identity.js';
 
@@ -32,6 +33,7 @@ const activePlayer = {
 let app: FastifyInstance;
 let service: {
   createMatch: ReturnType<typeof vi.fn<CpuMatchService['createMatch']>>;
+  getActiveMatch: ReturnType<typeof vi.fn<CpuMatchService['getActiveMatch']>>;
   getMatch: ReturnType<typeof vi.fn<CpuMatchService['getMatch']>>;
   submitAction: ReturnType<typeof vi.fn<CpuMatchService['submitAction']>>;
   listHistory: ReturnType<typeof vi.fn<CpuMatchService['listHistory']>>;
@@ -51,6 +53,7 @@ beforeEach(async () => {
 
   service = {
     createMatch: vi.fn().mockResolvedValue(buildMatch()),
+    getActiveMatch: vi.fn().mockResolvedValue(buildMatch()),
     getMatch: vi.fn().mockResolvedValue(buildMatch()),
     submitAction: vi.fn().mockResolvedValue(buildMatch()),
     listHistory: vi.fn().mockResolvedValue([]),
@@ -97,6 +100,49 @@ describe('CPU match API', () => {
     });
     expect(response.json()).toMatchObject({
       matchId: MATCH_ID,
+      requestId: expect.any(String),
+    });
+  });
+
+  it('requires authentication before recovering the active match', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/matches/cpu',
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(service.getActiveMatch).not.toHaveBeenCalled();
+  });
+
+  it('recovers the authenticated player active match without a match ID', async () => {
+    const response = await authenticatedRequest({
+      method: 'GET',
+      url: '/api/v1/matches/cpu',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(service.getActiveMatch).toHaveBeenCalledWith(PLAYER_ID);
+    expect(service.getMatch).not.toHaveBeenCalled();
+    expect(response.json()).toMatchObject({
+      matchId: MATCH_ID,
+      status: 'active',
+      version: 0,
+      requestId: expect.any(String),
+    });
+  });
+
+  it('returns the established not-found problem when no active match exists', async () => {
+    service.getActiveMatch.mockRejectedValueOnce(new CpuMatchNotFoundError());
+
+    const response = await authenticatedRequest({
+      method: 'GET',
+      url: '/api/v1/matches/cpu',
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({
+      status: 404,
+      code: 'CPU_MATCH_NOT_FOUND',
       requestId: expect.any(String),
     });
   });
@@ -197,6 +243,34 @@ describe('CPU match API', () => {
       matches: [],
       requestId: expect.any(String),
     });
+  });
+
+  it('publishes the active-match recovery contract in OpenAPI', async () => {
+    await app.ready();
+    const document = app.swagger();
+    const operation = document.paths?.['/api/v1/matches/cpu']?.get;
+
+    expect(operation?.operationId).toBe('getActiveCpuMatch');
+    expect(operation?.security).toEqual([{ bearerAuth: [] }]);
+    expect(operation?.responses?.['200']).toMatchObject({
+      content: {
+        'application/json': {
+          schema: {
+            properties: {
+              status: { enum: ['active'] },
+              winner: { type: 'null' },
+              completedAt: { type: 'null' },
+            },
+          },
+        },
+      },
+    });
+    expect(operation?.responses).toHaveProperty('401');
+    expect(operation?.responses).toHaveProperty('403');
+    expect(operation?.responses).toHaveProperty('404');
+    expect(document.paths?.['/api/v1/matches/cpu']?.post?.operationId).toBe(
+      'createCpuMatch',
+    );
   });
 });
 
