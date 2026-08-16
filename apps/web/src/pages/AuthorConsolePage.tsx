@@ -8,6 +8,11 @@ import {
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { CardWorkspace } from '../components/author/CardWorkspace';
 import { EventWorkspace } from '../components/author/EventWorkspace';
+import {
+  AuthorMutationCoordinator,
+  reconcileAuthorMutationResults,
+  useAuthorMutationRevision,
+} from '../components/author/author-mutation-coordinator';
 import '../components/author/author.css';
 
 interface AuthorConsolePageProps {
@@ -27,11 +32,15 @@ export default function AuthorConsolePage({
   );
   const [cardsError, setCardsError] = useState('');
   const cardRequestRef = useRef<AbortController | null>(null);
+  const appliedCardResultsRef = useRef(new Map());
+  const [mutationCoordinator] = useState(() => new AuthorMutationCoordinator());
+  const mutationRevision = useAuthorMutationRevision(mutationCoordinator);
 
   const loadCards = useCallback(async () => {
     cardRequestRef.current?.abort();
     const controller = new AbortController();
     cardRequestRef.current = controller;
+    const loadStartedAt = mutationCoordinator.beginCollectionLoad();
     setCardsState('loading');
 
     try {
@@ -42,7 +51,16 @@ export default function AuthorConsolePage({
       });
 
       if (!controller.signal.aborted) {
-        setCards(nextCards);
+        mutationCoordinator.completeCollectionLoad('cards', loadStartedAt);
+        setCards(
+          reconcileAuthorMutationResults(
+            nextCards,
+            mutationCoordinator.getResults<AuthorCard>('cards'),
+            (card) => card.id,
+            appliedCardResultsRef.current,
+            true,
+          ),
+        );
         setCardsState('ready');
         setCardsError('');
       }
@@ -56,12 +74,23 @@ export default function AuthorConsolePage({
         setCardsState('error');
       }
     }
-  }, [apiBaseUrl, getAccessToken]);
+  }, [apiBaseUrl, getAccessToken, mutationCoordinator]);
 
   useEffect(() => {
     void loadCards();
     return () => cardRequestRef.current?.abort();
   }, [loadCards]);
+
+  useEffect(() => {
+    setCards((current) =>
+      reconcileAuthorMutationResults(
+        current,
+        mutationCoordinator.getResults<AuthorCard>('cards'),
+        (card) => card.id,
+        appliedCardResultsRef.current,
+      ),
+    );
+  }, [mutationCoordinator, mutationRevision]);
 
   return (
     <section aria-labelledby="author-console-title" className="author-console">
@@ -105,6 +134,7 @@ export default function AuthorConsolePage({
               cardsState={cardsState}
               getAccessToken={getAccessToken}
               mapboxAccessToken={mapboxAccessToken}
+              mutationCoordinator={mutationCoordinator}
               onOpenCards={() => setSection('cards')}
               onReloadCards={() => void loadCards()}
             />
@@ -114,6 +144,7 @@ export default function AuthorConsolePage({
               cards={cards}
               errorMessage={cardsError}
               getAccessToken={getAccessToken}
+              mutationCoordinator={mutationCoordinator}
               onCardsChange={setCards}
               onReload={() => void loadCards()}
               state={cardsState}

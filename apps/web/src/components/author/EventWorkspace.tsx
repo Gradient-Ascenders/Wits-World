@@ -33,6 +33,14 @@ import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
 import type { MapFactory } from '../exploration/map-provider';
 import { AuthorFeedback } from './AuthorFeedback';
 import { AuthorLocationMap } from './AuthorLocationMap';
+import {
+  type AuthorMutationCoordinator,
+  type AuthorMutationTicket,
+  type AuthorRecordKey,
+  reconcileAuthorMutationResults,
+  useAuthorDraftSession,
+  useAuthorMutationRevision,
+} from './author-mutation-coordinator';
 
 interface EventWorkspaceProps {
   apiBaseUrl: string;
@@ -41,6 +49,7 @@ interface EventWorkspaceProps {
   getAccessToken: ApiAccessTokenProvider;
   mapFactory?: MapFactory;
   mapboxAccessToken: string;
+  mutationCoordinator: AuthorMutationCoordinator;
   onOpenCards: () => void;
   onReloadCards: () => void;
 }
@@ -54,6 +63,7 @@ export function EventWorkspace({
   getAccessToken,
   mapFactory,
   mapboxAccessToken,
+  mutationCoordinator,
   onOpenCards,
   onReloadCards,
 }: EventWorkspaceProps) {
@@ -70,12 +80,14 @@ export function EventWorkspace({
   const creatingRef = useRef(false);
   const interactionRef = useRef(0);
   const mountedRef = useRef(true);
-  const pendingEventsRef = useRef(new Map<string, AuthorEvent>());
+  const appliedEventResultsRef = useRef(new Map<AuthorRecordKey, number>());
+  const mutationRevision = useAuthorMutationRevision(mutationCoordinator);
 
   const load = useCallback(async () => {
     requestRef.current?.abort();
     const controller = new AbortController();
     requestRef.current = controller;
+    const loadStartedAt = mutationCoordinator.beginCollectionLoad();
     setState('loading');
 
     try {
@@ -85,7 +97,16 @@ export function EventWorkspace({
         signal: controller.signal,
       });
       if (controller.signal.aborted) return;
-      setEvents(nextEvents);
+      mutationCoordinator.completeCollectionLoad('events', loadStartedAt);
+      setEvents(
+        reconcileAuthorMutationResults(
+          nextEvents,
+          mutationCoordinator.getResults<AuthorEvent>('events'),
+          (event) => event.eventId,
+          appliedEventResultsRef.current,
+          true,
+        ),
+      );
       setSelectedId((current) => {
         const next =
           current && nextEvents.some((event) => event.eventId === current)
@@ -107,7 +128,7 @@ export function EventWorkspace({
       );
       setState('error');
     }
-  }, [apiBaseUrl, getAccessToken]);
+  }, [apiBaseUrl, getAccessToken, mutationCoordinator]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -118,44 +139,52 @@ export function EventWorkspace({
     };
   }, [load]);
 
+  useEffect(() => {
+    setEvents((current) =>
+      reconcileAuthorMutationResults(
+        current,
+        mutationCoordinator.getResults<AuthorEvent>('events'),
+        (event) => event.eventId,
+        appliedEventResultsRef.current,
+      ),
+    );
+  }, [mutationCoordinator, mutationRevision]);
+
   const selected = events.find((event) => event.eventId === selectedId) ?? null;
 
   function selectEvent(eventId: string | null, creatingEvent = false) {
     interactionRef.current += 1;
-    if (eventId) {
-      const pending = pendingEventsRef.current.get(eventId);
-      if (pending) {
-        setEvents((current) => reconcileEventById(current, pending));
-        pendingEventsRef.current.delete(eventId);
-      }
-    }
     selectedIdRef.current = eventId;
     creatingRef.current = creatingEvent;
     setCreating(creatingEvent);
     setSelectedId(eventId);
     setMessage('');
+    if (eventId && mutationCoordinator.isCollectionUncertain('events'))
+      void load();
   }
 
   function updateEvent(
     event: AuthorEvent,
     ownerId: string | 'new',
     interaction: number,
+    ticket: AuthorMutationTicket,
     notice?: string,
-  ) {
+  ): boolean {
+    const recordKey = `event:${event.eventId}` as const;
+    if (!mutationCoordinator.acceptSuccess(ticket, recordKey, event))
+      return false;
     const isCurrentInteraction =
       mountedRef.current &&
       interactionRef.current === interaction &&
       (ownerId === 'new'
         ? creatingRef.current
         : selectedIdRef.current === ownerId);
-    const wouldReplaceNewerDraft =
-      selectedIdRef.current === event.eventId && !isCurrentInteraction;
+    const canApply = mutationCoordinator
+      .getResults<AuthorEvent>('events')
+      .some((result) => result.recordKey === recordKey);
+    if (canApply) setEvents((current) => reconcileEventById(current, event));
 
-    if (wouldReplaceNewerDraft)
-      pendingEventsRef.current.set(event.eventId, event);
-    else setEvents((current) => reconcileEventById(current, event));
-
-    if (!isCurrentInteraction) return;
+    if (!isCurrentInteraction) return true;
     selectedIdRef.current = event.eventId;
     creatingRef.current = false;
     setSelectedId(event.eventId);
@@ -171,6 +200,7 @@ export function EventWorkspace({
           interactionRef.current === interaction &&
           selectedIdRef.current === event.eventId,
       );
+    return true;
   }
 
   const updateEventDirty = useCallback((eventId: string, dirty: boolean) => {
@@ -263,6 +293,7 @@ export function EventWorkspace({
                 mapFactory={mapFactory}
                 mapboxAccessToken={mapboxAccessToken}
                 interaction={interactionRef.current}
+                mutationCoordinator={mutationCoordinator}
                 onDirtyChange={updateEventDirty}
                 onCancel={() => {
                   selectEvent(events[0]?.eventId ?? null);
@@ -276,9 +307,10 @@ export function EventWorkspace({
                   event={selected}
                   getAccessToken={getAccessToken}
                   interaction={interactionRef.current}
-                  key={`${selected.eventId}:${selected.updatedAt}:${selected.authoringStatus}`}
+                  key={`event-form:${selected.eventId}`}
                   mapFactory={mapFactory}
                   mapboxAccessToken={mapboxAccessToken}
+                  mutationCoordinator={mutationCoordinator}
                   onDirtyChange={updateEventDirty}
                   onSaved={updateEvent}
                 />
@@ -290,7 +322,8 @@ export function EventWorkspace({
                   eventDirty={dirtyEventId === selected.eventId}
                   getAccessToken={getAccessToken}
                   interaction={interactionRef.current}
-                  key={selected.eventId}
+                  key={`challenge-workspace:${selected.eventId}`}
+                  mutationCoordinator={mutationCoordinator}
                   onEventChanged={updateEvent}
                   onOpenCards={onOpenCards}
                   onReloadCards={onReloadCards}
@@ -311,12 +344,14 @@ interface EventFormProps {
   interaction: number;
   mapFactory?: MapFactory;
   mapboxAccessToken: string;
+  mutationCoordinator: AuthorMutationCoordinator;
   onCancel?: () => void;
   onDirtyChange: (eventId: string, dirty: boolean) => void;
   onSaved: (
     event: AuthorEvent,
     ownerId: string | 'new',
     interaction: number,
+    ticket: AuthorMutationTicket,
     notice?: string,
   ) => void;
 }
@@ -338,6 +373,7 @@ function EventForm({
   interaction,
   mapFactory,
   mapboxAccessToken,
+  mutationCoordinator,
   onCancel,
   onDirtyChange,
   onSaved,
@@ -369,6 +405,8 @@ function EventForm({
   const dirty = Boolean(
     event && JSON.stringify(draft) !== JSON.stringify(eventDraft(event)),
   );
+  const recordKey = `event:${event?.eventId ?? 'new'}` as AuthorRecordKey;
+  useAuthorDraftSession(mutationCoordinator, recordKey, dirty);
 
   useEffect(() => {
     if (event) onDirtyChange(event.eventId, dirty);
@@ -406,6 +444,9 @@ function EventForm({
     const controller = new AbortController();
     operationRef.current = controller;
     const ownerId = event?.eventId ?? 'new';
+    const ticket = event
+      ? mutationCoordinator.beginMutation(`event:${event.eventId}`, 'events')
+      : mutationCoordinator.beginCreate('event', 'events');
 
     try {
       const saved = event
@@ -427,11 +468,16 @@ function EventForm({
         saved,
         ownerId,
         interaction,
+        ticket,
         event ? 'Event changes saved.' : 'Draft event created.',
       );
     } catch (error) {
-      if (operationRef.current !== controller || !interactionActiveRef.current)
-        return;
+      if (operationRef.current !== controller) return;
+      const accepted = mutationCoordinator.acceptFailure(
+        ticket,
+        isUncertainError(error),
+      );
+      if (!accepted || !interactionActiveRef.current) return;
       handleOperationError(error, setApiError, setErrors, formRef, feedbackRef);
     } finally {
       if (operationRef.current === controller) {
@@ -448,6 +494,10 @@ function EventForm({
     const controller = new AbortController();
     operationRef.current = controller;
     const ownerId = event.eventId;
+    const ticket = mutationCoordinator.beginMutation(
+      `event:${event.eventId}`,
+      'events',
+    );
 
     try {
       const next = await retireAuthorEvent({
@@ -457,11 +507,15 @@ function EventForm({
         signal: controller.signal,
       });
       if (operationRef.current !== controller) return;
-      onSaved(next, ownerId, interaction, 'Event retired.');
+      onSaved(next, ownerId, interaction, ticket, 'Event retired.');
       if (interactionActiveRef.current) setConfirmRetire(false);
     } catch (error) {
-      if (operationRef.current !== controller || !interactionActiveRef.current)
-        return;
+      if (operationRef.current !== controller) return;
+      const accepted = mutationCoordinator.acceptFailure(
+        ticket,
+        isUncertainError(error),
+      );
+      if (!accepted || !interactionActiveRef.current) return;
       handleOperationError(error, setApiError, setErrors, formRef, feedbackRef);
     } finally {
       if (operationRef.current === controller) {
@@ -711,12 +765,14 @@ interface ChallengeWorkspaceProps {
   eventDirty: boolean;
   getAccessToken: ApiAccessTokenProvider;
   interaction: number;
+  mutationCoordinator: AuthorMutationCoordinator;
   onEventChanged: (
     event: AuthorEvent,
     ownerId: string,
     interaction: number,
+    ticket: AuthorMutationTicket,
     notice?: string,
-  ) => void;
+  ) => boolean;
   onOpenCards: () => void;
   onReloadCards: () => void;
 }
@@ -729,6 +785,7 @@ function ChallengeWorkspace({
   eventDirty,
   getAccessToken,
   interaction,
+  mutationCoordinator,
   onEventChanged,
   onOpenCards,
   onReloadCards,
@@ -754,48 +811,77 @@ function ChallengeWorkspace({
   const selectedChallengeIdRef = useRef<string | null>(null);
   const challengeInteractionRef = useRef(0);
   const interactionActiveRef = useRef(true);
+  const appliedChallengeResultsRef = useRef(new Map<AuthorRecordKey, number>());
+  const appliedQuestionResultsRef = useRef(new Map<AuthorRecordKey, number>());
+  const mutationRevision = useAuthorMutationRevision(mutationCoordinator);
 
-  const loadChallenges = useCallback(async () => {
-    challengeRequestRef.current?.abort();
-    const controller = new AbortController();
-    challengeRequestRef.current = controller;
-    setState('loading');
-    setChallenges([]);
-    selectedChallengeIdRef.current = null;
-    challengeInteractionRef.current += 1;
-    setSelectedChallengeId(null);
-    setQuestions([]);
-    setQuestionsState('loading');
-    setQuestionsError(null);
-    setApiError(null);
+  const loadChallenges = useCallback(
+    async (preferredChallengeId?: string) => {
+      challengeRequestRef.current?.abort();
+      const controller = new AbortController();
+      challengeRequestRef.current = controller;
+      const collectionKey = challengeCollectionKey(event.eventId);
+      const loadStartedAt = mutationCoordinator.beginCollectionLoad();
+      setState('loading');
+      setChallenges([]);
+      selectedChallengeIdRef.current = null;
+      challengeInteractionRef.current += 1;
+      setSelectedChallengeId(null);
+      setQuestions([]);
+      setQuestionsState('loading');
+      setQuestionsError(null);
+      setApiError(null);
 
-    try {
-      const next = await listAuthorChallenges({
-        apiBaseUrl,
-        eventId: event.eventId,
-        getAccessToken,
-        signal: controller.signal,
-      });
-      if (controller.signal.aborted) return;
-      setChallenges(next);
-      setSelectedChallengeId((current) => {
-        const nextId =
-          current && next.some((challenge) => challenge.challengeId === current)
-            ? current
-            : (next.find((challenge) => challenge.status !== 'retired')
-                ?.challengeId ??
-              next[0]?.challengeId ??
-              null);
-        selectedChallengeIdRef.current = nextId;
-        return nextId;
-      });
-      setState('ready');
-    } catch (error) {
-      if (controller.signal.aborted) return;
-      setApiError(toAuthorError(error));
-      setState('error');
-    }
-  }, [apiBaseUrl, event.eventId, getAccessToken]);
+      try {
+        const next = await listAuthorChallenges({
+          apiBaseUrl,
+          eventId: event.eventId,
+          getAccessToken,
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        mutationCoordinator.completeCollectionLoad(
+          collectionKey,
+          loadStartedAt,
+        );
+        const reconciled = reconcileAuthorMutationResults(
+          next,
+          mutationCoordinator.getResults<AuthorChallenge>(collectionKey),
+          (challenge) => challenge.challengeId,
+          appliedChallengeResultsRef.current,
+          true,
+          true,
+        );
+        setChallenges(reconciled);
+        setSelectedChallengeId((current) => {
+          const nextId =
+            preferredChallengeId &&
+            reconciled.some(
+              (challenge) => challenge.challengeId === preferredChallengeId,
+            )
+              ? preferredChallengeId
+              : current &&
+                  reconciled.some(
+                    (challenge) => challenge.challengeId === current,
+                  )
+                ? current
+                : (reconciled.find(
+                    (challenge) => challenge.status !== 'retired',
+                  )?.challengeId ??
+                  reconciled[0]?.challengeId ??
+                  null);
+          selectedChallengeIdRef.current = nextId;
+          return nextId;
+        });
+        setState('ready');
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setApiError(toAuthorError(error));
+        setState('error');
+      }
+    },
+    [apiBaseUrl, event.eventId, getAccessToken, mutationCoordinator],
+  );
 
   useEffect(() => {
     interactionActiveRef.current = true;
@@ -817,6 +903,8 @@ function ChallengeWorkspace({
     }
     const controller = new AbortController();
     questionRequestRef.current = controller;
+    const collectionKey = questionCollectionKey(selectedChallengeId);
+    const loadStartedAt = mutationCoordinator.beginCollectionLoad();
     setQuestionsState('loading');
     try {
       const next = await listAuthorQuestions({
@@ -826,7 +914,17 @@ function ChallengeWorkspace({
         signal: controller.signal,
       });
       if (controller.signal.aborted) return;
-      setQuestions(next);
+      mutationCoordinator.completeCollectionLoad(collectionKey, loadStartedAt);
+      setQuestions(
+        reconcileAuthorMutationResults(
+          next,
+          mutationCoordinator.getResults<AuthorQuestion>(collectionKey),
+          (question) => question.questionId,
+          appliedQuestionResultsRef.current,
+          true,
+          true,
+        ),
+      );
       setQuestionsState('ready');
     } catch (error) {
       if (controller.signal.aborted) return;
@@ -834,7 +932,7 @@ function ChallengeWorkspace({
       setQuestionsError(toAuthorError(error));
       setQuestionsState('error');
     }
-  }, [apiBaseUrl, getAccessToken, selectedChallengeId]);
+  }, [apiBaseUrl, getAccessToken, mutationCoordinator, selectedChallengeId]);
 
   useEffect(() => {
     void loadQuestions();
@@ -842,6 +940,40 @@ function ChallengeWorkspace({
   }, [loadQuestions]);
 
   useEffect(() => setConfirmRetire(false), [selectedChallengeId]);
+
+  useEffect(() => {
+    const collectionKey = challengeCollectionKey(event.eventId);
+    if (state === 'ready')
+      setChallenges((current) =>
+        reconcileAuthorMutationResults(
+          current,
+          mutationCoordinator.getResults<AuthorChallenge>(collectionKey),
+          (challenge) => challenge.challengeId,
+          appliedChallengeResultsRef.current,
+          false,
+          true,
+        ),
+      );
+    if (!selectedChallengeId || questionsState !== 'ready') return;
+    const questionKey = questionCollectionKey(selectedChallengeId);
+    setQuestions((current) =>
+      reconcileAuthorMutationResults(
+        current,
+        mutationCoordinator.getResults<AuthorQuestion>(questionKey),
+        (question) => question.questionId,
+        appliedQuestionResultsRef.current,
+        false,
+        true,
+      ),
+    );
+  }, [
+    event.eventId,
+    mutationCoordinator,
+    mutationRevision,
+    questionsState,
+    selectedChallengeId,
+    state,
+  ]);
 
   const selected =
     challenges.find(
@@ -888,12 +1020,20 @@ function ChallengeWorkspace({
     setQuestionsError(null);
     setMessage('');
     setApiError(null);
+    if (
+      mutationCoordinator.isCollectionUncertain(
+        challengeCollectionKey(event.eventId),
+      )
+    )
+      void loadChallenges(challengeId);
   }
 
   async function createChallenge() {
     const controller = beginOperation();
     const startingChallengeId = selectedChallengeIdRef.current;
     const startingInteraction = challengeInteractionRef.current;
+    const collectionKey = challengeCollectionKey(event.eventId);
+    const ticket = mutationCoordinator.beginCreate('challenge', collectionKey);
     let focusChallengeId: string | null = null;
     let focusInteraction: number | null = null;
     try {
@@ -903,8 +1043,13 @@ function ChallengeWorkspace({
         getAccessToken,
         signal: controller.signal,
       });
-      if (operationRef.current !== controller) return;
-      if (interactionActiveRef.current)
+      const recordKey = `challenge:${challenge.challengeId}` as const;
+      if (!mutationCoordinator.acceptSuccess(ticket, recordKey, challenge))
+        return;
+      const canApply = mutationCoordinator
+        .getResults<AuthorChallenge>(collectionKey)
+        .some((result) => result.recordKey === recordKey);
+      if (interactionActiveRef.current && canApply)
         setChallenges((current) => reconcileChallengeById(current, challenge));
       if (
         interactionActiveRef.current &&
@@ -917,8 +1062,12 @@ function ChallengeWorkspace({
         setMessage('Draft challenge associated with this event.');
       }
     } catch (error) {
+      const accepted = mutationCoordinator.acceptFailure(
+        ticket,
+        isUncertainError(error),
+      );
       if (
-        operationRef.current === controller &&
+        accepted &&
         interactionActiveRef.current &&
         selectedChallengeIdRef.current === startingChallengeId &&
         challengeInteractionRef.current === startingInteraction
@@ -950,6 +1099,11 @@ function ChallengeWorkspace({
     const controller = beginOperation();
     const challengeId = selected.challengeId;
     const startingInteraction = challengeInteractionRef.current;
+    const collectionKey = challengeCollectionKey(event.eventId);
+    const ticket = mutationCoordinator.beginMutation(
+      `challenge:${challengeId}`,
+      collectionKey,
+    );
     let shouldFocus = false;
     try {
       const next =
@@ -966,8 +1120,12 @@ function ChallengeWorkspace({
               getAccessToken,
               signal: controller.signal,
             });
-      if (operationRef.current !== controller) return;
-      if (interactionActiveRef.current)
+      const recordKey = `challenge:${next.challengeId}` as const;
+      if (!mutationCoordinator.acceptSuccess(ticket, recordKey, next)) return;
+      const canApply = mutationCoordinator
+        .getResults<AuthorChallenge>(collectionKey)
+        .some((result) => result.recordKey === recordKey);
+      if (interactionActiveRef.current && canApply)
         setChallenges((current) => reconcileChallengeById(current, next));
       if (
         interactionActiveRef.current &&
@@ -981,8 +1139,12 @@ function ChallengeWorkspace({
         shouldFocus = true;
       }
     } catch (error) {
+      const accepted = mutationCoordinator.acceptFailure(
+        ticket,
+        isUncertainError(error),
+      );
       if (
-        operationRef.current === controller &&
+        accepted &&
         interactionActiveRef.current &&
         selectedChallengeIdRef.current === challengeId &&
         challengeInteractionRef.current === startingInteraction
@@ -1012,6 +1174,12 @@ function ChallengeWorkspace({
   async function publishEvent() {
     if (eventDirty) return;
     const controller = beginOperation();
+    const startingChallengeId = selectedChallengeIdRef.current;
+    const startingChallengeInteraction = challengeInteractionRef.current;
+    const ticket = mutationCoordinator.beginMutation(
+      `event:${event.eventId}`,
+      'events',
+    );
     let shouldFocus = false;
     try {
       const next = await publishAuthorEvent({
@@ -1020,23 +1188,40 @@ function ChallengeWorkspace({
         getAccessToken,
         signal: controller.signal,
       });
-      if (operationRef.current !== controller) return;
-      onEventChanged(next, event.eventId, interaction);
-      if (interactionActiveRef.current) {
+      if (!onEventChanged(next, event.eventId, interaction, ticket)) return;
+      if (
+        interactionActiveRef.current &&
+        challengeInteractionRef.current === startingChallengeInteraction &&
+        selectedChallengeIdRef.current === startingChallengeId
+      ) {
         setMessage(
           'Event published and available to the player API according to its active times.',
         );
         shouldFocus = true;
       }
     } catch (error) {
-      if (operationRef.current === controller && interactionActiveRef.current) {
+      const accepted = mutationCoordinator.acceptFailure(
+        ticket,
+        isUncertainError(error),
+      );
+      if (
+        accepted &&
+        interactionActiveRef.current &&
+        challengeInteractionRef.current === startingChallengeInteraction &&
+        selectedChallengeIdRef.current === startingChallengeId
+      ) {
         setApiError(toAuthorError(error));
         shouldFocus = true;
       }
     } finally {
       if (finishOperation(controller) && shouldFocus)
         window.setTimeout(() => {
-          if (interactionActiveRef.current) feedbackRef.current?.focus();
+          if (
+            interactionActiveRef.current &&
+            challengeInteractionRef.current === startingChallengeInteraction &&
+            selectedChallengeIdRef.current === startingChallengeId
+          )
+            feedbackRef.current?.focus();
         });
     }
   }
@@ -1246,6 +1431,8 @@ function ChallengeWorkspace({
               challenge={selected}
               getAccessToken={getAccessToken}
               key={selected.challengeId}
+              mutationCoordinator={mutationCoordinator}
+              onReload={() => void loadQuestions()}
               onQuestionsChange={setQuestions}
               questions={questions.filter(
                 (question) => question.challengeId === selected.challengeId,
@@ -1262,6 +1449,8 @@ interface QuestionWorkspaceProps {
   apiBaseUrl: string;
   challenge: AuthorChallenge;
   getAccessToken: ApiAccessTokenProvider;
+  mutationCoordinator: AuthorMutationCoordinator;
+  onReload: () => void;
   onQuestionsChange: React.Dispatch<React.SetStateAction<AuthorQuestion[]>>;
   questions: AuthorQuestion[];
 }
@@ -1270,6 +1459,8 @@ function QuestionWorkspace({
   apiBaseUrl,
   challenge,
   getAccessToken,
+  mutationCoordinator,
+  onReload,
   onQuestionsChange,
   questions,
 }: QuestionWorkspaceProps) {
@@ -1279,7 +1470,6 @@ function QuestionWorkspace({
   const selectedIdRef = useRef<string | 'new'>('new');
   const interactionRef = useRef(0);
   const mountedRef = useRef(true);
-  const pendingQuestionsRef = useRef(new Map<string, AuthorQuestion>());
   const selected = questions.find(
     (question) => question.questionId === selectedId,
   );
@@ -1304,34 +1494,35 @@ function QuestionWorkspace({
 
   function selectQuestion(questionId: string | 'new') {
     interactionRef.current += 1;
-    if (questionId !== 'new') {
-      const pending = pendingQuestionsRef.current.get(questionId);
-      if (pending) {
-        onQuestionsChange((current) => reconcileQuestionById(current, pending));
-        pendingQuestionsRef.current.delete(questionId);
-      }
-    }
     selectedIdRef.current = questionId;
     setSelectedId(questionId);
     setMessage('');
+    if (
+      questionId !== 'new' &&
+      mutationCoordinator.isCollectionUncertain(
+        questionCollectionKey(challenge.challengeId),
+      )
+    )
+      onReload();
   }
 
   function updateQuestion(
     question: AuthorQuestion,
     ownerId: string | 'new',
     interaction: number,
+    ticket: AuthorMutationTicket,
     notice?: string,
   ) {
-    if (!mountedRef.current) return;
+    const recordKey = `question:${question.questionId}` as const;
+    if (!mutationCoordinator.acceptSuccess(ticket, recordKey, question)) return;
     const isCurrentInteraction =
+      mountedRef.current &&
       interactionRef.current === interaction &&
       selectedIdRef.current === ownerId;
-    const wouldReplaceNewerDraft =
-      selectedIdRef.current === question.questionId && !isCurrentInteraction;
-
-    if (wouldReplaceNewerDraft)
-      pendingQuestionsRef.current.set(question.questionId, question);
-    else
+    const canApply = mutationCoordinator
+      .getResults<AuthorQuestion>(questionCollectionKey(challenge.challengeId))
+      .some((result) => result.recordKey === recordKey);
+    if (mountedRef.current && canApply)
       onQuestionsChange((current) => reconcileQuestionById(current, question));
 
     if (!isCurrentInteraction) return;
@@ -1394,11 +1585,8 @@ function QuestionWorkspace({
         challenge={challenge}
         getAccessToken={getAccessToken}
         interaction={interactionRef.current}
-        key={
-          selected
-            ? `${selected.questionId}:${selected.updatedAt}:${selected.status}`
-            : 'new-question'
-        }
+        mutationCoordinator={mutationCoordinator}
+        key={selected ? selected.questionId : 'new-question'}
         onSaved={updateQuestion}
         question={selected}
       />
@@ -1411,10 +1599,12 @@ interface QuestionFormProps {
   challenge: AuthorChallenge;
   getAccessToken: ApiAccessTokenProvider;
   interaction: number;
+  mutationCoordinator: AuthorMutationCoordinator;
   onSaved: (
     question: AuthorQuestion,
     ownerId: string | 'new',
     interaction: number,
+    ticket: AuthorMutationTicket,
     notice?: string,
   ) => void;
   question?: AuthorQuestion;
@@ -1425,6 +1615,7 @@ function QuestionForm({
   challenge,
   getAccessToken,
   interaction,
+  mutationCoordinator,
   onSaved,
   question,
 }: QuestionFormProps) {
@@ -1458,6 +1649,9 @@ function QuestionForm({
     question &&
     JSON.stringify(draft) !== JSON.stringify(questionDraft(question)),
   );
+  const recordKey =
+    `question:${question?.questionId ?? 'new'}` as AuthorRecordKey;
+  useAuthorDraftSession(mutationCoordinator, recordKey, dirty);
 
   const editable =
     challenge.status !== 'retired' &&
@@ -1480,6 +1674,13 @@ function QuestionForm({
     const controller = new AbortController();
     operationRef.current = controller;
     const ownerId = question?.questionId ?? 'new';
+    const collectionKey = questionCollectionKey(challenge.challengeId);
+    const ticket = question
+      ? mutationCoordinator.beginMutation(
+          `question:${question.questionId}`,
+          collectionKey,
+        )
+      : mutationCoordinator.beginCreate('question', collectionKey);
     try {
       const saved = question
         ? await updateAuthorQuestion({
@@ -1501,11 +1702,16 @@ function QuestionForm({
         saved,
         ownerId,
         interaction,
+        ticket,
         question ? 'Question changes saved.' : 'Draft question created.',
       );
     } catch (error) {
-      if (operationRef.current !== controller || !interactionActiveRef.current)
-        return;
+      if (operationRef.current !== controller) return;
+      const accepted = mutationCoordinator.acceptFailure(
+        ticket,
+        isUncertainError(error),
+      );
+      if (!accepted || !interactionActiveRef.current) return;
       handleOperationError(error, setApiError, setErrors, formRef, feedbackRef);
     } finally {
       if (operationRef.current === controller) {
@@ -1522,6 +1728,11 @@ function QuestionForm({
     const controller = new AbortController();
     operationRef.current = controller;
     const ownerId = question.questionId;
+    const collectionKey = questionCollectionKey(challenge.challengeId);
+    const ticket = mutationCoordinator.beginMutation(
+      `question:${question.questionId}`,
+      collectionKey,
+    );
     try {
       const next =
         action === 'publish'
@@ -1542,12 +1753,17 @@ function QuestionForm({
         next,
         ownerId,
         interaction,
+        ticket,
         action === 'publish' ? 'Question published.' : 'Question retired.',
       );
       if (interactionActiveRef.current) setConfirmRetire(false);
     } catch (error) {
-      if (operationRef.current !== controller || !interactionActiveRef.current)
-        return;
+      if (operationRef.current !== controller) return;
+      const accepted = mutationCoordinator.acceptFailure(
+        ticket,
+        isUncertainError(error),
+      );
+      if (!accepted || !interactionActiveRef.current) return;
       handleOperationError(error, setApiError, setErrors, formRef, feedbackRef);
     } finally {
       if (operationRef.current === controller) {
@@ -1979,6 +2195,18 @@ function apiFieldName(field: string): string {
     return `choice${normalized.split('/')[1] ?? '0'}`;
   if (normalized === 'radiusMetres') return 'radiusMetres';
   return normalized;
+}
+
+function challengeCollectionKey(eventId: string): `challenges:${string}` {
+  return `challenges:${eventId}`;
+}
+
+function questionCollectionKey(challengeId: string): `questions:${string}` {
+  return `questions:${challengeId}`;
+}
+
+function isUncertainError(error: unknown): boolean {
+  return !(error instanceof AuthorApiError) || error.failure === 'unavailable';
 }
 
 function reconcileEventById(

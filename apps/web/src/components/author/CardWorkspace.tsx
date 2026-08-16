@@ -27,12 +27,19 @@ import {
 } from '../../api/author';
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
 import { AuthorFeedback } from './AuthorFeedback';
+import {
+  type AuthorMutationCoordinator,
+  type AuthorMutationTicket,
+  type AuthorRecordKey,
+  useAuthorDraftSession,
+} from './author-mutation-coordinator';
 
 interface CardWorkspaceProps {
   apiBaseUrl: string;
   cards: readonly AuthorCard[];
   errorMessage: string;
   getAccessToken: ApiAccessTokenProvider;
+  mutationCoordinator: AuthorMutationCoordinator;
   onCardsChange: Dispatch<SetStateAction<AuthorCard[]>>;
   onReload: () => void;
   state: 'error' | 'loading' | 'ready';
@@ -43,6 +50,7 @@ export function CardWorkspace({
   cards,
   errorMessage,
   getAccessToken,
+  mutationCoordinator,
   onCardsChange,
   onReload,
   state,
@@ -53,7 +61,6 @@ export function CardWorkspace({
   const selectedIdRef = useRef<string | 'new'>('new');
   const interactionRef = useRef(0);
   const mountedRef = useRef(true);
-  const pendingCardsRef = useRef(new Map<string, AuthorCard>());
   const selected = cards.find((card) => card.id === selectedId);
 
   useEffect(() => {
@@ -73,35 +80,30 @@ export function CardWorkspace({
 
   function selectCard(cardId: string | 'new') {
     interactionRef.current += 1;
-    if (cardId !== 'new') {
-      const pending = pendingCardsRef.current.get(cardId);
-      if (pending) {
-        onCardsChange((current) => reconcileById(current, pending));
-        pendingCardsRef.current.delete(cardId);
-      }
-    }
     selectedIdRef.current = cardId;
     setSelectedId(cardId);
     setMessage('');
+    if (cardId !== 'new' && mutationCoordinator.isCollectionUncertain('cards'))
+      onReload();
   }
 
   function updateCard(
     card: AuthorCard,
     ownerId: string | 'new',
     interaction: number,
+    ticket: AuthorMutationTicket,
     notice?: string,
   ) {
+    const recordKey = `card:${card.id}` as const;
+    if (!mutationCoordinator.acceptSuccess(ticket, recordKey, card)) return;
     const isCurrentInteraction =
       mountedRef.current &&
       interactionRef.current === interaction &&
       selectedIdRef.current === ownerId;
-    const wouldReplaceNewerDraft =
-      mountedRef.current &&
-      selectedIdRef.current === card.id &&
-      !isCurrentInteraction;
-
-    if (wouldReplaceNewerDraft) pendingCardsRef.current.set(card.id, card);
-    else onCardsChange((current) => reconcileById(current, card));
+    const canApply = mutationCoordinator
+      .getResults<AuthorCard>('cards')
+      .some((result) => result.recordKey === recordKey);
+    if (canApply) onCardsChange((current) => reconcileById(current, card));
 
     if (!isCurrentInteraction) return;
     selectedIdRef.current = card.id;
@@ -193,11 +195,8 @@ export function CardWorkspace({
               card={selected}
               getAccessToken={getAccessToken}
               interaction={interactionRef.current}
-              key={
-                selected
-                  ? `${selected.id}:${selected.updatedAt}:${selected.authoringStatus}`
-                  : 'new-card'
-              }
+              mutationCoordinator={mutationCoordinator}
+              key={selected ? selected.id : 'new-card'}
               onSaved={updateCard}
             />
           </div>
@@ -212,10 +211,12 @@ interface CardFormProps {
   card?: AuthorCard;
   getAccessToken: ApiAccessTokenProvider;
   interaction: number;
+  mutationCoordinator: AuthorMutationCoordinator;
   onSaved: (
     card: AuthorCard,
     ownerId: string | 'new',
     interaction: number,
+    ticket: AuthorMutationTicket,
     notice?: string,
   ) => void;
 }
@@ -252,6 +253,7 @@ function CardForm({
   card,
   getAccessToken,
   interaction,
+  mutationCoordinator,
   onSaved,
 }: CardFormProps) {
   const [draft, setDraft] = useState<CardDraft>(() => cardDraft(card));
@@ -282,6 +284,8 @@ function CardForm({
   const dirty = Boolean(
     card && JSON.stringify(draft) !== JSON.stringify(cardDraft(card)),
   );
+  const recordKey = `card:${card?.id ?? 'new'}` as AuthorRecordKey;
+  useAuthorDraftSession(mutationCoordinator, recordKey, dirty);
 
   async function save(submission: FormEvent) {
     submission.preventDefault();
@@ -302,6 +306,9 @@ function CardForm({
     const controller = new AbortController();
     operationRef.current = controller;
     const ownerId = card?.id ?? 'new';
+    const ticket = card
+      ? mutationCoordinator.beginMutation(`card:${card.id}`, 'cards')
+      : mutationCoordinator.beginCreate('card', 'cards');
 
     try {
       const saved = card
@@ -323,11 +330,16 @@ function CardForm({
         saved,
         ownerId,
         interaction,
+        ticket,
         card ? 'Card changes saved.' : 'Draft card created.',
       );
     } catch (error) {
-      if (operationRef.current !== controller || !interactionActiveRef.current)
-        return;
+      if (operationRef.current !== controller) return;
+      const accepted = mutationCoordinator.acceptFailure(
+        ticket,
+        isUncertainError(error),
+      );
+      if (!accepted || !interactionActiveRef.current) return;
       handleCardError(error, setApiError, setErrors, formRef, feedbackRef);
     } finally {
       if (operationRef.current === controller) {
@@ -344,6 +356,10 @@ function CardForm({
     const controller = new AbortController();
     operationRef.current = controller;
     const ownerId = card.id;
+    const ticket = mutationCoordinator.beginMutation(
+      `card:${card.id}`,
+      'cards',
+    );
     try {
       const next =
         action === 'publish'
@@ -364,14 +380,19 @@ function CardForm({
         next,
         ownerId,
         interaction,
+        ticket,
         action === 'publish'
           ? 'Card published and active.'
           : 'Card retired. Existing owned copies remain intact.',
       );
       if (interactionActiveRef.current) setConfirmRetire(false);
     } catch (error) {
-      if (operationRef.current !== controller || !interactionActiveRef.current)
-        return;
+      if (operationRef.current !== controller) return;
+      const accepted = mutationCoordinator.acceptFailure(
+        ticket,
+        isUncertainError(error),
+      );
+      if (!accepted || !interactionActiveRef.current) return;
       handleCardError(error, setApiError, setErrors, formRef, feedbackRef);
     } finally {
       if (operationRef.current === controller) {
@@ -1333,4 +1354,8 @@ function reconcileById(
   return cards.some((card) => card.id === authoritative.id)
     ? cards.map((card) => (card.id === authoritative.id ? authoritative : card))
     : [authoritative, ...cards];
+}
+
+function isUncertainError(error: unknown): boolean {
+  return !(error instanceof AuthorApiError) || error.failure === 'unavailable';
 }
