@@ -11,6 +11,7 @@ const HomePage = lazy(() => import('./pages/HomePage'));
 const AboutPage = lazy(() => import('./pages/AboutPage'));
 const ExplorePage = lazy(() => import('./pages/ExplorePage'));
 const ChallengePage = lazy(() => import('./pages/ChallengePage'));
+const CollectionPage = lazy(() => import('./pages/CollectionPage'));
 
 interface AppRoutesProps {
   apiBaseUrl: string;
@@ -34,6 +35,11 @@ export function AppRoutes({ apiBaseUrl, mapboxAccessToken }: AppRoutesProps) {
           <Route path="/challenge-attempts/:attemptId">
             <ProtectedRoute>
               <ChallengePage apiBaseUrl={apiBaseUrl} />
+            </ProtectedRoute>
+          </Route>
+          <Route path="/collection">
+            <ProtectedRoute destination="view your collection">
+              <CollectionPage apiBaseUrl={apiBaseUrl} />
             </ProtectedRoute>
           </Route>
           <Route path="/about" component={AboutPage} />

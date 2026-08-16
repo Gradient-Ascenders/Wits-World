@@ -7,6 +7,7 @@ export function AccountControl() {
     useAuth0();
   const [actionFailed, setActionFailed] = useState(false);
   const [isProtectedExploreRoute] = useRoute('/explore');
+  const [isProtectedCollectionRoute] = useRoute('/collection');
 
   if (isLoading) {
     return null;
@@ -37,7 +38,7 @@ export function AccountControl() {
   }
 
   if (error) {
-    if (isProtectedExploreRoute) {
+    if (isProtectedExploreRoute || isProtectedCollectionRoute) {
       return null;
     }
 

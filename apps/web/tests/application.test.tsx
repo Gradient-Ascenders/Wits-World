@@ -92,6 +92,9 @@ describe('Wits World application shell', () => {
     expect(screen.getByRole('link', { name: 'Explore' })).toHaveFocus();
 
     await user.tab();
+    expect(screen.getByRole('link', { name: 'Collection' })).toHaveFocus();
+
+    await user.tab();
     const aboutLink = screen.getByRole('link', { name: 'About' });
     expect(aboutLink).toHaveFocus();
 

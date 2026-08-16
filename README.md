@@ -181,6 +181,7 @@ Run these commands from the repository root:
 | ---------------------- | --------------------------------------------------------------------------- |
 | `npm run view`         | Start the web development server                                            |
 | `npm run api`          | Start the API development server                                            |
+| `npm run db`           | Check, migrate, and seed the development database                           |
 | `npm run build`        | Build all workspaces that expose a build script                             |
 | `npm run lint`         | Lint all application workspaces                                             |
 | `npm run type-check`   | Type-check all application workspaces                                       |
@@ -209,6 +210,12 @@ After configuring `apps/api/.env`:
 npm run db:check --workspace @wits-world/api
 npm run db:migrate --workspace @wits-world/api
 npm run db:seed --workspace @wits-world/api
+```
+
+For a shortcut that runs all three commands in order, use:
+
+```bash
+npm run db
 ```
 
 Test-database variants use `TEST_DATABASE_URL`:
