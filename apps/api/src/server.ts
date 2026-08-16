@@ -20,6 +20,9 @@ import { createChallengeAttemptCompletionFinalizer } from './challenges/challeng
 import { createCardCollectionService } from './cards/card-collection.js';
 import { createChallengeAttemptFetchService } from './challenges/challenge-attempt-fetch.js';
 import { createDeckService } from './cards/deck-service.js';
+import { createAuthorEventService } from './events/author-event-service.js';
+import { createAuthorChallengeService } from './challenges/author-challenge-service.js';
+import { createAuthorCardService } from './cards/author-card-service.js';
 import { createCpuMatchService } from './matches/cpu-match-service.js';
 
 async function startServer(): Promise<void> {
@@ -59,6 +62,9 @@ async function startServer(): Promise<void> {
     },
   );
   const deckService = createDeckService(database);
+  const authorEventService = createAuthorEventService(database);
+  const authorChallengeService = createAuthorChallengeService(database);
+  const authorCardService = createAuthorCardService(database);
   const cpuMatchService = createCpuMatchService(database);
 
   const app = await buildApp({
@@ -90,6 +96,12 @@ async function startServer(): Promise<void> {
     eventServices: {
       discovery: createEventDiscoveryService(database),
       eligibility: createEventEligibilityService(database),
+    },
+
+    authorContentServices: {
+      events: authorEventService,
+      challenges: authorChallengeService,
+      cards: authorCardService,
     },
   });
 
