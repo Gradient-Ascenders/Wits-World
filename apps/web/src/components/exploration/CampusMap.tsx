@@ -10,8 +10,10 @@ import {
 } from './map-provider';
 
 interface CampusMapProps {
+  accessibleLabel?: string;
   configuration: MapConfiguration;
   mapFactory?: MapFactory;
+  onCoordinateSelect?: (coordinate: MapCoordinate) => void;
   points: readonly MapPoint[];
   reportedLocation?: MapCoordinate | null;
 }
@@ -21,18 +23,22 @@ type MapStatus = 'error' | 'loading' | 'ready';
 const MAP_LOAD_TIMEOUT_MS = 15_000;
 
 export function CampusMap({
+  accessibleLabel = 'Interactive campus map using Mapbox Standard 3D. Event information is also available in the nearby events list.',
   configuration,
   mapFactory = createMapboxMap,
+  onCoordinateSelect,
   points,
   reportedLocation = null,
 }: CampusMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const controllerRef = useRef<MapController | null>(null);
+  const onCoordinateSelectRef = useRef(onCoordinateSelect);
   const pointsRef = useRef(points);
   const reportedLocationRef = useRef<MapCoordinate | null>(reportedLocation);
   const [status, setStatus] = useState<MapStatus>('loading');
 
   pointsRef.current = points;
+  onCoordinateSelectRef.current = onCoordinateSelect;
   reportedLocationRef.current = reportedLocation;
 
   useEffect(() => {
@@ -42,6 +48,12 @@ export function CampusMap({
   useEffect(() => {
     controllerRef.current?.setReportedLocation(reportedLocation);
   }, [reportedLocation]);
+
+  useEffect(() => {
+    controllerRef.current?.setCoordinateSelectionListener?.(
+      onCoordinateSelect ?? null,
+    );
+  }, [onCoordinateSelect]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -77,6 +89,9 @@ export function CampusMap({
         controllerRef.current = map;
         map.setPoints(pointsRef.current);
         map.setReportedLocation(reportedLocationRef.current);
+        map.setCoordinateSelectionListener?.(
+          onCoordinateSelectRef.current ?? null,
+        );
         map.onLoad(() => {
           if (active) {
             window.clearTimeout(loadTimeout);
@@ -111,7 +126,7 @@ export function CampusMap({
   return (
     <div className="campus-map">
       <div
-        aria-label="Interactive campus map using Mapbox Standard 3D. Event information is also available in the nearby events list."
+        aria-label={accessibleLabel}
         className="campus-map__canvas"
         ref={containerRef}
         role="region"

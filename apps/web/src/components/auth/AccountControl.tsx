@@ -8,6 +8,7 @@ export function AccountControl() {
   const [actionFailed, setActionFailed] = useState(false);
   const [isProtectedExploreRoute] = useRoute('/explore');
   const [isProtectedCollectionRoute] = useRoute('/collection');
+  const [isProtectedAuthorRoute] = useRoute('/author');
 
   if (isLoading) {
     return null;
@@ -38,7 +39,11 @@ export function AccountControl() {
   }
 
   if (error) {
-    if (isProtectedExploreRoute || isProtectedCollectionRoute) {
+    if (
+      isProtectedExploreRoute ||
+      isProtectedCollectionRoute ||
+      isProtectedAuthorRoute
+    ) {
       return null;
     }
 

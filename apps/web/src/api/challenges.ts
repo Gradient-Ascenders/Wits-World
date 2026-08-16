@@ -539,6 +539,7 @@ function hasForbiddenActiveAttemptFeedback(
 ): boolean {
   return [
     'acceptedChoiceId',
+    'acceptedChoicePosition',
     'answerCorrect',
     'answerKey',
     'cards',

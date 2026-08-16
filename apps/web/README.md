@@ -14,7 +14,9 @@ API-authoritative event eligibility and the protected timed challenge journey.
 Challenges restore their server-owned attempt, submit answer intent only, and
 display the persisted final score, rewards, and completed answer review. Card
 starter selection and collection browsing are available through the protected
-`/collection` route. Battles remain outside the live player flow.
+`/collection` route. Authors also have a separate protected `/author` console
+for Basic event, challenge, question, and card authoring. Battles remain outside
+the live player flow.
 
 ## Run locally
 
@@ -243,12 +245,71 @@ for the full flow, privacy boundary, browser limitations, and evidence steps.
 - `/collection` requires Auth0 sign-in, offers the one-time starter-affinity
   journey when no starter-owned copy is present, and renders every owned card
   copy returned by the API.
+- `/author` requires Auth0 sign-in and an API-resolved `author` role. It contains
+  the Basic author workflow and never grants or changes roles in the browser.
 - `/about` explains the Wits World project and Wits Quest game/topic distinction.
 - Any unknown route presents a page-not-found message and a link home.
 
 The application uses browser-history routing. A future static host must route
 unknown application paths back to `index.html`; production deployment remains
 outside issue #6.
+
+## Basic author console
+
+The navigation shows **Author** only after `GET /api/v1/auth/me` resolves the
+signed-in player as an active Author. Opening `/author` directly performs the
+same check. This is a presentation boundary only: every `/api/v1/author/*`
+request includes the Auth0 bearer token, and the API independently applies its
+authentication, active-player, and Author guards. Player roles are assigned and
+revoked out of band; the console has no role-management operation.
+
+The Basic workflow is:
+
+1. Open **Author → Events & challenges**, create or select a draft event, and
+   enter its title, optional description, active times, positive whole-number
+   radius, latitude, and longitude. The coordinate fields are always available;
+   clicking the placement map is optional.
+2. Create the event's multiple-choice challenge. Add questions with exactly four
+   non-blank choices, difficulty 1–3, one accepted-answer position, and a
+   non-blank author explanation. Publish at least five questions, then publish
+   exactly one challenge for the event.
+3. Open **Card catalogue** and create or update the global definitions used by
+   rewards. A Creature has positive HP, non-negative Power, and at least one
+   move. A Power card has null HP/Power and at least one effect. Publish at least
+   one Common card so the authoritative reward catalogue is ready.
+4. Return to the event's publication summary. It explains the three Basic
+   relationships, but remains advisory. Select **Ask API to publish event**;
+   success is shown only after the API accepts the request.
+
+Basic does not expose an event-to-card assignment or author-defined reward
+amount. The reward service selects from the global active catalogue. Published
+event, card, and question definitions cannot be edited under the current API,
+and retirement is permanent. A `409` response therefore reports a lifecycle
+conflict and reload is the recovery path; there is no client-invented version or
+optimistic-concurrency field. A `422` publication response reports that
+authoritative readiness rules are not met. Validation details identify controls
+when the API supplies field paths, while other API failures remain visible as
+request-level alerts.
+
+Accepted-choice identifiers, accepted positions, and author explanations are
+read only by the lazy-loaded author client. The in-progress player challenge
+client rejects responses containing any of those author-only keys. The player
+route still submits choice intent and renders only the server's safe active or
+completed-attempt contract.
+
+The authoritative validation and publication rules live in the API, principally
+in [`author-event-service.ts`](../api/src/events/author-event-service.ts),
+[`author-challenge-service.ts`](../api/src/challenges/author-challenge-service.ts),
+[`author-card-service.ts`](../api/src/cards/author-card-service.ts), and
+[`card-validation.ts`](../api/src/cards/card-validation.ts). The browser mirrors
+basic field constraints for immediate feedback but does not decide publication,
+rewards, eligibility, marking, or lifecycle authorization.
+
+Run the focused author tests from the repository root with:
+
+```bash
+npm test --workspace @wits-world/web -- --run tests/author-client.test.ts tests/author-console.test.tsx tests/challenges-client.test.ts
+```
 
 ## Initial structure
 
@@ -258,6 +319,7 @@ apps/web/
     api/          Typed player-safe API clients and response validation
     auth/         Auth0 provider integration and safe API-token access
     components/   Application shell and reusable status states
+      author/      Protected Basic author forms and publication readiness
       cards/       Semantic owned-card presentation and collection styling
       exploration/ Provider-independent campus map and event-list presentation
       home/        Decorative map, journey, and collectible-card previews
@@ -496,6 +558,46 @@ With `apps/web/.env` configured and the development server running:
 9. Capture disposable review screenshots outside tracked source files (or under
    the repository's ignored `.pr-screenshots/issue-70/` convention) and do not
    include account details, tokens, or other private data.
+
+#### Protected Basic authoring
+
+1. Prepare and seed the local database with `npm run db`, start the API with
+   `npm run dev --workspace @wits-world/api`, and start the web app with
+   `npm run dev --workspace @wits-world/web`. Sign in with a development account
+   whose local role has been assigned `author` by the approved out-of-band
+   process, then open `http://localhost:5173/author`.
+2. Create a draft event. Enter its coordinates entirely by keyboard, save it,
+   then click a different point on the optional map and confirm the labelled
+   latitude and longitude inputs update. Set a positive integer radius and an
+   end time later than the start time.
+3. Create one challenge and five questions. For each question, enter four
+   choices, choose the accepted answer with its radio control, add an author
+   explanation, publish the question, then publish the challenge. Confirm the
+   current question's accepted marker is visible only inside `/author`.
+4. In **Card catalogue**, create a Common card with valid category-specific
+   moves or effects and publish it. Return to the event and confirm all three
+   readiness summaries read **Ready**. Publish the event and confirm the API
+   success message receives focus.
+5. Open `/explore` and confirm the newly published, currently active event is
+   available through the player event response. Start its challenge where local
+   reported-location configuration permits. Inspect the active network response
+   and rendered page: neither accepted-choice identifiers/positions nor author
+   explanations may appear. Complete the challenge only through normal player
+   choices and confirm the server result is rendered.
+6. Repeat the author layout check at 360×800, 390×844, 768×1024, and 1280×800.
+   Confirm no horizontal overflow, clipped controls, or covered final actions.
+   At each meaningful form, use Tab/Shift+Tab, arrow keys for radios/selects, and
+   Enter/Space for buttons; map pointer input must never be required.
+7. Sign in as an ordinary development Player and open `/author`. Confirm the
+   focused Author permission message appears, no author API request is made, and
+   no author-only content or accepted-answer data is rendered. Also stop the API
+   and retry one load, submit invalid fields, provoke a publication `422` with an
+   incomplete draft, and retry a lifecycle action after a `409`; confirm alerts,
+   field focus, and recovery actions remain usable.
+8. Check the console and failed-request list throughout. Record viewport,
+   keyboard, success, failure, and player-response evidence on the pull request;
+   do not attach access tokens, credentials, accepted answers, precise player
+   locations, or other sensitive data.
 
 The preceding document was generated and edited with the assistance of:
 Codex-CLI[gpt-5.6-sol medium], Codex-CLI[GPT-5], and Codex[GPT-5].

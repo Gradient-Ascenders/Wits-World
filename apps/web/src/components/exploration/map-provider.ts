@@ -2,6 +2,7 @@ import type { FeatureCollection, Geometry } from 'geojson';
 import type {
   IControl,
   Map as MapboxMap,
+  MapMouseEvent,
   Marker as MapboxMarker,
 } from 'mapbox-gl/esm';
 
@@ -79,6 +80,9 @@ export interface MapController {
   onLoad: (listener: () => void) => void;
   remove: () => void;
   setReportedLocation: (coordinate: MapCoordinate | null) => void;
+  setCoordinateSelectionListener?: (
+    listener: ((coordinate: MapCoordinate) => void) | null,
+  ) => void;
   setPoints: (points: readonly MapPoint[]) => void;
 }
 
@@ -303,6 +307,15 @@ function createController(
   let reportedLocation: MapCoordinate | null = null;
   let reportedLocationPointer: HTMLSpanElement | undefined;
   let reportedLocationListenersAttached = false;
+  let coordinateSelectionListener:
+    ((coordinate: MapCoordinate) => void) | null = null;
+
+  const handleCoordinateSelection = (event: MapMouseEvent): void => {
+    coordinateSelectionListener?.({
+      latitude: event.lngLat.lat,
+      longitude: event.lngLat.lng,
+    });
+  };
 
   const updateReportedLocationPointer = (): void => {
     if (reportedLocationPointer === undefined || reportedLocation === null) {
@@ -368,9 +381,19 @@ function createController(
       map.once('load', listener);
     },
     remove() {
+      coordinateSelectionListener = null;
+      map.off('click', handleCoordinateSelection);
       setReportedLocation(null);
       setPoints([]);
       map.remove();
+    },
+    setCoordinateSelectionListener(listener) {
+      map.off('click', handleCoordinateSelection);
+      coordinateSelectionListener = listener;
+
+      if (listener !== null) {
+        map.on('click', handleCoordinateSelection);
+      }
     },
     setReportedLocation,
     setPoints,

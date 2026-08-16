@@ -5,6 +5,8 @@ import { AppShell } from './components/AppShell';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoadingState } from './components/LoadingState';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { AuthorRoute } from './components/auth/AuthorRoute';
+import { CurrentPlayerProvider } from './auth/CurrentPlayerProvider';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 const HomePage = lazy(() => import('./pages/HomePage'));
@@ -12,6 +14,7 @@ const AboutPage = lazy(() => import('./pages/AboutPage'));
 const ExplorePage = lazy(() => import('./pages/ExplorePage'));
 const ChallengePage = lazy(() => import('./pages/ChallengePage'));
 const CollectionPage = lazy(() => import('./pages/CollectionPage'));
+const AuthorConsolePage = lazy(() => import('./pages/AuthorConsolePage'));
 
 interface AppRoutesProps {
   apiBaseUrl: string;
@@ -20,33 +23,45 @@ interface AppRoutesProps {
 
 export function AppRoutes({ apiBaseUrl, mapboxAccessToken }: AppRoutesProps) {
   return (
-    <AppShell>
-      <Suspense fallback={<LoadingState />}>
-        <Switch>
-          <Route path="/" component={HomePage} />
-          <Route path="/explore">
-            <ProtectedRoute>
-              <ExplorePage
-                apiBaseUrl={apiBaseUrl}
-                mapboxAccessToken={mapboxAccessToken}
-              />
-            </ProtectedRoute>
-          </Route>
-          <Route path="/challenge-attempts/:attemptId">
-            <ProtectedRoute>
-              <ChallengePage apiBaseUrl={apiBaseUrl} />
-            </ProtectedRoute>
-          </Route>
-          <Route path="/collection">
-            <ProtectedRoute destination="view your collection">
-              <CollectionPage apiBaseUrl={apiBaseUrl} />
-            </ProtectedRoute>
-          </Route>
-          <Route path="/about" component={AboutPage} />
-          <Route component={NotFoundPage} />
-        </Switch>
-      </Suspense>
-    </AppShell>
+    <CurrentPlayerProvider apiBaseUrl={apiBaseUrl}>
+      <AppShell>
+        <Suspense fallback={<LoadingState />}>
+          <Switch>
+            <Route path="/" component={HomePage} />
+            <Route path="/explore">
+              <ProtectedRoute>
+                <ExplorePage
+                  apiBaseUrl={apiBaseUrl}
+                  mapboxAccessToken={mapboxAccessToken}
+                />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/challenge-attempts/:attemptId">
+              <ProtectedRoute>
+                <ChallengePage apiBaseUrl={apiBaseUrl} />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/collection">
+              <ProtectedRoute destination="view your collection">
+                <CollectionPage apiBaseUrl={apiBaseUrl} />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/author">
+              <ProtectedRoute destination="open the author console">
+                <AuthorRoute>
+                  <AuthorConsolePage
+                    apiBaseUrl={apiBaseUrl}
+                    mapboxAccessToken={mapboxAccessToken}
+                  />
+                </AuthorRoute>
+              </ProtectedRoute>
+            </Route>
+            <Route path="/about" component={AboutPage} />
+            <Route component={NotFoundPage} />
+          </Switch>
+        </Suspense>
+      </AppShell>
+    </CurrentPlayerProvider>
   );
 }
 

@@ -1,0 +1,857 @@
+import type { ApiAccessTokenProvider } from '../auth/useApiAccessToken';
+
+export type AuthoringStatus = 'draft' | 'published' | 'retired';
+export type AuthorApiFailure =
+  | 'authorization'
+  | 'conflict'
+  | 'forbidden'
+  | 'not-found'
+  | 'not-ready'
+  | 'unavailable'
+  | 'validation';
+
+export interface AuthorValidationFailure {
+  field: string;
+  message: string;
+}
+
+export class AuthorApiError extends Error {
+  public constructor(
+    public readonly failure: AuthorApiFailure,
+    public readonly detail: string,
+    public readonly requestId?: string,
+    public readonly validation: readonly AuthorValidationFailure[] = [],
+  ) {
+    super('The author request could not be completed.');
+    this.name = 'AuthorApiError';
+  }
+}
+
+export interface AuthorEvent {
+  authoringStatus: AuthoringStatus;
+  createdAt: string;
+  description: string | null;
+  endsAt: string;
+  eventId: string;
+  isPublished: boolean;
+  latitude: number;
+  longitude: number;
+  radiusMetres: number;
+  retiredAt: string | null;
+  startsAt: string;
+  title: string;
+  updatedAt: string;
+}
+
+export interface AuthorEventInput {
+  description?: string | null;
+  endsAt: string;
+  latitude: number;
+  longitude: number;
+  radiusMetres: number;
+  startsAt: string;
+  title: string;
+}
+
+export interface AuthorChallenge {
+  challengeId: string;
+  createdAt: string;
+  eventId: string;
+  format: 'multiple_choice';
+  status: AuthoringStatus;
+  updatedAt: string;
+}
+
+export interface AuthorQuestionChoice {
+  choiceId: string;
+  position: number;
+  text: string;
+}
+
+export interface AuthorQuestion {
+  acceptedChoiceId: string | null;
+  acceptedChoicePosition: number | null;
+  challengeId: string;
+  choices: AuthorQuestionChoice[];
+  createdAt: string;
+  difficulty: 1 | 2 | 3;
+  explanation: string | null;
+  prompt: string;
+  questionId: string;
+  status: AuthoringStatus;
+  updatedAt: string;
+}
+
+export interface AuthorQuestionInput {
+  acceptedChoicePosition: number;
+  choices: string[];
+  difficulty: 1 | 2 | 3;
+  explanation: string;
+  prompt: string;
+}
+
+export type CardAffinity = 'grit' | 'mystic' | 'spark' | 'spirit' | 'wit';
+export type CardCategory = 'creature' | 'power';
+export type CardRarity = 'common' | 'epic' | 'legendary' | 'rare';
+export type CardEffectType = 'buff' | 'damage' | 'debuff' | 'heal';
+export type CardModifierStat = 'damage_multiplier' | 'hp' | 'power';
+export type CardModifierOperation = 'add' | 'multiply';
+export type CardMoveType = 'basic' | CardAffinity;
+
+export interface AuthorCardMoveInput {
+  effectType: CardEffectType;
+  effectValue?: number | null;
+  modifierDurationTurns?: number | null;
+  modifierOperation?: CardModifierOperation | null;
+  modifierStat?: CardModifierStat | null;
+  moveType: CardMoveType;
+  name: string;
+  position: number;
+  powerCost: number;
+}
+
+export interface AuthorCardEffectInput {
+  effectType: CardEffectType;
+  effectValue?: number | null;
+  modifierDurationTurns?: number | null;
+  modifierOperation?: CardModifierOperation | null;
+  modifierStat?: CardModifierStat | null;
+  position: number;
+}
+
+export interface AuthorCardMove extends AuthorCardMoveInput {
+  effectValue: number | null;
+  id: string;
+  modifierDurationTurns: number | null;
+  modifierOperation: CardModifierOperation | null;
+  modifierStat: CardModifierStat | null;
+}
+
+export interface AuthorCardEffect extends AuthorCardEffectInput {
+  effectValue: number | null;
+  id: string;
+  modifierDurationTurns: number | null;
+  modifierOperation: CardModifierOperation | null;
+  modifierStat: CardModifierStat | null;
+}
+
+export interface AuthorCardInput {
+  affinity: CardAffinity;
+  category: CardCategory;
+  description?: string | null;
+  effects: AuthorCardEffectInput[];
+  hp: number | null;
+  imageUrl?: string | null;
+  moves: AuthorCardMoveInput[];
+  name: string;
+  power: number | null;
+  rarity: CardRarity;
+}
+
+export interface AuthorCard {
+  affinity: CardAffinity;
+  authoringStatus: AuthoringStatus;
+  category: CardCategory;
+  createdAt: string;
+  description: string | null;
+  effects: AuthorCardEffect[];
+  hp: number | null;
+  id: string;
+  imageUrl: string | null;
+  isActive: boolean;
+  moves: AuthorCardMove[];
+  name: string;
+  power: number | null;
+  rarity: CardRarity;
+  updatedAt: string;
+}
+
+interface RequestBase {
+  apiBaseUrl: string;
+  getAccessToken: ApiAccessTokenProvider;
+  signal: AbortSignal;
+}
+
+interface RequestOptions extends RequestBase {
+  body?: object;
+  method: 'GET' | 'POST' | 'PUT';
+  path: string;
+}
+
+export async function listAuthorEvents(options: RequestBase) {
+  const payload = await authorRequest({
+    ...options,
+    method: 'GET',
+    path: '/author/events',
+  });
+
+  if (!isRecord(payload) || !Array.isArray(payload.events)) {
+    throw unavailableResponse();
+  }
+
+  requireRequestId(payload);
+  return payload.events.map(parseAuthorEvent);
+}
+
+export async function createAuthorEvent(
+  options: RequestBase & { input: AuthorEventInput },
+) {
+  return requestEvent({
+    ...options,
+    body: options.input,
+    method: 'POST',
+    path: '/author/events',
+  });
+}
+
+export async function updateAuthorEvent(
+  options: RequestBase & { eventId: string; input: AuthorEventInput },
+) {
+  return requestEvent({
+    ...options,
+    body: options.input,
+    method: 'PUT',
+    path: `/author/events/${options.eventId}`,
+  });
+}
+
+export async function publishAuthorEvent(
+  options: RequestBase & { eventId: string },
+) {
+  return requestEvent({
+    ...options,
+    body: {},
+    method: 'POST',
+    path: `/author/events/${options.eventId}/publish`,
+  });
+}
+
+export async function retireAuthorEvent(
+  options: RequestBase & { eventId: string },
+) {
+  return requestEvent({
+    ...options,
+    body: {},
+    method: 'POST',
+    path: `/author/events/${options.eventId}/retire`,
+  });
+}
+
+export async function listAuthorChallenges(
+  options: RequestBase & { eventId: string },
+) {
+  const payload = await authorRequest({
+    ...options,
+    method: 'GET',
+    path: `/author/events/${options.eventId}/challenges`,
+  });
+
+  if (!isRecord(payload) || !Array.isArray(payload.challenges)) {
+    throw unavailableResponse();
+  }
+
+  requireRequestId(payload);
+  return payload.challenges.map(parseAuthorChallenge);
+}
+
+export async function createAuthorChallenge(
+  options: RequestBase & { eventId: string },
+) {
+  const payload = await authorRequest({
+    ...options,
+    body: {},
+    method: 'POST',
+    path: `/author/events/${options.eventId}/challenges`,
+  });
+
+  return parseEnvelope(payload, 'challenge', parseAuthorChallenge);
+}
+
+export async function publishAuthorChallenge(
+  options: RequestBase & { challengeId: string },
+) {
+  return requestChallengeLifecycle(options, 'publish');
+}
+
+export async function retireAuthorChallenge(
+  options: RequestBase & { challengeId: string },
+) {
+  return requestChallengeLifecycle(options, 'retire');
+}
+
+export async function listAuthorQuestions(
+  options: RequestBase & { challengeId: string },
+) {
+  const payload = await authorRequest({
+    ...options,
+    method: 'GET',
+    path: `/author/challenges/${options.challengeId}/questions`,
+  });
+
+  if (!isRecord(payload) || !Array.isArray(payload.questions)) {
+    throw unavailableResponse();
+  }
+
+  requireRequestId(payload);
+  return payload.questions.map(parseAuthorQuestion);
+}
+
+export async function createAuthorQuestion(
+  options: RequestBase & {
+    challengeId: string;
+    input: AuthorQuestionInput;
+  },
+) {
+  return requestQuestion({
+    ...options,
+    body: options.input,
+    method: 'POST',
+    path: `/author/challenges/${options.challengeId}/questions`,
+  });
+}
+
+export async function updateAuthorQuestion(
+  options: RequestBase & { input: AuthorQuestionInput; questionId: string },
+) {
+  return requestQuestion({
+    ...options,
+    body: options.input,
+    method: 'PUT',
+    path: `/author/questions/${options.questionId}`,
+  });
+}
+
+export async function publishAuthorQuestion(
+  options: RequestBase & { questionId: string },
+) {
+  return requestQuestionLifecycle(options, 'publish');
+}
+
+export async function retireAuthorQuestion(
+  options: RequestBase & { questionId: string },
+) {
+  return requestQuestionLifecycle(options, 'retire');
+}
+
+export async function listAuthorCards(options: RequestBase) {
+  const payload = await authorRequest({
+    ...options,
+    method: 'GET',
+    path: '/author/cards',
+  });
+
+  if (!isRecord(payload) || !Array.isArray(payload.cards)) {
+    throw unavailableResponse();
+  }
+
+  requireRequestId(payload);
+  return payload.cards.map(parseAuthorCard);
+}
+
+export async function createAuthorCard(
+  options: RequestBase & { input: AuthorCardInput },
+) {
+  return requestCard({
+    ...options,
+    body: options.input,
+    method: 'POST',
+    path: '/author/cards',
+  });
+}
+
+export async function updateAuthorCard(
+  options: RequestBase & { cardId: string; input: AuthorCardInput },
+) {
+  return requestCard({
+    ...options,
+    body: options.input,
+    method: 'PUT',
+    path: `/author/cards/${options.cardId}`,
+  });
+}
+
+export async function publishAuthorCard(
+  options: RequestBase & { cardId: string },
+) {
+  return requestCardLifecycle(options, 'publish');
+}
+
+export async function retireAuthorCard(
+  options: RequestBase & { cardId: string },
+) {
+  return requestCardLifecycle(options, 'retire');
+}
+
+async function requestEvent(options: RequestOptions): Promise<AuthorEvent> {
+  const payload = await authorRequest(options);
+  return parseEnvelope(payload, 'event', parseAuthorEvent);
+}
+
+async function requestQuestion(
+  options: RequestOptions,
+): Promise<AuthorQuestion> {
+  const payload = await authorRequest(options);
+  return parseEnvelope(payload, 'question', parseAuthorQuestion);
+}
+
+async function requestCard(options: RequestOptions): Promise<AuthorCard> {
+  const payload = await authorRequest(options);
+  return parseEnvelope(payload, 'card', parseAuthorCard);
+}
+
+async function requestChallengeLifecycle(
+  options: RequestBase & { challengeId: string },
+  action: 'publish' | 'retire',
+) {
+  const payload = await authorRequest({
+    ...options,
+    body: {},
+    method: 'POST',
+    path: `/author/challenges/${options.challengeId}/${action}`,
+  });
+  return parseEnvelope(payload, 'challenge', parseAuthorChallenge);
+}
+
+async function requestQuestionLifecycle(
+  options: RequestBase & { questionId: string },
+  action: 'publish' | 'retire',
+) {
+  return requestQuestion({
+    ...options,
+    body: {},
+    method: 'POST',
+    path: `/author/questions/${options.questionId}/${action}`,
+  });
+}
+
+async function requestCardLifecycle(
+  options: RequestBase & { cardId: string },
+  action: 'publish' | 'retire',
+) {
+  return requestCard({
+    ...options,
+    body: {},
+    method: 'POST',
+    path: `/author/cards/${options.cardId}/${action}`,
+  });
+}
+
+async function authorRequest({
+  apiBaseUrl,
+  body,
+  getAccessToken,
+  method,
+  path,
+  signal,
+}: RequestOptions): Promise<unknown> {
+  let accessToken: string;
+
+  try {
+    accessToken = await getAccessToken();
+  } catch {
+    throw new AuthorApiError(
+      'authorization',
+      'Your session could not authorize this request.',
+    );
+  }
+
+  let response: Response;
+
+  try {
+    response = await fetch(`${apiBaseUrl}${path}`, {
+      body: body === undefined ? undefined : JSON.stringify(body),
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      },
+      method,
+      signal,
+    });
+  } catch (error) {
+    if (signal.aborted) {
+      throw error;
+    }
+
+    throw new AuthorApiError(
+      'unavailable',
+      'The API is unavailable. No content change was confirmed.',
+    );
+  }
+
+  let payload: unknown;
+
+  try {
+    payload = await response.json();
+  } catch {
+    throw unavailableResponse();
+  }
+
+  if (!response.ok) {
+    throw parseAuthorError(response.status, payload);
+  }
+
+  return payload;
+}
+
+function parseAuthorError(status: number, payload: unknown): AuthorApiError {
+  if (!isRecord(payload)) {
+    return unavailableResponse();
+  }
+
+  const detail =
+    typeof payload.detail === 'string'
+      ? payload.detail
+      : 'The API could not complete the request.';
+  const requestId =
+    typeof payload.requestId === 'string' ? payload.requestId : undefined;
+  const validation = Array.isArray(payload.validation)
+    ? payload.validation.flatMap((failure) => {
+        if (
+          isRecord(failure) &&
+          typeof failure.field === 'string' &&
+          typeof failure.message === 'string'
+        ) {
+          return [{ field: failure.field, message: failure.message }];
+        }
+
+        return [];
+      })
+    : [];
+
+  if (status === 401) {
+    return new AuthorApiError('authorization', detail, requestId, validation);
+  }
+
+  if (status === 403) {
+    return new AuthorApiError('forbidden', detail, requestId, validation);
+  }
+
+  if (status === 404) {
+    return new AuthorApiError('not-found', detail, requestId, validation);
+  }
+
+  if (status === 409) {
+    return new AuthorApiError('conflict', detail, requestId, validation);
+  }
+
+  if (status === 422) {
+    return new AuthorApiError('not-ready', detail, requestId, validation);
+  }
+
+  if (status === 400) {
+    return new AuthorApiError('validation', detail, requestId, validation);
+  }
+
+  return new AuthorApiError('unavailable', detail, requestId, validation);
+}
+
+function parseEnvelope<T>(
+  payload: unknown,
+  key: string,
+  parser: (value: unknown) => T,
+): T {
+  if (!isRecord(payload) || !(key in payload)) {
+    throw unavailableResponse();
+  }
+
+  requireRequestId(payload);
+  return parser(payload[key]);
+}
+
+function parseAuthorEvent(value: unknown): AuthorEvent {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.eventId) ||
+    !isNonBlank(value.title) ||
+    !isNullableString(value.description) ||
+    !isCoordinate(value.latitude, -90, 90) ||
+    !isCoordinate(value.longitude, -180, 180) ||
+    !isPositiveInteger(value.radiusMetres) ||
+    !isDateTime(value.startsAt) ||
+    !isDateTime(value.endsAt) ||
+    typeof value.isPublished !== 'boolean' ||
+    !isStatus(value.authoringStatus) ||
+    !isNullableDateTime(value.retiredAt) ||
+    !isDateTime(value.createdAt) ||
+    !isDateTime(value.updatedAt)
+  ) {
+    throw unavailableResponse();
+  }
+
+  return value as unknown as AuthorEvent;
+}
+
+function parseAuthorChallenge(value: unknown): AuthorChallenge {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.challengeId) ||
+    !isUuid(value.eventId) ||
+    value.format !== 'multiple_choice' ||
+    !isStatus(value.status) ||
+    !isDateTime(value.createdAt) ||
+    !isDateTime(value.updatedAt)
+  ) {
+    throw unavailableResponse();
+  }
+
+  return value as unknown as AuthorChallenge;
+}
+
+function parseAuthorQuestion(value: unknown): AuthorQuestion {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.questionId) ||
+    !isUuid(value.challengeId) ||
+    !isNonBlank(value.prompt) ||
+    !isDifficulty(value.difficulty) ||
+    !isNullableString(value.explanation) ||
+    !isStatus(value.status) ||
+    !Array.isArray(value.choices) ||
+    !isNullableUuid(value.acceptedChoiceId) ||
+    !isNullableChoicePosition(value.acceptedChoicePosition) ||
+    !isDateTime(value.createdAt) ||
+    !isDateTime(value.updatedAt)
+  ) {
+    throw unavailableResponse();
+  }
+
+  const choices = value.choices.map(parseQuestionChoice);
+  const acceptedChoice = choices.find(
+    (choice) => choice.position === value.acceptedChoicePosition,
+  );
+
+  if (
+    choices.length !== 4 ||
+    new Set(choices.map((choice) => choice.position)).size !== choices.length ||
+    (value.acceptedChoiceId === null) !==
+      (value.acceptedChoicePosition === null) ||
+    (value.acceptedChoiceId !== null &&
+      acceptedChoice?.choiceId !== value.acceptedChoiceId)
+  ) {
+    throw unavailableResponse();
+  }
+
+  return { ...(value as unknown as AuthorQuestion), choices };
+}
+
+function parseQuestionChoice(value: unknown): AuthorQuestionChoice {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.choiceId) ||
+    !isChoicePosition(value.position) ||
+    !isNonBlank(value.text)
+  ) {
+    throw unavailableResponse();
+  }
+
+  return value as unknown as AuthorQuestionChoice;
+}
+
+function parseAuthorCard(value: unknown): AuthorCard {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.id) ||
+    !isNonBlank(value.name) ||
+    !isCategory(value.category) ||
+    !isAffinity(value.affinity) ||
+    !isRarity(value.rarity) ||
+    !isNullableNonNegativeInteger(value.hp) ||
+    !isNullableNonNegativeInteger(value.power) ||
+    !isNullableString(value.description) ||
+    !isNullableString(value.imageUrl) ||
+    typeof value.isActive !== 'boolean' ||
+    !Array.isArray(value.moves) ||
+    !Array.isArray(value.effects) ||
+    !isStatus(value.authoringStatus) ||
+    !isDateTime(value.createdAt) ||
+    !isDateTime(value.updatedAt)
+  ) {
+    throw unavailableResponse();
+  }
+
+  const moves = value.moves.map(parseCardMove);
+  const effects = value.effects.map(parseCardEffect);
+
+  return { ...(value as unknown as AuthorCard), effects, moves };
+}
+
+function parseCardMove(value: unknown): AuthorCardMove {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.id) ||
+    !isPositiveInteger(value.position) ||
+    !isNonBlank(value.name) ||
+    !isMoveType(value.moveType) ||
+    !isEffectType(value.effectType) ||
+    !isNullableNonNegativeInteger(value.effectValue) ||
+    !isNullableModifierStat(value.modifierStat) ||
+    !isNullableModifierOperation(value.modifierOperation) ||
+    !isNullablePositiveInteger(value.modifierDurationTurns) ||
+    !isNonNegativeInteger(value.powerCost)
+  ) {
+    throw unavailableResponse();
+  }
+
+  return value as unknown as AuthorCardMove;
+}
+
+function parseCardEffect(value: unknown): AuthorCardEffect {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.id) ||
+    !isPositiveInteger(value.position) ||
+    !isEffectType(value.effectType) ||
+    !isNullableNonNegativeInteger(value.effectValue) ||
+    !isNullableModifierStat(value.modifierStat) ||
+    !isNullableModifierOperation(value.modifierOperation) ||
+    !isNullablePositiveInteger(value.modifierDurationTurns)
+  ) {
+    throw unavailableResponse();
+  }
+
+  return value as unknown as AuthorCardEffect;
+}
+
+function requireRequestId(payload: Record<string, unknown>): void {
+  if (typeof payload.requestId !== 'string') {
+    throw unavailableResponse();
+  }
+}
+
+function unavailableResponse(): AuthorApiError {
+  return new AuthorApiError(
+    'unavailable',
+    'The API returned an unexpected response. No content change was confirmed.',
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isUuid(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(value)
+  );
+}
+
+function isNonBlank(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isDateTime(value: unknown): value is string {
+  return typeof value === 'string' && !Number.isNaN(Date.parse(value));
+}
+
+function isNullableDateTime(value: unknown): value is string | null {
+  return value === null || isDateTime(value);
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === 'string';
+}
+
+function isNullableUuid(value: unknown): value is string | null {
+  return value === null || isUuid(value);
+}
+
+function isCoordinate(value: unknown, minimum: number, maximum: number) {
+  return (
+    typeof value === 'number' &&
+    Number.isFinite(value) &&
+    value >= minimum &&
+    value <= maximum
+  );
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0;
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+function isNullableNonNegativeInteger(value: unknown): value is number | null {
+  return value === null || isNonNegativeInteger(value);
+}
+
+function isNullablePositiveInteger(value: unknown): value is number | null {
+  return value === null || isPositiveInteger(value);
+}
+
+function isStatus(value: unknown): value is AuthoringStatus {
+  return value === 'draft' || value === 'published' || value === 'retired';
+}
+
+function isDifficulty(value: unknown): value is 1 | 2 | 3 {
+  return value === 1 || value === 2 || value === 3;
+}
+
+function isChoicePosition(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= 4
+  );
+}
+
+function isNullableChoicePosition(value: unknown): value is number | null {
+  return value === null || isChoicePosition(value);
+}
+
+function isCategory(value: unknown): value is CardCategory {
+  return value === 'creature' || value === 'power';
+}
+
+function isAffinity(value: unknown): value is CardAffinity {
+  return (
+    value === 'wit' ||
+    value === 'grit' ||
+    value === 'spark' ||
+    value === 'spirit' ||
+    value === 'mystic'
+  );
+}
+
+function isRarity(value: unknown): value is CardRarity {
+  return (
+    value === 'common' ||
+    value === 'rare' ||
+    value === 'epic' ||
+    value === 'legendary'
+  );
+}
+
+function isMoveType(value: unknown): value is CardMoveType {
+  return value === 'basic' || isAffinity(value);
+}
+
+function isEffectType(value: unknown): value is CardEffectType {
+  return (
+    value === 'damage' ||
+    value === 'debuff' ||
+    value === 'heal' ||
+    value === 'buff'
+  );
+}
+
+function isNullableModifierStat(
+  value: unknown,
+): value is CardModifierStat | null {
+  return (
+    value === null ||
+    value === 'hp' ||
+    value === 'power' ||
+    value === 'damage_multiplier'
+  );
+}
+
+function isNullableModifierOperation(
+  value: unknown,
+): value is CardModifierOperation | null {
+  return value === null || value === 'add' || value === 'multiply';
+}
