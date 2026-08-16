@@ -744,6 +744,9 @@ describe('Basic author console', () => {
       screen.getByRole('button', { name: /Library trail/ }),
     ).toHaveAttribute('aria-current', 'true');
     expect(screen.queryByText('Event changes saved.')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Delayed Event A/ }));
+    expect(screen.getByLabelText('Event title')).toHaveValue('Delayed Event A');
   });
 
   it('keeps Card B selected and edited when a delayed Card A save completes', async () => {
@@ -789,6 +792,13 @@ describe('Basic author console', () => {
       'true',
     );
     expect(screen.queryByText('Card changes saved.')).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', { name: /Campus Owl delayed/ }),
+    );
+    expect(screen.getByLabelText('Card name')).toHaveValue(
+      'Campus Owl delayed',
+    );
   });
 
   it('keeps Question B selected and edited when a delayed Question A save completes', async () => {
@@ -832,6 +842,236 @@ describe('Basic author console', () => {
     );
     expect(
       screen.queryByText('Question changes saved.'),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Q1/ }));
+    expect(screen.getByLabelText('Question prompt')).toHaveValue(
+      'Question 1 delayed',
+    );
+  });
+
+  it('reconciles a delayed card lifecycle response without touching the newer editor', async () => {
+    const user = userEvent.setup();
+    const cardB = cardFixture({
+      id: '50000000-0000-4000-8000-000000000002',
+      name: 'Library Fox',
+    });
+    const pending = deferred<Response>();
+    installAuthorApi({
+      cards: [cardFixture(), cardB],
+      handleRequest: ({ path }) =>
+        path === `/author/cards/${cardFixture().id}/publish`
+          ? pending.promise
+          : undefined,
+    });
+    renderAuthorRoute();
+
+    await screen.findByRole('heading', { name: 'Author console' });
+    await user.click(screen.getByRole('button', { name: 'Card catalogue' }));
+    await user.click(screen.getByRole('button', { name: /Campus Owl/ }));
+    await user.click(screen.getByRole('button', { name: 'Publish card' }));
+    await user.click(screen.getByRole('button', { name: /Library Fox/ }));
+    await user.type(screen.getByLabelText('Card name'), ' local edit');
+
+    await act(async () => {
+      pending.resolve(
+        jsonResponse({
+          card: cardFixture({
+            authoringStatus: 'published',
+            isActive: true,
+          }),
+          requestId: 'request-card-a-publish',
+        }),
+      );
+      await pending.promise;
+    });
+
+    expect(screen.getByLabelText('Card name')).toHaveValue(
+      'Library Fox local edit',
+    );
+    expect(screen.getByLabelText('Card name')).toHaveFocus();
+    expect(
+      screen.queryByText('Card published and active.'),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Campus Owl/ }));
+    expect(screen.getByLabelText('Card name')).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: /Campus Owl/ }),
+    ).toHaveTextContent('published');
+  });
+
+  it('reconciles a delayed challenge lifecycle response without changing the newer challenge', async () => {
+    const user = userEvent.setup();
+    const challengeB = challengeFixture({
+      challengeId: '20000000-0000-4000-8000-000000000002',
+    });
+    const pending = deferred<Response>();
+    installAuthorApi({
+      challenges: [challengeFixture(), challengeB],
+      handleRequest: ({ path }) => {
+        if (path === `/author/challenges/${challengeId}/publish`)
+          return pending.promise;
+        if (path === `/author/challenges/${challengeB.challengeId}/questions`)
+          return jsonResponse({
+            questions: [],
+            requestId: 'request-questions-b',
+          });
+        return undefined;
+      },
+    });
+    renderAuthorRoute();
+
+    const selector = await screen.findByLabelText('Challenge');
+    await user.click(screen.getByRole('button', { name: 'Publish challenge' }));
+    await user.selectOptions(selector, challengeB.challengeId);
+    expect(selector).toHaveFocus();
+
+    await act(async () => {
+      pending.resolve(
+        jsonResponse({
+          challenge: { ...challengeFixture(), status: 'published' },
+          requestId: 'request-challenge-a-publish',
+        }),
+      );
+      await pending.promise;
+    });
+
+    expect(selector).toHaveValue(challengeB.challengeId);
+    expect(selector).toHaveFocus();
+    expect(screen.queryByText('Challenge published.')).not.toBeInTheDocument();
+
+    await user.selectOptions(selector, challengeId);
+    expect(selector).toHaveValue(challengeId);
+    expect(
+      screen.queryByRole('button', { name: 'Publish challenge' }),
+    ).not.toBeInTheDocument();
+    expect(selector).toHaveTextContent('Challenge 1 — published');
+  });
+
+  it('reconciles a delayed challenge creation without selecting it in a newer context', async () => {
+    const user = userEvent.setup();
+    const challengeB = challengeFixture({
+      challengeId: '20000000-0000-4000-8000-000000000002',
+    });
+    const createdChallenge = challengeFixture({
+      challengeId: '20000000-0000-4000-8000-000000000003',
+    });
+    const pending = deferred<Response>();
+    installAuthorApi({
+      challenges: [challengeFixture(), challengeB],
+      handleRequest: ({ method, path }) => {
+        if (
+          method === 'POST' &&
+          path === `/author/events/${eventId}/challenges`
+        )
+          return pending.promise;
+        if (
+          path === `/author/challenges/${challengeB.challengeId}/questions` ||
+          path ===
+            `/author/challenges/${createdChallenge.challengeId}/questions`
+        )
+          return jsonResponse({
+            questions: [],
+            requestId: 'request-questions',
+          });
+        return undefined;
+      },
+    });
+    renderAuthorRoute();
+
+    const selector = await screen.findByLabelText('Challenge');
+    await user.click(screen.getByRole('button', { name: 'Create challenge' }));
+    await user.selectOptions(selector, challengeB.challengeId);
+
+    await act(async () => {
+      pending.resolve(
+        jsonResponse({
+          challenge: createdChallenge,
+          requestId: 'request-challenge-create',
+        }),
+      );
+      await pending.promise;
+    });
+
+    expect(selector).toHaveValue(challengeB.challengeId);
+    expect(selector).toHaveFocus();
+    expect(
+      screen.queryByText('Draft challenge associated with this event.'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('option', { name: 'Challenge 3 — draft' }),
+    ).toBeInTheDocument();
+
+    await user.selectOptions(selector, createdChallenge.challengeId);
+    expect(selector).toHaveValue(createdChallenge.challengeId);
+  });
+
+  it('focuses challenge-create feedback when the request fails in the same context', async () => {
+    const user = userEvent.setup();
+    const pending = deferred<Response>();
+    installAuthorApi({
+      challenges: [challengeFixture()],
+      handleRequest: ({ method, path }) =>
+        method === 'POST' && path === `/author/events/${eventId}/challenges`
+          ? pending.promise
+          : undefined,
+    });
+    renderAuthorRoute();
+
+    await screen.findByLabelText('Challenge');
+    await user.click(screen.getByRole('button', { name: 'Create challenge' }));
+    await act(async () => {
+      pending.resolve(
+        problemResponse(500, 'INTERNAL_ERROR', 'Challenge creation failed.'),
+      );
+      await pending.promise;
+    });
+
+    const feedback = await screen.findByRole('alert');
+    expect(feedback).toHaveTextContent('Challenge creation failed.');
+    expect(feedback).toHaveFocus();
+  });
+
+  it('does not focus obsolete challenge-create errors after changing event context', async () => {
+    const user = userEvent.setup();
+    const eventB = eventFixture({
+      eventId: '10000000-0000-4000-8000-000000000002',
+      title: 'Library trail',
+    });
+    const pending = deferred<Response>();
+    installAuthorApi({
+      challenges: [challengeFixture()],
+      events: [eventFixture(), eventB],
+      handleRequest: ({ method, path }) => {
+        if (
+          method === 'POST' &&
+          path === `/author/events/${eventId}/challenges`
+        )
+          return pending.promise;
+        if (path === `/author/events/${eventB.eventId}/challenges`)
+          return jsonResponse({ challenges: [], requestId: 'request-event-b' });
+        return undefined;
+      },
+    });
+    renderAuthorRoute();
+
+    await screen.findByLabelText('Challenge');
+    await user.click(screen.getByRole('button', { name: 'Create challenge' }));
+    await user.click(screen.getByRole('button', { name: /Library trail/ }));
+    const eventBTitle = await screen.findByLabelText('Event title');
+    eventBTitle.focus();
+
+    await act(async () => {
+      pending.resolve(
+        problemResponse(500, 'INTERNAL_ERROR', 'Obsolete challenge failure.'),
+      );
+      await pending.promise;
+    });
+
+    expect(eventBTitle).toHaveFocus();
+    expect(
+      screen.queryByText('Obsolete challenge failure.'),
     ).not.toBeInTheDocument();
   });
 

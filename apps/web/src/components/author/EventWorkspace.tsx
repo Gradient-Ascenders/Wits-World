@@ -67,6 +67,10 @@ export function EventWorkspace({
   const feedbackRef = useRef<HTMLDivElement>(null);
   const requestRef = useRef<AbortController | null>(null);
   const selectedIdRef = useRef<string | null>(null);
+  const creatingRef = useRef(false);
+  const interactionRef = useRef(0);
+  const mountedRef = useRef(true);
+  const pendingEventsRef = useRef(new Map<string, AuthorEvent>());
 
   const load = useCallback(async () => {
     requestRef.current?.abort();
@@ -88,6 +92,8 @@ export function EventWorkspace({
             ? current
             : (nextEvents[0]?.eventId ?? null);
         selectedIdRef.current = next;
+        creatingRef.current = false;
+        interactionRef.current += 1;
         return next;
       });
       setState('ready');
@@ -104,20 +110,54 @@ export function EventWorkspace({
   }, [apiBaseUrl, getAccessToken]);
 
   useEffect(() => {
+    mountedRef.current = true;
     void load();
-    return () => requestRef.current?.abort();
+    return () => {
+      mountedRef.current = false;
+      requestRef.current?.abort();
+    };
   }, [load]);
 
   const selected = events.find((event) => event.eventId === selectedId) ?? null;
 
-  function updateEvent(event: AuthorEvent, notice?: string) {
-    setEvents((current) => {
-      const exists = current.some((item) => item.eventId === event.eventId);
-      return exists
-        ? current.map((item) => (item.eventId === event.eventId ? event : item))
-        : [event, ...current];
-    });
+  function selectEvent(eventId: string | null, creatingEvent = false) {
+    interactionRef.current += 1;
+    if (eventId) {
+      const pending = pendingEventsRef.current.get(eventId);
+      if (pending) {
+        setEvents((current) => reconcileEventById(current, pending));
+        pendingEventsRef.current.delete(eventId);
+      }
+    }
+    selectedIdRef.current = eventId;
+    creatingRef.current = creatingEvent;
+    setCreating(creatingEvent);
+    setSelectedId(eventId);
+    setMessage('');
+  }
+
+  function updateEvent(
+    event: AuthorEvent,
+    ownerId: string | 'new',
+    interaction: number,
+    notice?: string,
+  ) {
+    const isCurrentInteraction =
+      mountedRef.current &&
+      interactionRef.current === interaction &&
+      (ownerId === 'new'
+        ? creatingRef.current
+        : selectedIdRef.current === ownerId);
+    const wouldReplaceNewerDraft =
+      selectedIdRef.current === event.eventId && !isCurrentInteraction;
+
+    if (wouldReplaceNewerDraft)
+      pendingEventsRef.current.set(event.eventId, event);
+    else setEvents((current) => reconcileEventById(current, event));
+
+    if (!isCurrentInteraction) return;
     selectedIdRef.current = event.eventId;
+    creatingRef.current = false;
     setSelectedId(event.eventId);
     setCreating(false);
     setDirtyEventId((current) => (current === event.eventId ? null : current));
@@ -126,7 +166,10 @@ export function EventWorkspace({
         notice,
         setMessage,
         feedbackRef,
-        () => selectedIdRef.current === event.eventId,
+        () =>
+          mountedRef.current &&
+          interactionRef.current === interaction &&
+          selectedIdRef.current === event.eventId,
       );
   }
 
@@ -148,12 +191,7 @@ export function EventWorkspace({
         </div>
         <button
           className="button"
-          onClick={() => {
-            selectedIdRef.current = null;
-            setCreating(true);
-            setSelectedId(null);
-            setMessage('');
-          }}
+          onClick={() => selectEvent(null, true)}
           type="button"
         >
           Create event
@@ -204,12 +242,7 @@ export function EventWorkspace({
                         selectedId === event.eventId ? 'true' : undefined
                       }
                       className="author-record-list__item"
-                      onClick={() => {
-                        selectedIdRef.current = event.eventId;
-                        setCreating(false);
-                        setSelectedId(event.eventId);
-                        setMessage('');
-                      }}
+                      onClick={() => selectEvent(event.eventId)}
                       type="button"
                     >
                       <span>{event.title}</span>
@@ -229,12 +262,10 @@ export function EventWorkspace({
                 key="new-event"
                 mapFactory={mapFactory}
                 mapboxAccessToken={mapboxAccessToken}
+                interaction={interactionRef.current}
                 onDirtyChange={updateEventDirty}
                 onCancel={() => {
-                  selectedIdRef.current = events[0]?.eventId ?? null;
-                  setCreating(false);
-                  setSelectedId(events[0]?.eventId ?? null);
-                  setMessage('');
+                  selectEvent(events[0]?.eventId ?? null);
                 }}
                 onSaved={updateEvent}
               />
@@ -244,6 +275,7 @@ export function EventWorkspace({
                   apiBaseUrl={apiBaseUrl}
                   event={selected}
                   getAccessToken={getAccessToken}
+                  interaction={interactionRef.current}
                   key={`${selected.eventId}:${selected.updatedAt}:${selected.authoringStatus}`}
                   mapFactory={mapFactory}
                   mapboxAccessToken={mapboxAccessToken}
@@ -257,6 +289,7 @@ export function EventWorkspace({
                   event={selected}
                   eventDirty={dirtyEventId === selected.eventId}
                   getAccessToken={getAccessToken}
+                  interaction={interactionRef.current}
                   key={selected.eventId}
                   onEventChanged={updateEvent}
                   onOpenCards={onOpenCards}
@@ -275,11 +308,17 @@ interface EventFormProps {
   apiBaseUrl: string;
   event?: AuthorEvent;
   getAccessToken: ApiAccessTokenProvider;
+  interaction: number;
   mapFactory?: MapFactory;
   mapboxAccessToken: string;
   onCancel?: () => void;
   onDirtyChange: (eventId: string, dirty: boolean) => void;
-  onSaved: (event: AuthorEvent, notice?: string) => void;
+  onSaved: (
+    event: AuthorEvent,
+    ownerId: string | 'new',
+    interaction: number,
+    notice?: string,
+  ) => void;
 }
 
 interface EventDraft {
@@ -296,6 +335,7 @@ function EventForm({
   apiBaseUrl,
   event,
   getAccessToken,
+  interaction,
   mapFactory,
   mapboxAccessToken,
   onCancel,
@@ -310,6 +350,7 @@ function EventForm({
   const formRef = useRef<HTMLFormElement>(null);
   const feedbackRef = useRef<HTMLDivElement>(null);
   const operationRef = useRef<AbortController | null>(null);
+  const interactionActiveRef = useRef(true);
 
   useEffect(() => {
     setDraft(eventDraft(event));
@@ -318,13 +359,12 @@ function EventForm({
     setConfirmRetire(false);
   }, [event]);
 
-  useEffect(
-    () => () => {
-      operationRef.current?.abort();
-      operationRef.current = null;
-    },
-    [],
-  );
+  useEffect(() => {
+    interactionActiveRef.current = true;
+    return () => {
+      interactionActiveRef.current = false;
+    };
+  }, []);
 
   const dirty = Boolean(
     event && JSON.stringify(draft) !== JSON.stringify(eventDraft(event)),
@@ -363,9 +403,9 @@ function EventForm({
 
     setBusy(true);
     setApiError(null);
-    operationRef.current?.abort();
     const controller = new AbortController();
     operationRef.current = controller;
+    const ownerId = event?.eventId ?? 'new';
 
     try {
       const saved = event
@@ -382,17 +422,21 @@ function EventForm({
             input: result.input,
             signal: controller.signal,
           });
-      if (controller.signal.aborted || operationRef.current !== controller)
-        return;
-      onSaved(saved, event ? 'Event changes saved.' : 'Draft event created.');
+      if (operationRef.current !== controller) return;
+      onSaved(
+        saved,
+        ownerId,
+        interaction,
+        event ? 'Event changes saved.' : 'Draft event created.',
+      );
     } catch (error) {
-      if (controller.signal.aborted || operationRef.current !== controller)
+      if (operationRef.current !== controller || !interactionActiveRef.current)
         return;
       handleOperationError(error, setApiError, setErrors, formRef, feedbackRef);
     } finally {
       if (operationRef.current === controller) {
         operationRef.current = null;
-        if (!controller.signal.aborted) setBusy(false);
+        if (interactionActiveRef.current) setBusy(false);
       }
     }
   }
@@ -401,9 +445,9 @@ function EventForm({
     if (!event) return;
     setBusy(true);
     setApiError(null);
-    operationRef.current?.abort();
     const controller = new AbortController();
     operationRef.current = controller;
+    const ownerId = event.eventId;
 
     try {
       const next = await retireAuthorEvent({
@@ -412,18 +456,17 @@ function EventForm({
         getAccessToken,
         signal: controller.signal,
       });
-      if (controller.signal.aborted || operationRef.current !== controller)
-        return;
-      onSaved(next, 'Event retired.');
-      setConfirmRetire(false);
+      if (operationRef.current !== controller) return;
+      onSaved(next, ownerId, interaction, 'Event retired.');
+      if (interactionActiveRef.current) setConfirmRetire(false);
     } catch (error) {
-      if (controller.signal.aborted || operationRef.current !== controller)
+      if (operationRef.current !== controller || !interactionActiveRef.current)
         return;
       handleOperationError(error, setApiError, setErrors, formRef, feedbackRef);
     } finally {
       if (operationRef.current === controller) {
         operationRef.current = null;
-        if (!controller.signal.aborted) setBusy(false);
+        if (interactionActiveRef.current) setBusy(false);
       }
     }
   }
@@ -667,7 +710,13 @@ interface ChallengeWorkspaceProps {
   event: AuthorEvent;
   eventDirty: boolean;
   getAccessToken: ApiAccessTokenProvider;
-  onEventChanged: (event: AuthorEvent) => void;
+  interaction: number;
+  onEventChanged: (
+    event: AuthorEvent,
+    ownerId: string,
+    interaction: number,
+    notice?: string,
+  ) => void;
   onOpenCards: () => void;
   onReloadCards: () => void;
 }
@@ -679,6 +728,7 @@ function ChallengeWorkspace({
   event,
   eventDirty,
   getAccessToken,
+  interaction,
   onEventChanged,
   onOpenCards,
   onReloadCards,
@@ -702,6 +752,8 @@ function ChallengeWorkspace({
   const questionRequestRef = useRef<AbortController | null>(null);
   const operationRef = useRef<AbortController | null>(null);
   const selectedChallengeIdRef = useRef<string | null>(null);
+  const challengeInteractionRef = useRef(0);
+  const interactionActiveRef = useRef(true);
 
   const loadChallenges = useCallback(async () => {
     challengeRequestRef.current?.abort();
@@ -710,6 +762,7 @@ function ChallengeWorkspace({
     setState('loading');
     setChallenges([]);
     selectedChallengeIdRef.current = null;
+    challengeInteractionRef.current += 1;
     setSelectedChallengeId(null);
     setQuestions([]);
     setQuestionsState('loading');
@@ -745,12 +798,12 @@ function ChallengeWorkspace({
   }, [apiBaseUrl, event.eventId, getAccessToken]);
 
   useEffect(() => {
+    interactionActiveRef.current = true;
     void loadChallenges();
     return () => {
+      interactionActiveRef.current = false;
       challengeRequestRef.current?.abort();
       questionRequestRef.current?.abort();
-      operationRef.current?.abort();
-      operationRef.current = null;
     };
   }, [loadChallenges]);
 
@@ -811,7 +864,6 @@ function ChallengeWorkspace({
   const hasAuthoritativeCommon = cardsState === 'ready' && hasActiveCommon;
 
   function beginOperation() {
-    operationRef.current?.abort();
     const controller = new AbortController();
     operationRef.current = controller;
     setBusy(true);
@@ -822,16 +874,12 @@ function ChallengeWorkspace({
   function finishOperation(controller: AbortController) {
     if (operationRef.current !== controller) return false;
     operationRef.current = null;
-    if (!controller.signal.aborted) setBusy(false);
-    return !controller.signal.aborted;
+    if (interactionActiveRef.current) setBusy(false);
+    return true;
   }
 
-  function selectChallenge(challengeId: string, invalidateOperation = true) {
-    if (invalidateOperation) {
-      operationRef.current?.abort();
-      operationRef.current = null;
-      setBusy(false);
-    }
+  function selectChallenge(challengeId: string) {
+    challengeInteractionRef.current += 1;
     setConfirmRetire(false);
     selectedChallengeIdRef.current = challengeId;
     setSelectedChallengeId(challengeId);
@@ -844,7 +892,10 @@ function ChallengeWorkspace({
 
   async function createChallenge() {
     const controller = beginOperation();
-    let completedChallengeId: string | null = null;
+    const startingChallengeId = selectedChallengeIdRef.current;
+    const startingInteraction = challengeInteractionRef.current;
+    let focusChallengeId: string | null = null;
+    let focusInteraction: number | null = null;
     try {
       const challenge = await createAuthorChallenge({
         apiBaseUrl,
@@ -852,22 +903,45 @@ function ChallengeWorkspace({
         getAccessToken,
         signal: controller.signal,
       });
-      if (controller.signal.aborted || operationRef.current !== controller)
-        return;
-      setChallenges((current) => [...current, challenge]);
-      selectChallenge(challenge.challengeId, false);
-      completedChallengeId = challenge.challengeId;
-      setMessage('Draft challenge associated with this event.');
+      if (operationRef.current !== controller) return;
+      if (interactionActiveRef.current)
+        setChallenges((current) => reconcileChallengeById(current, challenge));
+      if (
+        interactionActiveRef.current &&
+        selectedChallengeIdRef.current === startingChallengeId &&
+        challengeInteractionRef.current === startingInteraction
+      ) {
+        selectChallenge(challenge.challengeId);
+        focusChallengeId = challenge.challengeId;
+        focusInteraction = challengeInteractionRef.current;
+        setMessage('Draft challenge associated with this event.');
+      }
     } catch (error) {
-      if (controller.signal.aborted || operationRef.current !== controller)
-        return;
-      setApiError(toAuthorError(error));
+      if (
+        operationRef.current === controller &&
+        interactionActiveRef.current &&
+        selectedChallengeIdRef.current === startingChallengeId &&
+        challengeInteractionRef.current === startingInteraction
+      ) {
+        setApiError(toAuthorError(error));
+        focusChallengeId = startingChallengeId;
+        focusInteraction = startingInteraction;
+      }
     } finally {
       if (
         finishOperation(controller) &&
-        selectedChallengeIdRef.current === completedChallengeId
+        focusInteraction !== null &&
+        challengeInteractionRef.current === focusInteraction &&
+        selectedChallengeIdRef.current === focusChallengeId
       )
-        window.setTimeout(() => feedbackRef.current?.focus());
+        window.setTimeout(() => {
+          if (
+            interactionActiveRef.current &&
+            challengeInteractionRef.current === focusInteraction &&
+            selectedChallengeIdRef.current === focusChallengeId
+          )
+            feedbackRef.current?.focus();
+        });
     }
   }
 
@@ -875,6 +949,8 @@ function ChallengeWorkspace({
     if (!selected) return;
     const controller = beginOperation();
     const challengeId = selected.challengeId;
+    const startingInteraction = challengeInteractionRef.current;
+    let shouldFocus = false;
     try {
       const next =
         action === 'publish'
@@ -890,37 +966,53 @@ function ChallengeWorkspace({
               getAccessToken,
               signal: controller.signal,
             });
+      if (operationRef.current !== controller) return;
+      if (interactionActiveRef.current)
+        setChallenges((current) => reconcileChallengeById(current, next));
       if (
-        controller.signal.aborted ||
-        operationRef.current !== controller ||
-        selectedChallengeId !== challengeId
-      )
-        return;
-      setChallenges((current) =>
-        current.map((item) =>
-          item.challengeId === next.challengeId ? next : item,
-        ),
-      );
-      setMessage(
-        action === 'publish' ? 'Challenge published.' : 'Challenge retired.',
-      );
-      setConfirmRetire(false);
+        interactionActiveRef.current &&
+        selectedChallengeIdRef.current === challengeId &&
+        challengeInteractionRef.current === startingInteraction
+      ) {
+        setMessage(
+          action === 'publish' ? 'Challenge published.' : 'Challenge retired.',
+        );
+        setConfirmRetire(false);
+        shouldFocus = true;
+      }
     } catch (error) {
-      if (controller.signal.aborted || operationRef.current !== controller)
-        return;
-      setApiError(toAuthorError(error));
+      if (
+        operationRef.current === controller &&
+        interactionActiveRef.current &&
+        selectedChallengeIdRef.current === challengeId &&
+        challengeInteractionRef.current === startingInteraction
+      ) {
+        setApiError(toAuthorError(error));
+        shouldFocus = true;
+      }
     } finally {
       if (
         finishOperation(controller) &&
+        shouldFocus &&
+        interactionActiveRef.current &&
+        challengeInteractionRef.current === startingInteraction &&
         selectedChallengeIdRef.current === challengeId
       )
-        window.setTimeout(() => feedbackRef.current?.focus());
+        window.setTimeout(() => {
+          if (
+            interactionActiveRef.current &&
+            challengeInteractionRef.current === startingInteraction &&
+            selectedChallengeIdRef.current === challengeId
+          )
+            feedbackRef.current?.focus();
+        });
     }
   }
 
   async function publishEvent() {
     if (eventDirty) return;
     const controller = beginOperation();
+    let shouldFocus = false;
     try {
       const next = await publishAuthorEvent({
         apiBaseUrl,
@@ -928,19 +1020,24 @@ function ChallengeWorkspace({
         getAccessToken,
         signal: controller.signal,
       });
-      if (controller.signal.aborted || operationRef.current !== controller)
-        return;
-      onEventChanged(next);
-      setMessage(
-        'Event published and available to the player API according to its active times.',
-      );
+      if (operationRef.current !== controller) return;
+      onEventChanged(next, event.eventId, interaction);
+      if (interactionActiveRef.current) {
+        setMessage(
+          'Event published and available to the player API according to its active times.',
+        );
+        shouldFocus = true;
+      }
     } catch (error) {
-      if (controller.signal.aborted || operationRef.current !== controller)
-        return;
-      setApiError(toAuthorError(error));
+      if (operationRef.current === controller && interactionActiveRef.current) {
+        setApiError(toAuthorError(error));
+        shouldFocus = true;
+      }
     } finally {
-      if (finishOperation(controller))
-        window.setTimeout(() => feedbackRef.current?.focus());
+      if (finishOperation(controller) && shouldFocus)
+        window.setTimeout(() => {
+          if (interactionActiveRef.current) feedbackRef.current?.focus();
+        });
     }
   }
 
@@ -1165,7 +1262,7 @@ interface QuestionWorkspaceProps {
   apiBaseUrl: string;
   challenge: AuthorChallenge;
   getAccessToken: ApiAccessTokenProvider;
-  onQuestionsChange: (questions: AuthorQuestion[]) => void;
+  onQuestionsChange: React.Dispatch<React.SetStateAction<AuthorQuestion[]>>;
   questions: AuthorQuestion[];
 }
 
@@ -1180,31 +1277,64 @@ function QuestionWorkspace({
   const [message, setMessage] = useState('');
   const feedbackRef = useRef<HTMLDivElement>(null);
   const selectedIdRef = useRef<string | 'new'>('new');
+  const interactionRef = useRef(0);
+  const mountedRef = useRef(true);
+  const pendingQuestionsRef = useRef(new Map<string, AuthorQuestion>());
   const selected = questions.find(
     (question) => question.questionId === selectedId,
   );
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (
       selectedId !== 'new' &&
       !questions.some((question) => question.questionId === selectedId)
     ) {
+      interactionRef.current += 1;
       setSelectedId('new');
       selectedIdRef.current = 'new';
     }
   }, [questions, selectedId]);
 
-  function updateQuestion(question: AuthorQuestion, notice?: string) {
-    const exists = questions.some(
-      (item) => item.questionId === question.questionId,
-    );
-    onQuestionsChange(
-      exists
-        ? questions.map((item) =>
-            item.questionId === question.questionId ? question : item,
-          )
-        : [...questions, question],
-    );
+  function selectQuestion(questionId: string | 'new') {
+    interactionRef.current += 1;
+    if (questionId !== 'new') {
+      const pending = pendingQuestionsRef.current.get(questionId);
+      if (pending) {
+        onQuestionsChange((current) => reconcileQuestionById(current, pending));
+        pendingQuestionsRef.current.delete(questionId);
+      }
+    }
+    selectedIdRef.current = questionId;
+    setSelectedId(questionId);
+    setMessage('');
+  }
+
+  function updateQuestion(
+    question: AuthorQuestion,
+    ownerId: string | 'new',
+    interaction: number,
+    notice?: string,
+  ) {
+    if (!mountedRef.current) return;
+    const isCurrentInteraction =
+      interactionRef.current === interaction &&
+      selectedIdRef.current === ownerId;
+    const wouldReplaceNewerDraft =
+      selectedIdRef.current === question.questionId && !isCurrentInteraction;
+
+    if (wouldReplaceNewerDraft)
+      pendingQuestionsRef.current.set(question.questionId, question);
+    else
+      onQuestionsChange((current) => reconcileQuestionById(current, question));
+
+    if (!isCurrentInteraction) return;
     selectedIdRef.current = question.questionId;
     setSelectedId(question.questionId);
     if (notice)
@@ -1212,7 +1342,10 @@ function QuestionWorkspace({
         notice,
         setMessage,
         feedbackRef,
-        () => selectedIdRef.current === question.questionId,
+        () =>
+          mountedRef.current &&
+          interactionRef.current === interaction &&
+          selectedIdRef.current === question.questionId,
       );
   }
 
@@ -1226,11 +1359,7 @@ function QuestionWorkspace({
         <button
           className="button button--quiet"
           disabled={challenge.status === 'retired'}
-          onClick={() => {
-            selectedIdRef.current = 'new';
-            setSelectedId('new');
-            setMessage('');
-          }}
+          onClick={() => selectQuestion('new')}
           type="button"
         >
           Create question
@@ -1250,11 +1379,7 @@ function QuestionWorkspace({
                   selectedId === question.questionId ? 'true' : undefined
                 }
                 className="question-tabs__item"
-                onClick={() => {
-                  selectedIdRef.current = question.questionId;
-                  setSelectedId(question.questionId);
-                  setMessage('');
-                }}
+                onClick={() => selectQuestion(question.questionId)}
                 type="button"
               >
                 Q{index + 1} <StatusBadge status={question.status} />
@@ -1268,6 +1393,7 @@ function QuestionWorkspace({
         apiBaseUrl={apiBaseUrl}
         challenge={challenge}
         getAccessToken={getAccessToken}
+        interaction={interactionRef.current}
         key={
           selected
             ? `${selected.questionId}:${selected.updatedAt}:${selected.status}`
@@ -1284,7 +1410,13 @@ interface QuestionFormProps {
   apiBaseUrl: string;
   challenge: AuthorChallenge;
   getAccessToken: ApiAccessTokenProvider;
-  onSaved: (question: AuthorQuestion, notice?: string) => void;
+  interaction: number;
+  onSaved: (
+    question: AuthorQuestion,
+    ownerId: string | 'new',
+    interaction: number,
+    notice?: string,
+  ) => void;
   question?: AuthorQuestion;
 }
 
@@ -1292,6 +1424,7 @@ function QuestionForm({
   apiBaseUrl,
   challenge,
   getAccessToken,
+  interaction,
   onSaved,
   question,
 }: QuestionFormProps) {
@@ -1305,6 +1438,7 @@ function QuestionForm({
   const formRef = useRef<HTMLFormElement>(null);
   const feedbackRef = useRef<HTMLDivElement>(null);
   const operationRef = useRef<AbortController | null>(null);
+  const interactionActiveRef = useRef(true);
 
   useEffect(() => {
     setDraft(questionDraft(question));
@@ -1313,13 +1447,12 @@ function QuestionForm({
     setConfirmRetire(false);
   }, [question]);
 
-  useEffect(
-    () => () => {
-      operationRef.current?.abort();
-      operationRef.current = null;
-    },
-    [],
-  );
+  useEffect(() => {
+    interactionActiveRef.current = true;
+    return () => {
+      interactionActiveRef.current = false;
+    };
+  }, []);
 
   const dirty = Boolean(
     question &&
@@ -1344,9 +1477,9 @@ function QuestionForm({
     }
     setBusy(true);
     setApiError(null);
-    operationRef.current?.abort();
     const controller = new AbortController();
     operationRef.current = controller;
+    const ownerId = question?.questionId ?? 'new';
     try {
       const saved = question
         ? await updateAuthorQuestion({
@@ -1363,20 +1496,21 @@ function QuestionForm({
             input: draft,
             signal: controller.signal,
           });
-      if (controller.signal.aborted || operationRef.current !== controller)
-        return;
+      if (operationRef.current !== controller) return;
       onSaved(
         saved,
+        ownerId,
+        interaction,
         question ? 'Question changes saved.' : 'Draft question created.',
       );
     } catch (error) {
-      if (controller.signal.aborted || operationRef.current !== controller)
+      if (operationRef.current !== controller || !interactionActiveRef.current)
         return;
       handleOperationError(error, setApiError, setErrors, formRef, feedbackRef);
     } finally {
       if (operationRef.current === controller) {
         operationRef.current = null;
-        if (!controller.signal.aborted) setBusy(false);
+        if (interactionActiveRef.current) setBusy(false);
       }
     }
   }
@@ -1385,9 +1519,9 @@ function QuestionForm({
     if (!question || (action === 'publish' && dirty)) return;
     setBusy(true);
     setApiError(null);
-    operationRef.current?.abort();
     const controller = new AbortController();
     operationRef.current = controller;
+    const ownerId = question.questionId;
     try {
       const next =
         action === 'publish'
@@ -1403,21 +1537,22 @@ function QuestionForm({
               questionId: question.questionId,
               signal: controller.signal,
             });
-      if (controller.signal.aborted || operationRef.current !== controller)
-        return;
+      if (operationRef.current !== controller) return;
       onSaved(
         next,
+        ownerId,
+        interaction,
         action === 'publish' ? 'Question published.' : 'Question retired.',
       );
-      setConfirmRetire(false);
+      if (interactionActiveRef.current) setConfirmRetire(false);
     } catch (error) {
-      if (controller.signal.aborted || operationRef.current !== controller)
+      if (operationRef.current !== controller || !interactionActiveRef.current)
         return;
       handleOperationError(error, setApiError, setErrors, formRef, feedbackRef);
     } finally {
       if (operationRef.current === controller) {
         operationRef.current = null;
-        if (!controller.signal.aborted) setBusy(false);
+        if (interactionActiveRef.current) setBusy(false);
       }
     }
   }
@@ -1844,6 +1979,47 @@ function apiFieldName(field: string): string {
     return `choice${normalized.split('/')[1] ?? '0'}`;
   if (normalized === 'radiusMetres') return 'radiusMetres';
   return normalized;
+}
+
+function reconcileEventById(
+  events: readonly AuthorEvent[],
+  authoritative: AuthorEvent,
+): AuthorEvent[] {
+  return events.some((event) => event.eventId === authoritative.eventId)
+    ? events.map((event) =>
+        event.eventId === authoritative.eventId ? authoritative : event,
+      )
+    : [authoritative, ...events];
+}
+
+function reconcileChallengeById(
+  challenges: readonly AuthorChallenge[],
+  authoritative: AuthorChallenge,
+): AuthorChallenge[] {
+  return challenges.some(
+    (challenge) => challenge.challengeId === authoritative.challengeId,
+  )
+    ? challenges.map((challenge) =>
+        challenge.challengeId === authoritative.challengeId
+          ? authoritative
+          : challenge,
+      )
+    : [...challenges, authoritative];
+}
+
+function reconcileQuestionById(
+  questions: readonly AuthorQuestion[],
+  authoritative: AuthorQuestion,
+): AuthorQuestion[] {
+  return questions.some(
+    (question) => question.questionId === authoritative.questionId,
+  )
+    ? questions.map((question) =>
+        question.questionId === authoritative.questionId
+          ? authoritative
+          : question,
+      )
+    : [...questions, authoritative];
 }
 
 function announce(

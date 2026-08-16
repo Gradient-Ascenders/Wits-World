@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type FormEvent,
+  type SetStateAction,
+} from 'react';
 
 import {
   AuthorApiError,
@@ -26,7 +33,7 @@ interface CardWorkspaceProps {
   cards: readonly AuthorCard[];
   errorMessage: string;
   getAccessToken: ApiAccessTokenProvider;
-  onCardsChange: (cards: AuthorCard[]) => void;
+  onCardsChange: Dispatch<SetStateAction<AuthorCard[]>>;
   onReload: () => void;
   state: 'error' | 'loading' | 'ready';
 }
@@ -44,22 +51,59 @@ export function CardWorkspace({
   const [message, setMessage] = useState('');
   const feedbackRef = useRef<HTMLDivElement>(null);
   const selectedIdRef = useRef<string | 'new'>('new');
+  const interactionRef = useRef(0);
+  const mountedRef = useRef(true);
+  const pendingCardsRef = useRef(new Map<string, AuthorCard>());
   const selected = cards.find((card) => card.id === selectedId);
 
   useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (selectedId !== 'new' && !cards.some((card) => card.id === selectedId)) {
+      interactionRef.current += 1;
       setSelectedId('new');
       selectedIdRef.current = 'new';
     }
   }, [cards, selectedId]);
 
-  function updateCard(card: AuthorCard, notice?: string) {
-    const exists = cards.some((item) => item.id === card.id);
-    onCardsChange(
-      exists
-        ? cards.map((item) => (item.id === card.id ? card : item))
-        : [card, ...cards],
-    );
+  function selectCard(cardId: string | 'new') {
+    interactionRef.current += 1;
+    if (cardId !== 'new') {
+      const pending = pendingCardsRef.current.get(cardId);
+      if (pending) {
+        onCardsChange((current) => reconcileById(current, pending));
+        pendingCardsRef.current.delete(cardId);
+      }
+    }
+    selectedIdRef.current = cardId;
+    setSelectedId(cardId);
+    setMessage('');
+  }
+
+  function updateCard(
+    card: AuthorCard,
+    ownerId: string | 'new',
+    interaction: number,
+    notice?: string,
+  ) {
+    const isCurrentInteraction =
+      mountedRef.current &&
+      interactionRef.current === interaction &&
+      selectedIdRef.current === ownerId;
+    const wouldReplaceNewerDraft =
+      mountedRef.current &&
+      selectedIdRef.current === card.id &&
+      !isCurrentInteraction;
+
+    if (wouldReplaceNewerDraft) pendingCardsRef.current.set(card.id, card);
+    else onCardsChange((current) => reconcileById(current, card));
+
+    if (!isCurrentInteraction) return;
     selectedIdRef.current = card.id;
     setSelectedId(card.id);
     if (notice)
@@ -67,7 +111,10 @@ export function CardWorkspace({
         notice,
         setMessage,
         feedbackRef,
-        () => selectedIdRef.current === card.id,
+        () =>
+          mountedRef.current &&
+          interactionRef.current === interaction &&
+          selectedIdRef.current === card.id,
       );
   }
 
@@ -83,11 +130,7 @@ export function CardWorkspace({
         </div>
         <button
           className="button"
-          onClick={() => {
-            selectedIdRef.current = 'new';
-            setSelectedId('new');
-            setMessage('');
-          }}
+          onClick={() => selectCard('new')}
           type="button"
         >
           Create card
@@ -130,11 +173,7 @@ export function CardWorkspace({
                   <button
                     aria-current={selectedId === card.id ? 'true' : undefined}
                     className="author-record-list__item"
-                    onClick={() => {
-                      selectedIdRef.current = card.id;
-                      setSelectedId(card.id);
-                      setMessage('');
-                    }}
+                    onClick={() => selectCard(card.id)}
                     type="button"
                   >
                     <span>{card.name}</span>
@@ -153,6 +192,7 @@ export function CardWorkspace({
               apiBaseUrl={apiBaseUrl}
               card={selected}
               getAccessToken={getAccessToken}
+              interaction={interactionRef.current}
               key={
                 selected
                   ? `${selected.id}:${selected.updatedAt}:${selected.authoringStatus}`
@@ -171,7 +211,13 @@ interface CardFormProps {
   apiBaseUrl: string;
   card?: AuthorCard;
   getAccessToken: ApiAccessTokenProvider;
-  onSaved: (card: AuthorCard, notice?: string) => void;
+  interaction: number;
+  onSaved: (
+    card: AuthorCard,
+    ownerId: string | 'new',
+    interaction: number,
+    notice?: string,
+  ) => void;
 }
 
 interface EffectDraft {
@@ -205,6 +251,7 @@ function CardForm({
   apiBaseUrl,
   card,
   getAccessToken,
+  interaction,
   onSaved,
 }: CardFormProps) {
   const [draft, setDraft] = useState<CardDraft>(() => cardDraft(card));
@@ -215,6 +262,7 @@ function CardForm({
   const formRef = useRef<HTMLFormElement>(null);
   const feedbackRef = useRef<HTMLDivElement>(null);
   const operationRef = useRef<AbortController | null>(null);
+  const interactionActiveRef = useRef(true);
 
   useEffect(() => {
     setDraft(cardDraft(card));
@@ -223,13 +271,12 @@ function CardForm({
     setConfirmRetire(false);
   }, [card]);
 
-  useEffect(
-    () => () => {
-      operationRef.current?.abort();
-      operationRef.current = null;
-    },
-    [],
-  );
+  useEffect(() => {
+    interactionActiveRef.current = true;
+    return () => {
+      interactionActiveRef.current = false;
+    };
+  }, []);
 
   const editable = !card || card.authoringStatus === 'draft';
   const dirty = Boolean(
@@ -252,9 +299,9 @@ function CardForm({
 
     setBusy(true);
     setApiError(null);
-    operationRef.current?.abort();
     const controller = new AbortController();
     operationRef.current = controller;
+    const ownerId = card?.id ?? 'new';
 
     try {
       const saved = card
@@ -271,17 +318,21 @@ function CardForm({
             input: result.input,
             signal: controller.signal,
           });
-      if (controller.signal.aborted || operationRef.current !== controller)
-        return;
-      onSaved(saved, card ? 'Card changes saved.' : 'Draft card created.');
+      if (operationRef.current !== controller) return;
+      onSaved(
+        saved,
+        ownerId,
+        interaction,
+        card ? 'Card changes saved.' : 'Draft card created.',
+      );
     } catch (error) {
-      if (controller.signal.aborted || operationRef.current !== controller)
+      if (operationRef.current !== controller || !interactionActiveRef.current)
         return;
       handleCardError(error, setApiError, setErrors, formRef, feedbackRef);
     } finally {
       if (operationRef.current === controller) {
         operationRef.current = null;
-        if (!controller.signal.aborted) setBusy(false);
+        if (interactionActiveRef.current) setBusy(false);
       }
     }
   }
@@ -290,9 +341,9 @@ function CardForm({
     if (!card || (action === 'publish' && dirty)) return;
     setBusy(true);
     setApiError(null);
-    operationRef.current?.abort();
     const controller = new AbortController();
     operationRef.current = controller;
+    const ownerId = card.id;
     try {
       const next =
         action === 'publish'
@@ -308,23 +359,24 @@ function CardForm({
               getAccessToken,
               signal: controller.signal,
             });
-      if (controller.signal.aborted || operationRef.current !== controller)
-        return;
+      if (operationRef.current !== controller) return;
       onSaved(
         next,
+        ownerId,
+        interaction,
         action === 'publish'
           ? 'Card published and active.'
           : 'Card retired. Existing owned copies remain intact.',
       );
-      setConfirmRetire(false);
+      if (interactionActiveRef.current) setConfirmRetire(false);
     } catch (error) {
-      if (controller.signal.aborted || operationRef.current !== controller)
+      if (operationRef.current !== controller || !interactionActiveRef.current)
         return;
       handleCardError(error, setApiError, setErrors, formRef, feedbackRef);
     } finally {
       if (operationRef.current === controller) {
         operationRef.current = null;
-        if (!controller.signal.aborted) setBusy(false);
+        if (interactionActiveRef.current) setBusy(false);
       }
     }
   }
@@ -1272,4 +1324,13 @@ function announce(
       if (isCurrent()) feedbackRef.current?.focus();
     });
   });
+}
+
+function reconcileById(
+  cards: readonly AuthorCard[],
+  authoritative: AuthorCard,
+): AuthorCard[] {
+  return cards.some((card) => card.id === authoritative.id)
+    ? cards.map((card) => (card.id === authoritative.id ? authoritative : card))
+    : [authoritative, ...cards];
 }
