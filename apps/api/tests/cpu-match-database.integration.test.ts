@@ -306,6 +306,63 @@ describe.skipIf(!runIntegrationTests)(
       expect(first.version).toBe(1);
     });
 
+    it('reads direct match state and latest action from the same committed snapshot', async () => {
+      const service = createCpuMatchService(pool, { randomInt: () => 0 });
+      const before = await service.getMatch(PLAYER_ID, matchId);
+      const updatingClient = await pool.connect();
+      let committed = false;
+
+      try {
+        await updatingClient.query('begin');
+        await updatingClient.query(
+          `
+            update public.cpu_matches
+               set version = version + 1,
+                   state = jsonb_set(state, '{turnNumber}', '99'::jsonb),
+                   updated_at = now()
+             where id = $1::uuid
+          `,
+          [matchId],
+        );
+        await updatingClient.query(
+          `
+            update public.cpu_match_actions
+               set result = jsonb_set(result, '{action}', '{"type":"timeout"}'::jsonb)
+             where id = (
+               select id
+               from public.cpu_match_actions
+               where match_id = $1::uuid
+               order by sequence desc
+               limit 1
+             )
+          `,
+          [matchId],
+        );
+
+        const whileUncommitted = await service.getMatch(PLAYER_ID, matchId);
+        expect(whileUncommitted.version).toBe(before.version);
+        expect(whileUncommitted.state.turnNumber).toBe(before.state.turnNumber);
+        expect(whileUncommitted.lastAction).toEqual(before.lastAction);
+
+        await updatingClient.query('commit');
+        committed = true;
+
+        const after = await service.getMatch(PLAYER_ID, matchId);
+        expect(after.version).toBe(before.version + 1);
+        expect(after.state.turnNumber).toBe(99);
+        expect(after.lastAction?.action).toEqual({ type: 'timeout' });
+      } finally {
+        if (!committed) {
+          await updatingClient.query('rollback');
+        }
+        updatingClient.release();
+      }
+
+      await expect(
+        service.getMatch(OTHER_PLAYER_ID, matchId),
+      ).rejects.toBeInstanceOf(CpuMatchNotFoundError);
+    });
+
     it('rejects a second active match for the same player', async () => {
       const service = createCpuMatchService(pool, { randomInt: () => 0 });
 

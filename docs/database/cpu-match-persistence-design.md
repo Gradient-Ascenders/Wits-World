@@ -55,16 +55,17 @@ active-turn request becomes the rules engine's trusted `timeout` action. CPU
 turns are resolved synchronously by the API and are never delegated to the
 browser.
 
-Active-match recovery is read-only. It selects the authenticated player's
-`status = 'active'` match and its latest action in one PostgreSQL statement, so
-the response represents one coherent committed database snapshot. Concurrent
-recovery reads do not lock or mutate the match. When an action commits during a
-recovery read, the read observes either the committed state before that action
-or the committed state after it. When completion is already visible to the
-read, the row no longer qualifies as active and the API returns the no-active
-result. The partial unique index on `cpu_matches.player_id` where
-`status = 'active'` remains the final one-active-match guarantee; the service
-fails internally instead of choosing a row if that invariant is ever violated.
+Match reads are read-only. Both active recovery and a direct owned-match read
+select the match and its latest action in one PostgreSQL statement, so each
+response represents one coherent committed database snapshot. Concurrent reads
+do not lock or mutate the match. When an action commits during a read, the read
+observes either the committed state and latest action before that transition or
+both values after it; it cannot assemble them from different statements. When
+completion is already visible to an active recovery read, the row no longer
+qualifies as active and the API returns the no-active result. The partial unique
+index on `cpu_matches.player_id` where `status = 'active'` remains the final
+one-active-match guarantee; the service fails internally instead of choosing a
+row if that invariant is ever violated.
 
 ## HTTP contract
 
@@ -146,14 +147,15 @@ card stats, effects, random outcomes, winners, or completion state.
 The API route tests cover authentication, identity derivation, active recovery,
 the no-active response, OpenAPI, rejection of client-authoritative result
 fields, legal action payloads, timeout rejection, and history isolation.
-Service tests cover a coherent read-only recovery snapshot, invariant failure,
-a player action followed by a server CPU action in one transaction, and
-stale-version rollback. PostgreSQL integration tests cover lost-create-response
-recovery after commit, pre-commit transaction invisibility, authoritative
+Service tests cover coherent read-only active and direct snapshots, invariant
+failure, a player action followed by a server CPU action in one transaction,
+and stale-version rollback. PostgreSQL integration tests cover
+lost-create-response recovery after commit, pre-commit transaction invisibility,
+coherent direct reads before and after a concurrent commit, authoritative
 post-action state, ownership isolation, concurrent reads, active uniqueness,
 completed exclusion, snapshots, actions, and rounds. Migration `0012` remains
 unchanged and continues to receive the existing clean database migration
 coverage.
 
 This document was generated and edited with assistance from
-ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].
+ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5], and Codex-CLI[gpt-5.6-sol].

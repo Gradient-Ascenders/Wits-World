@@ -367,12 +367,38 @@ authoritative invariant failure is a list/API failure rather than an invalid
 deck item for the browser to accept or mark locally.
 
 Selecting a deck makes its active status explicit and exposes the selected
-server-returned `deckId` through the typed CPU-match handoff. The battle issue
-can consume that ID; this route does not call the match API or simulate a match.
-The production route does not render a start control until issue #76 supplies
-the callback and battle destination.
+server-returned `deckId` through the typed CPU-match handoff. The production
+route now uses that ID to reconcile `GET /api/v1/matches/cpu` before creating a
+match with `POST /api/v1/matches/cpu`. A recovered or created match navigates to
+`/matches/:matchId`; deck validation remains wholly authoritative in the API.
 See the complete
 [player saved-deck journey](../../docs/requirements/player-deck-building-journey.md).
+
+## CPU battle and completed-match history
+
+The protected `/matches` route first performs the ownership-scoped active-match
+lookup. It resumes an existing match without requiring a remembered browser ID,
+or presents the currently selected saved deck when the API returns
+`CPU_MATCH_NOT_FOUND`. `/matches/:matchId` renders only the authoritative match
+state and its `legalActions`; `/matches/history` renders the authenticated
+completed history and links back to persisted direct detail.
+
+Every action sends one generated `submissionId`, the displayed
+`expectedVersion`, and exactly one server-advertised intent. Controls are locked
+while that request is pending and the UI never simulates a CPU turn or outcome.
+A stale, illegal, or completed-action response triggers a direct authoritative
+reload and never automatically replays the obsolete intent. Completed state is
+absorbing in the page state model.
+
+Ambiguous match creation is reconciled with active-match lookups at 0, 250, and
+750 milliseconds after the failed POST. This small bounded window accounts for
+an original create transaction that may commit just after an immediate lookup;
+the browser does not persist or invent a second source of truth. A create
+`CPU_MATCH_ALREADY_ACTIVE` response uses the same reconciliation path.
+
+See the complete [player CPU battle journey](../../docs/requirements/player-cpu-battle-journey.md),
+the [authoritative Basic game rules](../../docs/requirements/basic-game-rules.md),
+and the [CPU match API and persistence contract](../../docs/database/cpu-match-persistence-design.md).
 
 ## Verification
 
@@ -407,6 +433,15 @@ touch-enabled mobile browser context and a real tap event for active selection.
 Vitest does not transform application stylesheets, keeping these jsdom tests
 focused on semantics and behaviour without expensive CSS matching. Automated
 checks do not replace manual visual, responsive, browser, and keyboard testing.
+CPU-match tests cover active recovery, no-active and selected-deck creation,
+bounded ambiguous-create and already-active reconciliation, strict response
+validation, legal initial/move/Power/replacement actions, duplicate suppression,
+stale recovery without replay, response-order protection, defeat, continuation,
+completion absorption, history, persisted detail, authentication, keyboard use,
+and API failure recovery. The CPU battle Playwright scenario uses the real
+authenticated application shell and production routes with deterministic
+intercepted API responses; it is frontend browser evidence, not a live-backend
+match E2E test.
 
 ### Manual browser checks
 
@@ -578,5 +613,37 @@ With `apps/web/.env` configured and the development server running:
     Capture disposable evidence under `.pr-screenshots/issue-73/`; do not record
     account details, access tokens, or owned-card identifiers.
 
+#### Authenticated CPU battle and match history
+
+1. Prepare and seed the disposable test database, then start
+   `npm run dev --workspace @wits-world/api` and
+   `npm run dev --workspace @wits-world/web` from the repository root.
+2. Sign in as a development player with a valid active saved deck and open
+   `http://localhost:5173/matches`. Confirm an unfinished CPU match resumes; if
+   none exists, confirm the selected deck is named and start it. With no active
+   deck, confirm the route links to `/decks` instead of attempting creation.
+3. Choose an opening Creature, use a currently legal Creature move and Power
+   card, and continue through any server-returned defeat/replacement state.
+   Confirm unavailable controls explain that they are not in `legalActions`,
+   hidden CPU cards are meaningful text, and no action can be submitted twice
+   while waiting.
+4. Create a stale expected-version response from another tab or the deterministic
+   Playwright fixture. Confirm the page announces reconciliation, reloads the
+   direct match, discards the obsolete intent, and requires a new activation.
+5. Finish the match, refresh `/matches/:matchId`, then open
+   `/matches/history` and its saved detail link. Confirm the completed result
+   remains completed and no active controls return.
+6. Repeat the battle at 360×800, 390×844, 768×1024, and 1280×800. Check
+   `document.documentElement.scrollWidth <= document.documentElement.clientWidth`,
+   comfortable touch targets, logical screen-reader order, and no content hidden
+   behind mobile navigation. Use Tab/Shift+Tab/Enter/Space for the full journey
+   and confirm focus reaches the changed phase heading after selection,
+   replacement, stale recovery, and completion.
+7. Run the deterministic intercepted browser scenario with
+   `npm run test:e2e --workspace @wits-world/web -- --project=chromium playwright/cpu-battle.spec.ts`.
+   Its touch-enabled context performs real tap events and writes disposable
+   responsive evidence under `.pr-screenshots/issue-76/`. Inspect the browser
+   console and page errors; do not describe this fixture as a live API E2E match.
+
 The preceding document was generated and edited with the assistance of:
-Codex-CLI[gpt-5.6-sol medium], Codex-CLI[GPT-5], and Codex[GPT-5].
+Codex-CLI[gpt-5.6-sol medium], Codex-CLI[gpt-5.6-sol], Codex-CLI[GPT-5], and Codex[GPT-5].
