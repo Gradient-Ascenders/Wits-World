@@ -117,6 +117,8 @@ describe('challenge attempt client', () => {
   });
 
   it.each([
+    { acceptedChoiceId: choiceId(1, 2) },
+    { acceptedChoicePosition: 2 },
     { answerCorrect: true },
     { scoreCorrect: 1 },
     { reward: { cards: [], coinsAwarded: 10 } },

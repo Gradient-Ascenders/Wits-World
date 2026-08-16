@@ -3,6 +3,7 @@ import { Link, useRoute } from 'wouter';
 
 import { AccountControl } from './auth/AccountControl';
 import { CampusSeal } from './branding/CampusSeal';
+import { useCurrentPlayer } from '../auth/CurrentPlayerProvider';
 
 interface AppShellProps {
   children: ReactNode;
@@ -28,6 +29,8 @@ function NavigationLink({ href, children }: NavigationLinkProps) {
 }
 
 export function AppShell({ children }: AppShellProps) {
+  const { state: currentPlayer } = useCurrentPlayer();
+
   return (
     <div className="site-frame">
       <a className="skip-link" href="#main-content">
@@ -64,6 +67,12 @@ export function AppShell({ children }: AppShellProps) {
               <li>
                 <NavigationLink href="/matches">Battles</NavigationLink>
               </li>
+              {currentPlayer.status === 'ready' &&
+              currentPlayer.player.role === 'author' ? (
+                <li>
+                  <NavigationLink href="/author">Author</NavigationLink>
+                </li>
+              ) : null}
             </ul>
           </nav>
           <AccountControl />

@@ -10,8 +10,11 @@ import {
 } from './map-provider';
 
 interface CampusMapProps {
+  accessibleLabel?: string;
   configuration: MapConfiguration;
+  errorDescription?: string;
   mapFactory?: MapFactory;
+  onCoordinateSelect?: (coordinate: MapCoordinate) => void;
   points: readonly MapPoint[];
   reportedLocation?: MapCoordinate | null;
 }
@@ -21,18 +24,23 @@ type MapStatus = 'error' | 'loading' | 'ready';
 const MAP_LOAD_TIMEOUT_MS = 15_000;
 
 export function CampusMap({
+  accessibleLabel = 'Interactive campus map using Mapbox Standard 3D. Event information is also available in the nearby events list.',
   configuration,
+  errorDescription = 'Use the nearby events list to continue exploring.',
   mapFactory = createMapboxMap,
+  onCoordinateSelect,
   points,
   reportedLocation = null,
 }: CampusMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const controllerRef = useRef<MapController | null>(null);
+  const onCoordinateSelectRef = useRef(onCoordinateSelect);
   const pointsRef = useRef(points);
   const reportedLocationRef = useRef<MapCoordinate | null>(reportedLocation);
   const [status, setStatus] = useState<MapStatus>('loading');
 
   pointsRef.current = points;
+  onCoordinateSelectRef.current = onCoordinateSelect;
   reportedLocationRef.current = reportedLocation;
 
   useEffect(() => {
@@ -44,10 +52,17 @@ export function CampusMap({
   }, [reportedLocation]);
 
   useEffect(() => {
+    controllerRef.current?.setCoordinateSelectionListener?.(
+      onCoordinateSelect ?? null,
+    );
+  }, [onCoordinateSelect]);
+
+  useEffect(() => {
     const container = containerRef.current;
     const abortController = new AbortController();
     let active = true;
     let controller: MapController | undefined;
+    let loaded = false;
 
     if (!container) {
       return;
@@ -77,13 +92,23 @@ export function CampusMap({
         controllerRef.current = map;
         map.setPoints(pointsRef.current);
         map.setReportedLocation(reportedLocationRef.current);
+        map.setCoordinateSelectionListener?.(
+          onCoordinateSelectRef.current ?? null,
+        );
         map.onLoad(() => {
           if (active) {
+            loaded = true;
             window.clearTimeout(loadTimeout);
             setStatus('ready');
           }
         });
         map.onError(() => {
+          if (active && !loaded) {
+            window.clearTimeout(loadTimeout);
+            setStatus('error');
+          }
+        });
+        map.onFatalError?.(() => {
           if (active) {
             window.clearTimeout(loadTimeout);
             setStatus('error');
@@ -111,7 +136,7 @@ export function CampusMap({
   return (
     <div className="campus-map">
       <div
-        aria-label="Interactive campus map using Mapbox Standard 3D. Event information is also available in the nearby events list."
+        aria-label={accessibleLabel}
         className="campus-map__canvas"
         ref={containerRef}
         role="region"
@@ -127,7 +152,7 @@ export function CampusMap({
       {status === 'error' ? (
         <div className="map-state map-state--error" role="alert">
           <strong>The map could not load.</strong>
-          <span>Use the nearby events list to continue exploring.</span>
+          <span>{errorDescription}</span>
         </div>
       ) : null}
     </div>

@@ -194,19 +194,24 @@ describe('Mapbox Standard provider', () => {
     expect(mapboxState.once).toHaveBeenCalledWith('load', listener);
   });
 
-  it('reports provider errors and WebGL context loss', async () => {
+  it('reports recoverable provider errors separately from WebGL context loss', async () => {
     const controller = await createMapboxMap(
       document.createElement('div'),
       configuration,
       [],
       new AbortController().signal,
     );
-    const listener = vi.fn();
+    const recoverableListener = vi.fn();
+    const fatalListener = vi.fn();
 
-    controller.onError(listener);
+    controller.onError(recoverableListener);
+    controller.onFatalError?.(fatalListener);
 
-    expect(mapboxState.on).toHaveBeenCalledWith('error', listener);
-    expect(mapboxState.on).toHaveBeenCalledWith('webglcontextlost', listener);
+    expect(mapboxState.on).toHaveBeenCalledWith('error', recoverableListener);
+    expect(mapboxState.on).toHaveBeenCalledWith(
+      'webglcontextlost',
+      fatalListener,
+    );
   });
 
   it('renders the reported location as a local overlay without a Mapbox marker', async () => {
@@ -240,6 +245,30 @@ describe('Mapbox Standard provider', () => {
         '[data-map-reported-location]',
       ),
     ).not.toBeInTheDocument();
+  });
+
+  it('reports optional author coordinate selection without making the map required', async () => {
+    const controller = await createMapboxMap(
+      document.createElement('div'),
+      configuration,
+      [],
+      new AbortController().signal,
+    );
+    const listener = vi.fn();
+
+    controller.setCoordinateSelectionListener?.(listener);
+    expect(mapboxState.on).toHaveBeenCalledWith('click', expect.any(Function));
+
+    const clickHandler = mapboxState.handlers.get('click') as
+      ((event: { lngLat: { lat: number; lng: number } }) => void) | undefined;
+    clickHandler?.({ lngLat: { lat: -26.1915, lng: 28.031 } });
+
+    expect(listener).toHaveBeenCalledWith({
+      latitude: -26.1915,
+      longitude: 28.031,
+    });
+    controller.setCoordinateSelectionListener?.(null);
+    expect(mapboxState.off).toHaveBeenCalledWith('click', expect.any(Function));
   });
 
   it('provides an accessible reset control for bearing and pitch', async () => {

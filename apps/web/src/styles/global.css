@@ -193,10 +193,10 @@ a:hover {
 
 .primary-navigation__list {
   display: grid;
-  width: min(100%, 24rem);
+  width: min(100%, 26rem);
   height: 100%;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: var(--space-2);
+  grid-template-columns: repeat(auto-fit, minmax(3.5rem, 1fr));
+  gap: var(--space-1);
   margin: 0 auto;
   padding: 0;
   list-style: none;
@@ -211,7 +211,7 @@ a:hover {
   justify-content: center;
   border-radius: var(--radius-md);
   color: var(--colour-text-secondary);
-  font-size: var(--text-sm);
+  font-size: clamp(0.75rem, 2vw, var(--text-sm));
   font-weight: 700;
   letter-spacing: 0.025em;
   text-decoration: none;

@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CampusExplorer } from '../src/components/exploration/CampusExplorer';
+import { CampusMap } from '../src/components/exploration/CampusMap';
 import type {
   MapConfiguration,
   MapController,
@@ -70,6 +71,48 @@ describe('campus exploration', () => {
     expect(explorationStyles).toMatch(
       /\.campus-map\s*>\s*\.campus-map__canvas\s*{[^}]*position:\s*absolute\s*!important;/,
     );
+  });
+
+  it('keeps a loaded map visible after a recoverable provider error', async () => {
+    let reportError: () => void = () => undefined;
+    let reportFatalError: () => void = () => undefined;
+    let reportLoad: () => void = () => undefined;
+    const mapFactory: MapFactory = vi.fn(async () => ({
+      onError(listener: () => void) {
+        reportError = listener;
+      },
+      onFatalError(listener: () => void) {
+        reportFatalError = listener;
+      },
+      onLoad(listener: () => void) {
+        reportLoad = listener;
+      },
+      remove: vi.fn(),
+      setReportedLocation: vi.fn(),
+      setPoints: vi.fn(),
+    }));
+
+    render(
+      <CampusMap
+        configuration={configuration}
+        mapFactory={mapFactory}
+        points={[]}
+      />,
+    );
+    await waitFor(() => expect(mapFactory).toHaveBeenCalledOnce());
+
+    act(() => reportLoad());
+    expect(
+      screen.queryByText('Loading the campus map…'),
+    ).not.toBeInTheDocument();
+
+    act(() => reportError());
+    expect(
+      screen.queryByText('The map could not load.'),
+    ).not.toBeInTheDocument();
+
+    act(() => reportFatalError());
+    expect(screen.getByText('The map could not load.')).toBeVisible();
   });
 
   it('presents a loaded event on the map and in the text fallback', async () => {
