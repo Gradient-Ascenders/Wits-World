@@ -133,6 +133,8 @@ E2E_USER_PASSWORD=replace-with-the-test-player-password
 From the repository root, run:
 
 ```bash
+npm ci
+npx playwright install chromium
 npm run test:e2e:auth --workspace @wits-world/web
 npm run test:e2e --workspace @wits-world/web
 npm run test:e2e:headed --workspace @wits-world/web
@@ -142,6 +144,10 @@ Playwright starts the real web and API development services when they are not
 already running. The setup project saves reusable browser state under the
 ignored `playwright/.auth/` directory. Credentials are loaded by the Playwright
 Node process and must never use a `VITE_` prefix.
+
+The credentialed live-Auth0 suite does not run in the current CI workflow. If
+it is added to CI, run `npx playwright install chromium` after `npm ci` and
+before the E2E command in that job.
 
 Known limitations:
 

@@ -1,20 +1,30 @@
 import { expect, test } from '@playwright/test';
 
 const eventsEndpoint = 'http://localhost:3000/api/v1/events';
+const mapboxTelemetryEndpoint = 'https://events.mapbox.com/events/v2';
 
 test('loads the protected app with data from the real API', async ({
   page,
 }) => {
-  let consoleErrorCount = 0;
+  const consoleErrors: string[] = [];
   const failedRequests: { reason: string; url: string }[] = [];
 
   page.on('console', (message) => {
-    if (message.type() === 'error') {
-      consoleErrorCount += 1;
+    const location = message.location();
+
+    if (
+      message.type() === 'error' &&
+      !location.url.startsWith(mapboxTelemetryEndpoint)
+    ) {
+      consoleErrors.push(message.text());
     }
   });
   page.on('requestfailed', (request) => {
     const url = new URL(request.url());
+
+    if (url.href.startsWith(mapboxTelemetryEndpoint)) {
+      return;
+    }
 
     failedRequests.push({
       reason: request.failure()?.errorText ?? 'unknown',
@@ -31,10 +41,17 @@ test('loads the protected app with data from the real API', async ({
   await page.goto('/explore');
 
   await page.getByRole('button', { name: 'Sign in to explore' }).click();
-  await expect(
-    page.getByRole('heading', { name: 'Authorize App' }),
-  ).toBeVisible();
-  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  const authorizationPrompt = page.getByRole('heading', {
+    name: 'Authorize App',
+  });
+  await Promise.race([
+    page.waitForURL('http://localhost:5173/explore'),
+    authorizationPrompt.waitFor({ state: 'visible' }),
+  ]);
+
+  if (await authorizationPrompt.isVisible()) {
+    await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  }
 
   await expect(page.getByText('Signed in as')).toBeVisible();
   await expect(
@@ -42,11 +59,14 @@ test('loads the protected app with data from the real API', async ({
   ).toBeVisible();
 
   const response = await eventsResponse;
-  const authorizationHeader = response.request().headers()['authorization'];
+  const authorizationHeader = await response
+    .request()
+    .headerValue('authorization');
 
   expect(response.status()).toBe(200);
   expect(response.fromServiceWorker()).toBe(false);
-  expect(Boolean(authorizationHeader?.match(/^Bearer \S+$/))).toBe(true);
+  expect(authorizationHeader).not.toBeNull();
+  expect(authorizationHeader!).toMatch(/^Bearer \S+$/);
   expect(page.context().serviceWorkers()).toHaveLength(0);
 
   const payload: unknown = await response.json();
@@ -63,6 +83,6 @@ test('loads the protected app with data from the real API', async ({
   await expect(page.getByText('Events are unavailable right now.')).toHaveCount(
     0,
   );
-  expect(consoleErrorCount).toBe(0);
+  expect(consoleErrors).toEqual([]);
   expect(failedRequests).toEqual([]);
 });

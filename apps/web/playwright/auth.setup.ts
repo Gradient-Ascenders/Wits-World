@@ -26,6 +26,18 @@ setup('authenticate through Auth0 Universal Login', async ({ page }) => {
   await page.getByLabel(/^Password/).fill(password);
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
 
+  const authorizationPrompt = page.getByRole('heading', {
+    name: 'Authorize App',
+  });
+  await Promise.race([
+    page.waitForURL('http://localhost:5173/explore'),
+    authorizationPrompt.waitFor({ state: 'visible' }),
+  ]);
+
+  if (await authorizationPrompt.isVisible()) {
+    await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  }
+
   await page.waitForURL('http://localhost:5173/explore');
   await expect(
     page.getByRole('heading', { name: 'Explore the campus map' }),
