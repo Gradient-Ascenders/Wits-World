@@ -177,10 +177,6 @@
   box-shadow: var(--shadow-panel), var(--glow-gold);
 }
 
-.starter-result > h1:focus {
-  outline: none;
-}
-
 .starter-result__composition {
   margin-bottom: var(--space-6);
   color: var(--colour-text-secondary);
