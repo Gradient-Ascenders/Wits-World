@@ -45,6 +45,8 @@ import type { ChallengeAttemptFetchService } from './challenges/challenge-attemp
 
 import type { DeckService } from './cards/deck-service.js';
 import { deckRoutes } from './routes/decks.js';
+import type { CpuMatchService } from './matches/cpu-match-service.js';
+import { cpuMatchRoutes } from './routes/cpu-matches.js';
 
 export interface EventServices {
   discovery: EventDiscoveryService;
@@ -64,6 +66,7 @@ export interface BuildAppOptions {
   accountDeletionServices?: AccountDeletionServices;
   challengeAttemptServices?: ChallengeAttemptServices;
   cardServices?: CardServices;
+  cpuMatchService?: CpuMatchService;
 }
 
 export interface AccountDeletionServices {
@@ -97,6 +100,7 @@ export async function buildApp({
   accountDeletionServices,
   challengeAttemptServices,
   cardServices,
+  cpuMatchService,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: logger
@@ -147,6 +151,10 @@ export async function buildApp({
     throw new Error('Card services require a player identity service.');
   }
 
+  if (cpuMatchService && !playerIdentityService) {
+    throw new Error('CPU match services require a player identity service.');
+  }
+
   registerErrorHandlers(app);
 
   await app.register(swagger, {
@@ -181,6 +189,10 @@ export async function buildApp({
         {
           name: 'Decks',
           description: 'Player saved decks and active deck selection.',
+        },
+        {
+          name: 'Matches',
+          description: 'Server-authoritative CPU matches and private history.',
         },
       ],
       components: {
@@ -274,6 +286,13 @@ export async function buildApp({
         service: cardServices.decks,
       });
     }
+  }
+
+  if (cpuMatchService) {
+    await app.register(cpuMatchRoutes, {
+      prefix: '/api/v1',
+      service: cpuMatchService,
+    });
   }
 
   return app;

@@ -20,6 +20,7 @@ import { createChallengeAttemptCompletionFinalizer } from './challenges/challeng
 import { createCardCollectionService } from './cards/card-collection.js';
 import { createChallengeAttemptFetchService } from './challenges/challenge-attempt-fetch.js';
 import { createDeckService } from './cards/deck-service.js';
+import { createCpuMatchService } from './matches/cpu-match-service.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
@@ -58,6 +59,7 @@ async function startServer(): Promise<void> {
     },
   );
   const deckService = createDeckService(database);
+  const cpuMatchService = createCpuMatchService(database);
 
   const app = await buildApp({
     config,
@@ -76,6 +78,8 @@ async function startServer(): Promise<void> {
       collection: cardCollectionService,
       decks: deckService,
     },
+
+    cpuMatchService,
 
     accountDeletionServices: {
       reauthenticationVerifier,
