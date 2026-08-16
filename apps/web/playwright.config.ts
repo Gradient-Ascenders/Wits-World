@@ -42,7 +42,7 @@ export default defineConfig({
       url: 'http://127.0.0.1:3000/health',
     },
     {
-      command: 'npm run dev --workspace @wits-world/web',
+      command: 'npm run dev --workspace @wits-world/web -- --mode e2e',
       cwd: repositoryRoot,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,

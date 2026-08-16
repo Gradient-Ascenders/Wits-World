@@ -40,19 +40,6 @@ test('loads the protected app with data from the real API', async ({
 
   await page.goto('/explore');
 
-  await page.getByRole('button', { name: 'Sign in to explore' }).click();
-  const authorizationPrompt = page.getByRole('heading', {
-    name: 'Authorize App',
-  });
-  await Promise.race([
-    page.waitForURL('http://localhost:5173/explore'),
-    authorizationPrompt.waitFor({ state: 'visible' }),
-  ]);
-
-  if (await authorizationPrompt.isVisible()) {
-    await page.getByRole('button', { name: 'Accept', exact: true }).click();
-  }
-
   await expect(page.getByText('Signed in as')).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'Explore the campus map' }),

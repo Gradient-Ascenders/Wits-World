@@ -99,8 +99,10 @@ of starting an incorrectly configured application.
 Wits World uses Auth0 Universal Login. The browser application is a public
 single-page application and must not be configured with an Auth0 client secret.
 The Auth0 provider requests access tokens for the audience configured by
-`VITE_AUTH0_AUDIENCE` and keeps the SDK's default in-memory cache. Tokens are not
-written to application logs, local storage, session storage, or rendered UI.
+`VITE_AUTH0_AUDIENCE`. Normal application modes keep the SDK's default in-memory
+cache, so tokens are not written to application logs, browser storage, or
+rendered UI. The dedicated Playwright E2E mode is the only exception described
+below.
 
 The development Auth0 application must include the following exact values:
 
@@ -142,9 +144,12 @@ npm run test:e2e:headed --workspace @wits-world/web
 ```
 
 Playwright starts the real web and API development services when they are not
-already running. The setup project saves reusable browser state under the
-ignored `playwright/.auth/` directory. Credentials are loaded by the Playwright
-Node process and must never use a `VITE_` prefix.
+already running. It starts Vite in the dedicated `e2e` mode so Auth0 can cache
+the test player's session in local storage. The setup project saves that
+token-bearing browser state under the ignored `playwright/.auth/` directory for
+the dependent smoke test. Treat this directory as sensitive and delete it when
+it is no longer needed. Credentials are loaded by the Playwright Node process
+and must never use a `VITE_` prefix.
 
 The credentialed live-Auth0 suite does not run in the current CI workflow. If
 it is added to CI, run `npx playwright install chromium` after `npm ci` and
