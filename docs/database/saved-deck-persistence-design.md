@@ -272,8 +272,9 @@ Consequently:
 - deleting a saved deck must not change an existing match; and
 - later card-catalogue edits must not rewrite an active or completed match.
 
-The concrete match snapshot schema and its immutability constraints belong to
-issue #75.
+The concrete match snapshot schema and its immutability constraints are now
+implemented by issue #75 and documented in
+[CPU match persistence](./cpu-match-persistence-design.md).
 
 ## Migration
 

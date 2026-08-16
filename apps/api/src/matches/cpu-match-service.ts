@@ -1,0 +1,1336 @@
+import { randomInt as secureRandomInt } from 'node:crypto';
+
+import type pg from 'pg';
+
+import {
+  applyBattleAction,
+  chooseCpuAction,
+  createBattleState,
+  getLegalActions,
+  InvalidBattleSetupError,
+  validateBattleDeck,
+  type BattleAction,
+  type BattleActionResult,
+  type BattleCreatureCard,
+  type BattleDeck,
+  type BattleEffect,
+  type BattleMove,
+  type BattlePowerCard,
+  type BattleState,
+  type BattleTransition,
+  type RandomInt,
+} from '@wits-world/game-rules';
+
+import {
+  DeckRuleViolationError,
+  validateBasicDeck,
+} from '../cards/deck-rules.js';
+import type {
+  CardAffinity,
+  CardCategory,
+  CardRarity,
+  CardEffect,
+  CardMove,
+} from '../cards/card-types.js';
+
+const CPU_TURN_SECONDS = 90;
+
+export interface CpuMatchDatabase {
+  connect(): Promise<CpuMatchClient>;
+}
+
+export interface CpuMatchClient {
+  query<T extends pg.QueryResultRow>(
+    statement: string,
+    values?: unknown[],
+  ): Promise<{ rows: T[]; rowCount?: number | null }>;
+  release(): void;
+}
+
+export interface CpuMatchClock {
+  now(): Date;
+}
+
+export interface CpuMatchServiceOptions {
+  clock?: CpuMatchClock;
+  randomInt?: RandomInt;
+}
+
+export interface CreateCpuMatchInput {
+  playerId: string;
+  deckId: string;
+}
+
+export interface SubmitCpuMatchActionInput {
+  playerId: string;
+  matchId: string;
+  submissionId: string;
+  expectedVersion: number;
+  action: Exclude<BattleAction, { type: 'timeout' }>;
+}
+
+export interface CpuMatchActionView {
+  type: BattleAction['type'];
+  creatureId?: string;
+  moveId?: string;
+  powerCardId?: string;
+}
+
+export interface CpuMatchStateView {
+  phase: BattleState['phase'];
+  turnNumber: number;
+  currentSide: BattleState['currentSide'];
+  replacementSide: BattleState['replacementSide'];
+  firstSide: BattleState['firstSide'];
+  selections: {
+    player: string | null;
+    cpu: string | null;
+  };
+  player: PlayerParticipantView;
+  cpu: CpuParticipantView;
+  legalActions: readonly CpuMatchActionView[];
+  turnDeadline: string | null;
+}
+
+export interface PlayerParticipantView {
+  creatures: readonly PublicCreatureView[];
+  powerCards: readonly PublicPowerCardView[];
+  usedPowerCardIds: readonly string[];
+  activeCreatureId: string | null;
+}
+
+export interface CpuParticipantView {
+  activeCreature: PublicCreatureView | null;
+  defeatedCreatures: readonly PublicCreatureView[];
+  remainingCreatureCount: number;
+  usedPowerCardIds: readonly string[];
+  remainingPowerCardCount: number;
+}
+
+export interface PublicCreatureView {
+  id: string;
+  affinity: BattleCreatureCard['affinity'];
+  maxHp: number;
+  maxPower: number;
+  currentHp: number;
+  remainingPower: number;
+  defeated: boolean;
+  moves: readonly PublicMoveView[];
+}
+
+export interface PublicMoveView {
+  id: string;
+  name: string;
+  moveType: BattleMove['moveType'];
+  powerCost: number;
+}
+
+export interface PublicPowerCardView {
+  id: string;
+  affinity: BattlePowerCard['affinity'];
+  available: boolean;
+}
+
+export interface CpuMatchResponse {
+  matchId: string;
+  status: 'active' | 'completed';
+  version: number;
+  winner: 'player' | 'cpu' | null;
+  startedAt: string;
+  completedAt: string | null;
+  state: CpuMatchStateView;
+  lastAction: BattleActionResult | null;
+}
+
+export interface CpuMatchHistoryRound {
+  roundNumber: number;
+  actions: readonly CpuMatchHistoryAction[];
+  result: readonly BattleActionResult[];
+  createdAt: string;
+}
+
+export interface CpuMatchHistoryAction {
+  sequence: number;
+  side: 'player' | 'cpu';
+  submissionId: string | null;
+  action: BattleAction;
+  result: BattleActionResult;
+  createdAt: string;
+}
+
+export interface CpuMatchHistory {
+  matchId: string;
+  status: 'completed';
+  winner: 'player' | 'cpu';
+  startedAt: string;
+  completedAt: string;
+  rounds: readonly CpuMatchHistoryRound[];
+}
+
+export interface CpuMatchService {
+  createMatch(input: CreateCpuMatchInput): Promise<CpuMatchResponse>;
+  getMatch(playerId: string, matchId: string): Promise<CpuMatchResponse>;
+  submitAction(input: SubmitCpuMatchActionInput): Promise<CpuMatchResponse>;
+  listHistory(playerId: string): Promise<readonly CpuMatchHistory[]>;
+}
+
+export class CpuMatchNotFoundError extends Error {
+  constructor() {
+    super('CPU match was not found.');
+    this.name = 'CpuMatchNotFoundError';
+  }
+}
+
+export class CpuMatchAlreadyActiveError extends Error {
+  constructor() {
+    super('The player already has an active CPU match.');
+    this.name = 'CpuMatchAlreadyActiveError';
+  }
+}
+
+export class CpuMatchDeckError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CpuMatchDeckError';
+  }
+}
+
+class CpuMatchSetupError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CpuMatchSetupError';
+  }
+}
+
+export class CpuMatchActionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CpuMatchActionError';
+  }
+}
+
+export class CpuMatchVersionConflictError extends Error {
+  constructor() {
+    super('The match changed before this action was applied.');
+    this.name = 'CpuMatchVersionConflictError';
+  }
+}
+
+export class CpuMatchCompletedError extends Error {
+  constructor() {
+    super('Completed CPU matches cannot receive more actions.');
+    this.name = 'CpuMatchCompletedError';
+  }
+}
+
+interface MatchRow extends pg.QueryResultRow {
+  id: string;
+  player_id: string;
+  status: 'active' | 'completed';
+  state: BattleState;
+  version: number;
+  turn_started_at: Date | null;
+  turn_deadline: Date | null;
+  winner: 'player' | 'cpu' | null;
+  started_at: Date;
+  completed_at: Date | null;
+}
+
+interface MatchIdentityRow extends pg.QueryResultRow {
+  id: string;
+}
+
+interface ActionResponseRow extends pg.QueryResultRow {
+  response: CpuMatchResponse;
+}
+
+interface LatestActionRow extends pg.QueryResultRow {
+  result: BattleActionResult;
+}
+
+interface RoundIdentityRow extends pg.QueryResultRow {
+  id: string;
+}
+
+interface RoundRow extends pg.QueryResultRow {
+  id: string;
+  round_number: number;
+  state_before: BattleState;
+  state_after: BattleState;
+  result: BattleActionResult[];
+  created_at: Date;
+}
+
+interface ActionRow extends pg.QueryResultRow {
+  sequence: number;
+  side: 'player' | 'cpu';
+  submission_id: string | null;
+  action: BattleAction;
+  result: BattleActionResult;
+  created_at: Date;
+}
+
+interface SavedDeckCardRow extends pg.QueryResultRow {
+  position: number;
+  owned_card_id: string;
+  card_definition_id: string;
+  name: string;
+  category: CardCategory;
+  affinity: CardAffinity;
+  rarity: CardRarity;
+  hp: number | null;
+  power: number | null;
+  is_active: boolean;
+}
+
+interface CpuCardRow extends pg.QueryResultRow {
+  position: number;
+  card_definition_id: string;
+  name: string;
+  category: CardCategory;
+  affinity: CardAffinity;
+  rarity: CardRarity;
+  hp: number | null;
+  power: number | null;
+  is_active: boolean;
+}
+
+interface MoveRow extends pg.QueryResultRow {
+  id: string;
+  card_definition_id: string;
+  position: number;
+  name: string;
+  move_type: CardMove['moveType'];
+  effect_type: CardMove['effectType'];
+  effect_value: number | null;
+  modifier_stat: CardMove['modifierStat'];
+  modifier_operation: CardMove['modifierOperation'];
+  modifier_duration_turns: number | null;
+  power_cost: number;
+}
+
+interface EffectRow extends pg.QueryResultRow {
+  id: string;
+  card_definition_id: string;
+  position: number;
+  effect_type: CardEffect['effectType'];
+  effect_value: number | null;
+  modifier_stat: CardEffect['modifierStat'];
+  modifier_operation: CardEffect['modifierOperation'];
+  modifier_duration_turns: number | null;
+}
+
+interface SnapshotCard {
+  side: 'player' | 'cpu';
+  position: number;
+  ownedCardId: string | null;
+  cardDefinitionId: string;
+  name: string;
+  category: CardCategory;
+  affinity: CardAffinity;
+  rarity: CardRarity;
+  card: BattleCreatureCard | BattlePowerCard;
+}
+
+export function createCpuMatchService(
+  database: CpuMatchDatabase,
+  options: CpuMatchServiceOptions = {},
+): CpuMatchService {
+  const clock = options.clock ?? { now: () => new Date() };
+  const randomInt = options.randomInt ?? secureRandomInt;
+
+  return {
+    async createMatch(input) {
+      const client = await database.connect();
+
+      try {
+        await client.query('begin');
+
+        const playerCards = await loadSelectedDeckCards(
+          client,
+          input.playerId,
+          input.deckId,
+        );
+        const cpuCards = await loadCpuDeckCards(client);
+        const playerDeck = await buildBattleDeck(client, playerCards, 'player');
+        const cpuDeck = await buildBattleDeck(client, cpuCards, 'cpu');
+
+        validateBattleDeck(playerDeck);
+        try {
+          validateBattleDeck(cpuDeck);
+        } catch (error) {
+          throw mapCpuMatchSetupError(error);
+        }
+
+        const state = createBattleState(playerDeck, cpuDeck);
+        const startedAt = clock.now();
+        const inserted = await client.query<MatchIdentityRow>(
+          `
+            insert into public.cpu_matches (
+              player_id,
+              player_deck_id,
+              state,
+              turn_started_at
+            )
+            values ($1::uuid, $2::uuid, $3::jsonb, null)
+            returning id::text
+          `,
+          [input.playerId, input.deckId, JSON.stringify(state)],
+        );
+
+        const matchId = inserted.rows[0]?.id;
+        if (!matchId) {
+          throw new Error('CPU match creation returned no match identifier.');
+        }
+
+        await insertSnapshots(client, matchId, playerCards, cpuCards, {
+          player: playerDeck,
+          cpu: cpuDeck,
+        });
+
+        await client.query('commit');
+
+        return createResponse({
+          matchId,
+          status: 'active',
+          version: 0,
+          state,
+          winner: null,
+          startedAt,
+          completedAt: null,
+          turnDeadline: null,
+          lastAction: null,
+        });
+      } catch (error) {
+        await rollback(client);
+        if (isActiveMatchUniqueViolation(error)) {
+          throw new CpuMatchAlreadyActiveError();
+        }
+        throw mapBattleSetupError(error);
+      } finally {
+        client.release();
+      }
+    },
+
+    async getMatch(playerId, matchId) {
+      const client = await database.connect();
+
+      try {
+        const match = await loadMatch(client, playerId, matchId, false);
+        const latest = await loadLatestAction(client, matchId);
+
+        return createResponse({
+          matchId: match.id,
+          status: match.status,
+          version: match.version,
+          state: match.state,
+          winner: match.winner,
+          startedAt: match.started_at,
+          completedAt: match.completed_at,
+          turnDeadline: match.turn_deadline,
+          lastAction: latest,
+        });
+      } finally {
+        client.release();
+      }
+    },
+
+    async submitAction(input) {
+      const client = await database.connect();
+
+      try {
+        await client.query('begin');
+
+        const match = await loadMatch(
+          client,
+          input.playerId,
+          input.matchId,
+          true,
+        );
+        const duplicate = await client.query<ActionResponseRow>(
+          `
+            select response
+            from public.cpu_match_actions
+            where match_id = $1::uuid
+              and submission_id = $2::uuid
+              and response is not null
+          `,
+          [input.matchId, input.submissionId],
+        );
+
+        if (duplicate.rows[0]?.response) {
+          await client.query('commit');
+          return duplicate.rows[0].response;
+        }
+
+        if (match.status === 'completed') {
+          throw new CpuMatchCompletedError();
+        }
+
+        if (match.version !== input.expectedVersion) {
+          throw new CpuMatchVersionConflictError();
+        }
+
+        const stateBefore = match.state;
+        const transitions: BattleTransition[] = [];
+        const now = clock.now();
+        const playerAction = actionForTimeoutIfNeeded(
+          stateBefore,
+          match.turn_deadline,
+          now,
+          input.action,
+        );
+
+        transitions.push(
+          applyBattleAction(stateBefore, 'player', playerAction, randomInt),
+        );
+
+        let state = transitions[0]!.state;
+
+        while (shouldAdvanceCpu(state)) {
+          const cpuAction = chooseCpuAction(state, randomInt);
+          const transition = applyBattleAction(
+            state,
+            'cpu',
+            cpuAction ?? { type: 'timeout' },
+            randomInt,
+          );
+          transitions.push(transition);
+          state = transition.state;
+        }
+
+        const completed = state.winner !== null;
+        const version = match.version + 1;
+        const turnDeadline = getTurnDeadline(state, now);
+        const response = createResponse({
+          matchId: match.id,
+          status: completed ? 'completed' : 'active',
+          version,
+          state,
+          winner: state.winner,
+          startedAt: match.started_at,
+          completedAt: completed ? now : null,
+          turnDeadline,
+          lastAction: transitions.at(-1)?.result ?? null,
+        });
+
+        const round = await client.query<RoundIdentityRow>(
+          `
+            insert into public.cpu_match_rounds (
+              match_id,
+              round_number,
+              state_before,
+              state_after,
+              result
+            )
+            values ($1::uuid, $2, $3::jsonb, $4::jsonb, $5::jsonb)
+            returning id::text
+          `,
+          [
+            match.id,
+            version,
+            JSON.stringify(stateBefore),
+            JSON.stringify(state),
+            JSON.stringify(transitions.map(({ result }) => result)),
+          ],
+        );
+
+        const roundId = round.rows[0]?.id;
+        if (!roundId) {
+          throw new Error('CPU match round creation returned no identifier.');
+        }
+
+        const existingActionCount = await client.query<{ count: string }>(
+          `
+            select count(*)::text as count
+            from public.cpu_match_actions
+            where match_id = $1::uuid
+          `,
+          [match.id],
+        );
+        let sequence = Number(existingActionCount.rows[0]?.count ?? 0) + 1;
+        let playerActionId: string | null = null;
+
+        for (const [index, transition] of transitions.entries()) {
+          const isPlayerAction = index === 0;
+          const insertedAction = await client.query<MatchIdentityRow>(
+            `
+              insert into public.cpu_match_actions (
+                match_id,
+                round_id,
+                sequence,
+                side,
+                submission_id,
+                action,
+                result,
+                response
+              )
+              values ($1::uuid, $2::uuid, $3, $4, $5::uuid, $6::jsonb, $7::jsonb, null)
+              returning id::text
+            `,
+            [
+              match.id,
+              roundId,
+              sequence,
+              transition.result.side,
+              isPlayerAction ? input.submissionId : null,
+              JSON.stringify(transition.result.action),
+              JSON.stringify(transition.result),
+            ],
+          );
+
+          if (isPlayerAction) {
+            playerActionId = insertedAction.rows[0]?.id ?? null;
+          }
+          sequence += 1;
+        }
+
+        if (!playerActionId) {
+          throw new Error(
+            'CPU match transition did not persist the player action.',
+          );
+        }
+
+        await client.query(
+          `
+            update public.cpu_match_actions
+               set response = $2::jsonb
+             where id = $1::uuid
+          `,
+          [playerActionId, JSON.stringify(response)],
+        );
+
+        await client.query(
+          `
+            update public.cpu_matches
+               set status = $2,
+                   state = $3::jsonb,
+                   version = $4,
+                   winner = $5,
+                   turn_started_at = $6,
+                   turn_deadline = $7,
+                   completed_at = $8,
+                   updated_at = now()
+             where id = $1::uuid
+          `,
+          [
+            match.id,
+            completed ? 'completed' : 'active',
+            JSON.stringify(state),
+            version,
+            state.winner,
+            completed ? null : state.phase === 'active' ? now : null,
+            completed ? null : turnDeadline,
+            completed ? now : null,
+          ],
+        );
+
+        await client.query('commit');
+        return response;
+      } catch (error) {
+        await rollback(client);
+        throw mapActionError(error);
+      } finally {
+        client.release();
+      }
+    },
+
+    async listHistory(playerId) {
+      const client = await database.connect();
+
+      try {
+        const matches = await client.query<MatchRow>(
+          `
+            select
+              id::text,
+              player_id::text,
+              status,
+              state,
+              version,
+              turn_started_at,
+              turn_deadline,
+              winner,
+              started_at,
+              completed_at
+            from public.cpu_matches
+            where player_id = $1::uuid
+              and status = 'completed'
+            order by completed_at desc, id desc
+          `,
+          [playerId],
+        );
+
+        const history: CpuMatchHistory[] = [];
+
+        for (const match of matches.rows) {
+          if (!match.completed_at || !match.winner) {
+            continue;
+          }
+
+          const rounds = await loadHistoryRounds(client, match.id);
+          history.push({
+            matchId: match.id,
+            status: 'completed',
+            winner: match.winner,
+            startedAt: match.started_at.toISOString(),
+            completedAt: match.completed_at.toISOString(),
+            rounds,
+          });
+        }
+
+        return history;
+      } finally {
+        client.release();
+      }
+    },
+  };
+}
+
+async function loadSelectedDeckCards(
+  client: CpuMatchClient,
+  playerId: string,
+  deckId: string,
+): Promise<SavedDeckCardRow[]> {
+  const selection = await client.query<{ deck_id: string }>(
+    `
+      select selection.deck_id::text
+      from public.player_deck_selections selection
+      join public.player_decks deck
+        on deck.id = selection.deck_id
+       and deck.player_id = selection.player_id
+      where selection.player_id = $1::uuid
+        and selection.deck_id = $2::uuid
+      for share of deck
+    `,
+    [playerId, deckId],
+  );
+
+  if (!selection.rows[0]) {
+    throw new CpuMatchDeckError(
+      'The selected deck is not active for this player.',
+    );
+  }
+
+  const result = await client.query<SavedDeckCardRow>(
+    `
+      select
+        membership.position,
+        owned.id::text as owned_card_id,
+        definition.id::text as card_definition_id,
+        definition.name,
+        definition.category,
+        definition.affinity,
+        definition.rarity,
+        definition.hp,
+        definition.power,
+        definition.is_active
+      from public.player_deck_cards membership
+      join public.player_decks deck
+        on deck.id = membership.deck_id
+       and deck.player_id = membership.player_id
+      join public.player_cards owned
+        on owned.id = membership.owned_card_id
+       and owned.player_id = membership.player_id
+      join public.card_definitions definition
+        on definition.id = owned.card_definition_id
+      where membership.deck_id = $1::uuid
+        and membership.player_id = $2::uuid
+      order by membership.position
+    `,
+    [deckId, playerId],
+  );
+
+  if (result.rows.length !== 5 || result.rows.some((row) => !row.is_active)) {
+    throw new CpuMatchDeckError(
+      'The selected deck is not a valid active deck.',
+    );
+  }
+
+  validateBasicDeck(
+    result.rows.map((row) => ({
+      ownedCardId: row.owned_card_id,
+      cardDefinitionId: row.card_definition_id,
+      category: row.category,
+      rarity: row.rarity,
+    })),
+  );
+  return result.rows;
+}
+
+async function loadCpuDeckCards(client: CpuMatchClient): Promise<CpuCardRow[]> {
+  const creatures = await client.query<CpuCardRow>(
+    `
+      select
+        row_number() over (order by definition.name, definition.id)::integer as position,
+        definition.id::text as card_definition_id,
+        definition.name,
+        definition.category,
+        definition.affinity,
+        definition.rarity,
+        definition.hp,
+        definition.power,
+        definition.is_active
+      from public.card_definitions definition
+      where definition.category = 'creature'
+        and definition.is_active = true
+      order by definition.name, definition.id
+      limit 3
+    `,
+  );
+  const powers = await client.query<CpuCardRow>(
+    `
+      select
+        (row_number() over (order by definition.name, definition.id) + 3)::integer as position,
+        definition.id::text as card_definition_id,
+        definition.name,
+        definition.category,
+        definition.affinity,
+        definition.rarity,
+        definition.hp,
+        definition.power,
+        definition.is_active
+      from public.card_definitions definition
+      where definition.category = 'power'
+        and definition.is_active = true
+      order by definition.name, definition.id
+      limit 2
+    `,
+  );
+
+  const cards = [...creatures.rows, ...powers.rows];
+  if (cards.length !== 5) {
+    throw new CpuMatchSetupError(
+      'The active catalogue does not contain a complete CPU deck.',
+    );
+  }
+
+  return cards;
+}
+
+async function buildBattleDeck(
+  client: CpuMatchClient,
+  cards: readonly (SavedDeckCardRow | CpuCardRow)[],
+  side: 'player' | 'cpu',
+): Promise<BattleDeck> {
+  const definitionIds = [
+    ...new Set(cards.map((card) => card.card_definition_id)),
+  ];
+  const [movesResult, effectsResult] = await Promise.all([
+    client.query<MoveRow>(
+      `
+        select
+          id::text,
+          card_definition_id::text,
+          position,
+          name,
+          move_type,
+          effect_type,
+          effect_value,
+          modifier_stat,
+          modifier_operation,
+          modifier_duration_turns,
+          power_cost
+        from public.card_moves
+        where card_definition_id = any($1::uuid[])
+        order by card_definition_id, position
+      `,
+      [definitionIds],
+    ),
+    client.query<EffectRow>(
+      `
+        select
+          id::text,
+          card_definition_id::text,
+          position,
+          effect_type,
+          effect_value,
+          modifier_stat,
+          modifier_operation,
+          modifier_duration_turns
+        from public.card_effects
+        where card_definition_id = any($1::uuid[])
+        order by card_definition_id, position
+      `,
+      [definitionIds],
+    ),
+  ]);
+
+  const movesByDefinition = groupByDefinition(movesResult.rows);
+  const effectsByDefinition = groupByDefinition(effectsResult.rows);
+  const creatures: BattleCreatureCard[] = [];
+  const powerCards: BattlePowerCard[] = [];
+
+  for (const card of cards) {
+    const id =
+      side === 'player' && 'owned_card_id' in card
+        ? card.owned_card_id
+        : card.card_definition_id;
+
+    if (card.category === 'creature') {
+      if (card.hp === null || card.power === null) {
+        throw new CpuMatchSetupError(
+          `Creature ${card.name} has incomplete stats.`,
+        );
+      }
+
+      creatures.push({
+        id,
+        affinity: card.affinity,
+        maxHp: card.hp,
+        maxPower: card.power,
+        moves: (movesByDefinition.get(card.card_definition_id) ?? []).map(
+          mapBattleMove,
+        ),
+      });
+    } else {
+      powerCards.push({
+        id,
+        affinity: card.affinity,
+        effects: (effectsByDefinition.get(card.card_definition_id) ?? []).map(
+          mapBattleEffect,
+        ),
+      });
+    }
+  }
+
+  return { creatureCards: creatures, powerCards };
+}
+
+function groupByDefinition<T extends { card_definition_id: string }>(
+  rows: readonly T[],
+): Map<string, T[]> {
+  const grouped = new Map<string, T[]>();
+
+  for (const row of rows) {
+    const values = grouped.get(row.card_definition_id) ?? [];
+    values.push(row);
+    grouped.set(row.card_definition_id, values);
+  }
+
+  return grouped;
+}
+
+function mapBattleMove(row: MoveRow): BattleMove {
+  return {
+    id: row.id,
+    name: row.name,
+    moveType: row.move_type,
+    powerCost: row.power_cost,
+    effects: [mapBattleEffect(row)],
+  };
+}
+
+function mapBattleEffect(row: MoveRow | EffectRow): BattleEffect {
+  const modifier =
+    row.modifier_stat && row.modifier_operation
+      ? {
+          stat: row.modifier_stat,
+          operation: row.modifier_operation,
+          durationTurns: row.modifier_duration_turns,
+        }
+      : undefined;
+
+  return {
+    id: row.id,
+    effectType: row.effect_type,
+    effectValue: row.effect_value,
+    modifier,
+  };
+}
+
+async function insertSnapshots(
+  client: CpuMatchClient,
+  matchId: string,
+  playerCards: readonly SavedDeckCardRow[],
+  cpuCards: readonly CpuCardRow[],
+  decks: { player: BattleDeck; cpu: BattleDeck },
+): Promise<void> {
+  const snapshots: SnapshotCard[] = [
+    ...snapshotDeck('player', playerCards, decks.player),
+    ...snapshotDeck('cpu', cpuCards, decks.cpu),
+  ];
+
+  for (const snapshot of snapshots) {
+    await client.query(
+      `
+        insert into public.cpu_match_cards (
+          match_id,
+          side,
+          position,
+          owned_card_id,
+          card_definition_id,
+          snapshot
+        )
+        values ($1::uuid, $2, $3, $4::uuid, $5::uuid, $6::jsonb)
+      `,
+      [
+        matchId,
+        snapshot.side,
+        snapshot.position,
+        snapshot.ownedCardId,
+        snapshot.cardDefinitionId,
+        JSON.stringify({
+          cardDefinitionId: snapshot.cardDefinitionId,
+          name: snapshot.name,
+          category: snapshot.category,
+          affinity: snapshot.affinity,
+          rarity: snapshot.rarity,
+          battleCard: snapshot.card,
+        }),
+      ],
+    );
+  }
+}
+
+function snapshotDeck(
+  side: 'player' | 'cpu',
+  rows: readonly (SavedDeckCardRow | CpuCardRow)[],
+  deck: BattleDeck,
+): SnapshotCard[] {
+  let creatureIndex = 0;
+  let powerIndex = 0;
+
+  return rows.map((row) => {
+    const card =
+      row.category === 'creature'
+        ? deck.creatureCards[creatureIndex++]
+        : deck.powerCards[powerIndex++];
+
+    if (!card) {
+      throw new CpuMatchSetupError('The match deck snapshot is incomplete.');
+    }
+
+    return {
+      side,
+      position: row.position,
+      ownedCardId: 'owned_card_id' in row ? row.owned_card_id : null,
+      cardDefinitionId: row.card_definition_id,
+      name: row.name,
+      category: row.category,
+      affinity: row.affinity,
+      rarity: row.rarity,
+      card,
+    };
+  });
+}
+
+async function loadMatch(
+  client: CpuMatchClient,
+  playerId: string,
+  matchId: string,
+  forUpdate: boolean,
+): Promise<MatchRow> {
+  const result = await client.query<MatchRow>(
+    `
+      select
+        id::text,
+        player_id::text,
+        status,
+        state,
+        version,
+        turn_started_at,
+        turn_deadline,
+        winner,
+        started_at,
+        completed_at
+      from public.cpu_matches
+      where id = $1::uuid
+        and player_id = $2::uuid
+      ${forUpdate ? 'for update' : ''}
+    `,
+    [matchId, playerId],
+  );
+
+  const match = result.rows[0];
+  if (!match) {
+    throw new CpuMatchNotFoundError();
+  }
+
+  return match;
+}
+
+async function loadLatestAction(
+  client: CpuMatchClient,
+  matchId: string,
+): Promise<BattleActionResult | null> {
+  const result = await client.query<LatestActionRow>(
+    `
+      select result
+      from public.cpu_match_actions
+      where match_id = $1::uuid
+      order by sequence desc
+      limit 1
+    `,
+    [matchId],
+  );
+
+  return result.rows[0]?.result ?? null;
+}
+
+async function loadHistoryRounds(
+  client: CpuMatchClient,
+  matchId: string,
+): Promise<CpuMatchHistoryRound[]> {
+  const rounds = await client.query<RoundRow>(
+    `
+      select id, round_number, state_before, state_after, result, created_at
+      from public.cpu_match_rounds
+      where match_id = $1::uuid
+      order by round_number
+    `,
+    [matchId],
+  );
+
+  const history: CpuMatchHistoryRound[] = [];
+
+  for (const round of rounds.rows) {
+    const actions = await client.query<ActionRow>(
+      `
+        select sequence, side, submission_id, action, result, created_at
+        from public.cpu_match_actions
+        where round_id = $1::uuid
+        order by sequence
+      `,
+      [round.id],
+    );
+
+    history.push({
+      roundNumber: round.round_number,
+      actions: actions.rows.map((action) => ({
+        sequence: action.sequence,
+        side: action.side,
+        submissionId: action.submission_id,
+        action: action.action,
+        result: action.result,
+        createdAt: action.created_at.toISOString(),
+      })),
+      result: round.result,
+      createdAt: round.created_at.toISOString(),
+    });
+  }
+
+  return history;
+}
+
+function createResponse(input: {
+  matchId: string;
+  status: 'active' | 'completed';
+  version: number;
+  state: BattleState;
+  winner: 'player' | 'cpu' | null;
+  startedAt: Date;
+  completedAt: Date | null;
+  turnDeadline: Date | null;
+  lastAction: BattleActionResult | null;
+}): CpuMatchResponse {
+  return {
+    matchId: input.matchId,
+    status: input.status,
+    version: input.version,
+    winner: input.winner,
+    startedAt: input.startedAt.toISOString(),
+    completedAt: input.completedAt?.toISOString() ?? null,
+    state: toPublicState(input.state, input.turnDeadline),
+    lastAction: input.lastAction,
+  };
+}
+
+function toPublicState(
+  state: BattleState,
+  turnDeadline: Date | null,
+): CpuMatchStateView {
+  const player = state.participants.player;
+  const cpu = state.participants.cpu;
+  const visibleCpuCreatures = cpu.creatures.filter(
+    (creature) =>
+      creature.defeated || creature.card.id === cpu.activeCreatureId,
+  );
+  const playerCreatures = player.creatures.map(toPublicCreature);
+
+  return {
+    phase: state.phase,
+    turnNumber: state.turnNumber,
+    currentSide: state.currentSide,
+    replacementSide: state.replacementSide,
+    firstSide: state.firstSide,
+    selections: {
+      player: state.selections.player,
+      cpu: state.selections.cpu,
+    },
+    player: {
+      creatures: playerCreatures,
+      powerCards: player.powerCards.map((card) => ({
+        id: card.id,
+        affinity: card.affinity,
+        available: !player.usedPowerCardIds.includes(card.id),
+      })),
+      usedPowerCardIds: player.usedPowerCardIds,
+      activeCreatureId: player.activeCreatureId,
+    },
+    cpu: {
+      activeCreature:
+        cpu.activeCreatureId === null
+          ? null
+          : toPublicCreature(
+              cpu.creatures.find(
+                (creature) => creature.card.id === cpu.activeCreatureId,
+              )!,
+            ),
+      defeatedCreatures: visibleCpuCreatures
+        .filter((creature) => creature.defeated)
+        .map(toPublicCreature),
+      remainingCreatureCount: cpu.creatures.filter(
+        (creature) => !creature.defeated,
+      ).length,
+      usedPowerCardIds: cpu.usedPowerCardIds,
+      remainingPowerCardCount:
+        cpu.powerCards.length - cpu.usedPowerCardIds.length,
+    },
+    legalActions: getLegalActions(state, 'player').map(toPublicAction),
+    turnDeadline: turnDeadline?.toISOString() ?? null,
+  };
+}
+
+function toPublicCreature(creature: {
+  card: BattleCreatureCard;
+  currentHp: number;
+  remainingPower: number;
+  defeated: boolean;
+}): PublicCreatureView {
+  return {
+    id: creature.card.id,
+    affinity: creature.card.affinity,
+    maxHp: creature.card.maxHp,
+    maxPower: creature.card.maxPower,
+    currentHp: creature.currentHp,
+    remainingPower: creature.remainingPower,
+    defeated: creature.defeated,
+    moves: creature.card.moves.map((move) => ({
+      id: move.id,
+      name: move.name,
+      moveType: move.moveType,
+      powerCost: move.powerCost,
+    })),
+  };
+}
+
+function toPublicAction(action: BattleAction): CpuMatchActionView {
+  if (action.type === 'select_initial_creature') {
+    return { type: action.type, creatureId: action.creatureId };
+  }
+  if (action.type === 'select_replacement') {
+    return { type: action.type, creatureId: action.creatureId };
+  }
+  if (action.type === 'use_move') {
+    return { type: action.type, moveId: action.moveId };
+  }
+  if (action.type === 'use_power_card') {
+    return { type: action.type, powerCardId: action.powerCardId };
+  }
+  return { type: action.type };
+}
+
+function shouldAdvanceCpu(state: BattleState): boolean {
+  if (state.phase === 'initial_selection') {
+    return state.selections.player !== null && state.selections.cpu === null;
+  }
+
+  return (
+    (state.phase === 'replacement' && state.replacementSide === 'cpu') ||
+    (state.phase === 'active' && state.currentSide === 'cpu')
+  );
+}
+
+function actionForTimeoutIfNeeded(
+  state: BattleState,
+  deadline: Date | null,
+  now: Date,
+  action: Exclude<BattleAction, { type: 'timeout' }>,
+): BattleAction {
+  if (
+    state.phase === 'active' &&
+    state.currentSide === 'player' &&
+    deadline !== null &&
+    now.getTime() >= deadline.getTime()
+  ) {
+    return { type: 'timeout' };
+  }
+
+  return action;
+}
+
+function getTurnDeadline(state: BattleState, now: Date): Date | null {
+  if (state.phase !== 'active' || state.currentSide !== 'player') {
+    return null;
+  }
+
+  return new Date(now.getTime() + CPU_TURN_SECONDS * 1000);
+}
+
+function mapBattleSetupError(error: unknown): Error {
+  if (error instanceof CpuMatchDeckError) {
+    return error;
+  }
+
+  if (
+    error instanceof DeckRuleViolationError ||
+    error instanceof InvalidBattleSetupError
+  ) {
+    return new CpuMatchDeckError(error.message);
+  }
+
+  if (error instanceof Error) {
+    return error;
+  }
+
+  return new Error('CPU match creation failed unexpectedly.');
+}
+
+function mapCpuMatchSetupError(error: unknown): CpuMatchSetupError {
+  if (error instanceof CpuMatchSetupError) {
+    return error;
+  }
+
+  if (error instanceof Error) {
+    return new CpuMatchSetupError(error.message);
+  }
+
+  return new CpuMatchSetupError('The CPU deck setup is invalid.');
+}
+
+function mapActionError(error: unknown): Error {
+  if (
+    error instanceof CpuMatchNotFoundError ||
+    error instanceof CpuMatchCompletedError ||
+    error instanceof CpuMatchVersionConflictError ||
+    error instanceof CpuMatchActionError
+  ) {
+    return error;
+  }
+
+  if (error instanceof Error && error.name === 'IllegalBattleActionError') {
+    return new CpuMatchActionError(error.message);
+  }
+
+  return error instanceof Error ? error : new Error('CPU match action failed.');
+}
+
+function isActiveMatchUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === '23505' &&
+    'constraint' in error &&
+    (error as { constraint?: unknown }).constraint ===
+      'cpu_matches_one_active_per_player_idx'
+  );
+}
+
+async function rollback(client: CpuMatchClient): Promise<void> {
+  try {
+    await client.query('rollback');
+  } catch {
+    // Preserve the original transaction failure.
+  }
+}

@@ -43,6 +43,13 @@ The browser may not determine:
 - legal battle actions; or
 - battle outcomes.
 
+For CPU matches the browser may submit only a match identifier, expected
+state version, submission identifier, and intended action identifier. It may
+not submit card statistics, effects, CPU actions, random values, round results,
+the winner, or completion status. The API locks the match row, applies the
+shared rules transition, resolves CPU actions, and persists the result
+transactionally. Unplayed CPU cards remain hidden in player-facing responses.
+
 ### Authentication provider
 
 The authentication provider authenticates users and issues tokens.
