@@ -5,6 +5,12 @@ on:
     branches:
       - main
 
+env:
+  npm_config_fetch_retries: 5
+  npm_config_fetch_retry_factor: 2
+  npm_config_fetch_retry_mintimeout: 10000
+  npm_config_fetch_retry_maxtimeout: 60000
+
 jobs:
   format:
     name: Check repository formatting
