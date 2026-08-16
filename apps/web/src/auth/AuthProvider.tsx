@@ -37,8 +37,14 @@ export function PlayerAuthProvider({
   children,
   config,
 }: PlayerAuthProviderProps) {
+  const authenticationCache =
+    import.meta.env.MODE === 'e2e'
+      ? ({ cacheLocation: 'localstorage' } as const)
+      : {};
+
   return (
     <Auth0Provider
+      {...authenticationCache}
       authorizationParams={{
         audience: config.audience,
         redirect_uri: window.location.origin,
