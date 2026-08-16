@@ -7,11 +7,14 @@
     "build": "tsc --project tsconfig.json --noEmit && vite build",
     "build:bundle": "vite build",
     "dev": "vite",
-    "lint": "eslint src tests --max-warnings=0",
+    "lint": "eslint src tests playwright playwright.config.ts --max-warnings=0",
     "preview": "vite preview",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "type-check": "tsc --project tsconfig.json --noEmit"
+    "test:e2e": "playwright test",
+    "test:e2e:auth": "playwright test --project=auth-setup",
+    "test:e2e:headed": "playwright test --headed",
+    "type-check": "tsc --project tsconfig.json --noEmit && tsc --project tsconfig.playwright.json --noEmit"
   },
   "dependencies": {
     "@auth0/auth0-react": "2.23.0",
@@ -21,6 +24,7 @@
     "wouter": "3.10.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@testing-library/dom": "10.4.1",
     "@testing-library/jest-dom": "7.0.0",
     "@testing-library/react": "16.3.2",
@@ -30,6 +34,7 @@
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
     "@vitejs/plugin-react": "6.0.5",
+    "dotenv": "^17.4.2",
     "jsdom": "29.1.1",
     "vite": "8.2.1"
   }

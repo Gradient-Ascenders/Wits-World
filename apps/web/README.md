@@ -99,8 +99,10 @@ of starting an incorrectly configured application.
 Wits World uses Auth0 Universal Login. The browser application is a public
 single-page application and must not be configured with an Auth0 client secret.
 The Auth0 provider requests access tokens for the audience configured by
-`VITE_AUTH0_AUDIENCE` and keeps the SDK's default in-memory cache. Tokens are not
-written to application logs, local storage, session storage, or rendered UI.
+`VITE_AUTH0_AUDIENCE`. Normal application modes keep the SDK's default in-memory
+cache, so tokens are not written to application logs, browser storage, or
+rendered UI. The dedicated Playwright E2E mode is the only exception described
+below.
 
 The development Auth0 application must include the following exact values:
 
@@ -120,6 +122,39 @@ Authenticated API clients obtain a token on demand through
 `useApiAccessToken`. Callers must place that token only in the standard
 `Authorization: Bearer` request header and must not log or persist it.
 
+### Real authentication end-to-end test
+
+The Playwright suite signs in through the development tenant's real Auth0
+Universal Login page and calls the real local API. Put only the dedicated test
+player credentials in the ignored `apps/web/.env.e2e.local` file:
+
+```dotenv
+E2E_USER_EMAIL=player@example.com
+E2E_USER_PASSWORD=replace-with-the-test-player-password
+```
+
+From the repository root, run:
+
+```bash
+npm ci
+npx playwright install chromium
+npm run test:e2e:auth --workspace @wits-world/web
+npm run test:e2e --workspace @wits-world/web
+npm run test:e2e:headed --workspace @wits-world/web
+```
+
+Playwright may reuse an existing local API service, but it always starts its own
+Vite server in the dedicated `e2e` mode so Auth0 can cache the test player's
+session in local storage. Stop any other service using port 5173 before running
+the suite. The setup project saves the token-bearing browser state under the
+ignored `playwright/.auth/` directory for the dependent smoke test. Treat this
+directory as sensitive and delete it when it is no longer needed. Credentials
+are loaded by the Playwright Node process and must never use a `VITE_` prefix.
+
+The credentialed live-Auth0 suite does not run in the current CI workflow. If
+it is added to CI, run `npx playwright install chromium` after `npm ci` and
+before the E2E command in that job.
+
 Known limitations:
 
 - sign-in, sign-out, and silent token retrieval depend on Auth0 availability;
@@ -127,8 +162,8 @@ Known limitations:
   or incorrect Allowed Web Origins may prevent silent session restoration;
 - changing the local port requires matching callback, logout, and web-origin
   entries in Auth0;
-- automated tests mock Auth0 and do not prove that tenant configuration is
-  correct.
+- unit tests mock Auth0; the Playwright end-to-end test requires the real
+  development tenant, API, database test branch, and network access.
 
 ## Campus map and event discovery
 
