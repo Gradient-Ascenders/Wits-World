@@ -658,6 +658,18 @@ jobs:
 
           unzip -t "$DEPLOY_ROOT/witsworld-api-deploy.zip" >/dev/null
 
+          ARTIFACT_CONTENTS="$DEPLOY_ROOT/artifact-contents.txt"
+          unzip -Z1 "$DEPLOY_ROOT/witsworld-api-deploy.zip" > "$ARTIFACT_CONTENTS"
+
+          require_artifact_path() {
+            local required_path="$1"
+
+            if ! grep -Fx "$required_path" "$ARTIFACT_CONTENTS"; then
+              echo "Required artifact path is missing: $required_path"
+              return 1
+            fi
+          }
+
           for required_path in \
             package.json \
             package-lock.json \
@@ -671,23 +683,25 @@ jobs:
             node_modules/dotenv/package.json \
             node_modules/fastify/package.json \
             node_modules/jose/package.json \
-            node_modules/pg/package.json \
-            database/migrations/0001_enable_postgis.sql \
-            database/migrations/0002_create_events.sql \
-            database/migrations/0003_create_players.sql \
-            database/migrations/0004_create_account_deletion_requests.sql \
-            database/migrations/0005_create_challenge_definitions.sql \
-            database/migrations/0006_create_challenge_attempts.sql \
-            database/migrations/0007_create_cards_rewards_and_ownership.sql \
-            database/migrations/0008_allow_multiple_event_reward_cards.sql \
-            database/migrations/0009_create_card_catalogue_and_starter_grants.sql \
-            database/migrations/0010_add_card_modifier_metadata.sql \
-            database/seeds/0001_sprint_1_demo_event.sql \
-            database/seeds/0002_basic_card_catalogue.sql
+            node_modules/pg/package.json
           do
-            unzip -Z1 "$DEPLOY_ROOT/witsworld-api-deploy.zip" |
-              grep -Fx "$required_path"
+            require_artifact_path "$required_path"
           done
+
+          DATABASE_FILE_COUNT=0
+
+          while IFS= read -r required_path
+          do
+            require_artifact_path "$required_path"
+            DATABASE_FILE_COUNT=$((DATABASE_FILE_COUNT + 1))
+          done < <(
+            git -C "$DEPLOY_ROOT/repository" ls-files -- database
+          )
+
+          if [ "$DATABASE_FILE_COUNT" -eq 0 ]; then
+            echo "The deployment commit does not contain tracked database files."
+            exit 1
+          fi
 
       - name: Authenticate to Azure
         run: |
