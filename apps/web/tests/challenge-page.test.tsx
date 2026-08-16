@@ -618,9 +618,12 @@ describe('timed player challenge', () => {
     await user.click(await screen.findByRole('radio', { name: 'Choice 1.2' }));
     await user.click(screen.getByRole('button', { name: 'Submit answer' }));
 
-    expect(
-      await screen.findByRole('heading', { name: 'Your challenge result' }),
-    ).toHaveFocus();
+    await screen.findByRole('heading', { name: 'Your challenge result' });
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { name: 'Your challenge result' }),
+      ).toHaveFocus(),
+    );
   });
 
   it('clears an attempt that is missing after submission', async () => {
