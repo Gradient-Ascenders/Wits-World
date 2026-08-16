@@ -122,6 +122,22 @@ describe('player authentication', () => {
     });
   });
 
+  it('protects the saved-decks route and returns there after sign-in', async () => {
+    const user = userEvent.setup();
+    const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
+
+    renderRoute('/decks', createAuthValue({ loginWithRedirect }));
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Sign in to manage your saved decks',
+      }),
+    );
+    expect(loginWithRedirect).toHaveBeenCalledWith({
+      appState: { returnTo: '/decks' },
+    });
+  });
+
   it('shows a safe recoverable message for an authentication error', async () => {
     const user = userEvent.setup();
     const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
