@@ -425,16 +425,16 @@ Issue #64 adds the migration layer in dependency order:
 9. `0011_create_saved_decks.sql` adds saved decks, exact owned-copy
    memberships, ownership-safe composite relationships, deterministic positions,
    and one active deck selection per player.
-10. `0012_add_author_content_foundation.sql` adds question explanations,
+10. `0013_add_author_content_foundation.sql` adds question explanations,
     immutable Author-content audit records, and database enforcement that audit
     actors are active Authors.
-11. `0013_harden_author_challenge_lifecycle.sql` hardens question and challenge
+11. `0014_harden_author_challenge_lifecycle.sql` hardens question and challenge
     immutability and lifecycle transitions used by protected challenge
     authoring.
-12. `0014_add_card_authoring_lifecycle.sql` adds explicit draft, published, and
+12. `0015_add_card_authoring_lifecycle.sql` adds explicit draft, published, and
     retired card states, active-state consistency, and published-card content
     immutability.
-13. `0015_add_event_authoring_lifecycle.sql` adds event retirement, publication
+13. `0016_add_event_authoring_lifecycle.sql` adds event retirement, publication
     readiness validation, published-event immutability, and protection against
     retiring the challenge beneath a live published event.
 
