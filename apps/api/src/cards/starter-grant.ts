@@ -104,7 +104,7 @@ export function createStarterGrantService(
             input.playerId,
             existing,
           );
-          assertCompleteStarterGrant(result);
+          assertCompleteStarterGrant(result, input.affinity);
           await client.query('commit');
           return { grant: result, created: false };
         }
@@ -163,7 +163,7 @@ export function createStarterGrantService(
             input.playerId,
             concurrentGrant,
           );
-          assertCompleteStarterGrant(result);
+          assertCompleteStarterGrant(result, input.affinity);
           await client.query('commit');
           return { grant: result, created: false };
         }
@@ -173,7 +173,7 @@ export function createStarterGrantService(
           ...powerCandidates,
         ].map((candidate) => candidate.card_definition_id);
 
-        await client.query(
+        const ownershipInsert = await client.query<StarterCandidateRow>(
           `
             insert into public.player_cards (
               player_id,
@@ -184,8 +184,14 @@ export function createStarterGrantService(
             select $1::uuid, definition.id, $2::uuid, 'starter'
               from public.card_definitions definition
              where definition.id = any($3::uuid[])
+            returning card_definition_id::text as card_definition_id
           `,
           [input.playerId, grant.starter_grant_id, cardDefinitionIds],
+        );
+
+        assertInsertedStarterDefinitions(
+          ownershipInsert.rows,
+          cardDefinitionIds,
         );
 
         const result = await loadStarterGrantResult(
@@ -194,7 +200,7 @@ export function createStarterGrantService(
           grant,
         );
 
-        assertCompleteStarterGrant(result);
+        assertCompleteStarterGrant(result, input.affinity);
 
         await client.query('commit');
         return { grant: result, created: true };
@@ -250,6 +256,7 @@ async function loadCandidates(
         and rarity = 'common'
       order by id
       limit $3
+      for share
     `,
     [affinity, category, limit],
   );
@@ -349,8 +356,55 @@ function mapOwnedCard(row: StarterCardRow): OwnedCard {
   };
 }
 
-function assertCompleteStarterGrant(grant: StarterGrant): void {
-  if (grant.cards.length !== 5) {
-    throw new Error('Starter grant did not persist exactly five cards.');
+function assertInsertedStarterDefinitions(
+  inserted: StarterCandidateRow[],
+  expectedDefinitionIds: string[],
+): void {
+  const insertedIds = new Set(
+    inserted.map((card) => card.card_definition_id.toLowerCase()),
+  );
+
+  if (
+    inserted.length !== 5 ||
+    insertedIds.size !== 5 ||
+    expectedDefinitionIds.some(
+      (definitionId) => !insertedIds.has(definitionId.toLowerCase()),
+    )
+  ) {
+    throw new Error('Starter grant did not persist all selected definitions.');
+  }
+}
+
+function assertCompleteStarterGrant(
+  grant: StarterGrant,
+  expectedAffinity: CardAffinity,
+): void {
+  const creatureCount = grant.cards.filter(
+    (card) => card.category === 'creature',
+  ).length;
+  const powerCount = grant.cards.filter(
+    (card) => card.category === 'power',
+  ).length;
+  const definitionIds = new Set(
+    grant.cards.map((card) => card.cardDefinitionId.toLowerCase()),
+  );
+  const ownedCardIds = new Set(
+    grant.cards.map((card) => card.ownedCardId.toLowerCase()),
+  );
+
+  if (
+    grant.affinity !== expectedAffinity ||
+    grant.cards.length !== 5 ||
+    creatureCount !== 3 ||
+    powerCount !== 2 ||
+    grant.cards.some(
+      (card) => card.affinity !== expectedAffinity || card.rarity !== 'common',
+    ) ||
+    definitionIds.size !== 5 ||
+    ownedCardIds.size !== 5
+  ) {
+    throw new Error(
+      'Starter grant did not persist the approved five-card composition.',
+    );
   }
 }

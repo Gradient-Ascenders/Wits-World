@@ -3,13 +3,17 @@ import { useState, type ReactNode } from 'react';
 
 interface ProtectedRouteProps {
   children: ReactNode;
+  destination?: string;
 }
 
 function currentRoute(): string {
   return `${window.location.pathname}${window.location.search}`;
 }
 
-export function ProtectedRoute({ children }: ProtectedRouteProps) {
+export function ProtectedRoute({
+  children,
+  destination = 'explore Wits World',
+}: ProtectedRouteProps) {
   const { error, isAuthenticated, isLoading, loginWithRedirect } = useAuth0();
   const [actionFailed, setActionFailed] = useState(false);
 
@@ -57,13 +61,15 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     return (
       <section className="auth-state">
         <p className="eyebrow">Player access</p>
-        <h1>Sign in to explore Wits World</h1>
+        <h1>Sign in to {destination}</h1>
         <p>
           Continue to Auth0's secure sign-in page, then return here to open the
-          protected campus experience.
+          protected player experience.
         </p>
         <button className="button" onClick={startSignIn} type="button">
-          Sign in to explore
+          {destination === 'explore Wits World'
+            ? 'Sign in to explore'
+            : `Sign in to ${destination}`}
         </button>
       </section>
     );

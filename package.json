@@ -15,6 +15,7 @@
   "scripts": {
     "view": "npm run dev --workspace @wits-world/web",
     "api": "npm run dev --workspace @wits-world/api",
+    "db": "npm run db:setup --workspace @wits-world/api",
     "prepare:game-rules": "npm run build --workspace @wits-world/game-rules",
     "build": "npm run prepare:game-rules && npm run build --workspaces --if-present",
     "format": "prettier --write .",

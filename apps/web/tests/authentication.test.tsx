@@ -108,6 +108,20 @@ describe('player authentication', () => {
     });
   });
 
+  it('protects the collection route and returns there after sign-in', async () => {
+    const user = userEvent.setup();
+    const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
+
+    renderRoute('/collection', createAuthValue({ loginWithRedirect }));
+
+    await user.click(
+      screen.getByRole('button', { name: 'Sign in to view your collection' }),
+    );
+    expect(loginWithRedirect).toHaveBeenCalledWith({
+      appState: { returnTo: '/collection' },
+    });
+  });
+
   it('shows a safe recoverable message for an authentication error', async () => {
     const user = userEvent.setup();
     const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
