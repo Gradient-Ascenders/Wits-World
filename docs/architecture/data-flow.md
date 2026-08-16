@@ -314,10 +314,13 @@ Any later decision to store location claims must document:
 
 ## Later Basic data flow
 
-The same authority model also applies to later Basic operations:
+The same authority model also applies to the implemented CPU match flow:
 
-1. enforce CPU battle actions; and
-2. store completed match rounds and results.
+1. load the authenticated player's selected deck and active catalogue data;
+2. snapshot the player and server-selected CPU cards;
+3. accept only intended player actions;
+4. apply player and CPU transitions through the shared rules package; and
+5. store completed match rounds, actions, and results.
 
 These operations remain server-authoritative.
 
@@ -332,6 +335,10 @@ in the
 Saved-deck persistence, validation, selection, and the match-snapshot handoff are
 defined in the
 [saved deck persistence and API design](../database/saved-deck-persistence-design.md).
+
+CPU match state, snapshots, transactional actions, concurrency, and private
+history are defined in the
+[CPU match persistence design](../database/cpu-match-persistence-design.md).
 
 ---
 

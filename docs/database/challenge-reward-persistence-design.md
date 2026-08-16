@@ -405,8 +405,11 @@ Issue #64 adds the migration layer in dependency order:
 9. `0011_create_saved_decks.sql` adds saved decks, exact owned-copy
    memberships, ownership-safe composite relationships, deterministic positions,
    and one active deck selection per player.
+10. `0012_create_cpu_matches.sql` adds server-authoritative CPU match state,
+    immutable card snapshots, ordered rounds/actions, and private completed
+    history.
 
-The database integration suite applies all eleven migrations to an empty
+The database integration suite applies all twelve migrations to an empty
 PostgreSQL/PostGIS database and checks that a second run is a no-op. The
 `0002_basic_card_catalogue.sql` seed is repeatable and provides deterministic
 demonstration cards for all starter affinities plus non-Common examples for
