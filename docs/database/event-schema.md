@@ -88,10 +88,11 @@ constraints and triggers. Player discovery continues to require
 `is_published = true`, so retiring an event removes it from discovery without
 deleting the row.
 
-## Sprint 1 demonstration fixture
+## Basic demonstration fixtures
 
-`database/seeds/0001_sprint_1_demo_event.sql` defines one provisional,
-non-production event:
+`database/seeds/basic-demo/0001_sprint_1_demo_event.sql` defines the primary
+provisional, non-production Great Hall event. Additional lifecycle fixtures are
+defined in `database/seeds/basic-demo/0002_basic_demo_event_states.sql`.
 
 | Field      | Fixture value                          |
 | ---------- | -------------------------------------- |
@@ -107,16 +108,16 @@ non-production event:
 
 The fixture is available throughout 25 August 2026 and becomes inactive at
 midnight on 26 August in South African Standard Time. Its coordinates and
-radius are provisional Sprint 1 integration values, not approved production
-event placement. The Great Hall location can be cross-checked against the
+radius are provisional integration values, not approved production event
+placement. The Great Hall location can be cross-checked against the
 [official Wits Braamfontein campus map](https://www.wits.ac.za/media/wits-university/about-wits/documents/2025-Braamfontein-Campus-map.pdf).
 
-The seed uses an upsert on the fixed UUID and remains repeatable when the
+The seeds use upserts on fixed UUIDs and remain repeatable when the
 published fixture already contains its documented values. The Sprint 2
 lifecycle guard treats published event content as immutable, so the seed is not
 an administrative mechanism for rewriting a live published event.
 
-`database/seeds/0003_sprint_1_demo_challenge.sql` adds the associated
+`database/seeds/basic-demo/0003_sprint_1_demo_challenge.sql` adds the associated
 deterministic published five-question challenge; its immutable choices and
 private answer keys use fixed IDs with conflict-safe inserts.
 
@@ -158,4 +159,4 @@ psql "$TEST_DATABASE_URL" -c \
 Do not paste database URLs, passwords, or other secrets into issue evidence.
 
 The preceding document was generated and edited with the assistance of:
-Codex-CLI[GPT-5], Codex[GPT-5].
+Codex-CLI[GPT-5], Codex[GPT-5], Codex[GPT-5.6 Sol].

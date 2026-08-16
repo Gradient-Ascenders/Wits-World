@@ -43,13 +43,17 @@ describe('database release procedure', () => {
       stages.push('readiness');
       return readiness;
     });
-    const runSeedFiles = vi.fn(async () => {
+    const runBasicDemoSeedFiles = vi.fn(async () => {
       stages.push('seeds');
       return { applied: ['0001_seed.sql'] };
     });
     const verifyRelease = vi.fn(async () => {
       stages.push('verification');
-      return { demoEventCount: 1, migrationCount: 2 };
+      return {
+        basicDemoEventCount: 4,
+        basicDemoChallengeCount: 1,
+        migrationCount: 2,
+      };
     });
 
     await expect(
@@ -57,7 +61,7 @@ describe('database release procedure', () => {
         {
           confirmDatabase: 'wits_quest_test',
           databaseConfig,
-          includeDemoSeed: true,
+          includeBasicDemoSeed: true,
           onInspection,
         },
         {
@@ -65,7 +69,7 @@ describe('database release procedure', () => {
           inspectTarget,
           migrationsDirectory: '/migrations',
           runMigrationFiles,
-          runSeedFiles,
+          runBasicDemoSeedFiles,
           seedsDirectory: '/seeds',
           verifyRelease,
         },
@@ -75,7 +79,11 @@ describe('database release procedure', () => {
       migrations: { applied: ['0001.sql'], skipped: ['0002.sql'] },
       readiness,
       seeds: { applied: ['0001_seed.sql'] },
-      verification: { demoEventCount: 1, migrationCount: 2 },
+      verification: {
+        basicDemoEventCount: 4,
+        basicDemoChallengeCount: 1,
+        migrationCount: 2,
+      },
     });
 
     expect(stages).toEqual([
@@ -88,31 +96,31 @@ describe('database release procedure', () => {
     ]);
     expect(verifyRelease).toHaveBeenCalledWith(databaseConfig, {
       expectedMigrationCount: 2,
-      verifyDemoEvent: true,
+      verifyBasicDemo: true,
     });
   });
 
   it('stops before writes when the connected database is not confirmed', async () => {
     const runMigrationFiles = vi.fn();
-    const runSeedFiles = vi.fn();
+    const runBasicDemoSeedFiles = vi.fn();
 
     await expect(
       runDatabaseRelease(
         {
           confirmDatabase: 'different_database',
           databaseConfig,
-          includeDemoSeed: true,
+          includeBasicDemoSeed: true,
         },
         {
           inspectTarget: vi.fn().mockResolvedValue(inspection),
           runMigrationFiles,
-          runSeedFiles,
+          runBasicDemoSeedFiles,
         },
       ),
     ).rejects.toThrow('Database confirmation failed');
 
     expect(runMigrationFiles).not.toHaveBeenCalled();
-    expect(runSeedFiles).not.toHaveBeenCalled();
+    expect(runBasicDemoSeedFiles).not.toHaveBeenCalled();
   });
 
   it('stops before writes when target inspection fails', async () => {
@@ -123,7 +131,7 @@ describe('database release procedure', () => {
         {
           confirmDatabase: 'wits_quest_test',
           databaseConfig,
-          includeDemoSeed: false,
+          includeBasicDemoSeed: false,
         },
         {
           inspectTarget: vi.fn().mockRejectedValue(new Error('not ready')),
@@ -137,7 +145,7 @@ describe('database release procedure', () => {
 
   it('does not seed or verify after a migration failure', async () => {
     const checkReadiness = vi.fn();
-    const runSeedFiles = vi.fn();
+    const runBasicDemoSeedFiles = vi.fn();
     const verifyRelease = vi.fn();
 
     await expect(
@@ -145,32 +153,32 @@ describe('database release procedure', () => {
         {
           confirmDatabase: 'wits_quest_test',
           databaseConfig,
-          includeDemoSeed: true,
+          includeBasicDemoSeed: true,
         },
         {
           checkReadiness,
           inspectTarget: vi.fn().mockResolvedValue(inspection),
           runMigrationFiles: vi.fn().mockRejectedValue(new Error('failed')),
-          runSeedFiles,
+          runBasicDemoSeedFiles,
           verifyRelease,
         },
       ),
     ).rejects.toThrow('failed');
 
     expect(checkReadiness).not.toHaveBeenCalled();
-    expect(runSeedFiles).not.toHaveBeenCalled();
+    expect(runBasicDemoSeedFiles).not.toHaveBeenCalled();
     expect(verifyRelease).not.toHaveBeenCalled();
   });
 
   it('does not apply seeds without the explicit seed option', async () => {
-    const runSeedFiles = vi.fn();
+    const runBasicDemoSeedFiles = vi.fn();
     const verifyRelease = vi.fn().mockResolvedValue({ migrationCount: 2 });
 
     await runDatabaseRelease(
       {
         confirmDatabase: 'wits_quest_test',
         databaseConfig,
-        includeDemoSeed: false,
+        includeBasicDemoSeed: false,
       },
       {
         checkReadiness: vi.fn().mockResolvedValue(readiness),
@@ -179,15 +187,15 @@ describe('database release procedure', () => {
           applied: [],
           skipped: ['0001.sql', '0002.sql'],
         }),
-        runSeedFiles,
+        runBasicDemoSeedFiles,
         verifyRelease,
       },
     );
 
-    expect(runSeedFiles).not.toHaveBeenCalled();
+    expect(runBasicDemoSeedFiles).not.toHaveBeenCalled();
     expect(verifyRelease).toHaveBeenCalledWith(databaseConfig, {
       expectedMigrationCount: 2,
-      verifyDemoEvent: false,
+      verifyBasicDemo: false,
     });
   });
 });
@@ -211,19 +219,24 @@ describe('database release inspection and verification', () => {
     expect(query).not.toHaveBeenCalledWith(expect.stringContaining('insert'));
   });
 
-  it('verifies the recorded migrations and single published demo event', async () => {
+  it('verifies the recorded migrations and Basic demo fixtures', async () => {
     const query = vi
       .fn()
       .mockResolvedValueOnce({ rows: [{ count: '2' }] })
+      .mockResolvedValueOnce({ rows: [{ count: '4' }] })
       .mockResolvedValueOnce({ rows: [{ count: '1' }] });
 
     await expect(
       verifyDatabaseRelease(
         databaseConfig,
-        { expectedMigrationCount: 2, verifyDemoEvent: true },
+        { expectedMigrationCount: 2, verifyBasicDemo: true },
         createClientRunner(query),
       ),
-    ).resolves.toEqual({ demoEventCount: 1, migrationCount: 2 });
+    ).resolves.toEqual({
+      basicDemoEventCount: 4,
+      basicDemoChallengeCount: 1,
+      migrationCount: 2,
+    });
   });
 });
 

@@ -10,7 +10,7 @@ async function main() {
   const result = await runDatabaseRelease({
     confirmDatabase: options.confirmDatabase,
     databaseConfig,
-    includeDemoSeed: options.includeDemoSeed,
+    includeBasicDemoSeed: options.includeBasicDemoSeed,
     onInspection(inspection) {
       console.log(`Release target: ${options.target}`);
       console.log(`Connected database: ${inspection.database}`);
@@ -24,9 +24,15 @@ async function main() {
   console.log(`Applied seed files: ${result.seeds?.applied.length ?? 0}`);
   console.log(`Recorded migrations: ${result.verification.migrationCount}`);
 
-  if (result.verification.demoEventCount !== undefined) {
+  if (result.verification.basicDemoEventCount !== undefined) {
     console.log(
-      `Published Sprint 1 demo events: ${result.verification.demoEventCount}`,
+      `Published Basic demo events: ${result.verification.basicDemoEventCount}`,
+    );
+  }
+
+  if (result.verification.basicDemoChallengeCount !== undefined) {
+    console.log(
+      `Published Basic demo challenges: ${result.verification.basicDemoChallengeCount}`,
     );
   }
 

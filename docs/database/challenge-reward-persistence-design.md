@@ -485,7 +485,7 @@ catalogue/reward testing. The seed does not claim to be final production card
 artwork or balance.
 
 The existing Sprint 1 demo event carries over as an unchanged `events` row.
-For local development, `0003_sprint_1_demo_challenge.sql` supplies one
+For local development, `basic-demo/0003_sprint_1_demo_challenge.sql` supplies one
 deterministic published challenge with five valid questions, immutable private
 answer keys, and the existing seeded reward catalogue. It makes the real
 challenge flow demonstrable without changing event discovery or eligibility

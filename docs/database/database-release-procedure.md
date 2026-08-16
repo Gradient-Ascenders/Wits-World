@@ -1,4 +1,4 @@
-# Sprint 1 Database Release Procedure
+# Basic Database Release Procedure
 
 This procedure prepares the PostgreSQL/PostGIS database used by the Wits Quest
 API. It is intentionally operator-run. Gitea Actions does not migrate or seed a
@@ -9,8 +9,8 @@ fails.
 
 The Data and Infrastructure Lead executes the procedure. The API and Security
 Lead approves production database writes and reviews secret handling. A second
-explicit release decision is required before adding the Sprint 1 demonstration
-event to production.
+explicit release decision is required before adding Basic demonstration content
+to production.
 
 Never run a production command only because a branch or deployment workflow was
 started. Record the approved commit, environment, database name, operator, and
@@ -29,12 +29,14 @@ The guarded command:
    `--confirm-database`;
 5. applies ordered, checksummed migrations under an advisory lock;
 6. confirms the installed PostGIS version;
-7. applies seed files only with `--seed-demo-event`; and
-8. verifies the migration count and, when seeded, exactly one published Sprint 1
-   demonstration event.
+7. applies the reusable catalogue and Basic demo seed only with
+   `--seed-basic-demo`; and
+8. verifies the migration count and, when seeded, the published Basic event and
+   challenge fixtures.
 
-Each migration runs in its own transaction. All seed files run in one
-transaction. A failed stage exits nonzero and prevents later stages from running.
+Each migration runs in its own transaction. Each seed group runs in its own
+transaction. A failed stage exits nonzero and prevents later stages from
+running.
 
 ## Prerequisites
 
@@ -56,12 +58,13 @@ database name shown in Neon:
 npm run db:release --workspace @wits-world/api -- \
   --target test \
   --confirm-database <test-database-name> \
-  --seed-demo-event
+  --seed-basic-demo
 ```
 
 Run the same command a second time. The second run must report zero applied
-migrations, all existing migrations skipped, and one published demonstration
-event. The seed upsert updates the fixed fixture instead of inserting a duplicate.
+migrations, all existing migrations skipped, and the expected Basic demo event
+and challenge counts. Seed upserts update the fixed fixtures instead of
+inserting duplicates.
 
 Run the database integration suite against the isolated test target:
 
@@ -103,7 +106,7 @@ test command as evidence that production was changed.
    npm run db:release --workspace @wits-world/api -- \
      --target production \
      --confirm-database <production-database-name> \
-     --seed-demo-event
+     --seed-basic-demo
    ```
 
 6. Deploy the API only after the required database procedure succeeds.

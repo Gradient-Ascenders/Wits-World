@@ -139,7 +139,7 @@ disabled unless separately requested:
 npm run db:release --workspace @wits-world/api -- \
   --target test \
   --confirm-database <test-database-name> \
-  --seed-demo-event
+  --seed-basic-demo
 ```
 
 See the
@@ -796,4 +796,5 @@ Those capabilities are introduced through later tracked issues.
 ---
 
 The preceding document was planned, generated, and edited with the assistance
-of: ChatGPT-Web[GPT-5.6 Thinking], ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5].
+of: ChatGPT-Web[GPT-5.6 Thinking], ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5],
+Codex[GPT-5.6 Sol].

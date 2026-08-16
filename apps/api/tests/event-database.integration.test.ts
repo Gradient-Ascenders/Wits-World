@@ -19,7 +19,7 @@ import {
   checkDatabaseReadiness,
   type DatabaseReadiness,
 } from '../src/database/readiness.js';
-import { runSeeds } from '../src/database/seeds.js';
+import { runBasicDemoSeeds } from '../src/database/seeds.js';
 import { createEventDiscoveryService } from '../src/events/event-discovery.js';
 import { createEventEligibilityService } from '../src/events/event-eligibility.js';
 import { evaluateReachabilityWithAccuracy } from '../src/events/location-claim.js';
@@ -27,6 +27,74 @@ import { evaluateReachabilityWithAccuracy } from '../src/events/location-claim.j
 const DEMO_EVENT_ID = '00000000-0000-4000-8000-000000000018';
 const runIntegrationTests =
   process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';
+
+async function insertLegacyPublishedDemoQuestion(
+  config: DatabaseConfig,
+): Promise<void> {
+  await withDatabaseClient(config, async (client) => {
+    await client.query('begin');
+
+    try {
+      await client.query(
+        `insert into public.challenge_questions (
+           id, challenge_id, prompt, difficulty, explanation, status
+         ) values (
+           md5('wits-world-sprint-1-demo-question:great-hall-campus')::uuid,
+           md5('wits-world-sprint-1-demo-challenge')::uuid,
+           'On which Wits campus is the Great Hall located?',
+           1,
+           null,
+           'draft'
+         )`,
+      );
+      await client.query(
+        `insert into public.challenge_choices (
+           id, question_id, authoring_position, choice_text
+         )
+         select
+           md5(
+             'wits-world-sprint-1-demo-choice:great-hall-campus:' ||
+             choice.authoring_position
+           )::uuid,
+           md5(
+             'wits-world-sprint-1-demo-question:great-hall-campus'
+           )::uuid,
+           choice.authoring_position,
+           choice.choice_text
+         from (
+           values
+             (1, 'West Campus'),
+             (2, 'East Campus'),
+             (3, 'Parktown Campus'),
+             (4, 'Education Campus')
+         ) choice(authoring_position, choice_text)`,
+      );
+      await client.query(
+        `insert into private.challenge_answer_keys (
+           question_id, accepted_choice_id
+         ) values (
+           md5(
+             'wits-world-sprint-1-demo-question:great-hall-campus'
+           )::uuid,
+           md5(
+             'wits-world-sprint-1-demo-choice:great-hall-campus:2'
+           )::uuid
+         )`,
+      );
+      await client.query(
+        `update public.challenge_questions
+            set status = 'published', updated_at = now()
+          where id = md5(
+            'wits-world-sprint-1-demo-question:great-hall-campus'
+          )::uuid`,
+      );
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    }
+  });
+}
 
 describe.skipIf(!runIntegrationTests)('event database integration', () => {
   let administrationConfig: DatabaseConfig;
@@ -54,8 +122,9 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
 
     migrationResult = await runMigrations(temporaryConfig);
     readiness = await checkDatabaseReadiness(temporaryConfig);
-    await runSeeds(temporaryConfig);
-    await runSeeds(temporaryConfig);
+    await runBasicDemoSeeds(temporaryConfig);
+    await insertLegacyPublishedDemoQuestion(temporaryConfig);
+    await runBasicDemoSeeds(temporaryConfig);
     rerunMigrationResult = await runMigrations(temporaryConfig);
   }, 45_000);
 
@@ -145,7 +214,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
 
       expect(seededEvent.rows).toHaveLength(1);
       expect(seededEvent.rows[0]).toMatchObject({
-        count: '1',
+        count: '5',
         is_published: true,
         latitude: -26.19205,
         longitude: 28.03038,
@@ -198,10 +267,26 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
 
       await expect(service.list()).resolves.toEqual([
         expect.objectContaining({
+          availability: 'ended',
+          eventId: '00000000-0000-4000-8000-000000000021',
+          title: 'Basic Demo - Expired Campus Event',
+        }),
+        expect.objectContaining({
           availability: 'active',
           eventId: DEMO_EVENT_ID,
           radiusMetres: 75,
           title: 'Sprint 1 Demo - Wits Great Hall',
+        }),
+        expect.objectContaining({
+          availability: 'active',
+          eventId: '00000000-0000-4000-8000-000000000019',
+          radiusMetres: 75,
+          title: 'Basic Demo - Wits Library',
+        }),
+        expect.objectContaining({
+          availability: 'upcoming',
+          eventId: '00000000-0000-4000-8000-000000000020',
+          title: 'Basic Demo - Upcoming Campus Event',
         }),
       ]);
     });
@@ -213,6 +298,8 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         choice_count: string;
         challenge_count: string;
         key_count: string;
+        legacy_retired_question_count: string;
+        nonblank_explanation_count: string;
         published_question_count: string;
         valid_question_count: string;
       }>(
@@ -222,8 +309,27 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
             count(distinct question.id) filter (
               where question.status = 'published'
             )::text as published_question_count,
-            count(distinct choice.id)::text as choice_count,
-            count(distinct answer_key.question_id)::text as key_count,
+            count(distinct question.id) filter (
+              where question.status = 'published'
+                and btrim(question.explanation) <> ''
+            )::text as nonblank_explanation_count,
+            count(distinct choice.id) filter (
+              where question.status = 'published'
+            )::text as choice_count,
+            count(distinct answer_key.question_id) filter (
+              where question.status = 'published'
+            )::text as key_count,
+            (
+              select count(*)::text
+              from public.challenge_questions legacy_question
+              join public.event_challenges legacy_challenge
+                on legacy_challenge.id = legacy_question.challenge_id
+              where legacy_challenge.event_id = $1::uuid
+                and legacy_question.id = md5(
+                  'wits-world-sprint-1-demo-question:great-hall-campus'
+                )::uuid
+                and legacy_question.status = 'retired'
+            ) as legacy_retired_question_count,
             (
               select count(*)::text
               from (
@@ -240,6 +346,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
                   on answer_key.question_id = question.id
                 where challenge.event_id = $1::uuid
                   and challenge.status = 'published'
+                  and question.status = 'published'
                 group by question.id
               ) question_integrity
               where choice_count = 4
@@ -261,12 +368,56 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
       expect(seededChallenge.rows).toEqual([
         {
           challenge_count: '1',
-          published_question_count: '5',
           choice_count: '20',
           key_count: '5',
+          legacy_retired_question_count: '1',
+          nonblank_explanation_count: '5',
+          published_question_count: '5',
           valid_question_count: '5',
         },
       ]);
+    });
+  }, 30_000);
+
+  it('seeds representative Basic availability states', async () => {
+    await withDatabaseClient(temporaryConfig, async (client) => {
+      const states = await client.query<{
+        ends_at: Date;
+        event_id: string;
+        is_published: boolean;
+        starts_at: Date;
+      }>(
+        `select
+           id::text as event_id,
+           starts_at,
+           ends_at,
+           is_published
+         from public.events
+         where id = any($1::uuid[])
+         order by id`,
+        [
+          [
+            '00000000-0000-4000-8000-000000000018',
+            '00000000-0000-4000-8000-000000000019',
+            '00000000-0000-4000-8000-000000000020',
+            '00000000-0000-4000-8000-000000000021',
+            '00000000-0000-4000-8000-000000000022',
+          ],
+        ],
+      );
+
+      expect(states.rows).toHaveLength(5);
+      expect(states.rows.filter((event) => event.is_published)).toHaveLength(4);
+      expect(states.rows[0]?.event_id).toBe(
+        '00000000-0000-4000-8000-000000000018',
+      );
+      expect(states.rows[2]?.starts_at.getTime()).toBeGreaterThan(
+        new Date('2026-08-10T12:00:00.000Z').getTime(),
+      );
+      expect(states.rows[3]?.ends_at.getTime()).toBeLessThan(
+        new Date('2026-08-10T12:00:00.000Z').getTime(),
+      );
+      expect(states.rows[4]?.is_published).toBe(false);
     });
   }, 30_000);
 
@@ -289,9 +440,9 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
             75, $4, $5, true)
          on conflict (id) do nothing`,
         [
-          '00000000-0000-4000-8000-000000000019',
-          '00000000-0000-4000-8000-000000000020',
-          '00000000-0000-4000-8000-000000000021',
+          '00000000-0000-4000-8000-000000000091',
+          '00000000-0000-4000-8000-000000000092',
+          '00000000-0000-4000-8000-000000000093',
           '2026-08-01T00:00:00.000Z',
           '2026-08-05T00:00:00.000Z',
           '2026-08-15T00:00:00.000Z',
@@ -392,7 +543,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
 
       await expect(
         service.evaluate({
-          eventId: '00000000-0000-4000-8000-000000000019',
+          eventId: '00000000-0000-4000-8000-000000000091',
           latitude: -26.19205,
           longitude: 28.03038,
         }),
@@ -402,7 +553,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
       });
       await expect(
         service.evaluate({
-          eventId: '00000000-0000-4000-8000-000000000020',
+          eventId: '00000000-0000-4000-8000-000000000092',
           latitude: -26.19205,
           longitude: 28.03038,
         }),
@@ -412,7 +563,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
       });
       await expect(
         service.evaluate({
-          eventId: '00000000-0000-4000-8000-000000000021',
+          eventId: '00000000-0000-4000-8000-000000000093',
           latitude: -26.19205,
           longitude: 28.03038,
         }),
@@ -485,7 +636,7 @@ select * from public.rehearsal_missing_relation;
           '0004_create_account_deletion_requests.sql',
         ],
       });
-      await runSeeds(temporaryConfig);
+      await runBasicDemoSeeds(temporaryConfig);
 
       await withDatabaseClient(temporaryConfig, async (client) => {
         const recoveredState = await client.query<{
