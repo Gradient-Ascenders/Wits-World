@@ -56,6 +56,9 @@ export function AppShell({ children }: AppShellProps) {
                 <NavigationLink href="/explore">Explore</NavigationLink>
               </li>
               <li>
+                <NavigationLink href="/collection">Collection</NavigationLink>
+              </li>
+              <li>
                 <NavigationLink href="/about">About</NavigationLink>
               </li>
             </ul>

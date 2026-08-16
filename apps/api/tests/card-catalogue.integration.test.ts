@@ -1,3 +1,4 @@
+import type pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
@@ -17,6 +18,7 @@ import { runSeeds } from '../src/database/seeds.js';
 import {
   createStarterGrantService,
   StarterAlreadyClaimedError,
+  type StarterGrantDatabase,
 } from '../src/cards/starter-grant.js';
 
 import { createCardCollectionService } from '../src/cards/card-collection.js';
@@ -26,6 +28,7 @@ const CONCURRENT_PLAYER_ID = '70000000-0000-4000-8000-000000000002';
 const COLLECTION_PLAYER_ID = '70000000-0000-4000-8000-000000000003';
 const OTHER_COLLECTION_PLAYER_ID = '70000000-0000-4000-8000-000000000004';
 const EMPTY_COLLECTION_PLAYER_ID = '70000000-0000-4000-8000-000000000005';
+const MUTATION_RACE_PLAYER_ID = '70000000-0000-4000-8000-000000000006';
 
 const runIntegrationTests =
   process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';
@@ -272,6 +275,115 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
       expect(grantCount.rows[0]?.count).toBe('1');
       expect(cardCount.rows[0]?.count).toBe('5');
     });
+  }, 30_000);
+
+  it('holds selected definitions stable until the starter grant commits', async () => {
+    await insertCataloguePlayer(
+      temporaryConfig,
+      MUTATION_RACE_PLAYER_ID,
+      'catalogue-mutation-race-player',
+    );
+
+    const candidate = await cataloguePool.query<{ id: string }>(
+      `
+        select id::text as id
+        from public.card_definitions
+        where is_active = true
+          and affinity = 'spirit'
+          and category = 'creature'
+          and rarity = 'common'
+        order by id
+        limit 1
+      `,
+    );
+    const candidateId = candidate.rows[0]?.id;
+
+    expect(candidateId).toBeDefined();
+
+    let announceCandidateLocks!: () => void;
+    const candidateLocksAcquired = new Promise<void>((resolve) => {
+      announceCandidateLocks = resolve;
+    });
+    let continueSelection!: () => void;
+    const selectionMayContinue = new Promise<void>((resolve) => {
+      continueSelection = resolve;
+    });
+    let candidateQueryCount = 0;
+    const pausingDatabase: StarterGrantDatabase = {
+      async connect() {
+        const client = await cataloguePool.connect();
+
+        return {
+          async query<T extends pg.QueryResultRow>(
+            statement: string,
+            values?: unknown[],
+          ) {
+            const result = await client.query<T>(statement, values);
+            const normalized = statement.toLowerCase();
+
+            if (
+              normalized.includes('from public.card_definitions') &&
+              normalized.includes('limit $3') &&
+              normalized.includes('for share')
+            ) {
+              candidateQueryCount += 1;
+
+              if (candidateQueryCount === 2) {
+                announceCandidateLocks();
+                await selectionMayContinue;
+              }
+            }
+
+            return { rows: result.rows };
+          },
+          release() {
+            client.release();
+          },
+        };
+      },
+    };
+    const pausingStarterService = createStarterGrantService(pausingDatabase);
+    const selection = pausingStarterService.selectStarter({
+      playerId: MUTATION_RACE_PLAYER_ID,
+      affinity: 'spirit',
+    });
+
+    await candidateLocksAcquired;
+
+    try {
+      await expect(
+        withDatabaseClient(temporaryConfig, async (client) => {
+          await client.query(`set lock_timeout = '250ms'`);
+          await client.query(
+            `update public.card_definitions
+                set rarity = 'rare'
+              where id = $1::uuid`,
+            [candidateId],
+          );
+        }),
+      ).rejects.toMatchObject({ code: '55P03' });
+    } finally {
+      continueSelection();
+    }
+
+    const result = await selection;
+
+    expect(result.created).toBe(true);
+    expect(result.grant.cards).toHaveLength(5);
+    expect(
+      result.grant.cards.every(
+        (card) => card.affinity === 'spirit' && card.rarity === 'common',
+      ),
+    ).toBe(true);
+    expect(
+      result.grant.cards.filter((card) => card.category === 'creature'),
+    ).toHaveLength(3);
+    expect(
+      result.grant.cards.filter((card) => card.category === 'power'),
+    ).toHaveLength(2);
+    expect(
+      new Set(result.grant.cards.map((card) => card.cardDefinitionId)).size,
+    ).toBe(5);
   }, 30_000);
 
   it('rejects invalid card category relationships at database level', async () => {
