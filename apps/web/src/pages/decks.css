@@ -85,6 +85,11 @@
   color: var(--colour-text-secondary);
 }
 
+.deck-action-error .button {
+  display: block;
+  margin-top: var(--space-3);
+}
+
 .active-deck {
   display: flex;
   align-items: center;
@@ -508,6 +513,7 @@
   }
 
   .active-deck .button,
+  .deck-action-error .button,
   .section-heading > .button,
   .saved-deck-card__actions .button,
   .delete-confirmation .button,

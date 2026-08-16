@@ -188,15 +188,21 @@ test('completes the saved-deck journey and records responsive evidence', async (
     });
   }
 
-  await page.getByRole('button', { name: 'Delete' }).click();
+  const deleteControl = page.getByRole('button', { name: 'Delete' });
+  await deleteControl.focus();
+  await page.keyboard.press('Enter');
   await expect(
     page.getByRole('group', { name: 'Delete Library Lineup' }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Keep deck' }).click();
+  await expect(page.getByRole('button', { name: 'Delete deck' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: 'Keep deck' })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('button', { name: 'Delete' })).toBeFocused();
   await expect(
     page.getByRole('heading', { exact: true, name: 'Library Lineup' }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Delete' }).click();
+  await page.keyboard.press('Enter');
   await page.getByRole('button', { name: 'Delete deck' }).click();
   await expect(
     page.getByRole('heading', { name: 'No saved decks yet' }),
@@ -275,6 +281,60 @@ test('recovers from API and stale-deck errors in the browser', async ({
     'Failed to load resource: the server responded with a status of 404 (Not Found)',
   ]);
   expect(failedRequests).toEqual([]);
+});
+
+test('selects an active deck with a real mobile touch event', async ({
+  baseURL,
+  browser,
+  context,
+}) => {
+  const consoleErrors: string[] = [];
+  const failedRequests: FailedRequest[] = [];
+  const deck = buildDeck(
+    'Touch Campus Five',
+    cards.map((card) => card.ownedCardId),
+  );
+  const touchContext = await browser.newContext({
+    ...(baseURL ? { baseURL } : {}),
+    hasTouch: true,
+    isMobile: true,
+    storageState: await context.storageState(),
+    viewport: { height: 844, width: 390 },
+  });
+
+  try {
+    const touchPage = await touchContext.newPage();
+    monitorBrowser(touchPage, consoleErrors, failedRequests);
+    await touchPage.route('**/api/v1/cards/collection', async (route) => {
+      await json(route, { cards, requestId: 'touch-collection' });
+    });
+    await touchPage.route('**/api/v1/decks/**/selection', async (route) => {
+      await json(route, {
+        ...deck,
+        isSelected: true,
+        requestId: 'touch-selection',
+      });
+    });
+    await touchPage.route('**/api/v1/decks', async (route) => {
+      await json(route, { decks: [deck], requestId: 'touch-decks' });
+    });
+
+    await touchPage.goto('/decks');
+    expect(
+      await touchPage.evaluate(() => navigator.maxTouchPoints),
+    ).toBeGreaterThan(0);
+    await touchPage.getByRole('button', { name: 'Make active' }).tap();
+    await expect(touchPage.getByText('Selected for matches')).toBeVisible();
+    await expect(
+      touchPage.getByRole('heading', { name: 'Touch Campus Five is active' }),
+    ).toBeFocused();
+    await expectNoHorizontalOverflow(touchPage);
+
+    expect(consoleErrors).toEqual([]);
+    expect(failedRequests).toEqual([]);
+  } finally {
+    await touchContext.close();
+  }
 });
 
 function buildDeck(name: string, ownedCardIds: string[], isSelected = false) {

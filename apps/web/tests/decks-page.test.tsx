@@ -231,13 +231,28 @@ describe('saved deck management page', () => {
     await user.keyboard('{Enter}');
     expect(onStartMatch).toHaveBeenCalledWith(decks[0]!.deckId);
 
-    await user.click(screen.getByRole('button', { name: 'Delete' }));
-    const confirmation = screen.getByRole('group', {
+    const deleteControl = screen.getByRole('button', { name: 'Delete' });
+    deleteControl.focus();
+    await user.keyboard('{Enter}');
+    let confirmation = screen.getByRole('group', {
       name: 'Delete Library Lineup',
     });
     expect(
       within(confirmation).getByRole('button', { name: 'Delete deck' }),
     ).toHaveFocus();
+    await user.tab();
+    expect(
+      within(confirmation).getByRole('button', { name: 'Keep deck' }),
+    ).toHaveFocus();
+    await user.keyboard('{Enter}');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Delete' })).toHaveFocus(),
+    );
+
+    await user.keyboard('{Enter}');
+    confirmation = screen.getByRole('group', {
+      name: 'Delete Library Lineup',
+    });
     await user.click(
       within(confirmation).getByRole('button', { name: 'Delete deck' }),
     );
@@ -283,6 +298,35 @@ describe('saved deck management page', () => {
     expect(
       screen.getAllByRole('listitem', { hidden: false }).length,
     ).toBeGreaterThan(0);
+  });
+
+  it('keeps focus on the add control when the final card completes preflight', async () => {
+    const user = userEvent.setup();
+    const cards = buildStarterCards('wit');
+    stubInitialState([], cards);
+
+    renderDecks();
+    await user.click(
+      await screen.findByRole('button', { name: 'Create a deck' }),
+    );
+
+    for (const card of cards.slice(0, 4)) {
+      await user.click(
+        screen.getByRole('button', { name: `Add a copy of ${card.name}` }),
+      );
+    }
+
+    const finalAdd = screen.getByRole('button', {
+      name: `Add a copy of ${cards[4]!.name}`,
+    });
+    finalAdd.focus();
+    await user.keyboard('{Enter}');
+
+    expect(screen.getByText('Ready to submit')).toBeVisible();
+    expect(finalAdd).toHaveFocus();
+    expect(
+      screen.getByRole('heading', { name: 'Draft preflight' }),
+    ).not.toHaveFocus();
   });
 
   it('explains an invalid point-cap draft and prevents client submission', async () => {
@@ -360,6 +404,57 @@ describe('saved deck management page', () => {
       'The server requires exactly three Creature cards and two Power cards.',
     );
     expect(screen.getByRole('heading', { name: 'Build a deck' })).toBeVisible();
+  });
+
+  it('offers reauthentication after a mutation session expires', async () => {
+    const user = userEvent.setup();
+    const cards = buildStarterCards('wit');
+    const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? 'GET';
+
+        if (url.endsWith('/cards/collection')) {
+          return Promise.resolve(collectionResponse(cards));
+        }
+
+        if (url.endsWith('/decks') && method === 'GET') {
+          return Promise.resolve(deckListResponse([]));
+        }
+
+        if (url.endsWith('/decks') && method === 'POST') {
+          return Promise.resolve(deckErrorResponse(401, 'SESSION_EXPIRED'));
+        }
+
+        throw new Error(`Unexpected request: ${method} ${url}`);
+      }),
+    );
+
+    renderDecks(createAuthValue({ loginWithRedirect }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Create a deck' }),
+    );
+    await user.type(
+      screen.getByRole('textbox', { name: 'Deck name' }),
+      'Expired change',
+    );
+    for (const card of cards) {
+      await user.click(
+        screen.getByRole('button', { name: `Add a copy of ${card.name}` }),
+      );
+    }
+    await user.click(screen.getByRole('button', { name: 'Create saved deck' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveFocus();
+    await user.click(
+      within(alert).getByRole('button', { name: 'Sign in again' }),
+    );
+    expect(loginWithRedirect).toHaveBeenCalledWith({
+      appState: { returnTo: '/decks' },
+    });
   });
 
   it('refreshes authoritative state after a stale deck action', async () => {

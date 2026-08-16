@@ -362,10 +362,15 @@ The route maps server rule codes to specific name, copy, composition, point-cap,
 or deck feedback. A `DECK_NOT_FOUND` result is treated as a stale/deleted deck:
 the page explains the conflict and reloads authoritative state. The API exposes
 no deck version or conditional update field, so the browser does not invent one.
+The #72 list operation validates every saved deck before responding, so an
+authoritative invariant failure is a list/API failure rather than an invalid
+deck item for the browser to accept or mark locally.
 
 Selecting a deck makes its active status explicit and exposes the selected
 server-returned `deckId` through the typed CPU-match handoff. The battle issue
 can consume that ID; this route does not call the match API or simulate a match.
+The production route does not render a start control until issue #76 supplies
+the callback and battle destination.
 See the complete
 [player saved-deck journey](../../docs/requirements/player-deck-building-journey.md).
 
@@ -396,7 +401,9 @@ general failure recovery.
 Saved-deck tests cover strict response validation, rule/error mapping, loading,
 empty collection/deck states, valid and invalid drafts, duplicate exhaustion,
 create/edit/rename/delete, active selection, server validation, stale-deck
-refresh, match-handoff identity, focus, and keyboard activation.
+refresh, mutation reauthentication, match-handoff identity, delete-cancel focus,
+final-card focus, and keyboard activation. The deck Playwright suite also uses a
+touch-enabled mobile browser context and a real tap event for active selection.
 Vitest does not transform application stylesheets, keeping these jsdom tests
 focused on semantics and behaviour without expensive CSS matching. Automated
 checks do not replace manual visual, responsive, browser, and keyboard testing.
@@ -550,9 +557,10 @@ With `apps/web/.env` configured and the development server running:
 5. Save the deck, use Edit or rename to change its name and composition, then
    make it active. Confirm the saved-list heading receives focus after save, the
    active deck is named in text, and Selected for matches is visible.
-6. Delete a non-active deck and cancel once before confirming. Then delete the
-   active deck and confirm the active handoff returns to Choose an active deck;
-   collection ownership must remain unchanged.
+6. Delete a non-active deck and cancel once before confirming. Confirm cancel
+   restores focus to that deck's Delete control. Then delete the active deck and
+   confirm the active handoff returns to Choose an active deck; collection
+   ownership must remain unchanged.
 7. Exercise a server validation error (for example by changing authoritative
    ownership in a disposable development database after loading). Confirm the
    focused alert explains the copy/rule problem and no deck is accepted locally.

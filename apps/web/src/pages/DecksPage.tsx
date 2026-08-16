@@ -161,6 +161,7 @@ export default function DecksPage({
     setActionError(null);
     setDeleteConfirmation(null);
     setNotice(null);
+    setReauthFailed(false);
     setDraft({ mode: 'create', name: '', ownedCardIds: [] });
   }
 
@@ -168,6 +169,7 @@ export default function DecksPage({
     setActionError(null);
     setDeleteConfirmation(null);
     setNotice(null);
+    setReauthFailed(false);
     setDraft({
       deckId: deck.deckId,
       mode: 'edit',
@@ -205,6 +207,7 @@ export default function DecksPage({
     mutationRequest.current = controller;
     setActionError(null);
     setNotice(null);
+    setReauthFailed(false);
     setPending({ deckId: draft.deckId, kind: 'save' });
 
     try {
@@ -257,6 +260,7 @@ export default function DecksPage({
     mutationRequest.current = controller;
     setActionError(null);
     setNotice(null);
+    setReauthFailed(false);
     setPending({ deckId: deck.deckId, kind: 'select' });
 
     try {
@@ -301,6 +305,7 @@ export default function DecksPage({
     mutationRequest.current = controller;
     setActionError(null);
     setNotice(null);
+    setReauthFailed(false);
     setPending({ deckId: deck.deckId, kind: 'delete' });
 
     try {
@@ -423,7 +428,12 @@ export default function DecksPage({
       ) : null}
 
       {actionError ? (
-        <DeckActionError error={actionError} ref={actionAlert} />
+        <DeckActionError
+          error={actionError}
+          onSignIn={startSignIn}
+          reauthFailed={reauthFailed}
+          ref={actionAlert}
+        />
       ) : null}
 
       <SelectedDeckHandoff
@@ -594,12 +604,26 @@ function SavedDeckCard({
   onSelect: () => void;
   pendingKind?: 'delete' | 'save' | 'select';
 }) {
+  const deleteControl = useRef<HTMLButtonElement | null>(null);
+  const restoreDeleteFocusAfterCancel = useRef(false);
   const creatureCount = deck.cards.filter(
     (card) => card.category === 'creature',
   ).length;
   const powerCount = deck.cards.filter(
     (card) => card.category === 'power',
   ).length;
+
+  useEffect(() => {
+    if (!isConfirmingDelete && restoreDeleteFocusAfterCancel.current) {
+      restoreDeleteFocusAfterCancel.current = false;
+      deleteControl.current?.focus();
+    }
+  }, [isConfirmingDelete]);
+
+  function cancelDelete() {
+    restoreDeleteFocusAfterCancel.current = true;
+    onCancelDelete();
+  }
 
   return (
     <article
@@ -672,7 +696,7 @@ function SavedDeckCard({
             <button
               className="button button--quiet"
               disabled={isPending}
-              onClick={onCancelDelete}
+              onClick={cancelDelete}
               type="button"
             >
               Keep deck
@@ -705,6 +729,7 @@ function SavedDeckCard({
             className="button button--quiet"
             disabled={isPending}
             onClick={onDelete}
+            ref={deleteControl}
             type="button"
           >
             Delete
@@ -733,21 +758,11 @@ function DeckEditor({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const summary = summarizeDraft(draft, cards);
-  const summaryHeading = useRef<HTMLHeadingElement | null>(null);
-  const wasValid = useRef(summary.isValid);
   const groupedCards = useMemo(() => groupOwnedCards(cards), [cards]);
   const cardsByOwnedId = useMemo(
     () => new Map(cards.map((card) => [card.ownedCardId, card])),
     [cards],
   );
-
-  useEffect(() => {
-    if (summary.isValid && !wasValid.current) {
-      summaryHeading.current?.focus();
-    }
-
-    wasValid.current = summary.isValid;
-  }, [summary.isValid]);
 
   function addCopy(group: OwnedCard[]) {
     const nextCopy = group.find(
@@ -826,7 +841,7 @@ function DeckEditor({
               </p>
             ) : null}
 
-            <DraftSummaryPanel headingRef={summaryHeading} summary={summary} />
+            <DraftSummaryPanel summary={summary} />
 
             <section
               aria-labelledby="draft-cards-title"
@@ -984,22 +999,14 @@ function DeckEditor({
   );
 }
 
-function DraftSummaryPanel({
-  headingRef,
-  summary,
-}: {
-  headingRef: RefObject<HTMLHeadingElement | null>;
-  summary: DraftSummary;
-}) {
+function DraftSummaryPanel({ summary }: { summary: DraftSummary }) {
   return (
     <section
       aria-labelledby="draft-summary-title"
       className={`draft-summary${summary.isValid ? ' draft-summary--valid' : ''}`}
     >
       <div className="draft-summary__heading">
-        <h3 id="draft-summary-title" ref={headingRef} tabIndex={-1}>
-          Draft preflight
-        </h3>
+        <h3 id="draft-summary-title">Draft preflight</h3>
         <span>{summary.isValid ? 'Ready to submit' : 'Needs changes'}</span>
       </div>
       <dl>
@@ -1038,39 +1045,57 @@ function DraftSummaryPanel({
   );
 }
 
-const DeckActionError = forwardRef<HTMLDivElement, { error: DeckApiError }>(
-  function DeckActionError({ error }, ref) {
-    const messages: Readonly<Record<DeckApiError['failure'], string>> = {
-      authorization:
-        'Your session expired before the change was saved. Sign in again and reload your decks.',
-      'cards-unavailable':
-        'One or more chosen copies are no longer available. Reload your collection and choose only copies the server still reports as owned.',
-      composition:
-        'The server requires exactly three Creature cards and two Power cards.',
-      'copy-duplicated':
-        'The same owned copy was submitted twice. Remove it and choose another separately owned copy.',
-      name: 'The server rejected the deck name. Enter a nonblank name and try again.',
-      'not-found':
-        'This saved deck is no longer available. It may have changed or been deleted in another session.',
-      'point-cap':
-        'The server reports that this deck exceeds ten rarity points.',
-      size: 'The server requires exactly five owned card copies.',
-      unavailable:
-        'The deck change could not be completed. Check your connection and try again.',
-      validation:
-        'Fix the deck name, composition, owned-copy availability, and rarity points before saving.',
-    };
+const DeckActionError = forwardRef<
+  HTMLDivElement,
+  {
+    error: DeckApiError;
+    onSignIn: () => Promise<void>;
+    reauthFailed: boolean;
+  }
+>(function DeckActionError({ error, onSignIn, reauthFailed }, ref) {
+  const messages: Readonly<Record<DeckApiError['failure'], string>> = {
+    authorization:
+      'Your session expired before the change was saved. Sign in again and reload your decks.',
+    'cards-unavailable':
+      'One or more chosen copies are no longer available. Reload your collection and choose only copies the server still reports as owned.',
+    composition:
+      'The server requires exactly three Creature cards and two Power cards.',
+    'copy-duplicated':
+      'The same owned copy was submitted twice. Remove it and choose another separately owned copy.',
+    name: 'The server rejected the deck name. Enter a nonblank name and try again.',
+    'not-found':
+      'This saved deck is no longer available. It may have changed or been deleted in another session.',
+    'point-cap': 'The server reports that this deck exceeds ten rarity points.',
+    size: 'The server requires exactly five owned card copies.',
+    unavailable:
+      'The deck change could not be completed. Check your connection and try again.',
+    validation:
+      'Fix the deck name, composition, owned-copy availability, and rarity points before saving.',
+  };
 
-    return (
-      <div className="deck-action-error" ref={ref} role="alert" tabIndex={-1}>
-        <strong>Deck change not saved.</strong> {messages[error.failure]}
-        {error.options.requestId ? (
-          <small> Support reference: {error.options.requestId}</small>
-        ) : null}
-      </div>
-    );
-  },
-);
+  return (
+    <div className="deck-action-error" ref={ref} role="alert" tabIndex={-1}>
+      <strong>Deck change not saved.</strong> {messages[error.failure]}
+      {error.options.requestId ? (
+        <small> Support reference: {error.options.requestId}</small>
+      ) : null}
+      {error.failure === 'authorization' ? (
+        <>
+          <button
+            className="button"
+            onClick={() => void onSignIn()}
+            type="button"
+          >
+            Sign in again
+          </button>
+          {reauthFailed ? (
+            <small>Sign-in could not start. Try again.</small>
+          ) : null}
+        </>
+      ) : null}
+    </div>
+  );
+});
 
 function summarizeDraft(draft: DeckDraft, cards: OwnedCard[]): DraftSummary {
   const cardsById = new Map(cards.map((card) => [card.ownedCardId, card]));

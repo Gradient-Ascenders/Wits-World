@@ -29,6 +29,14 @@ selection. The collection response supplies every exact `ownedCardId` the
 picker may use. The browser does not create synthetic copies or expose an add
 action after every returned copy of a definition is already used in the draft.
 
+`GET /api/v1/decks` does not expose a per-deck invalid status. The #72 service
+runs the authoritative Basic validator while mapping every saved deck, and its
+response schema requires exactly five cards and a five-to-ten-point total. A
+persisted invariant failure therefore fails the list request instead of
+returning an individually invalid deck. The client keeps schema parsing strict;
+the invalid states handled by this journey are incomplete local drafts and
+server validation rejections during create, update, or selection.
+
 Loading, empty, expired-session, malformed-response, network, and API failure
 states are written as text. General failures provide a fresh load; an expired
 session provides an Auth0 sign-in action that returns to `/decks`.
@@ -111,6 +119,12 @@ callback used by the future battle route. Issue #76 can pass that identifier to
 service independently requires the supplied deck to remain the player's active
 selection and creates immutable match-owned snapshots.
 
+The production `/decks` route intentionally does not supply that callback or
+render a start control in issue #73. Issue #76 owns the battle route, match
+creation, and navigation, and will wire the callback once that destination
+exists. This avoids a dead control or an invented route while preserving the
+typed selected-deck boundary.
+
 ## Concurrency and recovery
 
 The saved-deck API has no browser-visible version or conditional-update field.
@@ -132,8 +146,9 @@ aborted requests do not replace current UI state.
   actions are native controls with visible focus and at least the shared touch
   target size.
 - Important loading and success transitions use status announcements; failures
-  use alerts; editor and result headings receive programmatic focus where the
-  context changes.
+  use alerts; editor, saved-list, and active-deck headings receive programmatic
+  focus where the context changes. Draft preflight remains live without moving
+  focus away from the card-picker control.
 - Card category, affinity, rarity, owned count, used count, remaining count,
   active state, and validation are communicated in text.
 - The editor is one column on mobile and becomes a draft/picker comparison at
