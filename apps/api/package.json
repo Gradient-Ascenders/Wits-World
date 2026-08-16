@@ -17,10 +17,11 @@
     "lint": "eslint src tests --max-warnings=0",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "test:database": "RUN_DATABASE_INTEGRATION_TESTS=true vitest run tests/event-database.integration.test.ts tests/player-database.integration.test.ts tests/challenge-persistence.integration.test.ts tests/challenge-attempt-database.integration.test.ts tests/card-catalogue.integration.test.ts tests/deck-persistence.integration.test.ts",
+    "test:database": "RUN_DATABASE_INTEGRATION_TESTS=true vitest run tests/event-database.integration.test.ts tests/player-database.integration.test.ts tests/challenge-persistence.integration.test.ts tests/challenge-attempt-database.integration.test.ts tests/card-catalogue.integration.test.ts tests/deck-persistence.integration.test.ts tests/cpu-match-database.integration.test.ts",
     "type-check": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@wits-world/game-rules": "0.0.0",
     "@fastify/cors": "^11.3.0",
     "@fastify/swagger": "^9.8.1",
     "@fastify/swagger-ui": "^6.1.1",
