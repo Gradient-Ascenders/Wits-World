@@ -1,13 +1,19 @@
+import type { ReactNode } from 'react';
+
 import type { CardEffect, CardMove, OwnedCard } from '../../api/cards';
 
 interface CollectibleCardProps {
+  actions?: ReactNode;
   card: OwnedCard;
+  compact?: boolean;
   copyNumber?: number;
   copyTotal?: number;
 }
 
 export function CollectibleCard({
+  actions,
   card,
+  compact = false,
   copyNumber = 1,
   copyTotal = 1,
 }: CollectibleCardProps) {
@@ -17,7 +23,7 @@ export function CollectibleCard({
   return (
     <article
       aria-labelledby={titleId}
-      className={`collectible-card collectible-card--${card.rarity}`}
+      className={`collectible-card collectible-card--${card.rarity}${compact ? ' collectible-card--compact' : ''}`}
     >
       <div className="collectible-card__artwork">
         {card.imageUrl ? (
@@ -50,11 +56,12 @@ export function CollectibleCard({
           ) : null}
         </div>
 
-        {card.description ? (
+        {!compact && card.description ? (
           <p className="collectible-card__description">{card.description}</p>
         ) : null}
 
-        {card.category === 'creature' &&
+        {!compact &&
+        card.category === 'creature' &&
         (card.hp !== null || card.power !== null) ? (
           <dl
             aria-label="Creature attributes"
@@ -75,7 +82,7 @@ export function CollectibleCard({
           </dl>
         ) : null}
 
-        {card.moves.length > 0 ? (
+        {!compact && card.moves.length > 0 ? (
           <section aria-label={`${card.name} moves`} className="card-details">
             <h4>Moves</h4>
             <ol className="card-details__list">
@@ -88,7 +95,7 @@ export function CollectibleCard({
           </section>
         ) : null}
 
-        {card.effects.length > 0 ? (
+        {!compact && card.effects.length > 0 ? (
           <section aria-label={`${card.name} effects`} className="card-details">
             <h4>Effects</h4>
             <ol className="card-details__list">
@@ -110,6 +117,10 @@ export function CollectibleCard({
           {hasDuplicates ? <p>Individually owned copy</p> : null}
           {!card.isActive ? <p>Retired from the active catalogue</p> : null}
         </div>
+
+        {actions ? (
+          <div className="collectible-card__actions">{actions}</div>
+        ) : null}
       </div>
     </article>
   );
