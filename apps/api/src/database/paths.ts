@@ -29,3 +29,9 @@ export function getMigrationsDirectory(repositoryRoot = findRepositoryRoot()) {
 export function getSeedsDirectory(repositoryRoot = findRepositoryRoot()) {
   return resolve(repositoryRoot, 'database/seeds');
 }
+
+export function getBasicDemoSeedsDirectory(
+  repositoryRoot = findRepositoryRoot(),
+) {
+  return resolve(repositoryRoot, 'database/seeds/basic-demo');
+}

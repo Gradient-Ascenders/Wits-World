@@ -3,7 +3,7 @@ import { basename, resolve } from 'node:path';
 
 import type { DatabaseConfig } from '../config/database.js';
 import { type DatabaseClientRunner, withDatabaseClient } from './connection.js';
-import { getSeedsDirectory } from './paths.js';
+import { getBasicDemoSeedsDirectory, getSeedsDirectory } from './paths.js';
 
 const SEED_LOCK_KEY = 9_160_002;
 
@@ -43,6 +43,28 @@ export async function runSeeds(
       await client.query('select pg_advisory_unlock($1)', [SEED_LOCK_KEY]);
     }
   });
+}
+
+export async function runBasicDemoSeeds(
+  databaseConfig: DatabaseConfig,
+  seedsDirectory = getSeedsDirectory(),
+  basicDemoSeedsDirectory = getBasicDemoSeedsDirectory(),
+  runWithClient: DatabaseClientRunner = withDatabaseClient,
+): Promise<SeedResult> {
+  const baseResult = await runSeeds(
+    databaseConfig,
+    seedsDirectory,
+    runWithClient,
+  );
+  const demoResult = await runSeeds(
+    databaseConfig,
+    basicDemoSeedsDirectory,
+    runWithClient,
+  );
+
+  return {
+    applied: [...baseResult.applied, ...demoResult.applied],
+  };
 }
 
 export async function loadSeedFiles(

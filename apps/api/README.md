@@ -139,7 +139,7 @@ disabled unless separately requested:
 npm run db:release --workspace @wits-world/api -- \
   --target test \
   --confirm-database <test-database-name> \
-  --seed-demo-event
+  --seed-basic-demo
 ```
 
 See the

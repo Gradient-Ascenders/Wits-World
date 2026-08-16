@@ -2,7 +2,7 @@ import type { DatabaseTarget } from '../config/database.js';
 
 export interface DatabaseReleaseCliOptions {
   confirmDatabase: string;
-  includeDemoSeed: boolean;
+  includeBasicDemoSeed: boolean;
   target: Extract<DatabaseTarget, 'production' | 'test'>;
 }
 
@@ -10,18 +10,20 @@ export function parseDatabaseReleaseOptions(
   arguments_: readonly string[],
 ): DatabaseReleaseCliOptions {
   let confirmDatabase: string | undefined;
-  let includeDemoSeed = false;
+  let includeBasicDemoSeed = false;
   let target: DatabaseReleaseCliOptions['target'] | undefined;
 
   for (let index = 0; index < arguments_.length; index += 1) {
     const argument = arguments_[index];
 
-    if (argument === '--seed-demo-event') {
-      if (includeDemoSeed) {
-        throw new Error('--seed-demo-event may only be provided once.');
+    if (argument === '--seed-basic-demo' || argument === '--seed-demo-event') {
+      if (includeBasicDemoSeed) {
+        throw new Error(
+          '--seed-basic-demo or --seed-demo-event may only be provided once.',
+        );
       }
 
-      includeDemoSeed = true;
+      includeBasicDemoSeed = true;
       continue;
     }
 
@@ -65,5 +67,5 @@ export function parseDatabaseReleaseOptions(
     throw new Error('--confirm-database is required before database writes.');
   }
 
-  return { confirmDatabase, includeDemoSeed, target };
+  return { confirmDatabase, includeBasicDemoSeed, target };
 }

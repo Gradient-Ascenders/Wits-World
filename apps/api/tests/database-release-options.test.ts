@@ -13,7 +13,7 @@ describe('database release options', () => {
       ]),
     ).toEqual({
       confirmDatabase: 'wits_quest_test',
-      includeDemoSeed: false,
+      includeBasicDemoSeed: false,
       target: 'test',
     });
   });
@@ -25,9 +25,19 @@ describe('database release options', () => {
         'production',
         '--confirm-database',
         'wits_quest',
+        '--seed-basic-demo',
+      ]),
+    ).toMatchObject({ includeBasicDemoSeed: true });
+
+    expect(
+      parseDatabaseReleaseOptions([
+        '--target',
+        'test',
+        '--confirm-database',
+        'wits_quest_test',
         '--seed-demo-event',
       ]),
-    ).toMatchObject({ includeDemoSeed: true });
+    ).toMatchObject({ includeBasicDemoSeed: true });
   });
 
   it.each([

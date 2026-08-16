@@ -19,7 +19,7 @@ import {
   checkDatabaseReadiness,
   type DatabaseReadiness,
 } from '../src/database/readiness.js';
-import { runSeeds } from '../src/database/seeds.js';
+import { runBasicDemoSeeds } from '../src/database/seeds.js';
 import { createEventDiscoveryService } from '../src/events/event-discovery.js';
 import { createEventEligibilityService } from '../src/events/event-eligibility.js';
 import { evaluateReachabilityWithAccuracy } from '../src/events/location-claim.js';
@@ -54,8 +54,8 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
 
     migrationResult = await runMigrations(temporaryConfig);
     readiness = await checkDatabaseReadiness(temporaryConfig);
-    await runSeeds(temporaryConfig);
-    await runSeeds(temporaryConfig);
+    await runBasicDemoSeeds(temporaryConfig);
+    await runBasicDemoSeeds(temporaryConfig);
     rerunMigrationResult = await runMigrations(temporaryConfig);
   }, 45_000);
 
@@ -145,7 +145,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
 
       expect(seededEvent.rows).toHaveLength(1);
       expect(seededEvent.rows[0]).toMatchObject({
-        count: '1',
+        count: '5',
         is_published: true,
         latitude: -26.19205,
         longitude: 28.03038,
@@ -198,10 +198,26 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
 
       await expect(service.list()).resolves.toEqual([
         expect.objectContaining({
+          availability: 'ended',
+          eventId: '00000000-0000-4000-8000-000000000021',
+          title: 'Basic Demo - Expired Campus Event',
+        }),
+        expect.objectContaining({
           availability: 'active',
           eventId: DEMO_EVENT_ID,
           radiusMetres: 75,
           title: 'Sprint 1 Demo - Wits Great Hall',
+        }),
+        expect.objectContaining({
+          availability: 'active',
+          eventId: '00000000-0000-4000-8000-000000000019',
+          radiusMetres: 75,
+          title: 'Basic Demo - Wits Library',
+        }),
+        expect.objectContaining({
+          availability: 'upcoming',
+          eventId: '00000000-0000-4000-8000-000000000020',
+          title: 'Basic Demo - Upcoming Campus Event',
         }),
       ]);
     });
@@ -270,6 +286,48 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
     });
   }, 30_000);
 
+  it('seeds representative Basic availability states', async () => {
+    await withDatabaseClient(temporaryConfig, async (client) => {
+      const states = await client.query<{
+        ends_at: Date;
+        event_id: string;
+        is_published: boolean;
+        starts_at: Date;
+      }>(
+        `select
+           id::text as event_id,
+           starts_at,
+           ends_at,
+           is_published
+         from public.events
+         where id = any($1::uuid[])
+         order by id`,
+        [
+          [
+            '00000000-0000-4000-8000-000000000018',
+            '00000000-0000-4000-8000-000000000019',
+            '00000000-0000-4000-8000-000000000020',
+            '00000000-0000-4000-8000-000000000021',
+            '00000000-0000-4000-8000-000000000022',
+          ],
+        ],
+      );
+
+      expect(states.rows).toHaveLength(5);
+      expect(states.rows.filter((event) => event.is_published)).toHaveLength(4);
+      expect(states.rows[0]?.event_id).toBe(
+        '00000000-0000-4000-8000-000000000018',
+      );
+      expect(states.rows[2]?.starts_at.getTime()).toBeGreaterThan(
+        new Date('2026-08-10T12:00:00.000Z').getTime(),
+      );
+      expect(states.rows[3]?.ends_at.getTime()).toBeLessThan(
+        new Date('2026-08-10T12:00:00.000Z').getTime(),
+      );
+      expect(states.rows[4]?.is_published).toBe(false);
+    });
+  }, 30_000);
+
   it('produces reachable, unreachable, and ambiguous results from PostGIS distances', async () => {
     const evaluatedAt = new Date('2026-08-10T12:00:00.000Z');
 
@@ -289,9 +347,9 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
             75, $4, $5, true)
          on conflict (id) do nothing`,
         [
-          '00000000-0000-4000-8000-000000000019',
-          '00000000-0000-4000-8000-000000000020',
-          '00000000-0000-4000-8000-000000000021',
+          '00000000-0000-4000-8000-000000000091',
+          '00000000-0000-4000-8000-000000000092',
+          '00000000-0000-4000-8000-000000000093',
           '2026-08-01T00:00:00.000Z',
           '2026-08-05T00:00:00.000Z',
           '2026-08-15T00:00:00.000Z',
@@ -392,7 +450,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
 
       await expect(
         service.evaluate({
-          eventId: '00000000-0000-4000-8000-000000000019',
+          eventId: '00000000-0000-4000-8000-000000000091',
           latitude: -26.19205,
           longitude: 28.03038,
         }),
@@ -402,7 +460,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
       });
       await expect(
         service.evaluate({
-          eventId: '00000000-0000-4000-8000-000000000020',
+          eventId: '00000000-0000-4000-8000-000000000092',
           latitude: -26.19205,
           longitude: 28.03038,
         }),
@@ -412,7 +470,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
       });
       await expect(
         service.evaluate({
-          eventId: '00000000-0000-4000-8000-000000000021',
+          eventId: '00000000-0000-4000-8000-000000000093',
           latitude: -26.19205,
           longitude: 28.03038,
         }),
@@ -485,7 +543,7 @@ select * from public.rehearsal_missing_relation;
           '0004_create_account_deletion_requests.sql',
         ],
       });
-      await runSeeds(temporaryConfig);
+      await runBasicDemoSeeds(temporaryConfig);
 
       await withDatabaseClient(temporaryConfig, async (client) => {
         const recoveredState = await client.query<{
