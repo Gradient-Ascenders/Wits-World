@@ -62,6 +62,9 @@ export function AppShell({ children }: AppShellProps) {
                 <NavigationLink href="/collection">Collection</NavigationLink>
               </li>
               <li>
+                <NavigationLink href="/decks">Decks</NavigationLink>
+              </li>
+              <li>
                 <NavigationLink href="/about">About</NavigationLink>
               </li>
               {currentPlayer.status === 'ready' &&

@@ -14,9 +14,10 @@ API-authoritative event eligibility and the protected timed challenge journey.
 Challenges restore their server-owned attempt, submit answer intent only, and
 display the persisted final score, rewards, and completed answer review. Card
 starter selection and collection browsing are available through the protected
-`/collection` route. Authors also have a separate protected `/author` console
-for Basic event, challenge, question, and card authoring. Battles remain outside
-the live player flow.
+`/collection` route. Saved-deck building, management, and active selection are
+available through `/decks`. Authors also have a separate protected `/author`
+console for Basic event, challenge, question, and card authoring. CPU battle
+presentation remains outside the live player flow.
 
 ## Run locally
 
@@ -245,6 +246,8 @@ for the full flow, privacy boundary, browser limitations, and evidence steps.
 - `/collection` requires Auth0 sign-in, offers the one-time starter-affinity
   journey when no starter-owned copy is present, and renders every owned card
   copy returned by the API.
+- `/decks` requires Auth0 sign-in, loads saved decks and the owned collection,
+  and supports server-authoritative deck CRUD and active selection.
 - `/author` requires Auth0 sign-in and an API-resolved `author` role. It contains
   the Basic author workflow and never grants or changes roles in the browser.
 - `/about` explains the Wits World project and Wits Quest game/topic distinction.
@@ -400,6 +403,38 @@ or ownership claim from the image URL. The browser renders a supplied card image
 with alternative text naming the card, while all gameplay information remains
 available separately as semantic text.
 
+## Saved-deck building and selection
+
+The protected `/decks` route loads `GET /api/v1/decks` and
+`GET /api/v1/cards/collection` with the current bearer token. It uses the exact
+owned-copy IDs returned by the collection API and groups duplicate definitions
+only for a clearer `Owned`, `Used`, and `Remaining` picker presentation. It
+never creates another implied copy.
+
+The editor explains the confirmed five-card, three-Creature/two-Power,
+ten-point Basic rules and the Common/Rare/Epic/Legendary values. Its preflight
+is explanatory only. Create, full edit/rename, delete, and active selection use
+the [authoritative saved-deck API](../../docs/database/saved-deck-persistence-design.md#http-operations),
+and the server derives ownership, category, rarity, totals, and validity. The
+authoritative player-visible constraints remain linked from
+[Basic Game Rules](../../docs/requirements/basic-game-rules.md#saved-decks).
+
+The route maps server rule codes to specific name, copy, composition, point-cap,
+or deck feedback. A `DECK_NOT_FOUND` result is treated as a stale/deleted deck:
+the page explains the conflict and reloads authoritative state. The API exposes
+no deck version or conditional update field, so the browser does not invent one.
+The #72 list operation validates every saved deck before responding, so an
+authoritative invariant failure is a list/API failure rather than an invalid
+deck item for the browser to accept or mark locally.
+
+Selecting a deck makes its active status explicit and exposes the selected
+server-returned `deckId` through the typed CPU-match handoff. The battle issue
+can consume that ID; this route does not call the match API or simulate a match.
+The production route does not render a start control until issue #76 supplies
+the callback and battle destination.
+See the complete
+[player saved-deck journey](../../docs/requirements/player-deck-building-journey.md).
+
 ## Verification
 
 Run automated checks from the repository root:
@@ -424,6 +459,12 @@ validation, starter selection and result focus, double-submit prevention,
 already-claimed behaviour, collection loading and empty states, populated and
 duplicate-copy presentation, textual gameplay information, session expiry, and
 general failure recovery.
+Saved-deck tests cover strict response validation, rule/error mapping, loading,
+empty collection/deck states, valid and invalid drafts, duplicate exhaustion,
+create/edit/rename/delete, active selection, server validation, stale-deck
+refresh, mutation reauthentication, match-handoff identity, delete-cancel focus,
+final-card focus, and keyboard activation. The deck Playwright suite also uses a
+touch-enabled mobile browser context and a real tap event for active selection.
 Vitest does not transform application stylesheets, keeping these jsdom tests
 focused on semantics and behaviour without expensive CSS matching. Automated
 checks do not replace manual visual, responsive, browser, and keyboard testing.
@@ -598,6 +639,45 @@ With `apps/web/.env` configured and the development server running:
    keyboard, success, failure, and player-response evidence on the pull request;
    do not attach access tokens, credentials, accepted answers, precise player
    locations, or other sensitive data.
+
+#### Authenticated saved decks
+
+1. Prepare and seed PostgreSQL using the API workspace commands, then run
+   `npm run dev --workspace @wits-world/api` and
+   `npm run dev --workspace @wits-world/web` from the repository root.
+2. Sign in as a development player with at least the five-card starter set and
+   open `http://localhost:5173/decks`. Confirm the loading announcement is
+   replaced by saved decks, the Basic rules, and either an explicit active deck
+   or the Choose an active deck state.
+3. Activate Create a deck. Enter a name and add three Creature and two Power
+   copies. Confirm the card, composition, and rarity-point counters update; the
+   submit action enables only when the explanatory preflight is complete.
+4. With a player who owns duplicates, add the same definition until Remaining
+   reaches zero. Confirm another copy is not offered and removing a copy returns
+   exactly one to Remaining.
+5. Save the deck, use Edit or rename to change its name and composition, then
+   make it active. Confirm the saved-list heading receives focus after save, the
+   active deck is named in text, and Selected for matches is visible.
+6. Delete a non-active deck and cancel once before confirming. Confirm cancel
+   restores focus to that deck's Delete control. Then delete the active deck and
+   confirm the active handoff returns to Choose an active deck; collection
+   ownership must remain unchanged.
+7. Exercise a server validation error (for example by changing authoritative
+   ownership in a disposable development database after loading). Confirm the
+   focused alert explains the copy/rule problem and no deck is accepted locally.
+   In another tab delete the deck, then try to edit/select it in the first tab;
+   confirm the stale-state message and authoritative refresh.
+8. Use only Tab, Shift+Tab, Enter, and Space to complete add/remove, save,
+   selection, delete confirmation/cancel, and retry actions. Confirm visible
+   focus, logical order, useful alert/status announcements, and no required
+   drag-and-drop.
+9. Inspect empty, populated, duplicate, invalid, API-error, stale, and active
+   states at 360×800, 390×844, 768×1024, and 1280×800. Confirm no horizontal
+   overflow, comfortable touch targets, readable long card/deck names, and no
+   content hidden behind mobile navigation.
+10. Check the console and failed requests during the main flow and recovery.
+    Capture disposable evidence under `.pr-screenshots/issue-73/`; do not record
+    account details, access tokens, or owned-card identifiers.
 
 The preceding document was generated and edited with the assistance of:
 Codex-CLI[gpt-5.6-sol medium], Codex-CLI[GPT-5], and Codex[GPT-5].
