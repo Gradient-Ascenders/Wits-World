@@ -22,21 +22,26 @@ The names are intentional:
 
 ## Current status
 
-Wits Quest is intended to let players explore campus events, complete
-university-themed challenges, collect cards, build decks, and play turn-based
-matches. The repository currently implements the first vertical slice of that
-journey:
+Wits Quest lets players explore campus events, complete university-themed
+challenges, collect cards, build decks, and play turn-based CPU matches. The
+current repository includes:
 
 - Auth0 sign-in and sign-out for the player web application;
 - a responsive Wits World home page and protected `/explore` route;
 - published event discovery through a versioned Fastify API;
 - Mapbox campus-map presentation with an accessible text event list;
 - one-shot browser geolocation requested only after a player action; and
-- server-authoritative event eligibility backed by PostgreSQL/PostGIS.
+- server-authoritative event eligibility backed by PostgreSQL/PostGIS;
+- timed challenge attempts, authoritative answer marking, and atomic rewards;
+- card collections, starter grants, and saved-deck management;
+- deterministic CPU battles and completed-match history; and
+- protected author content APIs and an author console.
 
-Challenges and answer marking, rewards, collectible cards, deck management,
-CPU battles, and complete authoring workflows are planned work. They should not
-be treated as implemented features of the current Sprint 1 slice.
+The Sprint 1 release validation in issue #20 remains deliberately limited to
+authentication, `/explore`, published event discovery, map and text
+presentation, browser location claims, and server-authoritative PostGIS
+eligibility. Later gameplay and authoring features are implemented in the
+repository but are not part of that release claim.
 
 ## Architecture at a glance
 

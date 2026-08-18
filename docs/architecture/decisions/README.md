@@ -31,22 +31,22 @@ Cross-cutting Basic product decisions and unresolved implementation gates are
 tracked in the
 [Basic-tier decision register](../../requirements/basic-tier-decision-register.md).
 
-## Planned records
+## Potential future records
 
-Additional decision records should be created when the following choices are
-resolved:
+The current Azure Web/API hosting, Neon database hosting, and Cloudflare Pages
+documentation hosting are established in deployment documentation and workflow
+configuration, but do not have dedicated accepted ADRs. Create a new ADR if the
+team needs to formalise or materially change those choices. Other potential
+records include:
 
-- authentication provider;
-- web and API hosting;
-- managed PostgreSQL/PostGIS hosting;
-- documentation hosting;
-- map tile and style provider formal acceptance (Mapbox Standard is the current
-  implementation candidate);
+- current Web/API hosting and deployment architecture;
+- managed Neon PostgreSQL/PostGIS hosting;
+- Cloudflare Pages documentation hosting;
+- Mapbox external-service, licensing, and campus-data acceptance;
 - role and permission representation;
 - location-data retention;
-- card and battle rules; and
-- production observability.
-- ADR-005-node-postgres-sql-migrations.md
+- production observability; and
+- backup, recovery, and operational resilience.
 
 ## File naming
 
@@ -89,5 +89,6 @@ record.
 
 ---
 
-The preceding document was planned and generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking].
+The preceding document was planned and generated with the assistance of
+ChatGPT-Web[GPT-5.6 Thinking], and reviewed and edited for Sprint 1 release
+validation with assistance from ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].

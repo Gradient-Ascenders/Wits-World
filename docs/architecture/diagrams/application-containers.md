@@ -20,8 +20,8 @@ flowchart TB
     end
 
     DB[("PostgreSQL and PostGIS<br/>Authoritative Application Data")]
-    Auth["Authentication Provider<br/>Provider to be selected"]
-    Map["Map Tile and Style Provider<br/>Provider to be selected"]
+    Auth["Auth0<br/>Authentication Provider"]
+    Map["Mapbox GL JS / Mapbox Standard<br/>Presentation Provider"]
 
     Web -->|"HTTPS JSON requests<br/>Bearer access token"| API
     API -->|"Safe JSON responses"| Web
@@ -78,7 +78,7 @@ The database:
 - supports transactional integrity; and
 - later stores attempts, rewards, cards, decks, and matches.
 
-### Authentication provider
+### Auth0 authentication provider
 
 The authentication provider:
 
@@ -88,12 +88,14 @@ The authentication provider:
 - issues tokens; and
 - provides account-lifecycle capabilities.
 
-The exact provider remains to be selected.
+Auth0 is the selected provider under ADR-005. The API validates its access
+tokens and derives the local player identity and role from validated claims.
 
 ### Map provider
 
-Mapbox Standard is the current implementation candidate; formal external-service
-acceptance and the licensed project-owned campus layer remain pending.
+The current implementation uses Mapbox GL JS and Mapbox Standard through the
+provider-neutral map adapter. Formal external-service and licensing acceptance,
+and any licensed project-owned campus layer, remain pending.
 
 The map provider:
 
@@ -114,6 +116,7 @@ The documentation application:
 
 ---
 
-The preceding document was planned and generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking] and updated with:
-Codex-CLI[GPT-5].
+The preceding document was planned and generated with the assistance of
+ChatGPT-Web[GPT-5.6 Thinking], updated with Codex-CLI[GPT-5], and reviewed and
+edited for Sprint 1 release validation with assistance from
+ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].

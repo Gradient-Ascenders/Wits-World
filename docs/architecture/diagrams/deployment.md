@@ -1,23 +1,22 @@
-# Initial Deployment Diagram
+# Current Deployment Diagram
 
-The final service providers have not yet been selected.
-
-This diagram records the required deployment boundaries without assigning a
-specific platform prematurely.
+This diagram records the currently implemented deployment architecture. The
+services are selected and deployed, while release-specific verification and
+some operational acceptance decisions remain separate gates.
 
 ```mermaid
 flowchart LR
     Developer["Team Member Workstation"]
-    Gitea["Gitea Repository"]
-    CI["CI/CD Runner"]
+    Gitea["Wits SDP Gitea<br/>Repository and Actions"]
+    CI["Repository-Scoped Gitea Runner"]
 
-    WebHost["Static Web Host<br/>Provider to be selected"]
-    APIHost["API Host<br/>Provider to be selected"]
-    DocsHost["Static Documentation Host<br/>Provider to be selected"]
-    DBHost[("PostGIS-Capable Database Host<br/>Provider to be selected")]
+    WebHost["Azure App Service<br/>Wits World Web"]
+    APIHost["Azure App Service<br/>Wits World API"]
+    DocsHost["Cloudflare Pages<br/>Docusaurus Documentation"]
+    DBHost[("Neon PostgreSQL/PostGIS<br/>Authoritative Data")]
 
-    Auth["Authentication Provider<br/>Provider to be selected"]
-    Map["Map Tile and Style Provider<br/>Provider to be selected"]
+    Auth["Auth0<br/>Authentication Provider"]
+    Map["Mapbox GL JS / Mapbox Standard<br/>Presentation Provider"]
 
     Browser["Player or Author Browser"]
 
@@ -74,28 +73,25 @@ flowchart LR
 12. Smoke tests verify the deployed services.
 13. The merged branch is deleted.
 
-## Open deployment decisions
+## Remaining deployment and operational decisions
 
-The following still require review and selection:
+The current hosts, Auth0 provider, production origins, and platform-managed
+secret boundaries are selected. The following still require review or formal
+acceptance:
 
-- web hosting provider;
-- API hosting provider;
-- PostgreSQL/PostGIS hosting provider;
-- documentation hosting provider;
-- authentication provider;
-- map tile and style provider formal acceptance (Mapbox Standard is the current
-  implementation candidate);
-- production domain names;
-- production CORS origins;
-- secret-management approach;
-- database backup and recovery approach; and
+- Mapbox external-service, licensing, production-token/CSP, and campus-data
+  acceptance;
+- operational approval and evidence for database backup and recovery;
+- credential rotation and ongoing least-privilege review; and
 - production observability tooling.
 
-No provider shown in this document should be interpreted as selected until its
-decision has been recorded.
+Not every current hosting selection has a dedicated accepted ADR. Operational
+documentation and deployed workflow configuration are the current evidence;
+future material changes should receive an ADR rather than rewriting history.
 
 ---
 
-The preceding document was planned and generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking] and updated with:
-Codex-CLI[GPT-5].
+The preceding document was planned and generated with the assistance of
+ChatGPT-Web[GPT-5.6 Thinking], updated with Codex-CLI[GPT-5], and reviewed and
+edited for Sprint 1 release validation with assistance from
+ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].

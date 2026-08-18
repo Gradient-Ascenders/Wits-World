@@ -67,8 +67,9 @@ The API must derive player identity from the validated token.
 An identity value supplied separately in a request body or query parameter must
 not be treated as authoritative.
 
-The exact authentication provider and role-claim strategy remain open
-decisions.
+Auth0 is the approved authentication provider under ADR-005. The API validates
+Auth0 access tokens and resolves the local player and role from the validated
+issuer and subject. The browser does not supply an authoritative role.
 
 ### Wits Quest API
 
@@ -243,17 +244,21 @@ to require permanent storage of the exact submitted coordinates.
 
 The following decisions still require review:
 
-- authentication provider;
 - token role and permission representation;
 - acceptable location accuracy;
 - location-claim freshness threshold;
 - event radius for the Sprint 1 demonstration;
 - location-data retention;
-- deployed CORS origins;
-- production hosting platforms; and
 - operational logging and monitoring providers.
+
+Production hosting is established on Azure App Service for the Web and API and
+Cloudflare Pages for documentation. The API accepts browser CORS requests only
+from its configured exact Web origin. These deployment choices do not change
+the rule that CORS is not authentication and bearer tokens must still be
+validated.
 
 ---
 
-The preceding document was planned and generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking].
+This document was originally planned and generated with assistance from
+ChatGPT-Web[GPT-5.6 Thinking], and was reviewed and edited for Sprint 1 release
+validation with assistance from ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].

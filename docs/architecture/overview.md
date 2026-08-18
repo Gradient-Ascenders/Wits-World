@@ -91,8 +91,8 @@ validated by the API.
 | `apps/api`              | Hand-written HTTP API and protected application rules     | Authoritative for authenticated operations and eligibility decisions  |
 | `packages/game-rules`   | Pure battle state transitions and legal-action validation | Authoritative rules consumed by the API; no browser authority         |
 | PostgreSQL/PostGIS      | Persistent application and geospatial data                | Authoritative store for event coordinates and distance calculations   |
-| Authentication provider | Registration, sign-in, password reset, and token issuance | Authoritative for external identity authentication                    |
-| Map provider            | Map tiles, styles, and visual presentation                | Presentation only                                                     |
+| Auth0                   | Registration, sign-in, password reset, and token issuance | Authoritative for external identity authentication                    |
+| Mapbox GL JS / Standard | Map tiles, styles, and visual presentation                | Presentation only                                                     |
 | `apps/docs`             | Public project documentation                              | Documentation only                                                    |
 | CI/CD platform          | Automated checks, builds, and deployments                 | Delivery automation only                                              |
 
@@ -174,22 +174,31 @@ application.
 
 Deployment secrets must be stored outside the Git repository.
 
+## Current service and deployment selections
+
+The current implementation uses Auth0 under ADR-005, Mapbox GL JS with Mapbox
+Standard through the provider-neutral presentation boundary, Neon-hosted
+PostgreSQL/PostGIS, Azure App Service for the independently deployed Web and
+API, and Cloudflare Pages for documentation. Production CORS uses the API's
+configured exact Web origin, and the current public hostnames are maintained in
+the deployment guide.
+
+Mapbox is the implemented provider, but formal external-service, licensing, and
+project-owned campus-data acceptance remain subject to client or lecturer
+review. Hosting and provider operations are documented, although they do not
+yet have dedicated ADRs for every selected service.
+
 ## Open decisions
 
 The following choices still require completion or team review:
 
-- authentication provider;
-- production web host;
-- production API host;
-- production PostgreSQL/PostGIS host;
-- documentation host;
-- map tile and style provider;
-- deployed domain names;
-- production CORS origins;
 - event radius for the Sprint 1 demonstration;
 - acceptable reported location accuracy;
 - location-claim freshness threshold; and
-- precise location-retention policy.
+- precise location-retention policy;
+- role and permission representation;
+- formal Mapbox external-service, licensing, and campus-data acceptance; and
+- production observability and monitoring.
 
 These decisions should be recorded in architecture decision records when they
 are resolved.
@@ -230,5 +239,7 @@ implemented during Sprint 1.
 
 ---
 
-The preceding document was planned and generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking] and Codex-CLI[gpt-5.6-sol medium].
+The preceding document was planned and generated with the assistance of
+ChatGPT-Web[GPT-5.6 Thinking] and Codex-CLI[gpt-5.6-sol medium], and reviewed
+and edited for Sprint 1 release validation with assistance from
+ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].

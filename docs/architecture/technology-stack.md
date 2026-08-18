@@ -82,7 +82,7 @@ transactions rather than relying only on the user interface.
 
 ## Authentication
 
-The project will use an established authentication provider that supports:
+The project uses Auth0 under ADR-005. It supports:
 
 - registration;
 - sign-in;
@@ -93,8 +93,9 @@ The project will use an established authentication provider that supports:
 - issuer and audience validation; and
 - documented token-verification mechanisms.
 
-The specific provider will be selected and recorded during the authentication
-provider issue.
+The API validates Auth0 access tokens and resolves local player identity and
+roles from validated issuer and subject claims. The application does not trust
+browser-supplied identity or role values.
 
 The application will not implement custom password storage or a custom password
 reset system.
@@ -118,9 +119,9 @@ repository.
 | Licensed Wits campus dataset | Optional project-owned map layer  | Adds verified campus features only after licensing and provenance review                 |
 | Browser Geolocation API      | Device location claim             | Allows the player to submit latitude, longitude, reported accuracy, and acquisition time |
 
-Mapbox Standard is the current implementation candidate for issue #92. Formal
-external-service acceptance, production configuration review, and a licensed
-Wits campus dataset remain to be selected or confirmed.
+Mapbox GL JS with Mapbox Standard is the current implementation from issue #92.
+Formal external-service acceptance, production token/CSP review, and a licensed
+Wits campus dataset remain to be confirmed.
 
 Map rendering is not authoritative. A marker appearing near an event does not
 grant access to that event.
@@ -157,11 +158,11 @@ Sprint 1 testing must cover:
 
 ## Documentation
 
-| Technology                          | Purpose                                 | Motivation                                                             |
-| ----------------------------------- | --------------------------------------- | ---------------------------------------------------------------------- |
-| Markdown and MDX                    | Version-controlled documentation source | Keeps documentation reviewable alongside code                          |
-| Docusaurus or the agreed equivalent | Public documentation website            | Provides a static, account-free site generated from repository content |
-| Mermaid                             | Architecture and process diagrams       | Keeps diagrams version-controlled and editable as text                 |
+| Technology       | Purpose                                 | Motivation                                                             |
+| ---------------- | --------------------------------------- | ---------------------------------------------------------------------- |
+| Markdown and MDX | Version-controlled documentation source | Keeps documentation reviewable alongside code                          |
+| Docusaurus       | Public documentation website            | Provides a static, account-free site generated from repository content |
+| Mermaid          | Architecture and process diagrams       | Keeps diagrams version-controlled and editable as text                 |
 
 The documentation application is located in `apps/docs`.
 
@@ -193,17 +194,17 @@ Secrets must be supplied through repository or platform-managed secret storage.
 
 ## Deployment
 
-The architecture requires:
+The current deployment uses:
 
-- a static or web application host for `apps/web`;
-- an application host for `apps/api`;
-- a PostGIS-capable PostgreSQL host;
-- static hosting for `apps/docs`;
-- an authentication provider; and
-- a licensed map tile and style provider.
+- Azure App Service for independently deployed `apps/web` and `apps/api`;
+- Neon for production PostgreSQL/PostGIS;
+- Cloudflare Pages for the Docusaurus `apps/docs` site;
+- Auth0 for authentication; and
+- Mapbox GL JS with Mapbox Standard for browser map presentation.
 
-The final providers remain open until their cost, free-tier limits, PostGIS
-support, security, and deployment workflow have been evaluated.
+The deployment workflows and platform configuration document these selections.
+Mapbox licensing/external-service acceptance and ongoing operational review are
+not implied merely by implementation.
 
 ## Shared packages
 
@@ -234,23 +235,19 @@ The project must not:
 
 ## Open technology decisions
 
-The following remain to be selected or confirmed:
+The following remain to be confirmed or reviewed:
 
-- authentication provider;
-- map tile and style provider;
-- web hosting provider;
-- API hosting provider;
-- PostgreSQL/PostGIS hosting provider;
-- documentation hosting provider;
+- formal Mapbox external-service, licensing, and campus-data acceptance;
 - production logging and monitoring services;
-- deployment secret-management approach; and
-- backup and recovery approach.
+- ongoing credential rotation and least-privilege controls; and
+- operational approval and evidence for backup and recovery.
 
 Each significant selection should be captured in an architecture decision
 record.
 
 ---
 
-The preceding document was planned and generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking] and updated with:
-Codex-CLI[GPT-5].
+The preceding document was planned and generated with the assistance of
+ChatGPT-Web[GPT-5.6 Thinking], updated with Codex-CLI[GPT-5], and reviewed and
+edited for Sprint 1 release validation with assistance from
+ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].
