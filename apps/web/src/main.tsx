@@ -5,6 +5,7 @@ import { App } from './App';
 import { PlayerAuthProvider } from './auth/AuthProvider';
 import { ConfigurationErrorScreen } from './components/ConfigurationErrorScreen';
 import { ConfigurationError, loadWebConfig } from './config/environment';
+import { locationClaimProvider, mapFactory } from './runtime-boundaries';
 import './styles/tokens.css';
 import './styles/global.css';
 
@@ -23,6 +24,8 @@ try {
       <PlayerAuthProvider config={config.auth}>
         <App
           apiBaseUrl={config.apiBaseUrl}
+          locationClaimProvider={locationClaimProvider}
+          mapFactory={mapFactory}
           mapboxAccessToken={config.mapboxAccessToken}
         />
       </PlayerAuthProvider>

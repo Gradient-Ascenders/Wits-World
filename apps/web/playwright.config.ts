@@ -63,7 +63,7 @@ export default defineConfig({
     {
       name: 'chromium',
       dependencies: ['auth-setup'],
-      testIgnore: /auth\.setup\.ts/,
+      testIgnore: [/auth\.setup\.ts/, /sprint1\.deterministic\.spec\.ts/],
       use: {
         ...devices['Desktop Chrome'],
         storageState: authenticationStatePath,
