@@ -7,11 +7,12 @@
     "build": "tsc --project tsconfig.json --noEmit && vite build",
     "build:bundle": "vite build",
     "dev": "vite",
-    "lint": "eslint src tests playwright playwright.config.ts --max-warnings=0",
+    "lint": "eslint src tests playwright playwright.config.ts playwright.sprint1.config.ts --max-warnings=0",
     "preview": "vite preview",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
+    "test:e2e:sprint1:playwright": "playwright test --config=playwright.sprint1.config.ts",
     "test:e2e:auth": "playwright test --project=auth-setup",
     "test:e2e:headed": "playwright test --headed",
     "type-check": "tsc --project tsconfig.json --noEmit && tsc --project tsconfig.playwright.json --noEmit"

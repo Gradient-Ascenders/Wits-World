@@ -26,6 +26,7 @@
     "coverage": "npm run prepare:api && npm run test:coverage --workspaces --if-present && npm run coverage:badge",
     "coverage:badge": "node scripts/generate-coverage-badge.mjs",
     "test": "npm run prepare:api && npm run test --workspaces --if-present",
+    "test:e2e:sprint1": "node apps/web/playwright/run-sprint1-e2e.mjs",
     "type-check": "npm run prepare:api && npm run type-check --workspaces --if-present",
     "verify": "npm run format && npm run format:check && npm run lint && npm run type-check && npm test && npm run build"
   },

@@ -10,6 +10,8 @@ import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { AuthorRoute } from './components/auth/AuthorRoute';
 import { CurrentPlayerProvider } from './auth/CurrentPlayerProvider';
 import { NotFoundPage } from './pages/NotFoundPage';
+import type { LocationClaimProvider } from './browser-location';
+import type { MapFactory } from './components/exploration/map-provider';
 
 const HomePage = lazy(() => import('./pages/HomePage'));
 const AboutPage = lazy(() => import('./pages/AboutPage'));
@@ -24,10 +26,17 @@ const MatchHistoryPage = lazy(() => import('./pages/MatchHistoryPage'));
 
 interface AppRoutesProps {
   apiBaseUrl: string;
+  locationClaimProvider?: LocationClaimProvider;
+  mapFactory?: MapFactory;
   mapboxAccessToken: string;
 }
 
-export function AppRoutes({ apiBaseUrl, mapboxAccessToken }: AppRoutesProps) {
+export function AppRoutes({
+  apiBaseUrl,
+  locationClaimProvider,
+  mapFactory,
+  mapboxAccessToken,
+}: AppRoutesProps) {
   return (
     <CurrentPlayerProvider apiBaseUrl={apiBaseUrl}>
       <AppShell>
@@ -38,6 +47,8 @@ export function AppRoutes({ apiBaseUrl, mapboxAccessToken }: AppRoutesProps) {
               <ProtectedRoute>
                 <ExplorePage
                   apiBaseUrl={apiBaseUrl}
+                  locationClaimProvider={locationClaimProvider}
+                  mapFactory={mapFactory}
                   mapboxAccessToken={mapboxAccessToken}
                 />
               </ProtectedRoute>
@@ -117,6 +128,8 @@ type AppProps =
   | {
       apiBaseUrl: string;
       children?: never;
+      locationClaimProvider?: LocationClaimProvider;
+      mapFactory?: MapFactory;
       mapboxAccessToken: string;
     }
   | { apiBaseUrl?: never; children: ReactNode };
@@ -131,6 +144,8 @@ export function App(props: AppProps) {
       <Router>
         <AppRoutes
           apiBaseUrl={props.apiBaseUrl}
+          locationClaimProvider={props.locationClaimProvider}
+          mapFactory={props.mapFactory}
           mapboxAccessToken={props.mapboxAccessToken}
         />
       </Router>
