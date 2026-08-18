@@ -65,7 +65,9 @@ Auth0
 Private Wits SDP Gitea instance
 ```
 
-The documentation application is expected to use static hosting later rather than consume the B1 App Service Plan.
+The Docusaurus documentation application is deployed separately to Cloudflare
+Pages by `.gitea/workflows/docs-deploy.yml`; it does not consume the B1 App
+Service Plan.
 
 ---
 
@@ -372,7 +374,9 @@ https://witsworld-web-fqabhufqgvapapgq.southafricanorth-01.azurewebsites.net
 
 The existing localhost development entries remain configured.
 
-Full login/logout production validation is deferred until the application login UI is implemented by the team.
+The application login and logout UI is implemented. A production login/logout
+check still requires a human operator with a safe test account and must be
+recorded for the release being validated.
 
 ---
 
@@ -816,7 +820,9 @@ SPA route state is preserved on refresh
 No relevant browser DevTools errors were observed
 ```
 
-Authentication UI/login-flow validation is deferred until the application login interface is implemented.
+The application login interface now exists. Its production Auth0 flow must be
+revalidated manually for the release commit; this historical setup section does
+not claim that current validation has occurred.
 
 ---
 
@@ -1313,13 +1319,15 @@ Do not broaden the runner's permissions merely to make infrastructure audit comm
 
 The actionable API and frontend Azure hosting setup is complete.
 
-Remaining work is limited to items that are either final validation steps or intentionally deferred:
+Remaining work is limited to release-specific validation and operational review:
 
-- Merge the Azure continuation branch and verify that both API and Web production deployment jobs pass from `main`.
-- Re-test the live frontend after the first automated web deployment.
-- Validate the full Auth0 login/logout production flow once the application login UI is implemented.
+- Verify the relevant Web and API deployment jobs after each release merge when
+  their change detection paths trigger them.
+- Re-test the live frontend and API after the release deployment.
+- Validate the full Auth0 login/logout production flow with a safe test account.
 - Rehearse and approve the documented production database release procedure before the first database-dependent release.
-- Deploy the documentation site using static hosting once the real Docusaurus site is ready.
+- Verify the Cloudflare Pages documentation deployment after documentation
+  changes merge to `main`.
 - Review Azure Cost Management periodically for the App Service Plan, runner VM, disk, and networking usage.
 - Consider a custom domain later if required.
 
@@ -1427,8 +1435,8 @@ Docker access to Azure IMDS blocked                  DONE
 Persistent IMDS firewall protection                  DONE
 Dedicated host-only deployment runner label          DONE
 
-Full Auth0 login/logout application-flow test        DEFERRED UNTIL LOGIN UI EXISTS
-Documentation static deployment                      DEFERRED UNTIL DOCUSAURUS SITE IS READY
+Full Auth0 login/logout application-flow test        MANUAL PER RELEASE
+Documentation static deployment                      DONE — CLOUDFLARE PAGES
 Custom domain                                        OPTIONAL
 Application Insights                                 OPTIONAL
 Deployment slots / additional scaling                OPTIONAL
@@ -1445,6 +1453,7 @@ This document was drafted and updated with assistance from:
 ```text
 ChatGPT-Web[GPT-5.6 Sol]
 Codex-CLI[GPT-5]
+Codex[GPT-5]
 ```
 
 Review the document against the current repository and Azure configuration before committing it. Keep the declaration if required by the project's AI attribution policy.

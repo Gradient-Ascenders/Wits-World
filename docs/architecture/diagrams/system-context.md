@@ -7,12 +7,12 @@ flowchart LR
     Player["Player"]
     Author["Author or Administrator"]
 
-    Web["Wits Quest Web Application<br/>React, Vite and TypeScript"]
-    API["Wits Quest Hand-Written API<br/>Fastify and TypeScript"]
-    DB[("PostgreSQL and PostGIS")]
-    Auth["External Authentication Provider"]
-    Map["External Map Tile and Style Provider"]
-    Docs["Public Documentation Website"]
+    Web["Wits Quest Web Application<br/>React, Vite and TypeScript<br/>Azure App Service"]
+    API["Wits Quest Hand-Written API<br/>Fastify and TypeScript<br/>Azure App Service"]
+    DB[("Neon PostgreSQL and PostGIS")]
+    Auth["Auth0<br/>Authentication Provider"]
+    Map["Mapbox GL JS / Mapbox Standard<br/>Presentation Provider"]
+    Docs["Docusaurus Documentation<br/>Cloudflare Pages"]
 
     Location["Browser-Reported Location<br/>Untrusted Claim"]
 
@@ -48,20 +48,21 @@ flowchart LR
 - The map provider is used for presentation only.
 - The public documentation site is separate from the runtime game applications.
 
-## Open decisions
+## Current providers and remaining decisions
 
-The following external providers have not yet been selected:
+Auth0 is selected under ADR-005. The Web and API are deployed independently to
+Azure App Service, production PostgreSQL/PostGIS is hosted by Neon, and the
+Docusaurus documentation site is deployed to Cloudflare Pages.
 
-- authentication provider;
-- map tile and style provider formal acceptance (Mapbox Standard is the current
-  implementation candidate);
-- web host;
-- API host;
-- database host; and
-- documentation host.
+The current map implementation uses Mapbox GL JS with Mapbox Standard through
+the provider-neutral presentation boundary. Formal external-service,
+licensing, production-token/CSP, and campus-data acceptance remain unresolved
+review items. Mapbox remains presentation-only and never determines event
+eligibility; the API and PostgreSQL/PostGIS retain that authority.
 
 ---
 
-The preceding document was planned and generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking] and updated with:
-Codex-CLI[GPT-5].
+The preceding document was planned and generated with the assistance of
+ChatGPT-Web[GPT-5.6 Thinking], updated with Codex-CLI[GPT-5], and reviewed and
+edited for Sprint 1 release validation with assistance from
+ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].
