@@ -138,11 +138,11 @@ describe('Basic author console', () => {
 
     expect(
       await screen.findByRole('heading', {
-        name: 'Author access could not be checked',
+        name: 'Your player session could not be restored',
       }),
     ).toHaveFocus();
     expect(
-      screen.getByRole('button', { name: 'Check access again' }),
+      screen.getByRole('button', { name: 'Check session again' }),
     ).toBeEnabled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

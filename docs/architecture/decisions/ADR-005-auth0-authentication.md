@@ -35,6 +35,37 @@ through Auth0 Universal Login.
 The API will accept bearer access tokens intended for the Wits World API and
 will validate them before deriving the authenticated identity.
 
+## Session persistence
+
+Production uses an Auth0 custom domain under the same product/root domain as
+the deployed Wits World application, the SDK's in-memory cache, rotating refresh
+tokens during the page lifetime, and the SDK's session fallback after a reload.
+Production access and refresh tokens are not persisted in browser storage. The
+same-site custom domain lets fallback restoration use the Auth0 session without
+depending on third-party tenant-domain cookies.
+
+Local development and Playwright E2E use rotating refresh tokens with
+`cacheLocation="localstorage"` and `useRefreshTokens=true`. This is a bounded
+development fallback because localhost cannot share a product root domain with
+Auth0. Its greater exposure to browser-script compromise is not accepted for
+production. The real-Auth0 E2E suite therefore verifies the local-storage
+policy, not production's memory-cache/custom-domain restoration; that mechanism
+requires a post-cutover production-mode browser smoke test.
+
+Refreshing or directly revisiting a protected route must restore the same local
+Wits World player or fail safely without protected player data. The browser
+therefore waits for `GET /api/v1/auth/me` and compares its stable local player
+ID with the non-secret player binding from the preceding browser session before
+mounting a protected route. Silent restoration preserves that binding and fails
+closed on a mismatch. Only an explicit user account-switch action clears it and
+starts a fresh interactive Auth0 login.
+
+Tokens issued through a custom domain have that domain in `iss`. Before the API
+switches to the custom domain, the bounded issuer-remap operation must update
+existing `players.auth_issuer` values while preserving each player ID and the
+exact `auth_subject`. The API continues to validate one exact configured issuer
+and the existing audience; it does not accept the old and new issuers together.
+
 ## Development configuration
 
 ### Tenant
@@ -257,6 +288,7 @@ The API will use:
 ```text
 AUTH0_DOMAIN
 AUTH0_AUDIENCE
+AUTH0_TENANT_DOMAIN
 AUTH0_SPA_CLIENT_ID
 AUTH0_MANAGEMENT_CLIENT_ID
 AUTH0_MANAGEMENT_CLIENT_SECRET
@@ -264,6 +296,11 @@ AUTH0_MANAGEMENT_CLIENT_SECRET
 
 `AUTH0_SPA_CLIENT_ID` is public application identity configuration and is used
 by the API to validate the audience of reauthentication ID tokens.
+
+`AUTH0_TENANT_DOMAIN` retains the default `*.auth0.com` hostname when
+`AUTH0_DOMAIN` is a custom domain. Auth0 token and Management API requests use
+the custom domain, while the Management API audience remains the default tenant
+domain identifier.
 
 `AUTH0_MANAGEMENT_CLIENT_ID` and `AUTH0_MANAGEMENT_CLIENT_SECRET` belong only to
 the trusted API environment. The Management application is granted only the
@@ -401,4 +438,4 @@ The team must still confirm:
 ---
 
 The preceding document was planned and generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking] and ChatGPT-Web[GPT-5.6 Sol].
+ChatGPT-Web[GPT-5.6 Thinking], ChatGPT-Web[GPT-5.6 Sol], and Codex[GPT-5].

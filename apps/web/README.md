@@ -103,10 +103,12 @@ of starting an incorrectly configured application.
 Wits World uses Auth0 Universal Login. The browser application is a public
 single-page application and must not be configured with an Auth0 client secret.
 The Auth0 provider requests access tokens for the audience configured by
-`VITE_AUTH0_AUDIENCE`. Normal application modes keep the SDK's default in-memory
-cache, so tokens are not written to application logs, browser storage, or
-rendered UI. The dedicated Playwright E2E mode is the only exception described
-below.
+`VITE_AUTH0_AUDIENCE`. Production explicitly uses the SDK's in-memory cache and
+rotating refresh tokens without persisting access or refresh tokens. After a
+reload it falls back to the same-site custom-domain Auth0 session. Local
+development and Playwright E2E use rotating refresh tokens in the SDK's
+local-storage cache so localhost does not depend on third-party-cookie-based
+silent authentication.
 
 The development Auth0 application must include the following exact values:
 
@@ -115,6 +117,11 @@ The development Auth0 application must include the following exact values:
 | Allowed Callback URLs | `http://localhost:5173` |
 | Allowed Logout URLs   | `http://localhost:5173` |
 | Allowed Web Origins   | `http://localhost:5173` |
+
+Enable Refresh Token Rotation for the development SPA, enable the Refresh Token
+grant and API offline access needed by that SPA, and keep reuse detection on.
+Use dedicated development/test accounts because local-storage tokens have
+greater exposure to browser script compromise.
 
 The application uses Authorization Code with PKCE through the Auth0 React SDK.
 An unauthenticated visit to `/explore` shows a clear sign-in action without
@@ -126,11 +133,73 @@ Authenticated API clients obtain a token on demand through
 `useApiAccessToken`. Callers must place that token only in the standard
 `Authorization: Bearer` request header and must not log or persist it.
 
-### Real authentication end-to-end test
+Before a production deployment can rely on refresh-safe authentication:
+
+1. Choose either `witsworld.co.za` or `www.witsworld.co.za` as the one canonical
+   production web origin. Configure the other hostname to redirect to it before
+   the application loads. The API CORS allowlist, Auth0 callback/logout/web
+   origin settings, and deployment configuration must use that one exact origin;
+   do not weaken CORS with a wildcard. This is required because the player
+   binding is origin-scoped.
+2. In Auth0, add a custom domain under the same product/root domain as the
+   production web application. Create the required DNS CNAME, complete Auth0
+   verification, and use an Auth0-managed certificate unless infrastructure
+   policy deliberately selects another supported option.
+3. In the production SPA settings, enable Refresh Token Rotation, the Refresh
+   Token grant, and required offline access. Add the exact canonical HTTPS
+   production origin to the production SPA's Allowed Callback URLs, Allowed
+   Logout URLs, and Allowed Web Origins. Keep the localhost entries on the
+   development SPA. Do not use wildcards.
+4. Deploy this repository version while the old Auth0 domain is still active so
+   the guarded web policy and the issuer-remap command are available.
+5. Schedule a maintenance window, stop production web/API traffic that could
+   provision players, take a restorable database backup, and record the exact
+   old and custom-domain issuers including their trailing slash. Record both the
+   Neon endpoint hostname and PostgreSQL database name; Neon branches can share
+   the database name `neondb`.
+6. Run the parameterised operation without `--apply`; verify the database
+   hostname, database name, and player count. Replace only the placeholders
+   below:
+
+   ```bash
+   npm run db:remap-auth-issuer --workspace @wits-world/api -- \
+     --target production \
+     --confirm-hostname <neon-endpoint-hostname> \
+     --confirm-database <database-name> \
+     --from-issuer https://<tenant>.auth0.com/ \
+     --to-issuer https://<custom-auth-domain>/
+   ```
+
+7. Re-run that exact reviewed command with `--apply`. It refuses an empty source
+   issuer, a populated target issuer, a database hostname/name mismatch, or a
+   non-exact issuer URL. It changes only `players.auth_issuer` and the row's
+   `updated_at` timestamp; player IDs, subjects, roles, cards, decks, matches,
+   progress, and other linked data stay unchanged.
+8. While traffic remains stopped, set the API `AUTH0_DOMAIN` and web
+   `VITE_AUTH0_DOMAIN` to the custom hostname. Set `AUTH0_TENANT_DOMAIN` to the
+   unchanged default `*.auth0.com` tenant hostname so the Management API
+   audience remains valid. Keep `AUTH0_AUDIENCE` and `VITE_AUTH0_AUDIENCE`
+   unchanged, deploy both applications, and smoke-test `/api/v1/auth/me`
+   against previously recorded local player IDs and account deletion.
+9. Resume traffic only after the API accepts the custom-domain issuer and the
+   web uses the same domain. Users must authenticate again after this issuer
+   cutover. Remove any temporary callback/logout/origin entries after the
+   rollout is confirmed.
+
+Repository code cannot create or verify DNS records, configure the Auth0 custom
+domain/certificate, change Auth0 Dashboard grants or URL allowlists, or update
+deployed environment variables. Production remains subject to the current
+refresh problem until those external steps and the coordinated issuer cutover
+are complete. The API never needs a dual-issuer window.
+
+### Real Auth0 local-storage end-to-end test
 
 The Playwright suite signs in through the development tenant's real Auth0
-Universal Login page and calls the real local API. Put only the dedicated test
-player credentials in the ignored `apps/web/.env.e2e.local` file:
+Universal Login page and calls the real local API. It verifies the local/E2E
+rotating-refresh-token policy, which restores from local storage with iframe
+fallback disabled. It is not evidence for production's memory-cache and
+custom-domain iframe restoration. Put only the dedicated test player credentials
+in the ignored `apps/web/.env.e2e.local` file:
 
 ```dotenv
 E2E_USER_EMAIL=player@example.com
@@ -149,11 +218,12 @@ npm run test:e2e:headed --workspace @wits-world/web
 
 Playwright may reuse an existing local API service, but it always starts its own
 Vite server in the dedicated `e2e` mode so Auth0 can cache the test player's
-session in local storage. Stop any other service using port 5173 before running
-the suite. The setup project saves the token-bearing browser state under the
-ignored `playwright/.auth/` directory for the dependent smoke test. Treat this
-directory as sensitive and delete it when it is no longer needed. Credentials
-are loaded by the Playwright Node process and must never use a `VITE_` prefix.
+rotating refresh-token session in local storage. Stop any other service using
+port 5173 before running the suite. The setup project saves the token-bearing
+browser state under the ignored `playwright/.auth/` directory for the dependent
+smoke test. Treat this directory as sensitive and delete it when it is no longer
+needed. Credentials are loaded by the Playwright Node process and must never use
+a `VITE_` prefix.
 
 The credentialed live-Auth0 suite does not run in the current CI workflow. If
 it is added to CI, run `npx playwright install chromium` after `npm ci` and
@@ -162,12 +232,31 @@ before the E2E command in that job.
 Known limitations:
 
 - sign-in, sign-out, and silent token retrieval depend on Auth0 availability;
-- privacy controls, blocked third-party cookies, browser tracking prevention,
-  or incorrect Allowed Web Origins may prevent silent session restoration;
+- incorrect refresh-token rotation, grant, offline-access, or Allowed Web
+  Origins configuration may prevent local/E2E session restoration;
 - changing the local port requires matching callback, logout, and web-origin
   entries in Auth0;
 - unit tests mock Auth0; the Playwright end-to-end test requires the real
   development tenant, API, database test branch, and network access.
+
+### Required post-cutover production smoke test
+
+Run this against the deployed production build on the selected canonical web
+origin after the custom domain and issuer remap are live. Do not use Vite's
+`e2e` mode, because that mode restores from local storage instead of exercising
+the production mechanism.
+
+1. Sign in as an existing production test account and record only the stable
+   player UUID returned by `GET /api/v1/auth/me`; do not record request headers
+   or tokens.
+2. Open a protected route and hard reload it. Confirm the memory cache starts
+   empty, Auth0 silently restores through the configured custom domain, and the
+   protected route remains hidden until `/auth/me` succeeds.
+3. Confirm the post-reload `/auth/me` player UUID exactly matches the UUID from
+   before the reload. Directly revisit another protected URL and compare again.
+4. Confirm browser network activity uses the custom Auth0 hostname, not the
+   default tenant hostname, without inspecting or exporting token contents.
+5. Sign out, hard reload, and confirm the application remains signed out.
 
 ## Campus map and event discovery
 

@@ -6,15 +6,24 @@ import {
 import { render, renderHook, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { PropsWithChildren } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Router } from 'wouter';
 
 import { AppRoutes } from '../src/App';
-import { getSafeReturnTo } from '../src/auth/AuthProvider';
+import { getSafeReturnTo, returnToWitsQuest } from '../src/auth/AuthProvider';
+import { bindAuthenticatedPlayer } from '../src/auth/player-session-binding';
 import { useApiAccessToken } from '../src/auth/useApiAccessToken';
 
 const apiBaseUrl = 'https://api.example.test/api/v1';
 const mapboxAccessToken = 'pk.test-token';
+const playerAId = '6fe7dc26-cdea-4275-a2df-861724137cbc';
+const playerBId = '5a78ce0d-d15f-4039-ac4a-3c59d1c591c2';
+
+afterEach(() => {
+  window.localStorage.clear();
+  window.sessionStorage.clear();
+  vi.restoreAllMocks();
+});
 
 vi.mock(
   '../src/components/exploration/map-provider',
@@ -62,6 +71,29 @@ function renderRoute(path: string, authValue: Auth0ContextInterface) {
   );
 }
 
+function mockCurrentPlayer(playerId = playerAId) {
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input);
+
+    if (url.endsWith('/auth/me')) {
+      return new Response(
+        JSON.stringify({
+          id: playerId,
+          lifecycleStatus: 'active',
+          requestId: 'authentication-test-request',
+          role: 'player',
+        }),
+        { status: 200 },
+      );
+    }
+
+    return new Response(
+      JSON.stringify({ events: [], requestId: 'events-test-request' }),
+      { status: 200 },
+    );
+  });
+}
+
 describe('player authentication', () => {
   it('keeps protected content hidden while authentication loads', () => {
     renderRoute('/explore', createAuthValue({ isLoading: true }));
@@ -86,6 +118,35 @@ describe('player authentication', () => {
     expect(loginWithRedirect).toHaveBeenCalledWith({
       appState: { returnTo: '/explore' },
     });
+  });
+
+  it('retains the expected player binding after silent restoration signs out', async () => {
+    expect(bindAuthenticatedPlayer(playerAId)).toBe('matched');
+
+    renderRoute('/explore', createAuthValue());
+
+    expect(
+      await screen.findByRole('button', { name: 'Sign in to explore' }),
+    ).toBeVisible();
+    expect(bindAuthenticatedPlayer(playerBId)).toBe('mismatched');
+  });
+
+  it('allows a deliberate account switch after silent restoration signs out', async () => {
+    const user = userEvent.setup();
+    const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
+    expect(bindAuthenticatedPlayer(playerAId)).toBe('matched');
+
+    renderRoute('/explore', createAuthValue({ loginWithRedirect }));
+
+    await user.click(
+      screen.getByRole('button', { name: 'Use a different account' }),
+    );
+
+    expect(loginWithRedirect).toHaveBeenCalledWith({
+      appState: { returnTo: '/explore' },
+      authorizationParams: { prompt: 'login' },
+    });
+    expect(bindAuthenticatedPlayer(playerBId)).toBe('matched');
   });
 
   it('protects a direct challenge route and preserves it after sign-in', async () => {
@@ -187,9 +248,13 @@ describe('player authentication', () => {
   });
 
   it('renders the protected route for an authenticated player', async () => {
+    mockCurrentPlayer();
+    expect(bindAuthenticatedPlayer(playerAId)).toBe('matched');
+
     renderRoute(
       '/explore',
       createAuthValue({
+        getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
         isAuthenticated: true,
         user: { name: 'Kevin', sub: 'auth0|player' },
       }),
@@ -213,16 +278,130 @@ describe('player authentication', () => {
   it('signs out through Auth0 and returns to the public origin', async () => {
     const user = userEvent.setup();
     const logout = vi.fn().mockResolvedValue(undefined);
+    mockCurrentPlayer();
+    expect(bindAuthenticatedPlayer(playerAId)).toBe('matched');
+
     renderRoute(
       '/',
       createAuthValue({
+        getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
         isAuthenticated: true,
         logout,
         user: { name: 'Kevin', sub: 'auth0|player' },
       }),
     );
 
-    await user.click(screen.getByRole('button', { name: 'Sign out' }));
+    await user.click(await screen.findByRole('button', { name: 'Sign out' }));
+    expect(logout).toHaveBeenCalledWith({
+      logoutParams: { returnTo: window.location.origin },
+    });
+    expect(window.localStorage.length).toBe(0);
+  });
+
+  it('keeps logout available while the authenticated player is loading', () => {
+    renderRoute(
+      '/explore',
+      createAuthValue({
+        getAccessTokenSilently: vi.fn(
+          () => new Promise<never>(() => undefined),
+        ),
+        isAuthenticated: true,
+        logout: vi.fn().mockResolvedValue(undefined),
+        user: { name: 'Unconfirmed account', sub: 'auth0|unconfirmed' },
+      }),
+    );
+
+    expect(
+      screen.getByRole('heading', {
+        name: 'Confirming your Wits World player',
+      }),
+    ).toBeVisible();
+    expect(screen.queryByText('Signed in as')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeVisible();
+  });
+
+  it('keeps logout available when restored API authorization fails', async () => {
+    const user = userEvent.setup();
+    const logout = vi.fn().mockResolvedValue(undefined);
+    expect(bindAuthenticatedPlayer(playerAId)).toBe('matched');
+
+    renderRoute(
+      '/explore',
+      createAuthValue({
+        getAccessTokenSilently: vi.fn().mockRejectedValue(new Error('expired')),
+        isAuthenticated: true,
+        logout,
+        user: { name: 'Unconfirmed account', sub: 'auth0|unconfirmed' },
+      }),
+    );
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Your player session could not be restored',
+      }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('heading', { name: 'Explore the campus map' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Signed in as')).not.toBeInTheDocument();
+    const signOut = screen.getByRole('button', { name: 'Sign out' });
+    expect(signOut).toBeVisible();
+
+    await user.click(signOut);
+    expect(logout).toHaveBeenCalledWith({
+      logoutParams: { returnTo: window.location.origin },
+    });
+    expect(window.localStorage.length).toBe(0);
+  });
+
+  it('keeps logout available when current-player restoration is unavailable', async () => {
+    const logout = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('unavailable', { status: 503 }),
+    );
+
+    renderRoute(
+      '/explore',
+      createAuthValue({
+        getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
+        isAuthenticated: true,
+        logout,
+        user: { name: 'Unconfirmed account', sub: 'auth0|unconfirmed' },
+      }),
+    );
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Your player session could not be restored',
+      }),
+    ).toBeVisible();
+    expect(screen.queryByText('Signed in as')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeVisible();
+  });
+
+  it('signs out instead of substituting a different restored player', async () => {
+    const logout = vi.fn().mockResolvedValue(undefined);
+    mockCurrentPlayer(playerBId);
+    expect(bindAuthenticatedPlayer(playerAId)).toBe('matched');
+
+    renderRoute(
+      '/explore',
+      createAuthValue({
+        getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
+        isAuthenticated: true,
+        logout,
+        user: { name: 'Different account', sub: 'auth0|different' },
+      }),
+    );
+
+    expect(
+      await screen.findByText(/did not match the Wits World player/),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('heading', { name: 'Explore the campus map' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Signed in as')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeVisible();
     expect(logout).toHaveBeenCalledWith({
       logoutParams: { returnTo: window.location.origin },
     });
@@ -263,5 +442,18 @@ describe('player authentication', () => {
       '/',
     );
     expect(getSafeReturnTo()).toBe('/');
+  });
+
+  it('restores the validated route after the Auth0 callback', () => {
+    const routeChange = vi.fn();
+    window.addEventListener('popstate', routeChange);
+
+    returnToWitsQuest({ returnTo: '/decks?view=active#saved' });
+
+    expect(
+      `${window.location.pathname}${window.location.search}${window.location.hash}`,
+    ).toBe('/decks?view=active#saved');
+    expect(routeChange).toHaveBeenCalledOnce();
+    window.removeEventListener('popstate', routeChange);
   });
 });

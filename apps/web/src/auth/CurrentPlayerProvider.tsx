@@ -14,10 +14,14 @@ import {
   type CurrentPlayer,
 } from '../api/authentication';
 import { useApiAccessToken } from './useApiAccessToken';
+import { bindAuthenticatedPlayer } from './player-session-binding';
 
 type CurrentPlayerState =
   | { status: 'anonymous' }
-  | { status: 'error'; failure: 'authorization' | 'unavailable' }
+  | {
+      status: 'error';
+      failure: 'authorization' | 'identity_changed' | 'unavailable';
+    }
   | { status: 'loading' }
   | { player: CurrentPlayer; status: 'ready' };
 
@@ -40,7 +44,7 @@ export function CurrentPlayerProvider({
   apiBaseUrl,
   children,
 }: CurrentPlayerProviderProps) {
-  const { isAuthenticated, isLoading } = useAuth0();
+  const { isAuthenticated, isLoading, logout } = useAuth0();
   const getAccessToken = useApiAccessToken();
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<CurrentPlayerState>(
@@ -69,9 +73,26 @@ export function CurrentPlayerProvider({
       signal: controller.signal,
     })
       .then((player) => {
-        if (!controller.signal.aborted) {
-          setState({ player, status: 'ready' });
+        if (controller.signal.aborted) {
+          return;
         }
+
+        const bindingResult = bindAuthenticatedPlayer(player.id);
+
+        if (bindingResult === 'mismatched') {
+          setState({ failure: 'identity_changed', status: 'error' });
+          void logout({
+            logoutParams: { returnTo: window.location.origin },
+          }).catch(() => undefined);
+          return;
+        }
+
+        if (bindingResult === 'unavailable') {
+          setState({ failure: 'unavailable', status: 'error' });
+          return;
+        }
+
+        setState({ player, status: 'ready' });
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
@@ -86,7 +107,7 @@ export function CurrentPlayerProvider({
       });
 
     return () => controller.abort();
-  }, [apiBaseUrl, attempt, getAccessToken, isAuthenticated, isLoading]);
+  }, [apiBaseUrl, attempt, getAccessToken, isAuthenticated, isLoading, logout]);
 
   const value = useMemo<CurrentPlayerContextValue>(
     () => ({ reload: () => setAttempt((current) => current + 1), state }),

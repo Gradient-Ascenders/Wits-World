@@ -2,6 +2,7 @@ import { Auth0Provider, type AppState } from '@auth0/auth0-react';
 import type { ReactNode } from 'react';
 
 import type { AuthConfig } from '../config/environment';
+import { getAuthSessionPolicy } from './session-policy';
 
 interface PlayerAuthProviderProps {
   children: ReactNode;
@@ -37,14 +38,11 @@ export function PlayerAuthProvider({
   children,
   config,
 }: PlayerAuthProviderProps) {
-  const authenticationCache =
-    import.meta.env.MODE === 'e2e'
-      ? ({ cacheLocation: 'localstorage' } as const)
-      : {};
+  const sessionPolicy = getAuthSessionPolicy(import.meta.env.MODE);
 
   return (
     <Auth0Provider
-      {...authenticationCache}
+      {...sessionPolicy}
       authorizationParams={{
         audience: config.audience,
         redirect_uri: window.location.origin,

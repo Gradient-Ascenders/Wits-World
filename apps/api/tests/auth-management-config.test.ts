@@ -12,12 +12,13 @@ const authConfig: AuthConfig = {
 };
 
 describe('Auth0 Management API configuration', () => {
-  it('derives the trusted Auth0 endpoints from the tenant configuration', () => {
+  it('uses the custom domain for requests and the tenant domain for the audience', () => {
     const config = buildAuthManagementConfig({
       authConfig,
       env: {
         AUTH0_MANAGEMENT_CLIENT_ID: 'management-client',
         AUTH0_MANAGEMENT_CLIENT_SECRET: 'management-secret',
+        AUTH0_TENANT_DOMAIN: 'tenant.us.auth0.com',
       },
     });
 
@@ -26,8 +27,40 @@ describe('Auth0 Management API configuration', () => {
       clientSecret: 'management-secret',
       tokenUrl: new URL('https://auth.example.test/oauth/token'),
       apiBaseUrl: new URL('https://auth.example.test/api/v2/'),
-      audience: 'https://auth.example.test/api/v2/',
+      audience: 'https://tenant.us.auth0.com/api/v2/',
     });
+  });
+
+  it('uses the default Auth0 domain as the audience when no custom domain is configured', () => {
+    const tenantAuthConfig = {
+      ...authConfig,
+      domain: 'tenant.us.auth0.com',
+      issuer: 'https://tenant.us.auth0.com/',
+    };
+
+    expect(
+      buildAuthManagementConfig({
+        authConfig: tenantAuthConfig,
+        env: {
+          AUTH0_MANAGEMENT_CLIENT_ID: 'management-client',
+          AUTH0_MANAGEMENT_CLIENT_SECRET: 'management-secret',
+        },
+      }).audience,
+    ).toBe('https://tenant.us.auth0.com/api/v2/');
+  });
+
+  it('requires the default tenant domain when the authentication domain is custom', () => {
+    expect(() =>
+      buildAuthManagementConfig({
+        authConfig,
+        env: {
+          AUTH0_MANAGEMENT_CLIENT_ID: 'management-client',
+          AUTH0_MANAGEMENT_CLIENT_SECRET: 'management-secret',
+        },
+      }),
+    ).toThrow(
+      'AUTH0_TENANT_DOMAIN is required when AUTH0_DOMAIN is a custom domain.',
+    );
   });
 
   it('rejects a missing Management API client ID', () => {
@@ -58,10 +91,32 @@ describe('Auth0 Management API configuration', () => {
       env: {
         AUTH0_MANAGEMENT_CLIENT_ID: '  management-client  ',
         AUTH0_MANAGEMENT_CLIENT_SECRET: '  management-secret  ',
+        AUTH0_TENANT_DOMAIN: '  tenant.us.auth0.com  ',
       },
     });
 
     expect(config.clientId).toBe('management-client');
     expect(config.clientSecret).toBe('management-secret');
+    expect(config.audience).toBe('https://tenant.us.auth0.com/api/v2/');
+  });
+
+  it.each([
+    'https://tenant.us.auth0.com',
+    'tenant.us.auth0.com/path',
+    'tenant.us.auth0.com:443',
+    'tenant.example.com',
+  ])('rejects a malformed default tenant domain: %s', (tenantDomain) => {
+    expect(() =>
+      buildAuthManagementConfig({
+        authConfig,
+        env: {
+          AUTH0_MANAGEMENT_CLIENT_ID: 'management-client',
+          AUTH0_MANAGEMENT_CLIENT_SECRET: 'management-secret',
+          AUTH0_TENANT_DOMAIN: tenantDomain,
+        },
+      }),
+    ).toThrow(
+      'AUTH0_TENANT_DOMAIN must contain only the default Auth0 tenant hostname.',
+    );
   });
 });
