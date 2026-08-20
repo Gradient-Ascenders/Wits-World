@@ -110,6 +110,10 @@ interface ChallengeRow extends pg.QueryResultRow {
   updated_at: Date;
 }
 
+interface ChallengeWithEventLockRow extends ChallengeRow {
+  event_is_published: boolean;
+}
+
 interface QuestionRow extends pg.QueryResultRow {
   question_id: string;
   challenge_id: string;
@@ -611,6 +615,12 @@ export function createAuthorChallengeService(
           );
         }
 
+        if (challenge.status === 'published' && challenge.event_is_published) {
+          throw new AuthorContentStateConflictError(
+            'Retire the event before retiring its published challenge.',
+          );
+        }
+
         const result = await client.query<ChallengeRow>(
           `
             update public.event_challenges
@@ -736,8 +746,8 @@ async function lockChallenge(
 async function lockChallengeWithEvent(
   client: AuthorChallengeTransactionClient,
   challengeId: string,
-): Promise<ChallengeRow> {
-  const result = await client.query<ChallengeRow>(
+): Promise<ChallengeWithEventLockRow> {
+  const result = await client.query<ChallengeWithEventLockRow>(
     `
       select
         challenge.id::text as challenge_id,
@@ -745,7 +755,8 @@ async function lockChallengeWithEvent(
         challenge.format,
         challenge.status,
         challenge.created_at,
-        challenge.updated_at
+        challenge.updated_at,
+        event.is_published as event_is_published
       from public.event_challenges challenge
       join public.events event
         on event.id = challenge.event_id
