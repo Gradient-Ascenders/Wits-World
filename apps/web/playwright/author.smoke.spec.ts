@@ -3,6 +3,8 @@ import { expect, test, type BrowserContext } from '@playwright/test';
 const apiBaseUrl = 'http://localhost:3000/api/v1';
 const playerBindingKey = 'wits-world.authenticated-player-id';
 const uuidPattern = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i;
+const retirementEventId = '10000000-0000-4000-8000-000000000001';
+const retirementChallengeId = '20000000-0000-4000-8000-000000000001';
 
 test('the real ordinary Player is refused before any author content request', async ({
   page,
@@ -107,6 +109,162 @@ test('the author form remains keyboard-usable without map interaction at respons
 
   expect(consoleErrors).toEqual([]);
 });
+
+test('an Author retires the event before its challenge and sees both states persist', async ({
+  context,
+  page,
+}) => {
+  const consoleErrors: string[] = [];
+  const playerId = await readBoundPlayerId(context);
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+
+  let event = retirementEvent('published');
+  let challenge = retirementChallenge('published');
+
+  await page.route(`${apiBaseUrl}/auth/me`, async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      json: {
+        id: playerId,
+        lifecycleStatus: 'active',
+        requestId: 'playwright-author-role',
+        role: 'author',
+      },
+    });
+  });
+  await page.route(`${apiBaseUrl}/author/cards`, async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      json: { cards: [], requestId: 'playwright-cards' },
+    });
+  });
+  await page.route(`${apiBaseUrl}/author/events`, async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      json: { events: [event], requestId: 'playwright-events' },
+    });
+  });
+  await page.route(
+    `${apiBaseUrl}/author/events/${retirementEventId}/retire`,
+    async (route) => {
+      event = retirementEvent('retired');
+      await route.fulfill({
+        contentType: 'application/json',
+        json: { event, requestId: 'playwright-event-retire' },
+      });
+    },
+  );
+  await page.route(
+    `${apiBaseUrl}/author/events/${retirementEventId}/challenges`,
+    async (route) => {
+      await route.fulfill({
+        contentType: 'application/json',
+        json: { challenges: [challenge], requestId: 'playwright-challenges' },
+      });
+    },
+  );
+  await page.route(
+    `${apiBaseUrl}/author/challenges/${retirementChallengeId}/questions`,
+    async (route) => {
+      await route.fulfill({
+        contentType: 'application/json',
+        json: { questions: [], requestId: 'playwright-questions' },
+      });
+    },
+  );
+  await page.route(
+    `${apiBaseUrl}/author/challenges/${retirementChallengeId}/retire`,
+    async (route) => {
+      challenge = retirementChallenge('retired');
+      await route.fulfill({
+        contentType: 'application/json',
+        json: { challenge, requestId: 'playwright-challenge-retire' },
+      });
+    },
+  );
+
+  await page.goto('/author');
+  const retireChallenge = page.getByRole('button', {
+    name: 'Retire challenge',
+  });
+  await expect(retireChallenge).toBeDisabled();
+  await expect(retireChallenge).toHaveAccessibleDescription(
+    'Retire the event before retiring its published challenge.',
+  );
+
+  await page.getByRole('button', { name: 'Retire event' }).click();
+  await page
+    .getByRole('alert')
+    .getByRole('button', { name: 'Confirm retirement' })
+    .click();
+  await expect(page.getByText('Event retired.')).toBeFocused();
+  await expect(retireChallenge).toBeEnabled();
+
+  await retireChallenge.click();
+  await page
+    .getByRole('alert')
+    .getByRole('button', { name: 'Confirm retirement' })
+    .click();
+  await expect(page.getByText('Challenge retired.')).toBeFocused();
+
+  for (const viewport of [
+    { height: 844, width: 390 },
+    { height: 800, width: 1280 },
+  ]) {
+    await page.setViewportSize(viewport);
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <=
+          document.documentElement.clientWidth,
+      ),
+    ).toBe(true);
+  }
+
+  await page.reload();
+  await expect(
+    page.getByRole('option', { name: 'Challenge 1 — retired' }),
+  ).toBeAttached();
+  await expect(
+    page.getByRole('button', { name: 'Retire challenge' }),
+  ).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Retire event' })).toHaveCount(
+    0,
+  );
+  expect(consoleErrors).toEqual([]);
+});
+
+function retirementEvent(status: 'published' | 'retired') {
+  const retired = status === 'retired';
+  return {
+    authoringStatus: status,
+    createdAt: '2026-08-16T08:00:00.000Z',
+    description: 'East Campus history.',
+    endsAt: '2026-09-01T12:00:00.000Z',
+    eventId: retirementEventId,
+    isPublished: !retired,
+    latitude: -26.19205,
+    longitude: 28.03038,
+    radiusMetres: 75,
+    retiredAt: retired ? '2026-08-20T10:00:00.000Z' : null,
+    startsAt: '2026-09-01T08:00:00.000Z',
+    title: 'Great Hall history',
+    updatedAt: '2026-08-20T10:00:00.000Z',
+  };
+}
+
+function retirementChallenge(status: 'published' | 'retired') {
+  return {
+    challengeId: retirementChallengeId,
+    createdAt: '2026-08-16T08:00:00.000Z',
+    eventId: retirementEventId,
+    format: 'multiple_choice',
+    status,
+    updatedAt: '2026-08-20T10:00:00.000Z',
+  };
+}
 
 async function readBoundPlayerId(context: BrowserContext): Promise<string> {
   const storageState = await context.storageState();

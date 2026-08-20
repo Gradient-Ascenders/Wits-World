@@ -221,9 +221,12 @@ Vite server in the dedicated `e2e` mode so Auth0 can cache the test player's
 rotating refresh-token session in local storage. Stop any other service using
 port 5173 before running the suite. The setup project saves the token-bearing
 browser state under the ignored `playwright/.auth/` directory for the dependent
-smoke test. Treat this directory as sensitive and delete it when it is no longer
-needed. Credentials are loaded by the Playwright Node process and must never use
-a `VITE_` prefix.
+smoke tests. The real-Auth0 projects use one worker, and the restoration/logout
+case runs as the setup project's teardown, so parallel browser contexts cannot
+rotate or end the shared Auth0 test session underneath another test. Treat the
+storage directory as sensitive and delete it when it is no longer needed.
+Credentials are loaded by the Playwright Node process and must never use a
+`VITE_` prefix.
 
 The credentialed live-Auth0 suite does not run in the current CI workflow. If
 it is added to CI, run `npx playwright install chromium` after `npm ci` and

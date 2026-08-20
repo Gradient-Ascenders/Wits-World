@@ -5,6 +5,7 @@ import path from 'node:path';
 
 const webDirectory = fileURLToPath(new URL('.', import.meta.url));
 const repositoryRoot = path.resolve(webDirectory, '../..');
+const authSessionRestorationTest = /auth-session-restoration\.smoke\.spec\.ts/;
 
 // These unprefixed values remain in the Playwright Node process. Vite exposes
 // only VITE_* variables to browser code.
@@ -23,12 +24,16 @@ export default defineConfig({
     timeout: 10_000,
   },
   forbidOnly: Boolean(process.env.CI),
-  fullyParallel: true,
+  fullyParallel: false,
   outputDir: 'playwright/test-results',
   reporter: 'line',
   retries: process.env.CI ? 1 : 0,
   testDir: './playwright',
   timeout: 60_000,
+  // Every authenticated project starts from the same rotating-refresh-token
+  // storage snapshot. Keep these browser contexts serial so one test cannot
+  // rotate or end the real Auth0 session while another test is restoring it.
+  workers: 1,
   use: {
     baseURL: 'http://localhost:5173',
     trace: 'on-first-retry',
@@ -52,6 +57,7 @@ export default defineConfig({
   projects: [
     {
       name: 'auth-setup',
+      teardown: 'auth-session-restoration',
       testMatch: /auth\.setup\.ts/,
       use: {
         ...devices['Desktop Chrome'],
@@ -63,7 +69,19 @@ export default defineConfig({
     {
       name: 'chromium',
       dependencies: ['auth-setup'],
-      testIgnore: [/auth\.setup\.ts/, /sprint1\.deterministic\.spec\.ts/],
+      testIgnore: [
+        /auth\.setup\.ts/,
+        authSessionRestorationTest,
+        /sprint1\.deterministic\.spec\.ts/,
+      ],
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: authenticationStatePath,
+      },
+    },
+    {
+      name: 'auth-session-restoration',
+      testMatch: authSessionRestorationTest,
       use: {
         ...devices['Desktop Chrome'],
         storageState: authenticationStatePath,
