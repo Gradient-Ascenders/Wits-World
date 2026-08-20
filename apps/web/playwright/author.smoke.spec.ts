@@ -1,6 +1,8 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type BrowserContext } from '@playwright/test';
 
 const apiBaseUrl = 'http://localhost:3000/api/v1';
+const playerBindingKey = 'wits-world.authenticated-player-id';
+const uuidPattern = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i;
 
 test('the real ordinary Player is refused before any author content request', async ({
   page,
@@ -24,9 +26,11 @@ test('the real ordinary Player is refused before any author content request', as
 });
 
 test('the author form remains keyboard-usable without map interaction at responsive widths', async ({
+  context,
   page,
 }, testInfo) => {
   const consoleErrors: string[] = [];
+  const playerId = await readBoundPlayerId(context);
   page.on('console', (message) => {
     if (message.type() === 'error') consoleErrors.push(message.text());
   });
@@ -35,7 +39,7 @@ test('the author form remains keyboard-usable without map interaction at respons
     await route.fulfill({
       contentType: 'application/json',
       json: {
-        id: '90000000-0000-4000-8000-000000000001',
+        id: playerId,
         lifecycleStatus: 'active',
         requestId: 'playwright-author-role',
         role: 'author',
@@ -103,3 +107,16 @@ test('the author form remains keyboard-usable without map interaction at respons
 
   expect(consoleErrors).toEqual([]);
 });
+
+async function readBoundPlayerId(context: BrowserContext): Promise<string> {
+  const storageState = await context.storageState();
+  const playerId = storageState.origins
+    .find(({ origin }) => origin === 'http://localhost:5173')
+    ?.localStorage.find(({ name }) => name === playerBindingKey)?.value;
+
+  if (!playerId || !uuidPattern.test(playerId)) {
+    throw new Error('The authenticated local player binding was unavailable.');
+  }
+
+  return playerId;
+}
