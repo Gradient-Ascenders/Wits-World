@@ -62,8 +62,9 @@ test('loads the protected app with data from the real API', async ({
 
   expect(response.status()).toBe(200);
   expect(response.fromServiceWorker()).toBe(false);
-  expect(authorizationHeader).not.toBeNull();
-  expect(authorizationHeader!).toMatch(/^Bearer \S+$/);
+  expect(
+    authorizationHeader !== null && /^Bearer \S+$/.test(authorizationHeader),
+  ).toBe(true);
   expect(page.context().serviceWorkers()).toHaveLength(0);
 
   const payload: unknown = await response.json();

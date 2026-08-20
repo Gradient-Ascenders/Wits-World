@@ -9,6 +9,7 @@
     "db:check:test": "npm run build && node dist/database/check.js --test",
     "db:migrate": "npm run build && node dist/database/migrate.js",
     "db:migrate:test": "npm run build && node dist/database/migrate.js --test",
+    "db:remap-auth-issuer": "npm run build && node dist/database/remap-auth-issuer.js",
     "db:release": "npm run build && node dist/database/release.js",
     "db:seed": "npm run build && node dist/database/seed.js",
     "db:seed:test": "npm run build && node dist/database/seed.js --test",
@@ -19,7 +20,7 @@
     "lint": "eslint e2e src tests --max-warnings=0",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "test:database": "RUN_DATABASE_INTEGRATION_TESTS=true vitest run tests/event-database.integration.test.ts tests/player-database.integration.test.ts tests/challenge-persistence.integration.test.ts tests/challenge-attempt-database.integration.test.ts tests/card-catalogue.integration.test.ts tests/deck-persistence.integration.test.ts tests/cpu-match-database.integration.test.ts tests/author-content-persistence.integration.test.ts tests/author-event-database.integration.test.ts tests/author-challenge-database.integration.test.ts tests/author-card-database.integration.test.ts",
+    "test:database": "RUN_DATABASE_INTEGRATION_TESTS=true vitest run tests/event-database.integration.test.ts tests/player-database.integration.test.ts tests/challenge-persistence.integration.test.ts tests/challenge-attempt-database.integration.test.ts tests/card-catalogue.integration.test.ts tests/deck-persistence.integration.test.ts tests/cpu-match-database.integration.test.ts tests/author-content-persistence.integration.test.ts tests/author-event-database.integration.test.ts tests/author-challenge-database.integration.test.ts tests/author-card-database.integration.test.ts tests/auth-issuer-remap-database.integration.test.ts",
     "type-check": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
