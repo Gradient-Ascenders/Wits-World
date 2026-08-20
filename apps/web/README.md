@@ -135,12 +135,13 @@ Authenticated API clients obtain a token on demand through
 
 Before a production deployment can rely on refresh-safe authentication:
 
-1. Choose either `witsworld.co.za` or `www.witsworld.co.za` as the one canonical
-   production web origin. Configure the other hostname to redirect to it before
-   the application loads. The API CORS allowlist, Auth0 callback/logout/web
-   origin settings, and deployment configuration must use that one exact origin;
-   do not weaken CORS with a wildcard. This is required because the player
-   binding is origin-scoped.
+1. Use `https://witsworld.co.za` as the canonical production web origin. The web
+   bootstrap redirects only `www.witsworld.co.za` to that origin before the SPA
+   loads, preserving the path, query string, and fragment. Localhost, E2E hosts,
+   and the Azure default hostname are not redirected. The API CORS allowlist,
+   Auth0 callback/logout/web origin settings, and deployment configuration must
+   use the one exact canonical origin; do not weaken CORS with a wildcard. This
+   is required because the player binding is origin-scoped.
 2. In Auth0, add a custom domain under the same product/root domain as the
    production web application. Create the required DNS CNAME, complete Auth0
    verification, and use an Auth0-managed certificate unless infrastructure
