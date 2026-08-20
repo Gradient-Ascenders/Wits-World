@@ -5,6 +5,7 @@ import { buildApp } from '../src/app.js';
 import type { AccessTokenVerifier } from '../src/auth/access-token-verifier.js';
 import type { AuthConfig } from '../src/config/auth.js';
 import {
+  AuthorChallengeNotFoundError,
   AuthorContentNotReadyError,
   AuthorContentStateConflictError,
   type AuthorChallenge,
@@ -146,6 +147,20 @@ describe('author challenge API', () => {
     });
 
     expect(service.listChallenges).not.toHaveBeenCalled();
+  });
+
+  it('does not allow an ordinary Player to retire a challenge', async () => {
+    playerResolve.mockResolvedValue(activePlayer);
+
+    const response = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/author/challenges/${CHALLENGE_ID}/retire`,
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ code: 'AUTHOR_REQUIRED' });
+    expect(service.retireChallenge).not.toHaveBeenCalled();
   });
 
   it('rejects a deletion-pending Author', async () => {
@@ -329,16 +344,16 @@ describe('author challenge API', () => {
     });
   });
 
-  it('maps invalid lifecycle transitions to 409', async () => {
-    service.publishQuestion.mockRejectedValue(
+  it('maps a live parent event retirement conflict to 409', async () => {
+    service.retireChallenge.mockRejectedValue(
       new AuthorContentStateConflictError(
-        'Only a draft question can be published.',
+        'Retire the event before retiring its published challenge.',
       ),
     );
 
     const response = await authenticatedRequest({
       method: 'POST',
-      url: `/api/v1/author/questions/${QUESTION_ID}/publish`,
+      url: `/api/v1/author/challenges/${CHALLENGE_ID}/retire`,
       payload: {},
     });
 
@@ -346,7 +361,23 @@ describe('author challenge API', () => {
 
     expect(response.json()).toMatchObject({
       code: 'CONTENT_STATE_CONFLICT',
+      detail: 'Retire the event before retiring its published challenge.',
     });
+  });
+
+  it('retains not-found behaviour for challenge retirement', async () => {
+    service.retireChallenge.mockRejectedValue(
+      new AuthorChallengeNotFoundError(),
+    );
+
+    const response = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/author/challenges/${CHALLENGE_ID}/retire`,
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({ code: 'CHALLENGE_NOT_FOUND' });
   });
 
   it('authenticates before validating malformed content', async () => {

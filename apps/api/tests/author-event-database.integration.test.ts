@@ -454,7 +454,7 @@ describe.skipIf(!runIntegrationTests)(
       ]);
     }, 45_000);
 
-    it('prevents the live event published challenge from being retired', async () => {
+    it('rejects service retirement while the event is live and retains the database guard', async () => {
       const eventService = createAuthorEventService(pool);
       const challengeService = createAuthorChallengeService(pool);
       const cardService = createAuthorCardService(pool);
@@ -482,7 +482,23 @@ describe.skipIf(!runIntegrationTests)(
 
       await expect(
         challengeService.retireChallenge(AUTHOR_TWO_ID, challengeId),
-      ).rejects.toThrow();
+      ).rejects.toMatchObject({
+        message: 'Retire the event before retiring its published challenge.',
+        name: 'AuthorContentStateConflictError',
+      });
+
+      await expect(
+        pool.query(
+          `
+            update public.event_challenges
+            set
+              status = 'retired',
+              updated_at = now()
+            where id = $1::uuid
+          `,
+          [challengeId],
+        ),
+      ).rejects.toMatchObject({ code: '55006' });
 
       const challenge = await pool.query<{
         status: string;
@@ -521,6 +537,10 @@ describe.skipIf(!runIntegrationTests)(
         event.eventId,
         AUTHOR_ONE_ID,
       );
+      const unrelatedChallenge = await challengeService.createChallenge({
+        actorPlayerId: AUTHOR_ONE_ID,
+        eventId: event.eventId,
+      });
 
       await eventService.publishEvent(AUTHOR_ONE_ID, event.eventId);
 
@@ -554,6 +574,35 @@ describe.skipIf(!runIntegrationTests)(
       );
 
       expect(retiredChallenge.status).toBe('retired');
+
+      const persistedChallenges = await challengeService.listChallenges(
+        event.eventId,
+      );
+
+      expect(
+        persistedChallenges.find(
+          (challenge) => challenge.challengeId === challengeId,
+        )?.status,
+      ).toBe('retired');
+      expect(
+        persistedChallenges.find(
+          (challenge) =>
+            challenge.challengeId === unrelatedChallenge.challengeId,
+        )?.status,
+      ).toBe('draft');
+
+      await expect(
+        challengeService.retireChallenge(AUTHOR_ONE_ID, challengeId),
+      ).rejects.toMatchObject({
+        message: 'The challenge is already retired.',
+        name: 'AuthorContentStateConflictError',
+      });
+
+      const persistedEvent = await eventService.listEvents();
+      expect(
+        persistedEvent.find((candidate) => candidate.eventId === event.eventId)
+          ?.authoringStatus,
+      ).toBe('retired');
 
       await expect(
         eventService.publishEvent(AUTHOR_ONE_ID, event.eventId),

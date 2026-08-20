@@ -939,7 +939,10 @@ function ChallengeWorkspace({
     return () => questionRequestRef.current?.abort();
   }, [loadQuestions]);
 
-  useEffect(() => setConfirmRetire(false), [selectedChallengeId]);
+  useEffect(
+    () => setConfirmRetire(false),
+    [event.authoringStatus, selectedChallengeId],
+  );
 
   useEffect(() => {
     const collectionKey = challengeCollectionKey(event.eventId);
@@ -979,6 +982,8 @@ function ChallengeWorkspace({
     challenges.find(
       (challenge) => challenge.challengeId === selectedChallengeId,
     ) ?? null;
+  const challengeRetirementBlocked =
+    selected?.status === 'published' && event.authoringStatus === 'published';
   const publishedQuestions =
     questionsState === 'ready'
       ? questions.filter(
@@ -1374,8 +1379,13 @@ function ChallengeWorkspace({
             ) : null}
             {selected.status !== 'retired' ? (
               <button
+                aria-describedby={
+                  challengeRetirementBlocked
+                    ? 'challenge-retirement-order'
+                    : undefined
+                }
                 className="button button--danger"
-                disabled={busy}
+                disabled={busy || challengeRetirementBlocked}
                 onClick={() => setConfirmRetire(true)}
                 type="button"
               >
@@ -1383,6 +1393,15 @@ function ChallengeWorkspace({
               </button>
             ) : null}
           </div>
+          {challengeRetirementBlocked ? (
+            <p
+              className="author-notice"
+              id="challenge-retirement-order"
+              role="status"
+            >
+              Retire the event before retiring its published challenge.
+            </p>
+          ) : null}
           {confirmRetire ? (
             <div className="author-confirmation" role="alert">
               <strong>Retire this challenge permanently?</strong>
