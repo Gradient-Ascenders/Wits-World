@@ -3,7 +3,7 @@ import {
   initialContext,
   type Auth0ContextInterface,
 } from '@auth0/auth0-react';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Router } from 'wouter';
@@ -416,6 +416,65 @@ describe('Basic author console', () => {
         'Event published and available to the player API according to its active times.',
       ),
     ).toHaveFocus();
+  });
+
+  it('requires event retirement first, then persists challenge retirement after refresh', async () => {
+    const user = userEvent.setup();
+    const fetchMock = installAuthorApi({
+      challenges: [challengeFixture({ status: 'published' })],
+      events: [
+        eventFixture({ authoringStatus: 'published', isPublished: true }),
+      ],
+      questions: Array.from({ length: 5 }, (_, index) =>
+        questionFixture(index + 1, 'published'),
+      ),
+    });
+    const view = renderAuthorRoute();
+
+    const retireChallenge = await screen.findByRole('button', {
+      name: 'Retire challenge',
+    });
+    expect(retireChallenge).toBeDisabled();
+    expect(retireChallenge).toHaveAccessibleDescription(
+      'Retire the event before retiring its published challenge.',
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Retire event' }));
+    await user.click(
+      within(screen.getByRole('alert')).getByRole('button', {
+        name: 'Confirm retirement',
+      }),
+    );
+
+    expect(await screen.findByText('Event retired.')).toHaveFocus();
+    expect(retireChallenge).toBeEnabled();
+
+    await user.click(retireChallenge);
+    await user.click(
+      within(screen.getByRole('alert')).getByRole('button', {
+        name: 'Confirm retirement',
+      }),
+    );
+
+    expect(await screen.findByText('Challenge retired.')).toHaveFocus();
+    expect(
+      fetchMock.mock.calls.filter(([input]) =>
+        String(input).endsWith(`/author/challenges/${challengeId}/retire`),
+      ),
+    ).toHaveLength(1);
+
+    view.unmount();
+    renderAuthorRoute();
+
+    expect(
+      await screen.findByRole('option', { name: 'Challenge 1 — retired' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Retire challenge' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Retire event' }),
+    ).not.toBeInTheDocument();
   });
 
   it('reports a lifecycle conflict without inventing stale-version semantics', async () => {
@@ -1555,6 +1614,17 @@ function installAuthorApi(options: ApiOptions = {}) {
           requestId: 'request-event-publish',
         });
       }
+      if (path === `/author/events/${eventId}/retire`) {
+        const index = events.findIndex((item) => item.eventId === eventId);
+        const event = {
+          ...(events[index] ?? eventFixture()),
+          authoringStatus: 'retired' as const,
+          isPublished: false,
+          retiredAt: '2026-08-20T10:00:00.000Z',
+        };
+        events.splice(index, 1, event);
+        return jsonResponse({ event, requestId: 'request-event-retire' });
+      }
       if (path === `/author/events/${eventId}/challenges` && method === 'GET') {
         return jsonResponse({ challenges, requestId: 'request-challenges' });
       }
@@ -1597,6 +1667,23 @@ function installAuthorApi(options: ApiOptions = {}) {
           { question, requestId: 'request-question-create' },
           201,
         );
+      }
+      if (
+        path === `/author/challenges/${challengeId}/retire` &&
+        method === 'POST'
+      ) {
+        const index = challenges.findIndex(
+          (item) => item.challengeId === challengeId,
+        );
+        const challenge = {
+          ...(challenges[index] ?? challengeFixture()),
+          status: 'retired' as const,
+        };
+        challenges.splice(index, 1, challenge);
+        return jsonResponse({
+          challenge,
+          requestId: 'request-challenge-retire',
+        });
       }
       if (path.startsWith('/author/questions/') && method === 'PUT') {
         const body = JSON.parse(String(init?.body));
