@@ -200,6 +200,11 @@ Current default hostname:
 witsworld-web-fqabhufqgvapapgq.southafricanorth-01.azurewebsites.net
 ```
 
+The canonical production web origin is `https://witsworld.co.za`. The built web
+application redirects only `www.witsworld.co.za` to the canonical origin before
+the SPA loads, preserving the path, query string, and fragment. It does not
+redirect this Azure default hostname, localhost, E2E hosts, or other hostnames.
+
 The frontend is a prebuilt React/Vite single-page application.
 
 ### 6.1 Runtime configuration
@@ -293,11 +298,11 @@ cannot repair missing runtime configuration.
 
 ### 7.2 Production CORS origin
 
-The API allows the exact production frontend origin:
+The API must allow only the exact canonical production frontend origin:
 
 ```text
 CORS_ALLOWED_ORIGIN =
-https://witsworld-web-fqabhufqgvapapgq.southafricanorth-01.azurewebsites.net
+https://witsworld.co.za
 ```
 
 A wildcard origin is not used.
@@ -358,7 +363,8 @@ The Auth0 Single Page Application used by the frontend is:
 Wits World Web – Development
 ```
 
-The production frontend origin was added alongside the existing localhost development URL to:
+The canonical production frontend origin must be present alongside the existing
+localhost development URL in:
 
 ```text
 Allowed Callback URLs
@@ -366,11 +372,15 @@ Allowed Logout URLs
 Allowed Web Origins
 ```
 
-Production origin:
+Canonical production origin:
 
 ```text
-https://witsworld-web-fqabhufqgvapapgq.southafricanorth-01.azurewebsites.net
+https://witsworld.co.za
 ```
+
+`https://www.witsworld.co.za` is not a second application origin. It redirects
+to the canonical origin before the SPA initializes and must not be added to the
+Auth0 URL allowlists.
 
 The existing localhost development entries remain configured.
 
@@ -1329,12 +1339,10 @@ Remaining work is limited to release-specific validation and operational review:
 - Verify the Cloudflare Pages documentation deployment after documentation
   changes merge to `main`.
 - Review Azure Cost Management periodically for the App Service Plan, runner VM, disk, and networking usage.
-- Consider a custom domain later if required.
 
 The following are not required for the current student-project deployment:
 
 ```text
-Custom domain
 Application Insights
 Deployment slots
 Higher App Service tier
@@ -1437,7 +1445,7 @@ Dedicated host-only deployment runner label          DONE
 
 Full Auth0 login/logout application-flow test        MANUAL PER RELEASE
 Documentation static deployment                      DONE — CLOUDFLARE PAGES
-Custom domain                                        OPTIONAL
+Canonical web domain                                 REQUIRES DEPLOYED VERIFICATION
 Application Insights                                 OPTIONAL
 Deployment slots / additional scaling                OPTIONAL
 ```
