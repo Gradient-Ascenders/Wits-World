@@ -13,6 +13,10 @@ import {
 import { createAccessTokenVerifier } from '../src/auth/access-token-verifier.js';
 import { buildApp } from '../src/app.js';
 import type { AuthConfig } from '../src/config/auth.js';
+import type {
+  EventDiscoveryService,
+  PlayerEvent,
+} from '../src/events/event-discovery.js';
 
 import type { PlayerIdentityService } from '../src/players/player-identity.js';
 
@@ -35,11 +39,24 @@ const localPlayer = {
   lifecycleStatus: 'active' as const,
 };
 
+const activeEvent: PlayerEvent = {
+  eventId: '00000000-0000-4000-8000-000000000018',
+  title: 'Email verification policy regression event',
+  description: 'Player-safe event details.',
+  latitude: -26.19205,
+  longitude: 28.03038,
+  radiusMetres: 75,
+  startsAt: '2026-08-01T00:00:00.000Z',
+  endsAt: '2026-08-31T00:00:00.000Z',
+  availability: 'active',
+};
+
 let privateKey: CryptoKey;
 let publicKey: CryptoKey;
 let unrelatedPrivateKey: CryptoKey;
 let app: FastifyInstance;
 let playerIdentityService: PlayerIdentityService;
+let listEvents: ReturnType<typeof createEventListMock>;
 
 beforeAll(async () => {
   const trustedKeyPair = await generateKeyPair('RS256');
@@ -54,6 +71,7 @@ beforeEach(async () => {
   playerIdentityService = {
     resolve: vi.fn().mockResolvedValue(localPlayer),
   };
+  listEvents = createEventListMock();
 
   app = await buildApp({
     authConfig,
@@ -61,6 +79,14 @@ beforeEach(async () => {
       verificationKey: publicKey,
     }),
     playerIdentityService,
+    eventServices: {
+      discovery: {
+        list: listEvents,
+      },
+      eligibility: {
+        evaluate: vi.fn(),
+      },
+    },
     logger: false,
   });
 });
@@ -150,22 +176,50 @@ describe('API bearer authentication', () => {
     expect(response.body).not.toContain(token);
   });
 
-  it('resolves the current local player from the validated token identity', async () => {
-    const token = await createToken();
+  it.each([
+    { emailVerified: true, label: 'email_verified: true' },
+    { emailVerified: false, label: 'email_verified: false' },
+    { emailVerified: undefined, label: 'no email_verified claim' },
+  ])(
+    'keeps $label authenticated for /auth/me and protected gameplay',
+    async ({ emailVerified }) => {
+      const token = await createToken({ emailVerified });
 
-    const response = await authenticatedRequest(token);
+      const currentPlayerResponse = await authenticatedRequest(token);
+      const gameplayResponse = await app.inject({
+        method: 'GET',
+        url: '/api/v1/events',
+        headers: {
+          authorization: `Bearer ${token}`,
+        },
+      });
 
-    expect(response.statusCode).toBe(200);
+      expect(currentPlayerResponse.statusCode).toBe(200);
+      expect(currentPlayerResponse.json()).toEqual({
+        id: localPlayer.id,
+        role: 'player',
+        lifecycleStatus: 'active',
+        requestId: expect.any(String),
+      });
 
-    expect(response.json()).toEqual({
-      id: localPlayer.id,
-      role: 'player',
-      lifecycleStatus: 'active',
-      requestId: expect.any(String),
-    });
+      expect(gameplayResponse.statusCode).toBe(200);
+      expect(gameplayResponse.json()).toEqual({
+        events: [activeEvent],
+        requestId: expect.any(String),
+      });
 
-    expect(playerIdentityService.resolve).toHaveBeenCalledWith(tokenIdentity);
-  });
+      expect(playerIdentityService.resolve).toHaveBeenCalledTimes(2);
+      expect(playerIdentityService.resolve).toHaveBeenNthCalledWith(
+        1,
+        tokenIdentity,
+      );
+      expect(playerIdentityService.resolve).toHaveBeenNthCalledWith(
+        2,
+        tokenIdentity,
+      );
+      expect(listEvents).toHaveBeenCalledOnce();
+    },
+  );
 
   it('does not allow request-body identity data to override the validated token identity', async () => {
     app.post(
@@ -300,6 +354,7 @@ interface CreateTokenOptions {
   expirationTime?: number;
   signingKey?: CryptoKey;
   includeExpiration?: boolean;
+  emailVerified?: boolean;
 }
 
 async function createToken({
@@ -309,8 +364,11 @@ async function createToken({
   expirationTime = Math.floor(Date.now() / 1000) + 300,
   signingKey = privateKey,
   includeExpiration = true,
+  emailVerified,
 }: CreateTokenOptions = {}): Promise<string> {
-  let token = new SignJWT({})
+  let token = new SignJWT(
+    emailVerified === undefined ? {} : { email_verified: emailVerified },
+  )
     .setProtectedHeader({
       alg: 'RS256',
       typ: 'JWT',
@@ -351,4 +409,10 @@ function expectUnauthorized(response: {
     detail: 'A valid bearer access token is required.',
     requestId: expect.any(String),
   });
+}
+
+function createEventListMock() {
+  const list: EventDiscoveryService['list'] = async () => [activeEvent];
+
+  return vi.fn(list);
 }

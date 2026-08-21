@@ -247,33 +247,40 @@ describe('player authentication', () => {
     });
   });
 
-  it('renders the protected route for an authenticated player', async () => {
-    mockCurrentPlayer();
-    expect(bindAuthenticatedPlayer(playerAId)).toBe('matched');
+  it.each([
+    { emailClaims: { email_verified: true }, label: 'email_verified: true' },
+    { emailClaims: { email_verified: false }, label: 'email_verified: false' },
+    { emailClaims: {}, label: 'no email_verified claim' },
+  ])(
+    'renders the protected route for an authenticated player with $label',
+    async ({ emailClaims }) => {
+      mockCurrentPlayer();
+      expect(bindAuthenticatedPlayer(playerAId)).toBe('matched');
 
-    renderRoute(
-      '/explore',
-      createAuthValue({
-        getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
-        isAuthenticated: true,
-        user: { name: 'Kevin', sub: 'auth0|player' },
-      }),
-    );
+      renderRoute(
+        '/explore',
+        createAuthValue({
+          getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
+          isAuthenticated: true,
+          user: { name: 'Kevin', sub: 'auth0|player', ...emailClaims },
+        }),
+      );
 
-    expect(
-      await screen.findByRole(
-        'heading',
-        {
-          level: 1,
-          name: 'Explore the campus map',
-        },
-        { timeout: 5_000 },
-      ),
-    ).toBeVisible();
-    expect(screen.getByText('Signed in as')).toHaveTextContent(
-      'Signed in as Kevin',
-    );
-  });
+      expect(
+        await screen.findByRole(
+          'heading',
+          {
+            level: 1,
+            name: 'Explore the campus map',
+          },
+          { timeout: 5_000 },
+        ),
+      ).toBeVisible();
+      expect(screen.getByText('Signed in as')).toHaveTextContent(
+        'Signed in as Kevin',
+      );
+    },
+  );
 
   it('signs out through Auth0 and returns to the public origin', async () => {
     const user = userEvent.setup();
