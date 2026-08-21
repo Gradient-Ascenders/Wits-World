@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 
 import {
+  AuthorCardNameConflictError,
   AuthorCardNotFoundError,
   AuthorCardNotReadyError,
   AuthorCardStateConflictError,
@@ -514,6 +515,7 @@ export const authorCardRoutes: FastifyPluginAsync<
           400: apiErrorSchema,
           401: apiErrorSchema,
           403: apiErrorSchema,
+          409: cardNameConflictErrorSchema,
         },
       },
     },
@@ -556,7 +558,7 @@ export const authorCardRoutes: FastifyPluginAsync<
           401: apiErrorSchema,
           403: apiErrorSchema,
           404: apiErrorSchema,
-          409: apiErrorSchema,
+          409: cardUpdateConflictErrorSchema,
         },
       },
     },
@@ -655,6 +657,18 @@ function cardEnvelopeSchema() {
   } as const;
 }
 
+const cardNameConflictErrorSchema = {
+  ...apiErrorSchema,
+  description:
+    'Another draft, published, or retired card definition already reserves the normalized name. The error code is CARD_NAME_CONFLICT.',
+} as const;
+
+const cardUpdateConflictErrorSchema = {
+  ...apiErrorSchema,
+  description:
+    'The draft cannot be updated because of a lifecycle conflict or because another card definition reserves the normalized name. Name conflicts use the error code CARD_NAME_CONFLICT.',
+} as const;
+
 function lifecycleResponses() {
   return {
     200: cardEnvelopeSchema(),
@@ -704,6 +718,15 @@ function throwAuthorCardError(error: unknown): never {
       code: 'CONTENT_STATE_CONFLICT',
       title: 'Content state conflict',
       detail: error.message,
+    });
+  }
+
+  if (error instanceof AuthorCardNameConflictError) {
+    throw new ApiError({
+      statusCode: 409,
+      code: 'CARD_NAME_CONFLICT',
+      title: 'Card name already in use',
+      detail: 'Another card definition already uses that name.',
     });
   }
 

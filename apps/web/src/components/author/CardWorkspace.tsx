@@ -280,6 +280,12 @@ function CardForm({
     };
   }, []);
 
+  useEffect(() => {
+    if (!busy && errors.name && apiError?.code === 'CARD_NAME_CONFLICT') {
+      formRef.current?.querySelector<HTMLElement>('#card-name')?.focus();
+    }
+  }, [apiError?.code, busy, errors.name]);
+
   const editable = !card || card.authoringStatus === 'draft';
   const dirty = Boolean(
     card && JSON.stringify(draft) !== JSON.stringify(cardDraft(card)),
@@ -455,12 +461,20 @@ function CardForm({
               aria-invalid={Boolean(errors.name)}
               disabled={!editable || busy}
               id="card-name"
-              onChange={(change) =>
+              onChange={(change) => {
                 setDraft((current) => ({
                   ...current,
                   name: change.target.value,
-                }))
-              }
+                }));
+                setErrors((current) => {
+                  const remaining = { ...current };
+                  delete remaining.name;
+                  return remaining;
+                });
+                if (apiError?.code === 'CARD_NAME_CONFLICT') {
+                  setApiError(null);
+                }
+              }}
               required
               value={draft.name}
             />
@@ -1291,6 +1305,13 @@ function handleCardError(
 ) {
   const authorError = toAuthorError(error);
   setApiError(authorError);
+  if (authorError.code === 'CARD_NAME_CONFLICT') {
+    setErrors((current) => ({
+      ...current,
+      name: 'This card name is already in use.',
+    }));
+    return;
+  }
   if (authorError.validation.length === 0) {
     window.setTimeout(() => feedbackRef.current?.focus());
     return;

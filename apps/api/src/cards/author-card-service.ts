@@ -114,6 +114,13 @@ export class AuthorCardStateConflictError extends Error {
   }
 }
 
+export class AuthorCardNameConflictError extends Error {
+  constructor() {
+    super('Another card definition already uses that name.');
+    this.name = 'AuthorCardNameConflictError';
+  }
+}
+
 export class AuthorCardNotReadyError extends Error {
   constructor(message: string) {
     super(message);
@@ -663,8 +670,23 @@ async function withTransaction<T>(
       // Preserve the original operation failure.
     }
 
+    if (isCardNameUniqueViolation(error)) {
+      throw new AuthorCardNameConflictError();
+    }
+
     throw error;
   } finally {
     client.release();
   }
+}
+
+function isCardNameUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === '23505' &&
+    'constraint' in error &&
+    error.constraint === 'card_definitions_normalized_name_unique_idx'
+  );
 }

@@ -110,6 +110,150 @@ test('the author form remains keyboard-usable without map interaction at respons
   expect(consoleErrors).toEqual([]);
 });
 
+test('card name conflicts preserve the Author draft and allow a unique retry', async ({
+  context,
+  page,
+}) => {
+  const consoleErrors: string[] = [];
+  const runtimeErrors: string[] = [];
+  const playerId = await readBoundPlayerId(context);
+  let cards = [browserAuthorCard('Edge', 'published')];
+
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  page.on('pageerror', (error) => runtimeErrors.push(error.message));
+  await page.setViewportSize({ height: 844, width: 390 });
+
+  await page.route(`${apiBaseUrl}/auth/me`, async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      json: {
+        id: playerId,
+        lifecycleStatus: 'active',
+        requestId: 'playwright-card-name-author',
+        role: 'author',
+      },
+    });
+  });
+  await page.route(`${apiBaseUrl}/author/events`, async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      json: { events: [], requestId: 'playwright-card-name-events' },
+    });
+  });
+  await page.route(`${apiBaseUrl}/author/cards`, async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({
+        contentType: 'application/json',
+        json: { cards, requestId: 'playwright-card-name-list' },
+      });
+      return;
+    }
+
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    const name = typeof body.name === 'string' ? body.name : '';
+
+    if (name.trim().toLowerCase() === 'edge') {
+      await route.fulfill({
+        contentType: 'application/json',
+        json: {
+          code: 'CARD_NAME_CONFLICT',
+          detail: 'Another card definition already uses that name.',
+          requestId: 'playwright-card-name-conflict',
+          status: 409,
+          title: 'Card name already in use',
+          type: 'https://wits.world/problems/card_name_conflict',
+        },
+        status: 409,
+      });
+      return;
+    }
+
+    const moves = Array.isArray(body.moves) ? body.moves : [];
+    const firstMove = isRecord(moves[0]) ? moves[0] : {};
+    const created = browserAuthorCard(name, 'draft', {
+      description:
+        typeof body.description === 'string' ? body.description : null,
+      imageUrl: typeof body.imageUrl === 'string' ? body.imageUrl : null,
+      moveName:
+        typeof firstMove.name === 'string' ? firstMove.name : 'Careful Step',
+    });
+    cards = [created, ...cards];
+    await route.fulfill({
+      contentType: 'application/json',
+      json: { card: created, requestId: 'playwright-card-name-created' },
+      status: 201,
+    });
+  });
+
+  await page.goto('/author');
+  await expect(
+    page.getByRole('heading', { name: 'Author console' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Card catalogue' }).click();
+
+  const name = page.getByLabel('Card name');
+  const description = page.getByLabel('Display description (optional)');
+  const artwork = page.getByLabel('Artwork URL (optional)');
+  const moveName = page.getByLabel('Move name');
+
+  await name.fill('Edge');
+  await description.fill('This draft must survive both conflicts.');
+  await artwork.fill('https://example.test/cards/unique-edge.png');
+  await moveName.fill('Careful Step');
+  await page.getByRole('button', { name: 'Create draft card' }).click();
+
+  await expect(
+    page.getByText('This card name is already in use.'),
+  ).toBeVisible();
+  await expect(name).toBeFocused();
+  await expect(name).toHaveAttribute('aria-invalid', 'true');
+  await expect(description).toHaveValue(
+    'This draft must survive both conflicts.',
+  );
+  await expect(artwork).toHaveValue(
+    'https://example.test/cards/unique-edge.png',
+  );
+  await expect(moveName).toHaveValue('Careful Step');
+
+  await name.fill('edge');
+  await expect(page.getByText('This card name is already in use.')).toHaveCount(
+    0,
+  );
+  await page.getByRole('button', { name: 'Create draft card' }).click();
+  await expect(
+    page.getByText('This card name is already in use.'),
+  ).toBeVisible();
+  await expect(name).toBeFocused();
+  await expect(description).toHaveValue(
+    'This draft must survive both conflicts.',
+  );
+  await expect(moveName).toHaveValue('Careful Step');
+
+  await name.fill('Unique Edge Successor');
+  await page.getByRole('button', { name: 'Create draft card' }).click();
+  await expect(page.getByText('Draft card created.')).toBeFocused();
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Card catalogue' }).click();
+  await page.getByRole('button', { name: /Unique Edge Successor/ }).click();
+  await expect(page.getByLabel('Card name')).toHaveValue(
+    'Unique Edge Successor',
+  );
+  await expect(page.getByLabel('Display description (optional)')).toHaveValue(
+    'This draft must survive both conflicts.',
+  );
+  await expect(page.getByLabel('Move name')).toHaveValue('Careful Step');
+  expect(runtimeErrors).toEqual([]);
+  expect(consoleErrors).toHaveLength(2);
+  expect(
+    consoleErrors.every((message) =>
+      message.includes('server responded with a status of 409'),
+    ),
+  ).toBe(true);
+});
+
 test('an Author retires the event before its challenge and sees both states persist', async ({
   context,
   page,
@@ -264,6 +408,57 @@ function retirementChallenge(status: 'published' | 'retired') {
     status,
     updatedAt: '2026-08-20T10:00:00.000Z',
   };
+}
+
+function browserAuthorCard(
+  name: string,
+  status: 'draft' | 'published',
+  overrides: {
+    description?: string | null;
+    imageUrl?: string | null;
+    moveName?: string;
+  } = {},
+) {
+  return {
+    affinity: 'wit',
+    authoringStatus: status,
+    category: 'creature',
+    createdAt: '2026-08-21T10:00:00.000Z',
+    description: overrides.description ?? 'Browser card fixture.',
+    effects: [],
+    hp: 1,
+    id:
+      status === 'published'
+        ? 'a8400000-0000-4000-8000-000000000001'
+        : 'a8400000-0000-4000-8000-000000000002',
+    imageUrl: overrides.imageUrl ?? null,
+    isActive: status === 'published',
+    moves: [
+      {
+        effectType: 'damage',
+        effectValue: null,
+        id:
+          status === 'published'
+            ? 'a8500000-0000-4000-8000-000000000001'
+            : 'a8500000-0000-4000-8000-000000000002',
+        modifierDurationTurns: null,
+        modifierOperation: null,
+        modifierStat: null,
+        moveType: 'basic',
+        name: overrides.moveName ?? 'Careful Step',
+        position: 1,
+        powerCost: 0,
+      },
+    ],
+    name,
+    power: 0,
+    rarity: 'common',
+    updatedAt: '2026-08-21T10:00:00.000Z',
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 async function readBoundPlayerId(context: BrowserContext): Promise<string> {
