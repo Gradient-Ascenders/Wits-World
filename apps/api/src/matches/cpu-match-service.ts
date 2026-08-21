@@ -249,8 +249,20 @@ interface ActionResponseRow extends pg.QueryResultRow {
   response: CpuMatchResponse;
 }
 
-interface RoundIdentityRow extends pg.QueryResultRow {
-  id: string;
+interface TransitionPersistenceRow extends pg.QueryResultRow {
+  action_count: number;
+  action_match_matches: boolean;
+  action_round_matches: boolean;
+  base_sequence: number;
+  first_sequence: number;
+  last_sequence: number;
+  match_update_count: number;
+  player_receipt_count: number;
+  round_count: number;
+  round_id: string | null;
+  round_match_id: string | null;
+  unexpected_receipt_count: number;
+  updated_match_id: string | null;
 }
 
 interface RoundRow extends pg.QueryResultRow {
@@ -487,6 +499,9 @@ export function createCpuMatchService(
           input.matchId,
           true,
         );
+        // Keep this as a fresh statement after the row lock. If it is folded
+        // into the locking read, a request that waited for another writer can
+        // retain an older statement snapshot and miss that writer's receipt.
         const duplicate = await client.query<ActionResponseRow>(
           `
             select response
@@ -554,47 +569,30 @@ export function createCpuMatchService(
           lastAction: transitions.at(-1)?.result ?? null,
         });
 
-        const round = await client.query<RoundIdentityRow>(
+        const persisted = await client.query<TransitionPersistenceRow>(
           `
-            insert into public.cpu_match_rounds (
-              match_id,
-              round_number,
-              state_before,
-              state_after,
-              result
-            )
-            values ($1::uuid, $2, $3::jsonb, $4::jsonb, $5::jsonb)
-            returning id::text
-          `,
-          [
-            match.id,
-            version,
-            JSON.stringify(stateBefore),
-            JSON.stringify(state),
-            JSON.stringify(transitions.map(({ result }) => result)),
-          ],
-        );
-
-        const roundId = round.rows[0]?.id;
-        if (!roundId) {
-          throw new Error('CPU match round creation returned no identifier.');
-        }
-
-        const existingActionCount = await client.query<{ count: string }>(
-          `
-            select count(*)::text as count
-            from public.cpu_match_actions
-            where match_id = $1::uuid
-          `,
-          [match.id],
-        );
-        let sequence = Number(existingActionCount.rows[0]?.count ?? 0) + 1;
-        let playerActionId: string | null = null;
-
-        for (const [index, transition] of transitions.entries()) {
-          const isPlayerAction = index === 0;
-          const insertedAction = await client.query<MatchIdentityRow>(
-            `
+            with sequence_base as materialized (
+              select coalesce(max(sequence), 0)::integer as value
+              from public.cpu_match_actions
+              where match_id = $1::uuid
+            ),
+            inserted_round as (
+              insert into public.cpu_match_rounds (
+                match_id,
+                round_number,
+                state_before,
+                state_after,
+                result
+              )
+              values ($1::uuid, $2, $3::jsonb, $4::jsonb, $5::jsonb)
+              returning id, match_id
+            ),
+            transition_payload as materialized (
+              select transition.value, transition.ordinality::integer
+              from jsonb_array_elements($6::jsonb)
+                with ordinality as transition(value, ordinality)
+            ),
+            inserted_actions as (
               insert into public.cpu_match_actions (
                 match_id,
                 round_id,
@@ -605,64 +603,119 @@ export function createCpuMatchService(
                 result,
                 response
               )
-              values ($1::uuid, $2::uuid, $3, $4, $5::uuid, $6::jsonb, $7::jsonb, null)
-              returning id::text
-            `,
-            [
-              match.id,
-              roundId,
-              sequence,
-              transition.result.side,
-              isPlayerAction ? input.submissionId : null,
-              JSON.stringify(transition.result.action),
-              JSON.stringify(transition.result),
-            ],
-          );
-
-          if (isPlayerAction) {
-            playerActionId = insertedAction.rows[0]?.id ?? null;
-          }
-          sequence += 1;
-        }
-
-        if (!playerActionId) {
-          throw new Error(
-            'CPU match transition did not persist the player action.',
-          );
-        }
-
-        await client.query(
-          `
-            update public.cpu_match_actions
-               set response = $2::jsonb
-             where id = $1::uuid
-          `,
-          [playerActionId, JSON.stringify(response)],
-        );
-
-        await client.query(
-          `
-            update public.cpu_matches
-               set status = $2,
-                   state = $3::jsonb,
-                   version = $4,
-                   winner = $5,
-                   turn_started_at = $6,
-                   turn_deadline = $7,
-                   completed_at = $8,
-                   updated_at = now()
-             where id = $1::uuid
+              select
+                $1::uuid,
+                inserted_round.id,
+                sequence_base.value + transition_payload.ordinality,
+                transition_payload.value ->> 'side',
+                case
+                  when transition_payload.ordinality = 1 then $7::uuid
+                  else null
+                end,
+                transition_payload.value -> 'action',
+                transition_payload.value -> 'result',
+                case
+                  when transition_payload.ordinality = 1 then $8::jsonb
+                  else null
+                end
+              from inserted_round
+              cross join sequence_base
+              cross join transition_payload
+              order by transition_payload.ordinality
+              returning
+                match_id,
+                round_id,
+                sequence,
+                submission_id,
+                response
+            ),
+            updated_match as (
+              update public.cpu_matches
+                 set status = $9,
+                     state = $4::jsonb,
+                     version = $2,
+                     winner = $10,
+                     turn_started_at = $11,
+                     turn_deadline = $12,
+                     completed_at = $13,
+                     updated_at = now()
+               where id = $1::uuid
+                 and version = $14
+              returning id
+            )
+            select
+              sequence_base.value as base_sequence,
+              (select count(*)::integer from inserted_round) as round_count,
+              (select id::text from inserted_round limit 1) as round_id,
+              (select match_id::text from inserted_round limit 1) as round_match_id,
+              (select count(*)::integer from inserted_actions) as action_count,
+              (
+                select min(sequence)::integer
+                from inserted_actions
+              ) as first_sequence,
+              (
+                select max(sequence)::integer
+                from inserted_actions
+              ) as last_sequence,
+              (
+                select count(*)::integer
+                from inserted_actions
+                where submission_id = $7::uuid
+                  and response = $8::jsonb
+              ) as player_receipt_count,
+              (
+                select count(*)::integer
+                from inserted_actions
+                where sequence <> sequence_base.value + 1
+                  and (submission_id is not null or response is not null)
+              ) as unexpected_receipt_count,
+              coalesce(
+                (
+                  select bool_and(action.match_id = $1::uuid)
+                  from inserted_actions action
+                ),
+                false
+              ) as action_match_matches,
+              coalesce(
+                (
+                  select bool_and(action.round_id = inserted_round.id)
+                  from inserted_actions action
+                  cross join inserted_round
+                ),
+                false
+              ) as action_round_matches,
+              (select count(*)::integer from updated_match) as match_update_count,
+              (select id::text from updated_match limit 1) as updated_match_id
+            from sequence_base
           `,
           [
             match.id,
-            completed ? 'completed' : 'active',
-            JSON.stringify(state),
             version,
+            JSON.stringify(stateBefore),
+            JSON.stringify(state),
+            JSON.stringify(transitions.map(({ result }) => result)),
+            JSON.stringify(
+              transitions.map(({ result }) => ({
+                side: result.side,
+                action: result.action,
+                result,
+              })),
+            ),
+            input.submissionId,
+            JSON.stringify(response),
+            completed ? 'completed' : 'active',
             state.winner,
             completed ? null : state.phase === 'active' ? now : null,
             completed ? null : turnDeadline,
             completed ? now : null,
+            match.version,
           ],
+        );
+
+        assertTransitionPersistence(
+          persisted.rows[0],
+          match.id,
+          transitions.length,
         );
 
         await client.query('commit');
@@ -1298,6 +1351,38 @@ function shouldAdvanceCpu(state: BattleState): boolean {
     (state.phase === 'replacement' && state.replacementSide === 'cpu') ||
     (state.phase === 'active' && state.currentSide === 'cpu')
   );
+}
+
+function assertTransitionPersistence(
+  persisted: TransitionPersistenceRow | undefined,
+  matchId: string,
+  expectedActionCount: number,
+): asserts persisted is TransitionPersistenceRow {
+  if (!persisted) {
+    throw new Error('CPU match transition persistence invariant failed.');
+  }
+
+  const expectedFirstSequence = persisted.base_sequence + 1;
+  const expectedLastSequence = persisted.base_sequence + expectedActionCount;
+
+  if (
+    !Number.isInteger(persisted.base_sequence) ||
+    persisted.base_sequence < 0 ||
+    persisted.round_count !== 1 ||
+    !persisted.round_id ||
+    persisted.round_match_id !== matchId ||
+    persisted.action_count !== expectedActionCount ||
+    persisted.first_sequence !== expectedFirstSequence ||
+    persisted.last_sequence !== expectedLastSequence ||
+    persisted.player_receipt_count !== 1 ||
+    persisted.unexpected_receipt_count !== 0 ||
+    !persisted.action_match_matches ||
+    !persisted.action_round_matches ||
+    persisted.match_update_count !== 1 ||
+    persisted.updated_match_id !== matchId
+  ) {
+    throw new Error('CPU match transition persistence invariant failed.');
+  }
 }
 
 function actionForTimeoutIfNeeded(
