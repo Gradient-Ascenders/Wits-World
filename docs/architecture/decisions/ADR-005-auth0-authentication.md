@@ -206,6 +206,26 @@ collecting passwords inside Wits World.
 Social login, enterprise identity providers, and Wits single sign-on are not
 included in the initial implementation.
 
+## Email verification
+
+Auth0 authentication is required for normal gameplay and protected Wits World
+application features. Email verification is not an additional access gate.
+
+An authenticated principal whose email is unverified must not be treated as
+unauthenticated. Wits World does not use the Auth0 `email_verified` claim as an
+application-authorisation prerequisite. Access continues to depend on a valid
+Wits World API access token, the exact `(iss, sub)` identity, an active local
+player lifecycle, and any required local role or object permission.
+
+Email verification does not prove that a person has a Wits institutional
+identity, and Wits World must not present it that way. A future Wits single
+sign-on or institutional eligibility policy would require its own approved
+identity contract.
+
+Auth0 may continue to expose and maintain email-verification state and send
+verification email. This application policy neither requires disabling those
+provider features nor authorises an Auth0 tenant-configuration change.
+
 ## Password reset
 
 Password reset will use Auth0's hosted reset flow for database-connection users.
@@ -329,6 +349,8 @@ contain safe configuration or placeholders.
 - The API has an explicit issuer-and-audience trust boundary.
 - React and Fastify have supported Auth0 integration paths.
 - Registration and password reset can use hosted Auth0 interfaces.
+- Authenticated players are not incorrectly denied application access because
+  their email is unverified.
 - The team avoids operating an identity server.
 - Authentication remains separate from local application authorisation.
 - Local Player and Author permissions remain under server-side application
@@ -432,7 +454,6 @@ The team must still confirm:
 
 - whether Wits SSO is available or required;
 - production web and API domains;
-- whether email verification is required before gameplay;
 - whether any institutional restrictions apply to Auth0.
 
 ---

@@ -13,6 +13,20 @@ or ownership result.
 
 ## Roles, authority, and account lifecycle
 
+### Authentication and email verification
+
+- Auth0 authentication remains required for normal gameplay and every protected
+  Wits World application feature.
+- Email verification is not required for that access. An Auth0-authenticated
+  principal with an unverified email must not be treated as unauthenticated, and
+  the `email_verified` claim is not an application-authorisation prerequisite.
+- Wits World must not claim that email verification proves Wits institutional
+  identity. Wits single sign-on and any institutional identity requirement
+  remain separate decisions.
+- Auth0 may continue to expose or maintain email-verification state and send
+  verification email. The non-blocking policy does not require a tenant
+  configuration change or disabling verification-email functionality.
+
 ### Roles and authoring
 
 - Basic has only two roles: Player and Author. There is no separate
@@ -49,6 +63,21 @@ or ownership result.
   published cards are active for starter and reward selection. Retiring a card
   removes it from future catalogue selection without deleting owned copies that
   already reference that definition.
+- A card-definition name is globally unique across draft, published, and retired
+  definitions after trimming surrounding whitespace and comparing without case
+  sensitivity. For example, `Sentinel`, `sentinel`, and " Sentinel " conflict.
+  Store and display the Author's chosen casing after trimming; do not lowercase
+  the displayed name. A retired definition continues to reserve its normalized
+  name because collections, matches, snapshots, or other persisted history may
+  still reference it.
+- The card-definition name rule does not apply to owned card instances. Separate
+  `player_cards` rows may reference the same card definition, including copies
+  held by different players or collections.
+- A Creature card definition has at most four moves, ordered by its existing
+  move position. A draft Creature may be incomplete with zero through four
+  valid moves. A Creature may become published and usable only when it has
+  exactly four valid moves. Power cards and other non-Creature definitions are
+  not subject to this move-count rule.
 - Protected Author APIs may return private accepted-answer information and
   explanations required for content management. Player APIs never expose
   private answer-key identifiers or explanations. During an active timed

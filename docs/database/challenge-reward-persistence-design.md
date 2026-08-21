@@ -59,6 +59,12 @@ from its shared card definition.
   audit trail.
 - Published questions, challenges, cards, and newly authored events cannot
   silently return to draft.
+- Card-definition names are unique across draft, published, and retired rows
+  under `lower(btrim(name))`; stored display casing is preserved, and retired
+  rows continue to reserve their normalized names.
+- A Creature draft has zero through four ordered moves. Publication and gameplay
+  usability require exactly four valid moves; Power definitions are not subject
+  to this count.
 - A newly authored event becomes player-visible only after publication verifies
   one valid published challenge and at least one active Common reward card.
 
@@ -176,6 +182,13 @@ A card definition stores `id`, nonblank `name`, `category`, `affinity`, `rarity`
 active state, and audit timestamps. Creature definitions also store positive
 `hp` and non-negative `power`; Power definitions keep both stats null.
 
+The name is globally unique across every authoring state after surrounding
+whitespace is trimmed and case is ignored. The comparison key is
+`lower(btrim(name))`; the stored name retains the Author's chosen display casing
+after trimming. Retired definitions reserve that key. This invariant belongs to
+`card_definitions` and deliberately does not prevent multiple `player_cards`
+rows from representing separately owned copies of one definition.
+
 Issue #77 adds `authoring_status` with `draft`, `published`, and `retired`
 states. Draft cards are inactive and editable. Publication changes the card to
 published and active only after the persisted definition passes the same
@@ -200,6 +213,11 @@ cannot define modifier metadata. Child-table triggers enforce that moves belong
 to Creatures and effects belong to Power cards. A category-change trigger
 prevents an existing Creature from being changed into a Power card, or vice
 versa, while its child rows remain.
+
+A Creature definition may have at most four ordered `card_moves`. Drafts may be
+incomplete with zero through four valid moves. Moving a Creature to `published`
+and making it usable requires exactly four valid moves. Power definitions and
+their `card_effects` are not subject to this move-count rule.
 
 The move/effect vocabulary is `basic`, `wit`, `grit`, `spark`, `spirit`, and
 `mystic` for move types, and `damage`, `debuff`, `heal`, and `buff` for effect
@@ -483,6 +501,100 @@ PostgreSQL/PostGIS database and checks that a second run is a no-op. The
 demonstration cards for all starter affinities plus non-Common examples for
 catalogue/reward testing. The seed does not claim to be final production card
 artwork or balance.
+
+## Card-invariant migration blockers
+
+A read-only audit of the configured development database on 2026-08-21 found
+the following blockers. These records were identified only; the audit did not
+rename, delete, merge, retire, or otherwise mutate them.
+
+### Normalized card-definition name collision
+
+The normalized key `edge` is held by both records below:
+
+| Definition ID                          | Display name | Authoring status | Owned copies | CPU-match snapshots |
+| -------------------------------------- | ------------ | ---------------- | -----------: | ------------------: |
+| `a0ef723b-0b3f-498f-96e7-1f56a21cb3a1` | Edge         | published        |            0 |                   0 |
+| `4f4baa5d-e31b-44d9-b743-29b4d0db67fd` | Edge         | retired          |            0 |                   0 |
+
+The current absence of direct ownership or match references does not free the
+retired name: retired definitions reserve names under the approved policy. An
+explicit Author/Product decision and reviewed forward data migration must
+resolve this collision before a unique index or constraint over
+`lower(btrim(name))` can be installed. Enforcement must not automatically
+rename, delete, merge, or revive either record.
+
+### Published Creatures with two moves
+
+All 18 definitions below are published with two moves at positions `1` and `2`.
+The seed creates these definitions deterministically, so both existing data and
+clean seed setup are non-compliant with the four-move publication policy.
+
+| Definition ID                          | Definition name          | Owned copies | CPU-match snapshots |
+| -------------------------------------- | ------------------------ | -----------: | ------------------: |
+| `27cbcedf-1886-aa81-04b4-089b4c10cd87` | Grit Creature 1          |            0 |                   3 |
+| `c2c81cdc-5c15-84d1-6ba9-0271b1d3fdac` | Grit Creature 2          |            0 |                   3 |
+| `fc2c46fb-d960-b1bb-ea9a-93110b79e22d` | Grit Creature 3          |            0 |                   3 |
+| `0cba869b-d777-11f8-6b8c-c47d4d626558` | Mystic Creature 1        |            2 |                   2 |
+| `5340e0ee-d31c-93f5-0d59-39d0cd977f15` | Mystic Creature 2        |            2 |                   2 |
+| `a30d8e2e-42bf-574a-aa6f-1ebdf33c86b6` | Mystic Creature 3        |            2 |                   2 |
+| `eca9b943-9e05-834e-c85c-1175001d897c` | Spark Creature 1         |            1 |                   1 |
+| `ec9fb511-5dd2-8164-5f56-d9e13820c713` | Spark Creature 2         |            1 |                   1 |
+| `62d5bb93-78ad-5c44-412c-c7eca5f03250` | Spark Creature 3         |            1 |                   1 |
+| `65f102ad-ff11-876c-a4f7-e2e74167bc4c` | Spark Epic Creature      |            0 |                   0 |
+| `948a71e6-f04b-fcec-75ef-e401066ec8b8` | Spark Legendary Creature |            0 |                   0 |
+| `740b5400-8362-b728-3b76-9d232077732d` | Spark Rare Creature      |            0 |                   0 |
+| `a230fdda-cec0-c127-b4a2-e4dd20660e3a` | Spirit Creature 1        |            0 |                   0 |
+| `6e6b2c9f-27b2-2145-3b8a-219a0df622d7` | Spirit Creature 2        |            0 |                   0 |
+| `6f962f85-eaee-fd27-b2d7-c00c8af95098` | Spirit Creature 3        |            0 |                   0 |
+| `84790040-6ea8-6155-c4b7-dec3a22ac3ab` | Wit Creature 1           |            0 |                   0 |
+| `47f04de3-98d9-79ad-2759-7409c499c5ec` | Wit Creature 2           |            0 |                   0 |
+| `cdd5284b-0aaf-5c50-f820-787a7f6b1506` | Wit Creature 3           |            0 |                   0 |
+
+Manual gameplay/content remediation must supply and approve two additional
+valid moves for each affected definition, or approve a different explicit
+replacement/migration treatment that preserves owned copies and historical
+snapshots. Implementation must not invent move names, types, effects, values,
+costs, or balance. Existing CPU-match snapshots are historical records and must
+not be rewritten. Strict database publication enforcement must remain disabled
+until the seed and persisted catalogue have been remediated and the reference
+treatment has been reviewed.
+
+## Subsequent implementation branches
+
+Use focused branches in this order so constraints never encounter data known to
+violate them:
+
+1. `test/email-verification-nonblocking` — add regression coverage proving that
+   valid Auth0 access tokens with `email_verified` absent, `false`, or `true`
+   receive the same authentication result. Cover `/auth/me`, a representative
+   protected gameplay route, protected React routing, and the absence of Wits
+   institutional-identity claims in Wits-owned copy. Do not change Auth0 tenant
+   settings.
+2. `content/resolve-edge-definition-name` — after an explicit Author/Product
+   choice, apply only the reviewed forward data treatment for the two `Edge`
+   records. Test that the migration is bounded to the approved IDs, preserves
+   referenced/history data, is retry-safe, and leaves no duplicate
+   `lower(btrim(name))` key.
+3. `fix/card-definition-name-uniqueness` — add the database uniqueness invariant
+   and map its conflict through the Author service, OpenAPI response, and Author
+   UI. Test draft/published/retired conflicts, case and surrounding-whitespace
+   variants, concurrent writes, preserved display casing, unchanged same-record
+   edits, and multiple owned copies of one definition.
+4. `content/complete-creature-moves` — only after Cards/Game review supplies the
+   missing content, update the deterministic seed and apply the approved bounded
+   data migration. Test all affected IDs, exactly four valid ordered moves per
+   published Creature, seed repeatability, preserved ownership, and unchanged
+   historical match snapshots. Include gameplay/content review; automated tests
+   cannot approve balance.
+5. `fix/creature-four-move-publication` — enforce zero-to-four moves for Creature
+   drafts, a maximum of four at the database/API boundary, and exactly four for
+   publication and gameplay use. Update the OpenAPI schema and Author UI without
+   applying the rule to Power definitions. Test draft counts `0` through `4`,
+   rejection of a fifth move, publication failure for counts `0` through `3`,
+   exactly-four success, persisted move ordering, direct-database bypass,
+   concurrent child changes/publication, Power-card non-regression, seed/release
+   setup, and the game-rules/card-snapshot boundary.
 
 The existing Sprint 1 demo event carries over as an unchanged `events` row.
 For local development, `basic-demo/0003_sprint_1_demo_challenge.sql` supplies one
