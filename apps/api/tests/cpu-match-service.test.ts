@@ -23,7 +23,8 @@ describe('CPU match service', () => {
     const databaseError = new Error(
       'duplicate key value violates unique constraint',
     );
-    const query = vi.fn(async (statement: string) => {
+    const query = vi.fn(async (...args: [string, unknown[]?]) => {
+      const [statement] = args;
       if (statement === 'begin') {
         return { rows: [] };
       }
@@ -44,7 +45,8 @@ describe('CPU match service', () => {
 
   it('applies the player action and server CPU action in one transaction', async () => {
     const state = createBattleState(deck('player'), deck('cpu'));
-    const query = vi.fn(async (statement: string) => {
+    const query = vi.fn(async (...args: [string, unknown[]?]) => {
+      const [statement] = args;
       if (statement === 'begin' || statement === 'commit') {
         return { rows: [] };
       }
@@ -68,30 +70,11 @@ describe('CPU match service', () => {
         };
       }
 
-      if (statement.includes('submission_id =')) {
-        return { rows: [] };
+      if (statement.includes('with sequence_base as materialized')) {
+        return { rows: [persistenceResult(2)] };
       }
 
-      if (statement.includes('insert into public.cpu_match_rounds')) {
-        return {
-          rows: [{ id: 'a3000000-0000-4000-8000-000000000001' }],
-        };
-      }
-
-      if (statement.includes('select count(*)::text')) {
-        return { rows: [{ count: '0' }] };
-      }
-
-      if (statement.includes('insert into public.cpu_match_actions')) {
-        return {
-          rows: [{ id: 'a4000000-0000-4000-8000-000000000001' }],
-        };
-      }
-
-      if (
-        statement.includes('update public.cpu_match_actions') ||
-        statement.includes('update public.cpu_matches')
-      ) {
+      if (statement.includes('select response')) {
         return { rows: [] };
       }
 
@@ -128,11 +111,87 @@ describe('CPU match service', () => {
     expect(
       query.mock.calls.filter(([statement]) => statement === 'commit'),
     ).toHaveLength(1);
+    expect(query).toHaveBeenCalledTimes(5);
+    const persistenceCall = query.mock.calls.find(([statement]) =>
+      statement.includes('with sequence_base as materialized'),
+    );
+    expect(persistenceCall).toBeDefined();
+    expect(persistenceCall?.[0]).toContain('jsonb_array_elements');
+    expect(persistenceCall?.[0]).toContain('with ordinality');
+    expect(persistenceCall?.[0]).toContain('coalesce(max(sequence), 0)');
+    expect(persistenceCall?.[0]).toContain(
+      'insert into public.cpu_match_rounds',
+    );
+    expect(persistenceCall?.[0]).toContain(
+      'insert into public.cpu_match_actions',
+    );
+    expect(persistenceCall?.[0]).toContain('update public.cpu_matches');
+    expect(JSON.parse(String(persistenceCall?.[1]?.[5]))).toHaveLength(2);
     expect(
-      query.mock.calls.filter(([statement]) =>
-        statement.includes('insert into public.cpu_match_actions'),
+      query.mock.calls.some(([statement]) =>
+        statement.includes('select count(*)::text'),
       ),
-    ).toHaveLength(2);
+    ).toBe(false);
+    expect(
+      query.mock.calls.some(([statement]) =>
+        statement.includes('update public.cpu_match_actions'),
+      ),
+    ).toBe(false);
+  });
+
+  it('rolls back when combined persistence invariants are not satisfied', async () => {
+    const state = createBattleState(deck('player'), deck('cpu'));
+    const query = vi.fn(async (statement: string) => {
+      if (statement === 'begin' || statement === 'rollback') {
+        return { rows: [] };
+      }
+      if (statement.includes('from public.cpu_matches')) {
+        return {
+          rows: [
+            {
+              id: MATCH_ID,
+              player_id: PLAYER_ID,
+              status: 'active',
+              state,
+              version: 0,
+              turn_started_at: null,
+              turn_deadline: null,
+              winner: null,
+              started_at: new Date('2026-08-16T00:00:00.000Z'),
+              completed_at: null,
+            },
+          ],
+        };
+      }
+      if (statement.includes('with sequence_base as materialized')) {
+        return {
+          rows: [{ ...persistenceResult(2), match_update_count: 0 }],
+        };
+      }
+      if (statement.includes('select response')) {
+        return { rows: [] };
+      }
+      throw new Error(`Unexpected SQL: ${statement}`);
+    });
+    const service = createCpuMatchService(fakeDatabase(query), {
+      randomInt: () => 0,
+    });
+
+    await expect(
+      service.submitAction({
+        playerId: PLAYER_ID,
+        matchId: MATCH_ID,
+        submissionId: 'a5000000-0000-4000-8000-000000000003',
+        expectedVersion: 0,
+        action: {
+          type: 'select_initial_creature',
+          creatureId: 'player-creature-1',
+        },
+      }),
+    ).rejects.toThrow('transition persistence invariant failed');
+
+    expect(query).toHaveBeenCalledWith('rollback');
+    expect(query).not.toHaveBeenCalledWith('commit');
   });
 
   it('recovers one active match and its latest action in one read snapshot', async () => {
@@ -356,6 +415,26 @@ function fakeDatabase(query: ReturnType<typeof vi.fn>): CpuMatchDatabase {
 
   return {
     connect: vi.fn().mockResolvedValue(client),
+  };
+}
+
+function persistenceResult(actionCount: number) {
+  const roundId = 'a3000000-0000-4000-8000-000000000001';
+
+  return {
+    action_count: actionCount,
+    action_match_matches: true,
+    action_round_matches: true,
+    base_sequence: 0,
+    first_sequence: 1,
+    last_sequence: actionCount,
+    match_update_count: 1,
+    player_receipt_count: 1,
+    round_count: 1,
+    round_id: roundId,
+    round_match_id: MATCH_ID,
+    unexpected_receipt_count: 0,
+    updated_match_id: MATCH_ID,
   };
 }
 

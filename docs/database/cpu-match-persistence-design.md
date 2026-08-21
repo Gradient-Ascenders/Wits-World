@@ -37,13 +37,21 @@ does not remove or invalidate a match snapshot.
 Every player action runs in a transaction:
 
 1. Lock the owning `cpu_matches` row with `FOR UPDATE`.
-2. Return the previously stored response when the submission id was already
-   completed.
+2. In a fresh statement after the lock is acquired, return the previously
+   stored response when the submission id was already completed. This lookup
+   must not be folded into the locking statement: a statement snapshot created
+   while waiting for another writer does not see that writer's newly committed
+   action receipt through a subquery.
 3. Reject a completed match or stale expected version.
 4. Apply the player action through the shared rules package.
 5. Apply all required CPU actions using the server random source.
-6. Insert the round and ordered action audit rows.
-7. Update the match state, version, timer, and terminal result.
+6. Use one data-modifying statement to insert the round, bulk-insert every
+   transition in explicit ordinal order, store the player submission receipt,
+   and update the match state, version, timer, and terminal result. The next
+   action sequence is based on the existing maximum action sequence, not the
+   match version, because rounds contain a variable number of transitions.
+7. Validate the returned round identity, action count and sequence range,
+   receipt count, and match update before committing.
 8. Commit the complete transition.
 
 Any failure rolls back the match state and all audit rows. The unique
