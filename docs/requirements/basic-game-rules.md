@@ -13,6 +13,23 @@ or ownership result.
 
 ## Roles, authority, and account lifecycle
 
+### Authentication and email verification
+
+- Auth0 authentication remains required for normal gameplay and every protected
+  Wits World application feature.
+- Email verification is not required for that access. An Auth0-authenticated
+  principal with `email_verified: true`, `email_verified: false`, or no
+  `email_verified` claim has ordinary application access under the existing
+  valid-token, local-lifecycle, role, and object-permission rules.
+- Wits World must not claim that email verification proves Wits institutional
+  identity. Wits single sign-on and any institutional identity requirement
+  remain separate decisions.
+- Automatic Auth0 verification email for Wits World database-connection
+  sign-ups is intentionally disabled through tenant configuration. Password
+  reset and recovery email remains enabled. The authoritative architecture and
+  tenant settings are defined by the [Auth0 authentication ADR](../architecture/decisions/ADR-005-auth0-authentication.md#email-verification)
+  and [deployment guide](../deployment/azure-deployment-setup.md#91-auth0-email-delivery-policy).
+
 ### Roles and authoring
 
 - Basic has only two roles: Player and Author. There is no separate
