@@ -388,6 +388,44 @@ The application login and logout UI is implemented. A production login/logout
 check still requires a human operator with a safe test account and must be
 recorded for the release being validated.
 
+### 9.1 Auth0 email-delivery policy
+
+Email verification is not part of the Wits World account lifecycle. This is an
+Auth0 tenant configuration requirement, not application logic: do not add
+`email_verified` to API or browser authorisation, and do not add Wits World
+password collection, storage, or reset handling.
+
+For the Wits World database connection, disable the connection-level automatic
+email-verification-on-sign-up control. Auth0 currently labels this **Verify
+email on sign up** where the Email attribute is configured (Authentication >
+Database > connection > Attributes > Configure Email). This setting must be
+off because it can independently send a verification message even when email
+templates are disabled. See Auth0's [database-attribute guidance](https://auth0.com/docs/authenticate/database-connections/activate-and-configure-attributes-for-flexible-identifiers)
+and its [current support guidance for this setting](https://support.auth0.com/center/s/article/auth0-sending-email-verification-emails-when-disabled).
+
+Also disable the Auth0 verification-email mechanism under Branding > Email
+Templates: disable **Verification link email** and, if it is enabled for the
+tenant, **Verification code email**. Auth0 documents these as separate email
+templates that can be enabled or disabled; both must be off where available so
+the tenant has no automatic verification-mail path for Wits World sign-ups.
+Do not disable **Change password link email** or **Change password code email**:
+password reset/recovery must remain enabled and unchanged. See Auth0's [Email
+Templates documentation](https://auth0.com/docs/customize/email/email-templates).
+
+The repository does not manage Auth0 tenant configuration as code. An
+authorised tenant administrator must make this change manually and record the
+result with the release evidence.
+
+After the tenant change, use a fresh non-production/test account through the
+normal Wits World sign-up flow:
+
+1. Confirm sign-up succeeds and no automatic verification email is sent.
+2. Confirm the user can sign in immediately, then confirm `/auth/me` and a
+   representative protected feature work.
+3. Confirm Auth0 password reset/recovery still sends its email and completes
+   normally.
+4. Confirm no Wits World screen says verification is required.
+
 ---
 
 ## 10. Health Checks

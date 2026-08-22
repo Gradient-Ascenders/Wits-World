@@ -206,6 +206,33 @@ collecting passwords inside Wits World.
 Social login, enterprise identity providers, and Wits single sign-on are not
 included in the initial implementation.
 
+## Email verification
+
+Auth0 authentication is required for normal gameplay and protected Wits World
+application features. Email verification is intentionally not part of the Wits
+World account lifecycle and is not an additional access gate.
+
+An authenticated principal whose `email_verified` claim is `true`, `false`, or
+absent must be treated identically for ordinary application authorisation.
+Access continues to depend on a valid Wits World API access token, the exact
+`(iss, sub)` identity, an active local-player lifecycle, and any required local
+role or object permission. The Auth0 `email_verified` claim is optional identity
+metadata: Auth0 may still expose it for existing accounts or other identity
+providers, but Wits World must ignore it for ordinary application
+authorisation.
+
+Email verification does not prove that a person has a Wits institutional
+identity, and Wits World must not present it that way. A future Wits single
+sign-on or institutional eligibility policy would require its own approved
+identity contract.
+
+Automatic verification email for Wits World database-connection sign-ups is
+intentionally disabled in the Auth0 tenant. This is external tenant
+configuration, not application logic. The [deployment requirement](../../deployment/azure-deployment-setup.md#91-auth0-email-delivery-policy)
+defines the required connection and email-template settings; it leaves Auth0
+password-reset/recovery email enabled and introduces no Wits World password
+handling.
+
 ## Password reset
 
 Password reset will use Auth0's hosted reset flow for database-connection users.
@@ -329,6 +356,8 @@ contain safe configuration or placeholders.
 - The API has an explicit issuer-and-audience trust boundary.
 - React and Fastify have supported Auth0 integration paths.
 - Registration and password reset can use hosted Auth0 interfaces.
+- Authenticated players are not incorrectly denied application access because
+  their email is unverified or their identity has no `email_verified` claim.
 - The team avoids operating an identity server.
 - Authentication remains separate from local application authorisation.
 - Local Player and Author permissions remain under server-side application
@@ -432,7 +461,6 @@ The team must still confirm:
 
 - whether Wits SSO is available or required;
 - production web and API domains;
-- whether email verification is required before gameplay;
 - whether any institutional restrictions apply to Auth0.
 
 ---
