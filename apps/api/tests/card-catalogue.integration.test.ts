@@ -99,6 +99,33 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
     expect(migrationResult.applied).toContain(
       '0010_add_card_modifier_metadata.sql',
     );
+    expect(
+      migrationResult.applied.indexOf(
+        '0017_resolve_edge_card_definition_name.sql',
+      ),
+    ).toBeLessThan(
+      migrationResult.applied.indexOf(
+        '0018_enforce_card_definition_name_uniqueness.sql',
+      ),
+    );
+  });
+
+  it('keeps deterministic catalogue seeds free of normalized duplicate names', async () => {
+    await withDatabaseClient(temporaryConfig, async (client) => {
+      const result = await client.query<{
+        duplicate_group_count: number;
+      }>(
+        `select count(*)::int as duplicate_group_count
+           from (
+             select lower(btrim(name))
+               from public.card_definitions
+              group by lower(btrim(name))
+             having count(*) > 1
+           ) duplicate_groups`,
+      );
+
+      expect(result.rows).toEqual([{ duplicate_group_count: 0 }]);
+    });
   });
 
   it('seeds 3 Common Creatures and 2 Common Power cards for each affinity', async () => {

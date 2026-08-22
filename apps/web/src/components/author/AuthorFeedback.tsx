@@ -21,7 +21,7 @@ export function AuthorFeedback({
         role="alert"
         tabIndex={-1}
       >
-        <strong>{errorTitle(error.failure)}</strong>
+        <strong>{errorTitle(error)}</strong>
         <p>{error.detail}</p>
         {error.requestId ? <p>Request reference: {error.requestId}</p> : null}
       </div>
@@ -45,7 +45,9 @@ export function AuthorFeedback({
   return null;
 }
 
-function errorTitle(failure: AuthorApiError['failure']): string {
+function errorTitle(error: AuthorApiError): string {
+  if (error.code === 'CARD_NAME_CONFLICT') return 'Card name already in use';
+  const { failure } = error;
   if (failure === 'conflict') return 'This content changed state';
   if (failure === 'not-ready') return 'Publication requirements are not met';
   if (failure === 'forbidden') return 'Author permission was refused';

@@ -21,6 +21,7 @@ export class AuthorApiError extends Error {
     public readonly detail: string,
     public readonly requestId?: string,
     public readonly validation: readonly AuthorValidationFailure[] = [],
+    public readonly code?: string,
   ) {
     super('The author request could not be completed.');
     this.name = 'AuthorApiError';
@@ -505,6 +506,7 @@ function parseAuthorError(status: number, payload: unknown): AuthorApiError {
       : 'The API could not complete the request.';
   const requestId =
     typeof payload.requestId === 'string' ? payload.requestId : undefined;
+  const code = typeof payload.code === 'string' ? payload.code : undefined;
   const validation = Array.isArray(payload.validation)
     ? payload.validation.flatMap((failure) => {
         if (
@@ -520,30 +522,42 @@ function parseAuthorError(status: number, payload: unknown): AuthorApiError {
     : [];
 
   if (status === 401) {
-    return new AuthorApiError('authorization', detail, requestId, validation);
+    return new AuthorApiError(
+      'authorization',
+      detail,
+      requestId,
+      validation,
+      code,
+    );
   }
 
   if (status === 403) {
-    return new AuthorApiError('forbidden', detail, requestId, validation);
+    return new AuthorApiError('forbidden', detail, requestId, validation, code);
   }
 
   if (status === 404) {
-    return new AuthorApiError('not-found', detail, requestId, validation);
+    return new AuthorApiError('not-found', detail, requestId, validation, code);
   }
 
   if (status === 409) {
-    return new AuthorApiError('conflict', detail, requestId, validation);
+    return new AuthorApiError('conflict', detail, requestId, validation, code);
   }
 
   if (status === 422) {
-    return new AuthorApiError('not-ready', detail, requestId, validation);
+    return new AuthorApiError('not-ready', detail, requestId, validation, code);
   }
 
   if (status === 400) {
-    return new AuthorApiError('validation', detail, requestId, validation);
+    return new AuthorApiError(
+      'validation',
+      detail,
+      requestId,
+      validation,
+      code,
+    );
   }
 
-  return new AuthorApiError('unavailable', detail, requestId, validation);
+  return new AuthorApiError('unavailable', detail, requestId, validation, code);
 }
 
 function parseEnvelope<T>(

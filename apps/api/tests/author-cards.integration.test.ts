@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../src/app.js';
 import type { AccessTokenVerifier } from '../src/auth/access-token-verifier.js';
 import {
+  AuthorCardNameConflictError,
   AuthorCardNotReadyError,
   AuthorCardStateConflictError,
   type AuthorCardDefinition,
@@ -290,6 +291,54 @@ describe('author card API', () => {
 
     expect(response.json()).toMatchObject({
       code: 'INVALID_CARD',
+    });
+  });
+
+  it.each([
+    ['create', 'POST', '/api/v1/author/cards'],
+    ['rename', 'PUT', `/api/v1/author/cards/${CARD_ID}`],
+  ] as const)(
+    'maps a card-name conflict during %s to the stable 409 contract',
+    async (operation, method, url) => {
+      service[
+        operation === 'create' ? 'createCard' : 'updateCard'
+      ].mockRejectedValue(new AuthorCardNameConflictError());
+
+      const response = await authenticatedRequest({
+        method,
+        url,
+        payload: validCreatureBody(),
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toEqual({
+        code: 'CARD_NAME_CONFLICT',
+        detail: 'Another card definition already uses that name.',
+        requestId: expect.any(String),
+        status: 409,
+        title: 'Card name already in use',
+        type: 'https://wits.world/problems/card_name_conflict',
+      });
+    },
+  );
+
+  it('does not misreport an unrelated database uniqueness failure as a card-name conflict', async () => {
+    service.createCard.mockRejectedValue(
+      Object.assign(new Error('database unique violation'), {
+        code: '23505',
+        constraint: 'author_content_audit_pkey',
+      }),
+    );
+
+    const response = await authenticatedRequest({
+      method: 'POST',
+      url: '/api/v1/author/cards',
+      payload: validCreatureBody(),
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toMatchObject({
+      code: 'INTERNAL_ERROR',
     });
   });
 
@@ -589,6 +638,34 @@ describe('author card OpenAPI documentation', () => {
         },
       },
     });
+  });
+
+  it('documents normalized-name conflicts for card creation and updates', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/documentation/json',
+    });
+
+    const document = response.json<{
+      paths: Record<
+        string,
+        Record<
+          string,
+          {
+            responses?: Record<string, { description?: string }>;
+          }
+        >
+      >;
+    }>();
+
+    expect(
+      document.paths['/api/v1/author/cards']?.post?.responses?.['409']
+        ?.description,
+    ).toContain('CARD_NAME_CONFLICT');
+    expect(
+      document.paths['/api/v1/author/cards/{cardId}']?.put?.responses?.['409']
+        ?.description,
+    ).toContain('CARD_NAME_CONFLICT');
   });
 });
 

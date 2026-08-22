@@ -182,7 +182,11 @@ describe('author API client', () => {
         getAccessToken,
         signal: new AbortController().signal,
       }),
-    ).rejects.toMatchObject({ failure, requestId: 'request-error' });
+    ).rejects.toMatchObject({
+      code,
+      failure,
+      requestId: 'request-error',
+    });
   });
 
   it('preserves field validation details for accessible form mapping', async () => {

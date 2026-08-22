@@ -359,6 +359,89 @@ describe('Basic author console', () => {
     });
   });
 
+  it('associates a name conflict with the field, preserves the draft, and retries successfully', async () => {
+    const user = userEvent.setup();
+    let createAttempts = 0;
+    installAuthorApi({
+      cards: [
+        cardFixture({
+          authoringStatus: 'published',
+          id: '50000000-0000-4000-8000-000000000099',
+          isActive: true,
+          name: 'Edge',
+        }),
+      ],
+      handleRequest: ({ init, method, path }) => {
+        if (path !== '/author/cards' || method !== 'POST') return undefined;
+        createAttempts += 1;
+        const body = JSON.parse(String(init?.body));
+
+        if (body.name.trim().toLowerCase() === 'edge') {
+          return problemResponse(
+            409,
+            'CARD_NAME_CONFLICT',
+            'Another card definition already uses that name.',
+          );
+        }
+
+        return jsonResponse(
+          {
+            card: {
+              ...cardFixture(),
+              ...body,
+              id: '50000000-0000-4000-8000-000000000100',
+              moves: body.moves.map((move: object) => ({
+                id: cardFixture().moves[0]!.id,
+                ...move,
+              })),
+            },
+            requestId: 'request-card-retry',
+          },
+          201,
+        );
+      },
+    });
+    renderAuthorRoute();
+
+    await screen.findByRole('heading', { name: 'Author console' });
+    await user.click(screen.getByRole('button', { name: 'Card catalogue' }));
+
+    const name = screen.getByLabelText('Card name');
+    const description = screen.getByLabelText('Display description (optional)');
+    const artwork = screen.getByLabelText('Artwork URL (optional)');
+    const moveName = screen.getByLabelText('Move name');
+
+    await user.type(name, 'edge');
+    await user.type(description, 'Preserve this complete draft.');
+    await user.type(artwork, 'https://example.test/cards/edge-draft.png');
+    await user.type(moveName, 'Careful Step');
+    await user.click(screen.getByRole('button', { name: 'Create draft card' }));
+
+    expect(
+      await screen.findByText('This card name is already in use.'),
+    ).toBeVisible();
+    expect(name).toHaveAttribute('aria-invalid', 'true');
+    expect(name).toHaveAttribute('aria-describedby', 'card-name-error');
+    expect(name).toHaveFocus();
+    expect(description).toHaveValue('Preserve this complete draft.');
+    expect(artwork).toHaveValue('https://example.test/cards/edge-draft.png');
+    expect(moveName).toHaveValue('Careful Step');
+
+    await user.clear(name);
+    await user.type(name, 'Unique Edge Successor');
+    expect(
+      screen.queryByText('This card name is already in use.'),
+    ).not.toBeInTheDocument();
+    expect(name).toHaveAttribute('aria-invalid', 'false');
+    expect(description).toHaveValue('Preserve this complete draft.');
+    expect(moveName).toHaveValue('Careful Step');
+
+    await user.click(screen.getByRole('button', { name: 'Create draft card' }));
+
+    expect(await screen.findByText('Draft card created.')).toHaveFocus();
+    expect(createAttempts).toBe(2);
+  });
+
   it('shows incomplete associations and the API publication rejection', async () => {
     const user = userEvent.setup();
     installAuthorApi({

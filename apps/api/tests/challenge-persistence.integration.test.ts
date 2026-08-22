@@ -91,6 +91,8 @@ describe.skipIf(!runIntegrationTests)(
           '0014_harden_author_challenge_lifecycle.sql',
           '0015_add_card_authoring_lifecycle.sql',
           '0016_add_event_authoring_lifecycle.sql',
+          '0017_resolve_edge_card_definition_name.sql',
+          '0018_enforce_card_definition_name_uniqueness.sql',
         ],
         skipped: [],
       });
@@ -114,6 +116,8 @@ describe.skipIf(!runIntegrationTests)(
           '0014_harden_author_challenge_lifecycle.sql',
           '0015_add_card_authoring_lifecycle.sql',
           '0016_add_event_authoring_lifecycle.sql',
+          '0017_resolve_edge_card_definition_name.sql',
+          '0018_enforce_card_definition_name_uniqueness.sql',
         ],
       });
     }, 30_000);
