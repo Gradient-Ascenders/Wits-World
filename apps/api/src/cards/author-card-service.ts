@@ -585,6 +585,12 @@ function mapCard(row: CardRow): AuthorCardDefinition {
 }
 
 function assertCardReadyForPublication(card: AuthorCardDefinition): void {
+  if (card.category === 'creature' && card.moves.length !== 4) {
+    throw new AuthorCardNotReadyError(
+      'Creature cards require exactly four moves before publication.',
+    );
+  }
+
   try {
     validateCardDefinition({
       name: card.name,

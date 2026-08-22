@@ -93,6 +93,7 @@ describe.skipIf(!runIntegrationTests)(
           '0016_add_event_authoring_lifecycle.sql',
           '0017_resolve_edge_card_definition_name.sql',
           '0018_enforce_card_definition_name_uniqueness.sql',
+          '0019_limit_creature_move_positions.sql',
         ],
         skipped: [],
       });
@@ -118,6 +119,7 @@ describe.skipIf(!runIntegrationTests)(
           '0016_add_event_authoring_lifecycle.sql',
           '0017_resolve_edge_card_definition_name.sql',
           '0018_enforce_card_definition_name_uniqueness.sql',
+          '0019_limit_creature_move_positions.sql',
         ],
       });
     }, 30_000);

@@ -88,6 +88,7 @@ export function AppRoutes({
                 <AuthorRoute>
                   <AuthorConsolePage
                     apiBaseUrl={apiBaseUrl}
+                    mapFactory={mapFactory}
                     mapboxAccessToken={mapboxAccessToken}
                   />
                 </AuthorRoute>

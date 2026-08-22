@@ -49,11 +49,13 @@ commit.
 
 ### API variables
 
-| Variable    | Required | Example     | Purpose                                  |
-| ----------- | -------- | ----------- | ---------------------------------------- |
-| `HOST`      | Yes      | `127.0.0.1` | Network interface used by the API server |
-| `PORT`      | Yes      | `3000`      | TCP port used by the API server          |
-| `LOG_LEVEL` | Yes      | `info`      | Fastify log level                        |
+| Variable                  | Required | Example     | Purpose                                   |
+| ------------------------- | -------- | ----------- | ----------------------------------------- |
+| `HOST`                    | Yes      | `127.0.0.1` | Network interface used by the API server  |
+| `PORT`                    | Yes      | `3000`      | TCP port used by the API server           |
+| `LOG_LEVEL`               | Yes      | `info`      | Fastify log level                         |
+| `RATE_LIMIT_MAX_REQUESTS` | No       | `120`       | Authenticated requests allowed per window |
+| `RATE_LIMIT_WINDOW_MS`    | No       | `60000`     | Per-process fixed-window duration in ms   |
 
 Supported log levels are:
 
@@ -68,6 +70,11 @@ Supported log levels are:
 `PORT` must be an integer between `1` and `65535`.
 
 Missing or invalid required API configuration prevents the server from starting.
+
+Rate protection is keyed by the verified local player identity and returns
+`429 RATE_LIMITED` with `Retry-After` and `RateLimit-*` headers. It is an
+application-process control, not a substitute for deployment-level protection
+of invalid-token traffic or aggregation across multiple API instances.
 
 ### Database variables
 

@@ -66,9 +66,9 @@ export function validateCardDefinition(input: CardDefinitionInput): void {
     assertNonNegativeInteger(input.power, 'Creature Power');
 
     const moves = input.moves ?? [];
-    if (moves.length === 0) {
+    if (moves.length > 4) {
       throw new InvalidCardDefinitionError(
-        'Creature cards must define at least one move.',
+        'Creature cards can define at most four moves.',
       );
     }
 
@@ -109,6 +109,11 @@ function validateMoves(moves: CardMoveInput[]): void {
 
   for (const move of moves) {
     assertPositiveInteger(move.position, 'Move position');
+    if (move.position > 4) {
+      throw new InvalidCardDefinitionError(
+        'Creature move positions must be between one and four.',
+      );
+    }
     assertUniquePosition(positions, move.position, 'move');
     assertNonBlank(move.name, 'Move name');
     assertEnum(move.moveType, moveTypes, 'Move type');

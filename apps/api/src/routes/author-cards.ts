@@ -144,6 +144,7 @@ const moveBodySchema = {
     position: {
       type: 'integer',
       minimum: 1,
+      maximum: 4,
     },
     name: {
       type: 'string',
@@ -243,10 +244,10 @@ const creatureCardBodySchema = {
     },
     moves: {
       type: 'array',
-      minItems: 1,
+      maxItems: 4,
       items: moveBodySchema,
       description:
-        'Creature cards require at least one move. Move positions must be unique.',
+        'Draft Creature cards allow zero through four moves. Move positions must be unique; publication requires exactly four moves.',
     },
     effects: {
       type: 'array',

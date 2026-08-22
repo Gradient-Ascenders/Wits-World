@@ -359,6 +359,111 @@ describe('Basic author console', () => {
     });
   });
 
+  it('accepts a zero-move Creature draft client-side', async () => {
+    const user = userEvent.setup();
+    const fetchMock = installAuthorApi({ cards: [] });
+    renderAuthorRoute();
+
+    await screen.findByRole('heading', { name: 'Author console' });
+    await user.click(screen.getByRole('button', { name: 'Card catalogue' }));
+    await user.type(screen.getByLabelText('Card name'), 'Move-free draft');
+    await user.click(screen.getByRole('button', { name: 'Remove move' }));
+    await user.click(screen.getByRole('button', { name: 'Create draft card' }));
+
+    expect(await screen.findByText('Draft card created.')).toHaveFocus();
+    const createCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input).endsWith('/author/cards') && init?.method === 'POST',
+    );
+    expect(JSON.parse(String(createCall?.[1]?.body))).toMatchObject({
+      category: 'creature',
+      moves: [],
+      name: 'Move-free draft',
+    });
+  });
+
+  it('allows a fourth Creature move and prevents adding a fifth', async () => {
+    const user = userEvent.setup();
+    installAuthorApi({ cards: [] });
+    renderAuthorRoute();
+
+    await screen.findByRole('heading', { name: 'Author console' });
+    await user.click(screen.getByRole('button', { name: 'Card catalogue' }));
+    const addMove = screen.getByRole('button', { name: 'Add move' });
+    await user.click(addMove);
+    await user.click(addMove);
+    await user.click(addMove);
+
+    expect(screen.getAllByLabelText('Move name')).toHaveLength(4);
+    expect(addMove).toBeDisabled();
+    expect(addMove).toHaveAccessibleDescription(
+      'Creature drafts may contain up to four moves. Publication requires exactly four.',
+    );
+    await user.click(addMove);
+    expect(screen.getAllByLabelText('Move name')).toHaveLength(4);
+  });
+
+  it('surfaces the API publication rule for a Creature with fewer than four moves', async () => {
+    const user = userEvent.setup();
+    installAuthorApi({
+      cards: [cardFixture()],
+      publishCardError: problemResponse(
+        422,
+        'CONTENT_NOT_READY',
+        'Creature cards require exactly four moves before publication.',
+      ),
+    });
+    renderAuthorRoute();
+
+    await screen.findByRole('heading', { name: 'Author console' });
+    await user.click(screen.getByRole('button', { name: 'Card catalogue' }));
+    await user.click(screen.getByRole('button', { name: /Campus Owl/ }));
+    await user.click(screen.getByRole('button', { name: 'Publish card' }));
+
+    expect(
+      await screen.findByText(
+        'Creature cards require exactly four moves before publication.',
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText('Publication requirements are not met'),
+    ).toBeVisible();
+  });
+
+  it('edits and saves an existing valid four-move Creature', async () => {
+    const user = userEvent.setup();
+    const fetchMock = installAuthorApi({
+      cards: [
+        cardFixture({
+          moves: Array.from({ length: 4 }, (_, index) =>
+            cardMoveFixture(index + 1),
+          ),
+        }),
+      ],
+    });
+    renderAuthorRoute();
+
+    await screen.findByRole('heading', { name: 'Author console' });
+    await user.click(screen.getByRole('button', { name: 'Card catalogue' }));
+    await user.click(screen.getByRole('button', { name: /Campus Owl/ }));
+    const moveNames = screen.getAllByLabelText('Move name');
+    await user.clear(moveNames[3]!);
+    await user.type(moveNames[3]!, 'Final Flourish');
+    await user.click(screen.getByRole('button', { name: 'Save card' }));
+
+    expect(await screen.findByText('Card changes saved.')).toHaveFocus();
+    const updateCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input).endsWith(`/author/cards/${cardFixture().id}`) &&
+        init?.method === 'PUT',
+    );
+    expect(JSON.parse(String(updateCall?.[1]?.body)).moves).toHaveLength(4);
+    expect(JSON.parse(String(updateCall?.[1]?.body)).moves[3]).toMatchObject({
+      name: 'Final Flourish',
+      position: 4,
+    });
+  });
+
   it('associates a name conflict with the field, preserves the draft, and retries successfully', async () => {
     const user = userEvent.setup();
     let createAttempts = 0;
@@ -1612,6 +1717,7 @@ interface ApiOptions {
   handleRequest?: (
     request: RequestDetails,
   ) => Promise<Response> | Response | undefined;
+  publishCardError?: Response;
   publishEventError?: Response;
   questions?: AuthorQuestion[];
   updateEventError?: Response;
@@ -1827,6 +1933,7 @@ function installAuthorApi(options: ApiOptions = {}) {
         });
       }
       if (path === `/author/cards/${cardFixture().id}/publish`) {
+        if (options.publishCardError) return options.publishCardError.clone();
         const card = {
           ...(cards.find((item) => item.id === cardFixture().id) ??
             cardFixture()),
@@ -1937,25 +2044,27 @@ function cardFixture(overrides: Partial<AuthorCard> = {}): AuthorCard {
     id: '50000000-0000-4000-8000-000000000001',
     imageUrl: null,
     isActive: false,
-    moves: [
-      {
-        effectType: 'damage',
-        effectValue: 12,
-        id: '60000000-0000-4000-8000-000000000001',
-        modifierDurationTurns: null,
-        modifierOperation: null,
-        modifierStat: null,
-        moveType: 'basic',
-        name: 'Quick Peck',
-        position: 1,
-        powerCost: 1,
-      },
-    ],
+    moves: [cardMoveFixture(1)],
     name: 'Campus Owl',
     power: 20,
     rarity: 'common',
     updatedAt: '2026-08-16T08:00:00.000Z',
     ...overrides,
+  };
+}
+
+function cardMoveFixture(position: number): AuthorCard['moves'][number] {
+  return {
+    effectType: 'damage',
+    effectValue: 12,
+    id: `60000000-0000-4000-8000-${String(position).padStart(12, '0')}`,
+    modifierDurationTurns: null,
+    modifierOperation: null,
+    modifierStat: null,
+    moveType: 'basic',
+    name: position === 1 ? 'Quick Peck' : `Move ${position}`,
+    position,
+    powerCost: 1,
   };
 }
 

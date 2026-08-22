@@ -75,6 +75,48 @@ describe('card definition validation', () => {
     ).not.toThrow();
   });
 
+  it('allows zero through four ordered Creature moves for drafts', () => {
+    expect(() =>
+      validateCardDefinition({
+        ...validCreature,
+        moves: [],
+      }),
+    ).not.toThrow();
+
+    expect(() =>
+      validateCardDefinition({
+        ...validCreature,
+        moves: [1, 2, 3, 4].map((position) => ({
+          ...validCreature.moves[0]!,
+          name: `Move ${position}`,
+          position,
+        })),
+      }),
+    ).not.toThrow();
+  });
+
+  it('rejects a fifth Creature move', () => {
+    expect(() =>
+      validateCardDefinition({
+        ...validCreature,
+        moves: [1, 2, 3, 4, 5].map((position) => ({
+          ...validCreature.moves[0]!,
+          name: `Move ${position}`,
+          position,
+        })),
+      }),
+    ).toThrow('at most four moves');
+  });
+
+  it('rejects a Creature move position above four', () => {
+    expect(() =>
+      validateCardDefinition({
+        ...validCreature,
+        moves: [{ ...validCreature.moves[0]!, position: 5 }],
+      }),
+    ).toThrow('positions must be between one and four');
+  });
+
   it.each([
     ['invalid affinity', { ...validCreature, affinity: 'ember' }],
     [

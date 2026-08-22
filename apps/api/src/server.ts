@@ -24,6 +24,7 @@ import { createAuthorEventService } from './events/author-event-service.js';
 import { createAuthorChallengeService } from './challenges/author-challenge-service.js';
 import { createAuthorCardService } from './cards/author-card-service.js';
 import { createCpuMatchService } from './matches/cpu-match-service.js';
+import { createAuthenticatedRateProtection } from './security/rate-protection.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
@@ -72,6 +73,10 @@ async function startServer(): Promise<void> {
     authConfig,
     corsConfig,
     playerIdentityService: createPlayerIdentityService(database),
+    rateProtection: createAuthenticatedRateProtection({
+      maxRequests: config.rateLimitMaxRequests,
+      windowMs: config.rateLimitWindowMs,
+    }),
 
     challengeAttemptServices: {
       start: challengeAttemptStartService,
