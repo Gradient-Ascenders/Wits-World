@@ -435,7 +435,14 @@ describe('author card API', () => {
       },
       {
         ...validCreatureBody(),
-        moves: [],
+        moves: [
+          ...validCreatureBody().moves,
+          ...[2, 3, 4, 5].map((position) => ({
+            ...validCreatureBody().moves[0],
+            name: `Move ${position}`,
+            position,
+          })),
+        ],
       },
       {
         ...validCreatureBody(),
@@ -579,6 +586,15 @@ describe('author card OpenAPI documentation', () => {
                         string,
                         {
                           enum?: unknown[];
+                          items?: {
+                            properties?: Record<
+                              string,
+                              {
+                                maximum?: number;
+                                minimum?: number;
+                              }
+                            >;
+                          };
                           minimum?: number;
                           minItems?: number;
                           maxItems?: number;
@@ -619,7 +635,15 @@ describe('author card OpenAPI documentation', () => {
           minimum: 0,
         },
         moves: {
-          minItems: 1,
+          maxItems: 4,
+          items: {
+            properties: {
+              position: {
+                maximum: 4,
+                minimum: 1,
+              },
+            },
+          },
         },
         effects: {
           maxItems: 0,

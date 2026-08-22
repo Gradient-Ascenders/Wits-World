@@ -71,6 +71,20 @@ Auth0 is the approved authentication provider under ADR-005. The API validates
 Auth0 access tokens and resolves the local player and role from the validated
 issuer and subject. The browser does not supply an authoritative role.
 
+After that resolution, the API applies a fixed-window request limit keyed by
+the server-resolved local player ID. `RATE_LIMIT_MAX_REQUESTS` and
+`RATE_LIMIT_WINDOW_MS` default to 120 active-player requests per 60 seconds. A
+request that passes authenticated active-player resolution consumes quota even
+when a later authorisation hook, validation rule, or business operation returns
+`403`, `400`, or another response. The browser cannot select the rate-limit key
+through a query, request body, or forwarded address header.
+
+This application limiter is per API process and deliberately excludes health,
+documentation, and requests that fail before identity resolution. Multi-instance
+aggregation and failed-authentication/edge protection therefore require a
+separately evidenced Azure gateway, WAF, or equivalent control; they are not
+claimed by the repository implementation.
+
 ### Wits Quest API
 
 The Fastify API is the protected application authority.

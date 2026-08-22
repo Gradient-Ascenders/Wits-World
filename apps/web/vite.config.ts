@@ -9,7 +9,7 @@ const sprint1Fixture = (name: string) =>
 export default defineConfig(({ mode }) => ({
   plugins: [react()],
   resolve:
-    mode === 'sprint1-e2e'
+    mode === 'sprint1-e2e' || mode === 'basic-e2e'
       ? {
           alias: [
             {

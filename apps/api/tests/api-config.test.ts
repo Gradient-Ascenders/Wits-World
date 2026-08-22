@@ -15,6 +15,8 @@ describe('API configuration', () => {
       port: 3000,
       logLevel: 'info',
       accountDeletionRetryIntervalMs: 60000,
+      rateLimitMaxRequests: 120,
+      rateLimitWindowMs: 60000,
     });
   });
 
@@ -86,5 +88,33 @@ describe('API configuration', () => {
     ).toThrow(
       'ACCOUNT_DELETION_RETRY_INTERVAL_MS must be an integer of at least 1000 milliseconds.',
     );
+  });
+
+  it('reads configured rate-protection limits', () => {
+    const config = buildApiConfig({
+      env: {
+        ...validEnvironment,
+        RATE_LIMIT_MAX_REQUESTS: '40',
+        RATE_LIMIT_WINDOW_MS: '30000',
+      },
+    });
+
+    expect(config.rateLimitMaxRequests).toBe(40);
+    expect(config.rateLimitWindowMs).toBe(30000);
+  });
+
+  it.each([
+    ['RATE_LIMIT_MAX_REQUESTS', '0', 'positive integer'],
+    ['RATE_LIMIT_MAX_REQUESTS', '1.5', 'positive integer'],
+    ['RATE_LIMIT_WINDOW_MS', '999', 'at least 1000 milliseconds'],
+  ])('rejects invalid %s', (name, value, message) => {
+    expect(() =>
+      buildApiConfig({
+        env: {
+          ...validEnvironment,
+          [name]: value,
+        },
+      }),
+    ).toThrow(message);
   });
 });

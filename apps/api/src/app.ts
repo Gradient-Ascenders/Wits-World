@@ -12,6 +12,7 @@ import { registerAuthentication } from './auth/authentication.js';
 import type { ApiConfig } from './config/api.js';
 import type { AuthConfig } from './config/auth.js';
 import { registerErrorHandlers } from './errors/error-handler.js';
+import { documentVerifiedPlayerRateLimit } from './openapi/rate-limited-response.js';
 import { apiV1Routes } from './routes/api-v1.js';
 import { authenticationRoutes } from './routes/authentication.js';
 import { healthRoutes } from './routes/health.js';
@@ -56,6 +57,7 @@ import { authorChallengeRoutes } from './routes/author-challenges.js';
 
 import type { AuthorCardService } from './cards/author-card-service.js';
 import { authorCardRoutes } from './routes/author-cards.js';
+import type { AuthenticatedRateProtection } from './security/rate-protection.js';
 
 export interface EventServices {
   discovery: EventDiscoveryService;
@@ -77,6 +79,7 @@ export interface BuildAppOptions {
   cardServices?: CardServices;
   authorContentServices?: AuthorContentServices;
   cpuMatchService?: CpuMatchService;
+  rateProtection?: AuthenticatedRateProtection;
 }
 
 export interface AccountDeletionServices {
@@ -118,6 +121,7 @@ export async function buildApp({
   cardServices,
   authorContentServices,
   cpuMatchService,
+  rateProtection,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: logger
@@ -149,7 +153,7 @@ export async function buildApp({
   registerAuthentication(app, verifier);
 
   if (playerIdentityService) {
-    registerAuthorization(app, playerIdentityService);
+    registerAuthorization(app, playerIdentityService, rateProtection);
   }
 
   if (accountDeletionServices && !playerIdentityService) {
@@ -180,6 +184,10 @@ export async function buildApp({
   registerErrorHandlers(app);
 
   await app.register(swagger, {
+    transform: ({ schema, url }) => ({
+      schema: documentVerifiedPlayerRateLimit(schema),
+      url,
+    }),
     openapi: {
       openapi: '3.0.3',
       info: {

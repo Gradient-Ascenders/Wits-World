@@ -194,6 +194,7 @@ Run these commands from the repository root:
 | `npm run lint`                  | Lint all application workspaces                                             |
 | `npm run type-check`            | Type-check all application workspaces                                       |
 | `npm test`                      | Run all workspace test suites                                               |
+| `npm run test:e2e:basic`        | Run the disposable-database 21-step Basic release flow                      |
 | `npm run coverage`              | Run web/API tests with V8 coverage and write reports under `coverage/`      |
 | `npm run format:check`          | Check Prettier formatting without changing files                            |
 | `npm run format`                | Apply Prettier formatting across the repository                             |
@@ -256,6 +257,8 @@ Start with the guide that matches your task:
 | Design foundations                                  | [Design system](docs/design/design-system.md)                                                             |
 | Delivery status and risks                           | [Delivery roadmap](docs/planning/delivery-roadmap.md) and [risk register](docs/planning/risk-register.md) |
 | CI checks                                           | [Continuous integration](docs/testing/continuous-integration.md)                                          |
+| Basic release scope and public reference            | [Basic release reference](docs/basic-release-reference.md)                                                |
+| Basic release evidence                              | [Basic-tier release validation](docs/testing/basic-tier-release-validation.md)                            |
 | Azure deployment                                    | [Azure deployment setup](docs/deployment/azure-deployment-setup.md)                                       |
 | Published documentation                             | [wits-world-docs.pages.dev](https://wits-world-docs.pages.dev/)                                           |
 
