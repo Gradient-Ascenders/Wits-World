@@ -246,6 +246,7 @@ export function createAccountDeletionLifecycle(
             update public.players
                set auth_issuer = null,
                    auth_subject = null,
+                   player_name = null,
                    role = null,
                    lifecycle_status = 'deleted',
                    deletion_request_id = null,

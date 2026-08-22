@@ -21,7 +21,7 @@ export const accountDeletionRoutes: FastifyPluginAsync<
   app.post<{ Body: AccountDeletionBody }>(
     '/auth/account-deletion',
     {
-      preHandler: [app.authenticate, app.requireActivePlayer],
+      preHandler: [app.authenticate, app.loadActivePlayer],
       schema: {
         operationId: 'deleteCurrentPlayerAccount',
         summary: 'Permanently delete the current player account',

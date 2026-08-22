@@ -202,7 +202,7 @@ The selected development configuration is:
 | Setting               | Value                               |
 | --------------------- | ----------------------------------- |
 | Tenant domain         | `dev-5artxfvpdennq8qm.us.auth0.com` |
-| SPA application       | `Wits World Web - Development`      |
+| SPA application       | `Wits World`                        |
 | SPA application type  | Single Page Web Application         |
 | API audience          | `https://api.wits-world.invalid`    |
 | API signing algorithm | RS256                               |
@@ -260,14 +260,25 @@ The API must obtain both values from a successfully validated access token. It
 must not accept either value from request-body, query-string, or other
 browser-controlled identity fields.
 
-**Recommendation for the Data and Infrastructure Lead:** when the local user
-schema is introduced, persist both the authentication issuer and subject and
-enforce uniqueness over the pair, conceptually:
+The local player schema persists both the authentication issuer and subject and
+enforces uniqueness over the pair:
 
 `UNIQUE (auth_issuer, auth_subject)`
 
-The exact database column names and migration belong to the relevant data-model
-work and must be coordinated with the Data and Infrastructure Lead.
+For database accounts, the Auth0 username is the Basic Tier Player Name. A
+Post-Login Action publishes the validated connection strategy and, for database
+accounts, the username. The API mirrors that trusted username only after
+resolving `(iss, sub)`. Google accounts contain the `google-oauth2` strategy but
+no username claim; Wits World provisions the local identity with a null name and
+requires one-time Player Name setup before gameplay. The case-insensitively
+unique `players.player_name` namespace spans both providers. Player Name never
+replaces the local UUID or external identity pair.
+
+Auth0 Universal Login owns database Username, Email, and Password signup,
+username-or-email login, and `Continue with Google`. Wits World owns only the
+first-login Google Player Name setup and offers no rename endpoint. A local name
+claimed by either provider blocks the other; a conflict fails safely without
+linking, renaming, or rebinding accounts.
 
 A future Auth0 tenant change creates a different issuer namespace. Wits World
 must therefore perform an explicit identity migration or account-linking process
@@ -290,6 +301,10 @@ application roles are insufficient.
   algorithm.
 - The API must derive identity from the validated token rather than a
   browser-supplied user identifier.
+- The API must read the connection strategy and database Player Name only from
+  configured namespaced claims after token validation. Google setup may accept a
+  proposed name only for the already resolved current player. Neither path may
+  fall back to email, `name`, or `nickname`.
 - An ID token must not be accepted as an API access token.
 - Application roles must not be trusted directly from request bodies, query
   parameters, or browser state.
@@ -304,8 +319,9 @@ the Auth0 password-reset flow.
 
 Wits World will not receive, store, compare, or log user passwords.
 
-Users authenticated through a future social or enterprise provider would reset
-their credentials through that provider rather than through the Wits World API.
+Google-authenticated users manage their credentials through Google. Future
+social or enterprise providers would likewise manage credentials through their
+provider rather than through the Wits World API.
 
 ## Account deletion
 
@@ -333,9 +349,9 @@ owners, and implementation gate are tracked as `BASIC-12` in the
 Whether Wits institutional single sign-on will be available or required remains
 unconfirmed.
 
-The Basic implementation will therefore use the Auth0 database connection.
-Enterprise or Wits SSO integration must not be assumed until the relevant
-stakeholder confirms:
+The Basic implementation therefore supports the Auth0 database connection and
+Google, but not enterprise or Wits SSO. Wits SSO integration must not be assumed
+until the relevant stakeholder confirms:
 
 - whether integration is permitted;
 - which protocol and identity provider are available;
@@ -386,4 +402,4 @@ Those changes belong to their corresponding implementation issues.
 - https://github.com/keycloak/keycloak?utm_source=chatgpt.com
 
 The preceding document was planned and generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking].
+ChatGPT-Web[GPT-5.6 Thinking] and Codex[GPT-5].

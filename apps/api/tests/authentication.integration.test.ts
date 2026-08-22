@@ -11,6 +11,12 @@ import {
 } from 'vitest';
 
 import { createAccessTokenVerifier } from '../src/auth/access-token-verifier.js';
+import {
+  AUTH0_DATABASE_CONNECTION_STRATEGY,
+  CONNECTION_STRATEGY_CLAIM,
+  GOOGLE_CONNECTION_STRATEGY,
+  PLAYER_NAME_CLAIM,
+} from '../src/auth/interactive-player-claims.js';
 import { buildApp } from '../src/app.js';
 import type { AuthConfig } from '../src/config/auth.js';
 import type {
@@ -18,7 +24,13 @@ import type {
   PlayerEvent,
 } from '../src/events/event-discovery.js';
 
-import type { PlayerIdentityService } from '../src/players/player-identity.js';
+import {
+  InvalidPlayerNameError,
+  PlayerNameAlreadyAssignedError,
+  PlayerNameConflictError,
+  type PlayerIdentityService,
+  type PlayerNameSetupService,
+} from '../src/players/player-identity.js';
 
 const authConfig: AuthConfig = {
   domain: 'auth.example.test',
@@ -29,13 +41,16 @@ const authConfig: AuthConfig = {
 };
 
 const tokenIdentity = {
+  connectionStrategy: AUTH0_DATABASE_CONNECTION_STRATEGY,
   issuer: authConfig.issuer,
+  playerName: 'naledi',
   subject: 'auth0|player-123',
 };
 
 const localPlayer = {
   id: '6fe7dc26-cdea-4275-a2df-861724137cbc',
   role: 'player' as const,
+  playerName: tokenIdentity.playerName,
   lifecycleStatus: 'active' as const,
 };
 
@@ -56,6 +71,7 @@ let publicKey: CryptoKey;
 let unrelatedPrivateKey: CryptoKey;
 let app: FastifyInstance;
 let playerIdentityService: PlayerIdentityService;
+let playerNameSetupService: PlayerNameSetupService;
 let listEvents: ReturnType<typeof createEventListMock>;
 
 beforeAll(async () => {
@@ -71,6 +87,9 @@ beforeEach(async () => {
   playerIdentityService = {
     resolve: vi.fn().mockResolvedValue(localPlayer),
   };
+  playerNameSetupService = {
+    assignInitialPlayerName: vi.fn().mockResolvedValue(localPlayer),
+  };
   listEvents = createEventListMock();
 
   app = await buildApp({
@@ -79,6 +98,7 @@ beforeEach(async () => {
       verificationKey: publicKey,
     }),
     playerIdentityService,
+    playerNameSetupService,
     eventServices: {
       discovery: {
         list: listEvents,
@@ -176,6 +196,100 @@ describe('API bearer authentication', () => {
     expect(response.body).not.toContain(token);
   });
 
+  it('accepts the configured player-name claim from a fully validated token', async () => {
+    const token = await createToken({ playerName: 'trusted-player' });
+
+    const response = await authenticatedRequest(token);
+
+    expect(response.statusCode).toBe(200);
+    expect(playerIdentityService.resolve).toHaveBeenCalledWith({
+      ...tokenIdentity,
+      playerName: 'trusted-player',
+    });
+  });
+
+  it('allows a Google token without a player-name claim to restore setup-required state', async () => {
+    vi.mocked(playerIdentityService.resolve).mockResolvedValue({
+      ...localPlayer,
+      playerName: null,
+    });
+    const token = await createToken({
+      connectionStrategy: GOOGLE_CONNECTION_STRATEGY,
+      includePlayerName: false,
+    });
+
+    const response = await authenticatedRequest(token);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      id: localPlayer.id,
+      lifecycleStatus: 'active',
+      playerName: null,
+      playerNameSetupRequired: true,
+      requestId: expect.any(String),
+      role: 'player',
+    });
+    expect(playerIdentityService.resolve).toHaveBeenCalledWith({
+      connectionStrategy: GOOGLE_CONNECTION_STRATEGY,
+      issuer: tokenIdentity.issuer,
+      playerName: null,
+      subject: tokenIdentity.subject,
+    });
+  });
+
+  it('never uses Google profile or email claims as a Player Name fallback', async () => {
+    vi.mocked(playerIdentityService.resolve).mockResolvedValue({
+      ...localPlayer,
+      playerName: null,
+    });
+    const token = await createToken({
+      connectionStrategy: GOOGLE_CONNECTION_STRATEGY,
+      email: 'private@example.test',
+      includePlayerName: false,
+      name: 'Profile Name',
+      nickname: 'profile-nickname',
+    });
+
+    await authenticatedRequest(token);
+
+    expect(playerIdentityService.resolve).toHaveBeenCalledWith(
+      expect.objectContaining({ playerName: null }),
+    );
+  });
+
+  it('rejects unknown and malformed interactive connection strategies', async () => {
+    for (const connectionStrategy of ['github', 42, { provider: 'auth0' }]) {
+      const response = await authenticatedRequest(
+        await createToken({ connectionStrategy }),
+      );
+
+      expectUnauthorized(response);
+    }
+
+    expect(playerIdentityService.resolve).not.toHaveBeenCalled();
+  });
+
+  it('keeps a token without interactive claims valid for generic verification but rejects it as a player', async () => {
+    const token = await createToken({
+      includeConnectionStrategy: false,
+      includePlayerName: false,
+    });
+    const verifier = createAccessTokenVerifier(authConfig, {
+      verificationKey: publicKey,
+    });
+
+    await expect(verifier.verify(token)).resolves.toMatchObject({
+      connectionStrategy: null,
+      playerName: null,
+    });
+    const response = await authenticatedRequest(token);
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({
+      code: 'UNAUTHORIZED',
+      detail: 'An interactive player access token is required.',
+    });
+  });
+
   it.each([
     { emailVerified: true, label: 'email_verified: true' },
     { emailVerified: false, label: 'email_verified: false' },
@@ -198,6 +312,8 @@ describe('API bearer authentication', () => {
       expect(currentPlayerResponse.json()).toEqual({
         id: localPlayer.id,
         role: 'player',
+        playerName: tokenIdentity.playerName,
+        playerNameSetupRequired: false,
         lifecycleStatus: 'active',
         requestId: expect.any(String),
       });
@@ -240,9 +356,11 @@ describe('API bearer authentication', () => {
       url: '/test/protected-identity',
       headers: {
         authorization: `Bearer ${token}`,
+        'x-player-name': 'attacker-header-name',
       },
       payload: {
         issuer: 'https://attacker.example.test/',
+        playerName: 'attacker-name',
         subject: 'attacker-controlled-subject',
       },
     });
@@ -253,10 +371,154 @@ describe('API bearer authentication', () => {
       authenticatedIdentity: tokenIdentity,
       submittedBody: {
         issuer: 'https://attacker.example.test/',
+        playerName: 'attacker-name',
         subject: 'attacker-controlled-subject',
       },
     });
   });
+
+  it('rejects a missing player-name claim without falling back to profile claims', async () => {
+    const token = await createToken({
+      email: 'naledi@example.test',
+      includePlayerName: false,
+      name: 'naledi@example.test',
+      nickname: 'naledi',
+    });
+
+    const response = await authenticatedRequest(token);
+
+    expectUnauthorized(response);
+    expect(playerIdentityService.resolve).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['number', 42],
+    ['object', { value: 'naledi' }],
+    ['array', ['naledi']],
+    ['empty string', ''],
+    ['whitespace-only string', '   '],
+    ['string with surrounding whitespace', ' naledi '],
+    ['control character', 'naledi\nstar'],
+    ['email-formatted string', 'bob@example.com'],
+    ['email-formatted string with a single-label domain', 'player@example'],
+    ['phone-formatted string', '+27123456789'],
+  ])(
+    'rejects a malformed player-name claim that is a %s',
+    async (_label, playerName) => {
+      const token = await createToken({ playerName });
+      const response = await authenticatedRequest(token);
+
+      expectUnauthorized(response);
+      expect(playerIdentityService.resolve).not.toHaveBeenCalled();
+    },
+  );
+
+  it('does not retain the superseded display-name mutation endpoint', async () => {
+    const token = await createToken();
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/auth/me/display-name',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { displayName: 'attacker-controlled' },
+    });
+
+    expect(response.statusCode).toBe(404);
+  });
+
+  it('assigns a Google Player Name once and returns authoritative current-player state', async () => {
+    vi.mocked(playerIdentityService.resolve).mockResolvedValue({
+      ...localPlayer,
+      playerName: null,
+    });
+    vi.mocked(playerNameSetupService.assignInitialPlayerName).mockResolvedValue(
+      {
+        ...localPlayer,
+        playerName: 'google-player',
+      },
+    );
+    const token = await createToken({
+      connectionStrategy: GOOGLE_CONNECTION_STRATEGY,
+      includePlayerName: false,
+    });
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/auth/me/player-name',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { playerName: 'Google-Player' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(playerNameSetupService.assignInitialPlayerName).toHaveBeenCalledWith(
+      localPlayer.id,
+      'Google-Player',
+    );
+    expect(response.json()).toMatchObject({
+      id: localPlayer.id,
+      playerName: 'google-player',
+      playerNameSetupRequired: false,
+    });
+  });
+
+  it('does not allow a database account to use Google Player Name setup', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/auth/me/player-name',
+      headers: { authorization: `Bearer ${await createToken()}` },
+      payload: { playerName: 'different-name' },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      code: 'PLAYER_NAME_SETUP_NOT_AVAILABLE',
+    });
+    expect(
+      playerNameSetupService.assignInitialPlayerName,
+    ).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      code: 'INVALID_PLAYER_NAME',
+      error: new InvalidPlayerNameError('characters'),
+      statusCode: 400,
+    },
+    {
+      code: 'PLAYER_NAME_CONFLICT',
+      error: new PlayerNameConflictError(),
+      statusCode: 409,
+    },
+    {
+      code: 'PLAYER_NAME_ALREADY_ASSIGNED',
+      error: new PlayerNameAlreadyAssignedError(),
+      statusCode: 409,
+    },
+  ])(
+    'returns $code for a rejected initial assignment',
+    async ({ code, error, statusCode }) => {
+      vi.mocked(playerIdentityService.resolve).mockResolvedValue({
+        ...localPlayer,
+        playerName: null,
+      });
+      vi.mocked(
+        playerNameSetupService.assignInitialPlayerName,
+      ).mockRejectedValue(error);
+      const token = await createToken({
+        connectionStrategy: GOOGLE_CONNECTION_STRATEGY,
+        includePlayerName: false,
+      });
+
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/api/v1/auth/me/player-name',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { playerName: 'requested-name' },
+      });
+
+      expect(response.statusCode).toBe(statusCode);
+      expect(response.json()).toMatchObject({ code });
+    },
+  );
 
   it('documents bearer authentication for the protected OpenAPI route', async () => {
     const response = await app.inject({
@@ -296,7 +558,7 @@ describe('API bearer authentication', () => {
         preHandler: app.authenticate,
       },
       async (request) => {
-        if (!request.auth) {
+        if (!request.auth || request.auth.connectionStrategy === null) {
           throw new Error('Authenticated identity missing.');
         }
 
@@ -312,6 +574,7 @@ describe('API bearer authentication', () => {
       },
       payload: {
         issuer: 'https://attacker.example.test/',
+        playerName: 'attacker-name',
         subject: 'attacker-controlled-subject',
         role: 'author',
       },
@@ -355,6 +618,13 @@ interface CreateTokenOptions {
   signingKey?: CryptoKey;
   includeExpiration?: boolean;
   emailVerified?: boolean;
+  email?: string;
+  includePlayerName?: boolean;
+  name?: string;
+  nickname?: string;
+  playerName?: unknown;
+  connectionStrategy?: unknown;
+  includeConnectionStrategy?: boolean;
 }
 
 async function createToken({
@@ -365,10 +635,24 @@ async function createToken({
   signingKey = privateKey,
   includeExpiration = true,
   emailVerified,
+  email,
+  includePlayerName = true,
+  name,
+  nickname,
+  playerName = tokenIdentity.playerName,
+  connectionStrategy = AUTH0_DATABASE_CONNECTION_STRATEGY,
+  includeConnectionStrategy = true,
 }: CreateTokenOptions = {}): Promise<string> {
-  let token = new SignJWT(
-    emailVerified === undefined ? {} : { email_verified: emailVerified },
-  )
+  let token = new SignJWT({
+    ...(includeConnectionStrategy
+      ? { [CONNECTION_STRATEGY_CLAIM]: connectionStrategy }
+      : {}),
+    ...(includePlayerName ? { [PLAYER_NAME_CLAIM]: playerName } : {}),
+    ...(emailVerified === undefined ? {} : { email_verified: emailVerified }),
+    ...(email === undefined ? {} : { email }),
+    ...(name === undefined ? {} : { name }),
+    ...(nickname === undefined ? {} : { nickname }),
+  })
     .setProtectedHeader({
       alg: 'RS256',
       typ: 'JWT',

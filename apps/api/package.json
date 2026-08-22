@@ -25,6 +25,7 @@
     "type-check": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@wits-world/account-policy": "0.0.0",
     "@wits-world/game-rules": "0.0.0",
     "@fastify/cors": "^11.3.0",
     "@fastify/swagger": "^9.8.1",

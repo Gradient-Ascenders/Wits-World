@@ -23,6 +23,7 @@ const authConfig: AuthConfig = {
 const activeLocalPlayer = {
   id: '00000000-0000-4000-8000-000000000101',
   role: 'player' as const,
+  playerName: 'test-player',
   lifecycleStatus: 'active' as const,
 };
 
@@ -64,7 +65,9 @@ beforeEach(async () => {
 
   const accessTokenVerifier: AccessTokenVerifier = {
     verify: vi.fn().mockResolvedValue({
+      connectionStrategy: 'auth0',
       issuer: authConfig.issuer,
+      playerName: 'test-player',
       subject: 'auth0|player-123',
     }),
   };
@@ -199,6 +202,7 @@ describe('card collection API', () => {
   it('rejects deletion-pending players', async () => {
     resolvePlayer.mockResolvedValueOnce({
       ...activeLocalPlayer,
+      playerName: 'test-player',
       lifecycleStatus: 'deletion_pending',
     });
 

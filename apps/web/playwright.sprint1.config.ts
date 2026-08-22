@@ -13,7 +13,7 @@ export default defineConfig({
   reporter: 'line',
   retries: process.env.CI ? 1 : 0,
   testDir: './playwright',
-  testMatch: /sprint1\.deterministic\.spec\.ts/,
+  testMatch: /(account-player-name|sprint1\.deterministic)\.spec\.ts/,
   timeout: 60_000,
   use: {
     ...devices['Desktop Chrome'],

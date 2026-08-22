@@ -47,18 +47,22 @@ async function startServer(): Promise<void> {
   const databaseConfig = buildDatabaseConfig({ target: 'test' });
   const database = createDatabasePool(databaseConfig);
   const subject = `basic-e2e-${runId}`;
+  const playerName = `e2e_${runId.replaceAll('-', '').slice(0, 16)}`;
   const clock = () => new Date(BASIC_E2E_NOW);
 
   await database.query(
     `
       insert into public.players (
-        id, auth_issuer, auth_subject, role, lifecycle_status
+        id, auth_issuer, auth_subject, player_name, role, lifecycle_status
       )
-      values ($1::uuid, $2, $3, 'author', 'active')
+      values ($1::uuid, $2, $3, $4, 'author', 'active')
       on conflict (auth_issuer, auth_subject)
-      do update set role = 'author', lifecycle_status = 'active'
+      do update set
+        player_name = excluded.player_name,
+        role = 'author',
+        lifecycle_status = 'active'
     `,
-    [randomUUID(), authConfig.issuer, subject],
+    [randomUUID(), authConfig.issuer, subject, playerName],
   );
 
   const finalizer = createChallengeAttemptCompletionFinalizer({
@@ -73,7 +77,12 @@ async function startServer(): Promise<void> {
           throw new Error('The Basic E2E bearer token was rejected.');
         }
 
-        return { issuer: authConfig.issuer, subject };
+        return {
+          connectionStrategy: 'auth0',
+          issuer: authConfig.issuer,
+          playerName,
+          subject,
+        };
       },
     },
     authConfig,

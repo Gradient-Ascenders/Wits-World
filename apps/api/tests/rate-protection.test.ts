@@ -30,13 +30,19 @@ describe('authenticated API rate protection', () => {
           : '00000000-0000-4000-8000-000000000001',
       role: 'player' as const,
       lifecycleStatus: 'active' as const,
+      playerName: identity.subject,
     }));
 
     app = await buildApp({
       authConfig,
       accessTokenVerifier: {
         async verify(token) {
-          return { issuer: authConfig.issuer, subject: token };
+          return {
+            connectionStrategy: 'auth0',
+            issuer: authConfig.issuer,
+            playerName: token,
+            subject: token,
+          };
         },
       },
       playerIdentityService: { resolve },
@@ -69,13 +75,19 @@ describe('authenticated API rate protection', () => {
       authConfig,
       accessTokenVerifier: {
         async verify() {
-          return { issuer: authConfig.issuer, subject: 'real-subject' };
+          return {
+            connectionStrategy: 'auth0',
+            issuer: authConfig.issuer,
+            playerName: 'real-subject',
+            subject: 'real-subject',
+          };
         },
       },
       playerIdentityService: {
         async resolve() {
           return {
             id: '00000000-0000-4000-8000-000000000001',
+            playerName: 'real-subject',
             role: 'player',
             lifecycleStatus: 'active',
           };
@@ -111,13 +123,19 @@ describe('authenticated API rate protection', () => {
       authConfig,
       accessTokenVerifier: {
         async verify() {
-          return { issuer: authConfig.issuer, subject: 'documented-subject' };
+          return {
+            connectionStrategy: 'auth0',
+            issuer: authConfig.issuer,
+            playerName: 'documented-subject',
+            subject: 'documented-subject',
+          };
         },
       },
       playerIdentityService: {
         async resolve() {
           return {
             id: '00000000-0000-4000-8000-000000000001',
+            playerName: 'documented-subject',
             role: 'player',
             lifecycleStatus: 'active',
           };

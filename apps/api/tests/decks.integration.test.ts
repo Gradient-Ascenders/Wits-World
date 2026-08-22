@@ -28,6 +28,7 @@ const DECK_ID = 'a2000000-0000-4000-8000-000000000001';
 const activeLocalPlayer = {
   id: PLAYER_ID,
   role: 'player' as const,
+  playerName: 'test-player',
   lifecycleStatus: 'active' as const,
 };
 
@@ -63,7 +64,9 @@ beforeEach(async () => {
 
   const accessTokenVerifier: AccessTokenVerifier = {
     verify: vi.fn().mockResolvedValue({
+      connectionStrategy: 'auth0',
       issuer: authConfig.issuer,
+      playerName: 'test-player',
       subject: 'auth0|deck-player',
     }),
   };
@@ -115,6 +118,7 @@ describe('saved deck API', () => {
   it('rejects deletion-pending players', async () => {
     resolvePlayer.mockResolvedValueOnce({
       ...activeLocalPlayer,
+      playerName: 'test-player',
       lifecycleStatus: 'deletion_pending',
     });
 

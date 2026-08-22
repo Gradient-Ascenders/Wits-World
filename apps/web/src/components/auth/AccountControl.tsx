@@ -1,6 +1,6 @@
 import { useAuth0 } from '@auth0/auth0-react';
 import { useState } from 'react';
-import { useRoute } from 'wouter';
+import { useLocation, useRoute } from 'wouter';
 
 import { useCurrentPlayer } from '../../auth/CurrentPlayerProvider';
 import {
@@ -9,9 +9,10 @@ import {
 } from '../../auth/player-session-binding';
 
 export function AccountControl() {
-  const { error, isAuthenticated, isLoading, loginWithRedirect, logout, user } =
+  const { error, isAuthenticated, isLoading, loginWithRedirect, logout } =
     useAuth0();
   const [actionFailed, setActionFailed] = useState(false);
+  const [, navigate] = useLocation();
   const { state: currentPlayer } = useCurrentPlayer();
   const [isProtectedExploreRoute] = useRoute('/explore');
   const [isProtectedCollectionRoute] = useRoute('/collection');
@@ -88,9 +89,19 @@ export function AccountControl() {
       {isAuthenticated ? (
         <>
           {currentPlayer.status === 'ready' ? (
-            <span className="account-control__identity">
-              Signed in as <strong>{user?.name ?? 'Player'}</strong>
-            </span>
+            currentPlayer.player.playerName ? (
+              <span className="account-control__identity">
+                Signed in as <strong>{currentPlayer.player.playerName}</strong>
+              </span>
+            ) : (
+              <button
+                className="button button--quiet"
+                onClick={() => navigate('/explore')}
+                type="button"
+              >
+                Choose Player Name
+              </button>
+            )
           ) : null}
           <button
             className="button button--quiet"

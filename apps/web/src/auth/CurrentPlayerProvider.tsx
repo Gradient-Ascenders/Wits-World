@@ -9,8 +9,10 @@ import {
 } from 'react';
 
 import {
+  assignCurrentPlayerName,
   CurrentPlayerError,
   getCurrentPlayer,
+  PlayerNameSetupError,
   type CurrentPlayer,
 } from '../api/authentication';
 import { useApiAccessToken } from './useApiAccessToken';
@@ -27,11 +29,13 @@ type CurrentPlayerState =
 
 interface CurrentPlayerContextValue {
   reload: () => void;
+  setupPlayerName: (playerName: string, signal: AbortSignal) => Promise<void>;
   state: CurrentPlayerState;
 }
 
 const CurrentPlayerContext = createContext<CurrentPlayerContextValue>({
   reload: () => undefined,
+  setupPlayerName: async () => undefined,
   state: { status: 'anonymous' },
 });
 
@@ -110,8 +114,96 @@ export function CurrentPlayerProvider({
   }, [apiBaseUrl, attempt, getAccessToken, isAuthenticated, isLoading, logout]);
 
   const value = useMemo<CurrentPlayerContextValue>(
-    () => ({ reload: () => setAttempt((current) => current + 1), state }),
-    [state],
+    () => ({
+      reload: () => setAttempt((current) => current + 1),
+      setupPlayerName: async (playerName, signal) => {
+        if (state.status !== 'ready') {
+          throw new PlayerNameSetupError('unavailable');
+        }
+
+        const expectedPlayerId = state.player.id;
+        let updatedPlayer: CurrentPlayer;
+
+        try {
+          updatedPlayer = await assignCurrentPlayerName({
+            apiBaseUrl,
+            getAccessToken,
+            playerName,
+            signal,
+          });
+        } catch (error) {
+          if (
+            error instanceof PlayerNameSetupError &&
+            error.failure === 'already_assigned'
+          ) {
+            try {
+              updatedPlayer = await getCurrentPlayer({
+                apiBaseUrl,
+                getAccessToken,
+                signal,
+              });
+            } catch (reloadError) {
+              if (signal.aborted) {
+                throw reloadError;
+              }
+
+              if (
+                reloadError instanceof CurrentPlayerError &&
+                reloadError.failure === 'authorization'
+              ) {
+                setState((current) =>
+                  current.status === 'ready' &&
+                  current.player.id === expectedPlayerId
+                    ? { failure: 'authorization', status: 'error' }
+                    : current,
+                );
+                throw new PlayerNameSetupError('authorization');
+              }
+
+              throw new PlayerNameSetupError('unavailable');
+            }
+
+            if (
+              updatedPlayer.playerName === null ||
+              updatedPlayer.playerNameSetupRequired
+            ) {
+              throw error;
+            }
+          } else {
+            if (
+              error instanceof PlayerNameSetupError &&
+              error.failure === 'authorization'
+            ) {
+              setState((current) =>
+                current.status === 'ready' &&
+                current.player.id === expectedPlayerId
+                  ? { failure: 'authorization', status: 'error' }
+                  : current,
+              );
+            }
+
+            throw error;
+          }
+        }
+
+        if (updatedPlayer.id !== expectedPlayerId) {
+          setState((current) =>
+            current.status === 'ready' && current.player.id === expectedPlayerId
+              ? { failure: 'identity_changed', status: 'error' }
+              : current,
+          );
+          throw new PlayerNameSetupError('authorization');
+        }
+
+        setState((current) =>
+          current.status === 'ready' && current.player.id === expectedPlayerId
+            ? { player: updatedPlayer, status: 'ready' }
+            : current,
+        );
+      },
+      state,
+    }),
+    [apiBaseUrl, getAccessToken, state],
   );
 
   return (

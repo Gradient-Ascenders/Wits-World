@@ -2,6 +2,7 @@ import { useAuth0 } from '@auth0/auth0-react';
 import { useCallback, useState, type ReactNode } from 'react';
 
 import { useCurrentPlayer } from '../../auth/CurrentPlayerProvider';
+import { PlayerNameSetup } from './PlayerNameSetup';
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -109,6 +110,10 @@ export function ProtectedRoute({
         </button>
       </section>
     );
+  }
+
+  if (currentPlayer.player.playerNameSetupRequired) {
+    return <PlayerNameSetup />;
   }
 
   return children;

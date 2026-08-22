@@ -26,13 +26,16 @@ const authConfig: AuthConfig = {
 };
 
 const authenticatedIdentity = {
+  connectionStrategy: 'auth0' as const,
   issuer: authConfig.issuer,
+  playerName: 'test-player',
   subject: 'auth0|player-123',
 };
 
 const activeLocalPlayer = {
   id: '00000000-0000-4000-8000-000000000101',
   role: 'player' as const,
+  playerName: 'test-player',
   lifecycleStatus: 'active' as const,
 };
 
@@ -110,6 +113,7 @@ describe('event discovery API', () => {
   it('rejects a deletion-pending player before event discovery', async () => {
     playerResolve.mockResolvedValue({
       ...activeLocalPlayer,
+      playerName: 'test-player',
       lifecycleStatus: 'deletion_pending',
     });
 
@@ -178,6 +182,7 @@ describe('event eligibility API', () => {
   it('rejects a deletion-pending player before evaluating eligibility', async () => {
     playerResolve.mockResolvedValue({
       ...activeLocalPlayer,
+      playerName: 'test-player',
       lifecycleStatus: 'deletion_pending',
     });
 

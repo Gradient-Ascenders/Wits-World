@@ -30,19 +30,23 @@ const authConfig: AuthConfig = {
 };
 
 const authenticatedIdentity = {
+  connectionStrategy: 'auth0' as const,
   issuer: authConfig.issuer,
+  playerName: 'test-author',
   subject: 'auth0|author-challenge',
 };
 
 const activeAuthor = {
   id: AUTHOR_ID,
   role: 'author' as const,
+  playerName: 'test-player',
   lifecycleStatus: 'active' as const,
 };
 
 const activePlayer = {
   id: PLAYER_ID,
   role: 'player' as const,
+  playerName: 'test-player',
   lifecycleStatus: 'active' as const,
 };
 
@@ -166,6 +170,7 @@ describe('author challenge API', () => {
   it('rejects a deletion-pending Author', async () => {
     playerResolve.mockResolvedValue({
       ...activeAuthor,
+      playerName: 'test-player',
       lifecycleStatus: 'deletion_pending',
     });
 

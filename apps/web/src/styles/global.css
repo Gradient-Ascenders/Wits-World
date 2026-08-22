@@ -105,6 +105,8 @@ a:hover {
 
 .account-control {
   display: flex;
+  width: 100%;
+  flex: 0 0 100%;
   flex-wrap: wrap;
   gap: 0.5rem 0.75rem;
   align-items: center;
@@ -112,9 +114,12 @@ a:hover {
 }
 
 .account-control__identity {
-  display: none;
   color: var(--colour-text-secondary);
   font-size: 0.875rem;
+}
+
+.account-control__identity strong {
+  color: var(--colour-text-primary);
 }
 
 .account-control__error {
@@ -424,6 +429,55 @@ hr {
   margin-bottom: 0;
 }
 
+.player-name-setup__form {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+}
+
+.player-name-setup__form label {
+  font-size: var(--text-sm);
+  font-weight: 800;
+}
+
+.player-name-setup__form input {
+  width: 100%;
+  min-height: var(--touch-target-min);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--colour-border-default);
+  border-radius: var(--radius-sm);
+  color: var(--colour-text-primary);
+  background: var(--colour-navy-950);
+  font: inherit;
+}
+
+.player-name-setup__form input[aria-invalid='true'] {
+  border-color: var(--colour-status-danger);
+  box-shadow: 0 0 0 1px var(--colour-status-danger);
+}
+
+.player-name-setup__form .field-hint,
+.player-name-setup__form .field-error {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.player-name-setup__form .field-hint {
+  color: var(--colour-text-muted);
+}
+
+.player-name-setup__form .field-error {
+  color: var(--colour-status-danger);
+  font-weight: 700;
+}
+
+.player-name-setup__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
 .status-badge {
   display: inline-flex;
   width: fit-content;
@@ -504,8 +558,9 @@ code {
     flex-wrap: nowrap;
   }
 
-  .account-control__identity {
-    display: inline;
+  .account-control {
+    width: auto;
+    flex: 0 1 auto;
   }
 
   .account-control--error {

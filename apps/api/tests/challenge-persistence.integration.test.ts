@@ -93,7 +93,11 @@ describe.skipIf(!runIntegrationTests)(
           '0016_add_event_authoring_lifecycle.sql',
           '0017_resolve_edge_card_definition_name.sql',
           '0018_enforce_card_definition_name_uniqueness.sql',
+          '0019_add_player_display_name.sql',
           '0019_limit_creature_move_positions.sql',
+          '0020_replace_display_name_with_player_name.sql',
+          '0021_enforce_player_name_policy.sql',
+          '0022_tighten_player_name_policy.sql',
         ],
         skipped: [],
       });
@@ -119,7 +123,11 @@ describe.skipIf(!runIntegrationTests)(
           '0016_add_event_authoring_lifecycle.sql',
           '0017_resolve_edge_card_definition_name.sql',
           '0018_enforce_card_definition_name_uniqueness.sql',
+          '0019_add_player_display_name.sql',
           '0019_limit_creature_move_positions.sql',
+          '0020_replace_display_name_with_player_name.sql',
+          '0021_enforce_player_name_policy.sql',
+          '0022_tighten_player_name_policy.sql',
         ],
       });
     }, 30_000);

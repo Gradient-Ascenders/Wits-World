@@ -5,20 +5,28 @@ test('keeps the same player with E2E local-storage restoration and logout', asyn
 }) => {
   const protectedRoutes = ['/explore', '/collection', '/decks', '/matches'];
   let expectedPlayerId: string | undefined;
+  let expectedPlayerName: string | undefined;
 
   for (const route of protectedRoutes) {
-    const directVisitPlayerId = await openAndReadCurrentPlayer(page, () =>
+    const directVisitPlayer = await openAndReadCurrentPlayer(page, () =>
       page.goto(route),
     );
-    expectedPlayerId ??= directVisitPlayerId;
-    expect(directVisitPlayerId).toBe(expectedPlayerId);
-    await expect(page.getByText('Signed in as')).toBeVisible();
+    expectedPlayerId ??= directVisitPlayer.id;
+    expectedPlayerName ??= directVisitPlayer.playerName;
+    expect(directVisitPlayer).toEqual({
+      id: expectedPlayerId,
+      playerName: expectedPlayerName,
+    });
+    await expect(page.getByText(/^Signed in as .+$/)).toBeVisible();
 
-    const refreshedPlayerId = await openAndReadCurrentPlayer(page, () =>
+    const refreshedPlayer = await openAndReadCurrentPlayer(page, () =>
       page.reload(),
     );
-    expect(refreshedPlayerId).toBe(expectedPlayerId);
-    await expect(page.getByText('Signed in as')).toBeVisible();
+    expect(refreshedPlayer).toEqual({
+      id: expectedPlayerId,
+      playerName: expectedPlayerName,
+    });
+    await expect(page.getByText(/^Signed in as .+$/)).toBeVisible();
   }
 
   await Promise.all([
@@ -32,13 +40,13 @@ test('keeps the same player with E2E local-storage restoration and logout', asyn
   await expect(
     page.getByRole('button', { name: 'Sign in to explore' }),
   ).toBeVisible();
-  await expect(page.getByText('Signed in as')).toHaveCount(0);
+  await expect(page.getByText(/^Signed in as .+$/)).toHaveCount(0);
 });
 
 async function openAndReadCurrentPlayer(
   page: Page,
   navigate: () => Promise<unknown>,
-): Promise<string> {
+): Promise<{ id: string; playerName: string }> {
   const currentPlayerResponse = page.waitForResponse((response) => {
     const url = new URL(response.url());
 
@@ -59,10 +67,13 @@ async function openAndReadCurrentPlayer(
     payload === null ||
     !('id' in payload) ||
     typeof payload.id !== 'string' ||
-    !/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(payload.id)
+    !/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(payload.id) ||
+    !('playerName' in payload) ||
+    typeof payload.playerName !== 'string' ||
+    payload.playerName.length === 0
   ) {
     throw new Error('The authenticated current-player response was invalid.');
   }
 
-  return payload.id;
+  return { id: payload.id, playerName: payload.playerName };
 }

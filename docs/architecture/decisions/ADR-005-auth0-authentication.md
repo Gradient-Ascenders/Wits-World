@@ -81,27 +81,35 @@ credentials, passwords, tokens, and Management API credentials remain private.
 
 ### Single-page application
 
-| Setting              | Value                          |
-| -------------------- | ------------------------------ |
-| Name                 | `Wits World Web - Development` |
-| Application type     | Single Page Web Application    |
-| Allowed callback URL | `http://localhost:5173`        |
-| Allowed logout URL   | `http://localhost:5173`        |
-| Allowed web origin   | `http://localhost:5173`        |
+| Setting              | Value                       |
+| -------------------- | --------------------------- |
+| Name                 | `Wits World`                |
+| Application type     | Single Page Web Application |
+| Allowed callback URL | `http://localhost:5173`     |
+| Allowed logout URL   | `http://localhost:5173`     |
+| Allowed web origin   | `http://localhost:5173`     |
 
 The SPA Client ID is public application configuration. The application must not
 use or expose a client secret.
 
 ### API resource
 
-| Setting                 | Value                            |
-| ----------------------- | -------------------------------- |
-| Name                    | `Wits Quest API - Development`   |
-| Identifier and audience | `https://api.wits-world.invalid` |
-| Signing algorithm       | RS256                            |
+| Setting                 | Value                                                  |
+| ----------------------- | ------------------------------------------------------ |
+| Name                    | `Wits World API` (target; tenant verification pending) |
+| Identifier and audience | `https://api.wits-world.invalid`                       |
+| Signing algorithm       | RS256                                                  |
 
 The API identifier is a logical audience value. It is not an instruction to
 send HTTP requests to that address.
+
+The SPA application rename was verified against the hosted New Universal Login
+page on 22 August 2026: its title is `Log in | Wits World` and its prompt says
+the player is continuing to `Wits World`. The API friendly name is not exposed
+on that public page. A tenant administrator must confirm it under **Dashboard →
+Applications → APIs → Wits World API → Settings → General Settings → Name**.
+Only the friendly `Name` may be changed; the existing Identifier/audience must
+remain `https://api.wits-world.invalid`.
 
 ## Token contract
 
@@ -124,6 +132,21 @@ including:
 - valid not-before timing where present;
 - the required token structure and claims.
 
+For interactive logins, the deployment's Post-Login Action must add the connection's
+`event.connection.strategy` as
+`https://witsworld.co.za/connection_strategy`. Supported values are `auth0` and
+`google-oauth2`; other interactive strategies fail closed. Database-account
+tokens must additionally contain the scalar Auth0 username as
+`https://witsworld.co.za/player_name`. Google tokens do not require that claim.
+The API reads both only after ordinary JWT validation and does not infer the
+provider from `sub`, accept aliases, or fall back to `email`, `name`, or
+`nickname`. Generic token verification remains usable for non-interactive
+principals, while player resolution requires a supported interactive strategy.
+
+The Action must be deployed and bound to the applicable login flow before this
+API version is released. Tokens issued before the Action is effective require a
+fresh login; Wits World does not infer missing strategy or Player Name claims.
+
 The API must not:
 
 - accept an ID token as an API access token;
@@ -139,7 +162,10 @@ API-token-validation issue.
 ## Identity mapping
 
 Auth0 user metadata will not be treated as the authoritative source for gameplay
-or application data.
+or application authorization data. For database accounts, the configured Auth0
+username is authoritative for the Player Name mirrored from the validated
+custom claim. Google supplies no Player Name; the player chooses the one-time
+local value in Wits World after authentication.
 
 ## External identity contract
 
@@ -163,7 +189,12 @@ and enforces uniqueness over the pair:
 `UNIQUE (auth_issuer, auth_subject)`
 
 New authenticated identities are provisioned as local Player records by the
-Fastify API. Browser-controlled identity fields are never used for this mapping.
+Fastify API. Database-account resolution synchronizes the trusted `player_name`
+claim only after selecting the local identity through `(iss, sub)`. Google
+resolution creates or restores the same local identity with `player_name = NULL`
+until one-time setup completes. Browser-controlled fields are never used for
+identity mapping, and Player Name collisions fail without selecting another
+player's row.
 
 A future Auth0 tenant change creates a different issuer namespace. Wits World
 must therefore perform an explicit identity migration or account-linking process
@@ -195,16 +226,23 @@ Auth0 RBAC, Auth0 roles, and custom namespaced role claims remain deferred.
 
 ## Registration and sign-in
 
-The initial development authentication method will use the Auth0 database
-connection.
+Basic Tier supports the Auth0 database connection and Google through Auth0.
 
 Self-registration must remain enabled for the Wits World SPA.
 
-The React application will redirect users to Auth0 Universal Login rather than
-collecting passwords inside Wits World.
+The connection requires Email, Username, and Password at signup. Both Email and
+Username are active login identifiers, so the hosted login accepts either
+Player Name or email with the password. The Auth0 username is the Player Name;
+Wits World does not render signup, username, email, or password inputs.
 
-Social login, enterprise identity providers, and Wits single sign-on are not
-included in the initial implementation.
+The React application redirects users to Auth0 Universal Login rather than
+collecting passwords. Google remains available as `Continue with Google`.
+Because Google does not supply an Auth0 database username, Wits World provisions
+the player by `(iss, sub)` and requires a one-time, locally unique Player Name
+before protected gameplay. This setup is Wits-owned, is not a second
+authentication step, and cannot be used to change a name later. Public pages and
+sign-out remain available while setup is pending. Other social, enterprise, and
+Wits single-sign-on strategies remain unsupported until explicitly approved.
 
 ## Email verification
 
@@ -268,8 +306,9 @@ granted only the `delete:users` permission, deletes the external Auth0 account.
 Management API credentials are server-only secrets.
 
 Successful local cleanup anonymises the local player into a deleted tombstone
-by removing the Auth0 issuer, subject, and application role. The deletion
-request is then unlinked from that tombstone.
+by removing the Auth0 issuer, subject, mirrored Player Name, and application
+role. The deletion request is then unlinked from that tombstone. Historical
+gameplay snapshots retain their existing snapshot values and are not rewritten.
 
 Because Auth0 deletion and PostgreSQL cleanup cannot form one atomic
 transaction, incomplete deletions are persisted as `pending` or

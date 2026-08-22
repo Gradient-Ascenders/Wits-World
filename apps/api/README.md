@@ -259,6 +259,13 @@ The API validates:
 - token expiry;
 - the required identity claims.
 
+Interactive player tokens additionally use the trusted namespaced connection
+strategy claim `https://witsworld.co.za/connection_strategy`. Database (`auth0`)
+tokens require `https://witsworld.co.za/player_name`; Google (`google-oauth2`)
+tokens intentionally do not. Other interactive strategies fail closed. These
+requirements are applied after ordinary JWT validation and do not prevent the
+generic verifier from representing non-interactive/client-credentials tokens.
+
 The API resolves signing keys through the configured Auth0 tenant's JWKS
 endpoint.
 
@@ -288,12 +295,18 @@ The authenticated Fastify request context exposes:
 
 ```typescript
 {
+  connectionStrategy: 'auth0' | 'google-oauth2' | null;
   issuer: string;
+  playerName: string | null;
   subject: string;
 }
 ```
 
-These values are populated only after successful token validation.
+These values are populated only after successful token validation. The issuer
+and subject remain the authentication identity. A database `playerName` is
+trusted account metadata synchronized onto that same local player UUID. Google
+starts with null and completes one-time local setup before gameplay; no profile
+or email value is used as fallback.
 
 Application roles and object-level permissions are separate from
 authentication. A valid Auth0 token does not automatically grant author or
@@ -307,22 +320,31 @@ The current authentication foundation exposes:
 GET /api/v1/auth/me
 ```
 
-This route is used to verify the authenticated external identity made available
-to protected API operations.
+This route returns the current local player resolved through the validated
+external identity. It does not expose the Auth0 issuer, subject, or email.
 
 Example successful response:
 
 ```json
 {
   "id": "00000000-0000-4000-8000-000000000001",
+  "playerName": "example-player",
+  "playerNameSetupRequired": false,
   "role": "player",
   "lifecycleStatus": "active",
   "requestId": "server-generated-request-id"
 }
 ```
 
-The example player ID is illustrative. The player-facing route does not return
-the Auth0 issuer, subject, or bearer token.
+The example player ID and name are illustrative and do not identify a real
+account. The player-facing route does not return the Auth0 issuer, subject, or
+bearer token.
+
+A Google player awaiting setup receives `playerName: null` and
+`playerNameSetupRequired: true`. The authenticated
+`PUT /api/v1/auth/me/player-name` endpoint assigns that supported social player
+one locally unique, Auth0-compatible Player Name. It does not accept a player ID,
+cannot be used by database accounts, and cannot change an existing name.
 
 ### Authentication failures
 

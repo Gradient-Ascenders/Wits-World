@@ -106,6 +106,8 @@ describe('Basic author console', () => {
       if (url.endsWith('/auth/me')) {
         return jsonResponse({
           id: '90000000-0000-4000-8000-000000000001',
+          playerName: 'test-player',
+          playerNameSetupRequired: false,
           lifecycleStatus: 'active',
           requestId: 'request-me',
           role: 'player',
@@ -1746,6 +1748,8 @@ function installAuthorApi(options: ApiOptions = {}) {
       if (path === '/auth/me') {
         return jsonResponse({
           id: '90000000-0000-4000-8000-000000000001',
+          playerName: 'test-player',
+          playerNameSetupRequired: false,
           lifecycleStatus: 'active',
           requestId: 'request-me',
           role: 'author',
