@@ -2,6 +2,15 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { QueryResultRow } from 'pg';
 
 import {
+  applyBattleAction,
+  createBattleState,
+  type BattleCreatureCard,
+  type BattleDeck,
+  type BattlePowerCard,
+  type BattleState,
+} from '@wits-world/game-rules';
+
+import {
   buildDatabaseConfig,
   loadApiEnvironment,
   type DatabaseConfig,
@@ -15,6 +24,8 @@ import { runSeeds } from '../src/database/seeds.js';
 import {
   createCpuMatchService,
   CpuMatchNotFoundError,
+  CpuMatchVersionConflictError,
+  type CpuMatchClient,
   type CpuMatchDatabase,
 } from '../src/matches/cpu-match-service.js';
 
@@ -238,6 +249,395 @@ describe.skipIf(!runIntegrationTests)(
         rounds: '1',
       });
     }, 30_000);
+
+    it('persists a normal player move and CPU response as two ordered actions with one receipt', async () => {
+      const battle = activeBattle(1, { playerDamage: 1, cpuDamage: 1 });
+      const fixture = await insertActionMatch(pool, battle.state);
+      const service = createCpuMatchService(pool, { randomInt: () => 0 });
+      const input = {
+        playerId: fixture.playerId,
+        matchId: fixture.matchId,
+        submissionId: integrationUuid(301_001),
+        expectedVersion: 0,
+        action: { type: 'use_move' as const, moveId: battle.playerMoveId },
+      };
+
+      const response = await service.submitAction(input);
+      const persisted = await loadActionPersistence(pool, fixture.matchId);
+
+      expect(response).toMatchObject({ status: 'active', version: 1 });
+      expect(persisted.match).toMatchObject({
+        status: 'active',
+        version: 1,
+        winner: null,
+      });
+      expect(persisted.rounds).toHaveLength(1);
+      expect(persisted.actions.map(({ sequence }) => sequence)).toEqual([1, 2]);
+      expect(persisted.actions.map(({ side }) => side)).toEqual([
+        'player',
+        'cpu',
+      ]);
+      expect(persisted.actions.map(({ action }) => action.type)).toEqual([
+        'use_move',
+        'use_move',
+      ]);
+      expect(persisted.actions[0]).toMatchObject({
+        submission_id: input.submissionId,
+        response,
+      });
+      expect(persisted.actions[1]).toMatchObject({
+        submission_id: null,
+        response: null,
+      });
+
+      const duplicate = await service.submitAction(input);
+      const afterDuplicate = await loadActionPersistence(pool, fixture.matchId);
+      expect(duplicate).toEqual(response);
+      expect(afterDuplicate).toEqual(persisted);
+    });
+
+    it('keeps sequences contiguous when a two-action round is followed by CPU replacement and a CPU move', async () => {
+      const battle = initialBattle(2, { playerDamage: 10, cpuDamage: 1 });
+      const fixture = await insertActionMatch(pool, battle.state);
+      const service = createCpuMatchService(pool, { randomInt: () => 0 });
+
+      const selected = await service.submitAction({
+        playerId: fixture.playerId,
+        matchId: fixture.matchId,
+        submissionId: integrationUuid(302_001),
+        expectedVersion: 0,
+        action: {
+          type: 'select_initial_creature',
+          creatureId: battle.playerCreatureId,
+        },
+      });
+      const moved = await service.submitAction({
+        playerId: fixture.playerId,
+        matchId: fixture.matchId,
+        submissionId: integrationUuid(302_002),
+        expectedVersion: selected.version,
+        action: { type: 'use_move', moveId: battle.playerMoveId },
+      });
+      const persisted = await loadActionPersistence(pool, fixture.matchId);
+
+      expect(moved.state.phase).toBe('active');
+      expect(moved.state.currentSide).toBe('player');
+      expect(persisted.actions.map(({ sequence }) => sequence)).toEqual([
+        1, 2, 3, 4, 5,
+      ]);
+      expect(persisted.actions.map(({ round_number }) => round_number)).toEqual(
+        [1, 1, 2, 2, 2],
+      );
+      expect(persisted.actions.map(({ action }) => action.type)).toEqual([
+        'select_initial_creature',
+        'select_initial_creature',
+        'use_move',
+        'select_replacement',
+        'use_move',
+      ]);
+      expect(persisted.actions.map(({ side }) => side)).toEqual([
+        'player',
+        'cpu',
+        'player',
+        'cpu',
+        'cpu',
+      ]);
+      expect(
+        persisted.actions.filter(({ submission_id }) => submission_id !== null),
+      ).toHaveLength(2);
+      expect(
+        persisted.actions.filter(({ response }) => response !== null),
+      ).toHaveLength(2);
+    });
+
+    it('persists a player-completed terminal match atomically', async () => {
+      const battle = activeBattle(3, { playerDamage: 10, cpuDamage: 1 });
+      const terminalState = withLastCreature(battle.state, 'cpu');
+      const fixture = await insertActionMatch(pool, terminalState);
+      const service = createCpuMatchService(pool, { randomInt: () => 0 });
+
+      const response = await service.submitAction({
+        playerId: fixture.playerId,
+        matchId: fixture.matchId,
+        submissionId: integrationUuid(303_001),
+        expectedVersion: 0,
+        action: { type: 'use_move', moveId: battle.playerMoveId },
+      });
+      const persisted = await loadActionPersistence(pool, fixture.matchId);
+
+      expect(response).toMatchObject({
+        status: 'completed',
+        version: 1,
+        winner: 'player',
+        completedAt: expect.any(String),
+        state: { phase: 'completed', currentSide: null },
+      });
+      expect(persisted.match).toMatchObject({
+        status: 'completed',
+        version: 1,
+        winner: 'player',
+        state: { phase: 'completed', winner: 'player' },
+      });
+      expect(persisted.match.completed_at).toBeInstanceOf(Date);
+      expect(persisted.actions).toHaveLength(1);
+      expect(persisted.actions[0]?.result).toMatchObject({ winner: 'player' });
+      expect(persisted.rounds[0]?.state_after).toEqual(persisted.match.state);
+    });
+
+    it('persists a CPU-completed terminal match atomically', async () => {
+      const battle = activeBattle(4, { playerDamage: 0, cpuDamage: 10 });
+      const terminalState = withLastCreature(battle.state, 'player');
+      const fixture = await insertActionMatch(pool, terminalState);
+      const service = createCpuMatchService(pool, { randomInt: () => 0 });
+
+      const response = await service.submitAction({
+        playerId: fixture.playerId,
+        matchId: fixture.matchId,
+        submissionId: integrationUuid(304_001),
+        expectedVersion: 0,
+        action: { type: 'use_move', moveId: battle.playerMoveId },
+      });
+      const persisted = await loadActionPersistence(pool, fixture.matchId);
+
+      expect(response).toMatchObject({
+        status: 'completed',
+        version: 1,
+        winner: 'cpu',
+        completedAt: expect.any(String),
+        state: { phase: 'completed', currentSide: null },
+      });
+      expect(persisted.match).toMatchObject({
+        status: 'completed',
+        version: 1,
+        winner: 'cpu',
+        state: { phase: 'completed', winner: 'cpu' },
+      });
+      expect(persisted.actions.map(({ side }) => side)).toEqual([
+        'player',
+        'cpu',
+      ]);
+      expect(persisted.actions[1]?.result).toMatchObject({ winner: 'cpu' });
+    });
+
+    it('returns one committed response to two concurrent identical submissions', async () => {
+      const battle = activeBattle(5, { playerDamage: 1, cpuDamage: 1 });
+      const fixture = await insertActionMatch(pool, battle.state);
+      const firstAtPersistence = deferred<void>();
+      const releaseFirst = deferred<void>();
+      const secondAtLock = deferred<void>();
+      let secondAcquiredLock = false;
+
+      const firstService = createCpuMatchService(
+        interceptDatabase(pool, {
+          beforeQuery: async (statement) => {
+            if (statement.includes('with sequence_base as materialized')) {
+              firstAtPersistence.resolve();
+              await releaseFirst.promise;
+            }
+          },
+        }),
+        { randomInt: () => 0 },
+      );
+      const secondService = createCpuMatchService(
+        interceptDatabase(pool, {
+          beforeQuery: async (statement) => {
+            if (statement.includes('for update')) secondAtLock.resolve();
+          },
+          afterQuery: async (statement) => {
+            if (statement.includes('for update')) secondAcquiredLock = true;
+          },
+        }),
+        { randomInt: () => 0 },
+      );
+      const input = {
+        playerId: fixture.playerId,
+        matchId: fixture.matchId,
+        submissionId: integrationUuid(305_001),
+        expectedVersion: 0,
+        action: { type: 'use_move' as const, moveId: battle.playerMoveId },
+      };
+
+      const first = firstService.submitAction(input);
+      await firstAtPersistence.promise;
+      const second = secondService.submitAction(input);
+      await secondAtLock.promise;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(secondAcquiredLock).toBe(false);
+
+      releaseFirst.resolve();
+      const [firstResponse, secondResponse] = await Promise.all([
+        first,
+        second,
+      ]);
+      const persisted = await loadActionPersistence(pool, fixture.matchId);
+
+      expect(secondAcquiredLock).toBe(true);
+      expect(secondResponse).toEqual(firstResponse);
+      expect(persisted.match.version).toBe(1);
+      expect(persisted.rounds).toHaveLength(1);
+      expect(persisted.actions).toHaveLength(2);
+    });
+
+    it('serializes concurrent different submissions and rejects the stale request', async () => {
+      const battle = activeBattle(6, { playerDamage: 1, cpuDamage: 1 });
+      const fixture = await insertActionMatch(pool, battle.state);
+      const firstAtPersistence = deferred<void>();
+      const releaseFirst = deferred<void>();
+      const secondAtLock = deferred<void>();
+      const firstService = createCpuMatchService(
+        interceptDatabase(pool, {
+          beforeQuery: async (statement) => {
+            if (statement.includes('with sequence_base as materialized')) {
+              firstAtPersistence.resolve();
+              await releaseFirst.promise;
+            }
+          },
+        }),
+        { randomInt: () => 0 },
+      );
+      const secondService = createCpuMatchService(
+        interceptDatabase(pool, {
+          beforeQuery: async (statement) => {
+            if (statement.includes('for update')) secondAtLock.resolve();
+          },
+        }),
+        { randomInt: () => 0 },
+      );
+      const shared = {
+        playerId: fixture.playerId,
+        matchId: fixture.matchId,
+        expectedVersion: 0,
+        action: { type: 'use_move' as const, moveId: battle.playerMoveId },
+      };
+
+      const first = firstService.submitAction({
+        ...shared,
+        submissionId: integrationUuid(306_001),
+      });
+      await firstAtPersistence.promise;
+      const second = secondService.submitAction({
+        ...shared,
+        submissionId: integrationUuid(306_002),
+      });
+      await secondAtLock.promise;
+      releaseFirst.resolve();
+
+      await expect(first).resolves.toMatchObject({ version: 1 });
+      await expect(second).rejects.toBeInstanceOf(CpuMatchVersionConflictError);
+      const persisted = await loadActionPersistence(pool, fixture.matchId);
+      expect(persisted.match.version).toBe(1);
+      expect(persisted.rounds).toHaveLength(1);
+      expect(persisted.actions).toHaveLength(2);
+    });
+
+    it('rolls back all combined writes when match persistence fails', async () => {
+      const battle = activeBattle(7, { playerDamage: 1, cpuDamage: 1 });
+      const fixture = await insertActionMatch(pool, battle.state);
+      const triggerName = 'cpu_match_latency_fail_update';
+      const functionName = 'cpu_match_latency_fail_update';
+
+      await pool.query(`
+        create function public.${functionName}()
+        returns trigger
+        language plpgsql
+        as $function$
+        begin
+          if new.id = '${fixture.matchId}'::uuid then
+            raise exception 'injected CPU match persistence failure';
+          end if;
+          return new;
+        end
+        $function$
+      `);
+      await pool.query(`
+        create trigger ${triggerName}
+        before update on public.cpu_matches
+        for each row execute function public.${functionName}()
+      `);
+
+      try {
+        const service = createCpuMatchService(pool, { randomInt: () => 0 });
+        await expect(
+          service.submitAction({
+            playerId: fixture.playerId,
+            matchId: fixture.matchId,
+            submissionId: integrationUuid(307_001),
+            expectedVersion: 0,
+            action: { type: 'use_move', moveId: battle.playerMoveId },
+          }),
+        ).rejects.toThrow('injected CPU match persistence failure');
+
+        const persisted = await loadActionPersistence(pool, fixture.matchId);
+        expect(persisted.match).toMatchObject({
+          version: 0,
+          state: battle.state,
+        });
+        expect(persisted.rounds).toEqual([]);
+        expect(persisted.actions).toEqual([]);
+      } finally {
+        await pool.query(`drop trigger ${triggerName} on public.cpu_matches`);
+        await pool.query(`drop function public.${functionName}()`);
+      }
+    });
+
+    it('rolls back successful writes when returned persistence invariants fail', async () => {
+      const battle = activeBattle(8, { playerDamage: 1, cpuDamage: 1 });
+      const fixture = await insertActionMatch(pool, battle.state);
+      const database = interceptDatabase(pool, {
+        afterQuery: async (statement, result) => {
+          if (statement.includes('with sequence_base as materialized')) {
+            const row = result.rows[0] as { match_update_count?: number };
+            row.match_update_count = 0;
+          }
+        },
+      });
+      const service = createCpuMatchService(database, { randomInt: () => 0 });
+
+      await expect(
+        service.submitAction({
+          playerId: fixture.playerId,
+          matchId: fixture.matchId,
+          submissionId: integrationUuid(308_001),
+          expectedVersion: 0,
+          action: { type: 'use_move', moveId: battle.playerMoveId },
+        }),
+      ).rejects.toThrow('transition persistence invariant failed');
+
+      const persisted = await loadActionPersistence(pool, fixture.matchId);
+      expect(persisted.match).toMatchObject({
+        version: 0,
+        state: battle.state,
+      });
+      expect(persisted.rounds).toEqual([]);
+      expect(persisted.actions).toEqual([]);
+    });
+
+    it('keeps timeout substitution server-controlled in the combined persistence path', async () => {
+      const battle = activeBattle(9, { playerDamage: 1, cpuDamage: 1 });
+      const fixture = await insertActionMatch(pool, battle.state, {
+        deadline: new Date('2026-08-16T00:00:00.000Z'),
+      });
+      const service = createCpuMatchService(pool, {
+        clock: { now: () => new Date('2026-08-16T00:00:01.000Z') },
+        randomInt: () => 0,
+      });
+
+      await service.submitAction({
+        playerId: fixture.playerId,
+        matchId: fixture.matchId,
+        submissionId: integrationUuid(309_001),
+        expectedVersion: 0,
+        action: { type: 'use_move', moveId: battle.playerMoveId },
+      });
+      const persisted = await loadActionPersistence(pool, fixture.matchId);
+
+      expect(persisted.actions[0]).toMatchObject({
+        side: 'player',
+        action: { type: 'timeout' },
+        result: { action: { type: 'timeout' } },
+      });
+      expect(persisted.actions[1]?.side).toBe('cpu');
+    });
 
     it('hides an uncommitted creation and recovers that exact match after commit', async () => {
       const creatingClient = await pool.connect();
@@ -466,3 +866,253 @@ describe.skipIf(!runIntegrationTests)(
     });
   },
 );
+
+let actionFixtureSequence = 0;
+
+function initialBattle(
+  seed: number,
+  damage: { cpuDamage: number; playerDamage: number },
+) {
+  const playerDeck = battleDeck(400_000 + seed * 100, damage.playerDamage);
+  const cpuDeck = battleDeck(500_000 + seed * 100, damage.cpuDamage);
+
+  return {
+    state: createBattleState(playerDeck, cpuDeck),
+    playerCreatureId: playerDeck.creatureCards[0]!.id,
+    playerMoveId: playerDeck.creatureCards[0]!.moves[0]!.id,
+    cpuCreatureId: cpuDeck.creatureCards[0]!.id,
+  };
+}
+
+function activeBattle(
+  seed: number,
+  damage: { cpuDamage: number; playerDamage: number },
+) {
+  const battle = initialBattle(seed, damage);
+  let state = applyBattleAction(
+    battle.state,
+    'player',
+    {
+      type: 'select_initial_creature',
+      creatureId: battle.playerCreatureId,
+    },
+    () => 0,
+  ).state;
+  state = applyBattleAction(
+    state,
+    'cpu',
+    { type: 'select_initial_creature', creatureId: battle.cpuCreatureId },
+    () => 0,
+  ).state;
+
+  return { ...battle, state };
+}
+
+function battleDeck(base: number, damage: number): BattleDeck {
+  const creatureCards: BattleCreatureCard[] = [0, 1, 2].map((index) => ({
+    id: integrationUuid(base + index),
+    affinity: 'wit',
+    maxHp: 10,
+    maxPower: 10,
+    moves: [
+      {
+        id: integrationUuid(base + 10 + index),
+        name: 'Persistence strike',
+        moveType: 'basic',
+        powerCost: 0,
+        effects: [
+          {
+            id: integrationUuid(base + 20 + index),
+            effectType: 'damage',
+            effectValue: damage,
+          },
+        ],
+      },
+    ],
+  }));
+  const powerCards: BattlePowerCard[] = [0, 1].map((index) => ({
+    id: integrationUuid(base + 30 + index),
+    affinity: 'wit',
+    effects: [
+      {
+        id: integrationUuid(base + 40 + index),
+        effectType: 'heal',
+        effectValue: 1,
+      },
+    ],
+  }));
+
+  return { creatureCards, powerCards };
+}
+
+function withLastCreature(state: BattleState, side: 'cpu' | 'player') {
+  const participant = state.participants[side];
+  const creatures = participant.creatures.map((creature, index) => ({
+    ...creature,
+    currentHp: index === 0 ? 1 : 0,
+    defeated: index !== 0,
+  }));
+
+  return {
+    ...state,
+    participants: {
+      ...state.participants,
+      [side]: {
+        ...participant,
+        activeCreatureId: creatures[0]!.card.id,
+        creatures,
+      },
+    },
+  } satisfies BattleState;
+}
+
+async function insertActionMatch(
+  pool: ReturnType<typeof createDatabasePool>,
+  state: BattleState,
+  options: { deadline?: Date } = {},
+) {
+  actionFixtureSequence += 1;
+  const playerId = integrationUuid(100_000 + actionFixtureSequence);
+  const matchId = integrationUuid(200_000 + actionFixtureSequence);
+  const active = state.phase === 'active';
+  const deadline = active
+    ? (options.deadline ?? new Date('2030-01-01T00:00:00.000Z'))
+    : null;
+
+  await pool.query(
+    `
+      insert into public.players (
+        id, auth_issuer, auth_subject, role, lifecycle_status
+      ) values ($1, 'https://issuer.example/', $2, 'player', 'active')
+    `,
+    [playerId, `cpu-action-persistence-${actionFixtureSequence}`],
+  );
+  await pool.query(
+    `
+      insert into public.cpu_matches (
+        id, player_id, state, turn_started_at, turn_deadline
+      ) values ($1, $2, $3::jsonb, $4, $5)
+    `,
+    [
+      matchId,
+      playerId,
+      JSON.stringify(state),
+      active ? new Date('2026-08-16T00:00:00.000Z') : null,
+      deadline,
+    ],
+  );
+
+  return { matchId, playerId };
+}
+
+async function loadActionPersistence(
+  pool: ReturnType<typeof createDatabasePool>,
+  matchId: string,
+) {
+  const match = await pool.query<{
+    completed_at: Date | null;
+    state: BattleState;
+    status: 'active' | 'completed';
+    version: number;
+    winner: 'cpu' | 'player' | null;
+  }>(
+    `
+      select status, state, version, winner, completed_at
+      from public.cpu_matches
+      where id = $1::uuid
+    `,
+    [matchId],
+  );
+  const rounds = await pool.query<{
+    id: string;
+    round_number: number;
+    state_after: BattleState;
+  }>(
+    `
+      select id::text, round_number, state_after
+      from public.cpu_match_rounds
+      where match_id = $1::uuid
+      order by round_number
+    `,
+    [matchId],
+  );
+  const actions = await pool.query<{
+    action: { type: string };
+    response: unknown;
+    result: { action: { type: string }; winner: 'cpu' | 'player' | null };
+    round_number: number;
+    sequence: number;
+    side: 'cpu' | 'player';
+    submission_id: string | null;
+  }>(
+    `
+      select
+        action.sequence,
+        action.side,
+        action.submission_id::text,
+        action.action,
+        action.result,
+        action.response,
+        round.round_number
+      from public.cpu_match_actions action
+      join public.cpu_match_rounds round on round.id = action.round_id
+      where action.match_id = $1::uuid
+      order by action.sequence
+    `,
+    [matchId],
+  );
+
+  const matchRow = match.rows[0];
+  if (!matchRow) throw new Error('CPU action test match was not found.');
+
+  return { match: matchRow, rounds: rounds.rows, actions: actions.rows };
+}
+
+interface QueryInterceptors {
+  afterQuery?: (
+    statement: string,
+    result: { rows: QueryResultRow[] },
+  ) => Promise<void>;
+  beforeQuery?: (statement: string) => Promise<void>;
+}
+
+function interceptDatabase(
+  pool: ReturnType<typeof createDatabasePool>,
+  interceptors: QueryInterceptors,
+): CpuMatchDatabase {
+  return {
+    connect: async () => {
+      const client = await pool.connect();
+      const intercepted: CpuMatchClient = {
+        query: async <T extends QueryResultRow>(
+          statement: string,
+          values?: unknown[],
+        ) => {
+          await interceptors.beforeQuery?.(statement);
+          const result = await client.query<T>(statement, values);
+          await interceptors.afterQuery?.(
+            statement,
+            result as { rows: QueryResultRow[] },
+          );
+          return result;
+        },
+        release: () => client.release(),
+      };
+      return intercepted;
+    },
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
+
+function integrationUuid(value: number) {
+  return `c0000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
+}
