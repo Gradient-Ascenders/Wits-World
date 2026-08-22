@@ -16,6 +16,7 @@ import { getMigrationsDirectory } from '../src/database/paths.js';
 const PUBLISHED_EDGE_ID = 'a0ef723b-0b3f-498f-96e7-1f56a21cb3a1';
 const RETIRED_EDGE_ID = '4f4baa5d-e31b-44d9-b743-29b4d0db67fd';
 const REMEDIATION_MIGRATION = '0017_resolve_edge_card_definition_name.sql';
+const UNIQUENESS_MIGRATION = '0018_enforce_card_definition_name_uniqueness.sql';
 
 const PLAYER_ID = 'a7000000-0000-4000-8000-000000000001';
 const STARTER_GRANT_ID = 'a7000000-0000-4000-8000-000000000002';
@@ -43,11 +44,11 @@ describe.skipIf(!runIntegrationTests)(
     it('renames only the approved retired definition and preserves its references', async () => {
       await withPreRemediationDatabase(async (databaseConfig, directory) => {
         await seedExpectedEdgeDefinitions(databaseConfig);
-        await addRemediationMigration(directory);
+        await addNameMigrations(directory);
 
         await expect(runMigrations(databaseConfig, directory)).resolves.toEqual(
           expect.objectContaining({
-            applied: [REMEDIATION_MIGRATION],
+            applied: [REMEDIATION_MIGRATION, UNIQUENESS_MIGRATION],
           }),
         );
 
@@ -130,12 +131,23 @@ describe.skipIf(!runIntegrationTests)(
           );
 
           expect(duplicateGroups.rows).toEqual([{ count: '0' }]);
+
+          const uniquenessIndex = await client.query<{ count: string }>(
+            `select count(*)::text as count
+               from pg_class
+              where relname = 'card_definitions_normalized_name_unique_idx'`,
+          );
+
+          expect(uniquenessIndex.rows).toEqual([{ count: '1' }]);
         });
 
         await expect(runMigrations(databaseConfig, directory)).resolves.toEqual(
           expect.objectContaining({
             applied: [],
-            skipped: expect.arrayContaining([REMEDIATION_MIGRATION]),
+            skipped: expect.arrayContaining([
+              REMEDIATION_MIGRATION,
+              UNIQUENESS_MIGRATION,
+            ]),
           }),
         );
       });
@@ -237,6 +249,14 @@ async function addRemediationMigration(directory: string) {
   await copyFile(
     join(getMigrationsDirectory(), REMEDIATION_MIGRATION),
     join(directory, REMEDIATION_MIGRATION),
+  );
+}
+
+async function addNameMigrations(directory: string) {
+  await addRemediationMigration(directory);
+  await copyFile(
+    join(getMigrationsDirectory(), UNIQUENESS_MIGRATION),
+    join(directory, UNIQUENESS_MIGRATION),
   );
 }
 
