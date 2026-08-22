@@ -42,7 +42,8 @@ test('the author form remains keyboard-usable without map interaction at respons
       contentType: 'application/json',
       json: {
         id: playerId,
-        displayName: null,
+        playerName: 'test-player',
+        playerNameSetupRequired: false,
         lifecycleStatus: 'active',
         requestId: 'playwright-author-role',
         role: 'author',
@@ -131,7 +132,8 @@ test('card name conflicts preserve the Author draft and allow a unique retry', a
       contentType: 'application/json',
       json: {
         id: playerId,
-        displayName: null,
+        playerName: 'test-player',
+        playerNameSetupRequired: false,
         lifecycleStatus: 'active',
         requestId: 'playwright-card-name-author',
         role: 'author',
@@ -274,7 +276,8 @@ test('an Author retires the event before its challenge and sees both states pers
       contentType: 'application/json',
       json: {
         id: playerId,
-        displayName: null,
+        playerName: 'test-player',
+        playerNameSetupRequired: false,
         lifecycleStatus: 'active',
         requestId: 'playwright-author-role',
         role: 'author',

@@ -1,3 +1,7 @@
+import { copyFile, mkdtemp, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
@@ -13,12 +17,19 @@ import {
   runMigrations,
   type MigrationResult,
 } from '../src/database/migrations.js';
-import { createPlayerIdentityService } from '../src/players/player-identity.js';
+import { getMigrationsDirectory } from '../src/database/paths.js';
+import {
+  createPlayerIdentityService,
+  PlayerNameConflictError,
+} from '../src/players/player-identity.js';
+import type { LocalPlayer } from '../src/players/types.js';
 
 import { createAccountDeletionLifecycle } from '../src/players/account-deletion-lifecycle.js';
 
 const runIntegrationTests =
   process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';
+const ORIGINAL_PLAYER_NAME_POLICY_CHECKSUM =
+  'f599515f61b897ea3737df05147a3354bcb630b4564e5550220e14cf742090af';
 
 describe.skipIf(!runIntegrationTests)('player database integration', () => {
   let administrationConfig: DatabaseConfig;
@@ -67,6 +78,15 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
     expect(migrationResult.applied).toContain(
       '0019_add_player_display_name.sql',
     );
+    expect(migrationResult.applied).toContain(
+      '0020_replace_display_name_with_player_name.sql',
+    );
+    expect(migrationResult.applied).toContain(
+      '0021_enforce_player_name_policy.sql',
+    );
+    expect(migrationResult.applied).toContain(
+      '0022_tighten_player_name_policy.sql',
+    );
 
     await withDatabaseClient(temporaryConfig, async (client) => {
       const relation = await client.query<{
@@ -77,71 +97,370 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
     });
   });
 
-  it('keeps legacy and newly provisioned players unnamed', async () => {
+  it('creates only the final player_name column', async () => {
+    await withDatabaseClient(temporaryConfig, async (client) => {
+      const columns = await client.query<{ column_name: string }>(
+        `select column_name
+           from information_schema.columns
+          where table_schema = 'public'
+            and table_name = 'players'
+            and column_name in ('display_name', 'player_name')
+          order by column_name`,
+      );
+
+      expect(columns.rows).toEqual([{ column_name: 'player_name' }]);
+    });
+  });
+
+  it('preserves the applied 0019 checksum and clears temporary values in 0020', async () => {
+    const transitionDatabaseName = `wits_quest_player_transition_${Date.now()}_${process.pid}`;
+    const migrationDirectory = await mkdtemp(
+      join(tmpdir(), 'wits-player-migrations-'),
+    );
+    const transitionUrl = new URL(administrationConfig.connectionString);
+    transitionUrl.pathname = `/${transitionDatabaseName}`;
+    const transitionConfig = {
+      ...administrationConfig,
+      connectionString: transitionUrl.toString(),
+    };
+
+    await withDatabaseClient(administrationConfig, async (client) => {
+      await client.query(`create database ${transitionDatabaseName}`);
+    });
+
+    try {
+      const migrations = await readdir(getMigrationsDirectory());
+      await Promise.all(
+        migrations
+          .filter((name) => name.endsWith('.sql') && name < '0020_')
+          .map((name) =>
+            copyFile(
+              join(getMigrationsDirectory(), name),
+              join(migrationDirectory, name),
+            ),
+          ),
+      );
+
+      await runMigrations(transitionConfig, migrationDirectory);
+      await withDatabaseClient(transitionConfig, async (client) => {
+        await client.query(
+          `insert into public.players (
+             id, auth_issuer, auth_subject, display_name, role, lifecycle_status
+           ) values ($1, $2, $3, $4, 'player', 'active')`,
+          [
+            '00000000-0000-4000-8000-000000000147',
+            'https://auth.example.test/',
+            'auth0|temporary-display-name',
+            'Temporary Name',
+          ],
+        );
+      });
+
+      await expect(runMigrations(transitionConfig)).resolves.toMatchObject({
+        applied: [
+          '0020_replace_display_name_with_player_name.sql',
+          '0021_enforce_player_name_policy.sql',
+          '0022_tighten_player_name_policy.sql',
+        ],
+      });
+
+      await withDatabaseClient(transitionConfig, async (client) => {
+        const player = await client.query<{ player_name: string | null }>(
+          `select player_name from public.players where id = $1`,
+          ['00000000-0000-4000-8000-000000000147'],
+        );
+        expect(player.rows[0]?.player_name).toBeNull();
+      });
+    } finally {
+      await withDatabaseClient(administrationConfig, async (client) => {
+        await client.query(
+          `drop database if exists ${transitionDatabaseName} with (force)`,
+        );
+      });
+      await rm(migrationDirectory, { force: true, recursive: true });
+    }
+  }, 45_000);
+
+  it('upgrades an original 0021 database through 0022 without changing history or player data', async () => {
+    const existingDatabaseName = `wits_quest_player_0021_${Date.now()}_${process.pid}`;
+    const migrationDirectory = await mkdtemp(
+      join(tmpdir(), 'wits-player-0021-migrations-'),
+    );
+    const existingUrl = new URL(administrationConfig.connectionString);
+    existingUrl.pathname = `/${existingDatabaseName}`;
+    const existingConfig = {
+      ...administrationConfig,
+      connectionString: existingUrl.toString(),
+    };
+
+    await withDatabaseClient(administrationConfig, async (client) => {
+      await client.query(`create database ${existingDatabaseName}`);
+    });
+
+    try {
+      const migrations = await readdir(getMigrationsDirectory());
+      await Promise.all(
+        migrations
+          .filter((name) => name.endsWith('.sql') && name < '0022_')
+          .map((name) =>
+            copyFile(
+              join(getMigrationsDirectory(), name),
+              join(migrationDirectory, name),
+            ),
+          ),
+      );
+
+      const originalResult = await runMigrations(
+        existingConfig,
+        migrationDirectory,
+      );
+      expect(originalResult.applied).toContain(
+        '0021_enforce_player_name_policy.sql',
+      );
+
+      await withDatabaseClient(existingConfig, async (client) => {
+        const recordedMigration = await client.query<{ checksum: string }>(
+          `select checksum
+             from public.schema_migrations
+            where name = '0021_enforce_player_name_policy.sql'`,
+        );
+        expect(recordedMigration.rows).toEqual([
+          { checksum: ORIGINAL_PLAYER_NAME_POLICY_CHECKSUM },
+        ]);
+
+        await client.query(
+          `insert into public.players (
+             id, auth_issuer, auth_subject, player_name, role, lifecycle_status
+           ) values
+             ($1, $2, $3, $4, 'author', 'active'),
+             ($5, $6, $7, null, 'player', 'active')`,
+          [
+            '00000000-0000-4000-8000-000000000148',
+            'https://auth.example.test/',
+            'auth0|existing-0021-player',
+            'normal_player',
+            '00000000-0000-4000-8000-000000000149',
+            'https://auth.example.test/',
+            'google-oauth2|existing-0021-player',
+          ],
+        );
+
+        await client.query(
+          `insert into public.players (
+             id, auth_issuer, auth_subject, player_name, role, lifecycle_status
+           ) values ($1, $2, $3, $4, 'player', 'active')`,
+          [
+            '00000000-0000-4000-8000-000000000150',
+            'https://auth.example.test/',
+            'google-oauth2|email-shaped-before-0022',
+            'bob@example.com',
+          ],
+        );
+        await client.query(`delete from public.players where id = $1`, [
+          '00000000-0000-4000-8000-000000000150',
+        ]);
+      });
+
+      await expect(
+        runMigrations(existingConfig, migrationDirectory),
+      ).resolves.toMatchObject({
+        applied: [],
+        skipped: expect.arrayContaining([
+          '0021_enforce_player_name_policy.sql',
+        ]),
+      });
+
+      await expect(runMigrations(existingConfig)).resolves.toMatchObject({
+        applied: ['0022_tighten_player_name_policy.sql'],
+      });
+
+      await withDatabaseClient(existingConfig, async (client) => {
+        const players = await client.query<{
+          auth_issuer: string | null;
+          auth_subject: string | null;
+          id: string;
+          lifecycle_status: string;
+          player_name: string | null;
+          role: string;
+        }>(
+          `select id, auth_issuer, auth_subject, player_name, role, lifecycle_status
+             from public.players
+            where id in ($1, $2)
+            order by id`,
+          [
+            '00000000-0000-4000-8000-000000000148',
+            '00000000-0000-4000-8000-000000000149',
+          ],
+        );
+        expect(players.rows).toEqual([
+          {
+            auth_issuer: 'https://auth.example.test/',
+            auth_subject: 'auth0|existing-0021-player',
+            id: '00000000-0000-4000-8000-000000000148',
+            lifecycle_status: 'active',
+            player_name: 'normal_player',
+            role: 'author',
+          },
+          {
+            auth_issuer: 'https://auth.example.test/',
+            auth_subject: 'google-oauth2|existing-0021-player',
+            id: '00000000-0000-4000-8000-000000000149',
+            lifecycle_status: 'active',
+            player_name: null,
+            role: 'player',
+          },
+        ]);
+
+        const index = await client.query<{ indexdef: string }>(
+          `select indexdef
+             from pg_indexes
+            where schemaname = 'public'
+              and tablename = 'players'
+              and indexname = 'players_player_name_case_insensitive_unique'`,
+        );
+        expect(index.rows[0]?.indexdef).toContain(
+          'UNIQUE INDEX players_player_name_case_insensitive_unique',
+        );
+        expect(index.rows[0]?.indexdef).toContain('lower(player_name)');
+
+        await expect(
+          client.query(
+            `insert into public.players (
+               id, auth_issuer, auth_subject, player_name, role, lifecycle_status
+             ) values ($1, $2, $3, $4, 'player', 'active')`,
+            [
+              '00000000-0000-4000-8000-000000000151',
+              'https://auth.example.test/',
+              'google-oauth2|email-shaped-after-0022',
+              'bob@example.com',
+            ],
+          ),
+        ).rejects.toMatchObject({ code: '23514' });
+      });
+    } finally {
+      await withDatabaseClient(administrationConfig, async (client) => {
+        await client.query(
+          `drop database if exists ${existingDatabaseName} with (force)`,
+        );
+      });
+      await rm(migrationDirectory, { force: true, recursive: true });
+    }
+  }, 60_000);
+
+  it('provisions the trusted Auth0 player name through issuer and subject', async () => {
     await withDatabaseClient(temporaryConfig, async (client) => {
       const service = createPlayerIdentityService(client);
       const player = await service.resolve({
+        connectionStrategy: 'auth0',
         issuer: 'https://auth.example.test/',
-        subject: 'auth0|unnamed-player',
+        playerName: 'naledi',
+        subject: 'auth0|new-player',
       });
 
-      expect(player.displayName).toBeNull();
-
-      const stored = await client.query<{ display_name: string | null }>(
-        `select display_name from public.players where id = $1`,
+      const stored = await client.query<{
+        auth_issuer: string;
+        auth_subject: string;
+        id: string;
+        player_name: string;
+      }>(
+        `select id, auth_issuer, auth_subject, player_name
+           from public.players
+          where id = $1`,
         [player.id],
       );
-      expect(stored.rows[0]?.display_name).toBeNull();
+
+      expect(stored.rows[0]).toEqual({
+        auth_issuer: 'https://auth.example.test/',
+        auth_subject: 'auth0|new-player',
+        id: player.id,
+        player_name: 'naledi',
+      });
     });
   });
 
-  it('allows duplicate Unicode display names for different players', async () => {
+  it('provisions a Google player with NULL and preserves its assigned local name', async () => {
     await withDatabaseClient(temporaryConfig, async (client) => {
-      await expect(
-        client.query(
-          `insert into public.players (
-             id, auth_issuer, auth_subject, role, lifecycle_status, display_name
-           ) values
-             ($1, $3, $5, 'player', 'active', $7),
-             ($2, $4, $6, 'author', 'active', $7)`,
-          [
-            '00000000-0000-4000-8000-000000000141',
-            '00000000-0000-4000-8000-000000000142',
-            'https://tenant-one.example.test/',
-            'https://tenant-two.example.test/',
-            'auth0|same-name-one',
-            'auth0|same-name-two',
-            'Naledi 星',
-          ],
-        ),
-      ).resolves.toBeDefined();
+      const service = createPlayerIdentityService(client);
+      const identity = {
+        connectionStrategy: 'google-oauth2' as const,
+        issuer: 'https://auth.example.test/',
+        playerName: null,
+        subject: 'google-oauth2|new-player',
+      };
+
+      const provisioned = await service.resolve(identity);
+      expect(provisioned.playerName).toBeNull();
+
+      const assigned = await service.assignInitialPlayerName(
+        provisioned.id,
+        '  Google_Player  ',
+      );
+      expect(assigned).toMatchObject({
+        id: provisioned.id,
+        playerName: 'google_player',
+      });
+
+      await expect(service.resolve(identity)).resolves.toMatchObject({
+        id: provisioned.id,
+        playerName: 'google_player',
+      });
+
+      const stored = await client.query<{
+        auth_subject: string;
+        player_name: string;
+      }>(
+        `select auth_subject, player_name
+           from public.players
+          where id = $1`,
+        [provisioned.id],
+      );
+      expect(stored.rows[0]).toEqual({
+        auth_subject: identity.subject,
+        player_name: 'google_player',
+      });
     });
   });
 
-  it('updates presentation metadata without changing local or Auth0 identity and authorization state', async () => {
+  it('fills a legacy NULL and synchronizes a later trusted claim without changing identity', async () => {
     await withDatabaseClient(temporaryConfig, async (client) => {
       const playerId = '00000000-0000-4000-8000-000000000144';
       const issuer = 'https://auth.example.test/';
-      const subject = 'auth0|display-name-invariants';
+      const subject = 'auth0|player-name-invariants';
       await client.query(
         `insert into public.players (
            id, auth_issuer, auth_subject, role, lifecycle_status
          ) values ($1, $2, $3, 'author', 'active')`,
         [playerId, issuer, subject],
       );
+      await client.query(
+        `insert into public.player_wallets (player_id, coin_balance)
+         values ($1, 17)`,
+        [playerId],
+      );
 
       const service = createPlayerIdentityService(client);
-      await service.updateDisplayName(playerId, '  Professor Nova  ');
+      const populated = await service.resolve({
+        connectionStrategy: 'auth0',
+        issuer,
+        playerName: 'professor-nova',
+        subject,
+      });
+      const synchronized = await service.resolve({
+        connectionStrategy: 'auth0',
+        issuer,
+        playerName: 'professor-nova-2',
+        subject,
+      });
 
       const stored = await client.query<{
         auth_issuer: string;
         auth_subject: string;
-        display_name: string;
+        player_name: string;
         id: string;
         lifecycle_status: string;
         role: string;
       }>(
-        `select id, auth_issuer, auth_subject, role, lifecycle_status, display_name
+        `select id, auth_issuer, auth_subject, role, lifecycle_status, player_name
            from public.players
           where id = $1`,
         [playerId],
@@ -150,39 +469,355 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
       expect(stored.rows[0]).toEqual({
         auth_issuer: issuer,
         auth_subject: subject,
-        display_name: 'Professor Nova',
+        player_name: 'professor-nova-2',
         id: playerId,
         lifecycle_status: 'active',
         role: 'author',
+      });
+      expect(populated.id).toBe(playerId);
+      expect(synchronized.id).toBe(playerId);
+
+      const wallet = await client.query<{
+        coin_balance: number;
+        player_id: string;
+      }>(
+        `select player_id, coin_balance
+           from public.player_wallets
+          where player_id = $1`,
+        [playerId],
+      );
+      expect(wallet.rows[0]).toEqual({ coin_balance: 17, player_id: playerId });
+    });
+  });
+
+  it('leaves a matching trusted player name and update timestamp unchanged', async () => {
+    await withDatabaseClient(temporaryConfig, async (client) => {
+      const playerId = '00000000-0000-4000-8000-000000000142';
+      const issuer = 'https://auth.example.test/';
+      const subject = 'auth0|stable-player-name';
+      const originalUpdatedAt = new Date('2026-08-01T08:00:00.000Z');
+      await client.query(
+        `insert into public.players (
+           id, auth_issuer, auth_subject, player_name, role, lifecycle_status,
+           updated_at
+         ) values ($1, $2, $3, $4, 'player', 'active', $5)`,
+        [playerId, issuer, subject, 'stableplayer', originalUpdatedAt],
+      );
+
+      const service = createPlayerIdentityService(client);
+      await expect(
+        service.resolve({
+          connectionStrategy: 'auth0',
+          issuer,
+          playerName: 'stableplayer',
+          subject,
+        }),
+      ).resolves.toMatchObject({
+        id: playerId,
+        playerName: 'stableplayer',
+      });
+
+      const stored = await client.query<{
+        player_name: string;
+        updated_at: Date;
+      }>(
+        `select player_name, updated_at
+           from public.players
+          where id = $1`,
+        [playerId],
+      );
+      expect(stored.rows[0]).toEqual({
+        player_name: 'stableplayer',
+        updated_at: originalUpdatedAt,
       });
     });
   });
 
   it.each([
-    ['one character', 'A'],
-    ['more than 32 characters', 'A'.repeat(33)],
-    ['surrounding spaces', ' Naledi '],
-    ['control characters', 'Naledi\nStar'],
+    ['an empty value', ''],
+    ['only whitespace', '   '],
+    ['surrounding whitespace', ' naledi '],
+    ['uppercase characters', 'Naledi'],
+    ['control characters', 'naledi\nstar'],
+    ['an email format', 'bob@example.com'],
+    ['an email format with a single-label domain', 'player@example'],
+    ['a phone number format', '+27123456789'],
+    ['a phone number format without a plus', '27123456789'],
   ])(
-    'rejects a display name with %s at the database boundary',
-    async (_label, displayName) => {
+    'rejects a player name with %s at the database boundary',
+    async (_label, playerName) => {
       await withDatabaseClient(temporaryConfig, async (client) => {
         await expect(
           client.query(
             `insert into public.players (
-             id, auth_issuer, auth_subject, role, lifecycle_status, display_name
+             id, auth_issuer, auth_subject, role, lifecycle_status, player_name
            ) values ($1, $2, $3, 'player', 'active', $4)`,
             [
               '00000000-0000-4000-8000-000000000143',
               'https://auth.example.test/',
-              `auth0|invalid-display-name-${displayName.length}`,
-              displayName,
+              `auth0|invalid-player-name-${playerName.length}`,
+              playerName,
             ],
           ),
         ).rejects.toThrow();
       });
     },
   );
+
+  it('enforces player-name uniqueness through direct SQL', async () => {
+    await withDatabaseClient(temporaryConfig, async (client) => {
+      await client.query(
+        `insert into public.players (
+           id, auth_issuer, auth_subject, player_name, role, lifecycle_status
+         ) values ($1, $2, $3, $4, 'player', 'active')`,
+        [
+          '00000000-0000-4000-8000-000000000145',
+          'https://auth.example.test/',
+          'auth0|unique-name-winner',
+          'caseplayer',
+        ],
+      );
+
+      await expect(
+        client.query(
+          `insert into public.players (
+             id, auth_issuer, auth_subject, player_name, role, lifecycle_status
+           ) values ($1, $2, $3, $4, 'player', 'active')`,
+          [
+            '00000000-0000-4000-8000-000000000146',
+            'https://auth.example.test/',
+            'auth0|unique-name-loser',
+            'caseplayer',
+          ],
+        ),
+      ).rejects.toMatchObject({ code: '23505' });
+
+      const losingIdentity = await client.query(
+        `select id from public.players
+          where auth_issuer = $1 and auth_subject = $2`,
+        ['https://auth.example.test/', 'auth0|unique-name-loser'],
+      );
+      expect(losingIdentity.rowCount).toBe(0);
+    });
+  });
+
+  it('rolls back a conflicting name synchronization without changing either identity', async () => {
+    await withDatabaseClient(temporaryConfig, async (client) => {
+      const issuer = 'https://auth.example.test/';
+      const winningPlayerId = '00000000-0000-4000-8000-000000000148';
+      const losingPlayerId = '00000000-0000-4000-8000-000000000149';
+
+      await client.query(
+        `insert into public.players (
+           id, auth_issuer, auth_subject, player_name, role, lifecycle_status
+         ) values
+           ($1, $3, 'auth0|sync-winner', 'reservedplayer', 'player', 'active'),
+           ($2, $3, 'auth0|sync-loser', 'originalplayer', 'author', 'active')`,
+        [winningPlayerId, losingPlayerId, issuer],
+      );
+      await client.query(
+        `insert into public.player_wallets (player_id, coin_balance)
+         values ($1, 23)`,
+        [losingPlayerId],
+      );
+
+      const service = createPlayerIdentityService(client);
+      await expect(
+        service.resolve({
+          connectionStrategy: 'auth0',
+          issuer,
+          playerName: 'reservedplayer',
+          subject: 'auth0|sync-loser',
+        }),
+      ).rejects.toBeInstanceOf(PlayerNameConflictError);
+
+      const players = await client.query<{
+        auth_subject: string;
+        id: string;
+        player_name: string;
+        role: string;
+      }>(
+        `select id, auth_subject, player_name, role
+           from public.players
+          where id in ($1, $2)
+          order by id`,
+        [winningPlayerId, losingPlayerId],
+      );
+      expect(players.rows).toEqual([
+        {
+          auth_subject: 'auth0|sync-winner',
+          id: winningPlayerId,
+          player_name: 'reservedplayer',
+          role: 'player',
+        },
+        {
+          auth_subject: 'auth0|sync-loser',
+          id: losingPlayerId,
+          player_name: 'originalplayer',
+          role: 'author',
+        },
+      ]);
+
+      const wallet = await client.query<{
+        coin_balance: number;
+        player_id: string;
+      }>(
+        `select player_id, coin_balance
+           from public.player_wallets
+          where player_id = $1`,
+        [losingPlayerId],
+      );
+      expect(wallet.rows).toEqual([
+        { coin_balance: 23, player_id: losingPlayerId },
+      ]);
+    });
+  });
+
+  it('rolls back the losing concurrent provisioning request without switching identity', async () => {
+    const pool = createDatabasePool(temporaryConfig);
+
+    try {
+      const service = createPlayerIdentityService(pool);
+      const principals = [
+        {
+          connectionStrategy: 'auth0',
+          issuer: 'https://auth.example.test/',
+          playerName: 'concurrentplayer',
+          subject: 'auth0|concurrent-player-one',
+        },
+        {
+          connectionStrategy: 'auth0',
+          issuer: 'https://auth.example.test/',
+          playerName: 'concurrentplayer',
+          subject: 'auth0|concurrent-player-two',
+        },
+      ] as const;
+
+      const results = await Promise.allSettled(
+        principals.map((principal) => service.resolve(principal)),
+      );
+      const fulfilled = results.filter(
+        (result): result is PromiseFulfilledResult<LocalPlayer> =>
+          result.status === 'fulfilled',
+      );
+      const rejected = results.filter(
+        (result): result is PromiseRejectedResult =>
+          result.status === 'rejected',
+      );
+
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect(rejected[0]?.reason).toBeInstanceOf(PlayerNameConflictError);
+
+      const rows = await pool.query<{
+        auth_subject: string;
+        id: string;
+      }>(
+        `select id, auth_subject
+           from public.players
+          where lower(player_name) = lower($1)`,
+        ['concurrentplayer'],
+      );
+
+      expect(rows.rowCount).toBe(1);
+      expect(rows.rows[0]?.id).toBe(fulfilled[0]?.value.id);
+
+      const winningIndex = results.findIndex(
+        (result) => result.status === 'fulfilled',
+      );
+      expect(rows.rows[0]?.auth_subject).toBe(
+        principals[winningIndex]?.subject,
+      );
+    } finally {
+      await pool.end();
+    }
+  });
+
+  it('allows exactly one concurrent Google player to claim a Player Name', async () => {
+    const pool = createDatabasePool(temporaryConfig);
+
+    try {
+      const service = createPlayerIdentityService(pool);
+      const players = await Promise.all(
+        ['google-oauth2|claim-one', 'google-oauth2|claim-two'].map((subject) =>
+          service.resolve({
+            connectionStrategy: 'google-oauth2',
+            issuer: 'https://auth.example.test/',
+            playerName: null,
+            subject,
+          }),
+        ),
+      );
+      const results = await Promise.allSettled(
+        players.map((player) =>
+          service.assignInitialPlayerName(player.id, 'shared-google-name'),
+        ),
+      );
+
+      expect(
+        results.filter((result) => result.status === 'fulfilled'),
+      ).toHaveLength(1);
+      const rejected = results.filter(
+        (result): result is PromiseRejectedResult =>
+          result.status === 'rejected',
+      );
+      expect(rejected).toHaveLength(1);
+      expect(rejected[0]?.reason).toBeInstanceOf(PlayerNameConflictError);
+
+      const stored = await pool.query<{
+        id: string;
+        player_name: string | null;
+      }>(
+        `select id, player_name
+           from public.players
+          where id = any($1::uuid[])
+          order by id`,
+        [players.map((player) => player.id)],
+      );
+      expect(
+        stored.rows.filter((player) => player.player_name !== null),
+      ).toHaveLength(1);
+      expect(
+        stored.rows.filter((player) => player.player_name === null),
+      ).toHaveLength(1);
+    } finally {
+      await pool.end();
+    }
+  });
+
+  it('does not bind a database identity to a Player Name reserved by Google', async () => {
+    await withDatabaseClient(temporaryConfig, async (client) => {
+      const service = createPlayerIdentityService(client);
+      const googlePlayer = await service.resolve({
+        connectionStrategy: 'google-oauth2',
+        issuer: 'https://auth.example.test/',
+        playerName: null,
+        subject: 'google-oauth2|cross-provider-winner',
+      });
+      await service.assignInitialPlayerName(
+        googlePlayer.id,
+        'cross-provider-name',
+      );
+
+      await expect(
+        service.resolve({
+          connectionStrategy: 'auth0',
+          issuer: 'https://auth.example.test/',
+          playerName: 'cross-provider-name',
+          subject: 'auth0|cross-provider-loser',
+        }),
+      ).rejects.toBeInstanceOf(PlayerNameConflictError);
+
+      const losingIdentity = await client.query(
+        `select id
+           from public.players
+          where auth_issuer = $1
+            and auth_subject = $2`,
+        ['https://auth.example.test/', 'auth0|cross-provider-loser'],
+      );
+      expect(losingIdentity.rowCount).toBe(0);
+    });
+  });
 
   it('prevents duplicate external identities', async () => {
     await withDatabaseClient(temporaryConfig, async (client) => {
@@ -519,7 +1154,9 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
       const resolvedPlayers = await Promise.all(
         Array.from({ length: 5 }, () =>
           service.resolve({
+            connectionStrategy: 'auth0',
             issuer,
+            playerName: 'concurrent-player',
             subject,
           }),
         ),
@@ -732,8 +1369,8 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
 
       await client.query(
         `insert into public.players (
-          id, auth_issuer, auth_subject, role, lifecycle_status, display_name
-        ) values ($1, $2, $3, 'author', 'active', 'Professor Nova')`,
+          id, auth_issuer, auth_subject, role, lifecycle_status, player_name
+        ) values ($1, $2, $3, 'author', 'active', 'professor-nova')`,
         ['00000000-0000-4000-8000-000000000131', issuer, subject],
       );
 
@@ -755,7 +1392,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
       const player = await client.query<{
         auth_issuer: string | null;
         auth_subject: string | null;
-        display_name: string | null;
+        player_name: string | null;
         role: string | null;
         lifecycle_status: string;
         deletion_request_id: string | null;
@@ -763,7 +1400,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
         `select
           auth_issuer,
           auth_subject,
-          display_name,
+          player_name,
           role,
           lifecycle_status,
           deletion_request_id
@@ -775,7 +1412,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
       expect(player.rows[0]).toEqual({
         auth_issuer: null,
         auth_subject: null,
-        display_name: null,
+        player_name: null,
         role: null,
         lifecycle_status: 'deleted',
         deletion_request_id: null,

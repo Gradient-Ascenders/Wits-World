@@ -16,6 +16,11 @@ if (!npmCliPath) {
 
 const sharedDependencies = [
   {
+    workspace: '@wits-world/account-policy',
+    outputDirectory: 'packages/account-policy/dist',
+    runtimeEntry: 'packages/account-policy/dist/src/index.js',
+  },
+  {
     workspace: '@wits-world/game-rules',
     outputDirectory: 'packages/game-rules/dist',
     runtimeEntry: 'packages/game-rules/dist/src/index.js',

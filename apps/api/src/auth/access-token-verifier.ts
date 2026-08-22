@@ -1,10 +1,11 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 import type { AuthConfig } from '../config/auth.js';
-import type { AuthenticatedIdentity } from './types.js';
+import type { AuthenticatedPrincipal } from './types.js';
+import { readInteractivePlayerClaims } from './interactive-player-claims.js';
 
 export interface AccessTokenVerifier {
-  verify(token: string): Promise<AuthenticatedIdentity>;
+  verify(token: string): Promise<AuthenticatedPrincipal>;
 }
 
 interface CreateAccessTokenVerifierOptions {
@@ -44,7 +45,10 @@ export function createAccessTokenVerifier(
         );
       }
 
+      const interactiveClaims = readInteractivePlayerClaims(payload);
+
       return {
+        ...interactiveClaims,
         issuer: payload.iss,
         subject: payload.sub,
       };

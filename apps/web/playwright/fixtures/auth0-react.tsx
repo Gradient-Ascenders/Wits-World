@@ -23,7 +23,7 @@ let authState: FixtureAuthState = {
     authState = { ...authState, isAuthenticated: false, user: undefined };
     listeners.forEach((listener) => listener());
   },
-  user: { name: 'Sprint 1 E2E Player' },
+  user: { name: 'player@example.test' },
 };
 
 export function Auth0Provider({ children }: { children: ReactNode }) {

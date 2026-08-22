@@ -50,9 +50,7 @@ test('loads the protected app with data from the real API', async ({
 
   await page.goto('/explore');
 
-  await expect(
-    page.getByRole('button', { name: /^Signed in(?: as .+)?$/ }),
-  ).toBeVisible();
+  await expect(page.getByText(/^Signed in as .+$/)).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'Explore the campus map' }),
   ).toBeVisible();

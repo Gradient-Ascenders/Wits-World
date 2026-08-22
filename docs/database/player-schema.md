@@ -1,46 +1,68 @@
-# Player identity and display names
+# Player identity and Player Names
 
 The `public.players` table is Wits World's local player record. Authentication
-continues to resolve this record from the trusted Auth0 `(auth_issuer,
-auth_subject)` pair. The local player UUID remains the stable key used by game
-data, and `role` plus `lifecycle_status` remain server-authoritative for
-authorization.
+continues to resolve this record through the exact trusted Auth0
+`(auth_issuer, auth_subject)` pair. The local player UUID remains the stable key
+for game data, while `role` and `lifecycle_status` remain server-authoritative
+for application authorization.
 
-## Display-name model
+## Player Name model
 
-`display_name` is nullable, non-unique presentation metadata owned by Wits
-World. It is not an authentication identifier, authorization identifier, or
-social handle. Existing and newly provisioned players start with `NULL` until
-the owning player explicitly chooses a name; provisioning does not copy Auth0
-profile names or email addresses.
+For database accounts, `player_name` mirrors the Auth0 `username` exposed by the
+validated access-token claim `https://witsworld.co.za/player_name`. Google does
+not supply that claim, so a newly provisioned Google player starts with `NULL`
+and chooses a Player Name once through Wits World. It is useful account metadata,
+but it is not an authentication, ownership, authorization, or foreign-key
+identity.
 
-The API trims surrounding whitespace and validates the name before storage. A
-stored name must:
+The column remains nullable for legitimate Google onboarding and legacy
+transition. Database tokens require and synchronize the trusted claim through
+the existing `(auth_issuer, auth_subject)` upsert. Google tokens are resolved by
+that same identity pair and never copy email or provider profile fields.
 
-- contain 2–32 Unicode code points;
-- contain no control characters;
-- contain no surrounding ordinary spaces; and
-- retain the player's chosen casing and content after trimming.
+Names use the configured Auth0-compatible policy: 3–20 characters, lowercase,
+and only letters, numbers, and Auth0-supported username punctuation. Because the
+database connection's **Allow usernames in email format** and **Allow usernames
+in phone number format** settings are off, those identifier-shaped values are
+also rejected. This includes email syntax with a single-label domain, such as
+`player@example`. The API trims and lowercases Google proposals; database
+usernames must already use Auth0's canonical form. A partial unique index over
+`lower(player_name)` makes the shared
+cross-provider namespace database-authoritative while allowing onboarding NULLs.
+The database check independently enforces the canonical syntax.
 
-The database check constraint independently enforces the compatible stored
-length, ordinary-space trimming, and control-character rules. There is no
-unique index or case-normalized uniqueness rule, so two players may choose the
-same display name.
+`GET /api/v1/auth/me` returns `playerName` and the derived
+`playerNameSetupRequired` flag. `PUT /api/v1/auth/me/player-name` exists only to
+assign an initial name to the authenticated supported social player while the
+stored name is null. Database users and already-named users cannot call it.
+Player Name is immutable in Basic Tier; future rename support requires an
+approved Auth0/Wits synchronization design.
 
-`GET /api/v1/auth/me` returns `displayName` as a string or `null`. An active
-authenticated player can update only their own value with `PUT
-/api/v1/auth/me/display-name`; the route takes no player identifier. The update
-changes only `display_name` and `updated_at`, and returns the authoritative
-local player state.
+If a Google-chosen name already belongs to either provider, setup returns
+`409 PLAYER_NAME_CONFLICT`. If a later database username collides with a name
+already reserved by Google, database-account resolution returns the same safe
+conflict. Neither case changes either `(iss, sub)` binding or local UUID.
 
-Completed account deletion clears `display_name` alongside the Auth0 mapping
-and role so the retained player tombstone contains no player-facing name.
+Completed account deletion clears `player_name` together with the Auth0 mapping
+and role. This releases the local unique name only after the external Auth0
+account has been deleted successfully. Historical gameplay snapshots remain
+unchanged under their existing retention rules.
 
-## Migration
+## Migration history
 
-Migration `0019_add_player_display_name.sql` adds the nullable column and check
-constraint without backfilling existing records. Deploy it before deploying an
-API version that selects `display_name` during player resolution.
+Migration `0019_add_player_display_name.sql` was recorded by the shared
+development database before the final Auth0-backed decision, so its checksum is
+immutable. Migration `0020_replace_display_name_with_player_name.sql` removes
+the temporary field semantics by renaming the column, clearing untrusted
+player-entered values, installing defensive checks, and adding case-insensitive
+uniqueness. Migration `0021_enforce_player_name_policy.sql` retains nullable
+Google onboarding while enforcing the shared canonical 3–20-character and
+allowed-character policy. It is immutable after application. Migration
+`0022_tighten_player_name_policy.sql` replaces only that check constraint to
+reject email-shaped (including single-label domains) and phone-shaped names.
+
+Apply `0019` through `0022` before deploying the API version that selects
+`player_name`.
 
 The preceding document was generated and edited with the assistance of:
-Codex[GPT-5].
+Codex-CLI[GPT-5].

@@ -29,7 +29,7 @@ const authenticatedIdentity = {
 const activeLocalPlayer = {
   id: '00000000-0000-4000-8000-000000000102',
   role: 'player' as const,
-  displayName: null,
+  playerName: 'test-player',
   lifecycleStatus: 'active' as const,
 };
 
@@ -198,7 +198,9 @@ describe('browser-to-API CORS policy', () => {
 });
 
 function createVerifyAccessTokenMock() {
-  return vi.fn<AccessTokenVerifier['verify']>(
-    async () => authenticatedIdentity,
-  );
+  return vi.fn<AccessTokenVerifier['verify']>(async () => ({
+    ...authenticatedIdentity,
+    connectionStrategy: 'auth0',
+    playerName: 'test-player',
+  }));
 }

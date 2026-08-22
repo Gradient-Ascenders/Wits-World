@@ -162,6 +162,9 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0017_resolve_edge_card_definition_name.sql',
         '0018_enforce_card_definition_name_uniqueness.sql',
         '0019_add_player_display_name.sql',
+        '0020_replace_display_name_with_player_name.sql',
+        '0021_enforce_player_name_policy.sql',
+        '0022_tighten_player_name_policy.sql',
       ],
       skipped: [],
     });
@@ -187,6 +190,9 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0017_resolve_edge_card_definition_name.sql',
         '0018_enforce_card_definition_name_uniqueness.sql',
         '0019_add_player_display_name.sql',
+        '0020_replace_display_name_with_player_name.sql',
+        '0021_enforce_player_name_policy.sql',
+        '0022_tighten_player_name_policy.sql',
       ],
     });
     expect(readiness).toMatchObject({

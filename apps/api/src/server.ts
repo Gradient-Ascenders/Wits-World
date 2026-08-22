@@ -39,8 +39,6 @@ async function startServer(): Promise<void> {
   const databaseConfig = buildDatabaseConfig();
 
   const database = createDatabasePool(databaseConfig);
-  const playerService = createPlayerIdentityService(database);
-
   const accountDeletionLifecycle = createAccountDeletionLifecycle(database);
 
   const auth0ManagementClient =
@@ -67,13 +65,14 @@ async function startServer(): Promise<void> {
   const authorChallengeService = createAuthorChallengeService(database);
   const authorCardService = createAuthorCardService(database);
   const cpuMatchService = createCpuMatchService(database);
+  const playerIdentityService = createPlayerIdentityService(database);
 
   const app = await buildApp({
     config,
     authConfig,
     corsConfig,
-    playerIdentityService: playerService,
-    playerDisplayNameService: playerService,
+    playerIdentityService,
+    playerNameSetupService: playerIdentityService,
 
     challengeAttemptServices: {
       start: challengeAttemptStartService,

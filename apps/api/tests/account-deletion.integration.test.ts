@@ -16,7 +16,7 @@ const identity = {
 const player = {
   id: '00000000-0000-4000-8000-000000000500',
   role: 'player' as const,
-  displayName: null,
+  playerName: 'test-player',
   lifecycleStatus: 'active' as const,
 };
 
@@ -78,6 +78,37 @@ describe('account deletion API', () => {
     expect(deleteUser).toHaveBeenCalledWith(identity.subject);
     expect(complete).toHaveBeenCalledWith(pendingDeletion.id);
 
+    await app.close();
+  });
+
+  it('allows an active Google player awaiting Player Name setup to delete their account', async () => {
+    const request = vi.fn(async () => pendingDeletion);
+    const app = await buildDeletionApp({
+      accessTokenVerifier: {
+        verify: vi.fn(async () => ({
+          ...identity,
+          connectionStrategy: 'google-oauth2' as const,
+          playerName: null,
+        })),
+      },
+      playerIdentityService: {
+        resolve: vi.fn(async () => ({ ...player, playerName: null })),
+      },
+      lifecycle: createLifecycle({ request }),
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/account-deletion',
+      headers: { authorization: 'Bearer valid-google-access-token' },
+      payload: {
+        confirmation: 'DELETE_MY_ACCOUNT',
+        reauthenticationToken: 'fresh-google-id-token',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(request).toHaveBeenCalledWith(expect.objectContaining(identity));
     await app.close();
   });
 
@@ -238,7 +269,7 @@ describe('account deletion API', () => {
       playerIdentityService: {
         resolve: vi.fn(async () => ({
           ...player,
-          displayName: null,
+          playerName: 'test-player',
           lifecycleStatus: 'deletion_pending' as const,
         })),
       },
@@ -311,6 +342,7 @@ describe('account deletion API', () => {
 });
 
 interface BuildDeletionAppOverrides {
+  accessTokenVerifier?: AccessTokenVerifier;
   playerIdentityService?: PlayerIdentityService;
   reauthenticationVerifier?: ReauthenticationTokenVerifier;
   managementClient?: Auth0ManagementClient;
@@ -318,9 +350,14 @@ interface BuildDeletionAppOverrides {
 }
 
 async function buildDeletionApp(overrides: BuildDeletionAppOverrides = {}) {
-  const accessTokenVerifier: AccessTokenVerifier = {
-    verify: vi.fn(async () => identity),
-  };
+  const accessTokenVerifier: AccessTokenVerifier =
+    overrides.accessTokenVerifier ?? {
+      verify: vi.fn(async () => ({
+        ...identity,
+        connectionStrategy: 'auth0' as const,
+        playerName: 'test-player',
+      })),
+    };
 
   return buildApp({
     authConfig,

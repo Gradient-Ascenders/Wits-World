@@ -1,9 +1,10 @@
 import type { ApiAccessTokenProvider } from '../auth/useApiAccessToken';
 
 export interface CurrentPlayer {
-  displayName: string | null;
   id: string;
   lifecycleStatus: 'active';
+  playerName: string | null;
+  playerNameSetupRequired: boolean;
   role: 'author' | 'player';
 }
 
@@ -22,14 +23,16 @@ interface GetCurrentPlayerOptions {
   signal: AbortSignal;
 }
 
-interface UpdateDisplayNameOptions extends GetCurrentPlayerOptions {
-  displayName: string;
-}
+export type PlayerNameSetupFailure =
+  'already_assigned' | 'authorization' | 'conflict' | 'invalid' | 'unavailable';
 
-export class DisplayNameUpdateError extends Error {
-  public constructor(message: string) {
+export class PlayerNameSetupError extends Error {
+  public constructor(
+    public readonly failure: PlayerNameSetupFailure,
+    message = 'The Player Name could not be saved.',
+  ) {
     super(message);
-    this.name = 'DisplayNameUpdateError';
+    this.name = 'PlayerNameSetupError';
   }
 }
 
@@ -89,31 +92,35 @@ export async function getCurrentPlayer({
   return player;
 }
 
-export async function updateCurrentPlayerDisplayName({
+interface AssignPlayerNameOptions extends GetCurrentPlayerOptions {
+  playerName: string;
+}
+
+export async function assignCurrentPlayerName({
   apiBaseUrl,
-  displayName,
   getAccessToken,
+  playerName,
   signal,
-}: UpdateDisplayNameOptions): Promise<CurrentPlayer> {
+}: AssignPlayerNameOptions): Promise<CurrentPlayer> {
   let accessToken: string;
 
   try {
     accessToken = await getAccessToken();
   } catch {
-    throw new CurrentPlayerError('authorization');
+    throw new PlayerNameSetupError('authorization');
   }
 
   let response: Response;
 
   try {
-    response = await fetch(`${apiBaseUrl}/auth/me/display-name`, {
-      method: 'PUT',
+    response = await fetch(`${apiBaseUrl}/auth/me/player-name`, {
+      body: JSON.stringify({ playerName }),
       headers: {
         Accept: 'application/json',
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ displayName }),
+      method: 'PUT',
       signal,
     });
   } catch (error) {
@@ -121,39 +128,46 @@ export async function updateCurrentPlayerDisplayName({
       throw error;
     }
 
-    throw new DisplayNameUpdateError(
-      'Your display name could not be saved. Try again.',
-    );
+    throw new PlayerNameSetupError('unavailable');
   }
 
   if (response.status === 401 || response.status === 403) {
-    throw new CurrentPlayerError('authorization');
-  }
-
-  let payload: unknown;
-
-  try {
-    payload = await response.json();
-  } catch {
-    throw new DisplayNameUpdateError(
-      'Your display name could not be saved. Try again.',
-    );
+    throw new PlayerNameSetupError('authorization');
   }
 
   if (!response.ok) {
-    throw new DisplayNameUpdateError(
-      isRecord(payload) && typeof payload.detail === 'string'
-        ? payload.detail
-        : 'Your display name could not be saved. Try again.',
-    );
+    const problem = await readProblem(response);
+
+    if (response.status === 409 && problem?.code === 'PLAYER_NAME_CONFLICT') {
+      throw new PlayerNameSetupError(
+        'conflict',
+        'That Player Name is already in use. Choose another.',
+      );
+    }
+
+    if (
+      response.status === 409 &&
+      problem?.code === 'PLAYER_NAME_ALREADY_ASSIGNED'
+    ) {
+      throw new PlayerNameSetupError('already_assigned');
+    }
+
+    if (response.status === 400) {
+      throw new PlayerNameSetupError(
+        'invalid',
+        typeof problem?.detail === 'string'
+          ? problem.detail
+          : 'Enter a valid Player Name.',
+      );
+    }
+
+    throw new PlayerNameSetupError('unavailable');
   }
 
-  const player = parseCurrentPlayer(payload);
+  const player = parseCurrentPlayer(await response.json().catch(() => null));
 
   if (!player) {
-    throw new DisplayNameUpdateError(
-      'Your display name was saved, but the updated account could not be loaded. Refresh and try again.',
-    );
+    throw new PlayerNameSetupError('unavailable');
   }
 
   return player;
@@ -173,8 +187,13 @@ function isUuid(value: unknown): value is string {
 function parseCurrentPlayer(value: unknown): CurrentPlayer | null {
   if (
     !isRecord(value) ||
-    (typeof value.displayName !== 'string' && value.displayName !== null) ||
     !isUuid(value.id) ||
+    !(
+      value.playerName === null ||
+      (typeof value.playerName === 'string' && value.playerName.length > 0)
+    ) ||
+    typeof value.playerNameSetupRequired !== 'boolean' ||
+    value.playerNameSetupRequired !== (value.playerName === null) ||
     (value.role !== 'player' && value.role !== 'author') ||
     value.lifecycleStatus !== 'active' ||
     typeof value.requestId !== 'string'
@@ -183,9 +202,21 @@ function parseCurrentPlayer(value: unknown): CurrentPlayer | null {
   }
 
   return {
-    displayName: value.displayName,
     id: value.id,
     lifecycleStatus: 'active',
+    playerName: value.playerName,
+    playerNameSetupRequired: value.playerNameSetupRequired,
     role: value.role,
   };
+}
+
+async function readProblem(
+  response: Response,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const value: unknown = await response.json();
+    return isRecord(value) ? value : null;
+  } catch {
+    return null;
+  }
 }

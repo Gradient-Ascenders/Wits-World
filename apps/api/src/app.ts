@@ -24,8 +24,8 @@ import cors from '@fastify/cors';
 import type { CorsConfig } from './config/cors.js';
 
 import type {
-  PlayerDisplayNameService,
   PlayerIdentityService,
+  PlayerNameSetupService,
 } from './players/player-identity.js';
 import { registerAuthorization } from './auth/authorization.js';
 
@@ -75,7 +75,7 @@ export interface BuildAppOptions {
   eventServices?: EventServices;
   corsConfig?: CorsConfig;
   playerIdentityService?: PlayerIdentityService;
-  playerDisplayNameService?: PlayerDisplayNameService;
+  playerNameSetupService?: PlayerNameSetupService;
   accountDeletionServices?: AccountDeletionServices;
   challengeAttemptServices?: ChallengeAttemptServices;
   cardServices?: CardServices;
@@ -117,7 +117,7 @@ export async function buildApp({
   eventServices,
   corsConfig,
   playerIdentityService,
-  playerDisplayNameService,
+  playerNameSetupService,
   accountDeletionServices,
   challengeAttemptServices,
   cardServices,
@@ -155,6 +155,12 @@ export async function buildApp({
 
   if (playerIdentityService) {
     registerAuthorization(app, playerIdentityService);
+  }
+
+  if (playerNameSetupService && !playerIdentityService) {
+    throw new Error(
+      'Player name setup services require a player identity service.',
+    );
   }
 
   if (accountDeletionServices && !playerIdentityService) {
@@ -282,7 +288,7 @@ export async function buildApp({
   if (playerIdentityService) {
     await app.register(authenticationRoutes, {
       prefix: '/api/v1',
-      playerDisplayNameService,
+      playerNameSetupService,
     });
   }
 

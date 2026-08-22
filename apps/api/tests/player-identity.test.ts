@@ -1,16 +1,85 @@
 import type pg from 'pg';
 import { describe, expect, it, vi } from 'vitest';
 
-import { createPlayerIdentityService } from '../src/players/player-identity.js';
+import {
+  createPlayerIdentityService,
+  InvalidPlayerNameError,
+  PlayerNameAlreadyAssignedError,
+  PlayerNameConflictError,
+} from '../src/players/player-identity.js';
+
+const trustedPrincipal = {
+  connectionStrategy: 'auth0' as const,
+  issuer: 'https://auth.example.test/',
+  playerName: 'naledi',
+  subject: 'auth0|player-123',
+};
 
 describe('local player identity', () => {
+  it('provisions a Google player without fabricating a Player Name', async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [
+        {
+          id: '6fe7dc26-cdea-4275-a2df-861724137cbc',
+          lifecycle_status: 'active',
+          player_name: null,
+          role: 'player',
+        },
+      ],
+    });
+    const service = createPlayerIdentityService(
+      createDatabaseQueryTarget(query),
+    );
+
+    await expect(
+      service.resolve({
+        connectionStrategy: 'google-oauth2',
+        issuer: trustedPrincipal.issuer,
+        playerName: null,
+        subject: 'google-player',
+      }),
+    ).resolves.toMatchObject({ playerName: null });
+    expect(query.mock.calls[0]?.[1]).toEqual([
+      expect.any(String),
+      trustedPrincipal.issuer,
+      'google-player',
+      null,
+      false,
+    ]);
+  });
+
+  it('preserves an existing Google Player Name during identity resolution', async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [
+        {
+          id: '6fe7dc26-cdea-4275-a2df-861724137cbc',
+          lifecycle_status: 'active',
+          player_name: 'google-player',
+          role: 'player',
+        },
+      ],
+    });
+    const service = createPlayerIdentityService(
+      createDatabaseQueryTarget(query),
+    );
+
+    await expect(
+      service.resolve({
+        connectionStrategy: 'google-oauth2',
+        issuer: trustedPrincipal.issuer,
+        playerName: null,
+        subject: 'google-player',
+      }),
+    ).resolves.toMatchObject({ playerName: 'google-player' });
+  });
+
   it('resolves a local player from the validated external identity', async () => {
     const query = vi.fn().mockResolvedValue({
       rows: [
         {
           id: '6fe7dc26-cdea-4275-a2df-861724137cbc',
           role: 'player',
-          display_name: null,
+          player_name: trustedPrincipal.playerName,
           lifecycle_status: 'active',
         },
       ],
@@ -20,15 +89,10 @@ describe('local player identity', () => {
       createDatabaseQueryTarget(query),
     );
 
-    await expect(
-      service.resolve({
-        issuer: 'https://auth.example.test/',
-        subject: 'auth0|player-123',
-      }),
-    ).resolves.toEqual({
+    await expect(service.resolve(trustedPrincipal)).resolves.toEqual({
       id: '6fe7dc26-cdea-4275-a2df-861724137cbc',
       role: 'player',
-      displayName: null,
+      playerName: trustedPrincipal.playerName,
       lifecycleStatus: 'active',
     });
 
@@ -38,6 +102,8 @@ describe('local player identity', () => {
       expect.any(String),
       'https://auth.example.test/',
       'auth0|player-123',
+      trustedPrincipal.playerName,
+      true,
     ]);
   });
 
@@ -47,7 +113,7 @@ describe('local player identity', () => {
         {
           id: '0cf0ddaa-a0af-4ce8-92bc-c437f123db6a',
           role: 'player',
-          display_name: null,
+          player_name: 'trusted-name',
           lifecycle_status: 'active',
         },
       ],
@@ -60,7 +126,9 @@ describe('local player identity', () => {
     const hostileSubject = `auth0|'; drop table public.players; --`;
 
     await service.resolve({
+      connectionStrategy: 'auth0',
       issuer: 'https://auth.example.test/',
+      playerName: 'trusted-name',
       subject: hostileSubject,
     });
 
@@ -72,6 +140,8 @@ describe('local player identity', () => {
       expect.any(String),
       'https://auth.example.test/',
       hostileSubject,
+      'trusted-name',
+      true,
     ]);
   });
 
@@ -81,7 +151,7 @@ describe('local player identity', () => {
         {
           id: 'dbbd9ecb-ae87-4c11-846c-9d11f253877c',
           role: 'author',
-          display_name: 'Professor Nova',
+          player_name: 'professor-nova',
           lifecycle_status: 'active',
         },
       ],
@@ -93,11 +163,13 @@ describe('local player identity', () => {
 
     await expect(
       service.resolve({
+        connectionStrategy: 'auth0',
         issuer: 'https://auth.example.test/',
+        playerName: 'professor-nova',
         subject: 'auth0|author-123',
       }),
     ).resolves.toMatchObject({
-      displayName: 'Professor Nova',
+      playerName: 'professor-nova',
       role: 'author',
     });
   });
@@ -108,7 +180,7 @@ describe('local player identity', () => {
         {
           id: '77d10277-279f-46ad-be09-bb1a2658eea4',
           role: 'player',
-          display_name: null,
+          player_name: 'pending-player',
           lifecycle_status: 'deletion_pending',
         },
       ],
@@ -120,11 +192,13 @@ describe('local player identity', () => {
 
     await expect(
       service.resolve({
+        connectionStrategy: 'auth0',
         issuer: 'https://auth.example.test/',
+        playerName: 'pending-player',
         subject: 'auth0|pending-123',
       }),
     ).resolves.toMatchObject({
-      displayName: null,
+      playerName: 'pending-player',
       lifecycleStatus: 'deletion_pending',
     });
   });
@@ -138,21 +212,18 @@ describe('local player identity', () => {
       createDatabaseQueryTarget(query),
     );
 
-    await expect(
-      service.resolve({
-        issuer: 'https://auth.example.test/',
-        subject: 'auth0|player-123',
-      }),
-    ).rejects.toThrow('Local player resolution returned no player.');
+    await expect(service.resolve(trustedPrincipal)).rejects.toThrow(
+      'Local player resolution returned no player.',
+    );
   });
 
-  it('trims and updates only the active local player display name', async () => {
+  it('synchronizes the trusted claim through the same issuer-subject upsert', async () => {
     const query = vi.fn().mockResolvedValue({
       rows: [
         {
           id: '6fe7dc26-cdea-4275-a2df-861724137cbc',
           role: 'author',
-          display_name: 'Naledi 星',
+          player_name: 'renamed-player',
           lifecycle_status: 'active',
         },
       ],
@@ -162,26 +233,93 @@ describe('local player identity', () => {
     );
 
     await expect(
-      service.updateDisplayName(
-        '6fe7dc26-cdea-4275-a2df-861724137cbc',
-        '  Naledi 星  ',
-      ),
-    ).resolves.toEqual({
-      displayName: 'Naledi 星',
+      service.resolve({ ...trustedPrincipal, playerName: 'renamed-player' }),
+    ).resolves.toMatchObject({
       id: '6fe7dc26-cdea-4275-a2df-861724137cbc',
-      lifecycleStatus: 'active',
+      playerName: 'renamed-player',
       role: 'author',
     });
 
     const [statement, parameters] = query.mock.calls[0] ?? [];
-    expect(statement).toContain("lifecycle_status = 'active'");
-    expect(statement).not.toContain('auth_issuer =');
-    expect(statement).not.toContain('auth_subject =');
-    expect(statement).not.toContain('role =');
+    expect(statement).toContain('on conflict (auth_issuer, auth_subject)');
+    expect(statement).toContain('when $5 then excluded.player_name');
     expect(parameters).toEqual([
-      '6fe7dc26-cdea-4275-a2df-861724137cbc',
-      'Naledi 星',
+      expect.any(String),
+      trustedPrincipal.issuer,
+      trustedPrincipal.subject,
+      'renamed-player',
+      true,
     ]);
+  });
+
+  it('translates only the player-name unique-index violation', async () => {
+    const query = vi.fn().mockRejectedValue({
+      code: '23505',
+      constraint: 'players_player_name_case_insensitive_unique',
+    });
+    const service = createPlayerIdentityService(
+      createDatabaseQueryTarget(query),
+    );
+
+    await expect(service.resolve(trustedPrincipal)).rejects.toBeInstanceOf(
+      PlayerNameConflictError,
+    );
+  });
+
+  it('canonicalizes and assigns an initial Player Name', async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [
+        {
+          id: '6fe7dc26-cdea-4275-a2df-861724137cbc',
+          lifecycle_status: 'active',
+          player_name: 'google-player',
+          role: 'player',
+        },
+      ],
+    });
+    const service = createPlayerIdentityService(
+      createDatabaseQueryTarget(query),
+    );
+
+    await expect(
+      service.assignInitialPlayerName(
+        '6fe7dc26-cdea-4275-a2df-861724137cbc',
+        '  Google-Player  ',
+      ),
+    ).resolves.toMatchObject({ playerName: 'google-player' });
+    expect(query.mock.calls[0]?.[1]).toEqual([
+      '6fe7dc26-cdea-4275-a2df-861724137cbc',
+      'google-player',
+    ]);
+  });
+
+  it('rejects an invalid initial Player Name before querying', async () => {
+    const query = vi.fn();
+    const service = createPlayerIdentityService(
+      createDatabaseQueryTarget(query),
+    );
+
+    await expect(
+      service.assignInitialPlayerName(
+        '6fe7dc26-cdea-4275-a2df-861724137cbc',
+        'not allowed',
+      ),
+    ).rejects.toBeInstanceOf(InvalidPlayerNameError);
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('rejects a second Player Name assignment', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [] });
+    const service = createPlayerIdentityService(
+      createDatabaseQueryTarget(query),
+    );
+
+    await expect(
+      service.assignInitialPlayerName(
+        '6fe7dc26-cdea-4275-a2df-861724137cbc',
+        'another-player',
+      ),
+    ).rejects.toBeInstanceOf(PlayerNameAlreadyAssignedError);
   });
 });
 

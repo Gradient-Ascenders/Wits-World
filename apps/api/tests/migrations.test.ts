@@ -11,6 +11,7 @@ import {
   loadMigrationFiles,
   runMigrations,
 } from '../src/database/migrations.js';
+import { getMigrationsDirectory } from '../src/database/paths.js';
 
 const databaseConfig: DatabaseConfig = {
   connectionString:
@@ -32,6 +33,27 @@ afterEach(async () => {
 });
 
 describe('migration file loading', () => {
+  it('keeps the published 0021 checksum and orders 0022 after it', async () => {
+    const migrationFiles = await loadMigrationFiles(getMigrationsDirectory());
+    const playerNameMigrations = migrationFiles.filter(
+      ({ name }) => name.startsWith('0021_') || name.startsWith('0022_'),
+    );
+
+    expect(
+      playerNameMigrations.map(({ checksum, name }) => ({ checksum, name })),
+    ).toEqual([
+      {
+        checksum:
+          'f599515f61b897ea3737df05147a3354bcb630b4564e5550220e14cf742090af',
+        name: '0021_enforce_player_name_policy.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0022_tighten_player_name_policy.sql',
+      },
+    ]);
+  });
+
   it('loads SQL migrations in filename order', async () => {
     const directory = await createTemporaryMigrationDirectory();
 

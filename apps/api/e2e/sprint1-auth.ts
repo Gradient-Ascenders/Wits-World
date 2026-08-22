@@ -4,7 +4,9 @@ export const SPRINT1_E2E_ACCESS_TOKEN =
   'wits-world-sprint1-e2e-obvious-local-test-token';
 
 export const SPRINT1_E2E_IDENTITY = {
+  connectionStrategy: 'auth0',
   issuer: 'https://sprint1-e2e.invalid/',
+  playerName: 'sprint1-player',
   subject: 'sprint1-e2e-player',
 } as const;
 

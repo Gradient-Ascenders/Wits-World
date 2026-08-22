@@ -27,7 +27,7 @@ const DECK_ID = 'a3000000-0000-4000-8000-000000000001';
 const activePlayer = {
   id: PLAYER_ID,
   role: 'player' as const,
-  displayName: null,
+  playerName: 'test-player',
   lifecycleStatus: 'active' as const,
 };
 
@@ -43,7 +43,9 @@ let service: {
 beforeEach(async () => {
   const accessTokenVerifier: AccessTokenVerifier = {
     verify: vi.fn().mockResolvedValue({
+      connectionStrategy: 'auth0',
       issuer: authConfig.issuer,
+      playerName: 'test-player',
       subject: 'auth0|cpu-player',
     }),
   };

@@ -3,13 +3,7 @@ import {
   initialContext,
   type Auth0ContextInterface,
 } from '@auth0/auth0-react';
-import {
-  act,
-  render,
-  renderHook,
-  screen,
-  waitFor,
-} from '@testing-library/react';
+import { render, renderHook, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { PropsWithChildren } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -18,10 +12,6 @@ import { Router } from 'wouter';
 import { AppRoutes } from '../src/App';
 import { getSafeReturnTo, returnToWitsQuest } from '../src/auth/AuthProvider';
 import { bindAuthenticatedPlayer } from '../src/auth/player-session-binding';
-import {
-  CurrentPlayerProvider,
-  useCurrentPlayer,
-} from '../src/auth/CurrentPlayerProvider';
 import { useApiAccessToken } from '../src/auth/useApiAccessToken';
 
 const apiBaseUrl = 'https://api.example.test/api/v1';
@@ -69,7 +59,11 @@ function createAuthValue(
 function renderRoute(path: string, authValue: Auth0ContextInterface) {
   window.history.replaceState({}, '', path);
 
-  return render(
+  return render(routeTree(authValue));
+}
+
+function routeTree(authValue: Auth0ContextInterface) {
+  return (
     <Auth0Context.Provider value={authValue}>
       <Router>
         <AppRoutes
@@ -77,134 +71,36 @@ function renderRoute(path: string, authValue: Auth0ContextInterface) {
           mapboxAccessToken={mapboxAccessToken}
         />
       </Router>
-    </Auth0Context.Provider>,
-  );
-}
-
-function CurrentPlayerHarness({
-  onUpdateStarted,
-}: {
-  onUpdateStarted: (update: Promise<unknown>) => void;
-}) {
-  const { reload, state, updateDisplayName } = useCurrentPlayer();
-  const stateLabel =
-    state.status === 'ready'
-      ? `${state.player.id}:${state.player.displayName ?? 'unnamed'}`
-      : state.status === 'error'
-        ? `error:${state.failure}`
-        : state.status;
-
-  return (
-    <>
-      <output aria-label="Current player state">{stateLabel}</output>
-      <button
-        disabled={state.status !== 'ready'}
-        onClick={() => {
-          const update = updateDisplayName(
-            'Updated Player',
-            new AbortController().signal,
-          );
-          onUpdateStarted(update);
-          void update.catch(() => undefined);
-        }}
-        type="button"
-      >
-        Start display-name save
-      </button>
-      <button onClick={reload} type="button">
-        Reload current player
-      </button>
-    </>
-  );
-}
-
-function currentPlayerHarnessTree(
-  authValue: Auth0ContextInterface,
-  onUpdateStarted: (update: Promise<unknown>) => void,
-) {
-  return (
-    <Auth0Context.Provider value={authValue}>
-      <CurrentPlayerProvider apiBaseUrl={apiBaseUrl}>
-        <CurrentPlayerHarness onUpdateStarted={onUpdateStarted} />
-      </CurrentPlayerProvider>
     </Auth0Context.Provider>
-  );
-}
-
-function currentPlayerResponse(
-  id: string,
-  displayName: string | null,
-  requestId: string,
-) {
-  return new Response(
-    JSON.stringify({
-      displayName,
-      id,
-      lifecycleStatus: 'active',
-      requestId,
-      role: 'player',
-    }),
-    { status: 200 },
   );
 }
 
 function mockCurrentPlayer(
   playerId = playerAId,
-  initialDisplayName: string | null = null,
+  playerName: string | null = 'test-player',
 ) {
-  let displayName = initialDisplayName;
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input);
 
-  return vi
-    .spyOn(globalThis, 'fetch')
-    .mockImplementation(async (input, init) => {
-      const url = String(input);
-
-      if (url.endsWith('/auth/me/display-name')) {
-        const body = JSON.parse(String(init?.body)) as { displayName: string };
-
-        if (body.displayName.trim().length < 2) {
-          return new Response(
-            JSON.stringify({
-              code: 'INVALID_DISPLAY_NAME',
-              detail:
-                'Display name must be at least 2 characters after trimming.',
-            }),
-            { status: 400 },
-          );
-        }
-
-        displayName = body.displayName.trim();
-
-        return new Response(
-          JSON.stringify({
-            displayName,
-            id: playerId,
-            lifecycleStatus: 'active',
-            requestId: 'display-name-test-request',
-            role: 'player',
-          }),
-          { status: 200 },
-        );
-      }
-
-      if (url.endsWith('/auth/me')) {
-        return new Response(
-          JSON.stringify({
-            displayName,
-            id: playerId,
-            lifecycleStatus: 'active',
-            requestId: 'authentication-test-request',
-            role: 'player',
-          }),
-          { status: 200 },
-        );
-      }
-
+    if (url.endsWith('/auth/me')) {
       return new Response(
-        JSON.stringify({ events: [], requestId: 'events-test-request' }),
+        JSON.stringify({
+          playerName,
+          playerNameSetupRequired: playerName === null,
+          id: playerId,
+          lifecycleStatus: 'active',
+          requestId: 'authentication-test-request',
+          role: 'player',
+        }),
         { status: 200 },
       );
-    });
+    }
+
+    return new Response(
+      JSON.stringify({ events: [], requestId: 'events-test-request' }),
+      { status: 200 },
+    );
+  });
 }
 
 describe('player authentication', () => {
@@ -389,13 +285,15 @@ describe('player authentication', () => {
           { timeout: 5_000 },
         ),
       ).toBeVisible();
-      expect(screen.getByRole('button', { name: 'Signed in' })).toBeVisible();
+      expect(
+        screen.getByText('test-player').closest('.account-control__identity'),
+      ).toHaveTextContent('Signed in as test-player');
       expect(screen.queryByText('Kevin')).not.toBeInTheDocument();
     },
   );
 
-  it('renders the authoritative display name instead of Auth0 name or email', async () => {
-    mockCurrentPlayer(playerAId, 'Naledi 星');
+  it('renders the authoritative player name instead of Auth0 name or email', async () => {
+    mockCurrentPlayer(playerAId, 'naledi-star');
 
     renderRoute(
       '/',
@@ -411,298 +309,340 @@ describe('player authentication', () => {
     );
 
     expect(
-      await screen.findByRole('button', { name: 'Signed in as Naledi 星' }),
-    ).toBeVisible();
+      (await screen.findByText('naledi-star')).closest(
+        '.account-control__identity',
+      ),
+    ).toHaveTextContent('Signed in as naledi-star');
     expect(screen.queryByText('player@example.test')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('textbox', { name: /player name/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Signed in as naledi-star' }),
+    ).not.toBeInTheDocument();
   });
 
-  it('uses a neutral account label when the local display name is absent', async () => {
-    mockCurrentPlayer();
+  it('requires a Google player with no name to complete setup before gameplay', async () => {
+    mockCurrentPlayer(playerAId, null);
 
     renderRoute(
-      '/',
+      '/explore',
       createAuthValue({
         getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
         isAuthenticated: true,
         user: {
-          email: 'player@example.test',
-          name: 'player@example.test',
-          sub: 'auth0|player',
+          email: 'google-player@example.test',
+          name: 'Google Profile Name',
+          sub: 'google-oauth2|player',
         },
       }),
     );
 
     expect(
-      await screen.findByRole('button', { name: 'Signed in' }),
+      await screen.findByRole('heading', { name: 'Choose your Player Name' }),
     ).toBeVisible();
-    expect(screen.queryByText('player@example.test')).not.toBeInTheDocument();
-  });
-
-  it('edits and immediately renders the authoritative saved display name', async () => {
-    const user = userEvent.setup();
-    const fetch = mockCurrentPlayer(playerAId, 'Naledi');
-
-    renderRoute(
-      '/',
-      createAuthValue({
-        getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
-        isAuthenticated: true,
-      }),
-    );
-
-    await user.click(
-      await screen.findByRole('button', { name: 'Signed in as Naledi' }),
-    );
-    const input = screen.getByRole('textbox', { name: 'Display name' });
-    expect(input).toHaveValue('Naledi');
-
-    await user.clear(input);
-    await user.type(input, '  Naledi Star  ');
-    await user.click(screen.getByRole('button', { name: 'Save player name' }));
-
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'Display name saved.',
-    );
     expect(
-      screen.getByRole('button', { name: 'Signed in as Naledi Star' }),
+      screen.queryByRole('heading', { name: 'Explore the campus map' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('google-player@example.test'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Google Profile Name')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Choose Player Name' }),
     ).toBeVisible();
-    expect(input).toHaveValue('Naledi Star');
-    expect(fetch).toHaveBeenCalledWith(
-      `${apiBaseUrl}/auth/me/display-name`,
-      expect.objectContaining({
-        body: JSON.stringify({ displayName: '  Naledi Star  ' }),
-        method: 'PUT',
-      }),
-    );
   });
 
-  it('shows validation accessibly and preserves invalid input', async () => {
-    const user = userEvent.setup();
-    mockCurrentPlayer(playerAId, 'Naledi');
+  it('lets an already-configured Google player bypass setup', async () => {
+    mockCurrentPlayer(playerAId, 'configured-google');
 
     renderRoute(
-      '/',
+      '/explore',
+      createAuthValue({
+        getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
+        isAuthenticated: true,
+        user: {
+          email: 'private-google@example.test',
+          name: 'Google Profile Name',
+          sub: 'google-oauth2|configured-player',
+        },
+      }),
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Explore the campus map' }),
+    ).toBeVisible();
+    expect(screen.getByText('configured-google')).toBeVisible();
+    expect(
+      screen.queryByRole('heading', { name: 'Choose your Player Name' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('private-google@example.test'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('preserves the Player Name input after validation and conflict errors', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+
+      if (url.endsWith('/auth/me')) {
+        return new Response(
+          JSON.stringify({
+            id: playerAId,
+            lifecycleStatus: 'active',
+            playerName: null,
+            playerNameSetupRequired: true,
+            requestId: 'setup-required',
+            role: 'player',
+          }),
+          { status: 200 },
+        );
+      }
+
+      if (url.endsWith('/auth/me/player-name')) {
+        return new Response(
+          JSON.stringify({
+            code: 'PLAYER_NAME_CONFLICT',
+            detail: 'That Player Name is already in use.',
+          }),
+          { status: 409 },
+        );
+      }
+
+      return new Response('{}', { status: 200 });
+    });
+    renderRoute(
+      '/explore',
       createAuthValue({
         getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
         isAuthenticated: true,
       }),
     );
+    const input = await screen.findByRole('textbox', { name: 'Player Name' });
 
-    await user.click(
-      await screen.findByRole('button', { name: 'Signed in as Naledi' }),
-    );
-    const input = screen.getByRole('textbox', { name: 'Display name' });
+    await user.type(input, 'ab');
+    await user.click(screen.getByRole('button', { name: 'Enter Wits World' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('3–20 characters');
+    expect(input).toHaveValue('ab');
+
     await user.clear(input);
-    await user.type(input, ' A ');
-    await user.click(screen.getByRole('button', { name: 'Save player name' }));
+    await user.type(input, 'bob@example.com');
+    await user.click(screen.getByRole('button', { name: 'Enter Wits World' }));
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'cannot be in email or phone number format',
+    );
+    expect(input).toHaveValue('bob@example.com');
 
+    await user.clear(input);
+    await user.type(input, 'Reserved_Name');
+    await user.click(screen.getByRole('button', { name: 'Enter Wits World' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Display name must be at least 2 characters after trimming.',
+      'already in use',
     );
-    expect(input).toHaveValue(' A ');
-    expect(input).toHaveAttribute('aria-invalid', 'true');
+    expect(input).toHaveValue('Reserved_Name');
   });
 
-  it('aborts an in-flight display-name save when the editor closes', async () => {
+  it('updates the current player and resumes the intended route after setup', async () => {
     const user = userEvent.setup();
-    let saveSignal: AbortSignal | undefined;
-
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input);
 
-      if (url.endsWith('/auth/me/display-name')) {
-        saveSignal = init?.signal ?? undefined;
-
-        return new Promise<Response>((_resolve, reject) => {
-          saveSignal?.addEventListener('abort', () => {
-            reject(
-              new DOMException('The operation was aborted.', 'AbortError'),
-            );
-          });
-        });
+      if (url.endsWith('/auth/me')) {
+        return new Response(
+          JSON.stringify({
+            id: playerAId,
+            lifecycleStatus: 'active',
+            playerName: null,
+            playerNameSetupRequired: true,
+            requestId: 'setup-required',
+            role: 'player',
+          }),
+          { status: 200 },
+        );
       }
 
-      if (url.endsWith('/auth/me')) {
-        return currentPlayerResponse(playerAId, 'Player A', 'current-player');
+      if (url.endsWith('/auth/me/player-name')) {
+        expect(init?.method).toBe('PUT');
+        expect(JSON.parse(String(init?.body))).toEqual({
+          playerName: 'new_google_player',
+        });
+        return new Response(
+          JSON.stringify({
+            id: playerAId,
+            lifecycleStatus: 'active',
+            playerName: 'new_google_player',
+            playerNameSetupRequired: false,
+            requestId: 'setup-complete',
+            role: 'player',
+          }),
+          { status: 200 },
+        );
       }
 
       return new Response(
-        JSON.stringify({ events: [], requestId: 'events-test-request' }),
+        JSON.stringify({ events: [], requestId: 'events-after-setup' }),
         { status: 200 },
       );
     });
-
     renderRoute(
-      '/',
+      '/explore',
       createAuthValue({
         getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
         isAuthenticated: true,
       }),
     );
 
-    await user.click(
-      await screen.findByRole('button', { name: 'Signed in as Player A' }),
+    await user.type(
+      await screen.findByRole('textbox', { name: 'Player Name' }),
+      'New_Google_Player',
     );
-    await user.click(screen.getByRole('button', { name: 'Save player name' }));
-    await waitFor(() => expect(saveSignal).toBeDefined());
-    await user.click(
-      screen.getByRole('button', { name: 'Close player-name editor' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Enter Wits World' }));
 
-    expect(saveSignal?.aborted).toBe(true);
     expect(
-      screen.queryByRole('heading', { name: 'Player name' }),
+      await screen.findByRole('heading', { name: 'Explore the campus map' }),
+    ).toBeVisible();
+    expect(screen.getByText('new_google_player')).toBeVisible();
+    expect(
+      screen.queryByRole('textbox', { name: 'Player Name' }),
     ).not.toBeInTheDocument();
-
-    await user.click(
-      screen.getByRole('button', { name: 'Signed in as Player A' }),
-    );
-    expect(
-      screen.getByRole('button', { name: 'Save player name' }),
-    ).toBeEnabled();
   });
 
-  it('does not let a stale display-name response overwrite a newer player', async () => {
+  it('reloads the current player when another tab already completed setup', async () => {
     const user = userEvent.setup();
-    let currentPlayerLoads = 0;
-    let finishPlayerASave: (() => void) | undefined;
-    let playerASave: Promise<unknown> | undefined;
-
+    let currentPlayerRequests = 0;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
 
-      if (url.endsWith('/auth/me/display-name')) {
-        return new Promise<Response>((resolve) => {
-          finishPlayerASave = () =>
-            resolve(
-              currentPlayerResponse(playerAId, 'Updated Player', 'stale-save'),
-            );
-        });
+      if (url.endsWith('/auth/me')) {
+        currentPlayerRequests += 1;
+        const setupRequired = currentPlayerRequests === 1;
+
+        return new Response(
+          JSON.stringify({
+            id: playerAId,
+            lifecycleStatus: 'active',
+            playerName: setupRequired ? null : 'chosen-in-another-tab',
+            playerNameSetupRequired: setupRequired,
+            requestId: setupRequired ? 'setup-required' : 'setup-reloaded',
+            role: 'player',
+          }),
+          { status: 200 },
+        );
       }
 
-      currentPlayerLoads += 1;
-      return currentPlayerResponse(
-        currentPlayerLoads === 1 ? playerAId : playerBId,
-        currentPlayerLoads === 1 ? 'Player A' : 'Player B',
-        `current-player-${currentPlayerLoads}`,
+      if (url.endsWith('/auth/me/player-name')) {
+        return new Response(
+          JSON.stringify({
+            code: 'PLAYER_NAME_ALREADY_ASSIGNED',
+            detail: 'Player Name is already assigned.',
+          }),
+          { status: 409 },
+        );
+      }
+
+      return new Response(
+        JSON.stringify({ events: [], requestId: 'events-after-reload' }),
+        { status: 200 },
       );
     });
-
-    const authValue = createAuthValue({
-      getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
-      isAuthenticated: true,
-      logout: vi.fn().mockResolvedValue(undefined),
-    });
-    render(
-      currentPlayerHarnessTree(authValue, (update) => {
-        playerASave = update;
+    renderRoute(
+      '/explore',
+      createAuthValue({
+        getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
+        isAuthenticated: true,
       }),
     );
 
+    await user.type(
+      await screen.findByRole('textbox', { name: 'Player Name' }),
+      'stale-choice',
+    );
+    await user.click(screen.getByRole('button', { name: 'Enter Wits World' }));
+
     expect(
-      await screen.findByLabelText('Current player state'),
-    ).toHaveTextContent(`${playerAId}:Player A`);
-    await user.click(
-      screen.getByRole('button', { name: 'Start display-name save' }),
-    );
-    await waitFor(() => expect(finishPlayerASave).toBeTypeOf('function'));
-
-    window.localStorage.clear();
-    await user.click(
-      screen.getByRole('button', { name: 'Reload current player' }),
-    );
+      await screen.findByRole('heading', { name: 'Explore the campus map' }),
+    ).toBeVisible();
+    expect(screen.getByText('chosen-in-another-tab')).toBeVisible();
     expect(
-      await screen.findByLabelText('Current player state'),
-    ).toHaveTextContent(`${playerBId}:Player B`);
-
-    await act(async () => {
-      finishPlayerASave?.();
-      await playerASave;
-    });
-
-    expect(screen.getByLabelText('Current player state')).toHaveTextContent(
-      `${playerBId}:Player B`,
-    );
-    expect(screen.queryByText(new RegExp(playerAId))).not.toBeInTheDocument();
+      screen.queryByRole('textbox', { name: 'Player Name' }),
+    ).not.toBeInTheDocument();
+    expect(currentPlayerRequests).toBe(2);
   });
 
-  it('does not let a stale display-name response restore an anonymous session', async () => {
+  it('does not apply a completed setup response after auth becomes anonymous', async () => {
     const user = userEvent.setup();
-    let finishSave: (() => void) | undefined;
-    let save: Promise<unknown> | undefined;
+    let completeSave!: (response: Response) => void;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      if (String(input).endsWith('/auth/me/display-name')) {
-        return new Promise<Response>((resolve) => {
-          finishSave = () =>
-            resolve(currentPlayerResponse(playerAId, 'Player A', 'stale-save'));
-        });
+      const url = String(input);
+
+      if (url.endsWith('/auth/me')) {
+        return new Response(
+          JSON.stringify({
+            id: playerAId,
+            lifecycleStatus: 'active',
+            playerName: null,
+            playerNameSetupRequired: true,
+            requestId: 'setup-required',
+            role: 'player',
+          }),
+          { status: 200 },
+        );
       }
 
-      return currentPlayerResponse(playerAId, 'Player A', 'current-player');
+      return new Promise<Response>((resolve) => {
+        completeSave = resolve;
+      });
     });
-
     const authenticated = createAuthValue({
       getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
       isAuthenticated: true,
     });
-    const onUpdateStarted = (update: Promise<unknown>) => {
-      save = update;
-    };
-    const view = render(
-      currentPlayerHarnessTree(authenticated, onUpdateStarted),
+    const view = renderRoute('/explore', authenticated);
+
+    await user.type(
+      await screen.findByRole('textbox', { name: 'Player Name' }),
+      'stale-player',
     );
-
-    expect(
-      await screen.findByLabelText('Current player state'),
-    ).toHaveTextContent(`${playerAId}:Player A`);
-    await user.click(
-      screen.getByRole('button', { name: 'Start display-name save' }),
-    );
-    await waitFor(() => expect(finishSave).toBeTypeOf('function'));
-
-    view.rerender(currentPlayerHarnessTree(createAuthValue(), onUpdateStarted));
-    expect(
-      await screen.findByLabelText('Current player state'),
-    ).toHaveTextContent('anonymous');
-
-    await act(async () => {
-      finishSave?.();
-      await save;
-    });
-
-    expect(screen.getByLabelText('Current player state')).toHaveTextContent(
-      'anonymous',
-    );
-  });
-
-  it('moves the current player to terminal authorization state when a save is unauthorized', async () => {
-    const user = userEvent.setup();
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) =>
-      String(input).endsWith('/auth/me/display-name')
-        ? new Response('{}', { status: 401 })
-        : currentPlayerResponse(playerAId, 'Player A', 'current-player'),
-    );
-
-    render(
-      currentPlayerHarnessTree(
-        createAuthValue({
-          getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
-          isAuthenticated: true,
+    await user.click(screen.getByRole('button', { name: 'Enter Wits World' }));
+    view.rerender(routeTree(createAuthValue()));
+    completeSave(
+      new Response(
+        JSON.stringify({
+          id: playerAId,
+          lifecycleStatus: 'active',
+          playerName: 'stale-player',
+          playerNameSetupRequired: false,
+          requestId: 'late-save',
+          role: 'player',
         }),
-        () => undefined,
+        { status: 200 },
       ),
     );
 
     expect(
-      await screen.findByLabelText('Current player state'),
-    ).toHaveTextContent(`${playerAId}:Player A`);
-    await user.click(
-      screen.getByRole('button', { name: 'Start display-name save' }),
+      await screen.findByRole('button', { name: 'Sign in to explore' }),
+    ).toBeVisible();
+    expect(screen.queryByText('stale-player')).not.toBeInTheDocument();
+  });
+
+  it('signs out from Player Name setup without showing profile identity', async () => {
+    const user = userEvent.setup();
+    const logout = vi.fn().mockResolvedValue(undefined);
+    mockCurrentPlayer(playerAId, null);
+    renderRoute(
+      '/explore',
+      createAuthValue({
+        getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
+        isAuthenticated: true,
+        logout,
+      }),
     );
 
-    expect(
-      await screen.findByLabelText('Current player state'),
-    ).toHaveTextContent('error:authorization');
+    await user.click(await screen.findByRole('button', { name: 'Sign out' }));
+    expect(logout).toHaveBeenCalledWith({
+      logoutParams: { returnTo: window.location.origin },
+    });
   });
 
   it('signs out through Auth0 and returns to the public origin', async () => {
