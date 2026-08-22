@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "declaration": false,
+    "outDir": "dist-e2e",
+    "rootDir": "."
+  },
+  "include": ["e2e", "src"],
+  "exclude": ["tests"]
+}

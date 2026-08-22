@@ -8,6 +8,7 @@ import {
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { CardWorkspace } from '../components/author/CardWorkspace';
 import { EventWorkspace } from '../components/author/EventWorkspace';
+import type { MapFactory } from '../components/exploration/map-provider';
 import {
   AuthorMutationCoordinator,
   reconcileAuthorMutationResults,
@@ -17,11 +18,13 @@ import '../components/author/author.css';
 
 interface AuthorConsolePageProps {
   apiBaseUrl: string;
+  mapFactory?: MapFactory;
   mapboxAccessToken: string;
 }
 
 export default function AuthorConsolePage({
   apiBaseUrl,
+  mapFactory,
   mapboxAccessToken,
 }: AuthorConsolePageProps) {
   const getAccessToken = useApiAccessToken();
@@ -133,6 +136,7 @@ export default function AuthorConsolePage({
               cards={cards}
               cardsState={cardsState}
               getAccessToken={getAccessToken}
+              mapFactory={mapFactory}
               mapboxAccessToken={mapboxAccessToken}
               mutationCoordinator={mutationCoordinator}
               onOpenCards={() => setSection('cards')}

@@ -153,9 +153,7 @@ describe('browser-to-API CORS policy', () => {
       },
     });
 
-    expect(response.headers['access-control-allow-origin']).not.toBe(
-      DISALLOWED_ORIGIN,
-    );
+    expect(response.headers['access-control-allow-origin']).toBeUndefined();
   });
 
   it('does not use a wildcard allow-origin policy', async () => {

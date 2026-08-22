@@ -133,7 +133,11 @@ Authenticated API clients obtain a token on demand through
 `useApiAccessToken`. Callers must place that token only in the standard
 `Authorization: Bearer` request header and must not log or persist it.
 
-Before a production deployment can rely on refresh-safe authentication:
+The production custom Auth0 domain is live at `https://auth.witsworld.co.za/`,
+and the current production issuer is `https://auth.witsworld.co.za/`. The
+following sequence records the completed 2026-08-22 cutover and remains useful
+as recovery guidance or for a future issuer change; it is not an outstanding
+implementation step:
 
 1. Use `https://witsworld.co.za` as the canonical production web origin. The web
    bootstrap redirects only `www.witsworld.co.za` to that origin before the SPA
@@ -187,11 +191,12 @@ Before a production deployment can rely on refresh-safe authentication:
    cutover. Remove any temporary callback/logout/origin entries after the
    rollout is confirmed.
 
-Repository code cannot create or verify DNS records, configure the Auth0 custom
+Repository code cannot create or verify DNS records, configure an Auth0 custom
 domain/certificate, change Auth0 Dashboard grants or URL allowlists, or update
-deployed environment variables. Production remains subject to the current
-refresh problem until those external steps and the coordinated issuer cutover
-are complete. The API never needs a dual-issuer window.
+deployed environment variables. Those remain operator-owned capabilities, but
+the production custom-domain cutover itself is complete. The signed-in
+hard-refresh, browser-storage, and correlated Azure log checks below remain
+outstanding operator evidence. The API never needs a dual-issuer window.
 
 ### Real Auth0 local-storage end-to-end test
 
@@ -244,6 +249,12 @@ Known limitations:
   development tenant, API, database test branch, and network access.
 
 ### Required post-cutover production smoke test
+
+The custom-domain cutover is live at `https://auth.witsworld.co.za/`; public
+OIDC discovery and the deployed Web configuration were verified on 2026-08-22.
+The signed-in storage/console inspection and correlated Azure API-log inspection
+remain operator-run gates. The procedure below is retained for that controlled
+completion evidence and future cutovers.
 
 Run this against the deployed production build on the selected canonical web
 origin after the custom domain and issuer remap are live. Do not use Vite's

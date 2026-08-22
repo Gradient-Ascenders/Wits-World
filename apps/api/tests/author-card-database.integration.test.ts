@@ -360,7 +360,7 @@ describe.skipIf(!runIntegrationTests)(
 
     it('rejects an invalid card definition without persisting content', async () => {
       const service = createAuthorCardService(pool);
-      const name = 'Invalid Empty-Move Creature';
+      const name = 'Invalid Five-Move Creature';
 
       await expect(
         service.createCard({
@@ -373,7 +373,14 @@ describe.skipIf(!runIntegrationTests)(
           power: 10,
           description: null,
           imageUrl: null,
-          moves: [],
+          moves: Array.from({ length: 5 }, (_, index) => ({
+            position: index + 1,
+            name: `Move ${index + 1}`,
+            moveType: 'basic' as const,
+            effectType: 'damage' as const,
+            effectValue: 10,
+            powerCost: 1,
+          })),
           effects: [],
         }),
       ).rejects.toBeInstanceOf(InvalidCardDefinitionError);
@@ -390,6 +397,50 @@ describe.skipIf(!runIntegrationTests)(
       );
 
       expect(persisted.rows[0]?.card_count).toBe(0);
+    }, 45_000);
+
+    it('rejects a fifth stored move through the database constraint', async () => {
+      const service = createAuthorCardService(pool);
+      const created = await service.createCard({
+        actorPlayerId: AUTHOR_ONE_ID,
+        name: 'Database Move Limit Creature',
+        category: 'creature',
+        affinity: 'wit',
+        rarity: 'common',
+        hp: 100,
+        power: 10,
+        description: null,
+        imageUrl: null,
+        moves: Array.from({ length: 4 }, (_, index) => ({
+          position: index + 1,
+          name: `Move ${index + 1}`,
+          moveType: 'basic' as const,
+          effectType: 'damage' as const,
+          effectValue: 10,
+          powerCost: 1,
+        })),
+        effects: [],
+      });
+
+      await expect(
+        pool.query(
+          `
+            insert into public.card_moves (
+              card_definition_id,
+              position,
+              name,
+              move_type,
+              effect_type,
+              effect_value,
+              power_cost
+            )
+            values ($1::uuid, 5, 'Direct fifth move', 'basic', 'damage', 10, 1)
+          `,
+          [created.id],
+        ),
+      ).rejects.toMatchObject({
+        constraint: 'card_moves_position_check',
+      });
     }, 45_000);
 
     it('rolls back card creation when the audit actor is a Player', async () => {
@@ -514,6 +565,30 @@ describe.skipIf(!runIntegrationTests)(
             effectType: 'damage',
             effectValue: 18,
             powerCost: 2,
+          },
+          {
+            position: 2,
+            name: 'Grit Guard',
+            moveType: 'basic',
+            effectType: 'damage',
+            effectValue: 12,
+            powerCost: 1,
+          },
+          {
+            position: 3,
+            name: 'Grit Advance',
+            moveType: 'grit',
+            effectType: 'damage',
+            effectValue: 14,
+            powerCost: 2,
+          },
+          {
+            position: 4,
+            name: 'Grit Resolve',
+            moveType: 'basic',
+            effectType: 'damage',
+            effectValue: 10,
+            powerCost: 1,
           },
         ],
         effects: [],

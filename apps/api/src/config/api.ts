@@ -14,13 +14,9 @@ export interface ApiConfig {
   host: string;
   port: number;
   logLevel: ApiLogLevel;
-}
-
-export interface ApiConfig {
-  host: string;
-  port: number;
-  logLevel: ApiLogLevel;
   accountDeletionRetryIntervalMs: number;
+  rateLimitMaxRequests: number;
+  rateLimitWindowMs: number;
 }
 
 interface BuildApiConfigOptions {
@@ -42,6 +38,10 @@ export function buildApiConfig({
   const accountDeletionRetryIntervalMs = Number(
     accountDeletionRetryIntervalValue,
   );
+  const rateLimitMaxRequests = Number(
+    env.RATE_LIMIT_MAX_REQUESTS?.trim() ?? '120',
+  );
+  const rateLimitWindowMs = Number(env.RATE_LIMIT_WINDOW_MS?.trim() ?? '60000');
 
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {
     throw new Error('PORT must be an integer between 1 and 65535.');
@@ -60,11 +60,23 @@ export function buildApiConfig({
     );
   }
 
+  if (!Number.isInteger(rateLimitMaxRequests) || rateLimitMaxRequests < 1) {
+    throw new Error('RATE_LIMIT_MAX_REQUESTS must be a positive integer.');
+  }
+
+  if (!Number.isInteger(rateLimitWindowMs) || rateLimitWindowMs < 1000) {
+    throw new Error(
+      'RATE_LIMIT_WINDOW_MS must be an integer of at least 1000 milliseconds.',
+    );
+  }
+
   return {
     host,
     port,
     logLevel: logLevelValue,
     accountDeletionRetryIntervalMs,
+    rateLimitMaxRequests,
+    rateLimitWindowMs,
   };
 }
 

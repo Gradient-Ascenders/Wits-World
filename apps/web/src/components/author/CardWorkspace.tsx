@@ -667,17 +667,27 @@ function CardForm({
               />
             ))}
             <button
+              aria-describedby="card-move-limit"
               className="button button--quiet"
+              disabled={draft.moves.length >= 4}
               onClick={() =>
-                setDraft((current) => ({
-                  ...current,
-                  moves: [...current.moves, emptyMove()],
-                }))
+                setDraft((current) =>
+                  current.moves.length >= 4
+                    ? current
+                    : {
+                        ...current,
+                        moves: [...current.moves, emptyMove()],
+                      },
+                )
               }
               type="button"
             >
               Add move
             </button>
+            <span className="field-help" id="card-move-limit">
+              Creature drafts may contain up to four moves. Publication requires
+              exactly four.
+            </span>
           </fieldset>
         ) : (
           <fieldset
@@ -1191,8 +1201,8 @@ function validateCardDraft(draft: CardDraft): {
     (!draft.power || !Number.isInteger(power) || power < 0)
   )
     errors.power = 'Creature Power must be a non-negative whole number.';
-  if (draft.category === 'creature' && draft.moves.length === 0)
-    errors.moves = 'Add at least one move.';
+  if (draft.category === 'creature' && draft.moves.length > 4)
+    errors.moves = 'Creature cards can define at most four moves.';
   if (draft.category === 'power' && draft.effects.length === 0)
     errors.effects = 'Add at least one effect.';
   draft.moves.forEach((move, index) => {

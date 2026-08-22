@@ -49,11 +49,13 @@ commit.
 
 ### API variables
 
-| Variable    | Required | Example     | Purpose                                  |
-| ----------- | -------- | ----------- | ---------------------------------------- |
-| `HOST`      | Yes      | `127.0.0.1` | Network interface used by the API server |
-| `PORT`      | Yes      | `3000`      | TCP port used by the API server          |
-| `LOG_LEVEL` | Yes      | `info`      | Fastify log level                        |
+| Variable                  | Required | Example     | Purpose                                   |
+| ------------------------- | -------- | ----------- | ----------------------------------------- |
+| `HOST`                    | Yes      | `127.0.0.1` | Network interface used by the API server  |
+| `PORT`                    | Yes      | `3000`      | TCP port used by the API server           |
+| `LOG_LEVEL`               | Yes      | `info`      | Fastify log level                         |
+| `RATE_LIMIT_MAX_REQUESTS` | No       | `120`       | Authenticated requests allowed per window |
+| `RATE_LIMIT_WINDOW_MS`    | No       | `60000`     | Per-process fixed-window duration in ms   |
 
 Supported log levels are:
 
@@ -68,6 +70,11 @@ Supported log levels are:
 `PORT` must be an integer between `1` and `65535`.
 
 Missing or invalid required API configuration prevents the server from starting.
+
+Rate protection is keyed by the verified local player identity and returns
+`429 RATE_LIMITED` with `Retry-After` and `RateLimit-*` headers. It is an
+application-process control, not a substitute for deployment-level protection
+of invalid-token traffic or aggregation across multiple API instances.
 
 ### Database variables
 
@@ -209,6 +216,20 @@ The development authentication configuration is:
 | API audience      | `https://api.wits-world.invalid`             |
 | Signing algorithm | RS256                                        |
 
+The deployed production boundary reviewed on 22 August 2026 uses:
+
+| Setting          | Value                            |
+| ---------------- | -------------------------------- |
+| Auth0 domain     | `auth.witsworld.co.za`           |
+| Canonical issuer | `https://auth.witsworld.co.za/`  |
+| API audience     | `https://api.wits-world.invalid` |
+| Web CORS origin  | `https://witsworld.co.za`        |
+
+`AUTH0_DOMAIN` selects the verified custom issuer in production.
+`AUTH0_TENANT_DOMAIN` continues to identify the underlying Auth0 tenant for
+Management API operations. These are different configuration names and must not
+be substituted for one another.
+
 The API derives the canonical issuer from `AUTH0_DOMAIN` and validates access
 tokens against the configured audience.
 
@@ -316,7 +337,8 @@ Example successful response:
 ```
 
 The example player ID and name are illustrative and do not identify a real
-account.
+account. The player-facing route does not return the Auth0 issuer, subject, or
+bearer token.
 
 A Google player awaiting setup receives `playerName: null` and
 `playerNameSetupRequired: true`. The authenticated
@@ -820,4 +842,4 @@ Those capabilities are introduced through later tracked issues.
 
 The preceding document was planned, generated, and edited with the assistance
 of: ChatGPT-Web[GPT-5.6 Thinking], ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5],
-Codex[GPT-5.6 Sol].
+Codex[GPT-5.6 Sol], Codex-CLI[GPT-5.6 Sol].

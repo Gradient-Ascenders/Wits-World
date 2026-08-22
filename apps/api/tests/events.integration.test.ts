@@ -379,13 +379,18 @@ describe('event eligibility API', () => {
     expect(eligibilityEvaluate).not.toHaveBeenCalled();
   });
 
-  it('rejects client-supplied eligibility decisions', async () => {
+  it.each([
+    ['eligible', true],
+    ['insideRadius', true],
+    ['playerId', '00000000-0000-4000-8000-000000000999'],
+    ['rewardEligible', true],
+  ])('rejects the client-supplied authority field %s', async (field, value) => {
     const response = await authenticatedRequest({
       method: 'POST',
       url: `/api/v1/events/${EVENT_ID}/eligibility`,
       payload: {
         ...validLocationClaim(),
-        eligible: true,
+        [field]: value,
       },
     });
 

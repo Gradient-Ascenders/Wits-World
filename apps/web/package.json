@@ -19,6 +19,7 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:sprint1:playwright": "playwright test --config=playwright.sprint1.config.ts",
+    "test:e2e:basic:playwright": "playwright test --config=playwright.basic.config.ts",
     "test:e2e:auth": "playwright test --project=auth-setup",
     "test:e2e:headed": "playwright test --headed",
     "pretype-check": "npm run prepare:account-policy",

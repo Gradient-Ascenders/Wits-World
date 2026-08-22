@@ -5,16 +5,19 @@ import {
   PlayerNameConflictError,
   type PlayerIdentityService,
 } from '../players/player-identity.js';
+import type { AuthenticatedRateProtection } from '../security/rate-protection.js';
 import { isInteractivePlayerPrincipal } from './interactive-player-claims.js';
 
 export function registerAuthorization(
   app: FastifyInstance,
   playerIdentityService: PlayerIdentityService,
+  rateProtection?: AuthenticatedRateProtection,
 ): void {
   app.decorateRequest('player', null);
 
   const loadActivePlayer: FastifyInstance['loadActivePlayer'] = async (
     request,
+    reply,
   ) => {
     const identity = request.auth;
 
@@ -61,6 +64,24 @@ export function registerAuthorization(
     }
 
     request.player = player;
+
+    if (rateProtection) {
+      const decision = rateProtection.consume(player.id);
+
+      reply.header('RateLimit-Limit', decision.limit);
+      reply.header('RateLimit-Remaining', decision.remaining);
+
+      if (!decision.allowed) {
+        reply.header('Retry-After', decision.retryAfterSeconds);
+        throw new ApiError({
+          statusCode: 429,
+          code: 'RATE_LIMITED',
+          title: 'Too many requests',
+          detail:
+            'This authenticated player has made too many API requests. Try again after the indicated delay.',
+        });
+      }
+    }
   };
 
   app.decorate('loadActivePlayer', loadActivePlayer);
