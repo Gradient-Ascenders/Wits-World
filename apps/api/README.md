@@ -209,6 +209,20 @@ The development authentication configuration is:
 | API audience      | `https://api.wits-world.invalid`             |
 | Signing algorithm | RS256                                        |
 
+The deployed production boundary reviewed on 22 August 2026 uses:
+
+| Setting          | Value                            |
+| ---------------- | -------------------------------- |
+| Auth0 domain     | `auth.witsworld.co.za`           |
+| Canonical issuer | `https://auth.witsworld.co.za/`  |
+| API audience     | `https://api.wits-world.invalid` |
+| Web CORS origin  | `https://witsworld.co.za`        |
+
+`AUTH0_DOMAIN` selects the verified custom issuer in production.
+`AUTH0_TENANT_DOMAIN` continues to identify the underlying Auth0 tenant for
+Management API operations. These are different configuration names and must not
+be substituted for one another.
+
 The API derives the canonical issuer from `AUTH0_DOMAIN` and validates access
 tokens against the configured audience.
 
@@ -293,13 +307,15 @@ Example successful response:
 
 ```json
 {
-  "issuer": "https://dev-5artxfvpdennq8qm.us.auth0.com/",
-  "subject": "auth0|example-user",
+  "id": "00000000-0000-4000-8000-000000000001",
+  "role": "player",
+  "lifecycleStatus": "active",
   "requestId": "server-generated-request-id"
 }
 ```
 
-The example subject is illustrative and is not a real Auth0 user identifier.
+The example player ID is illustrative. The player-facing route does not return
+the Auth0 issuer, subject, or bearer token.
 
 ### Authentication failures
 
@@ -797,4 +813,4 @@ Those capabilities are introduced through later tracked issues.
 
 The preceding document was planned, generated, and edited with the assistance
 of: ChatGPT-Web[GPT-5.6 Thinking], ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5],
-Codex[GPT-5.6 Sol].
+Codex[GPT-5.6 Sol], Codex-CLI[GPT-5.6 Sol].

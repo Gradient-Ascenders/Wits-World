@@ -102,7 +102,10 @@ function eligibilityResponse(payload: object): Response {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  window.localStorage.clear();
+  window.sessionStorage.clear();
 });
 
 describe('authenticated campus event discovery', () => {
@@ -266,6 +269,57 @@ describe('player location eligibility', () => {
       );
     },
   );
+
+  it('keeps precise location claims out of browser storage and console output', async () => {
+    const user = userEvent.setup();
+    const consoleSpies = [
+      vi.spyOn(console, 'debug').mockImplementation(() => undefined),
+      vi.spyOn(console, 'error').mockImplementation(() => undefined),
+      vi.spyOn(console, 'info').mockImplementation(() => undefined),
+      vi.spyOn(console, 'log').mockImplementation(() => undefined),
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined),
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(discoveryResponse())
+        .mockResolvedValueOnce(
+          eligibilityResponse({ reachable: true, status: 'reachable' }),
+        ),
+    );
+
+    renderExplore(createMapFactory());
+    await user.click(
+      await screen.findByRole('button', {
+        name: `Check reachability for ${event.title}`,
+      }),
+    );
+
+    expect(
+      await screen.findByText(
+        'This event is reachable from your reported location.',
+      ),
+    ).toBeVisible();
+
+    const storageOutput = [
+      ...readStorage(window.localStorage),
+      ...readStorage(window.sessionStorage),
+    ].join('\n');
+    const consoleOutput = JSON.stringify(
+      consoleSpies.flatMap((spy) => spy.mock.calls),
+    );
+
+    for (const sensitiveValue of [
+      String(claim.latitude),
+      String(claim.longitude),
+      String(claim.accuracyMetres),
+      claim.acquiredAt,
+    ]) {
+      expect(storageOutput).not.toContain(sensitiveValue);
+      expect(consoleOutput).not.toContain(sensitiveValue);
+    }
+  });
 
   it('explains permission denial without calling the eligibility API', async () => {
     const user = userEvent.setup();
@@ -675,6 +729,13 @@ describe('player location eligibility', () => {
     expect(signal?.aborted).toBe(true);
   });
 });
+
+function readStorage(storage: Storage): string[] {
+  return Array.from({ length: storage.length }, (_, index) => {
+    const key = storage.key(index) ?? '';
+    return `${key}:${storage.getItem(key) ?? ''}`;
+  });
+}
 
 function problemResponse(code: string, status: number): Response {
   return new Response(
