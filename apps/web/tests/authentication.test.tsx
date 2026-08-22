@@ -3,7 +3,13 @@ import {
   initialContext,
   type Auth0ContextInterface,
 } from '@auth0/auth0-react';
-import { render, renderHook, screen } from '@testing-library/react';
+import {
+  act,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { PropsWithChildren } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -12,6 +18,10 @@ import { Router } from 'wouter';
 import { AppRoutes } from '../src/App';
 import { getSafeReturnTo, returnToWitsQuest } from '../src/auth/AuthProvider';
 import { bindAuthenticatedPlayer } from '../src/auth/player-session-binding';
+import {
+  CurrentPlayerProvider,
+  useCurrentPlayer,
+} from '../src/auth/CurrentPlayerProvider';
 import { useApiAccessToken } from '../src/auth/useApiAccessToken';
 
 const apiBaseUrl = 'https://api.example.test/api/v1';
@@ -71,27 +81,130 @@ function renderRoute(path: string, authValue: Auth0ContextInterface) {
   );
 }
 
-function mockCurrentPlayer(playerId = playerAId) {
-  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-    const url = String(input);
+function CurrentPlayerHarness({
+  onUpdateStarted,
+}: {
+  onUpdateStarted: (update: Promise<unknown>) => void;
+}) {
+  const { reload, state, updateDisplayName } = useCurrentPlayer();
+  const stateLabel =
+    state.status === 'ready'
+      ? `${state.player.id}:${state.player.displayName ?? 'unnamed'}`
+      : state.status === 'error'
+        ? `error:${state.failure}`
+        : state.status;
 
-    if (url.endsWith('/auth/me')) {
+  return (
+    <>
+      <output aria-label="Current player state">{stateLabel}</output>
+      <button
+        disabled={state.status !== 'ready'}
+        onClick={() => {
+          const update = updateDisplayName(
+            'Updated Player',
+            new AbortController().signal,
+          );
+          onUpdateStarted(update);
+          void update.catch(() => undefined);
+        }}
+        type="button"
+      >
+        Start display-name save
+      </button>
+      <button onClick={reload} type="button">
+        Reload current player
+      </button>
+    </>
+  );
+}
+
+function currentPlayerHarnessTree(
+  authValue: Auth0ContextInterface,
+  onUpdateStarted: (update: Promise<unknown>) => void,
+) {
+  return (
+    <Auth0Context.Provider value={authValue}>
+      <CurrentPlayerProvider apiBaseUrl={apiBaseUrl}>
+        <CurrentPlayerHarness onUpdateStarted={onUpdateStarted} />
+      </CurrentPlayerProvider>
+    </Auth0Context.Provider>
+  );
+}
+
+function currentPlayerResponse(
+  id: string,
+  displayName: string | null,
+  requestId: string,
+) {
+  return new Response(
+    JSON.stringify({
+      displayName,
+      id,
+      lifecycleStatus: 'active',
+      requestId,
+      role: 'player',
+    }),
+    { status: 200 },
+  );
+}
+
+function mockCurrentPlayer(
+  playerId = playerAId,
+  initialDisplayName: string | null = null,
+) {
+  let displayName = initialDisplayName;
+
+  return vi
+    .spyOn(globalThis, 'fetch')
+    .mockImplementation(async (input, init) => {
+      const url = String(input);
+
+      if (url.endsWith('/auth/me/display-name')) {
+        const body = JSON.parse(String(init?.body)) as { displayName: string };
+
+        if (body.displayName.trim().length < 2) {
+          return new Response(
+            JSON.stringify({
+              code: 'INVALID_DISPLAY_NAME',
+              detail:
+                'Display name must be at least 2 characters after trimming.',
+            }),
+            { status: 400 },
+          );
+        }
+
+        displayName = body.displayName.trim();
+
+        return new Response(
+          JSON.stringify({
+            displayName,
+            id: playerId,
+            lifecycleStatus: 'active',
+            requestId: 'display-name-test-request',
+            role: 'player',
+          }),
+          { status: 200 },
+        );
+      }
+
+      if (url.endsWith('/auth/me')) {
+        return new Response(
+          JSON.stringify({
+            displayName,
+            id: playerId,
+            lifecycleStatus: 'active',
+            requestId: 'authentication-test-request',
+            role: 'player',
+          }),
+          { status: 200 },
+        );
+      }
+
       return new Response(
-        JSON.stringify({
-          id: playerId,
-          lifecycleStatus: 'active',
-          requestId: 'authentication-test-request',
-          role: 'player',
-        }),
+        JSON.stringify({ events: [], requestId: 'events-test-request' }),
         { status: 200 },
       );
-    }
-
-    return new Response(
-      JSON.stringify({ events: [], requestId: 'events-test-request' }),
-      { status: 200 },
-    );
-  });
+    });
 }
 
 describe('player authentication', () => {
@@ -276,11 +389,321 @@ describe('player authentication', () => {
           { timeout: 5_000 },
         ),
       ).toBeVisible();
-      expect(screen.getByText('Signed in as')).toHaveTextContent(
-        'Signed in as Kevin',
-      );
+      expect(screen.getByRole('button', { name: 'Signed in' })).toBeVisible();
+      expect(screen.queryByText('Kevin')).not.toBeInTheDocument();
     },
   );
+
+  it('renders the authoritative display name instead of Auth0 name or email', async () => {
+    mockCurrentPlayer(playerAId, 'Naledi 星');
+
+    renderRoute(
+      '/',
+      createAuthValue({
+        getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
+        isAuthenticated: true,
+        user: {
+          email: 'player@example.test',
+          name: 'player@example.test',
+          sub: 'auth0|player',
+        },
+      }),
+    );
+
+    expect(
+      await screen.findByRole('button', { name: 'Signed in as Naledi 星' }),
+    ).toBeVisible();
+    expect(screen.queryByText('player@example.test')).not.toBeInTheDocument();
+  });
+
+  it('uses a neutral account label when the local display name is absent', async () => {
+    mockCurrentPlayer();
+
+    renderRoute(
+      '/',
+      createAuthValue({
+        getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
+        isAuthenticated: true,
+        user: {
+          email: 'player@example.test',
+          name: 'player@example.test',
+          sub: 'auth0|player',
+        },
+      }),
+    );
+
+    expect(
+      await screen.findByRole('button', { name: 'Signed in' }),
+    ).toBeVisible();
+    expect(screen.queryByText('player@example.test')).not.toBeInTheDocument();
+  });
+
+  it('edits and immediately renders the authoritative saved display name', async () => {
+    const user = userEvent.setup();
+    const fetch = mockCurrentPlayer(playerAId, 'Naledi');
+
+    renderRoute(
+      '/',
+      createAuthValue({
+        getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
+        isAuthenticated: true,
+      }),
+    );
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Signed in as Naledi' }),
+    );
+    const input = screen.getByRole('textbox', { name: 'Display name' });
+    expect(input).toHaveValue('Naledi');
+
+    await user.clear(input);
+    await user.type(input, '  Naledi Star  ');
+    await user.click(screen.getByRole('button', { name: 'Save player name' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Display name saved.',
+    );
+    expect(
+      screen.getByRole('button', { name: 'Signed in as Naledi Star' }),
+    ).toBeVisible();
+    expect(input).toHaveValue('Naledi Star');
+    expect(fetch).toHaveBeenCalledWith(
+      `${apiBaseUrl}/auth/me/display-name`,
+      expect.objectContaining({
+        body: JSON.stringify({ displayName: '  Naledi Star  ' }),
+        method: 'PUT',
+      }),
+    );
+  });
+
+  it('shows validation accessibly and preserves invalid input', async () => {
+    const user = userEvent.setup();
+    mockCurrentPlayer(playerAId, 'Naledi');
+
+    renderRoute(
+      '/',
+      createAuthValue({
+        getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
+        isAuthenticated: true,
+      }),
+    );
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Signed in as Naledi' }),
+    );
+    const input = screen.getByRole('textbox', { name: 'Display name' });
+    await user.clear(input);
+    await user.type(input, ' A ');
+    await user.click(screen.getByRole('button', { name: 'Save player name' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Display name must be at least 2 characters after trimming.',
+    );
+    expect(input).toHaveValue(' A ');
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('aborts an in-flight display-name save when the editor closes', async () => {
+    const user = userEvent.setup();
+    let saveSignal: AbortSignal | undefined;
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+
+      if (url.endsWith('/auth/me/display-name')) {
+        saveSignal = init?.signal ?? undefined;
+
+        return new Promise<Response>((_resolve, reject) => {
+          saveSignal?.addEventListener('abort', () => {
+            reject(
+              new DOMException('The operation was aborted.', 'AbortError'),
+            );
+          });
+        });
+      }
+
+      if (url.endsWith('/auth/me')) {
+        return currentPlayerResponse(playerAId, 'Player A', 'current-player');
+      }
+
+      return new Response(
+        JSON.stringify({ events: [], requestId: 'events-test-request' }),
+        { status: 200 },
+      );
+    });
+
+    renderRoute(
+      '/',
+      createAuthValue({
+        getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
+        isAuthenticated: true,
+      }),
+    );
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Signed in as Player A' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Save player name' }));
+    await waitFor(() => expect(saveSignal).toBeDefined());
+    await user.click(
+      screen.getByRole('button', { name: 'Close player-name editor' }),
+    );
+
+    expect(saveSignal?.aborted).toBe(true);
+    expect(
+      screen.queryByRole('heading', { name: 'Player name' }),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', { name: 'Signed in as Player A' }),
+    );
+    expect(
+      screen.getByRole('button', { name: 'Save player name' }),
+    ).toBeEnabled();
+  });
+
+  it('does not let a stale display-name response overwrite a newer player', async () => {
+    const user = userEvent.setup();
+    let currentPlayerLoads = 0;
+    let finishPlayerASave: (() => void) | undefined;
+    let playerASave: Promise<unknown> | undefined;
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+
+      if (url.endsWith('/auth/me/display-name')) {
+        return new Promise<Response>((resolve) => {
+          finishPlayerASave = () =>
+            resolve(
+              currentPlayerResponse(playerAId, 'Updated Player', 'stale-save'),
+            );
+        });
+      }
+
+      currentPlayerLoads += 1;
+      return currentPlayerResponse(
+        currentPlayerLoads === 1 ? playerAId : playerBId,
+        currentPlayerLoads === 1 ? 'Player A' : 'Player B',
+        `current-player-${currentPlayerLoads}`,
+      );
+    });
+
+    const authValue = createAuthValue({
+      getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
+      isAuthenticated: true,
+      logout: vi.fn().mockResolvedValue(undefined),
+    });
+    render(
+      currentPlayerHarnessTree(authValue, (update) => {
+        playerASave = update;
+      }),
+    );
+
+    expect(
+      await screen.findByLabelText('Current player state'),
+    ).toHaveTextContent(`${playerAId}:Player A`);
+    await user.click(
+      screen.getByRole('button', { name: 'Start display-name save' }),
+    );
+    await waitFor(() => expect(finishPlayerASave).toBeTypeOf('function'));
+
+    window.localStorage.clear();
+    await user.click(
+      screen.getByRole('button', { name: 'Reload current player' }),
+    );
+    expect(
+      await screen.findByLabelText('Current player state'),
+    ).toHaveTextContent(`${playerBId}:Player B`);
+
+    await act(async () => {
+      finishPlayerASave?.();
+      await playerASave;
+    });
+
+    expect(screen.getByLabelText('Current player state')).toHaveTextContent(
+      `${playerBId}:Player B`,
+    );
+    expect(screen.queryByText(new RegExp(playerAId))).not.toBeInTheDocument();
+  });
+
+  it('does not let a stale display-name response restore an anonymous session', async () => {
+    const user = userEvent.setup();
+    let finishSave: (() => void) | undefined;
+    let save: Promise<unknown> | undefined;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      if (String(input).endsWith('/auth/me/display-name')) {
+        return new Promise<Response>((resolve) => {
+          finishSave = () =>
+            resolve(currentPlayerResponse(playerAId, 'Player A', 'stale-save'));
+        });
+      }
+
+      return currentPlayerResponse(playerAId, 'Player A', 'current-player');
+    });
+
+    const authenticated = createAuthValue({
+      getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
+      isAuthenticated: true,
+    });
+    const onUpdateStarted = (update: Promise<unknown>) => {
+      save = update;
+    };
+    const view = render(
+      currentPlayerHarnessTree(authenticated, onUpdateStarted),
+    );
+
+    expect(
+      await screen.findByLabelText('Current player state'),
+    ).toHaveTextContent(`${playerAId}:Player A`);
+    await user.click(
+      screen.getByRole('button', { name: 'Start display-name save' }),
+    );
+    await waitFor(() => expect(finishSave).toBeTypeOf('function'));
+
+    view.rerender(currentPlayerHarnessTree(createAuthValue(), onUpdateStarted));
+    expect(
+      await screen.findByLabelText('Current player state'),
+    ).toHaveTextContent('anonymous');
+
+    await act(async () => {
+      finishSave?.();
+      await save;
+    });
+
+    expect(screen.getByLabelText('Current player state')).toHaveTextContent(
+      'anonymous',
+    );
+  });
+
+  it('moves the current player to terminal authorization state when a save is unauthorized', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) =>
+      String(input).endsWith('/auth/me/display-name')
+        ? new Response('{}', { status: 401 })
+        : currentPlayerResponse(playerAId, 'Player A', 'current-player'),
+    );
+
+    render(
+      currentPlayerHarnessTree(
+        createAuthValue({
+          getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
+          isAuthenticated: true,
+        }),
+        () => undefined,
+      ),
+    );
+
+    expect(
+      await screen.findByLabelText('Current player state'),
+    ).toHaveTextContent(`${playerAId}:Player A`);
+    await user.click(
+      screen.getByRole('button', { name: 'Start display-name save' }),
+    );
+
+    expect(
+      await screen.findByLabelText('Current player state'),
+    ).toHaveTextContent('error:authorization');
+  });
 
   it('signs out through Auth0 and returns to the public origin', async () => {
     const user = userEvent.setup();

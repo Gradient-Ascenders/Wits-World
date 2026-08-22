@@ -25,6 +25,7 @@ async function startServer(): Promise<void> {
 
   const databaseConfig = buildDatabaseConfig({ target: 'test' });
   const database = createDatabasePool(databaseConfig);
+  const playerService = createPlayerIdentityService(database);
   const clock = () => new Date(SPRINT1_E2E_NOW);
 
   const app = await buildApp({
@@ -37,7 +38,8 @@ async function startServer(): Promise<void> {
       discovery: createEventDiscoveryService(database, { clock }),
       eligibility: createEventEligibilityService(database, { clock }),
     },
-    playerIdentityService: createPlayerIdentityService(database),
+    playerDisplayNameService: playerService,
+    playerIdentityService: playerService,
   });
 
   app.addHook('onClose', async () => {

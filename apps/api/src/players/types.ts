@@ -3,6 +3,7 @@ export type PlayerRole = 'player' | 'author';
 export type PlayerLifecycleStatus = 'active' | 'deletion_pending' | 'deleted';
 
 export interface LocalPlayer {
+  displayName: string | null;
   id: string;
   role: PlayerRole;
   lifecycleStatus: PlayerLifecycleStatus;

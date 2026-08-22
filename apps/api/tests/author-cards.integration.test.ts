@@ -34,12 +34,14 @@ const authenticatedIdentity = {
 const activeAuthor = {
   id: AUTHOR_ID,
   role: 'author' as const,
+  displayName: null,
   lifecycleStatus: 'active' as const,
 };
 
 const activePlayer = {
   id: PLAYER_ID,
   role: 'player' as const,
+  displayName: null,
   lifecycleStatus: 'active' as const,
 };
 
@@ -136,6 +138,7 @@ describe('author card API', () => {
   it('rejects a deletion-pending Author', async () => {
     playerResolve.mockResolvedValue({
       ...activeAuthor,
+      displayName: null,
       lifecycleStatus: 'deletion_pending',
     });
 

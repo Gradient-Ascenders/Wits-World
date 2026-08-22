@@ -18,7 +18,11 @@ import type {
   PlayerEvent,
 } from '../src/events/event-discovery.js';
 
-import type { PlayerIdentityService } from '../src/players/player-identity.js';
+import { normalizeDisplayName } from '../src/players/display-name.js';
+import type {
+  PlayerDisplayNameService,
+  PlayerIdentityService,
+} from '../src/players/player-identity.js';
 
 const authConfig: AuthConfig = {
   domain: 'auth.example.test',
@@ -36,6 +40,7 @@ const tokenIdentity = {
 const localPlayer = {
   id: '6fe7dc26-cdea-4275-a2df-861724137cbc',
   role: 'player' as const,
+  displayName: null,
   lifecycleStatus: 'active' as const,
 };
 
@@ -56,6 +61,7 @@ let publicKey: CryptoKey;
 let unrelatedPrivateKey: CryptoKey;
 let app: FastifyInstance;
 let playerIdentityService: PlayerIdentityService;
+let playerDisplayNameService: PlayerDisplayNameService;
 let listEvents: ReturnType<typeof createEventListMock>;
 
 beforeAll(async () => {
@@ -71,6 +77,13 @@ beforeEach(async () => {
   playerIdentityService = {
     resolve: vi.fn().mockResolvedValue(localPlayer),
   };
+  playerDisplayNameService = {
+    updateDisplayName: vi.fn(async (playerId, displayName) => ({
+      ...localPlayer,
+      displayName: normalizeDisplayName(displayName),
+      id: playerId,
+    })),
+  };
   listEvents = createEventListMock();
 
   app = await buildApp({
@@ -79,6 +92,7 @@ beforeEach(async () => {
       verificationKey: publicKey,
     }),
     playerIdentityService,
+    playerDisplayNameService,
     eventServices: {
       discovery: {
         list: listEvents,
@@ -198,6 +212,7 @@ describe('API bearer authentication', () => {
       expect(currentPlayerResponse.json()).toEqual({
         id: localPlayer.id,
         role: 'player',
+        displayName: null,
         lifecycleStatus: 'active',
         requestId: expect.any(String),
       });
@@ -256,6 +271,93 @@ describe('API bearer authentication', () => {
         subject: 'attacker-controlled-subject',
       },
     });
+  });
+
+  it('does not provision a display name from Auth0 profile claims', async () => {
+    const token = await createToken({
+      email: 'naledi@example.test',
+      name: 'naledi@example.test',
+    });
+
+    const response = await authenticatedRequest(token);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ displayName: null });
+    expect(playerIdentityService.resolve).toHaveBeenCalledWith(tokenIdentity);
+  });
+
+  it('updates only the authenticated player display name and returns authoritative state', async () => {
+    const token = await createToken();
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/auth/me/display-name',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { displayName: '  Naledi 星  ' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      displayName: 'Naledi 星',
+      id: localPlayer.id,
+      lifecycleStatus: localPlayer.lifecycleStatus,
+      requestId: expect.any(String),
+      role: localPlayer.role,
+    });
+    expect(playerDisplayNameService.updateDisplayName).toHaveBeenCalledWith(
+      localPlayer.id,
+      '  Naledi 星  ',
+    );
+  });
+
+  it.each([
+    ['too short', 'A'],
+    ['too long', 'A'.repeat(33)],
+    ['whitespace only', '   '],
+    ['control character', 'Naledi\nStar'],
+  ])(
+    'rejects an invalid display name that is %s',
+    async (_label, displayName) => {
+      const token = await createToken();
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/api/v1/auth/me/display-name',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { displayName },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({
+        code: 'INVALID_DISPLAY_NAME',
+        status: 400,
+        title: 'Invalid display name',
+      });
+    },
+  );
+
+  it('does not accept another player identifier in the display-name mutation', async () => {
+    const token = await createToken();
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/auth/me/display-name',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        displayName: 'Naledi',
+        playerId: '5a78ce0d-d15f-4039-ac4a-3c59d1c591c2',
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(playerDisplayNameService.updateDisplayName).not.toHaveBeenCalled();
+  });
+
+  it('requires authentication to update a display name', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/auth/me/display-name',
+      payload: { displayName: 'Naledi' },
+    });
+
+    expectUnauthorized(response);
   });
 
   it('documents bearer authentication for the protected OpenAPI route', async () => {
@@ -329,6 +431,7 @@ describe('API bearer authentication', () => {
   it('rejects a deletion-pending current player even with a valid token', async () => {
     vi.mocked(playerIdentityService.resolve).mockResolvedValue({
       ...localPlayer,
+      displayName: null,
       lifecycleStatus: 'deletion_pending',
     });
 
@@ -355,6 +458,8 @@ interface CreateTokenOptions {
   signingKey?: CryptoKey;
   includeExpiration?: boolean;
   emailVerified?: boolean;
+  email?: string;
+  name?: string;
 }
 
 async function createToken({
@@ -365,10 +470,14 @@ async function createToken({
   signingKey = privateKey,
   includeExpiration = true,
   emailVerified,
+  email,
+  name,
 }: CreateTokenOptions = {}): Promise<string> {
-  let token = new SignJWT(
-    emailVerified === undefined ? {} : { email_verified: emailVerified },
-  )
+  let token = new SignJWT({
+    ...(emailVerified === undefined ? {} : { email_verified: emailVerified }),
+    ...(email === undefined ? {} : { email }),
+    ...(name === undefined ? {} : { name }),
+  })
     .setProtectedHeader({
       alg: 'RS256',
       typ: 'JWT',

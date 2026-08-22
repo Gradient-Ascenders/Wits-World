@@ -39,6 +39,7 @@ async function startServer(): Promise<void> {
   const databaseConfig = buildDatabaseConfig();
 
   const database = createDatabasePool(databaseConfig);
+  const playerService = createPlayerIdentityService(database);
 
   const accountDeletionLifecycle = createAccountDeletionLifecycle(database);
 
@@ -71,7 +72,8 @@ async function startServer(): Promise<void> {
     config,
     authConfig,
     corsConfig,
-    playerIdentityService: createPlayerIdentityService(database),
+    playerIdentityService: playerService,
+    playerDisplayNameService: playerService,
 
     challengeAttemptServices: {
       start: challengeAttemptStartService,

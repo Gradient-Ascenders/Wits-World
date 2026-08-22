@@ -64,6 +64,9 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
 
   it('creates the player schema on a clean database', async () => {
     expect(migrationResult.applied).toContain('0003_create_players.sql');
+    expect(migrationResult.applied).toContain(
+      '0019_add_player_display_name.sql',
+    );
 
     await withDatabaseClient(temporaryConfig, async (client) => {
       const relation = await client.query<{
@@ -73,6 +76,113 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
       expect(relation.rows[0]?.players_table).toBe('players');
     });
   });
+
+  it('keeps legacy and newly provisioned players unnamed', async () => {
+    await withDatabaseClient(temporaryConfig, async (client) => {
+      const service = createPlayerIdentityService(client);
+      const player = await service.resolve({
+        issuer: 'https://auth.example.test/',
+        subject: 'auth0|unnamed-player',
+      });
+
+      expect(player.displayName).toBeNull();
+
+      const stored = await client.query<{ display_name: string | null }>(
+        `select display_name from public.players where id = $1`,
+        [player.id],
+      );
+      expect(stored.rows[0]?.display_name).toBeNull();
+    });
+  });
+
+  it('allows duplicate Unicode display names for different players', async () => {
+    await withDatabaseClient(temporaryConfig, async (client) => {
+      await expect(
+        client.query(
+          `insert into public.players (
+             id, auth_issuer, auth_subject, role, lifecycle_status, display_name
+           ) values
+             ($1, $3, $5, 'player', 'active', $7),
+             ($2, $4, $6, 'author', 'active', $7)`,
+          [
+            '00000000-0000-4000-8000-000000000141',
+            '00000000-0000-4000-8000-000000000142',
+            'https://tenant-one.example.test/',
+            'https://tenant-two.example.test/',
+            'auth0|same-name-one',
+            'auth0|same-name-two',
+            'Naledi 星',
+          ],
+        ),
+      ).resolves.toBeDefined();
+    });
+  });
+
+  it('updates presentation metadata without changing local or Auth0 identity and authorization state', async () => {
+    await withDatabaseClient(temporaryConfig, async (client) => {
+      const playerId = '00000000-0000-4000-8000-000000000144';
+      const issuer = 'https://auth.example.test/';
+      const subject = 'auth0|display-name-invariants';
+      await client.query(
+        `insert into public.players (
+           id, auth_issuer, auth_subject, role, lifecycle_status
+         ) values ($1, $2, $3, 'author', 'active')`,
+        [playerId, issuer, subject],
+      );
+
+      const service = createPlayerIdentityService(client);
+      await service.updateDisplayName(playerId, '  Professor Nova  ');
+
+      const stored = await client.query<{
+        auth_issuer: string;
+        auth_subject: string;
+        display_name: string;
+        id: string;
+        lifecycle_status: string;
+        role: string;
+      }>(
+        `select id, auth_issuer, auth_subject, role, lifecycle_status, display_name
+           from public.players
+          where id = $1`,
+        [playerId],
+      );
+
+      expect(stored.rows[0]).toEqual({
+        auth_issuer: issuer,
+        auth_subject: subject,
+        display_name: 'Professor Nova',
+        id: playerId,
+        lifecycle_status: 'active',
+        role: 'author',
+      });
+    });
+  });
+
+  it.each([
+    ['one character', 'A'],
+    ['more than 32 characters', 'A'.repeat(33)],
+    ['surrounding spaces', ' Naledi '],
+    ['control characters', 'Naledi\nStar'],
+  ])(
+    'rejects a display name with %s at the database boundary',
+    async (_label, displayName) => {
+      await withDatabaseClient(temporaryConfig, async (client) => {
+        await expect(
+          client.query(
+            `insert into public.players (
+             id, auth_issuer, auth_subject, role, lifecycle_status, display_name
+           ) values ($1, $2, $3, 'player', 'active', $4)`,
+            [
+              '00000000-0000-4000-8000-000000000143',
+              'https://auth.example.test/',
+              `auth0|invalid-display-name-${displayName.length}`,
+              displayName,
+            ],
+          ),
+        ).rejects.toThrow();
+      });
+    },
+  );
 
   it('prevents duplicate external identities', async () => {
     await withDatabaseClient(temporaryConfig, async (client) => {
@@ -622,8 +732,8 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
 
       await client.query(
         `insert into public.players (
-          id, auth_issuer, auth_subject, role, lifecycle_status
-        ) values ($1, $2, $3, 'author', 'active')`,
+          id, auth_issuer, auth_subject, role, lifecycle_status, display_name
+        ) values ($1, $2, $3, 'author', 'active', 'Professor Nova')`,
         ['00000000-0000-4000-8000-000000000131', issuer, subject],
       );
 
@@ -645,6 +755,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
       const player = await client.query<{
         auth_issuer: string | null;
         auth_subject: string | null;
+        display_name: string | null;
         role: string | null;
         lifecycle_status: string;
         deletion_request_id: string | null;
@@ -652,6 +763,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
         `select
           auth_issuer,
           auth_subject,
+          display_name,
           role,
           lifecycle_status,
           deletion_request_id
@@ -663,6 +775,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
       expect(player.rows[0]).toEqual({
         auth_issuer: null,
         auth_subject: null,
+        display_name: null,
         role: null,
         lifecycle_status: 'deleted',
         deletion_request_id: null,

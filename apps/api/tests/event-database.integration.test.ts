@@ -161,6 +161,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0016_add_event_authoring_lifecycle.sql',
         '0017_resolve_edge_card_definition_name.sql',
         '0018_enforce_card_definition_name_uniqueness.sql',
+        '0019_add_player_display_name.sql',
       ],
       skipped: [],
     });
@@ -185,6 +186,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0016_add_event_authoring_lifecycle.sql',
         '0017_resolve_edge_card_definition_name.sql',
         '0018_enforce_card_definition_name_uniqueness.sql',
+        '0019_add_player_display_name.sql',
       ],
     });
     expect(readiness).toMatchObject({

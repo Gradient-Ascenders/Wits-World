@@ -27,6 +27,7 @@ const DECK_ID = 'a3000000-0000-4000-8000-000000000001';
 const activePlayer = {
   id: PLAYER_ID,
   role: 'player' as const,
+  displayName: null,
   lifecycleStatus: 'active' as const,
 };
 

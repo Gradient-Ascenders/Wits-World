@@ -81,27 +81,35 @@ credentials, passwords, tokens, and Management API credentials remain private.
 
 ### Single-page application
 
-| Setting              | Value                          |
-| -------------------- | ------------------------------ |
-| Name                 | `Wits World Web - Development` |
-| Application type     | Single Page Web Application    |
-| Allowed callback URL | `http://localhost:5173`        |
-| Allowed logout URL   | `http://localhost:5173`        |
-| Allowed web origin   | `http://localhost:5173`        |
+| Setting              | Value                       |
+| -------------------- | --------------------------- |
+| Name                 | `Wits World`                |
+| Application type     | Single Page Web Application |
+| Allowed callback URL | `http://localhost:5173`     |
+| Allowed logout URL   | `http://localhost:5173`     |
+| Allowed web origin   | `http://localhost:5173`     |
 
 The SPA Client ID is public application configuration. The application must not
 use or expose a client secret.
 
 ### API resource
 
-| Setting                 | Value                            |
-| ----------------------- | -------------------------------- |
-| Name                    | `Wits Quest API - Development`   |
-| Identifier and audience | `https://api.wits-world.invalid` |
-| Signing algorithm       | RS256                            |
+| Setting                 | Value                                                  |
+| ----------------------- | ------------------------------------------------------ |
+| Name                    | `Wits World API` (target; tenant verification pending) |
+| Identifier and audience | `https://api.wits-world.invalid`                       |
+| Signing algorithm       | RS256                                                  |
 
 The API identifier is a logical audience value. It is not an instruction to
 send HTTP requests to that address.
+
+The SPA application rename was verified against the hosted New Universal Login
+page on 22 August 2026: its title is `Log in | Wits World` and its prompt says
+the player is continuing to `Wits World`. The API friendly name is not exposed
+on that public page. A tenant administrator must confirm it under **Dashboard →
+Applications → APIs → Wits World API → Settings → General Settings → Name**.
+Only the friendly `Name` may be changed; the existing Identifier/audience must
+remain `https://api.wits-world.invalid`.
 
 ## Token contract
 

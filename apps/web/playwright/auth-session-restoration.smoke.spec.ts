@@ -12,13 +12,17 @@ test('keeps the same player with E2E local-storage restoration and logout', asyn
     );
     expectedPlayerId ??= directVisitPlayerId;
     expect(directVisitPlayerId).toBe(expectedPlayerId);
-    await expect(page.getByText('Signed in as')).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: /^Signed in(?: as .+)?$/ }),
+    ).toBeVisible();
 
     const refreshedPlayerId = await openAndReadCurrentPlayer(page, () =>
       page.reload(),
     );
     expect(refreshedPlayerId).toBe(expectedPlayerId);
-    await expect(page.getByText('Signed in as')).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: /^Signed in(?: as .+)?$/ }),
+    ).toBeVisible();
   }
 
   await Promise.all([
@@ -32,7 +36,9 @@ test('keeps the same player with E2E local-storage restoration and logout', asyn
   await expect(
     page.getByRole('button', { name: 'Sign in to explore' }),
   ).toBeVisible();
-  await expect(page.getByText('Signed in as')).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: /^Signed in(?: as .+)?$/ }),
+  ).toHaveCount(0);
 });
 
 async function openAndReadCurrentPlayer(

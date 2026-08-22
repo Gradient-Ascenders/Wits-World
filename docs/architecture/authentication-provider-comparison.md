@@ -202,7 +202,7 @@ The selected development configuration is:
 | Setting               | Value                               |
 | --------------------- | ----------------------------------- |
 | Tenant domain         | `dev-5artxfvpdennq8qm.us.auth0.com` |
-| SPA application       | `Wits World Web - Development`      |
+| SPA application       | `Wits World`                        |
 | SPA application type  | Single Page Web Application         |
 | API audience          | `https://api.wits-world.invalid`    |
 | API signing algorithm | RS256                               |
@@ -386,4 +386,4 @@ Those changes belong to their corresponding implementation issues.
 - https://github.com/keycloak/keycloak?utm_source=chatgpt.com
 
 The preceding document was planned and generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking].
+ChatGPT-Web[GPT-5.6 Thinking] and Codex[GPT-5].

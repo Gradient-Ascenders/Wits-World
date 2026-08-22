@@ -23,6 +23,7 @@ const authConfig: AuthConfig = {
 const activeLocalPlayer = {
   id: '00000000-0000-4000-8000-000000000101',
   role: 'player' as const,
+  displayName: null,
   lifecycleStatus: 'active' as const,
 };
 
@@ -199,6 +200,7 @@ describe('card collection API', () => {
   it('rejects deletion-pending players', async () => {
     resolvePlayer.mockResolvedValueOnce({
       ...activeLocalPlayer,
+      displayName: null,
       lifecycleStatus: 'deletion_pending',
     });
 

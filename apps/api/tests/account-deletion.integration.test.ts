@@ -16,6 +16,7 @@ const identity = {
 const player = {
   id: '00000000-0000-4000-8000-000000000500',
   role: 'player' as const,
+  displayName: null,
   lifecycleStatus: 'active' as const,
 };
 
@@ -237,6 +238,7 @@ describe('account deletion API', () => {
       playerIdentityService: {
         resolve: vi.fn(async () => ({
           ...player,
+          displayName: null,
           lifecycleStatus: 'deletion_pending' as const,
         })),
       },

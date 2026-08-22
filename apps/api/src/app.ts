@@ -23,7 +23,10 @@ import { eventRoutes } from './routes/events.js';
 import cors from '@fastify/cors';
 import type { CorsConfig } from './config/cors.js';
 
-import type { PlayerIdentityService } from './players/player-identity.js';
+import type {
+  PlayerDisplayNameService,
+  PlayerIdentityService,
+} from './players/player-identity.js';
 import { registerAuthorization } from './auth/authorization.js';
 
 import type { Auth0ManagementClient } from './auth/auth0-management-client.js';
@@ -72,6 +75,7 @@ export interface BuildAppOptions {
   eventServices?: EventServices;
   corsConfig?: CorsConfig;
   playerIdentityService?: PlayerIdentityService;
+  playerDisplayNameService?: PlayerDisplayNameService;
   accountDeletionServices?: AccountDeletionServices;
   challengeAttemptServices?: ChallengeAttemptServices;
   cardServices?: CardServices;
@@ -113,6 +117,7 @@ export async function buildApp({
   eventServices,
   corsConfig,
   playerIdentityService,
+  playerDisplayNameService,
   accountDeletionServices,
   challengeAttemptServices,
   cardServices,
@@ -277,6 +282,7 @@ export async function buildApp({
   if (playerIdentityService) {
     await app.register(authenticationRoutes, {
       prefix: '/api/v1',
+      playerDisplayNameService,
     });
   }
 

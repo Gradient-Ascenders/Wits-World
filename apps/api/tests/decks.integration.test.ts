@@ -28,6 +28,7 @@ const DECK_ID = 'a2000000-0000-4000-8000-000000000001';
 const activeLocalPlayer = {
   id: PLAYER_ID,
   role: 'player' as const,
+  displayName: null,
   lifecycleStatus: 'active' as const,
 };
 
@@ -115,6 +116,7 @@ describe('saved deck API', () => {
   it('rejects deletion-pending players', async () => {
     resolvePlayer.mockResolvedValueOnce({
       ...activeLocalPlayer,
+      displayName: null,
       lifecycleStatus: 'deletion_pending',
     });
 

@@ -33,6 +33,7 @@ const authenticatedIdentity = {
 const activeLocalPlayer = {
   id: '00000000-0000-4000-8000-000000000101',
   role: 'player' as const,
+  displayName: null,
   lifecycleStatus: 'active' as const,
 };
 
@@ -110,6 +111,7 @@ describe('event discovery API', () => {
   it('rejects a deletion-pending player before event discovery', async () => {
     playerResolve.mockResolvedValue({
       ...activeLocalPlayer,
+      displayName: null,
       lifecycleStatus: 'deletion_pending',
     });
 
@@ -178,6 +180,7 @@ describe('event eligibility API', () => {
   it('rejects a deletion-pending player before evaluating eligibility', async () => {
     playerResolve.mockResolvedValue({
       ...activeLocalPlayer,
+      displayName: null,
       lifecycleStatus: 'deletion_pending',
     });
 

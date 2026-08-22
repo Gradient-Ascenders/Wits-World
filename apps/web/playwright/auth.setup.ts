@@ -19,7 +19,7 @@ setup('authenticate through Auth0 Universal Login', async ({ page }) => {
   await page.goto('/explore');
   await page.getByRole('button', { name: 'Sign in to explore' }).click();
 
-  await expect(page).toHaveTitle(/Log in \| Wits World Web - Development/);
+  await expect(page).toHaveTitle(/Log in \| Wits World/);
   await expect(page.getByRole('heading', { name: 'Welcome' })).toBeVisible();
 
   await page.getByRole('textbox', { name: 'Email address' }).fill(email);
@@ -42,7 +42,9 @@ setup('authenticate through Auth0 Universal Login', async ({ page }) => {
   await expect(
     page.getByRole('heading', { name: 'Explore the campus map' }),
   ).toBeVisible();
-  await expect(page.getByText('Signed in as')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: /^Signed in(?: as .+)?$/ }),
+  ).toBeVisible();
 
   await page.context().storageState({ path: authenticationStatePath });
 });

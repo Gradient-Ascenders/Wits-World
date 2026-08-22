@@ -30,6 +30,7 @@ describe('application authorisation', () => {
     vi.mocked(playerIdentityService.resolve).mockResolvedValue({
       id: '6fe7dc26-cdea-4275-a2df-861724137cbc',
       role: 'player',
+      displayName: null,
       lifecycleStatus: 'active',
     });
 
@@ -67,6 +68,7 @@ describe('application authorisation', () => {
     vi.mocked(playerIdentityService.resolve).mockResolvedValue({
       id: '6fe7dc26-cdea-4275-a2df-861724137cbc',
       role: 'player',
+      displayName: null,
       lifecycleStatus: 'deletion_pending',
     });
 
@@ -104,6 +106,7 @@ describe('application authorisation', () => {
       request.player = {
         id: '6fe7dc26-cdea-4275-a2df-861724137cbc',
         role: 'author',
+        displayName: null,
         lifecycleStatus: 'active',
       };
     });
@@ -131,6 +134,7 @@ describe('application authorisation', () => {
       request.player = {
         id: '6fe7dc26-cdea-4275-a2df-861724137cbc',
         role: 'player',
+        displayName: null,
         lifecycleStatus: 'active',
       };
     });

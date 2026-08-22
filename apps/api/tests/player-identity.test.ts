@@ -10,6 +10,7 @@ describe('local player identity', () => {
         {
           id: '6fe7dc26-cdea-4275-a2df-861724137cbc',
           role: 'player',
+          display_name: null,
           lifecycle_status: 'active',
         },
       ],
@@ -27,6 +28,7 @@ describe('local player identity', () => {
     ).resolves.toEqual({
       id: '6fe7dc26-cdea-4275-a2df-861724137cbc',
       role: 'player',
+      displayName: null,
       lifecycleStatus: 'active',
     });
 
@@ -45,6 +47,7 @@ describe('local player identity', () => {
         {
           id: '0cf0ddaa-a0af-4ce8-92bc-c437f123db6a',
           role: 'player',
+          display_name: null,
           lifecycle_status: 'active',
         },
       ],
@@ -78,6 +81,7 @@ describe('local player identity', () => {
         {
           id: 'dbbd9ecb-ae87-4c11-846c-9d11f253877c',
           role: 'author',
+          display_name: 'Professor Nova',
           lifecycle_status: 'active',
         },
       ],
@@ -93,6 +97,7 @@ describe('local player identity', () => {
         subject: 'auth0|author-123',
       }),
     ).resolves.toMatchObject({
+      displayName: 'Professor Nova',
       role: 'author',
     });
   });
@@ -103,6 +108,7 @@ describe('local player identity', () => {
         {
           id: '77d10277-279f-46ad-be09-bb1a2658eea4',
           role: 'player',
+          display_name: null,
           lifecycle_status: 'deletion_pending',
         },
       ],
@@ -118,6 +124,7 @@ describe('local player identity', () => {
         subject: 'auth0|pending-123',
       }),
     ).resolves.toMatchObject({
+      displayName: null,
       lifecycleStatus: 'deletion_pending',
     });
   });
@@ -137,6 +144,44 @@ describe('local player identity', () => {
         subject: 'auth0|player-123',
       }),
     ).rejects.toThrow('Local player resolution returned no player.');
+  });
+
+  it('trims and updates only the active local player display name', async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [
+        {
+          id: '6fe7dc26-cdea-4275-a2df-861724137cbc',
+          role: 'author',
+          display_name: 'Naledi 星',
+          lifecycle_status: 'active',
+        },
+      ],
+    });
+    const service = createPlayerIdentityService(
+      createDatabaseQueryTarget(query),
+    );
+
+    await expect(
+      service.updateDisplayName(
+        '6fe7dc26-cdea-4275-a2df-861724137cbc',
+        '  Naledi 星  ',
+      ),
+    ).resolves.toEqual({
+      displayName: 'Naledi 星',
+      id: '6fe7dc26-cdea-4275-a2df-861724137cbc',
+      lifecycleStatus: 'active',
+      role: 'author',
+    });
+
+    const [statement, parameters] = query.mock.calls[0] ?? [];
+    expect(statement).toContain("lifecycle_status = 'active'");
+    expect(statement).not.toContain('auth_issuer =');
+    expect(statement).not.toContain('auth_subject =');
+    expect(statement).not.toContain('role =');
+    expect(parameters).toEqual([
+      '6fe7dc26-cdea-4275-a2df-861724137cbc',
+      'Naledi 星',
+    ]);
   });
 });
 

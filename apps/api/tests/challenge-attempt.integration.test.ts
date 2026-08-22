@@ -52,6 +52,7 @@ const authenticatedIdentity = {
 const activePlayer = {
   id: PLAYER_ID,
   role: 'player' as const,
+  displayName: null,
   lifecycleStatus: 'active' as const,
 };
 
@@ -127,6 +128,7 @@ describe('challenge attempt start API', () => {
   it('rejects a deletion-pending player before challenge start', async () => {
     playerResolve.mockResolvedValue({
       ...activePlayer,
+      displayName: null,
       lifecycleStatus: 'deletion_pending',
     });
 
@@ -355,6 +357,7 @@ describe('challenge answer submission API', () => {
   it('rejects a deletion-pending player before answer submission', async () => {
     playerResolve.mockResolvedValue({
       ...activePlayer,
+      displayName: null,
       lifecycleStatus: 'deletion_pending',
     });
 
@@ -567,6 +570,7 @@ describe('challenge attempt fetch API', () => {
   it('rejects a deletion-pending player before fetching an attempt', async () => {
     playerResolve.mockResolvedValue({
       ...activePlayer,
+      displayName: null,
       lifecycleStatus: 'deletion_pending',
     });
 
