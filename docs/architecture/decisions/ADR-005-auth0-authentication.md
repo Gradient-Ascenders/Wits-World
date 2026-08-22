@@ -209,22 +209,29 @@ included in the initial implementation.
 ## Email verification
 
 Auth0 authentication is required for normal gameplay and protected Wits World
-application features. Email verification is not an additional access gate.
+application features. Email verification is intentionally not part of the Wits
+World account lifecycle and is not an additional access gate.
 
-An authenticated principal whose email is unverified must not be treated as
-unauthenticated. Wits World does not use the Auth0 `email_verified` claim as an
-application-authorisation prerequisite. Access continues to depend on a valid
-Wits World API access token, the exact `(iss, sub)` identity, an active local
-player lifecycle, and any required local role or object permission.
+An authenticated principal whose `email_verified` claim is `true`, `false`, or
+absent must be treated identically for ordinary application authorisation.
+Access continues to depend on a valid Wits World API access token, the exact
+`(iss, sub)` identity, an active local-player lifecycle, and any required local
+role or object permission. The Auth0 `email_verified` claim is optional identity
+metadata: Auth0 may still expose it for existing accounts or other identity
+providers, but Wits World must ignore it for ordinary application
+authorisation.
 
 Email verification does not prove that a person has a Wits institutional
 identity, and Wits World must not present it that way. A future Wits single
 sign-on or institutional eligibility policy would require its own approved
 identity contract.
 
-Auth0 may continue to expose and maintain email-verification state and send
-verification email. This application policy neither requires disabling those
-provider features nor authorises an Auth0 tenant-configuration change.
+Automatic verification email for Wits World database-connection sign-ups is
+intentionally disabled in the Auth0 tenant. This is external tenant
+configuration, not application logic. The [deployment requirement](../../deployment/azure-deployment-setup.md#91-auth0-email-delivery-policy)
+defines the required connection and email-template settings; it leaves Auth0
+password-reset/recovery email enabled and introduces no Wits World password
+handling.
 
 ## Password reset
 
@@ -350,7 +357,7 @@ contain safe configuration or placeholders.
 - React and Fastify have supported Auth0 integration paths.
 - Registration and password reset can use hosted Auth0 interfaces.
 - Authenticated players are not incorrectly denied application access because
-  their email is unverified.
+  their email is unverified or their identity has no `email_verified` claim.
 - The team avoids operating an identity server.
 - Authentication remains separate from local application authorisation.
 - Local Player and Author permissions remain under server-side application
