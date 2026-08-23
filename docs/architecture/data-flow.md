@@ -64,14 +64,17 @@ authoritative event record.
 
 ## Location-eligibility flow
 
-1. The player selects an action to check whether an event is reachable.
-2. The browser requests geolocation permission.
-3. The device returns:
+1. `/explore` checks the browser permission state without prompting.
+2. If permission is already granted, one live watcher starts. If permission is
+   prompt or unknown, the player activates **Enable live location** first.
+3. The device reports:
    - latitude;
    - longitude;
    - reported accuracy; and
    - acquisition timestamp.
-4. The browser submits those values together with the event identifier.
+4. The browser updates its ephemeral reported-location marker. When the player
+   selects an active event, it submits the latest claim with the event
+   identifier.
 5. The API validates the access token.
 6. The API validates:
    - the event identifier;
@@ -92,8 +95,17 @@ authoritative event record.
 11. The API compares the calculated distance with the stored event radius.
 12. The API returns a safe eligibility result.
 13. The browser displays the result using accessible text and status messaging.
+14. Meaningful watcher updates may drive a coalesced refresh, with no more than
+    one eligibility request every 15 seconds. This is only a frontend network
+    limit; there is no timer-only polling loop.
+15. Challenge start reuses a sufficiently fresh watched reported-location claim
+    or requests a newer one-shot claim, then sends it through the
+    challenge-start endpoint for its authoritative recheck. If the API requires
+    a fresher location, the same rejected acquisition is not resubmitted.
 
 The browser does not calculate the authoritative distance or final eligibility.
+The selected event interaction area is a visual geodesic polygon only. Basic
+Tier does not display a GPS accuracy circle.
 
 ## Eligibility outcomes
 

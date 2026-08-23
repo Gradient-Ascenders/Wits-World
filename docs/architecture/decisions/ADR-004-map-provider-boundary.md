@@ -16,9 +16,12 @@ Accepted
 ## Context
 
 The Wits Quest player experience requires a campus map displaying nearby events.
-The browser may collect a reported location only after a player action for the
-protected eligibility request; that reported location is not rendered or sent
-to the map provider.
+While `/explore` is active, the browser may observe and transiently render the
+player's reported location. If permission is already granted, observation may
+start on mount; a prompt or unknown permission state still requires the player
+to activate **Enable live location**. The reported location is kept ephemeral,
+rendered as a local DOM overlay, and never sent to the map provider. The API,
+not the rendered point, remains authoritative for protected eligibility.
 
 The browser must integrate with a map library and a licensed tile or style
 provider.
@@ -56,6 +59,11 @@ PostgreSQL/PostGIS.
 
 The web application must provide a text-based event list so the map is not the
 only way to discover or understand events.
+
+The selected event's API-supplied radius may be rendered as a geodesic polygon
+labelled **Event interaction area**. This is explanatory map geometry, not proof
+of physical presence and not a client-side eligibility calculation. Basic Tier
+does not render a reported GPS-accuracy circle.
 
 ## Reasons
 

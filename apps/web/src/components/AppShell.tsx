@@ -32,6 +32,7 @@ function NavigationLink({ href, children }: NavigationLinkProps) {
 export function AppShell({ children }: AppShellProps) {
   const { isAuthenticated, isLoading } = useAuth0();
   const { state: currentPlayer } = useCurrentPlayer();
+  const [isExplore] = useRoute('/explore');
   const isRestoring =
     isLoading || (isAuthenticated && currentPlayer.status === 'loading');
   const hasPlayerNavigation =
@@ -43,7 +44,7 @@ export function AppShell({ children }: AppShellProps) {
     <div
       className={`site-frame site-frame--${
         hasPlayerNavigation ? 'product-navigation' : 'public'
-      }`}
+      }${isExplore ? ' site-frame--explore' : ''}`}
     >
       <a className="skip-link" href="#main-content">
         Skip to main content
@@ -51,7 +52,7 @@ export function AppShell({ children }: AppShellProps) {
 
       <header
         aria-busy={isRestoring ? 'true' : undefined}
-        className="site-header"
+        className={`site-header${isExplore ? ' site-header--explore' : ''}`}
       >
         <div className="site-header__inner">
           <Link aria-label="Wits World home" className="product-name" href="/">
@@ -107,16 +108,22 @@ export function AppShell({ children }: AppShellProps) {
         </div>
       </header>
 
-      <main className="main-content" id="main-content" tabIndex={-1}>
+      <main
+        className={`main-content${isExplore ? ' main-content--explore' : ''}`}
+        id="main-content"
+        tabIndex={-1}
+      >
         {children}
       </main>
 
-      <footer className="site-footer">
-        <div className="site-footer__inner">
-          <p>Wits World</p>
-          <p>© 2026 Gradient Ascent</p>
-        </div>
-      </footer>
+      {!isExplore ? (
+        <footer className="site-footer">
+          <div className="site-footer__inner">
+            <p>Wits World</p>
+            <p>© 2026 Gradient Ascent</p>
+          </div>
+        </footer>
+      ) : null}
     </div>
   );
 }

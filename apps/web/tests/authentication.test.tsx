@@ -13,6 +13,10 @@ import { AppRoutes } from '../src/App';
 import { getSafeReturnTo, returnToWitsQuest } from '../src/auth/AuthProvider';
 import { bindAuthenticatedPlayer } from '../src/auth/player-session-binding';
 import { useApiAccessToken } from '../src/auth/useApiAccessToken';
+import type {
+  LocationObservationProvider,
+  LocationPermissionProvider,
+} from '../src/browser-location';
 
 const apiBaseUrl = 'https://api.example.test/api/v1';
 const mapboxAccessToken = 'pk.test-token';
@@ -56,18 +60,33 @@ function createAuthValue(
   } as Auth0ContextInterface;
 }
 
-function renderRoute(path: string, authValue: Auth0ContextInterface) {
+function renderRoute(
+  path: string,
+  authValue: Auth0ContextInterface,
+  locationProviders: {
+    observation?: LocationObservationProvider;
+    permission?: LocationPermissionProvider;
+  } = {},
+) {
   window.history.replaceState({}, '', path);
 
-  return render(routeTree(authValue));
+  return render(routeTree(authValue, locationProviders));
 }
 
-function routeTree(authValue: Auth0ContextInterface) {
+function routeTree(
+  authValue: Auth0ContextInterface,
+  locationProviders: {
+    observation?: LocationObservationProvider;
+    permission?: LocationPermissionProvider;
+  } = {},
+) {
   return (
     <Auth0Context.Provider value={authValue}>
       <Router>
         <AppRoutes
           apiBaseUrl={apiBaseUrl}
+          locationObservationProvider={locationProviders.observation}
+          locationPermissionProvider={locationProviders.permission}
           mapboxAccessToken={mapboxAccessToken}
         />
       </Router>
@@ -416,6 +435,33 @@ describe('player authentication', () => {
     ).toBeVisible();
   });
 
+  it('does not mount live location before Player Name setup is complete', async () => {
+    mockCurrentPlayer(playerAId, null);
+    const locationObservationProvider: LocationObservationProvider = vi.fn(() =>
+      vi.fn(),
+    );
+
+    renderRoute(
+      '/explore',
+      createAuthValue({
+        getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
+        isAuthenticated: true,
+      }),
+      {
+        observation: locationObservationProvider,
+        permission: vi.fn().mockResolvedValue('granted'),
+      },
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Choose your Player Name' }),
+    ).toBeVisible();
+    expect(locationObservationProvider).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('heading', { name: 'Explore the campus map' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('lets an already-configured Google player bypass setup', async () => {
     mockCurrentPlayer(playerAId, 'configured-google');
 
@@ -435,6 +481,8 @@ describe('player authentication', () => {
     expect(
       await screen.findByRole('heading', { name: 'Explore the campus map' }),
     ).toBeVisible();
+    expect(screen.getByRole('main')).toHaveClass('main-content--explore');
+    expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument();
     expect(screen.getByText('configured-google')).toBeVisible();
     expect(
       screen.queryByRole('heading', { name: 'Choose your Player Name' }),

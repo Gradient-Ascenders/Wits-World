@@ -86,12 +86,33 @@ Mapbox; those coordinates go only to the protected Wits Quest eligibility API.
 
 The map disables Mapbox performance metrics collection in the constructor. No
 Mapbox geolocation control is installed, so there is no provider-side location
-request. After the player explicitly requests a reachability check, the map
-may show the resulting reported location as a transient, browser-only DOM
-overlay. It is positioned with the map's local screen projection, never as a
-Mapbox marker or source, and is removed with the map controller. See [Mapbox
+request. `/explore` uses one browser geolocation watcher while the page is
+active: previously granted permission starts it automatically, while prompt or
+unknown permission requires the player's **Enable live location** action. The
+watcher pauses while the document is hidden and is cleared on unmount.
+
+The latest reported location is shown as a transient, browser-only DOM overlay.
+It is positioned with the map's local screen projection, never as a Mapbox
+marker or GeoJSON source, and is removed with the map controller. It is not
+persisted in storage, URLs, or location history. Basic Tier does not show a GPS
+accuracy circle. See [Mapbox
 operations](../deployment/mapbox-operations.md) for token, CSP, pricing,
 monitoring, and deployment notes.
+
+The selected event interaction area is a 64-segment geodesic GeoJSON polygon
+generated from the API's event coordinate and metre radius. It is visual-only;
+the browser does not calculate player-to-event distance. Live location updates
+move the local player marker immediately, but eligibility refreshes are
+location-driven, coalesced, and limited to at most one request per 15 seconds
+after meaningful movement. The API and PostGIS decide every result. Challenge
+start reuses a sufficiently fresh watched claim or requests a newer one-shot
+claim before submitting through the existing API for a server-authoritative
+recheck. A location-retry response requires a newer acquisition rather than
+resubmitting the same rejected claim.
+
+The Mapbox logo and Mapbox/OpenStreetMap attribution remain enabled. The
+attribution control uses Mapbox's compact mode on constrained layouts and both
+branding controls are positioned above Explore's sheet and mobile navigation.
 
 ## Official implementation references
 

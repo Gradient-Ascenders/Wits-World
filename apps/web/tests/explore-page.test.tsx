@@ -3,263 +3,309 @@ import {
   initialContext,
   type Auth0ContextInterface,
 } from '@auth0/auth0-react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { StrictMode } from 'react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  BrowserLocationError,
+  type LocationClaim,
+  type LocationClaimProvider,
+  type LocationObservationHandlers,
+  type LocationObservationProvider,
+} from '../src/browser-location';
 import type {
   MapController,
   MapFactory,
 } from '../src/components/exploration/map-provider';
-import { BrowserLocationError } from '../src/browser-location';
 import ExplorePage from '../src/pages/ExplorePage';
 
 const apiBaseUrl = 'https://api.example.test/api/v1';
 const mapboxAccessToken = 'pk.test-token';
 const event = {
   availability: 'active',
-  description: null,
+  description: 'A concise authored Great Hall quest.',
   endsAt: '2026-08-26T00:00:00.000+02:00',
   eventId: '00000000-0000-4000-8000-000000000018',
   latitude: -26.19205,
   longitude: 28.03038,
   radiusMetres: 75,
   startsAt: '2026-08-01T00:00:00.000+02:00',
-  title: 'Sprint 1 Demo - Wits Great Hall',
+  title: 'Great Hall Quest',
 } as const;
-const claim = {
+const claim: LocationClaim = {
   accuracyMetres: 12,
-  acquiredAt: '2026-08-08T10:30:00.000Z',
+  acquiredAt: '2026-08-23T10:30:00.000Z',
   latitude: -26.19205,
   longitude: 28.03038,
-} as const;
+};
 
-function createAuthValue(
-  getAccessTokenSilently = vi.fn().mockResolvedValue('access-token'),
-): Auth0ContextInterface {
+function createAuthValue(): Auth0ContextInterface {
   return {
     ...initialContext,
-    getAccessTokenSilently,
+    getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
     isAuthenticated: true,
     isLoading: false,
   } as Auth0ContextInterface;
 }
 
-function createMapFactory(
-  setPoints = vi.fn(),
-  setReportedLocation = vi.fn(),
-): MapFactory {
-  return vi.fn(async () => {
-    const controller: MapController = {
-      onError: vi.fn(),
-      onLoad(listener) {
-        listener();
-      },
-      remove: vi.fn(),
-      setReportedLocation,
-      setPoints,
-    };
-
-    return controller;
-  });
+function createMapController(): MapController {
+  return {
+    onError: vi.fn(),
+    onLoad(listener) {
+      listener();
+    },
+    recenterReportedLocation: vi.fn(() => true),
+    remove: vi.fn(),
+    setFollowStateListener: vi.fn(),
+    setPointSelectionListener: vi.fn(),
+    setReportedLocation: vi.fn(),
+    setPoints: vi.fn(),
+    setSelectedPoint: vi.fn(),
+  };
 }
 
-function renderExplore(
-  mapFactory: MapFactory,
-  authValue = createAuthValue(),
-  locationClaimProvider = vi.fn().mockResolvedValue(claim),
+function createObservationHarness() {
+  let handlers: LocationObservationHandlers | null = null;
+  let active = false;
+  const stop = vi.fn(() => {
+    active = false;
+  });
+  const provider: LocationObservationProvider = vi.fn((nextHandlers) => {
+    handlers = nextHandlers;
+    active = true;
+    return stop;
+  });
+
+  return {
+    emit(nextClaim: LocationClaim) {
+      if (active) {
+        handlers?.onLocation(nextClaim);
+      }
+    },
+    error(failure: BrowserLocationError['failure']) {
+      if (active) {
+        handlers?.onError(new BrowserLocationError(failure));
+      }
+    },
+    provider,
+    stop,
+  };
+}
+
+interface RenderExploreOptions {
+  locationClaimProvider?: LocationClaimProvider;
+  mapController?: MapController;
+  observation?: ReturnType<typeof createObservationHarness>;
+  onChallengeStarted?: (attemptId: string) => void;
+  permission?: 'denied' | 'granted' | 'prompt' | 'unknown';
+  strict?: boolean;
+}
+
+function renderExplore({
+  locationClaimProvider,
+  mapController = createMapController(),
+  observation = createObservationHarness(),
   onChallengeStarted = vi.fn(),
-) {
-  return render(
-    <Auth0Context.Provider value={authValue}>
+  permission = 'prompt',
+  strict = false,
+}: RenderExploreOptions = {}) {
+  const mapFactory: MapFactory = vi.fn(async () => mapController);
+  const page = (
+    <Auth0Context.Provider value={createAuthValue()}>
       <ExplorePage
         apiBaseUrl={apiBaseUrl}
         locationClaimProvider={locationClaimProvider}
+        locationObservationProvider={observation.provider}
+        locationPermissionProvider={vi.fn().mockResolvedValue(permission)}
         mapFactory={mapFactory}
         mapboxAccessToken={mapboxAccessToken}
         onChallengeStarted={onChallengeStarted}
       />
-    </Auth0Context.Provider>,
+    </Auth0Context.Provider>
+  );
+
+  return {
+    ...render(strict ? <StrictMode>{page}</StrictMode> : page),
+    mapController,
+    mapFactory,
+    observation,
+  };
+}
+
+function discoveryResponse(): Response {
+  return new Response(
+    JSON.stringify({ events: [event], requestId: 'request-discovery' }),
+    { headers: { 'Content-Type': 'application/json' }, status: 200 },
   );
 }
 
-function discoveryResponse(requestId = 'request-page-discovery'): Response {
-  return new Response(JSON.stringify({ events: [event], requestId }), {
-    headers: { 'Content-Type': 'application/json' },
-    status: 200,
-  });
-}
-
-function eligibilityResponse(payload: object): Response {
+function eligibilityResponse(status: 'reachable' | 'unreachable'): Response {
   return new Response(
     JSON.stringify({
       eventId: event.eventId,
-      requestId: 'request-page-eligibility',
-      ...payload,
+      reachable: status === 'reachable',
+      requestId: 'request-eligibility',
+      status,
     }),
     { headers: { 'Content-Type': 'application/json' }, status: 200 },
   );
 }
 
+async function selectEvent(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole('button', { name: /^Events/ }));
+  await user.click(screen.getByRole('button', { name: /View on map/i }));
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
   window.localStorage.clear();
   window.sessionStorage.clear();
 });
 
-describe('authenticated campus event discovery', () => {
-  it('loads the seeded event into the map and text fallback', async () => {
-    const setPoints = vi.fn();
-    const mapFactory = createMapFactory(setPoints);
+describe('live reported-location permission and lifecycle', () => {
+  it('waits for a player gesture when permission is prompt or unknown', async () => {
+    const user = userEvent.setup();
     vi.stubGlobal(
       'fetch',
-      vi
-        .fn()
-        .mockResolvedValue(
-          new Response(
-            JSON.stringify({ events: [event], requestId: 'request-page-1' }),
-            { headers: { 'Content-Type': 'application/json' }, status: 200 },
-          ),
-        ),
+      vi.fn().mockImplementation(() => Promise.resolve(discoveryResponse())),
     );
+    const observation = createObservationHarness();
+    renderExplore({ observation, permission: 'prompt' });
 
-    renderExplore(mapFactory);
-
-    expect(screen.getByText('Loading published events…')).toHaveAttribute(
-      'role',
-      'status',
-    );
-    expect(
-      await screen.findByRole('heading', { name: event.title }),
-    ).toBeVisible();
-    expect(screen.getByText('Available now')).toBeVisible();
-
-    await waitFor(() => {
-      const latestCall = vi.mocked(mapFactory).mock.lastCall;
-      expect(latestCall?.[1]).toEqual({
-        accessToken: mapboxAccessToken,
-        bearing: 20,
-        center: [28.03038, -26.19205],
-        pitch: 52,
-        standardConfig: {
-          lightPreset: 'dusk',
-          show3dBuildings: true,
-          show3dLandmarks: true,
-          show3dObjects: true,
-          show3dTrees: true,
-          showPedestrianRoads: true,
-        },
-        styleUrl: 'mapbox://styles/mapbox/standard',
-        zoom: 16.5,
-      });
-      expect(setPoints).toHaveBeenCalledWith([
-        {
-          id: event.eventId,
-          label: event.title,
-          latitude: event.latitude,
-          longitude: event.longitude,
-        },
-      ]);
+    const enable = await screen.findByRole('button', {
+      name: 'Enable live location',
     });
+    expect(observation.provider).not.toHaveBeenCalled();
+    await user.click(enable);
+    expect(observation.provider).toHaveBeenCalledOnce();
   });
 
-  it('offers a retry after an API failure', async () => {
+  it('starts once when granted, updates the marker, and cleans up on unmount', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(discoveryResponse()));
+    const observation = createObservationHarness();
+    const mapController = createMapController();
+    const view = renderExplore({
+      mapController,
+      observation,
+      permission: 'granted',
+    });
+
+    await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
+    act(() => observation.emit(claim));
+    await waitFor(() =>
+      expect(mapController.setReportedLocation).toHaveBeenCalledWith({
+        latitude: claim.latitude,
+        longitude: claim.longitude,
+      }),
+    );
+    view.unmount();
+    expect(observation.stop).toHaveBeenCalledOnce();
+  });
+
+  it('does not leave duplicate watchers after Strict Mode remounting', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(discoveryResponse()));
+    const observation = createObservationHarness();
+    const view = renderExplore({
+      observation,
+      permission: 'granted',
+      strict: true,
+    });
+
+    await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
+    expect(observation.stop).not.toHaveBeenCalled();
+    view.unmount();
+    expect(observation.stop).toHaveBeenCalledOnce();
+  });
+
+  it('pauses while hidden and restarts one watcher when visible', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(() => Promise.resolve(discoveryResponse())),
+    );
+    const observation = createObservationHarness();
+    renderExplore({ observation, permission: 'granted' });
+    await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
+
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'hidden',
+    });
+    act(() => document.dispatchEvent(new Event('visibilitychange')));
+    expect(observation.stop).toHaveBeenCalledOnce();
+
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'visible',
+    });
+    act(() => document.dispatchEvent(new Event('visibilitychange')));
+    expect(observation.provider).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps discovery available for denied, timeout, and unavailable states', async () => {
     const user = userEvent.setup();
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(new Response(null, { status: 503 }))
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ events: [event], requestId: 'request-page-2' }),
-          { headers: { 'Content-Type': 'application/json' }, status: 200 },
-        ),
-      );
+      .mockImplementation(() => Promise.resolve(discoveryResponse()));
     vi.stubGlobal('fetch', fetchMock);
-
-    renderExplore(createMapFactory());
-
+    const denied = createObservationHarness();
+    const view = renderExplore({ observation: denied, permission: 'denied' });
     expect(
-      await screen.findByText('Events are unavailable right now.'),
-    ).toBeVisible();
-    expect(
-      screen.getByText('Check your connection and try again.'),
-    ).toBeVisible();
+      await screen.findByRole('button', { name: 'Location access disabled' }),
+    ).toBeDisabled();
+    expect(denied.provider).not.toHaveBeenCalled();
+    await selectEvent(user);
+    expect(fetchMock).toHaveBeenCalledOnce();
 
-    await user.click(
-      screen.getByRole('button', { name: 'Try loading events again' }),
-    );
-
-    expect(
-      await screen.findByRole('heading', { name: event.title }),
-    ).toBeVisible();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-
-  it('aborts the event request when the page unmounts', async () => {
-    const fetchMock = vi.fn(
-      (_input: RequestInfo | URL, init?: RequestInit) =>
-        new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener('abort', () => {
-            reject(new DOMException('Aborted', 'AbortError'));
-          });
-        }),
-    );
-    vi.stubGlobal('fetch', fetchMock);
-
-    const view = renderExplore(createMapFactory());
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
-    const signal = fetchMock.mock.calls[0]?.[1]?.signal;
     view.unmount();
+    const timeout = createObservationHarness();
+    const timeoutView = renderExplore({
+      observation: timeout,
+      permission: 'granted',
+    });
+    await waitFor(() => expect(timeout.provider).toHaveBeenCalledOnce());
+    act(() => timeout.error('timeout'));
+    expect(
+      screen.getByRole('button', { name: 'Retry live location' }),
+    ).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: /^Events/ }));
+    expect(screen.getByText(event.title)).toBeVisible();
 
-    expect(signal?.aborted).toBe(true);
+    timeoutView.unmount();
+    const unavailable = createObservationHarness();
+    renderExplore({ observation: unavailable, permission: 'granted' });
+    await waitFor(() => expect(unavailable.provider).toHaveBeenCalledOnce());
+    act(() => unavailable.error('unavailable'));
+    expect(
+      screen.getByText('Check device location services and retry.'),
+    ).toBeVisible();
   });
 });
 
-describe('player location eligibility', () => {
-  it.each([
-    [
-      { reachable: true, status: 'reachable' },
-      'This event is reachable from your reported location.',
-    ],
-    [
-      { reachable: false, status: 'unreachable' },
-      'This event is not reachable from your reported location.',
-    ],
-  ] as const)(
-    'requests location only after an action and presents %s in text',
-    async (apiResult, expectedMessage) => {
+describe('selected-event authoritative eligibility', () => {
+  it.each(['reachable', 'unreachable'] as const)(
+    'renders only the API %s result after selection',
+    async (status) => {
       const user = userEvent.setup();
-      const locationClaimProvider = vi.fn().mockResolvedValue(claim);
-      const setReportedLocation = vi.fn();
-      const reportedLocation = {
-        latitude: claim.latitude,
-        longitude: claim.longitude,
-      };
       const fetchMock = vi
         .fn()
         .mockResolvedValueOnce(discoveryResponse())
-        .mockResolvedValueOnce(eligibilityResponse(apiResult));
+        .mockResolvedValueOnce(eligibilityResponse(status));
       vi.stubGlobal('fetch', fetchMock);
+      const observation = createObservationHarness();
+      renderExplore({ observation, permission: 'granted' });
+      await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
+      act(() => observation.emit(claim));
+      await selectEvent(user);
 
-      renderExplore(
-        createMapFactory(vi.fn(), setReportedLocation),
-        createAuthValue(),
-        locationClaimProvider,
-      );
-
-      const action = await screen.findByRole('button', {
-        name: `Check reachability for ${event.title}`,
-      });
-      expect(locationClaimProvider).not.toHaveBeenCalled();
-      expect(setReportedLocation).not.toHaveBeenCalledWith(reportedLocation);
-
-      await user.click(action);
-
-      expect(await screen.findByText(expectedMessage)).toBeVisible();
-      expect(locationClaimProvider).toHaveBeenCalledOnce();
-      expect(setReportedLocation).toHaveBeenCalledWith(reportedLocation);
+      expect(
+        await screen.findByText(
+          status === 'reachable' ? 'In range' : 'Out of range',
+        ),
+      ).toBeVisible();
       expect(fetchMock).toHaveBeenLastCalledWith(
         `${apiBaseUrl}/events/${event.eventId}/eligibility`,
         expect.objectContaining({
@@ -270,7 +316,185 @@ describe('player location eligibility', () => {
     },
   );
 
-  it('keeps precise location claims out of browser storage and console output', async () => {
+  it('communicates the API accuracy retry without drawing an accuracy circle', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(discoveryResponse())
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              eventId: event.eventId,
+              reachable: null,
+              reason: 'location_accuracy',
+              requestId: 'request-accuracy',
+              status: 'retry',
+            }),
+            { headers: { 'Content-Type': 'application/json' }, status: 200 },
+          ),
+        ),
+    );
+    const observation = createObservationHarness();
+    const mapController = createMapController();
+    renderExplore({ mapController, observation, permission: 'granted' });
+    await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
+    act(() => observation.emit(claim));
+    await selectEvent(user);
+
+    expect(
+      await screen.findByText('Location accuracy is too low.'),
+    ).toBeVisible();
+    expect(
+      screen.getByText('Waiting for a better reported-location reading…'),
+    ).toBeVisible();
+    expect(mapController.setReportedLocation).toHaveBeenCalled();
+  });
+
+  it('forces an explicit eligibility retry without requiring movement', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(discoveryResponse())
+      .mockResolvedValueOnce(new Response(null, { status: 500 }))
+      .mockResolvedValueOnce(eligibilityResponse('reachable'));
+    vi.stubGlobal('fetch', fetchMock);
+    const observation = createObservationHarness();
+    renderExplore({ observation, permission: 'granted' });
+    await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
+    act(() => observation.emit(claim));
+    await selectEvent(user);
+
+    expect(
+      await screen.findByText('Range could not be checked.'),
+    ).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await user.click(screen.getByRole('button', { name: /^Try again/ }));
+
+    expect(await screen.findByText('In range')).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `${apiBaseUrl}/events/${event.eventId}/eligibility`,
+      expect.objectContaining({ body: JSON.stringify(claim), method: 'POST' }),
+    );
+  });
+
+  it('uses the newest same-position claim for an explicit location retry', async () => {
+    const initialClaim = freshClaim(-5_000);
+    const user = userEvent.setup();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(discoveryResponse())
+      .mockResolvedValueOnce(eligibilityResponse('reachable'))
+      .mockResolvedValueOnce(locationRetryRequiredResponse())
+      .mockResolvedValueOnce(eligibilityResponse('reachable'));
+    vi.stubGlobal('fetch', fetchMock);
+    const observation = createObservationHarness();
+    renderExplore({ observation, permission: 'granted' });
+    await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
+    act(() => observation.emit(initialClaim));
+    await selectEvent(user);
+    await user.click(
+      await screen.findByRole('button', {
+        name: `Start challenge for ${event.title}`,
+      }),
+    );
+    expect(
+      await screen.findByText('Reported location needs refreshing.'),
+    ).toBeVisible();
+
+    const newerClaim = {
+      ...initialClaim,
+      acquiredAt: new Date().toISOString(),
+    };
+    act(() => observation.emit(newerClaim));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    await user.click(screen.getByRole('button', { name: /^Try again/ }));
+    expect(await screen.findByText('In range')).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `${apiBaseUrl}/events/${event.eventId}/eligibility`,
+      expect.objectContaining({
+        body: JSON.stringify(newerClaim),
+        method: 'POST',
+      }),
+    );
+  });
+
+  it('coalesces meaningful updates and sends the newest claim after 15 seconds', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(discoveryResponse())
+      .mockResolvedValue(eligibilityResponse('unreachable'));
+    vi.stubGlobal('fetch', fetchMock);
+    const observation = createObservationHarness();
+    renderExplore({ observation, permission: 'granted' });
+    await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
+    act(() => observation.emit(claim));
+    await selectEvent(user);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date());
+
+    const moved = {
+      ...claim,
+      acquiredAt: '2026-08-23T10:30:05.000Z',
+      latitude: claim.latitude + 0.0002,
+    };
+    const newest = {
+      ...moved,
+      acquiredAt: '2026-08-23T10:30:08.000Z',
+      latitude: claim.latitude + 0.0003,
+    };
+    act(() => {
+      observation.emit(moved);
+      observation.emit(newest);
+      vi.advanceTimersByTime(14_999);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await act(async () => vi.advanceTimersByTime(1));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `${apiBaseUrl}/events/${event.eventId}/eligibility`,
+      expect.objectContaining({ body: JSON.stringify(newest) }),
+    );
+  });
+
+  it('updates the player marker for noisy readings without unlimited API calls', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(discoveryResponse())
+      .mockResolvedValue(eligibilityResponse('reachable'));
+    vi.stubGlobal('fetch', fetchMock);
+    const observation = createObservationHarness();
+    const mapController = createMapController();
+    renderExplore({ mapController, observation, permission: 'granted' });
+    await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
+    act(() => observation.emit(claim));
+    await selectEvent(user);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    act(() =>
+      observation.emit({
+        ...claim,
+        acquiredAt: '2026-08-23T10:30:01.000Z',
+        latitude: claim.latitude + 0.000001,
+      }),
+    );
+    await waitFor(() =>
+      expect(mapController.setReportedLocation).toHaveBeenCalledWith(
+        expect.objectContaining({ latitude: claim.latitude + 0.000001 }),
+      ),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps precise claims ephemeral and out of storage, URL, and logs', async () => {
     const user = userEvent.setup();
     const consoleSpies = [
       vi.spyOn(console, 'debug').mockImplementation(() => undefined),
@@ -284,451 +508,156 @@ describe('player location eligibility', () => {
       vi
         .fn()
         .mockResolvedValueOnce(discoveryResponse())
-        .mockResolvedValueOnce(
-          eligibilityResponse({ reachable: true, status: 'reachable' }),
-        ),
+        .mockResolvedValueOnce(eligibilityResponse('reachable')),
     );
+    const observation = createObservationHarness();
+    renderExplore({ observation, permission: 'granted' });
+    await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
+    act(() => observation.emit(claim));
+    await selectEvent(user);
+    await screen.findByText('In range');
 
-    renderExplore(createMapFactory());
-    await user.click(
-      await screen.findByRole('button', {
-        name: `Check reachability for ${event.title}`,
-      }),
-    );
-
-    expect(
-      await screen.findByText(
-        'This event is reachable from your reported location.',
-      ),
-    ).toBeVisible();
-
-    const storageOutput = [
+    const persisted = [
       ...readStorage(window.localStorage),
       ...readStorage(window.sessionStorage),
+      window.location.href,
+      JSON.stringify(consoleSpies.flatMap((spy) => spy.mock.calls)),
     ].join('\n');
-    const consoleOutput = JSON.stringify(
-      consoleSpies.flatMap((spy) => spy.mock.calls),
-    );
-
-    for (const sensitiveValue of [
-      String(claim.latitude),
-      String(claim.longitude),
-      String(claim.accuracyMetres),
-      claim.acquiredAt,
-    ]) {
-      expect(storageOutput).not.toContain(sensitiveValue);
-      expect(consoleOutput).not.toContain(sensitiveValue);
-    }
+    expect(persisted).not.toContain(String(claim.latitude));
+    expect(persisted).not.toContain(String(claim.longitude));
+    expect(persisted).not.toContain(claim.acquiredAt);
   });
 
-  it('explains permission denial without calling the eligibility API', async () => {
+  it('submits the latest claim through challenge start for a fresh server recheck', async () => {
     const user = userEvent.setup();
-    const locationClaimProvider = vi
-      .fn()
-      .mockRejectedValue(new BrowserLocationError('denied'));
-    const fetchMock = vi.fn().mockResolvedValue(discoveryResponse());
-    vi.stubGlobal('fetch', fetchMock);
-
-    renderExplore(createMapFactory(), createAuthValue(), locationClaimProvider);
-    await user.click(
-      await screen.findByRole('button', {
-        name: `Check reachability for ${event.title}`,
-      }),
-    );
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Location permission was denied.',
-    );
-    expect(
-      screen.getByText(/still browse events without sharing your location/i),
-    ).toBeVisible();
-    expect(fetchMock).toHaveBeenCalledOnce();
-  });
-
-  it('offers a fresh retry after a geolocation timeout', async () => {
-    const user = userEvent.setup();
-    const locationClaimProvider = vi
-      .fn()
-      .mockRejectedValueOnce(new BrowserLocationError('timeout'))
-      .mockResolvedValueOnce(claim);
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(discoveryResponse())
-      .mockResolvedValueOnce(
-        eligibilityResponse({ reachable: true, status: 'reachable' }),
-      );
-    vi.stubGlobal('fetch', fetchMock);
-
-    renderExplore(createMapFactory(), createAuthValue(), locationClaimProvider);
-    await user.click(
-      await screen.findByRole('button', {
-        name: `Check reachability for ${event.title}`,
-      }),
-    );
-
-    expect(
-      await screen.findByText('Getting your location took too long.'),
-    ).toBeVisible();
-    await user.click(
-      screen.getByRole('button', {
-        name: `Check again for ${event.title}`,
-      }),
-    );
-
-    expect(
-      await screen.findByText(
-        'This event is reachable from your reported location.',
-      ),
-    ).toBeVisible();
-    expect(locationClaimProvider).toHaveBeenCalledTimes(2);
-  });
-
-  it.each([
-    [
-      {
-        reachable: null,
-        reason: 'location_accuracy',
-        status: 'retry',
-      },
-      'Your location is too uncertain to decide reachability.',
-    ],
-    [
-      { reachable: null, reason: 'stale_location', status: 'retry' },
-      'That location reading could not be used.',
-    ],
-    [
-      { reachable: false, reason: 'ended', status: 'unavailable' },
-      'This event is not available right now.',
-    ],
-  ] as const)(
-    'presents the API retry state %s safely',
-    async (result, message) => {
-      const user = userEvent.setup();
-      vi.stubGlobal(
-        'fetch',
-        vi
-          .fn()
-          .mockResolvedValueOnce(discoveryResponse())
-          .mockResolvedValueOnce(eligibilityResponse(result)),
-      );
-
-      renderExplore(createMapFactory());
-      await user.click(
-        await screen.findByRole('button', {
-          name: `Check reachability for ${event.title}`,
-        }),
-      );
-
-      expect(await screen.findByText(message)).toBeVisible();
-      expect(
-        screen.getByRole('button', {
-          name: `Check again for ${event.title}`,
-        }),
-      ).toBeEnabled();
-    },
-  );
-
-  it('presents an event removed after discovery as unavailable', async () => {
-    const user = userEvent.setup();
-    vi.stubGlobal(
-      'fetch',
-      vi
-        .fn()
-        .mockResolvedValueOnce(discoveryResponse())
-        .mockResolvedValueOnce(new Response(null, { status: 404 })),
-    );
-
-    renderExplore(createMapFactory());
-    await user.click(
-      await screen.findByRole('button', {
-        name: `Check reachability for ${event.title}`,
-      }),
-    );
-
-    expect(
-      await screen.findByText('This event is not available right now.'),
-    ).toBeVisible();
-    expect(
-      screen.getByText(
-        'Its availability may have changed since the event list loaded.',
-      ),
-    ).toBeVisible();
-    expect(
-      screen.queryByText('Reachability could not be checked.'),
-    ).not.toBeInTheDocument();
-  });
-
-  it('shows a safe API failure and retry action', async () => {
-    const user = userEvent.setup();
-    vi.stubGlobal(
-      'fetch',
-      vi
-        .fn()
-        .mockResolvedValueOnce(discoveryResponse())
-        .mockResolvedValueOnce(
-          new Response('private upstream detail', { status: 503 }),
-        ),
-    );
-
-    renderExplore(createMapFactory());
-    await user.click(
-      await screen.findByRole('button', {
-        name: `Check reachability for ${event.title}`,
-      }),
-    );
-
-    expect(
-      await screen.findByText('Reachability could not be checked.'),
-    ).toBeVisible();
-    expect(
-      screen.queryByText('private upstream detail'),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('button', {
-        name: `Check again for ${event.title}`,
-      }),
-    ).toBeEnabled();
-  });
-
-  it('starts a challenge only after the API reports the event reachable', async () => {
-    const user = userEvent.setup();
-    const locationClaimProvider = vi.fn().mockResolvedValue(claim);
     const onChallengeStarted = vi.fn();
+    const currentClaim = freshClaim();
+    const locationClaimProvider = vi.fn<LocationClaimProvider>();
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(discoveryResponse())
-      .mockResolvedValueOnce(
-        eligibilityResponse({ reachable: true, status: 'reachable' }),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            answeredCount: 0,
-            attemptId: '31000000-0000-4000-8000-000000000001',
-            deadline: '2099-09-01T10:02:00.000Z',
-            eventId: event.eventId,
-            format: 'multiple_choice',
-            questions: Array.from({ length: 5 }, (_, index) => ({
-              answeredAt: null,
-              attemptQuestionId: `32000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
-              choices: Array.from({ length: 4 }, (_, choiceIndex) => ({
-                choiceId: `33000000-0000-4000-${String(index + 1).padStart(4, '0')}-${String(choiceIndex + 1).padStart(12, '0')}`,
-                text: `Choice ${choiceIndex + 1}`,
-              })),
-              position: index + 1,
-              prompt: `Question ${index + 1}`,
-              selectedChoiceId: null,
-            })),
-            requestId: 'request-start',
-            startedAt: '2099-09-01T10:00:00.000Z',
-            status: 'in_progress',
-            totalQuestions: 5,
-          }),
-          { headers: { 'Content-Type': 'application/json' }, status: 201 },
-        ),
-      );
+      .mockResolvedValueOnce(eligibilityResponse('reachable'))
+      .mockResolvedValueOnce(challengeResponse());
     vi.stubGlobal('fetch', fetchMock);
-
-    renderExplore(
-      createMapFactory(),
-      createAuthValue(),
+    const observation = createObservationHarness();
+    renderExplore({
+      observation,
       locationClaimProvider,
       onChallengeStarted,
-    );
-
-    await user.click(
-      await screen.findByRole('button', {
-        name: `Check reachability for ${event.title}`,
-      }),
-    );
+      permission: 'granted',
+    });
+    await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
+    act(() => observation.emit(currentClaim));
+    await selectEvent(user);
     await user.click(
       await screen.findByRole('button', {
         name: `Start challenge for ${event.title}`,
       }),
     );
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
-    expect(locationClaimProvider).toHaveBeenCalledTimes(2);
     expect(fetchMock).toHaveBeenLastCalledWith(
       `${apiBaseUrl}/events/${event.eventId}/challenge-attempts`,
-      expect.objectContaining({ body: JSON.stringify(claim), method: 'POST' }),
+      expect.objectContaining({
+        body: JSON.stringify(currentClaim),
+        method: 'POST',
+      }),
     );
-    expect(onChallengeStarted).toHaveBeenCalledWith(
-      '31000000-0000-4000-8000-000000000001',
+    expect(locationClaimProvider).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(onChallengeStarted).toHaveBeenCalledWith(
+        '31000000-0000-4000-8000-000000000001',
+      ),
     );
   });
 
-  it('preserves a fresh-start reachability failure for the player', async () => {
+  it('acquires a newer claim before challenge start when the watched claim is old', async () => {
     const user = userEvent.setup();
+    const oldClaim = freshClaim(-180_000);
+    const renewedClaim = freshClaim();
+    const locationClaimProvider = vi
+      .fn<LocationClaimProvider>()
+      .mockResolvedValue(renewedClaim);
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(discoveryResponse())
-      .mockResolvedValueOnce(
-        eligibilityResponse({ reachable: true, status: 'reachable' }),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            code: 'EVENT_NOT_REACHABLE',
-            detail: 'Safe test detail.',
-            requestId: 'request-start-rejected',
-            status: 403,
-            title: 'Event not reachable',
-            type: 'https://wits.world/problems/event-not-reachable',
-          }),
-          { headers: { 'Content-Type': 'application/json' }, status: 403 },
-        ),
-      );
+      .mockResolvedValueOnce(eligibilityResponse('reachable'))
+      .mockResolvedValueOnce(challengeResponse());
     vi.stubGlobal('fetch', fetchMock);
+    const observation = createObservationHarness();
+    renderExplore({
+      locationClaimProvider,
+      observation,
+      permission: 'granted',
+    });
+    await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
+    act(() => observation.emit(oldClaim));
+    await selectEvent(user);
 
-    renderExplore(createMapFactory());
-    await user.click(
-      await screen.findByRole('button', {
-        name: `Check reachability for ${event.title}`,
-      }),
-    );
     await user.click(
       await screen.findByRole('button', {
         name: `Start challenge for ${event.title}`,
       }),
     );
 
-    expect(
-      await screen.findByText(
-        'This event is not reachable from your reported location.',
-      ),
-    ).toBeVisible();
-    expect(
-      screen.queryByText('The challenge could not start.'),
-    ).not.toBeInTheDocument();
+    await waitFor(() => expect(locationClaimProvider).toHaveBeenCalledOnce());
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `${apiBaseUrl}/events/${event.eventId}/challenge-attempts`,
+      expect.objectContaining({
+        body: JSON.stringify(renewedClaim),
+        method: 'POST',
+      }),
+    );
   });
 
-  it.each([
-    [
-      'a denied browser location',
-      new BrowserLocationError('denied'),
-      undefined,
-      'Location permission was denied.',
-    ],
-    [
-      'a timed-out browser location',
-      new BrowserLocationError('timeout'),
-      undefined,
-      'Getting your location took too long.',
-    ],
-    [
-      'an unavailable browser location',
-      new BrowserLocationError('unavailable'),
-      undefined,
-      'Your browser could not provide a usable location.',
-    ],
-    [
-      'an authentication failure',
-      undefined,
-      problemResponse('UNAUTHENTICATED', 401),
-      'Your session could not check this event.',
-    ],
-    [
-      'an unavailable event',
-      undefined,
-      problemResponse('CHALLENGE_UNAVAILABLE', 409),
-      'This event is not available right now.',
-    ],
-    [
-      'a stale location request',
-      undefined,
-      problemResponse('LOCATION_RETRY_REQUIRED', 409),
-      'That location reading could not be used.',
-    ],
-    [
-      'a network failure',
-      undefined,
-      new TypeError('network interrupted'),
-      'The challenge could not start.',
-    ],
-  ] as const)(
-    'preserves %s when starting a challenge',
-    async (_name, locationError, startError, expectedTitle) => {
-      const user = userEvent.setup();
-      const locationClaimProvider = vi
-        .fn()
-        .mockResolvedValueOnce(claim)
-        .mockImplementationOnce(() => {
-          if (locationError !== undefined) {
-            return Promise.reject(locationError);
-          }
-
-          return Promise.resolve(claim);
-        });
-      const fetchMock = vi
-        .fn()
-        .mockResolvedValueOnce(discoveryResponse())
-        .mockResolvedValueOnce(
-          eligibilityResponse({ reachable: true, status: 'reachable' }),
-        );
-
-      if (startError instanceof Response) {
-        fetchMock.mockResolvedValueOnce(startError);
-      } else if (startError !== undefined) {
-        fetchMock.mockRejectedValueOnce(startError);
-      }
-
-      vi.stubGlobal('fetch', fetchMock);
-      renderExplore(
-        createMapFactory(),
-        createAuthValue(),
-        locationClaimProvider,
-      );
-
-      await user.click(
-        await screen.findByRole('button', {
-          name: `Check reachability for ${event.title}`,
-        }),
-      );
-      await user.click(
-        await screen.findByRole('button', {
-          name: `Start challenge for ${event.title}`,
-        }),
-      );
-
-      expect(await screen.findByText(expectedTitle)).toBeVisible();
-      expect(
-        screen.getByRole('button', {
-          name: `Check again for ${event.title}`,
-        }),
-      ).toBeEnabled();
-    },
-  );
-
-  it('aborts an eligibility request when the page unmounts', async () => {
+  it('does not resubmit the same acquisition after a location retry response', async () => {
+    const user = userEvent.setup();
+    const initialClaim = freshClaim();
+    const locationClaimProvider = vi
+      .fn<LocationClaimProvider>()
+      .mockResolvedValue(initialClaim);
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(discoveryResponse())
-      .mockImplementationOnce(
-        (_input: RequestInfo | URL, init?: RequestInit) =>
-          new Promise<Response>((_resolve, reject) => {
-            init?.signal?.addEventListener('abort', () => {
-              reject(new DOMException('Aborted', 'AbortError'));
-            });
-          }),
-      );
+      .mockResolvedValueOnce(eligibilityResponse('reachable'))
+      .mockResolvedValueOnce(locationRetryRequiredResponse());
     vi.stubGlobal('fetch', fetchMock);
-
-    const user = userEvent.setup();
-    const view = renderExplore(createMapFactory());
+    const observation = createObservationHarness();
+    renderExplore({
+      locationClaimProvider,
+      observation,
+      permission: 'granted',
+    });
+    await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
+    act(() => observation.emit(initialClaim));
+    await selectEvent(user);
     await user.click(
       await screen.findByRole('button', {
-        name: `Check reachability for ${event.title}`,
+        name: `Start challenge for ${event.title}`,
       }),
     );
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    const signal = fetchMock.mock.calls[1]?.[1]?.signal;
+    expect(
+      await screen.findByText('Reported location needs refreshing.'),
+    ).toBeVisible();
 
-    view.unmount();
+    await user.click(screen.getByRole('button', { name: /^Try again/ }));
+    await waitFor(() => expect(locationClaimProvider).toHaveBeenCalledOnce());
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(
+      await screen.findByText('Reported location needs refreshing.'),
+    ).toBeVisible();
 
-    expect(signal?.aborted).toBe(true);
+    await user.click(screen.getByRole('button', { name: /^Try again/ }));
+    await waitFor(() => expect(locationClaimProvider).toHaveBeenCalledTimes(2));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });
+
+function freshClaim(offsetMilliseconds = 0): LocationClaim {
+  return {
+    ...claim,
+    acquiredAt: new Date(Date.now() + offsetMilliseconds).toISOString(),
+  };
+}
 
 function readStorage(storage: Storage): string[] {
   return Array.from({ length: storage.length }, (_, index) => {
@@ -737,16 +666,43 @@ function readStorage(storage: Storage): string[] {
   });
 }
 
-function problemResponse(code: string, status: number): Response {
+function challengeResponse(): Response {
   return new Response(
     JSON.stringify({
-      code,
-      detail: 'Safe test problem.',
-      requestId: 'request-start-problem',
-      status,
-      title: 'Challenge start problem',
-      type: 'https://wits.world/problems/challenge-start',
+      answeredCount: 0,
+      attemptId: '31000000-0000-4000-8000-000000000001',
+      deadline: '2099-09-01T10:02:00.000Z',
+      eventId: event.eventId,
+      format: 'multiple_choice',
+      questions: Array.from({ length: 5 }, (_, index) => ({
+        answeredAt: null,
+        attemptQuestionId: `32000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+        choices: Array.from({ length: 4 }, (_, choiceIndex) => ({
+          choiceId: `33000000-0000-4000-${String(index + 1).padStart(4, '0')}-${String(choiceIndex + 1).padStart(12, '0')}`,
+          text: `Choice ${choiceIndex}`,
+        })),
+        position: index + 1,
+        prompt: `Question ${index + 1}`,
+        selectedChoiceId: null,
+      })),
+      requestId: 'request-start',
+      startedAt: '2099-09-01T10:00:00.000Z',
+      status: 'in_progress',
+      totalQuestions: 5,
     }),
-    { headers: { 'Content-Type': 'application/json' }, status },
+    { headers: { 'Content-Type': 'application/json' }, status: 201 },
+  );
+}
+
+function locationRetryRequiredResponse(): Response {
+  return new Response(
+    JSON.stringify({
+      code: 'LOCATION_RETRY_REQUIRED',
+      detail: 'A fresher reported location is required.',
+      requestId: 'request-location-retry',
+      status: 400,
+      title: 'Location retry required',
+    }),
+    { headers: { 'Content-Type': 'application/problem+json' }, status: 400 },
   );
 }
