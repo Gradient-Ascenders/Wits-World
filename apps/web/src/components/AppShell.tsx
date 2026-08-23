@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useAuth0 } from '@auth0/auth0-react';
 import { Link, useRoute } from 'wouter';
 
 import { AccountControl } from './auth/AccountControl';
@@ -29,15 +30,29 @@ function NavigationLink({ href, children }: NavigationLinkProps) {
 }
 
 export function AppShell({ children }: AppShellProps) {
+  const { isAuthenticated, isLoading } = useAuth0();
   const { state: currentPlayer } = useCurrentPlayer();
+  const isRestoring =
+    isLoading || (isAuthenticated && currentPlayer.status === 'loading');
+  const hasPlayerNavigation =
+    isAuthenticated && currentPlayer.status === 'ready';
+  const isAuthor =
+    currentPlayer.status === 'ready' && currentPlayer.player.role === 'author';
 
   return (
-    <div className="site-frame">
+    <div
+      className={`site-frame site-frame--${
+        hasPlayerNavigation ? 'product-navigation' : 'public'
+      }`}
+    >
       <a className="skip-link" href="#main-content">
         Skip to main content
       </a>
 
-      <header className="site-header">
+      <header
+        aria-busy={isRestoring ? 'true' : undefined}
+        className="site-header"
+      >
         <div className="site-header__inner">
           <Link aria-label="Wits World home" className="product-name" href="/">
             <CampusSeal className="product-name__mark" decorative />
@@ -50,32 +65,45 @@ export function AppShell({ children }: AppShellProps) {
             </span>
           </Link>
 
-          <nav aria-label="Primary" className="primary-navigation">
-            <ul className="primary-navigation__list">
-              <li>
-                <NavigationLink href="/">Home</NavigationLink>
-              </li>
-              <li>
-                <NavigationLink href="/explore">Explore</NavigationLink>
-              </li>
-              <li>
-                <NavigationLink href="/collection">Collection</NavigationLink>
-              </li>
-              <li>
-                <NavigationLink href="/decks">Decks</NavigationLink>
-              </li>
-              <li>
-                <NavigationLink href="/matches">Battles</NavigationLink>
-              </li>
-              {currentPlayer.status === 'ready' &&
-              currentPlayer.player.role === 'author' ? (
-                <li>
-                  <NavigationLink href="/author">Author</NavigationLink>
-                </li>
-              ) : null}
-            </ul>
-          </nav>
-          <AccountControl />
+          {hasPlayerNavigation ? (
+            <div className="site-header__navigation-cluster">
+              <nav aria-label="Player" className="primary-navigation">
+                <ul className="primary-navigation__list">
+                  <li>
+                    <NavigationLink href="/explore">Explore</NavigationLink>
+                  </li>
+                  <li>
+                    <NavigationLink href="/collection">
+                      Collection
+                    </NavigationLink>
+                  </li>
+                  <li>
+                    <NavigationLink href="/decks">Decks</NavigationLink>
+                  </li>
+                  <li>
+                    <NavigationLink href="/matches">Battles</NavigationLink>
+                  </li>
+                  {isAuthor ? (
+                    <li>
+                      <NavigationLink href="/author">Author</NavigationLink>
+                    </li>
+                  ) : null}
+                </ul>
+              </nav>
+            </div>
+          ) : null}
+
+          {isRestoring ? (
+            <div
+              aria-live="polite"
+              className="session-restoration"
+              role="status"
+            >
+              Restoring session…
+            </div>
+          ) : (
+            <AccountControl />
+          )}
         </div>
       </header>
 
@@ -84,10 +112,10 @@ export function AppShell({ children }: AppShellProps) {
       </main>
 
       <footer className="site-footer">
-        <p>
-          <strong>Wits World</strong> is the project behind Wits Quest, our
-          campus exploration game.
-        </p>
+        <div className="site-footer__inner">
+          <p>Wits World</p>
+          <p>© 2026 Gradient Ascent</p>
+        </div>
       </footer>
     </div>
   );

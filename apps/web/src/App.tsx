@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ReactNode } from 'react';
-import { Route, Router, Switch, useLocation } from 'wouter';
+import { Redirect, Route, Router, Switch, useLocation } from 'wouter';
 
 import { recoverOrCreateCpuMatch } from './api/matches';
 import { useApiAccessToken } from './auth/useApiAccessToken';
@@ -14,7 +14,6 @@ import type { LocationClaimProvider } from './browser-location';
 import type { MapFactory } from './components/exploration/map-provider';
 
 const HomePage = lazy(() => import('./pages/HomePage'));
-const AboutPage = lazy(() => import('./pages/AboutPage'));
 const ExplorePage = lazy(() => import('./pages/ExplorePage'));
 const ChallengePage = lazy(() => import('./pages/ChallengePage'));
 const CollectionPage = lazy(() => import('./pages/CollectionPage'));
@@ -94,7 +93,9 @@ export function AppRoutes({
                 </AuthorRoute>
               </ProtectedRoute>
             </Route>
-            <Route path="/about" component={AboutPage} />
+            <Route path="/about">
+              <Redirect replace to="/#project-context" />
+            </Route>
             <Route component={NotFoundPage} />
           </Switch>
         </Suspense>
