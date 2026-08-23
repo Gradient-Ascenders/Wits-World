@@ -10,7 +10,11 @@ import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { AuthorRoute } from './components/auth/AuthorRoute';
 import { CurrentPlayerProvider } from './auth/CurrentPlayerProvider';
 import { NotFoundPage } from './pages/NotFoundPage';
-import type { LocationClaimProvider } from './browser-location';
+import type {
+  LocationClaimProvider,
+  LocationObservationProvider,
+  LocationPermissionProvider,
+} from './browser-location';
 import type { MapFactory } from './components/exploration/map-provider';
 
 const HomePage = lazy(() => import('./pages/HomePage'));
@@ -27,6 +31,8 @@ const MatchHistoryPage = lazy(() => import('./pages/MatchHistoryPage'));
 interface AppRoutesProps {
   apiBaseUrl: string;
   locationClaimProvider?: LocationClaimProvider;
+  locationObservationProvider?: LocationObservationProvider;
+  locationPermissionProvider?: LocationPermissionProvider;
   mapFactory?: MapFactory;
   mapboxAccessToken: string;
 }
@@ -34,6 +40,8 @@ interface AppRoutesProps {
 export function AppRoutes({
   apiBaseUrl,
   locationClaimProvider,
+  locationObservationProvider,
+  locationPermissionProvider,
   mapFactory,
   mapboxAccessToken,
 }: AppRoutesProps) {
@@ -48,6 +56,8 @@ export function AppRoutes({
                 <ExplorePage
                   apiBaseUrl={apiBaseUrl}
                   locationClaimProvider={locationClaimProvider}
+                  locationObservationProvider={locationObservationProvider}
+                  locationPermissionProvider={locationPermissionProvider}
                   mapFactory={mapFactory}
                   mapboxAccessToken={mapboxAccessToken}
                 />
@@ -130,6 +140,8 @@ type AppProps =
       apiBaseUrl: string;
       children?: never;
       locationClaimProvider?: LocationClaimProvider;
+      locationObservationProvider?: LocationObservationProvider;
+      locationPermissionProvider?: LocationPermissionProvider;
       mapFactory?: MapFactory;
       mapboxAccessToken: string;
     }
@@ -146,6 +158,8 @@ export function App(props: AppProps) {
         <AppRoutes
           apiBaseUrl={props.apiBaseUrl}
           locationClaimProvider={props.locationClaimProvider}
+          locationObservationProvider={props.locationObservationProvider}
+          locationPermissionProvider={props.locationPermissionProvider}
           mapFactory={props.mapFactory}
           mapboxAccessToken={props.mapboxAccessToken}
         />

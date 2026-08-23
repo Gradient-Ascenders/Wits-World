@@ -54,14 +54,13 @@ test('completes the canonical 21-step Basic journey against the real API and tes
       role: 'author',
     });
     await expect(
-      page.getByRole('heading', { name: 'Nearby events' }),
-    ).toBeVisible();
+      page.getByRole('heading', { name: 'Explore the campus map' }),
+    ).toBeAttached();
   });
 
   await test.step('02 discover the known published demo event from the real database', async () => {
-    await expect(
-      page.getByRole('heading', { name: EVENT_TITLE }),
-    ).toBeVisible();
+    await page.getByRole('button', { name: /^Events/u }).click();
+    await expect(page.getByText(EVENT_TITLE)).toBeVisible();
   });
 
   await test.step('03 retain map-independent text discovery on mobile', async () => {
@@ -79,13 +78,9 @@ test('completes the canonical 21-step Basic journey against the real API and tes
     const response = page.waitForResponse(
       `${API_BASE_URL}/events/${EVENT_ID}/eligibility`,
     );
-    await event
-      .getByRole('button', { name: `Check reachability for ${EVENT_TITLE}` })
-      .click();
+    await event.getByRole('button', { name: /View on map/u }).click();
     expect((await response).status()).toBe(200);
-    await expect(
-      event.getByText('This event is reachable from your reported location.'),
-    ).toBeVisible();
+    await expect(page.getByText('In range')).toBeVisible();
   });
 
   await test.step('05 start a persisted challenge after a fresh server check', async () => {

@@ -15,8 +15,12 @@ interface CampusMapProps {
   errorDescription?: string;
   mapFactory?: MapFactory;
   onCoordinateSelect?: (coordinate: MapCoordinate) => void;
+  onFollowStateChange?: (following: boolean) => void;
+  onPointSelect?: (pointId: string) => void;
   points: readonly MapPoint[];
+  recenterRequest?: number;
   reportedLocation?: MapCoordinate | null;
+  selectedPoint?: MapPoint | null;
 }
 
 type MapStatus = 'error' | 'loading' | 'ready';
@@ -29,19 +33,29 @@ export function CampusMap({
   errorDescription = 'Use the nearby events list to continue exploring.',
   mapFactory = createMapboxMap,
   onCoordinateSelect,
+  onFollowStateChange,
+  onPointSelect,
   points,
+  recenterRequest = 0,
   reportedLocation = null,
+  selectedPoint = null,
 }: CampusMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const controllerRef = useRef<MapController | null>(null);
   const onCoordinateSelectRef = useRef(onCoordinateSelect);
+  const onFollowStateChangeRef = useRef(onFollowStateChange);
+  const onPointSelectRef = useRef(onPointSelect);
   const pointsRef = useRef(points);
   const reportedLocationRef = useRef<MapCoordinate | null>(reportedLocation);
+  const selectedPointRef = useRef<MapPoint | null>(selectedPoint);
   const [status, setStatus] = useState<MapStatus>('loading');
 
   pointsRef.current = points;
   onCoordinateSelectRef.current = onCoordinateSelect;
+  onFollowStateChangeRef.current = onFollowStateChange;
+  onPointSelectRef.current = onPointSelect;
   reportedLocationRef.current = reportedLocation;
+  selectedPointRef.current = selectedPoint;
 
   useEffect(() => {
     controllerRef.current?.setPoints(points);
@@ -52,10 +66,30 @@ export function CampusMap({
   }, [reportedLocation]);
 
   useEffect(() => {
+    controllerRef.current?.setSelectedPoint?.(selectedPoint);
+  }, [selectedPoint]);
+
+  useEffect(() => {
+    if (recenterRequest > 0) {
+      controllerRef.current?.recenterReportedLocation?.();
+    }
+  }, [recenterRequest]);
+
+  useEffect(() => {
     controllerRef.current?.setCoordinateSelectionListener?.(
       onCoordinateSelect ?? null,
     );
   }, [onCoordinateSelect]);
+
+  useEffect(() => {
+    controllerRef.current?.setPointSelectionListener?.(onPointSelect ?? null);
+  }, [onPointSelect]);
+
+  useEffect(() => {
+    controllerRef.current?.setFollowStateListener?.(
+      onFollowStateChange ?? null,
+    );
+  }, [onFollowStateChange]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -92,9 +126,12 @@ export function CampusMap({
         controllerRef.current = map;
         map.setPoints(pointsRef.current);
         map.setReportedLocation(reportedLocationRef.current);
+        map.setSelectedPoint?.(selectedPointRef.current);
         map.setCoordinateSelectionListener?.(
           onCoordinateSelectRef.current ?? null,
         );
+        map.setPointSelectionListener?.(onPointSelectRef.current ?? null);
+        map.setFollowStateListener?.(onFollowStateChangeRef.current ?? null);
         map.onLoad(() => {
           if (active) {
             loaded = true;

@@ -1,4 +1,4 @@
-import type { FeatureCollection, Geometry } from 'geojson';
+import type { Feature, FeatureCollection, Geometry, Polygon } from 'geojson';
 import type {
   IControl,
   Map as MapboxMap,
@@ -7,10 +7,13 @@ import type {
 } from 'mapbox-gl/esm';
 
 export interface MapPoint {
+  availability?: 'active' | 'ended' | 'upcoming';
   id: string;
   label: string;
   latitude: number;
   longitude: number;
+  radiusMetres?: number;
+  reachable?: boolean;
 }
 
 export interface MapCoordinate {
@@ -80,11 +83,19 @@ export interface MapController {
   onFatalError?: (listener: () => void) => void;
   onLoad: (listener: () => void) => void;
   remove: () => void;
+  recenterReportedLocation?: () => boolean;
   setReportedLocation: (coordinate: MapCoordinate | null) => void;
   setCoordinateSelectionListener?: (
     listener: ((coordinate: MapCoordinate) => void) | null,
   ) => void;
+  setFollowStateListener?: (
+    listener: ((following: boolean) => void) | null,
+  ) => void;
+  setPointSelectionListener?: (
+    listener: ((pointId: string) => void) | null,
+  ) => void;
   setPoints: (points: readonly MapPoint[]) => void;
+  setSelectedPoint?: (point: MapPoint | null) => void;
 }
 
 export type MapFactory = (
@@ -101,6 +112,64 @@ const CAMPUS_BUILDING_LAYER_ID = 'wits-campus-buildings';
 const CAMPUS_LABEL_LAYER_ID = 'wits-campus-labels';
 const CAMPUS_PATH_LAYER_ID = 'wits-campus-paths';
 const CAMPUS_POINT_LAYER_ID = 'wits-campus-points';
+const EVENT_RADIUS_SOURCE_ID = 'wits-selected-event-radius';
+const EVENT_RADIUS_FILL_LAYER_ID = 'wits-selected-event-radius-fill';
+const EVENT_RADIUS_LINE_LAYER_ID = 'wits-selected-event-radius-line';
+const EARTH_RADIUS_METRES = 6_371_008.8;
+const FOLLOW_MOVEMENT_METRES = 5;
+const PLAYER_FOCUS_ZOOM = 17;
+
+export function createGeodesicCircle(
+  center: MapCoordinate,
+  radiusMetres: number,
+  vertices = 64,
+): Feature<Polygon> {
+  if (
+    !Number.isFinite(center.latitude) ||
+    center.latitude < -90 ||
+    center.latitude > 90 ||
+    !Number.isFinite(center.longitude) ||
+    center.longitude < -180 ||
+    center.longitude > 180 ||
+    !Number.isFinite(radiusMetres) ||
+    radiusMetres <= 0 ||
+    !Number.isInteger(vertices) ||
+    vertices < 16
+  ) {
+    throw new Error('A valid centre, radius, and vertex count are required.');
+  }
+
+  const latitude = degreesToRadians(center.latitude);
+  const longitude = degreesToRadians(center.longitude);
+  const angularDistance = radiusMetres / EARTH_RADIUS_METRES;
+  const coordinates: [number, number][] = [];
+
+  for (let index = 0; index <= vertices; index += 1) {
+    const bearing = (index / vertices) * Math.PI * 2;
+    const destinationLatitude = Math.asin(
+      Math.sin(latitude) * Math.cos(angularDistance) +
+        Math.cos(latitude) * Math.sin(angularDistance) * Math.cos(bearing),
+    );
+    const destinationLongitude =
+      longitude +
+      Math.atan2(
+        Math.sin(bearing) * Math.sin(angularDistance) * Math.cos(latitude),
+        Math.cos(angularDistance) -
+          Math.sin(latitude) * Math.sin(destinationLatitude),
+      );
+
+    coordinates.push([
+      normalizeLongitude(radiansToDegrees(destinationLongitude)),
+      radiansToDegrees(destinationLatitude),
+    ]);
+  }
+
+  return {
+    geometry: { coordinates: [coordinates], type: 'Polygon' },
+    properties: { radiusMetres },
+    type: 'Feature',
+  };
+}
 
 function escapeAttributionText(value: string): string {
   return value.replace(
@@ -303,11 +372,21 @@ function addCampusDatasetLayers(
 
 function createController(
   map: MapboxMap,
-  setPoints: (points: readonly MapPoint[]) => void,
+  renderPoints: (points: readonly MapPoint[]) => void,
+  markerInteraction: {
+    listener: ((pointId: string) => void) | null;
+    selectedPointId: string | null;
+  },
+  setSelectedRadius: (point: MapPoint | null) => void,
 ): MapController {
+  let currentPoints: readonly MapPoint[] = [];
   let reportedLocation: MapCoordinate | null = null;
   let reportedLocationPointer: HTMLSpanElement | undefined;
   let reportedLocationListenersAttached = false;
+  let followStateListener: ((following: boolean) => void) | null = null;
+  let following = false;
+  let hasReceivedFirstFix = false;
+  let lastFollowedLocation: MapCoordinate | null = null;
   let coordinateSelectionListener:
     ((coordinate: MapCoordinate) => void) | null = null;
 
@@ -327,7 +406,38 @@ function createController(
       reportedLocation.longitude,
       reportedLocation.latitude,
     ]);
-    reportedLocationPointer.style.transform = `translate3d(${projectedPoint.x}px, ${projectedPoint.y}px, 0) translate(-50%, -100%)`;
+    reportedLocationPointer.style.transform = `translate3d(${projectedPoint.x}px, ${projectedPoint.y}px, 0) translate(-50%, -50%)`;
+  };
+
+  const setFollowing = (nextFollowing: boolean): void => {
+    if (following === nextFollowing) {
+      return;
+    }
+
+    following = nextFollowing;
+    followStateListener?.(following);
+  };
+
+  const focusReportedLocation = (restoreZoom: boolean): boolean => {
+    if (reportedLocation === null) {
+      return false;
+    }
+
+    const zoom = restoreZoom
+      ? Math.max(map.getZoom(), PLAYER_FOCUS_ZOOM)
+      : undefined;
+    map.easeTo({
+      center: [reportedLocation.longitude, reportedLocation.latitude],
+      duration: 700,
+      ...(zoom === undefined ? {} : { zoom }),
+    });
+    lastFollowedLocation = reportedLocation;
+    setFollowing(true);
+    return true;
+  };
+
+  const handleDeliberatePan = (): void => {
+    setFollowing(false);
   };
 
   const detachReportedLocationListeners = (): void => {
@@ -347,6 +457,9 @@ function createController(
       reportedLocationPointer?.remove();
       reportedLocationPointer = undefined;
       detachReportedLocationListeners();
+      hasReceivedFirstFix = false;
+      lastFollowedLocation = null;
+      setFollowing(false);
       return;
     }
 
@@ -366,7 +479,24 @@ function createController(
     }
 
     updateReportedLocationPointer();
+
+    if (!hasReceivedFirstFix) {
+      hasReceivedFirstFix = true;
+      focusReportedLocation(true);
+      return;
+    }
+
+    if (
+      following &&
+      (lastFollowedLocation === null ||
+        distanceBetweenCoordinatesMetres(lastFollowedLocation, coordinate) >=
+          FOLLOW_MOVEMENT_METRES)
+    ) {
+      focusReportedLocation(false);
+    }
   };
+
+  map.on('dragstart', handleDeliberatePan);
 
   return {
     onError(listener) {
@@ -385,10 +515,16 @@ function createController(
     },
     remove() {
       coordinateSelectionListener = null;
+      followStateListener = null;
+      markerInteraction.listener = null;
       map.off('click', handleCoordinateSelection);
+      map.off('dragstart', handleDeliberatePan);
       setReportedLocation(null);
-      setPoints([]);
+      renderPoints([]);
       map.remove();
+    },
+    recenterReportedLocation() {
+      return focusReportedLocation(true);
     },
     setCoordinateSelectionListener(listener) {
       map.off('click', handleCoordinateSelection);
@@ -399,7 +535,22 @@ function createController(
       }
     },
     setReportedLocation,
-    setPoints,
+    setFollowStateListener(listener) {
+      followStateListener = listener;
+      listener?.(following);
+    },
+    setPointSelectionListener(listener) {
+      markerInteraction.listener = listener;
+    },
+    setPoints(points) {
+      currentPoints = points;
+      renderPoints(points);
+    },
+    setSelectedPoint(point) {
+      markerInteraction.selectedPointId = point?.id ?? null;
+      setSelectedRadius(point);
+      renderPoints(currentPoints);
+    },
   };
 }
 
@@ -444,7 +595,7 @@ export const createMapboxMap: MapFactory = async (
 
   map.addControl(
     new mapboxgl.NavigationControl({
-      showCompass: true,
+      showCompass: false,
       showZoom: true,
       visualizePitch: true,
     }),
@@ -452,7 +603,7 @@ export const createMapboxMap: MapFactory = async (
   );
   map.addControl(new ResetViewControl(configuration), 'top-right');
   map.addControl(
-    new mapboxgl.AttributionControl({ compact: false }),
+    new mapboxgl.AttributionControl({ compact: true }),
     'bottom-right',
   );
 
@@ -465,25 +616,191 @@ export const createMapboxMap: MapFactory = async (
     });
   }
 
-  let markers: MapboxMarker[] = [];
-  const setPoints = (nextPoints: readonly MapPoint[]) => {
-    for (const marker of markers) {
-      marker.remove();
+  const markerInteraction = {
+    listener: null as ((pointId: string) => void) | null,
+    selectedPointId: null as string | null,
+  };
+  const markerRecords = new Map<
+    string,
+    { button: HTMLButtonElement; marker: MapboxMarker }
+  >();
+  const availabilityLabels = {
+    active: 'available now',
+    ended: 'ended',
+    upcoming: 'upcoming',
+  } as const;
+
+  const renderPoints = (nextPoints: readonly MapPoint[]): void => {
+    const pointIds = new Set(nextPoints.map((point) => point.id));
+
+    for (const [pointId, record] of markerRecords) {
+      if (!pointIds.has(pointId)) {
+        record.marker.remove();
+        markerRecords.delete(pointId);
+      }
     }
 
-    markers = nextPoints.map((point) => {
-      const markerElement = document.createElement('span');
-      markerElement.className = 'event-marker';
-      markerElement.setAttribute('aria-hidden', 'true');
-      markerElement.title = point.label;
+    for (const point of nextPoints) {
+      let record = markerRecords.get(point.id);
 
-      return new mapboxgl.Marker({ anchor: 'bottom', element: markerElement })
-        .setLngLat([point.longitude, point.latitude])
-        .addTo(map);
-    });
+      if (record === undefined) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.dataset.eventMarkerId = point.id;
+        const markerBody = document.createElement('span');
+        markerBody.className = 'event-marker__body';
+        markerBody.setAttribute('aria-hidden', 'true');
+        const markerGlyph = document.createElement('span');
+        markerGlyph.className = 'event-marker__glyph';
+        markerGlyph.textContent = '✦';
+        markerBody.append(markerGlyph);
+        button.append(markerBody);
+        button.addEventListener('click', (event) => {
+          event.stopPropagation();
+          markerInteraction.listener?.(point.id);
+        });
+
+        const marker = new mapboxgl.Marker({
+          anchor: 'center',
+          element: button,
+        })
+          .setLngLat([point.longitude, point.latitude])
+          .addTo(map);
+        record = { button, marker };
+        markerRecords.set(point.id, record);
+      } else {
+        record.marker.setLngLat([point.longitude, point.latitude]);
+      }
+
+      const availability = point.availability ?? 'active';
+      const selected = markerInteraction.selectedPointId === point.id;
+      record.button.className = [
+        'event-marker',
+        `event-marker--${availability}`,
+        selected ? 'event-marker--selected' : '',
+        point.reachable ? 'event-marker--reachable' : '',
+      ]
+        .filter(Boolean)
+        .join(' ');
+      record.button.setAttribute(
+        'aria-label',
+        `Select ${point.label}, ${availabilityLabels[availability]}${point.reachable ? ', in range' : ''}`,
+      );
+      record.button.setAttribute('aria-pressed', String(selected));
+      record.button.title = point.label;
+    }
   };
 
-  setPoints(points);
+  let selectedRadiusPoint: MapPoint | null = null;
+  const emptyRadius: FeatureCollection<Polygon> = {
+    features: [],
+    type: 'FeatureCollection',
+  };
+  const syncSelectedRadius = (): void => {
+    const data: FeatureCollection<Polygon> = {
+      features:
+        selectedRadiusPoint === null ||
+        selectedRadiusPoint.radiusMetres === undefined
+          ? []
+          : [
+              createGeodesicCircle(
+                selectedRadiusPoint,
+                selectedRadiusPoint.radiusMetres,
+              ),
+            ],
+      type: 'FeatureCollection',
+    };
+    const source = map.getSource(EVENT_RADIUS_SOURCE_ID) as
+      { setData: (nextData: FeatureCollection<Polygon>) => void } | undefined;
 
-  return createController(map, setPoints);
+    if (source === undefined) {
+      map.addSource(EVENT_RADIUS_SOURCE_ID, {
+        data: selectedRadiusPoint === null ? emptyRadius : data,
+        type: 'geojson',
+      });
+    } else {
+      source.setData(data);
+    }
+
+    if (!map.getLayer(EVENT_RADIUS_FILL_LAYER_ID)) {
+      map.addLayer({
+        id: EVENT_RADIUS_FILL_LAYER_ID,
+        paint: {
+          'fill-color': '#2a6bff',
+          'fill-opacity': 0.15,
+        },
+        slot: 'middle',
+        source: EVENT_RADIUS_SOURCE_ID,
+        type: 'fill',
+      });
+    }
+
+    if (!map.getLayer(EVENT_RADIUS_LINE_LAYER_ID)) {
+      map.addLayer({
+        id: EVENT_RADIUS_LINE_LAYER_ID,
+        paint: {
+          'line-color': '#d4af37',
+          'line-emissive-strength': 0.75,
+          'line-opacity': 0.9,
+          'line-width': 2,
+        },
+        slot: 'middle',
+        source: EVENT_RADIUS_SOURCE_ID,
+        type: 'line',
+      });
+    }
+  };
+
+  map.on('style.load', syncSelectedRadius);
+  if (map.isStyleLoaded()) {
+    syncSelectedRadius();
+  }
+
+  const controller = createController(
+    map,
+    renderPoints,
+    markerInteraction,
+    (point) => {
+      selectedRadiusPoint = point;
+      if (map.isStyleLoaded()) {
+        syncSelectedRadius();
+      }
+    },
+  );
+  controller.setPoints(points);
+
+  return controller;
 };
+
+function degreesToRadians(value: number): number {
+  return (value * Math.PI) / 180;
+}
+
+function radiansToDegrees(value: number): number {
+  return (value * 180) / Math.PI;
+}
+
+function normalizeLongitude(value: number): number {
+  return ((value + 540) % 360) - 180;
+}
+
+function distanceBetweenCoordinatesMetres(
+  first: MapCoordinate,
+  second: MapCoordinate,
+): number {
+  const firstLatitude = degreesToRadians(first.latitude);
+  const secondLatitude = degreesToRadians(second.latitude);
+  const latitudeDelta = secondLatitude - firstLatitude;
+  const longitudeDelta = degreesToRadians(second.longitude - first.longitude);
+  const haversine =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(firstLatitude) *
+      Math.cos(secondLatitude) *
+      Math.sin(longitudeDelta / 2) ** 2;
+
+  return (
+    2 *
+    EARTH_RADIUS_METRES *
+    Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine))
+  );
+}

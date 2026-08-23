@@ -65,6 +65,12 @@ a:hover {
   overflow: clip;
 }
 
+.site-frame--explore {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .skip-link {
   position: fixed;
   z-index: 100;
@@ -85,6 +91,31 @@ a:hover {
 .site-header {
   border-bottom: 1px solid var(--colour-border-subtle);
   background: rgb(5 11 22 / 96%);
+}
+
+.site-header--explore {
+  z-index: 30;
+  flex: 0 0 auto;
+}
+
+.site-header--explore .site-header__inner {
+  min-height: 4.25rem;
+  flex-wrap: nowrap;
+  padding-block: var(--space-2);
+}
+
+.site-header--explore .product-name__mark {
+  width: 3rem;
+}
+
+.site-header--explore .product-name__tagline,
+.site-header--explore .account-control__identity {
+  display: none;
+}
+
+.site-header--explore .account-control {
+  width: auto;
+  flex: 0 1 auto;
 }
 
 .site-header__inner,
@@ -253,6 +284,14 @@ a:hover {
 
 .main-content:focus {
   outline: none;
+}
+
+.main-content--explore {
+  width: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  padding: 0;
+  overflow: hidden;
 }
 
 .site-footer {
@@ -584,6 +623,19 @@ code {
     padding-inline: var(--space-5);
   }
 
+  .site-header--explore .site-header__inner {
+    min-height: 5rem;
+    padding-block: var(--space-2);
+  }
+
+  .site-header--explore .product-name__mark {
+    width: 4rem;
+  }
+
+  .site-header--explore .account-control__identity {
+    display: initial;
+  }
+
   .primary-navigation {
     position: static;
     min-height: auto;
@@ -611,6 +663,10 @@ code {
 
   .main-content {
     padding: clamp(var(--space-7), 7vw, 6rem) var(--space-5);
+  }
+
+  .main-content--explore {
+    padding: 0;
   }
 
   .site-footer {

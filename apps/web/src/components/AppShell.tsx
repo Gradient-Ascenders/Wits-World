@@ -30,14 +30,17 @@ function NavigationLink({ href, children }: NavigationLinkProps) {
 
 export function AppShell({ children }: AppShellProps) {
   const { state: currentPlayer } = useCurrentPlayer();
+  const [isExplore] = useRoute('/explore');
 
   return (
-    <div className="site-frame">
+    <div className={`site-frame${isExplore ? ' site-frame--explore' : ''}`}>
       <a className="skip-link" href="#main-content">
         Skip to main content
       </a>
 
-      <header className="site-header">
+      <header
+        className={`site-header${isExplore ? ' site-header--explore' : ''}`}
+      >
         <div className="site-header__inner">
           <Link aria-label="Wits World home" className="product-name" href="/">
             <CampusSeal className="product-name__mark" decorative />
@@ -79,16 +82,22 @@ export function AppShell({ children }: AppShellProps) {
         </div>
       </header>
 
-      <main className="main-content" id="main-content" tabIndex={-1}>
+      <main
+        className={`main-content${isExplore ? ' main-content--explore' : ''}`}
+        id="main-content"
+        tabIndex={-1}
+      >
         {children}
       </main>
 
-      <footer className="site-footer">
-        <p>
-          <strong>Wits World</strong> is the project behind Wits Quest, our
-          campus exploration game.
-        </p>
-      </footer>
+      {!isExplore ? (
+        <footer className="site-footer">
+          <p>
+            <strong>Wits World</strong> is the project behind Wits Quest, our
+            campus exploration game.
+          </p>
+        </footer>
+      ) : null}
     </div>
   );
 }

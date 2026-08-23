@@ -8,25 +8,35 @@ import {
 const mapboxState = vi.hoisted(() => ({
   addLayer: vi.fn(),
   addSource: vi.fn(),
+  attributionOptions: [] as unknown[],
   canvasContainer: null as HTMLDivElement | null,
   controls: [] as Array<{ onAdd?: (map: unknown) => HTMLElement }>,
+  easeTo: vi.fn(),
   handlers: new Map<string, (...args: never[]) => void>(),
   isLoaded: false,
+  isStyleLoaded: false,
   jumpTo: vi.fn(),
   mapConstructor: vi.fn(),
   markerConstructor: vi.fn(),
+  markerElements: [] as HTMLElement[],
   markerRemove: vi.fn(),
   off: vi.fn(),
   on: vi.fn(),
   once: vi.fn(),
   project: vi.fn(() => ({ x: 120, y: 80 })),
   remove: vi.fn(),
+  sources: new Map<string, unknown>(),
+  layers: new Set<string>(),
 }));
 
 vi.mock('mapbox-gl/dist/mapbox-gl.css', () => ({}));
 
 vi.mock('mapbox-gl/esm', () => ({
-  AttributionControl: class {},
+  AttributionControl: class {
+    public constructor(options: unknown) {
+      mapboxState.attributionOptions.push(options);
+    }
+  },
   Map: class {
     public constructor(options: unknown) {
       mapboxState.mapConstructor(options);
@@ -40,16 +50,26 @@ vi.mock('mapbox-gl/esm', () => ({
 
     public addSource = mapboxState.addSource;
 
-    public getLayer() {
-      return undefined;
+    public getLayer(layerId: string) {
+      return mapboxState.layers.has(layerId) ? {} : undefined;
     }
 
-    public getSource() {
-      return undefined;
+    public getSource(sourceId: string) {
+      return mapboxState.sources.get(sourceId);
     }
 
     public getCanvasContainer() {
       return mapboxState.canvasContainer ?? document.createElement('div');
+    }
+
+    public easeTo = mapboxState.easeTo;
+
+    public getZoom() {
+      return 16.5;
+    }
+
+    public isStyleLoaded() {
+      return mapboxState.isStyleLoaded;
     }
 
     public jumpTo = mapboxState.jumpTo;
@@ -60,7 +80,11 @@ vi.mock('mapbox-gl/esm', () => ({
 
     public on = (event: string, listener: (...args: never[]) => void) => {
       mapboxState.on(event, listener);
-      mapboxState.handlers.set(event, listener);
+      const previous = mapboxState.handlers.get(event);
+      mapboxState.handlers.set(event, (...args: never[]) => {
+        previous?.(...args);
+        listener(...args);
+      });
     };
 
     public once = (event: string, listener: (...args: never[]) => void) => {
@@ -75,8 +99,11 @@ vi.mock('mapbox-gl/esm', () => ({
     public remove = mapboxState.remove;
   },
   Marker: class {
-    public constructor() {
-      mapboxState.markerConstructor();
+    public constructor(options?: { element?: HTMLElement }) {
+      mapboxState.markerConstructor(options);
+      if (options?.element) {
+        mapboxState.markerElements.push(options.element);
+      }
     }
 
     public addTo() {
@@ -111,11 +138,28 @@ const configuration = {
 
 beforeEach(() => {
   mapboxState.canvasContainer = document.createElement('div');
+  mapboxState.attributionOptions.length = 0;
   mapboxState.controls.length = 0;
   mapboxState.handlers.clear();
+  mapboxState.sources.clear();
+  mapboxState.layers.clear();
   mapboxState.isLoaded = false;
+  mapboxState.isStyleLoaded = false;
+  mapboxState.markerElements.length = 0;
   mapboxState.addLayer.mockClear();
+  mapboxState.addLayer.mockImplementation((layer: { id: string }) => {
+    mapboxState.layers.add(layer.id);
+  });
   mapboxState.addSource.mockClear();
+  mapboxState.addSource.mockImplementation(
+    (sourceId: string, source: { data?: unknown }) => {
+      mapboxState.sources.set(sourceId, {
+        ...source,
+        setData: vi.fn(),
+      });
+    },
+  );
+  mapboxState.easeTo.mockClear();
   mapboxState.jumpTo.mockClear();
   mapboxState.mapConstructor.mockClear();
   mapboxState.markerConstructor.mockClear();
@@ -159,6 +203,121 @@ describe('Mapbox Standard provider', () => {
         respectPrefersReducedMotion: true,
         style: 'mapbox://styles/mapbox/standard',
         zoom: 16.5,
+      }),
+    );
+    expect(mapboxState.attributionOptions).toContainEqual({ compact: true });
+  });
+
+  it('renders keyboard-selectable event markers with selected and reachable semantics', async () => {
+    const controller = await createMapboxMap(
+      document.createElement('div'),
+      configuration,
+      [
+        {
+          availability: 'active',
+          id: 'event-1',
+          label: 'Great Hall Quest',
+          latitude: -26.19205,
+          longitude: 28.03038,
+          radiusMetres: 75,
+          reachable: true,
+        },
+      ],
+      new AbortController().signal,
+    );
+    const listener = vi.fn();
+    controller.setPointSelectionListener?.(listener);
+    controller.setSelectedPoint?.({
+      availability: 'active',
+      id: 'event-1',
+      label: 'Great Hall Quest',
+      latitude: -26.19205,
+      longitude: 28.03038,
+      radiusMetres: 75,
+      reachable: true,
+    });
+
+    const marker = mapboxState.markerElements[0] as HTMLButtonElement;
+    expect(marker.tagName).toBe('BUTTON');
+    expect(marker).toHaveAttribute('aria-pressed', 'true');
+    expect(marker).toHaveAttribute(
+      'aria-label',
+      'Select Great Hall Quest, available now, in range',
+    );
+    expect(marker).toHaveClass('event-marker--selected');
+    expect(marker).toHaveClass('event-marker--reachable');
+    marker.click();
+    expect(listener).toHaveBeenCalledWith('event-1');
+  });
+
+  it('renders and replaces only the selected event geodesic source', async () => {
+    mapboxState.isStyleLoaded = true;
+    const controller = await createMapboxMap(
+      document.createElement('div'),
+      configuration,
+      [],
+      new AbortController().signal,
+    );
+    const source = mapboxState.sources.get('wits-selected-event-radius') as {
+      setData: ReturnType<typeof vi.fn>;
+    };
+    controller.setSelectedPoint?.({
+      id: 'event-1',
+      label: 'Great Hall',
+      latitude: -26.19205,
+      longitude: 28.03038,
+      radiusMetres: 75,
+    });
+
+    expect(source.setData).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        features: [
+          expect.objectContaining({
+            geometry: expect.objectContaining({ type: 'Polygon' }),
+          }),
+        ],
+      }),
+    );
+    controller.setSelectedPoint?.(null);
+    expect(source.setData).toHaveBeenLastCalledWith({
+      features: [],
+      type: 'FeatureCollection',
+    });
+    expect(
+      mapboxState.addLayer.mock.calls.find(
+        ([layer]) => layer.id === 'wits-selected-event-radius-fill',
+      )?.[0],
+    ).toMatchObject({ slot: 'middle', type: 'fill' });
+  });
+
+  it('centres the first fix, stops following after a drag, and recentres without resetting camera language', async () => {
+    const controller = await createMapboxMap(
+      document.createElement('div'),
+      configuration,
+      [],
+      new AbortController().signal,
+    );
+    const followListener = vi.fn();
+    controller.setFollowStateListener?.(followListener);
+    controller.setReportedLocation({
+      latitude: -26.19205,
+      longitude: 28.03038,
+    });
+    expect(mapboxState.easeTo).toHaveBeenLastCalledWith({
+      center: [28.03038, -26.19205],
+      duration: 700,
+      zoom: 17,
+    });
+    expect(followListener).toHaveBeenLastCalledWith(true);
+
+    mapboxState.handlers.get('dragstart')?.();
+    expect(followListener).toHaveBeenLastCalledWith(false);
+    controller.recenterReportedLocation?.();
+    expect(followListener).toHaveBeenLastCalledWith(true);
+    expect(mapboxState.easeTo).toHaveBeenLastCalledWith(
+      expect.not.objectContaining({
+        bearing: expect.anything(),
+        pitch: expect.anything(),
       }),
     );
   });
@@ -234,9 +393,14 @@ describe('Mapbox Standard provider', () => {
     expect(pointer).toHaveAttribute('title', 'Reported location');
     expect(mapboxState.project).toHaveBeenCalledWith([28.03038, -26.19205]);
     expect(pointer).toHaveStyle(
-      'transform: translate3d(120px, 80px, 0) translate(-50%, -100%)',
+      'transform: translate3d(120px, 80px, 0) translate(-50%, -50%)',
     );
     expect(mapboxState.markerConstructor).not.toHaveBeenCalled();
+    expect(
+      mapboxState.addSource.mock.calls.some(([sourceId]) =>
+        String(sourceId).includes('player'),
+      ),
+    ).toBe(false);
 
     controller.setReportedLocation(null);
 

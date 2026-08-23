@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   BrowserLocationError,
+  getBrowserLocationPermission,
+  observeBrowserLocation,
   requestBrowserLocation,
 } from '../src/browser-location';
 
@@ -130,6 +132,100 @@ describe('browser location claims', () => {
     await expect(requestBrowserLocation()).rejects.toMatchObject({
       failure: 'unavailable',
     });
+  });
+});
+
+describe('live browser location observation', () => {
+  beforeEach(() => {
+    vi.stubEnv('VITE_DEV_GEO_LAT', '');
+    vi.stubEnv('VITE_DEV_GEO_LNG', '');
+    vi.stubEnv('VITE_DEV_GEO_ACCURACY', '');
+    Object.defineProperty(window, 'isSecureContext', {
+      configurable: true,
+      value: true,
+    });
+  });
+
+  it('uses one high-accuracy watcher and clears it exactly once', () => {
+    let success: PositionCallback = () => undefined;
+    const watchPosition = vi.fn((nextSuccess: PositionCallback) => {
+      success = nextSuccess;
+      return 42;
+    });
+    const clearWatch = vi.fn();
+    vi.stubGlobal('navigator', {
+      geolocation: { clearWatch, watchPosition },
+    });
+    const onLocation = vi.fn();
+    const stop = observeBrowserLocation({ onError: vi.fn(), onLocation });
+
+    success(createPosition());
+    expect(onLocation).toHaveBeenCalledWith({
+      accuracyMetres: 12,
+      acquiredAt: '2026-08-08T10:30:00.000Z',
+      latitude: -26.19205,
+      longitude: 28.03038,
+    });
+    expect(watchPosition).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.any(Function),
+      { enableHighAccuracy: true, maximumAge: 5_000, timeout: 15_000 },
+    );
+
+    stop();
+    stop();
+    expect(clearWatch).toHaveBeenCalledOnce();
+    expect(clearWatch).toHaveBeenCalledWith(42);
+  });
+
+  it('maps watcher failures and rejects invalid updates', () => {
+    let success: PositionCallback = () => undefined;
+    let failure: PositionErrorCallback = () => undefined;
+    vi.stubGlobal('navigator', {
+      geolocation: {
+        clearWatch: vi.fn(),
+        watchPosition: vi.fn(
+          (
+            nextSuccess: PositionCallback,
+            nextFailure: PositionErrorCallback,
+          ) => {
+            success = nextSuccess;
+            failure = nextFailure;
+            return 1;
+          },
+        ),
+      },
+    });
+    const onError = vi.fn();
+    observeBrowserLocation({ onError, onLocation: vi.fn() });
+
+    success(
+      createPosition({ coords: { ...createPosition().coords, latitude: 100 } }),
+    );
+    failure({ code: 3 } as GeolocationPositionError);
+    expect(onError).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ failure: 'unavailable' }),
+    );
+    expect(onError).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ failure: 'timeout' }),
+    );
+  });
+
+  it('reads granted, denied, and prompt permission without prompting', async () => {
+    const query = vi.fn().mockResolvedValue({ state: 'granted' });
+    vi.stubGlobal('navigator', {
+      geolocation: {},
+      permissions: { query },
+    });
+    await expect(getBrowserLocationPermission()).resolves.toBe('granted');
+    expect(query).toHaveBeenCalledWith({ name: 'geolocation' });
+  });
+
+  it('falls back to unknown when permission state cannot be pre-read', async () => {
+    vi.stubGlobal('navigator', { geolocation: {} });
+    await expect(getBrowserLocationPermission()).resolves.toBe('unknown');
   });
 });
 
