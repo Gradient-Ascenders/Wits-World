@@ -104,9 +104,11 @@ generated from the API's event coordinate and metre radius. It is visual-only;
 the browser does not calculate player-to-event distance. Live location updates
 move the local player marker immediately, but eligibility refreshes are
 location-driven, coalesced, and limited to at most one request per 15 seconds
-after meaningful movement. The API and PostGIS decide every result, and
-challenge start submits the latest ephemeral claim through the existing API for
-a fresh server-authoritative recheck.
+after meaningful movement. The API and PostGIS decide every result. Challenge
+start reuses a sufficiently fresh watched claim or requests a newer one-shot
+claim before submitting through the existing API for a server-authoritative
+recheck. A location-retry response requires a newer acquisition rather than
+resubmitting the same rejected claim.
 
 The Mapbox logo and Mapbox/OpenStreetMap attribution remain enabled. The
 attribution control uses Mapbox's compact mode on constrained layouts and both

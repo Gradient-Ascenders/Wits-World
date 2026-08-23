@@ -53,6 +53,10 @@ const CAMPUS_MAP_CONFIGURATION: MapConfiguration = {
 const ELIGIBILITY_REFRESH_MS = 15_000;
 const MEANINGFUL_MOVEMENT_METRES = 10;
 const EARTH_RADIUS_METRES = 6_371_008.8;
+// The API's two-minute freshness rule remains authoritative. This shorter
+// reuse window only decides when the browser should acquire a newer ephemeral
+// reported-location claim before challenge start, leaving time for transit.
+const MAX_REUSABLE_CHALLENGE_LOCATION_AGE_MS = 105_000;
 
 interface ExplorePageProps {
   apiBaseUrl: string;
@@ -162,6 +166,9 @@ export default function ExplorePage({
     Record<string, EventEligibilityState | undefined>
   >({});
   const [checkingEventId, setCheckingEventId] = useState<string | null>(null);
+  const [refreshingLocationEventId, setRefreshingLocationEventId] = useState<
+    string | null
+  >(null);
   const [startingEventId, setStartingEventId] = useState<string | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [locationState, setLocationState] = useState<LocationExperienceState>(
@@ -171,6 +178,11 @@ export default function ExplorePage({
   const eligibilityRequest = useRef<AbortController | null>(null);
   const challengeStartRequest = useRef<AbortController | null>(null);
   const latestClaimRef = useRef<LocationClaim | null>(null);
+  const rejectedLocationClaimRef = useRef<{
+    claim: LocationClaim;
+    eventId: string;
+  } | null>(null);
+  const locationRefreshInFlightRef = useRef(false);
   const selectedEventIdRef = useRef<string | null>(null);
   const discoveryRef = useRef<EventDiscoveryState>(discovery);
   const stopLocationWatchRef = useRef<(() => void) | null>(null);
@@ -258,9 +270,15 @@ export default function ExplorePage({
         });
 
         if (mounted.current && !controller.signal.aborted) {
+          const nextState = toEligibilityState(result);
+          if (nextState.status === 'location-stale') {
+            rejectedLocationClaimRef.current = { claim, eventId };
+          } else if (rejectedLocationClaimRef.current?.eventId === eventId) {
+            rejectedLocationClaimRef.current = null;
+          }
           setEligibility((current) => ({
             ...current,
-            [eventId]: toEligibilityState(result),
+            [eventId]: nextState,
           }));
         }
       } catch (error) {
@@ -335,6 +353,28 @@ export default function ExplorePage({
   );
   queueEligibilityRef.current = queueEligibility;
 
+  const rememberReportedLocation = useCallback((claim: LocationClaim): void => {
+    latestClaimRef.current = claim;
+    setReportedLocationRevision((revision) => revision + 1);
+    setLocationState('tracking');
+  }, []);
+
+  const acquireNewerReportedLocation = useCallback(
+    async (previousClaim: LocationClaim | null): Promise<LocationClaim> => {
+      const claim = await locationClaimProvider();
+      if (
+        !isFreshReusableLocationClaim(claim) ||
+        (previousClaim !== null && !isNewerLocationClaim(claim, previousClaim))
+      ) {
+        throw new FreshReportedLocationRequiredError();
+      }
+
+      rememberReportedLocation(claim);
+      return claim;
+    },
+    [locationClaimProvider, rememberReportedLocation],
+  );
+
   const stopLocationWatch = useCallback((retainIntent = false): void => {
     stopLocationWatchRef.current?.();
     stopLocationWatchRef.current = null;
@@ -382,9 +422,7 @@ export default function ExplorePage({
           return;
         }
 
-        latestClaimRef.current = claim;
-        setReportedLocationRevision((revision) => revision + 1);
-        setLocationState('tracking');
+        rememberReportedLocation(claim);
         const eventId = selectedEventIdRef.current;
         if (eventId !== null) {
           queueEligibilityRef.current(eventId, claim);
@@ -395,7 +433,11 @@ export default function ExplorePage({
     if (!active) {
       stop();
     }
-  }, [locationObservationProvider, stopLocationWatch]);
+  }, [
+    locationObservationProvider,
+    rememberReportedLocation,
+    stopLocationWatch,
+  ]);
 
   useEffect(() => {
     mounted.current = true;
@@ -440,6 +482,8 @@ export default function ExplorePage({
       clearEligibilityTimer();
       pendingEligibilityRef.current = null;
       latestClaimRef.current = null;
+      rejectedLocationClaimRef.current = null;
+      locationRefreshInFlightRef.current = false;
     };
   }, [
     clearEligibilityTimer,
@@ -491,6 +535,7 @@ export default function ExplorePage({
         setCheckingEventId(null);
       }
       lastEligibilityEventIdRef.current = null;
+      rejectedLocationClaimRef.current = null;
       const claim = latestClaimRef.current;
       if (claim !== null) {
         queueEligibility(eventId, claim, true);
@@ -507,11 +552,59 @@ export default function ExplorePage({
   const retryEligibility = useCallback(
     (eventId: string): void => {
       const claim = latestClaimRef.current;
-      if (claim !== null) {
-        queueEligibility(eventId, claim, true);
+      const rejected = rejectedLocationClaimRef.current;
+      if (rejected?.eventId !== eventId) {
+        if (claim !== null) {
+          queueEligibility(eventId, claim, true);
+        }
+        return;
       }
+
+      if (
+        claim !== null &&
+        isFreshReusableLocationClaim(claim) &&
+        isNewerLocationClaim(claim, rejected.claim)
+      ) {
+        rejectedLocationClaimRef.current = null;
+        queueEligibility(eventId, claim, true);
+        return;
+      }
+
+      if (locationRefreshInFlightRef.current) {
+        return;
+      }
+
+      locationRefreshInFlightRef.current = true;
+      setRefreshingLocationEventId(eventId);
+      setEligibility((current) => ({
+        ...current,
+        [eventId]: { status: 'locating' },
+      }));
+      void acquireNewerReportedLocation(rejected.claim)
+        .then((newerClaim) => {
+          if (!mounted.current || selectedEventIdRef.current !== eventId) {
+            return;
+          }
+
+          rejectedLocationClaimRef.current = null;
+          queueEligibility(eventId, newerClaim, true);
+        })
+        .catch((error: unknown) => {
+          if (mounted.current && selectedEventIdRef.current === eventId) {
+            setEligibility((current) => ({
+              ...current,
+              [eventId]: toChallengeStartFailure(error),
+            }));
+          }
+        })
+        .finally(() => {
+          locationRefreshInFlightRef.current = false;
+          if (mounted.current) {
+            setRefreshingLocationEventId(null);
+          }
+        });
     },
-    [queueEligibility],
+    [acquireNewerReportedLocation, queueEligibility],
   );
 
   const startChallenge = useCallback(
@@ -528,18 +621,25 @@ export default function ExplorePage({
         [eventId]: { status: 'starting' },
       }));
 
+      const acquisitionBaseline = latestClaimRef.current;
+      let submittedClaim: LocationClaim | null = null;
       try {
         // A reachable result is display state, never authorization. Challenge
-        // start submits the freshest ephemeral claim through the existing API,
-        // which performs its own server-authoritative eligibility recheck.
-        const claim = latestClaimRef.current ?? (await locationClaimProvider());
+        // start submits a sufficiently fresh ephemeral claim through the
+        // existing API, which performs its own authoritative eligibility
+        // recheck. An old watched claim triggers a new one-shot acquisition.
+        const watchedClaim = acquisitionBaseline;
+        submittedClaim =
+          watchedClaim !== null && isFreshReusableLocationClaim(watchedClaim)
+            ? watchedClaim
+            : await acquireNewerReportedLocation(watchedClaim);
         if (!mounted.current || controller.signal.aborted) {
           return;
         }
 
         const challengeAttempt = await startChallengeAttempt({
           apiBaseUrl,
-          claim,
+          claim: submittedClaim,
           eventId,
           getAccessToken,
           signal: controller.signal,
@@ -550,9 +650,17 @@ export default function ExplorePage({
         }
       } catch (error) {
         if (mounted.current && !controller.signal.aborted) {
+          const failure = toChallengeStartFailure(error);
+          const rejectedClaim = submittedClaim ?? acquisitionBaseline;
+          if (failure.status === 'location-stale' && rejectedClaim !== null) {
+            rejectedLocationClaimRef.current = {
+              claim: rejectedClaim,
+              eventId,
+            };
+          }
           setEligibility((current) => ({
             ...current,
-            [eventId]: toChallengeStartFailure(error),
+            [eventId]: failure,
           }));
         }
       } finally {
@@ -568,7 +676,7 @@ export default function ExplorePage({
     [
       apiBaseUrl,
       getAccessToken,
-      locationClaimProvider,
+      acquireNewerReportedLocation,
       onChallengeStarted,
       startingEventId,
     ],
@@ -586,7 +694,11 @@ export default function ExplorePage({
     <CampusExplorer
       discovery={discovery}
       eligibility={eligibility}
-      eligibilityBusy={checkingEventId !== null || startingEventId !== null}
+      eligibilityBusy={
+        checkingEventId !== null ||
+        refreshingLocationEventId !== null ||
+        startingEventId !== null
+      }
       locationState={locationState}
       mapConfiguration={mapConfiguration}
       mapFactory={mapFactory}
@@ -650,6 +762,35 @@ function isUsableLocationClaim(claim: LocationClaim): boolean {
   );
 }
 
+function isFreshReusableLocationClaim(
+  claim: LocationClaim,
+  now = Date.now(),
+): boolean {
+  if (!isUsableLocationClaim(claim)) {
+    return false;
+  }
+
+  const ageMilliseconds = now - Date.parse(claim.acquiredAt);
+  return (
+    ageMilliseconds >= 0 &&
+    ageMilliseconds <= MAX_REUSABLE_CHALLENGE_LOCATION_AGE_MS
+  );
+}
+
+function isNewerLocationClaim(
+  candidate: LocationClaim,
+  previous: LocationClaim,
+): boolean {
+  return Date.parse(candidate.acquiredAt) > Date.parse(previous.acquiredAt);
+}
+
+class FreshReportedLocationRequiredError extends Error {
+  public constructor() {
+    super('A newer reported-location acquisition is required.');
+    this.name = 'FreshReportedLocationRequiredError';
+  }
+}
+
 export function hasMeaningfulReportedLocationUpdate(
   previous: LocationClaim,
   next: LocationClaim,
@@ -681,6 +822,10 @@ function degreesToRadians(value: number): number {
 }
 
 function toChallengeStartFailure(error: unknown): EventEligibilityState {
+  if (error instanceof FreshReportedLocationRequiredError) {
+    return { status: 'location-stale' };
+  }
+
   if (error instanceof BrowserLocationError) {
     if (error.failure === 'denied') {
       return { status: 'location-denied' };

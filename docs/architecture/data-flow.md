@@ -98,8 +98,10 @@ authoritative event record.
 14. Meaningful watcher updates may drive a coalesced refresh, with no more than
     one eligibility request every 15 seconds. This is only a frontend network
     limit; there is no timer-only polling loop.
-15. Challenge start sends the latest ephemeral reported-location claim through
-    the challenge-start endpoint, which performs its own authoritative recheck.
+15. Challenge start reuses a sufficiently fresh watched reported-location claim
+    or requests a newer one-shot claim, then sends it through the
+    challenge-start endpoint for its authoritative recheck. If the API requires
+    a fresher location, the same rejected acquisition is not resubmitted.
 
 The browser does not calculate the authoritative distance or final eligibility.
 The selected event interaction area is a visual geodesic polygon only. Basic

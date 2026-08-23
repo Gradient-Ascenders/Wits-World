@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   BrowserLocationError,
   type LocationClaim,
+  type LocationClaimProvider,
   type LocationObservationHandlers,
   type LocationObservationProvider,
 } from '../src/browser-location';
@@ -94,6 +95,7 @@ function createObservationHarness() {
 }
 
 interface RenderExploreOptions {
+  locationClaimProvider?: LocationClaimProvider;
   mapController?: MapController;
   observation?: ReturnType<typeof createObservationHarness>;
   onChallengeStarted?: (attemptId: string) => void;
@@ -102,6 +104,7 @@ interface RenderExploreOptions {
 }
 
 function renderExplore({
+  locationClaimProvider,
   mapController = createMapController(),
   observation = createObservationHarness(),
   onChallengeStarted = vi.fn(),
@@ -113,6 +116,7 @@ function renderExplore({
     <Auth0Context.Provider value={createAuthValue()}>
       <ExplorePage
         apiBaseUrl={apiBaseUrl}
+        locationClaimProvider={locationClaimProvider}
         locationObservationProvider={observation.provider}
         locationPermissionProvider={vi.fn().mockResolvedValue(permission)}
         mapFactory={mapFactory}
@@ -377,6 +381,7 @@ describe('selected-event authoritative eligibility', () => {
   });
 
   it('uses the newest same-position claim for an explicit location retry', async () => {
+    const initialClaim = freshClaim(-5_000);
     const user = userEvent.setup();
     const fetchMock = vi
       .fn()
@@ -388,7 +393,7 @@ describe('selected-event authoritative eligibility', () => {
     const observation = createObservationHarness();
     renderExplore({ observation, permission: 'granted' });
     await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
-    act(() => observation.emit(claim));
+    act(() => observation.emit(initialClaim));
     await selectEvent(user);
     await user.click(
       await screen.findByRole('button', {
@@ -400,8 +405,8 @@ describe('selected-event authoritative eligibility', () => {
     ).toBeVisible();
 
     const newerClaim = {
-      ...claim,
-      acquiredAt: '2026-08-23T10:30:05.000Z',
+      ...initialClaim,
+      acquiredAt: new Date().toISOString(),
     };
     act(() => observation.emit(newerClaim));
     expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -526,6 +531,8 @@ describe('selected-event authoritative eligibility', () => {
   it('submits the latest claim through challenge start for a fresh server recheck', async () => {
     const user = userEvent.setup();
     const onChallengeStarted = vi.fn();
+    const currentClaim = freshClaim();
+    const locationClaimProvider = vi.fn<LocationClaimProvider>();
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(discoveryResponse())
@@ -535,11 +542,12 @@ describe('selected-event authoritative eligibility', () => {
     const observation = createObservationHarness();
     renderExplore({
       observation,
+      locationClaimProvider,
       onChallengeStarted,
       permission: 'granted',
     });
     await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
-    act(() => observation.emit(claim));
+    act(() => observation.emit(currentClaim));
     await selectEvent(user);
     await user.click(
       await screen.findByRole('button', {
@@ -549,15 +557,107 @@ describe('selected-event authoritative eligibility', () => {
 
     expect(fetchMock).toHaveBeenLastCalledWith(
       `${apiBaseUrl}/events/${event.eventId}/challenge-attempts`,
-      expect.objectContaining({ body: JSON.stringify(claim), method: 'POST' }),
+      expect.objectContaining({
+        body: JSON.stringify(currentClaim),
+        method: 'POST',
+      }),
     );
+    expect(locationClaimProvider).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(onChallengeStarted).toHaveBeenCalledWith(
         '31000000-0000-4000-8000-000000000001',
       ),
     );
   });
+
+  it('acquires a newer claim before challenge start when the watched claim is old', async () => {
+    const user = userEvent.setup();
+    const oldClaim = freshClaim(-180_000);
+    const renewedClaim = freshClaim();
+    const locationClaimProvider = vi
+      .fn<LocationClaimProvider>()
+      .mockResolvedValue(renewedClaim);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(discoveryResponse())
+      .mockResolvedValueOnce(eligibilityResponse('reachable'))
+      .mockResolvedValueOnce(challengeResponse());
+    vi.stubGlobal('fetch', fetchMock);
+    const observation = createObservationHarness();
+    renderExplore({
+      locationClaimProvider,
+      observation,
+      permission: 'granted',
+    });
+    await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
+    act(() => observation.emit(oldClaim));
+    await selectEvent(user);
+
+    await user.click(
+      await screen.findByRole('button', {
+        name: `Start challenge for ${event.title}`,
+      }),
+    );
+
+    await waitFor(() => expect(locationClaimProvider).toHaveBeenCalledOnce());
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `${apiBaseUrl}/events/${event.eventId}/challenge-attempts`,
+      expect.objectContaining({
+        body: JSON.stringify(renewedClaim),
+        method: 'POST',
+      }),
+    );
+  });
+
+  it('does not resubmit the same acquisition after a location retry response', async () => {
+    const user = userEvent.setup();
+    const initialClaim = freshClaim();
+    const locationClaimProvider = vi
+      .fn<LocationClaimProvider>()
+      .mockResolvedValue(initialClaim);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(discoveryResponse())
+      .mockResolvedValueOnce(eligibilityResponse('reachable'))
+      .mockResolvedValueOnce(locationRetryRequiredResponse());
+    vi.stubGlobal('fetch', fetchMock);
+    const observation = createObservationHarness();
+    renderExplore({
+      locationClaimProvider,
+      observation,
+      permission: 'granted',
+    });
+    await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
+    act(() => observation.emit(initialClaim));
+    await selectEvent(user);
+    await user.click(
+      await screen.findByRole('button', {
+        name: `Start challenge for ${event.title}`,
+      }),
+    );
+    expect(
+      await screen.findByText('Reported location needs refreshing.'),
+    ).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: /^Try again/ }));
+    await waitFor(() => expect(locationClaimProvider).toHaveBeenCalledOnce());
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(
+      await screen.findByText('Reported location needs refreshing.'),
+    ).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: /^Try again/ }));
+    await waitFor(() => expect(locationClaimProvider).toHaveBeenCalledTimes(2));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
 });
+
+function freshClaim(offsetMilliseconds = 0): LocationClaim {
+  return {
+    ...claim,
+    acquiredAt: new Date(Date.now() + offsetMilliseconds).toISOString(),
+  };
+}
 
 function readStorage(storage: Storage): string[] {
   return Array.from({ length: storage.length }, (_, index) => {
