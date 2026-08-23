@@ -3,7 +3,7 @@ import {
   initialContext,
   type Auth0ContextInterface,
 } from '@auth0/auth0-react';
-import { render, renderHook, screen } from '@testing-library/react';
+import { render, renderHook, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { PropsWithChildren } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -107,11 +107,43 @@ describe('player authentication', () => {
   it('keeps protected content hidden while authentication loads', () => {
     renderRoute('/explore', createAuthValue({ isLoading: true }));
 
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Checking your sign-in status',
+    expect(screen.getByText('Restoring session…')).toHaveAttribute(
+      'role',
+      'status',
     );
+    expect(screen.getByText('Checking your sign-in status')).toBeVisible();
     expect(
       screen.queryByRole('heading', { name: 'Explore the campus' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Sign in' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Explore' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Author' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('navigation', { name: 'Public' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('does not flash signed-out or protected navigation on Home while Auth0 restores', async () => {
+    renderRoute('/', createAuthValue({ isLoading: true }));
+
+    expect(await screen.findByText('Restoring session…')).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Sign in' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Sign in to play' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('navigation', { name: 'Player' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Explore' }),
     ).not.toBeInTheDocument();
   });
 
@@ -320,6 +352,37 @@ describe('player authentication', () => {
     expect(
       screen.queryByRole('button', { name: 'Signed in as naledi-star' }),
     ).not.toBeInTheDocument();
+    const playerNavigation = screen.getByRole('navigation', {
+      name: 'Player',
+    });
+    expect(
+      within(playerNavigation)
+        .getAllByRole('link')
+        .map((link) => link.textContent),
+    ).toEqual(['Explore', 'Collection', 'Decks', 'Battles']);
+    expect(
+      within(screen.getByRole('main')).getByRole('link', {
+        name: 'Explore campus',
+      }),
+    ).toHaveAttribute('href', '/explore');
+  });
+
+  it('keeps Player Name onboarding on the protected Explore path from Home', async () => {
+    mockCurrentPlayer(playerAId, null);
+
+    renderRoute(
+      '/',
+      createAuthValue({
+        getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
+        isAuthenticated: true,
+      }),
+    );
+
+    expect(
+      await within(screen.getByRole('main')).findByRole('link', {
+        name: 'Choose Player Name',
+      }),
+    ).toHaveAttribute('href', '/explore');
   });
 
   it('requires a Google player with no name to complete setup before gameplay', async () => {
@@ -668,7 +731,7 @@ describe('player authentication', () => {
     expect(window.localStorage.length).toBe(0);
   });
 
-  it('keeps logout available while the authenticated player is loading', () => {
+  it('keeps account controls and product navigation hidden while the player restores', () => {
     renderRoute(
       '/explore',
       createAuthValue({
@@ -687,7 +750,16 @@ describe('player authentication', () => {
       }),
     ).toBeVisible();
     expect(screen.queryByText('Signed in as')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Sign out' })).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Sign out' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('Restoring session…')).toHaveAttribute(
+      'role',
+      'status',
+    );
+    expect(
+      screen.queryByRole('navigation', { name: 'Player' }),
+    ).not.toBeInTheDocument();
   });
 
   it('keeps logout available when restored API authorization fails', async () => {

@@ -87,6 +87,17 @@ describe('Basic author console', () => {
       'aria-current',
       'page',
     );
+    const playerNavigation = screen.getByRole('navigation', {
+      name: 'Player',
+    });
+    expect(
+      within(playerNavigation)
+        .getAllByRole('link')
+        .map((link) => link.textContent),
+    ).toEqual(['Explore', 'Collection', 'Decks', 'Battles', 'Author']);
+    expect(
+      within(playerNavigation).queryByRole('link', { name: 'Home' }),
+    ).not.toBeInTheDocument();
     expect(
       await screen.findByRole('button', { name: /Great Hall history/ }),
     ).toBeVisible();

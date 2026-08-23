@@ -1,183 +1,202 @@
-import { Link } from 'wouter';
+import { useEffect, useRef, type CSSProperties } from 'react';
 
+import greatHallHeroWebp from '../assets/home/great-hall-hero.webp';
+import { AuthAwareCta } from '../components/auth/AuthAwareCta';
+import { CampusSeal } from '../components/branding/CampusSeal';
 import {
-  CollectiblePreviewVisual,
-  HeroMapVisual,
   JourneyStageVisual,
-  MissionMapVisual,
+  QuestProgressionVisual,
 } from '../components/home/QuestVisuals';
 import '../styles/home.css';
 
+const gameplaySteps = [
+  {
+    description: 'Find events around Wits.',
+    name: 'Explore',
+    stage: 'explore',
+  },
+  {
+    description: 'Take on the challenge at each event.',
+    name: 'Complete',
+    stage: 'complete',
+  },
+  {
+    description: 'Earn cards for your collection.',
+    name: 'Collect',
+    stage: 'collect',
+  },
+  {
+    description: 'Build a deck and take on the CPU.',
+    name: 'Battle',
+    stage: 'battle',
+  },
+] as const;
+
+function useQuestJourneyReveal() {
+  const journeyRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const journey = journeyRef.current;
+    const reducedMotion =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (!journey || reducedMotion || !('IntersectionObserver' in window)) {
+      return;
+    }
+
+    journey.classList.add('quest-journey--motion-ready');
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          journey.classList.add('quest-journey--revealed');
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '0px 0px -12% 0px', threshold: 0.18 },
+    );
+
+    observer.observe(journey);
+    return () => observer.disconnect();
+  }, []);
+
+  return journeyRef;
+}
+
 export default function HomePage() {
+  const journeyRef = useQuestJourneyReveal();
+
+  useEffect(() => {
+    if (window.location.hash !== '#project-context') {
+      return;
+    }
+
+    const scrollToProjectContext = () => {
+      const projectContext = document.getElementById('project-context');
+
+      if (typeof projectContext?.scrollIntoView === 'function') {
+        projectContext.scrollIntoView();
+      }
+    };
+
+    if (typeof window.requestAnimationFrame !== 'function') {
+      scrollToProjectContext();
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(scrollToProjectContext);
+
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
   return (
     <div className="home-page">
       <section aria-labelledby="home-title" className="hero">
-        <div className="hero__content">
-          <p className="eyebrow">Wits World / Campus exploration</p>
-          <h1 id="home-title">
-            Explore Wits. <span>Begin the quest.</span>
-          </h1>
-          <p className="lead">
-            Discover campus through location-based events, challenges, and a
-            growing collection inspired by Wits stories and landmarks.
-          </p>
-          <div className="hero__actions">
-            <Link className="button button--link" href="/explore">
-              Explore the campus
-            </Link>
-            <Link className="text-link" href="/about">
-              About the project
-            </Link>
-          </div>
-          <ul aria-label="Wits World product themes" className="hero__signals">
-            <li>Map-led</li>
-            <li>Location-aware</li>
-            <li>Cards to collect</li>
-          </ul>
+        <div aria-hidden="true" className="hero__media">
+          <img
+            alt=""
+            decoding="async"
+            fetchPriority="high"
+            height="941"
+            loading="eager"
+            src={greatHallHeroWebp}
+            width="1672"
+          />
         </div>
 
-        <HeroMapVisual />
+        <div aria-hidden="true" className="hero__atmosphere">
+          <span className="hero__mist hero__mist--near" />
+          <span className="hero__mist hero__mist--far" />
+        </div>
+
+        <div className="hero__identity">
+          <CampusSeal className="hero__seal" decorative />
+          <h1 id="home-title">Wits World</h1>
+          <p>Explore · Discover · Achieve</p>
+        </div>
+      </section>
+
+      <section
+        aria-labelledby="game-introduction-title"
+        className="game-introduction"
+      >
+        <div className="game-introduction__heading">
+          <p className="eyebrow">The game starts on campus.</p>
+          <h2 id="game-introduction-title">
+            <span>Explore campus.</span> <span>Take on the quest.</span>
+          </h2>
+        </div>
+        <div className="game-introduction__body">
+          <p>
+            Find events around Wits, complete challenges, earn cards and build a
+            deck for battle.
+          </p>
+          <AuthAwareCta />
+        </div>
       </section>
 
       <section
         aria-labelledby="journey-title"
         className="quest-journey"
         id="how-it-works"
+        ref={journeyRef}
       >
         <div className="section-introduction">
-          <p className="eyebrow">Gameplay preview</p>
-          <h2 id="journey-title">A campus journey with purpose</h2>
-          <p>
-            The first playable slice presents campus events on a map and in an
-            accessible text list. Later slices will extend that journey through
-            challenges and a meaningful collection.
-          </p>
+          <h2 id="journey-title">How it works</h2>
         </div>
 
         <ol className="journey-stages">
-          <li className="journey-stage">
-            <span className="journey-stage__number">01</span>
-            <JourneyStageVisual stage="explore" />
-            <h3>Explore</h3>
-            <p>
-              Browse campus events on a map or through the accessible event
-              list.
-            </p>
-          </li>
-          <li className="journey-stage">
-            <span className="journey-stage__number">02</span>
-            <JourneyStageVisual stage="discover" />
-            <h3>Discover</h3>
-            <p>
-              Reach an event and request an API-evaluated location check before
-              its challenge.
-            </p>
-          </li>
-          <li className="journey-stage">
-            <span className="journey-stage__number">03</span>
-            <JourneyStageVisual stage="collect" />
-            <h3>Collect</h3>
-            <p>
-              Successful challenges will unlock cards connected to Wits stories
-              and landmarks.
-            </p>
-          </li>
+          {gameplaySteps.map(({ description, name, stage }, index) => (
+            <li
+              className="journey-stage"
+              key={name}
+              style={{ '--journey-index': index } as CSSProperties}
+            >
+              <span className="journey-stage__number">
+                {String(index + 1).padStart(2, '0')}
+              </span>
+              <span className="journey-stage__node">
+                <JourneyStageVisual stage={stage} />
+              </span>
+              <div className="journey-stage__copy">
+                <h3>{name}</h3>
+                <p>{description}</p>
+              </div>
+            </li>
+          ))}
         </ol>
       </section>
 
-      <section aria-labelledby="mission-title" className="mission-preview">
-        <div className="mission-preview__map">
-          <div className="mission-preview__map-label">
-            <span>Campus map</span>
-            <span>Static interface preview</span>
-          </div>
-          <MissionMapVisual />
-          <div className="mission-preview__legend" aria-hidden="true">
-            <span>
-              <i className="legend-dot legend-dot--blue" />
-              Your location
-            </span>
-            <span>
-              <i className="legend-dot legend-dot--gold" />
-              Campus event
-            </span>
-          </div>
+      <section aria-labelledby="proof-title" className="product-proof">
+        <div className="product-proof__content">
+          <h2 id="proof-title">Earn cards. Build a deck. Battle.</h2>
         </div>
 
-        <div className="mission-preview__content">
-          <p className="eyebrow">Sprint 1 experience preview</p>
-          <h2 id="mission-title">The campus map comes first</h2>
-          <p className="mission-preview__summary">
-            The first playable slice pairs a campus event map with the same
-            essential information in text. The API remains authoritative for
-            reachability.
-          </p>
-
-          <div
-            className="event-preview"
-            aria-label="Example campus event status"
-          >
-            <div className="event-preview__heading">
-              <div>
-                <span className="event-preview__label">Campus event</span>
-                <h3>Sprint 1 event preview</h3>
-              </div>
-              <span className="status-badge status-badge--info">Preview</span>
-            </div>
-            <dl className="event-preview__details">
-              <div>
-                <dt>Location status</dt>
-                <dd>
-                  <span className="technical-signal" />
-                  Awaiting location
-                </dd>
-              </div>
-              <div>
-                <dt>Distance</dt>
-                <dd>Shown after a location check</dd>
-              </div>
-            </dl>
-          </div>
-        </div>
+        <figure className="product-proof__visual">
+          <QuestProgressionVisual />
+          <figcaption className="sr-only">
+            A campus challenge earns card rewards, which form a deck for a CPU
+            battle.
+          </figcaption>
+        </figure>
       </section>
 
       <section
-        aria-labelledby="collection-title"
-        className="collection-section"
+        aria-labelledby="project-context-title"
+        className="project-context"
+        id="project-context"
       >
-        <div className="collection-section__content">
-          <p className="eyebrow">Collection preview / Future gameplay</p>
-          <h2 id="collection-title">
-            Build a collection with a sense of place
-          </h2>
-          <p>
-            Collectible cards are planned as lasting records of completed campus
-            challenges. These generic structures show the intended visual
-            language, not production card content.
-          </p>
-          <ul className="collection-section__principles">
-            <li>Earned through campus challenges</li>
-            <li>Connected to Wits stories and landmarks</li>
-            <li>Designed for later card gameplay</li>
-          </ul>
-        </div>
-        <CollectiblePreviewVisual />
-      </section>
-
-      <section aria-labelledby="project-title" className="project-context">
-        <div>
-          <p className="eyebrow">Wits World / Sprint 1</p>
-          <h2 id="project-title">A focused foundation for the full quest</h2>
+        <div aria-hidden="true" className="project-context__mark">
+          <CampusSeal className="project-context__seal" decorative />
+          <span className="project-context__orbit" />
         </div>
         <div className="project-context__copy">
+          <h2 id="project-context-title">Built at Wits</h2>
           <p>
-            Sprint 1 prioritises an authenticated player, a campus map, browser
-            location, one seeded event, and a clear API-evaluated eligibility
-            result.
+            Wits World is a COMS3011A Software Design Project at Wits
+            University, built around turning campus exploration into a
+            location-based card game.
           </p>
-          <Link className="text-link text-link--arrow" href="/about">
-            Read about Wits World
-          </Link>
         </div>
       </section>
     </div>
