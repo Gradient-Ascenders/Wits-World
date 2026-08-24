@@ -5,6 +5,7 @@ import {
   type BattleCreatureCard,
   type BattleDeck,
   type BattlePowerCard,
+  type BattleState,
 } from '@wits-world/game-rules';
 
 import {
@@ -244,6 +245,166 @@ describe('CPU match service', () => {
     ).toBe(false);
   });
 
+  it('serializes ordered effects, zero cost, stacked modifiers, and a clamped 150% debuff', async () => {
+    const base = createBattleState(effectRichDeck('player'), deck('cpu'));
+    const firstCreature = base.participants.player.creatures[0]!;
+    const firstPowerCard = base.participants.player.powerCards[0]!;
+    const state: BattleState = {
+      ...base,
+      phase: 'active',
+      turnNumber: 4,
+      currentSide: 'player',
+      firstSide: 'player',
+      selections: {
+        player: firstCreature.card.id,
+        cpu: base.participants.cpu.creatures[0]!.card.id,
+      },
+      participants: {
+        ...base.participants,
+        player: {
+          ...base.participants.player,
+          activeCreatureId: firstCreature.card.id,
+          creatures: [
+            {
+              ...firstCreature,
+              modifiers: [
+                {
+                  id: 'active-one',
+                  stat: 'damage_multiplier',
+                  operation: 'multiply',
+                  value: 1.1,
+                  remainingTurns: 2,
+                  createdOnTurn: 1,
+                },
+                {
+                  id: 'active-two',
+                  stat: 'damage_multiplier',
+                  operation: 'multiply',
+                  value: 1.1,
+                  remainingTurns: null,
+                  createdOnTurn: 2,
+                },
+              ],
+            },
+            ...base.participants.player.creatures.slice(1),
+          ],
+        },
+        cpu: {
+          ...base.participants.cpu,
+          activeCreatureId: base.participants.cpu.creatures[0]!.card.id,
+          creatures: [
+            {
+              ...base.participants.cpu.creatures[0]!,
+              modifiers: [
+                {
+                  id: 'overkill-debuff-effect',
+                  stat: 'damage_multiplier',
+                  operation: 'multiply',
+                  value: 0,
+                  remainingTurns: 2,
+                  createdOnTurn: 3,
+                },
+              ],
+            },
+            ...base.participants.cpu.creatures.slice(1),
+          ],
+        },
+      },
+    };
+    const latestAction = {
+      action: {
+        type: 'use_power_card' as const,
+        powerCardId: firstPowerCard.id,
+      },
+      defeatedCreatureId: null,
+      effects: [
+        {
+          effectId: 'player-power-effect-3',
+          effectType: 'buff' as const,
+          targetSide: 'player' as const,
+          targetCreatureId: firstCreature.card.id,
+          amount: 3,
+          damageMultiplier: null,
+        },
+      ],
+      side: 'player' as const,
+      turnEnded: true,
+      winner: null,
+    };
+    const query = vi.fn().mockResolvedValue({
+      rows: [
+        {
+          card_names: {
+            [firstCreature.card.id]: 'Campus Scholar',
+            [firstPowerCard.id]: 'Tactical Surge',
+          },
+          completed_at: null,
+          id: MATCH_ID,
+          latest_action: latestAction,
+          player_id: PLAYER_ID,
+          started_at: new Date('2026-08-16T00:00:00.000Z'),
+          state,
+          status: 'active',
+          turn_deadline: new Date('2026-08-16T00:01:30.000Z'),
+          turn_started_at: new Date('2026-08-16T00:00:00.000Z'),
+          version: 4,
+          winner: null,
+        },
+      ],
+    });
+    const service = createCpuMatchService(fakeDatabase(query));
+
+    const response = await service.getMatch(PLAYER_ID, MATCH_ID);
+
+    expect(response.state.player.creatures[0]).toMatchObject({
+      name: 'Campus Scholar',
+      moves: [expect.objectContaining({ powerCost: 0 })],
+      activeModifiers: [
+        { percentage: 10, remainingTurns: 2 },
+        { percentage: 10, remainingTurns: null },
+      ],
+    });
+    expect(response.state.player.powerCards[0]).toMatchObject({
+      name: 'Tactical Surge',
+      effects: [
+        { effectType: 'damage', effectValue: 8, modifier: null },
+        { effectType: 'heal', effectValue: 5, modifier: null },
+        {
+          effectType: 'buff',
+          effectValue: 3,
+          modifier: expect.objectContaining({ stat: 'power' }),
+        },
+        {
+          effectType: 'debuff',
+          effectValue: 2,
+          modifier: expect.objectContaining({ stat: 'power' }),
+        },
+        {
+          effectType: 'buff',
+          effectValue: 15,
+          modifier: expect.objectContaining({ durationTurns: 3 }),
+        },
+        {
+          effectType: 'debuff',
+          effectValue: 10,
+          modifier: expect.objectContaining({ durationTurns: null }),
+        },
+      ],
+    });
+    expect(response.state.cpu.activeCreature?.activeModifiers).toEqual([
+      {
+        stat: 'damage_multiplier',
+        operation: 'multiply',
+        percentage: -100,
+        remainingTurns: 2,
+      },
+    ]);
+    expect(response.lastAction?.effects[0]?.modifier).toMatchObject({
+      stat: 'power',
+      operation: 'add',
+    });
+  });
+
   it.each([
     {
       completedAt: null,
@@ -474,4 +635,63 @@ function deck(prefix: 'player' | 'cpu'): BattleDeck {
   }));
 
   return { creatureCards: creatures, powerCards };
+}
+
+function effectRichDeck(prefix: 'player' | 'cpu'): BattleDeck {
+  const result = deck(prefix);
+  const power = result.powerCards[0]!;
+
+  return {
+    ...result,
+    powerCards: [
+      {
+        ...power,
+        effects: [
+          {
+            id: `${prefix}-power-effect-1`,
+            effectType: 'damage',
+            effectValue: 8,
+          },
+          {
+            id: `${prefix}-power-effect-2`,
+            effectType: 'heal',
+            effectValue: 5,
+          },
+          {
+            id: `${prefix}-power-effect-3`,
+            effectType: 'buff',
+            effectValue: 3,
+            modifier: { stat: 'power', operation: 'add' },
+          },
+          {
+            id: `${prefix}-power-effect-4`,
+            effectType: 'debuff',
+            effectValue: 2,
+            modifier: { stat: 'power', operation: 'add' },
+          },
+          {
+            id: `${prefix}-power-effect-5`,
+            effectType: 'buff',
+            effectValue: 15,
+            modifier: {
+              stat: 'damage_multiplier',
+              operation: 'multiply',
+              durationTurns: 3,
+            },
+          },
+          {
+            id: `${prefix}-power-effect-6`,
+            effectType: 'debuff',
+            effectValue: 10,
+            modifier: {
+              stat: 'damage_multiplier',
+              operation: 'multiply',
+              durationTurns: null,
+            },
+          },
+        ],
+      },
+      result.powerCards[1]!,
+    ],
+  };
 }

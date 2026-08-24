@@ -591,6 +591,8 @@ export const authorCardRoutes: FastifyPluginAsync<
       schema: {
         operationId: 'publishAuthorCard',
         summary: 'Publish a ready card definition',
+        description:
+          'Publishes an executable draft only after every Creature move or Power-card effect has a non-null effect value.',
         tags: ['Authoring'],
         security: bearerSecurity,
         params: cardParamsSchema,

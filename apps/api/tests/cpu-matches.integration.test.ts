@@ -268,6 +268,44 @@ describe('CPU match API', () => {
         },
       },
     });
+    expect(operation?.responses?.['200']).toMatchObject({
+      content: {
+        'application/json': {
+          schema: {
+            properties: {
+              state: {
+                properties: {
+                  player: {
+                    properties: {
+                      creatures: {
+                        items: {
+                          properties: {
+                            activeModifiers: { type: 'array' },
+                            moves: {
+                              items: {
+                                properties: { effects: { type: 'array' } },
+                              },
+                            },
+                          },
+                        },
+                      },
+                      powerCards: {
+                        items: {
+                          properties: {
+                            effects: { type: 'array' },
+                            name: { type: 'string' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
     expect(operation?.responses).toHaveProperty('401');
     expect(operation?.responses).toHaveProperty('403');
     expect(operation?.responses).toHaveProperty('404');

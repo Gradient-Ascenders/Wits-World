@@ -544,6 +544,74 @@ describe.skipIf(!runIntegrationTests)(
       ]);
     }, 45_000);
 
+    it('keeps null effect values in drafts but refuses to publish them', async () => {
+      const service = createAuthorCardService(pool);
+      const creature = await service.createCard({
+        actorPlayerId: AUTHOR_ONE_ID,
+        name: 'Incomplete Effect Creature',
+        category: 'creature',
+        affinity: 'spark',
+        rarity: 'common',
+        hp: 100,
+        power: 10,
+        moves: [1, 2, 3, 4].map((position) => ({
+          position,
+          name: `Draft Move ${position}`,
+          moveType: 'basic' as const,
+          effectType: 'damage' as const,
+          effectValue: position === 2 ? null : 10,
+          powerCost: 1,
+        })),
+      });
+      const power = await service.createCard({
+        actorPlayerId: AUTHOR_ONE_ID,
+        name: 'Incomplete Effect Power',
+        category: 'power',
+        affinity: 'spirit',
+        rarity: 'common',
+        hp: null,
+        power: null,
+        effects: [
+          {
+            position: 1,
+            effectType: 'heal',
+            effectValue: null,
+          },
+        ],
+      });
+
+      expect(creature.moves[1]?.effectValue).toBeNull();
+      expect(power.effects[0]?.effectValue).toBeNull();
+      await expect(
+        service.publishCard(AUTHOR_ONE_ID, creature.id),
+      ).rejects.toThrow(
+        'Move "Draft Move 2" requires an effect value before publication',
+      );
+      await expect(
+        service.publishCard(AUTHOR_ONE_ID, power.id),
+      ).rejects.toThrow(
+        'Power-card effect 1 requires an effect value before publication',
+      );
+
+      const persisted = await pool.query<{
+        authoring_status: string;
+        is_active: boolean;
+      }>(
+        `
+          select authoring_status, is_active
+          from public.card_definitions
+          where id = any($1::uuid[])
+          order by name
+        `,
+        [[creature.id, power.id]],
+      );
+
+      expect(persisted.rows).toEqual([
+        { authoring_status: 'draft', is_active: false },
+        { authoring_status: 'draft', is_active: false },
+      ]);
+    }, 45_000);
+
     it('publishes a complete card into the active catalogue and freezes its content', async () => {
       const service = createAuthorCardService(pool);
 

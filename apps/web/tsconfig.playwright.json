@@ -9,6 +9,7 @@
   "include": [
     "playwright",
     "playwright.config.ts",
+    "playwright.battle.config.ts",
     "playwright.sprint1.config.ts"
   ]
 }

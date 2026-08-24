@@ -15,6 +15,7 @@ export function buildCreature(
   overrides: Partial<MatchCreature> = {},
 ) {
   return {
+    activeModifiers: [],
     affinity: 'wit' as const,
     currentHp: 100,
     defeated: false,
@@ -23,12 +24,20 @@ export function buildCreature(
     maxPower: 10,
     moves: [
       {
+        effects: [
+          {
+            effectType: 'damage' as const,
+            effectValue: 12,
+            modifier: null,
+          },
+        ],
         id: uuid(1200 + index),
         moveType: 'wit' as const,
         name: `Knowledge Strike ${index}`,
         powerCost: 2,
       },
     ],
+    name: `${titleCase(overrides.affinity ?? 'wit')} Creature`,
     remainingPower: 10,
     ...overrides,
   };
@@ -63,7 +72,15 @@ export function buildMatch(
       powerCards: [1, 2].map((index) => ({
         affinity: 'wit' as const,
         available: true,
+        effects: [
+          {
+            effectType: 'heal' as const,
+            effectValue: 10,
+            modifier: null,
+          },
+        ],
         id: uuid(1300 + index),
+        name: `Campus Renewal ${index}`,
       })),
       usedPowerCardIds: [],
     },
@@ -238,4 +255,8 @@ export function historyResponse(matches: CpuMatchHistoryItem[]) {
 
 export function uuid(value: number) {
   return `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
+}
+
+function titleCase(value: string) {
+  return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 }

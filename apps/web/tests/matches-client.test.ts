@@ -124,6 +124,93 @@ describe('CPU match API client', () => {
     });
   });
 
+  it('accepts legacy match views while rejecting malformed new effect data', async () => {
+    const legacy = structuredClone(activeMatch(2)) as unknown as Record<
+      string,
+      unknown
+    >;
+    const legacyState = legacy.state as {
+      cpu: { activeCreature: Record<string, unknown> };
+      player: {
+        creatures: Record<string, unknown>[];
+        powerCards: Record<string, unknown>[];
+      };
+    };
+    for (const creature of [
+      ...legacyState.player.creatures,
+      legacyState.cpu.activeCreature,
+    ]) {
+      delete creature.activeModifiers;
+      delete creature.name;
+      for (const move of creature.moves as Record<string, unknown>[]) {
+        delete move.effects;
+      }
+    }
+    for (const card of legacyState.player.powerCards) {
+      delete card.effects;
+      delete card.name;
+    }
+
+    const malformed = activeMatch(3);
+    malformed.state.player.creatures[0]!.moves[0]!.effects[0]!.effectValue = -1;
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(matchResponse(legacy as never))
+        .mockResolvedValueOnce(matchResponse(malformed)),
+    );
+
+    await expect(getActiveCpuMatch(options())).resolves.toMatchObject({
+      state: {
+        player: {
+          creatures: expect.arrayContaining([
+            expect.objectContaining({
+              activeModifiers: [],
+              name: 'Wit Creature',
+            }),
+          ]),
+          powerCards: expect.arrayContaining([
+            expect.objectContaining({ effects: [], name: 'Wit Power card' }),
+          ]),
+        },
+      },
+    });
+    await expect(getActiveCpuMatch(options())).rejects.toMatchObject({
+      failure: 'unavailable',
+    });
+  });
+
+  it('accepts the public projection of a rules-clamped 150% damage debuff', async () => {
+    const match = activeMatch(3);
+    match.state.cpu.activeCreature!.activeModifiers = [
+      {
+        stat: 'damage_multiplier',
+        operation: 'multiply',
+        percentage: -100,
+        remainingTurns: 2,
+      },
+    ];
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(matchResponse(match)));
+
+    await expect(getActiveCpuMatch(options())).resolves.toMatchObject({
+      state: {
+        cpu: {
+          activeCreature: {
+            activeModifiers: [
+              {
+                stat: 'damage_multiplier',
+                operation: 'multiply',
+                percentage: -100,
+                remainingTurns: 2,
+              },
+            ],
+          },
+        },
+      },
+    });
+  });
+
   it('rejects completed successes from active recovery and match creation', async () => {
     vi.stubGlobal(
       'fetch',

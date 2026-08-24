@@ -135,13 +135,278 @@ const battleActionResultSchema = {
     action: { type: 'object', additionalProperties: true },
     effects: {
       type: 'array',
-      items: { type: 'object', additionalProperties: true },
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'effectId',
+          'effectType',
+          'targetSide',
+          'targetCreatureId',
+          'amount',
+          'damageMultiplier',
+        ],
+        properties: {
+          effectId: { type: 'string' },
+          effectType: {
+            type: 'string',
+            enum: ['buff', 'damage', 'debuff', 'heal'],
+          },
+          targetSide: { type: 'string', enum: ['player', 'cpu'] },
+          targetCreatureId: { type: 'string' },
+          amount: { type: 'number' },
+          damageMultiplier: {
+            anyOf: [{ type: 'number' }, { type: 'null' }],
+          },
+          modifier: {
+            anyOf: [
+              {
+                type: 'object',
+                additionalProperties: false,
+                required: ['stat', 'operation'],
+                properties: {
+                  stat: {
+                    type: 'string',
+                    enum: ['hp', 'power', 'damage_multiplier'],
+                  },
+                  operation: {
+                    type: 'string',
+                    enum: ['add', 'multiply'],
+                  },
+                  durationTurns: {
+                    anyOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }],
+                  },
+                },
+              },
+              { type: 'null' },
+            ],
+          },
+        },
+      },
     },
     defeatedCreatureId: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     winner: {
       anyOf: [{ type: 'string', enum: ['player', 'cpu'] }, { type: 'null' }],
     },
     turnEnded: { type: 'boolean' },
+  },
+} as const;
+
+const publicEffectSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['effectType', 'effectValue', 'modifier'],
+  properties: {
+    effectType: {
+      type: 'string',
+      enum: ['buff', 'damage', 'debuff', 'heal'],
+    },
+    effectValue: { type: 'integer', minimum: 0 },
+    modifier:
+      battleActionResultSchema.properties.effects.items.properties.modifier,
+  },
+} as const;
+
+const publicMoveSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['id', 'name', 'moveType', 'powerCost'],
+  properties: {
+    id: { type: 'string' },
+    name: { type: 'string' },
+    moveType: {
+      type: 'string',
+      enum: ['basic', 'wit', 'grit', 'spark', 'spirit', 'mystic'],
+    },
+    powerCost: { type: 'integer', minimum: 0 },
+    effects: { type: 'array', items: publicEffectSchema },
+  },
+} as const;
+
+const publicCreatureSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'id',
+    'affinity',
+    'maxHp',
+    'maxPower',
+    'currentHp',
+    'remainingPower',
+    'defeated',
+    'moves',
+  ],
+  properties: {
+    id: { type: 'string' },
+    name: { type: 'string' },
+    affinity: {
+      type: 'string',
+      enum: ['wit', 'grit', 'spark', 'spirit', 'mystic'],
+    },
+    maxHp: { type: 'integer', minimum: 0 },
+    maxPower: { type: 'integer', minimum: 0 },
+    currentHp: { type: 'integer', minimum: 0 },
+    remainingPower: { type: 'integer', minimum: 0 },
+    defeated: { type: 'boolean' },
+    moves: { type: 'array', items: publicMoveSchema },
+    activeModifiers: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['stat', 'operation', 'percentage', 'remainingTurns'],
+        properties: {
+          stat: { const: 'damage_multiplier' },
+          operation: { const: 'multiply' },
+          percentage: { type: 'integer', minimum: -100 },
+          remainingTurns: {
+            anyOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }],
+          },
+        },
+      },
+    },
+  },
+} as const;
+
+const publicActionSchema = {
+  oneOf: [
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['type', 'creatureId'],
+      properties: {
+        type: { const: 'select_initial_creature' },
+        creatureId: { type: 'string' },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['type', 'creatureId'],
+      properties: {
+        type: { const: 'select_replacement' },
+        creatureId: { type: 'string' },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['type', 'moveId'],
+      properties: {
+        type: { const: 'use_move' },
+        moveId: { type: 'string' },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['type', 'powerCardId'],
+      properties: {
+        type: { const: 'use_power_card' },
+        powerCardId: { type: 'string' },
+      },
+    },
+  ],
+} as const;
+
+const matchStateSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'phase',
+    'turnNumber',
+    'currentSide',
+    'replacementSide',
+    'firstSide',
+    'selections',
+    'player',
+    'cpu',
+    'legalActions',
+    'turnDeadline',
+  ],
+  properties: {
+    phase: {
+      type: 'string',
+      enum: ['initial_selection', 'active', 'replacement', 'completed'],
+    },
+    turnNumber: { type: 'integer', minimum: 0 },
+    currentSide: {
+      anyOf: [{ type: 'string', enum: ['player', 'cpu'] }, { type: 'null' }],
+    },
+    replacementSide: {
+      anyOf: [{ type: 'string', enum: ['player', 'cpu'] }, { type: 'null' }],
+    },
+    firstSide: {
+      anyOf: [{ type: 'string', enum: ['player', 'cpu'] }, { type: 'null' }],
+    },
+    selections: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['player', 'cpu'],
+      properties: {
+        player: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        cpu: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+      },
+    },
+    player: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'creatures',
+        'powerCards',
+        'usedPowerCardIds',
+        'activeCreatureId',
+      ],
+      properties: {
+        creatures: { type: 'array', items: publicCreatureSchema },
+        powerCards: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['id', 'affinity', 'available'],
+            properties: {
+              id: { type: 'string' },
+              name: { type: 'string' },
+              affinity: {
+                type: 'string',
+                enum: ['wit', 'grit', 'spark', 'spirit', 'mystic'],
+              },
+              effects: { type: 'array', items: publicEffectSchema },
+              available: { type: 'boolean' },
+            },
+          },
+        },
+        usedPowerCardIds: { type: 'array', items: { type: 'string' } },
+        activeCreatureId: {
+          anyOf: [{ type: 'string' }, { type: 'null' }],
+        },
+      },
+    },
+    cpu: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'activeCreature',
+        'defeatedCreatures',
+        'remainingCreatureCount',
+        'usedPowerCardIds',
+        'remainingPowerCardCount',
+      ],
+      properties: {
+        activeCreature: {
+          anyOf: [publicCreatureSchema, { type: 'null' }],
+        },
+        defeatedCreatures: { type: 'array', items: publicCreatureSchema },
+        remainingCreatureCount: { type: 'integer', minimum: 0 },
+        usedPowerCardIds: { type: 'array', items: { type: 'string' } },
+        remainingPowerCardCount: { type: 'integer', minimum: 0 },
+      },
+    },
+    legalActions: { type: 'array', items: publicActionSchema },
+    turnDeadline: {
+      anyOf: [{ type: 'string', format: 'date-time' }, { type: 'null' }],
+    },
   },
 } as const;
 
@@ -170,7 +435,7 @@ const matchResponseSchema = {
     completedAt: {
       anyOf: [{ type: 'string', format: 'date-time' }, { type: 'null' }],
     },
-    state: { type: 'object', additionalProperties: true },
+    state: matchStateSchema,
     lastAction: { anyOf: [battleActionResultSchema, { type: 'null' }] },
     requestId: { type: 'string' },
   },
