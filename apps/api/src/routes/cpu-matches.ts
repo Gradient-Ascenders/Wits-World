@@ -195,8 +195,11 @@ const battleActionResultSchema = {
 const publicEffectSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['effectType', 'effectValue', 'modifier'],
+  required: ['damageMultiplier', 'effectType', 'effectValue', 'modifier'],
   properties: {
+    damageMultiplier: {
+      anyOf: [{ type: 'number', minimum: 0 }, { type: 'null' }],
+    },
     effectType: {
       type: 'string',
       enum: ['buff', 'damage', 'debuff', 'heal'],

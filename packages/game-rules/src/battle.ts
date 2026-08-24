@@ -78,6 +78,15 @@ export function getTypeMultiplier(
   return 1;
 }
 
+export function getEffectDamageMultiplier(
+  effectType: 'buff' | 'debuff',
+  effectValue: number,
+): number {
+  return effectType === 'buff'
+    ? 1 + effectValue / 100
+    : Math.max(0, 1 - effectValue / 100);
+}
+
 export function validateBattleDeck(deck: BattleDeck): void {
   if (deck.creatureCards.length !== deckCreatureCount) {
     throw new InvalidBattleSetupError(
@@ -662,10 +671,7 @@ function applyEffects(
       continue;
     }
 
-    const factor =
-      effect.effectType === 'buff'
-        ? 1 + amount / 100
-        : Math.max(0, 1 - amount / 100);
+    const factor = getEffectDamageMultiplier(effect.effectType, amount);
 
     targetCreature.modifiers = [
       ...targetCreature.modifiers,

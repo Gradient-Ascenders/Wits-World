@@ -183,6 +183,18 @@ describe('CPU match API client', () => {
 
   it('accepts the public projection of a rules-clamped 150% damage debuff', async () => {
     const match = activeMatch(3);
+    match.state.player.creatures[0]!.moves[0]!.effects = [
+      {
+        damageMultiplier: 0,
+        effectType: 'debuff',
+        effectValue: 150,
+        modifier: {
+          durationTurns: 2,
+          operation: 'multiply',
+          stat: 'damage_multiplier',
+        },
+      },
+    ];
     match.state.cpu.activeCreature!.activeModifiers = [
       {
         stat: 'damage_multiplier',
@@ -206,6 +218,22 @@ describe('CPU match API client', () => {
               },
             ],
           },
+        },
+        player: {
+          creatures: expect.arrayContaining([
+            expect.objectContaining({
+              moves: [
+                expect.objectContaining({
+                  effects: [
+                    expect.objectContaining({
+                      damageMultiplier: 0,
+                      effectValue: 150,
+                    }),
+                  ],
+                }),
+              ],
+            }),
+          ]),
         },
       },
     });

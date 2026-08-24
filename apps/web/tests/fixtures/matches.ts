@@ -26,6 +26,7 @@ export function buildCreature(
       {
         effects: [
           {
+            damageMultiplier: null,
             effectType: 'damage' as const,
             effectValue: 12,
             modifier: null,
@@ -74,6 +75,7 @@ export function buildMatch(
         available: true,
         effects: [
           {
+            damageMultiplier: null,
             effectType: 'heal' as const,
             effectValue: 10,
             modifier: null,

@@ -6,6 +6,7 @@ import {
   applyBattleAction,
   chooseCpuAction,
   createBattleState,
+  getEffectDamageMultiplier,
   getLegalActions,
   InvalidBattleSetupError,
   validateBattleDeck,
@@ -137,6 +138,7 @@ export interface PublicPowerCardView {
 }
 
 export interface PublicEffectView {
+  damageMultiplier: number | null;
   effectType: BattleEffect['effectType'];
   effectValue: number;
   modifier: NonNullable<BattleEffect['modifier']> | null;
@@ -1411,7 +1413,14 @@ function toPublicEffect(effect: BattleEffect): PublicEffectView {
     );
   }
 
+  const damageMultiplier =
+    effect.modifier?.stat === 'damage_multiplier' &&
+    (effect.effectType === 'buff' || effect.effectType === 'debuff')
+      ? getEffectDamageMultiplier(effect.effectType, effect.effectValue)
+      : null;
+
   return {
+    damageMultiplier,
     effectType: effect.effectType,
     effectValue: effect.effectValue,
     modifier: effect.modifier ?? null,

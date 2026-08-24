@@ -28,6 +28,7 @@ export interface MatchEffectModifier {
 }
 
 export interface MatchEffect {
+  damageMultiplier: number | null;
   effectType: 'buff' | 'damage' | 'debuff' | 'heal';
   effectValue: number;
   modifier: MatchEffectModifier | null;
@@ -865,10 +866,20 @@ function parseEffect(value: unknown): AppliedMatchEffect {
 function parseBattleEffect(value: unknown): MatchEffect {
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, ['effectType', 'effectValue', 'modifier']) ||
+    !hasExactKeys(value, [
+      'damageMultiplier',
+      'effectType',
+      'effectValue',
+      'modifier',
+    ]) ||
     !isEffectType(value.effectType) ||
     !isNonNegativeInteger(value.effectValue) ||
     !isNullableEffectModifier(value.modifier) ||
+    (value.damageMultiplier !== null &&
+      (!Number.isFinite(value.damageMultiplier) ||
+        Number(value.damageMultiplier) < 0)) ||
+    (value.modifier?.stat === 'damage_multiplier') !==
+      (value.damageMultiplier !== null) ||
     ((value.effectType === 'damage' || value.effectType === 'heal') &&
       value.modifier !== null) ||
     ((value.effectType === 'buff' || value.effectType === 'debuff') &&

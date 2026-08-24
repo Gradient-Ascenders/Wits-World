@@ -71,6 +71,10 @@ name, affinity, authored ordered effects, and server availability. Each effect
 contains its type and non-null executable value plus modifier stat, operation,
 and authored duration when applicable. Card names come from immutable
 `cpu_match_cards` snapshots; no current catalogue lookup can rename a match.
+For damage modifiers, the API additionally projects the rules-normalized
+multiplier. Previews render that authoritative multiplier, including the
+zero-multiplier clamp for debuffs greater than 100%, rather than calculating a
+combat rule in the browser or showing an impossible raw reduction.
 
 Only persistent damage multipliers appear beside an active Creature. Each
 stored modifier remains a separate entry with a signed percentage and the
@@ -152,4 +156,4 @@ control containment, horizontal overflow, and console/runtime errors at
 claim that a live backend match was completed end to end.
 
 This document was generated and edited with assistance from
-Codex-CLI[gpt-5.6-sol].
+Codex-CLI[gpt-5.6-sol] and Codex-CLI[GPT-5].

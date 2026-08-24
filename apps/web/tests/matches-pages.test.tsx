@@ -323,7 +323,14 @@ describe('authoritative CPU battle page', () => {
     ];
     player.moves = [
       {
-        effects: [{ effectType: 'damage', effectValue: 7, modifier: null }],
+        effects: [
+          {
+            damageMultiplier: null,
+            effectType: 'damage',
+            effectValue: 7,
+            modifier: null,
+          },
+        ],
         id: player.moves[0]!.id,
         moveType: 'basic',
         name: 'Measured Strike',
@@ -332,6 +339,7 @@ describe('authoritative CPU battle page', () => {
       {
         effects: [
           {
+            damageMultiplier: 0.85,
             effectType: 'debuff',
             effectValue: 15,
             modifier: {
@@ -360,8 +368,14 @@ describe('authoritative CPU battle page', () => {
       affinity: 'wit',
       available: true,
       effects: [
-        { effectType: 'damage', effectValue: 8, modifier: null },
         {
+          damageMultiplier: null,
+          effectType: 'damage',
+          effectValue: 8,
+          modifier: null,
+        },
+        {
+          damageMultiplier: null,
           effectType: 'buff',
           effectValue: 3,
           modifier: {

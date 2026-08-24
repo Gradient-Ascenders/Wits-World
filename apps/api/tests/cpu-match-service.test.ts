@@ -386,7 +386,8 @@ describe('CPU match service', () => {
         },
         {
           effectType: 'debuff',
-          effectValue: 10,
+          effectValue: 150,
+          damageMultiplier: 0,
           modifier: expect.objectContaining({ durationTurns: null }),
         },
       ],
@@ -682,7 +683,7 @@ function effectRichDeck(prefix: 'player' | 'cpu'): BattleDeck {
           {
             id: `${prefix}-power-effect-6`,
             effectType: 'debuff',
-            effectValue: 10,
+            effectValue: 150,
             modifier: {
               stat: 'damage_multiplier',
               operation: 'multiply',

@@ -49,7 +49,14 @@ test('completes a mocked authoritative CPU match through the production UI', asy
   ];
   openingPlayer.moves = [
     {
-      effects: [{ effectType: 'damage', effectValue: 7, modifier: null }],
+      effects: [
+        {
+          damageMultiplier: null,
+          effectType: 'damage',
+          effectValue: 7,
+          modifier: null,
+        },
+      ],
       id: openingPlayer.moves[0]!.id,
       moveType: 'basic',
       name: 'Measured Strike',
@@ -58,6 +65,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     {
       effects: [
         {
+          damageMultiplier: 0.85,
           effectType: 'debuff',
           effectValue: 15,
           modifier: {
@@ -86,8 +94,14 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     affinity: 'wit',
     available: true,
     effects: [
-      { effectType: 'damage', effectValue: 8, modifier: null },
       {
+        damageMultiplier: null,
+        effectType: 'damage',
+        effectValue: 8,
+        modifier: null,
+      },
+      {
+        damageMultiplier: null,
         effectType: 'buff',
         effectValue: 3,
         modifier: {

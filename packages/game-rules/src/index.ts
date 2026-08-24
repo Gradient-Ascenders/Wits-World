@@ -2,6 +2,7 @@ export {
   applyBattleAction,
   chooseCpuAction,
   createBattleState,
+  getEffectDamageMultiplier,
   getLegalActions,
   getTypeMultiplier,
   validateBattleDeck,

@@ -14,19 +14,27 @@ describe('battle effect presentation', () => {
     [modifiedEffect('buff', 3, 'power', 'add'), 'Restore 3 Power'],
     [modifiedEffect('debuff', 2, 'power', 'add'), 'Opponent loses 2 Power'],
     [
-      modifiedEffect('buff', 15, 'damage_multiplier', 'multiply', 3),
+      modifiedEffect('buff', 15, 'damage_multiplier', 'multiply', 3, 1.15),
       'Damage +15% · 3 turns',
     ],
     [
-      modifiedEffect('debuff', 15, 'damage_multiplier', 'multiply', 3),
+      modifiedEffect('debuff', 15, 'damage_multiplier', 'multiply', 3, 0.85),
       'Opponent damage −15% · 3 turns',
     ],
     [
-      modifiedEffect('buff', 15, 'damage_multiplier', 'multiply', null),
+      modifiedEffect('buff', 15, 'damage_multiplier', 'multiply', null, 1.15),
       'Damage +15% · Rest of battle',
     ],
-  ])('describes the authored effect as %s', (input, expected) => {
+  ])('describes the effect preview as %s', (input, expected) => {
     expect(describeEffect(input)).toBe(expected);
+  });
+
+  it('previews a 150% damage debuff as the rules-clamped 100% reduction', () => {
+    expect(
+      describeEffect(
+        modifiedEffect('debuff', 150, 'damage_multiplier', 'multiply', 2, 0),
+      ),
+    ).toBe('Opponent damage −100% · 2 turns');
   });
 
   it('preserves authored order when a Power card has multiple effects', () => {
@@ -119,7 +127,7 @@ function effect(
   effectType: 'damage' | 'heal',
   effectValue: number,
 ): MatchEffect {
-  return { effectType, effectValue, modifier: null };
+  return { damageMultiplier: null, effectType, effectValue, modifier: null };
 }
 
 function modifiedEffect(
@@ -128,8 +136,10 @@ function modifiedEffect(
   stat: 'damage_multiplier' | 'hp' | 'power',
   operation: 'add' | 'multiply',
   durationTurns?: number | null,
+  damageMultiplier: number | null = null,
 ): MatchEffect {
   return {
+    damageMultiplier,
     effectType,
     effectValue,
     modifier: { durationTurns, operation, stat },

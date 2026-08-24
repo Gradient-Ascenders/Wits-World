@@ -32,7 +32,8 @@ export function describeEffect(effect: MatchEffect): string {
 
   const direction = effect.effectType === 'buff' ? '+' : '−';
   const subject = effect.effectType === 'buff' ? 'Damage' : 'Opponent damage';
-  return `${subject} ${direction}${effect.effectValue}% · ${describeDuration(
+  const percentage = effectiveDamagePercentage(effect.damageMultiplier);
+  return `${subject} ${direction}${percentage}% · ${describeDuration(
     modifier.durationTurns ?? null,
   )}`;
 }
@@ -82,6 +83,13 @@ export function describeAppliedEffect(effect: AppliedMatchEffect): string {
 function describeDuration(remainingTurns: number | null): string {
   if (remainingTurns === null) return 'Rest of battle';
   return `${remainingTurns} ${remainingTurns === 1 ? 'turn' : 'turns'}`;
+}
+
+function effectiveDamagePercentage(multiplier: number | null): number {
+  if (multiplier === null) {
+    throw new Error('Damage multiplier preview is missing its projection.');
+  }
+  return Math.abs(Math.round((multiplier - 1) * 100));
 }
 
 function titleCase(value: string): string {
