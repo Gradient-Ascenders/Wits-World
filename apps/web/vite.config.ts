@@ -43,7 +43,8 @@ export default defineConfig(({ mode }) => ({
     },
     css: false,
     environment: 'jsdom',
-    fileParallelism: false,
+    fileParallelism: true,
+    maxWorkers: 2,
     environmentOptions: {
       jsdom: {
         url: 'http://localhost/',

@@ -173,12 +173,12 @@ describe('timed player challenge', () => {
 
     renderChallenge();
 
-    expect(
-      await screen.findByRole('heading', { name: 'Your challenge result' }),
-    ).toBeVisible();
-    expect(
-      screen.getByRole('heading', { name: 'Your challenge result' }),
-    ).toHaveFocus();
+    const resultHeading = await screen.findByRole('heading', {
+      name: 'Your challenge result',
+    });
+
+    expect(resultHeading).toBeVisible();
+    await waitFor(() => expect(resultHeading).toHaveFocus());
     expect(screen.getByRole('status')).toHaveTextContent(
       'Your challenge result is ready.',
     );
