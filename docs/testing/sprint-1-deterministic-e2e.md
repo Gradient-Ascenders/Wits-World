@@ -1,5 +1,13 @@
 # Sprint 1 deterministic end-to-end test
 
+:::note[Historical Sprint 1 release evidence]
+
+This procedure preserves the deterministic test for the Sprint 1
+location/exploration slice. The current broader procedure is
+[Basic-tier deterministic E2E](basic-tier-deterministic-e2e.md).
+
+:::
+
 This suite provides repeatable release-validation evidence for the Sprint 1
 `/explore` vertical slice. It covers the player journey associated with
 [issue #20](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/20) and
@@ -112,3 +120,5 @@ CI can run the same root command without changing the test architecture.
 
 This document and the associated implementation were created with assistance
 from Codex[GPT-5].
+The historical-status notice was added with assistance from
+Codex-CLI[GPT-5].

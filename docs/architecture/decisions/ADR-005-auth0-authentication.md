@@ -52,6 +52,30 @@ production. The real-Auth0 E2E suite therefore verifies the local-storage
 policy, not production's memory-cache/custom-domain restoration; that mechanism
 requires a post-cutover production-mode browser smoke test.
 
+The custom-domain cutover is live as of 22 August 2026. The canonical production
+issuer is `https://auth.witsworld.co.za/`, the Web origin is
+`https://witsworld.co.za`, and the API audience remains
+`https://api.wits-world.invalid`. Public OIDC discovery, deployed Web
+configuration, and exact API CORS were reviewed; the signed-in storage,
+hard-refresh, console, and correlated Azure-log checks remain operator-run
+release evidence.
+
+Production currently uses the Auth0 SPA/application named `Wits World` with
+both localhost and production origins in its allowlists. This is a known
+temporary deviation from this ADR's requirement to separate development and
+production Auth0 resources; it is not an accepted architecture exception.
+Separating those resources remains outstanding remediation. This ADR does not
+require separate tenants specifically.
+
+The current shared SPA dashboard configuration is:
+
+| Setting                | Current values                                     |
+| ---------------------- | -------------------------------------------------- |
+| Allowed Callback URLs  | `http://localhost:5173`, `https://witsworld.co.za` |
+| Allowed Logout URLs    | `http://localhost:5173`, `https://witsworld.co.za` |
+| Allowed Web Origins    | `http://localhost:5173`, `https://witsworld.co.za` |
+| Allowed Origins (CORS) | Empty                                              |
+
 Refreshing or directly revisiting a protected route must restore the same local
 Wits World player or fail safely without protected player data. The browser
 therefore waits for `GET /api/v1/auth/me` and compares its stable local player
@@ -68,48 +92,50 @@ and the existing audience; it does not accept the old and new issuers together.
 
 ## Development configuration
 
+This section retains its established heading and URL, but the tenant and SPA
+configuration below are currently shared with production pending the resource
+separation required by this ADR.
+
 ### Tenant
 
-| Setting          | Value                                        |
-| ---------------- | -------------------------------------------- |
-| Domain           | `dev-5artxfvpdennq8qm.us.auth0.com`          |
-| Canonical issuer | `https://dev-5artxfvpdennq8qm.us.auth0.com/` |
-| Purpose          | Wits World development authentication        |
+| Setting          | Value                                                                        |
+| ---------------- | ---------------------------------------------------------------------------- |
+| Domain           | `dev-5artxfvpdennq8qm.us.auth0.com`                                          |
+| Canonical issuer | `https://dev-5artxfvpdennq8qm.us.auth0.com/`                                 |
+| Purpose          | Shared development and production authentication pending resource separation |
 
 The domain is configuration rather than a secret. Tenant administration
 credentials, passwords, tokens, and Management API credentials remain private.
 
 ### Single-page application
 
-| Setting              | Value                       |
-| -------------------- | --------------------------- |
-| Name                 | `Wits World`                |
-| Application type     | Single Page Web Application |
-| Allowed callback URL | `http://localhost:5173`     |
-| Allowed logout URL   | `http://localhost:5173`     |
-| Allowed web origin   | `http://localhost:5173`     |
+| Setting                | Value                                              |
+| ---------------------- | -------------------------------------------------- |
+| Name                   | `Wits World`                                       |
+| Application type       | Single Page Web Application                        |
+| Allowed Callback URLs  | `http://localhost:5173`, `https://witsworld.co.za` |
+| Allowed Logout URLs    | `http://localhost:5173`, `https://witsworld.co.za` |
+| Allowed Web Origins    | `http://localhost:5173`, `https://witsworld.co.za` |
+| Allowed Origins (CORS) | Empty                                              |
 
 The SPA Client ID is public application configuration. The application must not
 use or expose a client secret.
 
 ### API resource
 
-| Setting                 | Value                                                  |
-| ----------------------- | ------------------------------------------------------ |
-| Name                    | `Wits World API` (target; tenant verification pending) |
-| Identifier and audience | `https://api.wits-world.invalid`                       |
-| Signing algorithm       | RS256                                                  |
+| Setting                 | Value                            |
+| ----------------------- | -------------------------------- |
+| Identifier and audience | `https://api.wits-world.invalid` |
+| Signing algorithm       | RS256                            |
 
 The API identifier is a logical audience value. It is not an instruction to
 send HTTP requests to that address.
 
 The SPA application rename was verified against the hosted New Universal Login
 page on 22 August 2026: its title is `Log in | Wits World` and its prompt says
-the player is continuing to `Wits World`. The API friendly name is not exposed
-on that public page. A tenant administrator must confirm it under **Dashboard →
-Applications → APIs → Wits World API → Settings → General Settings → Name**.
-Only the friendly `Name` may be changed; the existing Identifier/audience must
-remain `https://api.wits-world.invalid`.
+the player is continuing to `Wits World`. The API resource's dashboard-friendly
+display name is not part of the architectural contract. The existing
+Identifier/audience must remain `https://api.wits-world.invalid`.
 
 ## Token contract
 
@@ -172,7 +198,8 @@ local value in Wits World after authentication.
 Wits World identifies an externally authenticated principal using the pair
 `(iss, sub)`, not the `sub` claim alone.
 
-For the current development tenant, the canonical issuer is:
+For local development against the underlying Auth0 tenant domain, the canonical
+issuer is:
 
 `https://dev-5artxfvpdennq8qm.us.auth0.com/`
 
@@ -273,7 +300,11 @@ handling.
 
 ## Password reset
 
-Password reset will use Auth0's hosted reset flow for database-connection users.
+Password reset is a Basic requirement planned for Sprint 2 after, or together
+with, a proper player profile/account page. It is not currently implemented.
+The eventual user capability may use Auth0's hosted reset flow for
+database-connection users; Wits World does not need to implement its own reset
+mechanism.
 
 The Wits World web application and API will not receive or process the user's
 current or replacement password.
@@ -284,6 +315,12 @@ feature is considered complete.
 ## Account deletion
 
 `BASIC-12` defines the Basic-tier deletion and retention policy.
+
+The account-deletion capability is planned for Sprint 2 after, or together
+with, the player profile/account page. It is not currently implemented. The
+security and data-lifecycle rules below define the intended implementation; the
+presence of preliminary backend code, migrations, or tests does not satisfy the
+user-facing Basic requirement.
 
 Permanent deletion requires:
 
@@ -331,10 +368,10 @@ challenge answers, authored content, and gameplay history are introduced, their
 deletion or retention handling must follow `BASIC-12` before the complete Basic
 release is declared compliant.
 
-The player-facing registration, password-reset, and permanent-deletion journey
-remains separate Product and Player Experience frontend work and must be linked
-back to the account-lifecycle issue before that user-facing acceptance work is
-considered complete.
+Hosted registration and sign-in are available through Auth0 Universal Login.
+Password-reset and permanent-deletion capabilities, with their profile/account
+entry point, remain planned Sprint 2 work and must be linked back to the
+account-lifecycle requirements before acceptance.
 
 ## Environment configuration
 
@@ -372,14 +409,15 @@ domain identifier.
 the trusted API environment. The Management application is granted only the
 `delete:users` permission.
 
-The account-deletion retry scheduler additionally uses:
+The preliminary account-deletion backend foundation additionally defines:
 
 ```text
 ACCOUNT_DELETION_RETRY_INTERVAL_MS
 ```
 
-The committed development default is one minute. This is an operational retry
-cadence, not the recent-authentication security threshold.
+The committed development default is one minute. This is a proposed operational
+retry cadence for the planned capability, not proof that account deletion is
+implemented and not the recent-authentication security threshold.
 
 Management credentials must never use a `VITE_` prefix.
 
@@ -405,8 +443,8 @@ contain safe configuration or placeholders.
   Auth0 administration.
 - Partial deletion failures can recover automatically from durable database
   state.
-- A later production tenant can use the same architectural contract with
-  different configuration.
+- A later separate production Auth0 resource can use the same architectural
+  contract with different configuration.
 
 ### Negative
 
@@ -470,7 +508,7 @@ risk.
 
 ## Follow-up work
 
-The following existing Gitea issues implement this decision:
+The following closed Gitea issues implemented this decision:
 
 - [Gitea #8 — Integrate player sign-in and protected front-end routes](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/8)
   Implements the React Auth0 integration, sign-in, sign-out, protected routes,
@@ -481,15 +519,20 @@ The following existing Gitea issues implement this decision:
   validation, signature and expiry validation, authenticated request context,
   safe authentication errors, and the OpenAPI security scheme.
 
-Gitea #63 implements the local identity, Basic role, account lifecycle, recent
-reauthentication, trusted Auth0 deletion, anonymisation, and automatic retry
-backend foundations.
+Gitea #63 and the repository contain preliminary account-lifecycle backend,
+reauthentication, anonymisation, and retry foundations. The team does not treat
+those foundations as implementation of the password-reset or account-deletion
+requirements.
 
-Additional work still covers:
+Sprint 2 work still covers:
 
-- player-facing registration, password-reset, and deletion controls;
-- extending deletion cleanup as later Basic player-owned data models are added;
-- production Auth0 configuration;
+- a proper player profile/account page;
+- password-reset capability, which may use Auth0's hosted flow;
+- permanent account deletion and complete `BASIC-12` cleanup;
+- production signed-in storage/console/log evidence and Auth0 email-policy
+  confirmation;
+- remediation of the temporary shared development/production Auth0 SPA
+  resource;
 - Wits institutional SSO if approved and available.
 
 ## Confirmation required
@@ -499,7 +542,6 @@ The Basic-tier items below are tracked with named owners and evidence in the
 The team must still confirm:
 
 - whether Wits SSO is available or required;
-- production web and API domains;
 - whether any institutional restrictions apply to Auth0.
 
 ---

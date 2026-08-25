@@ -43,10 +43,13 @@ Use the browser map integration only for presentation and navigation.
 
 The current implementation uses Mapbox GL JS v3 with
 `mapbox://styles/mapbox/standard`, Mapbox Standard's 3D configuration, and the
-existing provider-neutral adapter boundary. This implementation choice remains
-subject to formal client/lecturer external-service acceptance, production token
-and CSP review, and confirmation of a licensed Wits campus dataset. See the
-[Mapbox Standard migration boundary](../mapbox-standard-migration.md).
+existing provider-neutral adapter boundary. The team confirms this as an
+allowed team-selected integration within the project's broad implementation
+discretion. No separate explicit client/lecturer approval of Mapbox by name is
+required or claimed. Production token/CSP/privacy review, licensing/terms,
+usage and cost ownership, and confirmation of any licensed Wits campus dataset
+remain operational or data-evidence requirements. See the [Mapbox Standard
+migration boundary](../mapbox-standard-migration.md).
 
 The current provider comparison and Wits-campus trial requirements are recorded
 in the [map-provider evaluation](../map-provider-evaluation.md). That evaluation
@@ -133,4 +136,5 @@ eligibility model.
 
 The preceding document was planned and generated with the assistance of:
 ChatGPT-Web[GPT-5.6 Thinking] and updated with:
-Codex-CLI[GPT-5].
+Codex-CLI[GPT-5]. The current Mapbox decision-status clarification was generated,
+edited, and reviewed with the assistance of Codex[GPT-5].

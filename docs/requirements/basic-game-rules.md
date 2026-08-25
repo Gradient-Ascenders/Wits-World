@@ -7,6 +7,13 @@ rules for the Wits Quest Basic tier. It is an implementation input, not an
 implementation. The status and evidence for each rule are maintained in the
 [Basic-tier decision register](basic-tier-decision-register.md).
 
+The team confirmed on 25 August 2026 that the implemented five-question
+challenge, score-based zero-to-two-card rewards, and current move/Power-card CPU
+battle rules are intentional Wits World product rules. That team decision does
+not assert that the lecturer or client formally amended the supplied project
+brief. As of 25 August 2026, no supplementary Wits Quest brief had been provided
+to the team.
+
 No browser may submit or calculate an authoritative identity, eligibility,
 correctness, score, reward, deck validity, legal battle action, battle outcome,
 or ownership result.
@@ -78,6 +85,10 @@ or ownership result.
   calculated from the approved score policy.
 
 ### Account deletion and re-registration
+
+These are confirmed Basic requirements, not current implementation. Account
+deletion is planned for Sprint 2 after, or together with, a proper player
+profile/account page.
 
 - Deletion requires recent authentication and explicit permanent-deletion
   confirmation. Access locks immediately; Basic has no deletion grace period.

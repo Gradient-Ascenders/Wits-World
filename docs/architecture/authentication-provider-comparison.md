@@ -1,5 +1,17 @@
 # Authentication Provider Comparison
 
+:::info[Decision input]
+
+This comparison records the evaluation that led to Auth0. The current accepted
+authentication decision and implementation boundaries are maintained in
+[ADR-005](decisions/ADR-005-auth0-authentication.md).
+
+The provider comparison and 7 August 2026 pricing are historical decision
+inputs. Later sections record the implemented identity contract and explicitly
+label the evaluation-time gaps that have since been resolved.
+
+:::
+
 ## Document status
 
 - **Status:** Accepted
@@ -68,11 +80,11 @@ Provider pricing and limits were reviewed on 7 August 2026. These values are
 time-sensitive and must be rechecked before production deployment or if the
 project's expected user count changes.
 
-| Provider | Free-tier or software cost                                                | Important constraints                                                                                                                                                                                                                      | Cost impact on Wits World                                                                                                                                                                                                                       |
-| -------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Auth0    | Free plan at $0 for up to 25,000 external monthly active users            | The Free plan includes one tenant, three administrators/contributors, one day of log retention, and lower API rate limits. Paid self-service plans provide higher limits and additional environment and security features.                 | Suitable for development and the currently identified project scope. The one-tenant Free-plan limit is important: strict separation into dedicated development and production tenants may require a paid plan or a later architecture decision. |
-| Clerk    | Hobby plan at $0 for up to 50,000 monthly retained users                  | Clerk measures monthly retained users rather than Auth0-style monthly active users. Paid Pro currently starts at $25/month when billed monthly. Some production security and customisation features require a paid plan.                   | The free user allowance is larger than Auth0's, but this does not outweigh the architectural preference for Auth0's explicit issuer-and-audience API boundary and the team's selected integration approach.                                     |
-| Keycloak | No software licence fee; Keycloak is open source under Apache License 2.0 | There is no hosted Keycloak free tier supplied by the project itself. The team would be responsible for compute, persistent storage, database infrastructure, TLS, email delivery, backups, monitoring, updates, and security maintenance. | The licence cost is zero, but infrastructure and operational effort would be transferred to the team. This creates substantially more work than a hosted provider for the current project.                                                      |
+| Provider | Free-tier or software cost                                                | Important constraints                                                                                                                                                                                                                      | Cost impact on Wits World                                                                                                                                                                                                  |
+| -------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Auth0    | Free plan at $0 for up to 25,000 external monthly active users            | The Free plan includes one tenant, three administrators/contributors, one day of log retention, and lower API rate limits. Paid self-service plans provide higher limits and additional environment and security features.                 | Suitable for development and the currently identified project scope. Development and production resource separation must be designed within the applicable plan limits; this comparison does not require separate tenants. |
+| Clerk    | Hobby plan at $0 for up to 50,000 monthly retained users                  | Clerk measures monthly retained users rather than Auth0-style monthly active users. Paid Pro currently starts at $25/month when billed monthly. Some production security and customisation features require a paid plan.                   | The free user allowance is larger than Auth0's, but this does not outweigh the architectural preference for Auth0's explicit issuer-and-audience API boundary and the team's selected integration approach.                |
+| Keycloak | No software licence fee; Keycloak is open source under Apache License 2.0 | There is no hosted Keycloak free tier supplied by the project itself. The team would be responsible for compute, persistent storage, database infrastructure, TLS, email delivery, backups, monitoring, updates, and security maintenance. | The licence cost is zero, but infrastructure and operational effort would be transferred to the team. This creates substantially more work than a hosted provider for the current project.                                 |
 
 ### Auth0 account-deletion constraints
 
@@ -113,11 +125,11 @@ the hand-written API. The team avoids operating an identity server while
 retaining local control over application roles and authorisation.
 
 The primary cost-related limitation is the Auth0 Free plan's single-tenant
-allowance. Production environment isolation must therefore be reconsidered when
-deployment configuration is finalised. If separate production and development
-tenants become mandatory, the team must evaluate the then-current Auth0 paid
-plan or reconsider the provider decision rather than silently exceeding the
-selected free-tier assumptions.
+allowance. Development and production resource separation must therefore be
+designed within the applicable plan limits. If the intended resource separation
+cannot be achieved on the selected plan, the team must evaluate the then-current
+Auth0 plan or reconsider the provider decision rather than silently exceeding
+the selected free-tier assumptions.
 
 ## Auth0
 
@@ -235,7 +247,7 @@ Wits World will be authoritative for:
 
 - local user records;
 - application roles;
-- player, author, and administrator permissions;
+- Player and Author permissions;
 - object ownership;
 - event eligibility;
 - rewards;
@@ -249,7 +261,8 @@ Wits World will be authoritative for:
 Wits World identifies an externally authenticated principal using the pair
 `(iss, sub)`, not the `sub` claim alone.
 
-For the current development tenant, the canonical issuer is:
+For local development against the underlying Auth0 tenant domain, the canonical
+issuer is:
 
 `https://dev-5artxfvpdennq8qm.us.auth0.com/`
 
@@ -284,9 +297,9 @@ A future Auth0 tenant change creates a different issuer namespace. Wits World
 must therefore perform an explicit identity migration or account-linking process
 when moving existing users between issuers. It must not assume that matching
 `sub` values from two different issuers refer to the same person.
-New local users will receive the `player` role by default. The browser will not
-be allowed to submit or select its own role. Author and administrator roles will
-be granted through protected application processes.
+New local users receive the `player` role by default. The browser cannot submit
+or select its own role. Basic has no Administrator role; Author assignment and
+revocation are out-of-band database or deployment operations.
 
 Auth0 RBAC and custom role claims are not part of the initial implementation.
 They may be reconsidered only when a later requirement demonstrates that local
@@ -317,6 +330,11 @@ application roles are insufficient.
 Database-connection users will reset passwords through Auth0 Universal Login or
 the Auth0 password-reset flow.
 
+The Wits World password-reset capability is not currently implemented. It is a
+Basic requirement planned for Sprint 2 after, or together with, a proper player
+profile/account page. The provider-hosted flow is an available implementation
+option; the requirement does not mandate a custom Wits World reset mechanism.
+
 Wits World will not receive, store, compare, or log user passwords.
 
 Google-authenticated users manage their credentials through Google. Future
@@ -325,7 +343,7 @@ provider rather than through the Wits World API.
 
 ## Account deletion
 
-A later account-deletion feature must coordinate:
+The evaluation identified that account deletion must coordinate:
 
 1. user reauthentication where appropriate;
 2. disabling further application activity;
@@ -337,12 +355,13 @@ A later account-deletion feature must coordinate:
 
 The browser must not receive an Auth0 Management API credential.
 
-The exact deletion and retention workflow requires a separate design before the
-account-deletion endpoint is implemented. The required data-class decisions,
-owners, and implementation gate are tracked as `BASIC-12` in the
-[Basic-tier decision register](../requirements/basic-tier-decision-register.md).
+`BASIC-12` subsequently confirmed the deletion and retention policy. The
+account-deletion capability is not currently implemented and is planned for
+Sprint 2 after, or together with, the player profile/account page. Preliminary
+backend code, migrations, and tests do not satisfy the requirement; see
+[ADR-005](decisions/ADR-005-auth0-authentication.md#account-deletion).
 
-## Unresolved decisions
+## Evaluation-time unresolved decisions and current status
 
 ### Wits single sign-on
 
@@ -361,33 +380,38 @@ until the relevant stakeholder confirms:
 
 ### Production domains
 
-Production callback, logout, web-origin, and API values cannot be configured
-until the web and API deployment domains are confirmed.
+This evaluation-time blocker is resolved. The canonical Web origin is
+`https://witsworld.co.za`, the deployed API uses its Azure App Service origin,
+and the production Auth0 issuer is `https://auth.witsworld.co.za/`. Public OIDC
+discovery, deployed Web configuration, and exact API CORS were reviewed on
+22 August 2026. A real signed-in storage/console/log smoke check remains an
+operator-run release gate.
 
 ### Account-retention rules
 
-The team still needs confirmation about which gameplay, audit, and authoring
-records must be deleted, anonymised, or retained when an account is deleted.
-This remains an explicit blocker rather than an implementation default; see
-`BASIC-12` in the
+This evaluation-time blocker was resolved by `BASIC-12` in the
 [Basic-tier decision register](../requirements/basic-tier-decision-register.md).
+That confirmed policy must not be confused with proof that every later
+player-owned data cleanup or production retention operation has been completed.
 
-## Implementation boundaries
+## Implementation status
 
-This decision does not yet implement:
+The original comparison did not itself implement authentication. The repository
+now contains React sign-in/sign-out and protected routes, access-token
+acquisition, Fastify token validation, local-player provisioning, local
+Player/Author authorisation, Google Player Name setup, preliminary
+account-deletion artifacts, and production custom-domain configuration.
 
-- React login or logout components;
-- route protection;
-- access-token acquisition;
-- Fastify access-token validation;
-- local-user provisioning;
-- application role middleware;
-- password-reset user-interface integration;
-- account deletion;
-- production Auth0 configuration;
-- Wits SSO.
+Production currently uses the Auth0 SPA/application named `Wits World` with
+both localhost and production callback, logout, and web-origin entries. Allowed
+Origins (CORS) is empty. ADR-005 treats this as a temporary deviation: separate
+development and production Auth0 resources remain outstanding remediation,
+without requiring separate tenants specifically.
 
-Those changes belong to their corresponding implementation issues.
+Password reset, account deletion, and their proper player profile/account page
+are unimplemented Basic requirements planned for Sprint 2. Other remaining work
+includes release-specific production Auth0 operator evidence, remediation of
+the shared SPA resource, and Wits SSO if it is approved and available.
 
 ---
 
@@ -403,3 +427,5 @@ Those changes belong to their corresponding implementation issues.
 
 The preceding document was planned and generated with the assistance of:
 ChatGPT-Web[GPT-5.6 Thinking] and Codex[GPT-5].
+
+The decision-status notice was added with assistance from Codex-CLI[GPT-5].

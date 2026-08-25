@@ -14,11 +14,12 @@ The current foundation provides:
 - API integration tests.
 
 Bearer-token authentication, protected event discovery, and server-side location
-eligibility are implemented in the API. Local-user provisioning, application
-authorisation beyond authentication, challenge sessions, answer marking,
-rewards, cards, and battles are introduced in later issues.
+eligibility are implemented in the API. The current API also implements local
+player provisioning and lifecycle, application roles and Author protection,
+challenge attempts and marking, atomic rewards, card collections, saved decks,
+CPU matches/history, and protected Author content operations.
 
-The proposed contracts for that later work are documented in the
+The detailed challenge and persistence contracts are documented in the
 [challenge attempt API contract](../../docs/architecture/challenge-attempt-api-contract.md)
 and the
 [challenge, reward, and card persistence design](../../docs/database/challenge-reward-persistence-design.md).
@@ -833,10 +834,11 @@ The API integration tests cover:
 The API foundation does not yet include:
 
 - production monitoring;
-- background challenge-expiry processing; or
-- battle and authoring operations.
+- background challenge-expiry processing outside request-time finalisation.
 
-Those capabilities are introduced through later tracked issues.
+Implemented routes finalise expired challenge attempts when the relevant
+authoritative operation loads or submits the attempt; a separate background
+expiry worker is not currently part of the runtime.
 
 ---
 

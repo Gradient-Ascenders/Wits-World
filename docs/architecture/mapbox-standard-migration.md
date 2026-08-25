@@ -4,11 +4,15 @@
 
 Implementation tracked by Gitea issue [#92](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/92), linked to decision issue [#62](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/62).
 
-The renderer migration is implemented on the issue branch, but formal client or
-lecturer acceptance of the external Mapbox service, the licensed Wits campus
-dataset, and production billing remains pending. The supplied 3D campus image
-is visual art direction only. It is not a source of geometry, names, heights,
-or copyrighted map assets.
+The renderer migration is implemented in the current application and issue #92
+is closed. The team confirms that Mapbox is an allowed team-selected integration
+within the broad implementation-technology discretion given to the project; a
+separate explicit client or lecturer approval of Mapbox by name is not a
+blocking decision and is not claimed. Licensing and terms review, cost
+ownership, production token/CSP/privacy checks, usage monitoring, and any
+licensed Wits campus dataset remain operational or data-evidence requirements.
+The supplied 3D campus image is visual art direction only. It is not a source
+of geometry, names, heights, or copyrighted map assets.
 
 ## Renderer decision and boundary
 
@@ -71,8 +75,9 @@ Before enabling this layer, the team still needs:
 - evidence for boundaries, building footprints, names, IDs, heights, paths,
   entrances, accessible routes, services, and landmarks;
 - a source/licence and verification record for each release; and
-- API/Security Lead and relevant client/lecturer review of public exposure,
-  attribution, and the replacement/clipping choice.
+- API/Security Lead review of public exposure, attribution, and the
+  replacement/clipping choice, plus any review required by the dataset licence
+  or campus-data owner.
 
 ## Privacy and configuration
 
@@ -128,4 +133,5 @@ This document was planned and edited with assistance from:
 
 ```text
 Codex-CLI[GPT-5]
+Codex[GPT-5]
 ```

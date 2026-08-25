@@ -1,6 +1,6 @@
 # Mapbox operations and deployment notes
 
-This note applies to the `/explore` Mapbox GL JS integration in issue [#92](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/92). It records the current public-browser configuration and operational work still required before production acceptance.
+This note applies to the `/explore` Mapbox GL JS integration in issue [#92](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/92). Mapbox is a confirmed team-selected technology within the project's implementation discretion; this does not claim a named client/lecturer approval. The note records the current public-browser configuration and operational work still required for production readiness.
 
 ## Browser token
 
@@ -27,7 +27,7 @@ Mapbox's [token guidance](https://docs.mapbox.com/accounts/guides/tokens/)
 documents public scopes and URL restrictions. Security Lead review is required
 for the final token scopes and every deployed origin. Review the
 [Mapbox privacy policy](https://www.mapbox.com/legal/privacy) with the project's
-privacy boundary before external-service acceptance.
+privacy boundary before production use.
 
 ## Content Security Policy
 
@@ -97,14 +97,15 @@ be put in a Mapbox source, marker, URL, request, log, storage entry, or
 analytics event. Event publication, distance, eligibility, and database
 authority remain in the Wits Quest API/PostgreSQL/PostGIS boundary.
 
-## Acceptance checklist
+## Operational readiness checklist
 
 Before production use, obtain and record:
 
 - API/Security Lead review of token scopes, URL restrictions, CSP, and privacy;
 - deployment evidence from every approved web origin;
 - sanitized map-load monitoring evidence and an operating owner for spend review;
-- formal client/lecturer or brief acceptance of the external-service choice;
+- a recorded licensing/terms review, cost/usage owner, and decision that the
+  configured Mapbox service is suitable for the intended release;
 - a licensed, verified Wits campus dataset or a documented decision to run the
   basemap-only integration; and
 - manual checks at 360px, 390px, 768px, and desktop for lighting, 3D depth,
@@ -115,4 +116,5 @@ This document was planned and edited with assistance from:
 
 ```text
 Codex-CLI[GPT-5]
+Codex[GPT-5]
 ```

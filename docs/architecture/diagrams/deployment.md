@@ -75,12 +75,12 @@ flowchart LR
 
 ## Remaining deployment and operational decisions
 
-The current hosts, Auth0 provider, production origins, and platform-managed
-secret boundaries are selected. The following still require review or formal
-acceptance:
+The current hosts, Auth0 provider, Mapbox team technology choice, production
+origins, and platform-managed secret boundaries are selected. The following
+still require operational review or evidence:
 
-- Mapbox external-service, licensing, production-token/CSP, and campus-data
-  acceptance;
+- Mapbox licensing/terms, production-token/CSP/privacy, usage/cost ownership,
+  and campus-data readiness;
 - operational approval and evidence for database backup and recovery;
 - credential rotation and ongoing least-privilege review; and
 - production observability tooling.

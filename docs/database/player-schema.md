@@ -43,10 +43,12 @@ If a Google-chosen name already belongs to either provider, setup returns
 already reserved by Google, database-account resolution returns the same safe
 conflict. Neither case changes either `(iss, sub)` binding or local UUID.
 
-Completed account deletion clears `player_name` together with the Auth0 mapping
-and role. This releases the local unique name only after the external Auth0
-account has been deleted successfully. Historical gameplay snapshots remain
-unchanged under their existing retention rules.
+Under the planned `BASIC-12` account-deletion workflow, successful deletion will
+clear `player_name` together with the Auth0 mapping and role. This will release
+the local unique name only after the external Auth0 account has been deleted
+successfully. Account deletion is not currently implemented; it is planned for
+Sprint 2 after, or together with, the player profile/account page. Historical
+gameplay snapshots will follow the confirmed retention rules.
 
 ## Migration history
 
@@ -65,4 +67,4 @@ Apply `0019` through `0022` before deploying the API version that selects
 `player_name`.
 
 The preceding document was generated and edited with the assistance of:
-Codex-CLI[GPT-5].
+Codex-CLI[GPT-5] and Codex[GPT-5].

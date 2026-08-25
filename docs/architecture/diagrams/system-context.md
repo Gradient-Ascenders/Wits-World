@@ -55,10 +55,12 @@ Azure App Service, production PostgreSQL/PostGIS is hosted by Neon, and the
 Docusaurus documentation site is deployed to Cloudflare Pages.
 
 The current map implementation uses Mapbox GL JS with Mapbox Standard through
-the provider-neutral presentation boundary. Formal external-service,
-licensing, production-token/CSP, and campus-data acceptance remain unresolved
-review items. Mapbox remains presentation-only and never determines event
-eligibility; the API and PostgreSQL/PostGIS retain that authority.
+the provider-neutral presentation boundary. It is a confirmed team-selected
+integration within the project's implementation discretion; this does not
+claim an explicit client or lecturer approval by name. Licensing/terms,
+production-token/CSP/privacy, usage/cost ownership, and campus-data evidence
+remain review items. Mapbox remains presentation-only and never determines
+event eligibility; the API and PostgreSQL/PostGIS retain that authority.
 
 ---
 

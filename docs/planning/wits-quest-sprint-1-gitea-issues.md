@@ -1,5 +1,12 @@
 # Wits Quest — Sprint 1 Gitea Issues
 
+:::note[Historical issue plan]
+
+This page preserves the Sprint 1 issue plan as it was prepared. It is not the
+current backlog or current issue state.
+
+:::
+
 This file contains copy-ready Markdown descriptions for all Sprint 1 issues.
 
 For each issue:

@@ -2,12 +2,10 @@
 
 ## Scope
 
-This document describes the Sprint 1 authentication, event-discovery, and
-location-eligibility flow, together with the Sprint 2 authenticated card
-collection and saved-deck extensions.
-
-Challenge answering, reward finalization, saved-deck persistence, and later
-battle flows are documented in their linked architecture and database
+This document describes the implemented authentication, event-discovery,
+location-eligibility, card-collection, saved-deck, and high-level CPU-match
+flows. Detailed challenge answering, reward finalization, persistence, and
+battle behavior is documented in the linked architecture and database
 contracts.
 
 ## Application startup
@@ -305,8 +303,10 @@ continue using features that do not require location.
 
 ### Geolocation timeout
 
-The browser displays a retry action without continuously polling the player's
-location.
+The browser explains the failure and offers a retry or live-location action.
+The active `/explore` watcher may resume after that action; there is no
+timer-only polling loop, background movement tracking, or persisted location
+history.
 
 ## Data-retention boundary
 
@@ -336,7 +336,7 @@ The same authority model also applies to the implemented CPU match flow:
 
 These operations remain server-authoritative.
 
-The proposed start, resume, answer, timeout, and player-safe response boundaries
+The implemented start, resume, answer, timeout, and player-safe response boundaries
 for the first MCQ format are defined in the
 [challenge and attempt API contract](challenge-attempt-api-contract.md).
 
@@ -355,4 +355,5 @@ history are defined in the
 ---
 
 The preceding document was planned and generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking] and ChatGPT-Web[GPT-5.6 Sol].
+ChatGPT-Web[GPT-5.6 Thinking] and ChatGPT-Web[GPT-5.6 Sol], and reviewed and
+edited with assistance from Codex[GPT-5].

@@ -1,8 +1,10 @@
 # Wits World Design System
 
-**Status:** Draft design recommendation  
-**Applies to:** `apps/web`  
-**Last updated:** 2026-08-13
+**Status:** Maintained design reference
+
+**Applies to:** `apps/web`
+
+**Last updated:** 2026-08-25
 
 This document is the visual and interaction source of truth for the Wits World
 player application and author console for the Wits Quest game/topic.
@@ -75,7 +77,7 @@ The author experience must support management of:
 - accepted answers;
 - cards;
 - card categories, rarity and attributes;
-- event rewards;
+- the shared card catalogue used by server-authoritative rewards;
 - publication status.
 
 The frontend must therefore not become only a map, card gallery or generic
@@ -225,7 +227,7 @@ requirements.
 Gold communicates:
 
 - prestige;
-- rare rewards;
+- high-rarity rewards;
 - important selected states;
 - primary calls to action;
 - significant achievements.
@@ -250,7 +252,6 @@ Green, amber and red are reserved for semantic feedback.
 | Rarity    | Main treatment          |
 | --------- | ----------------------- |
 | Common    | Neutral silver or ivory |
-| Uncommon  | Muted green             |
 | Rare      | Electric blue           |
 | Epic      | Restrained violet       |
 | Legendary | Metallic gold           |
@@ -506,7 +507,7 @@ The interface must communicate event states through text, icons and colour.
 
 | State               | Meaning                                | Suggested presentation                 |
 | ------------------- | -------------------------------------- | -------------------------------------- |
-| In range            | Player may request access              | Green status with location icon        |
+| Reachable           | Server accepted the latest claim       | Green status with location icon        |
 | Too far             | Outside the accepted area              | Muted status with distance             |
 | Location uncertain  | Accuracy is insufficient               | Amber warning and retry action         |
 | Permission required | Browser location unavailable           | Explanation and enable-location action |
@@ -529,7 +530,7 @@ The map is the dominant visual region.
 
 Display:
 
-- current player position;
+- latest reported-location marker;
 - event markers;
 - selected event;
 - clear event status;
@@ -568,7 +569,7 @@ Marking is server-authoritative. While the timed attempt is active, challenge UI
 must not reveal correctness or answer keys; saved-answer feedback remains neutral.
 After authoritative completion, it presents the five-question review with the
 player's answer, the correct answer, and server-derived correctness. Do not
-invent explanations: the current content model has none. This follows
+invent explanations: the current Player response has no explanation field. This follows
 `BASIC-03` in the Basic-tier decision register. The browser never calculates the
 review itself.
 
@@ -578,7 +579,8 @@ Reward reveals may use stronger visual effects than routine screens.
 
 Use:
 
-- one prominent card;
+- the persisted zero-to-two-card result without inventing an award;
+- prominent treatment for each awarded card;
 - rarity;
 - card name;
 - short description;
@@ -619,11 +621,11 @@ the frontend.
 The battle interface must make the following immediately clear:
 
 - whose turn it is;
-- which cards are active;
-- legal attribute choices;
-- the chosen attribute;
-- round result;
-- current match progress;
+- each side's active Creature and the CPU's intentionally hidden information;
+- the server-advertised legal Creature moves and Power cards;
+- Power costs, current HP/Power, and active effects;
+- required replacement selection after a Creature is defeated;
+- persisted action/round history and current match phase;
 - the next required action.
 
 Normal decision-making should remain visually calm. Stronger effects may be used
@@ -935,32 +937,30 @@ decisions. In summary:
   confirmed rights remains excluded;
 - card categories, affinities, rarity names, reward distribution, starter
   composition, deck composition, and duplicate ownership are confirmed;
-- card stat ranges, move/effect values, affinity modifiers, CPU battle
-  resolution, ties, privileged-role assignment, and account-retention
-  behavior remain explicit blockers; and
-- profiles, achievements, leaderboards, and a formal review-and-publish workflow
-  are outside Basic unless a later approved issue changes the scope.
+- per-card stats, move/effect vocabulary, affinity modifiers, move-based CPU
+  battle rules, the two-role Player/Author model, and account-retention behavior
+  are confirmed;
+- the 18 audited two-move published Creature definitions still require approved
+  content and balance remediation before strict database publication
+  enforcement; and
+- achievements, leaderboards, broader social profiles, and a formal
+  review-and-publish workflow are outside Basic unless a later approved issue
+  changes the scope; a minimal player profile/account page is planned for
+  Sprint 2 to support the mandatory password-reset and account-deletion
+  capabilities.
 
 Blocked implementations must remain adjustable and must not fill missing values
 with UI or code defaults.
 
 ---
 
-## 21. Current implementation priority
+## 21. Current implementation baseline
 
-The first visual implementation should be the smallest complete player slice:
-
-1. Application shell.
-2. Mobile navigation.
-3. Campus map container.
-4. Current-location control.
-5. Event marker states.
-6. Selected-event bottom sheet.
-7. Accessible event-list alternative.
-8. Loading, permission-denied and map-error states.
-
-Challenge, reward, collection and battle screens should reuse the same tokens
-and component foundations rather than creating separate visual systems.
+The application shell, responsive navigation, Mapbox campus exploration,
+active-page reported-location watcher, event list, timed challenge and result,
+collection, saved decks, CPU battle/history, and Author console are implemented.
+Future visual changes must preserve the shared tokens and component foundations
+across those journeys rather than introducing separate visual systems.
 
 ---
 

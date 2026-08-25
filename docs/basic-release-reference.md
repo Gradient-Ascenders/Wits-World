@@ -5,18 +5,25 @@ title: Basic release reference
 
 # Basic release reference
 
-This is the public starting point for the Wits Quest Basic tier. It describes
-what is implemented, where authority lives, and how the release claim is
-verified. It does not turn an automated check into production or lecturer
-acceptance evidence.
+This is the public starting point for the implemented core Wits Quest Basic
+gameplay. It describes what is implemented, where authority lives, and how the
+release claim is verified. It does not claim that the complete Basic product is
+delivered or turn an automated check into production or lecturer acceptance
+evidence.
 
 ## Product and architecture
 
-Players authenticate through Auth0, discover published campus events, submit a
-one-shot browser location claim, complete five-question challenges, receive
-server-selected rewards, manage owned cards and legal decks, and play
-server-resolved CPU matches. Authors use the protected `/author` console to
-create, publish, retire, and audit shared content.
+Players authenticate through Auth0, discover published campus events, use an
+active-page browser location watcher to supply ephemeral reported-location
+claims, complete five-question challenges, receive server-selected rewards,
+manage owned cards and legal decks, and play server-resolved CPU matches.
+Challenge start reuses a sufficiently fresh watched claim or requests one newer
+one-shot reading before the API rechecks eligibility. Authors use the protected
+`/author` console to create, publish, retire, and audit shared content.
+
+Password reset and account deletion remain mandatory Basic requirements planned
+for Sprint 2 after, or together with, a proper player profile/account page. They
+are not currently implemented.
 
 The React/Vite browser is presentation and untrusted input. Fastify resolves the
 verified Auth0 principal to a local player and role. PostgreSQL/PostGIS stores
@@ -38,9 +45,12 @@ client values, exact CORS origin, and the browser-visible URL-restricted Mapbox
 [Azure deployment guide](deployment/azure-deployment-setup.md) define the full
 configuration and guarded deployment boundaries.
 
-The API publishes interactive OpenAPI at `/documentation/` and JSON at
-`/documentation/json`. Route payloads are runtime validated and errors use a
-safe versioned envelope. Database structure and spatial rules are covered by the
+The [API overview](architecture/api-overview.md) records the versioning,
+authentication, errors, major resources, production origin, and generated
+reference. The API publishes interactive OpenAPI at `/documentation/` and JSON
+at `/documentation/json`. Route payloads are runtime validated and errors use a
+safe versioned envelope. Database structure and spatial rules begin with the
+[database overview](database/overview.md), then the
 [event schema](database/event-schema.md), [eligibility design](database/event-eligibility.md),
 and [challenge/reward persistence design](database/challenge-reward-persistence-design.md).
 
@@ -75,8 +85,11 @@ guide](planning/ai-use.md) defines generation, inline editing, review,
 verification, declarations, and `Assisted-by` attribution. `CONTRIBUTING.md`
 remains the contributor checklist.
 
-Auth0, Mapbox, Neon/PostgreSQL, Azure App Service, and Cloudflare Pages are
-externally operated dependencies. Their tenant, licensing, DNS, availability,
+The [third-party software and services](architecture/third-party-software-and-services.md)
+and [external integration boundaries](architecture/external-integrations.md)
+record the significant selections, motivations, and authority limits. Auth0,
+Mapbox, Neon/PostgreSQL, Azure App Service, and Cloudflare Pages are externally
+operated dependencies. Their tenant, licensing, DNS, availability,
 observability, backup, and acceptance evidence is operational work outside a
 local test pass.
 

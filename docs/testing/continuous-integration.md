@@ -3,6 +3,12 @@
 Wits World uses Gitea Actions for pull-request validation, main-branch
 validation and deployment, and documentation deployment.
 
+CI is one gate in the documented
+[issue-to-merge workflow](../planning/work-tracking-and-issue-management.md).
+The current `main` protection requires one approval but does not enforce
+required status checks mechanically, so reviewers must confirm the relevant
+workflow passed rather than treating an available merge action as evidence.
+
 ## Workflows and triggers
 
 The workflows are separated by event so pull requests have no dependency on

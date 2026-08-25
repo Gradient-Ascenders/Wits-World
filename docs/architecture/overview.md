@@ -1,9 +1,23 @@
 # Initial Architecture Overview
 
+:::note[Evolving architecture document]
+
+This page began as the Sprint 1 architecture baseline and later sections contain
+subsequent updates. For current delivered scope, use the
+[Basic release overview](../basic-release-reference.md); for accepted decisions,
+use the [ADRs](decisions/README.md); and for current system and deployment views,
+use the [system context](diagrams/system-context.md),
+[application containers](diagrams/application-containers.md), and
+[deployment](diagrams/deployment.md) diagrams.
+
+:::
+
 ## Document status
 
 - **Issue:** #5 — Document the initial architecture and delivery plan
-- **Status:** Initial Sprint 1 architecture
+- **Status:** Mixed current/historical — initial Sprint 1 architecture with
+  maintained current-state sections
+- **Current-state review:** 25 August 2026
 - **Owner:** Member 2 — API and Security Lead
 - **Reviewer:** Member 3 — Data and Infrastructure Lead
 
@@ -17,14 +31,14 @@ The location-based campus game delivered by the project is named **Wits Quest**.
 
 Wits Quest is a mobile-friendly, location-based campus exploration web game.
 
-The complete Basic product is intended to allow an authenticated player to:
+The implemented core Basic gameplay allows an authenticated player to:
 
 1. view published events on a campus map;
 2. travel to an event location;
 3. submit a browser-reported location claim;
 4. have the server determine whether the event is reachable;
-5. complete a university-related challenge;
-6. earn the event's card once after a successful answer;
+5. complete one timed five-question challenge per event;
+6. receive the persisted score-based coin and zero-to-two-card reward result;
 7. manage collected cards and a valid deck;
 8. play a server-controlled turn-based match against the computer; and
 9. view the stored match result.
@@ -59,8 +73,8 @@ The repository uses a monorepo containing independently buildable applications:
 - `apps/web` — React, Vite, and TypeScript web application;
 - `apps/api` — Fastify and TypeScript hand-written HTTP API;
 - `apps/docs` — public documentation application; and
-- `packages/game-rules` — dependency-free pure Basic battle rules shared by the
-  API and later match integrations.
+- `packages/game-rules` — dependency-free pure Basic battle rules consumed by
+  the API's CPU match service.
 
 The web application and API communicate through versioned HTTP endpoints.
 
@@ -74,7 +88,7 @@ The API is responsible for protected decisions, including:
 - event eligibility;
 - protected game rules;
 - authorisation; and
-- safe API responses;
+- safe API responses; and
 - CPU match state, legal actions, random CPU decisions, and match results.
 
 The map integration is used for presentation. It does not determine whether an
@@ -85,16 +99,16 @@ validated by the API.
 
 ## Application responsibilities
 
-| Application or service  | Primary responsibility                                    | Authority                                                             |
-| ----------------------- | --------------------------------------------------------- | --------------------------------------------------------------------- |
-| `apps/web`              | Mobile-first player and author interface                  | Not authoritative for identity, eligibility, rewards, or game results |
-| `apps/api`              | Hand-written HTTP API and protected application rules     | Authoritative for authenticated operations and eligibility decisions  |
-| `packages/game-rules`   | Pure battle state transitions and legal-action validation | Authoritative rules consumed by the API; no browser authority         |
-| PostgreSQL/PostGIS      | Persistent application and geospatial data                | Authoritative store for event coordinates and distance calculations   |
-| Auth0                   | Registration, sign-in, password reset, and token issuance | Authoritative for external identity authentication                    |
-| Mapbox GL JS / Standard | Map tiles, styles, and visual presentation                | Presentation only                                                     |
-| `apps/docs`             | Public project documentation                              | Documentation only                                                    |
-| CI/CD platform          | Automated checks, builds, and deployments                 | Delivery automation only                                              |
+| Application or service  | Primary responsibility                                      | Authority                                                                 |
+| ----------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `apps/web`              | Mobile-first player and author interface                    | Not authoritative for identity, eligibility, rewards, or game results     |
+| `apps/api`              | Hand-written HTTP API and protected application rules       | Authoritative for authenticated operations and eligibility decisions      |
+| `packages/game-rules`   | Pure battle state transitions and legal-action validation   | Authoritative rules consumed by the API; no browser authority             |
+| PostgreSQL/PostGIS      | Persistent application and geospatial data                  | Authoritative store for event coordinates and distance calculations       |
+| Auth0                   | Registration, sign-in, reset capability, and token issuance | Authoritative for external identity authentication; Wits reset UI pending |
+| Mapbox GL JS / Standard | Map tiles, styles, and visual presentation                  | Presentation only                                                         |
+| `apps/docs`             | Public project documentation                                | Documentation only                                                        |
+| CI/CD platform          | Automated checks, builds, and deployments                   | Delivery automation only                                                  |
 
 ## Authority model
 
@@ -136,8 +150,10 @@ PostgreSQL/PostGIS stores the authoritative:
 - event location;
 - event radius;
 - publication state;
-- availability period; and
-- later persistent game data.
+- availability period;
+- attempts, answers, completions, rewards, and owned cards;
+- saved decks and active selection; and
+- CPU match state, rounds, actions, and results.
 
 A browser-reported position is treated as a location claim. It does not replace
 the stored event position and does not prove physical presence.
@@ -183,25 +199,34 @@ API, and Cloudflare Pages for documentation. Production CORS uses the API's
 configured exact Web origin, and the current public hostnames are maintained in
 the deployment guide.
 
-Mapbox is the implemented provider, but formal external-service, licensing, and
-project-owned campus-data acceptance remain subject to client or lecturer
-review. Hosting and provider operations are documented, although they do not
-yet have dedicated ADRs for every selected service.
+Mapbox is the implemented and confirmed team-selected provider under the broad
+implementation-technology discretion given to the project. This does not claim
+that Calvin or the lecturer explicitly approved Mapbox by name, and no separate
+named approval is treated as a blocking decision. Licensing/terms, production
+token/CSP/privacy, cost ownership, usage monitoring, and project-owned
+campus-data evidence remain operational requirements. Hosting and provider
+operations are documented, although they do not yet have dedicated ADRs for
+every selected service.
 
-## Open decisions
+## Remaining review and operational gates
 
-The following choices still require completion or team review:
+The Basic role model, challenge/reward rules, card vocabulary, deck rules, CPU
+battle rules, and account-retention policy are confirmed team decisions in the
+[Basic-tier decision register](../requirements/basic-tier-decision-register.md).
+The current repository implements the core Basic gameplay rather than the
+complete Basic product. It still records these narrower gates:
 
-- event radius for the Sprint 1 demonstration;
-- acceptable reported location accuracy;
-- location-claim freshness threshold; and
-- precise location-retention policy;
-- role and permission representation;
-- formal Mapbox external-service, licensing, and campus-data acceptance; and
-- production observability and monitoring.
-
-These decisions should be recorded in architecture decision records when they
-are resolved.
+- the seeded `75 m` event radius, two-minute claim freshness threshold, and
+  accuracy-envelope handling remain provisional pending further campus field
+  evidence;
+- the final location-data retention policy remains open, although the current
+  implementation does not persist exact eligibility or challenge-start claims;
+- the player profile/account page, password reset, and account deletion are
+  mandatory Basic work planned for Sprint 2 and are not currently implemented;
+- Mapbox licensing/terms, production token/CSP/privacy, cost ownership, usage,
+  and campus-data evidence remains outstanding; and
+- production observability, backup, and recovery evidence remains
+  operator-owned.
 
 ## Sprint 1 exclusions
 
@@ -243,3 +268,6 @@ The preceding document was planned and generated with the assistance of
 ChatGPT-Web[GPT-5.6 Thinking] and Codex-CLI[gpt-5.6-sol medium], and reviewed
 and edited for Sprint 1 release validation with assistance from
 ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].
+
+The architecture-status notice was added with assistance from
+Codex-CLI[GPT-5].
