@@ -285,6 +285,11 @@ const sidebars: SidebarsConfig = {
           id: 'design/design-system',
           label: 'Wits World Design System',
         },
+        {
+          type: 'doc',
+          id: 'design/basic-card-roster',
+          label: 'Wits Quest Basic Card Roster',
+        },
       ],
     },
     {
