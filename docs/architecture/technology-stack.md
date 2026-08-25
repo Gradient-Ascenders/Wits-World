@@ -122,8 +122,11 @@ repository.
 | Browser Geolocation API      | Device location claim             | Allows the player to submit latitude, longitude, reported accuracy, and acquisition time |
 
 Mapbox GL JS with Mapbox Standard is the current implementation from issue #92.
-Formal external-service acceptance, production token/CSP review, and a licensed
-Wits campus dataset remain to be confirmed.
+The team confirms it as an allowed team-selected integration within the
+project's implementation discretion. This does not claim that Calvin or the
+lecturer approved Mapbox by name. Production token/CSP/privacy review,
+licensing and cost ownership, usage monitoring, and any licensed Wits campus
+dataset remain to be confirmed operationally.
 
 Map rendering is not authoritative. A marker appearing near an event does not
 grant access to that event.
@@ -132,31 +135,21 @@ The API and PostgreSQL/PostGIS determine event eligibility.
 
 ## Testing
 
+The current test layers, commands, CI boundaries, and evidence rules are
+maintained in the [testing strategy and policy](../testing/testing-strategy.md).
+
 | Technology              | Purpose                                 | Motivation                                                                 |
 | ----------------------- | --------------------------------------- | -------------------------------------------------------------------------- |
 | Vitest                  | Unit and integration tests              | Works effectively with the TypeScript and Vite ecosystem                   |
 | React Testing Library   | Web interface behaviour tests           | Encourages testing accessible behaviour rather than implementation details |
 | Fastify injection       | API integration tests                   | Tests routes without requiring an external network listener                |
 | Playwright              | End-to-end browser journeys             | Validates deployed or locally integrated player flows                      |
-| axe-core                | Automated accessibility checks          | Detects common accessibility defects during development                    |
 | Dedicated test database | Migration, query, and integration tests | Prevents tests from modifying normal development data                      |
 
 Testing is part of implementation rather than a final-stage activity.
-
-Sprint 1 testing must cover:
-
-- API health;
-- invalid configuration;
-- authenticated and unauthenticated requests;
-- valid and invalid tokens;
-- database readiness;
-- event discovery;
-- inside and outside location claims;
-- inactive and unpublished events;
-- invalid coordinates;
-- geolocation permission denial;
-- map failure fallback; and
-- the integrated deployed journey.
+The durable strategy distinguishes unit, component, route, database, browser,
+manual, field, and deployed evidence so historical Sprint 1 checks are not
+mistaken for the complete current release policy.
 
 ## Documentation
 
@@ -174,20 +167,17 @@ build process.
 
 ## CI/CD
 
-The CI/CD workflow will use the automation supported by the team's Gitea
-environment and configured runner.
+The current Gitea Actions workflows run clean dependency installation,
+formatting, linting, TypeScript checking, Web/API coverage tests, and Web, API,
+and documentation builds for pull requests and `main`. Main deployment uses
+verified Web/API artifacts and health checks; documentation has a separate
+path-filtered Cloudflare Pages workflow.
 
-Pull-request checks should include:
-
-- dependency installation;
-- formatting;
-- linting;
-- TypeScript type checking;
-- automated tests;
-- web build;
-- API build;
-- documentation build; and
-- relevant security or dependency checks.
+The current CI test job does not invoke the database integration runner,
+Playwright E2E, or the shared-package test scripts directly. Those checks are
+run separately when the change or release requires them. Exact workflow
+triggers, runners, artifacts, and measured timings are documented in
+[Continuous integration](../testing/continuous-integration.md).
 
 Deployment must keep the web application, API, and documentation application
 independently deployable.
@@ -205,18 +195,18 @@ The current deployment uses:
 - Mapbox GL JS with Mapbox Standard for browser map presentation.
 
 The deployment workflows and platform configuration document these selections.
-Mapbox licensing/external-service acceptance and ongoing operational review are
-not implied merely by implementation.
+Mapbox is a confirmed team technology choice, but licensing/terms, token
+restrictions, privacy, usage, cost ownership, and campus-data readiness are not
+implied merely by implementation.
 
 ## Shared packages
 
-The monorepo may contain supporting packages such as:
+The monorepo currently contains these first-party supporting packages:
 
-| Package               | Responsibility                                                    |
-| --------------------- | ----------------------------------------------------------------- |
-| `packages/contracts`  | Shared API schemas or generated-safe types                        |
-| `packages/game-rules` | Pure card, deck, and battle rules                                 |
-| `packages/config`     | Shared linting, formatting, TypeScript, and testing configuration |
+| Package                   | Responsibility                                                 |
+| ------------------------- | -------------------------------------------------------------- |
+| `packages/game-rules`     | Pure card, deck, and battle rules                              |
+| `packages/account-policy` | Shared Auth0-compatible Player Name policy used by Web and API |
 
 Shared packages must not combine the web and API into a single deployable
 application.
@@ -239,7 +229,8 @@ The project must not:
 
 The following remain to be confirmed or reviewed:
 
-- formal Mapbox external-service, licensing, and campus-data acceptance;
+- Mapbox licensing/terms, production token/CSP/privacy, cost ownership, usage,
+  and campus-data readiness evidence;
 - production logging and monitoring services;
 - ongoing credential rotation and least-privilege controls; and
 - operational approval and evidence for backup and recovery.

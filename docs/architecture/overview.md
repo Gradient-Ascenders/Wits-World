@@ -199,10 +199,14 @@ API, and Cloudflare Pages for documentation. Production CORS uses the API's
 configured exact Web origin, and the current public hostnames are maintained in
 the deployment guide.
 
-Mapbox is the implemented provider, but formal external-service, licensing, and
-project-owned campus-data acceptance remain subject to client or lecturer
-review. Hosting and provider operations are documented, although they do not
-yet have dedicated ADRs for every selected service.
+Mapbox is the implemented and confirmed team-selected provider under the broad
+implementation-technology discretion given to the project. This does not claim
+that Calvin or the lecturer explicitly approved Mapbox by name, and no separate
+named approval is treated as a blocking decision. Licensing/terms, production
+token/CSP/privacy, cost ownership, usage monitoring, and project-owned
+campus-data evidence remain operational requirements. Hosting and provider
+operations are documented, although they do not yet have dedicated ADRs for
+every selected service.
 
 ## Remaining review and operational gates
 
@@ -219,8 +223,8 @@ complete Basic product. It still records these narrower gates:
   implementation does not persist exact eligibility or challenge-start claims;
 - the player profile/account page, password reset, and account deletion are
   mandatory Basic work planned for Sprint 2 and are not currently implemented;
-- formal Mapbox external-service, licensing, and campus-data acceptance remains
-  outstanding; and
+- Mapbox licensing/terms, production token/CSP/privacy, cost ownership, usage,
+  and campus-data evidence remains outstanding; and
 - production observability, backup, and recovery evidence remains
   operator-owned.
 

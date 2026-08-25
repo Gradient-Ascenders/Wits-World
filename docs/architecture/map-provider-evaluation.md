@@ -14,10 +14,12 @@ Mapbox integration is described in the
 
 Historical evaluation input for issue #62, prepared on 2026-08-13. The product
 now implements Mapbox GL JS with Mapbox Standard. This document records the
-earlier comparison; it does not supply the still-required client, lecturer, or
-brief evidence for formal external-service acceptance. The implementation also
-does not close the outstanding licensing/ownership, token-restriction, or Wits
-campus-data validation work.
+earlier comparison rather than rewriting its historical recommendation. The
+team now confirms Mapbox as an allowed team-selected integration within the
+project's broad implementation discretion; no separate explicit
+client/lecturer approval of Mapbox by name is required or claimed. That status
+does not close the outstanding licensing/cost ownership, token/CSP/privacy,
+usage, or Wits campus-data validation work.
 
 Prices and plan limits below were checked against official provider pages on
 2026-08-13 and may change. A production decision must recheck pricing, terms,

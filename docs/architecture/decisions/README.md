@@ -42,7 +42,8 @@ records include:
 - current Web/API hosting and deployment architecture;
 - managed Neon PostgreSQL/PostGIS hosting;
 - Cloudflare Pages documentation hosting;
-- Mapbox external-service, licensing, and campus-data acceptance;
+- Mapbox operational governance if its licensing, cost, privacy, token, usage,
+  or campus-data boundary changes materially;
 - location-data retention;
 - production observability; and
 - backup, recovery, and operational resilience.

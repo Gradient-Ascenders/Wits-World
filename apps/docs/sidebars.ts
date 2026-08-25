@@ -115,6 +115,11 @@ const sidebars: SidebarsConfig = {
           items: [
             {
               type: 'doc',
+              id: 'architecture/api-overview',
+              label: 'API Overview',
+            },
+            {
+              type: 'doc',
               id: 'architecture/challenge-attempt-api-contract',
               label: 'Challenge & Attempt API Contract',
             },
@@ -145,6 +150,11 @@ const sidebars: SidebarsConfig = {
           type: 'category',
           label: 'Integration Boundaries',
           items: [
+            {
+              type: 'doc',
+              id: 'architecture/external-integrations',
+              label: 'External Integrations',
+            },
             {
               type: 'doc',
               id: 'architecture/mapbox-standard-migration',
@@ -213,7 +223,7 @@ const sidebars: SidebarsConfig = {
         type: 'generated-index',
         title: 'Data & Database',
         description:
-          'Current domain, geospatial, schema, and persistence reference. Start with the domain model for data meaning or the relevant persistence design for implementation detail.',
+          'Current domain, geospatial, schema, and persistence reference. Start with the Database Overview, then use the relevant schema or persistence design for implementation detail.',
         slug: '/data-database',
       },
       items: [
@@ -221,6 +231,11 @@ const sidebars: SidebarsConfig = {
           type: 'category',
           label: 'Domain & Spatial Model',
           items: [
+            {
+              type: 'doc',
+              id: 'database/overview',
+              label: 'Database Overview',
+            },
             {
               type: 'doc',
               id: 'database/event-schema',
@@ -279,10 +294,15 @@ const sidebars: SidebarsConfig = {
         type: 'generated-index',
         title: 'Development & Operations',
         description:
-          'Local data setup, CI/CD, service deployment, and database runbooks. Use the setup guides for development and the operational procedures for controlled releases and recovery.',
+          'Third-party dependencies, local data setup, CI/CD, service deployment, and database runbooks. Use the setup guides for development and the operational procedures for controlled releases and recovery.',
         slug: '/development-operations',
       },
       items: [
+        {
+          type: 'doc',
+          id: 'architecture/third-party-software-and-services',
+          label: 'Third-Party Software & Services',
+        },
         {
           type: 'category',
           label: 'Development Data & Local Services',
@@ -345,10 +365,20 @@ const sidebars: SidebarsConfig = {
         type: 'generated-index',
         title: 'Testing & Quality',
         description:
-          'Current Basic verification comes first; preserved Sprint 1 release evidence is grouped separately. Start with Basic-Tier Release Validation for the current release.',
+          'The durable testing strategy and planned Sprint 2 user evaluation come first, followed by current Basic verification and preserved Sprint 1 release evidence.',
         slug: '/testing-quality',
       },
       items: [
+        {
+          type: 'doc',
+          id: 'testing/testing-strategy',
+          label: 'Testing Strategy & Policy',
+        },
+        {
+          type: 'doc',
+          id: 'testing/sprint-2-user-testing-plan',
+          label: 'Sprint 2 User Testing Plan',
+        },
         {
           type: 'category',
           label: 'Current Basic Verification',
@@ -415,7 +445,7 @@ const sidebars: SidebarsConfig = {
         type: 'generated-index',
         title: 'Project Management',
         description:
-          'Current methodology, plans, and registers alongside clearly labelled Sprint 1 Scrum evidence and historical issue plans. Start with Project & Git Methodology.',
+          'Current methodology, stakeholder interactions, plans, and registers alongside clearly labelled Sprint 1 Scrum evidence and historical issue plans. Start with Project & Git Methodology.',
         slug: '/project-management',
       },
       items: [
@@ -458,6 +488,17 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'category',
+          label: 'Stakeholder Interactions',
+          items: [
+            {
+              type: 'doc',
+              id: 'planning/stakeholder-interactions/initial-client-meeting',
+              label: 'Initial Client Meeting — Calvin Rea',
+            },
+          ],
+        },
+        {
+          type: 'category',
           label: 'Sprint 1 Scrum Evidence',
           items: [
             {
@@ -494,6 +535,16 @@ const sidebars: SidebarsConfig = {
               type: 'doc',
               id: 'planning/scrum/sprint-1/daily-scrum-04',
               label: 'Daily Scrum 04 — Basic-Tier Integration',
+            },
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-1/sprint-review',
+              label: 'Sprint 1 Review',
+            },
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-1/sprint-retrospective',
+              label: 'Sprint 1 Retrospective',
             },
           ],
         },

@@ -98,8 +98,11 @@ tokens and derives the local player identity and role from validated claims.
 ### Map provider
 
 The current implementation uses Mapbox GL JS and Mapbox Standard through the
-provider-neutral map adapter. Formal external-service and licensing acceptance,
-and any licensed project-owned campus layer, remain pending.
+provider-neutral map adapter. It is a confirmed team technology choice within
+the project's implementation discretion, without claiming an explicit
+client/lecturer approval by name. Licensing/terms, production token and privacy
+controls, usage/cost ownership, and any licensed project-owned campus layer
+remain operational evidence needs.
 
 The map provider:
 
