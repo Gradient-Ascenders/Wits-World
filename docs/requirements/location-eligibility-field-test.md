@@ -1,5 +1,15 @@
 # Sprint 1 Location Eligibility Field-Test Protocol
 
+:::note[Historical Sprint 1 evidence]
+
+This page preserves the Sprint 1 field-test protocol and its recorded evidence
+state. Current eligibility semantics are documented in
+[Event Eligibility Calculation](../database/event-eligibility.md); confirmed
+product decisions are maintained in the
+[Basic-tier decision register](basic-tier-decision-register.md).
+
+:::
+
 ## Purpose and scope
 
 This protocol supports issue [#43](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/43),

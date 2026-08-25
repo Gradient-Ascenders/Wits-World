@@ -1,5 +1,14 @@
 # Sprint 1 release validation
 
+:::note[Historical Sprint 1 release evidence]
+
+This procedure preserves the release target and evidence gates for Sprint 1. It
+does not validate the full current Basic release; use
+[Basic-tier release validation](basic-tier-release-validation.md) for that
+scope.
+
+:::
+
 ## Purpose and release target
 
 This is the authoritative repository-side procedure for
@@ -244,3 +253,5 @@ exists; do not invent an attachment URL.
 This document was planned and reviewed with assistance from
 ChatGPT-Web[GPT-5.6 Sol] and generated and edited with assistance from
 Codex[GPT-5].
+The historical-status notice was added with assistance from
+Codex-CLI[GPT-5].

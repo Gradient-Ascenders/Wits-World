@@ -1,5 +1,13 @@
 # Initial Risk Register
 
+:::note[Initial planning record]
+
+This page preserves the initial risk baseline and its dated review history. Do
+not interpret an original `Open` status as a current assurance or current issue
+state without a later recorded review.
+
+:::
+
 ## Purpose
 
 This register records the principal technical, product, security, delivery, and
@@ -116,3 +124,5 @@ Further reviews should be added without removing the historical entries.
 
 The preceding document was planned and generated with the assistance of:
 ChatGPT-Web[GPT-5.6 Thinking].
+
+The planning-status notice was added with assistance from Codex-CLI[GPT-5].

@@ -1,5 +1,14 @@
 # Sprint 1 evidence index
 
+:::note[Historical Sprint 1 release evidence]
+
+This index preserves evidence for the Sprint 1 location/exploration release. It
+does not describe the full current Basic release; use
+[Basic-tier release validation](basic-tier-release-validation.md) for current
+repository-wide verification.
+
+:::
+
 The [issue #20](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/20)
 validation run included the complete 11-file API database integration
 selection: all 106 tests passed against uniquely named temporary databases
@@ -51,3 +60,5 @@ complete tokens, connection strings, and unnecessary precise coordinates.
 This document was planned and reviewed with assistance from
 ChatGPT-Web[GPT-5.6 Sol] and generated and edited with assistance from
 Codex[GPT-5] and Codex-CLI[GPT-5.6 Sol].
+The historical-status notice was added with assistance from
+Codex-CLI[GPT-5].

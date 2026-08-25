@@ -1,5 +1,17 @@
 # Initial Architecture Overview
 
+:::note[Evolving architecture document]
+
+This page began as the Sprint 1 architecture baseline and later sections contain
+subsequent updates. For current delivered scope, use the
+[Basic release overview](../basic-release-reference.md); for accepted decisions,
+use the [ADRs](decisions/README.md); and for current system and deployment views,
+use the [system context](diagrams/system-context.md),
+[application containers](diagrams/application-containers.md), and
+[deployment](diagrams/deployment.md) diagrams.
+
+:::
+
 ## Document status
 
 - **Issue:** #5 — Document the initial architecture and delivery plan
@@ -243,3 +255,6 @@ The preceding document was planned and generated with the assistance of
 ChatGPT-Web[GPT-5.6 Thinking] and Codex-CLI[gpt-5.6-sol medium], and reviewed
 and edited for Sprint 1 release validation with assistance from
 ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].
+
+The architecture-status notice was added with assistance from
+Codex-CLI[GPT-5].

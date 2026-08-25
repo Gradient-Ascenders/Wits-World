@@ -5,6 +5,14 @@ sidebar_position: 4
 
 # Sprint 1 backlog refinement
 
+:::note[Historical Sprint 1 evidence]
+
+This page preserves a reconstructed Sprint 1 refinement record. It is not a
+current backlog; see the [Scrum records overview](../index.md) for its evidence
+and inference boundaries.
+
+:::
+
 | Field               | Record                                                                                                                                                  |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Reconstructed dates | 11–12 August 2026                                                                                                                                       |
@@ -111,3 +119,5 @@ request remain the source of truth for completion evidence.
 This retrospective refinement record was generated with assistance from
 Codex[GPT-5] using repository and Gitea evidence. Inferences are labelled
 and are not presented as verbatim historical discussion.
+The historical-status notice was added with assistance from
+Codex-CLI[GPT-5].

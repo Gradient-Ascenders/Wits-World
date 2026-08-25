@@ -1,5 +1,15 @@
 # Map-provider Evaluation for Wits Quest
 
+:::info[Historical decision input]
+
+This dated comparison is preserved as input to the map decision. The current
+authority boundary is recorded in
+[ADR-004](decisions/ADR-004-map-provider-boundary.md), and the implemented
+Mapbox integration is described in the
+[Mapbox Standard 3D integration boundary](mapbox-standard-migration.md).
+
+:::
+
 ## Status
 
 Historical evaluation input for issue #62, prepared on 2026-08-13. The product

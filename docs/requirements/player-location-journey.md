@@ -1,5 +1,13 @@
 # Player Location and Eligibility Journey
 
+:::note[Historical Sprint 1 journey]
+
+This page preserves the Sprint 1 one-shot reachability journey. Current Explore
+location behaviour and its presentation-only map boundary are documented in the
+[Mapbox Standard 3D integration boundary](../architecture/mapbox-standard-migration.md).
+
+:::
+
 ## Sprint 1 outcome
 
 An authenticated player can use the map-independent event list on `/explore` to

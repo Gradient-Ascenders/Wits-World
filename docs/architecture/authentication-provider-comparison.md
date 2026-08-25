@@ -1,5 +1,13 @@
 # Authentication Provider Comparison
 
+:::info[Decision input]
+
+This comparison records the evaluation that led to Auth0. The current accepted
+authentication decision and implementation boundaries are maintained in
+[ADR-005](decisions/ADR-005-auth0-authentication.md).
+
+:::
+
 ## Document status
 
 - **Status:** Accepted
@@ -403,3 +411,5 @@ Those changes belong to their corresponding implementation issues.
 
 The preceding document was planned and generated with the assistance of:
 ChatGPT-Web[GPT-5.6 Thinking] and Codex[GPT-5].
+
+The decision-status notice was added with assistance from Codex-CLI[GPT-5].

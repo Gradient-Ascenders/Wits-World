@@ -5,6 +5,14 @@ sidebar_position: 1
 
 # Scrum records
 
+:::note[Historical Sprint 1 evidence]
+
+These records preserve an evidence-based reconstruction of Sprint 1. They are
+not current delivery status or verbatim meeting transcripts; the source limits
+and inference rules below remain part of the record.
+
+:::
+
 Wits World uses a lightweight Scrum-inspired process in which Gitea issues are
 the product backlog, short-lived branches and pull requests carry the work, and
 CI plus human review provide the quality gate. The durable process is described
@@ -57,3 +65,5 @@ record; the dates do not imply these were the team's only coordination points.
 This retrospective evidence structure and its narrative summaries were created
 with assistance from Codex[GPT-5]. The underlying issues, commits, pull
 requests, project documents, and supplied images remain the evidence sources.
+The historical-status notice was added with assistance from
+Codex-CLI[GPT-5].

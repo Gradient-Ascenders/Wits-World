@@ -1,5 +1,12 @@
 # Sprint 1, Week 2 Gitea Issue Plan
 
+:::note[Historical issue plan]
+
+This page preserves a Sprint 1 planning snapshot. It is not the current backlog
+or current issue state.
+
+:::
+
 ## Current state
 
 - `main` is at `6361b1e`; the latest Gitea CI reports all six jobs successful,

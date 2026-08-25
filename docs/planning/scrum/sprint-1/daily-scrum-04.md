@@ -5,6 +5,14 @@ sidebar_position: 6
 
 # Daily Scrum 04 — Basic-tier integration
 
+:::note[Historical Sprint 1 evidence]
+
+This page preserves a reconstructed Sprint 1 coordination record. It is not a
+current status report; see the [Scrum records overview](../index.md) for its
+evidence and inference boundaries.
+
+:::
+
 | Field              | Record                                                                                                                            |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
 | Reconstructed date | 17 August 2026                                                                                                                    |
@@ -69,3 +77,5 @@ eligibility, challenge results, rewards, deck legality, or battle outcomes.
 
 This retrospective daily summary was generated with assistance from
 Codex[GPT-5] using repository history. It is not a verbatim meeting minute.
+The historical-status notice was added with assistance from
+Codex-CLI[GPT-5].

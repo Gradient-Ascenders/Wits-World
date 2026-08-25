@@ -5,6 +5,14 @@ sidebar_position: 1
 
 # Sprint 1 initial planning
 
+:::note[Historical Sprint 1 evidence]
+
+This page preserves a reconstructed Sprint 1 planning record. It is not a
+current plan; see the [Scrum records overview](../index.md) for its evidence and
+inference boundaries.
+
+:::
+
 | Field              | Record                                                                                                |
 | ------------------ | ----------------------------------------------------------------------------------------------------- |
 | Reconstructed date | 5 August 2026                                                                                         |
@@ -117,3 +125,5 @@ consistent with the work that followed.
 This retrospective planning record was generated with assistance from
 Codex[GPT-5] using repository and Gitea evidence. It is not presented as a
 verbatim historical transcript.
+The historical-status notice was added with assistance from
+Codex-CLI[GPT-5].

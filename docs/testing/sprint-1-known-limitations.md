@@ -1,5 +1,14 @@
 # Sprint 1 known limitations
 
+:::note[Historical Sprint 1 release evidence]
+
+These limitations are preserved for the Sprint 1 location/exploration release
+and should not be read as the current project limitation list. Start with the
+[Basic release overview](../basic-release-reference.md) for current delivered
+scope.
+
+:::
+
 These limitations apply only to the Sprint 1 location/exploration release
 validated by #20. They are not a list of later-sprint feature gaps.
 
@@ -26,3 +35,5 @@ or the outstanding manual evidence above.
 This document was planned and reviewed with assistance from
 ChatGPT-Web[GPT-5.6 Sol] and generated and edited with assistance from
 Codex[GPT-5] and Codex-CLI[GPT-5.6 Sol].
+The historical-status notice was added with assistance from
+Codex-CLI[GPT-5].

@@ -1,5 +1,14 @@
 # Sprint 1 demonstration script
 
+:::note[Historical Sprint 1 release evidence]
+
+This script preserves the Sprint 1 location/exploration demonstration. It is
+not a demonstration script for the full current Basic release; see
+[Basic-tier release validation](basic-tier-release-validation.md) for current
+scope and evidence.
+
+:::
+
 ## Before the demonstration
 
 Use the deployed release SHA and a safe Auth0 test player. Open the Web, API,
@@ -59,3 +68,5 @@ issues.
 This document was planned and reviewed with assistance from
 ChatGPT-Web[GPT-5.6 Sol] and generated and edited with assistance from
 Codex[GPT-5].
+The historical-status notice was added with assistance from
+Codex-CLI[GPT-5].

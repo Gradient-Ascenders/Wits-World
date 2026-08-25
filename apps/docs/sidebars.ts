@@ -5,6 +5,10 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Overview',
+      link: {
+        type: 'doc',
+        id: 'index',
+      },
       items: [
         {
           type: 'doc',
@@ -16,6 +20,13 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Product & Requirements',
+      link: {
+        type: 'generated-index',
+        title: 'Product & Requirements',
+        description:
+          'Current Wits Quest rules, confirmed product decisions, and player journeys. Start with the Basic game rules; Sprint-specific journeys are labelled.',
+        slug: '/product-requirements',
+      },
       items: [
         {
           type: 'category',
@@ -64,6 +75,13 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Architecture',
+      link: {
+        type: 'generated-index',
+        title: 'Architecture',
+        description:
+          'Current system structure, technology, authority boundaries, API documentation, diagrams, integration boundaries, evaluations, and ADRs. Start with the Architecture Overview.',
+        slug: '/architecture',
+      },
       items: [
         {
           type: 'category',
@@ -191,6 +209,13 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Data & Database',
+      link: {
+        type: 'generated-index',
+        title: 'Data & Database',
+        description:
+          'Current domain, geospatial, schema, and persistence reference. Start with the domain model for data meaning or the relevant persistence design for implementation detail.',
+        slug: '/data-database',
+      },
       items: [
         {
           type: 'category',
@@ -250,6 +275,13 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Development & Operations',
+      link: {
+        type: 'generated-index',
+        title: 'Development & Operations',
+        description:
+          'Local data setup, CI/CD, service deployment, and database runbooks. Use the setup guides for development and the operational procedures for controlled releases and recovery.',
+        slug: '/development-operations',
+      },
       items: [
         {
           type: 'category',
@@ -309,6 +341,13 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Testing & Quality',
+      link: {
+        type: 'generated-index',
+        title: 'Testing & Quality',
+        description:
+          'Current Basic verification comes first; preserved Sprint 1 release evidence is grouped separately. Start with Basic-Tier Release Validation for the current release.',
+        slug: '/testing-quality',
+      },
       items: [
         {
           type: 'category',
@@ -372,6 +411,13 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Project Management',
+      link: {
+        type: 'generated-index',
+        title: 'Project Management',
+        description:
+          'Current methodology, plans, and registers alongside clearly labelled Sprint 1 Scrum evidence and historical issue plans. Start with Project & Git Methodology.',
+        slug: '/project-management',
+      },
       items: [
         {
           type: 'category',

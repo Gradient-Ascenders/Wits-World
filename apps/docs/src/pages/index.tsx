@@ -6,43 +6,84 @@ import Heading from '@theme/Heading';
 
 import styles from './index.module.css';
 
-const sections = [
+const readerPaths = [
   {
-    title: 'Architecture',
+    title: 'Understand the product',
     description:
-      'System architecture, technology decisions, trust boundaries, API contracts, and ADRs.',
-    href: '/docs/architecture/overview',
+      'See what Wits Quest currently delivers, how its rules are defined, and how players move through the game.',
+    links: [
+      {
+        label: 'Current Basic release',
+        href: '/docs/basic-release-reference',
+      },
+      {
+        label: 'Product & Requirements',
+        href: '/docs/product-requirements',
+      },
+    ],
   },
   {
-    title: 'Database',
+    title: 'Build and run the system',
     description:
-      'PostgreSQL, PostGIS, persistence design, schemas, deployment, and recovery procedures.',
-    href: '/docs/database/neon-postgis-setup',
+      'Find local-service guidance, delivery workflows, deployment procedures, and database operations.',
+    links: [
+      {
+        label: 'Development & Operations',
+        href: '/docs/development-operations',
+      },
+    ],
   },
   {
-    title: 'Development',
+    title: 'Explore the technical design',
     description:
-      'Deployment guidance, CI/CD processes, development practices, and project infrastructure.',
-    href: '/docs/deployment/azure-deployment-setup',
+      'Review the system architecture, data model, design decisions, and accessible interface standards.',
+    links: [
+      {
+        label: 'Architecture',
+        href: '/docs/architecture',
+      },
+      {
+        label: 'Data & Database',
+        href: '/docs/data-database',
+      },
+      {
+        label: 'Design & Accessibility',
+        href: '/docs/design/design-system',
+      },
+    ],
   },
   {
-    title: 'Design',
+    title: 'Review quality and project evidence',
     description:
-      'Wits Quest visual language, interaction principles, accessibility, and interface standards.',
+      'Inspect current verification, Sprint evidence, delivery plans, governance, and Scrum records.',
+    links: [
+      {
+        label: 'Testing & Quality',
+        href: '/docs/testing-quality',
+      },
+      {
+        label: 'Project Management',
+        href: '/docs/project-management',
+      },
+    ],
+  },
+];
+
+const documentationSections = [
+  { label: 'Overview', href: '/docs/' },
+  { label: 'Product & Requirements', href: '/docs/product-requirements' },
+  { label: 'Architecture', href: '/docs/architecture' },
+  { label: 'Data & Database', href: '/docs/data-database' },
+  {
+    label: 'Design & Accessibility',
     href: '/docs/design/design-system',
   },
   {
-    title: 'Planning',
-    description:
-      'Delivery roadmap, sprint planning, risk management, and implementation priorities.',
-    href: '/docs/planning/delivery-roadmap',
+    label: 'Development & Operations',
+    href: '/docs/development-operations',
   },
-  {
-    title: 'Testing',
-    description:
-      'Continuous integration, automated verification, testing strategy, and quality practices.',
-    href: '/docs/testing/continuous-integration',
-  },
+  { label: 'Testing & Quality', href: '/docs/testing-quality' },
+  { label: 'Project Management', href: '/docs/project-management' },
 ];
 
 function HomepageHeader(): ReactNode {
@@ -60,23 +101,24 @@ function HomepageHeader(): ReactNode {
         </Heading>
 
         <p className={styles.heroSubtitle}>
-          Technical and project documentation for Wits Quest, a location-based
-          campus exploration game.
+          <strong>Wits World</strong> is the project and repository workspace
+          for <strong>Wits Quest</strong>, a location-based campus exploration
+          game.
         </p>
 
         <div className={styles.heroActions}>
           <Link
             className={clsx('button button--lg', styles.primaryButton)}
-            to="/docs/architecture/overview"
+            to="/docs/"
           >
-            Explore documentation
+            Open documentation
           </Link>
 
           <Link
             className={clsx('button button--lg', styles.secondaryButton)}
-            href="https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World"
+            to="/docs/basic-release-reference"
           >
-            View Gitea
+            View current Basic release
           </Link>
         </div>
       </div>
@@ -84,35 +126,57 @@ function HomepageHeader(): ReactNode {
   );
 }
 
-function DocumentationSections(): ReactNode {
+function DocumentationPaths(): ReactNode {
   return (
     <section className={styles.documentation}>
       <div className={styles.sectionHeader}>
-        <span className={styles.sectionNumber}>01</span>
-
-        <div>
-          <Heading as="h2">Project documentation</Heading>
-          <p>
-            Design decisions, technical guidance, delivery planning, and
-            engineering evidence maintained alongside the source code.
-          </p>
-        </div>
+        <Heading as="h2">Choose a path</Heading>
+        <p>
+          Start with the part of Wits World that matches what you need to
+          understand or do.
+        </p>
       </div>
 
-      <div className={styles.grid}>
-        {sections.map((section, index) => (
-          <Link className={styles.card} to={section.href} key={section.title}>
-            <span className={styles.cardNumber}>
+      <div className={styles.pathGrid}>
+        {readerPaths.map((path, index) => (
+          <article className={styles.pathCard} key={path.title}>
+            <span className={styles.pathNumber} aria-hidden="true">
               {String(index + 1).padStart(2, '0')}
             </span>
 
-            <Heading as="h3">{section.title}</Heading>
-            <p>{section.description}</p>
+            <Heading as="h3">{path.title}</Heading>
+            <p>{path.description}</p>
 
-            <span className={styles.cardLink}>Open section →</span>
-          </Link>
+            <ul className={styles.pathLinks}>
+              {path.links.map((link) => (
+                <li key={link.href}>
+                  <Link className={styles.pathLink} to={link.href}>
+                    <span>{link.label}</span>
+                    <span aria-hidden="true">→</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </article>
         ))}
       </div>
+
+      <div className={styles.directoryHeader}>
+        <Heading as="h2">All documentation</Heading>
+        <p>Browse every major section in the curated documentation guide.</p>
+      </div>
+
+      <nav className={styles.sectionLinks} aria-label="Documentation sections">
+        {documentationSections.map((section) => (
+          <Link
+            className={styles.sectionLink}
+            to={section.href}
+            key={section.href}
+          >
+            {section.label}
+          </Link>
+        ))}
+      </nav>
     </section>
   );
 }
@@ -125,7 +189,7 @@ export default function Home(): ReactNode {
     >
       <main>
         <HomepageHeader />
-        <DocumentationSections />
+        <DocumentationPaths />
       </main>
     </Layout>
   );

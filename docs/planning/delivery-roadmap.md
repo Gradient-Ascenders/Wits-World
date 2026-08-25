@@ -1,5 +1,15 @@
 # Wits World Delivery Roadmap
 
+:::note[Planning snapshot]
+
+This roadmap preserves the intended delivery sequence and milestone framing at
+the time it was written. For current delivered Basic scope, use the
+[Basic release overview](../basic-release-reference.md); confirmed product
+decisions are maintained in the
+[Basic-tier decision register](../requirements/basic-tier-decision-register.md).
+
+:::
+
 ## Purpose
 
 This roadmap describes how the Wits World team intends to deliver the Wits Quest
@@ -336,3 +346,5 @@ documentation.
 
 The preceding document was planned and generated with the assistance of:
 ChatGPT-Web[GPT-5.6 Thinking].
+
+The planning-status notice was added with assistance from Codex-CLI[GPT-5].

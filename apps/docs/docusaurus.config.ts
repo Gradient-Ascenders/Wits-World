@@ -54,8 +54,7 @@ const config: Config = {
       },
       items: [
         {
-          type: 'docSidebar',
-          sidebarId: 'docsSidebar',
+          to: '/docs/',
           position: 'left',
           label: 'Documentation',
         },
@@ -73,16 +72,24 @@ const config: Config = {
           title: 'Documentation',
           items: [
             {
+              label: 'Overview',
+              to: '/docs/',
+            },
+            {
+              label: 'Product & Requirements',
+              to: '/docs/product-requirements',
+            },
+            {
               label: 'Architecture',
-              to: '/docs/architecture/overview',
+              to: '/docs/architecture',
             },
             {
-              label: 'Requirements',
-              to: '/docs/requirements/player-location-journey',
+              label: 'Development & Operations',
+              to: '/docs/development-operations',
             },
             {
-              label: 'Testing',
-              to: '/docs/testing/continuous-integration',
+              label: 'Testing & Quality',
+              to: '/docs/testing-quality',
             },
           ],
         },
@@ -90,7 +97,11 @@ const config: Config = {
           title: 'Project',
           items: [
             {
-              label: 'Wits World on Gitea',
+              label: 'Project Management',
+              to: '/docs/project-management',
+            },
+            {
+              label: 'Gitea repository',
               href: 'https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World',
             },
           ],
