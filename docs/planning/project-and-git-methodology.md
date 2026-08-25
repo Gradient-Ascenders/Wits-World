@@ -16,6 +16,10 @@ the next work, and records any decisions that change acceptance criteria. Short
 coordination happens as needed during the week rather than through mandatory
 daily ceremony.
 
+Retrospectively assembled planning and coordination evidence is kept in the
+[Scrum records](./scrum/index.md). Those pages distinguish repository-backed
+outcomes from inferred discussion and are not presented as verbatim transcripts.
+
 The Gitea Kanban/project tracker is maintained continuously, not reconstructed
 at the end of a milestone. Issues are the units of planned work; their status,
 owner, dependencies, acceptance criteria, review state, and blockers should
