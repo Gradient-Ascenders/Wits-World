@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   InvalidCardDefinitionError,
   validateCardDefinition,
+  validateCardDefinitionForPublication,
 } from '../src/cards/card-validation.js';
 
 const validCreature = {
@@ -171,6 +172,35 @@ describe('card definition validation', () => {
           },
         ],
       }),
+    ).not.toThrow();
+  });
+
+  it('keeps null executable values valid in drafts but rejects them for publication', () => {
+    const creatureDraft = {
+      ...validCreature,
+      moves: [{ ...validCreature.moves[0]!, effectValue: null }],
+    };
+    const powerDraft = {
+      ...validPower,
+      effects: [{ ...validPower.effects[0]!, effectValue: null }],
+    };
+
+    expect(() => validateCardDefinition(creatureDraft)).not.toThrow();
+    expect(() => validateCardDefinition(powerDraft)).not.toThrow();
+    expect(() => validateCardDefinitionForPublication(creatureDraft)).toThrow(
+      'Move "Strike" requires an effect value before publication',
+    );
+    expect(() => validateCardDefinitionForPublication(powerDraft)).toThrow(
+      'Power-card effect 1 requires an effect value before publication',
+    );
+  });
+
+  it('accepts non-null Creature and Power effects for publication', () => {
+    expect(() =>
+      validateCardDefinitionForPublication(validCreature),
+    ).not.toThrow();
+    expect(() =>
+      validateCardDefinitionForPublication(validPower),
     ).not.toThrow();
   });
 

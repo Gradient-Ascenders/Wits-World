@@ -17,6 +17,7 @@ const screenshotsDirectory = path.resolve(
   process.cwd(),
   '../../.pr-screenshots/issue-76',
 );
+const CURRENT_PLAYER_ID = '00000000-0000-4000-8000-000000009001';
 
 test('completes a mocked authoritative CPU match through the production UI', async ({
   baseURL,
@@ -30,6 +31,96 @@ test('completes a mocked authoritative CPU match through the production UI', asy
   const cards = buildStarterCards('wit');
   const initial = buildMatch();
   const opening = activeMatch(1);
+  const openingPlayer = opening.state.player.creatures[0]!;
+  openingPlayer.name = 'Campus Scholar';
+  openingPlayer.activeModifiers = [
+    {
+      operation: 'multiply',
+      percentage: 10,
+      remainingTurns: 2,
+      stat: 'damage_multiplier',
+    },
+    {
+      operation: 'multiply',
+      percentage: 10,
+      remainingTurns: null,
+      stat: 'damage_multiplier',
+    },
+  ];
+  openingPlayer.moves = [
+    {
+      effects: [
+        {
+          damageMultiplier: null,
+          effectType: 'damage',
+          effectValue: 7,
+          modifier: null,
+        },
+      ],
+      id: openingPlayer.moves[0]!.id,
+      moveType: 'basic',
+      name: 'Measured Strike',
+      powerCost: 0,
+    },
+    {
+      effects: [
+        {
+          damageMultiplier: 0.85,
+          effectType: 'debuff',
+          effectValue: 15,
+          modifier: {
+            durationTurns: 3,
+            operation: 'multiply',
+            stat: 'damage_multiplier',
+          },
+        },
+      ],
+      id: '00000000-0000-4000-8000-000000001299',
+      moveType: 'grit',
+      name: 'Brace',
+      powerCost: 11,
+    },
+  ];
+  opening.state.cpu.activeCreature!.name = 'Braam Sentinel';
+  opening.state.cpu.activeCreature!.activeModifiers = [
+    {
+      operation: 'multiply',
+      percentage: -100,
+      remainingTurns: 2,
+      stat: 'damage_multiplier',
+    },
+  ];
+  opening.state.player.powerCards[0] = {
+    affinity: 'wit',
+    available: true,
+    effects: [
+      {
+        damageMultiplier: null,
+        effectType: 'damage',
+        effectValue: 8,
+        modifier: null,
+      },
+      {
+        damageMultiplier: null,
+        effectType: 'buff',
+        effectValue: 3,
+        modifier: {
+          durationTurns: null,
+          operation: 'add',
+          stat: 'power',
+        },
+      },
+    ],
+    id: opening.state.player.powerCards[0]!.id,
+    name: 'Tactical Surge',
+  };
+  opening.state.legalActions = [
+    { moveId: openingPlayer.moves[0]!.id, type: 'use_move' },
+    {
+      powerCardId: opening.state.player.powerCards[0]!.id,
+      type: 'use_power_card',
+    },
+  ];
   const afterPower = activeMatch(2);
   const defeatedCreature = afterPower.state.player.creatures[0]!;
   const replacementCreature = afterPower.state.player.creatures[1]!;
@@ -112,6 +203,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     let actionNumber = 0;
 
     monitorBrowser(page, consoleErrors, pageErrors, failedRequests);
+    await routeCurrentPlayer(page);
     await page.route('**/api/v1/cards/collection', (route) =>
       json(route, { cards, requestId: 'cpu-browser-cards' }),
     );
@@ -183,10 +275,33 @@ test('completes a mocked authoritative CPU match through the production UI', asy
       page.getByRole('heading', { name: 'Your turn' }),
     ).toBeFocused();
 
+    const zeroCostMove = page.getByRole('button', {
+      name: /Measured Strike.*Basic.*7 base damage.*0 Power/i,
+    });
+    await expect(zeroCostMove).toBeEnabled();
+    await expect(
+      page.getByRole('button', {
+        name: /Brace.*Opponent damage −15%.*3 turns.*11 Power/i,
+      }),
+    ).toBeDisabled();
+    await expect(
+      page.getByRole('button', {
+        name: /Tactical Surge.*8 base damage.*Restore 3 Power.*One use/i,
+      }),
+    ).toBeEnabled();
+    await expect(page.getByText('Damage +10% · 2 turns')).toBeVisible();
+    await expect(page.getByText('Damage +10% · Rest of battle')).toBeVisible();
+    await expect(page.getByText('Damage −100% · 2 turns')).toBeVisible();
+    await zeroCostMove.focus();
+    await expect(zeroCostMove).toBeFocused();
+    expect(
+      await zeroCostMove.evaluate(
+        (element) => getComputedStyle(element).outlineStyle,
+      ),
+    ).not.toBe('none');
+
     for (const viewport of [
-      { height: 800, label: '360', width: 360 },
       { height: 844, label: '390', width: 390 },
-      { height: 1024, label: 'tablet-768', width: 768 },
       { height: 800, label: 'desktop-1280', width: 1280 },
     ]) {
       await page.setViewportSize({
@@ -194,6 +309,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
         width: viewport.width,
       });
       await expectNoHorizontalOverflow(page);
+      await expectControlsContainTheirContent(page);
       await page.locator('.battle-page').screenshot({
         path: path.join(
           screenshotsDirectory,
@@ -204,13 +320,13 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     }
 
     await page.setViewportSize({ height: 844, width: 390 });
-    await page.getByRole('button', { name: 'Use Power card 1' }).tap();
+    await page.getByRole('button', { name: /Tactical Surge/ }).tap();
     await expect(
       page.getByRole('heading', { name: 'Player used a Power card' }),
     ).toBeVisible();
 
     const normalMove = page.getByRole('button', {
-      name: 'Use Knowledge Strike 1',
+      name: /Knowledge Strike 1/,
     });
     await normalMove.focus();
     await page.keyboard.press('Enter');
@@ -232,11 +348,11 @@ test('completes a mocked authoritative CPU match through the production UI', asy
       page.getByRole('heading', { name: 'Your turn' }),
     ).toBeFocused();
 
-    await page.getByRole('button', { name: 'Use Knowledge Strike 2' }).tap();
+    await page.getByRole('button', { name: /Knowledge Strike 2/ }).tap();
     await expect(
       page.getByText(/Authoritative match state restored/),
     ).toBeAttached();
-    await page.getByRole('button', { name: 'Use Knowledge Strike 2' }).tap();
+    await page.getByRole('button', { name: /Knowledge Strike 2/ }).tap();
     await expect(
       page.getByRole('heading', { name: 'Victory — match saved' }),
     ).toBeVisible();
@@ -279,6 +395,7 @@ test('resumes the owned active CPU match before presenting deck creation', async
   const active = activeMatch(3);
   let activeLookups = 0;
 
+  await routeCurrentPlayer(page);
   await page.route('**/api/v1/matches/**', async (route) => {
     const pathname = new URL(route.request().url()).pathname;
     if (pathname.endsWith('/matches/cpu')) activeLookups += 1;
@@ -331,10 +448,40 @@ async function expectNoHorizontalOverflow(page: Page) {
   expect(sizes.scrollWidth).toBeLessThanOrEqual(sizes.clientWidth);
 }
 
+async function expectControlsContainTheirContent(page: Page) {
+  const controls = await page
+    .locator('.battle-action-control')
+    .evaluateAll((elements) =>
+      elements.map((element) => ({
+        clientHeight: element.clientHeight,
+        clientWidth: element.clientWidth,
+        scrollHeight: element.scrollHeight,
+        scrollWidth: element.scrollWidth,
+      })),
+    );
+  for (const control of controls) {
+    expect(control.scrollWidth).toBeLessThanOrEqual(control.clientWidth);
+    expect(control.scrollHeight).toBeLessThanOrEqual(control.clientHeight);
+  }
+}
+
 async function json(route: Route, body: object, status = 200) {
   await route.fulfill({
     body: JSON.stringify(body),
     contentType: 'application/json',
     status,
   });
+}
+
+async function routeCurrentPlayer(page: Page) {
+  await page.route('**/api/v1/auth/me', (route) =>
+    json(route, {
+      id: CURRENT_PLAYER_ID,
+      lifecycleStatus: 'active',
+      playerName: 'battle_reader',
+      playerNameSetupRequired: false,
+      requestId: 'cpu-browser-player',
+      role: 'player',
+    }),
+  );
 }

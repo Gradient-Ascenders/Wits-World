@@ -3,6 +3,7 @@ import type pg from 'pg';
 import {
   InvalidCardDefinitionError,
   validateCardDefinition,
+  validateCardDefinitionForPublication,
   type CardDefinitionInput,
   type CardEffectInput,
   type CardMoveInput,
@@ -592,7 +593,7 @@ function assertCardReadyForPublication(card: AuthorCardDefinition): void {
   }
 
   try {
-    validateCardDefinition({
+    validateCardDefinitionForPublication({
       name: card.name,
       category: card.category,
       affinity: card.affinity,

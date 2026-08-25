@@ -204,7 +204,7 @@ republished.
 - Rarity is `common`, `rare`, `epic`, or `legendary`.
 
 Creature moves are stored in `card_moves` with an ordered position, name, move
-type, effect type, optional effect value, modifier target/operation metadata,
+type, effect type, draft-optional effect value, modifier target/operation metadata,
 optional damage-modifier duration, and non-negative Power cost. Power-card
 effects are stored in `card_effects` with the same ordered effect and modifier
 fields. Buff and Debuff rows require an authored modifier target and operation;
@@ -214,6 +214,20 @@ cannot define modifier metadata. Child-table triggers enforce that moves belong
 to Creatures and effects belong to Power cards. A category-change trigger
 prevents an existing Creature from being changed into a Power card, or vice
 versa, while its child rows remain.
+
+Draft authoring continues to permit a null effect value so incomplete content
+can be saved. The Author publication service rejects a Creature move or
+Power-card effect whose executable value is null before it can set
+`authoring_status = 'published'` and `is_active = true`. CPU match setup retains
+the independent rules-engine validation as a final defensive boundary.
+
+This lifecycle rule is enforced at the authoritative API/service publication
+boundary. PostgreSQL still permits a privileged direct SQL writer to perform a
+coordinated status update that bypasses the service because safe database-only
+enforcement would require a cross-table lifecycle trigger while drafts remain
+nullable. This change deliberately does not add that trigger or rewrite valid
+published definitions; operational publication must continue through the
+Author service.
 
 A Creature definition may have at most four ordered `card_moves`. Drafts may be
 incomplete with zero through four valid moves. Moving a Creature to `published`

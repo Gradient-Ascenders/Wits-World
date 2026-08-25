@@ -13,6 +13,11 @@ import {
 } from '../api/matches';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { MatchErrorState } from '../components/matches/MatchErrorState';
+import {
+  describeActiveModifier,
+  describeAppliedEffect,
+  describeEffect,
+} from '../battle/effect-presentation';
 import './matches.css';
 
 interface MatchRouteParams {
@@ -547,23 +552,35 @@ function ActionPanel({
                   const legal = isLegalIntent(match, action);
                   return (
                     <li key={move.id}>
-                      <div>
-                        <strong>{move.name}</strong>
-                        <span>
-                          {titleCase(move.moveType)} move · {move.powerCost}{' '}
-                          Power
-                        </span>
-                      </div>
                       <button
                         aria-describedby={
                           legal ? undefined : `move-${move.id}-reason`
                         }
-                        className="button"
+                        className="battle-action-control"
                         disabled={busy || !legal}
                         onClick={() => onAction(action)}
                         type="button"
                       >
-                        Use {move.name}
+                        <span className="battle-action-control__heading">
+                          <strong>{move.name}</strong>
+                          <span>{titleCase(move.moveType)}</span>
+                        </span>
+                        <span className="battle-action-control__detail">
+                          <span className="battle-effect-list">
+                            {move.effects.length > 0 ? (
+                              move.effects.map((effect, index) => (
+                                <span key={index}>
+                                  {describeEffect(effect)}
+                                </span>
+                              ))
+                            ) : (
+                              <span>Effect details unavailable</span>
+                            )}
+                          </span>
+                          <span className="battle-action-control__cost">
+                            {move.powerCost} Power
+                          </span>
+                        </span>
                       </button>
                       {!legal ? (
                         <small id={`move-${move.id}-reason`}>
@@ -582,7 +599,7 @@ function ActionPanel({
           <section aria-labelledby="power-actions-title">
             <h3 id="power-actions-title">Power cards</h3>
             <ul>
-              {match.state.player.powerCards.map((card, index) => {
+              {match.state.player.powerCards.map((card) => {
                 const action = {
                   powerCardId: card.id,
                   type: 'use_power_card' as const,
@@ -590,24 +607,37 @@ function ActionPanel({
                 const legal = isLegalIntent(match, action);
                 return (
                   <li key={card.id}>
-                    <div>
-                      <strong>
-                        {titleCase(card.affinity)} Power card {index + 1}
-                      </strong>
-                      <span>
-                        {card.available ? 'Available' : 'Already used'}
-                      </span>
-                    </div>
                     <button
                       aria-describedby={
                         legal ? undefined : `power-${card.id}-reason`
                       }
-                      className="button"
+                      className="battle-action-control battle-action-control--power"
                       disabled={busy || !legal}
                       onClick={() => onAction(action)}
                       type="button"
                     >
-                      Use Power card {index + 1}
+                      <span className="battle-action-control__heading">
+                        <strong>{card.name}</strong>
+                        <span>{titleCase(card.affinity)}</span>
+                      </span>
+                      <span className="battle-effect-list">
+                        {card.effects.length > 0 ? (
+                          card.effects.map((effect, effectIndex) => (
+                            <span key={effectIndex}>
+                              {describeEffect(effect)}
+                            </span>
+                          ))
+                        ) : (
+                          <span>Effect details unavailable</span>
+                        )}
+                      </span>
+                      <span className="battle-action-control__availability">
+                        {!card.available
+                          ? 'Already used'
+                          : legal
+                            ? 'Available · One use'
+                            : 'Currently unavailable · One use'}
+                      </span>
                     </button>
                     {!legal ? (
                       <small id={`power-${card.id}-reason`}>
@@ -639,11 +669,8 @@ function Combatant({
       <p className="eyebrow">{heading}</p>
       {creature ? (
         <>
-          <h2>{titleCase(creature.affinity)} Creature</h2>
-          <CreatureSummary
-            creature={creature}
-            label={`${titleCase(creature.affinity)} Creature`}
-          />
+          <h2>{creature.name}</h2>
+          <CreatureSummary creature={creature} label={creature.name} />
         </>
       ) : (
         <div className="hidden-card" role="img" aria-label={emptyText}>
@@ -678,6 +705,19 @@ function CreatureSummary({
       <span>
         Power {creature.remainingPower} of {creature.maxPower}
       </span>
+      {creature.activeModifiers.length > 0 ? (
+        <section
+          aria-label={`Active effects on ${label}`}
+          className="active-effects"
+        >
+          <strong>Active effects</strong>
+          <ul>
+            {creature.activeModifiers.map((modifier, index) => (
+              <li key={index}>{describeActiveModifier(modifier)}</li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -692,10 +732,7 @@ function OutcomePanel({ result }: { result: MatchActionResult }) {
       ) : (
         <ul>
           {result.effects.map((effect) => (
-            <li key={effect.effectId}>
-              {sideLabel(effect.targetSide)} received {effect.effectType}{' '}
-              {effect.amount}.
-            </li>
+            <li key={effect.effectId}>{describeAppliedEffect(effect)}</li>
           ))}
         </ul>
       )}
@@ -805,7 +842,10 @@ function describeAction(result: MatchActionResult) {
 }
 
 function creatureLabel(creature: MatchCreature, index: number) {
-  return `${titleCase(creature.affinity)} Creature ${index + 1}`;
+  const genericName = `${titleCase(creature.affinity)} Creature`;
+  return creature.name === genericName
+    ? `${genericName} ${index + 1}`
+    : creature.name;
 }
 
 function sideLabel(side: 'cpu' | 'player') {

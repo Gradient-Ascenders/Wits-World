@@ -64,6 +64,38 @@ never reconstructed: the UI names the hidden information and displays only the
 aggregate remaining counts returned by the API. `lastAction` is the recent
 authoritative outcome; the browser does not derive it from card statistics.
 
+The public match view projects existing authoritative card and battle data for
+decisions. Revealed Creature moves include their name, move type, Power cost,
+and ordered effect definition. Player Power cards include their snapshot-backed
+name, affinity, authored ordered effects, and server availability. Each effect
+contains its type and non-null executable value plus modifier stat, operation,
+and authored duration when applicable. Card names come from immutable
+`cpu_match_cards` snapshots; no current catalogue lookup can rename a match.
+For damage modifiers, the API additionally projects the rules-normalized
+multiplier. Previews render that authoritative multiplier, including the
+zero-multiplier clamp for debuffs greater than 100%, rather than calculating a
+combat rule in the browser or showing an impossible raw reduction.
+
+Only persistent damage multipliers appear beside an active Creature. Each
+stored modifier remains a separate entry with a signed percentage and the
+authoritative `remainingTurns`; `null` means rest of battle. A finite duration
+counts the affected Creature's subsequent turns and is displayed exactly as it
+decrements in battle state. Damage, healing, and immediate HP or Power changes
+appear in the latest outcome but do not remain in active effects. No browser
+timer, combined stacking percentage, effect target, or combat result is
+calculated from these values.
+
+Fresh reads enrich older match state with names already present in the
+historical card snapshots. The browser runtime validator also accepts the
+previous response shape for an already-persisted idempotency receipt; it labels
+missing legacy presentation details as unavailable instead of inventing them.
+When new effect or modifier fields are present, malformed values reject the
+response as unavailable.
+
+These response and presentation additions do not change damage, affinity,
+Power, regeneration, stacking, duration, legality, CPU choice, replacement,
+timeout, turn-order, persistence, or snapshot mechanics.
+
 ## Submission and state ordering
 
 Each activation generates a fresh UUID `submissionId`, sends the currently
@@ -113,12 +145,15 @@ single-flight submission, stale reconciliation, response ordering, completion
 absorption, history/detail, authentication, retry, and keyboard operation.
 
 `playwright/cpu-battle.spec.ts` uses the authenticated production application
-shell and routes with deterministic intercepted API responses. It completes a
-full frontend match, including a real touch tap, keyboard actions, Power use,
-defeat/replacement, stale recovery, completion, history/detail, refresh, console
-checks, overflow checks, and 360px/390px/tablet/desktop screenshots under the
-ignored `.pr-screenshots/issue-76/` path. This is mocked API browser evidence,
-not a claim that a live backend match was completed end to end.
+shell with deterministic authentication and intercepted API responses. It
+completes a full frontend match, including a real touch tap, keyboard actions,
+Power use, defeat/replacement, stale recovery, completion, history/detail, and
+refresh. Its effect-rich fixture checks ordered multi-effects, zero Power,
+finite/permanent stacked modifiers, disabled legality, visible keyboard focus,
+control containment, horizontal overflow, and console/runtime errors at
+390x844 and 1280x800. Screenshots remain under the ignored
+`.pr-screenshots/issue-76/` path. This is mocked API browser evidence, not a
+claim that a live backend match was completed end to end.
 
 This document was generated and edited with assistance from
-Codex-CLI[gpt-5.6-sol].
+Codex-CLI[gpt-5.6-sol] and Codex-CLI[GPT-5].

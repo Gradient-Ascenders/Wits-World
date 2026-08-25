@@ -45,3 +45,5 @@ apps/web/playwright/.auth/
 apps/web/playwright-report/
 apps/web/playwright/test-results/
 apps/web/playwright/test-results-basic/
+apps/web/playwright/test-results-battle/
+.pr-screenshots/

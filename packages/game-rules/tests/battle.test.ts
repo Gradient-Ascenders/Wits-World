@@ -441,6 +441,104 @@ describe('Basic battle rules', () => {
     expect(activeCreature(afterAttack.state, 'player').modifiers).toEqual([]);
   });
 
+  it('decrements a finite modifier after the affected Creature subsequent turn', () => {
+    const powerCard = makePowerCard('three-turn-buff', [
+      {
+        id: 'three-turn-buff-effect',
+        effectType: 'buff',
+        effectValue: 15,
+        modifier: {
+          stat: 'damage_multiplier',
+          operation: 'multiply',
+          durationTurns: 3,
+        },
+      },
+    ]);
+    const state = startBattle(
+      makeDeck('player', {
+        powerCards: [
+          powerCard,
+          makePowerCard('other', [
+            { id: 'other-heal', effectType: 'heal', effectValue: 1 },
+          ]),
+        ],
+      }),
+    );
+
+    const applied = action(state, 'player', {
+      type: 'use_power_card',
+      powerCardId: powerCard.id,
+    });
+    expect(activeCreature(applied, 'player').modifiers[0]?.remainingTurns).toBe(
+      3,
+    );
+    const afterCpu = action(applied, 'cpu', { type: 'timeout' });
+    expect(
+      activeCreature(afterCpu, 'player').modifiers[0]?.remainingTurns,
+    ).toBe(3);
+    const afterAffectedTurn = action(afterCpu, 'player', { type: 'timeout' });
+    expect(
+      activeCreature(afterAffectedTurn, 'player').modifiers[0]?.remainingTurns,
+    ).toBe(2);
+  });
+
+  it('clamps a 150% damage debuff to zero through the affected Creature turn', () => {
+    const powerCard = makePowerCard('overkill-debuff', [
+      {
+        id: 'overkill-debuff-effect',
+        effectType: 'debuff',
+        effectValue: 150,
+        modifier: {
+          stat: 'damage_multiplier',
+          operation: 'multiply',
+          durationTurns: 2,
+        },
+      },
+    ]);
+    const state = startBattle(
+      makeDeck('player', {
+        powerCards: [
+          powerCard,
+          makePowerCard('other', [
+            { id: 'other-heal', effectType: 'heal', effectValue: 1 },
+          ]),
+        ],
+      }),
+    );
+
+    const applied = applyBattleAction(
+      state,
+      'player',
+      { type: 'use_power_card', powerCardId: powerCard.id },
+      randomZero,
+    );
+
+    expect(activeCreature(applied.state, 'cpu').modifiers[0]).toMatchObject({
+      stat: 'damage_multiplier',
+      operation: 'multiply',
+      value: 0,
+      remainingTurns: 2,
+    });
+
+    const attack = applyBattleAction(
+      applied.state,
+      'cpu',
+      {
+        type: 'use_move',
+        moveId: activeCreature(applied.state, 'cpu').card.moves[0]!.id,
+      },
+      randomZero,
+    );
+
+    expect(attack.result.effects[0]).toMatchObject({
+      effectType: 'damage',
+      amount: 0,
+    });
+    expect(
+      activeCreature(attack.state, 'cpu').modifiers[0]?.remainingTurns,
+    ).toBe(1);
+  });
+
   it('ends a timed-out turn without changing battle stats', () => {
     const state = startBattle();
     const before = structuredClone(state);
@@ -608,6 +706,14 @@ describe('Basic battle rules', () => {
     expect(() => createBattleState(invalidDeck, makeDeck('cpu'))).toThrow(
       InvalidBattleSetupError,
     );
+    expect(() =>
+      createBattleState(
+        makeDeck('null-effect', {
+          moves: [makeDamageMove('missing-value', null as never)],
+        }),
+        makeDeck('cpu'),
+      ),
+    ).toThrow('must define an effect value before battle use');
     expect(() =>
       createBattleState(
         {

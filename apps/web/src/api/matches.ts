@@ -14,13 +14,35 @@ export type CpuMatchIntent =
 export type CpuMatchAction = CpuMatchIntent | { type: 'timeout' };
 
 export interface MatchMove {
+  effects: MatchEffect[];
   id: string;
   moveType: 'basic' | CardAffinity;
   name: string;
   powerCost: number;
 }
 
+export interface MatchEffectModifier {
+  durationTurns?: number | null;
+  operation: 'add' | 'multiply';
+  stat: 'damage_multiplier' | 'hp' | 'power';
+}
+
+export interface MatchEffect {
+  damageMultiplier: number | null;
+  effectType: 'buff' | 'damage' | 'debuff' | 'heal';
+  effectValue: number;
+  modifier: MatchEffectModifier | null;
+}
+
+export interface MatchActiveModifier {
+  operation: 'multiply';
+  percentage: number;
+  remainingTurns: number | null;
+  stat: 'damage_multiplier';
+}
+
 export interface MatchCreature {
+  activeModifiers: MatchActiveModifier[];
   affinity: CardAffinity;
   currentHp: number;
   defeated: boolean;
@@ -28,6 +50,7 @@ export interface MatchCreature {
   maxHp: number;
   maxPower: number;
   moves: MatchMove[];
+  name: string;
   remainingPower: number;
 }
 
@@ -35,6 +58,8 @@ export interface MatchPowerCard {
   affinity: CardAffinity;
   available: boolean;
   id: string;
+  effects: MatchEffect[];
+  name: string;
 }
 
 export interface AppliedMatchEffect {
@@ -42,6 +67,7 @@ export interface AppliedMatchEffect {
   damageMultiplier: number | null;
   effectId: string;
   effectType: 'buff' | 'damage' | 'debuff' | 'heal';
+  modifier: MatchEffectModifier | null;
   targetCreatureId: string;
   targetSide: BattleSide;
 }
@@ -185,6 +211,7 @@ const stateKeys = [
   'turnNumber',
 ] as const;
 const creatureKeys = [
+  'activeModifiers',
   'affinity',
   'currentHp',
   'defeated',
@@ -192,8 +219,12 @@ const creatureKeys = [
   'maxHp',
   'maxPower',
   'moves',
+  'name',
   'remainingPower',
 ] as const;
+const legacyCreatureKeys = creatureKeys.filter(
+  (key) => key !== 'activeModifiers' && key !== 'name',
+);
 const resultKeys = [
   'action',
   'defeatedCreatureId',
@@ -621,9 +652,12 @@ function parseCpu(value: unknown): CpuMatchState['cpu'] {
 }
 
 function parseCreature(value: unknown): MatchCreature {
+  const currentShape = isRecord(value) && hasExactKeys(value, creatureKeys);
+  const legacyShape =
+    isRecord(value) && hasExactKeys(value, legacyCreatureKeys);
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, creatureKeys) ||
+    (!currentShape && !legacyShape) ||
     !isUuid(value.id) ||
     !isAffinity(value.affinity) ||
     !isNonNegativeInteger(value.maxHp) ||
@@ -631,12 +665,19 @@ function parseCreature(value: unknown): MatchCreature {
     !isNonNegativeInteger(value.currentHp) ||
     !isNonNegativeInteger(value.remainingPower) ||
     typeof value.defeated !== 'boolean' ||
-    !Array.isArray(value.moves)
+    !Array.isArray(value.moves) ||
+    (currentShape &&
+      (typeof value.name !== 'string' ||
+        value.name.trim() === '' ||
+        !Array.isArray(value.activeModifiers)))
   ) {
     throw new MatchApiError('unavailable');
   }
 
   return {
+    activeModifiers: currentShape
+      ? (value.activeModifiers as unknown[]).map(parseActiveModifier)
+      : [],
     affinity: value.affinity,
     currentHp: value.currentHp,
     defeated: value.defeated,
@@ -644,36 +685,80 @@ function parseCreature(value: unknown): MatchCreature {
     maxHp: value.maxHp,
     maxPower: value.maxPower,
     moves: value.moves.map(parseMove),
+    name: currentShape
+      ? String(value.name)
+      : `${titleCase(value.affinity)} Creature`,
     remainingPower: value.remainingPower,
   };
 }
 
 function parseMove(value: unknown): MatchMove {
+  const currentKeys = [
+    'effects',
+    'id',
+    'moveType',
+    'name',
+    'powerCost',
+  ] as const;
+  const legacyKeys = ['id', 'moveType', 'name', 'powerCost'] as const;
+  const currentShape = isRecord(value) && hasExactKeys(value, currentKeys);
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, ['id', 'moveType', 'name', 'powerCost']) ||
+    (!currentShape && !hasExactKeys(value, legacyKeys)) ||
     !isUuid(value.id) ||
     (value.moveType !== 'basic' && !isAffinity(value.moveType)) ||
     typeof value.name !== 'string' ||
     value.name.trim() === '' ||
-    !isNonNegativeInteger(value.powerCost)
+    !isNonNegativeInteger(value.powerCost) ||
+    (currentShape && !Array.isArray(value.effects))
   ) {
     throw new MatchApiError('unavailable');
   }
-  return value as unknown as MatchMove;
+  return {
+    effects: currentShape
+      ? (value.effects as unknown[]).map(parseBattleEffect)
+      : [],
+    id: value.id,
+    moveType: value.moveType,
+    name: value.name,
+    powerCost: value.powerCost,
+  } as MatchMove;
 }
 
 function parsePowerCard(value: unknown): MatchPowerCard {
+  const currentKeys = [
+    'affinity',
+    'available',
+    'effects',
+    'id',
+    'name',
+  ] as const;
+  const legacyKeys = ['affinity', 'available', 'id'] as const;
+  const currentShape = isRecord(value) && hasExactKeys(value, currentKeys);
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, ['affinity', 'available', 'id']) ||
+    (!currentShape && !hasExactKeys(value, legacyKeys)) ||
     !isUuid(value.id) ||
     !isAffinity(value.affinity) ||
-    typeof value.available !== 'boolean'
+    typeof value.available !== 'boolean' ||
+    (currentShape &&
+      (typeof value.name !== 'string' ||
+        value.name.trim() === '' ||
+        !Array.isArray(value.effects)))
   ) {
     throw new MatchApiError('unavailable');
   }
-  return value as unknown as MatchPowerCard;
+  return {
+    affinity: value.affinity,
+    available: value.available,
+    effects: currentShape
+      ? (value.effects as unknown[]).map(parseBattleEffect)
+      : [],
+    id: value.id,
+    name: currentShape
+      ? String(value.name)
+      : `${titleCase(value.affinity)} Power card`,
+  } as MatchPowerCard;
 }
 
 function parseIntent(value: unknown): CpuMatchIntent {
@@ -739,27 +824,136 @@ function parseActionResult(value: unknown): MatchActionResult {
 }
 
 function parseEffect(value: unknown): AppliedMatchEffect {
+  const currentKeys = [
+    'amount',
+    'damageMultiplier',
+    'effectId',
+    'effectType',
+    'modifier',
+    'targetCreatureId',
+    'targetSide',
+  ] as const;
+  const legacyKeys = currentKeys.filter((key) => key !== 'modifier');
+  const currentShape = isRecord(value) && hasExactKeys(value, currentKeys);
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, [
-      'amount',
-      'damageMultiplier',
-      'effectId',
-      'effectType',
-      'targetCreatureId',
-      'targetSide',
-    ]) ||
+    (!currentShape && !hasExactKeys(value, legacyKeys)) ||
     !Number.isFinite(value.amount) ||
     (value.damageMultiplier !== null &&
       !Number.isFinite(value.damageMultiplier)) ||
     !isUuid(value.effectId) ||
     !['buff', 'damage', 'debuff', 'heal'].includes(String(value.effectType)) ||
     !isUuid(value.targetCreatureId) ||
-    !isSide(value.targetSide)
+    !isSide(value.targetSide) ||
+    (currentShape && !isNullableEffectModifier(value.modifier))
   ) {
     throw new MatchApiError('unavailable');
   }
-  return value as unknown as AppliedMatchEffect;
+  return {
+    amount: Number(value.amount),
+    damageMultiplier:
+      value.damageMultiplier === null ? null : Number(value.damageMultiplier),
+    effectId: value.effectId,
+    effectType: value.effectType,
+    modifier: currentShape
+      ? (value.modifier as MatchEffectModifier | null)
+      : null,
+    targetCreatureId: value.targetCreatureId,
+    targetSide: value.targetSide,
+  } as AppliedMatchEffect;
+}
+
+function parseBattleEffect(value: unknown): MatchEffect {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      'damageMultiplier',
+      'effectType',
+      'effectValue',
+      'modifier',
+    ]) ||
+    !isEffectType(value.effectType) ||
+    !isNonNegativeInteger(value.effectValue) ||
+    !isNullableEffectModifier(value.modifier) ||
+    (value.damageMultiplier !== null &&
+      (!Number.isFinite(value.damageMultiplier) ||
+        Number(value.damageMultiplier) < 0)) ||
+    (value.modifier?.stat === 'damage_multiplier') !==
+      (value.damageMultiplier !== null) ||
+    ((value.effectType === 'damage' || value.effectType === 'heal') &&
+      value.modifier !== null) ||
+    ((value.effectType === 'buff' || value.effectType === 'debuff') &&
+      value.modifier === null)
+  ) {
+    throw new MatchApiError('unavailable');
+  }
+
+  return value as unknown as MatchEffect;
+}
+
+function parseActiveModifier(value: unknown): MatchActiveModifier {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      'operation',
+      'percentage',
+      'remainingTurns',
+      'stat',
+    ]) ||
+    value.stat !== 'damage_multiplier' ||
+    value.operation !== 'multiply' ||
+    !Number.isInteger(value.percentage) ||
+    Number(value.percentage) < -100 ||
+    (value.remainingTurns !== null &&
+      (!Number.isInteger(value.remainingTurns) ||
+        Number(value.remainingTurns) <= 0))
+  ) {
+    throw new MatchApiError('unavailable');
+  }
+
+  return value as unknown as MatchActiveModifier;
+}
+
+function isNullableEffectModifier(
+  value: unknown,
+): value is MatchEffectModifier | null {
+  if (value === null) return true;
+  if (!isRecord(value)) return false;
+
+  const keys = Object.keys(value).sort();
+  const requiredKeys = ['operation', 'stat'];
+  const withDurationKeys = ['durationTurns', 'operation', 'stat'];
+  if (
+    JSON.stringify(keys) !== JSON.stringify(requiredKeys) &&
+    JSON.stringify(keys) !== JSON.stringify(withDurationKeys)
+  ) {
+    return false;
+  }
+
+  if (
+    !['damage_multiplier', 'hp', 'power'].includes(String(value.stat)) ||
+    !['add', 'multiply'].includes(String(value.operation)) ||
+    (value.durationTurns !== undefined &&
+      value.durationTurns !== null &&
+      (!Number.isInteger(value.durationTurns) ||
+        Number(value.durationTurns) <= 0))
+  ) {
+    return false;
+  }
+
+  if (value.stat === 'damage_multiplier') {
+    return value.operation === 'multiply';
+  }
+
+  return value.operation === 'add' && value.durationTurns == null;
+}
+
+function isEffectType(value: unknown): value is MatchEffect['effectType'] {
+  return ['buff', 'damage', 'debuff', 'heal'].includes(String(value));
+}
+
+function titleCase(value: string): string {
+  return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 }
 
 function parseHistoryItem(value: unknown): CpuMatchHistoryItem {
