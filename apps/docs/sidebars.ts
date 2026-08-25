@@ -294,10 +294,15 @@ const sidebars: SidebarsConfig = {
         type: 'generated-index',
         title: 'Development & Operations',
         description:
-          'Third-party dependencies, local data setup, CI/CD, service deployment, and database runbooks. Use the setup guides for development and the operational procedures for controlled releases and recovery.',
+          'Developer onboarding, third-party dependencies, local data setup, CI/CD, service deployment, and database runbooks. Start with the Developer Guide for a new checkout.',
         slug: '/development-operations',
       },
       items: [
+        {
+          type: 'doc',
+          id: 'development/getting-started',
+          label: 'Developer Guide',
+        },
         {
           type: 'doc',
           id: 'architecture/third-party-software-and-services',
@@ -445,7 +450,7 @@ const sidebars: SidebarsConfig = {
         type: 'generated-index',
         title: 'Project Management',
         description:
-          'Current methodology, stakeholder interactions, plans, and registers alongside clearly labelled Sprint 1 Scrum evidence and historical issue plans. Start with Project & Git Methodology.',
+          'Current methodology and Gitea work tracking, stakeholder interactions, plans, and registers alongside clearly labelled Sprint 1 Scrum evidence and historical issue plans. Start with Project & Git Methodology.',
         slug: '/project-management',
       },
       items: [
@@ -457,6 +462,11 @@ const sidebars: SidebarsConfig = {
               type: 'doc',
               id: 'planning/project-and-git-methodology',
               label: 'Project & Git Methodology',
+            },
+            {
+              type: 'doc',
+              id: 'planning/work-tracking-and-issue-management',
+              label: 'Work Tracking & Issue Management',
             },
             {
               type: 'doc',

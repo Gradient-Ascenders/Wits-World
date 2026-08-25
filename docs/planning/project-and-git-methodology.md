@@ -27,6 +27,13 @@ match the current repository reality. New stakeholder feedback is recorded as
 an issue, decision, or acceptance-criteria update and then ordered into the
 backlog. A request is not treated as approved merely because it was suggested.
 
+The [Work Tracking & Issue Management](./work-tracking-and-issue-management.md)
+guide documents the tracker and bug lifecycle, configured labels/milestone/board,
+issue-to-merge flow, branch-protection and CI boundary, real repository evidence,
+and known historical inconsistencies. The method on this page is the confirmed
+team process; a historical closed state or unchecked checklist is preserved as
+evidence, not silently rewritten to match it.
+
 ## Issue, branch, and pull-request flow
 
 1. Read the issue, its comments, dependencies, and evidence requirements.
@@ -41,6 +48,11 @@ backlog. A request is not treated as approved merely because it was suggested.
    review where those are relevant.
 6. Merge only through the authorised pull-request process, then update the
    tracker and retain the required delivery evidence.
+
+`main` requires one approval and dismisses stale approvals after new changes.
+Gitea Actions runs PR validation, but required CI status checks are not currently
+enabled in the branch-protection rule; confirming green CI therefore remains an
+explicit reviewer and Definition of Done responsibility.
 
 Large work is split into coherent issues and PRs so reviewers can understand the
 risk. Branches should be deleted after merge when no longer needed.

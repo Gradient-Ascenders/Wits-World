@@ -28,6 +28,7 @@ journeys fit together.
   [Product & Requirements](/docs/product-requirements) for current rules,
   confirmed decisions, and player journeys.
 - **Develop or run the system:** use
+  the [Developer Guide](development/getting-started.md) for a new checkout, then
   [Development & Operations](/docs/development-operations) for local data,
   CI/CD, deployment, and database runbooks.
 - **Review the technical design:** read [Architecture](/docs/architecture) for
@@ -36,7 +37,8 @@ journeys fit together.
 - **Review quality and project evidence:** use
   [Testing & Quality](/docs/testing-quality) for current verification and dated
   release evidence, and [Project Management](/docs/project-management) for
-  methodology, plans, and Scrum records.
+  methodology, [Gitea work and bug tracking](planning/work-tracking-and-issue-management.md),
+  plans, and Scrum records.
 - **Design the player experience:** consult the
   [Wits World design system](design/design-system.md) for visual, interaction,
   accessibility, and content guidance.
@@ -48,4 +50,4 @@ current source when the repository provides one.
 ---
 
 This documentation landing page was created and reviewed with assistance from
-Codex-CLI[GPT-5].
+Codex-CLI[GPT-5] and Codex[GPT-5].

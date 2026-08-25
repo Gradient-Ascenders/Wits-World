@@ -36,6 +36,11 @@ Use descriptive branch names such as `feat/campus-map` or
 `fix/geolocation-denied-state`. Do not work directly on `main` or merge your own
 pull request.
 
+The public [Work Tracking & Issue Management](docs/planning/work-tracking-and-issue-management.md)
+guide explains the shared feature/bug lifecycle, tracker fields, labels,
+milestones, project board, CI/review boundary, and known historical evidence
+gaps.
+
 ## Follow the shared standards
 
 - Write TypeScript with the strict options inherited from `tsconfig.base.json`.
@@ -101,4 +106,4 @@ Do not mark the issue done until the change is merged and required verification
 is complete.
 
 The preceding document was generated and edited with the assistance of:
-Codex-CLI[gpt-5.6-sol medium].
+Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5].

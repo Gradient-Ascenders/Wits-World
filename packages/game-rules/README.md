@@ -21,8 +21,10 @@ The package currently covers:
 - trusted timeout actions; and
 - deterministic CPU legal-action selection.
 
-CPU match persistence, HTTP routes, and browser interaction are implemented by
-later issues and must keep the API authoritative boundary intact.
+CPU match persistence and HTTP routes are implemented in `apps/api`; browser
+interaction is implemented in `apps/web`. Those consumers keep the API
+authoritative: the browser submits an intent and renders the returned match
+state rather than running this engine or deciding legal actions itself.
 
 This document was generated and edited with the assistance of
-Codex-CLI[gpt-5.6-sol medium].
+Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5].

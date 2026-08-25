@@ -45,15 +45,16 @@ repository but are not part of that release claim.
 
 ## Architecture at a glance
 
-| Area                  | Responsibility                                                                                    |
-| --------------------- | ------------------------------------------------------------------------------------------------- |
-| `apps/web`            | React/Vite player interface, authentication flow, map presentation, and browser interactions      |
-| `apps/api`            | Fastify HTTP API, bearer-token validation, event discovery, eligibility, OpenAPI, and safe errors |
-| `packages/game-rules` | Pure server-consumable Creature and Power-card battle rules and deterministic state transitions   |
-| PostgreSQL/PostGIS    | Authoritative event data, coordinates, radii, and distance calculations                           |
-| Auth0                 | External identity authentication and access-token issuance                                        |
-| Mapbox                | Map tiles and visual presentation; it does not decide eligibility                                 |
-| `apps/docs`           | Docusaurus site generated from the repository-level `docs/` directory                             |
+| Area                      | Responsibility                                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------------------------- |
+| `apps/web`                | React/Vite player interface, authentication flow, map presentation, and browser interactions      |
+| `apps/api`                | Fastify HTTP API, bearer-token validation, event discovery, eligibility, OpenAPI, and safe errors |
+| `packages/account-policy` | Shared pure Player Name validation used by the Web and API                                        |
+| `packages/game-rules`     | Pure server-consumable Creature and Power-card battle rules and deterministic state transitions   |
+| PostgreSQL/PostGIS        | Authoritative event data, coordinates, radii, and distance calculations                           |
+| Auth0                     | External identity authentication and access-token issuance                                        |
+| Mapbox                    | Map tiles and visual presentation; it does not decide eligibility                                 |
+| `apps/docs`               | Docusaurus site generated from the repository-level `docs/` directory                             |
 
 The browser submits a location claim. The API validates it, obtains the event's
 authoritative location from PostgreSQL/PostGIS, and returns the eligibility
@@ -166,7 +167,8 @@ The published site is available at
 │   ├── docs/         Docusaurus documentation application
 │   └── web/          React/Vite player web application
 ├── packages/
-│   └── game-rules/   Pure Basic battle rules and deterministic state transitions
+│   ├── account-policy/ Shared Player Name validation for Web and API
+│   └── game-rules/    Pure Basic battle rules and deterministic state transitions
 ├── database/
 │   ├── migrations/   Ordered PostgreSQL/PostGIS migrations
 │   └── seeds/        Repeatable development and test fixtures
@@ -176,7 +178,8 @@ The published site is available at
 ```
 
 Application tests live beside their respective workspaces in `apps/web/tests`,
-`apps/api/tests`, and `packages/game-rules/tests`.
+`apps/api/tests`, `packages/account-policy/tests`, and
+`packages/game-rules/tests`.
 
 ## Development commands
 
@@ -247,6 +250,7 @@ Start with the guide that matches your task:
 
 | Topic                                               | Guide                                                                                                     |
 | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| New developer setup and monorepo orientation        | [Developer guide](docs/development/getting-started.md)                                                    |
 | Web configuration and player flows                  | [Web application guide](apps/web/README.md)                                                               |
 | API routes, authentication, errors, and eligibility | [API guide](apps/api/README.md)                                                                           |
 | System boundaries and responsibilities              | [Architecture overview](docs/architecture/overview.md)                                                    |
@@ -256,6 +260,8 @@ Start with the guide that matches your task:
 | Local Neon/PostGIS setup                            | [Neon/PostGIS guide](docs/database/neon-postgis-setup.md)                                                 |
 | Design foundations                                  | [Design system](docs/design/design-system.md)                                                             |
 | Delivery status and risks                           | [Delivery roadmap](docs/planning/delivery-roadmap.md) and [risk register](docs/planning/risk-register.md) |
+| Gitea work and bug tracking                         | [Work tracking and issue management](docs/planning/work-tracking-and-issue-management.md)                 |
+| Project and Git workflow                            | [Project and Git methodology](docs/planning/project-and-git-methodology.md)                               |
 | CI checks                                           | [Continuous integration](docs/testing/continuous-integration.md)                                          |
 | Basic release scope and public reference            | [Basic release reference](docs/basic-release-reference.md)                                                |
 | Basic release evidence                              | [Basic-tier release validation](docs/testing/basic-tier-release-validation.md)                            |
