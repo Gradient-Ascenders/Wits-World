@@ -247,6 +247,7 @@ The API App Service has the following application settings configured:
 ```text
 AUTH0_AUDIENCE
 AUTH0_DOMAIN
+AUTH0_TENANT_DOMAIN
 AUTH0_MANAGEMENT_CLIENT_ID
 AUTH0_MANAGEMENT_CLIENT_SECRET
 AUTH0_SPA_CLIENT_ID
@@ -270,11 +271,15 @@ NODE_ENV  = production
 `DATABASE_URL` and `AUTH0_MANAGEMENT_CLIENT_SECRET` are secrets and must never
 be committed.
 
-`AUTH0_DOMAIN`, `AUTH0_AUDIENCE`, and `AUTH0_SPA_CLIENT_ID` are
-environment-specific authentication configuration. The Auth0 Management client
-ID and secret are server-only machine-to-machine credentials used by API
-account-lifecycle operations. All five values are API runtime settings and
-belong in Azure App Service rather than in the deployment ZIP.
+`AUTH0_DOMAIN`, `AUTH0_TENANT_DOMAIN`, `AUTH0_AUDIENCE`, and
+`AUTH0_SPA_CLIENT_ID` are environment-specific authentication configuration.
+Production `AUTH0_DOMAIN` is the custom hostname, while
+`AUTH0_TENANT_DOMAIN` remains the underlying `*.auth0.com` tenant used to form
+the Management API audience. The Auth0 Management client ID and secret are
+server-only machine-to-machine credentials reserved by the preliminary backend
+foundation for the planned account-deletion capability. Their presence does
+not mean that account deletion is implemented. These values are API runtime
+settings and belong in Azure App Service rather than in the deployment ZIP.
 
 ### 7.1 Runtime configuration incident
 
@@ -360,29 +365,40 @@ Configuration ownership is intentionally separated:
 The Auth0 Single Page Application used by the frontend is:
 
 ```text
-Wits World Web – Development
+Wits World
 ```
 
-The canonical production frontend origin must be present alongside the existing
-localhost development URL in:
+Production currently shares this SPA/application with local development, so its
+allowlists contain both localhost and production origins. This is a known
+temporary deviation from ADR-005's intended separation of development and
+production Auth0 resources, not an accepted architecture exception. Remediation
+must create and cut over to separate resources without assuming that separate
+tenants are required.
 
-```text
-Allowed Callback URLs
-Allowed Logout URLs
-Allowed Web Origins
-```
+The Auth0 dashboard currently records:
 
-Canonical production origin:
-
-```text
-https://witsworld.co.za
-```
+| Setting                | Current values                                     |
+| ---------------------- | -------------------------------------------------- |
+| Allowed Callback URLs  | `http://localhost:5173`, `https://witsworld.co.za` |
+| Allowed Logout URLs    | `http://localhost:5173`, `https://witsworld.co.za` |
+| Allowed Web Origins    | `http://localhost:5173`, `https://witsworld.co.za` |
+| Allowed Origins (CORS) | Empty                                              |
 
 `https://www.witsworld.co.za` is not a second application origin. It redirects
 to the canonical origin before the SPA initializes and must not be added to the
 Auth0 URL allowlists.
 
 The existing localhost development entries remain configured.
+
+The custom-domain cutover is live. The production issuer is:
+
+```text
+https://auth.witsworld.co.za/
+```
+
+Public OIDC discovery and the deployed Web configuration were verified on
+22 August 2026. The signed-in hard-refresh, storage, console, and correlated API
+log checks remain the manual per-release evidence described below.
 
 The application login and logout UI is implemented. A production login/logout
 check still requires a human operator with a safe test account and must be
@@ -422,8 +438,9 @@ normal Wits World sign-up flow:
 1. Confirm sign-up succeeds and no automatic verification email is sent.
 2. Confirm the user can sign in immediately, then confirm `/auth/me` and a
    representative protected feature work.
-3. Confirm Auth0 password reset/recovery still sends its email and completes
-   normally.
+3. Confirm Auth0's password reset/recovery capability still sends its email and
+   completes normally. This provider check does not claim that the Wits World
+   password-reset requirement or profile/account UI is implemented.
 4. Confirm no Wits World screen says verification is required.
 
 ---
@@ -1464,13 +1481,14 @@ Separate production Web App Service                  DONE
 Frontend PM2 SPA serving configuration               DONE
 Frontend HTTPS/TLS/runtime hardening                 DONE
 Frontend Auth0 production URL configuration          DONE
+Development/production Auth0 resource separation     OUTSTANDING REMEDIATION
 Frontend health check                                DONE
 Frontend application logging                         DONE
 Manual production frontend deployment                DONE
 Frontend SPA route validation                        DONE
 Frontend browser smoke testing                       DONE
-Gitea frontend continuous-deployment workflow        IMPLEMENTED
-Independent API + Web main-branch deployment proof   PENDING FINAL MERGE TEST
+Gitea frontend continuous-deployment workflow        DONE
+Independent API + Web deployment paths               VALIDATED IN PRODUCTION
 
 Repository-scoped Gitea runner VM                    DONE
 Docker-based CI execution                            DONE
@@ -1483,7 +1501,7 @@ Dedicated host-only deployment runner label          DONE
 
 Full Auth0 login/logout application-flow test        MANUAL PER RELEASE
 Documentation static deployment                      DONE — CLOUDFLARE PAGES
-Canonical web domain                                 REQUIRES DEPLOYED VERIFICATION
+Canonical web domain and public Auth0 discovery      VERIFIED 2026-08-22
 Application Insights                                 OPTIONAL
 Deployment slots / additional scaling                OPTIONAL
 ```

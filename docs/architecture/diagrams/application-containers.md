@@ -76,7 +76,7 @@ The database:
 - performs distance calculations;
 - applies constraints and indexes;
 - supports transactional integrity; and
-- later stores attempts, rewards, cards, decks, and matches.
+- stores attempts, rewards, cards, decks, and matches.
 
 ### Auth0 authentication provider
 
@@ -84,9 +84,13 @@ The authentication provider:
 
 - supports registration;
 - supports sign-in;
-- supports password reset;
+- provides a password-reset capability for the planned Wits World account UI;
 - issues tokens; and
-- provides account-lifecycle capabilities.
+- provides external account-lifecycle APIs for the planned deletion workflow.
+
+The Wits World password-reset and account-deletion features are not currently
+implemented. They are planned for Sprint 2 after, or together with, a proper
+player profile/account page.
 
 Auth0 is the selected provider under ADR-005. The API validates its access
 tokens and derives the local player identity and role from validated claims.

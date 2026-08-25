@@ -4,11 +4,11 @@
 
 Implementation tracked by Gitea issue [#92](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/92), linked to decision issue [#62](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/62).
 
-The renderer migration is implemented on the issue branch, but formal client or
-lecturer acceptance of the external Mapbox service, the licensed Wits campus
-dataset, and production billing remains pending. The supplied 3D campus image
-is visual art direction only. It is not a source of geometry, names, heights,
-or copyrighted map assets.
+The renderer migration is implemented in the current application and issue #92
+is closed. Formal client or lecturer acceptance of the external Mapbox service,
+the licensed Wits campus dataset, and production billing remains pending. The
+supplied 3D campus image is visual art direction only. It is not a source of
+geometry, names, heights, or copyrighted map assets.
 
 ## Renderer decision and boundary
 
@@ -128,4 +128,5 @@ This document was planned and edited with assistance from:
 
 ```text
 Codex-CLI[GPT-5]
+Codex[GPT-5]
 ```

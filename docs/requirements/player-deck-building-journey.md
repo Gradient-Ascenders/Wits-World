@@ -113,17 +113,12 @@ users reach it immediately.
 the player's one active selection. The active deck has explicit text and a
 `Selected for matches` badge; colour is supplementary.
 
-The page exposes the active server-returned `deckId` through the typed start
-callback used by the future battle route. Issue #76 can pass that identifier to
-`POST /api/v1/matches/cpu`. This journey does not call the match API. The match
-service independently requires the supplied deck to remain the player's active
-selection and creates immutable match-owned snapshots.
-
-The production `/decks` route intentionally does not supply that callback or
-render a start control in issue #73. Issue #76 owns the battle route, match
-creation, and navigation, and will wire the callback once that destination
-exists. This avoids a dead control or an invented route while preserving the
-typed selected-deck boundary.
+The production `/decks` route supplies the active server-returned `deckId` to
+`POST /api/v1/matches/cpu` through the typed start callback. It renders **Start
+CPU match**, reconciles an already-active match through the server lookup, and
+navigates to the authoritative match route. The match service independently
+requires the supplied deck to remain the player's active selection and creates
+immutable match-owned snapshots.
 
 ## Concurrency and recovery
 
@@ -142,7 +137,7 @@ aborted requests do not replace current UI state.
 
 ## Accessibility and responsive behaviour
 
-- All add, remove, save, edit, rename, select, delete, retry, and future-start
+- All add, remove, save, edit, rename, select, delete, retry, and match-start
   actions are native controls with visible focus and at least the shared touch
   target size.
 - Important loading and success transitions use status announcements; failures

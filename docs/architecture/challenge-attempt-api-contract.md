@@ -30,11 +30,11 @@ formats can be introduced in a later tier or future scope without redesigning
 the contract. This supersedes earlier Sprint 2 planning references to two
 challenge formats.
 
-Reward persistence and issuance will be implemented separately by the linked
-[persistence foundation issue](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/49).
-This contract nevertheless defines the player-safe reward result returned after
-completion. The browser never chooses correctness, score, coin value, rarity,
-card definitions, or reward outcomes.
+Reward persistence and issuance are implemented through migrations `0007` and
+`0008` and the atomic completion finalizer from closed issue #67. The linked
+[persistence foundation issue](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/49)
+records the original design input. The browser never chooses correctness,
+score, coin value, rarity, card definitions, or reward outcomes.
 
 ## Approved product decisions
 
@@ -410,8 +410,8 @@ batches. It marks unanswered questions incorrect and completes the attempt. It
 must be safe to retry and safe to run concurrently with the fifth answer.
 
 Request handlers also check expiry before accepting answers or returning stale
-state. Database row locking and the persistence constraints proposed by issue
-#49 are responsible for ensuring that completion happens once. The fifth-answer
+state. Database row locking and the persistence constraints implemented from
+issue #49's design are responsible for ensuring that completion happens once. The fifth-answer
 path, timeout finalizer, and defensive request finalization must converge on the
 same persisted completion, reward, and review result.
 
@@ -522,10 +522,12 @@ The attempt-fetch follow-up implements:
 - persisted completed-result retries without rerolling rewards; and
 - database-backed timeout and concurrent-fetch verification.
 
-Remaining implementation work includes background expiry processing and the
-player UI for timed questions, reconnecting, and completion.
+The timed question, reconnect/resume, deadline, completion, reward, and review
+player UI is implemented by closed issue #68. Remaining contract work is the
+optional background expiry processor; answer submission and attempt fetch
+already finalize expired attempts defensively through the atomic boundary.
 
-The proposed storage relations, reward calculation, and atomic finalization
+The storage relations, reward calculation, and atomic finalization
 boundary are specified in the
 [challenge, reward, and card persistence design](../database/challenge-reward-persistence-design.md).
 

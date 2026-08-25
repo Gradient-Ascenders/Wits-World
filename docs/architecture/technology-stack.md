@@ -82,7 +82,7 @@ transactions rather than relying only on the user interface.
 
 ## Authentication
 
-The project uses Auth0 under ADR-005. It supports:
+The project uses Auth0 under ADR-005. The provider supports:
 
 - registration;
 - sign-in;
@@ -97,8 +97,10 @@ The API validates Auth0 access tokens and resolves local player identity and
 roles from validated issuer and subject claims. The application does not trust
 browser-supplied identity or role values.
 
-The application will not implement custom password storage or a custom password
-reset system.
+Wits World does not store passwords. The player-facing password-reset and
+account-deletion capabilities are not currently implemented; they are planned
+for Sprint 2 after, or together with, a proper player profile/account page. The
+eventual password-reset implementation may use Auth0's hosted capability.
 
 Public browser configuration may include:
 

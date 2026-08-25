@@ -5,18 +5,25 @@ title: Basic release reference
 
 # Basic release reference
 
-This is the public starting point for the Wits Quest Basic tier. It describes
-what is implemented, where authority lives, and how the release claim is
-verified. It does not turn an automated check into production or lecturer
-acceptance evidence.
+This is the public starting point for the implemented core Wits Quest Basic
+gameplay. It describes what is implemented, where authority lives, and how the
+release claim is verified. It does not claim that the complete Basic product is
+delivered or turn an automated check into production or lecturer acceptance
+evidence.
 
 ## Product and architecture
 
-Players authenticate through Auth0, discover published campus events, submit a
-one-shot browser location claim, complete five-question challenges, receive
-server-selected rewards, manage owned cards and legal decks, and play
-server-resolved CPU matches. Authors use the protected `/author` console to
-create, publish, retire, and audit shared content.
+Players authenticate through Auth0, discover published campus events, use an
+active-page browser location watcher to supply ephemeral reported-location
+claims, complete five-question challenges, receive server-selected rewards,
+manage owned cards and legal decks, and play server-resolved CPU matches.
+Challenge start reuses a sufficiently fresh watched claim or requests one newer
+one-shot reading before the API rechecks eligibility. Authors use the protected
+`/author` console to create, publish, retire, and audit shared content.
+
+Password reset and account deletion remain mandatory Basic requirements planned
+for Sprint 2 after, or together with, a proper player profile/account page. They
+are not currently implemented.
 
 The React/Vite browser is presentation and untrusted input. Fastify resolves the
 verified Auth0 principal to a local player and role. PostgreSQL/PostGIS stores

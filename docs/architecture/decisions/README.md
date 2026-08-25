@@ -43,7 +43,6 @@ records include:
 - managed Neon PostgreSQL/PostGIS hosting;
 - Cloudflare Pages documentation hosting;
 - Mapbox external-service, licensing, and campus-data acceptance;
-- role and permission representation;
 - location-data retention;
 - production observability; and
 - backup, recovery, and operational resilience.
@@ -92,3 +91,6 @@ record.
 The preceding document was planned and generated with the assistance of
 ChatGPT-Web[GPT-5.6 Thinking], and reviewed and edited for Sprint 1 release
 validation with assistance from ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].
+
+The potential-record list was reconciled with the confirmed Basic role decision
+with assistance from Codex[GPT-5].

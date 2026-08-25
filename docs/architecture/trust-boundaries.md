@@ -240,9 +240,13 @@ documentation examples, screenshots, error responses, or browser bundles:
 
 ## Location privacy
 
-The Basic implementation must not continuously track players.
+While `/explore` is visible, the Basic implementation may run one browser
+geolocation watcher to render the latest reported location and drive bounded,
+movement-based eligibility refreshes. The watcher pauses when the document is
+hidden and is cleared on unmount. It must not become background movement
+tracking or a persisted location history.
 
-Location should be requested and processed only when it supports a legitimate
+Location is requested and processed only when it supports a legitimate
 operation, such as:
 
 - showing the player's current position;
@@ -256,14 +260,16 @@ to require permanent storage of the exact submitted coordinates.
 
 ## Open security decisions
 
-The following decisions still require review:
+The following decisions or operational evidence still require review:
 
-- token role and permission representation;
-- acceptable location accuracy;
-- location-claim freshness threshold;
-- event radius for the Sprint 1 demonstration;
+- further campus evidence for the provisional `75 m` event radius, two-minute
+  location-claim freshness threshold, and accuracy-envelope handling;
 - location-data retention;
 - operational logging and monitoring providers.
+
+The Basic application-role representation is resolved: Auth0 authenticates the
+principal, while PostgreSQL stores the local `player` or `author` role and the
+API enforces it. Role changes are out-of-band.
 
 Production hosting is established on Azure App Service for the Web and API and
 Cloudflare Pages for documentation. The API accepts browser CORS requests only

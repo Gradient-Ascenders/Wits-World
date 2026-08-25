@@ -20,7 +20,8 @@ and selection behavior used below were confirmed by the team in the
 They are inputs to this persistence proposal rather than rules chosen by the
 schema design.
 
-Battles, selling, and evolution remain later work. The Basic starter grant is
+Selling and evolution remain deferred. CPU match persistence is implemented by
+migration `0012` and documented separately. The Basic starter grant is
 implemented by migrations `0009` and `0010` and the protected
 `POST /api/v1/cards/starter` endpoint.
 
@@ -90,7 +91,7 @@ erDiagram
   EVENT_COMPLETIONS ||--o{ PLAYER_CARDS : awards
 ```
 
-## Proposed relations
+## Implemented relations and design constraints
 
 All identifiers are UUIDs. All timestamps are `timestamptz`. Foreign keys use
 `ON DELETE RESTRICT` unless retention policy later requires archival behavior.
@@ -337,8 +338,8 @@ coins = min + round(((averageDifficulty - 1) / 2) * (max - min))
 | `4`     | `40-50`   | One card: 75% Common, 25% Rare |
 | `5`     | `50-75`   | 80% one card, 20% two cards    |
 
-Issue #67 persists one or two event-reward card rows per completion according to
-the approved Basic reward policy. The completion and coin-ledger uniqueness
+The implemented completion finalizer persists one or two event-reward card rows
+per completion according to the approved Basic reward policy. The completion and coin-ledger uniqueness
 constraints remain the idempotency boundary, while the ownership query returns
 all cards linked to the persisted completion.
 
@@ -456,7 +457,7 @@ its catalogue is incomplete.
 
 ## Migration and implementation order
 
-Issue #64 adds the migration layer in dependency order:
+Issue #64 added the original persistence foundation in dependency order:
 
 1. `0003_create_players.sql` stores the local identity boundary.
 2. `0004_create_account_deletion_requests.sql` adds the account-lifecycle
@@ -494,15 +495,29 @@ Issue #64 adds the migration layer in dependency order:
     readiness validation, published-event immutability, and protection against
     retiring the challenge beneath a live published event.
 
-The database integration suite applies all sixteen migrations to an empty
-PostgreSQL/PostGIS database and checks that a second run is a no-op.
-PostgreSQL/PostGIS database and checks that a second run is a no-op. The
+Subsequent migrations add the bounded `Edge` remediation, normalized name
+uniqueness, Player Name evolution, and the one-through-four move-position
+constraint. The database integration suite discovers and applies the complete
+ordered migration directory to an empty PostgreSQL/PostGIS database and checks
+that a second run is a no-op. The
 `0002_basic_card_catalogue.sql` seed is repeatable and provides deterministic
 demonstration cards for all starter affinities plus non-Common examples for
 catalogue/reward testing. The seed does not claim to be final production card
 artwork or balance.
 
 ## Card-invariant migration blockers
+
+:::note[Status update — 25 August 2026]
+
+The dated audit below is preserved as evidence. Migrations `0017` and `0018`
+have resolved the approved `Edge` collision and enforce globally unique
+`lower(btrim(name))` values. Migration `0019_limit_creature_move_positions.sql`
+limits stored positions to `1` through `4`; the API accepts zero-to-four moves
+for drafts and requires exactly four for publication. The 18 audited published
+two-move Creature definitions still require approved content/balance
+remediation, so strict database publication enforcement remains blocked.
+
+:::
 
 A read-only audit of the configured development database on 2026-08-21 found
 the following blockers. These records were identified only; the audit did not
@@ -560,7 +575,11 @@ not be rewritten. Strict database publication enforcement must remain disabled
 until the seed and persisted catalogue have been remediated and the reference
 treatment has been reviewed.
 
-## Subsequent implementation branches
+## Historical implementation sequence
+
+The sequence below is retained as the safe plan used after the audit. Items 1,
+2, 3, and 5 are implemented and covered by repository tests. Item 4 remains
+blocked on approved Creature move content and balance review.
 
 Use focused branches in this order so constraints never encounter data known to
 violate them:
@@ -618,12 +637,15 @@ never cross the response boundary while an attempt is active, and that only the
 defined review fields reveal them after completion.
 
 The event rule remains `starts_at < ends_at`; this design does not introduce an
-unapproved one-to-three-hour duration limit. Exact retention periods for answers,
-attempt snapshots, and completed rewards remain unresolved. Account deletion
-also needs a policy that removes or pseudonymizes identity data without breaking
-the immutable coin and reward audit trail. These decisions must be made before
-production migration rollout and are tracked as `BASIC-12` in the
-[Basic-tier decision register](../requirements/basic-tier-decision-register.md).
+unapproved one-to-three-hour duration limit. `BASIC-12` now defines which
+account-linked records are deleted, anonymised, or retained, including the
+12-month minimal deletion audit. That confirmed policy is recorded in the
+[Basic-tier decision register](../requirements/basic-tier-decision-register.md)
+and [Basic game rules](../requirements/basic-game-rules.md#account-deletion-and-re-registration).
+Account deletion is not currently implemented. Preliminary account-lifecycle
+tables, code, and tests do not satisfy the mandatory user capability or prove
+cleanup for every player-owned model. The feature is planned for Sprint 2 after,
+or together with, a proper player profile/account page.
 
 This design was planned, generated, edited, and reviewed with the assistance of
 Codex[GPT-5.6 Sol], Codex-CLI[gpt-5.6-sol medium], Codex[GPT-5], and

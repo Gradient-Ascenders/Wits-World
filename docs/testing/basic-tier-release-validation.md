@@ -55,8 +55,8 @@ configuration, and unresolved acceptance gates are reported separately.
 
 Bearer signature/issuer/audience/expiry validation, exact-origin CORS, parameter
 validation, parameterised SQL, object ownership, hidden active answers, server
-request IDs, idempotency keys, row locking, atomic rewards, account deletion,
-and safe errors have focused repository tests. The application now adds a
+request IDs, idempotency keys, row locking, atomic rewards, preliminary
+account-deletion components, and safe errors have focused repository tests. The application now adds a
 per-process fixed-window limit keyed by verified local player identity. It does
 not aggregate across instances or cover invalid-token traffic before identity
 resolution; deployment-edge rate protection remains an external evidence gap.
@@ -89,7 +89,8 @@ them in the 21-step success journey.
 | Item        | Repository status                                                                                                                                               | Remaining release gate                                                                                                                                                   |
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | BASIC-01–08 | Implemented: eligibility, five-question attempts, hidden active answers, scoring, atomic/retry-safe rewards, collection, starter cards, decks, and CPU history. | Execute full validation and manual UX checks.                                                                                                                            |
-| BASIC-09–12 | Confirmed rules for timers/randomness, two roles, Author lifecycle/audit, deletion and retention boundaries.                                                    | Operator retention/backup evidence remains separate.                                                                                                                     |
+| BASIC-09–11 | Implemented rules for timers/randomness, two roles, and Author lifecycle/audit.                                                                                 | Complete normal release validation.                                                                                                                                      |
+| BASIC-12    | Confirmed deletion and retention requirement; account deletion is not implemented.                                                                              | Build the proper profile/account page and account-deletion capability in Sprint 2, then validate complete cleanup and operator retention evidence.                       |
 | BASIC-13    | Mapbox Standard implemented with attribution and text fallback.                                                                                                 | Formal client/lecturer/brief external-service acceptance and licensing owner are not evidenced.                                                                          |
 | BASIC-14–16 | Responsive/accessibility foundations and explicit exclusions are documented and tested where automatable.                                                       | Manual keyboard, screen-reader, contrast, touch, and representative-device evidence is required.                                                                         |
 | BASIC-17    | Application deliberately ignores `email_verified` for ordinary authorization.                                                                                   | Operator must confirm production Auth0 verification email disabled and recovery email retained.                                                                          |

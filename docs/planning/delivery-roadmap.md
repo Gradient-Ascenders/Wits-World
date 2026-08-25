@@ -30,6 +30,28 @@ front-end, API, or database components.
 The official dates may be adjusted during the semester. The team must update
 this roadmap if the course timeline changes.
 
+## Repository delivery review — 25 August 2026
+
+This review distinguishes repository delivery from the original schedule and
+from manual, external, or stakeholder acceptance:
+
+| Roadmap area                           | Current repository status                           | Evidence and remaining boundary                                                                                                                                                                                                                                                                                                                                                                                  |
+| -------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sprint 1 foundation and location slice | Delivered in repository and deployed                | Issues #11–#21 and #43–#50 are closed; the Web, API, and docs deployments and public auth/CORS boundary are documented. Location thresholds remain provisional and release-specific signed-in/operator evidence remains manual.                                                                                                                                                                                  |
+| Sprint 2 core gameplay                 | Implemented in repository ahead of the roadmap date | Issues #64–#80 are closed; migrations, API/UI implementation, tests, and the deterministic 21-step journey cover challenge, atomic score-based rewards, collection, decks, CPU matches/history, and Author content. The mandatory profile/account page, password reset, and account deletion remain unimplemented Sprint 2 work. Issue closure is not proof that unchecked manual/external gates were performed. |
+| Sprint 3 work                          | Partly delivered early; milestone not yet assessed  | The Author console exists. Creature move-content remediation, external-service acceptance, manual release evidence, and any work not completed during Sprint 2 remain.                                                                                                                                                                                                                                           |
+| Final submission                       | Pending                                             | The final-submission checklist below remains a plan, not a completed-state claim.                                                                                                                                                                                                                                                                                                                                |
+
+The older Sprint 2 and final target journeys below preserve the planning intent
+that a correct answer awarded one event card. That reward model is superseded by
+the confirmed five-question, score-based coin and zero-to-two-card policy in the
+[Basic game rules](../requirements/basic-game-rules.md#rewards).
+
+The original roadmap placed password reset and account deletion in Sprint 3.
+The current team plan supersedes that timing: a proper player profile/account
+page and both mandatory capabilities are planned for Sprint 2. Neither is
+currently implemented.
+
 ## Delivery principles
 
 The team will:
@@ -347,4 +369,5 @@ documentation.
 The preceding document was planned and generated with the assistance of:
 ChatGPT-Web[GPT-5.6 Thinking].
 
-The planning-status notice was added with assistance from Codex-CLI[GPT-5].
+The planning-status notice was added with assistance from Codex-CLI[GPT-5]. The
+dated repository-delivery review was added with assistance from Codex[GPT-5].
