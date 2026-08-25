@@ -6,6 +6,7 @@ import {
   applyBattleAction,
   chooseCpuAction,
   createBattleState,
+  getEffectDamageMultiplier,
   getLegalActions,
   InvalidBattleSetupError,
   validateBattleDeck,
@@ -109,6 +110,7 @@ export interface CpuParticipantView {
 
 export interface PublicCreatureView {
   id: string;
+  name: string;
   affinity: BattleCreatureCard['affinity'];
   maxHp: number;
   maxPower: number;
@@ -116,6 +118,7 @@ export interface PublicCreatureView {
   remainingPower: number;
   defeated: boolean;
   moves: readonly PublicMoveView[];
+  activeModifiers: readonly PublicActiveModifierView[];
 }
 
 export interface PublicMoveView {
@@ -123,12 +126,46 @@ export interface PublicMoveView {
   name: string;
   moveType: BattleMove['moveType'];
   powerCost: number;
+  effects: readonly PublicEffectView[];
 }
 
 export interface PublicPowerCardView {
   id: string;
+  name: string;
   affinity: BattlePowerCard['affinity'];
+  effects: readonly PublicEffectView[];
   available: boolean;
+}
+
+export interface PublicEffectView {
+  damageMultiplier: number | null;
+  effectType: BattleEffect['effectType'];
+  effectValue: number;
+  modifier: NonNullable<BattleEffect['modifier']> | null;
+}
+
+export interface PublicActiveModifierView {
+  stat: 'damage_multiplier';
+  operation: 'multiply';
+  percentage: number;
+  remainingTurns: number | null;
+}
+
+export interface PublicAppliedEffectView {
+  effectId: string;
+  effectType: BattleEffect['effectType'];
+  targetSide: 'player' | 'cpu';
+  targetCreatureId: string;
+  amount: number;
+  damageMultiplier: number | null;
+  modifier: NonNullable<BattleEffect['modifier']> | null;
+}
+
+export interface PublicBattleActionResult extends Omit<
+  BattleActionResult,
+  'effects'
+> {
+  effects: readonly PublicAppliedEffectView[];
 }
 
 export interface CpuMatchResponse {
@@ -139,7 +176,7 @@ export interface CpuMatchResponse {
   startedAt: string;
   completedAt: string | null;
   state: CpuMatchStateView;
-  lastAction: BattleActionResult | null;
+  lastAction: PublicBattleActionResult | null;
 }
 
 export interface CpuMatchHistoryRound {
@@ -235,6 +272,7 @@ interface MatchRow extends pg.QueryResultRow {
   winner: 'player' | 'cpu' | null;
   started_at: Date;
   completed_at: Date | null;
+  card_names?: Record<string, string>;
 }
 
 interface MatchViewRow extends MatchRow {
@@ -413,6 +451,10 @@ export function createCpuMatchService(
           completedAt: null,
           turnDeadline: null,
           lastAction: null,
+          cardNames: cardNamesFromSnapshots([
+            ...snapshotDeck('player', playerCards, playerDeck),
+            ...snapshotDeck('cpu', cpuCards, cpuDeck),
+          ]),
         });
       } catch (error) {
         await rollback(client);
@@ -454,6 +496,7 @@ export function createCpuMatchService(
           completedAt: match.completed_at,
           turnDeadline: match.turn_deadline,
           lastAction: match.latest_action,
+          cardNames: match.card_names,
         });
       } finally {
         client.release();
@@ -481,6 +524,7 @@ export function createCpuMatchService(
           completedAt: match.completed_at,
           turnDeadline: match.turn_deadline,
           lastAction: match.latest_action,
+          cardNames: match.card_names,
         });
       } finally {
         client.release();
@@ -567,6 +611,7 @@ export function createCpuMatchService(
           completedAt: completed ? now : null,
           turnDeadline,
           lastAction: transitions.at(-1)?.result ?? null,
+          cardNames: match.card_names,
         });
 
         const persisted = await client.query<TransitionPersistenceRow>(
@@ -1125,7 +1170,15 @@ async function loadMatch(
         turn_deadline,
         winner,
         started_at,
-        completed_at
+        completed_at,
+        coalesce((
+          select jsonb_object_agg(
+            card.snapshot -> 'battleCard' ->> 'id',
+            card.snapshot ->> 'name'
+          )
+          from public.cpu_match_cards card
+          where card.match_id = cpu_matches.id
+        ), '{}'::jsonb) as card_names
       from public.cpu_matches
       where id = $1::uuid
         and player_id = $2::uuid
@@ -1163,6 +1216,14 @@ async function loadMatchView(
         match.winner,
         match.started_at,
         match.completed_at,
+        coalesce((
+          select jsonb_object_agg(
+            card.snapshot -> 'battleCard' ->> 'id',
+            card.snapshot ->> 'name'
+          )
+          from public.cpu_match_cards card
+          where card.match_id = match.id
+        ), '{}'::jsonb) as card_names,
         (
           select action.result
           from public.cpu_match_actions action
@@ -1234,6 +1295,7 @@ function createResponse(input: {
   completedAt: Date | null;
   turnDeadline: Date | null;
   lastAction: BattleActionResult | null;
+  cardNames?: Readonly<Record<string, string>>;
 }): CpuMatchResponse {
   return {
     matchId: input.matchId,
@@ -1242,14 +1304,18 @@ function createResponse(input: {
     winner: input.winner,
     startedAt: input.startedAt.toISOString(),
     completedAt: input.completedAt?.toISOString() ?? null,
-    state: toPublicState(input.state, input.turnDeadline),
-    lastAction: input.lastAction,
+    state: toPublicState(input.state, input.turnDeadline, input.cardNames),
+    lastAction:
+      input.lastAction === null
+        ? null
+        : toPublicActionResult(input.lastAction, input.state),
   };
 }
 
 function toPublicState(
   state: BattleState,
   turnDeadline: Date | null,
+  cardNames: Readonly<Record<string, string>> = {},
 ): CpuMatchStateView {
   const player = state.participants.player;
   const cpu = state.participants.cpu;
@@ -1257,7 +1323,9 @@ function toPublicState(
     (creature) =>
       creature.defeated || creature.card.id === cpu.activeCreatureId,
   );
-  const playerCreatures = player.creatures.map(toPublicCreature);
+  const playerCreatures = player.creatures.map((creature) =>
+    toPublicCreature(creature, cardNames),
+  );
 
   return {
     phase: state.phase,
@@ -1273,7 +1341,9 @@ function toPublicState(
       creatures: playerCreatures,
       powerCards: player.powerCards.map((card) => ({
         id: card.id,
+        name: cardNames[card.id] ?? `${titleCase(card.affinity)} Power card`,
         affinity: card.affinity,
+        effects: card.effects.map(toPublicEffect),
         available: !player.usedPowerCardIds.includes(card.id),
       })),
       usedPowerCardIds: player.usedPowerCardIds,
@@ -1287,10 +1357,11 @@ function toPublicState(
               cpu.creatures.find(
                 (creature) => creature.card.id === cpu.activeCreatureId,
               )!,
+              cardNames,
             ),
       defeatedCreatures: visibleCpuCreatures
         .filter((creature) => creature.defeated)
-        .map(toPublicCreature),
+        .map((creature) => toPublicCreature(creature, cardNames)),
       remainingCreatureCount: cpu.creatures.filter(
         (creature) => !creature.defeated,
       ).length,
@@ -1303,14 +1374,21 @@ function toPublicState(
   };
 }
 
-function toPublicCreature(creature: {
-  card: BattleCreatureCard;
-  currentHp: number;
-  remainingPower: number;
-  defeated: boolean;
-}): PublicCreatureView {
+function toPublicCreature(
+  creature: {
+    card: BattleCreatureCard;
+    currentHp: number;
+    remainingPower: number;
+    defeated: boolean;
+    modifiers: BattleState['participants']['player']['creatures'][number]['modifiers'];
+  },
+  cardNames: Readonly<Record<string, string>>,
+): PublicCreatureView {
   return {
     id: creature.card.id,
+    name:
+      cardNames[creature.card.id] ??
+      `${titleCase(creature.card.affinity)} Creature`,
     affinity: creature.card.affinity,
     maxHp: creature.card.maxHp,
     maxPower: creature.card.maxPower,
@@ -1322,8 +1400,103 @@ function toPublicCreature(creature: {
       name: move.name,
       moveType: move.moveType,
       powerCost: move.powerCost,
+      effects: move.effects.map(toPublicEffect),
+    })),
+    activeModifiers: creature.modifiers.map(toPublicActiveModifier),
+  };
+}
+
+function toPublicEffect(effect: BattleEffect): PublicEffectView {
+  if (effect.effectValue === null) {
+    throw new CpuMatchSetupError(
+      `Effect ${effect.id} is missing an executable value.`,
+    );
+  }
+
+  const damageMultiplier =
+    effect.modifier?.stat === 'damage_multiplier' &&
+    (effect.effectType === 'buff' || effect.effectType === 'debuff')
+      ? getEffectDamageMultiplier(effect.effectType, effect.effectValue)
+      : null;
+
+  return {
+    damageMultiplier,
+    effectType: effect.effectType,
+    effectValue: effect.effectValue,
+    modifier: effect.modifier ?? null,
+  };
+}
+
+function toPublicActiveModifier(
+  modifier: BattleState['participants']['player']['creatures'][number]['modifiers'][number],
+): PublicActiveModifierView {
+  if (
+    modifier.stat !== 'damage_multiplier' ||
+    modifier.operation !== 'multiply' ||
+    !Number.isFinite(modifier.value) ||
+    modifier.value < 0 ||
+    (modifier.remainingTurns !== null &&
+      (!Number.isInteger(modifier.remainingTurns) ||
+        modifier.remainingTurns <= 0))
+  ) {
+    throw new CpuMatchSetupError(
+      'Persisted active modifier state is not player-readable.',
+    );
+  }
+
+  return {
+    stat: modifier.stat,
+    operation: modifier.operation,
+    percentage: Math.round((modifier.value - 1) * 100),
+    remainingTurns: modifier.remainingTurns,
+  };
+}
+
+function toPublicActionResult(
+  result: BattleActionResult,
+  state: BattleState,
+): PublicBattleActionResult {
+  return {
+    ...result,
+    effects: result.effects.map((effect) => ({
+      ...effect,
+      modifier: findEffect(state, effect.effectId)?.modifier ?? null,
     })),
   };
+}
+
+function findEffect(state: BattleState, effectId: string): BattleEffect | null {
+  for (const participant of Object.values(state.participants)) {
+    for (const creature of participant.creatures) {
+      for (const move of creature.card.moves) {
+        const effect = move.effects.find(
+          (candidate) => candidate.id === effectId,
+        );
+        if (effect) return effect;
+      }
+    }
+
+    for (const card of participant.powerCards) {
+      const effect = card.effects.find(
+        (candidate) => candidate.id === effectId,
+      );
+      if (effect) return effect;
+    }
+  }
+
+  return null;
+}
+
+function cardNamesFromSnapshots(
+  snapshots: readonly SnapshotCard[],
+): Record<string, string> {
+  return Object.fromEntries(
+    snapshots.map((snapshot) => [snapshot.card.id, snapshot.name]),
+  );
+}
+
+function titleCase(value: string): string {
+  return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 }
 
 function toPublicAction(action: BattleAction): CpuMatchActionView {

@@ -16,6 +16,7 @@ import { deckListResponse, buildSavedDeck } from './fixtures/decks';
 import {
   actionResult,
   activeMatch,
+  buildCreature,
   buildMatch,
   completedMatch,
   historyItem,
@@ -273,13 +274,13 @@ describe('authoritative CPU battle page', () => {
       await screen.findByRole('heading', { name: 'Your turn' }),
     ).toBeVisible();
     expect(
-      screen.getByRole('button', { name: /Use Knowledge Strike 1/ }),
+      screen.getByRole('button', { name: /Knowledge Strike 1/ }),
     ).toBeEnabled();
     expect(
-      screen.getByRole('button', { name: 'Use Power card 1' }),
+      screen.getByRole('button', { name: /Campus Renewal 1/ }),
     ).toBeEnabled();
     expect(
-      screen.getByRole('button', { name: 'Use Power card 2' }),
+      screen.getByRole('button', { name: /Campus Renewal 2/ }),
     ).toBeDisabled();
     const body = JSON.parse(String(fetchMock.mock.calls[1]![1]!.body));
     expect(body).toMatchObject({
@@ -289,6 +290,160 @@ describe('authoritative CPU battle page', () => {
     });
     expect(body).not.toHaveProperty('winner');
     expect(body).not.toHaveProperty('score');
+  });
+
+  it('renders effect-rich legal, unavailable, used, and active modifier states', async () => {
+    const match = activeMatch(3);
+    const player = match.state.player.creatures[0]!;
+    const cpu = buildCreature(20, {
+      activeModifiers: [
+        {
+          operation: 'multiply',
+          percentage: -100,
+          remainingTurns: 2,
+          stat: 'damage_multiplier',
+        },
+      ],
+      affinity: 'grit',
+      name: 'Braam Sentinel',
+    });
+    player.activeModifiers = [
+      {
+        operation: 'multiply',
+        percentage: 10,
+        remainingTurns: 2,
+        stat: 'damage_multiplier',
+      },
+      {
+        operation: 'multiply',
+        percentage: 10,
+        remainingTurns: null,
+        stat: 'damage_multiplier',
+      },
+    ];
+    player.moves = [
+      {
+        effects: [
+          {
+            damageMultiplier: null,
+            effectType: 'damage',
+            effectValue: 7,
+            modifier: null,
+          },
+        ],
+        id: player.moves[0]!.id,
+        moveType: 'basic',
+        name: 'Measured Strike',
+        powerCost: 0,
+      },
+      {
+        effects: [
+          {
+            damageMultiplier: 0.85,
+            effectType: 'debuff',
+            effectValue: 15,
+            modifier: {
+              durationTurns: 3,
+              operation: 'multiply',
+              stat: 'damage_multiplier',
+            },
+          },
+        ],
+        id: '00000000-0000-4000-8000-000000001299',
+        moveType: 'grit',
+        name: 'Brace',
+        powerCost: 11,
+      },
+    ];
+    match.state.cpu.activeCreature = cpu;
+    match.state.selections.cpu = cpu.id;
+    match.state.legalActions = [
+      { moveId: player.moves[0]!.id, type: 'use_move' },
+      {
+        powerCardId: match.state.player.powerCards[0]!.id,
+        type: 'use_power_card',
+      },
+    ];
+    match.state.player.powerCards[0] = {
+      affinity: 'wit',
+      available: true,
+      effects: [
+        {
+          damageMultiplier: null,
+          effectType: 'damage',
+          effectValue: 8,
+          modifier: null,
+        },
+        {
+          damageMultiplier: null,
+          effectType: 'buff',
+          effectValue: 3,
+          modifier: {
+            durationTurns: null,
+            operation: 'add',
+            stat: 'power',
+          },
+        },
+      ],
+      id: match.state.player.powerCards[0]!.id,
+      name: 'Tactical Surge',
+    };
+    match.state.player.powerCards[1] = {
+      ...match.state.player.powerCards[1]!,
+      available: false,
+      name: 'Spent Insight',
+    };
+    match.state.player.usedPowerCardIds = [
+      match.state.player.powerCards[1]!.id,
+    ];
+    match.lastAction = actionResult(
+      {
+        powerCardId: match.state.player.powerCards[0]!.id,
+        type: 'use_power_card',
+      },
+      {
+        effects: [
+          {
+            amount: -2,
+            damageMultiplier: null,
+            effectId: '00000000-0000-4000-8000-000000001399',
+            effectType: 'debuff',
+            modifier: {
+              durationTurns: null,
+              operation: 'add',
+              stat: 'power',
+            },
+            targetCreatureId: cpu.id,
+            targetSide: 'cpu',
+          },
+        ],
+      },
+    );
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(matchResponse(match)));
+
+    renderMatchPage();
+
+    const zeroCost = await screen.findByRole('button', {
+      name: /Measured Strike.*Basic.*7 base damage.*0 Power/i,
+    });
+    expect(zeroCost).toBeEnabled();
+    expect(
+      screen.getByRole('button', {
+        name: /Brace.*Grit.*Opponent damage −15%.*3 turns.*11 Power/i,
+      }),
+    ).toBeDisabled();
+    const powerCard = screen.getByRole('button', {
+      name: /Tactical Surge.*Wit.*8 base damage.*Restore 3 Power.*Available.*One use/i,
+    });
+    expect(powerCard).toBeEnabled();
+    expect(
+      screen.getByRole('button', { name: /Spent Insight.*Already used/i }),
+    ).toBeDisabled();
+    expect(screen.getByText('Damage +10% · 2 turns')).toBeVisible();
+    expect(screen.getByText('Damage +10% · Rest of battle')).toBeVisible();
+    expect(screen.getByText('Damage −100% · 2 turns')).toBeVisible();
+    expect(screen.getAllByLabelText(/Active effects on/)).toHaveLength(2);
+    expect(screen.getByText('CPU Creature lost 2 Power.')).toBeVisible();
   });
 
   it('prevents duplicate action submission while the server request is in flight', async () => {
@@ -306,7 +461,7 @@ describe('authoritative CPU battle page', () => {
 
     renderMatchPage();
     const move = await screen.findByRole('button', {
-      name: /Use Knowledge Strike 1/,
+      name: /Knowledge Strike 1/,
     });
     await user.dblClick(move);
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -335,7 +490,7 @@ describe('authoritative CPU battle page', () => {
 
     renderMatchPage();
     await user.click(
-      await screen.findByRole('button', { name: /Use Knowledge Strike 1/ }),
+      await screen.findByRole('button', { name: /Knowledge Strike 1/ }),
     );
     const oldSignal = fetchMock.mock.calls[1]![1]!.signal as AbortSignal;
 
@@ -347,7 +502,7 @@ describe('authoritative CPU battle page', () => {
     resolveOldAction(matchResponse(activeMatch(8)));
 
     expect(
-      await screen.findByRole('button', { name: /Use Knowledge Strike 1/ }),
+      await screen.findByRole('button', { name: /Knowledge Strike 1/ }),
     ).toBeEnabled();
     expect(
       within(screen.getByText('Match version').parentElement!).getByText('7'),
@@ -367,7 +522,7 @@ describe('authoritative CPU battle page', () => {
 
     renderMatchPage();
     const move = await screen.findByRole('button', {
-      name: /Use Knowledge Strike 1/,
+      name: /Knowledge Strike 1/,
     });
     await user.click(move);
 
@@ -445,14 +600,14 @@ describe('authoritative CPU battle page', () => {
       await screen.findByRole('heading', { name: 'Your turn' }),
     ).toBeVisible();
     await user.click(
-      screen.getByRole('button', { name: /Use Knowledge Strike 2/ }),
+      screen.getByRole('button', { name: /Knowledge Strike 2/ }),
     );
 
     expect(
       await screen.findByRole('heading', { name: /Victory — match saved/ }),
     ).toBeVisible();
     expect(
-      screen.queryByRole('button', { name: /Use Knowledge/ }),
+      screen.queryByRole('button', { name: /Knowledge Strike/ }),
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: 'Open saved match history' }),

@@ -104,6 +104,31 @@ export function validateCardDefinition(input: CardDefinitionInput): void {
   validateEffects(effects);
 }
 
+export function validateCardDefinitionForPublication(
+  input: CardDefinitionInput,
+): void {
+  validateCardDefinition(input);
+
+  if (input.category === 'creature') {
+    for (const move of input.moves ?? []) {
+      if (move.effectValue === null || move.effectValue === undefined) {
+        throw new InvalidCardDefinitionError(
+          `Move "${move.name}" requires an effect value before publication.`,
+        );
+      }
+    }
+    return;
+  }
+
+  for (const effect of input.effects ?? []) {
+    if (effect.effectValue === null || effect.effectValue === undefined) {
+      throw new InvalidCardDefinitionError(
+        `Power-card effect ${effect.position} requires an effect value before publication.`,
+      );
+    }
+  }
+}
+
 function validateMoves(moves: CardMoveInput[]): void {
   const positions = new Set<number>();
 
