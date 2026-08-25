@@ -358,7 +358,9 @@ describe('CPU match service', () => {
 
     expect(response.state.player.creatures[0]).toMatchObject({
       name: 'Campus Scholar',
-      moves: [expect.objectContaining({ powerCost: 0 })],
+      moves: expect.arrayContaining([
+        expect.objectContaining({ powerCost: 0 }),
+      ]),
       activeModifiers: [
         { percentage: 10, remainingTurns: 2 },
         { percentage: 10, remainingTurns: null },
@@ -606,21 +608,19 @@ function deck(prefix: 'player' | 'cpu'): BattleDeck {
     affinity: 'wit',
     maxHp: 10,
     maxPower: 10,
-    moves: [
-      {
-        id: `${prefix}-move-${index}`,
-        name: 'Strike',
-        moveType: 'basic',
-        powerCost: 0,
-        effects: [
-          {
-            id: `${prefix}-effect-${index}`,
-            effectType: 'damage',
-            effectValue: 1,
-          },
-        ],
-      },
-    ],
+    moves: [1, 2, 3, 4].map((position) => ({
+      id: `${prefix}-move-${index}-${position}`,
+      name: position === 1 ? 'Strike' : `Fixture move ${position}`,
+      moveType: 'basic',
+      powerCost: position === 1 ? 0 : 11,
+      effects: [
+        {
+          id: `${prefix}-effect-${index}-${position}`,
+          effectType: 'damage',
+          effectValue: 1,
+        },
+      ],
+    })),
   }));
 
   const powerCards: BattlePowerCard[] = [1, 2].map((index) => ({
