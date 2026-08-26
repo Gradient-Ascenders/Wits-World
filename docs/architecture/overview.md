@@ -221,8 +221,9 @@ complete Basic product. It still records these narrower gates:
   evidence;
 - the final location-data retention policy remains open, although the current
   implementation does not persist exact eligibility or challenge-start claims;
-- the player profile/account page, password reset, and account deletion are
-  mandatory Basic work planned for Sprint 2 and are not currently implemented;
+- account-deletion persistence and retention are implemented; the player
+  profile/account page, password reset, and deletion UI remain mandatory issue
+  `#161` work;
 - Mapbox licensing/terms, production token/CSP/privacy, cost ownership, usage,
   and campus-data evidence remains outstanding; and
 - production observability, backup, and recovery evidence remains
@@ -269,5 +270,5 @@ ChatGPT-Web[GPT-5.6 Thinking] and Codex-CLI[gpt-5.6-sol medium], and reviewed
 and edited for Sprint 1 release validation with assistance from
 ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].
 
-The architecture-status notice was added with assistance from
-Codex-CLI[GPT-5].
+The architecture-status notice was added with assistance from Codex-CLI[GPT-5]
+and Codex-CLI[gpt-5.6-sol medium].
