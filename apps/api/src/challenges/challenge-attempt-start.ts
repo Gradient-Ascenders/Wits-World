@@ -4,6 +4,7 @@ import {
   createChallengeAttemptReader,
   type ChallengeAttemptQueryable,
   type InProgressChallengeAttempt,
+  type InProgressOrderingChallengeAttempt,
   type PlayerSafeChallengeAttempt,
 } from './challenge-attempt-reader.js';
 import {
@@ -45,7 +46,7 @@ export interface StartChallengeAttemptInput {
 export type StartChallengeAttemptResult =
   | {
       outcome: 'created';
-      attempt: InProgressChallengeAttempt;
+      attempt: InProgressChallengeAttempt | InProgressOrderingChallengeAttempt;
     }
   | {
       outcome: 'resumed';
@@ -101,17 +102,24 @@ interface CreateChallengeAttemptStartServiceOptions {
 
 interface PublishedChallengeRow extends pg.QueryResultRow {
   challenge_id: string;
+  format: 'multiple_choice' | 'ordering';
 }
 
 interface PublishedQuestionRow extends pg.QueryResultRow {
   difficulty: ChallengeDifficulty;
   prompt: string;
+  explanation: string | null;
   question_id: string;
 }
 
 interface PublishedChoiceRow extends pg.QueryResultRow {
   choice_id: string;
   choice_text: string;
+}
+
+interface PublishedOrderingItemRow extends pg.QueryResultRow {
+  item_id: string;
+  item_text: string;
 }
 
 interface AttemptInsertRow extends pg.QueryResultRow {
@@ -122,15 +130,31 @@ interface AttemptQuestionInsertRow extends pg.QueryResultRow {
   attempt_question_id: string;
 }
 
-interface PreparedQuestion {
+interface PreparedQuestionBase {
   difficulty: ChallengeDifficulty;
+  explanation: string | null;
   prompt: string;
   sourceQuestionId: string;
+}
+
+interface PreparedMultipleChoiceQuestion extends PreparedQuestionBase {
+  format: 'multiple_choice';
   choices: Array<{
     sourceChoiceId: string;
     text: string;
   }>;
 }
+
+interface PreparedOrderingQuestion extends PreparedQuestionBase {
+  format: 'ordering';
+  items: Array<{
+    sourceItemId: string;
+    text: string;
+  }>;
+}
+
+type PreparedQuestion =
+  PreparedMultipleChoiceQuestion | PreparedOrderingQuestion;
 
 export function createChallengeAttemptStartService(
   database: ChallengeAttemptDatabase,
@@ -216,7 +240,9 @@ export function createChallengeAttemptStartService(
 
         const challengeResult = await client.query<PublishedChallengeRow>(
           `
-            select challenge.id::text as challenge_id
+            select
+              challenge.id::text as challenge_id,
+              challenge.format
               from public.event_challenges challenge
              where challenge.event_id = $1::uuid
                and challenge.status = 'published'
@@ -235,7 +261,8 @@ export function createChallengeAttemptStartService(
             select
               question.id::text as question_id,
               question.prompt,
-              question.difficulty
+              question.difficulty,
+              question.explanation
             from public.challenge_questions question
             where question.challenge_id = $1::uuid
               and question.status = 'published'
@@ -256,6 +283,42 @@ export function createChallengeAttemptStartService(
         const preparedQuestions: PreparedQuestion[] = [];
 
         for (const question of selectedQuestions) {
+          if (challenge.format === 'ordering') {
+            const itemResult = await client.query<PublishedOrderingItemRow>(
+              `
+                select
+                  item.id::text as item_id,
+                  item.item_text
+                from public.challenge_ordering_items item
+                where item.question_id = $1::uuid
+                order by item.id
+              `,
+              [question.question_id],
+            );
+
+            if (itemResult.rows.length !== 4 || question.explanation === null) {
+              throw new ChallengeUnavailableError();
+            }
+
+            const shuffledItems = shuffleChallengeItems(
+              itemResult.rows,
+              randomIndex,
+            );
+
+            preparedQuestions.push({
+              format: 'ordering',
+              sourceQuestionId: question.question_id,
+              prompt: question.prompt,
+              difficulty: question.difficulty,
+              explanation: question.explanation,
+              items: shuffledItems.map((item) => ({
+                sourceItemId: item.item_id,
+                text: item.item_text,
+              })),
+            });
+            continue;
+          }
+
           const choiceResult = await client.query<PublishedChoiceRow>(
             `
               select
@@ -278,9 +341,11 @@ export function createChallengeAttemptStartService(
           );
 
           preparedQuestions.push({
+            format: 'multiple_choice',
             sourceQuestionId: question.question_id,
             prompt: question.prompt,
             difficulty: question.difficulty,
+            explanation: null,
             choices: shuffledChoices.map((choice) => ({
               sourceChoiceId: choice.choice_id,
               text: choice.choice_text,
@@ -355,9 +420,10 @@ export function createChallengeAttemptStartService(
                   source_question_id,
                   position,
                   prompt_snapshot,
-                  difficulty_snapshot
+                  difficulty_snapshot,
+                  explanation_snapshot
                 )
-                values ($1, $2, $3, $4, $5)
+                values ($1, $2, $3, $4, $5, $6)
                 returning id::text as attempt_question_id
               `,
             [
@@ -366,6 +432,7 @@ export function createChallengeAttemptStartService(
               questionIndex + 1,
               question.prompt,
               question.difficulty,
+              question.explanation,
             ],
           );
 
@@ -377,26 +444,50 @@ export function createChallengeAttemptStartService(
             );
           }
 
-          for (const [choiceIndex, choice] of question.choices.entries()) {
-            await client.query(
-              `
-                insert into public.attempt_question_choices (
-                  attempt_question_id,
-                  source_question_id,
-                  source_choice_id,
-                  display_position,
-                  choice_text_snapshot
-                )
-                values ($1, $2, $3, $4, $5)
-              `,
-              [
-                attemptQuestion.attempt_question_id,
-                question.sourceQuestionId,
-                choice.sourceChoiceId,
-                choiceIndex + 1,
-                choice.text,
-              ],
-            );
+          if (question.format === 'multiple_choice') {
+            for (const [choiceIndex, choice] of question.choices.entries()) {
+              await client.query(
+                `
+                  insert into public.attempt_question_choices (
+                    attempt_question_id,
+                    source_question_id,
+                    source_choice_id,
+                    display_position,
+                    choice_text_snapshot
+                  )
+                  values ($1, $2, $3, $4, $5)
+                `,
+                [
+                  attemptQuestion.attempt_question_id,
+                  question.sourceQuestionId,
+                  choice.sourceChoiceId,
+                  choiceIndex + 1,
+                  choice.text,
+                ],
+              );
+            }
+          } else {
+            for (const [itemIndex, item] of question.items.entries()) {
+              await client.query(
+                `
+                  insert into public.attempt_question_ordering_items (
+                    attempt_question_id,
+                    source_question_id,
+                    source_item_id,
+                    display_position,
+                    item_text_snapshot
+                  )
+                  values ($1, $2, $3, $4, $5)
+                `,
+                [
+                  attemptQuestion.attempt_question_id,
+                  question.sourceQuestionId,
+                  item.sourceItemId,
+                  itemIndex + 1,
+                  item.text,
+                ],
+              );
+            }
           }
         }
 

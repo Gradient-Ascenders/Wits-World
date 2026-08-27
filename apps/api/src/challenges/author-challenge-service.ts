@@ -2,11 +2,12 @@ import type pg from 'pg';
 
 export type AuthorChallengeStatus = 'draft' | 'published' | 'retired';
 export type AuthorQuestionStatus = 'draft' | 'published' | 'retired';
+export type ChallengeFormat = 'multiple_choice' | 'ordering';
 
 export interface AuthorChallenge {
   challengeId: string;
   eventId: string;
-  format: 'multiple_choice';
+  format: ChallengeFormat;
   status: AuthorChallengeStatus;
   createdAt: string;
   updatedAt: string;
@@ -18,41 +19,79 @@ export interface AuthorQuestionChoice {
   text: string;
 }
 
-export interface AuthorChallengeQuestion {
+interface AuthorChallengeQuestionBase {
   questionId: string;
   challengeId: string;
+  format: ChallengeFormat;
   prompt: string;
   difficulty: 1 | 2 | 3;
   explanation: string | null;
   status: AuthorQuestionStatus;
-  choices: AuthorQuestionChoice[];
-  acceptedChoiceId: string | null;
-  acceptedChoicePosition: number | null;
   createdAt: string;
   updatedAt: string;
 }
 
+export interface AuthorMultipleChoiceQuestion extends AuthorChallengeQuestionBase {
+  format: 'multiple_choice';
+  choices: AuthorQuestionChoice[];
+  acceptedChoiceId: string | null;
+  acceptedChoicePosition: number | null;
+}
+
+export interface AuthorOrderingItem {
+  itemId: string;
+  position: number;
+  text: string;
+}
+
+export interface AuthorOrderingQuestion extends AuthorChallengeQuestionBase {
+  format: 'ordering';
+  items: AuthorOrderingItem[];
+}
+
+export type AuthorChallengeQuestion =
+  AuthorMultipleChoiceQuestion | AuthorOrderingQuestion;
+
 export interface CreateAuthorChallengeInput {
   actorPlayerId: string;
   eventId: string;
+  format?: ChallengeFormat;
 }
 
-export interface AuthorQuestionInput {
+interface AuthorQuestionInputBase {
   actorPlayerId: string;
   prompt: string;
   difficulty: 1 | 2 | 3;
   explanation: string;
+}
+
+export interface AuthorMultipleChoiceQuestionInput extends AuthorQuestionInputBase {
+  format?: 'multiple_choice';
   choices: readonly string[];
   acceptedChoicePosition: number;
 }
 
-export interface CreateAuthorQuestionInput extends AuthorQuestionInput {
-  challengeId: string;
+export interface AuthorOrderingQuestionInput extends AuthorQuestionInputBase {
+  format: 'ordering';
+  items: readonly string[];
 }
 
-export interface UpdateAuthorQuestionInput extends AuthorQuestionInput {
+export type AuthorQuestionInput =
+  AuthorMultipleChoiceQuestionInput | AuthorOrderingQuestionInput;
+
+type NormalizedAuthorQuestionInput =
+  | (Omit<AuthorMultipleChoiceQuestionInput, 'format'> & {
+      format: 'multiple_choice';
+    })
+  | AuthorOrderingQuestionInput;
+
+export type CreateAuthorQuestionInput = AuthorQuestionInput & {
+  challengeId: string;
+};
+
+export type UpdateAuthorQuestionInput = AuthorQuestionInput & {
   questionId: string;
-}
+};
 
 export interface AuthorChallengeService {
   listChallenges(eventId: string): Promise<AuthorChallenge[]>;
@@ -104,7 +143,7 @@ export interface AuthorChallengeTransactionClient {
 interface ChallengeRow extends pg.QueryResultRow {
   challenge_id: string;
   event_id: string;
-  format: 'multiple_choice';
+  format: ChallengeFormat;
   status: AuthorChallengeStatus;
   created_at: Date;
   updated_at: Date;
@@ -117,6 +156,7 @@ interface ChallengeWithEventLockRow extends ChallengeRow {
 interface QuestionRow extends pg.QueryResultRow {
   question_id: string;
   challenge_id: string;
+  format: ChallengeFormat;
   prompt: string;
   difficulty: 1 | 2 | 3;
   explanation: string | null;
@@ -127,10 +167,14 @@ interface QuestionRow extends pg.QueryResultRow {
   choice_position: number | null;
   choice_text: string | null;
   accepted_choice_id: string | null;
+  ordering_item_id: string | null;
+  ordering_item_position: number | null;
+  ordering_item_text: string | null;
 }
 
 interface QuestionLockRow extends pg.QueryResultRow {
   challenge_id: string;
+  challenge_format: ChallengeFormat;
   challenge_status: AuthorChallengeStatus;
   question_status: AuthorQuestionStatus;
 }
@@ -139,11 +183,17 @@ interface ChoiceInsertRow extends pg.QueryResultRow {
   choice_id: string;
 }
 
+interface OrderingItemInsertRow extends pg.QueryResultRow {
+  item_id: string;
+}
+
 interface ReadinessRow extends pg.QueryResultRow {
   question_id: string;
   explanation: string | null;
   choice_count: number;
   answer_key_count: number;
+  ordering_item_count: number;
+  ordering_answer_key_count: number;
 }
 
 export class AuthorChallengeEventNotFoundError extends Error {
@@ -227,9 +277,10 @@ export function createAuthorChallengeService(
         const result = await client.query<ChallengeRow>(
           `
             insert into public.event_challenges (
-              event_id
+              event_id,
+              format
             )
-            values ($1::uuid)
+            values ($1::uuid, $2)
             returning
               id::text as challenge_id,
               event_id::text as event_id,
@@ -238,7 +289,7 @@ export function createAuthorChallengeService(
               created_at,
               updated_at
           `,
-          [input.eventId],
+          [input.eventId, input.format ?? 'multiple_choice'],
         );
 
         const row = result.rows[0];
@@ -285,6 +336,12 @@ export function createAuthorChallengeService(
           );
         }
 
+        if (challenge.format !== validated.format) {
+          throw new InvalidAuthorQuestionError(
+            'Question format must match its challenge format.',
+          );
+        }
+
         const result = await client.query<{
           question_id: string;
         }>(
@@ -319,12 +376,20 @@ export function createAuthorChallengeService(
           );
         }
 
-        await replaceQuestionChoices(
-          client,
-          questionId,
-          validated.choices,
-          validated.acceptedChoicePosition,
-        );
+        if (validated.format === 'multiple_choice') {
+          await replaceQuestionChoices(
+            client,
+            questionId,
+            validated.choices,
+            validated.acceptedChoicePosition,
+          );
+        } else {
+          await replaceQuestionOrderingItems(
+            client,
+            questionId,
+            validated.items,
+          );
+        }
 
         await insertAudit(
           client,
@@ -356,6 +421,12 @@ export function createAuthorChallengeService(
           );
         }
 
+        if (locked.challenge_format !== validated.format) {
+          throw new InvalidAuthorQuestionError(
+            'Question format must match its challenge format.',
+          );
+        }
+
         await client.query(
           `
             update public.challenge_questions
@@ -374,28 +445,40 @@ export function createAuthorChallengeService(
           ],
         );
 
-        await client.query(
-          `
-            delete from private.challenge_answer_keys
-            where question_id = $1::uuid
-          `,
-          [input.questionId],
-        );
-
-        await client.query(
-          `
-            delete from public.challenge_choices
-            where question_id = $1::uuid
-          `,
-          [input.questionId],
-        );
-
-        await replaceQuestionChoices(
-          client,
-          input.questionId,
-          validated.choices,
-          validated.acceptedChoicePosition,
-        );
+        if (validated.format === 'multiple_choice') {
+          await client.query(
+            `delete from private.challenge_answer_keys
+             where question_id = $1::uuid`,
+            [input.questionId],
+          );
+          await client.query(
+            `delete from public.challenge_choices
+             where question_id = $1::uuid`,
+            [input.questionId],
+          );
+          await replaceQuestionChoices(
+            client,
+            input.questionId,
+            validated.choices,
+            validated.acceptedChoicePosition,
+          );
+        } else {
+          await client.query(
+            `delete from private.challenge_ordering_answer_keys
+             where question_id = $1::uuid`,
+            [input.questionId],
+          );
+          await client.query(
+            `delete from public.challenge_ordering_items
+             where question_id = $1::uuid`,
+            [input.questionId],
+          );
+          await replaceQuestionOrderingItems(
+            client,
+            input.questionId,
+            validated.items,
+          );
+        }
 
         await insertAudit(
           client,
@@ -428,13 +511,12 @@ export function createAuthorChallengeService(
         const readiness = await loadQuestionReadiness(client, questionId);
 
         if (
-          readiness.choice_count !== 4 ||
-          readiness.answer_key_count !== 1 ||
+          !isQuestionReady(locked.challenge_format, readiness) ||
           readiness.explanation === null ||
           readiness.explanation.trim().length === 0
         ) {
           throw new AuthorContentNotReadyError(
-            'A question requires four choices, one accepted answer, and an explanation before publication.',
+            'A question requires four format-appropriate items, a complete private answer, and an explanation before publication.',
           );
         }
 
@@ -558,14 +640,13 @@ export function createAuthorChallengeService(
         if (
           readiness.some(
             (question) =>
-              question.choice_count !== 4 ||
-              question.answer_key_count !== 1 ||
+              !isQuestionReady(challenge.format, question) ||
               question.explanation === null ||
               question.explanation.trim().length === 0,
           )
         ) {
           throw new AuthorContentNotReadyError(
-            'Every published question requires four choices, one accepted answer, and an explanation.',
+            'Every published question requires four format-appropriate items, a complete private answer, and an explanation.',
           );
         }
 
@@ -783,6 +864,7 @@ async function lockQuestion(
     `
       select
         question.challenge_id::text as challenge_id,
+        challenge.format as challenge_format,
         question.status as question_status,
         challenge.status as challenge_status
       from public.challenge_questions question
@@ -861,6 +943,44 @@ async function replaceQuestionChoices(
   );
 }
 
+async function replaceQuestionOrderingItems(
+  client: AuthorChallengeTransactionClient,
+  questionId: string,
+  items: readonly string[],
+): Promise<void> {
+  for (const [index, item] of items.entries()) {
+    const result = await client.query<OrderingItemInsertRow>(
+      `
+        insert into public.challenge_ordering_items (
+          question_id,
+          item_text
+        )
+        values ($1::uuid, $2)
+        returning id::text as item_id
+      `,
+      [questionId, item],
+    );
+
+    const itemId = result.rows[0]?.item_id;
+
+    if (!itemId) {
+      throw new Error('Ordering item creation did not return its identifier.');
+    }
+
+    await client.query(
+      `
+        insert into private.challenge_ordering_answer_keys (
+          question_id,
+          item_id,
+          correct_position
+        )
+        values ($1::uuid, $2::uuid, $3)
+      `,
+      [questionId, itemId, index + 1],
+    );
+  }
+}
+
 async function loadQuestions(
   client: AuthorChallengeTransactionClient,
   challengeId: string,
@@ -870,6 +990,7 @@ async function loadQuestions(
       select
         question.id::text as question_id,
         question.challenge_id::text as challenge_id,
+        challenge.format,
         question.prompt,
         question.difficulty,
         question.explanation,
@@ -879,17 +1000,27 @@ async function loadQuestions(
         choice.id::text as choice_id,
         choice.authoring_position as choice_position,
         choice.choice_text,
-        answer_key.accepted_choice_id::text as accepted_choice_id
+        answer_key.accepted_choice_id::text as accepted_choice_id,
+        ordering_item.id::text as ordering_item_id,
+        ordering_key.correct_position as ordering_item_position,
+        ordering_item.item_text as ordering_item_text
       from public.challenge_questions question
+      join public.event_challenges challenge
+        on challenge.id = question.challenge_id
       left join public.challenge_choices choice
         on choice.question_id = question.id
       left join private.challenge_answer_keys answer_key
         on answer_key.question_id = question.id
+      left join public.challenge_ordering_items ordering_item
+        on ordering_item.question_id = question.id
+      left join private.challenge_ordering_answer_keys ordering_key
+        on ordering_key.question_id = question.id
+       and ordering_key.item_id = ordering_item.id
       where question.challenge_id = $1::uuid
       order by
         question.created_at,
         question.id,
-        choice.authoring_position
+        coalesce(choice.authoring_position, ordering_key.correct_position)
     `,
     [challengeId],
   );
@@ -906,6 +1037,7 @@ async function requireLoadedQuestion(
       select
         question.id::text as question_id,
         question.challenge_id::text as challenge_id,
+        challenge.format,
         question.prompt,
         question.difficulty,
         question.explanation,
@@ -915,14 +1047,24 @@ async function requireLoadedQuestion(
         choice.id::text as choice_id,
         choice.authoring_position as choice_position,
         choice.choice_text,
-        answer_key.accepted_choice_id::text as accepted_choice_id
+        answer_key.accepted_choice_id::text as accepted_choice_id,
+        ordering_item.id::text as ordering_item_id,
+        ordering_key.correct_position as ordering_item_position,
+        ordering_item.item_text as ordering_item_text
       from public.challenge_questions question
+      join public.event_challenges challenge
+        on challenge.id = question.challenge_id
       left join public.challenge_choices choice
         on choice.question_id = question.id
       left join private.challenge_answer_keys answer_key
         on answer_key.question_id = question.id
+      left join public.challenge_ordering_items ordering_item
+        on ordering_item.question_id = question.id
+      left join private.challenge_ordering_answer_keys ordering_key
+        on ordering_key.question_id = question.id
+       and ordering_key.item_id = ordering_item.id
       where question.id = $1::uuid
-      order by choice.authoring_position
+      order by coalesce(choice.authoring_position, ordering_key.correct_position)
     `,
     [questionId],
   );
@@ -945,24 +1087,38 @@ function mapQuestionRows(
     let question = questions.get(row.question_id);
 
     if (!question) {
-      question = {
+      const common = {
         questionId: row.question_id,
         challengeId: row.challenge_id,
+        format: row.format,
         prompt: row.prompt,
         difficulty: row.difficulty,
         explanation: row.explanation,
         status: row.status,
-        choices: [],
-        acceptedChoiceId: row.accepted_choice_id,
-        acceptedChoicePosition: null,
         createdAt: row.created_at.toISOString(),
         updatedAt: row.updated_at.toISOString(),
       };
+
+      question =
+        row.format === 'multiple_choice'
+          ? {
+              ...common,
+              format: 'multiple_choice',
+              choices: [],
+              acceptedChoiceId: row.accepted_choice_id,
+              acceptedChoicePosition: null,
+            }
+          : {
+              ...common,
+              format: 'ordering',
+              items: [],
+            };
 
       questions.set(row.question_id, question);
     }
 
     if (
+      question.format === 'multiple_choice' &&
       row.choice_id !== null &&
       row.choice_position !== null &&
       row.choice_text !== null
@@ -976,6 +1132,19 @@ function mapQuestionRows(
       if (row.choice_id === row.accepted_choice_id) {
         question.acceptedChoicePosition = row.choice_position;
       }
+    }
+
+    if (
+      question.format === 'ordering' &&
+      row.ordering_item_id !== null &&
+      row.ordering_item_position !== null &&
+      row.ordering_item_text !== null
+    ) {
+      question.items.push({
+        itemId: row.ordering_item_id,
+        position: row.ordering_item_position,
+        text: row.ordering_item_text,
+      });
     }
   }
 
@@ -1000,7 +1169,17 @@ async function loadQuestionReadiness(
           select count(*)::int
           from private.challenge_answer_keys answer_key
           where answer_key.question_id = question.id
-        ) as answer_key_count
+        ) as answer_key_count,
+        (
+          select count(*)::int
+          from public.challenge_ordering_items item
+          where item.question_id = question.id
+        ) as ordering_item_count,
+        (
+          select count(*)::int
+          from private.challenge_ordering_answer_keys answer_key
+          where answer_key.question_id = question.id
+        ) as ordering_answer_key_count
       from public.challenge_questions question
       where question.id = $1::uuid
     `,
@@ -1034,7 +1213,17 @@ async function loadChallengeReadiness(
           select count(*)::int
           from private.challenge_answer_keys answer_key
           where answer_key.question_id = question.id
-        ) as answer_key_count
+        ) as answer_key_count,
+        (
+          select count(*)::int
+          from public.challenge_ordering_items item
+          where item.question_id = question.id
+        ) as ordering_item_count,
+        (
+          select count(*)::int
+          from private.challenge_ordering_answer_keys answer_key
+          where answer_key.question_id = question.id
+        ) as ordering_answer_key_count
       from public.challenge_questions question
       where question.challenge_id = $1::uuid
         and question.status = 'published'
@@ -1046,13 +1235,9 @@ async function loadChallengeReadiness(
   return result.rows;
 }
 
-function validateQuestionInput<T extends AuthorQuestionInput>(
-  input: T,
-): T & {
-  prompt: string;
-  explanation: string;
-  choices: string[];
-} {
+function validateQuestionInput(
+  input: AuthorQuestionInput,
+): NormalizedAuthorQuestionInput {
   const prompt = input.prompt.trim();
 
   if (prompt.length === 0) {
@@ -1077,34 +1262,70 @@ function validateQuestionInput<T extends AuthorQuestionInput>(
     );
   }
 
-  if (input.choices.length !== 4) {
+  if (input.format !== 'ordering') {
+    if (input.choices.length !== 4) {
+      throw new InvalidAuthorQuestionError(
+        'A multiple-choice question must define exactly four choices.',
+      );
+    }
+
+    const choices = input.choices.map((choice) => choice.trim());
+
+    if (choices.some((choice) => choice.length === 0)) {
+      throw new InvalidAuthorQuestionError(
+        'Question choices must not be blank.',
+      );
+    }
+
+    if (
+      !Number.isInteger(input.acceptedChoicePosition) ||
+      input.acceptedChoicePosition < 1 ||
+      input.acceptedChoicePosition > 4
+    ) {
+      throw new InvalidAuthorQuestionError(
+        'Accepted choice position must be between 1 and 4.',
+      );
+    }
+
+    return {
+      ...input,
+      format: 'multiple_choice',
+      prompt,
+      explanation,
+      choices,
+    };
+  }
+
+  if (input.items.length !== 4) {
     throw new InvalidAuthorQuestionError(
-      'A multiple-choice question must define exactly four choices.',
+      'An ordering question must define exactly four items.',
     );
   }
 
-  const choices = input.choices.map((choice) => choice.trim());
+  const items = input.items.map((item) => item.trim());
 
-  if (choices.some((choice) => choice.length === 0)) {
-    throw new InvalidAuthorQuestionError('Question choices must not be blank.');
-  }
-
-  if (
-    !Number.isInteger(input.acceptedChoicePosition) ||
-    input.acceptedChoicePosition < 1 ||
-    input.acceptedChoicePosition > 4
-  ) {
+  if (items.some((item) => item.length === 0)) {
     throw new InvalidAuthorQuestionError(
-      'Accepted choice position must be between 1 and 4.',
+      'Ordering question items must not be blank.',
     );
   }
 
-  return {
-    ...input,
-    prompt,
-    explanation,
-    choices,
-  };
+  return { ...input, prompt, explanation, items };
+}
+
+function isQuestionReady(
+  format: ChallengeFormat,
+  readiness: ReadinessRow,
+): boolean {
+  return format === 'multiple_choice'
+    ? readiness.choice_count === 4 &&
+        readiness.answer_key_count === 1 &&
+        readiness.ordering_item_count === 0 &&
+        readiness.ordering_answer_key_count === 0
+    : readiness.choice_count === 0 &&
+        readiness.answer_key_count === 0 &&
+        readiness.ordering_item_count === 4 &&
+        readiness.ordering_answer_key_count === 4;
 }
 
 async function insertAudit(

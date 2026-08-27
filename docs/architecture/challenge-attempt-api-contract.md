@@ -24,11 +24,12 @@ retrieval and defensive request-time expiry finalisation through that same
 atomic completion boundary. Background expiry processing remains separate
 follow-up work.
 
-The only challenge format supported in the Basic scope is a timed
-multiple-choice quiz. The API retains a `format` discriminator so additional
-formats can be introduced in a later tier or future scope without redesigning
-the contract. This supersedes earlier Sprint 2 planning references to two
-challenge formats.
+Basic remains a timed multiple-choice quiz. Issue #162 extends the same
+server-authoritative attempt contract with the Intermediate `ordering` format.
+An event challenge has one format, and all five questions and answers in an
+attempt use that format. Existing multiple-choice requests remain compatible;
+the author and answer APIs accept their historical bodies without an explicit
+format and normalize them to `multiple_choice`.
 
 Reward persistence and issuance are implemented through migrations `0007` and
 `0008` and the atomic completion finalizer from closed issue #67. The linked
@@ -44,23 +45,23 @@ below were confirmed by the team in the
 and subsequent Sprint 2 decisions. This contract translates those approved
 decisions into HTTP behavior; it does not independently choose the game rules.
 
-- Basic supports only the `multiple_choice` challenge format. Additional
-  challenge formats are deferred to a later tier or future scope.
-- The API retains a challenge-format discriminator so future formats can be
-  added without redesigning the contract.
-- Each event has one pool of multiple-choice questions.
+- Basic supports `multiple_choice`; Intermediate adds `ordering` through issue
+  #162 without changing Basic behavior.
+- Each event challenge has one format-specific question pool.
 - Starting an attempt selects exactly five distinct questions from the pool.
-- Each question has difficulty `1`, `2`, or `3`, four preset choices, and one
-  accepted choice.
-- Choice order is shuffled once per attempt and persisted.
+- Each question has difficulty `1`, `2`, or `3`. Multiple-choice questions have
+  four choices and one private accepted choice. Ordering questions have four
+  items and a private correct position for every item.
+- Choice or item order is shuffled once per attempt and persisted.
 - A player may complete an event quiz only once.
 - An answer is locked when accepted by the API and cannot be changed.
 - Marking is server-authoritative. Answer feedback is withheld while the timed
   attempt is active and revealed only after authoritative completion.
 - A completed result includes the final score, persisted reward outcome, and
-  exactly five ordered review entries containing the persisted selected choice
-  (or `null` after timeout), the authoritative correct choice, and
-  server-derived correctness. The model has no explanation field.
+  exactly five ordered review entries containing the persisted selected answer
+  (or `null` after timeout), the authoritative correct answer, and
+  server-derived correctness. Multiple-choice review has no explanation;
+  ordering review reveals the persisted explanation only after completion.
 - Completion and its reward result are retry-safe. Repeated requests return the
   persisted completion and reward without rerolling or issuing duplicate
   rewards.
@@ -96,11 +97,11 @@ request that creates the attempt. The browser may submit a location claim, but i
 may not submit `reachable`, `answerCorrect`, `score`, `coins`, `rewardCardId`, or
 similar authoritative fields.
 
-Question prompts and choices are player-visible while an attempt is in progress.
-Accepted-choice records, marking queries, reward rolls, internal reward-policy
-inputs, and other players' attempts are never returned. Exact submitted location
-values are evaluated for the start request but are not persisted by this
-contract.
+Question prompts and shuffled choices or items are player-visible while an
+attempt is in progress. Accepted choices, correct item positions, explanations,
+marking queries, reward rolls, internal reward-policy inputs, and other players'
+attempts are never returned. Exact submitted location values are evaluated for
+the start request but are not persisted by this contract.
 
 ## Shared representations
 
@@ -143,6 +144,12 @@ progress, `selectedChoiceId` and `answeredAt` contain the player's already
 locked answer where one exists. The completed representation uses the separate
 review shape below and does not return answer timestamps.
 
+For an in-progress ordering question, `items` contains four shuffled
+`{ "itemId", "text" }` objects. `selectedItemIds` is `null` until answered and
+then contains the four locked item IDs in submitted order. `answeredAt` follows
+the same resume behavior as multiple choice. The correct order and explanation
+are absent.
+
 ### In-progress attempt
 
 ```json
@@ -162,7 +169,7 @@ review shape below and does not return answer timestamps.
 
 `questions` always contains exactly five player-safe question objects; it is
 abbreviated above only to keep the example readable. Each question contains
-exactly four choices.
+exactly four choices for `multiple_choice` or four items for `ordering`.
 
 ### Completed attempt
 
@@ -289,6 +296,12 @@ The reward result is reconstructed from persisted completion and ownership data.
 Repeated requests return the same completed representation and never reroll or
 issue another reward.
 
+For `format: "ordering"`, each review entry contains `selectedItems` (four
+snapshot items in the submitted order, or `null` after timeout), `correctItems`
+(the same four snapshot items in authoritative order), `isCorrect`, and the
+persisted `explanation`. A question is correct only when all four submitted
+positions exactly match; partial credit is not awarded.
+
 ## Start or resume an attempt
 
 ```http
@@ -360,8 +373,25 @@ Request body:
 }
 ```
 
-The question must belong to the authenticated player's attempt and the choice
-must belong to that selected question.
+Ordering answers use the same endpoint with a discriminated body:
+
+```json
+{
+  "format": "ordering",
+  "attemptQuestionId": "32000000-0000-4000-8000-000000000001",
+  "itemIds": [
+    "34000000-0000-4000-8000-000000000003",
+    "34000000-0000-4000-8000-000000000001",
+    "34000000-0000-4000-8000-000000000004",
+    "34000000-0000-4000-8000-000000000002"
+  ]
+}
+```
+
+The question must belong to the authenticated player's attempt. A submitted
+choice must belong to that selected multiple-choice question. Ordering requires
+exactly four unique item UUIDs, all from that ordering question. The submitted
+format must match the persisted challenge format.
 
 - `200 OK` returns the updated in-progress attempt after an accepted answer.
 - Repeating the same already-accepted question and choice is idempotent and
@@ -424,24 +454,29 @@ contract. The authoritative deadline remains the stored attempt deadline.
 | ---------------------- | ---------------------------------------------------- |
 | `eventId`, `attemptId` | string, UUID                                         |
 | `attemptQuestionId`    | string, UUID                                         |
-| `choiceId`             | string, UUID                                         |
+| `choiceId`, `itemId`   | string, UUID                                         |
 | `latitude`             | finite number, `-90` through `90`                    |
 | `longitude`            | finite number, `-180` through `180`                  |
 | `accuracyMetres`       | finite number, minimum `0`                           |
 | `acquiredAt`           | string, date-time                                    |
-| `format`               | enum: `multiple_choice`                              |
+| `format`               | enum: `multiple_choice`, `ordering`                  |
 | `status`               | enum: `in_progress`, `completed`                     |
 | `position`             | integer, `1` through `5`                             |
 | `totalQuestions`       | integer, constant `5`                                |
 | `answeredCount`        | integer, `0` through `5`; in-progress responses only |
 | `questions`            | array, exactly `5` items; in-progress responses only |
 | question `choices`     | array, exactly `4` items                             |
+| question `items`       | array, exactly `4` unique items; ordering only       |
+| `itemIds`              | array, exactly `4` unique UUIDs; ordering answer     |
 | `scoreCorrect`         | integer, `0` through `5`; completed results only     |
 | `reward.coinsAwarded`  | integer, minimum `0`                                 |
 | `reward.cards`         | array, `0` through `2` items                         |
 | `review`               | array, exactly `5` items; completed results only     |
 | `selectedChoice`       | choice object or `null`; completed review only       |
 | `correctChoice`        | choice object; completed review only                 |
+| `selectedItems`        | four item objects or `null`; ordering review only    |
+| `correctItems`         | four item objects; ordering review only              |
+| `explanation`          | nonblank string; completed ordering review only      |
 | `isCorrect`            | boolean; completed review only                       |
 | card `category`        | enum: `creature`, `power`                            |
 | card `affinity`        | enum: `wit`, `grit`, `spark`, `spirit`, `mystic`     |
@@ -450,29 +485,29 @@ contract. The authoritative deadline remains the stored attempt deadline.
 | `completionReason`     | enum: `answered`, `timeout`; completed attempts only |
 | `completedAt`          | string, date-time; completed attempts only           |
 
-The implementation uses separate OpenAPI-compatible response schemas for the
-in-progress attempt representation and the completed score, reward, and review
-result. Review, correctness, correct choices, score, and rewards exist only in
-the completed schema and cannot leak into the active payload.
+The implementation uses four OpenAPI-compatible response schemas: active and
+completed representations for each format. Review, correctness, correct
+answers, explanations, score, and rewards exist only in completed schemas and
+cannot leak into an active payload.
 
 ## Error contract
 
 Errors use the existing problem response with `type`, `title`, `status`, `code`,
 `detail`, `requestId`, and optional `validation` fields.
 
-| HTTP | Code                       | Meaning                                                     |
-| ---- | -------------------------- | ----------------------------------------------------------- |
-| 400  | `INVALID_LOCATION_CLAIM`   | Coordinates, accuracy, or acquisition time are malformed.   |
-| 400  | `INVALID_CHALLENGE_ANSWER` | The question or choice relationship is invalid.             |
-| 401  | `UNAUTHORIZED`             | No valid access token established identity.                 |
-| 403  | `EVENT_NOT_REACHABLE`      | The claim is clearly outside the event radius.              |
-| 404  | `EVENT_NOT_FOUND`          | Event is missing or unpublished.                            |
-| 404  | `ATTEMPT_NOT_FOUND`        | Attempt is missing or belongs to another player.            |
-| 409  | `EVENT_NOT_ACTIVE`         | Event has not started or has ended before acceptance.       |
-| 409  | `CHALLENGE_UNAVAILABLE`    | Fewer than five usable questions are configured.            |
-| 409  | `ANSWER_LOCKED`            | A different choice was already locked for the question.     |
-| 409  | `ATTEMPT_COMPLETED`        | A new answer was submitted to an already completed attempt. |
-| 422  | `LOCATION_RETRY_REQUIRED`  | The claim is stale, future-dated, or accuracy-ambiguous.    |
+| HTTP | Code                       | Meaning                                                        |
+| ---- | -------------------------- | -------------------------------------------------------------- |
+| 400  | `INVALID_LOCATION_CLAIM`   | Coordinates, accuracy, or acquisition time are malformed.      |
+| 400  | `INVALID_CHALLENGE_ANSWER` | The question or submitted choice/item relationship is invalid. |
+| 401  | `UNAUTHORIZED`             | No valid access token established identity.                    |
+| 403  | `EVENT_NOT_REACHABLE`      | The claim is clearly outside the event radius.                 |
+| 404  | `EVENT_NOT_FOUND`          | Event is missing or unpublished.                               |
+| 404  | `ATTEMPT_NOT_FOUND`        | Attempt is missing or belongs to another player.               |
+| 409  | `EVENT_NOT_ACTIVE`         | Event has not started or has ended before acceptance.          |
+| 409  | `CHALLENGE_UNAVAILABLE`    | Fewer than five usable questions are configured.               |
+| 409  | `ANSWER_LOCKED`            | A different choice was already locked for the question.        |
+| 409  | `ATTEMPT_COMPLETED`        | A new answer was submitted to an already completed attempt.    |
+| 422  | `LOCATION_RETRY_REQUIRED`  | The claim is stale, future-dated, or accuracy-ambiguous.       |
 
 Unexpected database or worker failures use the existing safe `500` response and
 request identifier. Error and active-attempt responses never expose SQL, answer
@@ -522,10 +557,11 @@ The attempt-fetch follow-up implements:
 - persisted completed-result retries without rerolling rewards; and
 - database-backed timeout and concurrent-fetch verification.
 
-The timed question, reconnect/resume, deadline, completion, reward, and review
-player UI is implemented by closed issue #68. Remaining contract work is the
-optional background expiry processor; answer submission and attempt fetch
-already finalize expired attempts defensively through the atomic boundary.
+The timed multiple-choice player UI is implemented by closed issue #68.
+Ordering persistence and API behavior are implemented by issue #162; its player
+UI is tracked separately. Remaining shared contract work is the optional
+background expiry processor; answer submission and attempt fetch already
+finalize expired attempts defensively through the atomic boundary.
 
 The storage relations, reward calculation, and atomic finalization
 boundary are specified in the

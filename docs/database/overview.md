@@ -23,17 +23,17 @@ API in the current repository.
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Identity and lifecycle | `players` maps the validated Auth0 issuer/subject pair to a local UUID, role, lifecycle state, and optional Player Name. `account_deletion_requests` records the minimal backend lifecycle workflow state. | [Player identity and Player Names](./player-schema.md) and the [Auth0 ADR](../architecture/decisions/ADR-005-auth0-authentication.md)                                            |
 | Events and location    | `events` stores publication, availability, WGS 84 `geography(Point, 4326)`, radius, and lifecycle data. A GiST index supports spatial work.                                                                | [Event schema](./event-schema.md) and [eligibility calculation](./event-eligibility.md)                                                                                          |
-| Challenges             | Event challenge definitions, questions, choices, private answer keys, attempts, immutable question/choice snapshots, and locked answers support one timed five-question attempt per player/event.          | [Challenge, reward, and card persistence](./challenge-reward-persistence-design.md) and [API contract](../architecture/challenge-attempt-api-contract.md)                        |
+| Challenges             | Multiple-choice and ordering definitions, private answer keys, attempts, immutable format-specific snapshots, and locked answers support one timed five-question attempt per player/event.                 | [Challenge, reward, and card persistence](./challenge-reward-persistence-design.md) and [API contract](../architecture/challenge-attempt-api-contract.md)                        |
 | Rewards and collection | Event completions, wallets, coin ledger entries, card definitions, owned card copies, moves/effects, and starter grants preserve authoritative and retry-safe reward state.                                | [Challenge, reward, and card persistence](./challenge-reward-persistence-design.md)                                                                                              |
 | Saved decks            | Player decks, exact owned-copy membership, and active selection enforce ownership and composition through composite keys plus API validation.                                                              | [Saved-deck persistence](./saved-deck-persistence-design.md)                                                                                                                     |
 | CPU matches            | Match rows, immutable card snapshots, rounds, actions, submissions, versions, timers, and final results support transactional server-controlled battles and private history.                               | [CPU match persistence](./cpu-match-persistence-design.md)                                                                                                                       |
 | Authoring and audit    | Lifecycle columns and triggers protect draft/published/retired content; `author_content_audit` records protected Author actions.                                                                           | [Challenge, reward, and card persistence](./challenge-reward-persistence-design.md#event-authoring-lifecycle) and [Event schema](./event-schema.md#author-publication-lifecycle) |
 
-Accepted answers are kept in the `private` schema rather than a normal public
-read relation. Player-facing active-attempt queries do not expose accepted
-choices, correctness, score, or rewards. Completed review data is reconstructed
-only after authoritative finalisation from persisted snapshots and locked
-answers.
+Accepted choices and correct ordering positions are kept in the `private`
+schema rather than normal public read relations. Player-facing active-attempt
+queries do not expose correct answers, explanations, correctness, score, or
+rewards. Completed review data is reconstructed only after authoritative
+finalisation from persisted snapshots and locked answers.
 
 ## Integrity and authority
 

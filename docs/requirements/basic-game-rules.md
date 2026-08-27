@@ -133,6 +133,8 @@ profile/account page.
 ### Questions and timing
 
 - The format is a timed multiple-choice quiz.
+- The Intermediate ordering format added by issue #162 is an additive extension;
+  it does not change these Basic multiple-choice rules.
 - The server selects exactly five distinct questions.
 - Each question has four preset choices and exactly one private accepted choice.
 - Difficulty is an integer from `1` through `3`.
