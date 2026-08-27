@@ -33,10 +33,13 @@ afterEach(async () => {
 });
 
 describe('migration file loading', () => {
-  it('keeps the published 0021 checksum and orders 0022 after it', async () => {
+  it('keeps the published 0021 checksum and orders later migrations after it', async () => {
     const migrationFiles = await loadMigrationFiles(getMigrationsDirectory());
     const playerNameMigrations = migrationFiles.filter(
-      ({ name }) => name.startsWith('0021_') || name.startsWith('0022_'),
+      ({ name }) =>
+        name.startsWith('0021_') ||
+        name.startsWith('0022_') ||
+        name.startsWith('0023_'),
     );
 
     expect(
@@ -51,7 +54,28 @@ describe('migration file loading', () => {
         checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         name: '0022_tighten_player_name_policy.sql',
       },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0023_add_ordering_challenges.sql',
+      },
     ]);
+  });
+
+  it('calculates the same checksum for LF and CRLF line endings', async () => {
+    const lfDirectory = await createTemporaryMigrationDirectory();
+    const crlfDirectory = await createTemporaryMigrationDirectory();
+    const sql = 'select 1;\nselect 2;\n';
+
+    await writeFile(join(lfDirectory, '0001_first.sql'), sql);
+    await writeFile(
+      join(crlfDirectory, '0001_first.sql'),
+      sql.replaceAll('\n', '\r\n'),
+    );
+
+    const [lfMigration] = await loadMigrationFiles(lfDirectory);
+    const [crlfMigration] = await loadMigrationFiles(crlfDirectory);
+
+    expect(crlfMigration?.checksum).toBe(lfMigration?.checksum);
   });
 
   it('loads SQL migrations in filename order', async () => {
