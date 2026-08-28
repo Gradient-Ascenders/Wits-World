@@ -481,7 +481,7 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
         select id::text as id
         from public.card_definitions
         where is_active = true
-          and affinity = 'spirit'
+          and affinity = 'grit'
           and category = 'creature'
           and rarity = 'common'
         order by id
@@ -537,7 +537,7 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
     const pausingStarterService = createStarterGrantService(pausingDatabase);
     const selection = pausingStarterService.selectStarter({
       playerId: MUTATION_RACE_PLAYER_ID,
-      affinity: 'spirit',
+      affinity: 'grit',
     });
 
     await candidateLocksAcquired;
@@ -564,7 +564,7 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
     expect(result.grant.cards).toHaveLength(5);
     expect(
       result.grant.cards.every(
-        (card) => card.affinity === 'spirit' && card.rarity === 'common',
+        (card) => card.affinity === 'grit' && card.rarity === 'common',
       ),
     ).toBe(true);
     expect(

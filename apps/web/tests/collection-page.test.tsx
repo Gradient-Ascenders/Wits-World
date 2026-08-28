@@ -92,8 +92,14 @@ describe('card collection page', () => {
     expect(
       screen.getByRole('heading', { name: 'Your collection is empty' }),
     ).toBeVisible();
-    expect(screen.getByRole('radio', { name: /Wit/i })).toBeChecked();
-    expect(screen.getAllByRole('radio')).toHaveLength(5);
+    expect(screen.getByRole('radio', { name: /Spark/i })).toBeChecked();
+    expect(screen.getAllByRole('radio')).toHaveLength(3);
+    expect(
+      screen.queryByRole('radio', { name: /Spirit/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('radio', { name: /Mystic/i }),
+    ).not.toBeInTheDocument();
   });
 
   it('submits the selected affinity and focuses the five-card server result', async () => {
@@ -101,18 +107,18 @@ describe('card collection page', () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(collectionResponse([]))
-      .mockResolvedValueOnce(starterResponse('spark'));
+      .mockResolvedValueOnce(starterResponse('grit'));
     vi.stubGlobal('fetch', fetchMock);
 
     renderCollection();
-    await user.click(await screen.findByRole('radio', { name: /Spark/i }));
+    await user.click(await screen.findByRole('radio', { name: /Grit/i }));
     await user.click(
       screen.getByRole('button', { name: 'Choose this affinity' }),
     );
 
     const resultHeading = await screen.findByRole('heading', {
       level: 1,
-      name: 'Your Spark starter set',
+      name: 'Your Grit starter set',
     });
     expect(resultHeading).toHaveFocus();
     expect(
@@ -120,7 +126,7 @@ describe('card collection page', () => {
     ).toHaveLength(5);
     expect(fetchMock).toHaveBeenLastCalledWith(
       `${apiBaseUrl}/cards/starter`,
-      expect.objectContaining({ body: JSON.stringify({ affinity: 'spark' }) }),
+      expect.objectContaining({ body: JSON.stringify({ affinity: 'grit' }) }),
     );
     expect(
       screen.getByText('5 cards recorded · 3 Creatures · 2 Power cards'),

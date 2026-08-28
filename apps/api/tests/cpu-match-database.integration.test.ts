@@ -41,6 +41,58 @@ const DECK_ID = 'b3000000-0000-4000-8000-000000000001';
 const OWNED_CARD_IDS = [1, 2, 3, 4, 5].map(
   (value) => `b4000000-0000-4000-8000-${String(value).padStart(12, '0')}`,
 );
+const EXPECTED_CPU_SNAPSHOTS = [
+  {
+    affinity: 'grit',
+    battle_card_id: 'c2c81cdc-5c15-84d1-6ba9-0271b1d3fdac',
+    card_definition_id: 'c2c81cdc-5c15-84d1-6ba9-0271b1d3fdac',
+    category: 'creature',
+    name: 'Grit Creature 2',
+    owned_card_id: null,
+    position: 1,
+    rarity: 'common',
+  },
+  {
+    affinity: 'spirit',
+    battle_card_id: 'a230fdda-cec0-c127-b4a2-e4dd20660e3a',
+    card_definition_id: 'a230fdda-cec0-c127-b4a2-e4dd20660e3a',
+    category: 'creature',
+    name: 'Spirit Creature 1',
+    owned_card_id: null,
+    position: 2,
+    rarity: 'common',
+  },
+  {
+    affinity: 'mystic',
+    battle_card_id: '0cba869b-d777-11f8-6b8c-c47d4d626558',
+    card_definition_id: '0cba869b-d777-11f8-6b8c-c47d4d626558',
+    category: 'creature',
+    name: 'Mystic Creature 1',
+    owned_card_id: null,
+    position: 3,
+    rarity: 'common',
+  },
+  {
+    affinity: 'grit',
+    battle_card_id: '49e45cbb-f419-bf5c-2868-757646cb8dc9',
+    card_definition_id: '49e45cbb-f419-bf5c-2868-757646cb8dc9',
+    category: 'power',
+    name: 'Grit Power 1',
+    owned_card_id: null,
+    position: 4,
+    rarity: 'common',
+  },
+  {
+    affinity: 'mystic',
+    battle_card_id: '76f057c6-efab-38d9-9bcf-298d5c794f1a',
+    card_definition_id: '76f057c6-efab-38d9-9bcf-298d5c794f1a',
+    category: 'power',
+    name: 'Mystic Power 1',
+    owned_card_id: null,
+    position: 5,
+    rarity: 'common',
+  },
+] as const;
 
 const runIntegrationTests =
   process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';
@@ -209,6 +261,34 @@ describe.skipIf(!runIntegrationTests)(
         [PLAYER_ID],
       );
       expect(activeMatchCount.rows[0]?.count).toBe('1');
+
+      const cpuSnapshots = await pool.query<{
+        affinity: string;
+        battle_card_id: string;
+        card_definition_id: string;
+        category: string;
+        name: string;
+        owned_card_id: string | null;
+        position: number;
+        rarity: string;
+      }>(
+        `select
+           position,
+           owned_card_id::text,
+           card_definition_id::text,
+           snapshot ->> 'name' as name,
+           snapshot ->> 'category' as category,
+           snapshot ->> 'affinity' as affinity,
+           snapshot ->> 'rarity' as rarity,
+           snapshot -> 'battleCard' ->> 'id' as battle_card_id
+         from public.cpu_match_cards
+         where match_id = $1::uuid
+           and side = 'cpu'
+         order by position`,
+        [created.matchId],
+      );
+
+      expect(cpuSnapshots.rows).toEqual(EXPECTED_CPU_SNAPSHOTS);
 
       const expectedWitCreature = canonicalCreatures.find(
         (card) => card.name === 'Wit Creature 1',

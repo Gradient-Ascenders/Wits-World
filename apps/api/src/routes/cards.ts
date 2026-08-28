@@ -3,11 +3,15 @@ import type { CardCollectionService } from '../cards/card-collection.js';
 
 import { ApiError } from '../errors/api-error.js';
 import {
+  StarterAffinityNotAllowedError,
   StarterAlreadyClaimedError,
   StarterCatalogueUnavailableError,
   type StarterGrantService,
 } from '../cards/starter-grant.js';
-import type { CardAffinity } from '../cards/card-types.js';
+import {
+  starterAffinities,
+  type StarterAffinity,
+} from '../cards/card-types.js';
 
 interface CardRoutesOptions {
   starterGrantService: StarterGrantService;
@@ -15,7 +19,7 @@ interface CardRoutesOptions {
 }
 
 interface StarterBody {
-  affinity: CardAffinity;
+  affinity: StarterAffinity;
 }
 
 const apiErrorSchema = {
@@ -181,7 +185,7 @@ const starterResponseSchema = {
     starterGrantId: { type: 'string', format: 'uuid' },
     affinity: {
       type: 'string',
-      enum: ['wit', 'grit', 'spark', 'spirit', 'mystic'],
+      enum: starterAffinities,
     },
     grantedAt: { type: 'string', format: 'date-time' },
     cards: {
@@ -272,13 +276,14 @@ export const cardRoutes: FastifyPluginAsync<CardRoutesOptions> = async (
           properties: {
             affinity: {
               type: 'string',
-              enum: ['wit', 'grit', 'spark', 'spirit', 'mystic'],
+              enum: starterAffinities,
             },
           },
         },
         response: {
           200: starterResponseSchema,
           201: starterResponseSchema,
+          400: apiErrorSchema,
           401: apiErrorSchema,
           403: apiErrorSchema,
           409: apiErrorSchema,
@@ -305,6 +310,15 @@ export const cardRoutes: FastifyPluginAsync<CardRoutesOptions> = async (
           requestId: request.id,
         });
       } catch (error) {
+        if (error instanceof StarterAffinityNotAllowedError) {
+          throw new ApiError({
+            statusCode: 400,
+            code: 'STARTER_AFFINITY_NOT_ALLOWED',
+            title: 'Starter affinity not available',
+            detail: 'Choose Spark, Grit, or Wit as your starter affinity.',
+          });
+        }
+
         if (error instanceof StarterAlreadyClaimedError) {
           throw new ApiError({
             statusCode: 409,

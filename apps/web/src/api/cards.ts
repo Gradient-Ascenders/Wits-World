@@ -9,6 +9,12 @@ export const cardAffinities = [
 ] as const;
 
 export type CardAffinity = (typeof cardAffinities)[number];
+export const starterAffinities = [
+  'spark',
+  'grit',
+  'wit',
+] as const satisfies readonly CardAffinity[];
+export type StarterAffinity = (typeof starterAffinities)[number];
 export type CardCategory = 'creature' | 'power';
 export type CardRarity = 'common' | 'rare' | 'epic' | 'legendary';
 export type CardEffectType = 'buff' | 'damage' | 'debuff' | 'heal';
@@ -135,7 +141,7 @@ interface CardRequestOptions {
 }
 
 interface SelectStarterOptions extends CardRequestOptions {
-  affinity: CardAffinity;
+  affinity: StarterAffinity;
 }
 
 export async function listOwnedCards({
@@ -394,7 +400,7 @@ function parseEffect(value: unknown): CardEffect {
   };
 }
 
-function isValidStarterGrant(cards: OwnedCard[], affinity: CardAffinity) {
+function isValidStarterGrant(cards: OwnedCard[], affinity: StarterAffinity) {
   const creatureCount = cards.filter(
     (card) => card.category === 'creature',
   ).length;
