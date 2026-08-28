@@ -38,6 +38,15 @@ Each migration runs in its own transaction. Each seed group runs in its own
 transaction. A failed stage exits nonzero and prevents later stages from
 running.
 
+Migration `0025_add_ordering_challenges.sql` is additive: it broadens the
+challenge-format constraint and adds ordering definitions, private order keys,
+attempt snapshots, and locked ordering answers. Apply it before deploying an
+API version that can create or serve ordering challenges. Existing
+`multiple_choice` definitions and attempts remain valid and require no rewrite.
+Because account-deletion migration `0024` predates ordering tables, `0025` also
+forward-replaces its cleanup routine and snapshot validator so deletion-pending
+players' ordering answers and snapshots are removed in foreign-key order.
+
 ## Prerequisites
 
 - Use the Node.js and npm versions declared by the repository.

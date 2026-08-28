@@ -26,6 +26,32 @@ export interface InProgressChallengeAttempt {
   questions: PlayerSafeChallengeQuestion[];
 }
 
+export interface PlayerSafeOrderingItem {
+  itemId: string;
+  text: string;
+}
+
+export interface PlayerSafeOrderingQuestion {
+  attemptQuestionId: string;
+  position: number;
+  prompt: string;
+  items: PlayerSafeOrderingItem[];
+  selectedItemIds: string[] | null;
+  answeredAt: string | null;
+}
+
+export interface InProgressOrderingChallengeAttempt {
+  attemptId: string;
+  eventId: string;
+  format: 'ordering';
+  status: 'in_progress';
+  startedAt: string;
+  deadline: string;
+  totalQuestions: 5;
+  answeredCount: number;
+  questions: PlayerSafeOrderingQuestion[];
+}
+
 export interface CompletedChallengeCard {
   ownedCardId: string;
   cardDefinitionId: string;
@@ -60,8 +86,34 @@ export interface CompletedChallengeAttempt {
   review: CompletedChallengeReviewEntry[];
 }
 
+export interface CompletedOrderingReviewEntry {
+  attemptQuestionId: string;
+  position: number;
+  prompt: string;
+  selectedItems: PlayerSafeOrderingItem[] | null;
+  correctItems: PlayerSafeOrderingItem[];
+  isCorrect: boolean;
+  explanation: string;
+}
+
+export interface CompletedOrderingChallengeAttempt {
+  attemptId: string;
+  eventId: string;
+  format: 'ordering';
+  status: 'completed';
+  completedAt: string;
+  completionReason: 'answered' | 'timeout';
+  totalQuestions: 5;
+  scoreCorrect: number;
+  reward: CompletedChallengeAttempt['reward'];
+  review: CompletedOrderingReviewEntry[];
+}
+
 export type PlayerSafeChallengeAttempt =
-  InProgressChallengeAttempt | CompletedChallengeAttempt;
+  | InProgressChallengeAttempt
+  | InProgressOrderingChallengeAttempt
+  | CompletedChallengeAttempt
+  | CompletedOrderingChallengeAttempt;
 
 export interface ChallengeAttemptReader {
   findByPlayerAndEvent(
@@ -88,7 +140,7 @@ interface AttemptRow extends pg.QueryResultRow {
   completion_reason: 'answered' | 'timeout' | null;
   deadline: Date;
   event_id: string;
-  format: 'multiple_choice';
+  format: 'multiple_choice' | 'ordering';
   score_correct: number | null;
   started_at: Date;
   status: 'in_progress' | 'completed';
@@ -132,6 +184,37 @@ interface CompletedReviewRow extends pg.QueryResultRow {
   prompt_snapshot: string;
   selected_choice_id: string | null;
   selected_choice_text: string | null;
+}
+
+interface OrderingQuestionRow extends pg.QueryResultRow {
+  answered_at: Date | null;
+  attempt_question_id: string;
+  position: number;
+  prompt_snapshot: string;
+}
+
+interface OrderingItemRow extends pg.QueryResultRow {
+  attempt_question_id: string;
+  display_position: number;
+  item_id: string;
+  item_text_snapshot: string;
+}
+
+interface OrderingAnswerItemRow extends pg.QueryResultRow {
+  attempt_question_id: string;
+  item_id: string;
+  submitted_position: number;
+}
+
+interface CompletedOrderingItemRow extends pg.QueryResultRow {
+  attempt_question_id: string;
+  correct_position: number;
+  explanation_snapshot: string;
+  item_id: string;
+  item_text_snapshot: string;
+  position: number;
+  prompt_snapshot: string;
+  submitted_position: number | null;
 }
 
 export function createChallengeAttemptReader(
@@ -241,7 +324,11 @@ function loadPlayerSafeAttempt(
 async function loadInProgressAttempt(
   database: ChallengeAttemptQueryable,
   attempt: AttemptRow,
-): Promise<InProgressChallengeAttempt> {
+): Promise<InProgressChallengeAttempt | InProgressOrderingChallengeAttempt> {
+  if (attempt.format === 'ordering') {
+    return loadInProgressOrderingAttempt(database, attempt);
+  }
+
   const questionResult = await database.query<AttemptQuestionRow>(
     `
       select
@@ -319,11 +406,114 @@ async function loadInProgressAttempt(
   };
 }
 
+async function loadInProgressOrderingAttempt(
+  database: ChallengeAttemptQueryable,
+  attempt: AttemptRow,
+): Promise<InProgressOrderingChallengeAttempt> {
+  const questionResult = await database.query<OrderingQuestionRow>(
+    `
+      select
+        question.id::text as attempt_question_id,
+        question.position,
+        question.prompt_snapshot,
+        answer.answered_at
+      from public.attempt_questions question
+      left join public.attempt_ordering_answers answer
+        on answer.attempt_question_id = question.id
+      where question.attempt_id = $1::uuid
+      order by question.position
+    `,
+    [attempt.attempt_id],
+  );
+
+  const itemResult = await database.query<OrderingItemRow>(
+    `
+      select
+        item.attempt_question_id::text as attempt_question_id,
+        item.id::text as item_id,
+        item.display_position,
+        item.item_text_snapshot
+      from public.attempt_question_ordering_items item
+      join public.attempt_questions question
+        on question.id = item.attempt_question_id
+      where question.attempt_id = $1::uuid
+      order by question.position, item.display_position
+    `,
+    [attempt.attempt_id],
+  );
+
+  const answerItemResult = await database.query<OrderingAnswerItemRow>(
+    `
+      select
+        answer_item.attempt_question_id::text as attempt_question_id,
+        answer_item.selected_item_id::text as item_id,
+        answer_item.submitted_position
+      from public.attempt_ordering_answer_items answer_item
+      join public.attempt_questions question
+        on question.id = answer_item.attempt_question_id
+      where question.attempt_id = $1::uuid
+      order by question.position, answer_item.submitted_position
+    `,
+    [attempt.attempt_id],
+  );
+
+  const itemsByQuestion = new Map<string, PlayerSafeOrderingItem[]>();
+  const selectedIdsByQuestion = new Map<string, string[]>();
+
+  for (const item of itemResult.rows) {
+    const items = itemsByQuestion.get(item.attempt_question_id) ?? [];
+    items.push({ itemId: item.item_id, text: item.item_text_snapshot });
+    itemsByQuestion.set(item.attempt_question_id, items);
+  }
+
+  for (const item of answerItemResult.rows) {
+    const selected = selectedIdsByQuestion.get(item.attempt_question_id) ?? [];
+    selected.push(item.item_id);
+    selectedIdsByQuestion.set(item.attempt_question_id, selected);
+  }
+
+  const questions = questionResult.rows.map((question) => ({
+    attemptQuestionId: question.attempt_question_id,
+    position: question.position,
+    prompt: question.prompt_snapshot,
+    items: itemsByQuestion.get(question.attempt_question_id) ?? [],
+    selectedItemIds:
+      selectedIdsByQuestion.get(question.attempt_question_id) ?? null,
+    answeredAt: question.answered_at?.toISOString() ?? null,
+  }));
+
+  if (
+    questions.length !== 5 ||
+    questions.some(
+      (question) =>
+        question.items.length !== 4 ||
+        (question.selectedItemIds !== null &&
+          question.selectedItemIds.length !== 4),
+    )
+  ) {
+    throw new Error('Persisted ordering attempt snapshot is incomplete.');
+  }
+
+  return {
+    attemptId: attempt.attempt_id,
+    eventId: attempt.event_id,
+    format: 'ordering',
+    status: 'in_progress',
+    startedAt: attempt.started_at.toISOString(),
+    deadline: attempt.deadline.toISOString(),
+    totalQuestions: 5,
+    answeredCount: questions.filter(
+      (question) => question.selectedItemIds !== null,
+    ).length,
+    questions,
+  };
+}
+
 async function loadCompletedAttempt(
   database: ChallengeAttemptQueryable,
   playerId: string,
   attempt: AttemptRow,
-): Promise<CompletedChallengeAttempt> {
+): Promise<CompletedChallengeAttempt | CompletedOrderingChallengeAttempt> {
   if (
     attempt.completed_at === null ||
     attempt.completion_reason === null ||
@@ -369,6 +559,35 @@ async function loadCompletedAttempt(
     `,
     [playerId, completion.completion_id],
   );
+
+  const reward = {
+    coinsAwarded: completion.coins_awarded,
+    cards: cardResult.rows.map((card) => ({
+      ownedCardId: card.owned_card_id,
+      cardDefinitionId: card.card_definition_id,
+      name: card.name,
+      category: card.category,
+      affinity: card.affinity,
+      rarity: card.rarity,
+    })),
+  };
+
+  if (attempt.format === 'ordering') {
+    const review = await loadCompletedOrderingReview(database, attempt);
+
+    return {
+      attemptId: attempt.attempt_id,
+      eventId: attempt.event_id,
+      format: 'ordering',
+      status: 'completed',
+      completedAt: attempt.completed_at.toISOString(),
+      completionReason: attempt.completion_reason,
+      totalQuestions: 5,
+      scoreCorrect: attempt.score_correct,
+      reward,
+      review,
+    };
+  }
 
   const reviewResult = await database.query<CompletedReviewRow>(
     `
@@ -439,19 +658,121 @@ async function loadCompletedAttempt(
     completionReason: attempt.completion_reason,
     totalQuestions: 5,
     scoreCorrect: attempt.score_correct,
-    reward: {
-      coinsAwarded: completion.coins_awarded,
-      cards: cardResult.rows.map((card) => ({
-        ownedCardId: card.owned_card_id,
-        cardDefinitionId: card.card_definition_id,
-        name: card.name,
-        category: card.category,
-        affinity: card.affinity,
-        rarity: card.rarity,
-      })),
-    },
+    reward,
     review,
   };
+}
+
+async function loadCompletedOrderingReview(
+  database: ChallengeAttemptQueryable,
+  attempt: AttemptRow,
+): Promise<CompletedOrderingReviewEntry[]> {
+  if (attempt.completion_reason === null || attempt.score_correct === null) {
+    throw new Error('Completed ordering attempt is missing final state.');
+  }
+  const result = await database.query<CompletedOrderingItemRow>(
+    `
+      select
+        question.id::text as attempt_question_id,
+        question.position,
+        question.prompt_snapshot,
+        question.explanation_snapshot,
+        item.id::text as item_id,
+        item.item_text_snapshot,
+        answer_item.submitted_position,
+        answer_key.correct_position
+      from public.attempt_questions question
+      join public.attempt_question_ordering_items item
+        on item.attempt_question_id = question.id
+      join private.challenge_ordering_answer_keys answer_key
+        on answer_key.question_id = question.source_question_id
+       and answer_key.item_id = item.source_item_id
+      left join public.attempt_ordering_answer_items answer_item
+        on answer_item.attempt_question_id = question.id
+       and answer_item.selected_item_id = item.id
+      where question.attempt_id = $1::uuid
+      order by question.position, answer_key.correct_position
+    `,
+    [attempt.attempt_id],
+  );
+
+  const reviewByQuestion = new Map<
+    string,
+    CompletedOrderingReviewEntry & {
+      selectedWithPositions: Array<
+        PlayerSafeOrderingItem & { position: number }
+      >;
+    }
+  >();
+
+  for (const row of result.rows) {
+    let entry = reviewByQuestion.get(row.attempt_question_id);
+
+    if (!entry) {
+      entry = {
+        attemptQuestionId: row.attempt_question_id,
+        position: row.position,
+        prompt: row.prompt_snapshot,
+        selectedItems: null,
+        correctItems: [],
+        isCorrect: false,
+        explanation: row.explanation_snapshot,
+        selectedWithPositions: [],
+      };
+      reviewByQuestion.set(row.attempt_question_id, entry);
+    }
+
+    const item = { itemId: row.item_id, text: row.item_text_snapshot };
+    entry.correctItems.push(item);
+
+    if (row.submitted_position !== null) {
+      entry.selectedWithPositions.push({
+        ...item,
+        position: row.submitted_position,
+      });
+    }
+  }
+
+  const review = [...reviewByQuestion.values()].map((entry) => {
+    const selectedItems =
+      entry.selectedWithPositions.length === 0
+        ? null
+        : [...entry.selectedWithPositions]
+            .sort((left, right) => left.position - right.position)
+            .map(({ itemId, text }) => ({ itemId, text }));
+    const isCorrect =
+      selectedItems !== null &&
+      selectedItems.length === 4 &&
+      selectedItems.every(
+        (item, index) => item.itemId === entry.correctItems[index]?.itemId,
+      );
+
+    return {
+      attemptQuestionId: entry.attemptQuestionId,
+      position: entry.position,
+      prompt: entry.prompt,
+      selectedItems,
+      correctItems: entry.correctItems,
+      isCorrect,
+      explanation: entry.explanation,
+    };
+  });
+
+  if (
+    review.length !== 5 ||
+    review.some(
+      (entry, index) =>
+        entry.position !== index + 1 || entry.correctItems.length !== 4,
+    ) ||
+    review.filter((entry) => entry.isCorrect).length !==
+      attempt.score_correct ||
+    (attempt.completion_reason === 'answered' &&
+      review.some((entry) => entry.selectedItems === null))
+  ) {
+    throw new Error('Completed ordering attempt review is inconsistent.');
+  }
+
+  return review;
 }
 
 function requireSelectedChoiceText(entry: CompletedReviewRow): string {
