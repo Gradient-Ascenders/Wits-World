@@ -3,10 +3,10 @@
 ## Scope
 
 This document describes the implemented authentication, event-discovery,
-location-eligibility, card-collection, saved-deck, and high-level CPU-match
-flows. Detailed challenge answering, reward finalization, persistence, and
-battle behavior is documented in the linked architecture and database
-contracts.
+location-eligibility, ordered-trail, card-collection, saved-deck, and high-level
+CPU-match flows. Detailed challenge answering, reward finalization,
+persistence, and battle behavior is documented in the linked architecture and
+database contracts.
 
 ## Application startup
 
@@ -123,6 +123,28 @@ An ambiguous or inaccurate result should normally explain the problem and allow
 the player to retry.
 
 It should not automatically accuse the player of cheating.
+
+## Ordered-trail flow
+
+1. The authenticated browser requests the trail list or one trail detail.
+2. The API derives the local player from the validated token.
+3. PostgreSQL returns published trail membership and only that player's
+   matching event completions.
+4. The API derives the longest contiguous completed prefix.
+5. The API labels prefix steps completed, the first missing active step current,
+   unavailable first steps with a reason, and later steps locked.
+6. A later event completed out of order remains locked until preceding gaps are
+   complete; no browser progress cursor is stored.
+7. A retired trail remains visible only to a player with historical progress.
+
+For nearby guidance, the browser submits a fresh latitude, longitude, reported
+accuracy, acquisition timestamp, bounded distance, and bounded limit. The API
+validates the claim and asks PostGIS for active unvisited standalone events plus
+the player's current published-trail steps. Locked steps are excluded. The
+coordinates are not inserted into a player or trail history table.
+
+Nearby guidance is not event eligibility. Challenge access still performs the
+independent server-authoritative location and availability check.
 
 ## Card-collection flow
 

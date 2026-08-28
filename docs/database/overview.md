@@ -28,6 +28,7 @@ API in the current repository.
 | Saved decks            | Player decks, exact owned-copy membership, and active selection enforce ownership and composition through composite keys plus API validation.                                                              | [Saved-deck persistence](./saved-deck-persistence-design.md)                                                                                                                                          |
 | CPU matches            | Match rows, immutable card snapshots, rounds, actions, submissions, versions, timers, and final results support transactional server-controlled battles and private history.                               | [CPU match persistence](./cpu-match-persistence-design.md)                                                                                                                                            |
 | Player progression     | Versioned point rules, immutable source awards, Johannesburg activity days, streaks, data-driven achievements, and indexed all-time/monthly totals support deterministic profiles and standings.           | [Player progression persistence](./player-progression-persistence.md) and [progression rules](../requirements/player-progression-rules.md)                                                            |
+| Ordered trails         | Trail definitions and unique ordered event membership provide immutable publication history. Player progress is derived from authoritative event completions rather than a mutable cursor.                 | [Ordered trail persistence](./ordered-trails-persistence.md) and [trail rules](../requirements/ordered-trails-rules.md)                                                                               |
 | Authoring and audit    | Lifecycle columns and triggers protect draft/published/retired content; `author_content_audit` records protected Author actions.                                                                           | [Challenge, reward, and card persistence](./challenge-reward-persistence-design.md#event-authoring-lifecycle) and [Event schema](./event-schema.md#author-publication-lifecycle)                      |
 
 Accepted choices and correct ordering positions are kept in the `private`
@@ -105,8 +106,9 @@ safety controls.
 
 The opt-in database runner applies the complete migration history to a
 disposable database and exercises geospatial calculations, constraints,
-transactions, concurrency, ownership, authoring lifecycles, and recovery. The
-deterministic Basic E2E also crosses the real test database boundary.
+transactions, concurrency, ownership, authoring lifecycles, ordered trail
+derivation, bounded nearby discovery, and recovery. The deterministic Basic E2E
+also crosses the real test database boundary.
 
 These suites are not currently invoked by the normal Gitea CI workflows. A
 local or test-database pass is also not proof that production migrations,

@@ -47,6 +47,11 @@ const sidebars: SidebarsConfig = {
               id: 'requirements/player-progression-rules',
               label: 'Player Progression Rules',
             },
+            {
+              type: 'doc',
+              id: 'requirements/ordered-trails-rules',
+              label: 'Ordered Trail Rules',
+            },
           ],
         },
         {
@@ -286,6 +291,11 @@ const sidebars: SidebarsConfig = {
               type: 'doc',
               id: 'database/player-progression-persistence',
               label: 'Player Progression Persistence',
+            },
+            {
+              type: 'doc',
+              id: 'database/ordered-trails-persistence',
+              label: 'Ordered Trail Persistence',
             },
           ],
         },
