@@ -189,6 +189,136 @@ describe('challenge answer locking', () => {
       lockChallengeAnswer(fixture.database, validInput()),
     ).rejects.toBeInstanceOf(ChallengeAttemptCompletedError);
   });
+
+  it('locks an exact four-item ordering answer in submitted order', async () => {
+    const fixture = createFixture({ format: 'ordering' });
+    const itemIds = orderingItemIds();
+
+    await expect(
+      lockChallengeAnswer(fixture.database, {
+        playerId: PLAYER_ID,
+        attemptId: ATTEMPT_ID,
+        attemptQuestionId: QUESTION_ID,
+        format: 'ordering',
+        itemIds,
+        receivedAt: RECEIVED_AT,
+      }),
+    ).resolves.toEqual({
+      outcome: 'accepted',
+      answeredCount: 1,
+      finalizationReason: null,
+    });
+
+    const inserts = fixture.query.mock.calls.filter(([sql]) =>
+      String(sql).includes('insert into public.attempt_ordering_answer_items'),
+    );
+    expect(inserts.map(([, values]) => values)).toEqual(
+      itemIds.map((itemId, index) => [QUESTION_ID, itemId, index + 1]),
+    );
+  });
+
+  it('binds a completed ordering retry to the requested attempt', async () => {
+    const itemIds = orderingItemIds();
+    const fixture = createFixture({
+      format: 'ordering',
+      status: 'completed',
+      existingOrderingItemIds: itemIds,
+    });
+
+    await expect(
+      lockChallengeAnswer(fixture.database, {
+        playerId: PLAYER_ID,
+        attemptId: ATTEMPT_ID,
+        attemptQuestionId: QUESTION_ID,
+        format: 'ordering',
+        itemIds,
+        receivedAt: RECEIVED_AT,
+      }),
+    ).resolves.toEqual({ outcome: 'completed_retry' });
+
+    const orderingAnswerQuery = fixture.query.mock.calls.find(([sql]) =>
+      String(sql).includes('from public.attempt_ordering_answer_items'),
+    );
+    expect(String(orderingAnswerQuery?.[0])).toContain(
+      'question.attempt_id = $1::uuid',
+    );
+    expect(orderingAnswerQuery?.[1]).toEqual([ATTEMPT_ID, QUESTION_ID]);
+  });
+
+  it('treats the same in-progress ordering sequence as idempotent', async () => {
+    const itemIds = orderingItemIds();
+    const fixture = createFixture({
+      format: 'ordering',
+      existingOrderingItemIds: itemIds,
+      answeredCountAfterInsert: 2,
+    });
+
+    await expect(
+      lockChallengeAnswer(fixture.database, {
+        playerId: PLAYER_ID,
+        attemptId: ATTEMPT_ID,
+        attemptQuestionId: QUESTION_ID,
+        format: 'ordering',
+        itemIds,
+        receivedAt: RECEIVED_AT,
+      }),
+    ).resolves.toEqual({
+      outcome: 'idempotent',
+      answeredCount: 2,
+      finalizationReason: null,
+    });
+  });
+
+  it('rejects a reordered replay of a locked ordering answer', async () => {
+    const itemIds = orderingItemIds();
+    const fixture = createFixture({
+      format: 'ordering',
+      existingOrderingItemIds: itemIds,
+    });
+
+    await expect(
+      lockChallengeAnswer(fixture.database, {
+        playerId: PLAYER_ID,
+        attemptId: ATTEMPT_ID,
+        attemptQuestionId: QUESTION_ID,
+        format: 'ordering',
+        itemIds: [itemIds[1]!, itemIds[0]!, itemIds[2]!, itemIds[3]!],
+        receivedAt: RECEIVED_AT,
+      }),
+    ).rejects.toBeInstanceOf(ChallengeAnswerLockedError);
+  });
+
+  it('rejects duplicate or foreign ordering item IDs', async () => {
+    const duplicateFixture = createFixture({ format: 'ordering' });
+    const duplicateIds = orderingItemIds();
+    duplicateIds[3] = duplicateIds[0] ?? '';
+
+    await expect(
+      lockChallengeAnswer(duplicateFixture.database, {
+        playerId: PLAYER_ID,
+        attemptId: ATTEMPT_ID,
+        attemptQuestionId: QUESTION_ID,
+        format: 'ordering',
+        itemIds: duplicateIds,
+        receivedAt: RECEIVED_AT,
+      }),
+    ).rejects.toBeInstanceOf(InvalidChallengeAnswerError);
+
+    const foreignFixture = createFixture({
+      format: 'ordering',
+      orderingMatchedItemCount: 3,
+    });
+    await expect(
+      lockChallengeAnswer(foreignFixture.database, {
+        playerId: PLAYER_ID,
+        attemptId: ATTEMPT_ID,
+        attemptQuestionId: QUESTION_ID,
+        format: 'ordering',
+        itemIds: orderingItemIds(),
+        receivedAt: RECEIVED_AT,
+      }),
+    ).rejects.toBeInstanceOf(InvalidChallengeAnswerError);
+  });
 });
 
 interface FixtureOptions {
@@ -198,6 +328,9 @@ interface FixtureOptions {
   choiceBelongsToQuestion?: boolean;
   existingChoiceId?: string | null;
   answeredCountAfterInsert?: number;
+  format?: 'multiple_choice' | 'ordering';
+  orderingMatchedItemCount?: number;
+  existingOrderingItemIds?: string[];
 }
 
 function createFixture({
@@ -207,6 +340,9 @@ function createFixture({
   choiceBelongsToQuestion = true,
   existingChoiceId = null,
   answeredCountAfterInsert = 1,
+  format = 'multiple_choice',
+  orderingMatchedItemCount = 4,
+  existingOrderingItemIds = [],
 }: FixtureOptions = {}) {
   const query = vi.fn(
     async (
@@ -222,6 +358,7 @@ function createFixture({
                 {
                   status,
                   deadline: DEADLINE,
+                  format,
                 },
               ]
             : [],
@@ -243,7 +380,7 @@ function createFixture({
           };
         }
 
-        if (statement.includes('count(answer.attempt_question_id)')) {
+        if (statement.includes('select count(*)::int as answered_count')) {
           return {
             rows: [
               {
@@ -254,10 +391,38 @@ function createFixture({
         }
       }
 
+      if (
+        statement.includes('from public.attempt_questions question') &&
+        statement.includes('attempt_question_ordering_items')
+      ) {
+        return {
+          rows: bindingExists
+            ? [
+                {
+                  attempt_question_id: QUESTION_ID,
+                  matched_item_count: orderingMatchedItemCount,
+                },
+              ]
+            : [],
+        };
+      }
+
+      if (statement.includes('from public.attempt_ordering_answer_items')) {
+        return {
+          rows: existingOrderingItemIds.map((selected_item_id) => ({
+            selected_item_id,
+          })),
+        };
+      }
+
       if (statement.includes('insert into public.attempt_answers')) {
         return {
           rows: [],
         };
+      }
+
+      if (statement.includes('insert into public.attempt_ordering_')) {
+        return { rows: [] };
       }
 
       throw new Error(`Unexpected SQL in test fixture: ${statement}`);
@@ -281,6 +446,13 @@ function createFixture({
     database,
     query,
   };
+}
+
+function orderingItemIds(): string[] {
+  return [1, 2, 3, 4].map(
+    (position) =>
+      `34000000-0000-4000-8000-${String(position).padStart(12, '0')}`,
+  );
 }
 
 function validInput() {

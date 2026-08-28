@@ -98,7 +98,7 @@ describe('challenge answer submission coordinator', () => {
       scoreCorrect: 4,
     });
 
-    if (result.status !== 'completed') {
+    if (result.status !== 'completed' || result.format !== 'multiple_choice') {
       throw new Error('Expected the fifth answer to complete the attempt.');
     }
 
@@ -273,6 +273,7 @@ function createFixture({
           return {
             rows: [
               {
+                format: 'multiple_choice',
                 status,
                 deadline: DEADLINE,
               },
@@ -325,7 +326,10 @@ function createFixture({
         };
       }
 
-      if (statement.includes('count(answer.attempt_question_id)')) {
+      if (
+        statement.includes('select count(*)::int as answered_count') &&
+        statement.includes('public.attempt_ordering_answers')
+      ) {
         return {
           rows: [
             {

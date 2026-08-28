@@ -130,6 +130,29 @@ describe('challenge attempt marking', () => {
     expect(result).not.toHaveProperty('acceptedChoiceId');
     expect(result).not.toHaveProperty('questions');
   });
+
+  it('derives exact ordering scores from private positions and persisted items', async () => {
+    const fixture = createDatabaseFixture({
+      question_count: 5,
+      answer_key_count: 5,
+      answered_count: 5,
+      score_correct: 3,
+    });
+
+    await expect(
+      calculateChallengeAttemptScore(fixture.database, ATTEMPT_ID),
+    ).resolves.toEqual({
+      totalQuestions: 5,
+      answeredCount: 5,
+      scoreCorrect: 3,
+    });
+
+    const sql = String(fixture.query.mock.calls[0]?.[0]);
+    expect(sql).toContain('private.challenge_ordering_answer_keys');
+    expect(sql).toContain(
+      'answer_key.correct_position = answer_item.submitted_position',
+    );
+  });
 });
 
 function createDatabaseFixture(row: TestMarkingRow) {

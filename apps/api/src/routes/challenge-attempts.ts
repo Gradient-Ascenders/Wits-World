@@ -8,10 +8,7 @@ import {
   ChallengeLocationRetryRequiredError,
   ChallengeUnavailableError,
 } from '../challenges/challenge-attempt-start.js';
-import type {
-  CompletedChallengeAttempt,
-  InProgressChallengeAttempt,
-} from '../challenges/challenge-attempt-reader.js';
+import type { PlayerSafeChallengeAttempt } from '../challenges/challenge-attempt-reader.js';
 import { ApiError } from '../errors/api-error.js';
 import { InvalidEventCoordinatesError } from '../events/event-eligibility.js';
 import { InvalidLocationClaimError } from '../events/location-claim.js';
@@ -49,10 +46,19 @@ interface SubmitAnswerParams {
   attemptId: string;
 }
 
-interface SubmitAnswerBody {
+interface MultipleChoiceAnswerBody {
+  format?: 'multiple_choice';
   attemptQuestionId: string;
   choiceId: string;
 }
+
+interface OrderingAnswerBody {
+  format: 'ordering';
+  attemptQuestionId: string;
+  itemIds: string[];
+}
+
+type SubmitAnswerBody = MultipleChoiceAnswerBody | OrderingAnswerBody;
 
 const apiErrorSchema = {
   type: 'object',
@@ -380,6 +386,201 @@ const completedAttemptResponseSchema = {
   },
 } as const;
 
+const playerSafeOrderingItemSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['itemId', 'text'],
+  properties: {
+    itemId: { type: 'string', format: 'uuid' },
+    text: { type: 'string' },
+  },
+} as const;
+
+const playerSafeOrderingQuestionSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'attemptQuestionId',
+    'position',
+    'prompt',
+    'items',
+    'selectedItemIds',
+    'answeredAt',
+  ],
+  properties: {
+    attemptQuestionId: { type: 'string', format: 'uuid' },
+    position: { type: 'integer', minimum: 1, maximum: 5 },
+    prompt: { type: 'string' },
+    items: {
+      type: 'array',
+      minItems: 4,
+      maxItems: 4,
+      items: playerSafeOrderingItemSchema,
+    },
+    selectedItemIds: {
+      anyOf: [
+        {
+          type: 'array',
+          minItems: 4,
+          maxItems: 4,
+          uniqueItems: true,
+          items: { type: 'string', format: 'uuid' },
+        },
+        { type: 'null' },
+      ],
+    },
+    answeredAt: {
+      anyOf: [{ type: 'string', format: 'date-time' }, { type: 'null' }],
+    },
+  },
+} as const;
+
+const inProgressOrderingAttemptResponseSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'attemptId',
+    'eventId',
+    'format',
+    'status',
+    'startedAt',
+    'deadline',
+    'totalQuestions',
+    'answeredCount',
+    'questions',
+    'requestId',
+  ],
+  properties: {
+    attemptId: { type: 'string', format: 'uuid' },
+    eventId: { type: 'string', format: 'uuid' },
+    format: { type: 'string', enum: ['ordering'] },
+    status: { type: 'string', enum: ['in_progress'] },
+    startedAt: { type: 'string', format: 'date-time' },
+    deadline: { type: 'string', format: 'date-time' },
+    totalQuestions: { type: 'integer', const: 5 },
+    answeredCount: { type: 'integer', minimum: 0, maximum: 5 },
+    questions: {
+      type: 'array',
+      minItems: 5,
+      maxItems: 5,
+      items: playerSafeOrderingQuestionSchema,
+    },
+    requestId: { type: 'string' },
+  },
+} as const;
+
+const completedOrderingReviewEntrySchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'attemptQuestionId',
+    'position',
+    'prompt',
+    'selectedItems',
+    'correctItems',
+    'isCorrect',
+    'explanation',
+  ],
+  properties: {
+    attemptQuestionId: { type: 'string', format: 'uuid' },
+    position: { type: 'integer', minimum: 1, maximum: 5 },
+    prompt: { type: 'string' },
+    selectedItems: {
+      anyOf: [
+        {
+          type: 'array',
+          minItems: 4,
+          maxItems: 4,
+          items: playerSafeOrderingItemSchema,
+        },
+        { type: 'null' },
+      ],
+    },
+    correctItems: {
+      type: 'array',
+      minItems: 4,
+      maxItems: 4,
+      items: playerSafeOrderingItemSchema,
+    },
+    isCorrect: { type: 'boolean' },
+    explanation: { type: 'string' },
+  },
+} as const;
+
+const completedOrderingAttemptResponseSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'attemptId',
+    'eventId',
+    'format',
+    'status',
+    'completedAt',
+    'completionReason',
+    'totalQuestions',
+    'scoreCorrect',
+    'reward',
+    'review',
+    'requestId',
+  ],
+  properties: {
+    attemptId: { type: 'string', format: 'uuid' },
+    eventId: { type: 'string', format: 'uuid' },
+    format: { type: 'string', enum: ['ordering'] },
+    status: { type: 'string', enum: ['completed'] },
+    completedAt: { type: 'string', format: 'date-time' },
+    completionReason: { type: 'string', enum: ['answered', 'timeout'] },
+    totalQuestions: { type: 'integer', const: 5 },
+    scoreCorrect: { type: 'integer', minimum: 0, maximum: 5 },
+    reward: completedAttemptResponseSchema.properties.reward,
+    review: {
+      type: 'array',
+      minItems: 5,
+      maxItems: 5,
+      items: completedOrderingReviewEntrySchema,
+    },
+    requestId: { type: 'string' },
+  },
+} as const;
+
+const attemptResponseSchemas = [
+  inProgressAttemptResponseSchema,
+  inProgressOrderingAttemptResponseSchema,
+  completedAttemptResponseSchema,
+  completedOrderingAttemptResponseSchema,
+] as const;
+
+const answerBodySchema = {
+  oneOf: [
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['attemptQuestionId', 'choiceId'],
+      properties: {
+        format: { type: 'string', enum: ['multiple_choice'] },
+        attemptQuestionId: { type: 'string', format: 'uuid' },
+        choiceId: { type: 'string', format: 'uuid' },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['format', 'attemptQuestionId', 'itemIds'],
+      properties: {
+        format: { type: 'string', enum: ['ordering'] },
+        attemptQuestionId: { type: 'string', format: 'uuid' },
+        itemIds: {
+          type: 'array',
+          minItems: 4,
+          maxItems: 4,
+          uniqueItems: true,
+          items: { type: 'string', format: 'uuid' },
+        },
+      },
+    },
+  ],
+} as const;
+
 export const challengeAttemptRoutes: FastifyPluginAsync<
   ChallengeAttemptRoutesOptions
 > = async (app, { startService, fetchService, answerSubmissionService }) => {
@@ -439,12 +640,14 @@ export const challengeAttemptRoutes: FastifyPluginAsync<
         },
         response: {
           200: {
+            oneOf: attemptResponseSchemas,
+          },
+          201: {
             oneOf: [
               inProgressAttemptResponseSchema,
-              completedAttemptResponseSchema,
+              inProgressOrderingAttemptResponseSchema,
             ],
           },
-          201: inProgressAttemptResponseSchema,
           400: apiErrorSchema,
           401: apiErrorSchema,
           403: apiErrorSchema,
@@ -517,10 +720,7 @@ export const challengeAttemptRoutes: FastifyPluginAsync<
           },
           response: {
             200: {
-              oneOf: [
-                inProgressAttemptResponseSchema,
-                completedAttemptResponseSchema,
-              ],
+              oneOf: attemptResponseSchemas,
             },
             400: apiErrorSchema,
             401: apiErrorSchema,
@@ -594,27 +794,10 @@ export const challengeAttemptRoutes: FastifyPluginAsync<
               },
             },
           },
-          body: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['attemptQuestionId', 'choiceId'],
-            properties: {
-              attemptQuestionId: {
-                type: 'string',
-                format: 'uuid',
-              },
-              choiceId: {
-                type: 'string',
-                format: 'uuid',
-              },
-            },
-          },
+          body: answerBodySchema,
           response: {
             200: {
-              oneOf: [
-                inProgressAttemptResponseSchema,
-                completedAttemptResponseSchema,
-              ],
+              oneOf: attemptResponseSchemas,
             },
             400: apiErrorSchema,
             401: apiErrorSchema,
@@ -640,8 +823,7 @@ export const challengeAttemptRoutes: FastifyPluginAsync<
           attempt = await answerSubmissionService.submitAnswer({
             playerId: player.id,
             attemptId: request.params.attemptId,
-            attemptQuestionId: request.body.attemptQuestionId,
-            choiceId: request.body.choiceId,
+            ...normalizeAnswerBody(request.body),
           });
         } catch (error) {
           throw mapChallengeAnswerError(error);
@@ -653,9 +835,21 @@ export const challengeAttemptRoutes: FastifyPluginAsync<
   }
 };
 
-function withRequestId<
-  T extends InProgressChallengeAttempt | CompletedChallengeAttempt,
->(attempt: T, requestId: string): T & { requestId: string } {
+function normalizeAnswerBody(body: SubmitAnswerBody) {
+  if (body.format === 'ordering') {
+    return body;
+  }
+
+  return {
+    ...body,
+    format: 'multiple_choice' as const,
+  };
+}
+
+function withRequestId<T extends PlayerSafeChallengeAttempt>(
+  attempt: T,
+  requestId: string,
+): T & { requestId: string } {
   return {
     ...attempt,
     requestId,
