@@ -6,8 +6,8 @@ on:
       - main
 
 jobs:
-  format:
-    name: Check repository formatting
+  static-analysis:
+    name: Run static analysis
     runs-on: wits-world-ci
 
     steps:
@@ -20,48 +20,43 @@ jobs:
           node-version-file: .nvmrc
 
       - name: Install dependencies
-        run: npm ci --prefer-offline --no-audit --fund=false
+        run: time npm ci --prefer-offline --no-audit --fund=false
 
-      - name: Check formatting
-        run: npm run format:check
+      - name: Check formatting, linting, and types
+        run: |
+          set +e
 
-  lint:
-    name: Lint applications
-    runs-on: wits-world-ci
+          FAILED_CHECKS=()
 
-    steps:
-      - name: Check out repository
-        uses: https://github.com/actions/checkout@v4
+          run_check() {
+            local label="$1"
+            shift
 
-      - name: Set up Node.js
-        uses: https://github.com/actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
+            echo "::group::${label}"
+            local started_at=$SECONDS
 
-      - name: Install dependencies
-        run: npm ci --prefer-offline --no-audit --fund=false
+            "$@"
+            local status=$?
 
-      - name: Lint applications
-        run: npm run lint
+            echo "${label} completed in $((SECONDS - started_at)) seconds with exit code ${status}."
+            echo "::endgroup::"
 
-  type-check:
-    name: Type-check applications
-    runs-on: wits-world-ci
+            if [ "$status" -ne 0 ]; then
+              echo "::error::${label} failed with exit code ${status}."
+              FAILED_CHECKS+=("$label")
+            fi
+          }
 
-    steps:
-      - name: Check out repository
-        uses: https://github.com/actions/checkout@v4
+          run_check "Formatting check" npm run format:check
+          run_check "Lint" npm run lint
+          run_check "Type-check" npm run type-check
 
-      - name: Set up Node.js
-        uses: https://github.com/actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
+          if [ "${#FAILED_CHECKS[@]}" -ne 0 ]; then
+            printf 'Static analysis failed: %s\n' "${FAILED_CHECKS[*]}"
+            exit 1
+          fi
 
-      - name: Install dependencies
-        run: npm ci --prefer-offline --no-audit --fund=false
-
-      - name: Type-check applications
-        run: npm run type-check
+          echo "All static-analysis checks passed."
 
   test:
     name: Test applications with coverage
@@ -77,19 +72,19 @@ jobs:
           node-version-file: .nvmrc
 
       - name: Install dependencies
-        run: npm ci --prefer-offline --no-audit --fund=false
+        run: time npm ci --prefer-offline --no-audit --fund=false
 
       - name: Test web application with coverage
-        run: npm run test:coverage --workspace @wits-world/web
+        run: time npm run test:coverage --workspace @wits-world/web
 
       - name: Test API application with coverage
-        run: npm run validate:api:coverage
+        run: time npm run validate:api:coverage
 
       - name: Test documentation application
-        run: npm test --workspace @wits-world/docs
+        run: time npm test --workspace @wits-world/docs
 
       - name: Generate coverage badge
-        run: npm run coverage:badge
+        run: time npm run coverage:badge
 
       - name: Upload coverage reports
         if: ${{ always() }}
@@ -115,16 +110,16 @@ jobs:
           node-version-file: .nvmrc
 
       - name: Install dependencies
-        run: npm ci --prefer-offline --no-audit --fund=false
+        run: time npm ci --prefer-offline --no-audit --fund=false
 
       - name: Build web application
-        run: npm run build:bundle --workspace @wits-world/web
+        run: time npm run build:bundle --workspace @wits-world/web
 
       - name: Build API application
-        run: npm run validate:api:build
+        run: time npm run validate:api:build
 
       - name: Build documentation application
-        run: npm run build --workspace @wits-world/docs
+        run: time npm run build --workspace @wits-world/docs
 
       - name: Detect web deployment changes for candidate artifact
         id: candidate_web_changes
@@ -221,7 +216,7 @@ jobs:
           VITE_AUTH0_CLIENT_ID: ${{ vars.VITE_AUTH0_CLIENT_ID }}
           VITE_AUTH0_AUDIENCE: ${{ vars.VITE_AUTH0_AUDIENCE }}
           VITE_MAPBOX_ACCESS_TOKEN: ${{ vars.VITE_MAPBOX_ACCESS_TOKEN }}
-        run: npm run build --workspace @wits-world/web
+        run: time npm run build --workspace @wits-world/web
 
       - name: Package candidate production web artifact
         if: ${{ steps.candidate_web_changes.outputs.required == 'true' }}
@@ -229,6 +224,8 @@ jobs:
           DEPLOY_SHA: ${{ gitea.sha }}
         run: |
           set -euo pipefail
+
+          PACKAGE_STARTED_AT=$SECONDS
 
           CANDIDATE_ROOT="/tmp/witsworld-web-candidate-${DEPLOY_SHA}"
 
@@ -258,6 +255,8 @@ jobs:
 
           unzip -l "$CANDIDATE_ROOT/witsworld-web-deploy.zip" |
             grep 'assets/'
+
+          echo "Web artifact packaging completed in $((SECONDS - PACKAGE_STARTED_AT)) seconds."
 
       - name: Upload candidate production web artifact
         if: ${{ steps.candidate_web_changes.outputs.required == 'true' }}
@@ -344,6 +343,8 @@ jobs:
           DEPLOY_SHA: ${{ gitea.sha }}
         run: |
           set -euo pipefail
+
+          PACKAGE_STARTED_AT=$SECONDS
 
           ARTIFACT_ROOT="/tmp/witsworld-api-artifact-${DEPLOY_SHA}"
 
@@ -453,6 +454,8 @@ jobs:
           unzip -l "$ARTIFACT_ROOT/witsworld-api-deploy.zip" |
             grep 'apps/api/dist/server.js'
 
+          echo "API artifact packaging completed in $((SECONDS - PACKAGE_STARTED_AT)) seconds."
+
       - name: Upload production API artifact
         if: ${{ steps.api_artifact_changes.outputs.required == 'true' }}
         # Keep the known-working v3 protocol until v4 is verified on this Gitea instance.
@@ -469,9 +472,7 @@ jobs:
   validation:
     name: Repository and application validation
     needs:
-      - format
-      - lint
-      - type-check
+      - static-analysis
       - test
       - build
     runs-on: wits-world-ci
@@ -480,19 +481,24 @@ jobs:
       - name: Confirm validation gates passed
         run: echo "All repository and application validation jobs passed."
 
+  publish-coverage:
+    name: Publish live coverage badge
+    needs:
+      - validation
+    if: ${{ gitea.event_name == 'push' && gitea.ref == 'refs/heads/main' }}
+    runs-on: wits-world-ci
+
+    steps:
       - name: Check out repository for coverage publication
-        if: ${{ gitea.event_name == 'push' && gitea.ref == 'refs/heads/main' }}
         uses: https://github.com/actions/checkout@v4
 
       - name: Download coverage reports
-        if: ${{ gitea.event_name == 'push' && gitea.ref == 'refs/heads/main' }}
         uses: https://github.com/actions/download-artifact@v3
         with:
           name: coverage-reports
           path: coverage
 
       - name: Publish live coverage badge
-        if: ${{ gitea.event_name == 'push' && gitea.ref == 'refs/heads/main' }}
         env:
           GITEA_JOB_TOKEN: ${{ gitea.token }}
           REPOSITORY_URL: https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World.git
