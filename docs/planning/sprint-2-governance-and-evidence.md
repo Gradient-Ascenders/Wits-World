@@ -1,0 +1,225 @@
+---
+title: Sprint 2 governance and evidence
+description: The Sprint 2 tracker workflow, rubric evidence map, ceremonies, feedback handling, and current governance gaps.
+---
+
+# Sprint 2 governance and evidence
+
+This page defines how Wits World records Sprint 2 work and evidence while the
+work happens. The
+[Wits-World Gitea tracker](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues)
+is authoritative for current issue state, ownership, dependencies, discussion,
+review, and delivery links. Repository documentation records the durable
+process, decisions, and evidence; it must not be used to override newer tracker
+state.
+
+The dated tracker observations below are an audit snapshot, not a second
+backlog. Recheck Gitea before using them to make a current-status decision.
+
+## Administrative starting point
+
+Read-only Gitea inspection on 28 August 2026 found:
+
+- the `Sprint 1` milestone closed with `0` open and `86` closed issues;
+- the `Sprint 2` milestone open, due 15 September 2026, with `19` open and `2`
+  closed issues;
+- [issue #159](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/159)
+  open, assigned to `Caleb_P`, with its reviewer, estimate, and planned
+  `Backlog` column recorded in the issue body; and
+- no comments or native dependencies on #159, which agrees with its declared
+  `Depends on: None`.
+
+Sprint 1 is therefore administratively closed in the live milestone. Its
+[Review](./scrum/sprint-1/sprint-review.md) and
+[Retrospective](./scrum/sprint-1/sprint-retrospective.md) are conservative
+reconstructions, not contemporaneous minutes. Closure does not convert their
+documented manual, stakeholder, field, accessibility, deployment, or operator
+evidence gaps into passes; those boundaries remain in the
+[Sprint 1 evidence index](../testing/sprint-1-evidence-index.md).
+
+## Sprint goal and planning boundary
+
+The live Sprint 2 milestone describes the goal as completing remaining Basic
+requirements and delivering the first Intermediate systems: account lifecycle,
+a second challenge format, production content, movement checks, progression,
+duplicate economy, trails, and the asynchronous PvP contract.
+
+That milestone description and each current issue determine scope. The older
+[Sprint 2 Gitea issue plan](./wits-quest-sprint-2-gitea-issues.md) is a preserved
+snapshot of the earlier Basic implementation wave and reuses planning IDs now
+used by #159 onward. It is historical evidence, not the current Sprint 2
+backlog.
+
+## Issue readiness and live workflow
+
+Before an issue moves from `Backlog`, confirm all of the following in Gitea:
+
+| Field                   | Required record                                                                                     |
+| ----------------------- | --------------------------------------------------------------------------------------------------- |
+| Owner                   | A current assignee accountable for delivery and coordination                                        |
+| Reviewer                | A named reviewer in the issue plan and an actual independent reviewer on the pull request           |
+| Estimate                | A bounded estimate in the issue body; revise it when scope materially changes                       |
+| Labels                  | One priority label plus relevant work-type and area labels                                          |
+| Milestone               | `Sprint 2` only when the work belongs to the current milestone                                      |
+| Dependencies            | Native Gitea dependency links for true blockers; readable `Depends on` and `Blocks` text must agree |
+| Acceptance and evidence | Testable criteria, required documentation, and manual or external evidence boundaries               |
+| Board state             | The column that matches current reality, not the originally planned column in a Markdown snapshot   |
+
+Use this board workflow:
+
+| Column          | Meaning                                                                     | Exit condition                                                                                |
+| --------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `Backlog`       | Refined or awaiting refinement; implementation has not started              | Ready metadata is complete and the owner starts the issue branch                              |
+| `In Progress`   | Active implementation, documentation, investigation, or evidence collection | A reviewable pull request exists with the performed checks recorded                           |
+| `Review & Test` | Human review, CI, manual checks, or evidence reconciliation is active       | Required review and checks pass, or findings return the issue to active work                  |
+| `Done`          | Merged and reconciled through the authorised path                           | Acceptance evidence and remaining follow-ups match the issue; unresolved gates are not hidden |
+
+The issue and pull request remain the detailed records if a board card lags.
+Update the board during the weekly review and whenever work starts, enters
+review, returns for correction, or is merged.
+
+### Tracker audit and actions still required
+
+The 28 August read-only audit found that all twenty planned issues #159–#178
+had an assignee, reviewer, estimate, labels, `Sprint 2` milestone, planned
+`Backlog` field, and native dependencies matching their declared blockers.
+[Issue #167 (`S2-09`)](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/167)
+correctly had native dependencies on #159–#166, including #159.
+
+One additional Sprint 2 issue,
+[#193](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/193), had an
+owner, reviewer, estimate, priority/area labels, and a body-level dependency on
+#171, but no planning ID, planned project column, or native dependency link.
+Read-only repository and API inspection also did not expose an active repository
+project board. The available label set did not contain `usability`; this is an
+optional future tracker-hygiene improvement and is not a blocker for this
+documentation issue.
+
+The team must therefore complete these live-tracker actions before claiming the
+corresponding acceptance criteria are satisfied:
+
+1. create or confirm the Sprint 2 board, its four columns, and every current
+   Sprint 2 issue's actual column;
+2. assign #193 an agreed planning ID and board state, then add the true native
+   dependency on #171 or correct the body if #171 is not a blocker;
+3. have another team member check the documentation links and tracker accuracy.
+
+Do not update this snapshot merely to imitate those remote changes. Update the
+live tracker first, then record a dated review only when durable evidence is
+useful.
+
+## Sprint 2 rubric-to-evidence matrix
+
+The governance request names the official Sprint 2 rubric headings below. No
+more detailed scoring text is stored in this checkout or in issue #159, so this
+matrix maps those headings without inventing replacement criteria or claiming
+that planned evidence already exists.
+
+| Official criterion             | Expected evidence                                                                                                                                       | Authoritative location or source                                                                                              | Responsible role                                                   | Collection cadence and current boundary                                                            |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| Core Features                  | Linked issue acceptance, reviewed implementation, focused tests, integrated demonstration, and explicit limitations                                     | Gitea issues/PRs; current requirements and architecture; release issue #167                                                   | Issue owners; Product Lead for scope                               | Per issue and weekly; current completion is determined from Gitea and verified behavior            |
+| Automated Testing              | Named test commands and exact results, CI jobs, regression coverage, and safe failure artifacts                                                         | PRs and Gitea Actions; `apps/*/tests`; `packages/*`; [testing strategy](../testing/testing-strategy.md)                       | Issue owner and reviewer; quality owner for release gates          | Per PR, nightly/release where configured; local, CI, deployed, and manual evidence stay distinct   |
+| Stakeholder Reviews            | Dated interaction record, participants, increment or decision reviewed, feedback, evaluation, owner, and resulting issue/decision                       | `docs/planning/stakeholder-interactions/`; linked Gitea issues/PRs                                                            | Product Lead or interaction owner                                  | Capture at the interaction; no new Sprint 2 stakeholder review record was found in this audit      |
+| API                            | Runtime contract, OpenAPI output, authorisation/error behavior, integration tests, and deployed reachability where required                             | [API overview](../architecture/api-overview.md); API source/tests; CI; release evidence                                       | API and Security Lead; relevant issue reviewer                     | Per API change and release; documentation is a contract record, not runtime proof                  |
+| User Feedback                  | Pre-session script, consent/privacy boundary, anonymised task observations, finding decisions, linked issues, fixes, and retest                         | [Sprint 2 user-testing plan](../testing/sprint-2-user-testing-plan.md); issue #167; sanitised results created after sessions  | User-test facilitator and Product Lead                             | Schedule after prerequisites clear; no formal Sprint 2 participant results are currently recorded  |
+| Project Methodology            | Current issue metadata, board transitions, dependency/risk reviews, linked PRs, CI, independent review, and ceremony records                            | Gitea; [project and Git methodology](./project-and-git-methodology.md); this page                                             | All members; Product Lead coordinates weekly review                | Continuous plus weekly review; active board still requires live verification                       |
+| Bug Tracker                    | Reproduction, expected/observed behavior, severity/priority, evidence, regression check, owner/reviewer, and linked fix/retest                          | Gitea issues with `bug`; explicit usability classification and `UT-S2-*` identifiers for usability findings                   | Finder records; assigned owner resolves; reviewer verifies         | Record when discovered and triage weekly; a dedicated `usability` label is optional future hygiene |
+| Database Documentation         | Current schema/relationship description, migration and rollback procedure, constraints, privacy/retention decisions, and test evidence                  | `docs/database/`; migrations; database tests; linked issues/PRs                                                               | Data and Infrastructure Lead; schema-change owner                  | With every schema change and at release                                                            |
+| Third-Party Code Documentation | Dependency/service purpose, boundary, licence/attribution, configuration ownership, privacy/security considerations, and replacement/operational limits | [Third-party software and services](../architecture/third-party-software-and-services.md); lockfile; ADRs and deployment docs | Owner of the integration; reviewer checks attribution and boundary | When added/upgraded and during release review                                                      |
+| Testing Documentation          | Strategy, reproducible commands/preconditions, environment boundaries, results, known limitations, and manual/operator steps                            | `docs/testing/`; PR/CI evidence; release validation                                                                           | Issue owner and quality/release owner                              | With behavior or procedure changes and at release                                                  |
+
+## Evidence index and retention rule
+
+Store evidence once at the source that is best able to remain authoritative.
+Link to it from issues, pull requests, ceremony records, and this matrix instead
+of copying volatile status into several Markdown tables.
+
+| Evidence class                                           | Primary location                                                                       | Minimum durable record                                                                                                                                    |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Work status and dependencies                             | Gitea issue and project board                                                          | Owner, reviewer, estimate, labels, milestone, native dependencies, current state, blockers                                                                |
+| Implementation and review                                | Pull request and Git history                                                           | Linked issue, scoped diff, human review, findings/resolution, merge reference                                                                             |
+| Automated validation                                     | PR comment/checklist and Gitea Actions                                                 | Exact command/job, revision, result, meaningful counts, safe artifact link                                                                                |
+| Architecture, API, schema, rules, setup, and methodology | Versioned repository documentation                                                     | Current contract or decision, limitations, related issue/PR, accurate AI declaration                                                                      |
+| Stakeholder evidence                                     | `docs/planning/stakeholder-interactions/` plus Gitea                                   | Date, participants, reviewed increment/question, feedback, evaluation, decision, owner, links                                                             |
+| User-testing evidence                                    | Sanitised result under `docs/testing/` plus linked finding issues                      | Release, anonymous session IDs, task outcomes, observations, decisions, issues, retest; raw consent-controlled notes remain outside the public repository |
+| Bugs and usability findings                              | Gitea issues                                                                           | Classification, reproduction/observation, impact, evidence, decision, fix/retest links                                                                    |
+| Deployment and release                                   | Release issue, CI/deployment run, and applicable `docs/deployment/` or validation page | Revision/environment, automated result, deployed smoke result, operator/manual boundary, blocker                                                          |
+| Risks and decisions                                      | [Risk register](./risk-register.md), ADR/decision record, and linked issue             | Owner, status, response, decision/evidence, next review                                                                                                   |
+
+Never retain credentials, complete tokens, connection strings, private account
+data, raw consent records, or unnecessary precise location in public evidence.
+
+## Weekly ceremonies and evidence
+
+Wits World uses the established weekly Scrum-lite boundary rather than claiming
+mandatory daily meetings. Short coordination can occur as needed. A ceremony
+record proves only what it actually captures.
+
+| Activity                            | Cadence and purpose                                                                                                                                     | Evidence to retain contemporaneously                                                                           |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Planning and refinement             | At the weekly boundary and when work becomes ready; order issues and check scope, owner, reviewer, estimate, labels, dependencies, risk, and acceptance | Date, participants, sprint/issue links, changed decisions, blockers, owners, and board updates                 |
+| Coordination                        | As needed during the week; surface progress, integration risks, and blockers                                                                            | Issue comment or concise dated note only when it changes work or a decision                                    |
+| Stakeholder review                  | At the weekly review when a stakeholder is available, and whenever an external review occurs                                                            | Increment/question reviewed, feedback, evaluation, accepted/deferred/rejected decision, owner, resulting issue |
+| Sprint review                       | Weekly boundary and milestone close; compare verified increment with the goal and rubric evidence                                                       | Demonstrated revision, tests and limitations, stakeholder response, accepted work, carry-over, links           |
+| Retrospective                       | Weekly boundary or milestone close; select process improvements                                                                                         | Participants, evidence-based themes, one or more owned actions, follow-up review date/link                     |
+| Risk, dependency, and defect triage | During the weekly review and immediately for critical findings                                                                                          | Changed risk status, native dependency correction, new/updated bug or usability issue, priority and owner      |
+
+No exact recurring weekday, time, participant list, or completed Sprint 2
+ceremony is claimed here because no such evidence was found. Record the actual
+schedule and occurrence when agreed or performed.
+
+## Stakeholder and user-testing flow
+
+Stakeholder feedback follows this trace:
+
+```text
+dated interaction -> verbatim or carefully paraphrased feedback
+                  -> team evaluation against scope, evidence, and constraints
+                  -> accepted, deferred, rejected with reason, or unresolved
+                  -> linked issue/decision with owner
+                  -> reviewed change and verification
+                  -> follow-up response where appropriate
+```
+
+Formal user testing follows the
+[Sprint 2 user-testing plan](../testing/sprint-2-user-testing-plan.md) and
+[#167](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/167). Its
+prerequisite dependency graph includes #159–#166. Schedule named sessions only
+after the tested release, facilitator, safe accounts, consent approach, and
+applicable devices are ready. Preserve anonymous observations as stable
+`UT-S2-*` findings, classify each as a bug, usability finding, feature request,
+or non-actionable feedback, and link accepted changes and retests. Planned
+sessions are not evidence of participants or results.
+
+## Risk and dependency control
+
+The [risk register](./risk-register.md) is the durable risk history. Review
+active high-impact risks weekly, assign an owner, link response work, record
+tested mitigation, and retain residual exposure. Gitea native dependencies are
+authoritative for current blocking status; Markdown dependency lists explain
+intent but do not create a live blocker.
+
+When a dependency changes, update both the native link and the readable issue
+body, review downstream acceptance/schedule impact, and record the decision.
+Do not use dependencies for preferred ordering, shared context, or a task that
+can proceed independently.
+
+## Defect, usability, and feature classification
+
+All three classes belong in Gitea, not a parallel spreadsheet:
+
+| Class             | Meaning                                                                                                                | Tracker convention                                                                                                                                             |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bug               | Implemented behavior deviates from an agreed requirement or expected safe operation                                    | `bug` plus priority, area, and `testing` labels; include reproduction and regression evidence                                                                  |
+| Usability finding | Observed friction, confusion, accessibility difficulty, or recovery problem without first claiming a functional defect | Explicit `Usability finding` classification in the issue plus priority/area/testing labels and `UT-S2-*` when user-test sourced; a dedicated label is optional |
+| Feature work      | A new capability or scope addition rather than correction of agreed behavior                                           | `feature` plus priority/area labels; evaluate against milestone scope before acceptance                                                                        |
+
+If investigation changes the classification, retain the evidence and decision
+in the issue rather than silently rewriting its origin. A severe bug is raised
+and triaged immediately; other findings are reviewed at the weekly boundary.
+
+## AI declaration
+
+This Sprint 2 governance and evidence structure was generated, edited, and
+reviewed with assistance from Codex[GPT-5]. Tracker facts are from read-only
+Gitea inspection on 28 August 2026; no remote resource was changed.
