@@ -86,9 +86,9 @@ or ownership result.
 
 ### Account deletion and re-registration
 
-These are confirmed Basic requirements, not current implementation. Account
-deletion is planned for Sprint 2 after, or together with, a proper player
-profile/account page.
+These are confirmed Basic requirements. Issue `#160` implements the
+transactional persistence and retention backend; issue `#161` still owns the
+player-facing profile/account experience.
 
 - Deletion requires recent authentication and explicit permanent-deletion
   confirmation. Access locks immediately; Basic has no deletion grace period.
@@ -102,9 +102,9 @@ profile/account page.
   Individual answers and answer snapshots are deleted. Anonymous gameplay
   history is retained indefinitely unless a later formal retention rule is
   established.
-- Published events, questions, and cards remain available. Authored-content
-  ownership transfers to a system-owned account, and `Deleted author` is shown
-  where needed.
+- Published events, questions, and cards remain available as system-owned
+  definitions. Immutable Author audit records retain only the anonymous player
+  tombstone, and `Deleted author` is shown where needed.
 - Auth0 or database cleanup failures trigger idempotent automatic retry and an
   operational alert while the account remains locked. The workflow is marked
   pending until cleanup completes.

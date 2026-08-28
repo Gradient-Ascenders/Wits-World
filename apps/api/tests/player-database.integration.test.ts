@@ -88,7 +88,10 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
       '0022_tighten_player_name_policy.sql',
     );
     expect(migrationResult.applied).toContain(
-      '0023_add_ordering_challenges.sql',
+      '0024_complete_account_deletion_retention.sql',
+    );
+    expect(migrationResult.applied).toContain(
+      '0025_add_ordering_challenges.sql',
     );
 
     await withDatabaseClient(temporaryConfig, async (client) => {
@@ -164,7 +167,9 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0020_replace_display_name_with_player_name.sql',
           '0021_enforce_player_name_policy.sql',
           '0022_tighten_player_name_policy.sql',
-          '0023_add_ordering_challenges.sql',
+          '0023_rebalance_canonical_card_roster.sql',
+          '0024_complete_account_deletion_retention.sql',
+          '0025_add_ordering_challenges.sql',
         ],
       });
 
@@ -277,7 +282,9 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
       await expect(runMigrations(existingConfig)).resolves.toMatchObject({
         applied: [
           '0022_tighten_player_name_policy.sql',
-          '0023_add_ordering_challenges.sql',
+          '0023_rebalance_canonical_card_roster.sql',
+          '0024_complete_account_deletion_retention.sql',
+          '0025_add_ordering_challenges.sql',
         ],
       });
 
@@ -1429,13 +1436,13 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
     });
   });
 
-  it('purges only completed deletion audits older than twelve months', async () => {
+  it('purges only completed deletion audits at least twelve months old', async () => {
     await withDatabaseClient(temporaryConfig, async (client) => {
       await client.query(
         `insert into public.account_deletion_requests (
           id, requested_at, completed_at, status
         ) values
-          ($1, '2025-08-01T00:00:00Z', '2025-08-13T00:00:00Z', 'completed'),
+          ($1, '2025-08-01T00:00:00Z', '2025-08-14T00:00:00Z', 'completed'),
           ($2, '2025-08-01T00:00:00Z', '2025-08-15T00:00:00Z', 'completed'),
           ($3, '2025-01-01T00:00:00Z', null, 'pending')`,
         [

@@ -305,7 +305,11 @@ begin
     from public.challenge_attempts
    where id = affected_attempt_id;
 
-  if attempt_status = 'completed' then
+  if attempt_status = 'completed'
+     and not (
+       tg_op = 'DELETE'
+       and private.is_pending_account_deletion_attempt(affected_attempt_id)
+     ) then
     raise exception
       'Ordering snapshot cannot change after attempt finalization'
       using errcode = '55006';
@@ -440,6 +444,7 @@ as $$
 declare
   attempt_challenge_id uuid;
   attempt_format text;
+  player_lifecycle_status text;
   question_count integer;
   choice_count integer;
   ordering_item_count integer;
@@ -447,14 +452,20 @@ declare
   source_question_challenge_id uuid;
   question_snapshot record;
 begin
-  select attempt.challenge_id, challenge.format
-    into attempt_challenge_id, attempt_format
+  select attempt.challenge_id, challenge.format, player.lifecycle_status
+    into attempt_challenge_id, attempt_format, player_lifecycle_status
     from public.challenge_attempts attempt
     join public.event_challenges challenge
       on challenge.id = attempt.challenge_id
+    join public.players player
+      on player.id = attempt.player_id
    where attempt.id = attempt_id_to_validate;
 
   if not found then
+    return;
+  end if;
+
+  if player_lifecycle_status in ('deletion_pending', 'deleted') then
     return;
   end if;
 
@@ -530,3 +541,131 @@ create constraint trigger attempt_question_ordering_items_snapshot_integrity
 after insert or update or delete on public.attempt_question_ordering_items
 deferrable initially deferred
 for each row execute function public.attempt_snapshot_integrity_trigger();
+
+create or replace function private.delete_player_owned_data(
+  player_id_to_delete uuid,
+  deletion_request_id_to_complete uuid
+)
+returns void
+language plpgsql
+as $$
+begin
+  perform 1
+    from public.players
+   where id = player_id_to_delete
+     and lifecycle_status = 'deletion_pending'
+     and deletion_request_id = deletion_request_id_to_complete
+   for update;
+
+  if not found then
+    raise exception
+      'Player account deletion cleanup requires the matching pending request'
+      using errcode = '23514';
+  end if;
+
+  insert into public.event_completion_card_rewards (
+    completion_id,
+    reward_position,
+    card_definition_id,
+    awarded_at
+  )
+  select
+    owned.source_completion_id,
+    row_number() over (
+      partition by owned.source_completion_id
+      order by owned.acquired_at, owned.id
+    )::smallint,
+    owned.card_definition_id,
+    owned.acquired_at
+  from public.player_cards owned
+  where owned.player_id = player_id_to_delete
+    and owned.acquisition_kind = 'event_reward'
+    and owned.source_completion_id is not null
+    and not exists (
+      select 1
+        from public.event_completion_card_rewards retained
+       where retained.completion_id = owned.source_completion_id
+    );
+
+  delete from public.cpu_match_actions action
+  using public.cpu_matches match
+  where action.match_id = match.id
+    and match.player_id = player_id_to_delete
+    and match.status = 'active';
+
+  delete from public.cpu_match_rounds round_record
+  using public.cpu_matches match
+  where round_record.match_id = match.id
+    and match.player_id = player_id_to_delete
+    and match.status = 'active';
+
+  delete from public.cpu_match_cards match_card
+  using public.cpu_matches match
+  where match_card.match_id = match.id
+    and match.player_id = player_id_to_delete
+    and match.status = 'active';
+
+  delete from public.cpu_matches
+  where player_id = player_id_to_delete
+    and status = 'active';
+
+  delete from public.player_deck_selections
+  where player_id = player_id_to_delete;
+
+  delete from public.player_decks
+  where player_id = player_id_to_delete;
+
+  delete from public.player_cards
+  where player_id = player_id_to_delete;
+
+  delete from public.player_starter_grants
+  where player_id = player_id_to_delete;
+
+  delete from public.player_wallets
+  where player_id = player_id_to_delete;
+
+  delete from public.attempt_ordering_answer_items answer_item
+  using public.attempt_questions question,
+        public.challenge_attempts attempt
+  where answer_item.attempt_question_id = question.id
+    and question.attempt_id = attempt.id
+    and attempt.player_id = player_id_to_delete;
+
+  delete from public.attempt_ordering_answers answer
+  using public.attempt_questions question,
+        public.challenge_attempts attempt
+  where answer.attempt_question_id = question.id
+    and question.attempt_id = attempt.id
+    and attempt.player_id = player_id_to_delete;
+
+  delete from public.attempt_answers answer
+  using public.attempt_questions question,
+        public.challenge_attempts attempt
+  where answer.attempt_question_id = question.id
+    and question.attempt_id = attempt.id
+    and attempt.player_id = player_id_to_delete;
+
+  delete from public.attempt_question_ordering_items item
+  using public.attempt_questions question,
+        public.challenge_attempts attempt
+  where item.attempt_question_id = question.id
+    and question.attempt_id = attempt.id
+    and attempt.player_id = player_id_to_delete;
+
+  delete from public.attempt_question_choices choice
+  using public.attempt_questions question,
+        public.challenge_attempts attempt
+  where choice.attempt_question_id = question.id
+    and question.attempt_id = attempt.id
+    and attempt.player_id = player_id_to_delete;
+
+  delete from public.attempt_questions question
+  using public.challenge_attempts attempt
+  where question.attempt_id = attempt.id
+    and attempt.player_id = player_id_to_delete;
+
+  delete from public.challenge_attempts
+  where player_id = player_id_to_delete
+    and status = 'in_progress';
+end;
+$$;

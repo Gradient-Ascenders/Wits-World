@@ -13,6 +13,7 @@ const vitestEntrypoint = path.resolve(
 const testFiles = [
   'tests/event-database.integration.test.ts',
   'tests/player-database.integration.test.ts',
+  'tests/account-deletion-persistence.integration.test.ts',
   'tests/challenge-persistence.integration.test.ts',
   'tests/challenge-attempt-database.integration.test.ts',
   'tests/card-catalogue.integration.test.ts',

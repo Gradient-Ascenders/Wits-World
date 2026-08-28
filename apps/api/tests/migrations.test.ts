@@ -39,7 +39,9 @@ describe('migration file loading', () => {
       ({ name }) =>
         name.startsWith('0021_') ||
         name.startsWith('0022_') ||
-        name.startsWith('0023_'),
+        name.startsWith('0023_') ||
+        name.startsWith('0024_') ||
+        name.startsWith('0025_'),
     );
 
     expect(
@@ -56,7 +58,15 @@ describe('migration file loading', () => {
       },
       {
         checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
-        name: '0023_add_ordering_challenges.sql',
+        name: '0023_rebalance_canonical_card_roster.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0024_complete_account_deletion_retention.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0025_add_ordering_challenges.sql',
       },
     ]);
   });

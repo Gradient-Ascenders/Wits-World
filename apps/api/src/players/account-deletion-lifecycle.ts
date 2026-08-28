@@ -242,6 +242,11 @@ export function createAccountDeletionLifecycle(
         const completedAt = clock();
 
         await client.query(
+          `select private.delete_player_owned_data($1::uuid, $2::uuid)`,
+          [player.id, deletionRequestId],
+        );
+
+        await client.query(
           `
             update public.players
                set auth_issuer = null,
@@ -349,7 +354,7 @@ export function createAccountDeletionLifecycle(
           `
             delete from public.account_deletion_requests
              where status = 'completed'
-               and completed_at < $1
+               and completed_at <= $1
              returning id
           `,
           [cutoff],

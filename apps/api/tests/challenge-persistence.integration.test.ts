@@ -103,7 +103,9 @@ describe.skipIf(!runIntegrationTests)(
           '0020_replace_display_name_with_player_name.sql',
           '0021_enforce_player_name_policy.sql',
           '0022_tighten_player_name_policy.sql',
-          '0023_add_ordering_challenges.sql',
+          '0023_rebalance_canonical_card_roster.sql',
+          '0024_complete_account_deletion_retention.sql',
+          '0025_add_ordering_challenges.sql',
         ],
         skipped: [],
       });
@@ -134,12 +136,14 @@ describe.skipIf(!runIntegrationTests)(
           '0020_replace_display_name_with_player_name.sql',
           '0021_enforce_player_name_policy.sql',
           '0022_tighten_player_name_policy.sql',
-          '0023_add_ordering_challenges.sql',
+          '0023_rebalance_canonical_card_roster.sql',
+          '0024_complete_account_deletion_retention.sql',
+          '0025_add_ordering_challenges.sql',
         ],
       });
     }, 30_000);
 
-    it('upgrades an existing MCQ attempt through 0023 without rewriting it', async () => {
+    it('upgrades an existing MCQ attempt through 0025 without rewriting it', async () => {
       const upgradeDatabaseName = `wits_quest_ordering_upgrade_${Date.now()}_${process.pid}`;
       const migrationDirectory = await mkdtemp(
         join(tmpdir(), 'wits-ordering-0022-migrations-'),
@@ -328,7 +332,11 @@ describe.skipIf(!runIntegrationTests)(
         });
 
         await expect(runMigrations(upgradeConfig)).resolves.toMatchObject({
-          applied: ['0023_add_ordering_challenges.sql'],
+          applied: [
+            '0023_rebalance_canonical_card_roster.sql',
+            '0024_complete_account_deletion_retention.sql',
+            '0025_add_ordering_challenges.sql',
+          ],
         });
 
         await withDatabaseClient(upgradeConfig, async (client) => {
@@ -640,16 +648,32 @@ describe.skipIf(!runIntegrationTests)(
       await withDatabaseClient(temporaryConfig, async (client) => {
         const cardResult = await client.query(
           `insert into public.card_definitions (
-           id, name, category, affinity, rarity, hp, power, description, is_active, authoring_status
+           id, name, category, affinity, rarity, description, is_active, authoring_status
          ) values
-           ($1, 'Persistence Spark', 'creature', 'spark', 'common', 100, 10,
-            'A card used by the persistence test', true, 'published'),
-           ($2, 'Persistence Spark Copy', 'creature', 'spark', 'common', 110, 12,
-            'A second card used by the persistence test', true, 'published')
+           ($1, 'Persistence Spark', 'power', 'spark', 'common',
+            'A card used by the persistence test', false, 'draft'),
+           ($2, 'Persistence Spark Copy', 'power', 'spark', 'common',
+            'A second card used by the persistence test', false, 'draft')
          returning id`,
           [CARD_ID, SECOND_CARD_ID],
         );
         expect(cardResult.rows).toHaveLength(2);
+        await client.query(
+          `insert into public.card_effects (
+             card_definition_id, position, effect_type, effect_value
+           ) values
+             ($1, 1, 'heal', 10),
+             ($2, 1, 'heal', 10)`,
+          [CARD_ID, SECOND_CARD_ID],
+        );
+        await client.query(
+          `update public.card_definitions
+              set is_active = true,
+                  authoring_status = 'published',
+                  updated_at = now()
+            where id in ($1, $2)`,
+          [CARD_ID, SECOND_CARD_ID],
+        );
 
         const finalizer = createChallengeAttemptCompletionFinalizer({
           randomInt: () => 0,
@@ -860,6 +884,30 @@ describe.skipIf(!runIntegrationTests)(
         );
         expect(eventRewardCards.rows[0]?.count).toBe('2');
 
+        const retainedCardRewards = await client.query<{ count: string }>(
+          `select count(*)::text as count
+             from public.event_completion_card_rewards
+            where completion_id = $1`,
+          [completionId],
+        );
+        expect(retainedCardRewards.rows[0]?.count).toBe('2');
+
+        await expect(
+          client.query(
+            `update public.event_completion_card_rewards
+                set awarded_at = now()
+              where completion_id = $1`,
+            [completionId],
+          ),
+        ).rejects.toThrow();
+        await expect(
+          client.query(
+            `delete from public.event_completion_card_rewards
+              where completion_id = $1`,
+            [completionId],
+          ),
+        ).rejects.toThrow();
+
         await expect(
           client.query(
             `insert into public.event_completions (
@@ -965,6 +1013,16 @@ describe.skipIf(!runIntegrationTests)(
           [CONCURRENT_PLAYER_ID],
         );
         expect(cardCount.rows[0]?.count).toBe('2');
+
+        const retainedRewardCount = await client.query<{ count: string }>(
+          `select count(*)::text as count
+             from public.event_completion_card_rewards retained
+             join public.event_completions completion
+               on completion.id = retained.completion_id
+            where completion.attempt_id = $1`,
+          [CONCURRENT_ATTEMPT_ID],
+        );
+        expect(retainedRewardCount.rows[0]?.count).toBe('2');
       });
     }, 45_000);
 
