@@ -21,9 +21,9 @@ Challenge start reuses a sufficiently fresh watched claim or requests one newer
 one-shot reading before the API rechecks eligibility. Authors use the protected
 `/author` console to create, publish, retire, and audit shared content.
 
-Password reset and account deletion remain mandatory Basic requirements planned
-for Sprint 2 after, or together with, a proper player profile/account page. They
-are not currently implemented.
+Issue `#160` implements the mandatory account-deletion persistence and retention
+backend. Password reset and the player-facing account/deletion experience remain
+issue `#161` work, so the complete account-lifecycle journey is not yet claimed.
 
 The React/Vite browser is presentation and untrusted input. Fastify resolves the
 verified Auth0 principal to a local player and role. PostgreSQL/PostGIS stores
@@ -96,5 +96,6 @@ local test pass.
 ## AI declaration
 
 This release reference was generated, edited, and reviewed with the assistance
-of Codex[GPT-5] and ChatGPT-Web[GPT-5.6 Sol]. Evidence statements must still be
-supported by executed checks or named operator confirmation.
+of Codex[GPT-5], ChatGPT-Web[GPT-5.6 Sol], and
+Codex-CLI[gpt-5.6-sol medium]. Evidence statements must still be supported by
+executed checks or named operator confirmation.

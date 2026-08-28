@@ -97,10 +97,10 @@ The API validates Auth0 access tokens and resolves local player identity and
 roles from validated issuer and subject claims. The application does not trust
 browser-supplied identity or role values.
 
-Wits World does not store passwords. The player-facing password-reset and
-account-deletion capabilities are not currently implemented; they are planned
-for Sprint 2 after, or together with, a proper player profile/account page. The
-eventual password-reset implementation may use Auth0's hosted capability.
+Wits World does not store passwords. Account-deletion persistence and retention
+are implemented server-side; the player-facing deletion entry point and
+password-reset capability remain issue `#161` work. Password reset may use
+Auth0's hosted capability.
 
 Public browser configuration may include:
 
@@ -243,4 +243,5 @@ record.
 The preceding document was planned and generated with the assistance of
 ChatGPT-Web[GPT-5.6 Thinking], updated with Codex-CLI[GPT-5], and reviewed and
 edited for Sprint 1 release validation with assistance from
-ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].
+ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5], and
+Codex-CLI[gpt-5.6-sol medium].

@@ -316,11 +316,10 @@ feature is considered complete.
 
 `BASIC-12` defines the Basic-tier deletion and retention policy.
 
-The account-deletion capability is planned for Sprint 2 after, or together
-with, the player profile/account page. It is not currently implemented. The
-security and data-lifecycle rules below define the intended implementation; the
-presence of preliminary backend code, migrations, or tests does not satisfy the
-user-facing Basic requirement.
+The account-deletion persistence and retention backend is implemented by issue
+`#160`. The player-facing profile/account entry point remains tracked by issue
+`#161`, so the complete user-facing Basic capability is not yet claimed. The
+security and data-lifecycle rules below define the implemented backend boundary.
 
 Permanent deletion requires:
 
@@ -344,8 +343,12 @@ Management API credentials are server-only secrets.
 
 Successful local cleanup anonymises the local player into a deleted tombstone
 by removing the Auth0 issuer, subject, mirrored Player Name, and application
-role. The deletion request is then unlinked from that tombstone. Historical
-gameplay snapshots retain their existing snapshot values and are not rewritten.
+role. The deletion request is then unlinked from that tombstone. Owned and
+active gameplay records plus individual quiz answers/snapshots are deleted;
+completed attempt summaries, reward outcomes, coin transactions, completed
+matches, and Author audit history remain linked only to the anonymous UUID. The
+exact matrix is documented in
+[Account deletion persistence and retention](../../database/account-deletion-retention.md).
 
 Because Auth0 deletion and PostgreSQL cleanup cannot form one atomic
 transaction, incomplete deletions are persisted as `pending` or
@@ -363,15 +366,14 @@ The retained deletion audit contains only:
 
 Completed deletion audits are retained for twelve months and then removed.
 
-As later Basic data models for cards, decks, balances, starter selections,
-challenge answers, authored content, and gameplay history are introduced, their
-deletion or retention handling must follow `BASIC-12` before the complete Basic
-release is declared compliant.
+The implemented cleanup covers cards, decks, balances, starter selections,
+challenge answers, authored-content audit history, and CPU gameplay history.
+Any later player-linked model must be added to the same `BASIC-12` matrix before
+deployment.
 
 Hosted registration and sign-in are available through Auth0 Universal Login.
-Password-reset and permanent-deletion capabilities, with their profile/account
-entry point, remain planned Sprint 2 work and must be linked back to the
-account-lifecycle requirements before acceptance.
+The password-reset and permanent-deletion profile/account entry points remain
+Sprint 2 work in issue `#161`; permanent-deletion persistence is implemented.
 
 ## Environment configuration
 
@@ -409,15 +411,14 @@ domain identifier.
 the trusted API environment. The Management application is granted only the
 `delete:users` permission.
 
-The preliminary account-deletion backend foundation additionally defines:
+The account-deletion backend defines:
 
 ```text
 ACCOUNT_DELETION_RETRY_INTERVAL_MS
 ```
 
-The committed development default is one minute. This is a proposed operational
-retry cadence for the planned capability, not proof that account deletion is
-implemented and not the recent-authentication security threshold.
+The committed development default is one minute. This is the operational retry
+cadence, not the recent-authentication security threshold.
 
 Management credentials must never use a `VITE_` prefix.
 
@@ -519,16 +520,16 @@ The following closed Gitea issues implemented this decision:
   validation, signature and expiry validation, authenticated request context,
   safe authentication errors, and the OpenAPI security scheme.
 
-Gitea #63 and the repository contain preliminary account-lifecycle backend,
-reauthentication, anonymisation, and retry foundations. The team does not treat
-those foundations as implementation of the password-reset or account-deletion
-requirements.
+Gitea #63 established account-lifecycle, reauthentication, Auth0 deletion, and
+retry foundations. Gitea #160 completes transactional local cleanup and the
+confirmed retention policy. Neither issue replaces the player-facing work in
+Gitea #161.
 
 Sprint 2 work still covers:
 
 - a proper player profile/account page;
 - password-reset capability, which may use Auth0's hosted flow;
-- permanent account deletion and complete `BASIC-12` cleanup;
+- the player-facing permanent account-deletion experience;
 - production signed-in storage/console/log evidence and Auth0 email-policy
   confirmation;
 - remediation of the temporary shared development/production Auth0 SPA
@@ -547,4 +548,5 @@ The team must still confirm:
 ---
 
 The preceding document was planned and generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking], ChatGPT-Web[GPT-5.6 Sol], and Codex[GPT-5].
+ChatGPT-Web[GPT-5.6 Thinking], ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5], and
+Codex-CLI[gpt-5.6-sol medium].
