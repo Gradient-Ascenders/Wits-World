@@ -21,6 +21,8 @@ jobs:
 
       - name: Install dependencies
         run: time npm ci --prefer-offline --no-audit --fund=false
+        env:
+          NPM_CONFIG_CACHE: /opt/wits-world/npm-cache
 
       - name: Check formatting, linting, and types
         run: |
@@ -73,6 +75,8 @@ jobs:
 
       - name: Install dependencies
         run: time npm ci --prefer-offline --no-audit --fund=false
+        env:
+          NPM_CONFIG_CACHE: /opt/wits-world/npm-cache
 
       - name: Test web application with coverage
         run: time npm run test:coverage --workspace @wits-world/web
@@ -111,6 +115,8 @@ jobs:
 
       - name: Install dependencies
         run: time npm ci --prefer-offline --no-audit --fund=false
+        env:
+          NPM_CONFIG_CACHE: /opt/wits-world/npm-cache
 
       - name: Build web application
         run: time npm run build:bundle --workspace @wits-world/web
