@@ -25,6 +25,8 @@ import { createAuthorChallengeService } from './challenges/author-challenge-serv
 import { createAuthorCardService } from './cards/author-card-service.js';
 import { createCpuMatchService } from './matches/cpu-match-service.js';
 import { createAuthenticatedRateProtection } from './security/rate-protection.js';
+import { createProgressionPersistence } from './progression/progression-persistence.js';
+import { createProgressionReadService } from './progression/progression-read-service.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
@@ -49,8 +51,9 @@ async function startServer(): Promise<void> {
     createChallengeAttemptStartService(database);
   const starterGrantService = createStarterGrantService(database);
   const cardCollectionService = createCardCollectionService(database);
+  const progressionPersistence = createProgressionPersistence();
   const challengeAttemptCompletionFinalizer =
-    createChallengeAttemptCompletionFinalizer();
+    createChallengeAttemptCompletionFinalizer({ progressionPersistence });
   const challengeAnswerSubmissionService =
     createChallengeAnswerSubmissionService(database, {
       finalizer: challengeAttemptCompletionFinalizer,
@@ -65,7 +68,10 @@ async function startServer(): Promise<void> {
   const authorEventService = createAuthorEventService(database);
   const authorChallengeService = createAuthorChallengeService(database);
   const authorCardService = createAuthorCardService(database);
-  const cpuMatchService = createCpuMatchService(database);
+  const cpuMatchService = createCpuMatchService(database, {
+    progressionPersistence,
+  });
+  const progressionReadService = createProgressionReadService(database);
   const playerIdentityService = createPlayerIdentityService(database);
 
   const app = await buildApp({
@@ -92,6 +98,7 @@ async function startServer(): Promise<void> {
     },
 
     cpuMatchService,
+    progressionReadService,
 
     accountDeletionServices: {
       reauthenticationVerifier,

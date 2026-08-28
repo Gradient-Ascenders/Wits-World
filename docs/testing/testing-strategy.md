@@ -48,6 +48,15 @@ The browser is tested for submitting player intent and rendering authoritative
 responses, not for independently deciding eligibility, marking, rewards, deck
 legality, or match outcomes.
 
+Progression route tests verify authentication, Player Name setup, privacy
+allowlists, month and pagination validation, current rank outside the selected
+page, and closed OpenAPI schemas. Database tests verify points and achievement
+backfill, duplicate and concurrent awards, Johannesburg streak boundaries,
+competition ties, stable tie ordering, monthly/all-time reads, zero-point
+players, and deleted-player exclusion. Completion-service tests additionally
+prove that progression runs before commit and that an award failure rolls back
+the owning challenge or CPU-match completion.
+
 ## Commands and data isolation
 
 The normal repository quality set is:

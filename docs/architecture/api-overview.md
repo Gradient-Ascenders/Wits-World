@@ -8,8 +8,8 @@ title: API overview
 
 `apps/api` is the hand-written Fastify and TypeScript HTTP API for Wits Quest.
 It is the protected boundary between the untrusted browser and authoritative
-identity, content, eligibility, challenge, reward, collection, deck, and CPU
-match state.
+identity, content, eligibility, challenge, reward, collection, deck, CPU match,
+and progression state.
 
 The browser sends player intent and renders responses. It does not determine
 authenticated identity, location eligibility, answer correctness, scores,
@@ -80,6 +80,7 @@ The generated OpenAPI groups the current contract into these areas:
 | Cards                      | Server-derived starter-package previews and grants, catalogue-safe rewards, and collection  |
 | Decks                      | Saved-deck CRUD, ownership validation, and active selection                                 |
 | Matches                    | Server-created CPU matches, legal action submission, recovery, and private history          |
+| Progression                | Current-player points, streaks, achievements, rank, and privacy-safe paginated standings    |
 | Authoring                  | Author-only event, challenge, question, and card lifecycle operations plus audit boundaries |
 
 The OpenAPI document is the endpoint-level reference for parameters, bodies,
@@ -88,6 +89,12 @@ that need more context, including the
 [challenge-attempt contract](./challenge-attempt-api-contract.md),
 [saved-deck design](../database/saved-deck-persistence-design.md), and
 [CPU match persistence](../database/cpu-match-persistence-design.md).
+
+Progression exposes `GET /api/v1/progression/me` and
+`GET /api/v1/progression/standings`. Both derive the player from bearer
+authentication. The standings operation accepts all-time or `YYYY-MM` monthly
+selection plus bounded pagination, and returns the current-player rank outside
+the selected page without exposing a player UUID.
 
 Issue `#178` also defines an
 [OpenAPI-ready asynchronous PvP contract](./asynchronous-pvp-api-contract.md)
