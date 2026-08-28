@@ -124,6 +124,10 @@ describe.skipIf(!runIntegrationTests)(
         throw new Error('Expected a newly created challenge attempt.');
       }
 
+      if (result.attempt.format !== 'multiple_choice') {
+        throw new Error('Expected a multiple-choice challenge attempt.');
+      }
+
       expect(result.attempt).toMatchObject({
         eventId: EVENT_ID,
         format: 'multiple_choice',
@@ -830,7 +834,11 @@ describe.skipIf(!runIntegrationTests)(
 
       const completedFromPost = submissionResults[4];
 
-      if (!completedFromPost || completedFromPost.status !== 'completed') {
+      if (
+        !completedFromPost ||
+        completedFromPost.status !== 'completed' ||
+        completedFromPost.format !== 'multiple_choice'
+      ) {
         throw new Error('Expected the fifth answer to complete the attempt.');
       }
 
@@ -948,7 +956,7 @@ describe.skipIf(!runIntegrationTests)(
         },
       });
 
-      if (first.status !== 'completed') {
+      if (first.status !== 'completed' || first.format !== 'multiple_choice') {
         throw new Error('Expected timeout fetch to return completed state.');
       }
 
@@ -1069,7 +1077,10 @@ async function createAttemptForPlayer(
 
   const result = await service.startOrResume(validInput(playerId));
 
-  if (result.outcome !== 'created') {
+  if (
+    result.outcome !== 'created' ||
+    result.attempt.format !== 'multiple_choice'
+  ) {
     throw new Error('Expected a newly created challenge attempt.');
   }
 

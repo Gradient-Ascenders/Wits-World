@@ -9,13 +9,22 @@ export interface ChallengeAnswerLockQueryable {
   ): Promise<{ rows: T[] }>;
 }
 
-export interface LockChallengeAnswerInput {
+interface LockChallengeAnswerInputBase {
   playerId: string;
   attemptId: string;
   attemptQuestionId: string;
-  choiceId: string;
   receivedAt: Date;
 }
+
+export type LockChallengeAnswerInput =
+  | (LockChallengeAnswerInputBase & {
+      format?: 'multiple_choice';
+      choiceId: string;
+    })
+  | (LockChallengeAnswerInputBase & {
+      format: 'ordering';
+      itemIds: readonly string[];
+    });
 
 export type ChallengeAnswerFinalizationReason = 'answered' | 'timeout';
 
@@ -40,7 +49,13 @@ export type ChallengeAnswerLockResult =
 
 interface AttemptRow extends pg.QueryResultRow {
   deadline: Date;
+  format: 'multiple_choice' | 'ordering';
   status: 'in_progress' | 'completed';
+}
+
+interface OrderingBindingRow extends pg.QueryResultRow {
+  attempt_question_id: string;
+  matched_item_count: number;
 }
 
 interface AnswerBindingRow extends pg.QueryResultRow {
@@ -98,8 +113,11 @@ export async function lockChallengeAnswer(
     `
       select
         attempt.status,
-        attempt.deadline
+        attempt.deadline,
+        challenge.format
       from public.challenge_attempts attempt
+      join public.event_challenges challenge
+        on challenge.id = attempt.challenge_id
       where attempt.id = $1::uuid
         and attempt.player_id = $2::uuid
       for update
@@ -113,10 +131,20 @@ export async function lockChallengeAnswer(
     throw new ChallengeAttemptNotFoundError();
   }
 
-  if (attempt.status === 'completed') {
-    const existing = await loadAnswerBinding(database, input);
+  const submittedFormat =
+    input.format === 'ordering' ? 'ordering' : 'multiple_choice';
 
-    if (existing && existing.selected_choice_id === input.choiceId) {
+  if (attempt.format !== submittedFormat) {
+    throw new InvalidChallengeAnswerError();
+  }
+
+  if (attempt.status === 'completed') {
+    const matches =
+      input.format === 'ordering'
+        ? await orderingAnswerMatches(database, input)
+        : await multipleChoiceAnswerMatches(database, input);
+
+    if (matches) {
       return {
         outcome: 'completed_retry',
       };
@@ -133,6 +161,10 @@ export async function lockChallengeAnswer(
       outcome: 'expired',
       finalizationReason: 'timeout',
     };
+  }
+
+  if (input.format === 'ordering') {
+    return lockOrderingAnswer(database, input);
   }
 
   const binding = await loadAnswerBinding(database, input);
@@ -179,12 +211,150 @@ export async function lockChallengeAnswer(
   };
 }
 
+async function lockOrderingAnswer(
+  database: ChallengeAnswerLockQueryable,
+  input: Extract<LockChallengeAnswerInput, { format: 'ordering' }>,
+): Promise<ChallengeAnswerLockResult> {
+  if (input.itemIds.length !== 4 || new Set(input.itemIds).size !== 4) {
+    throw new InvalidChallengeAnswerError();
+  }
+
+  const bindingResult = await database.query<OrderingBindingRow>(
+    `
+      select
+        question.id::text as attempt_question_id,
+        count(item.id)::int as matched_item_count
+      from public.attempt_questions question
+      left join public.attempt_question_ordering_items item
+        on item.attempt_question_id = question.id
+       and item.id = any($3::uuid[])
+      where question.id = $2::uuid
+        and question.attempt_id = $1::uuid
+      group by question.id
+    `,
+    [input.attemptId, input.attemptQuestionId, input.itemIds],
+  );
+
+  const binding = bindingResult.rows[0];
+
+  if (!binding || binding.matched_item_count !== 4) {
+    throw new InvalidChallengeAnswerError();
+  }
+
+  const existingIds = await loadOrderingAnswerIds(
+    database,
+    input.attemptId,
+    input.attemptQuestionId,
+  );
+
+  if (existingIds !== null) {
+    const answeredCount = await countAnswers(database, input.attemptId);
+
+    if (arraysEqual(existingIds, input.itemIds)) {
+      return {
+        outcome: 'idempotent',
+        answeredCount,
+        finalizationReason: answeredCount === 5 ? 'answered' : null,
+      };
+    }
+
+    throw new ChallengeAnswerLockedError();
+  }
+
+  await database.query(
+    `
+      insert into public.attempt_ordering_answers (
+        attempt_question_id,
+        answered_at
+      ) values ($1::uuid, $2::timestamptz)
+    `,
+    [input.attemptQuestionId, input.receivedAt.toISOString()],
+  );
+
+  for (const [index, itemId] of input.itemIds.entries()) {
+    await database.query(
+      `
+        insert into public.attempt_ordering_answer_items (
+          attempt_question_id,
+          selected_item_id,
+          submitted_position
+        ) values ($1::uuid, $2::uuid, $3)
+      `,
+      [input.attemptQuestionId, itemId, index + 1],
+    );
+  }
+
+  const answeredCount = await countAnswers(database, input.attemptId);
+
+  return {
+    outcome: 'accepted',
+    answeredCount,
+    finalizationReason: answeredCount === 5 ? 'answered' : null,
+  };
+}
+
+async function multipleChoiceAnswerMatches(
+  database: ChallengeAnswerLockQueryable,
+  input: Extract<LockChallengeAnswerInput, { choiceId: string }>,
+): Promise<boolean> {
+  const existing = await loadAnswerBinding(database, input);
+  return existing?.selected_choice_id === input.choiceId;
+}
+
+async function orderingAnswerMatches(
+  database: ChallengeAnswerLockQueryable,
+  input: Extract<LockChallengeAnswerInput, { format: 'ordering' }>,
+): Promise<boolean> {
+  const existingIds = await loadOrderingAnswerIds(
+    database,
+    input.attemptId,
+    input.attemptQuestionId,
+  );
+  return existingIds !== null && arraysEqual(existingIds, input.itemIds);
+}
+
+async function loadOrderingAnswerIds(
+  database: ChallengeAnswerLockQueryable,
+  attemptId: string,
+  attemptQuestionId: string,
+): Promise<string[] | null> {
+  const result = await database.query<{
+    selected_item_id: string;
+  }>(
+    `
+      select selected_item_id::text
+      from public.attempt_ordering_answer_items answer_item
+      join public.attempt_questions question
+        on question.id = answer_item.attempt_question_id
+      where question.attempt_id = $1::uuid
+        and answer_item.attempt_question_id = $2::uuid
+      order by answer_item.submitted_position
+    `,
+    [attemptId, attemptQuestionId],
+  );
+
+  return result.rows.length === 0
+    ? null
+    : result.rows.map((row) => row.selected_item_id);
+}
+
+function arraysEqual(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
+}
+
 async function loadAnswerBinding(
   database: ChallengeAnswerLockQueryable,
-  input: Pick<
-    LockChallengeAnswerInput,
-    'attemptId' | 'attemptQuestionId' | 'choiceId'
-  >,
+  input: {
+    attemptId: string;
+    attemptQuestionId: string;
+    choiceId: string;
+  },
 ): Promise<AnswerBindingRow | null> {
   const result = await database.query<AnswerBindingRow>(
     `
@@ -213,11 +383,21 @@ async function countAnswers(
 ): Promise<number> {
   const result = await database.query<AnswerCountRow>(
     `
-      select count(answer.attempt_question_id)::int as answered_count
+      select count(*)::int as answered_count
       from public.attempt_questions question
-      join public.attempt_answers answer
-        on answer.attempt_question_id = question.id
       where question.attempt_id = $1::uuid
+        and (
+          exists (
+            select 1
+            from public.attempt_answers answer
+            where answer.attempt_question_id = question.id
+          )
+          or exists (
+            select 1
+            from public.attempt_ordering_answers answer
+            where answer.attempt_question_id = question.id
+          )
+        )
     `,
     [attemptId],
   );

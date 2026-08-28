@@ -12,12 +12,21 @@ import {
   type PlayerSafeChallengeAttempt,
 } from './challenge-attempt-reader.js';
 
-export interface SubmitChallengeAnswerInput {
+interface SubmitChallengeAnswerInputBase {
   playerId: string;
   attemptId: string;
   attemptQuestionId: string;
-  choiceId: string;
 }
+
+export type SubmitChallengeAnswerInput =
+  | (SubmitChallengeAnswerInputBase & {
+      format?: 'multiple_choice';
+      choiceId: string;
+    })
+  | (SubmitChallengeAnswerInputBase & {
+      format: 'ordering';
+      itemIds: readonly string[];
+    });
 
 export interface ChallengeAttemptFinalizationInput {
   playerId: string;

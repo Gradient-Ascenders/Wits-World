@@ -4,6 +4,9 @@ import {
   AuthorContentNotReadyError,
   AuthorContentStateConflictError,
   createAuthorChallengeService,
+  type AuthorChallengeQuestion,
+  type AuthorMultipleChoiceQuestion,
+  type AuthorOrderingQuestion,
 } from '../src/challenges/author-challenge-service.js';
 import {
   buildDatabaseConfig,
@@ -14,6 +17,7 @@ import {
   createDatabasePool,
   withDatabaseClient,
 } from '../src/database/connection.js';
+import { calculateChallengeAttemptScore } from '../src/challenges/challenge-attempt-marking.js';
 import { runMigrations } from '../src/database/migrations.js';
 
 const AUTHOR_ONE_ID = 'e1000000-0000-4000-8000-000000000001';
@@ -101,6 +105,7 @@ describe.skipIf(!runIntegrationTests)(
         choices: ['East Campus', 'West Campus', 'Parktown', 'Braamfontein'],
         acceptedChoicePosition: 1,
       });
+      assertMultipleChoiceQuestion(question);
 
       expect(question).toMatchObject({
         challengeId: challenge.challengeId,
@@ -132,6 +137,7 @@ describe.skipIf(!runIntegrationTests)(
       ]);
 
       const listed = await service.listQuestions(challenge.challengeId);
+      assertMultipleChoiceQuestion(listed[0]);
 
       expect(listed).toHaveLength(1);
       expect(listed[0]).toMatchObject({
@@ -171,6 +177,276 @@ describe.skipIf(!runIntegrationTests)(
       ]);
     }, 45_000);
 
+    it('creates, publishes, and reads a complete ordering challenge', async () => {
+      const service = createAuthorChallengeService(pool);
+      const eventId = await createTemporaryEvent('Ordering challenge event');
+      const challenge = await service.createChallenge({
+        actorPlayerId: AUTHOR_ONE_ID,
+        eventId,
+        format: 'ordering',
+      });
+
+      expect(challenge.format).toBe('ordering');
+
+      const createdQuestions: AuthorOrderingQuestion[] = [];
+
+      for (let number = 1; number <= 5; number += 1) {
+        const question = await service.createQuestion({
+          actorPlayerId: AUTHOR_ONE_ID,
+          challengeId: challenge.challengeId,
+          format: 'ordering',
+          prompt: `Order these steps ${number}`,
+          difficulty: (((number - 1) % 3) + 1) as 1 | 2 | 3,
+          explanation: `Ordering explanation ${number}`,
+          items: [
+            `Step ${number}.1`,
+            `Step ${number}.2`,
+            `Step ${number}.3`,
+            `Step ${number}.4`,
+          ],
+        });
+
+        assertOrderingQuestion(question);
+        createdQuestions.push(question);
+        await service.publishQuestion(AUTHOR_ONE_ID, question.questionId);
+      }
+
+      const published = await service.publishChallenge(
+        AUTHOR_ONE_ID,
+        challenge.challengeId,
+      );
+      const listed = await service.listQuestions(challenge.challengeId);
+
+      expect(published).toMatchObject({
+        format: 'ordering',
+        status: 'published',
+      });
+      expect(listed).toHaveLength(5);
+
+      for (const [questionIndex, question] of listed.entries()) {
+        assertOrderingQuestion(question);
+        expect(question.items).toHaveLength(4);
+        expect(question.items.map((item) => item.position)).toEqual([
+          1, 2, 3, 4,
+        ]);
+        expect(question.items.map((item) => item.text)).toEqual(
+          createdQuestions[questionIndex]?.items.map((item) => item.text),
+        );
+      }
+
+      const answerKeys = await pool.query<{
+        key_count: number;
+        distinct_positions: number;
+      }>(
+        `
+          select
+            count(*)::int as key_count,
+            count(distinct key.correct_position)::int as distinct_positions
+          from private.challenge_ordering_answer_keys key
+          join public.challenge_ordering_items item
+            on item.id = key.item_id
+          join public.challenge_questions question
+            on question.id = item.question_id
+          where question.challenge_id = $1::uuid
+        `,
+        [challenge.challengeId],
+      );
+
+      expect(answerKeys.rows).toEqual([
+        {
+          key_count: 20,
+          distinct_positions: 4,
+        },
+      ]);
+
+      await expect(
+        pool.query(
+          `insert into public.challenge_choices (
+             question_id, authoring_position, choice_text
+           ) values ($1::uuid, 1, 'Wrong format child')`,
+          [createdQuestions[0]?.questionId],
+        ),
+      ).rejects.toThrow();
+
+      const orderingAttemptId = 'e4000000-0000-4000-8000-000000000001';
+      const firstAttemptQuestionId = 'e5000000-0000-4000-8000-000000000001';
+      const secondAttemptQuestionId = 'e5000000-0000-4000-8000-000000000002';
+      const firstAttemptItemIds: string[] = [];
+      const secondAttemptItemIds: string[] = [];
+      const snapshotClient = await pool.connect();
+
+      try {
+        await snapshotClient.query('begin');
+        await snapshotClient.query(
+          `insert into public.challenge_attempts (
+             id, player_id, event_id, challenge_id, started_at, deadline,
+             time_limit_seconds, average_difficulty
+           ) values (
+             $1::uuid, $2::uuid, $3::uuid, $4::uuid,
+             '2026-10-01T10:00:00Z', '2026-10-01T10:02:00Z', 120, 2
+           )`,
+          [orderingAttemptId, PLAYER_ID, eventId, challenge.challengeId],
+        );
+
+        for (const [questionIndex, question] of createdQuestions.entries()) {
+          const attemptQuestionId = `e5000000-0000-4000-8000-${String(
+            questionIndex + 1,
+          ).padStart(12, '0')}`;
+          await snapshotClient.query(
+            `insert into public.attempt_questions (
+               id, attempt_id, source_question_id, position, prompt_snapshot,
+               difficulty_snapshot, explanation_snapshot
+             ) values ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7)`,
+            [
+              attemptQuestionId,
+              orderingAttemptId,
+              question.questionId,
+              questionIndex + 1,
+              question.prompt,
+              question.difficulty,
+              question.explanation,
+            ],
+          );
+
+          for (const [itemIndex, item] of question.items.entries()) {
+            const snapshotItemId = `e6000000-0000-4000-${String(
+              questionIndex + 1,
+            ).padStart(4, '0')}-${String(itemIndex + 1).padStart(12, '0')}`;
+            await snapshotClient.query(
+              `insert into public.attempt_question_ordering_items (
+                 id, attempt_question_id, source_question_id, source_item_id,
+                 display_position, item_text_snapshot
+               ) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6)`,
+              [
+                snapshotItemId,
+                attemptQuestionId,
+                question.questionId,
+                item.itemId,
+                itemIndex + 1,
+                item.text,
+              ],
+            );
+
+            if (questionIndex === 0) {
+              firstAttemptItemIds.push(snapshotItemId);
+            } else if (questionIndex === 1) {
+              secondAttemptItemIds.push(snapshotItemId);
+            }
+          }
+        }
+
+        await snapshotClient.query('commit');
+      } catch (error) {
+        await snapshotClient.query('rollback');
+        throw error;
+      } finally {
+        snapshotClient.release();
+      }
+
+      const incompleteAnswerClient = await pool.connect();
+      try {
+        await incompleteAnswerClient.query('begin');
+        await incompleteAnswerClient.query(
+          `insert into public.attempt_ordering_answers (attempt_question_id)
+           values ($1::uuid)`,
+          [firstAttemptQuestionId],
+        );
+        for (let position = 1; position <= 3; position += 1) {
+          await incompleteAnswerClient.query(
+            `insert into public.attempt_ordering_answer_items (
+               attempt_question_id, selected_item_id, submitted_position
+             ) values ($1::uuid, $2::uuid, $3)`,
+            [
+              firstAttemptQuestionId,
+              firstAttemptItemIds[position - 1],
+              position,
+            ],
+          );
+        }
+
+        await expect(incompleteAnswerClient.query('commit')).rejects.toThrow();
+        await incompleteAnswerClient.query('rollback');
+      } finally {
+        incompleteAnswerClient.release();
+      }
+
+      const completeAnswerClient = await pool.connect();
+      try {
+        await completeAnswerClient.query('begin');
+        await completeAnswerClient.query(
+          `insert into public.attempt_ordering_answers (attempt_question_id)
+           values ($1::uuid)`,
+          [firstAttemptQuestionId],
+        );
+        for (let position = 1; position <= 4; position += 1) {
+          await completeAnswerClient.query(
+            `insert into public.attempt_ordering_answer_items (
+               attempt_question_id, selected_item_id, submitted_position
+             ) values ($1::uuid, $2::uuid, $3)`,
+            [
+              firstAttemptQuestionId,
+              firstAttemptItemIds[position - 1],
+              position,
+            ],
+          );
+        }
+        await completeAnswerClient.query('commit');
+      } catch (error) {
+        await completeAnswerClient.query('rollback');
+        throw error;
+      } finally {
+        completeAnswerClient.release();
+      }
+
+      await expect(
+        pool.query(
+          `update public.attempt_ordering_answer_items
+              set submitted_position = 2
+            where attempt_question_id = $1::uuid
+              and submitted_position = 1`,
+          [firstAttemptQuestionId],
+        ),
+      ).rejects.toThrow();
+
+      const incorrectAnswerClient = await pool.connect();
+      try {
+        await incorrectAnswerClient.query('begin');
+        await incorrectAnswerClient.query(
+          `insert into public.attempt_ordering_answers (attempt_question_id)
+           values ($1::uuid)`,
+          [secondAttemptQuestionId],
+        );
+        const incorrectOrder = [
+          secondAttemptItemIds[1]!,
+          secondAttemptItemIds[0]!,
+          secondAttemptItemIds[2]!,
+          secondAttemptItemIds[3]!,
+        ];
+        for (const [index, itemId] of incorrectOrder.entries()) {
+          await incorrectAnswerClient.query(
+            `insert into public.attempt_ordering_answer_items (
+               attempt_question_id, selected_item_id, submitted_position
+             ) values ($1::uuid, $2::uuid, $3)`,
+            [secondAttemptQuestionId, itemId, index + 1],
+          );
+        }
+        await incorrectAnswerClient.query('commit');
+      } catch (error) {
+        await incorrectAnswerClient.query('rollback');
+        throw error;
+      } finally {
+        incorrectAnswerClient.release();
+      }
+
+      await expect(
+        calculateChallengeAttemptScore(pool, orderingAttemptId),
+      ).resolves.toEqual({
+        totalQuestions: 5,
+        answeredCount: 2,
+        scoreCorrect: 1,
+      });
+    }, 60_000);
+
     it('replaces a draft question choices and answer key atomically', async () => {
       const service = createAuthorChallengeService(pool);
 
@@ -188,6 +464,7 @@ describe.skipIf(!runIntegrationTests)(
         choices: ['Original A', 'Original B', 'Original C', 'Original D'],
         acceptedChoicePosition: 1,
       });
+      assertMultipleChoiceQuestion(created);
 
       const originalChoiceIds = created.choices.map(
         (choice) => choice.choiceId,
@@ -202,6 +479,7 @@ describe.skipIf(!runIntegrationTests)(
         choices: ['Updated A', 'Updated B', 'Updated C', 'Updated D'],
         acceptedChoicePosition: 3,
       });
+      assertMultipleChoiceQuestion(updated);
 
       expect(updated).toMatchObject({
         questionId: created.questionId,
@@ -331,6 +609,7 @@ describe.skipIf(!runIntegrationTests)(
       expect(
         persistedQuestions.every(
           (question) =>
+            question.format === 'multiple_choice' &&
             question.status === 'published' &&
             question.choices.length === 4 &&
             question.acceptedChoiceId !== null &&
@@ -675,3 +954,19 @@ describe.skipIf(!runIntegrationTests)(
     }
   },
 );
+
+function assertMultipleChoiceQuestion(
+  question: AuthorChallengeQuestion | undefined,
+): asserts question is AuthorMultipleChoiceQuestion {
+  if (!question || question.format !== 'multiple_choice') {
+    throw new Error('Expected a multiple-choice author question.');
+  }
+}
+
+function assertOrderingQuestion(
+  question: AuthorChallengeQuestion | undefined,
+): asserts question is AuthorOrderingQuestion {
+  if (!question || question.format !== 'ordering') {
+    throw new Error('Expected an ordering author question.');
+  }
+}
