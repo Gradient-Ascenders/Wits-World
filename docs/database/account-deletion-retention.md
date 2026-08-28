@@ -38,6 +38,7 @@ already been reached.
 | Event completion, score, coin outcome, and coin ledger        | Retained against the anonymised player UUID                                              |
 | Awarded-card outcome                                          | Retained in `event_completion_card_rewards`; owned `player_cards` rows are still deleted |
 | Completed CPU matches, rounds, actions, and card snapshots    | Retained against the anonymised player UUID                                              |
+| Point awards, activity days, streak totals, and achievements  | Retained privately against the anonymised player UUID; excluded from live standings      |
 | Published events, questions, challenges, and cards            | Retained unchanged as system-owned content definitions                                   |
 | Author activity audit                                         | Retained against the anonymised player tombstone                                         |
 
@@ -86,7 +87,8 @@ player foreign key.
 
 Clearing the unique Auth0 `(issuer, subject)` pair and Player Name allows the
 same person to register later as a new local player. The new UUID has no link to
-the deleted player's cards, balance, decks, attempts, or matches.
+the deleted player's cards, balance, decks, attempts, matches, or retained
+progression. Progression remains attached only to the old anonymous tombstone.
 
 ## Verification
 

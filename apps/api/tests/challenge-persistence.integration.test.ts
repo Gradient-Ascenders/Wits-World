@@ -106,6 +106,7 @@ describe.skipIf(!runIntegrationTests)(
           '0023_rebalance_canonical_card_roster.sql',
           '0024_complete_account_deletion_retention.sql',
           '0025_add_ordering_challenges.sql',
+          '0026_create_player_progression.sql',
         ],
         skipped: [],
       });
@@ -139,6 +140,7 @@ describe.skipIf(!runIntegrationTests)(
           '0023_rebalance_canonical_card_roster.sql',
           '0024_complete_account_deletion_retention.sql',
           '0025_add_ordering_challenges.sql',
+          '0026_create_player_progression.sql',
         ],
       });
     }, 30_000);
@@ -336,6 +338,7 @@ describe.skipIf(!runIntegrationTests)(
             '0023_rebalance_canonical_card_roster.sql',
             '0024_complete_account_deletion_retention.sql',
             '0025_add_ordering_challenges.sql',
+            '0026_create_player_progression.sql',
           ],
         });
 

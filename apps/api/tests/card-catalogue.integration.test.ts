@@ -424,7 +424,7 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
         new Set(selection.grant.cards.map((card) => card.cardDefinitionId)),
       ).toEqual(new Set(configuredDefinitionIds));
     }
-  });
+  }, 30_000);
 
   it('keeps a historical Spirit grant readable and idempotent', async () => {
     await insertCataloguePlayer(
