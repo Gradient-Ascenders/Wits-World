@@ -485,6 +485,11 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'planning/sprint-2-governance-and-evidence',
+              label: 'Sprint 2 Governance & Evidence',
+            },
+            {
+              type: 'doc',
               id: 'planning/ai-use',
               label: 'AI Use',
             },
@@ -507,7 +512,7 @@ const sidebars: SidebarsConfig = {
             {
               type: 'doc',
               id: 'planning/wits-quest-sprint-2-gitea-issues',
-              label: 'Sprint 2 Gitea Issue Plan',
+              label: 'Historical Sprint 2 Gitea Issue Plan',
             },
           ],
         },

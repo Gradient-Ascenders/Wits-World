@@ -11,6 +11,12 @@ already been shared informally, but no meaningful structured critique or formal
 user-testing results have been collected. This page is a plan, not a result or
 claim of participant acceptance.
 
+The current release-validation work is tracked by
+[#167 (`S2-09`)](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/167),
+which plans at least five anonymised player sessions after its prerequisites
+clear. That target is not a claim that participants have been recruited or
+sessions have occurred.
+
 :::
 
 ## Evidence status
@@ -34,9 +40,10 @@ formal accessibility testing.
 
 Prefer volunteers who resemble likely users, especially Wits students or other
 campus users where practical. Seek varied familiarity with card games, campus
-navigation, mobile Web applications, and assistive or alternative input. Do not
-claim representativeness from convenience participants, and do not set or
-report a participant count until recruitment and sessions actually occur.
+navigation, mobile Web applications, and assistive or alternative input. Plan
+for the issue #167 minimum of five anonymised player sessions, but do not claim
+representativeness from convenience participants or report an actual
+participant count until recruitment and sessions occur.
 
 Author-only tasks require a separate safe Author test account and may be tested
 with team/client participants who understand that role. Ordinary player

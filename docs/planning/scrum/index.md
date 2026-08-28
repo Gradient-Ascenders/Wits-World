@@ -19,6 +19,11 @@ CI plus human review provide the quality gate. The durable process is described
 in the [project and Git methodology](../project-and-git-methodology.md); this
 section records how that process was applied during Sprint 1.
 
+For current Sprint 2 cadence, issue readiness, board workflow, evidence
+expectations, and ceremony records, use
+[Sprint 2 governance and evidence](../sprint-2-governance-and-evidence.md).
+The Sprint 1 pages below remain historical evidence.
+
 ## Record status
 
 The initial planning and Daily Scrum pages were assembled retrospectively on 24

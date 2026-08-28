@@ -1,14 +1,26 @@
 # Wits Quest Sprint 2 Gitea Issue Plan
 
+:::note[Historical Basic implementation plan]
+
+This page preserves the earlier #62–#80 Basic implementation plan. The current
+Sprint 2 tracker work begins at #159 and reuses `S2-*` planning IDs, so the
+issue numbers, owners, estimates, dependencies, and `Backlog` statements below
+must not be read as current status. Use
+[Sprint 2 governance and evidence](./sprint-2-governance-and-evidence.md) and
+the live Gitea tracker for current work.
+
+:::
+
 ## Objective
 
 Complete the remaining Wits Quest Basic-tier journey without duplicating the
 Sprint 1 foundations already tracked in Gitea. This plan records the Sprint 2
 issues created from the Basic-tier repository audit.
 
-All issues use the `Sprint 2` milestone and begin in the `Backlog` project
-column. Gitea native dependency links are the authority for blocking status;
-the dependency lists below are a readable planning snapshot.
+At the time of this plan, all listed issues used the `Sprint 2` milestone and
+were planned to begin in the `Backlog` project column. Gitea native dependency
+links were authoritative for blocking status; the dependency lists below are a
+preserved planning snapshot.
 
 ## Existing prerequisites
 
