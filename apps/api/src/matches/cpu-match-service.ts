@@ -35,6 +35,13 @@ import type {
 } from '../cards/card-types.js';
 
 const CPU_TURN_SECONDS = 90;
+const BASIC_CPU_DECK_DEFINITION_IDS = [
+  'c2c81cdc-5c15-84d1-6ba9-0271b1d3fdac',
+  'a230fdda-cec0-c127-b4a2-e4dd20660e3a',
+  '0cba869b-d777-11f8-6b8c-c47d4d626558',
+  '49e45cbb-f419-bf5c-2868-757646cb8dc9',
+  '76f057c6-efab-38d9-9bcf-298d5c794f1a',
+] as const;
 
 export interface CpuMatchDatabase {
   connect(): Promise<CpuMatchClient>;
@@ -896,10 +903,15 @@ async function loadSelectedDeckCards(
 }
 
 async function loadCpuDeckCards(client: CpuMatchClient): Promise<CpuCardRow[]> {
-  const creatures = await client.query<CpuCardRow>(
+  const result = await client.query<CpuCardRow>(
     `
+      with required_card(position, card_definition_id) as (
+        select position::integer, card_definition_id
+        from unnest($1::uuid[]) with ordinality
+          as requested(card_definition_id, position)
+      )
       select
-        row_number() over (order by definition.name, definition.id)::integer as position,
+        required_card.position,
         definition.id::text as card_definition_id,
         definition.name,
         definition.category,
@@ -908,37 +920,34 @@ async function loadCpuDeckCards(client: CpuMatchClient): Promise<CpuCardRow[]> {
         definition.hp,
         definition.power,
         definition.is_active
-      from public.card_definitions definition
-      where definition.category = 'creature'
-        and definition.is_active = true
-      order by definition.name, definition.id
-      limit 3
+      from required_card
+      join public.card_definitions definition
+        on definition.id = required_card.card_definition_id
+      where definition.is_active = true
+      order by required_card.position
     `,
-  );
-  const powers = await client.query<CpuCardRow>(
-    `
-      select
-        (row_number() over (order by definition.name, definition.id) + 3)::integer as position,
-        definition.id::text as card_definition_id,
-        definition.name,
-        definition.category,
-        definition.affinity,
-        definition.rarity,
-        definition.hp,
-        definition.power,
-        definition.is_active
-      from public.card_definitions definition
-      where definition.category = 'power'
-        and definition.is_active = true
-      order by definition.name, definition.id
-      limit 2
-    `,
+    [BASIC_CPU_DECK_DEFINITION_IDS],
   );
 
-  const cards = [...creatures.rows, ...powers.rows];
-  if (cards.length !== 5) {
+  const cards = result.rows;
+  const isExactCuratedDeck =
+    cards.length === BASIC_CPU_DECK_DEFINITION_IDS.length &&
+    cards.every((card, index) => {
+      const expectedCategory = index < 3 ? 'creature' : 'power';
+
+      return (
+        card.position === index + 1 &&
+        card.card_definition_id.toLowerCase() ===
+          BASIC_CPU_DECK_DEFINITION_IDS[index] &&
+        card.category === expectedCategory &&
+        card.rarity === 'common' &&
+        card.is_active
+      );
+    });
+
+  if (!isExactCuratedDeck) {
     throw new CpuMatchSetupError(
-      'The active catalogue does not contain a complete CPU deck.',
+      'The required curated CPU deck is not available.',
     );
   }
 

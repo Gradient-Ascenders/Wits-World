@@ -6,9 +6,11 @@ import type {
   CardEffect,
   CardMove,
   CardRarity,
+  StarterAffinity,
   StarterGrant,
   OwnedCard,
 } from './card-types.js';
+import { starterAffinities } from './card-types.js';
 
 export interface StarterGrantDatabase {
   connect(): Promise<StarterGrantTransactionClient>;
@@ -24,7 +26,7 @@ export interface StarterGrantTransactionClient {
 
 export interface SelectStarterInput {
   playerId: string;
-  affinity: CardAffinity;
+  affinity: StarterAffinity;
 }
 
 export interface StarterGrantService {
@@ -52,6 +54,13 @@ export class StarterCatalogueUnavailableError extends Error {
       'The selected starter affinity does not have enough active Common cards.',
     );
     this.name = 'StarterCatalogueUnavailableError';
+  }
+}
+
+export class StarterAffinityNotAllowedError extends Error {
+  constructor() {
+    super('Only Spark, Grit, and Wit are available as starter affinities.');
+    this.name = 'StarterAffinityNotAllowedError';
   }
 }
 
@@ -87,6 +96,10 @@ export function createStarterGrantService(
 ): StarterGrantService {
   return {
     async selectStarter(input) {
+      if (!isStarterAffinity(input.affinity)) {
+        throw new StarterAffinityNotAllowedError();
+      }
+
       const client = await database.connect();
 
       try {
@@ -217,6 +230,14 @@ export function createStarterGrantService(
       }
     },
   };
+}
+
+function isStarterAffinity(
+  affinity: CardAffinity,
+): affinity is StarterAffinity {
+  return starterAffinities.some(
+    (starterAffinity) => starterAffinity === affinity,
+  );
 }
 
 async function loadStarterGrant(

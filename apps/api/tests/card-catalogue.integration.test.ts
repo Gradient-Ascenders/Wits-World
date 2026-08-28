@@ -22,6 +22,11 @@ import {
 } from '../src/cards/starter-grant.js';
 
 import { createCardCollectionService } from '../src/cards/card-collection.js';
+import {
+  canonicalCardIds,
+  canonicalCreatures,
+  canonicalPowerCards,
+} from './fixtures/canonical-card-roster.js';
 
 const PLAYER_ID = '70000000-0000-4000-8000-000000000001';
 const CONCURRENT_PLAYER_ID = '70000000-0000-4000-8000-000000000002';
@@ -99,6 +104,9 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
     expect(migrationResult.applied).toContain(
       '0010_add_card_modifier_metadata.sql',
     );
+    expect(migrationResult.applied).toContain(
+      '0023_rebalance_canonical_card_roster.sql',
+    );
     expect(
       migrationResult.applied.indexOf(
         '0017_resolve_edge_card_definition_name.sql',
@@ -108,6 +116,163 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
         '0018_enforce_card_definition_name_uniqueness.sql',
       ),
     );
+  });
+
+  it('seeds the exact approved canonical IDs, stats, ordered moves, and ordered Power effects', async () => {
+    const definitions = await cataloguePool.query<{
+      affinity: string;
+      category: string;
+      hp: number | null;
+      id: string;
+      name: string;
+      power: number | null;
+      rarity: string;
+    }>(
+      `select id::text, name, category, affinity, rarity, hp, power
+         from public.card_definitions
+        where id = any($1::uuid[])
+        order by id`,
+      [canonicalCardIds],
+    );
+    const moves = await cataloguePool.query<{
+      card_definition_id: string;
+      effect_type: string;
+      effect_value: number;
+      modifier_duration_turns: number | null;
+      modifier_operation: string | null;
+      modifier_stat: string | null;
+      move_type: string;
+      name: string;
+      position: number;
+      power_cost: number;
+    }>(
+      `select card_definition_id::text, position, name, move_type,
+              effect_type, effect_value, modifier_stat,
+              modifier_operation, modifier_duration_turns, power_cost
+         from public.card_moves
+        where card_definition_id = any($1::uuid[])
+        order by card_definition_id, position`,
+      [canonicalCardIds],
+    );
+    const effects = await cataloguePool.query<{
+      card_definition_id: string;
+      effect_type: string;
+      effect_value: number;
+      modifier_duration_turns: number | null;
+      modifier_operation: string | null;
+      modifier_stat: string | null;
+      position: number;
+    }>(
+      `select card_definition_id::text, position, effect_type, effect_value,
+              modifier_stat, modifier_operation, modifier_duration_turns
+         from public.card_effects
+        where card_definition_id = any($1::uuid[])
+        order by card_definition_id, position`,
+      [canonicalCardIds],
+    );
+
+    expect(definitions.rows).toEqual(
+      [
+        ...canonicalCreatures.map((card) => ({
+          id: card.id,
+          name: card.name,
+          category: 'creature',
+          affinity: card.affinity,
+          rarity: card.rarity,
+          hp: card.hp,
+          power: card.power,
+        })),
+        ...canonicalPowerCards.map((card) => ({
+          id: card.id,
+          name: card.name,
+          category: 'power',
+          affinity: card.affinity,
+          rarity: card.rarity,
+          hp: null,
+          power: null,
+        })),
+      ].sort((left, right) => left.id.localeCompare(right.id)),
+    );
+    expect(moves.rows).toEqual(
+      canonicalCreatures
+        .flatMap((card) =>
+          card.moves.map((move, index) => ({
+            card_definition_id: card.id,
+            position: index + 1,
+            name: move[0],
+            move_type: move[1],
+            effect_type: move[2],
+            effect_value: move[3],
+            modifier_stat: move[4],
+            modifier_operation: move[5],
+            modifier_duration_turns: move[6],
+            power_cost: move[7],
+          })),
+        )
+        .sort(
+          (left, right) =>
+            left.card_definition_id.localeCompare(right.card_definition_id) ||
+            left.position - right.position,
+        ),
+    );
+    expect(effects.rows).toEqual(
+      canonicalPowerCards
+        .flatMap((card) =>
+          card.effects.map((effect, index) => ({
+            card_definition_id: card.id,
+            position: index + 1,
+            effect_type: effect[0],
+            effect_value: effect[1],
+            modifier_stat: effect[2],
+            modifier_operation: effect[3],
+            modifier_duration_turns: effect[4],
+          })),
+        )
+        .sort(
+          (left, right) =>
+            left.card_definition_id.localeCompare(right.card_definition_id) ||
+            left.position - right.position,
+        ),
+    );
+  });
+
+  it('keeps all 18 canonical Creatures battle-ready with four ordered, non-null moves', async () => {
+    const result = await cataloguePool.query<{
+      creature_count: number;
+      invalid_count: number;
+    }>(
+      `select
+         count(*)::int as creature_count,
+         count(*) filter (
+           where move_count <> 4
+              or positions <> array[1, 2, 3, 4]::smallint[]
+              or null_effect_count <> 0
+         )::int as invalid_count
+       from (
+         select definition.id,
+                count(move.*)::int as move_count,
+                array_agg(move.position order by move.position) as positions,
+                count(*) filter (where move.effect_value is null)::int
+                  as null_effect_count
+           from public.card_definitions definition
+           left join public.card_moves move
+             on move.card_definition_id = definition.id
+          where definition.id = any($1::uuid[])
+            and definition.category = 'creature'
+          group by definition.id
+       ) creatures`,
+      [canonicalCardIds],
+    );
+
+    expect(result.rows).toEqual([{ creature_count: 18, invalid_count: 0 }]);
+  });
+
+  it('is repeatable without changing canonical definitions or ordered children', async () => {
+    const before = await canonicalCatalogueFingerprint(cataloguePool);
+    await runSeeds(temporaryConfig);
+    const after = await canonicalCatalogueFingerprint(cataloguePool);
+
+    expect(after).toEqual(before);
   });
 
   it('keeps deterministic catalogue seeds free of normalized duplicate names', async () => {
@@ -226,8 +391,8 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
 
       expect(result.rows).toEqual([
         {
-          effect_value: 3,
-          modifier_duration_turns: null,
+          effect_value: 15,
+          modifier_duration_turns: 2,
           modifier_operation: 'multiply',
           modifier_stat: 'damage_multiplier',
         },
@@ -316,7 +481,7 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
         select id::text as id
         from public.card_definitions
         where is_active = true
-          and affinity = 'spirit'
+          and affinity = 'grit'
           and category = 'creature'
           and rarity = 'common'
         order by id
@@ -372,7 +537,7 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
     const pausingStarterService = createStarterGrantService(pausingDatabase);
     const selection = pausingStarterService.selectStarter({
       playerId: MUTATION_RACE_PLAYER_ID,
-      affinity: 'spirit',
+      affinity: 'grit',
     });
 
     await candidateLocksAcquired;
@@ -399,7 +564,7 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
     expect(result.grant.cards).toHaveLength(5);
     expect(
       result.grant.cards.every(
-        (card) => card.affinity === 'spirit' && card.rarity === 'common',
+        (card) => card.affinity === 'grit' && card.rarity === 'common',
       ),
     ).toBe(true);
     expect(
@@ -714,4 +879,39 @@ async function insertCataloguePlayer(
       [playerId, subject],
     );
   });
+}
+
+async function canonicalCatalogueFingerprint(
+  pool: ReturnType<typeof createDatabasePool>,
+) {
+  const result = await pool.query<{ catalogue: unknown }>(
+    `select jsonb_agg(to_jsonb(definition_snapshot) order by id) as catalogue
+       from (
+         select definition.id::text as id,
+                definition.name,
+                definition.category,
+                definition.affinity,
+                definition.rarity,
+                definition.hp,
+                definition.power,
+                definition.description,
+                definition.authoring_status,
+                definition.is_active,
+                coalesce((
+                  select jsonb_agg(to_jsonb(move) - 'card_definition_id' order by move.position)
+                    from public.card_moves move
+                   where move.card_definition_id = definition.id
+                ), '[]'::jsonb) as moves,
+                coalesce((
+                  select jsonb_agg(to_jsonb(effect) - 'card_definition_id' order by effect.position)
+                    from public.card_effects effect
+                   where effect.card_definition_id = definition.id
+                ), '[]'::jsonb) as effects
+           from public.card_definitions definition
+          where definition.id = any($1::uuid[])
+       ) definition_snapshot`,
+    [canonicalCardIds],
+  );
+
+  return result.rows[0]?.catalogue;
 }

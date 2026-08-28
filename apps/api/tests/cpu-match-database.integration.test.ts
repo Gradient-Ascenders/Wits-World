@@ -28,6 +28,10 @@ import {
   type CpuMatchClient,
   type CpuMatchDatabase,
 } from '../src/matches/cpu-match-service.js';
+import {
+  canonicalCreatures,
+  canonicalPowerCards,
+} from './fixtures/canonical-card-roster.js';
 
 const PLAYER_ID = 'b1000000-0000-4000-8000-000000000001';
 const OTHER_PLAYER_ID = 'b1000000-0000-4000-8000-000000000002';
@@ -37,6 +41,58 @@ const DECK_ID = 'b3000000-0000-4000-8000-000000000001';
 const OWNED_CARD_IDS = [1, 2, 3, 4, 5].map(
   (value) => `b4000000-0000-4000-8000-${String(value).padStart(12, '0')}`,
 );
+const EXPECTED_CPU_SNAPSHOTS = [
+  {
+    affinity: 'grit',
+    battle_card_id: 'c2c81cdc-5c15-84d1-6ba9-0271b1d3fdac',
+    card_definition_id: 'c2c81cdc-5c15-84d1-6ba9-0271b1d3fdac',
+    category: 'creature',
+    name: 'Grit Creature 2',
+    owned_card_id: null,
+    position: 1,
+    rarity: 'common',
+  },
+  {
+    affinity: 'spirit',
+    battle_card_id: 'a230fdda-cec0-c127-b4a2-e4dd20660e3a',
+    card_definition_id: 'a230fdda-cec0-c127-b4a2-e4dd20660e3a',
+    category: 'creature',
+    name: 'Spirit Creature 1',
+    owned_card_id: null,
+    position: 2,
+    rarity: 'common',
+  },
+  {
+    affinity: 'mystic',
+    battle_card_id: '0cba869b-d777-11f8-6b8c-c47d4d626558',
+    card_definition_id: '0cba869b-d777-11f8-6b8c-c47d4d626558',
+    category: 'creature',
+    name: 'Mystic Creature 1',
+    owned_card_id: null,
+    position: 3,
+    rarity: 'common',
+  },
+  {
+    affinity: 'grit',
+    battle_card_id: '49e45cbb-f419-bf5c-2868-757646cb8dc9',
+    card_definition_id: '49e45cbb-f419-bf5c-2868-757646cb8dc9',
+    category: 'power',
+    name: 'Grit Power 1',
+    owned_card_id: null,
+    position: 4,
+    rarity: 'common',
+  },
+  {
+    affinity: 'mystic',
+    battle_card_id: '76f057c6-efab-38d9-9bcf-298d5c794f1a',
+    card_definition_id: '76f057c6-efab-38d9-9bcf-298d5c794f1a',
+    category: 'power',
+    name: 'Mystic Power 1',
+    owned_card_id: null,
+    position: 5,
+    rarity: 'common',
+  },
+] as const;
 
 const runIntegrationTests =
   process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';
@@ -205,6 +261,75 @@ describe.skipIf(!runIntegrationTests)(
         [PLAYER_ID],
       );
       expect(activeMatchCount.rows[0]?.count).toBe('1');
+
+      const cpuSnapshots = await pool.query<{
+        affinity: string;
+        battle_card_id: string;
+        card_definition_id: string;
+        category: string;
+        name: string;
+        owned_card_id: string | null;
+        position: number;
+        rarity: string;
+      }>(
+        `select
+           position,
+           owned_card_id::text,
+           card_definition_id::text,
+           snapshot ->> 'name' as name,
+           snapshot ->> 'category' as category,
+           snapshot ->> 'affinity' as affinity,
+           snapshot ->> 'rarity' as rarity,
+           snapshot -> 'battleCard' ->> 'id' as battle_card_id
+         from public.cpu_match_cards
+         where match_id = $1::uuid
+           and side = 'cpu'
+         order by position`,
+        [created.matchId],
+      );
+
+      expect(cpuSnapshots.rows).toEqual(EXPECTED_CPU_SNAPSHOTS);
+
+      const expectedWitCreature = canonicalCreatures.find(
+        (card) => card.name === 'Wit Creature 1',
+      );
+      const newSnapshot = await pool.query<{
+        snapshot: {
+          battleCard: {
+            maxHp: number;
+            maxPower: number;
+            moves: Array<{
+              effects: Array<{ effectValue: number }>;
+              moveType: string;
+              name: string;
+              powerCost: number;
+            }>;
+          };
+          cardDefinitionId: string;
+          name: string;
+        };
+      }>(
+        `select snapshot
+           from public.cpu_match_cards
+          where match_id = $1::uuid
+            and card_definition_id = $2::uuid`,
+        [created.matchId, expectedWitCreature?.id],
+      );
+
+      expect(newSnapshot.rows[0]?.snapshot).toMatchObject({
+        cardDefinitionId: expectedWitCreature?.id,
+        name: expectedWitCreature?.name,
+        battleCard: {
+          maxHp: expectedWitCreature?.hp,
+          maxPower: expectedWitCreature?.power,
+          moves: expectedWitCreature?.moves.map((move) => ({
+            name: move[0],
+            moveType: move[1],
+            powerCost: move[7],
+            effects: [{ effectValue: move[3] }],
+          })),
+        },
+      });
 
       const initialAction = created.state.legalActions[0];
 
@@ -417,6 +542,44 @@ describe.skipIf(!runIntegrationTests)(
         'cpu',
       ]);
       expect(persisted.actions[1]?.result).toMatchObject({ winner: 'cpu' });
+    });
+
+    it('resumes and completes an active legacy match without rewriting its two-move snapshots', async () => {
+      const battle = activeBattle(70, { playerDamage: 10, cpuDamage: 1 });
+      const legacyState = withLegacyTwoMoveCreatures(
+        withLastCreature(battle.state, 'cpu'),
+      );
+      const fixture = await insertActionMatch(pool, legacyState);
+      await insertLegacySnapshotCards(pool, fixture.matchId, legacyState);
+      const snapshotsBefore = await loadCardSnapshots(pool, fixture.matchId);
+      const service = createCpuMatchService(pool, {
+        clock: { now: () => new Date('2026-08-25T12:00:00.000Z') },
+        randomInt: () => 0,
+      });
+
+      const resumed = await service.getActiveMatch(fixture.playerId);
+      expect(
+        resumed.state.player.creatures.every(
+          (creature) => creature.moves.length === 2,
+        ),
+      ).toBe(true);
+
+      const completed = await service.submitAction({
+        playerId: fixture.playerId,
+        matchId: fixture.matchId,
+        submissionId: integrationUuid(304_070),
+        expectedVersion: resumed.version,
+        action: { type: 'use_move', moveId: battle.playerMoveId },
+      });
+
+      expect(completed).toMatchObject({
+        status: 'completed',
+        winner: 'player',
+        state: { phase: 'completed' },
+      });
+      expect(await loadCardSnapshots(pool, fixture.matchId)).toEqual(
+        snapshotsBefore,
+      );
     });
 
     it('returns one committed response to two concurrent identical submissions', async () => {
@@ -914,28 +1077,29 @@ function battleDeck(base: number, damage: number): BattleDeck {
     affinity: 'wit',
     maxHp: 10,
     maxPower: 10,
-    moves: [
-      {
-        id: integrationUuid(base + 10 + index),
-        name: 'Persistence strike',
-        moveType: 'basic',
-        powerCost: 0,
-        effects: [
-          {
-            id: integrationUuid(base + 20 + index),
-            effectType: 'damage',
-            effectValue: damage,
-          },
-        ],
-      },
-    ],
+    moves: [0, 1, 2, 3].map((moveIndex) => ({
+      id: integrationUuid(base + 10 + index * 4 + moveIndex),
+      name:
+        moveIndex === 0
+          ? 'Persistence strike'
+          : `Unavailable fixture move ${moveIndex}`,
+      moveType: 'basic',
+      powerCost: moveIndex === 0 ? 0 : 11,
+      effects: [
+        {
+          id: integrationUuid(base + 30 + index * 4 + moveIndex),
+          effectType: 'damage',
+          effectValue: damage,
+        },
+      ],
+    })),
   }));
   const powerCards: BattlePowerCard[] = [0, 1].map((index) => ({
-    id: integrationUuid(base + 30 + index),
+    id: integrationUuid(base + 50 + index),
     affinity: 'wit',
     effects: [
       {
-        id: integrationUuid(base + 40 + index),
+        id: integrationUuid(base + 60 + index),
         effectType: 'heal',
         effectValue: 1,
       },
@@ -964,6 +1128,29 @@ function withLastCreature(state: BattleState, side: 'cpu' | 'player') {
       },
     },
   } satisfies BattleState;
+}
+
+function withLegacyTwoMoveCreatures(state: BattleState): BattleState {
+  const withLegacyMoves = (
+    participant: BattleState['participants']['player'],
+  ) => ({
+    ...participant,
+    creatures: participant.creatures.map((creature) => ({
+      ...creature,
+      card: {
+        ...creature.card,
+        moves: creature.card.moves.slice(0, 2),
+      },
+    })),
+  });
+
+  return {
+    ...state,
+    participants: {
+      player: withLegacyMoves(state.participants.player),
+      cpu: withLegacyMoves(state.participants.cpu),
+    },
+  };
 }
 
 async function insertActionMatch(
@@ -1003,6 +1190,69 @@ async function insertActionMatch(
   );
 
   return { matchId, playerId };
+}
+
+async function insertLegacySnapshotCards(
+  pool: ReturnType<typeof createDatabasePool>,
+  matchId: string,
+  state: BattleState,
+) {
+  const creatureDefinitionId = canonicalCreatures[0]!.id;
+  const powerDefinitionId = canonicalPowerCards[0]!.id;
+
+  for (const [side, participant] of Object.entries(state.participants)) {
+    const cards = [
+      ...participant.creatures.map((creature) => ({
+        card: creature.card,
+        cardDefinitionId: creatureDefinitionId,
+        category: 'creature',
+      })),
+      ...participant.powerCards.map((powerCard) => ({
+        card: powerCard,
+        cardDefinitionId: powerDefinitionId,
+        category: 'power',
+      })),
+    ];
+
+    for (const [index, card] of cards.entries()) {
+      await pool.query(
+        `insert into public.cpu_match_cards (
+           match_id, side, position, owned_card_id,
+           card_definition_id, snapshot
+         ) values ($1::uuid, $2, $3, $4::uuid, $5::uuid, $6::jsonb)`,
+        [
+          matchId,
+          side,
+          index + 1,
+          side === 'player' ? integrationUuid(800_000 + index + 1) : null,
+          card.cardDefinitionId,
+          JSON.stringify({
+            cardDefinitionId: card.cardDefinitionId,
+            name: `Legacy ${side} card ${index + 1}`,
+            category: card.category,
+            affinity: card.card.affinity,
+            rarity: 'common',
+            battleCard: card.card,
+          }),
+        ],
+      );
+    }
+  }
+}
+
+async function loadCardSnapshots(
+  pool: ReturnType<typeof createDatabasePool>,
+  matchId: string,
+) {
+  const result = await pool.query<{ snapshot: unknown }>(
+    `select snapshot
+       from public.cpu_match_cards
+      where match_id = $1::uuid
+      order by side, position`,
+    [matchId],
+  );
+
+  return result.rows.map((row) => row.snapshot);
 }
 
 async function loadActionPersistence(

@@ -154,7 +154,7 @@ describe('starter selection API', () => {
     expect(response.statusCode).toBe(200);
   });
 
-  it.each(['ember', ''])(
+  it.each(['spirit', 'mystic', 'ember', ''])(
     'rejects invalid affinity input: %s',
     async (affinity) => {
       const response = await authenticatedRequest({ affinity });
