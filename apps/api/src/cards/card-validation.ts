@@ -110,7 +110,14 @@ export function validateCardDefinitionForPublication(
   validateCardDefinition(input);
 
   if (input.category === 'creature') {
-    for (const move of input.moves ?? []) {
+    const moves = input.moves ?? [];
+    if (moves.length !== 4) {
+      throw new InvalidCardDefinitionError(
+        'Creature cards require exactly four moves before publication.',
+      );
+    }
+
+    for (const move of moves) {
       if (move.effectValue === null || move.effectValue === undefined) {
         throw new InvalidCardDefinitionError(
           `Move "${move.name}" requires an effect value before publication.`,

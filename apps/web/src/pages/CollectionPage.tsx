@@ -11,11 +11,11 @@ import {
 
 import {
   CardApiError,
-  cardAffinities,
   listOwnedCards,
   selectStarter,
-  type CardAffinity,
+  starterAffinities,
   type OwnedCard,
+  type StarterAffinity,
   type StarterGrant,
 } from '../api/cards';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
@@ -38,7 +38,8 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
     status: 'loading',
   });
   const [collectionRevision, setCollectionRevision] = useState(0);
-  const [selectedAffinity, setSelectedAffinity] = useState<CardAffinity>('wit');
+  const [selectedAffinity, setSelectedAffinity] =
+    useState<StarterAffinity>('spark');
   const [starterGrant, setStarterGrant] = useState<StarterGrant | null>(null);
   const [starterError, setStarterError] = useState<CardApiError | null>(null);
   const [isSubmittingStarter, setIsSubmittingStarter] = useState(false);
@@ -239,12 +240,12 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
 interface StarterSelectorProps {
   error: CardApiError | null;
   isSubmitting: boolean;
-  onAffinityChange: (affinity: CardAffinity) => void;
+  onAffinityChange: (affinity: StarterAffinity) => void;
   onLoadCollection: () => void;
   onSignIn: () => Promise<void>;
   onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   reauthFailed: boolean;
-  selectedAffinity: CardAffinity;
+  selectedAffinity: StarterAffinity;
 }
 
 function StarterSelector({
@@ -273,7 +274,7 @@ function StarterSelector({
         <fieldset disabled={isSubmitting}>
           <legend>Select one affinity</legend>
           <div className="starter-affinities">
-            {cardAffinities.map((affinity) => (
+            {starterAffinities.map((affinity) => (
               <label className="starter-affinity" key={affinity}>
                 <input
                   checked={selectedAffinity === affinity}
