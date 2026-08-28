@@ -8,6 +8,14 @@ export const cardAffinities = [
 
 export type CardAffinity = (typeof cardAffinities)[number];
 
+export const starterAffinities = [
+  'spark',
+  'grit',
+  'wit',
+] as const satisfies readonly CardAffinity[];
+
+export type StarterAffinity = (typeof starterAffinities)[number];
+
 export const cardCategories = ['creature', 'power'] as const;
 
 export type CardCategory = (typeof cardCategories)[number];

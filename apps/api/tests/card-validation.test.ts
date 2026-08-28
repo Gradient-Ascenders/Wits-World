@@ -178,7 +178,12 @@ describe('card definition validation', () => {
   it('keeps null executable values valid in drafts but rejects them for publication', () => {
     const creatureDraft = {
       ...validCreature,
-      moves: [{ ...validCreature.moves[0]!, effectValue: null }],
+      moves: [1, 2, 3, 4].map((position) => ({
+        ...validCreature.moves[0]!,
+        position,
+        name: `Move ${position}`,
+        effectValue: position === 2 ? null : 10,
+      })),
     };
     const powerDraft = {
       ...validPower,
@@ -188,16 +193,42 @@ describe('card definition validation', () => {
     expect(() => validateCardDefinition(creatureDraft)).not.toThrow();
     expect(() => validateCardDefinition(powerDraft)).not.toThrow();
     expect(() => validateCardDefinitionForPublication(creatureDraft)).toThrow(
-      'Move "Strike" requires an effect value before publication',
+      'Move "Move 2" requires an effect value before publication',
     );
     expect(() => validateCardDefinitionForPublication(powerDraft)).toThrow(
       'Power-card effect 1 requires an effect value before publication',
     );
   });
 
-  it('accepts non-null Creature and Power effects for publication', () => {
+  it.each([0, 1, 2, 3])(
+    'rejects Creature publication with %i moves while keeping the draft legal',
+    (moveCount) => {
+      const definition = {
+        ...validCreature,
+        moves: Array.from({ length: moveCount }, (_, index) => ({
+          ...validCreature.moves[0]!,
+          position: index + 1,
+          name: `Move ${index + 1}`,
+        })),
+      };
+
+      expect(() => validateCardDefinition(definition)).not.toThrow();
+      expect(() => validateCardDefinitionForPublication(definition)).toThrow(
+        'Creature cards require exactly four moves before publication.',
+      );
+    },
+  );
+
+  it('accepts exactly four non-null Creature moves and valid Power effects for publication', () => {
     expect(() =>
-      validateCardDefinitionForPublication(validCreature),
+      validateCardDefinitionForPublication({
+        ...validCreature,
+        moves: [1, 2, 3, 4].map((position) => ({
+          ...validCreature.moves[0]!,
+          position,
+          name: `Move ${position}`,
+        })),
+      }),
     ).not.toThrow();
     expect(() =>
       validateCardDefinitionForPublication(validPower),

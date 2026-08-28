@@ -521,6 +521,14 @@ describe.skipIf(!runIntegrationTests)(
       await expect(
         service.publishCard(AUTHOR_ONE_ID, cardId),
       ).rejects.toBeInstanceOf(AuthorCardNotReadyError);
+      await expect(
+        pool.query(
+          `update public.card_definitions
+              set authoring_status = 'published', is_active = true
+            where id = $1::uuid`,
+          [cardId],
+        ),
+      ).rejects.toMatchObject({ code: '23514' });
 
       const persisted = await pool.query<{
         authoring_status: string;
@@ -592,6 +600,22 @@ describe.skipIf(!runIntegrationTests)(
       ).rejects.toThrow(
         'Power-card effect 1 requires an effect value before publication',
       );
+      await expect(
+        pool.query(
+          `update public.card_definitions
+              set authoring_status = 'published', is_active = true
+            where id = $1::uuid`,
+          [creature.id],
+        ),
+      ).rejects.toMatchObject({ code: '23514' });
+      await expect(
+        pool.query(
+          `update public.card_definitions
+              set authoring_status = 'published', is_active = true
+            where id = $1::uuid`,
+          [power.id],
+        ),
+      ).rejects.toMatchObject({ code: '23514' });
 
       const persisted = await pool.query<{
         authoring_status: string;

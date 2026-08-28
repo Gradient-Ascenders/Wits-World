@@ -216,18 +216,12 @@ prevents an existing Creature from being changed into a Power card, or vice
 versa, while its child rows remain.
 
 Draft authoring continues to permit a null effect value so incomplete content
-can be saved. The Author publication service rejects a Creature move or
-Power-card effect whose executable value is null before it can set
-`authoring_status = 'published'` and `is_active = true`. CPU match setup retains
-the independent rules-engine validation as a final defensive boundary.
-
-This lifecycle rule is enforced at the authoritative API/service publication
-boundary. PostgreSQL still permits a privileged direct SQL writer to perform a
-coordinated status update that bypasses the service because safe database-only
-enforcement would require a cross-table lifecycle trigger while drafts remain
-nullable. This change deliberately does not add that trigger or rewrite valid
-published definitions; operational publication must continue through the
-Author service.
+can be saved. The Author publication service and the database publication
+transition reject a Creature move or Power-card effect whose executable value
+is null before setting `authoring_status = 'published'` and `is_active = true`.
+The same database transition requires exactly four ordered moves for a
+Creature. CPU match setup retains independent rules-engine validation as a
+final defensive boundary.
 
 A Creature definition may have at most four ordered `card_moves`. Drafts may be
 incomplete with zero through four valid moves. Moving a Creature to `published`
@@ -525,22 +519,22 @@ uniqueness, Player Name evolution, and the one-through-four move-position
 constraint. The database integration suite discovers and applies the complete
 ordered migration directory to an empty PostgreSQL/PostGIS database and checks
 that a second run is a no-op. The
-`0002_basic_card_catalogue.sql` seed is repeatable and provides deterministic
-demonstration cards for all starter affinities plus non-Common examples for
-catalogue/reward testing. The seed does not claim to be final production card
-artwork or balance.
+`0002_basic_card_catalogue.sql` seed is repeatable and provides the approved
+canonical Basic card roster for all affinities plus the approved Spark
+high-rarity definitions. Card artwork remains separate from this gameplay
+content specification.
 
 ## Card-invariant migration blockers
 
 :::note[Status update — 25 August 2026]
 
 The dated audit below is preserved as evidence. Migrations `0017` and `0018`
-have resolved the approved `Edge` collision and enforce globally unique
-`lower(btrim(name))` values. Migration `0019_limit_creature_move_positions.sql`
-limits stored positions to `1` through `4`; the API accepts zero-to-four moves
-for drafts and requires exactly four for publication. The 18 audited published
-two-move Creature definitions still require approved content/balance
-remediation, so strict database publication enforcement remains blocked.
+resolved the approved `Edge` collision, and migration
+`0019_limit_creature_move_positions.sql` limited stored Creature move positions.
+The approved canonical roster now resolves the remaining 18 two-move
+definitions through a bounded forward migration that preserves their stable
+IDs and historical match snapshots. Strict database publication and gameplay
+validation can therefore require exactly four executable Creature moves.
 
 :::
 
@@ -602,9 +596,9 @@ treatment has been reviewed.
 
 ## Historical implementation sequence
 
-The sequence below is retained as the safe plan used after the audit. Items 1,
-2, 3, and 5 are implemented and covered by repository tests. Item 4 remains
-blocked on approved Creature move content and balance review.
+The sequence below is retained as the safe plan used after the audit. All five
+items are now implemented and covered by repository tests; the approved roster
+unblocked the content migration and strict four-move enforcement.
 
 Use focused branches in this order so constraints never encounter data known to
 violate them:

@@ -44,6 +44,76 @@ describe('CPU match service', () => {
     expect(databaseError).not.toBeInstanceOf(CpuMatchDeckError);
   });
 
+  it('rolls back instead of substituting catalogue cards when a curated CPU card is unavailable', async () => {
+    const expectedCpuDefinitionIds = [
+      'c2c81cdc-5c15-84d1-6ba9-0271b1d3fdac',
+      'a230fdda-cec0-c127-b4a2-e4dd20660e3a',
+      '0cba869b-d777-11f8-6b8c-c47d4d626558',
+      '49e45cbb-f419-bf5c-2868-757646cb8dc9',
+      '76f057c6-efab-38d9-9bcf-298d5c794f1a',
+    ];
+    const query = vi.fn(async (statement: string, values?: unknown[]) => {
+      if (statement === 'begin' || statement === 'rollback') {
+        return { rows: [] };
+      }
+
+      if (statement.includes('from public.player_deck_selections')) {
+        return { rows: [{ deck_id: 'selected-deck' }] };
+      }
+
+      if (statement.includes('from public.player_deck_cards membership')) {
+        return {
+          rows: [1, 2, 3, 4, 5].map((position) => ({
+            position,
+            owned_card_id: `player-owned-${position}`,
+            card_definition_id: `player-definition-${position}`,
+            name: `Player card ${position}`,
+            category: position <= 3 ? 'creature' : 'power',
+            affinity: 'wit',
+            rarity: 'common',
+            hp: position <= 3 ? 100 : null,
+            power: position <= 3 ? 10 : null,
+            is_active: true,
+          })),
+        };
+      }
+
+      if (statement.includes('with required_card(position')) {
+        expect(values).toEqual([expectedCpuDefinitionIds]);
+        return {
+          rows: expectedCpuDefinitionIds.slice(0, 4).map((id, index) => ({
+            position: index + 1,
+            card_definition_id: id,
+            name: `Curated CPU card ${index + 1}`,
+            category: index < 3 ? 'creature' : 'power',
+            affinity: 'grit',
+            rarity: 'common',
+            hp: index < 3 ? 100 : null,
+            power: index < 3 ? 10 : null,
+            is_active: true,
+          })),
+        };
+      }
+
+      throw new Error(`Unexpected SQL: ${statement}`);
+    });
+    const service = createCpuMatchService(fakeDatabase(query));
+
+    await expect(
+      service.createMatch({
+        playerId: PLAYER_ID,
+        deckId: 'a6000000-0000-4000-8000-000000000001',
+      }),
+    ).rejects.toThrow('required curated CPU deck is not available');
+
+    expect(query).toHaveBeenCalledWith('rollback');
+    expect(
+      query.mock.calls.some(([statement]) =>
+        statement.includes('insert into public.cpu_matches'),
+      ),
+    ).toBe(false);
+  });
+
   it('applies the player action and server CPU action in one transaction', async () => {
     const state = createBattleState(deck('player'), deck('cpu'));
     const query = vi.fn(async (...args: [string, unknown[]?]) => {
@@ -358,7 +428,9 @@ describe('CPU match service', () => {
 
     expect(response.state.player.creatures[0]).toMatchObject({
       name: 'Campus Scholar',
-      moves: [expect.objectContaining({ powerCost: 0 })],
+      moves: expect.arrayContaining([
+        expect.objectContaining({ powerCost: 0 }),
+      ]),
       activeModifiers: [
         { percentage: 10, remainingTurns: 2 },
         { percentage: 10, remainingTurns: null },
@@ -606,21 +678,19 @@ function deck(prefix: 'player' | 'cpu'): BattleDeck {
     affinity: 'wit',
     maxHp: 10,
     maxPower: 10,
-    moves: [
-      {
-        id: `${prefix}-move-${index}`,
-        name: 'Strike',
-        moveType: 'basic',
-        powerCost: 0,
-        effects: [
-          {
-            id: `${prefix}-effect-${index}`,
-            effectType: 'damage',
-            effectValue: 1,
-          },
-        ],
-      },
-    ],
+    moves: [1, 2, 3, 4].map((position) => ({
+      id: `${prefix}-move-${index}-${position}`,
+      name: position === 1 ? 'Strike' : `Fixture move ${position}`,
+      moveType: 'basic',
+      powerCost: position === 1 ? 0 : 11,
+      effects: [
+        {
+          id: `${prefix}-effect-${index}-${position}`,
+          effectType: 'damage',
+          effectValue: 1,
+        },
+      ],
+    })),
   }));
 
   const powerCards: BattlePowerCard[] = [1, 2].map((index) => ({

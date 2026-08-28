@@ -3,14 +3,32 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   createStarterGrantService,
+  StarterAffinityNotAllowedError,
   type StarterGrantDatabase,
 } from '../src/cards/starter-grant.js';
+import type { StarterAffinity } from '../src/cards/card-types.js';
 
 const PLAYER_ID = uuid(1);
 const GRANT_ID = uuid(2);
 const GRANTED_AT = new Date('2026-08-16T08:00:00.000Z');
 
 describe('starter grant service invariants', () => {
+  it.each(['spirit', 'mystic'] as const)(
+    'rejects the progression-only %s affinity before opening a transaction',
+    async (affinity) => {
+      const connect = vi.fn<StarterGrantDatabase['connect']>();
+      const service = createStarterGrantService({ connect });
+
+      await expect(
+        service.selectStarter({
+          affinity: affinity as StarterAffinity,
+          playerId: PLAYER_ID,
+        }),
+      ).rejects.toBeInstanceOf(StarterAffinityNotAllowedError);
+      expect(connect).not.toHaveBeenCalled();
+    },
+  );
+
   it('rolls back rather than committing a malformed persisted composition', async () => {
     const creatureIds = [uuid(101), uuid(102), uuid(103)];
     const powerIds = [uuid(104), uuid(105)];

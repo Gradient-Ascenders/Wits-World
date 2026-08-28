@@ -48,12 +48,24 @@ function makeCreature(
   maxPower = 10,
   moves: readonly BattleMove[] = [makeDamageMove(`${id}-move`)],
 ): BattleCreatureCard {
+  const battleReadyMoves = [
+    ...moves,
+    ...Array.from({ length: Math.max(0, 4 - moves.length) }, (_, index) =>
+      makeDamageMove(
+        `${id}-fixture-move-${index + 1}`,
+        1,
+        'basic',
+        maxPower + 1,
+      ),
+    ),
+  ];
+
   return {
     id,
     affinity,
     maxHp,
     maxPower,
-    moves,
+    moves: battleReadyMoves,
   };
 }
 
@@ -714,6 +726,18 @@ describe('Basic battle rules', () => {
         makeDeck('cpu'),
       ),
     ).toThrow('must define an effect value before battle use');
+    const completeDeck = makeDeck('incomplete-moves');
+    const incompleteMoves = {
+      ...completeDeck,
+      creatureCards: completeDeck.creatureCards.map((creature, index) =>
+        index === 0
+          ? { ...creature, moves: creature.moves.slice(0, 3) }
+          : creature,
+      ),
+    };
+    expect(() => createBattleState(incompleteMoves, makeDeck('cpu'))).toThrow(
+      'must define exactly four moves before battle use',
+    );
     expect(() =>
       createBattleState(
         {

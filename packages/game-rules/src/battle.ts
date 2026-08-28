@@ -289,9 +289,9 @@ function validateCreatureCard(card: BattleCreatureCard): void {
   assertPositiveInteger(card.maxHp, 'Creature maximum HP');
   assertNonNegativeInteger(card.maxPower, 'Creature maximum Power');
 
-  if (card.moves.length === 0) {
+  if (card.moves.length !== 4) {
     throw new InvalidBattleSetupError(
-      `Creature card ${card.id} must define at least one move.`,
+      `Creature card ${card.id} must define exactly four moves before battle use.`,
     );
   }
 
