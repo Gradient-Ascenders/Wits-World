@@ -44,6 +44,16 @@ const event = {
   title: 'Great Hall Quest',
 } as const;
 
+const upcomingEvent = {
+  ...event,
+  availability: 'upcoming',
+  description: 'Discover the library collections.',
+  id: 'event-test-2',
+  latitude: -26.1914,
+  longitude: 28.0311,
+  title: 'Wartenweiler Library Quest',
+} as const;
+
 const point: MapPoint = {
   availability: 'active',
   id: event.id,
@@ -61,6 +71,7 @@ const explorationStyles = readFileSync(
 
 function createController(): MapController {
   return {
+    focusPoint: vi.fn(() => true),
     onError: vi.fn(),
     onLoad(listener) {
       listener();
@@ -83,6 +94,7 @@ function explorerProps(mapFactory: MapFactory) {
     locationState: 'permission-required' as const,
     mapConfiguration: configuration,
     mapFactory,
+    onClearEventSelection: vi.fn(),
     onEnableLocation: vi.fn(),
     onRetry: vi.fn(),
     onRetryEligibility: vi.fn(),
@@ -108,7 +120,7 @@ describe('map-first campus exploration', () => {
     const mapFactory: MapFactory = vi.fn(async () => controller);
     const onSelectEvent = vi.fn();
 
-    render(
+    const view = render(
       <CampusExplorer
         {...explorerProps(mapFactory)}
         onSelectEvent={onSelectEvent}
@@ -130,6 +142,80 @@ describe('map-first campus exploration', () => {
     await user.click(screen.getByRole('button', { name: /^Events/ }));
     await user.click(screen.getByRole('button', { name: /View on map/i }));
     expect(onSelectEvent).toHaveBeenCalledWith(event.id);
+    view.rerender(
+      <CampusExplorer
+        {...explorerProps(mapFactory)}
+        onSelectEvent={onSelectEvent}
+        selectedEventId={event.id}
+      />,
+    );
+    await waitFor(() =>
+      expect(controller.focusPoint).toHaveBeenCalledWith(point),
+    );
+  });
+
+  it('keeps search and status filters synchronized with visible markers', async () => {
+    const user = userEvent.setup();
+    const controller = createController();
+    const mapFactory: MapFactory = vi.fn(async () => controller);
+
+    render(
+      <CampusExplorer
+        {...explorerProps(mapFactory)}
+        discovery={{ events: [event, upcomingEvent], status: 'ready' }}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /^Events/ }));
+    const search = screen.getByRole('searchbox', {
+      name: 'Search campus events',
+    });
+    await user.type(search, 'library');
+
+    expect(screen.queryByText(event.title)).not.toBeInTheDocument();
+    expect(screen.getByText(upcomingEvent.title)).toBeVisible();
+    await waitFor(() =>
+      expect(controller.setPoints).toHaveBeenLastCalledWith([
+        expect.objectContaining({ id: upcomingEvent.id }),
+      ]),
+    );
+
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Filter events by status' }),
+      'active',
+    );
+    expect(screen.getByText('No events match these filters.')).toBeVisible();
+    await waitFor(() =>
+      expect(controller.setPoints).toHaveBeenLastCalledWith([]),
+    );
+  });
+
+  it('clears a selected event deliberately when filters exclude it', async () => {
+    const user = userEvent.setup();
+    const controller = createController();
+    const mapFactory: MapFactory = vi.fn(async () => controller);
+    const onClearEventSelection = vi.fn();
+
+    render(
+      <CampusExplorer
+        {...explorerProps(mapFactory)}
+        discovery={{ events: [event, upcomingEvent], status: 'ready' }}
+        onClearEventSelection={onClearEventSelection}
+        selectedEventId={event.id}
+      />,
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'All events' }));
+    const search = screen.getByRole('searchbox', {
+      name: 'Search campus events',
+    });
+    await user.type(search, 'library');
+
+    await waitFor(() => expect(onClearEventSelection).toHaveBeenCalledOnce());
+    expect(search).toHaveFocus();
+    await waitFor(() =>
+      expect(controller.setSelectedPoint).toHaveBeenLastCalledWith(null),
+    );
   });
 
   it('uses one selected event for details and the geographic radius', async () => {

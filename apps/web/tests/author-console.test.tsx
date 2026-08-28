@@ -83,21 +83,22 @@ describe('Basic author console', () => {
         { timeout: 8_000 },
       ),
     ).toBeVisible();
-    expect(screen.getByRole('link', { name: 'Author' })).toHaveAttribute(
-      'aria-current',
-      'page',
-    );
-    const playerNavigation = screen.getByRole('navigation', {
+    for (const authorLink of screen.getAllByRole('link', { name: 'Author' })) {
+      expect(authorLink).toHaveAttribute('aria-current', 'page');
+    }
+    const playerNavigations = screen.getAllByRole('navigation', {
       name: 'Player',
     });
-    expect(
-      within(playerNavigation)
-        .getAllByRole('link')
-        .map((link) => link.textContent),
-    ).toEqual(['Explore', 'Collection', 'Decks', 'Battles', 'Author']);
-    expect(
-      within(playerNavigation).queryByRole('link', { name: 'Home' }),
-    ).not.toBeInTheDocument();
+    for (const playerNavigation of playerNavigations) {
+      expect(
+        within(playerNavigation)
+          .getAllByRole('link')
+          .map((link) => link.textContent),
+      ).toEqual(['Explore', 'Collection', 'Decks', 'Battles', 'Author']);
+      expect(
+        within(playerNavigation).queryByRole('link', { name: 'Home' }),
+      ).not.toBeInTheDocument();
+    }
     expect(
       await screen.findByRole('button', { name: /Great Hall history/ }),
     ).toBeVisible();

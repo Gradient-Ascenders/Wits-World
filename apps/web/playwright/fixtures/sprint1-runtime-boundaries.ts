@@ -45,6 +45,10 @@ export const mapFactory: MapFactory = async (
     throw new Error('Deterministic map creation was cancelled.');
   }
 
+  if (new URLSearchParams(window.location.search).has('map-failure')) {
+    throw new Error('Deterministic map failure requested.');
+  }
+
   const instanceId = `deterministic-${++mapInstance}`;
   container.dataset.mapProvider = instanceId;
   container.classList.add('deterministic-map');
@@ -52,6 +56,7 @@ export const mapFactory: MapFactory = async (
     'radial-gradient(circle at 48% 42%, rgb(42 107 255 / 30%), transparent 22%), linear-gradient(145deg, #18304f, #071426 70%)';
   let points = initialPoints;
   let selectedPoint: MapPoint | null = null;
+  let focusedPointId: string | null = null;
   let pointSelectionListener: ((pointId: string) => void) | null = null;
   let followStateListener: ((following: boolean) => void) | null = null;
   let hasLocation = false;
@@ -114,6 +119,7 @@ export const mapFactory: MapFactory = async (
       const button = document.createElement('button');
       const availability = point.availability ?? 'active';
       button.type = 'button';
+      button.dataset.eventMarkerId = point.id;
       button.className = [
         'event-marker',
         `event-marker--${availability}`,
@@ -131,9 +137,9 @@ export const mapFactory: MapFactory = async (
         String(selectedPoint?.id === point.id),
       );
       Object.assign(button.style, {
-        left: `${42 + index * 12}%`,
+        left: focusedPointId === point.id ? '48%' : `${42 + index * 12}%`,
         position: 'absolute',
-        top: `${36 + (index % 2) * 13}%`,
+        top: focusedPointId === point.id ? '42%' : `${36 + (index % 2) * 13}%`,
       });
       const markerBody = document.createElement('span');
       markerBody.className = 'event-marker__body';
@@ -142,7 +148,11 @@ export const mapFactory: MapFactory = async (
       markerGlyph.className = 'event-marker__glyph';
       markerGlyph.textContent = '✦';
       markerBody.append(markerGlyph);
-      button.append(markerBody);
+      const markerLabel = document.createElement('span');
+      markerLabel.className = 'event-marker__label';
+      markerLabel.setAttribute('aria-hidden', 'true');
+      markerLabel.textContent = point.label;
+      button.append(markerBody, markerLabel);
       button.addEventListener('click', () =>
         pointSelectionListener?.(point.id),
       );
@@ -162,6 +172,17 @@ export const mapFactory: MapFactory = async (
   container.addEventListener('pointerdown', stopFollowingOnPan);
 
   const controller: MapController = {
+    focusPoint: (point) => {
+      focusedPointId = point.id;
+      following = false;
+      container.dataset.mapFollowing = 'false';
+      container.dataset.mapFocusedEvent = point.id;
+      container.dataset.mapCameraCenter = `${point.longitude},${point.latitude}`;
+      container.dataset.mapCameraZoom = '17';
+      followStateListener?.(false);
+      renderMarkers();
+      return true;
+    },
     onError: () => undefined,
     onLoad: (listener) => queueMicrotask(listener),
     recenterReportedLocation: () => {
@@ -182,6 +203,9 @@ export const mapFactory: MapFactory = async (
       if (container.dataset.mapProvider === instanceId) {
         delete container.dataset.mapProvider;
         delete container.dataset.mapFollowing;
+        delete container.dataset.mapFocusedEvent;
+        delete container.dataset.mapCameraCenter;
+        delete container.dataset.mapCameraZoom;
       }
     },
     setFollowStateListener: (listener) => {

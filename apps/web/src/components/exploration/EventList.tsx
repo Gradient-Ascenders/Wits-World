@@ -101,20 +101,28 @@ export function EventList({
     <ul aria-label="Campus events" className="event-list__items">
       {discovery.events.map((event) => {
         const state = eligibility[event.id] ?? { status: 'idle' as const };
+        const selected = selectedEventId === event.id;
         return (
-          <li className="event-summary" key={event.id}>
+          <li
+            className={`event-summary${selected ? ' event-summary--selected' : ''}`}
+            key={event.id}
+          >
             <div className="event-summary__copy">
               <strong>{event.title}</strong>
-              <span>{availabilityLabels[event.availability]}</span>
+              <span
+                className={`event-summary__availability event-summary__availability--${event.availability}`}
+              >
+                {availabilityLabels[event.availability]}
+              </span>
               <KnownEligibility state={state} />
             </div>
             <button
-              aria-pressed={selectedEventId === event.id}
+              aria-pressed={selected}
               className="button button--quiet event-summary__action"
               onClick={() => onSelect(event.id)}
               type="button"
             >
-              {selectedEventId === event.id ? 'Selected' : 'View on map'}
+              {selected ? 'Selected' : 'View on map'}
               <span className="sr-only">: {event.title}</span>
             </button>
           </li>

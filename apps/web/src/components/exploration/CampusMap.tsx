@@ -13,6 +13,7 @@ interface CampusMapProps {
   accessibleLabel?: string;
   configuration: MapConfiguration;
   errorDescription?: string;
+  focusPointRequest?: number;
   mapFactory?: MapFactory;
   onCoordinateSelect?: (coordinate: MapCoordinate) => void;
   onFollowStateChange?: (following: boolean) => void;
@@ -31,6 +32,7 @@ export function CampusMap({
   accessibleLabel = 'Interactive campus map using Mapbox Standard 3D. Event information is also available in the nearby events list.',
   configuration,
   errorDescription = 'Use the nearby events list to continue exploring.',
+  focusPointRequest = 0,
   mapFactory = createMapboxMap,
   onCoordinateSelect,
   onFollowStateChange,
@@ -46,11 +48,13 @@ export function CampusMap({
   const onFollowStateChangeRef = useRef(onFollowStateChange);
   const onPointSelectRef = useRef(onPointSelect);
   const pointsRef = useRef(points);
+  const focusPointRequestRef = useRef(focusPointRequest);
   const reportedLocationRef = useRef<MapCoordinate | null>(reportedLocation);
   const selectedPointRef = useRef<MapPoint | null>(selectedPoint);
   const [status, setStatus] = useState<MapStatus>('loading');
 
   pointsRef.current = points;
+  focusPointRequestRef.current = focusPointRequest;
   onCoordinateSelectRef.current = onCoordinateSelect;
   onFollowStateChangeRef.current = onFollowStateChange;
   onPointSelectRef.current = onPointSelect;
@@ -68,6 +72,12 @@ export function CampusMap({
   useEffect(() => {
     controllerRef.current?.setSelectedPoint?.(selectedPoint);
   }, [selectedPoint]);
+
+  useEffect(() => {
+    if (focusPointRequest > 0 && selectedPoint !== null) {
+      controllerRef.current?.focusPoint(selectedPoint);
+    }
+  }, [focusPointRequest, selectedPoint]);
 
   useEffect(() => {
     if (recenterRequest > 0) {
@@ -127,6 +137,12 @@ export function CampusMap({
         map.setPoints(pointsRef.current);
         map.setReportedLocation(reportedLocationRef.current);
         map.setSelectedPoint?.(selectedPointRef.current);
+        if (
+          focusPointRequestRef.current > 0 &&
+          selectedPointRef.current !== null
+        ) {
+          map.focusPoint(selectedPointRef.current);
+        }
         map.setCoordinateSelectionListener?.(
           onCoordinateSelectRef.current ?? null,
         );

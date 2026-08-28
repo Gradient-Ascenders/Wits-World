@@ -79,6 +79,7 @@ export interface MapConfiguration {
 }
 
 export interface MapController {
+  focusPoint: (point: MapPoint) => boolean;
   onError: (listener: () => void) => void;
   onFatalError?: (listener: () => void) => void;
   onLoad: (listener: () => void) => void;
@@ -117,6 +118,7 @@ const EVENT_RADIUS_FILL_LAYER_ID = 'wits-selected-event-radius-fill';
 const EVENT_RADIUS_LINE_LAYER_ID = 'wits-selected-event-radius-line';
 const EARTH_RADIUS_METRES = 6_371_008.8;
 const FOLLOW_MOVEMENT_METRES = 5;
+const EVENT_FOCUS_ZOOM = 17;
 const PLAYER_FOCUS_ZOOM = 17;
 
 export function createGeodesicCircle(
@@ -436,6 +438,20 @@ function createController(
     return true;
   };
 
+  const focusPoint = (point: MapPoint): boolean => {
+    if (!Number.isFinite(point.latitude) || !Number.isFinite(point.longitude)) {
+      return false;
+    }
+
+    setFollowing(false);
+    map.easeTo({
+      center: [point.longitude, point.latitude],
+      duration: 650,
+      zoom: Math.max(map.getZoom(), EVENT_FOCUS_ZOOM),
+    });
+    return true;
+  };
+
   const handleDeliberatePan = (): void => {
     setFollowing(false);
   };
@@ -499,6 +515,7 @@ function createController(
   map.on('dragstart', handleDeliberatePan);
 
   return {
+    focusPoint,
     onError(listener) {
       map.on('error', listener);
     },
@@ -654,7 +671,11 @@ export const createMapboxMap: MapFactory = async (
         markerGlyph.className = 'event-marker__glyph';
         markerGlyph.textContent = '✦';
         markerBody.append(markerGlyph);
-        button.append(markerBody);
+        const markerLabel = document.createElement('span');
+        markerLabel.className = 'event-marker__label';
+        markerLabel.setAttribute('aria-hidden', 'true');
+        markerLabel.textContent = point.label;
+        button.append(markerBody, markerLabel);
         button.addEventListener('click', (event) => {
           event.stopPropagation();
           markerInteraction.listener?.(point.id);
@@ -688,6 +709,10 @@ export const createMapboxMap: MapFactory = async (
       );
       record.button.setAttribute('aria-pressed', String(selected));
       record.button.title = point.label;
+      const markerLabel = record.button.querySelector('.event-marker__label');
+      if (markerLabel !== null) {
+        markerLabel.textContent = point.label;
+      }
     }
   };
 
@@ -727,7 +752,7 @@ export const createMapboxMap: MapFactory = async (
         id: EVENT_RADIUS_FILL_LAYER_ID,
         paint: {
           'fill-color': '#2a6bff',
-          'fill-opacity': 0.15,
+          'fill-opacity': 0.2,
         },
         slot: 'middle',
         source: EVENT_RADIUS_SOURCE_ID,
@@ -742,7 +767,7 @@ export const createMapboxMap: MapFactory = async (
           'line-color': '#d4af37',
           'line-emissive-strength': 0.75,
           'line-opacity': 0.9,
-          'line-width': 2,
+          'line-width': 2.5,
         },
         slot: 'middle',
         source: EVENT_RADIUS_SOURCE_ID,

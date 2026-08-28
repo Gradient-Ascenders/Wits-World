@@ -1,9 +1,46 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type Route } from '@playwright/test';
+
+import { buildStarterCards, buildUuid } from '../tests/fixtures/cards';
 
 const EVENT_TITLE = 'Sprint 1 Demo - Wits Great Hall';
 const EVENT_ID = '00000000-0000-4000-8000-000000000018';
 const API_BASE_URL = 'http://127.0.0.1:3002/api/v1';
 const ACCESS_TOKEN = 'wits-world-sprint1-e2e-obvious-local-test-token';
+const EXPLORE_EVENTS = [
+  {
+    availability: 'active',
+    description: 'Explore the Great Hall and its role in campus life.',
+    endsAt: '2026-09-30T18:00:00.000+02:00',
+    eventId: buildUuid(961),
+    latitude: -26.19205,
+    longitude: 28.03038,
+    radiusMetres: 75,
+    startsAt: '2026-08-01T08:00:00.000+02:00',
+    title: 'Great Hall Quest',
+  },
+  {
+    availability: 'upcoming',
+    description: 'Discover the Wartenweiler Library collections.',
+    endsAt: '2026-10-20T17:00:00.000+02:00',
+    eventId: buildUuid(962),
+    latitude: -26.1914,
+    longitude: 28.0311,
+    radiusMetres: 60,
+    startsAt: '2026-10-01T08:00:00.000+02:00',
+    title: 'Wartenweiler Library Quest',
+  },
+  {
+    availability: 'ended',
+    description: 'A completed campus science discovery event.',
+    endsAt: '2026-07-31T17:00:00.000+02:00',
+    eventId: buildUuid(963),
+    latitude: -26.1908,
+    longitude: 28.0297,
+    radiusMetres: 50,
+    startsAt: '2026-07-01T08:00:00.000+02:00',
+    title: 'Science Stadium Trail',
+  },
+] as const;
 
 const correctAnswers: Record<string, string> = {
   'On which Wits campus is the Great Hall located?': 'East Campus',
@@ -359,6 +396,412 @@ test('completes the canonical 21-step Basic journey against the real API and tes
   });
 });
 
+test('keeps the authenticated shared application shell responsive and accessible', async ({
+  page,
+}) => {
+  const consoleErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  await page.route('**/api/v1/**', async (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+
+    if (pathname.endsWith('/auth/me')) {
+      await json(route, {
+        id: buildUuid(950),
+        lifecycleStatus: 'active',
+        playerName: 'shell_browser_player',
+        playerNameSetupRequired: false,
+        requestId: 'shell-browser-player',
+        role: 'author',
+      });
+      return;
+    }
+    if (pathname.endsWith('/events')) {
+      await json(route, { events: [], requestId: 'shell-browser-events' });
+      return;
+    }
+    if (pathname.endsWith('/cards/collection')) {
+      await json(route, {
+        cards: buildStarterCards('wit'),
+        requestId: 'shell-browser-collection',
+      });
+      return;
+    }
+    if (pathname.endsWith('/decks')) {
+      await json(route, { decks: [], requestId: 'shell-browser-decks' });
+      return;
+    }
+    if (pathname.endsWith('/matches/history')) {
+      await json(route, { matches: [], requestId: 'shell-browser-history' });
+      return;
+    }
+    if (pathname.endsWith('/matches/cpu')) {
+      await json(
+        route,
+        {
+          code: 'CPU_MATCH_NOT_FOUND',
+          detail: 'No active CPU match was found.',
+          requestId: 'shell-browser-no-match',
+          status: 404,
+          title: 'CPU match not found',
+          type: 'about:blank',
+        },
+        404,
+      );
+      return;
+    }
+
+    await json(
+      route,
+      {
+        code: 'NOT_FOUND',
+        detail: 'The deterministic shell route was not found.',
+        requestId: 'shell-browser-not-found',
+        status: 404,
+        title: 'Not found',
+        type: 'about:blank',
+      },
+      404,
+    );
+  });
+
+  const routes = [
+    { activeLabel: 'Explore', path: '/explore' },
+    { activeLabel: 'Collection', path: '/collection' },
+    { activeLabel: 'Decks', path: '/decks' },
+    { activeLabel: 'Battles', path: '/matches' },
+    { activeLabel: 'Battles', path: '/matches/history' },
+  ];
+
+  for (const viewport of [
+    { height: 844, width: 390 },
+    { height: 1024, width: 768 },
+    { height: 800, width: 1280 },
+  ]) {
+    await page.setViewportSize(viewport);
+
+    for (const route of routes) {
+      await page.goto(route.path);
+      await expect(page.getByRole('button', { name: 'Account' })).toBeVisible();
+      await expectNoHorizontalOverflow(page);
+
+      const visibleNavigation = page.locator('.primary-navigation:visible');
+      await expect(visibleNavigation).toHaveCount(1);
+      await expect(
+        visibleNavigation.getByRole('link', { name: route.activeLabel }),
+      ).toHaveAttribute('aria-current', 'page');
+      await expect(
+        visibleNavigation.locator('.primary-navigation__icon'),
+      ).toHaveCount(5);
+    }
+
+    await page.goto('/explore');
+    await expect(
+      page.getByRole('heading', { name: 'Explore the campus map' }),
+    ).toBeAttached();
+
+    const layout = await page.evaluate(() => {
+      const header = document.querySelector<HTMLElement>('.site-header');
+      const main = document.querySelector<HTMLElement>('.main-content');
+      const mobileNavigation = document.querySelector<HTMLElement>(
+        '.primary-navigation--mobile',
+      );
+      const desktopNavigation = document.querySelector<HTMLElement>(
+        '.primary-navigation--desktop',
+      );
+      const brand = document.querySelector<HTMLElement>('.product-name');
+      const account = document.querySelector<HTMLElement>('.account-control');
+      if (
+        !header ||
+        !main ||
+        !mobileNavigation ||
+        !desktopNavigation ||
+        !brand ||
+        !account
+      ) {
+        throw new Error('Expected the authenticated application shell.');
+      }
+
+      const headerBox = header.getBoundingClientRect();
+      const mainBox = main.getBoundingClientRect();
+      const mobileBox = mobileNavigation.getBoundingClientRect();
+      const desktopBox = desktopNavigation.getBoundingClientRect();
+      const brandBox = brand.getBoundingClientRect();
+      const accountBox = account.getBoundingClientRect();
+
+      return {
+        accountRight: accountBox.right,
+        brandLeft: brandBox.left,
+        desktopDisplay: getComputedStyle(desktopNavigation).display,
+        desktopMiddle: desktopBox.left + desktopBox.width / 2,
+        headerHeight: headerBox.height,
+        mainBottom: mainBox.bottom,
+        mainTop: mainBox.top,
+        mobileBottom: mobileBox.bottom,
+        mobileDisplay: getComputedStyle(mobileNavigation).display,
+        mobilePosition: getComputedStyle(mobileNavigation).position,
+      };
+    });
+
+    expect(layout.brandLeft).toBeLessThanOrEqual(24);
+    expect(layout.accountRight).toBeGreaterThanOrEqual(viewport.width - 24);
+    expect(layout.mainTop).toBeCloseTo(layout.headerHeight, 0);
+    expect(layout.mainBottom).toBeCloseTo(viewport.height, 0);
+
+    if (viewport.width < 1200) {
+      expect(layout.headerHeight).toBeLessThanOrEqual(70);
+      expect(layout.desktopDisplay).toBe('none');
+      expect(layout.mobileDisplay).not.toBe('none');
+      expect(layout.mobilePosition).toBe('fixed');
+      expect(layout.mobileBottom).toBeCloseTo(viewport.height, 0);
+
+      await page.keyboard.press('Tab');
+      await expect(
+        page.getByRole('link', { name: 'Skip to main content' }),
+      ).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(
+        page.getByRole('link', { name: 'Wits World home' }),
+      ).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(page.getByRole('button', { name: 'Account' })).toBeFocused();
+      const focusOutline = await page
+        .getByRole('button', { name: 'Account' })
+        .evaluate((element) => ({
+          style: getComputedStyle(element).outlineStyle,
+          width: getComputedStyle(element).outlineWidth,
+        }));
+      expect(focusOutline.style).toBe('solid');
+      expect(Number.parseFloat(focusOutline.width)).toBeGreaterThan(0);
+    } else {
+      expect(layout.headerHeight).toBeLessThanOrEqual(82);
+      expect(layout.desktopDisplay).not.toBe('none');
+      expect(layout.mobileDisplay).toBe('none');
+      expect(layout.desktopMiddle).toBeCloseTo(viewport.width / 2, 0);
+    }
+
+    const accountTrigger = page.getByRole('button', { name: 'Account' });
+    await accountTrigger.click();
+    await expect(accountTrigger).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByLabel('Account options')).toContainText(
+      'Signed in as',
+    );
+    await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(accountTrigger).toHaveAttribute('aria-expanded', 'false');
+    await expect(accountTrigger).toBeFocused();
+  }
+
+  expect(
+    consoleErrors.filter(
+      (message) =>
+        message !==
+        'Failed to load resource: the server responded with a status of 404 (Not Found)',
+    ),
+  ).toEqual([]);
+});
+
+test('focuses and filters Explore events without breaking map following', async ({
+  context,
+  page,
+}) => {
+  const consoleErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  await mockExploreApi(page);
+  await context.grantPermissions(['geolocation'], {
+    origin: 'http://127.0.0.1:5178',
+  });
+  await context.setGeolocation({ latitude: -26.1922, longitude: 28.0301 });
+
+  for (const viewport of [
+    { height: 844, width: 390 },
+    { height: 800, width: 1280 },
+  ]) {
+    await test.step(`${viewport.width}px event focus and controls`, async () => {
+      await page.setViewportSize(viewport);
+      await page.goto('/explore');
+      const map = page.locator('[data-map-provider^="deterministic-"]');
+      await expect(map).toBeVisible();
+      await expect(map).toHaveAttribute('data-map-following', 'true');
+      await expect(page.getByText('Wits Quest · Explore')).toHaveCount(0);
+
+      await page.getByRole('button', { name: /^Events/u }).click();
+      await expect(
+        page.getByRole('searchbox', { name: 'Search campus events' }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole('combobox', { name: 'Filter events by status' }),
+      ).toBeVisible();
+      await expect(page.locator('.event-list__items > li')).toHaveCount(3);
+
+      const greatHallAction = page
+        .locator('.event-list__items > li')
+        .filter({ hasText: EXPLORE_EVENTS[0].title })
+        .getByRole('button', { name: /View on map/u });
+      await greatHallAction.focus();
+      await page.keyboard.press('Enter');
+
+      await expect(map).toHaveAttribute(
+        'data-map-focused-event',
+        EXPLORE_EVENTS[0].eventId,
+      );
+      await expect(map).toHaveAttribute(
+        'data-map-camera-center',
+        `${EXPLORE_EVENTS[0].longitude},${EXPLORE_EVENTS[0].latitude}`,
+      );
+      await expect(map).toHaveAttribute('data-map-camera-zoom', '17');
+      await expect(map).toHaveAttribute('data-map-following', 'false');
+      await expect(
+        page.locator(`[data-event-marker-id="${EXPLORE_EVENTS[0].eventId}"]`),
+      ).toHaveAttribute('aria-pressed', 'true');
+      await expect(
+        page.locator('[data-deterministic-event-radius]'),
+      ).toBeVisible();
+      await expect(
+        page.locator('.event-marker[aria-pressed="true"] .event-marker__label'),
+      ).toHaveText(EXPLORE_EVENTS[0].title);
+
+      const locationRailOffset = await page
+        .locator('.location-control-wrap')
+        .evaluate((element) => {
+          return window.innerWidth - element.getBoundingClientRect().right;
+        });
+      expect(locationRailOffset).toBeLessThanOrEqual(
+        viewport.width >= 1024 ? 17 : 9,
+      );
+
+      const recenter = page.getByRole('button', {
+        name: 'Recenter on reported location',
+      });
+      await recenter.click();
+      await expect(map).toHaveAttribute('data-map-following', 'true');
+      await map.dispatchEvent('pointerdown');
+      await expect(map).toHaveAttribute('data-map-following', 'false');
+
+      await page
+        .getByRole('button', {
+          name: new RegExp(`Select ${EXPLORE_EVENTS[1].title}`, 'u'),
+        })
+        .click();
+      await expect(map).toHaveAttribute(
+        'data-map-focused-event',
+        EXPLORE_EVENTS[1].eventId,
+      );
+      await expect(
+        page.getByRole('heading', { name: EXPLORE_EVENTS[1].title }),
+      ).toBeVisible();
+
+      await page.getByRole('button', { name: 'All events' }).click();
+      const search = page.getByRole('searchbox', {
+        name: 'Search campus events',
+      });
+      await search.fill('Great Hall');
+      await expect(search).toBeFocused();
+      await expect(page.locator('.event-list__items > li')).toHaveCount(1);
+      await expect(
+        page.locator('[data-deterministic-markers] .event-marker'),
+      ).toHaveCount(1);
+      await expect(
+        page.locator('[data-deterministic-event-radius]'),
+      ).toBeHidden();
+      await expect(
+        page.locator('.event-marker[aria-pressed="true"]'),
+      ).toHaveCount(0);
+
+      await search.focus();
+      const searchOutline = await search.evaluate((element) => ({
+        style: getComputedStyle(element).outlineStyle,
+        width: Number.parseFloat(getComputedStyle(element).outlineWidth),
+      }));
+      expect(searchOutline.style).toBe('solid');
+      expect(searchOutline.width).toBeGreaterThan(0);
+      await page.keyboard.press('Tab');
+      await expect(
+        page.getByRole('combobox', { name: 'Filter events by status' }),
+      ).toBeFocused();
+
+      await page
+        .getByRole('combobox', { name: 'Filter events by status' })
+        .selectOption('ended');
+      await expect(
+        page.getByText('No events match these filters.'),
+      ).toBeVisible();
+      await expect(
+        page.locator('[data-deterministic-markers] .event-marker'),
+      ).toHaveCount(0);
+      await page.getByRole('button', { name: 'Clear filters' }).click();
+      await expect(page.locator('.event-list__items > li')).toHaveCount(3);
+
+      await expectNoHorizontalOverflow(page);
+      const layout = await page.evaluate(() => {
+        const panel = document.querySelector<HTMLElement>('.event-panel');
+        const location = document.querySelector<HTMLElement>(
+          '.location-control-wrap',
+        );
+        const controls = document.querySelector<HTMLElement>(
+          '.mapboxgl-ctrl-top-right',
+        );
+        if (!panel || !location || !controls) {
+          throw new Error('Expected Explore controls.');
+        }
+        const overlaps = (first: DOMRect, second: DOMRect) =>
+          first.left < second.right &&
+          first.right > second.left &&
+          first.top < second.bottom &&
+          first.bottom > second.top;
+        return {
+          documentScrolls:
+            document.documentElement.scrollHeight > window.innerHeight,
+          locationOverlapsControls: overlaps(
+            location.getBoundingClientRect(),
+            controls.getBoundingClientRect(),
+          ),
+          locationOverlapsPanel: overlaps(
+            location.getBoundingClientRect(),
+            panel.getBoundingClientRect(),
+          ),
+        };
+      });
+      expect(layout).toEqual({
+        documentScrolls: false,
+        locationOverlapsControls: false,
+        locationOverlapsPanel: false,
+      });
+    });
+  }
+
+  expect(consoleErrors).toEqual([]);
+});
+
+test('retains denied-location and failed-map event discovery', async ({
+  page,
+}) => {
+  await mockExploreApi(page);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'permissions', {
+      configurable: true,
+      value: {
+        query: async () => ({ state: 'denied' }),
+      },
+    });
+  });
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto('/explore?map-failure=1');
+
+  await expect(
+    page.getByRole('button', { name: 'Location access disabled' }),
+  ).toBeDisabled();
+  await expect(page.getByText('The map could not load.')).toBeVisible();
+  await page.getByRole('button', { name: /^Events/u }).click();
+  await expect(
+    page.getByText(EXPLORE_EVENTS[0].title, { exact: true }),
+  ).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+});
+
 interface OwnedCard {
   acquisitionKind: 'event_reward' | 'starter';
   category: 'creature' | 'power';
@@ -426,4 +869,59 @@ async function expectNoHorizontalOverflow(page: Page) {
     scrollWidth: document.documentElement.scrollWidth,
   }));
   expect(sizes.scrollWidth).toBeLessThanOrEqual(sizes.clientWidth);
+}
+
+async function json(route: Route, body: object, status = 200) {
+  await route.fulfill({
+    body: JSON.stringify(body),
+    contentType: 'application/json',
+    status,
+  });
+}
+
+async function mockExploreApi(page: Page) {
+  await page.route('**/api/v1/**', async (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname.endsWith('/auth/me')) {
+      await json(route, {
+        id: buildUuid(960),
+        lifecycleStatus: 'active',
+        playerName: 'explore_browser_player',
+        playerNameSetupRequired: false,
+        requestId: 'explore-browser-player',
+        role: 'player',
+      });
+      return;
+    }
+    if (pathname.endsWith('/events')) {
+      await json(route, {
+        events: EXPLORE_EVENTS,
+        requestId: 'explore-browser-events',
+      });
+      return;
+    }
+    if (pathname.endsWith('/eligibility')) {
+      const eventId = pathname.split('/').at(-2) ?? '';
+      await json(route, {
+        eventId,
+        reachable: eventId === EXPLORE_EVENTS[0].eventId,
+        requestId: 'explore-browser-eligibility',
+        status:
+          eventId === EXPLORE_EVENTS[0].eventId ? 'reachable' : 'unreachable',
+      });
+      return;
+    }
+    await json(
+      route,
+      {
+        code: 'NOT_FOUND',
+        detail: 'The deterministic Explore route was not found.',
+        requestId: 'explore-browser-not-found',
+        status: 404,
+        title: 'Not found',
+        type: 'about:blank',
+      },
+      404,
+    );
+  });
 }

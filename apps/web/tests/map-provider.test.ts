@@ -322,6 +322,38 @@ describe('Mapbox Standard provider', () => {
     );
   });
 
+  it('centres a selected event and suspends location following', async () => {
+    const controller = await createMapboxMap(
+      document.createElement('div'),
+      configuration,
+      [],
+      new AbortController().signal,
+    );
+    const followListener = vi.fn();
+    controller.setFollowStateListener?.(followListener);
+    controller.setReportedLocation({
+      latitude: -26.19205,
+      longitude: 28.03038,
+    });
+
+    controller.focusPoint({
+      id: 'event-2',
+      label: 'Library Quest',
+      latitude: -26.1914,
+      longitude: 28.0311,
+      radiusMetres: 60,
+    });
+
+    expect(followListener).toHaveBeenLastCalledWith(false);
+    expect(mapboxState.easeTo).toHaveBeenLastCalledWith({
+      center: [28.0311, -26.1914],
+      duration: 650,
+      zoom: 17,
+    });
+    controller.recenterReportedLocation?.();
+    expect(followListener).toHaveBeenLastCalledWith(true);
+  });
+
   it('reports a map that loaded before the consumer registered its listener', async () => {
     mapboxState.isLoaded = true;
     const controller = await createMapboxMap(
