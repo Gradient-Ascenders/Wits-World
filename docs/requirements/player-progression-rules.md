@@ -86,7 +86,7 @@ not occupy live standings positions.
 
 ## Delivery boundary
 
-Migration `0025_create_player_progression.sql` and the internal progression
+Migration `0026_create_player_progression.sql` and the internal progression
 persistence adapter establish these rules and backfill retained completed
 history. Issue `#172` separately owns authenticated profile/standings HTTP
 operations and wiring challenge and CPU completion transactions to the

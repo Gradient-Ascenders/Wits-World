@@ -7,6 +7,7 @@ import {
   AuthorContentStateConflictError,
   AuthorQuestionNotFoundError,
   InvalidAuthorQuestionError,
+  type ChallengeFormat,
   type AuthorChallengeService,
 } from '../challenges/author-challenge-service.js';
 import { ApiError } from '../errors/api-error.js';
@@ -27,12 +28,27 @@ interface QuestionParams {
   questionId: string;
 }
 
-interface QuestionBody {
+interface MultipleChoiceQuestionBody {
+  format?: 'multiple_choice';
   prompt: string;
   difficulty: 1 | 2 | 3;
   explanation: string;
   choices: string[];
   acceptedChoicePosition: number;
+}
+
+interface OrderingQuestionBody {
+  format: 'ordering';
+  prompt: string;
+  difficulty: 1 | 2 | 3;
+  explanation: string;
+  items: string[];
+}
+
+type QuestionBody = MultipleChoiceQuestionBody | OrderingQuestionBody;
+
+interface CreateChallengeBody {
+  format?: ChallengeFormat;
 }
 
 const apiErrorSchema = {
@@ -147,7 +163,7 @@ const challengeSchema = {
     },
     format: {
       type: 'string',
-      enum: ['multiple_choice'],
+      enum: ['multiple_choice', 'ordering'],
     },
     status: {
       type: 'string',
@@ -190,6 +206,7 @@ const questionSchema = {
   required: [
     'questionId',
     'challengeId',
+    'format',
     'prompt',
     'difficulty',
     'explanation',
@@ -208,6 +225,10 @@ const questionSchema = {
     challengeId: {
       type: 'string',
       format: 'uuid',
+    },
+    format: {
+      type: 'string',
+      enum: ['multiple_choice'],
     },
     prompt: {
       type: 'string',
@@ -269,43 +290,131 @@ const questionSchema = {
   },
 } as const;
 
-const questionBodySchema = {
+const orderingItemSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['itemId', 'position', 'text'],
+  properties: {
+    itemId: { type: 'string', format: 'uuid' },
+    position: { type: 'integer', minimum: 1, maximum: 4 },
+    text: { type: 'string' },
+  },
+} as const;
+
+const orderingQuestionSchema = {
   type: 'object',
   additionalProperties: false,
   required: [
+    'questionId',
+    'challengeId',
+    'format',
     'prompt',
     'difficulty',
     'explanation',
-    'choices',
-    'acceptedChoicePosition',
+    'status',
+    'items',
+    'createdAt',
+    'updatedAt',
   ],
   properties: {
-    prompt: {
-      type: 'string',
-      minLength: 1,
-    },
-    difficulty: {
-      type: 'integer',
-      minimum: 1,
-      maximum: 3,
-    },
+    questionId: { type: 'string', format: 'uuid' },
+    challengeId: { type: 'string', format: 'uuid' },
+    format: { type: 'string', enum: ['ordering'] },
+    prompt: { type: 'string' },
+    difficulty: { type: 'integer', minimum: 1, maximum: 3 },
     explanation: {
-      type: 'string',
-      minLength: 1,
+      anyOf: [{ type: 'string' }, { type: 'null' }],
     },
-    choices: {
+    status: { type: 'string', enum: ['draft', 'published', 'retired'] },
+    items: {
       type: 'array',
       minItems: 4,
       maxItems: 4,
-      items: {
-        type: 'string',
-        minLength: 1,
+      items: orderingItemSchema,
+    },
+    createdAt: { type: 'string', format: 'date-time' },
+    updatedAt: { type: 'string', format: 'date-time' },
+  },
+} as const;
+
+const authorQuestionSchema = {
+  oneOf: [questionSchema, orderingQuestionSchema],
+} as const;
+
+const questionBodySchema = {
+  oneOf: [
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'prompt',
+        'difficulty',
+        'explanation',
+        'choices',
+        'acceptedChoicePosition',
+      ],
+      properties: {
+        format: {
+          type: 'string',
+          enum: ['multiple_choice'],
+        },
+        prompt: {
+          type: 'string',
+          minLength: 1,
+        },
+        difficulty: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 3,
+        },
+        explanation: {
+          type: 'string',
+          minLength: 1,
+        },
+        choices: {
+          type: 'array',
+          minItems: 4,
+          maxItems: 4,
+          items: {
+            type: 'string',
+            minLength: 1,
+          },
+        },
+        acceptedChoicePosition: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 4,
+        },
       },
     },
-    acceptedChoicePosition: {
-      type: 'integer',
-      minimum: 1,
-      maximum: 4,
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['format', 'prompt', 'difficulty', 'explanation', 'items'],
+      properties: {
+        format: { type: 'string', enum: ['ordering'] },
+        prompt: { type: 'string', minLength: 1 },
+        difficulty: { type: 'integer', minimum: 1, maximum: 3 },
+        explanation: { type: 'string', minLength: 1 },
+        items: {
+          type: 'array',
+          minItems: 4,
+          maxItems: 4,
+          items: { type: 'string', minLength: 1 },
+        },
+      },
+    },
+  ],
+} as const;
+
+const createChallengeBodySchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    format: {
+      type: 'string',
+      enum: ['multiple_choice', 'ordering'],
+      default: 'multiple_choice',
     },
   },
 } as const;
@@ -364,7 +473,7 @@ export const authorChallengeRoutes: FastifyPluginAsync<
 
   app.post<{
     Params: EventParams;
-    Body: Record<string, never>;
+    Body: CreateChallengeBody;
   }>(
     '/author/events/:eventId/challenges',
     {
@@ -375,7 +484,7 @@ export const authorChallengeRoutes: FastifyPluginAsync<
         tags: ['Authoring'],
         security: bearerSecurity,
         params: eventParamsSchema,
-        body: emptyBodySchema,
+        body: createChallengeBodySchema,
         response: {
           201: {
             type: 'object',
@@ -402,6 +511,7 @@ export const authorChallengeRoutes: FastifyPluginAsync<
         const challenge = await service.createChallenge({
           actorPlayerId: author.id,
           eventId: request.params.eventId,
+          format: request.body.format ?? 'multiple_choice',
         });
 
         return reply.code(201).send({
@@ -434,7 +544,7 @@ export const authorChallengeRoutes: FastifyPluginAsync<
             properties: {
               questions: {
                 type: 'array',
-                items: questionSchema,
+                items: authorQuestionSchema,
               },
               requestId: {
                 type: 'string',
@@ -481,7 +591,7 @@ export const authorChallengeRoutes: FastifyPluginAsync<
             additionalProperties: false,
             required: ['question', 'requestId'],
             properties: {
-              question: questionSchema,
+              question: authorQuestionSchema,
               requestId: {
                 type: 'string',
               },
@@ -502,7 +612,7 @@ export const authorChallengeRoutes: FastifyPluginAsync<
         const question = await service.createQuestion({
           actorPlayerId: author.id,
           challengeId: request.params.challengeId,
-          ...request.body,
+          ...normalizeQuestionBody(request.body),
         });
 
         return reply.code(201).send({
@@ -535,7 +645,7 @@ export const authorChallengeRoutes: FastifyPluginAsync<
             additionalProperties: false,
             required: ['question', 'requestId'],
             properties: {
-              question: questionSchema,
+              question: authorQuestionSchema,
               requestId: {
                 type: 'string',
               },
@@ -557,7 +667,7 @@ export const authorChallengeRoutes: FastifyPluginAsync<
           question: await service.updateQuestion({
             actorPlayerId: author.id,
             questionId: request.params.questionId,
-            ...request.body,
+            ...normalizeQuestionBody(request.body),
           }),
           requestId: request.id,
         };
@@ -704,6 +814,17 @@ export const authorChallengeRoutes: FastifyPluginAsync<
   );
 };
 
+function normalizeQuestionBody(body: QuestionBody) {
+  if (body.format === 'ordering') {
+    return body;
+  }
+
+  return {
+    ...body,
+    format: 'multiple_choice' as const,
+  };
+}
+
 function lifecycleQuestionResponses() {
   return {
     200: {
@@ -711,7 +832,7 @@ function lifecycleQuestionResponses() {
       additionalProperties: false,
       required: ['question', 'requestId'],
       properties: {
-        question: questionSchema,
+        question: authorQuestionSchema,
         requestId: {
           type: 'string',
         },

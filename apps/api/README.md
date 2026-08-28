@@ -739,16 +739,17 @@ radius, publication, and availability behaviour against PostgreSQL/PostGIS.
 
 ## Challenge API
 
-The Sprint 2 MCQ start, resume, answer-locking, timeout, and player-safe feedback
-contract is documented in the
+The multiple-choice and ordering start, resume, answer-locking, timeout, and
+player-safe feedback contract is documented in the
 [challenge and attempt API contract](../../docs/architecture/challenge-attempt-api-contract.md).
 The protected endpoints are implemented under `/api/v1`. Marking is
 server-authoritative; answer feedback is withheld while the timed attempt is
 active and revealed only after authoritative completion. Completed responses
 contain the persisted score/reward result plus five ordered review entries built
 from attempt snapshots, locked answers, and the private answer key. Active
-responses contain no review, correct choices, correctness, score, rewards, or
-explanations.
+responses contain no review, correct choices or item order, correctness, score,
+rewards, or explanations. Ordering answers submit exactly four unique snapshot
+item IDs; marking awards a point only for an exact four-position match.
 
 ## Error-response model
 

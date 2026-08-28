@@ -37,10 +37,12 @@ from its shared card definition.
 
 - A player is identified by the validated token's `(issuer, subject)` pair.
 - An event has at most one active challenge definition.
-- A published challenge question has exactly four choices and one private
-  accepted choice.
+- A published challenge question matches its challenge format: multiple choice
+  has exactly four choices and one private accepted choice; ordering has exactly
+  four items and four unique private correct positions.
 - One player can have only one attempt and one completion for an event.
-- An attempt stores five distinct questions and their shuffled choice order.
+- An attempt stores five distinct questions and their shuffled choice or item
+  order.
 - A question can be answered at most once; accepted answers cannot be changed.
 - Completion, coin credit, card awards, and the completion response are one
   atomic, retry-safe operation.
@@ -48,13 +50,13 @@ from its shared card definition.
 - Browser input never determines correctness, score, coin value, rarity, or
   awarded card definition.
 - Marking is server-authoritative. While a timed attempt is active, Player
-  routes do not expose correct choices, per-question correctness, private
-  answer-key relationships, or explanations.
+  routes do not expose correct choices or ordering, per-question correctness,
+  private answer-key relationships, or explanations.
 - After authoritative completion, the Player review may expose the player's
-  selected choice, the correct choice, and per-question correctness. The review
-  is reconstructed from immutable question/choice snapshots, persisted locked
-  answers, and the private answer key; private answer-key source identifiers
-  remain private and explanations remain excluded from Player responses.
+  selected answer, the correct answer, and per-question correctness. The review
+  is reconstructed from immutable format-specific snapshots, persisted locked
+  answers, and the private answer key. Private source identifiers remain
+  private; ordering explanations are revealed only after completion.
 - Author content mutations derive the acting Author from the authenticated
   server context and record create, edit, publish, and retire actions in the
   audit trail.
@@ -78,9 +80,13 @@ erDiagram
   EVENT_CHALLENGES ||--o{ CHALLENGE_QUESTIONS : contains
   CHALLENGE_QUESTIONS ||--|{ CHALLENGE_CHOICES : offers
   CHALLENGE_QUESTIONS ||--|| CHALLENGE_ANSWER_KEYS : marks
+  CHALLENGE_QUESTIONS ||--|{ CHALLENGE_ORDERING_ITEMS : offers
+  CHALLENGE_QUESTIONS ||--|{ CHALLENGE_ORDERING_ANSWER_KEYS : orders
   CHALLENGE_ATTEMPTS ||--|{ ATTEMPT_QUESTIONS : snapshots
   ATTEMPT_QUESTIONS ||--|{ ATTEMPT_QUESTION_CHOICES : orders
   ATTEMPT_QUESTIONS ||--o| ATTEMPT_ANSWERS : receives
+  ATTEMPT_QUESTIONS ||--|{ ATTEMPT_QUESTION_ORDERING_ITEMS : orders
+  ATTEMPT_QUESTIONS ||--o| ATTEMPT_ORDERING_ANSWERS : receives
   PLAYERS ||--o{ EVENT_COMPLETIONS : earns
   EVENTS ||--o{ EVENT_COMPLETIONS : records
   CHALLENGE_ATTEMPTS ||--|| EVENT_COMPLETIONS : produces
@@ -105,7 +111,7 @@ players from representing the same external identity. No access token is stored.
 ### `event_challenges`
 
 An event challenge stores `id`, `event_id`, `format`, `status`, and lifecycle
-timestamps. `format` is initially `multiple_choice`; `status` is `draft`,
+timestamps. `format` is `multiple_choice` or `ordering`; status is `draft`,
 `published`, or `retired`. A partial unique index on `event_id` where status is
 `published` permits challenge history but allows only one published challenge
 per event. Only a published challenge may be started, and publishing requires at
@@ -140,6 +146,19 @@ must never expose accepted-answer relationships. Protected Author endpoints may
 return the accepted answer required to create and manage question content only
 after authentication, active-account validation, and Author authorization.
 
+### Ordering definitions and private keys
+
+`challenge_ordering_items` stores four nonblank items per ordering question.
+`private.challenge_ordering_answer_keys` maps each item to one unique correct
+position from `1` through `4`. Format guards reject MCQ children on ordering
+questions and ordering children on MCQ questions. Deferred publication checks
+require exactly the format-appropriate children, and published ordering content
+is immutable under the same lifecycle rules as multiple choice.
+
+The public item relation does not encode the correct order. Public roles have no
+read permission on the private position relation. Protected Author operations
+may read the authored order; active Player operations may not.
+
 ### `challenge_attempts`
 
 An attempt stores:
@@ -158,7 +177,8 @@ and enforces one attempt per player and event.
 ### Attempt question snapshots and answers
 
 `attempt_questions` stores an API-facing ID, attempt, source question, position
-from `1` through `5`, prompt snapshot, and difficulty snapshot. Constraints on
+from `1` through `5`, prompt snapshot, difficulty snapshot, and a nullable
+ordering explanation snapshot. Constraints on
 `(attempt_id, position)` and `(attempt_id, source_question_id)` guarantee five
 ordered, non-repeating questions when combined with deferred attempt-readiness
 validation that requires exactly five rows before creation commits.
@@ -176,6 +196,19 @@ that the choice belongs to the question. The primary key locks one answer, and
 database triggers prevent updates or deletes after submission and reject new
 answers after the parent attempt is finalized. Correctness is calculated only
 during finalization and is not stored here.
+
+For ordering, `attempt_question_ordering_items` persists four shuffled item
+snapshots with stable attempt-facing IDs. `attempt_ordering_answers` locks one
+server receipt timestamp per question, and `attempt_ordering_answer_items`
+stores all four unique snapshot IDs by submitted position. Deferred constraints
+require an ordering answer to contain exactly four items. Foreign keys prove
+membership; triggers reject format mismatches, mutation after submission, and
+inserts after finalisation.
+
+An ordering attempt snapshot requires five published questions, four item
+snapshots per question, no MCQ choice snapshots, and a nonblank explanation
+snapshot. MCQ snapshots remain valid with four choices and no ordering items.
+Their ordering explanation snapshot remains null.
 
 ### `card_definitions`
 
@@ -455,6 +488,15 @@ explanations are not exposed through Player challenge responses.
 No review, correct choice, correctness, score, or reward field is returned while
 the attempt is `in_progress`.
 
+Completed ordering review instead returns `selectedItems` in submitted order
+(or `null` for an unanswered timeout), `correctItems` in authoritative order,
+`isCorrect`, and the persisted explanation. The source order remains in
+`private.challenge_ordering_answer_keys`; both returned arrays use immutable
+attempt-item snapshot IDs. Marking requires all four submitted positions to
+match, with no partial credit. Active ordering responses expose shuffled items
+and a previously locked `selectedItemIds` array only; they never expose the
+correct order, correctness, or explanation.
+
 The response is reconstructed from persisted rows. The browser never submits
 any field in `reward`.
 
@@ -513,6 +555,14 @@ Issue #64 added the original persistence foundation in dependency order:
 14. `0016_add_event_authoring_lifecycle.sql` adds event retirement, publication
     readiness validation, published-event immutability, and protection against
     retiring the challenge beneath a live published event.
+
+Migration `0025_add_ordering_challenges.sql` adds the ordering format without
+rewriting existing multiple-choice data. It adds format-specific definition,
+private key, snapshot, and answer relations; broadens the format constraint;
+and replaces shared deferred validators so both formats retain exact publication
+and five-question snapshot invariants. Because account-deletion migration
+`0024` was published first, `0025` also extends deletion-scoped cleanup to the
+new ordering answer and snapshot relations without editing migration history.
 
 Subsequent migrations add the bounded `Edge` remediation, normalized name
 uniqueness, Player Name evolution, and the one-through-four move-position

@@ -4,7 +4,7 @@ title: Player progression persistence
 
 # Player progression persistence
 
-Migration `0025_create_player_progression.sql` adds the authoritative data
+Migration `0026_create_player_progression.sql` adds the authoritative data
 foundation for points, achievements, Johannesburg activity days, streaks, and
 all-time/monthly standings. The browser cannot insert point values, unlocks,
 activity days, totals, or ranks.
@@ -89,7 +89,7 @@ deleted tombstone is not publicly ranked.
 ## Verification
 
 `apps/api/tests/progression-persistence.integration.test.ts` creates a
-disposable database at the pre-`0025` schema, inserts retained history, applies
+disposable database at the pre-`0026` schema, inserts retained history, applies
 the migration, and verifies backfill, zero-point records, Johannesburg
 boundaries, out-of-order streaks, duplicate and concurrent writes, unique
 unlocks, prospective versions, competition ties, zero-point standings, source

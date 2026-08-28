@@ -170,7 +170,11 @@ describe('challenge attempt reader', () => {
       answeredCount: 1,
     });
 
-    if (!attempt || attempt.status !== 'in_progress') {
+    if (
+      !attempt ||
+      attempt.status !== 'in_progress' ||
+      attempt.format !== 'multiple_choice'
+    ) {
       throw new Error('Expected an in-progress attempt.');
     }
 
@@ -191,6 +195,140 @@ describe('challenge attempt reader', () => {
     expect(executedSql).not.toContain('challenge_answer_keys');
     expect(executedSql).not.toContain('accepted_choice');
     expect(executedSql).not.toContain('private.');
+  });
+
+  it('loads randomized ordering snapshots without correct-order or explanation data', async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            attempt_id: ATTEMPT_ID,
+            event_id: EVENT_ID,
+            format: 'ordering',
+            status: 'in_progress',
+            started_at: new Date('2026-09-01T10:00:00.000Z'),
+            deadline: new Date('2026-09-01T10:02:00.000Z'),
+            completed_at: null,
+            completion_reason: null,
+            score_correct: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: Array.from({ length: 5 }, (_, index) => ({
+          attempt_question_id: orderingQuestionId(index + 1),
+          position: index + 1,
+          prompt_snapshot: `Ordering ${index + 1}`,
+          answered_at: index === 0 ? new Date('2026-09-01T10:00:20Z') : null,
+        })),
+      })
+      .mockResolvedValueOnce({
+        rows: Array.from({ length: 20 }, (_, index) => {
+          const question = Math.floor(index / 4) + 1;
+          const item = (index % 4) + 1;
+          return {
+            attempt_question_id: orderingQuestionId(question),
+            item_id: orderingItemId(question, item),
+            display_position: item,
+            item_text_snapshot: `Item ${question}.${item}`,
+          };
+        }),
+      })
+      .mockResolvedValueOnce({
+        rows: [1, 2, 3, 4].map((item) => ({
+          attempt_question_id: orderingQuestionId(1),
+          item_id: orderingItemId(1, item),
+          submitted_position: item,
+        })),
+      });
+
+    const attempt = await createChallengeAttemptReader(
+      createQueryable(query),
+    ).findByPlayerAndEvent(PLAYER_ID, EVENT_ID);
+
+    if (
+      !attempt ||
+      attempt.status !== 'in_progress' ||
+      attempt.format !== 'ordering'
+    ) {
+      throw new Error('Expected an in-progress ordering attempt.');
+    }
+
+    expect(attempt.questions).toHaveLength(5);
+    expect(attempt.questions[0]?.items).toHaveLength(4);
+    expect(attempt.questions[0]?.selectedItemIds).toHaveLength(4);
+    expect(attempt.questions[1]?.selectedItemIds).toBeNull();
+    expect(JSON.stringify(attempt)).not.toContain('explanation');
+    expect(JSON.stringify(attempt)).not.toContain('correct');
+    expect(JSON.stringify(attempt)).not.toContain('sourceItem');
+  });
+
+  it('returns ordering explanations and correct sequences only after completion', async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            attempt_id: ATTEMPT_ID,
+            event_id: EVENT_ID,
+            format: 'ordering',
+            status: 'completed',
+            started_at: new Date('2026-09-01T10:00:00.000Z'),
+            deadline: new Date('2026-09-01T10:02:00.000Z'),
+            completed_at: new Date('2026-09-01T10:01:00.000Z'),
+            completion_reason: 'answered',
+            score_correct: 5,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            completion_id: '71000000-0000-4000-8000-000000000001',
+            coins_awarded: 60,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: Array.from({ length: 20 }, (_, index) => {
+          const question = Math.floor(index / 4) + 1;
+          const item = (index % 4) + 1;
+          return {
+            attempt_question_id: orderingQuestionId(question),
+            position: question,
+            prompt_snapshot: `Ordering ${question}`,
+            explanation_snapshot: `Explanation ${question}`,
+            item_id: orderingItemId(question, item),
+            item_text_snapshot: `Item ${question}.${item}`,
+            submitted_position: item,
+            correct_position: item,
+          };
+        }),
+      });
+
+    const attempt = await createChallengeAttemptReader(
+      createQueryable(query),
+    ).findByPlayerAndEvent(PLAYER_ID, EVENT_ID);
+
+    if (
+      !attempt ||
+      attempt.status !== 'completed' ||
+      attempt.format !== 'ordering'
+    ) {
+      throw new Error('Expected a completed ordering attempt.');
+    }
+
+    expect(attempt.scoreCorrect).toBe(5);
+    expect(attempt.review).toHaveLength(5);
+    expect(attempt.review[0]).toMatchObject({
+      explanation: 'Explanation 1',
+      isCorrect: true,
+    });
+    expect(attempt.review[0]?.selectedItems).toEqual(
+      attempt.review[0]?.correctItems,
+    );
   });
 
   it('loads a completed attempt without returning question or answer snapshots', async () => {
@@ -487,4 +625,14 @@ function completedReview(options: {
     },
     isCorrect: entry.is_correct,
   }));
+}
+
+function orderingQuestionId(position: number): string {
+  return `35000000-0000-4000-8000-${String(position).padStart(12, '0')}`;
+}
+
+function orderingItemId(question: number, item: number): string {
+  return `36000000-0000-4000-${String(question).padStart(4, '0')}-${String(
+    item,
+  ).padStart(12, '0')}`;
 }

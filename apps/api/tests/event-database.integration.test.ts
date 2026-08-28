@@ -168,7 +168,8 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0022_tighten_player_name_policy.sql',
         '0023_rebalance_canonical_card_roster.sql',
         '0024_complete_account_deletion_retention.sql',
-        '0025_create_player_progression.sql',
+        '0025_add_ordering_challenges.sql',
+        '0026_create_player_progression.sql',
       ],
       skipped: [],
     });
@@ -200,7 +201,8 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0022_tighten_player_name_policy.sql',
         '0023_rebalance_canonical_card_roster.sql',
         '0024_complete_account_deletion_retention.sql',
-        '0025_create_player_progression.sql',
+        '0025_add_ordering_challenges.sql',
+        '0026_create_player_progression.sql',
       ],
     });
     expect(readiness).toMatchObject({

@@ -91,7 +91,10 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
       '0024_complete_account_deletion_retention.sql',
     );
     expect(migrationResult.applied).toContain(
-      '0025_create_player_progression.sql',
+      '0025_add_ordering_challenges.sql',
+    );
+    expect(migrationResult.applied).toContain(
+      '0026_create_player_progression.sql',
     );
 
     await withDatabaseClient(temporaryConfig, async (client) => {
@@ -169,7 +172,8 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0022_tighten_player_name_policy.sql',
           '0023_rebalance_canonical_card_roster.sql',
           '0024_complete_account_deletion_retention.sql',
-          '0025_create_player_progression.sql',
+          '0025_add_ordering_challenges.sql',
+          '0026_create_player_progression.sql',
         ],
       });
 
@@ -190,7 +194,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
     }
   }, 45_000);
 
-  it('upgrades an original 0021 database through 0022 without changing history or player data', async () => {
+  it('upgrades an original 0021 database through later migrations without changing history or player data', async () => {
     const existingDatabaseName = `wits_quest_player_0021_${Date.now()}_${process.pid}`;
     const migrationDirectory = await mkdtemp(
       join(tmpdir(), 'wits-player-0021-migrations-'),
@@ -284,7 +288,8 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0022_tighten_player_name_policy.sql',
           '0023_rebalance_canonical_card_roster.sql',
           '0024_complete_account_deletion_retention.sql',
-          '0025_create_player_progression.sql',
+          '0025_add_ordering_challenges.sql',
+          '0026_create_player_progression.sql',
         ],
       });
 

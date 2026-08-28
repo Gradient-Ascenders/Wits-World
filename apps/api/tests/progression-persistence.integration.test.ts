@@ -89,7 +89,7 @@ describe.skipIf(!runIntegrationTests)(
 
       const migrationResult = await runMigrations(temporaryConfig);
       expect(migrationResult.applied).toEqual([
-        '0025_create_player_progression.sql',
+        '0026_create_player_progression.sql',
       ]);
 
       pool = createDatabasePool(temporaryConfig);
@@ -639,7 +639,7 @@ async function copyMigrationsBeforeProgression(): Promise<string> {
   const migrationNames = (await readdir(sourceDirectory))
     .filter(
       (name) =>
-        name.endsWith('.sql') && name !== '0025_create_player_progression.sql',
+        name.endsWith('.sql') && name !== '0026_create_player_progression.sql',
     )
     .sort();
 

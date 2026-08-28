@@ -74,6 +74,9 @@ describe.skipIf(!runIntegrationTests)(
       expect(migrationResult.applied).toContain(
         '0024_complete_account_deletion_retention.sql',
       );
+      expect(migrationResult.applied).toContain(
+        '0025_add_ordering_challenges.sql',
+      );
 
       await runSeeds(temporaryConfig);
       pool = createDatabasePool(temporaryConfig);
@@ -199,7 +202,28 @@ describe.skipIf(!runIntegrationTests)(
                  on question.id = choice.attempt_question_id
                join public.challenge_attempts attempt
                  on attempt.id = question.attempt_id
-              where attempt.player_id = $1::uuid) as choice_snapshots,
+               where attempt.player_id = $1::uuid) as choice_snapshots,
+            (select count(*)::text
+               from public.attempt_ordering_answers answer
+               join public.attempt_questions question
+                 on question.id = answer.attempt_question_id
+               join public.challenge_attempts attempt
+                 on attempt.id = question.attempt_id
+              where attempt.player_id = $1::uuid) as ordering_answers,
+            (select count(*)::text
+               from public.attempt_ordering_answer_items answer_item
+               join public.attempt_questions question
+                 on question.id = answer_item.attempt_question_id
+               join public.challenge_attempts attempt
+                 on attempt.id = question.attempt_id
+              where attempt.player_id = $1::uuid) as ordering_answer_items,
+            (select count(*)::text
+               from public.attempt_question_ordering_items item
+               join public.attempt_questions question
+                 on question.id = item.attempt_question_id
+               join public.challenge_attempts attempt
+                 on attempt.id = question.attempt_id
+              where attempt.player_id = $1::uuid) as ordering_item_snapshots,
             (select count(*)::text from public.challenge_attempts
               where player_id = $1::uuid and status = 'in_progress')
               as active_attempts,
@@ -220,6 +244,9 @@ describe.skipIf(!runIntegrationTests)(
         answers: '0',
         question_snapshots: '0',
         choice_snapshots: '0',
+        ordering_answers: '0',
+        ordering_answer_items: '0',
+        ordering_item_snapshots: '0',
         active_attempts: '0',
         active_matches: '0',
       });
@@ -643,7 +670,7 @@ async function seedCompletePlayerJourney(
     namespace: 'd3100001',
     title: 'Completed deletion challenge',
   });
-  await seedPublishedChallenge(client, {
+  await seedPublishedOrderingChallenge(client, {
     challengeId: ACTIVE_CHALLENGE_ID,
     eventId: ACTIVE_EVENT_ID,
     namespace: 'd3100002',
@@ -732,7 +759,7 @@ async function seedCompletePlayerJourney(
     playerId: PLAYER_ID,
   });
 
-  await seedAttempt(client, {
+  await seedOrderingAttempt(client, {
     attemptId: ACTIVE_ATTEMPT_ID,
     challengeId: ACTIVE_CHALLENGE_ID,
     eventId: ACTIVE_EVENT_ID,
@@ -997,6 +1024,266 @@ async function seedAttempt(
           `,
           [attemptQuestionId, selectedChoiceId],
         );
+      }
+    }
+
+    await client.query('commit');
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  }
+}
+
+async function seedPublishedOrderingChallenge(
+  client: pg.PoolClient,
+  input: {
+    challengeId: string;
+    eventId: string;
+    namespace: string;
+    title: string;
+  },
+): Promise<void> {
+  await client.query('begin');
+
+  try {
+    await client.query(
+      `
+        insert into public.events (
+          id, title, location, radius_metres, starts_at, ends_at, is_published
+        ) values (
+          $1,
+          $2,
+          st_setsrid(st_makepoint(28.03038, -26.19205), 4326)::geography,
+          75,
+          '2026-08-01T00:00:00.000Z',
+          '2026-09-01T00:00:00.000Z',
+          true
+        )
+      `,
+      [input.eventId, input.title],
+    );
+    await client.query(
+      `
+        insert into public.event_challenges (id, event_id, format, status)
+        values ($1, $2, 'ordering', 'draft')
+      `,
+      [input.challengeId, input.eventId],
+    );
+
+    for (let questionNumber = 1; questionNumber <= 5; questionNumber += 1) {
+      const questionId = fixtureUuid(input.namespace, questionNumber);
+
+      await client.query(
+        `
+          insert into public.challenge_questions (
+            id, challenge_id, prompt, difficulty, explanation, status
+          ) values ($1, $2, $3, 2, $4, 'draft')
+        `,
+        [
+          questionId,
+          input.challengeId,
+          `${input.title} question ${questionNumber}`,
+          `${input.title} explanation ${questionNumber}`,
+        ],
+      );
+
+      for (let itemNumber = 1; itemNumber <= 4; itemNumber += 1) {
+        const itemId = fixtureUuid(
+          incrementNamespace(input.namespace),
+          questionNumber * 10 + itemNumber,
+        );
+        await client.query(
+          `
+            insert into public.challenge_ordering_items (
+              id, question_id, item_text
+            ) values ($1, $2, $3)
+          `,
+          [
+            itemId,
+            questionId,
+            `${input.title} item ${questionNumber}.${itemNumber}`,
+          ],
+        );
+        await client.query(
+          `
+            insert into private.challenge_ordering_answer_keys (
+              question_id, item_id, correct_position
+            ) values ($1, $2, $3)
+          `,
+          [questionId, itemId, itemNumber],
+        );
+      }
+    }
+
+    await client.query(
+      `
+        update public.challenge_questions
+           set status = 'published', updated_at = now()
+         where challenge_id = $1
+      `,
+      [input.challengeId],
+    );
+    await client.query(
+      `
+        update public.event_challenges
+           set status = 'published', updated_at = now()
+         where id = $1
+      `,
+      [input.challengeId],
+    );
+
+    await client.query('commit');
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  }
+}
+
+async function seedOrderingAttempt(
+  client: pg.PoolClient,
+  input: {
+    attemptId: string;
+    challengeId: string;
+    eventId: string;
+    namespace: string;
+    playerId: string;
+    answerCount: number;
+  },
+): Promise<void> {
+  await client.query('begin');
+
+  try {
+    await client.query(
+      `
+        insert into public.challenge_attempts (
+          id,
+          player_id,
+          event_id,
+          challenge_id,
+          started_at,
+          deadline,
+          time_limit_seconds,
+          average_difficulty,
+          created_at,
+          updated_at
+        ) values (
+          $1, $2, $3, $4,
+          '2026-08-26T10:00:00.000Z',
+          '2026-08-26T10:02:00.000Z',
+          120,
+          2.00,
+          '2026-08-26T10:00:00.000Z',
+          '2026-08-26T10:00:00.000Z'
+        )
+      `,
+      [input.attemptId, input.playerId, input.eventId, input.challengeId],
+    );
+
+    const questions = await client.query<{
+      difficulty: number;
+      explanation: string;
+      id: string;
+      prompt: string;
+    }>(
+      `
+        select id::text, prompt, difficulty, explanation
+        from public.challenge_questions
+        where challenge_id = $1::uuid
+        order by id
+      `,
+      [input.challengeId],
+    );
+
+    for (const [questionIndex, question] of questions.rows.entries()) {
+      const attemptQuestionId = fixtureUuid(input.namespace, questionIndex + 1);
+      await client.query(
+        `
+          insert into public.attempt_questions (
+            id,
+            attempt_id,
+            source_question_id,
+            position,
+            prompt_snapshot,
+            difficulty_snapshot,
+            explanation_snapshot
+          ) values ($1, $2, $3, $4, $5, $6, $7)
+        `,
+        [
+          attemptQuestionId,
+          input.attemptId,
+          question.id,
+          questionIndex + 1,
+          question.prompt,
+          question.difficulty,
+          question.explanation,
+        ],
+      );
+
+      const items = await client.query<{
+        id: string;
+        item_text: string;
+      }>(
+        `
+          select item.id::text, item.item_text
+          from public.challenge_ordering_items item
+          join private.challenge_ordering_answer_keys answer_key
+            on answer_key.question_id = item.question_id
+           and answer_key.item_id = item.id
+          where item.question_id = $1::uuid
+          order by answer_key.correct_position
+        `,
+        [question.id],
+      );
+      const attemptItemIds: string[] = [];
+
+      for (const [itemIndex, item] of items.rows.entries()) {
+        const attemptItemId = fixtureUuid(
+          incrementNamespace(input.namespace),
+          (questionIndex + 1) * 10 + itemIndex + 1,
+        );
+        attemptItemIds.push(attemptItemId);
+        await client.query(
+          `
+            insert into public.attempt_question_ordering_items (
+              id,
+              attempt_question_id,
+              source_question_id,
+              source_item_id,
+              display_position,
+              item_text_snapshot
+            ) values ($1, $2, $3, $4, $5, $6)
+          `,
+          [
+            attemptItemId,
+            attemptQuestionId,
+            question.id,
+            item.id,
+            itemIndex + 1,
+            item.item_text,
+          ],
+        );
+      }
+
+      if (questionIndex < input.answerCount) {
+        await client.query(
+          `
+            insert into public.attempt_ordering_answers (
+              attempt_question_id, answered_at
+            ) values ($1, '2026-08-26T10:01:00.000Z')
+          `,
+          [attemptQuestionId],
+        );
+
+        for (const [itemIndex, attemptItemId] of attemptItemIds.entries()) {
+          await client.query(
+            `
+              insert into public.attempt_ordering_answer_items (
+                attempt_question_id, selected_item_id, submitted_position
+              ) values ($1, $2, $3)
+            `,
+            [attemptQuestionId, attemptItemId, itemIndex + 1],
+          );
+        }
       }
     }
 
