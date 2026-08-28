@@ -100,6 +100,25 @@ has disappeared.
 | R-29      | Mitigation implemented; operational risk remains | `BASIC-12` is implemented for transactional local deletion, anonymous history retention, retry, concurrency, and audit expiry. Issue #161 still needs the user-facing journey, and deployed Auth0 deletion plus scheduled retry/purge evidence remain operational gates.                                                             |
 | R-30      | Mitigating; active                               | Health checks, deployment recovery, smoke procedures, and cost review are documented; external quotas, inactivity, and outages remain possible.                                                                                                                                                                                      |
 
+## Sprint 2 governance review — 28 August 2026
+
+This review records current governance exposure without replacing the detailed
+status in Gitea.
+
+| Risks      | Reviewed status | Owner / related work                                                                                                                                           | Evidence and next control                                                                                                                                                         |
+| ---------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R-17, R-23 | Active          | `Caleb_P`; [#159](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/159) and [#167](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/167) | Use the Sprint 2 evidence matrix, collect stakeholder/user/release evidence contemporaneously, and keep manual/operator gates explicit.                                           |
+| R-20       | Active          | `Uzair`; [#164](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/164)                                                                               | Complete and review the production catalogue/content evidence; do not infer remediation from the plan.                                                                            |
+| R-21, R-26 | Active          | Current issue owners; Sprint 2 milestone                                                                                                                       | Review scope, dependencies, and estimates weekly; protect Basic completion and record any deferral in Gitea.                                                                      |
+| R-22       | Mitigating      | `Caleb_P`; #159                                                                                                                                                | The current governance page distinguishes live tracker authority from historical issue plans and dated evidence snapshots. Review links and tracker accuracy with another member. |
+| R-25       | Active          | All members                                                                                                                                                    | Keep issue branches and PRs focused, use native dependencies for true blockers, and reconcile board state during weekly review.                                                   |
+
+The audit found a missing native #193 → #171 dependency and no exposed active
+repository project board. The available label set also lacks `usability`, but
+that optional tracker-hygiene improvement is outside this issue and is not a
+blocker. See
+[Sprint 2 governance and evidence](./sprint-2-governance-and-evidence.md#tracker-audit-and-actions-still-required).
+
 ## Initial highest-priority risks
 
 The following risks require active attention during Sprint 1:
@@ -147,9 +166,11 @@ Use:
 
 ## Review history
 
-| Date       | Review                      | Participants | Outcome                                          |
-| ---------- | --------------------------- | ------------ | ------------------------------------------------ |
-| 2026-08-06 | Initial risk identification | Member 2     | Initial register created for architecture review |
+| Date       | Review                      | Participants                     | Outcome                                                                   |
+| ---------- | --------------------------- | -------------------------------- | ------------------------------------------------------------------------- |
+| 2026-08-06 | Initial risk identification | Member 2                         | Initial register created for architecture review                          |
+| 2026-08-25 | Repository delivery review  | Not retained                     | Current mitigation and residual exposure recorded                         |
+| 2026-08-28 | Sprint 2 governance review  | Codex audit; team review pending | Active risks linked to current Sprint 2 governance and tracker follow-ups |
 
 Further reviews should be added without removing the historical entries.
 
