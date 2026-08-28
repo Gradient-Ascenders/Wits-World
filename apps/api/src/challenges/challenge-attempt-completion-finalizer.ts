@@ -107,7 +107,27 @@ export function createChallengeAttemptCompletionFinalizer(
         );
       }
 
-      for (const cardDefinitionId of selectedCardDefinitionIds) {
+      for (const [
+        rewardIndex,
+        cardDefinitionId,
+      ] of selectedCardDefinitionIds.entries()) {
+        await database.query(
+          `
+            insert into public.event_completion_card_rewards (
+              completion_id,
+              reward_position,
+              card_definition_id,
+              awarded_at
+            ) values ($1::uuid, $2, $3::uuid, $4)
+          `,
+          [
+            completion.completion_id,
+            rewardIndex + 1,
+            cardDefinitionId,
+            input.completedAt,
+          ],
+        );
+
         await database.query(
           `
             insert into public.player_cards (

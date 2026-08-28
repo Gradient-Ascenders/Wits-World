@@ -355,11 +355,11 @@ The evaluation identified that account deletion must coordinate:
 
 The browser must not receive an Auth0 Management API credential.
 
-`BASIC-12` subsequently confirmed the deletion and retention policy. The
-account-deletion capability is not currently implemented and is planned for
-Sprint 2 after, or together with, the player profile/account page. Preliminary
-backend code, migrations, and tests do not satisfy the requirement; see
-[ADR-005](decisions/ADR-005-auth0-authentication.md#account-deletion).
+`BASIC-12` subsequently confirmed the deletion and retention policy. Issue
+`#160` implements the transactional persistence and retention backend; issue
+`#161` retains the player profile/account and deletion UI. See
+[ADR-005](decisions/ADR-005-auth0-authentication.md#account-deletion) and the
+[retention design](../database/account-deletion-retention.md).
 
 ## Evaluation-time unresolved decisions and current status
 
@@ -428,4 +428,5 @@ the shared SPA resource, and Wits SSO if it is approved and available.
 The preceding document was planned and generated with the assistance of:
 ChatGPT-Web[GPT-5.6 Thinking] and Codex[GPT-5].
 
-The decision-status notice was added with assistance from Codex-CLI[GPT-5].
+The decision-status notice was added with assistance from Codex-CLI[GPT-5] and
+Codex-CLI[gpt-5.6-sol medium].

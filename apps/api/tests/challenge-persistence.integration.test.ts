@@ -98,6 +98,7 @@ describe.skipIf(!runIntegrationTests)(
           '0020_replace_display_name_with_player_name.sql',
           '0021_enforce_player_name_policy.sql',
           '0022_tighten_player_name_policy.sql',
+          '0024_complete_account_deletion_retention.sql',
         ],
         skipped: [],
       });
@@ -128,6 +129,7 @@ describe.skipIf(!runIntegrationTests)(
           '0020_replace_display_name_with_player_name.sql',
           '0021_enforce_player_name_policy.sql',
           '0022_tighten_player_name_policy.sql',
+          '0024_complete_account_deletion_retention.sql',
         ],
       });
     }, 30_000);
@@ -602,6 +604,30 @@ describe.skipIf(!runIntegrationTests)(
         );
         expect(eventRewardCards.rows[0]?.count).toBe('2');
 
+        const retainedCardRewards = await client.query<{ count: string }>(
+          `select count(*)::text as count
+             from public.event_completion_card_rewards
+            where completion_id = $1`,
+          [completionId],
+        );
+        expect(retainedCardRewards.rows[0]?.count).toBe('2');
+
+        await expect(
+          client.query(
+            `update public.event_completion_card_rewards
+                set awarded_at = now()
+              where completion_id = $1`,
+            [completionId],
+          ),
+        ).rejects.toThrow();
+        await expect(
+          client.query(
+            `delete from public.event_completion_card_rewards
+              where completion_id = $1`,
+            [completionId],
+          ),
+        ).rejects.toThrow();
+
         await expect(
           client.query(
             `insert into public.event_completions (
@@ -707,6 +733,16 @@ describe.skipIf(!runIntegrationTests)(
           [CONCURRENT_PLAYER_ID],
         );
         expect(cardCount.rows[0]?.count).toBe('2');
+
+        const retainedRewardCount = await client.query<{ count: string }>(
+          `select count(*)::text as count
+             from public.event_completion_card_rewards retained
+             join public.event_completions completion
+               on completion.id = retained.completion_id
+            where completion.attempt_id = $1`,
+          [CONCURRENT_ATTEMPT_ID],
+        );
+        expect(retainedRewardCount.rows[0]?.count).toBe('2');
       });
     }, 45_000);
 
