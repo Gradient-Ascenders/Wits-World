@@ -123,6 +123,11 @@ const sidebars: SidebarsConfig = {
               id: 'architecture/challenge-attempt-api-contract',
               label: 'Challenge & Attempt API Contract',
             },
+            {
+              type: 'doc',
+              id: 'architecture/asynchronous-pvp-api-contract',
+              label: 'Asynchronous PvP API Contract',
+            },
           ],
         },
         {
