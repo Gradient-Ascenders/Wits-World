@@ -50,6 +50,17 @@ the winner, or completion status. The API locks the match row, applies the
 shared rules transition, resolves CPU actions, and persists the result
 transactionally. Unplayed CPU cards remain hidden in player-facing responses.
 
+The planned asynchronous PvP boundary follows the same rule but accepts only a
+privacy-safe exact Player Name challenge target, invitation/deck intent,
+expected resource version, submission identifier, and one API-returned legal
+action. It never accepts internal player UUIDs as authority, opponent-private
+cards, deadlines, timeout/forfeit results, damage, winners, or progression
+awards. Only the two authenticated participants may read an invitation, match,
+or history record. The
+[asynchronous PvP contract](./asynchronous-pvp-api-contract.md) is a design
+input for issues `#179` through `#181`; it is not a claim that PvP is currently
+implemented.
+
 ### Authentication provider
 
 The authentication provider authenticates users and issues tokens.
@@ -114,7 +125,10 @@ such as:
 - `deckTotalPoints`;
 - `cardRarity` or `cardCategory` as deck-validation input;
 - `winner`; or
-- `matchResult`.
+- `matchResult`;
+- `turnDeadline`;
+- `completionReason`; or
+- `progressionPoints`.
 
 ### PostgreSQL/PostGIS
 
@@ -265,7 +279,9 @@ The following decisions or operational evidence still require review:
 - further campus evidence for the provisional `75 m` event radius, two-minute
   location-claim freshness threshold, and accuracy-envelope handling;
 - location-data retention;
-- operational logging and monitoring providers.
+- operational logging and monitoring providers; and
+- asynchronous PvP challenge opt-out, blocking/reporting, moderation,
+  notification, invitation-retention, and broader per-player limit policies.
 
 The Basic application-role representation is resolved: Auth0 authenticates the
 principal, while PostgreSQL stores the local `player` or `author` role and the

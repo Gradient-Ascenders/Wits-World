@@ -271,10 +271,12 @@ completed-match history. It does not use direct attribute comparison.
 - A Power card may be played only while an active Creature is on the board. It
   is discarded immediately after use, cannot be reused during that battle, and
   may define multiple authored effects.
-- The PvP turn timer is `1 minute`; the CPU match turn timer is `1.5 minutes`.
-  The shared rule remains configurable.
-- If the timer expires without a selected move or action, the turn ends without
-  an action.
+- The later live PvP mode uses a `1 minute` turn timer; the CPU match turn timer
+  is `1.5 minutes`. The shared rule remains configurable. The planned
+  asynchronous PvP mode is separate and uses 24-hour decision windows.
+- For CPU and later live PvP modes, if the timer expires without a selected
+  move or action, the turn ends without an action. Asynchronous PvP instead
+  applies the forfeit rule documented below.
 - The CPU selects randomly from legal actions using server-side randomness.
   Difficulty levels and machine-learning behaviour are deferred.
 - Ties are not possible in the current move-based system.
@@ -291,6 +293,25 @@ The pure implementation lives in `packages/game-rules`. It accepts validated
 card/deck snapshots, returns a new battle state for every legal action, and
 receives randomness through an injected integer source. Match persistence and
 HTTP coordination remain API responsibilities.
+
+## Planned asynchronous PvP
+
+Issue `#178` defines a planned Intermediate asynchronous mode that reuses the
+same server-authoritative move, effect, replacement, deck, and victory rules.
+It is not the one-minute live mode and is not part of the implemented Basic
+release.
+
+An invitation expires after 24 hours. Once accepted, each active move or
+mandatory-replacement decision receives a 24-hour response window. Missing that
+window completes the match as an automatic forfeit; it does not use the CPU or
+live `timeout` action that merely ends a turn without an action. The browser
+continues to submit intent only, opponent cards remain hidden until legally
+revealed, and persisted deck snapshots prevent later catalogue or saved-deck
+changes from altering the match.
+
+The planned endpoint, privacy, idempotency, polling, deadline, history, and
+progression boundaries are defined in the
+[asynchronous PvP API contract](../architecture/asynchronous-pvp-api-contract.md).
 
 ## Basic exclusions
 

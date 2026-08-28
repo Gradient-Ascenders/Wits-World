@@ -89,6 +89,12 @@ that need more context, including the
 [saved-deck design](../database/saved-deck-persistence-design.md), and
 [CPU match persistence](../database/cpu-match-persistence-design.md).
 
+Issue `#178` also defines an
+[OpenAPI-ready asynchronous PvP contract](./asynchronous-pvp-api-contract.md)
+for later persistence, API, and Web issues. Those proposed routes remain
+separate from live PvP and are not included in the current generated OpenAPI or
+the implemented resource-area table above.
+
 ## Validation and errors
 
 Fastify route schemas validate untrusted parameters, query values, and request
@@ -146,6 +152,7 @@ protected operation.
 ## Related documentation
 
 - [Trust boundaries](./trust-boundaries.md)
+- [Asynchronous PvP API contract](./asynchronous-pvp-api-contract.md)
 - [High-level data flow](./data-flow.md)
 - [External integrations](./external-integrations.md)
 - [API application guide](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/apps/api/README.md)

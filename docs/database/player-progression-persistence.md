@@ -53,6 +53,31 @@ adapter into challenge and match completion, that failure must propagate so the
 owning completion transaction rolls back. This issue deliberately does not add
 placeholder, asynchronous, browser-authoritative, or HTTP behavior.
 
+### Asynchronous PvP extension gate
+
+Migration `0026` cannot represent an asynchronous PvP award: its checked source
+shape and adapter accept only event completions and CPU matches. Issue `#179`
+must use a new forward migration rather than editing `0026`. The extension must:
+
+- add a dedicated `asynchronous_pvp` source kind linked by foreign key to the
+  completed match/participant result persisted by `#179`;
+- enforce exactly one award decision for each `(matchId, participantId)` pair,
+  including an approved zero-point result;
+- validate the authoritative outcome, completion reason, participant, and
+  completion timestamp before accepting the award;
+- expose one transaction-aware
+  `recordAsynchronousPvpCompletion(client, matchId)` adapter operation that
+  records both participant decisions inside the terminal match transaction,
+  acquiring per-player locks in canonical player-ID order; and
+- reuse the per-player serialization, immutable ledger, activity, aggregate,
+  streak, and achievement machinery only as approved by the
+  [progression rule gate](../requirements/player-progression-rules.md#asynchronous-pvp-extension-gate).
+
+Issue `#180` depends on this `#179` schema/adapter extension and the Product
+Lead rule decision. It must not overload `cpu_match`, write one participant
+outside the terminal transaction, or invent placeholder values while either
+gate is unresolved.
+
 ## Time and standings
 
 `activity_day` is the authoritative completion timestamp converted with
@@ -104,4 +129,4 @@ runner registers this file so `npm run test:database --workspace
 @wits-world/api` executes the suite.
 
 The preceding document was generated and edited with the assistance of:
-Codex-CLI[gpt-5.6-sol medium].
+Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5].

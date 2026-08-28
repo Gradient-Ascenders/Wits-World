@@ -29,6 +29,27 @@ A completed CPU victory awards `25` points. A CPU loss awards `0` points. A
 zero-point result is still recorded as a processed progression source so it can
 count as activity and so retries remain auditable and idempotent.
 
+### Asynchronous PvP extension gate
+
+The approved source set currently ends at event challenge completion and CPU
+match completion. Asynchronous PvP does not yet award points, count as an
+activity day, or advance an achievement. Issue `#172` wires only the currently
+approved sources and must not infer PvP values from CPU matches.
+
+Before issue `#180` can claim progression completion, the Product Lead must
+approve and record here:
+
+- point values for a win, loss, turn forfeit, and account-deletion forfeit;
+- whether each participant receives an activity completion for those outcomes;
+- whether PvP changes any existing achievement or introduces a new one; and
+- the prospective rule code and version boundary.
+
+That decision is a dependency, not an implementation default. It must preserve
+points as permanent and non-spendable, define zero-point source treatment, and
+must not retroactively recalculate existing awards. Persistence issue `#179`
+owns the matching forward schema and adapter extension documented in the
+[persistence gate](../database/player-progression-persistence.md#asynchronous-pvp-extension-gate).
+
 Rules are versioned configuration. A new active version affects future awards;
 it never recalculates an existing ledger entry. Each entry retains the exact
 rule code, version, value, and authoritative completion or match that produced
@@ -97,5 +118,9 @@ progression adapter. Neither issue may add or derive a spendable balance. Issue
 `#193` separately removes the existing coin writes and player-facing fields
 without rewriting applied migration history.
 
+Issue `#180` is additionally blocked, for its exactly-once PvP progression
+criterion, on the asynchronous PvP rule decision and issue `#179` persistence
+gate above. Match-result persistence alone does not satisfy that criterion.
+
 The preceding document was generated and edited with the assistance of:
-Codex-CLI[gpt-5.6-sol medium].
+Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5].
