@@ -478,15 +478,23 @@ identity of each displayed copy. Two records with the same `cardDefinitionId`
 remain two separate list items; copy labels explain the duplicate count without
 combining or inventing ownership records.
 
-When the returned ownership records contain no starter copy, the route offers
-the five affinities supported by the API. Selecting one sends only its `affinity`
-to `POST /api/v1/cards/starter`. The browser does not generate cards, decide
-whether the player is eligible, or predict the result. It disables and
-synchronously locks submission while the request is active. A successful `200`
-or `201` response reveals exactly the five owned cards returned by the server,
-then a fresh collection request replaces that result when the player continues.
-An authoritative `STARTER_ALREADY_CLAIMED` response explains that the original
-choice remains in effect and offers a collection refresh.
+When the returned ownership records contain no starter copy, the route requests
+`GET /api/v1/cards/starter-options` and renders the returned Spark, Grit, and Wit
+packages. Each server preview contains the comparison copy, three Common
+Creatures with HP, Power, and four moves, and two Common Power cards with their
+effects. Exact package data remains behind progressive disclosure, using the
+same player-facing effect language as battle previews rather than catalogue
+modifier fields. Spirit and Mystic remain normal affinities and are described
+as later progression rewards; they are not offered for a new starter grant.
+
+After a separate final-confirmation step, the browser sends only the selected
+`affinity` to `POST /api/v1/cards/starter`. It does not generate cards, submit
+card IDs, decide whether the player is eligible, or predict the result. It
+disables and synchronously locks submission while the request is active. A
+successful `200` or `201` response reveals exactly the five owned cards returned
+by the server, then a fresh collection request replaces that result when the
+player continues. An authoritative `STARTER_ALREADY_CLAIMED` response explains
+that the original choice remains in effect and offers a collection refresh.
 
 Collection loading, empty, token-expired, and network/API failure states are
 announced in text. Token expiry provides a new Auth0 sign-in action that returns
@@ -714,12 +722,15 @@ With `apps/web/.env` configured and the development server running:
    with `npm run dev --workspace @wits-world/web`.
 2. Sign in as a development player and open
    `http://localhost:5173/collection`. For a player without a starter grant,
-   confirm the loading announcement is followed by the five-affinity choice and
-   the explicit empty-collection state.
-3. Use Tab and arrow keys to select an affinity, then activate Choose this
-   affinity. Confirm the action becomes disabled while pending, the result
-   heading receives visible focus, and exactly the five server-returned cards
-   appear. Activate View my collection and confirm a fresh collection load.
+   confirm the loading announcement is followed by the three server-provided
+   Spark, Grit, and Wit packages without a duplicate empty-collection panel.
+3. Use Tab and arrow keys to select an affinity. Expand View exact package to
+   inspect Creature HP/Power and moves plus Power-card effects, then activate
+   Review choice. Confirm the final-confirmation heading receives focus and no
+   grant is sent until Confirm starter is activated. Confirm the action becomes
+   disabled while pending, the result heading receives visible focus, and
+   exactly the five server-returned cards appear. Activate View my collection
+   and confirm a fresh collection load.
 4. Repeat the same-affinity request only through an intentional API retry and
    confirm the persisted grant is shown. If the server reports
    `STARTER_ALREADY_CLAIMED` for a different affinity, confirm no fictional
@@ -728,11 +739,11 @@ With `apps/web/.env` configured and the development server running:
    a separate card article and the duplicate labels state “Copy 1 of N” through
    “Copy N of N”. Confirm Creature HP/Power, moves, and Power-card effects are
    understandable with images disabled and without relying on colour.
-6. Check the empty, populated, duplicate, API-error, and session-expired states
-   at 360×800, 390×844, 768×1024, and 1280×800. At every width confirm
+6. Check the focused starter flow at 390×844 and 1280×800. Confirm
    `document.documentElement.scrollWidth <= document.documentElement.clientWidth`,
-   long names and move descriptions wrap, art keeps its aspect ratio, and the
-   fixed mobile navigation does not cover the final action.
+   the three choices remain readable, exact details are initially collapsed,
+   long names and move descriptions wrap, and the fixed mobile navigation does
+   not cover the final action.
 7. Stop the API and use Try loading again after restoring it. Expire or revoke
    the development session and confirm Sign in again returns to `/collection`.
    Check the browser console after each recovery; no token, raw server detail,

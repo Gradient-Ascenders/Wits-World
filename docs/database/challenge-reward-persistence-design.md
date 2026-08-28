@@ -502,19 +502,31 @@ any field in `reward`.
 
 ## Starter-card grant
 
+The protected `GET /api/v1/cards/starter-options` endpoint returns the current
+Spark, Grit, and Wit starter packages from the same server-owned canonical ID
+configuration used by the grant transaction. The API loads all 15 configured
+definitions in canonical order and requires each one to remain active,
+published, Common, battle-ready, and in its expected affinity/category. Preview
+data includes only comparison copy and the Creature/move and Power-effect detail
+needed to make the one-time choice; the browser does not reconstruct the
+package from catalogue assumptions.
+
 The protected `POST /api/v1/cards/starter` endpoint derives the player from the
 validated access token. The request contains only the selected affinity. One
 transaction locks or creates the player's `player_starter_grants` row, selects
-three distinct active Common Creatures and two distinct active Common Power
-cards of that affinity, inserts five owned copies, and returns the persisted
-grant.
+the affinity's configured three canonical Common Creatures and two canonical
+Common Power cards, validates and locks those definitions, inserts five owned
+copies, and returns the persisted grant.
 
 The same affinity can be submitted again safely: the API returns the original
 grant and cards with HTTP `200`. A different affinity returns a conflict, and
 the database's unique player constraint prevents concurrent requests from
-creating two starter selections. The seed contains the minimum five Common
-cards for each of the five affinities; the starter API refuses an affinity if
-its catalogue is incomplete.
+creating two starter selections. Only Spark, Grit, and Wit can create new
+starter grants. Spirit and Mystic remain full catalogue affinities for later
+progression. Historical Spirit or Mystic grants remain readable and a retry of
+their original affinity remains idempotent. The starter API refuses an eligible
+affinity if any configured canonical definition is missing or no longer valid
+for its approved package.
 
 ## Migration and implementation order
 

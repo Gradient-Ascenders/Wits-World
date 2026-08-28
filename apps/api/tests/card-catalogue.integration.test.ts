@@ -20,8 +20,10 @@ import {
   StarterAlreadyClaimedError,
   type StarterGrantDatabase,
 } from '../src/cards/starter-grant.js';
+import { starterPackageDefinitions } from '../src/cards/starter-packages.js';
 
 import { createCardCollectionService } from '../src/cards/card-collection.js';
+import type { OwnedCard } from '../src/cards/card-types.js';
 import {
   canonicalCardIds,
   canonicalCreatures,
@@ -34,6 +36,13 @@ const COLLECTION_PLAYER_ID = '70000000-0000-4000-8000-000000000003';
 const OTHER_COLLECTION_PLAYER_ID = '70000000-0000-4000-8000-000000000004';
 const EMPTY_COLLECTION_PLAYER_ID = '70000000-0000-4000-8000-000000000005';
 const MUTATION_RACE_PLAYER_ID = '70000000-0000-4000-8000-000000000006';
+const OPTION_PLAYER_IDS = [
+  '70000000-0000-4000-8000-000000000007',
+  '70000000-0000-4000-8000-000000000008',
+  '70000000-0000-4000-8000-000000000009',
+] as const;
+const HISTORICAL_SPIRIT_PLAYER_ID = '70000000-0000-4000-8000-000000000010';
+const HISTORICAL_SPIRIT_GRANT_ID = '70000000-0000-4000-8000-000000000011';
 
 const runIntegrationTests =
   process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';
@@ -369,6 +378,100 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
     ).rejects.toBeInstanceOf(StarterAlreadyClaimedError);
   });
 
+  it('previews exactly the Spark, Grit, and Wit packages used by grants', async () => {
+    const options = await starterService.listStarterOptions();
+
+    expect(options.map((option) => option.affinity)).toEqual([
+      'spark',
+      'grit',
+      'wit',
+    ]);
+
+    for (const [index, option] of options.entries()) {
+      const playerId = OPTION_PLAYER_IDS[index];
+      if (!playerId) {
+        throw new Error('Missing starter-option test player.');
+      }
+      await insertCataloguePlayer(
+        temporaryConfig,
+        playerId,
+        `starter-option-player-${index}`,
+      );
+
+      const selection = await starterService.selectStarter({
+        playerId,
+        affinity: option.affinity,
+      });
+      const configuredPackage = starterPackageDefinitions[option.affinity];
+      const configuredDefinitionIds = [
+        ...configuredPackage.creatureDefinitionIds,
+        ...configuredPackage.powerCardDefinitionIds,
+      ];
+      const creatures = selection.grant.cards
+        .filter((card) => card.category === 'creature')
+        .map(toStarterCreaturePreview);
+      const powerCards = selection.grant.cards
+        .filter((card) => card.category === 'power')
+        .map(toStarterPowerPreview);
+
+      expect(option.composition).toEqual({
+        creatureCount: 3,
+        powerCardCount: 2,
+      });
+      expect(option.creatures).toEqual(creatures);
+      expect(option.powerCards).toEqual(powerCards);
+      expect(
+        new Set(selection.grant.cards.map((card) => card.cardDefinitionId)),
+      ).toEqual(new Set(configuredDefinitionIds));
+    }
+  });
+
+  it('keeps a historical Spirit grant readable and idempotent', async () => {
+    await insertCataloguePlayer(
+      temporaryConfig,
+      HISTORICAL_SPIRIT_PLAYER_ID,
+      'historical-spirit-player',
+    );
+    await withDatabaseClient(temporaryConfig, async (client) => {
+      await client.query(
+        `insert into public.player_starter_grants (id, player_id, affinity)
+         values ($1::uuid, $2::uuid, 'spirit')`,
+        [HISTORICAL_SPIRIT_GRANT_ID, HISTORICAL_SPIRIT_PLAYER_ID],
+      );
+      await client.query(
+        `insert into public.player_cards (
+           player_id,
+           card_definition_id,
+           source_starter_grant_id,
+           acquisition_kind
+         )
+         select $1::uuid, definition.id, $2::uuid, 'starter'
+           from public.card_definitions definition
+          where definition.is_active = true
+            and definition.affinity = 'spirit'
+            and definition.rarity = 'common'`,
+        [HISTORICAL_SPIRIT_PLAYER_ID, HISTORICAL_SPIRIT_GRANT_ID],
+      );
+    });
+
+    const retry = await starterService.selectStarter({
+      playerId: HISTORICAL_SPIRIT_PLAYER_ID,
+      affinity: 'spirit',
+    });
+    const collection = await collectionService.listOwnedCards(
+      HISTORICAL_SPIRIT_PLAYER_ID,
+    );
+
+    expect(retry.created).toBe(false);
+    expect(retry.grant).toMatchObject({
+      affinity: 'spirit',
+      cards: expect.arrayContaining([]),
+    });
+    expect(retry.grant.cards).toHaveLength(5);
+    expect(collection).toHaveLength(5);
+    expect(collection.every((card) => card.affinity === 'spirit')).toBe(true);
+  });
+
   it('seeds modifier metadata for battle-ready Buff effects', async () => {
     await withDatabaseClient(temporaryConfig, async (client) => {
       const result = await client.query<{
@@ -500,7 +603,6 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
     const selectionMayContinue = new Promise<void>((resolve) => {
       continueSelection = resolve;
     });
-    let candidateQueryCount = 0;
     const pausingDatabase: StarterGrantDatabase = {
       async connect() {
         const client = await cataloguePool.connect();
@@ -515,15 +617,11 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
 
             if (
               normalized.includes('from public.card_definitions') &&
-              normalized.includes('limit $3') &&
-              normalized.includes('for share')
+              normalized.includes('definition.id = any($1::uuid[])') &&
+              normalized.includes('for share of definition')
             ) {
-              candidateQueryCount += 1;
-
-              if (candidateQueryCount === 2) {
-                announceCandidateLocks();
-                await selectionMayContinue;
-              }
+              announceCandidateLocks();
+              await selectionMayContinue;
             }
 
             return { rows: result.rows };
@@ -854,6 +952,39 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
     });
   });
 });
+
+function toStarterCreaturePreview(card: OwnedCard) {
+  return {
+    name: card.name,
+    hp: card.hp,
+    power: card.power,
+    moves: card.moves.map((move) => ({
+      position: move.position,
+      name: move.name,
+      moveType: move.moveType,
+      effectType: move.effectType,
+      effectValue: move.effectValue,
+      modifierStat: move.modifierStat,
+      modifierOperation: move.modifierOperation,
+      modifierDurationTurns: move.modifierDurationTurns,
+      powerCost: move.powerCost,
+    })),
+  };
+}
+
+function toStarterPowerPreview(card: OwnedCard) {
+  return {
+    name: card.name,
+    effects: card.effects.map((effect) => ({
+      position: effect.position,
+      effectType: effect.effectType,
+      effectValue: effect.effectValue,
+      modifierStat: effect.modifierStat,
+      modifierOperation: effect.modifierOperation,
+      modifierDurationTurns: effect.modifierDurationTurns,
+    })),
+  };
+}
 
 async function insertCataloguePlayer(
   config: DatabaseConfig,

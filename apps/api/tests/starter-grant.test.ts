@@ -6,6 +6,7 @@ import {
   StarterAffinityNotAllowedError,
   type StarterGrantDatabase,
 } from '../src/cards/starter-grant.js';
+import { starterPackageDefinitions } from '../src/cards/starter-packages.js';
 import type { StarterAffinity } from '../src/cards/card-types.js';
 
 const PLAYER_ID = uuid(1);
@@ -13,25 +14,192 @@ const GRANT_ID = uuid(2);
 const GRANTED_AT = new Date('2026-08-16T08:00:00.000Z');
 
 describe('starter grant service invariants', () => {
+  it('loads the 15 configured canonical definitions once in package order', async () => {
+    const definitionRows = buildConfiguredDefinitionRows([
+      'spark',
+      'grit',
+      'wit',
+    ]);
+    const expectedDefinitionIds = definitionRows.map(
+      (row) => row.card_definition_id,
+    );
+    const query = vi.fn(async (statement: string, values?: unknown[]) => {
+      const sql = normalizeSql(statement);
+
+      if (
+        sql.includes('from public.card_definitions definition') &&
+        sql.includes('definition.id = any($1::uuid[])')
+      ) {
+        expect(values?.[0]).toEqual(expectedDefinitionIds);
+        expect(sql).toContain(
+          'order by array_position($1::uuid[], definition.id)',
+        );
+        expect(sql).not.toContain('for share');
+        return { rows: definitionRows };
+      }
+
+      throw new Error(`Unexpected starter query: ${sql}`);
+    });
+    const database: StarterGrantDatabase = {
+      async connect() {
+        return {
+          async query<T extends pg.QueryResultRow>(
+            statement: string,
+            values?: unknown[],
+          ) {
+            const result = await query(statement, values);
+            return { rows: result.rows as unknown as T[] };
+          },
+          release: vi.fn(),
+        };
+      },
+    };
+
+    const options =
+      await createStarterGrantService(database).listStarterOptions();
+
+    expect(options.map((option) => option.affinity)).toEqual([
+      'spark',
+      'grit',
+      'wit',
+    ]);
+    expect(options[0]).toMatchObject({
+      title: 'Pressure',
+      composition: { creatureCount: 3, powerCardCount: 2 },
+    });
+    expect(options[0]?.creatures[0]).toMatchObject({
+      name: 'spark creature 1',
+    });
+    expect(options[0]?.creatures[0]?.moves[0]).not.toHaveProperty('id');
+    expect(options[0]?.powerCards[0]?.effects[0]).not.toHaveProperty('id');
+    expect(
+      query.mock.calls.filter(([statement]) =>
+        normalizeSql(statement).includes(
+          'from public.card_definitions definition',
+        ),
+      ),
+    ).toHaveLength(1);
+    expect(query).toHaveBeenCalledOnce();
+  });
+
   it.each(['spirit', 'mystic'] as const)(
-    'rejects the progression-only %s affinity before opening a transaction',
+    'rejects the progression-only %s affinity for a player without a grant',
     async (affinity) => {
-      const connect = vi.fn<StarterGrantDatabase['connect']>();
+      const query = vi.fn(async (statement: string) => {
+        const sql = normalizeSql(statement);
+
+        if (sql.includes('from public.player_starter_grants')) {
+          return { rows: [] };
+        }
+
+        if (sql === 'begin' || sql === 'rollback') {
+          return { rows: [] };
+        }
+
+        throw new Error(`Unexpected starter query: ${sql}`);
+      });
+      const connect = vi.fn<StarterGrantDatabase['connect']>(async () => ({
+        async query<T extends pg.QueryResultRow>(statement: string) {
+          const result = await query(statement);
+          return { rows: result.rows as T[] };
+        },
+        release: vi.fn(),
+      }));
       const service = createStarterGrantService({ connect });
 
       await expect(
         service.selectStarter({
-          affinity: affinity as StarterAffinity,
+          affinity,
           playerId: PLAYER_ID,
         }),
       ).rejects.toBeInstanceOf(StarterAffinityNotAllowedError);
-      expect(connect).not.toHaveBeenCalled();
+      expect(connect).toHaveBeenCalledOnce();
+      expect(
+        query.mock.calls.some(([statement]) =>
+          normalizeSql(statement).includes('from public.card_definitions'),
+        ),
+      ).toBe(false);
+      expect(query).toHaveBeenCalledWith('rollback');
+    },
+  );
+
+  it.each(['spirit', 'mystic'] as const)(
+    'returns an existing historical %s grant idempotently',
+    async (affinity) => {
+      const rows = [1, 2, 3, 4, 5].map((index) => ({
+        acquired_at: GRANTED_AT,
+        affinity,
+        card_definition_id: uuid(100 + index),
+        category: index <= 3 ? 'creature' : 'power',
+        description: null,
+        effects: [],
+        hp: index <= 3 ? 100 : null,
+        image_url: null,
+        is_active: true,
+        moves: [],
+        name: `Historical ${affinity} card ${index}`,
+        owned_card_id: uuid(200 + index),
+        power: index <= 3 ? 10 : null,
+        rarity: 'common',
+      }));
+      const query = vi.fn(async (statement: string) => {
+        const sql = normalizeSql(statement);
+
+        if (sql === 'begin' || sql === 'commit') {
+          return { rows: [] };
+        }
+
+        if (sql.includes('from public.player_starter_grants')) {
+          return {
+            rows: [
+              {
+                affinity,
+                granted_at: GRANTED_AT,
+                starter_grant_id: GRANT_ID,
+              },
+            ],
+          };
+        }
+
+        if (sql.includes('from public.player_cards owned')) {
+          return { rows };
+        }
+
+        throw new Error(`Unexpected starter query: ${sql}`);
+      });
+      const database: StarterGrantDatabase = {
+        async connect() {
+          return {
+            async query<T extends pg.QueryResultRow>(statement: string) {
+              const result = await query(statement);
+              return { rows: result.rows as unknown as T[] };
+            },
+            release: vi.fn(),
+          };
+        },
+      };
+
+      await expect(
+        createStarterGrantService(database).selectStarter({
+          affinity,
+          playerId: PLAYER_ID,
+        }),
+      ).resolves.toMatchObject({
+        created: false,
+        grant: { affinity, cards: expect.arrayContaining([]) },
+      });
+      expect(
+        query.mock.calls.some(([statement]) =>
+          normalizeSql(statement).includes('from public.card_definitions'),
+        ),
+      ).toBe(false);
     },
   );
 
   it('rolls back rather than committing a malformed persisted composition', async () => {
-    const creatureIds = [uuid(101), uuid(102), uuid(103)];
-    const powerIds = [uuid(104), uuid(105)];
+    const configuredPackage = starterPackageDefinitions.wit;
+    const creatureIds = [...configuredPackage.creatureDefinitionIds];
+    const powerIds = [...configuredPackage.powerCardDefinitionIds];
     const selectedIds = [...creatureIds, ...powerIds];
     const query = vi.fn(
       async (
@@ -49,16 +217,11 @@ describe('starter grant service invariants', () => {
         }
 
         if (
-          sql.includes('from public.card_definitions') &&
-          sql.includes('limit $3')
+          sql.includes('from public.card_definitions definition') &&
+          sql.includes('definition.id = any($1::uuid[])')
         ) {
-          const ids = values?.[1] === 'creature' ? creatureIds : powerIds;
-
-          return {
-            rows: ids.map((cardDefinitionId) => ({
-              card_definition_id: cardDefinitionId,
-            })),
-          };
+          expect(values?.[0]).toEqual(selectedIds);
+          return { rows: buildConfiguredDefinitionRows(['wit']) };
         }
 
         if (sql.startsWith('insert into public.player_starter_grants')) {
@@ -130,13 +293,11 @@ describe('starter grant service invariants', () => {
     const executedStatements = query.mock.calls.map(([statement]) =>
       normalizeSql(statement),
     );
-    const candidateStatements = executedStatements.filter(
-      (statement) =>
-        statement.includes('from public.card_definitions') &&
-        statement.includes('limit $3'),
+    const candidateStatements = executedStatements.filter((statement) =>
+      statement.includes('definition.id = any($1::uuid[])'),
     );
 
-    expect(candidateStatements).toHaveLength(2);
+    expect(candidateStatements).toHaveLength(1);
     expect(
       candidateStatements.every((statement) => statement.includes('for share')),
     ).toBe(true);
@@ -152,4 +313,63 @@ function normalizeSql(statement: string) {
 
 function uuid(value: number) {
   return `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
+}
+
+function buildConfiguredDefinitionRows(affinities: readonly StarterAffinity[]) {
+  return affinities.flatMap((affinity) => {
+    const packageDefinition = starterPackageDefinitions[affinity];
+    const creatures = packageDefinition.creatureDefinitionIds.map(
+      (cardDefinitionId, index) => ({
+        affinity,
+        authoring_status: 'published',
+        card_definition_id: cardDefinitionId,
+        category: 'creature',
+        effects: [],
+        hp: 90 + index,
+        is_active: true,
+        moves: [1, 2, 3, 4].map((position) => ({
+          effectType: 'damage',
+          effectValue: 10 + position,
+          id: uuid(400 + index * 10 + position),
+          modifierDurationTurns: null,
+          modifierOperation: null,
+          modifierStat: null,
+          moveType: position === 1 ? 'basic' : affinity,
+          name: `${affinity} move ${position}`,
+          position,
+          powerCost: position - 1,
+        })),
+        name: `${affinity} creature ${index + 1}`,
+        power: 10 + index,
+        rarity: 'common',
+      }),
+    );
+    const powerCards = packageDefinition.powerCardDefinitionIds.map(
+      (cardDefinitionId, index) => ({
+        affinity,
+        authoring_status: 'published',
+        card_definition_id: cardDefinitionId,
+        category: 'power',
+        effects: [
+          {
+            effectType: 'damage',
+            effectValue: 12,
+            id: uuid(800 + index),
+            modifierDurationTurns: null,
+            modifierOperation: null,
+            modifierStat: null,
+            position: 1,
+          },
+        ],
+        hp: null,
+        is_active: true,
+        moves: [],
+        name: `${affinity} power ${index + 1}`,
+        power: null,
+        rarity: 'common',
+      }),
+    );
+
+    return [...creatures, ...powerCards];
+  });
 }

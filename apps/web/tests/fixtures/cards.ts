@@ -10,6 +10,69 @@ export function buildStarterCards(affinity = 'wit') {
   );
 }
 
+export function buildStarterOptions() {
+  return (['spark', 'grit', 'wit'] as const).map((affinity) => {
+    const profile = {
+      spark: {
+        title: 'Pressure',
+        description: 'Deal more damage now and force the pace.',
+        highlights: ['High burst', 'Lower HP', 'Pressure-focused'],
+      },
+      grit: {
+        title: 'Durability',
+        description: 'Take more hits and stretch each point of Power.',
+        highlights: [
+          'Highest durability',
+          'Efficient moves',
+          'Healing / mitigation',
+        ],
+      },
+      wit: {
+        title: 'Flexibility',
+        description: 'Use broader move coverage and disrupt the opponent.',
+        highlights: ['Balanced stats', 'Broader coverage', 'Resource control'],
+      },
+    }[affinity];
+
+    return {
+      affinity,
+      composition: { creatureCount: 3, powerCardCount: 2 },
+      creatures: [1, 2, 3].map((index) => ({
+        hp: 90 + index,
+        moves: [1, 2, 3, 4].map((position) => ({
+          effectType: position === 4 ? 'debuff' : 'damage',
+          effectValue: position === 4 ? 10 : 10 + position,
+          modifierDurationTurns: position === 4 ? 2 : null,
+          modifierOperation: position === 4 ? 'multiply' : null,
+          modifierStat: position === 4 ? 'damage_multiplier' : null,
+          moveType: position === 1 ? 'basic' : affinity,
+          name: `${affinity} move ${position}`,
+          position,
+          powerCost: position - 1,
+        })),
+        name: `${affinity} Creature ${index}`,
+        power: 10 + index,
+      })),
+      description: profile.description,
+      highlights: profile.highlights,
+      powerCards: [1, 2].map((index) => ({
+        effects: [
+          {
+            effectType: 'damage',
+            effectValue: 10 + index,
+            modifierDurationTurns: null,
+            modifierOperation: null,
+            modifierStat: null,
+            position: 1,
+          },
+        ],
+        name: `${affinity} Power ${index}`,
+      })),
+      title: profile.title,
+    };
+  });
+}
+
 export function buildCard(
   index: number,
   overrides: Record<string, unknown> = {},

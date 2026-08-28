@@ -77,7 +77,7 @@ The generated OpenAPI groups the current contract into these areas:
 | Authentication and account | Local identity, Player Name setup, and implemented account-lifecycle API boundaries         |
 | Events                     | Player-safe published-event discovery and server-authoritative location eligibility         |
 | Challenges                 | Timed attempt start/resume, answer locking, completion, marking, and completed-only review  |
-| Cards                      | Starter grant, catalogue-safe data, rewards, and the authenticated player's collection      |
+| Cards                      | Server-derived starter-package previews and grants, catalogue-safe rewards, and collection  |
 | Decks                      | Saved-deck CRUD, ownership validation, and active selection                                 |
 | Matches                    | Server-created CPU matches, legal action submission, recovery, and private history          |
 | Authoring                  | Author-only event, challenge, question, and card lifecycle operations plus audit boundaries |

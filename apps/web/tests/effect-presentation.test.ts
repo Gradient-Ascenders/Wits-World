@@ -4,6 +4,7 @@ import {
   describeActiveModifier,
   describeAppliedEffect,
   describeEffect,
+  describeStarterEffect,
 } from '../src/battle/effect-presentation';
 import type { MatchEffect } from '../src/api/matches';
 
@@ -46,6 +47,22 @@ describe('battle effect presentation', () => {
     expect(effects.map(describeEffect)).toEqual([
       '8 base damage',
       'Restore 3 Power',
+    ]);
+  });
+
+  it('uses battle-facing copy for canonical starter preview effects', () => {
+    expect(
+      [
+        starterEffect('damage', 19),
+        starterEffect('heal', 12),
+        starterEffect('debuff', 2, 'power', 'add'),
+        starterEffect('debuff', 10, 'damage_multiplier', 'multiply', 2),
+      ].map(describeStarterEffect),
+    ).toEqual([
+      '19 base damage',
+      'Restore 12 HP',
+      'Opponent loses 2 Power',
+      'Opponent damage −10% · 2 turns',
     ]);
   });
 
@@ -143,5 +160,22 @@ function modifiedEffect(
     effectType,
     effectValue,
     modifier: { durationTurns, operation, stat },
+  };
+}
+
+function starterEffect(
+  effectType: 'buff' | 'damage' | 'debuff' | 'heal',
+  effectValue: number,
+  modifierStat: 'damage_multiplier' | 'hp' | 'power' | null = null,
+  modifierOperation: 'add' | 'multiply' | null = null,
+  modifierDurationTurns: number | null = null,
+) {
+  return {
+    effectType,
+    effectValue,
+    modifierDurationTurns,
+    modifierOperation,
+    modifierStat,
+    position: 1,
   };
 }

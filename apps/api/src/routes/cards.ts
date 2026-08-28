@@ -9,8 +9,9 @@ import {
   type StarterGrantService,
 } from '../cards/starter-grant.js';
 import {
+  cardAffinities,
   starterAffinities,
-  type StarterAffinity,
+  type CardAffinity,
 } from '../cards/card-types.js';
 
 interface CardRoutesOptions {
@@ -19,7 +20,7 @@ interface CardRoutesOptions {
 }
 
 interface StarterBody {
-  affinity: StarterAffinity;
+  affinity: CardAffinity;
 }
 
 const apiErrorSchema = {
@@ -121,6 +122,37 @@ const effectSchema = {
   },
 } as const;
 
+const starterPreviewMoveSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: moveSchema.required.filter((property) => property !== 'id'),
+  properties: {
+    position: moveSchema.properties.position,
+    name: moveSchema.properties.name,
+    moveType: moveSchema.properties.moveType,
+    effectType: moveSchema.properties.effectType,
+    effectValue: moveSchema.properties.effectValue,
+    modifierStat: moveSchema.properties.modifierStat,
+    modifierOperation: moveSchema.properties.modifierOperation,
+    modifierDurationTurns: moveSchema.properties.modifierDurationTurns,
+    powerCost: moveSchema.properties.powerCost,
+  },
+} as const;
+
+const starterPreviewEffectSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: effectSchema.required.filter((property) => property !== 'id'),
+  properties: {
+    position: effectSchema.properties.position,
+    effectType: effectSchema.properties.effectType,
+    effectValue: effectSchema.properties.effectValue,
+    modifierStat: effectSchema.properties.modifierStat,
+    modifierOperation: effectSchema.properties.modifierOperation,
+    modifierDurationTurns: effectSchema.properties.modifierDurationTurns,
+  },
+} as const;
+
 const ownedCardSchema = {
   type: 'object',
   additionalProperties: false,
@@ -185,7 +217,7 @@ const starterResponseSchema = {
     starterGrantId: { type: 'string', format: 'uuid' },
     affinity: {
       type: 'string',
-      enum: starterAffinities,
+      enum: cardAffinities,
     },
     grantedAt: { type: 'string', format: 'date-time' },
     cards: {
@@ -193,6 +225,94 @@ const starterResponseSchema = {
       minItems: 5,
       maxItems: 5,
       items: starterCardSchema,
+    },
+    requestId: { type: 'string' },
+  },
+} as const;
+
+const starterOptionSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'affinity',
+    'title',
+    'description',
+    'highlights',
+    'composition',
+    'creatures',
+    'powerCards',
+  ],
+  properties: {
+    affinity: { type: 'string', enum: starterAffinities },
+    title: { type: 'string' },
+    description: { type: 'string' },
+    highlights: {
+      type: 'array',
+      minItems: 3,
+      maxItems: 3,
+      items: { type: 'string' },
+    },
+    composition: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['creatureCount', 'powerCardCount'],
+      properties: {
+        creatureCount: { type: 'integer', const: 3 },
+        powerCardCount: { type: 'integer', const: 2 },
+      },
+    },
+    creatures: {
+      type: 'array',
+      minItems: 3,
+      maxItems: 3,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['name', 'hp', 'power', 'moves'],
+        properties: {
+          name: { type: 'string' },
+          hp: { type: 'integer', minimum: 1 },
+          power: { type: 'integer', minimum: 0 },
+          moves: {
+            type: 'array',
+            minItems: 4,
+            maxItems: 4,
+            items: starterPreviewMoveSchema,
+          },
+        },
+      },
+    },
+    powerCards: {
+      type: 'array',
+      minItems: 2,
+      maxItems: 2,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['name', 'effects'],
+        properties: {
+          name: { type: 'string' },
+          effects: {
+            type: 'array',
+            minItems: 1,
+            items: starterPreviewEffectSchema,
+          },
+        },
+      },
+    },
+  },
+} as const;
+
+const starterOptionsResponseSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['options', 'requestId'],
+  properties: {
+    options: {
+      type: 'array',
+      minItems: 3,
+      maxItems: 3,
+      items: starterOptionSchema,
     },
     requestId: { type: 'string' },
   },
@@ -258,6 +378,59 @@ export const cardRoutes: FastifyPluginAsync<CardRoutesOptions> = async (
     },
   );
 
+  app.get(
+    '/cards/starter-options',
+    {
+      preHandler: [app.authenticate, app.requireActivePlayer],
+      schema: {
+        operationId: 'listStarterOptions',
+        summary: 'List the currently eligible starter packages',
+        description:
+          'Returns the approved canonical three-Common-Creature and two-Common-Power-card packages available to the authenticated player for comparison.',
+        tags: ['Cards'],
+        security: [{ bearerAuth: [] }],
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {},
+        },
+        response: {
+          200: starterOptionsResponseSchema,
+          401: apiErrorSchema,
+          403: apiErrorSchema,
+          409: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (!request.player) {
+        throw new Error(
+          'Active player context was not set by the authorisation pre-handler.',
+        );
+      }
+
+      try {
+        const options = await starterGrantService.listStarterOptions();
+
+        return reply.status(200).send({
+          options,
+          requestId: request.id,
+        });
+      } catch (error) {
+        if (error instanceof StarterCatalogueUnavailableError) {
+          throw new ApiError({
+            statusCode: 409,
+            code: 'STARTER_CATALOGUE_UNAVAILABLE',
+            title: 'Starter cards unavailable',
+            detail: 'Starter packages are not currently available.',
+          });
+        }
+
+        throw error;
+      }
+    },
+  );
+
   app.post<{ Body: StarterBody }>(
     '/cards/starter',
     {
@@ -266,7 +439,7 @@ export const cardRoutes: FastifyPluginAsync<CardRoutesOptions> = async (
         operationId: 'selectStarterCards',
         summary: 'Select the current player starter affinity',
         description:
-          'Grants one server-selected set of three Common Creature cards and two Common Power cards for the selected affinity.',
+          'Grants the approved canonical set of three Common Creature cards and two Common Power cards for the selected affinity.',
         tags: ['Cards'],
         security: [{ bearerAuth: [] }],
         body: {
@@ -276,7 +449,7 @@ export const cardRoutes: FastifyPluginAsync<CardRoutesOptions> = async (
           properties: {
             affinity: {
               type: 'string',
-              enum: starterAffinities,
+              enum: cardAffinities,
             },
           },
         },
