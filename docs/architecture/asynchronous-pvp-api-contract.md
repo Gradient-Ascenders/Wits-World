@@ -284,17 +284,17 @@ returns the stored outcome. Reusing the ID with a different payload returns
 
 The complete first-delivery endpoint set is:
 
-| Method and path                                              | Success | Response schema               | Intent                                              |
-| ------------------------------------------------------------ | ------- | ----------------------------- | --------------------------------------------------- |
-| `GET /api/v1/matches/pvp/players?playerName={name}`          | `200`   | `ChallengePlayerResponse`     | Exact challenge lookup                              |
-| `POST /api/v1/matches/pvp/invitations`                       | `201`   | `PvpInvitationResponse`       | Create one invitation                               |
-| `GET /api/v1/matches/pvp/invitations`                        | `200`   | `PvpInvitationListResponse`   | List the viewer's incoming and outgoing invitations |
-| `POST /api/v1/matches/pvp/invitations/:invitationId/accept`  | `200`   | `AcceptPvpInvitationResponse` | Accept with a deck and initial Creature             |
-| `POST /api/v1/matches/pvp/invitations/:invitationId/decline` | `200`   | `PvpInvitationResponse`       | Decline a pending invitation                        |
-| `GET /api/v1/matches/pvp`                                    | `200`   | `PvpMatchListResponse`        | List active matches for polling and recovery        |
-| `GET /api/v1/matches/pvp/history`                            | `200`   | `PvpHistoryResponse`          | List completed participant history                  |
-| `GET /api/v1/matches/pvp/:matchId`                           | `200`   | `AsyncPvpMatchResponse`       | Read one viewer-safe match                          |
-| `POST /api/v1/matches/pvp/:matchId/actions`                  | `200`   | `AsyncPvpMatchResponse`       | Submit one legal battle intent                      |
+| Method and path                                              | Success | Response schema               | Intent                                          |
+| ------------------------------------------------------------ | ------- | ----------------------------- | ----------------------------------------------- |
+| `GET /api/v1/matches/pvp/players?playerName={name}`          | `200`   | `ChallengePlayerResponse`     | Exact challenge lookup                          |
+| `POST /api/v1/matches/pvp/invitations`                       | `201`   | `PvpInvitationResponse`       | Create one invitation                           |
+| `GET /api/v1/matches/pvp/invitations`                        | `200`   | `PvpInvitationListResponse`   | List a bounded page of the viewer's invitations |
+| `POST /api/v1/matches/pvp/invitations/:invitationId/accept`  | `200`   | `AcceptPvpInvitationResponse` | Accept with a deck and initial Creature         |
+| `POST /api/v1/matches/pvp/invitations/:invitationId/decline` | `200`   | `PvpInvitationResponse`       | Decline a pending invitation                    |
+| `GET /api/v1/matches/pvp`                                    | `200`   | `PvpMatchListResponse`        | List a bounded active-match page                |
+| `GET /api/v1/matches/pvp/history`                            | `200`   | `PvpHistoryResponse`          | List a bounded completed-history page           |
+| `GET /api/v1/matches/pvp/:matchId`                           | `200`   | `AsyncPvpMatchResponse`       | Read one viewer-safe match                      |
+| `POST /api/v1/matches/pvp/:matchId/actions`                  | `200`   | `AsyncPvpMatchResponse`       | Submit one legal battle intent                  |
 
 Static `/history` routing must be registered without allowing it to be captured
 as a match identifier.
@@ -302,15 +302,15 @@ as a match identifier.
 Every success envelope requires `requestId` and uses
 `additionalProperties: false`:
 
-| Schema                        | Required content                                             |
-| ----------------------------- | ------------------------------------------------------------ |
-| `ChallengePlayerResponse`     | `playerName`, `requestId`                                    |
-| `PvpInvitationResponse`       | `invitation`, `requestId`                                    |
-| `PvpInvitationListResponse`   | `incoming[]`, `outgoing[]`, `requestId`                      |
-| `AcceptPvpInvitationResponse` | terminal accepted `invitation`, created `match`, `requestId` |
-| `PvpMatchListResponse`        | viewer-relative active `matches[]`, `requestId`              |
-| `AsyncPvpMatchResponse`       | the complete viewer-relative match fields defined above      |
-| `PvpHistoryResponse`          | completed viewer-relative `matches[]`, `requestId`           |
+| Schema                        | Required content                                                 |
+| ----------------------------- | ---------------------------------------------------------------- |
+| `ChallengePlayerResponse`     | `playerName`, `requestId`                                        |
+| `PvpInvitationResponse`       | `invitation`, `requestId`                                        |
+| `PvpInvitationListResponse`   | `invitations[]`, `nextCursor`, `requestId`                       |
+| `AcceptPvpInvitationResponse` | terminal accepted `invitation`, created `match`, `requestId`     |
+| `PvpMatchListResponse`        | viewer-relative active `matches[]`, `nextCursor`, `requestId`    |
+| `AsyncPvpMatchResponse`       | the complete viewer-relative match fields defined above          |
+| `PvpHistoryResponse`          | completed viewer-relative `matches[]`, `nextCursor`, `requestId` |
 
 The list item components are also closed and viewer-relative:
 
@@ -325,9 +325,68 @@ An active list returns only `PvpMatchSummary` values with
 `status = "completed"`; a deleted opponent is represented by the literal safe
 display value `Deleted player`, not an internal identifier.
 
+### Bounded collection queries
+
+All three collection routes use keyset cursor pagination. Their query objects
+are closed and accept:
+
+| Route          | Query fields                                 |
+| -------------- | -------------------------------------------- |
+| Invitations    | `cursor?`, `limit?`, `direction?`, `status?` |
+| Active matches | `cursor?`, `limit?`                          |
+| Match history  | `cursor?`, `limit?`                          |
+
+`limit` is an integer from `1` through `50` and defaults to `20`. The server
+never returns more than the effective limit. `direction` is `incoming` or
+`outgoing`; `status` is one invitation status. Omitting either invitation
+filter includes both directions or all statuses respectively. This lets the
+Web application request a bounded actionable page such as pending incoming
+invitations without loading retained terminal invitations.
+
+`cursor` is an opaque server-issued string with a maximum length of 512
+characters. It binds the authenticated viewer, endpoint, filters, effective
+limit, ordering fields, and final row of the preceding page. A malformed,
+tampered, cross-viewer, cross-endpoint, or filter-mismatched cursor returns the
+safe `VALIDATION_ERROR`; the client never constructs or edits one and repeats
+the same filters and limit when requesting the next page.
+
+Ordering and cursor comparisons are deterministic:
+
+| Collection     | Order                                      |
+| -------------- | ------------------------------------------ |
+| Invitations    | `createdAt DESC`, then `invitationId DESC` |
+| Active matches | `updatedAt DESC`, then `matchId DESC`      |
+| Match history  | `completedAt DESC`, then `matchId DESC`    |
+
+The opaque cursor advances strictly after that tuple. UUIDs are the stable
+tie-breakers and are already visible identifiers for the corresponding
+participant-owned resources. Each list response includes required
+`nextCursor: string | null`; null means that query currently has no later page.
+The implementation may fetch one extra row internally to decide whether to
+emit a cursor, but it does not return that row in the current page.
+
+Active-match ordering can change while a player traverses pages. Consumers
+deduplicate by `matchId`, keep the greatest `version`, and restart from the
+first page for the next refresh; a cursor traversal is not a long-lived
+database snapshot. Background polling refreshes only the visible first page or
+an open match detail. It must not automatically drain every cursor page on each
+interval. Explicit navigation or recovery may request later pages one at a
+time.
+
+A safe first-page envelope is:
+
+```json
+{
+  "matches": [],
+  "nextCursor": null,
+  "requestId": "server-generated-request-id"
+}
+```
+
 The lookup query requires exactly one `playerName` and rejects unknown query
 properties. Invitation and match path parameters require UUID format. List
-operations accept no browser-supplied player identifier.
+operations accept no browser-supplied player identifier. A first-page request
+omits `cursor`; an empty page still returns `nextCursor: null`.
 
 ### Invitation request schemas
 
@@ -433,6 +492,8 @@ Polling uses the returned `version` and `updatedAt` to recognize a new committed
 snapshot. The contract does not require a fixed polling interval; the Web
 implementation must use bounded polling only while the relevant page is
 visible, stop on unmount, and back off after failures or rate limiting.
+Collection polling follows the bounded first-page rules above; match-detail
+polling remains the authority while a battle is open.
 
 An ambiguous mutation response is reconciled by reading the affected
 invitation or match and then replaying the same `submissionId` only when
@@ -519,13 +580,27 @@ The source is processed exactly once even when an action response is replayed,
 a deadline worker retries, or two workers race. Zero-point outcomes must still
 be recordable when the approved progression rules require activity evidence.
 
-The current planned progression adapter covers challenge completions and CPU
-matches. It does not yet define an asynchronous PvP source or approved PvP point
-values. Issues `#171` and `#172` own those rules and integration. Until that
-authority exists, no implementation may invent a point value, spendable
+Merged issue `#171` and migration `0026` support exactly two source kinds:
+`challenge_completion` and `cpu_match`. Open issue `#172` owns HTTP exposure
+and transaction wiring for those approved sources only; it is not the owner of
+an asynchronous PvP rule or schema.
+
+The concrete extension gate is recorded in the
+[progression rules](../requirements/player-progression-rules.md#asynchronous-pvp-extension-gate)
+and
+[progression persistence design](../database/player-progression-persistence.md#asynchronous-pvp-extension-gate).
+The Product Lead must approve the outcome values and activity/achievement
+effects there. Persistence issue `#179` must then add the forward schema,
+constraints, and one transaction-aware
+`recordAsynchronousPvpCompletion(client, matchId)` adapter operation for the
+`asynchronous_pvp` source kind, keyed uniquely by match and participant. Issue
+`#180` depends on both merged gates and must call that operation in the terminal
+match transaction.
+
+Until both gates exist, no implementation may invent a point value, spendable
 currency, coin result, achievement, or client-provided award. Issue `#180`
-cannot claim complete PvP progression wiring until the final adapter supports
-this stable source.
+cannot claim its exactly-once progression criterion is complete, even if match
+completion itself is implemented.
 
 ## Safe errors
 
@@ -579,8 +654,10 @@ route, database, component, and integration tests:
 - invalid, unowned, stale, or incomplete challenger and recipient decks;
 - challenger snapshot stability after saved-deck or catalogue edits;
 - accept versus decline, accept versus expiry, and duplicate accept replay;
-- identical replay versus submission-ID/payload conflict; and
-- account deletion during pending invitations.
+- identical replay versus submission-ID/payload conflict;
+- account deletion during pending invitations; and
+- invitation filters, limit bounds, invalid/cross-viewer cursors, stable
+  tie-break ordering, and insertion between pages.
 
 ### Match authority and privacy
 
@@ -592,8 +669,10 @@ route, database, component, and integration tests:
 - two different actions submitted against one version;
 - coherent reads before or after, but never across, a concurrent commit;
 - mandatory replacement followed by a fresh normal-turn deadline;
-- immutable completed state and history; and
-- anonymous completed history after account deletion.
+- immutable completed state and history;
+- anonymous completed history after account deletion; and
+- active/history page bounds, deduplication after mutable ordering, and
+  first-page refresh without automatic cursor draining.
 
 ### Deadlines, restart, and progression
 
