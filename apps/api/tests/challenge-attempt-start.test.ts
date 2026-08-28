@@ -38,6 +38,10 @@ describe('challenge attempt start service', () => {
       deadline: '2026-09-01T10:02:00.000Z',
     });
 
+    if (result.attempt.format !== 'multiple_choice') {
+      throw new Error('Expected a multiple-choice challenge attempt.');
+    }
+
     const sql = executedSql(fixture.query);
 
     expect(sql).not.toContain('with claim as');
@@ -106,6 +110,10 @@ describe('challenge attempt start service', () => {
       throw new Error('Expected a newly created challenge attempt.');
     }
 
+    if (result.attempt.format !== 'multiple_choice') {
+      throw new Error('Expected a multiple-choice challenge attempt.');
+    }
+
     expect(result.attempt).toMatchObject({
       attemptId: ATTEMPT_ID,
       eventId: EVENT_ID,
@@ -149,6 +157,38 @@ describe('challenge attempt start service', () => {
 
     expect(sql).not.toContain('challenge_answer_keys');
     expect(sql).not.toContain('accepted_choice');
+    expect(sql).not.toContain('private.');
+  });
+
+  it('creates ordering snapshots without loading private answer positions', async () => {
+    const fixture = createDatabaseFixture({ format: 'ordering' });
+    const service = createChallengeAttemptStartService(fixture.database, {
+      clock: () => startedAt,
+      randomIndex: () => 0,
+    });
+
+    const result = await service.startOrResume(validInput());
+
+    expect(result.outcome).toBe('created');
+
+    if (result.outcome !== 'created' || result.attempt.format !== 'ordering') {
+      throw new Error('Expected a newly created ordering attempt.');
+    }
+
+    expect(result.attempt.questions).toHaveLength(5);
+    expect(fixture.snapshotOrderingItems).toHaveLength(20);
+    expect(fixture.snapshotChoices).toHaveLength(0);
+
+    for (const question of result.attempt.questions) {
+      expect(question.items).toHaveLength(4);
+      expect(question).not.toHaveProperty('explanation');
+      expect(question).not.toHaveProperty('correctItems');
+    }
+
+    const sql = executedSql(fixture.query);
+    expect(sql).toContain('from public.challenge_ordering_items item');
+    expect(sql).not.toContain('challenge_ordering_answer_keys');
+    expect(sql).not.toContain('correct_position');
     expect(sql).not.toContain('private.');
   });
 
@@ -244,6 +284,7 @@ interface DatabaseFixtureOptions {
   distanceMetres?: number;
   withinRadius?: boolean;
   eventAvailability?: 'available' | 'unpublished' | 'not_started' | 'ended';
+  format?: 'multiple_choice' | 'ordering';
 }
 
 function createDatabaseFixture({
@@ -252,6 +293,7 @@ function createDatabaseFixture({
   distanceMetres = 0,
   withinRadius = true,
   eventAvailability = 'available',
+  format = 'multiple_choice',
 }: DatabaseFixtureOptions = {}) {
   let attemptAvailable = existingAttempt;
   const release = vi.fn();
@@ -262,6 +304,7 @@ function createDatabaseFixture({
     position: number;
     prompt: string;
     difficulty: number;
+    explanation: string | null;
   }> = [];
 
   const snapshotChoices: Array<{
@@ -269,6 +312,15 @@ function createDatabaseFixture({
     attemptQuestionId: string;
     sourceQuestionId: string;
     sourceChoiceId: string;
+    displayPosition: number;
+    text: string;
+  }> = [];
+
+  const snapshotOrderingItems: Array<{
+    id: string;
+    attemptQuestionId: string;
+    sourceQuestionId: string;
+    sourceItemId: string;
     displayPosition: number;
     text: string;
   }> = [];
@@ -294,7 +346,7 @@ function createDatabaseFixture({
           {
             attempt_id: ATTEMPT_ID,
             event_id: EVENT_ID,
-            format: 'multiple_choice',
+            format,
             status: 'in_progress',
             started_at: startedAt,
             deadline: new Date('2026-09-01T10:02:00.000Z'),
@@ -304,6 +356,34 @@ function createDatabaseFixture({
           },
         ],
       };
+    }
+
+    if (sql.includes('left join public.attempt_ordering_answers answer')) {
+      return {
+        rows: snapshotQuestions
+          .sort((left, right) => left.position - right.position)
+          .map((question) => ({
+            attempt_question_id: question.id,
+            position: question.position,
+            prompt_snapshot: question.prompt,
+            answered_at: null,
+          })),
+      };
+    }
+
+    if (sql.includes('from public.attempt_question_ordering_items item')) {
+      return {
+        rows: snapshotOrderingItems.map((item) => ({
+          attempt_question_id: item.attemptQuestionId,
+          item_id: item.id,
+          display_position: item.displayPosition,
+          item_text_snapshot: item.text,
+        })),
+      };
+    }
+
+    if (sql.includes('from public.attempt_ordering_answer_items answer_item')) {
+      return { rows: [] };
     }
 
     if (sql.includes('left join public.attempt_answers answer')) {
@@ -363,6 +443,7 @@ function createDatabaseFixture({
         rows: [
           {
             challenge_id: CHALLENGE_ID,
+            format,
           },
         ],
       };
@@ -387,6 +468,17 @@ function createDatabaseFixture({
         rows: Array.from({ length: 4 }, (_, index) => ({
           choice_id: sourceChoiceId(questionId, index + 1),
           choice_text: `Choice ${questionNumber(questionId)}.${index + 1}`,
+        })),
+      };
+    }
+
+    if (sql.includes('from public.challenge_ordering_items item')) {
+      const questionId = String(values[0]);
+
+      return {
+        rows: Array.from({ length: 4 }, (_, index) => ({
+          item_id: sourceOrderingItemId(questionId, index + 1),
+          item_text: `Item ${questionNumber(questionId)}.${index + 1}`,
         })),
       };
     }
@@ -419,6 +511,7 @@ function createDatabaseFixture({
         position,
         prompt: String(values[3]),
         difficulty: Number(values[4]),
+        explanation: values[5] === null ? null : String(values[5]),
       });
 
       return {
@@ -451,6 +544,25 @@ function createDatabaseFixture({
       };
     }
 
+    if (sql.includes('insert into public.attempt_question_ordering_items')) {
+      const attemptQuestion = String(values[0]);
+      const displayPosition = Number(values[3]);
+
+      snapshotOrderingItems.push({
+        id: attemptOrderingItemId(
+          questionPosition(snapshotQuestions, attemptQuestion),
+          displayPosition,
+        ),
+        attemptQuestionId: attemptQuestion,
+        sourceQuestionId: String(values[1]),
+        sourceItemId: String(values[2]),
+        displayPosition,
+        text: String(values[4]),
+      });
+
+      return { rows: [] };
+    }
+
     throw new Error(`Unexpected SQL in test fixture: ${sql}`);
   });
 
@@ -469,6 +581,7 @@ function createDatabaseFixture({
     release,
     snapshotQuestions,
     snapshotChoices,
+    snapshotOrderingItems,
   };
 }
 
@@ -479,6 +592,7 @@ function populateExistingSnapshots(
     position: number;
     prompt: string;
     difficulty: number;
+    explanation: string | null;
   }>,
   choices: Array<{
     id: string;
@@ -499,6 +613,7 @@ function populateExistingSnapshots(
       position,
       prompt: `Question ${position}`,
       difficulty: position <= 2 ? 1 : position <= 4 ? 2 : 3,
+      explanation: null,
     });
 
     for (let choicePosition = 1; choicePosition <= 4; choicePosition += 1) {
@@ -519,6 +634,7 @@ function questionFixture(number: number, difficulty: 1 | 2 | 3) {
     question_id: sourceQuestionId(number),
     prompt: `Question ${number}`,
     difficulty,
+    explanation: `Explanation ${number}`,
   };
 }
 
@@ -533,6 +649,13 @@ function sourceChoiceId(questionId: string, choice: number) {
   )}-${String(choice).padStart(12, '0')}`;
 }
 
+function sourceOrderingItemId(questionId: string, item: number) {
+  return `30000000-0000-4002-${String(questionNumber(questionId)).padStart(
+    4,
+    '0',
+  )}-${String(item).padStart(12, '0')}`;
+}
+
 function attemptQuestionId(position: number) {
   return `32000000-0000-4000-8000-${String(position).padStart(12, '0')}`;
 }
@@ -542,6 +665,13 @@ function attemptChoiceId(questionPosition: number, choicePosition: number) {
     4,
     '0',
   )}-${String(choicePosition).padStart(12, '0')}`;
+}
+
+function attemptOrderingItemId(questionPosition: number, itemPosition: number) {
+  return `34000000-0000-4000-${String(questionPosition).padStart(
+    4,
+    '0',
+  )}-${String(itemPosition).padStart(12, '0')}`;
 }
 
 function questionNumber(questionId: string) {

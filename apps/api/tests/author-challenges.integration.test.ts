@@ -62,6 +62,7 @@ const challenge: AuthorChallenge = {
 const question: AuthorChallengeQuestion = {
   questionId: QUESTION_ID,
   challengeId: CHALLENGE_ID,
+  format: 'multiple_choice',
   prompt: 'Where is the Great Hall?',
   difficulty: 2,
   explanation: 'The Great Hall is on East Campus.',
@@ -200,6 +201,7 @@ describe('author challenge API', () => {
     expect(service.createChallenge).toHaveBeenCalledWith({
       actorPlayerId: AUTHOR_ID,
       eventId: EVENT_ID,
+      format: 'multiple_choice',
     });
   });
 
@@ -219,6 +221,7 @@ describe('author challenge API', () => {
     expect(service.createQuestion).toHaveBeenCalledWith({
       actorPlayerId: AUTHOR_ID,
       challengeId: CHALLENGE_ID,
+      format: 'multiple_choice',
       ...body,
     });
 
@@ -226,6 +229,67 @@ describe('author challenge API', () => {
       question,
       requestId: expect.any(String),
     });
+  });
+
+  it('accepts and returns the protected ordering-question schema', async () => {
+    const orderingQuestion: AuthorChallengeQuestion = {
+      questionId: QUESTION_ID,
+      challengeId: CHALLENGE_ID,
+      format: 'ordering',
+      prompt: 'Order these Wits milestones.',
+      difficulty: 2,
+      explanation: 'The milestones follow this historical sequence.',
+      status: 'draft',
+      items: [1, 2, 3, 4].map((position) => ({
+        itemId: `f6000000-0000-4000-8000-${String(position).padStart(12, '0')}`,
+        position,
+        text: `Milestone ${position}`,
+      })),
+      createdAt: '2026-08-15T21:00:00.000Z',
+      updatedAt: '2026-08-15T21:00:00.000Z',
+    };
+    service.createQuestion.mockResolvedValue(orderingQuestion);
+
+    const payload = {
+      format: 'ordering' as const,
+      prompt: 'Order these Wits milestones.',
+      difficulty: 2,
+      explanation: 'The milestones follow this historical sequence.',
+      items: ['Milestone 1', 'Milestone 2', 'Milestone 3', 'Milestone 4'],
+    };
+
+    const response = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/author/challenges/${CHALLENGE_ID}/questions`,
+      payload,
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(service.createQuestion).toHaveBeenCalledWith({
+      actorPlayerId: AUTHOR_ID,
+      challengeId: CHALLENGE_ID,
+      ...payload,
+    });
+    expect(response.json()).toEqual({
+      question: orderingQuestion,
+      requestId: expect.any(String),
+    });
+    expect(response.body).not.toContain('acceptedChoice');
+  });
+
+  it('rejects mixed ordering and multiple-choice author fields', async () => {
+    const response = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/author/challenges/${CHALLENGE_ID}/questions`,
+      payload: {
+        format: 'ordering',
+        ...validQuestionBody(),
+        items: ['A', 'B', 'C', 'D'],
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(service.createQuestion).not.toHaveBeenCalled();
   });
 
   it('returns accepted answers only through the Author-protected question representation', async () => {

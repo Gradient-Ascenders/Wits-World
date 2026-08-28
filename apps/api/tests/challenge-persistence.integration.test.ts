@@ -1,3 +1,7 @@
+import { copyFile, mkdtemp, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type pg from 'pg';
 
@@ -14,6 +18,7 @@ import {
   runMigrations,
   type MigrationResult,
 } from '../src/database/migrations.js';
+import { getMigrationsDirectory } from '../src/database/paths.js';
 import { createChallengeAttemptCompletionFinalizer } from '../src/challenges/challenge-attempt-completion-finalizer.js';
 import { RewardCatalogUnavailableError } from '../src/challenges/challenge-reward-policy.js';
 
@@ -98,7 +103,9 @@ describe.skipIf(!runIntegrationTests)(
           '0020_replace_display_name_with_player_name.sql',
           '0021_enforce_player_name_policy.sql',
           '0022_tighten_player_name_policy.sql',
+          '0023_rebalance_canonical_card_roster.sql',
           '0024_complete_account_deletion_retention.sql',
+          '0025_add_ordering_challenges.sql',
         ],
         skipped: [],
       });
@@ -129,10 +136,267 @@ describe.skipIf(!runIntegrationTests)(
           '0020_replace_display_name_with_player_name.sql',
           '0021_enforce_player_name_policy.sql',
           '0022_tighten_player_name_policy.sql',
+          '0023_rebalance_canonical_card_roster.sql',
           '0024_complete_account_deletion_retention.sql',
+          '0025_add_ordering_challenges.sql',
         ],
       });
     }, 30_000);
+
+    it('upgrades an existing MCQ attempt through 0025 without rewriting it', async () => {
+      const upgradeDatabaseName = `wits_quest_ordering_upgrade_${Date.now()}_${process.pid}`;
+      const migrationDirectory = await mkdtemp(
+        join(tmpdir(), 'wits-ordering-0022-migrations-'),
+      );
+      const upgradeUrl = new URL(administrationConfig.connectionString);
+      upgradeUrl.pathname = `/${upgradeDatabaseName}`;
+      const upgradeConfig = {
+        ...administrationConfig,
+        connectionString: upgradeUrl.toString(),
+      };
+
+      await withDatabaseClient(administrationConfig, async (client) => {
+        await client.query(`create database ${upgradeDatabaseName}`);
+      });
+
+      try {
+        const migrationNames = await readdir(getMigrationsDirectory());
+        await Promise.all(
+          migrationNames
+            .filter((name) => name.endsWith('.sql') && name < '0023_')
+            .map((name) =>
+              copyFile(
+                join(getMigrationsDirectory(), name),
+                join(migrationDirectory, name),
+              ),
+            ),
+        );
+
+        await runMigrations(upgradeConfig, migrationDirectory);
+
+        const upgradePlayerId = '11000000-0000-4000-8000-000000000001';
+        const upgradeEventId = '21000000-0000-4000-8000-000000000001';
+        const upgradeChallengeId = '31000000-0000-4000-8000-000000000101';
+        const upgradeAttemptId = '41000000-0000-4000-8000-000000000001';
+        let firstAttemptQuestionId = '';
+        let firstAttemptChoiceId = '';
+
+        await withDatabaseClient(upgradeConfig, async (client) => {
+          await client.query(
+            `insert into public.players (
+               id, auth_issuer, auth_subject, role
+             ) values ($1, 'https://issuer.example/', 'ordering-upgrade', 'player')`,
+            [upgradePlayerId],
+          );
+          await client.query(
+            `insert into public.events (
+               id, title, location, radius_metres, starts_at, ends_at
+             ) values (
+               $1, 'Ordering upgrade event',
+               st_setsrid(st_makepoint(28.03038, -26.19205), 4326)::geography,
+               75, '2026-09-01T08:00:00Z', '2026-09-01T12:00:00Z'
+             )`,
+            [upgradeEventId],
+          );
+          await client.query(
+            `insert into public.event_challenges (id, event_id)
+             values ($1, $2)`,
+            [upgradeChallengeId, upgradeEventId],
+          );
+
+          const questionIds: string[] = [];
+          const choiceIdsByQuestion: string[][] = [];
+
+          for (let question = 1; question <= 5; question += 1) {
+            const questionId = `31100000-0000-4000-8000-${String(question).padStart(12, '0')}`;
+            const choiceIds: string[] = [];
+            questionIds.push(questionId);
+
+            await client.query(
+              `insert into public.challenge_questions (
+                 id, challenge_id, prompt, difficulty, explanation
+               ) values ($1, $2, $3, 2, $4)`,
+              [
+                questionId,
+                upgradeChallengeId,
+                `Existing MCQ ${question}`,
+                `Existing explanation ${question}`,
+              ],
+            );
+
+            for (let choice = 1; choice <= 4; choice += 1) {
+              const choiceId = `31200000-0000-4000-${String(question).padStart(4, '0')}-${String(choice).padStart(12, '0')}`;
+              choiceIds.push(choiceId);
+              await client.query(
+                `insert into public.challenge_choices (
+                   id, question_id, authoring_position, choice_text
+                 ) values ($1, $2, $3, $4)`,
+                [choiceId, questionId, choice, `Choice ${question}.${choice}`],
+              );
+            }
+
+            choiceIdsByQuestion.push(choiceIds);
+            await client.query(
+              `insert into private.challenge_answer_keys (
+                 question_id, accepted_choice_id
+               ) values ($1, $2)`,
+              [questionId, choiceIds[0]],
+            );
+            await client.query(
+              `update public.challenge_questions
+                  set status = 'published', updated_at = now()
+                where id = $1`,
+              [questionId],
+            );
+          }
+
+          await client.query(
+            `update public.event_challenges
+                set status = 'published', updated_at = now()
+              where id = $1`,
+            [upgradeChallengeId],
+          );
+
+          await client.query('begin');
+          try {
+            await client.query(
+              `insert into public.challenge_attempts (
+                 id, player_id, event_id, challenge_id, started_at, deadline,
+                 time_limit_seconds, average_difficulty
+               ) values (
+                 $1, $2, $3, $4, '2026-09-01T10:00:00Z',
+                 '2026-09-01T10:02:00Z', 120, 2
+               )`,
+              [
+                upgradeAttemptId,
+                upgradePlayerId,
+                upgradeEventId,
+                upgradeChallengeId,
+              ],
+            );
+
+            for (let question = 1; question <= 5; question += 1) {
+              const attemptQuestionId = `41100000-0000-4000-8000-${String(question).padStart(12, '0')}`;
+              const sourceQuestionId = questionIds[question - 1];
+
+              await client.query(
+                `insert into public.attempt_questions (
+                   id, attempt_id, source_question_id, position,
+                   prompt_snapshot, difficulty_snapshot
+                 ) values ($1, $2, $3, $4, $5, 2)`,
+                [
+                  attemptQuestionId,
+                  upgradeAttemptId,
+                  sourceQuestionId,
+                  question,
+                  `Existing MCQ ${question}`,
+                ],
+              );
+
+              for (let choice = 1; choice <= 4; choice += 1) {
+                const attemptChoiceId = `41200000-0000-4000-${String(question).padStart(4, '0')}-${String(choice).padStart(12, '0')}`;
+                await client.query(
+                  `insert into public.attempt_question_choices (
+                     id, attempt_question_id, source_question_id,
+                     source_choice_id, display_position, choice_text_snapshot
+                   ) values ($1, $2, $3, $4, $5, $6)`,
+                  [
+                    attemptChoiceId,
+                    attemptQuestionId,
+                    sourceQuestionId,
+                    choiceIdsByQuestion[question - 1]?.[choice - 1],
+                    choice,
+                    `Choice ${question}.${choice}`,
+                  ],
+                );
+
+                if (question === 1 && choice === 1) {
+                  firstAttemptQuestionId = attemptQuestionId;
+                  firstAttemptChoiceId = attemptChoiceId;
+                }
+              }
+            }
+
+            await client.query('commit');
+          } catch (error) {
+            await client.query('rollback');
+            throw error;
+          }
+
+          await client.query(
+            `insert into public.attempt_answers (
+               attempt_question_id, selected_choice_id, answered_at
+             ) values ($1, $2, '2026-09-01T10:01:00Z')`,
+            [firstAttemptQuestionId, firstAttemptChoiceId],
+          );
+        });
+
+        await expect(runMigrations(upgradeConfig)).resolves.toMatchObject({
+          applied: [
+            '0023_rebalance_canonical_card_roster.sql',
+            '0024_complete_account_deletion_retention.sql',
+            '0025_add_ordering_challenges.sql',
+          ],
+        });
+
+        await withDatabaseClient(upgradeConfig, async (client) => {
+          const preserved = await client.query<{
+            answer_count: number;
+            choice_count: number;
+            explanation_snapshot_count: number;
+            format: string;
+            question_count: number;
+          }>(
+            `select
+               challenge.format,
+               (select count(*)::int from public.attempt_questions question
+                 where question.attempt_id = attempt.id) as question_count,
+               (select count(*)::int
+                  from public.attempt_question_choices choice
+                  join public.attempt_questions question
+                    on question.id = choice.attempt_question_id
+                 where question.attempt_id = attempt.id) as choice_count,
+               (select count(*)::int
+                  from public.attempt_questions question
+                 where question.attempt_id = attempt.id
+                   and question.explanation_snapshot is not null)
+                 as explanation_snapshot_count,
+               (select count(*)::int
+                  from public.attempt_answers answer
+                  join public.attempt_questions question
+                    on question.id = answer.attempt_question_id
+                 where question.attempt_id = attempt.id) as answer_count
+             from public.challenge_attempts attempt
+             join public.event_challenges challenge
+               on challenge.id = attempt.challenge_id
+             where attempt.id = $1`,
+            [upgradeAttemptId],
+          );
+
+          expect(preserved.rows).toEqual([
+            {
+              format: 'multiple_choice',
+              question_count: 5,
+              choice_count: 20,
+              explanation_snapshot_count: 0,
+              answer_count: 1,
+            },
+          ]);
+          await expect(
+            client.query('select public.validate_attempt_snapshot($1)', [
+              upgradeAttemptId,
+            ]),
+          ).resolves.toBeDefined();
+        });
+      } finally {
+        await withDatabaseClient(administrationConfig, async (client) => {
+          await client.query(
+            `drop database if exists ${upgradeDatabaseName} with (force)`,
+          );
+        });
+        await rm(migrationDirectory, { force: true, recursive: true });
+      }
+    }, 60_000);
 
     it('enforces challenge publication and attempt snapshot invariants', async () => {
       await withDatabaseClient(temporaryConfig, async (client) => {
@@ -384,16 +648,32 @@ describe.skipIf(!runIntegrationTests)(
       await withDatabaseClient(temporaryConfig, async (client) => {
         const cardResult = await client.query(
           `insert into public.card_definitions (
-           id, name, category, affinity, rarity, hp, power, description, is_active, authoring_status
+           id, name, category, affinity, rarity, description, is_active, authoring_status
          ) values
-           ($1, 'Persistence Spark', 'creature', 'spark', 'common', 100, 10,
-            'A card used by the persistence test', true, 'published'),
-           ($2, 'Persistence Spark Copy', 'creature', 'spark', 'common', 110, 12,
-            'A second card used by the persistence test', true, 'published')
+           ($1, 'Persistence Spark', 'power', 'spark', 'common',
+            'A card used by the persistence test', false, 'draft'),
+           ($2, 'Persistence Spark Copy', 'power', 'spark', 'common',
+            'A second card used by the persistence test', false, 'draft')
          returning id`,
           [CARD_ID, SECOND_CARD_ID],
         );
         expect(cardResult.rows).toHaveLength(2);
+        await client.query(
+          `insert into public.card_effects (
+             card_definition_id, position, effect_type, effect_value
+           ) values
+             ($1, 1, 'heal', 10),
+             ($2, 1, 'heal', 10)`,
+          [CARD_ID, SECOND_CARD_ID],
+        );
+        await client.query(
+          `update public.card_definitions
+              set is_active = true,
+                  authoring_status = 'published',
+                  updated_at = now()
+            where id in ($1, $2)`,
+          [CARD_ID, SECOND_CARD_ID],
+        );
 
         const finalizer = createChallengeAttemptCompletionFinalizer({
           randomInt: () => 0,

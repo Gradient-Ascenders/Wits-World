@@ -9,6 +9,10 @@ import {
 } from '@wits-world/game-rules';
 
 import {
+  BASIC_CPU_DECK_CONFIGURATION,
+  type BasicCpuDeckCardConfiguration,
+} from '../src/matches/basic-cpu-deck.js';
+import {
   createCpuMatchService,
   CpuMatchDeckError,
   CpuMatchVersionConflictError,
@@ -18,8 +22,44 @@ import {
 
 const PLAYER_ID = 'a1000000-0000-4000-8000-000000000001';
 const MATCH_ID = 'a2000000-0000-4000-8000-000000000001';
+const DECK_ID = 'a6000000-0000-4000-8000-000000000001';
 
 describe('CPU match service', () => {
+  it('defines the approved Basic CPU deck with exactly three Creatures and two Power cards', () => {
+    expect(BASIC_CPU_DECK_CONFIGURATION).toEqual([
+      {
+        cardDefinitionId: 'c2c81cdc-5c15-84d1-6ba9-0271b1d3fdac',
+        category: 'creature',
+      },
+      {
+        cardDefinitionId: 'a230fdda-cec0-c127-b4a2-e4dd20660e3a',
+        category: 'creature',
+      },
+      {
+        cardDefinitionId: '0cba869b-d777-11f8-6b8c-c47d4d626558',
+        category: 'creature',
+      },
+      {
+        cardDefinitionId: '49e45cbb-f419-bf5c-2868-757646cb8dc9',
+        category: 'power',
+      },
+      {
+        cardDefinitionId: '76f057c6-efab-38d9-9bcf-298d5c794f1a',
+        category: 'power',
+      },
+    ]);
+    expect(
+      BASIC_CPU_DECK_CONFIGURATION.filter(
+        ({ category }) => category === 'creature',
+      ),
+    ).toHaveLength(3);
+    expect(
+      BASIC_CPU_DECK_CONFIGURATION.filter(
+        ({ category }) => category === 'power',
+      ),
+    ).toHaveLength(2);
+  });
+
   it('preserves unexpected create failures as internal errors', async () => {
     const databaseError = new Error(
       'duplicate key value violates unique constraint',
@@ -38,75 +78,95 @@ describe('CPU match service', () => {
     await expect(
       service.createMatch({
         playerId: PLAYER_ID,
-        deckId: 'a6000000-0000-4000-8000-000000000001',
+        deckId: DECK_ID,
       }),
     ).rejects.toBe(databaseError);
     expect(databaseError).not.toBeInstanceOf(CpuMatchDeckError);
   });
 
-  it('rolls back instead of substituting catalogue cards when a curated CPU card is unavailable', async () => {
-    const expectedCpuDefinitionIds = [
-      'c2c81cdc-5c15-84d1-6ba9-0271b1d3fdac',
-      'a230fdda-cec0-c127-b4a2-e4dd20660e3a',
-      '0cba869b-d777-11f8-6b8c-c47d4d626558',
-      '49e45cbb-f419-bf5c-2868-757646cb8dc9',
-      '76f057c6-efab-38d9-9bcf-298d5c794f1a',
-    ];
-    const query = vi.fn(async (statement: string, values?: unknown[]) => {
-      if (statement === 'begin' || statement === 'rollback') {
-        return { rows: [] };
-      }
+  it.each([
+    {
+      condition: 'missing',
+      change: (row: ConfiguredCpuCardFixture): ConfiguredCpuCardFixture => ({
+        ...row,
+        card_definition_id: null,
+        name: null,
+        category: null,
+        affinity: null,
+        rarity: null,
+        is_active: null,
+        authoring_status: null,
+      }),
+      message: 'does not exist',
+    },
+    {
+      condition: 'inactive',
+      change: (row: ConfiguredCpuCardFixture): ConfiguredCpuCardFixture => ({
+        ...row,
+        is_active: false,
+      }),
+      message: 'is not active and published',
+    },
+    {
+      condition: 'unpublished',
+      change: (row: ConfiguredCpuCardFixture): ConfiguredCpuCardFixture => ({
+        ...row,
+        authoring_status: 'draft',
+      }),
+      message: 'is not active and published',
+    },
+    {
+      condition: 'wrong-category',
+      change: (row: ConfiguredCpuCardFixture): ConfiguredCpuCardFixture => ({
+        ...row,
+        category: 'power' as const,
+        hp: null,
+        power: null,
+      }),
+      message: 'must be a creature card',
+    },
+    {
+      condition: 'non-common',
+      change: (row: ConfiguredCpuCardFixture): ConfiguredCpuCardFixture => ({
+        ...row,
+        rarity: 'rare',
+      }),
+      message: 'must be common',
+    },
+  ])(
+    'fails safely when a configured CPU card is $condition',
+    async ({ change, message }) => {
+      const cpuRows = configuredCpuCardRows();
+      cpuRows[0] = change(cpuRows[0]!);
+      const query = createCpuConfigurationQuery(cpuRows);
+      const service = createCpuMatchService(fakeDatabase(query));
 
-      if (statement.includes('from public.player_deck_selections')) {
-        return { rows: [{ deck_id: 'selected-deck' }] };
-      }
+      await expect(
+        service.createMatch({ playerId: PLAYER_ID, deckId: DECK_ID }),
+      ).rejects.toThrow(message);
 
-      if (statement.includes('from public.player_deck_cards membership')) {
-        return {
-          rows: [1, 2, 3, 4, 5].map((position) => ({
-            position,
-            owned_card_id: `player-owned-${position}`,
-            card_definition_id: `player-definition-${position}`,
-            name: `Player card ${position}`,
-            category: position <= 3 ? 'creature' : 'power',
-            affinity: 'wit',
-            rarity: 'common',
-            hp: position <= 3 ? 100 : null,
-            power: position <= 3 ? 10 : null,
-            is_active: true,
-          })),
-        };
-      }
+      expect(query).toHaveBeenCalledWith('rollback');
+      expect(query).not.toHaveBeenCalledWith('commit');
+      expect(
+        query.mock.calls.some(([statement]) =>
+          statement.includes('insert into public.cpu_matches'),
+        ),
+      ).toBe(false);
+    },
+  );
 
-      if (statement.includes('with required_card(position')) {
-        expect(values).toEqual([expectedCpuDefinitionIds]);
-        return {
-          rows: expectedCpuDefinitionIds.slice(0, 4).map((id, index) => ({
-            position: index + 1,
-            card_definition_id: id,
-            name: `Curated CPU card ${index + 1}`,
-            category: index < 3 ? 'creature' : 'power',
-            affinity: 'grit',
-            rarity: 'common',
-            hp: index < 3 ? 100 : null,
-            power: index < 3 ? 10 : null,
-            is_active: true,
-          })),
-        };
-      }
-
-      throw new Error(`Unexpected SQL: ${statement}`);
+  it('rejects a configured CPU card that is not battle-ready', async () => {
+    const query = createCpuConfigurationQuery(configuredCpuCardRows(), {
+      incompleteCreatureId: BASIC_CPU_DECK_CONFIGURATION[0].cardDefinitionId,
     });
     const service = createCpuMatchService(fakeDatabase(query));
 
     await expect(
-      service.createMatch({
-        playerId: PLAYER_ID,
-        deckId: 'a6000000-0000-4000-8000-000000000001',
-      }),
-    ).rejects.toThrow('required curated CPU deck is not available');
+      service.createMatch({ playerId: PLAYER_ID, deckId: DECK_ID }),
+    ).rejects.toThrow('must define exactly four moves before battle use');
 
     expect(query).toHaveBeenCalledWith('rollback');
+    expect(query).not.toHaveBeenCalledWith('commit');
     expect(
       query.mock.calls.some(([statement]) =>
         statement.includes('insert into public.cpu_matches'),
@@ -153,9 +213,13 @@ describe('CPU match service', () => {
     });
 
     const database = fakeDatabase(query);
+    const randomInt = vi
+      .fn<(maximumExclusive: number) => number>()
+      .mockReturnValueOnce(2)
+      .mockReturnValueOnce(0);
     const service = createCpuMatchService(database, {
       clock: { now: () => new Date('2026-08-16T00:00:01.000Z') },
-      randomInt: () => 0,
+      randomInt,
     });
 
     const response = await service.submitAction({
@@ -173,9 +237,10 @@ describe('CPU match service', () => {
     expect(response.state.phase).toBe('active');
     expect(response.state.selections).toEqual({
       player: 'player-creature-1',
-      cpu: 'cpu-creature-1',
+      cpu: 'cpu-creature-3',
     });
     expect(response.state.currentSide).toBe('player');
+    expect(randomInt.mock.calls).toEqual([[3], [2]]);
     expect(
       query.mock.calls.filter(([statement]) => statement === 'begin'),
     ).toHaveLength(1);
@@ -650,6 +715,154 @@ function fakeDatabase(query: ReturnType<typeof vi.fn>): CpuMatchDatabase {
   return {
     connect: vi.fn().mockResolvedValue(client),
   };
+}
+
+interface ConfiguredCpuCardFixture {
+  position: number;
+  configured_card_definition_id: string;
+  expected_category: BasicCpuDeckCardConfiguration['category'];
+  card_definition_id: string | null;
+  name: string | null;
+  category: BasicCpuDeckCardConfiguration['category'] | null;
+  affinity: 'grit' | 'spirit' | 'mystic' | null;
+  rarity: 'common' | 'rare' | null;
+  hp: number | null;
+  power: number | null;
+  is_active: boolean | null;
+  authoring_status: 'draft' | 'published' | 'retired' | null;
+}
+
+function configuredCpuCardRows(): ConfiguredCpuCardFixture[] {
+  const names = [
+    'Grit Creature 2',
+    'Spirit Creature 1',
+    'Mystic Creature 1',
+    'Grit Power 1',
+    'Mystic Power 1',
+  ];
+  const affinities = ['grit', 'spirit', 'mystic', 'grit', 'mystic'] as const;
+
+  return BASIC_CPU_DECK_CONFIGURATION.map((configured, index) => ({
+    position: index + 1,
+    configured_card_definition_id: configured.cardDefinitionId,
+    expected_category: configured.category,
+    card_definition_id: configured.cardDefinitionId,
+    name: names[index]!,
+    category: configured.category,
+    affinity: affinities[index]!,
+    rarity: 'common',
+    hp: configured.category === 'creature' ? 10 : null,
+    power: configured.category === 'creature' ? 10 : null,
+    is_active: true,
+    authoring_status: 'published',
+  }));
+}
+
+function createCpuConfigurationQuery(
+  cpuRows: ConfiguredCpuCardFixture[],
+  options: { incompleteCreatureId?: string } = {},
+) {
+  const playerRows = selectedPlayerDeckRows();
+  const categoryByDefinition = new Map(
+    [...playerRows, ...cpuRows].map((row) => [
+      row.card_definition_id,
+      row.category,
+    ]),
+  );
+
+  return vi.fn(async (statement: string, values?: unknown[]) => {
+    if (statement === 'begin' || statement === 'rollback') {
+      return { rows: [] };
+    }
+
+    if (statement.includes('from public.player_deck_selections')) {
+      return { rows: [{ deck_id: DECK_ID }] };
+    }
+
+    if (statement.includes('from public.player_deck_cards')) {
+      return { rows: playerRows };
+    }
+
+    if (statement.includes('from unnest($1::uuid[], $2::text[])')) {
+      expect(values).toEqual([
+        BASIC_CPU_DECK_CONFIGURATION.map(
+          ({ cardDefinitionId }) => cardDefinitionId,
+        ),
+        BASIC_CPU_DECK_CONFIGURATION.map(({ category }) => category),
+      ]);
+      expect(statement).toContain('order by configured.position');
+      expect(statement).not.toContain('order by definition.name');
+      return { rows: cpuRows };
+    }
+
+    if (statement.includes('from public.card_moves')) {
+      const definitionIds = values?.[0] as string[];
+      return {
+        rows: definitionIds.flatMap((definitionId) => {
+          if (categoryByDefinition.get(definitionId) !== 'creature') return [];
+          const moveCount =
+            definitionId === options.incompleteCreatureId ? 3 : 4;
+
+          return Array.from({ length: moveCount }, (_, index) => ({
+            id: `${definitionId.slice(0, 24)}${String(index + 1).padStart(12, '0')}`,
+            card_definition_id: definitionId,
+            position: index + 1,
+            name: `Move ${index + 1}`,
+            move_type: 'basic',
+            effect_type: 'damage',
+            effect_value: 1,
+            modifier_stat: null,
+            modifier_operation: null,
+            modifier_duration_turns: null,
+            power_cost: 0,
+          }));
+        }),
+      };
+    }
+
+    if (statement.includes('from public.card_effects')) {
+      const definitionIds = values?.[0] as string[];
+      return {
+        rows: definitionIds.flatMap((definitionId) =>
+          categoryByDefinition.get(definitionId) === 'power'
+            ? [
+                {
+                  id: `${definitionId.slice(0, 24)}000000000001`,
+                  card_definition_id: definitionId,
+                  position: 1,
+                  effect_type: 'heal',
+                  effect_value: 1,
+                  modifier_stat: null,
+                  modifier_operation: null,
+                  modifier_duration_turns: null,
+                },
+              ]
+            : [],
+        ),
+      };
+    }
+
+    throw new Error(`Unexpected SQL: ${statement}`);
+  });
+}
+
+function selectedPlayerDeckRows() {
+  return [1, 2, 3, 4, 5].map((position) => {
+    const category = position <= 3 ? ('creature' as const) : ('power' as const);
+
+    return {
+      position,
+      owned_card_id: `a7000000-0000-4000-8000-${String(position).padStart(12, '0')}`,
+      card_definition_id: `a8000000-0000-4000-8000-${String(position).padStart(12, '0')}`,
+      name: `Player card ${position}`,
+      category,
+      affinity: 'wit' as const,
+      rarity: 'common' as const,
+      hp: category === 'creature' ? 10 : null,
+      power: category === 'creature' ? 10 : null,
+      is_active: true,
+    };
+  });
 }
 
 function persistenceResult(actionCount: number) {

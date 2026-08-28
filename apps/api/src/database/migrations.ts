@@ -78,9 +78,10 @@ export async function loadMigrationFiles(
     migrationNames.map(async (name) => {
       const path = resolve(migrationsDirectory, name);
       const sql = await readFile(path, 'utf8');
+      const canonicalSql = sql.replace(/\r\n?/g, '\n');
 
       return {
-        checksum: createHash('sha256').update(sql).digest('hex'),
+        checksum: createHash('sha256').update(canonicalSql).digest('hex'),
         name: basename(name),
         path,
         sql,

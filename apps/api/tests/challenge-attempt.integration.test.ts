@@ -12,7 +12,9 @@ import {
 } from '../src/challenges/challenge-attempt-start.js';
 import type {
   CompletedChallengeAttempt,
+  CompletedOrderingChallengeAttempt,
   InProgressChallengeAttempt,
+  InProgressOrderingChallengeAttempt,
 } from '../src/challenges/challenge-attempt-reader.js';
 import { buildApp } from '../src/app.js';
 import type { AuthConfig } from '../src/config/auth.js';
@@ -394,7 +396,67 @@ describe('challenge answer submission API', () => {
       attemptId: ATTEMPT_ID,
       attemptQuestionId: '32000000-0000-4000-8000-000000000001',
       choiceId: '33000000-0000-4000-0001-000000000001',
+      format: 'multiple_choice',
     });
+  });
+
+  it('accepts four unique ordering item IDs and withholds the answer key while active', async () => {
+    const attempt = inProgressOrderingAttempt();
+    submitAnswer.mockResolvedValue(attempt);
+    const itemIds =
+      attempt.questions[0]?.items.map((item) => item.itemId) ?? [];
+
+    const response = await authenticatedAnswerRequest({
+      format: 'ordering',
+      attemptQuestionId: attempt.questions[0]?.attemptQuestionId,
+      itemIds,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(submitAnswer).toHaveBeenCalledWith({
+      playerId: PLAYER_ID,
+      attemptId: ATTEMPT_ID,
+      format: 'ordering',
+      attemptQuestionId: attempt.questions[0]?.attemptQuestionId,
+      itemIds,
+    });
+    expect(response.json()).toEqual({
+      ...attempt,
+      requestId: expect.any(String),
+    });
+    expect(response.body).not.toContain('correctItems');
+    expect(response.body).not.toContain('explanation');
+    expect(response.body).not.toContain('correctPosition');
+  });
+
+  it.each([
+    { itemIds: [] },
+    { itemIds: ['34000000-0000-4000-8000-000000000001'] },
+    {
+      itemIds: [
+        '34000000-0000-4000-8000-000000000001',
+        '34000000-0000-4000-8000-000000000001',
+        '34000000-0000-4000-8000-000000000003',
+        '34000000-0000-4000-8000-000000000004',
+      ],
+    },
+    {
+      itemIds: [
+        '34000000-0000-4000-8000-000000000001',
+        '34000000-0000-4000-8000-000000000002',
+        '34000000-0000-4000-8000-000000000003',
+        'not-a-uuid',
+      ],
+    },
+  ])('rejects malformed ordering item arrays %#', async ({ itemIds }) => {
+    const response = await authenticatedAnswerRequest({
+      format: 'ordering',
+      attemptQuestionId: '32000000-0000-4000-8000-000000000001',
+      itemIds,
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(submitAnswer).not.toHaveBeenCalled();
   });
 
   it('returns the completed representation with five review entries', async () => {
@@ -424,6 +486,75 @@ describe('challenge answer submission API', () => {
     expect(response.body).not.toContain('"acceptedChoiceId"');
     expect(response.body).not.toContain('"explanation"');
     expect(body).toHaveProperty('review', attempt.review);
+  });
+
+  it('reveals the ordering sequence and explanation only in the completed representation', async () => {
+    const attempt = completedOrderingAttempt();
+    submitAnswer.mockResolvedValue(attempt);
+
+    const response = await authenticatedAnswerRequest({
+      format: 'ordering',
+      attemptQuestionId: attempt.review[0]?.attemptQuestionId,
+      itemIds: attempt.review[0]?.correctItems.map((item) => item.itemId),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      ...attempt,
+      requestId: expect.any(String),
+    });
+    expect(response.body).toContain('correctItems');
+    expect(response.body).toContain('explanation');
+    expect(response.body).not.toContain('sourceItemId');
+  });
+
+  it('returns an incorrect ordering sequence without partial credit', async () => {
+    const attempt = completedOrderingAttempt({ firstIncorrect: true });
+    submitAnswer.mockResolvedValue(attempt);
+
+    const response = await authenticatedAnswerRequest({
+      format: 'ordering',
+      attemptQuestionId: attempt.review[0]?.attemptQuestionId,
+      itemIds: attempt.review[0]?.selectedItems?.map((item) => item.itemId),
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json<CompletedOrderingChallengeAttempt>();
+    expect(body).toMatchObject({
+      format: 'ordering',
+      scoreCorrect: 4,
+    });
+    expect(body.review[0]).toMatchObject({
+      isCorrect: false,
+      selectedItems: attempt.review[0]?.selectedItems,
+      correctItems: attempt.review[0]?.correctItems,
+    });
+  });
+
+  it('maps a cross-player ordering submission to the ownership-safe 404', async () => {
+    const attempt = inProgressOrderingAttempt();
+    const itemIds =
+      attempt.questions[0]?.items.map((item) => item.itemId) ?? [];
+    submitAnswer.mockRejectedValue(new ChallengeAttemptNotFoundError());
+
+    const response = await authenticatedAnswerRequest({
+      format: 'ordering',
+      attemptQuestionId: attempt.questions[0]?.attemptQuestionId,
+      itemIds,
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({
+      code: 'ATTEMPT_NOT_FOUND',
+      requestId: expect.any(String),
+    });
+    expect(submitAnswer).toHaveBeenCalledWith({
+      playerId: PLAYER_ID,
+      attemptId: ATTEMPT_ID,
+      format: 'ordering',
+      attemptQuestionId: attempt.questions[0]?.attemptQuestionId,
+      itemIds,
+    });
   });
 
   it('rejects browser-supplied authoritative answer fields', async () => {
@@ -637,6 +768,24 @@ describe('challenge attempt fetch API', () => {
     });
   });
 
+  it('returns ordering timeout feedback with no answer for unanswered questions', async () => {
+    const attempt = completedOrderingAttempt({ completionReason: 'timeout' });
+    fetchAttempt.mockResolvedValue(attempt);
+
+    const response = await authenticatedFetchRequest();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      ...attempt,
+      requestId: expect.any(String),
+    });
+    expect(attempt.review[4]).toMatchObject({
+      selectedItems: null,
+      isCorrect: false,
+      explanation: 'Explanation 5',
+    });
+  });
+
   it('maps missing and cross-player attempts to the same safe 404', async () => {
     fetchAttempt.mockRejectedValue(new ChallengeAttemptFetchNotFoundError());
 
@@ -790,6 +939,41 @@ function inProgressAttempt(): InProgressChallengeAttempt {
   };
 }
 
+function orderingItems(position: number) {
+  return Array.from({ length: 4 }, (_, itemIndex) => ({
+    itemId: `34000000-0000-4000-${String(position).padStart(4, '0')}-${String(
+      itemIndex + 1,
+    ).padStart(12, '0')}`,
+    text: `Item ${position}.${itemIndex + 1}`,
+  }));
+}
+
+function inProgressOrderingAttempt(): InProgressOrderingChallengeAttempt {
+  return {
+    attemptId: ATTEMPT_ID,
+    eventId: EVENT_ID,
+    format: 'ordering',
+    status: 'in_progress',
+    startedAt: '2026-09-01T10:00:00.000Z',
+    deadline: '2026-09-01T10:02:00.000Z',
+    totalQuestions: 5,
+    answeredCount: 1,
+    questions: Array.from({ length: 5 }, (_, index) => {
+      const position = index + 1;
+      const items = orderingItems(position);
+      return {
+        attemptQuestionId: `32000000-0000-4000-8000-${String(position).padStart(12, '0')}`,
+        position,
+        prompt: `Ordering question ${position}`,
+        items,
+        selectedItemIds:
+          position === 1 ? items.map((item) => item.itemId) : null,
+        answeredAt: position === 1 ? '2026-09-01T10:00:20.000Z' : null,
+      };
+    }),
+  };
+}
+
 function completedAttempt(
   completionReason: 'answered' | 'timeout' = 'answered',
 ): CompletedChallengeAttempt {
@@ -841,6 +1025,54 @@ function completedAttempt(
           text: `Choice ${position}.2`,
         },
         isCorrect: answered && selectedChoiceNumber === 2,
+      };
+    }),
+  };
+}
+
+function completedOrderingAttempt({
+  completionReason = 'answered',
+  firstIncorrect = false,
+}: {
+  completionReason?: 'answered' | 'timeout';
+  firstIncorrect?: boolean;
+} = {}): CompletedOrderingChallengeAttempt {
+  const active = inProgressOrderingAttempt();
+  const scoreCorrect = completionReason === 'timeout' || firstIncorrect ? 4 : 5;
+
+  return {
+    attemptId: ATTEMPT_ID,
+    eventId: EVENT_ID,
+    format: 'ordering',
+    status: 'completed',
+    completedAt: '2026-09-01T10:01:25.000Z',
+    completionReason,
+    totalQuestions: 5,
+    scoreCorrect,
+    reward: { coinsAwarded: 60, cards: [] },
+    review: active.questions.map((question) => {
+      const unanswered =
+        completionReason === 'timeout' && question.position === 5;
+      const incorrect = firstIncorrect && question.position === 1;
+      const selectedItems = unanswered
+        ? null
+        : incorrect
+          ? [
+              question.items[1]!,
+              question.items[0]!,
+              question.items[2]!,
+              question.items[3]!,
+            ]
+          : question.items;
+
+      return {
+        attemptQuestionId: question.attemptQuestionId,
+        position: question.position,
+        prompt: question.prompt,
+        selectedItems,
+        correctItems: question.items,
+        isCorrect: !unanswered && !incorrect,
+        explanation: `Explanation ${question.position}`,
       };
     }),
   };

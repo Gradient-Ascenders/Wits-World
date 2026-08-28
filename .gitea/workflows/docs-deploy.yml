@@ -12,6 +12,9 @@ on:
       - .nvmrc
       - .gitea/workflows/docs-deploy.yml
 
+env:
+  NPM_CONFIG_CACHE: /opt/wits-world/npm-cache
+
 jobs:
   deploy-docs:
     name: Deploy documentation to Cloudflare Pages
