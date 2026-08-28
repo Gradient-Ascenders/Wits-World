@@ -33,15 +33,9 @@ import type {
   CardEffect,
   CardMove,
 } from '../cards/card-types.js';
+import { BASIC_CPU_DECK_CONFIGURATION } from './basic-cpu-deck.js';
 
 const CPU_TURN_SECONDS = 90;
-const BASIC_CPU_DECK_DEFINITION_IDS = [
-  'c2c81cdc-5c15-84d1-6ba9-0271b1d3fdac',
-  'a230fdda-cec0-c127-b4a2-e4dd20660e3a',
-  '0cba869b-d777-11f8-6b8c-c47d4d626558',
-  '49e45cbb-f419-bf5c-2868-757646cb8dc9',
-  '76f057c6-efab-38d9-9bcf-298d5c794f1a',
-] as const;
 
 export interface CpuMatchDatabase {
   connect(): Promise<CpuMatchClient>;
@@ -351,6 +345,21 @@ interface CpuCardRow extends pg.QueryResultRow {
   hp: number | null;
   power: number | null;
   is_active: boolean;
+}
+
+interface ConfiguredCpuCardRow extends pg.QueryResultRow {
+  position: number;
+  configured_card_definition_id: string;
+  expected_category: CardCategory;
+  card_definition_id: string | null;
+  name: string | null;
+  category: CardCategory | null;
+  affinity: CardAffinity | null;
+  rarity: CardRarity | null;
+  hp: number | null;
+  power: number | null;
+  is_active: boolean | null;
+  authoring_status: string | null;
 }
 
 interface MoveRow extends pg.QueryResultRow {
@@ -903,15 +912,18 @@ async function loadSelectedDeckCards(
 }
 
 async function loadCpuDeckCards(client: CpuMatchClient): Promise<CpuCardRow[]> {
-  const result = await client.query<CpuCardRow>(
+  const configuredDefinitionIds = BASIC_CPU_DECK_CONFIGURATION.map(
+    ({ cardDefinitionId }) => cardDefinitionId,
+  );
+  const expectedCategories = BASIC_CPU_DECK_CONFIGURATION.map(
+    ({ category }) => category,
+  );
+  const result = await client.query<ConfiguredCpuCardRow>(
     `
-      with required_card(position, card_definition_id) as (
-        select position::integer, card_definition_id
-        from unnest($1::uuid[]) with ordinality
-          as requested(card_definition_id, position)
-      )
       select
-        required_card.position,
+        configured.position::integer,
+        configured.card_definition_id::text as configured_card_definition_id,
+        configured.expected_category,
         definition.id::text as card_definition_id,
         definition.name,
         definition.category,
@@ -919,39 +931,82 @@ async function loadCpuDeckCards(client: CpuMatchClient): Promise<CpuCardRow[]> {
         definition.rarity,
         definition.hp,
         definition.power,
-        definition.is_active
-      from required_card
-      join public.card_definitions definition
-        on definition.id = required_card.card_definition_id
-      where definition.is_active = true
-      order by required_card.position
+        definition.is_active,
+        definition.authoring_status
+      from unnest($1::uuid[], $2::text[]) with ordinality as configured(
+        card_definition_id,
+        expected_category,
+        position
+      )
+      left join public.card_definitions definition
+        on definition.id = configured.card_definition_id
+      order by configured.position
     `,
-    [BASIC_CPU_DECK_DEFINITION_IDS],
+    [configuredDefinitionIds, expectedCategories],
   );
 
-  const cards = result.rows;
-  const isExactCuratedDeck =
-    cards.length === BASIC_CPU_DECK_DEFINITION_IDS.length &&
-    cards.every((card, index) => {
-      const expectedCategory = index < 3 ? 'creature' : 'power';
-
-      return (
-        card.position === index + 1 &&
-        card.card_definition_id.toLowerCase() ===
-          BASIC_CPU_DECK_DEFINITION_IDS[index] &&
-        card.category === expectedCategory &&
-        card.rarity === 'common' &&
-        card.is_active
-      );
-    });
-
-  if (!isExactCuratedDeck) {
+  if (result.rows.length !== BASIC_CPU_DECK_CONFIGURATION.length) {
     throw new CpuMatchSetupError(
-      'The required curated CPU deck is not available.',
+      'The Basic CPU deck configuration did not return all configured cards.',
     );
   }
 
-  return cards;
+  return result.rows.map((row, index) => {
+    const configured = BASIC_CPU_DECK_CONFIGURATION[index];
+
+    if (
+      !configured ||
+      row.position !== index + 1 ||
+      row.configured_card_definition_id !== configured.cardDefinitionId ||
+      row.expected_category !== configured.category
+    ) {
+      throw new CpuMatchSetupError(
+        'The Basic CPU deck configuration order is invalid.',
+      );
+    }
+
+    if (
+      row.card_definition_id === null ||
+      row.name === null ||
+      row.category === null ||
+      row.affinity === null ||
+      row.rarity === null
+    ) {
+      throw new CpuMatchSetupError(
+        `Configured Basic CPU card ${configured.cardDefinitionId} does not exist.`,
+      );
+    }
+
+    if (row.authoring_status !== 'published' || row.is_active !== true) {
+      throw new CpuMatchSetupError(
+        `Configured Basic CPU card ${configured.cardDefinitionId} is not active and published.`,
+      );
+    }
+
+    if (row.category !== configured.category) {
+      throw new CpuMatchSetupError(
+        `Configured Basic CPU card ${configured.cardDefinitionId} must be a ${configured.category} card.`,
+      );
+    }
+
+    if (row.rarity !== 'common') {
+      throw new CpuMatchSetupError(
+        `Configured Basic CPU card ${configured.cardDefinitionId} must be common.`,
+      );
+    }
+
+    return {
+      position: row.position,
+      card_definition_id: row.card_definition_id,
+      name: row.name,
+      category: row.category,
+      affinity: row.affinity,
+      rarity: row.rarity,
+      hp: row.hp,
+      power: row.power,
+      is_active: row.is_active,
+    };
+  });
 }
 
 async function buildBattleDeck(

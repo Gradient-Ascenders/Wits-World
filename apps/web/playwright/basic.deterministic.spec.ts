@@ -168,8 +168,10 @@ test('completes the canonical 21-step Basic journey against the real API and tes
   });
 
   await test.step('12 claim the one-time five-card starter state', async () => {
+    await expect(page.getByRole('radio')).toHaveCount(3);
+    await page.getByRole('button', { name: 'Review Spark choice' }).click();
     const response = page.waitForResponse(`${API_BASE_URL}/cards/starter`);
-    await page.getByRole('button', { name: 'Choose this affinity' }).click();
+    await page.getByRole('button', { name: 'Confirm Spark starter' }).click();
     const payload = (await (await response).json()) as { cards: OwnedCard[] };
     starterCards = payload.cards;
     expect(starterCards).toHaveLength(5);

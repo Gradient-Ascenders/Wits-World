@@ -3,6 +3,7 @@ import type {
   MatchActiveModifier,
   MatchEffect,
 } from '../api/matches';
+import type { StarterPreviewEffect } from '../api/cards';
 
 export function describeEffect(effect: MatchEffect): string {
   if (effect.effectType === 'damage') {
@@ -36,6 +37,35 @@ export function describeEffect(effect: MatchEffect): string {
   return `${subject} ${direction}${percentage}% · ${describeDuration(
     modifier.durationTurns ?? null,
   )}`;
+}
+
+export function describeStarterEffect(effect: StarterPreviewEffect): string {
+  if (effect.effectValue === null) {
+    return titleCase(effect.effectType);
+  }
+
+  const modifier =
+    effect.modifierStat && effect.modifierOperation
+      ? {
+          durationTurns: effect.modifierDurationTurns,
+          operation: effect.modifierOperation,
+          stat: effect.modifierStat,
+        }
+      : null;
+  const damageMultiplier =
+    modifier?.stat === 'damage_multiplier' &&
+    (effect.effectType === 'buff' || effect.effectType === 'debuff')
+      ? effect.effectType === 'buff'
+        ? 1 + effect.effectValue / 100
+        : Math.max(0, 1 - effect.effectValue / 100)
+      : null;
+
+  return describeEffect({
+    damageMultiplier,
+    effectType: effect.effectType,
+    effectValue: effect.effectValue,
+    modifier,
+  });
 }
 
 export function describeActiveModifier(modifier: MatchActiveModifier): string {

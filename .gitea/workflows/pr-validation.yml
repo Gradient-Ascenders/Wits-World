@@ -6,6 +6,7 @@ on:
       - main
 
 env:
+  NPM_CONFIG_CACHE: /opt/wits-world/npm-cache
   npm_config_fetch_retries: 5
   npm_config_fetch_retry_factor: 2
   npm_config_fetch_retry_mintimeout: 10000

@@ -1,9 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { listOwnedCards, selectStarter } from '../src/api/cards';
+import {
+  listOwnedCards,
+  listStarterOptions,
+  selectStarter,
+} from '../src/api/cards';
 import {
   buildCard,
   buildStarterCards,
+  buildStarterOptions,
   buildUuid,
   jsonResponse,
 } from './fixtures/cards';
@@ -17,6 +22,50 @@ afterEach(() => {
 });
 
 describe('card API client', () => {
+  it('loads the three server-provided starter packages', async () => {
+    const options = buildStarterOptions();
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        options,
+        requestId: 'starter-options-request',
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      listStarterOptions({
+        apiBaseUrl,
+        getAccessToken,
+        signal: new AbortController().signal,
+      }),
+    ).resolves.toEqual(options);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${apiBaseUrl}/cards/starter-options`,
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
+  it('rejects duplicated server starter options', async () => {
+    const [spark] = buildStarterOptions();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          options: [spark, spark, spark],
+          requestId: 'starter-options-request',
+        }),
+      ),
+    );
+
+    await expect(
+      listStarterOptions({
+        apiBaseUrl,
+        getAccessToken,
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toMatchObject({ failure: 'unavailable' });
+  });
+
   it('loads every owned copy with the bearer token', async () => {
     const duplicate = buildCard(2, {
       cardDefinitionId: buildUuid(101),

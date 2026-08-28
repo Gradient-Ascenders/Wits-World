@@ -6,11 +6,16 @@ import type {
   CardEffect,
   CardMove,
   CardRarity,
+  StarterCreaturePreview,
+  StarterOption,
+  StarterPowerCardPreview,
   StarterAffinity,
   StarterGrant,
   OwnedCard,
 } from './card-types.js';
 import { starterAffinities } from './card-types.js';
+import { validateCardDefinitionForPublication } from './card-validation.js';
+import { starterPackageDefinitions } from './starter-packages.js';
 
 export interface StarterGrantDatabase {
   connect(): Promise<StarterGrantTransactionClient>;
@@ -26,10 +31,11 @@ export interface StarterGrantTransactionClient {
 
 export interface SelectStarterInput {
   playerId: string;
-  affinity: StarterAffinity;
+  affinity: CardAffinity;
 }
 
 export interface StarterGrantService {
+  listStarterOptions(): Promise<StarterOption[]>;
   selectStarter(input: SelectStarterInput): Promise<StarterGrantSelection>;
 }
 
@@ -50,9 +56,7 @@ export class StarterAlreadyClaimedError extends Error {
 
 export class StarterCatalogueUnavailableError extends Error {
   constructor() {
-    super(
-      'The selected starter affinity does not have enough active Common cards.',
-    );
+    super('The approved starter package is not currently available.');
     this.name = 'StarterCatalogueUnavailableError';
   }
 }
@@ -87,19 +91,74 @@ interface StarterCardRow extends pg.QueryResultRow {
   rarity: CardRarity;
 }
 
-interface StarterCandidateRow extends pg.QueryResultRow {
+interface StarterDefinitionRow extends pg.QueryResultRow {
+  affinity: CardAffinity;
+  authoring_status: string;
   card_definition_id: string;
+  category: CardCategory;
+  effects: CardEffect[];
+  hp: number | null;
+  is_active: boolean;
+  moves: CardMove[];
+  name: string;
+  power: number | null;
+  rarity: CardRarity;
 }
+
+interface StarterDefinitionRequirement {
+  affinity: StarterAffinity;
+  category: CardCategory;
+  definitionId: string;
+}
+
+const starterProfiles: Record<
+  StarterAffinity,
+  Pick<StarterOption, 'description' | 'highlights' | 'title'>
+> = {
+  spark: {
+    title: 'Pressure',
+    description: 'Deal more damage now and force the pace.',
+    highlights: ['High burst', 'Lower HP', 'Pressure-focused'],
+  },
+  grit: {
+    title: 'Durability',
+    description: 'Take more hits and stretch each point of Power.',
+    highlights: [
+      'Highest durability',
+      'Efficient moves',
+      'Healing / mitigation',
+    ],
+  },
+  wit: {
+    title: 'Flexibility',
+    description: 'Use broader move coverage and disrupt the opponent.',
+    highlights: ['Balanced stats', 'Broader coverage', 'Resource control'],
+  },
+};
 
 export function createStarterGrantService(
   database: StarterGrantDatabase,
 ): StarterGrantService {
   return {
-    async selectStarter(input) {
-      if (!isStarterAffinity(input.affinity)) {
-        throw new StarterAffinityNotAllowedError();
-      }
+    async listStarterOptions() {
+      const client = await database.connect();
 
+      try {
+        const packages = await loadStarterPackages(
+          client,
+          starterAffinities,
+          false,
+        );
+
+        return starterAffinities.map((affinity) =>
+          buildStarterOption(affinity, packages.get(affinity)),
+        );
+      } finally {
+        client.release();
+      }
+    },
+
+    async selectStarter(input) {
       const client = await database.connect();
 
       try {
@@ -122,22 +181,15 @@ export function createStarterGrantService(
           return { grant: result, created: false };
         }
 
-        const creatureCandidates = await loadCandidates(
-          client,
-          input.affinity,
-          'creature',
-          3,
-        );
-        const powerCandidates = await loadCandidates(
-          client,
-          input.affinity,
-          'power',
-          2,
-        );
-
-        if (creatureCandidates.length !== 3 || powerCandidates.length !== 2) {
-          throw new StarterCatalogueUnavailableError();
+        if (!isStarterAffinity(input.affinity)) {
+          throw new StarterAffinityNotAllowedError();
         }
+
+        const packageCards = await loadStarterPackage(
+          client,
+          input.affinity,
+          true,
+        );
 
         const grantInsert = await client.query<StarterGrantRow>(
           `
@@ -182,11 +234,11 @@ export function createStarterGrantService(
         }
 
         const cardDefinitionIds = [
-          ...creatureCandidates,
-          ...powerCandidates,
+          ...packageCards.creatures,
+          ...packageCards.powerCards,
         ].map((candidate) => candidate.card_definition_id);
 
-        const ownershipInsert = await client.query<StarterCandidateRow>(
+        const ownershipInsert = await client.query<StarterDefinitionRow>(
           `
             insert into public.player_cards (
               player_id,
@@ -261,28 +313,255 @@ async function loadStarterGrant(
   return result.rows[0] ?? null;
 }
 
-async function loadCandidates(
+async function loadConfiguredDefinitions(
   client: StarterGrantTransactionClient,
-  affinity: CardAffinity,
-  category: CardCategory,
-  limit: number,
-): Promise<StarterCandidateRow[]> {
-  const result = await client.query<StarterCandidateRow>(
+  requirements: readonly StarterDefinitionRequirement[],
+  lock: boolean,
+): Promise<StarterDefinitionRow[]> {
+  const definitionIds = requirements.map(
+    (requirement) => requirement.definitionId,
+  );
+  const result = await client.query<StarterDefinitionRow>(
     `
-      select id::text as card_definition_id
-      from public.card_definitions
-      where is_active = true
-        and affinity = $1
-        and category = $2
-        and rarity = 'common'
-      order by id
-      limit $3
-      for share
+      select
+        definition.id::text as card_definition_id,
+        definition.name,
+        definition.category,
+        definition.affinity,
+        definition.rarity,
+        definition.hp,
+        definition.power,
+        definition.is_active,
+        definition.authoring_status,
+        coalesce((
+          select json_agg(
+            json_build_object(
+              'id', move.id::text,
+              'position', move.position,
+              'name', move.name,
+              'moveType', move.move_type,
+              'effectType', move.effect_type,
+              'effectValue', move.effect_value,
+              'modifierStat', move.modifier_stat,
+              'modifierOperation', move.modifier_operation,
+              'modifierDurationTurns', move.modifier_duration_turns,
+              'powerCost', move.power_cost
+            ) order by move.position
+          )
+          from public.card_moves move
+          where move.card_definition_id = definition.id
+        ), '[]'::json) as moves,
+        coalesce((
+          select json_agg(
+            json_build_object(
+              'id', effect.id::text,
+              'position', effect.position,
+              'effectType', effect.effect_type,
+              'effectValue', effect.effect_value,
+              'modifierStat', effect.modifier_stat,
+              'modifierOperation', effect.modifier_operation,
+              'modifierDurationTurns', effect.modifier_duration_turns
+            ) order by effect.position
+          )
+          from public.card_effects effect
+          where effect.card_definition_id = definition.id
+        ), '[]'::json) as effects
+      from public.card_definitions definition
+      where definition.id = any($1::uuid[])
+      order by array_position($1::uuid[], definition.id)
+      ${lock ? 'for share of definition' : ''}
     `,
-    [affinity, category, limit],
+    [definitionIds],
   );
 
   return result.rows;
+}
+
+interface StarterPackageRows {
+  creatures: StarterDefinitionRow[];
+  powerCards: StarterDefinitionRow[];
+}
+
+async function loadStarterPackage(
+  client: StarterGrantTransactionClient,
+  affinity: StarterAffinity,
+  lock: boolean,
+): Promise<StarterPackageRows> {
+  const packages = await loadStarterPackages(client, [affinity], lock);
+  const packageCards = packages.get(affinity);
+
+  if (!packageCards) {
+    throw new StarterCatalogueUnavailableError();
+  }
+
+  return packageCards;
+}
+
+async function loadStarterPackages(
+  client: StarterGrantTransactionClient,
+  affinities: readonly StarterAffinity[],
+  lock: boolean,
+): Promise<Map<StarterAffinity, StarterPackageRows>> {
+  const requirements = affinities.flatMap(buildStarterRequirements);
+  const rows = await loadConfiguredDefinitions(client, requirements, lock);
+
+  if (rows.length !== requirements.length) {
+    throw new StarterCatalogueUnavailableError();
+  }
+
+  const rowsById = new Map(
+    rows.map((row) => [row.card_definition_id.toLowerCase(), row]),
+  );
+  const packages = new Map<StarterAffinity, StarterPackageRows>();
+
+  for (const affinity of affinities) {
+    const affinityRequirements = buildStarterRequirements(affinity);
+    const packageRows = affinityRequirements.map((requirement) => {
+      const row = rowsById.get(requirement.definitionId.toLowerCase());
+
+      if (!row) {
+        throw new StarterCatalogueUnavailableError();
+      }
+
+      assertStarterDefinitionReady(row, requirement);
+      return row;
+    });
+
+    packages.set(affinity, {
+      creatures: packageRows.slice(0, 3),
+      powerCards: packageRows.slice(3),
+    });
+  }
+
+  return packages;
+}
+
+function buildStarterRequirements(
+  affinity: StarterAffinity,
+): StarterDefinitionRequirement[] {
+  const packageDefinition = starterPackageDefinitions[affinity];
+
+  return [
+    ...packageDefinition.creatureDefinitionIds.map((definitionId) => ({
+      affinity,
+      category: 'creature' as const,
+      definitionId,
+    })),
+    ...packageDefinition.powerCardDefinitionIds.map((definitionId) => ({
+      affinity,
+      category: 'power' as const,
+      definitionId,
+    })),
+  ];
+}
+
+function assertStarterDefinitionReady(
+  row: StarterDefinitionRow,
+  requirement: StarterDefinitionRequirement,
+): void {
+  try {
+    if (
+      row.card_definition_id.toLowerCase() !==
+        requirement.definitionId.toLowerCase() ||
+      row.affinity !== requirement.affinity ||
+      row.category !== requirement.category ||
+      row.rarity !== 'common' ||
+      !row.is_active ||
+      row.authoring_status !== 'published'
+    ) {
+      throw new Error('Configured starter definition identity is invalid.');
+    }
+
+    validateCardDefinitionForPublication({
+      affinity: row.affinity,
+      category: row.category,
+      effects: row.effects ?? [],
+      hp: row.hp,
+      moves: row.moves ?? [],
+      name: row.name,
+      power: row.power,
+      rarity: row.rarity,
+    });
+  } catch {
+    throw new StarterCatalogueUnavailableError();
+  }
+}
+
+function buildStarterOption(
+  affinity: StarterAffinity,
+  packageCards: StarterPackageRows | undefined,
+): StarterOption {
+  if (!packageCards) {
+    throw new StarterCatalogueUnavailableError();
+  }
+
+  const creatures = packageCards.creatures.map(mapStarterCreature);
+  const powerCards = packageCards.powerCards.map(mapStarterPowerCard);
+
+  if (
+    creatures.some((creature) => creature.moves.length !== 4) ||
+    powerCards.some((powerCard) => powerCard.effects.length === 0)
+  ) {
+    throw new StarterCatalogueUnavailableError();
+  }
+
+  return {
+    affinity,
+    ...starterProfiles[affinity],
+    composition: {
+      creatureCount: 3,
+      powerCardCount: 2,
+    },
+    creatures,
+    powerCards,
+  };
+}
+
+function mapStarterCreature(row: StarterDefinitionRow): StarterCreaturePreview {
+  if (row.hp === null || row.power === null) {
+    throw new StarterCatalogueUnavailableError();
+  }
+
+  return {
+    name: row.name,
+    hp: row.hp,
+    power: row.power,
+    moves: (row.moves ?? []).map(mapStarterMove),
+  };
+}
+
+function mapStarterPowerCard(
+  row: StarterDefinitionRow,
+): StarterPowerCardPreview {
+  return {
+    name: row.name,
+    effects: (row.effects ?? []).map(mapStarterEffect),
+  };
+}
+
+function mapStarterMove(move: CardMove) {
+  return {
+    position: move.position,
+    name: move.name,
+    moveType: move.moveType,
+    effectType: move.effectType,
+    effectValue: move.effectValue,
+    modifierStat: move.modifierStat,
+    modifierOperation: move.modifierOperation,
+    modifierDurationTurns: move.modifierDurationTurns,
+    powerCost: move.powerCost,
+  };
+}
+
+function mapStarterEffect(effect: CardEffect) {
+  return {
+    position: effect.position,
+    effectType: effect.effectType,
+    effectValue: effect.effectValue,
+    modifierStat: effect.modifierStat,
+    modifierOperation: effect.modifierOperation,
+    modifierDurationTurns: effect.modifierDurationTurns,
+  };
 }
 
 async function loadStarterGrantResult(
@@ -378,7 +657,7 @@ function mapOwnedCard(row: StarterCardRow): OwnedCard {
 }
 
 function assertInsertedStarterDefinitions(
-  inserted: StarterCandidateRow[],
+  inserted: Pick<StarterDefinitionRow, 'card_definition_id'>[],
   expectedDefinitionIds: string[],
 ): void {
   const insertedIds = new Set(

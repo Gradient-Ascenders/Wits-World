@@ -83,6 +83,7 @@ beforeEach(async () => {
     },
     cardServices: {
       starterGrant: {
+        listStarterOptions: vi.fn(),
         selectStarter: vi.fn(),
       },
       collection: {
