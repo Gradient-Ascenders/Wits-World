@@ -249,33 +249,37 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
   }
 
   const cards = collection.status === 'ready' ? collection.cards : [];
+  const renderStarterSelector = (headingLevel: 1 | 2) => (
+    <StarterSelector
+      confirmationHeadingRef={confirmationHeading}
+      error={starterError}
+      headingLevel={headingLevel}
+      isConfirming={isConfirmingStarter}
+      isSubmitting={isSubmittingStarter}
+      onAffinityChange={(affinity) => {
+        setSelectedAffinity(affinity);
+        setIsConfirmingStarter(false);
+        setStarterError(null);
+      }}
+      onCancelConfirmation={() => {
+        setIsConfirmingStarter(false);
+        setStarterError(null);
+      }}
+      onConfirm={confirmStarter}
+      onLoadCollection={loadCollectionAndFocus}
+      onRetryOptions={retryStarterOptions}
+      onSignIn={startSignIn}
+      onSubmit={reviewStarter}
+      optionsState={starterOptions}
+      reauthFailed={reauthFailed}
+      selectedAffinity={selectedAffinity}
+    />
+  );
 
-  if (collection.status === 'ready' && !hasStarter) {
+  if (collection.status === 'ready' && !hasStarter && cards.length === 0) {
     return (
       <div className="collection-page collection-page--starter">
-        <StarterSelector
-          confirmationHeadingRef={confirmationHeading}
-          error={starterError}
-          isConfirming={isConfirmingStarter}
-          isSubmitting={isSubmittingStarter}
-          onAffinityChange={(affinity) => {
-            setSelectedAffinity(affinity);
-            setIsConfirmingStarter(false);
-            setStarterError(null);
-          }}
-          onCancelConfirmation={() => {
-            setIsConfirmingStarter(false);
-            setStarterError(null);
-          }}
-          onConfirm={confirmStarter}
-          onLoadCollection={loadCollectionAndFocus}
-          onRetryOptions={retryStarterOptions}
-          onSignIn={startSignIn}
-          onSubmit={reviewStarter}
-          optionsState={starterOptions}
-          reauthFailed={reauthFailed}
-          selectedAffinity={selectedAffinity}
-        />
+        {renderStarterSelector(1)}
       </div>
     );
   }
@@ -314,6 +318,10 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
         />
       ) : null}
 
+      {collection.status === 'ready' && !hasStarter
+        ? renderStarterSelector(2)
+        : null}
+
       {collection.status === 'ready' && cards.length > 0 ? (
         <CollectionGrid cards={cards} headingRef={collectionHeading} />
       ) : null}
@@ -324,6 +332,7 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
 interface StarterSelectorProps {
   confirmationHeadingRef: RefObject<HTMLHeadingElement | null>;
   error: CardApiError | null;
+  headingLevel: 1 | 2;
   isConfirming: boolean;
   isSubmitting: boolean;
   onAffinityChange: (affinity: StarterAffinity) => void;
@@ -341,6 +350,7 @@ interface StarterSelectorProps {
 function StarterSelector({
   confirmationHeadingRef,
   error,
+  headingLevel,
   isConfirming,
   isSubmitting,
   onAffinityChange,
@@ -354,6 +364,7 @@ function StarterSelector({
   reauthFailed,
   selectedAffinity,
 }: StarterSelectorProps) {
+  const Heading = headingLevel === 1 ? 'h1' : 'h2';
   const selectedOption =
     optionsState.status === 'ready'
       ? (optionsState.options.find(
@@ -367,7 +378,9 @@ function StarterSelector({
       className="starter-selector"
     >
       <p className="eyebrow">Begin your collection</p>
-      <h1 id="starter-selector-title">Choose your starter affinity</h1>
+      <Heading id="starter-selector-title">
+        Choose your starter affinity
+      </Heading>
       <p className="starter-selector__intro">
         Compare three server-selected packages. This is a one-time choice, and
         Wits World will securely record the five cards you confirm.

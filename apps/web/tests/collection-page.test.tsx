@@ -208,6 +208,50 @@ describe('card collection page', () => {
     ).toHaveLength(1);
   });
 
+  it('keeps event rewards browseable while starter options fail and retry', async () => {
+    const user = userEvent.setup();
+    const rewardCard = buildCard(1, {
+      acquisitionKind: 'event_reward',
+      name: 'Challenge Reward Guardian',
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(collectionResponse([rewardCard]))
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockResolvedValueOnce(starterOptionsResponse());
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderCollection();
+
+    expect(
+      await screen.findByRole('heading', { name: rewardCard.name }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Cards you own' }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('heading', {
+        level: 2,
+        name: 'Choose your starter affinity',
+      }),
+    ).toBeVisible();
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Your choices could not load',
+      }),
+    ).toBeVisible();
+
+    await user.click(
+      screen.getByRole('button', { name: 'Try loading choices again' }),
+    );
+
+    expect(await screen.findByText('Pressure')).toBeVisible();
+    expect(
+      screen.getByRole('heading', { name: rewardCard.name }),
+    ).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it('keeps a starter request single while submission is in flight', async () => {
     const user = userEvent.setup();
     const fetchMock = vi
