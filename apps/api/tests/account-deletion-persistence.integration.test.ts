@@ -42,6 +42,8 @@ const ROLLBACK_GRANT_ID = 'd6000000-0000-4000-8000-000000000002';
 
 const CONCURRENT_PLAYER_ID = 'd1000000-0000-4000-8000-000000000003';
 const CONCURRENT_DELETION_ID = 'd1100000-0000-4000-8000-000000000003';
+const ACCOUNT_DELETION_MIGRATION =
+  '0024_complete_account_deletion_retention.sql';
 
 const runIntegrationTests =
   process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';
@@ -340,7 +342,7 @@ describe.skipIf(!runIntegrationTests)(
         [rejoined.id],
       );
       expect(newProgress.rows[0]?.count).toBe('0');
-    }, 45_000);
+    }, 60_000);
 
     it('rolls back partial cleanup and succeeds on retry', async () => {
       const identity = {
@@ -563,7 +565,10 @@ describe.skipIf(!runIntegrationTests)(
         const migrations = await readdir(getMigrationsDirectory());
         await Promise.all(
           migrations
-            .filter((name) => name.endsWith('.sql') && name < '0024_')
+            .filter(
+              (name) =>
+                name.endsWith('.sql') && name < ACCOUNT_DELETION_MIGRATION,
+            )
             .map((name) =>
               copyFile(
                 join(getMigrationsDirectory(), name),
@@ -612,10 +617,14 @@ describe.skipIf(!runIntegrationTests)(
           });
         });
 
-        await expect(runMigrations(existingConfig)).resolves.toMatchObject({
-          applied: expect.arrayContaining([
-            '0024_complete_account_deletion_retention.sql',
-          ]),
+        await copyFile(
+          join(getMigrationsDirectory(), ACCOUNT_DELETION_MIGRATION),
+          join(migrationDirectory, ACCOUNT_DELETION_MIGRATION),
+        );
+        await expect(
+          runMigrations(existingConfig, migrationDirectory),
+        ).resolves.toMatchObject({
+          applied: [ACCOUNT_DELETION_MIGRATION],
         });
 
         await withDatabaseClient(existingConfig, async (client) => {
@@ -647,7 +656,7 @@ describe.skipIf(!runIntegrationTests)(
         });
         await rm(migrationDirectory, { force: true, recursive: true });
       }
-    }, 45_000);
+    }, 60_000);
   },
 );
 

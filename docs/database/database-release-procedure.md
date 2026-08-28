@@ -47,6 +47,11 @@ Because account-deletion migration `0024` predates ordering tables, `0025` also
 forward-replaces its cleanup routine and snapshot validator so deletion-pending
 players' ordering answers and snapshots are removed in foreign-key order.
 
+Migration `0026_create_player_progression.sql` must run after the ordering
+migration. It creates the progression ledger and read models, then backfills
+retained event completions and completed CPU matches through the same
+authoritative persistence functions used for new progression awards.
+
 ## Prerequisites
 
 - Use the Node.js and npm versions declared by the repository.

@@ -42,6 +42,11 @@ const sidebars: SidebarsConfig = {
               id: 'requirements/basic-tier-decision-register',
               label: 'Basic-Tier Decision Register',
             },
+            {
+              type: 'doc',
+              id: 'requirements/player-progression-rules',
+              label: 'Player Progression Rules',
+            },
           ],
         },
         {
@@ -276,6 +281,11 @@ const sidebars: SidebarsConfig = {
               type: 'doc',
               id: 'database/cpu-match-persistence-design',
               label: 'CPU Match Persistence',
+            },
+            {
+              type: 'doc',
+              id: 'database/player-progression-persistence',
+              label: 'Player Progression Persistence',
             },
           ],
         },

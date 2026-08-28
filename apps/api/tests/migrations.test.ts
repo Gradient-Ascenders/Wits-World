@@ -41,7 +41,8 @@ describe('migration file loading', () => {
         name.startsWith('0022_') ||
         name.startsWith('0023_') ||
         name.startsWith('0024_') ||
-        name.startsWith('0025_'),
+        name.startsWith('0025_') ||
+        name.startsWith('0026_'),
     );
 
     expect(
@@ -67,6 +68,10 @@ describe('migration file loading', () => {
       {
         checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         name: '0025_add_ordering_challenges.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0026_create_player_progression.sql',
       },
     ]);
   });
