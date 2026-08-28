@@ -31,9 +31,20 @@ const testFiles = [
   'tests/progression-persistence.integration.test.ts',
 ];
 
+// Each file provisions and migrates its own remote test database.
+const maximumDatabaseWorkers = 2;
+const defaultDatabaseTestTimeoutMs = 30_000;
 const result = spawnSync(
   process.execPath,
-  [vitestEntrypoint, 'run', ...testFiles],
+  [
+    vitestEntrypoint,
+    'run',
+    '--maxWorkers',
+    String(maximumDatabaseWorkers),
+    '--testTimeout',
+    String(defaultDatabaseTestTimeoutMs),
+    ...testFiles,
+  ],
   {
     cwd: apiDirectory,
     env: { ...process.env, RUN_DATABASE_INTEGRATION_TESTS: 'true' },
