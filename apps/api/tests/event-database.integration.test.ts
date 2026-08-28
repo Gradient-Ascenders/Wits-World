@@ -166,6 +166,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0020_replace_display_name_with_player_name.sql',
         '0021_enforce_player_name_policy.sql',
         '0022_tighten_player_name_policy.sql',
+        '0024_complete_account_deletion_retention.sql',
       ],
       skipped: [],
     });
@@ -195,6 +196,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0020_replace_display_name_with_player_name.sql',
         '0021_enforce_player_name_policy.sql',
         '0022_tighten_player_name_policy.sql',
+        '0024_complete_account_deletion_retention.sql',
       ],
     });
     expect(readiness).toMatchObject({

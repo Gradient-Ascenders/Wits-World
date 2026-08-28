@@ -309,6 +309,16 @@ and challenge-answer internals, are not exposed by the collection response.
 Inactive definitions remain visible when already owned even though reward and
 starter selection use only active definitions.
 
+### `event_completion_card_rewards`
+
+Each row stores the completion, one-based reward position, awarded card
+definition, and award time. It is the immutable historical reward outcome, not
+current ownership. The completion finalizer writes it beside each event-reward
+`player_cards` row in the same transaction. Account deletion can therefore
+remove every owned copy while retaining an anonymous, auditable completion
+result. Migration `0024` backfills existing event reward rows in stable
+acquisition order.
+
 ## Attempt creation transaction
 
 Starting an attempt performs these operations atomically:
@@ -377,9 +387,10 @@ same transaction:
 3. Calculate score and rewards from the attempt snapshots.
 4. Insert the event completion.
 5. Insert and apply a positive coin ledger credit.
-6. Insert zero, one, or two event-reward ownership rows.
-7. Mark the attempt completed with its reason, score, and timestamp.
-8. Commit, then return the persisted score/reward result with the review derived
+6. Insert zero, one, or two retained card-reward outcome rows.
+7. Insert the matching event-reward ownership rows.
+8. Mark the attempt completed with its reason, score, and timestamp.
+9. Commit, then return the persisted score/reward result with the review derived
    from the same authoritative attempt state.
 
 Any failure rolls back every effect. Constraints make retries converge on one
@@ -650,10 +661,11 @@ account-linked records are deleted, anonymised, or retained, including the
 12-month minimal deletion audit. That confirmed policy is recorded in the
 [Basic-tier decision register](../requirements/basic-tier-decision-register.md)
 and [Basic game rules](../requirements/basic-game-rules.md#account-deletion-and-re-registration).
-Account deletion is not currently implemented. Preliminary account-lifecycle
-tables, code, and tests do not satisfy the mandatory user capability or prove
-cleanup for every player-owned model. The feature is planned for Sprint 2 after,
-or together with, a proper player profile/account page.
+Issue `#160` implements the transactional retention backend, including deletion
+of individual answers/snapshots and separation of retained card-reward outcomes
+from deleted ownership rows. The exact matrix and retry boundary are documented
+in [Account deletion persistence and retention](./account-deletion-retention.md).
+The player-facing capability remains issue `#161` work.
 
 This design was planned, generated, edited, and reviewed with the assistance of
 Codex[GPT-5.6 Sol], Codex-CLI[gpt-5.6-sol medium], Codex[GPT-5], and

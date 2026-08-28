@@ -43,12 +43,13 @@ If a Google-chosen name already belongs to either provider, setup returns
 already reserved by Google, database-account resolution returns the same safe
 conflict. Neither case changes either `(iss, sub)` binding or local UUID.
 
-Under the planned `BASIC-12` account-deletion workflow, successful deletion will
-clear `player_name` together with the Auth0 mapping and role. This will release
-the local unique name only after the external Auth0 account has been deleted
-successfully. Account deletion is not currently implemented; it is planned for
-Sprint 2 after, or together with, the player profile/account page. Historical
-gameplay snapshots will follow the confirmed retention rules.
+Under the `BASIC-12` account-deletion workflow, successful deletion clears
+`player_name` together with the Auth0 mapping and role. This releases the local
+unique name only after the external Auth0 account has been deleted successfully.
+The transactional persistence and retention backend is implemented; the
+player-facing account experience remains tracked by issue `#161`. See
+[Account deletion persistence and retention](./account-deletion-retention.md)
+for the exact deleted and retained records.
 
 ## Migration history
 
@@ -62,9 +63,12 @@ Google onboarding while enforcing the shared canonical 3–20-character and
 allowed-character policy. It is immutable after application. Migration
 `0022_tighten_player_name_policy.sql` replaces only that check constraint to
 reject email-shaped (including single-label domains) and phone-shaped names.
+Migration `0024_complete_account_deletion_retention.sql` adds anonymous card
+reward history and the guarded player-data cleanup used before the identity is
+converted to a tombstone.
 
-Apply `0019` through `0022` before deploying the API version that selects
-`player_name`.
+Apply the complete migration set before deploying the API version that performs
+account deletion.
 
 The preceding document was generated and edited with the assistance of:
-Codex-CLI[GPT-5] and Codex[GPT-5].
+Codex-CLI[GPT-5], Codex[GPT-5], and Codex-CLI[gpt-5.6-sol medium].
