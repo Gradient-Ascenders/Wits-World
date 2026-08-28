@@ -17,6 +17,7 @@ import CollectionPage from '../src/pages/CollectionPage';
 import {
   buildCard,
   buildStarterCards,
+  buildStarterOptions,
   buildUuid,
   jsonResponse,
 } from './fixtures/cards';
@@ -65,34 +66,52 @@ function starterResponse(affinity = 'wit') {
   );
 }
 
+function starterOptionsResponse() {
+  return jsonResponse({
+    options: buildStarterOptions(),
+    requestId: 'starter-options-request',
+  });
+}
+
 describe('card collection page', () => {
-  it('announces loading, then presents the empty collection and starter journey', async () => {
-    let resolveRequest!: (response: Response) => void;
+  it('loads and renders the server-provided starter comparison without redundant empty messaging', async () => {
+    const user = userEvent.setup();
+    let resolveOptions!: (response: Response) => void;
     vi.stubGlobal(
       'fetch',
-      vi.fn(
-        () =>
-          new Promise<Response>((resolve) => {
-            resolveRequest = resolve;
-          }),
-      ),
+      vi
+        .fn()
+        .mockResolvedValueOnce(collectionResponse([]))
+        .mockImplementationOnce(
+          () =>
+            new Promise<Response>((resolve) => {
+              resolveOptions = resolve;
+            }),
+        ),
     );
 
     renderCollection();
 
     expect(screen.getByRole('status')).toHaveTextContent('Loading your cards');
-    await waitFor(() => expect(resolveRequest).toBeTypeOf('function'));
-    resolveRequest(collectionResponse([]));
-
     expect(
       await screen.findByRole('heading', {
         name: 'Choose your starter affinity',
       }),
     ).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Loading your choices',
+    );
+    await waitFor(() => expect(resolveOptions).toBeTypeOf('function'));
+    resolveOptions(starterOptionsResponse());
+
+    expect(await screen.findByText('Pressure')).toBeVisible();
+    expect(screen.getByText('Durability')).toBeVisible();
+    expect(screen.getByText('Flexibility')).toBeVisible();
     expect(
-      screen.getByRole('heading', { name: 'Your collection is empty' }),
-    ).toBeVisible();
-    expect(screen.getByRole('radio', { name: /Spark/i })).toBeChecked();
+      screen.queryByRole('heading', { name: 'Your collection is empty' }),
+    ).not.toBeInTheDocument();
+    const sparkChoice = screen.getByRole('radio', { name: /Spark/i });
+    expect(sparkChoice).toBeChecked();
     expect(screen.getAllByRole('radio')).toHaveLength(3);
     expect(
       screen.queryByRole('radio', { name: /Spirit/i }),
@@ -100,20 +119,47 @@ describe('card collection page', () => {
     expect(
       screen.queryByRole('radio', { name: /Mystic/i }),
     ).not.toBeInTheDocument();
+    expect(screen.getByText(/Spirit, Mystic, and other cards/i)).toBeVisible();
+
+    const sparkOption = sparkChoice.closest('article');
+    expect(sparkOption).not.toBeNull();
+    await user.click(within(sparkOption!).getByText('View exact package'));
+    expect(within(sparkOption!).getByText('spark Creature 1')).toBeVisible();
+    const moveList = within(sparkOption!).getByRole('list', {
+      name: 'spark Creature 1 moves',
+    });
+    expect(moveList.children).toHaveLength(4);
+    expect(within(moveList).getByText(/11 base damage/u)).toBeVisible();
+    expect(
+      within(moveList).getByText(/Opponent damage −10% · 2 turns/u),
+    ).toBeVisible();
+    expect(
+      within(sparkOption!).queryByText(/multiply/u),
+    ).not.toBeInTheDocument();
   });
 
-  it('submits the selected affinity and focuses the five-card server result', async () => {
+  it('requires final confirmation, submits only the affinity, and focuses the server result', async () => {
     const user = userEvent.setup();
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(collectionResponse([]))
+      .mockResolvedValueOnce(starterOptionsResponse())
       .mockResolvedValueOnce(starterResponse('grit'));
     vi.stubGlobal('fetch', fetchMock);
 
     renderCollection();
     await user.click(await screen.findByRole('radio', { name: /Grit/i }));
     await user.click(
-      screen.getByRole('button', { name: 'Choose this affinity' }),
+      screen.getByRole('button', { name: 'Review Grit choice' }),
+    );
+
+    const confirmation = screen.getByRole('heading', {
+      name: 'Confirm Grit — Durability',
+    });
+    expect(confirmation).toHaveFocus();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await user.click(
+      screen.getByRole('button', { name: 'Confirm Grit starter' }),
     );
 
     const resultHeading = await screen.findByRole('heading', {
@@ -133,24 +179,55 @@ describe('card collection page', () => {
     ).toBeVisible();
   });
 
-  it('keeps a starter request single while submission is in flight', async () => {
+  it('retries the starter-options request without reloading the collection', async () => {
+    const user = userEvent.setup();
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(collectionResponse([]))
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockResolvedValueOnce(starterOptionsResponse());
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderCollection();
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Your choices could not load',
+      }),
+    ).toBeVisible();
+    await user.click(
+      screen.getByRole('button', { name: 'Try loading choices again' }),
+    );
+
+    expect(await screen.findByText('Pressure')).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(
+      fetchMock.mock.calls.filter(([url]) =>
+        String(url).endsWith('/cards/collection'),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('keeps a starter request single while submission is in flight', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(collectionResponse([]))
+      .mockResolvedValueOnce(starterOptionsResponse())
       .mockImplementationOnce(() => new Promise<Response>(() => undefined));
     vi.stubGlobal('fetch', fetchMock);
 
     renderCollection();
-    const submit = await screen.findByRole('button', {
-      name: 'Choose this affinity',
+    await user.click(
+      await screen.findByRole('button', { name: 'Review Spark choice' }),
+    );
+    const submit = screen.getByRole('button', {
+      name: 'Confirm Spark starter',
     });
-    const form = submit.closest('form');
-    expect(form).not.toBeNull();
+    fireEvent.click(submit);
+    fireEvent.click(submit);
 
-    fireEvent.submit(form!);
-    fireEvent.submit(form!);
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     expect(
       screen.getByRole('button', { name: 'Claiming your starter…' }),
     ).toBeDisabled();
@@ -162,6 +239,7 @@ describe('card collection page', () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(collectionResponse([]))
+      .mockResolvedValueOnce(starterOptionsResponse())
       .mockResolvedValueOnce(
         jsonResponse(
           {
@@ -180,7 +258,10 @@ describe('card collection page', () => {
 
     renderCollection();
     await user.click(
-      await screen.findByRole('button', { name: 'Choose this affinity' }),
+      await screen.findByRole('button', { name: 'Review Spark choice' }),
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Confirm Spark starter' }),
     );
 
     expect(await screen.findByRole('alert')).toHaveTextContent(

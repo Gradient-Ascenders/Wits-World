@@ -8,7 +8,12 @@ import type {
   StarterGrantService,
   StarterGrantSelection,
 } from '../src/cards/starter-grant.js';
-import type { OwnedCard } from '../src/cards/card-types.js';
+import { StarterAffinityNotAllowedError } from '../src/cards/starter-grant.js';
+import type {
+  OwnedCard,
+  StarterAffinity,
+  StarterOption,
+} from '../src/cards/card-types.js';
 import type { PlayerIdentityService } from '../src/players/player-identity.js';
 import type { CardCollectionService } from '../src/cards/card-collection.js';
 
@@ -47,6 +52,9 @@ let app: FastifyInstance;
 let selectStarter: ReturnType<
   typeof vi.fn<StarterGrantService['selectStarter']>
 >;
+let listStarterOptions: ReturnType<
+  typeof vi.fn<StarterGrantService['listStarterOptions']>
+>;
 
 let listOwnedCards: ReturnType<
   typeof vi.fn<CardCollectionService['listOwnedCards']>
@@ -58,6 +66,13 @@ beforeEach(async () => {
   selectStarter = vi
     .fn<StarterGrantService['selectStarter']>()
     .mockResolvedValue(selection);
+  listStarterOptions = vi
+    .fn<StarterGrantService['listStarterOptions']>()
+    .mockResolvedValue([
+      buildStarterOption('spark'),
+      buildStarterOption('grit'),
+      buildStarterOption('wit'),
+    ]);
 
   listOwnedCards = vi
     .fn<CardCollectionService['listOwnedCards']>()
@@ -81,6 +96,7 @@ beforeEach(async () => {
   };
 
   const starterGrantService: StarterGrantService = {
+    listStarterOptions,
     selectStarter,
   };
 
@@ -105,6 +121,34 @@ afterEach(async () => {
 });
 
 describe('starter selection API', () => {
+  it('returns only the authenticated server starter options', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/cards/starter-options',
+      headers: { authorization: 'Bearer test-access-token' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(
+      response
+        .json()
+        .options.map(
+          (option: { affinity: StarterAffinity }) => option.affinity,
+        ),
+    ).toEqual(['spark', 'grit', 'wit']);
+    expect(listStarterOptions).toHaveBeenCalledOnce();
+  });
+
+  it('requires authentication for starter package previews', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/cards/starter-options',
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(listStarterOptions).not.toHaveBeenCalled();
+  });
+
   it('requires authentication', async () => {
     const response = await app.inject({
       method: 'POST',
@@ -154,8 +198,44 @@ describe('starter selection API', () => {
     expect(response.statusCode).toBe(200);
   });
 
-  it.each(['spirit', 'mystic', 'ember', ''])(
-    'rejects invalid affinity input: %s',
+  it.each(['spirit', 'mystic'] as const)(
+    'rejects a new progression-only %s grant through server eligibility',
+    async (affinity) => {
+      selectStarter.mockRejectedValueOnce(new StarterAffinityNotAllowedError());
+      const response = await authenticatedRequest({ affinity });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({
+        code: 'STARTER_AFFINITY_NOT_ALLOWED',
+      });
+      expect(selectStarter).toHaveBeenCalledWith({
+        affinity,
+        playerId: activeLocalPlayer.id,
+      });
+    },
+  );
+
+  it('returns an idempotent historical Spirit grant', async () => {
+    selectStarter.mockResolvedValueOnce({
+      created: false,
+      grant: {
+        ...selection.grant,
+        affinity: 'spirit',
+        cards: selection.grant.cards.map((card) => ({
+          ...card,
+          affinity: 'spirit',
+        })),
+      },
+    });
+
+    const response = await authenticatedRequest({ affinity: 'spirit' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ affinity: 'spirit' });
+  });
+
+  it.each(['ember', ''])(
+    'rejects unknown affinity input: %s',
     async (affinity) => {
       const response = await authenticatedRequest({ affinity });
 
@@ -380,6 +460,50 @@ function buildTestCard(index: number): OwnedCard {
     effects: [],
     acquisitionKind: 'starter',
     acquiredAt: '2026-08-15T08:00:00.000Z',
+  };
+}
+
+function buildStarterOption(affinity: StarterAffinity): StarterOption {
+  return {
+    affinity,
+    title:
+      affinity === 'spark'
+        ? 'Pressure'
+        : affinity === 'grit'
+          ? 'Durability'
+          : 'Flexibility',
+    description: 'Server-authored starter comparison.',
+    highlights: ['First strength', 'Second strength', 'Third strength'],
+    composition: { creatureCount: 3, powerCardCount: 2 },
+    creatures: [1, 2, 3].map((index) => ({
+      name: `${affinity} Creature ${index}`,
+      hp: 90 + index,
+      power: 10 + index,
+      moves: [1, 2, 3, 4].map((position) => ({
+        position,
+        name: `Move ${position}`,
+        moveType: affinity,
+        effectType: 'damage',
+        effectValue: 10 + position,
+        modifierStat: null,
+        modifierOperation: null,
+        modifierDurationTurns: null,
+        powerCost: position,
+      })),
+    })),
+    powerCards: [1, 2].map((index) => ({
+      name: `${affinity} Power ${index}`,
+      effects: [
+        {
+          position: 1,
+          effectType: 'damage',
+          effectValue: 10 + index,
+          modifierStat: null,
+          modifierOperation: null,
+          modifierDurationTurns: null,
+        },
+      ],
+    })),
   };
 }
 

@@ -9,12 +9,7 @@ export const cardAffinities = [
 ] as const;
 
 export type CardAffinity = (typeof cardAffinities)[number];
-export const starterAffinities = [
-  'spark',
-  'grit',
-  'wit',
-] as const satisfies readonly CardAffinity[];
-export type StarterAffinity = (typeof starterAffinities)[number];
+export type StarterAffinity = Extract<CardAffinity, 'spark' | 'grit' | 'wit'>;
 export type CardCategory = 'creature' | 'power';
 export type CardRarity = 'common' | 'rare' | 'epic' | 'legendary';
 export type CardEffectType = 'buff' | 'damage' | 'debuff' | 'heal';
@@ -68,6 +63,30 @@ export interface StarterGrant {
   starterGrantId: string;
 }
 
+export type StarterPreviewMove = Omit<CardMove, 'id'>;
+export type StarterPreviewEffect = Omit<CardEffect, 'id'>;
+
+export interface StarterOption {
+  affinity: StarterAffinity;
+  composition: {
+    creatureCount: 3;
+    powerCardCount: 2;
+  };
+  creatures: {
+    hp: number;
+    moves: StarterPreviewMove[];
+    name: string;
+    power: number;
+  }[];
+  description: string;
+  highlights: [string, string, string];
+  powerCards: {
+    effects: StarterPreviewEffect[];
+    name: string;
+  }[];
+  title: string;
+}
+
 const collectionResponseKeys = ['cards', 'requestId'] as const;
 const starterResponseKeys = [
   'affinity',
@@ -76,6 +95,19 @@ const starterResponseKeys = [
   'requestId',
   'starterGrantId',
 ] as const;
+const starterOptionsResponseKeys = ['options', 'requestId'] as const;
+const starterOptionKeys = [
+  'affinity',
+  'composition',
+  'creatures',
+  'description',
+  'highlights',
+  'powerCards',
+  'title',
+] as const;
+const starterCompositionKeys = ['creatureCount', 'powerCardCount'] as const;
+const starterCreatureKeys = ['hp', 'moves', 'name', 'power'] as const;
+const starterPowerCardKeys = ['effects', 'name'] as const;
 const ownedCardKeys = [
   'acquiredAt',
   'acquisitionKind',
@@ -114,6 +146,8 @@ const effectKeys = [
   'modifierStat',
   'position',
 ] as const;
+const previewMoveKeys = moveKeys.filter((key) => key !== 'id');
+const previewEffectKeys = effectKeys.filter((key) => key !== 'id');
 
 const dateTimePattern =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/u;
@@ -167,6 +201,38 @@ export async function listOwnedCards({
   }
 
   return payload.cards.map(parseOwnedCard);
+}
+
+export async function listStarterOptions({
+  apiBaseUrl,
+  getAccessToken,
+  signal,
+}: CardRequestOptions): Promise<StarterOption[]> {
+  const payload = await cardRequest({
+    apiBaseUrl,
+    getAccessToken,
+    method: 'GET',
+    path: '/cards/starter-options',
+    signal,
+  });
+
+  if (
+    !isRecord(payload) ||
+    !hasExactKeys(payload, starterOptionsResponseKeys) ||
+    typeof payload.requestId !== 'string' ||
+    !Array.isArray(payload.options) ||
+    payload.options.length !== 3
+  ) {
+    throw new CardApiError('unavailable');
+  }
+
+  const options = payload.options.map(parseStarterOption);
+
+  if (new Set(options.map((option) => option.affinity)).size !== 3) {
+    throw new CardApiError('unavailable');
+  }
+
+  return options;
 }
 
 export async function selectStarter({
@@ -341,6 +407,83 @@ function parseOwnedCard(value: unknown): OwnedCard {
   };
 }
 
+function parseStarterOption(value: unknown): StarterOption {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, starterOptionKeys) ||
+    !isStarterAffinity(value.affinity) ||
+    typeof value.title !== 'string' ||
+    value.title.trim() === '' ||
+    typeof value.description !== 'string' ||
+    value.description.trim() === '' ||
+    !Array.isArray(value.highlights) ||
+    value.highlights.length !== 3 ||
+    !value.highlights.every(
+      (highlight) => typeof highlight === 'string' && highlight.trim() !== '',
+    ) ||
+    !isRecord(value.composition) ||
+    !hasExactKeys(value.composition, starterCompositionKeys) ||
+    value.composition.creatureCount !== 3 ||
+    value.composition.powerCardCount !== 2 ||
+    !Array.isArray(value.creatures) ||
+    value.creatures.length !== 3 ||
+    !Array.isArray(value.powerCards) ||
+    value.powerCards.length !== 2
+  ) {
+    throw new CardApiError('unavailable');
+  }
+
+  return {
+    affinity: value.affinity,
+    composition: { creatureCount: 3, powerCardCount: 2 },
+    creatures: value.creatures.map(parseStarterCreature),
+    description: value.description,
+    highlights: value.highlights as [string, string, string],
+    powerCards: value.powerCards.map(parseStarterPowerCard),
+    title: value.title,
+  };
+}
+
+function parseStarterCreature(value: unknown) {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, starterCreatureKeys) ||
+    typeof value.name !== 'string' ||
+    value.name.trim() === '' ||
+    !isPositiveInteger(value.hp) ||
+    !isNonNegativeInteger(value.power) ||
+    !Array.isArray(value.moves) ||
+    value.moves.length !== 4
+  ) {
+    throw new CardApiError('unavailable');
+  }
+
+  return {
+    hp: value.hp,
+    moves: value.moves.map(parseStarterPreviewMove),
+    name: value.name,
+    power: value.power,
+  };
+}
+
+function parseStarterPowerCard(value: unknown) {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, starterPowerCardKeys) ||
+    typeof value.name !== 'string' ||
+    value.name.trim() === '' ||
+    !Array.isArray(value.effects) ||
+    value.effects.length === 0
+  ) {
+    throw new CardApiError('unavailable');
+  }
+
+  return {
+    effects: value.effects.map(parseStarterPreviewEffect),
+    name: value.name,
+  };
+}
+
 function parseMove(value: unknown): CardMove {
   if (
     !isRecord(value) ||
@@ -393,6 +536,61 @@ function parseEffect(value: unknown): CardEffect {
     effectType: value.effectType,
     effectValue: value.effectValue,
     id: value.id,
+    modifierDurationTurns: value.modifierDurationTurns,
+    modifierOperation: value.modifierOperation,
+    modifierStat: value.modifierStat,
+    position: value.position,
+  };
+}
+
+function parseStarterPreviewMove(value: unknown): StarterPreviewMove {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, previewMoveKeys) ||
+    !isPositiveInteger(value.position) ||
+    typeof value.name !== 'string' ||
+    value.name.trim() === '' ||
+    !isMoveType(value.moveType) ||
+    !isEffectType(value.effectType) ||
+    !isNullableNonNegativeInteger(value.effectValue) ||
+    !isNullableModifierStat(value.modifierStat) ||
+    !isNullableModifierOperation(value.modifierOperation) ||
+    !isNullablePositiveInteger(value.modifierDurationTurns) ||
+    !isNonNegativeInteger(value.powerCost)
+  ) {
+    throw new CardApiError('unavailable');
+  }
+
+  return {
+    effectType: value.effectType,
+    effectValue: value.effectValue,
+    modifierDurationTurns: value.modifierDurationTurns,
+    modifierOperation: value.modifierOperation,
+    modifierStat: value.modifierStat,
+    moveType: value.moveType,
+    name: value.name,
+    position: value.position,
+    powerCost: value.powerCost,
+  };
+}
+
+function parseStarterPreviewEffect(value: unknown): StarterPreviewEffect {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, previewEffectKeys) ||
+    !isPositiveInteger(value.position) ||
+    !isEffectType(value.effectType) ||
+    !isNullableNonNegativeInteger(value.effectValue) ||
+    !isNullableModifierStat(value.modifierStat) ||
+    !isNullableModifierOperation(value.modifierOperation) ||
+    !isNullablePositiveInteger(value.modifierDurationTurns)
+  ) {
+    throw new CardApiError('unavailable');
+  }
+
+  return {
+    effectType: value.effectType,
+    effectValue: value.effectValue,
     modifierDurationTurns: value.modifierDurationTurns,
     modifierOperation: value.modifierOperation,
     modifierStat: value.modifierStat,
@@ -507,6 +705,10 @@ function isLeapYear(year: number) {
 
 function isCardAffinity(value: unknown): value is CardAffinity {
   return cardAffinities.some((affinity) => affinity === value);
+}
+
+function isStarterAffinity(value: unknown): value is StarterAffinity {
+  return value === 'spark' || value === 'grit' || value === 'wit';
 }
 
 function isCardCategory(value: unknown): value is CardCategory {

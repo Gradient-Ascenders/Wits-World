@@ -91,3 +91,32 @@ export interface StarterGrant {
   grantedAt: string;
   cards: OwnedCard[];
 }
+
+export type StarterPreviewMove = Omit<CardMove, 'id'>;
+
+export type StarterPreviewEffect = Omit<CardEffect, 'id'>;
+
+export interface StarterCreaturePreview {
+  name: string;
+  hp: number;
+  power: number;
+  moves: StarterPreviewMove[];
+}
+
+export interface StarterPowerCardPreview {
+  name: string;
+  effects: StarterPreviewEffect[];
+}
+
+export interface StarterOption {
+  affinity: StarterAffinity;
+  title: string;
+  description: string;
+  highlights: [string, string, string];
+  composition: {
+    creatureCount: 3;
+    powerCardCount: 2;
+  };
+  creatures: StarterCreaturePreview[];
+  powerCards: StarterPowerCardPreview[];
+}
