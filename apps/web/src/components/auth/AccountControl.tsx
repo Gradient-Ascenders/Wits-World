@@ -126,7 +126,7 @@ export function AccountControl() {
               onClick={switchAccount}
               type="button"
             >
-              Use a different account
+              Switch account
             </button>
           ) : null}
         </>

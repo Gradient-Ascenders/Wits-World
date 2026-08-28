@@ -198,9 +198,7 @@ describe('player authentication', () => {
 
     renderRoute('/explore', createAuthValue({ loginWithRedirect }));
 
-    await user.click(
-      screen.getByRole('button', { name: 'Use a different account' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Switch account' }));
 
     expect(loginWithRedirect).toHaveBeenCalledWith({
       appState: { returnTo: '/explore' },

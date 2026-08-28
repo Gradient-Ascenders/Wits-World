@@ -28,6 +28,10 @@ test('renders and restores the authoritative player name without exposing email'
   await page.reload();
   await expect(page.getByText('Signed in as sprint1-player')).toBeVisible();
 
+  await page.setViewportSize({ width: 768, height: 844 });
+  const tabletHeader = await page.locator('.site-header__inner').boundingBox();
+  expect(tabletHeader?.height).toBeLessThanOrEqual(80);
+
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByText('Signed in as sprint1-player')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();

@@ -68,7 +68,7 @@ test('uses the real API to decide in-range and out-of-range reachability', async
   expect(mobileLayout.documentHeight).toBe(844);
   expect(mobileLayout.documentWidth).toBe(390);
   expect(mobileLayout.footerCount).toBe(0);
-  expect(mobileLayout.panelBottom).toBeLessThanOrEqual(mobileLayout.navTop);
+  expect(mobileLayout.panelBottom).toBeCloseTo(mobileLayout.navTop, 0);
 
   await page
     .locator('[data-map-provider^="deterministic-"]')
