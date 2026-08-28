@@ -31,7 +31,6 @@ const ROLLBACK_PLAYER_ID = '10000000-0000-4000-8000-000000000003';
 const ROLLBACK_ATTEMPT_ID = '40000000-0000-4000-8000-000000000003';
 const CARD_ID = '50000000-0000-4000-8000-000000000001';
 const STARTER_GRANT_ID = '60000000-0000-4000-8000-000000000001';
-const SECOND_CARD_ID = '50000000-0000-4000-8000-000000000002';
 
 describe.skipIf(!runIntegrationTests)(
   'challenge persistence integration',
@@ -98,7 +97,9 @@ describe.skipIf(!runIntegrationTests)(
           '0020_replace_display_name_with_player_name.sql',
           '0021_enforce_player_name_policy.sql',
           '0022_tighten_player_name_policy.sql',
+          '0023_rebalance_canonical_card_roster.sql',
           '0024_complete_account_deletion_retention.sql',
+          '0025_create_player_progression.sql',
         ],
         skipped: [],
       });
@@ -129,7 +130,9 @@ describe.skipIf(!runIntegrationTests)(
           '0020_replace_display_name_with_player_name.sql',
           '0021_enforce_player_name_policy.sql',
           '0022_tighten_player_name_policy.sql',
+          '0023_rebalance_canonical_card_roster.sql',
           '0024_complete_account_deletion_retention.sql',
+          '0025_create_player_progression.sql',
         ],
       });
     }, 30_000);
@@ -385,15 +388,28 @@ describe.skipIf(!runIntegrationTests)(
         const cardResult = await client.query(
           `insert into public.card_definitions (
            id, name, category, affinity, rarity, hp, power, description, is_active, authoring_status
-         ) values
-           ($1, 'Persistence Spark', 'creature', 'spark', 'common', 100, 10,
-            'A card used by the persistence test', true, 'published'),
-           ($2, 'Persistence Spark Copy', 'creature', 'spark', 'common', 110, 12,
-            'A second card used by the persistence test', true, 'published')
+         ) values (
+           $1, 'Persistence Spark', 'power', 'spark', 'common', null, null,
+           'A card used by the persistence test', false, 'draft'
+         )
          returning id`,
-          [CARD_ID, SECOND_CARD_ID],
+          [CARD_ID],
         );
-        expect(cardResult.rows).toHaveLength(2);
+        expect(cardResult.rows).toHaveLength(1);
+        await client.query(
+          `insert into public.card_effects (
+             card_definition_id, position, effect_type, effect_value
+           ) values ($1, 1, 'heal', 10)`,
+          [CARD_ID],
+        );
+        await client.query(
+          `update public.card_definitions
+              set authoring_status = 'published',
+                  is_active = true,
+                  updated_at = now()
+            where id = $1`,
+          [CARD_ID],
+        );
 
         const finalizer = createChallengeAttemptCompletionFinalizer({
           randomInt: () => 0,

@@ -25,21 +25,22 @@ already been reached.
 
 ## Deleted and retained records
 
-| Data                                                       | Deletion result                                                                          |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Auth0 issuer/subject, Player Name, and role                | Cleared from the local player tombstone                                                  |
-| Owned cards and starter selection                          | Deleted                                                                                  |
-| Saved decks, deck membership, and active selection         | Deleted                                                                                  |
-| Wallet balance                                             | Deleted                                                                                  |
-| Individual quiz answers and question/choice snapshots      | Deleted                                                                                  |
-| In-progress challenge attempts                             | Deleted                                                                                  |
-| Active CPU matches, rounds, actions, and card snapshots    | Deleted                                                                                  |
-| Completed challenge attempt summary                        | Retained against the anonymised player UUID                                              |
-| Event completion, score, coin outcome, and coin ledger     | Retained against the anonymised player UUID                                              |
-| Awarded-card outcome                                       | Retained in `event_completion_card_rewards`; owned `player_cards` rows are still deleted |
-| Completed CPU matches, rounds, actions, and card snapshots | Retained against the anonymised player UUID                                              |
-| Published events, questions, challenges, and cards         | Retained unchanged as system-owned content definitions                                   |
-| Author activity audit                                      | Retained against the anonymised player tombstone                                         |
+| Data                                                         | Deletion result                                                                          |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| Auth0 issuer/subject, Player Name, and role                  | Cleared from the local player tombstone                                                  |
+| Owned cards and starter selection                            | Deleted                                                                                  |
+| Saved decks, deck membership, and active selection           | Deleted                                                                                  |
+| Wallet balance                                               | Deleted                                                                                  |
+| Individual quiz answers and question/choice snapshots        | Deleted                                                                                  |
+| In-progress challenge attempts                               | Deleted                                                                                  |
+| Active CPU matches, rounds, actions, and card snapshots      | Deleted                                                                                  |
+| Completed challenge attempt summary                          | Retained against the anonymised player UUID                                              |
+| Event completion, score, coin outcome, and coin ledger       | Retained against the anonymised player UUID                                              |
+| Awarded-card outcome                                         | Retained in `event_completion_card_rewards`; owned `player_cards` rows are still deleted |
+| Completed CPU matches, rounds, actions, and card snapshots   | Retained against the anonymised player UUID                                              |
+| Point awards, activity days, streak totals, and achievements | Retained privately against the anonymised player UUID; excluded from live standings      |
+| Published events, questions, challenges, and cards           | Retained unchanged as system-owned content definitions                                   |
+| Author activity audit                                        | Retained against the anonymised player tombstone                                         |
 
 Content definitions do not store a mutable Author owner, so no ownership row
 needs reassignment. Their immutable `author_content_audit` actor reference keeps
@@ -84,7 +85,8 @@ player foreign key.
 
 Clearing the unique Auth0 `(issuer, subject)` pair and Player Name allows the
 same person to register later as a new local player. The new UUID has no link to
-the deleted player's cards, balance, decks, attempts, or matches.
+the deleted player's cards, balance, decks, attempts, matches, or retained
+progression. Progression remains attached only to the old anonymous tombstone.
 
 ## Verification
 
