@@ -61,6 +61,8 @@ import { authorChallengeRoutes } from './routes/author-challenges.js';
 import type { AuthorCardService } from './cards/author-card-service.js';
 import { authorCardRoutes } from './routes/author-cards.js';
 import type { AuthenticatedRateProtection } from './security/rate-protection.js';
+import type { ProgressionReadService } from './progression/progression-read-service.js';
+import { progressionRoutes } from './routes/progression.js';
 
 export interface EventServices {
   discovery: EventDiscoveryService;
@@ -83,6 +85,7 @@ export interface BuildAppOptions {
   cardServices?: CardServices;
   authorContentServices?: AuthorContentServices;
   cpuMatchService?: CpuMatchService;
+  progressionReadService?: ProgressionReadService;
   rateProtection?: AuthenticatedRateProtection;
 }
 
@@ -126,6 +129,7 @@ export async function buildApp({
   cardServices,
   authorContentServices,
   cpuMatchService,
+  progressionReadService,
   rateProtection,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
@@ -191,6 +195,9 @@ export async function buildApp({
   if (cpuMatchService && !playerIdentityService) {
     throw new Error('CPU match services require a player identity service.');
   }
+  if (progressionReadService && !playerIdentityService) {
+    throw new Error('Progression services require a player identity service.');
+  }
 
   registerErrorHandlers(app);
 
@@ -238,6 +245,11 @@ export async function buildApp({
         {
           name: 'Matches',
           description: 'Server-authoritative CPU matches and private history.',
+        },
+        {
+          name: 'Progression',
+          description:
+            'Authenticated player progression and privacy-safe standings.',
         },
       ],
       components: {
@@ -359,6 +371,13 @@ export async function buildApp({
     await app.register(cpuMatchRoutes, {
       prefix: '/api/v1',
       service: cpuMatchService,
+    });
+  }
+
+  if (progressionReadService) {
+    await app.register(progressionRoutes, {
+      prefix: '/api/v1',
+      service: progressionReadService,
     });
   }
 

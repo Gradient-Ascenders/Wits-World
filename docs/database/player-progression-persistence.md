@@ -48,10 +48,14 @@ inserted award or the existing result on replay. A new award updates activity,
 monthly and all-time totals, recomputes streak islands, and inserts newly met
 achievements with conflict-safe uniqueness.
 
-An unknown or unfinished source raises an error. When issue `#172` wires this
-adapter into challenge and match completion, that failure must propagate so the
-owning completion transaction rolls back. This issue deliberately does not add
-placeholder, asynchronous, browser-authoritative, or HTTP behavior.
+An unknown or unfinished source raises an error. Challenge finalisation and the
+terminal CPU-match transition call the adapter with their existing transaction
+client before commit. If the finaliser encounters an already-completed source,
+the same operation returns the immutable existing award; HTTP idempotency-receipt
+replays return the response produced by the original atomic commit without
+awarding again. Any progression failure propagates so the owning gameplay
+transaction rolls back. The adapter does not add placeholder, asynchronous, or
+browser-authoritative behavior.
 
 ### Asynchronous PvP extension gate
 
@@ -91,6 +95,12 @@ queries include every active player through a left join, so an account with no
 progression row receives zero points. Indexes lead on all-time points or the
 month and monthly points. Consumers must order tied rows by Player Name and
 then internal UUID for deterministic pagination.
+
+The authenticated HTTP read service uses one parameterised statement for each
+profile or standings response. A standings statement returns the requested
+bounded page, total active-player count, and current-player row from the same
+statement snapshot. Neither the internal UUID nor deleted-player rows are
+serialised.
 
 The persisted `streak_at_last_activity` is the run ending at the latest
 activity date. Read models turn it into an effective current streak of zero

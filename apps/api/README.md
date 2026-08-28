@@ -17,7 +17,8 @@ Bearer-token authentication, protected event discovery, and server-side location
 eligibility are implemented in the API. The current API also implements local
 player provisioning and lifecycle, application roles and Author protection,
 challenge attempts and marking, atomic rewards, card collections, saved decks,
-CPU matches/history, and protected Author content operations.
+CPU matches/history, authenticated progression/standings, and protected Author
+content operations.
 
 The detailed challenge and persistence contracts are documented in the
 [challenge attempt API contract](../../docs/architecture/challenge-attempt-api-contract.md)
@@ -750,6 +751,32 @@ from attempt snapshots, locked answers, and the private answer key. Active
 responses contain no review, correct choices or item order, correctness, score,
 rewards, or explanations. Ordering answers submit exactly four unique snapshot
 item IDs; marking awards a point only for an exact four-position match.
+
+## Progression API
+
+The progression API is protected by bearer authentication and active Player Name
+setup:
+
+```text
+GET /api/v1/progression/me
+GET /api/v1/progression/standings
+```
+
+The current-player operation returns authoritative points, all-time rank,
+current and longest streaks, and active achievement progress. Standings default
+to `period=all_time`; use `period=monthly&month=YYYY-MM` for a Johannesburg
+calendar month. `page` defaults to `1` and is capped at `10000`; `pageSize`
+defaults to `20` and is capped at `100`.
+
+Each standings response includes the current player's selected-period rank even
+when that player is outside the page. Rows expose only Player Name, points, rank,
+and streaks. They never expose player UUIDs, email, Auth0 subjects, location, or
+private gameplay history. Deleted and deletion-pending accounts are excluded
+from live standings.
+
+Challenge and terminal CPU-match transactions record their progression decision
+before commit. The database adapter returns the existing immutable award on
+replay, and any progression failure rolls the owning completion back.
 
 ## Error-response model
 

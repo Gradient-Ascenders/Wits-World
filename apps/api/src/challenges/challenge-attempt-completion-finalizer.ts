@@ -12,6 +12,10 @@ import {
   type RewardCardRarity,
   type RewardRandomInt,
 } from './challenge-reward-policy.js';
+import {
+  createProgressionPersistence,
+  type ProgressionPersistence,
+} from '../progression/progression-persistence.js';
 
 interface ChallengeAttemptRow extends pg.QueryResultRow {
   attempt_id: string;
@@ -32,6 +36,7 @@ interface CardDefinitionRow extends pg.QueryResultRow {
 export interface ChallengeAttemptCompletionFinalizerOptions {
   randomInt?: RewardRandomInt;
   rewardPolicyVersion?: string;
+  progressionPersistence?: ProgressionPersistence;
 }
 
 const DEFAULT_REWARD_POLICY_VERSION = 'basic-v1';
@@ -42,6 +47,8 @@ export function createChallengeAttemptCompletionFinalizer(
   const randomInteger = options.randomInt ?? randomInt;
   const rewardPolicyVersion =
     options.rewardPolicyVersion ?? DEFAULT_REWARD_POLICY_VERSION;
+  const progressionPersistence =
+    options.progressionPersistence ?? createProgressionPersistence();
 
   return {
     async finalizeAttempt(database, input) {
@@ -54,7 +61,11 @@ export function createChallengeAttemptCompletionFinalizer(
       }
 
       if (attempt.status === 'completed') {
-        await assertExistingCompletion(database, input);
+        const completionId = await getExistingCompletionId(database, input);
+        await progressionPersistence.recordChallengeCompletion(
+          database,
+          completionId,
+        );
         return;
       }
 
@@ -80,7 +91,11 @@ export function createChallengeAttemptCompletionFinalizer(
       });
 
       if (!completion) {
-        await assertExistingCompletion(database, input);
+        const completionId = await getExistingCompletionId(database, input);
+        await progressionPersistence.recordChallengeCompletion(
+          database,
+          completionId,
+        );
         return;
       }
 
@@ -166,6 +181,11 @@ export function createChallengeAttemptCompletionFinalizer(
           'Challenge attempt finalization did not complete the attempt.',
         );
       }
+
+      await progressionPersistence.recordChallengeCompletion(
+        database,
+        completion.completion_id,
+      );
     },
   };
 }
@@ -191,10 +211,10 @@ async function loadAttempt(
   return result.rows[0] ?? null;
 }
 
-async function assertExistingCompletion(
+async function getExistingCompletionId(
   database: ChallengeAnswerSubmissionQueryable,
   input: ChallengeAttemptFinalizationInput,
-): Promise<void> {
+): Promise<string> {
   const result = await database.query<CompletionRow>(
     `
       select id::text as completion_id
@@ -210,6 +230,8 @@ async function assertExistingCompletion(
       'Completed challenge attempt is missing its persisted completion.',
     );
   }
+
+  return result.rows[0].completion_id;
 }
 
 async function loadActiveCardDefinitions(

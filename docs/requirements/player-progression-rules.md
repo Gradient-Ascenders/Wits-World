@@ -112,11 +112,31 @@ not occupy live standings positions.
 
 Migration `0026_create_player_progression.sql` and the internal progression
 persistence adapter establish these rules and backfill retained completed
-history. Issue `#172` separately owns authenticated profile/standings HTTP
-operations and wiring challenge and CPU completion transactions to the
-progression adapter. Neither issue may add or derive a spendable balance. Issue
+history. Issue `#172` exposes authenticated profile and standings operations
+and wires challenge and CPU completion transactions to the progression adapter
+before commit. A progression failure therefore rolls the authoritative
+completion back rather than leaving gameplay and progression inconsistent.
+Neither issue may add or derive a spendable balance. Issue
 `#193` separately removes the existing coin writes and player-facing fields
 without rewriting applied migration history.
+
+The current-player profile returns the stable achievement code, accessible title
+and description, earned status, current metric, and target for every active
+definition. It does not return award source IDs, unlock history, answers,
+matches, identity-provider data, or location. Live standings expose only Player
+Name, points, rank, current streak, and longest streak. Internal player UUIDs are
+used only to make tied ordering deterministic.
+
+All-time standings are the default. Monthly standings select one `YYYY-MM`
+Johannesburg calendar month. Both use bounded page/page-size pagination and
+return the authenticated player's selected-period rank even when that player is
+outside the requested page. Pages are live read models rather than a frozen
+multi-request snapshot.
+
+Deleted and deletion-pending accounts remain excluded from live ranks. Retained
+progression stays private against the anonymous tombstone; `Deleted player` is
+reserved for a separate retained-history presentation that actually includes a
+deleted participant.
 
 Issue `#180` is additionally blocked, for its exactly-once PvP progression
 criterion, on the asynchronous PvP rule decision and issue `#179` persistence

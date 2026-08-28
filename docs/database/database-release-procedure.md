@@ -50,7 +50,10 @@ players' ordering answers and snapshots are removed in foreign-key order.
 Migration `0026_create_player_progression.sql` must run after the ordering
 migration. It creates the progression ledger and read models, then backfills
 retained event completions and completed CPU matches through the same
-authoritative persistence functions used for new progression awards.
+authoritative persistence functions used for new progression awards. Apply it
+before deploying an API version that exposes progression routes or invokes the
+completion hooks; otherwise those operations fail closed and their owning
+transactions roll back.
 
 ## Prerequisites
 
@@ -125,8 +128,10 @@ test command as evidence that production was changed.
 
 6. Deploy the API only after the required database procedure succeeds.
 7. Verify `/health` and `/api/v1/`, then use an authenticated player session to
-   confirm the intended event is returned by the deployed event-discovery API.
-   Do not place an access token in committed files or captured output.
+   confirm the intended event is returned by event discovery and that
+   `/api/v1/progression/me` plus the first all-time standings page return safe
+   progression fields. Do not place an access token, player UUID, or private
+   profile response in committed files or captured output.
 
 ## Failure and recovery
 

@@ -17,6 +17,10 @@ import {
 import { runMigrations } from '../src/database/migrations.js';
 import { getMigrationsDirectory } from '../src/database/paths.js';
 import { createProgressionPersistence } from '../src/progression/progression-persistence.js';
+import {
+  createProgressionReadService,
+  ProgressionProfileUnavailableError,
+} from '../src/progression/progression-read-service.js';
 
 const BACKFILL_PLAYER_ID = '17100000-0000-4000-8000-000000000001';
 const CONCURRENT_PLAYER_ID = '17100000-0000-4000-8000-000000000002';
@@ -517,6 +521,65 @@ describe.skipIf(!runIntegrationTests)(
         expect(
           new Set(equalTwentyFive.map((row) => row.standing_rank)).size,
         ).toBe(1);
+
+        const readService = createProgressionReadService(pool);
+        const profile =
+          await readService.getCurrentProfile(TIE_ALPHA_PLAYER_ID);
+        expect(profile).toMatchObject({
+          playerName: 'alpha_progression',
+          points: 125,
+          currentStreak: expect.any(Number),
+          longestStreak: expect.any(Number),
+          rank: expect.any(Number),
+        });
+        expect(profile.achievements).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              code: 'five_cpu_matches',
+              earned: true,
+              progress: 5,
+              target: 5,
+            }),
+          ]),
+        );
+
+        const allTimePage = await readService.listStandings({
+          playerId: ZERO_PLAYER_ID,
+          period: 'all_time',
+          page: 1,
+          pageSize: 1,
+        });
+        expect(allTimePage.entries).toHaveLength(1);
+        expect(allTimePage.currentPlayer).toMatchObject({
+          playerName: 'zero_progression',
+          points: 0,
+          isCurrentPlayer: true,
+        });
+        expect(allTimePage.entries[0]?.isCurrentPlayer).toBe(false);
+        expect(allTimePage.pagination).toMatchObject({
+          page: 1,
+          pageSize: 1,
+          totalPlayers: 8,
+          totalPages: 8,
+        });
+        expect(JSON.stringify(allTimePage)).not.toContain(ZERO_PLAYER_ID);
+
+        const monthlyPage = await readService.listStandings({
+          playerId: ZERO_PLAYER_ID,
+          period: 'monthly',
+          month: '2026-08',
+          page: 1,
+          pageSize: 2,
+        });
+        expect(monthlyPage).toMatchObject({
+          period: 'monthly',
+          month: '2026-08',
+          currentPlayer: {
+            playerName: 'zero_progression',
+            points: 0,
+            isCurrentPlayer: true,
+          },
+        });
       },
     );
 
@@ -568,6 +631,11 @@ describe.skipIf(!runIntegrationTests)(
         );
         expect(allTime.rows[0]?.count).toBe('0');
         expect(monthly.rows[0]?.count).toBe('0');
+
+        const readService = createProgressionReadService(pool);
+        await expect(
+          readService.getCurrentProfile(DELETED_PLAYER_ID),
+        ).rejects.toBeInstanceOf(ProgressionProfileUnavailableError);
       },
     );
 

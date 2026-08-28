@@ -111,6 +111,8 @@ It is responsible for:
 - checking event publication and availability;
 - evaluating location claims;
 - calling parameterised database operations;
+- deriving progression points, streaks, achievements, and ranks only from
+  authoritative completed challenge and CPU-match records;
 - enforcing protected game rules; and
 - returning safe responses.
 
@@ -129,6 +131,13 @@ such as:
 - `turnDeadline`;
 - `completionReason`; or
 - `progressionPoints`.
+
+Progression profile and standings requests contain no player selector. The API
+uses the authenticated active player for the private profile and current-rank
+row. Standings fields are restricted to Player Name, points, rank, and streaks;
+email, Auth0 subject, location, internal UUIDs, and gameplay history do not cross
+into the response. Deleted and deletion-pending accounts do not occupy live
+ranks.
 
 ### PostgreSQL/PostGIS
 
