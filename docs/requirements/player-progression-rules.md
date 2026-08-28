@@ -5,9 +5,12 @@ title: Player progression rules
 # Player progression rules
 
 Issue `#171` defines the first Intermediate-tier progression rules. Progression
-points are separate from coins: coins remain the spendable reward currency,
-while points measure completed play for profiles and standings. The API and
-database remain authoritative for every award.
+points are the only active player progression and reward measure. They are
+permanent and non-spendable, and the API and database remain authoritative for
+every award. Coins, wallets, card selling for currency, and a card shop are
+deferred until all Advanced features are complete and time remains. Issue
+`#193` owns the forward-only retirement of the legacy coin behavior already
+introduced by applied migrations and active challenge responses.
 
 ## Point awards
 
@@ -90,7 +93,9 @@ Migration `0026_create_player_progression.sql` and the internal progression
 persistence adapter establish these rules and backfill retained completed
 history. Issue `#172` separately owns authenticated profile/standings HTTP
 operations and wiring challenge and CPU completion transactions to the
-progression adapter.
+progression adapter. Neither issue may add or derive a spendable balance. Issue
+`#193` separately removes the existing coin writes and player-facing fields
+without rewriting applied migration history.
 
 The preceding document was generated and edited with the assistance of:
 Codex-CLI[gpt-5.6-sol medium].

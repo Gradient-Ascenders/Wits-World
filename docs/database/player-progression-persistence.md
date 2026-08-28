@@ -9,6 +9,12 @@ foundation for points, achievements, Johannesburg activity days, streaks, and
 all-time/monthly standings. The browser cannot insert point values, unlocks,
 activity days, totals, or ranks.
 
+Points are permanent and non-spendable. This migration and its persistence
+adapter neither read nor write coin wallets or coin-ledger entries. Applied
+migrations that introduced the legacy coin schema remain immutable; issue
+`#193` owns its forward-only retirement and the removal of active coin response
+fields.
+
 ## Relations
 
 | Relation                     | Responsibility                                                                                         |
@@ -93,7 +99,9 @@ disposable database at the pre-`0026` schema, inserts retained history, applies
 the migration, and verifies backfill, zero-point records, Johannesburg
 boundaries, out-of-order streaks, duplicate and concurrent writes, unique
 unlocks, prospective versions, competition ties, zero-point standings, source
-validation, immutability, and deleted-player filtering.
+validation, immutability, and deleted-player filtering. The explicit database
+runner registers this file so `npm run test:database --workspace
+@wits-world/api` executes the suite.
 
 The preceding document was generated and edited with the assistance of:
 Codex-CLI[gpt-5.6-sol medium].

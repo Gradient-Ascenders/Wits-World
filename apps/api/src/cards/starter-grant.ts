@@ -569,6 +569,12 @@ async function loadStarterGrantResult(
   playerId: string,
   grant: StarterGrantRow,
 ): Promise<StarterGrant> {
+  const configuredDefinitionIds = isStarterAffinity(grant.affinity)
+    ? [
+        ...starterPackageDefinitions[grant.affinity].creatureDefinitionIds,
+        ...starterPackageDefinitions[grant.affinity].powerCardDefinitionIds,
+      ]
+    : [];
   const result = await client.query<StarterCardRow>(
     `
       select
@@ -623,9 +629,12 @@ async function loadStarterGrantResult(
       where owned.player_id = $1::uuid
         and owned.source_starter_grant_id = $2::uuid
         and owned.acquisition_kind = 'starter'
-      order by definition.category, definition.id
+      order by
+        array_position($3::uuid[], definition.id) nulls last,
+        definition.category,
+        definition.id
     `,
-    [playerId, grant.starter_grant_id],
+    [playerId, grant.starter_grant_id, configuredDefinitionIds],
   );
 
   return {

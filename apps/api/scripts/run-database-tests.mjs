@@ -28,6 +28,7 @@ const testFiles = [
   'tests/card-definition-name-uniqueness.integration.test.ts',
   'tests/card-move-position-migration.integration.test.ts',
   'tests/card-roster-rebalance-migration.integration.test.ts',
+  'tests/progression-persistence.integration.test.ts',
 ];
 
 const result = spawnSync(
