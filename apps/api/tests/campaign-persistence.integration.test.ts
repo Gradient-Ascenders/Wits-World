@@ -267,7 +267,7 @@ describe.skipIf(!runIntegrationTests)(
       ).rejects.toBeInstanceOf(AuthorContentNotReadyError);
     });
 
-    it('serializes concurrent approvals for the same member', async () => {
+    it('serializes direct concurrent lifecycle updates for the same member', async () => {
       const first = await createSubmittedCampaign({
         title: 'Concurrent schedule A',
         startsAt: '2026-09-07T08:00:00.000Z',
@@ -280,25 +280,26 @@ describe.skipIf(!runIntegrationTests)(
         endsAt: '2026-09-07T11:00:00.000Z',
         eventIds: [CONCURRENT_EVENT_ID],
       });
-      const service = createAuthorCampaignService(pool);
-      const results = await Promise.allSettled([
-        service.approveCampaign({
-          actorPlayerId: AUTHOR_TWO_ID,
-          campaignId: first.campaignId,
-          expectedVersion: first.version,
-        }),
-        service.approveCampaign({
-          actorPlayerId: AUTHOR_TWO_ID,
-          campaignId: second.campaignId,
-          expectedVersion: second.version,
-        }),
-      ]);
-      expect(
-        results.filter((result) => result.status === 'fulfilled'),
-      ).toHaveLength(1);
-      expect(
-        results.filter((result) => result.status === 'rejected'),
-      ).toHaveLength(1);
+      const firstClient = await pool.connect();
+      const secondClient = await pool.connect();
+      try {
+        const results = await Promise.allSettled([
+          approveCampaignWithDirectSql(firstClient, first.campaignId),
+          approveCampaignWithDirectSql(secondClient, second.campaignId),
+        ]);
+        expect(
+          results.filter((result) => result.status === 'fulfilled'),
+        ).toHaveLength(1);
+        const rejected = results.filter(
+          (result): result is PromiseRejectedResult =>
+            result.status === 'rejected',
+        );
+        expect(rejected).toHaveLength(1);
+        expect(rejected[0]?.reason).toMatchObject({ code: '23P01' });
+      } finally {
+        firstClient.release();
+        secondClient.release();
+      }
     });
 
     it('retires scheduled discovery while retaining attempts and trail progress', async () => {
@@ -441,6 +442,29 @@ describe.skipIf(!runIntegrationTests)(
     }
   },
 );
+
+async function approveCampaignWithDirectSql(
+  client: pg.PoolClient,
+  campaignId: string,
+): Promise<void> {
+  await client.query('begin');
+  try {
+    await client.query(
+      `update public.campaigns
+       set status = 'approved',
+           version = version + 1,
+           reviewed_by_player_id = $2::uuid,
+           reviewed_at = now(),
+           updated_at = now()
+       where id = $1::uuid`,
+      [campaignId, AUTHOR_TWO_ID],
+    );
+    await client.query('commit');
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  }
+}
 
 async function seedPlayersAndEvents(database: Pick<pg.Pool, 'query'>) {
   for (const [id, name, role] of [

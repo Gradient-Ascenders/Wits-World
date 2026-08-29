@@ -112,6 +112,27 @@ describe('player trail service', () => {
     expect(trail.steps[2]?.state).toBe('locked');
   });
 
+  it('distinguishes a campaign-hidden event from a retired event', async () => {
+    const fixture = createFixture([
+      {
+        ...trailRow(1, null),
+        event_availability: 'unpublished',
+      },
+      trailRow(2, null),
+    ]);
+    const service = createPlayerTrailService(fixture.database, {
+      clock: () => NOW,
+    });
+
+    const trail = await service.getTrail(PLAYER_ID, TRAIL_ID);
+
+    expect(trail.steps[0]).toMatchObject({
+      state: 'unavailable',
+      unavailableReason: 'event_unavailable',
+    });
+    expect(trail.steps[1]?.state).toBe('locked');
+  });
+
   it('groups one nearby event under every trail where it is current', async () => {
     const eventId = '17680000-0000-4000-8000-000000000001';
     const nearbyRows = [

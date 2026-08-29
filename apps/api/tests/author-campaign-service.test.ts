@@ -40,6 +40,27 @@ describe('author campaign service validation', () => {
     expect(connect).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['startsAt', '2026-02-30T08:00:00.000Z', 'start'],
+    ['startsAt', '2026-09-05T24:01:00.000Z', 'start'],
+    ['endsAt', '2026-09-31T16:00:00.000Z', 'end'],
+    ['endsAt', '2026-09-05T16:60:00.000Z', 'end'],
+  ] as const)(
+    'rejects an impossible %s value before opening a transaction',
+    async (field, value, label) => {
+      const connect = vi.fn();
+      await expect(
+        createAuthorCampaignService({
+          connect,
+        } as AuthorCampaignDatabase).createCampaign({
+          ...validInput(),
+          [field]: value,
+        }),
+      ).rejects.toThrow(`Campaign ${label} time is invalid.`);
+      expect(connect).not.toHaveBeenCalled();
+    },
+  );
+
   it('rejects duplicate event or trail membership', async () => {
     const connect = vi.fn();
     const service = createAuthorCampaignService({

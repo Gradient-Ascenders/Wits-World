@@ -7,7 +7,11 @@ export type PlayerTrailAvailability =
 export type PlayerTrailStepState =
   'completed' | 'current' | 'locked' | 'unavailable';
 export type PlayerTrailUnavailableReason =
-  'upcoming' | 'ended' | 'event_retired' | 'trail_retired';
+  | 'upcoming'
+  | 'ended'
+  | 'event_unavailable'
+  | 'event_retired'
+  | 'trail_retired';
 
 export interface PlayerTrailSummary {
   trailId: string;
@@ -426,13 +430,11 @@ function currentStepUnavailableReason(
   row: PlayerTrailRow,
   now: Date,
 ): PlayerTrailUnavailableReason | null {
-  if (
-    !row.event_is_published ||
-    row.event_retired_at !== null ||
-    row.event_availability === 'unpublished'
-  ) {
+  if (!row.event_is_published || row.event_retired_at !== null) {
     return 'event_retired';
   }
+
+  if (row.event_availability === 'unpublished') return 'event_unavailable';
 
   if (
     row.event_availability === 'upcoming' ||

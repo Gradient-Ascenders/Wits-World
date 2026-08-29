@@ -4,9 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../src/app.js';
 import type { AccessTokenVerifier } from '../src/auth/access-token-verifier.js';
 import { AuthorContentNotReadyError } from '../src/authoring/content-workflow.js';
-import type {
-  AuthorCampaign,
-  AuthorCampaignService,
+import {
+  AuthorCampaignNotFoundError,
+  InvalidAuthorCampaignError,
+  type AuthorCampaign,
+  type AuthorCampaignService,
 } from '../src/campaigns/author-campaign-service.js';
 import type { AuthConfig } from '../src/config/auth.js';
 import type { PlayerIdentityService } from '../src/players/player-identity.js';
@@ -265,6 +267,38 @@ describe('author campaign API', () => {
     });
     expect(response.statusCode).toBe(422);
     expect(response.json()).toMatchObject({ code: 'CONTENT_NOT_READY' });
+  });
+
+  it('maps invalid campaign service errors to a safe 400 response', async () => {
+    vi.mocked(service.createCampaign).mockRejectedValueOnce(
+      new InvalidAuthorCampaignError('Campaign schedule is invalid.'),
+    );
+    const response = await authenticatedRequest({
+      method: 'POST',
+      url: '/api/v1/author/campaigns',
+      payload: validCampaignBody(),
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      code: 'INVALID_CAMPAIGN',
+      detail: 'Campaign schedule is invalid.',
+    });
+  });
+
+  it('maps missing campaign service errors to a safe 404 response', async () => {
+    vi.mocked(service.updateCampaign).mockRejectedValueOnce(
+      new AuthorCampaignNotFoundError(),
+    );
+    const response = await authenticatedRequest({
+      method: 'PUT',
+      url: `/api/v1/author/campaigns/${CAMPAIGN_ID}`,
+      payload: { ...validCampaignBody(), expectedVersion: 0 },
+    });
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({
+      code: 'CAMPAIGN_NOT_FOUND',
+      detail: 'The requested campaign was not found.',
+    });
   });
 
   it('documents every campaign operation as Author bearer endpoints', async () => {

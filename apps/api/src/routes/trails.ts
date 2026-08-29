@@ -133,7 +133,13 @@ const playerTrailSchema = {
           },
           unavailableReason: {
             type: 'string',
-            enum: ['upcoming', 'ended', 'event_retired', 'trail_retired'],
+            enum: [
+              'upcoming',
+              'ended',
+              'event_unavailable',
+              'event_retired',
+              'trail_retired',
+            ],
             nullable: true,
           },
           completedAt: {

@@ -483,14 +483,8 @@ function validateCampaignInput<T extends AuthorCampaignInput>(
     }
   }
 
-  const startsAt = new Date(input.startsAt);
-  const endsAt = new Date(input.endsAt);
-  if (Number.isNaN(startsAt.getTime())) {
-    throw new InvalidAuthorCampaignError('Campaign start time is invalid.');
-  }
-  if (Number.isNaN(endsAt.getTime())) {
-    throw new InvalidAuthorCampaignError('Campaign end time is invalid.');
-  }
+  const startsAt = parseCampaignTimestamp(input.startsAt, 'start');
+  const endsAt = parseCampaignTimestamp(input.endsAt, 'end');
   if (endsAt.getTime() <= startsAt.getTime()) {
     throw new InvalidAuthorCampaignError(
       'Campaign end time must be after its start time.',
@@ -499,7 +493,62 @@ function validateCampaignInput<T extends AuthorCampaignInput>(
 
   const eventIds = normalizeIds(input.eventIds, 'event');
   const trailIds = normalizeIds(input.trailIds, 'trail');
-  return { ...input, title, description, eventIds, trailIds };
+  return {
+    ...input,
+    title,
+    description,
+    startsAt: startsAt.toISOString(),
+    endsAt: endsAt.toISOString(),
+    eventIds,
+    trailIds,
+  };
+}
+
+function parseCampaignTimestamp(value: string, field: 'start' | 'end'): Date {
+  const match = RFC3339_TIMESTAMP_PATTERN.exec(value);
+  const invalid = () =>
+    new InvalidAuthorCampaignError(`Campaign ${field} time is invalid.`);
+  if (!match) throw invalid();
+
+  const year = Number(match.groups?.year);
+  const month = Number(match.groups?.month);
+  const day = Number(match.groups?.day);
+  const hour = Number(match.groups?.hour);
+  const minute = Number(match.groups?.minute);
+  const second = Number(match.groups?.second);
+  const offsetHour = Number(match.groups?.offsetHour ?? 0);
+  const offsetMinute = Number(match.groups?.offsetMinute ?? 0);
+  const daysInMonth =
+    month === 2
+      ? isLeapYear(year)
+        ? 29
+        : 28
+      : [4, 6, 9, 11].includes(month)
+        ? 30
+        : 31;
+
+  if (
+    year < 1 ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > daysInMonth ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59 ||
+    offsetHour > 23 ||
+    offsetMinute > 59
+  ) {
+    throw invalid();
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) throw invalid();
+  return parsed;
+}
+
+function isLeapYear(year: number): boolean {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
 }
 
 function normalizeIds(
@@ -523,6 +572,9 @@ function normalizeIds(
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const RFC3339_TIMESTAMP_PATTERN =
+  /^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})T(?<hour>\d{2}):(?<minute>\d{2}):(?<second>\d{2})(?:\.\d+)?(?:Z|[+-](?<offsetHour>\d{2}):(?<offsetMinute>\d{2}))$/;
 
 async function withTransaction<T>(
   database: AuthorCampaignDatabase,
