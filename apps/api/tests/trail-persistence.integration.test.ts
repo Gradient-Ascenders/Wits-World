@@ -66,7 +66,7 @@ describe.skipIf(!runIntegrationTests)(
       };
 
       const migrations = await runMigrations(temporaryConfig);
-      expect(migrations.applied.at(-1)).toBe('0027_create_ordered_trails.sql');
+      expect(migrations.applied).toContain('0027_create_ordered_trails.sql');
 
       pool = createDatabasePool(temporaryConfig);
       await seedPlayersAndEvents(pool);

@@ -61,6 +61,13 @@ the Author audit entity constraint to accept `trail` and does not rewrite
 existing events, attempts, completions, or player records. Apply it before an
 API version that registers trail routes.
 
+Migration `0028_create_asynchronous_pvp_persistence.sql` adds asynchronous PvP
+invitations, private immutable deck and match snapshots, participants, actions,
+idempotency receipts, terminal history, deadline indexes, and two-participant
+progression sources. It preserves existing CPU-match and progression records.
+Apply it before deploying issue `#180`; applying it alone does not expose PvP
+routes or start deadline processing.
+
 ## Prerequisites
 
 - Use the Node.js and npm versions declared by the repository.
@@ -174,4 +181,4 @@ subject to the selected Neon plan and are not created by this procedure.
 - authenticated deployed-event verification.
 
 This procedure was planned, generated, edited, and verified with the assistance
-of Codex[GPT-5] and Codex[GPT-5.6 Sol].
+of Codex[GPT-5], Codex[GPT-5.6 Sol], and Codex-CLI[gpt-5.6-sol medium].

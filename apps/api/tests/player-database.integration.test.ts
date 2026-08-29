@@ -97,6 +97,9 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
       '0026_create_player_progression.sql',
     );
     expect(migrationResult.applied).toContain('0027_create_ordered_trails.sql');
+    expect(migrationResult.applied).toContain(
+      '0028_create_asynchronous_pvp_persistence.sql',
+    );
 
     await withDatabaseClient(temporaryConfig, async (client) => {
       const relation = await client.query<{
@@ -176,6 +179,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0025_add_ordering_challenges.sql',
           '0026_create_player_progression.sql',
           '0027_create_ordered_trails.sql',
+          '0028_create_asynchronous_pvp_persistence.sql',
         ],
       });
 
@@ -293,6 +297,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0025_add_ordering_challenges.sql',
           '0026_create_player_progression.sql',
           '0027_create_ordered_trails.sql',
+          '0028_create_asynchronous_pvp_persistence.sql',
         ],
       });
 

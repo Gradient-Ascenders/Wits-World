@@ -57,30 +57,30 @@ awarding again. Any progression failure propagates so the owning gameplay
 transaction rolls back. The adapter does not add placeholder, asynchronous, or
 browser-authoritative behavior.
 
-### Asynchronous PvP extension gate
+### Asynchronous PvP extension
 
-Migration `0026` cannot represent an asynchronous PvP award: its checked source
-shape and adapter accept only event completions and CPU matches. Issue `#179`
-must use a new forward migration rather than editing `0026`. The extension must:
+Migration `0028_create_asynchronous_pvp_persistence.sql` extends the checked
+source shape without editing applied migration `0026`. It adds:
 
-- add a dedicated `asynchronous_pvp` source kind linked by foreign key to the
-  completed match/participant result persisted by `#179`;
-- enforce exactly one award decision for each `(matchId, participantId)` pair,
-  including an approved zero-point result;
-- validate the authoritative outcome, completion reason, participant, and
-  completion timestamp before accepting the award;
-- expose one transaction-aware
-  `recordAsynchronousPvpCompletion(client, matchId)` adapter operation that
-  records both participant decisions inside the terminal match transaction,
-  acquiring per-player locks in canonical player-ID order; and
-- reuse the per-player serialization, immutable ledger, activity, aggregate,
-  streak, and achievement machinery only as approved by the
-  [progression rule gate](../requirements/player-progression-rules.md#asynchronous-pvp-extension-gate).
+- a dedicated `asynchronous_pvp` source linked by composite foreign key to the
+  authoritative match participant;
+- one unique award decision for each `(matchId, participantId)` pair;
+- source validation against the terminal outcome, completion reason,
+  participant, timestamp, active rule, and awarded value; and
+- `recordAsynchronousPvpCompletion(client, matchId)`, which records both
+  participant decisions in canonical player-ID order using the existing
+  per-player advisory locks.
 
-Issue `#180` depends on this `#179` schema/adapter extension and the Product
-Lead rule decision. It must not overload `cpu_match`, write one participant
-outside the terminal transaction, or invent placeholder values while either
-gate is unresolved.
+The approved winner receives 25 points and the loser or forfeiter receives zero
+for defeat, turn forfeit, and account-deletion forfeit. Both decisions update
+activity, monthly/all-time totals, and streaks. They do not increment CPU or
+challenge achievement metrics and introduce no PvP achievement. See the
+[progression rules](../requirements/player-progression-rules.md#asynchronous-pvp-progression)
+and [PvP persistence design](./asynchronous-pvp-persistence.md).
+
+Issue `#180` must call this operation before committing the terminal match. It
+must not overload `cpu_match` or write one participant outside the owning
+transaction.
 
 ## Time and standings
 
@@ -137,6 +137,10 @@ unlocks, prospective versions, competition ties, zero-point standings, source
 validation, immutability, and deleted-player filtering. The explicit database
 runner registers this file so `npm run test:database --workspace
 @wits-world/api` executes the suite.
+
+`apps/api/tests/asynchronous-pvp-persistence.integration.test.ts` additionally
+upgrades a populated pre-`0028` database and verifies two-participant 25/0
+awards, activity, immutable source validation, replay, and concurrent calls.
 
 The preceding document was generated and edited with the assistance of:
 Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5].

@@ -171,6 +171,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0025_add_ordering_challenges.sql',
         '0026_create_player_progression.sql',
         '0027_create_ordered_trails.sql',
+        '0028_create_asynchronous_pvp_persistence.sql',
       ],
       skipped: [],
     });
@@ -205,6 +206,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0025_add_ordering_challenges.sql',
         '0026_create_player_progression.sql',
         '0027_create_ordered_trails.sql',
+        '0028_create_asynchronous_pvp_persistence.sql',
       ],
     });
     expect(readiness).toMatchObject({
