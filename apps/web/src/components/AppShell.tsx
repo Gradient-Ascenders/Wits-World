@@ -50,9 +50,10 @@ const PLAYER_NAVIGATION_ITEMS: NavigationItem[] = [
 ];
 
 const AUTHOR_NAVIGATION_ITEM: NavigationItem = {
-  href: '/author',
+  href: '/author/events',
   icon: 'author',
-  isActive: (pathname) => pathname === '/author',
+  isActive: (pathname) =>
+    pathname === '/author' || pathname.startsWith('/author/'),
   label: 'Author',
 };
 
@@ -148,6 +149,8 @@ export function AppShell({ children }: AppShellProps) {
   const { state: currentPlayer } = useCurrentPlayer();
   const [pathname] = useLocation();
   const isExplore = pathname === '/explore';
+  const isAuthorRoute =
+    pathname === '/author' || pathname.startsWith('/author/');
   const isBattleDetail =
     pathname.startsWith('/matches/') && pathname !== '/matches/history';
   const isFooterlessProductRoute =
@@ -155,7 +158,8 @@ export function AppShell({ children }: AppShellProps) {
     pathname === '/collection' ||
     pathname === '/decks' ||
     pathname === '/matches' ||
-    pathname.startsWith('/matches/');
+    pathname.startsWith('/matches/') ||
+    isAuthorRoute;
   const showsSiteFooter = !isFooterlessProductRoute;
   const isRestoring =
     isLoading || (isAuthenticated && currentPlayer.status === 'loading');
@@ -168,7 +172,7 @@ export function AppShell({ children }: AppShellProps) {
     <div
       className={`site-frame site-frame--${
         hasPlayerNavigation ? 'product-navigation' : 'public'
-      }${isExplore ? ' site-frame--explore' : ''}${isBattleDetail ? ' site-frame--battle-focus' : ''}`}
+      }${isExplore ? ' site-frame--explore' : ''}${isBattleDetail ? ' site-frame--battle-focus' : ''}${isAuthorRoute ? ' site-frame--author' : ''}`}
     >
       <a className="skip-link" href="#main-content">
         Skip to main content
@@ -215,7 +219,7 @@ export function AppShell({ children }: AppShellProps) {
       </header>
 
       <main
-        className={`main-content${isExplore ? ' main-content--explore' : ''}${isBattleDetail ? ' main-content--battle-focus' : ''}`}
+        className={`main-content${isExplore ? ' main-content--explore' : ''}${isBattleDetail ? ' main-content--battle-focus' : ''}${isAuthorRoute ? ' main-content--author' : ''}`}
         id="main-content"
         tabIndex={-1}
       >

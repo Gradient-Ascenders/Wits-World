@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ReactNode } from 'react';
-import { Redirect, Route, Router, Switch, useLocation } from 'wouter';
+import { Redirect, Route, Switch, useLocation } from 'wouter';
 
 import { recoverOrCreateCpuMatch } from './api/matches';
 import { useApiAccessToken } from './auth/useApiAccessToken';
@@ -8,6 +8,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoadingState } from './components/LoadingState';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { AuthorRoute } from './components/auth/AuthorRoute';
+import { GuardedRouter } from './components/author/AuthorNavigationGuard';
 import { CurrentPlayerProvider } from './auth/CurrentPlayerProvider';
 import { NotFoundPage } from './pages/NotFoundPage';
 import type {
@@ -92,7 +93,7 @@ export function AppRoutes({
                 <MatchEntryPage apiBaseUrl={apiBaseUrl} />
               </ProtectedRoute>
             </Route>
-            <Route path="/author">
+            <Route path="/author/*?">
               <ProtectedRoute destination="open the author console">
                 <AuthorRoute>
                   <AuthorConsolePage
@@ -155,7 +156,7 @@ export function App(props: AppProps) {
 
   return (
     <ErrorBoundary>
-      <Router>
+      <GuardedRouter>
         <AppRoutes
           apiBaseUrl={props.apiBaseUrl}
           locationClaimProvider={props.locationClaimProvider}
@@ -164,7 +165,7 @@ export function App(props: AppProps) {
           mapFactory={props.mapFactory}
           mapboxAccessToken={props.mapboxAccessToken}
         />
-      </Router>
+      </GuardedRouter>
     </ErrorBoundary>
   );
 }

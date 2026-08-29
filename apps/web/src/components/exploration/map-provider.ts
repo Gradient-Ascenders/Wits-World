@@ -8,6 +8,7 @@ import type {
 
 export interface MapPoint {
   availability?: 'active' | 'ended' | 'upcoming';
+  draggable?: boolean;
   id: string;
   label: string;
   latitude: number;
@@ -20,6 +21,11 @@ export interface MapCoordinate {
   latitude: number;
   longitude: number;
 }
+
+export type MapBounds = readonly [
+  southWest: readonly [longitude: number, latitude: number],
+  northEast: readonly [longitude: number, latitude: number],
+];
 
 export type MapboxLightPreset = 'dawn' | 'day' | 'dusk' | 'night';
 
@@ -72,6 +78,8 @@ export interface MapConfiguration {
   bearing: number;
   campusLayer?: CampusLayerConfiguration;
   center: readonly [longitude: number, latitude: number];
+  initialBounds?: MapBounds;
+  initialBoundsPadding?: number;
   pitch: number;
   standardConfig: MapboxStandardConfiguration;
   styleUrl: string;
@@ -376,6 +384,7 @@ function createController(
   map: MapboxMap,
   renderPoints: (points: readonly MapPoint[]) => void,
   markerInteraction: {
+    coordinateSelectionListener: ((coordinate: MapCoordinate) => void) | null;
     listener: ((pointId: string) => void) | null;
     selectedPointId: string | null;
   },
@@ -389,11 +398,8 @@ function createController(
   let following = false;
   let hasReceivedFirstFix = false;
   let lastFollowedLocation: MapCoordinate | null = null;
-  let coordinateSelectionListener:
-    ((coordinate: MapCoordinate) => void) | null = null;
-
   const handleCoordinateSelection = (event: MapMouseEvent): void => {
-    coordinateSelectionListener?.({
+    markerInteraction.coordinateSelectionListener?.({
       latitude: event.lngLat.lat,
       longitude: event.lngLat.lng,
     });
@@ -531,7 +537,7 @@ function createController(
       map.once('load', listener);
     },
     remove() {
-      coordinateSelectionListener = null;
+      markerInteraction.coordinateSelectionListener = null;
       followStateListener = null;
       markerInteraction.listener = null;
       map.off('click', handleCoordinateSelection);
@@ -545,7 +551,7 @@ function createController(
     },
     setCoordinateSelectionListener(listener) {
       map.off('click', handleCoordinateSelection);
-      coordinateSelectionListener = listener;
+      markerInteraction.coordinateSelectionListener = listener;
 
       if (listener !== null) {
         map.on('click', handleCoordinateSelection);
@@ -594,11 +600,25 @@ export const createMapboxMap: MapFactory = async (
     throw new Error('Map creation was cancelled.');
   }
 
+  const initialCamera = configuration.initialBounds
+    ? {
+        bounds: configuration.initialBounds.map((coordinate) => [
+          coordinate[0],
+          coordinate[1],
+        ]) as [[number, number], [number, number]],
+        fitBoundsOptions: {
+          padding: configuration.initialBoundsPadding ?? 24,
+        },
+      }
+    : {
+        center: [...configuration.center] as [number, number],
+        zoom: configuration.zoom,
+      };
+
   const map = new mapboxgl.Map({
     accessToken: configuration.accessToken,
     attributionControl: false,
     bearing: configuration.bearing,
-    center: [...configuration.center],
     config: {
       basemap: configuration.standardConfig,
     },
@@ -607,7 +627,7 @@ export const createMapboxMap: MapFactory = async (
     pitch: configuration.pitch,
     respectPrefersReducedMotion: true,
     style: configuration.styleUrl,
-    zoom: configuration.zoom,
+    ...initialCamera,
   });
 
   map.addControl(
@@ -634,12 +654,18 @@ export const createMapboxMap: MapFactory = async (
   }
 
   const markerInteraction = {
+    coordinateSelectionListener: null as
+      ((coordinate: MapCoordinate) => void) | null,
     listener: null as ((pointId: string) => void) | null,
     selectedPointId: null as string | null,
   };
   const markerRecords = new Map<
     string,
-    { button: HTMLButtonElement; marker: MapboxMarker }
+    {
+      button: HTMLButtonElement;
+      handleDragEnd: () => void;
+      marker: MapboxMarker;
+    }
   >();
   const availabilityLabels = {
     active: 'available now',
@@ -652,6 +678,7 @@ export const createMapboxMap: MapFactory = async (
 
     for (const [pointId, record] of markerRecords) {
       if (!pointIds.has(pointId)) {
+        record.marker.off('dragend', record.handleDragEnd);
         record.marker.remove();
         markerRecords.delete(pointId);
       }
@@ -681,16 +708,26 @@ export const createMapboxMap: MapFactory = async (
           markerInteraction.listener?.(point.id);
         });
 
-        const marker = new mapboxgl.Marker({
+        const marker: MapboxMarker = new mapboxgl.Marker({
           anchor: 'center',
+          draggable: point.draggable === true,
           element: button,
         })
           .setLngLat([point.longitude, point.latitude])
           .addTo(map);
-        record = { button, marker };
+        const handleDragEnd = (): void => {
+          const coordinate = marker.getLngLat();
+          markerInteraction.coordinateSelectionListener?.({
+            latitude: coordinate.lat,
+            longitude: coordinate.lng,
+          });
+        };
+        marker.on('dragend', handleDragEnd);
+        record = { button, handleDragEnd, marker };
         markerRecords.set(point.id, record);
       } else {
         record.marker.setLngLat([point.longitude, point.latitude]);
+        record.marker.setDraggable(point.draggable === true);
       }
 
       const availability = point.availability ?? 'active';
@@ -699,13 +736,16 @@ export const createMapboxMap: MapFactory = async (
         'event-marker',
         `event-marker--${availability}`,
         selected ? 'event-marker--selected' : '',
+        point.draggable ? 'event-marker--draggable' : '',
         point.reachable ? 'event-marker--reachable' : '',
       ]
         .filter(Boolean)
         .join(' ');
       record.button.setAttribute(
         'aria-label',
-        `Select ${point.label}, ${availabilityLabels[availability]}${point.reachable ? ', in range' : ''}`,
+        point.draggable
+          ? `Focus ${point.label}. Drag the marker to adjust it, or use the coordinate fields for keyboard entry.`
+          : `Select ${point.label}, ${availabilityLabels[availability]}${point.reachable ? ', in range' : ''}`,
       );
       record.button.setAttribute('aria-pressed', String(selected));
       record.button.title = point.label;

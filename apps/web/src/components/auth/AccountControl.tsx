@@ -20,7 +20,7 @@ export function AccountControl() {
   const { state: currentPlayer } = useCurrentPlayer();
   const [isProtectedExploreRoute] = useRoute('/explore');
   const [isProtectedCollectionRoute] = useRoute('/collection');
-  const [isProtectedAuthorRoute] = useRoute('/author');
+  const [isProtectedAuthorRoute] = useRoute('/author/*?');
 
   useEffect(() => {
     if (!isDisclosureOpen) {

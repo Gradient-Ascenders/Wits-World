@@ -441,6 +441,15 @@ a:hover {
   padding-bottom: calc(var(--player-navigation-height) + var(--space-7));
 }
 
+.site-frame--product-navigation .main-content--author {
+  width: min(100%, 100rem);
+  padding: var(--space-3) var(--space-3)
+    calc(
+      var(--player-navigation-height) + env(safe-area-inset-bottom) +
+        var(--space-5)
+    );
+}
+
 .main-content:focus {
   outline: none;
 }
@@ -946,6 +955,11 @@ code {
     padding-bottom: calc(var(--player-navigation-height) + var(--space-7));
   }
 
+  .site-frame--product-navigation .main-content--author {
+    padding: var(--space-4) var(--space-5)
+      calc(var(--player-navigation-height) + var(--space-6));
+  }
+
   .site-frame--product-navigation .main-content--battle-focus {
     padding: var(--space-4);
     padding-top: calc(var(--space-4) + env(safe-area-inset-top));
@@ -1022,6 +1036,10 @@ code {
 
   .site-frame--product-navigation .main-content {
     padding-bottom: clamp(var(--space-7), 7vw, 6rem);
+  }
+
+  .site-frame--product-navigation .main-content--author {
+    padding: var(--space-5);
   }
 
   .site-frame--product-navigation .main-content--battle-focus {

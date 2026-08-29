@@ -15,6 +15,7 @@ interface CollectibleCardProps {
   copyTotal?: number;
   headingLevel?: 2 | 3 | 4;
   ownedCopies?: readonly OwnedCard[];
+  showOwnership?: boolean;
 }
 
 interface CardThumbnailProps {
@@ -53,6 +54,7 @@ export function CollectibleCard({
   copyTotal = 1,
   headingLevel = 3,
   ownedCopies,
+  showOwnership = true,
 }: CollectibleCardProps) {
   const titleId = `owned-card-${card.ownedCardId}-title`;
   const Heading: 'h2' | 'h3' | 'h4' =
@@ -136,19 +138,21 @@ export function CollectibleCard({
           </section>
         ) : null}
 
-        <div className="collectible-card__ownership">
-          <p>
-            {ownedCopies
-              ? `${displayedCopyTotal} ${displayedCopyTotal === 1 ? 'owned copy' : 'owned copies'}`
-              : card.acquisitionKind === 'starter'
-                ? 'Starter card'
-                : 'Event reward'}
-          </p>
-          {hasDuplicates && ownedCopies === undefined ? (
-            <p>Individually owned copy</p>
-          ) : null}
-          {!card.isActive ? <p>Retired from the active catalogue</p> : null}
-        </div>
+        {showOwnership ? (
+          <div className="collectible-card__ownership">
+            <p>
+              {ownedCopies
+                ? `${displayedCopyTotal} ${displayedCopyTotal === 1 ? 'owned copy' : 'owned copies'}`
+                : card.acquisitionKind === 'starter'
+                  ? 'Starter card'
+                  : 'Event reward'}
+            </p>
+            {hasDuplicates && ownedCopies === undefined ? (
+              <p>Individually owned copy</p>
+            ) : null}
+            {!card.isActive ? <p>Retired from the active catalogue</p> : null}
+          </div>
+        ) : null}
 
         {ownedCopies ? (
           <OwnedCopyDetails cardName={card.name} copies={ownedCopies} />

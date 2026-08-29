@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useLocation } from 'wouter';
 
 import {
   AuthorApiError,
@@ -8,6 +9,10 @@ import {
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { CardWorkspace } from '../components/author/CardWorkspace';
 import { EventWorkspace } from '../components/author/EventWorkspace';
+import {
+  authorPaths,
+  parseAuthorWorkspaceRoute,
+} from '../components/author/author-routing';
 import type { MapFactory } from '../components/exploration/map-provider';
 import {
   AuthorMutationCoordinator,
@@ -28,7 +33,8 @@ export default function AuthorConsolePage({
   mapboxAccessToken,
 }: AuthorConsolePageProps) {
   const getAccessToken = useApiAccessToken();
-  const [section, setSection] = useState<'cards' | 'events'>('events');
+  const [pathname, navigate] = useLocation();
+  const route = parseAuthorWorkspaceRoute(pathname);
   const [cards, setCards] = useState<AuthorCard[]>([]);
   const [cardsState, setCardsState] = useState<'error' | 'loading' | 'ready'>(
     'loading',
@@ -85,6 +91,12 @@ export default function AuthorConsolePage({
   }, [loadCards]);
 
   useEffect(() => {
+    if (pathname === '/author' || pathname === '/author/') {
+      navigate(authorPaths.events, { replace: true });
+    }
+  }, [navigate, pathname]);
+
+  useEffect(() => {
     setCards((current) =>
       reconcileAuthorMutationResults(
         current,
@@ -99,62 +111,56 @@ export default function AuthorConsolePage({
     <section aria-labelledby="author-console-title" className="author-console">
       <header className="author-console__header">
         <div>
-          <p className="eyebrow">Protected Basic authoring</p>
+          <p className="eyebrow">Protected content workspace</p>
           <h1 id="author-console-title">Author console</h1>
         </div>
-        <p>
-          Build draft content, verify its relationships, and ask the API to
-          publish only when the complete Basic journey is ready.
-        </p>
+        <nav aria-label="Author sections" className="author-sections">
+          <Link
+            aria-current={route.section === 'events' ? 'page' : undefined}
+            className="author-sections__link"
+            href={authorPaths.events}
+          >
+            Events
+          </Link>
+          <Link
+            aria-current={route.section === 'cards' ? 'page' : undefined}
+            className="author-sections__link"
+            href={authorPaths.cards}
+          >
+            Cards
+          </Link>
+        </nav>
       </header>
 
-      <div className="author-console__layout">
-        <nav aria-label="Author console" className="author-sidebar">
-          <p className="author-sidebar__label">Content</p>
-          <button
-            aria-current={section === 'events' ? 'page' : undefined}
-            className="author-sidebar__link"
-            onClick={() => setSection('events')}
-            type="button"
-          >
-            Events & challenges
-          </button>
-          <button
-            aria-current={section === 'cards' ? 'page' : undefined}
-            className="author-sidebar__link"
-            onClick={() => setSection('cards')}
-            type="button"
-          >
-            Card catalogue
-          </button>
-        </nav>
-
-        <div className="author-console__workspace">
-          {section === 'events' ? (
-            <EventWorkspace
-              apiBaseUrl={apiBaseUrl}
-              cards={cards}
-              cardsState={cardsState}
-              getAccessToken={getAccessToken}
-              mapFactory={mapFactory}
-              mapboxAccessToken={mapboxAccessToken}
-              mutationCoordinator={mutationCoordinator}
-              onOpenCards={() => setSection('cards')}
-              onReloadCards={() => void loadCards()}
-            />
-          ) : (
-            <CardWorkspace
-              apiBaseUrl={apiBaseUrl}
-              cards={cards}
-              errorMessage={cardsError}
-              getAccessToken={getAccessToken}
-              mutationCoordinator={mutationCoordinator}
-              onCardsChange={setCards}
-              onReload={() => void loadCards()}
-              state={cardsState}
-            />
-          )}
-        </div>
+      <div className="author-console__workspace">
+        {route.section === 'events' ? (
+          <EventWorkspace
+            apiBaseUrl={apiBaseUrl}
+            cards={cards}
+            cardsState={cardsState}
+            getAccessToken={getAccessToken}
+            mapFactory={mapFactory}
+            mapboxAccessToken={mapboxAccessToken}
+            mutationCoordinator={mutationCoordinator}
+            navigate={navigate}
+            onOpenCards={() => navigate(authorPaths.cards)}
+            onReloadCards={loadCards}
+            route={route}
+          />
+        ) : (
+          <CardWorkspace
+            apiBaseUrl={apiBaseUrl}
+            cards={cards}
+            errorMessage={cardsError}
+            getAccessToken={getAccessToken}
+            mutationCoordinator={mutationCoordinator}
+            navigate={navigate}
+            onCardsChange={setCards}
+            onReload={loadCards}
+            route={route}
+            state={cardsState}
+          />
+        )}
       </div>
     </section>
   );

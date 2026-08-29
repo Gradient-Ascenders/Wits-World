@@ -37,7 +37,7 @@ export const locationClaimProvider: LocationClaimProvider = () =>
 
 export const mapFactory: MapFactory = async (
   container,
-  _config,
+  config,
   initialPoints,
   signal,
 ) => {
@@ -51,6 +51,15 @@ export const mapFactory: MapFactory = async (
 
   const instanceId = `deterministic-${++mapInstance}`;
   container.dataset.mapProvider = instanceId;
+  if (config.initialBounds) {
+    container.dataset.mapInitialBounds = [
+      ...config.initialBounds[0],
+      ...config.initialBounds[1],
+    ].join(',');
+  } else {
+    container.dataset.mapCameraCenter = config.center.join(',');
+    container.dataset.mapCameraZoom = String(config.zoom);
+  }
   container.classList.add('deterministic-map');
   container.style.background =
     'radial-gradient(circle at 48% 42%, rgb(42 107 255 / 30%), transparent 22%), linear-gradient(145deg, #18304f, #071426 70%)';
@@ -58,6 +67,9 @@ export const mapFactory: MapFactory = async (
   let selectedPoint: MapPoint | null = null;
   let focusedPointId: string | null = null;
   let pointSelectionListener: ((pointId: string) => void) | null = null;
+  let coordinateSelectionListener:
+    ((coordinate: { latitude: number; longitude: number }) => void) | null =
+    null;
   let followStateListener: ((following: boolean) => void) | null = null;
   let hasLocation = false;
   let following = false;
@@ -72,14 +84,94 @@ export const mapFactory: MapFactory = async (
     border: '2px solid #d4af37',
     borderRadius: '50%',
     display: 'none',
-    height: '160px',
-    left: 'calc(48% - 80px)',
     pointerEvents: 'none',
     position: 'absolute',
-    top: 'calc(42% - 80px)',
-    width: '160px',
   });
   container.append(radius, markerLayer);
+
+  const coordinateAt = (clientX: number, clientY: number) => {
+    const bounds = container.getBoundingClientRect();
+    const horizontalPosition = Math.min(
+      1,
+      Math.max(0, (clientX - bounds.left) / bounds.width),
+    );
+    const verticalPosition = Math.min(
+      1,
+      Math.max(0, (clientY - bounds.top) / bounds.height),
+    );
+    const southWest = config.initialBounds?.[0] ?? [
+      config.center[0] - 0.005,
+      config.center[1] - 0.005,
+    ];
+    const northEast = config.initialBounds?.[1] ?? [
+      config.center[0] + 0.005,
+      config.center[1] + 0.005,
+    ];
+
+    return {
+      latitude: northEast[1] - verticalPosition * (northEast[1] - southWest[1]),
+      longitude:
+        southWest[0] + horizontalPosition * (northEast[0] - southWest[0]),
+    };
+  };
+
+  const selectMapCoordinate = (event: MouseEvent): void => {
+    if (
+      (event.target as Element | null)?.closest(
+        'button, a, details, .mapboxgl-ctrl',
+      )
+    ) {
+      return;
+    }
+    coordinateSelectionListener?.(coordinateAt(event.clientX, event.clientY));
+  };
+  container.addEventListener('click', selectMapCoordinate);
+
+  const pointPosition = (point: MapPoint) => {
+    const horizontalPosition = config.initialBounds
+      ? ((point.longitude - config.initialBounds[0][0]) /
+          (config.initialBounds[1][0] - config.initialBounds[0][0])) *
+        100
+      : 48;
+    const verticalPosition = config.initialBounds
+      ? ((config.initialBounds[1][1] - point.latitude) /
+          (config.initialBounds[1][1] - config.initialBounds[0][1])) *
+        100
+      : 42;
+
+    return {
+      horizontal:
+        focusedPointId === point.id
+          ? 48
+          : Math.min(95, Math.max(5, finitePosition(horizontalPosition, 42))),
+      vertical:
+        focusedPointId === point.id
+          ? 42
+          : Math.min(95, Math.max(5, finitePosition(verticalPosition, 36))),
+    };
+  };
+
+  const updateRadiusVisual = (): void => {
+    if (selectedPoint?.radiusMetres === undefined) {
+      radius.style.display = 'none';
+      delete radius.dataset.radiusMetres;
+      return;
+    }
+
+    const position = pointPosition(selectedPoint);
+    const diameter = Math.min(
+      220,
+      Math.max(64, selectedPoint.radiusMetres * 2),
+    );
+    Object.assign(radius.style, {
+      display: 'block',
+      height: `${diameter}px`,
+      left: `calc(${position.horizontal}% - ${diameter / 2}px)`,
+      top: `calc(${position.vertical}% - ${diameter / 2}px)`,
+      width: `${diameter}px`,
+    });
+    radius.dataset.radiusMetres = String(selectedPoint.radiusMetres);
+  };
 
   const logoArea = document.createElement('div');
   logoArea.className = 'mapboxgl-ctrl-bottom-left';
@@ -120,6 +212,9 @@ export const mapFactory: MapFactory = async (
       const availability = point.availability ?? 'active';
       button.type = 'button';
       button.dataset.eventMarkerId = point.id;
+      button.dataset.markerDraggable = String(point.draggable === true);
+      button.dataset.markerLatitude = String(point.latitude);
+      button.dataset.markerLongitude = String(point.longitude);
       button.className = [
         'event-marker',
         `event-marker--${availability}`,
@@ -130,16 +225,22 @@ export const mapFactory: MapFactory = async (
         .join(' ');
       button.setAttribute(
         'aria-label',
-        `Select ${point.label}, ${availability === 'active' ? 'available now' : availability}`,
+        point.draggable
+          ? `Focus ${point.label}. Drag the marker to adjust it, or use the coordinate fields for keyboard entry.`
+          : `Select ${point.label}, ${availability === 'active' ? 'available now' : availability}`,
       );
       button.setAttribute(
         'aria-pressed',
         String(selectedPoint?.id === point.id),
       );
+      const position = pointPosition(point);
+      const applyFixtureSpread =
+        !config.initialBounds && focusedPointId !== point.id;
       Object.assign(button.style, {
-        left: focusedPointId === point.id ? '48%' : `${42 + index * 12}%`,
+        cursor: point.draggable ? 'grab' : 'pointer',
+        left: `${position.horizontal + (applyFixtureSpread ? index * 12 : 0)}%`,
         position: 'absolute',
-        top: focusedPointId === point.id ? '42%' : `${36 + (index % 2) * 13}%`,
+        top: `${position.vertical + (applyFixtureSpread ? (index % 2) * 13 : 0)}%`,
       });
       const markerBody = document.createElement('span');
       markerBody.className = 'event-marker__body';
@@ -153,9 +254,22 @@ export const mapFactory: MapFactory = async (
       markerLabel.setAttribute('aria-hidden', 'true');
       markerLabel.textContent = point.label;
       button.append(markerBody, markerLabel);
-      button.addEventListener('click', () =>
-        pointSelectionListener?.(point.id),
-      );
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        pointSelectionListener?.(point.id);
+      });
+      button.addEventListener('pointerdown', (event) => {
+        if (!point.draggable) return;
+        event.stopPropagation();
+        const selectDraggedCoordinate = (pointerEvent: PointerEvent): void => {
+          coordinateSelectionListener?.(
+            coordinateAt(pointerEvent.clientX, pointerEvent.clientY),
+          );
+        };
+        window.addEventListener('pointerup', selectDraggedCoordinate, {
+          once: true,
+        });
+      });
       markerLayer.append(button);
     });
   };
@@ -180,6 +294,7 @@ export const mapFactory: MapFactory = async (
       container.dataset.mapCameraCenter = `${point.longitude},${point.latitude}`;
       container.dataset.mapCameraZoom = '17';
       followStateListener?.(false);
+      updateRadiusVisual();
       renderMarkers();
       return true;
     },
@@ -193,6 +308,7 @@ export const mapFactory: MapFactory = async (
       return true;
     },
     remove: () => {
+      container.removeEventListener('click', selectMapCoordinate);
       container.removeEventListener('pointerdown', stopFollowingOnPan);
       playerPuck?.remove();
       markerLayer.remove();
@@ -202,15 +318,20 @@ export const mapFactory: MapFactory = async (
       navigationArea.remove();
       if (container.dataset.mapProvider === instanceId) {
         delete container.dataset.mapProvider;
+        delete container.dataset.mapInitialBounds;
         delete container.dataset.mapFollowing;
         delete container.dataset.mapFocusedEvent;
         delete container.dataset.mapCameraCenter;
         delete container.dataset.mapCameraZoom;
+        delete container.dataset.mapSelectedCoordinate;
       }
     },
     setFollowStateListener: (listener) => {
       followStateListener = listener;
       listener?.(following);
+    },
+    setCoordinateSelectionListener: (listener) => {
+      coordinateSelectionListener = listener;
     },
     setPointSelectionListener: (listener) => {
       pointSelectionListener = listener;
@@ -244,10 +365,19 @@ export const mapFactory: MapFactory = async (
     },
     setSelectedPoint: (point) => {
       selectedPoint = point;
-      radius.style.display = point === null ? 'none' : 'block';
+      updateRadiusVisual();
+      if (point === null) {
+        delete container.dataset.mapSelectedCoordinate;
+      } else {
+        container.dataset.mapSelectedCoordinate = `${point.longitude},${point.latitude}`;
+      }
       renderMarkers();
     },
   };
 
   return controller;
 };
+
+function finitePosition(value: number, fallback: number): number {
+  return Number.isFinite(value) ? value : fallback;
+}
