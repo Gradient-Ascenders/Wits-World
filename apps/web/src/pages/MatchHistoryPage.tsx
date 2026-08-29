@@ -9,6 +9,7 @@ import {
 } from '../api/matches';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { MatchErrorState } from '../components/matches/MatchErrorState';
+import { MatchResultSummary } from '../components/matches/MatchResultSummary';
 import './matches.css';
 
 type HistoryState =
@@ -128,49 +129,13 @@ export default function MatchHistoryPage({
         <ol aria-label="Completed CPU matches" className="match-history-list">
           {state.matches.map((match) => (
             <li key={match.matchId}>
-              <article>
-                <div>
-                  <p className="eyebrow">CPU opponent</p>
-                  <h2>
-                    {match.winner === 'player' ? 'Victory' : 'CPU victory'}
-                  </h2>
-                </div>
-                <dl>
-                  <div>
-                    <dt>Result</dt>
-                    <dd>
-                      {match.winner === 'player' ? 'Player won' : 'CPU won'}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Completed</dt>
-                    <dd>{formatDate(match.completedAt)}</dd>
-                  </div>
-                  <div>
-                    <dt>Submitted rounds</dt>
-                    <dd>{match.rounds.length}</dd>
-                  </div>
-                </dl>
-                <Link
-                  className="button button--quiet"
-                  href={`/matches/${match.matchId}`}
-                >
-                  View saved match
-                </Link>
-              </article>
+              <MatchResultSummary match={match} />
             </li>
           ))}
         </ol>
       )}
     </div>
   );
-}
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value));
 }
 
 function toMatchError(error: unknown) {

@@ -148,7 +148,13 @@ export function AppShell({ children }: AppShellProps) {
   const { state: currentPlayer } = useCurrentPlayer();
   const [pathname] = useLocation();
   const isExplore = pathname === '/explore';
-  const showsSiteFooter = !isExplore && pathname !== '/collection';
+  const isFooterlessProductRoute =
+    isExplore ||
+    pathname === '/collection' ||
+    pathname === '/decks' ||
+    pathname === '/matches' ||
+    pathname.startsWith('/matches/');
+  const showsSiteFooter = !isFooterlessProductRoute;
   const isRestoring =
     isLoading || (isAuthenticated && currentPlayer.status === 'loading');
   const hasPlayerNavigation =

@@ -119,6 +119,21 @@ describe('Wits World public application shell', () => {
     ).toHaveFocus();
   });
 
+  it.each([
+    '/decks',
+    '/matches',
+    '/matches/history',
+    '/matches/00000000-0000-4000-8000-000000000001',
+  ])(
+    'omits the document footer from the application surface at %s',
+    async (path) => {
+      renderRoute(path);
+
+      await screen.findByRole('button', { name: 'Sign in' });
+      expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument();
+    },
+  );
+
   it('prioritizes the decorative Great Hall hero artwork', async () => {
     renderRoute('/');
 

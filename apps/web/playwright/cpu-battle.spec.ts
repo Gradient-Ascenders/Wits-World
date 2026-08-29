@@ -10,6 +10,7 @@ import {
   completedMatch,
   historyItem,
   MATCH_ID,
+  uuid,
 } from '../tests/fixtures/matches';
 import type { CpuMatch } from '../src/api/matches';
 
@@ -259,8 +260,9 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     expect(await page.evaluate(() => navigator.maxTouchPoints)).toBeGreaterThan(
       0,
     );
+    await expect(page.locator('.site-footer')).toHaveCount(0);
     await expect(
-      page.getByRole('heading', { name: 'Campus Five is active' }),
+      page.getByRole('heading', { exact: true, name: 'Campus Five' }),
     ).toBeVisible();
     await page.getByRole('button', { name: 'Start CPU match' }).tap();
     await expect(page).toHaveURL(`/matches/${MATCH_ID}`);
@@ -389,7 +391,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
   }
 });
 
-test('resumes the owned active CPU match before presenting deck creation', async ({
+test('offers the owned active CPU match for explicit resume', async ({
   page,
 }) => {
   const active = activeMatch(3);
@@ -398,14 +400,202 @@ test('resumes the owned active CPU match before presenting deck creation', async
   await routeCurrentPlayer(page);
   await page.route('**/api/v1/matches/**', async (route) => {
     const pathname = new URL(route.request().url()).pathname;
+    if (pathname.endsWith('/matches/history')) {
+      await json(route, {
+        matches: [],
+        requestId: 'cpu-browser-active-history',
+      });
+      return;
+    }
     if (pathname.endsWith('/matches/cpu')) activeLookups += 1;
     await json(route, response(active));
   });
 
   await page.goto('/matches');
+  await expect(page.locator('.site-footer')).toHaveCount(0);
+  await expect(page).toHaveURL('/matches');
+  await expect(
+    page.getByRole('heading', { name: 'Resume your CPU battle' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Start CPU battle' }),
+  ).toHaveCount(0);
+
+  for (const viewport of [
+    { height: 844, width: 390 },
+    { height: 1024, width: 768 },
+    { height: 800, width: 1280 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await expectNoHorizontalOverflow(page);
+    await expect(
+      page.getByRole('link', { name: 'Resume battle' }),
+    ).toBeVisible();
+  }
+
+  await page.getByRole('link', { name: 'Resume battle' }).click();
   await expect(page).toHaveURL(`/matches/${MATCH_ID}`);
   await expect(page.getByRole('heading', { name: 'Your turn' })).toBeVisible();
   expect(activeLookups).toBe(1);
+});
+
+test('renders recent results and starts from the selected deck dashboard', async ({
+  page,
+}) => {
+  const selectedDeck = buildSavedDeck({
+    isSelected: true,
+    name: 'Campus Five',
+  });
+  const results = [
+    {
+      ...historyItem(),
+      completedAt: '2026-08-12T12:00:00.000Z',
+      matchId: uuid(1601),
+    },
+    {
+      ...historyItem(),
+      completedAt: '2026-08-16T12:00:00.000Z',
+      matchId: uuid(1602),
+    },
+    {
+      ...historyItem(),
+      completedAt: '2026-08-14T12:00:00.000Z',
+      matchId: uuid(1603),
+      winner: 'cpu' as const,
+    },
+    {
+      ...historyItem(),
+      completedAt: '2026-08-15T12:00:00.000Z',
+      matchId: uuid(1604),
+    },
+  ];
+  const initial = buildMatch();
+  let active: CpuMatch | null = null;
+  let createRequests = 0;
+  const consoleErrors: string[] = [];
+  const pageErrors: string[] = [];
+  const failedRequests: string[] = [];
+
+  monitorBrowser(page, consoleErrors, pageErrors, failedRequests);
+  await routeCurrentPlayer(page);
+  await page.route('**/api/v1/decks', (route) =>
+    json(route, { decks: [selectedDeck], requestId: 'dashboard-decks' }),
+  );
+  await page.route('**/api/v1/matches/**', async (route) => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+
+    if (pathname.endsWith('/matches/history')) {
+      await json(route, { matches: results, requestId: 'dashboard-history' });
+      return;
+    }
+
+    if (pathname.endsWith('/matches/cpu')) {
+      if (request.method() === 'GET') {
+        if (active) {
+          await json(route, response(active));
+        } else {
+          await json(route, problem('CPU_MATCH_NOT_FOUND', 404), 404);
+        }
+        return;
+      }
+
+      createRequests += 1;
+      active = initial;
+      await json(route, response(initial), 201);
+      return;
+    }
+
+    await json(route, response(active ?? initial));
+  });
+
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto('/matches');
+  await expect(
+    page.getByRole('heading', { exact: true, name: 'Battles' }),
+  ).toBeFocused();
+  await expect(
+    page.getByRole('heading', { name: 'Start a CPU battle' }),
+  ).toBeVisible();
+  await expect(page.getByText('Campus Five', { exact: true })).toHaveCount(2);
+  await expect(
+    page
+      .getByRole('list', { name: 'Recent CPU match results' })
+      .getByRole('listitem'),
+  ).toHaveCount(3);
+  await expectNoHorizontalOverflow(page);
+
+  await page.setViewportSize({ height: 1024, width: 768 });
+  await expectNoHorizontalOverflow(page);
+  await expect(
+    page.getByRole('button', { name: 'Start CPU battle' }),
+  ).toBeVisible();
+
+  await page.setViewportSize({ height: 800, width: 1280 });
+  await expectNoHorizontalOverflow(page);
+  const launchBox = await page
+    .locator('.match-dashboard__primary')
+    .boundingBox();
+  const resultsBox = await page.locator('.recent-results').boundingBox();
+  expect(launchBox).not.toBeNull();
+  expect(resultsBox).not.toBeNull();
+  expect(resultsBox!.x).toBeGreaterThan(launchBox!.x);
+
+  await page.getByRole('link', { name: 'View full history' }).click();
+  await expect(page).toHaveURL('/matches/history');
+  await expect(page.locator('.site-footer')).toHaveCount(0);
+  await expect(
+    page.getByRole('heading', { name: 'Completed CPU matches' }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole('list', { name: 'Completed CPU matches' })
+      .getByRole('listitem'),
+  ).toHaveCount(results.length);
+
+  await page.getByRole('link', { name: 'Continue or start a battle' }).click();
+  await expect(page).toHaveURL('/matches');
+  await page.getByRole('button', { name: 'Start CPU battle' }).click();
+  await expect(page).toHaveURL(`/matches/${MATCH_ID}`);
+  await expect(
+    page.getByRole('heading', { name: 'Choose your opening Creature' }),
+  ).toBeVisible();
+  expect(createRequests).toBe(1);
+  expect(pageErrors).toEqual([]);
+  expect(failedRequests).toEqual([]);
+  expect(consoleErrors.filter((message) => !message.includes('404'))).toEqual(
+    [],
+  );
+});
+
+test('shows deck recovery without exposing a conflicting start action', async ({
+  page,
+}) => {
+  await routeCurrentPlayer(page);
+  await page.route('**/api/v1/decks', (route) =>
+    json(route, { decks: [], requestId: 'dashboard-no-deck' }),
+  );
+  await page.route('**/api/v1/matches/**', async (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname.endsWith('/matches/history')) {
+      await json(route, { matches: [], requestId: 'dashboard-empty-history' });
+      return;
+    }
+    await json(route, problem('CPU_MATCH_NOT_FOUND', 404), 404);
+  });
+
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto('/matches');
+  await expect(
+    page.getByRole('heading', { name: 'Select a deck first' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'Choose a deck' }),
+  ).toHaveAttribute('href', '/decks');
+  await expect(
+    page.getByRole('button', { name: 'Start CPU battle' }),
+  ).toHaveCount(0);
+  await expectNoHorizontalOverflow(page);
 });
 
 function response(match: CpuMatch) {

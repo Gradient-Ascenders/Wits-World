@@ -25,6 +25,7 @@ import {
   matchResponse,
   noActiveResponse,
   problemResponse,
+  uuid,
 } from './fixtures/matches';
 
 const apiBaseUrl = 'https://api.example.test/api/v1';
@@ -60,16 +61,92 @@ function renderRoute(
 }
 
 describe('CPU match entry and history', () => {
-  it('resumes an active match before loading decks', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(matchResponse(activeMatch(3)));
+  it('presents an active match for explicit resume without loading decks or offering start', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(matchResponse(activeMatch(3)))
+      .mockResolvedValueOnce(historyResponse([]));
     vi.stubGlobal('fetch', fetchMock);
 
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
 
-    await waitFor(() =>
-      expect(window.location.pathname).toBe(`/matches/${MATCH_ID}`),
+    expect(
+      await screen.findByRole('heading', { name: 'Resume your CPU battle' }),
+    ).toBeVisible();
+    expect(window.location.pathname).toBe('/matches');
+    expect(
+      screen.queryByRole('button', { name: 'Start CPU battle' }),
+    ).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1]![0])).toContain('/matches/history');
+
+    await user.click(screen.getByRole('link', { name: 'Resume battle' }));
+    expect(window.location.pathname).toBe(`/matches/${MATCH_ID}`);
+  });
+
+  it('keeps active-match recovery available when recent results fail', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(matchResponse(activeMatch(3)))
+        .mockResolvedValueOnce(
+          problemResponse('CPU_MATCH_HISTORY_UNAVAILABLE', 503),
+        ),
     );
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
+
+    expect(
+      await screen.findByRole('link', { name: 'Resume battle' }),
+    ).toBeVisible();
+    expect(screen.getByText('Recent results unavailable')).toBeVisible();
+  });
+
+  it('offers Resume while recent results remain unresolved and aborts both on unmount', async () => {
+    const unresolvedHistory = new Promise<Response>(() => undefined);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(matchResponse(activeMatch(3)))
+      .mockReturnValueOnce(unresolvedHistory);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const view = renderRoute(
+      '/matches',
+      <MatchEntryPage apiBaseUrl={apiBaseUrl} />,
+    );
+
+    expect(
+      await screen.findByRole('link', { name: 'Resume battle' }),
+    ).toBeVisible();
+    expect(screen.getByText('Loading recent results')).toBeVisible();
+
+    const activeSignal = fetchMock.mock.calls[0]![1]!.signal as AbortSignal;
+    const historySignal = fetchMock.mock.calls[1]![1]!.signal as AbortSignal;
+    view.unmount();
+    expect(activeSignal.aborted).toBe(true);
+    expect(historySignal.aborted).toBe(true);
+  });
+
+  it('offers Start while recent results remain unresolved', async () => {
+    const selected = buildSavedDeck({ isSelected: true });
+    const unresolvedHistory = new Promise<Response>(() => undefined);
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(noActiveResponse())
+        .mockReturnValueOnce(unresolvedHistory)
+        .mockResolvedValueOnce(deckListResponse([selected])),
+    );
+
+    renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
+
+    expect(
+      await screen.findByRole('button', { name: 'Start CPU battle' }),
+    ).toBeEnabled();
+    expect(screen.getByText('Loading recent results')).toBeVisible();
   });
 
   it('shows no-selected-deck recovery and starts from #73 selected deck', async () => {
@@ -78,6 +155,7 @@ describe('CPU match entry and history', () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(noActiveResponse())
+      .mockResolvedValueOnce(historyResponse([]))
       .mockResolvedValueOnce(deckListResponse([selected]))
       .mockResolvedValueOnce(noActiveResponse())
       .mockResolvedValueOnce(matchResponse(buildMatch(), 201));
@@ -85,14 +163,15 @@ describe('CPU match entry and history', () => {
 
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
     expect(
-      await screen.findByRole('heading', { name: `${selected.name} is ready` }),
+      await screen.findByRole('heading', { name: 'Start a CPU battle' }),
     ).toBeVisible();
-    await user.click(screen.getByRole('button', { name: 'Start CPU match' }));
+    expect(screen.getAllByText(selected.name).length).toBeGreaterThan(0);
+    await user.click(screen.getByRole('button', { name: 'Start CPU battle' }));
 
     await waitFor(() =>
       expect(window.location.pathname).toBe(`/matches/${MATCH_ID}`),
     );
-    expect(JSON.parse(String(fetchMock.mock.calls[3]![1]!.body))).toEqual({
+    expect(JSON.parse(String(fetchMock.mock.calls[4]![1]!.body))).toEqual({
       deckId: selected.deckId,
     });
   });
@@ -107,6 +186,7 @@ describe('CPU match entry and history', () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(noActiveResponse())
+      .mockResolvedValueOnce(historyResponse([]))
       .mockResolvedValueOnce(deckListResponse([selected]))
       .mockReturnValueOnce(oldRequest);
     vi.stubGlobal('fetch', fetchMock);
@@ -116,9 +196,9 @@ describe('CPU match entry and history', () => {
       <MatchEntryPage apiBaseUrl={apiBaseUrl} />,
     );
     await user.click(
-      await screen.findByRole('button', { name: 'Start CPU match' }),
+      await screen.findByRole('button', { name: 'Start CPU battle' }),
     );
-    const oldSignal = fetchMock.mock.calls[2]![1]!.signal as AbortSignal;
+    const oldSignal = fetchMock.mock.calls[3]![1]!.signal as AbortSignal;
 
     view.unmount();
     expect(oldSignal.aborted).toBe(true);
@@ -130,7 +210,7 @@ describe('CPU match entry and history', () => {
 
     expect(window.location.pathname).toBe('/matches');
     expect(
-      screen.queryByRole('heading', { name: 'Enter the battle arena' }),
+      screen.queryByRole('heading', { name: 'Battles' }),
     ).not.toBeInTheDocument();
   });
 
@@ -140,6 +220,7 @@ describe('CPU match entry and history', () => {
       vi
         .fn()
         .mockResolvedValueOnce(noActiveResponse())
+        .mockResolvedValueOnce(historyResponse([]))
         .mockResolvedValueOnce(deckListResponse([])),
     );
 
@@ -169,7 +250,9 @@ describe('CPU match entry and history', () => {
     const fetchMock = vi
       .fn()
       .mockRejectedValueOnce(new TypeError('connection lost'))
-      .mockResolvedValueOnce(matchResponse(activeMatch(4)));
+      .mockResolvedValueOnce(historyResponse([]))
+      .mockResolvedValueOnce(matchResponse(activeMatch(4)))
+      .mockResolvedValueOnce(historyResponse([]));
     vi.stubGlobal('fetch', fetchMock);
 
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
@@ -182,10 +265,11 @@ describe('CPU match entry and history', () => {
     ).toBeVisible();
 
     await user.click(screen.getByRole('button', { name: 'Try again' }));
-    await waitFor(() =>
-      expect(window.location.pathname).toBe(`/matches/${MATCH_ID}`),
-    );
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(
+      await screen.findByRole('heading', { name: 'Resume your CPU battle' }),
+    ).toBeVisible();
+    expect(window.location.pathname).toBe('/matches');
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it('defers selected-deck rejection to the API and routes the player back to decks', async () => {
@@ -196,6 +280,7 @@ describe('CPU match entry and history', () => {
       vi
         .fn()
         .mockResolvedValueOnce(noActiveResponse())
+        .mockResolvedValueOnce(historyResponse([]))
         .mockResolvedValueOnce(deckListResponse([selected]))
         .mockResolvedValueOnce(noActiveResponse())
         .mockResolvedValueOnce(problemResponse('INVALID_MATCH_DECK', 400)),
@@ -203,7 +288,7 @@ describe('CPU match entry and history', () => {
 
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
     await user.click(
-      await screen.findByRole('button', { name: 'Start CPU match' }),
+      await screen.findByRole('button', { name: 'Start CPU battle' }),
     );
 
     expect(
@@ -228,6 +313,43 @@ describe('CPU match entry and history', () => {
     expect(
       screen.getByRole('link', { name: 'View saved match' }),
     ).toHaveAttribute('href', `/matches/${MATCH_ID}`);
+  });
+
+  it('shows only the three newest dashboard results and links to the full archive', async () => {
+    const base = historyItem();
+    const matches = [
+      { ...base, completedAt: '2026-08-12T12:00:00.000Z', matchId: uuid(1501) },
+      { ...base, completedAt: '2026-08-16T12:00:00.000Z', matchId: uuid(1502) },
+      { ...base, completedAt: '2026-08-14T12:00:00.000Z', matchId: uuid(1503) },
+      { ...base, completedAt: '2026-08-15T12:00:00.000Z', matchId: uuid(1504) },
+      { ...base, completedAt: '2026-08-13T12:00:00.000Z', matchId: uuid(1505) },
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(noActiveResponse())
+        .mockResolvedValueOnce(historyResponse(matches))
+        .mockResolvedValueOnce(deckListResponse([])),
+    );
+
+    renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
+
+    const recent = await screen.findByRole('list', {
+      name: 'Recent CPU match results',
+    });
+    expect(within(recent).getAllByRole('listitem')).toHaveLength(3);
+    const resultLinks = within(recent).getAllByRole('link', {
+      name: 'View saved match',
+    });
+    expect(resultLinks.map((link) => link.getAttribute('href'))).toEqual([
+      `/matches/${uuid(1502)}`,
+      `/matches/${uuid(1504)}`,
+      `/matches/${uuid(1503)}`,
+    ]);
+    expect(
+      screen.getByRole('link', { name: 'View full history' }),
+    ).toHaveAttribute('href', '/matches/history');
   });
 
   it('offers secure reauthentication when private history returns 401', async () => {

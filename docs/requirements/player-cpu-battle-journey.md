@@ -31,10 +31,12 @@ a player ID or filters another player's records locally.
 
 ## Entry, creation, and recovery
 
-On entry, `200` from the active lookup immediately resumes the returned match.
-`404 CPU_MATCH_NOT_FOUND` is the explicit no-active state: the UI can name the
-selected saved deck and offer creation, or link to deck selection when none is
-selected. The browser does not reproduce the API's deck validation.
+On entry, `200` from the active lookup presents the returned match as the
+dashboard's only primary action. The player explicitly follows **Resume battle**
+to its detailed route; starting a conflicting match is not offered.
+`404 CPU_MATCH_NOT_FOUND` is the explicit no-active state: the dashboard can
+name the selected saved deck and offer creation, or link to deck selection when
+none is selected. The browser does not reproduce the API's deck validation.
 
 One create request is made per activation. A successful response navigates to
 its returned `matchId`. `INVALID_MATCH_DECK`, authentication, and safe network
@@ -120,10 +122,13 @@ responses preserve the last applied state and offer sign-in or explicit reload.
 
 ## History, accessibility, and responsive behavior
 
-History has loading, empty, populated, authentication, unavailable, and retry
-states. Result, CPU opponent, completion time, and submitted-round count come
-from the persisted history response. Direct detail uses the same authoritative
-completed response and stays completed after refresh.
+The dashboard loads recent history independently, shows the newest few persisted
+results in compact form, and links to `/matches/history` for the full archive. A
+slow or failed recent-history request does not delay or hide an available Resume
+or Start action. History has loading, empty, populated, authentication,
+unavailable, and retry states. Result, CPU opponent, completion time, and
+submitted-round count come from the persisted history response. Direct detail
+uses the same authoritative completed response and stays completed after refresh.
 
 The battle uses native buttons and links; no drag, gesture, or animation is
 required. Phase changes use a concise polite announcement and move focus to the
@@ -139,8 +144,9 @@ satisfy `scrollWidth <= clientWidth`.
 
 ## Automated evidence
 
-Vitest covers strict contracts, recovery timing, selected-deck creation, active
-resume, initial/move/Power/replacement actions, unavailable controls,
+Vitest covers strict contracts, recovery timing, selected-deck creation,
+explicit active resume, compact recent results, initial/move/Power/replacement
+actions, unavailable controls,
 single-flight submission, stale reconciliation, response ordering, completion
 absorption, history/detail, authentication, retry, and keyboard operation.
 
@@ -152,8 +158,11 @@ refresh. Its effect-rich fixture checks ordered multi-effects, zero Power,
 finite/permanent stacked modifiers, disabled legality, visible keyboard focus,
 control containment, horizontal overflow, and console/runtime errors at
 390x844 and 1280x800. Screenshots remain under the ignored
-`.pr-screenshots/issue-76/` path. This is mocked API browser evidence, not a
-claim that a live backend match was completed end to end.
+`.pr-screenshots/issue-76/` path. It also covers the explicit dashboard resume,
+selected-deck start, no-selected-deck recovery, recent results, and full-history
+navigation at representative mobile, tablet, and desktop widths. This is mocked
+API browser evidence, not a claim that a live backend match was completed end to
+end.
 
 This document was generated and edited with assistance from
 Codex-CLI[gpt-5.6-sol] and Codex-CLI[GPT-5].
