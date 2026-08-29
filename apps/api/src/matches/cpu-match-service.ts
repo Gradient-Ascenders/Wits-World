@@ -169,6 +169,24 @@ export interface PublicBattleActionResult extends Omit<
   effects: readonly PublicAppliedEffectView[];
 }
 
+export type CpuMatchBattleLogEventKind =
+  'action' | 'defeat' | 'effect' | 'effect_expired' | 'result' | 'turn';
+
+export interface CpuMatchBattleLogEvent {
+  id: string;
+  sequence: number;
+  side: 'player' | 'cpu' | null;
+  kind: CpuMatchBattleLogEventKind;
+  message: string;
+}
+
+export interface CpuMatchBattleLogGroup {
+  id: string;
+  label: string;
+  turnNumber: number;
+  events: readonly CpuMatchBattleLogEvent[];
+}
+
 export interface CpuMatchResponse {
   matchId: string;
   status: 'active' | 'completed';
@@ -178,6 +196,7 @@ export interface CpuMatchResponse {
   completedAt: string | null;
   state: CpuMatchStateView;
   lastAction: PublicBattleActionResult | null;
+  battleLog: readonly CpuMatchBattleLogGroup[];
 }
 
 export interface CpuMatchHistoryRound {
@@ -277,7 +296,13 @@ interface MatchRow extends pg.QueryResultRow {
 }
 
 interface MatchViewRow extends MatchRow {
-  latest_action: BattleActionResult | null;
+  log_actions: BattleLogActionRow[];
+}
+
+interface ActionMatchRow extends MatchRow {
+  action_sequence: number;
+  latest_battle_log: CpuMatchBattleLogGroup[] | null;
+  legacy_log_actions: BattleLogActionRow[];
 }
 
 interface MatchIdentityRow extends pg.QueryResultRow {
@@ -285,7 +310,35 @@ interface MatchIdentityRow extends pg.QueryResultRow {
 }
 
 interface ActionResponseRow extends pg.QueryResultRow {
-  response: CpuMatchResponse;
+  legacy_log_actions: BattleLogActionRow[];
+  response: StoredCpuMatchResponse;
+}
+
+type StoredBattleActionResult = Omit<BattleActionResult, 'expiredEffects'> & {
+  expiredEffects?: BattleActionResult['expiredEffects'];
+};
+
+type StoredPublicBattleActionResult = Omit<
+  PublicBattleActionResult,
+  'expiredEffects'
+> & {
+  expiredEffects?: PublicBattleActionResult['expiredEffects'];
+};
+
+type StoredCpuMatchResponse = Omit<
+  CpuMatchResponse,
+  'battleLog' | 'lastAction'
+> & {
+  battleLog?: readonly CpuMatchBattleLogGroup[];
+  lastAction: StoredPublicBattleActionResult | null;
+};
+
+interface BattleLogActionRow {
+  sequence: number;
+  roundNumber: number;
+  roundStateBefore: BattleState;
+  roundStateAfter: BattleState;
+  result: StoredBattleActionResult;
 }
 
 interface TransitionPersistenceRow extends pg.QueryResultRow {
@@ -309,7 +362,7 @@ interface RoundRow extends pg.QueryResultRow {
   round_number: number;
   state_before: BattleState;
   state_after: BattleState;
-  result: BattleActionResult[];
+  result: StoredBattleActionResult[];
   created_at: Date;
 }
 
@@ -318,7 +371,7 @@ interface ActionRow extends pg.QueryResultRow {
   side: 'player' | 'cpu';
   submission_id: string | null;
   action: BattleAction;
-  result: BattleActionResult;
+  result: StoredBattleActionResult;
   created_at: Date;
 }
 
@@ -466,7 +519,7 @@ export function createCpuMatchService(
           startedAt,
           completedAt: null,
           turnDeadline: null,
-          lastAction: null,
+          logActions: [],
           cardNames: cardNamesFromSnapshots([
             ...snapshotDeck('player', playerCards, playerDeck),
             ...snapshotDeck('cpu', cpuCards, cpuDeck),
@@ -511,7 +564,7 @@ export function createCpuMatchService(
           startedAt: match.started_at,
           completedAt: match.completed_at,
           turnDeadline: match.turn_deadline,
-          lastAction: match.latest_action,
+          logActions: match.log_actions,
           cardNames: match.card_names,
         });
       } finally {
@@ -539,7 +592,7 @@ export function createCpuMatchService(
           startedAt: match.started_at,
           completedAt: match.completed_at,
           turnDeadline: match.turn_deadline,
-          lastAction: match.latest_action,
+          logActions: match.log_actions,
           cardNames: match.card_names,
         });
       } finally {
@@ -564,18 +617,55 @@ export function createCpuMatchService(
         // retain an older statement snapshot and miss that writer's receipt.
         const duplicate = await client.query<ActionResponseRow>(
           `
-            select response
-            from public.cpu_match_actions
-            where match_id = $1::uuid
-              and submission_id = $2::uuid
-              and response is not null
+            select
+              submitted.response,
+              case
+                when submitted.response ? 'battleLog' then '[]'::jsonb
+                else coalesce((
+                  select jsonb_agg(
+                    jsonb_build_object(
+                      'sequence', log_action.sequence,
+                      'roundNumber', round.round_number,
+                      'roundStateBefore', round.state_before,
+                      'roundStateAfter', round.state_after,
+                      'result', log_action.result
+                    )
+                    order by log_action.sequence
+                  )
+                  from public.cpu_match_actions log_action
+                  join public.cpu_match_rounds round
+                    on round.id = log_action.round_id
+                  where log_action.match_id = submitted.match_id
+                    and log_action.sequence <= (
+                      select max(round_action.sequence)
+                      from public.cpu_match_actions round_action
+                      where round_action.round_id = submitted.round_id
+                    )
+                ), '[]'::jsonb)
+              end as legacy_log_actions
+            from public.cpu_match_actions submitted
+            where submitted.match_id = $1::uuid
+              and submitted.submission_id = $2::uuid
+              and submitted.response is not null
           `,
           [input.matchId, input.submissionId],
         );
 
         if (duplicate.rows[0]?.response) {
+          const stored = duplicate.rows[0];
+          const response = hasBattleLog(stored.response)
+            ? normalizeStoredResponse(
+                stored.response,
+                stored.response.battleLog!,
+              )
+            : addBattleLogToStoredResponse(
+                stored.response,
+                stored.legacy_log_actions,
+                match.state,
+                match.card_names,
+              );
           await client.query('commit');
-          return duplicate.rows[0].response;
+          return response;
         }
 
         if (match.status === 'completed') {
@@ -587,6 +677,16 @@ export function createCpuMatchService(
         }
 
         const stateBefore = match.state;
+        // Every modern player receipt already contains the complete log through
+        // its synchronous CPU chain. Extend that projection instead of loading
+        // every prior action and repeated round-state snapshot on each turn.
+        const previousBattleLog = Array.isArray(match.latest_battle_log)
+          ? match.latest_battle_log
+          : createBattleLog(
+              match.legacy_log_actions ?? [],
+              stateBefore,
+              match.card_names,
+            );
         const transitions: BattleTransition[] = [];
         const now = clock.now();
         const playerAction = actionForTimeoutIfNeeded(
@@ -617,6 +717,14 @@ export function createCpuMatchService(
         const completed = state.winner !== null;
         const version = match.version + 1;
         const turnDeadline = getTurnDeadline(state, now);
+        const baseSequence = match.action_sequence ?? 0;
+        const currentLogActions = transitions.map(({ result }, index) => ({
+          sequence: baseSequence + index + 1,
+          roundNumber: version,
+          roundStateBefore: stateBefore,
+          roundStateAfter: state,
+          result,
+        }));
         const response = createResponse({
           matchId: match.id,
           status: completed ? 'completed' : 'active',
@@ -626,7 +734,8 @@ export function createCpuMatchService(
           startedAt: match.started_at,
           completedAt: completed ? now : null,
           turnDeadline,
-          lastAction: transitions.at(-1)?.result ?? null,
+          logActions: currentLogActions,
+          previousBattleLog,
           cardNames: match.card_names,
         });
 
@@ -776,6 +885,7 @@ export function createCpuMatchService(
         assertTransitionPersistence(
           persisted.rows[0],
           match.id,
+          baseSequence,
           transitions.length,
         );
 
@@ -1221,20 +1331,20 @@ async function loadMatch(
   playerId: string,
   matchId: string,
   forUpdate: boolean,
-): Promise<MatchRow> {
-  const result = await client.query<MatchRow>(
+): Promise<ActionMatchRow> {
+  const result = await client.query<ActionMatchRow>(
     `
       select
-        id::text,
-        player_id::text,
-        status,
-        state,
-        version,
-        turn_started_at,
-        turn_deadline,
-        winner,
-        started_at,
-        completed_at,
+        cpu_matches.id::text,
+        cpu_matches.player_id::text,
+        cpu_matches.status,
+        cpu_matches.state,
+        cpu_matches.version,
+        cpu_matches.turn_started_at,
+        cpu_matches.turn_deadline,
+        cpu_matches.winner,
+        cpu_matches.started_at,
+        cpu_matches.completed_at,
         coalesce((
           select jsonb_object_agg(
             card.snapshot -> 'battleCard' ->> 'id',
@@ -1242,11 +1352,48 @@ async function loadMatch(
           )
           from public.cpu_match_cards card
           where card.match_id = cpu_matches.id
-        ), '{}'::jsonb) as card_names
+        ), '{}'::jsonb) as card_names,
+        action_summary.action_sequence,
+        action_summary.latest_battle_log,
+        case
+          when action_summary.latest_battle_log is not null
+            then '[]'::jsonb
+          else coalesce((
+            select jsonb_agg(
+              jsonb_build_object(
+                'sequence', action.sequence,
+                'roundNumber', round.round_number,
+                'roundStateBefore', round.state_before,
+                'roundStateAfter', round.state_after,
+                'result', action.result
+              )
+              order by action.sequence
+            )
+            from public.cpu_match_actions action
+            join public.cpu_match_rounds round on round.id = action.round_id
+            where action.match_id = cpu_matches.id
+          ), '[]'::jsonb)
+        end as legacy_log_actions
       from public.cpu_matches
-      where id = $1::uuid
-        and player_id = $2::uuid
-      ${forUpdate ? 'for update' : ''}
+      cross join lateral (
+        select
+          coalesce((
+            select max(action.sequence)
+            from public.cpu_match_actions action
+            where action.match_id = cpu_matches.id
+          ), 0)::integer as action_sequence,
+          (
+            select action.response -> 'battleLog'
+            from public.cpu_match_actions action
+            where action.match_id = cpu_matches.id
+              and action.response is not null
+            order by action.sequence desc
+            limit 1
+          ) as latest_battle_log
+      ) action_summary
+      where cpu_matches.id = $1::uuid
+        and cpu_matches.player_id = $2::uuid
+      ${forUpdate ? 'for update of cpu_matches' : ''}
     `,
     [matchId, playerId],
   );
@@ -1288,13 +1435,21 @@ async function loadMatchView(
           from public.cpu_match_cards card
           where card.match_id = match.id
         ), '{}'::jsonb) as card_names,
-        (
-          select action.result
+        coalesce((
+          select jsonb_agg(
+            jsonb_build_object(
+              'sequence', action.sequence,
+              'roundNumber', round.round_number,
+              'roundStateBefore', round.state_before,
+              'roundStateAfter', round.state_after,
+              'result', action.result
+            )
+            order by action.sequence
+          )
           from public.cpu_match_actions action
+          join public.cpu_match_rounds round on round.id = action.round_id
           where action.match_id = match.id
-          order by action.sequence desc
-          limit 1
-        ) as latest_action
+        ), '[]'::jsonb) as log_actions
       from public.cpu_matches match
       where match.player_id = $1::uuid
         and ($2::uuid is null or match.id = $2::uuid)
@@ -1338,10 +1493,10 @@ async function loadHistoryRounds(
         side: action.side,
         submissionId: action.submission_id,
         action: action.action,
-        result: action.result,
+        result: normalizeStoredActionResult(action.result),
         createdAt: action.created_at.toISOString(),
       })),
-      result: round.result,
+      result: round.result.map(normalizeStoredActionResult),
       createdAt: round.created_at.toISOString(),
     });
   }
@@ -1358,9 +1513,16 @@ function createResponse(input: {
   startedAt: Date;
   completedAt: Date | null;
   turnDeadline: Date | null;
-  lastAction: BattleActionResult | null;
+  logActions: readonly BattleLogActionRow[];
+  previousBattleLog?: readonly CpuMatchBattleLogGroup[];
   cardNames?: Readonly<Record<string, string>>;
 }): CpuMatchResponse {
+  const lastAction = input.logActions.at(-1)?.result ?? null;
+  const currentBattleLog = createBattleLog(
+    input.logActions,
+    input.state,
+    input.cardNames,
+  );
   return {
     matchId: input.matchId,
     status: input.status,
@@ -1370,10 +1532,413 @@ function createResponse(input: {
     completedAt: input.completedAt?.toISOString() ?? null,
     state: toPublicState(input.state, input.turnDeadline, input.cardNames),
     lastAction:
-      input.lastAction === null
+      lastAction === null
         ? null
-        : toPublicActionResult(input.lastAction, input.state),
+        : toPublicActionResult(
+            normalizeStoredActionResult(lastAction),
+            input.state,
+          ),
+    battleLog:
+      input.previousBattleLog === undefined
+        ? currentBattleLog
+        : mergeBattleLogs(input.previousBattleLog, currentBattleLog),
   };
+}
+
+function hasBattleLog(
+  response: StoredCpuMatchResponse | null | undefined,
+): response is StoredCpuMatchResponse & {
+  battleLog: readonly CpuMatchBattleLogGroup[];
+} {
+  return Array.isArray(response?.battleLog);
+}
+
+function normalizeStoredResponse(
+  response: StoredCpuMatchResponse,
+  battleLog: readonly CpuMatchBattleLogGroup[],
+): CpuMatchResponse {
+  return {
+    ...response,
+    battleLog,
+    lastAction:
+      response.lastAction === null
+        ? null
+        : {
+            ...response.lastAction,
+            expiredEffects: response.lastAction.expiredEffects ?? [],
+          },
+  };
+}
+
+function addBattleLogToStoredResponse(
+  response: StoredCpuMatchResponse,
+  logActions: readonly BattleLogActionRow[],
+  state: BattleState,
+  cardNames: Readonly<Record<string, string>> = {},
+): CpuMatchResponse {
+  return normalizeStoredResponse(
+    response,
+    createBattleLog(logActions, state, cardNames),
+  );
+}
+
+function mergeBattleLogs(
+  previous: readonly CpuMatchBattleLogGroup[],
+  current: readonly CpuMatchBattleLogGroup[],
+): CpuMatchBattleLogGroup[] {
+  const groups = previous.map((group) => ({
+    ...group,
+    events: [...group.events],
+  }));
+  const groupsById = new Map(groups.map((group) => [group.id, group]));
+
+  for (const currentGroup of current) {
+    const existing = groupsById.get(currentGroup.id);
+    if (existing) {
+      existing.events.push(...currentGroup.events);
+      continue;
+    }
+
+    const added = { ...currentGroup, events: [...currentGroup.events] };
+    groups.push(added);
+    groupsById.set(added.id, added);
+  }
+
+  return groups;
+}
+
+function normalizeStoredActionResult(
+  result: StoredBattleActionResult,
+): BattleActionResult {
+  return {
+    ...result,
+    expiredEffects: result.expiredEffects ?? [],
+  };
+}
+
+function createBattleLog(
+  actionRows: readonly BattleLogActionRow[],
+  state: BattleState,
+  cardNames: Readonly<Record<string, string>> = {},
+): CpuMatchBattleLogGroup[] {
+  const groups: Array<{
+    id: string;
+    label: string;
+    turnNumber: number;
+    events: CpuMatchBattleLogEvent[];
+  }> = [];
+  const seenSequences = new Set<number>();
+  let roundNumber: number | null = null;
+  let projection = battleLogProjection(
+    actionRows[0]?.roundStateBefore ?? state,
+  );
+
+  for (const row of [...actionRows].sort(
+    (left, right) => left.sequence - right.sequence,
+  )) {
+    if (seenSequences.has(row.sequence)) continue;
+    seenSequences.add(row.sequence);
+
+    if (roundNumber !== row.roundNumber) {
+      roundNumber = row.roundNumber;
+      projection = battleLogProjection(row.roundStateBefore);
+    }
+
+    const result = normalizeStoredActionResult(row.result);
+    const groupTurn =
+      result.action.type === 'select_initial_creature'
+        ? 0
+        : projection.turnNumber;
+    const group = getBattleLogGroup(groups, groupTurn);
+    let eventIndex = 0;
+    const addEvent = (
+      kind: CpuMatchBattleLogEventKind,
+      message: string,
+      side: 'player' | 'cpu' | null = result.side,
+    ) => {
+      group.events.push({
+        id: `${row.sequence}:${eventIndex++}`,
+        sequence: row.sequence,
+        side,
+        kind,
+        message,
+      });
+    };
+
+    const actorCreatureId = projection.activeCreatureIds[result.side];
+    const actorCreatureName = actorCreatureId
+      ? battleCreatureName(state, actorCreatureId, cardNames)
+      : null;
+
+    if (result.action.type === 'select_initial_creature') {
+      const name = battleCreatureName(
+        state,
+        result.action.creatureId,
+        cardNames,
+      );
+      addEvent(
+        'action',
+        result.side === 'player'
+          ? `Player selected ${name}.`
+          : `CPU revealed ${name}.`,
+      );
+      projection.selections[result.side] = result.action.creatureId;
+      projection.activeCreatureIds[result.side] = result.action.creatureId;
+
+      if (projection.selections.player && projection.selections.cpu) {
+        projection.turnNumber = 1;
+        const firstSide = row.roundStateAfter.firstSide;
+        addEvent(
+          'turn',
+          `Turn 1 began.${firstSide ? ` ${battleSideLabel(firstSide)} has the first action.` : ''}`,
+          firstSide,
+        );
+      }
+    } else if (result.action.type === 'select_replacement') {
+      const name = battleCreatureName(
+        state,
+        result.action.creatureId,
+        cardNames,
+      );
+      addEvent(
+        'action',
+        `${battleSideLabel(result.side)} sent out ${name} as a replacement.`,
+      );
+      projection.activeCreatureIds[result.side] = result.action.creatureId;
+    } else if (result.action.type === 'use_move') {
+      const source = findBattleMove(state, result.action.moveId);
+      const creatureName =
+        actorCreatureName ??
+        (source
+          ? battleCreatureName(state, source.creatureId, cardNames)
+          : 'Creature');
+      addEvent(
+        'action',
+        `${battleSidePossessive(result.side)} ${creatureName} used ${source?.move.name ?? 'a Creature move'}.`,
+      );
+      if (source && source.move.powerCost > 0) {
+        addEvent(
+          'effect',
+          `${creatureSubject(result.side, creatureName)} spent ${source.move.powerCost} Power.`,
+          result.side,
+        );
+      }
+    } else if (result.action.type === 'use_power_card') {
+      addEvent(
+        'action',
+        `${battleSideLabel(result.side)} used ${battlePowerCardName(
+          state,
+          result.action.powerCardId,
+          cardNames,
+        )}.`,
+      );
+    } else {
+      addEvent('action', `${battleSideLabel(result.side)}'s turn timed out.`);
+    }
+
+    for (const effect of result.effects) {
+      addEvent(
+        'effect',
+        describeBattleLogEffect(effect, state, cardNames),
+        effect.targetSide,
+      );
+    }
+
+    for (const expired of result.expiredEffects) {
+      addEvent(
+        'effect_expired',
+        describeExpiredBattleLogEffect(expired, state, cardNames),
+        expired.targetSide,
+      );
+    }
+
+    if (result.defeatedCreatureId) {
+      const defeatedSide = oppositeBattleSide(result.side);
+      addEvent(
+        'defeat',
+        `${creatureSubject(
+          defeatedSide,
+          battleCreatureName(state, result.defeatedCreatureId, cardNames),
+        )} was defeated.`,
+        defeatedSide,
+      );
+      projection.activeCreatureIds[defeatedSide] = null;
+    }
+
+    if (result.winner) {
+      addEvent(
+        'result',
+        `${battleSideLabel(result.winner)} won the match.`,
+        result.winner,
+      );
+    } else if (result.turnEnded) {
+      const nextSide = oppositeBattleSide(result.side);
+      addEvent(
+        'turn',
+        result.defeatedCreatureId
+          ? `Turn ${projection.turnNumber} ended. ${battleSideLabel(nextSide)} must choose a replacement.`
+          : `Turn ${projection.turnNumber} ended. ${battleSideLabel(nextSide)} is next.`,
+        nextSide,
+      );
+      projection.turnNumber += 1;
+    }
+  }
+
+  return groups;
+}
+
+function battleLogProjection(state: BattleState) {
+  return {
+    turnNumber: state.turnNumber,
+    selections: { ...state.selections },
+    activeCreatureIds: {
+      player: state.participants.player.activeCreatureId,
+      cpu: state.participants.cpu.activeCreatureId,
+    },
+  };
+}
+
+function getBattleLogGroup(
+  groups: Array<{
+    id: string;
+    label: string;
+    turnNumber: number;
+    events: CpuMatchBattleLogEvent[];
+  }>,
+  turnNumber: number,
+) {
+  const id = turnNumber === 0 ? 'opening' : `turn-${turnNumber}`;
+  const existing = groups.find((group) => group.id === id);
+  if (existing) return existing;
+
+  const group = {
+    id,
+    label: turnNumber === 0 ? 'Opening' : `Turn ${turnNumber}`,
+    turnNumber,
+    events: [] as CpuMatchBattleLogEvent[],
+  };
+  groups.push(group);
+  return group;
+}
+
+function describeBattleLogEffect(
+  effect: BattleActionResult['effects'][number],
+  state: BattleState,
+  cardNames: Readonly<Record<string, string>>,
+): string {
+  const subject = creatureSubject(
+    effect.targetSide,
+    battleCreatureName(state, effect.targetCreatureId, cardNames),
+  );
+  const definition = findEffect(state, effect.effectId);
+  const amount = Math.abs(effect.amount);
+
+  if (effect.effectType === 'damage') {
+    return `${subject} took ${amount} damage.`;
+  }
+  if (effect.effectType === 'heal') {
+    return `${subject} restored ${amount} HP.`;
+  }
+  if (definition?.modifier?.stat === 'hp') {
+    return effect.effectType === 'buff'
+      ? `${subject} restored ${amount} HP.`
+      : `${subject} lost ${amount} HP.`;
+  }
+  if (definition?.modifier?.stat === 'power') {
+    return effect.effectType === 'buff'
+      ? `${subject} restored ${amount} Power.`
+      : `${subject} lost ${amount} Power.`;
+  }
+  if (definition?.modifier?.stat === 'damage_multiplier') {
+    const sign = effect.effectType === 'buff' ? '+' : '−';
+    return `${subject} gained Damage ${sign}${amount}% for ${battleLogDuration(
+      definition.modifier.durationTurns ?? null,
+    )}.`;
+  }
+
+  return `${subject} received ${effect.effectType} ${effect.amount}.`;
+}
+
+function describeExpiredBattleLogEffect(
+  effect: BattleActionResult['expiredEffects'][number],
+  state: BattleState,
+  cardNames: Readonly<Record<string, string>>,
+): string {
+  const subject = creatureSubject(
+    effect.targetSide,
+    battleCreatureName(state, effect.targetCreatureId, cardNames),
+  );
+  const definition = findEffect(state, effect.effectId);
+
+  if (definition?.modifier?.stat === 'damage_multiplier') {
+    const sign = definition.effectType === 'buff' ? '+' : '−';
+    return `${subject} no longer has Damage ${sign}${Math.abs(
+      definition.effectValue ?? 0,
+    )}%.`;
+  }
+
+  return `${subject} no longer has an expired active effect.`;
+}
+
+function battleLogDuration(durationTurns: number | null): string {
+  if (durationTurns === null) return 'the rest of the battle';
+  return `${durationTurns} ${durationTurns === 1 ? 'turn' : 'turns'}`;
+}
+
+function battleCreatureName(
+  state: BattleState,
+  creatureId: string,
+  cardNames: Readonly<Record<string, string>>,
+): string {
+  const creature = Object.values(state.participants)
+    .flatMap((participant) => participant.creatures)
+    .find((candidate) => candidate.card.id === creatureId);
+  return (
+    cardNames[creatureId] ??
+    (creature ? `${titleCase(creature.card.affinity)} Creature` : 'Creature')
+  );
+}
+
+function battlePowerCardName(
+  state: BattleState,
+  powerCardId: string,
+  cardNames: Readonly<Record<string, string>>,
+): string {
+  const card = Object.values(state.participants)
+    .flatMap((participant) => participant.powerCards)
+    .find((candidate) => candidate.id === powerCardId);
+  return (
+    cardNames[powerCardId] ??
+    (card ? `${titleCase(card.affinity)} Power card` : 'a Power card')
+  );
+}
+
+function findBattleMove(state: BattleState, moveId: string) {
+  for (const participant of Object.values(state.participants)) {
+    for (const creature of participant.creatures) {
+      const move = creature.card.moves.find(
+        (candidate) => candidate.id === moveId,
+      );
+      if (move) return { creatureId: creature.card.id, move };
+    }
+  }
+  return null;
+}
+
+function battleSideLabel(side: 'player' | 'cpu'): string {
+  return side === 'player' ? 'Player' : 'CPU';
+}
+
+function battleSidePossessive(side: 'player' | 'cpu'): string {
+  return side === 'player' ? "Player's" : "CPU's";
+}
+
+function creatureSubject(side: 'player' | 'cpu', name: string): string {
+  return `${battleSidePossessive(side)} ${name}`;
+}
+
+function oppositeBattleSide(side: 'player' | 'cpu'): 'player' | 'cpu' {
+  return side === 'player' ? 'cpu' : 'player';
 }
 
 function toPublicState(
@@ -1593,6 +2158,7 @@ function shouldAdvanceCpu(state: BattleState): boolean {
 function assertTransitionPersistence(
   persisted: TransitionPersistenceRow | undefined,
   matchId: string,
+  expectedBaseSequence: number,
   expectedActionCount: number,
 ): asserts persisted is TransitionPersistenceRow {
   if (!persisted) {
@@ -1605,6 +2171,7 @@ function assertTransitionPersistence(
   if (
     !Number.isInteger(persisted.base_sequence) ||
     persisted.base_sequence < 0 ||
+    persisted.base_sequence !== expectedBaseSequence ||
     persisted.round_count !== 1 ||
     !persisted.round_id ||
     persisted.round_match_id !== matchId ||

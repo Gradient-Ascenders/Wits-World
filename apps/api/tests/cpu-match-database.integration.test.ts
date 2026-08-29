@@ -414,11 +414,34 @@ describe.skipIf(!runIntegrationTests)(
         submission_id: null,
         response: null,
       });
+      const logEventIds = response.battleLog.flatMap((group) =>
+        group.events.map((event) => event.id),
+      );
+      expect(logEventIds.length).toBeGreaterThan(1);
+      expect(new Set(logEventIds).size).toBe(logEventIds.length);
 
       const duplicate = await service.submitAction(input);
       const afterDuplicate = await loadActionPersistence(pool, fixture.matchId);
       expect(duplicate).toEqual(response);
       expect(afterDuplicate).toEqual(persisted);
+
+      await pool.query(
+        `update public.cpu_match_actions
+            set response = (response - 'battleLog')
+              #- '{lastAction,expiredEffects}'
+          where match_id = $1::uuid
+            and submission_id = $2::uuid`,
+        [fixture.matchId, input.submissionId],
+      );
+
+      const legacyDuplicate = await service.submitAction(input);
+      const afterLegacyDuplicate = await loadActionPersistence(
+        pool,
+        fixture.matchId,
+      );
+      expect(legacyDuplicate).toEqual(response);
+      expect(afterLegacyDuplicate.actions).toHaveLength(2);
+      expect(afterLegacyDuplicate.rounds).toHaveLength(1);
     });
 
     it('keeps sequences contiguous when a two-action round is followed by CPU replacement and a CPU move', async () => {

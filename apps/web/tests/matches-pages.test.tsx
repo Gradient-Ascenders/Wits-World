@@ -398,6 +398,12 @@ describe('authoritative CPU battle page', () => {
     expect(
       screen.getByRole('button', { name: /Knowledge Strike 1/ }),
     ).toBeEnabled();
+    const powerTab = screen.getByRole('tab', { name: /^Power/ });
+    expect(
+      document.getElementById(powerTab.getAttribute('aria-controls')!),
+    ).toBeInTheDocument();
+    await user.click(powerTab);
+    expect(powerTab).toHaveAttribute('aria-selected', 'true');
     expect(
       screen.getByRole('button', { name: /Campus Renewal 1/ }),
     ).toBeEnabled();
@@ -541,6 +547,29 @@ describe('authoritative CPU battle page', () => {
         ],
       },
     );
+    match.battleLog = [
+      {
+        events: [
+          {
+            id: '3:0',
+            kind: 'action',
+            message: 'Player used Tactical Surge.',
+            sequence: 3,
+            side: 'player',
+          },
+          {
+            id: '3:1',
+            kind: 'effect',
+            message: "CPU's Braam Sentinel lost 2 Power.",
+            sequence: 3,
+            side: 'cpu',
+          },
+        ],
+        id: 'turn-1',
+        label: 'Turn 1',
+        turnNumber: 1,
+      },
+    ];
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(matchResponse(match)));
 
     renderMatchPage();
@@ -554,6 +583,7 @@ describe('authoritative CPU battle page', () => {
         name: /Brace.*Grit.*Opponent damage −15%.*3 turns.*11 Power/i,
       }),
     ).toBeDisabled();
+    await userEvent.setup().click(screen.getByRole('tab', { name: /^Power/ }));
     const powerCard = screen.getByRole('button', {
       name: /Tactical Surge.*Wit.*8 base damage.*Restore 3 Power.*Available.*One use/i,
     });
@@ -565,7 +595,129 @@ describe('authoritative CPU battle page', () => {
     expect(screen.getByText('Damage +10% · Rest of battle')).toBeVisible();
     expect(screen.getByText('Damage −100% · 2 turns')).toBeVisible();
     expect(screen.getAllByLabelText(/Active effects on/)).toHaveLength(2);
-    expect(screen.getByText('CPU Creature lost 2 Power.')).toBeVisible();
+    expect(
+      screen.getByText('Latest outcome').closest('summary'),
+    ).toHaveTextContent(
+      "Player used Tactical Surge. CPU's Braam Sentinel lost 2 Power.",
+    );
+  });
+
+  it('renders the complete grouped authoritative log in persisted sequence order', async () => {
+    const match = activeMatch(4);
+    match.battleLog = [
+      {
+        events: [
+          {
+            id: '1:0',
+            kind: 'action',
+            message: 'Player selected Grit Creature 3.',
+            sequence: 1,
+            side: 'player',
+          },
+          {
+            id: '2:0',
+            kind: 'action',
+            message: 'CPU revealed Mystic Creature 1.',
+            sequence: 2,
+            side: 'cpu',
+          },
+          {
+            id: '2:1',
+            kind: 'turn',
+            message: 'Turn 1 began. Player has the first action.',
+            sequence: 2,
+            side: 'player',
+          },
+        ],
+        id: 'opening',
+        label: 'Opening',
+        turnNumber: 0,
+      },
+      {
+        events: [
+          {
+            id: '3:0',
+            kind: 'action',
+            message: 'Player used Grit Power 2.',
+            sequence: 3,
+            side: 'player',
+          },
+          {
+            id: '3:1',
+            kind: 'effect',
+            message: "CPU's Mystic Creature 1 took 14 damage.",
+            sequence: 3,
+            side: 'cpu',
+          },
+          {
+            id: '3:2',
+            kind: 'effect',
+            message: "Player's Grit Creature 3 restored 6 HP.",
+            sequence: 3,
+            side: 'player',
+          },
+          {
+            id: '3:3',
+            kind: 'effect_expired',
+            message: "Player's Grit Creature 3 no longer has Damage +10%.",
+            sequence: 3,
+            side: 'player',
+          },
+        ],
+        id: 'turn-1',
+        label: 'Turn 1',
+        turnNumber: 1,
+      },
+      {
+        events: [
+          {
+            id: '4:0',
+            kind: 'action',
+            message: "CPU's Mystic Creature 1 used Quiet Counter.",
+            sequence: 4,
+            side: 'cpu',
+          },
+          {
+            id: '4:1',
+            kind: 'defeat',
+            message: "Player's Grit Creature 3 was defeated.",
+            sequence: 4,
+            side: 'player',
+          },
+        ],
+        id: 'turn-2',
+        label: 'Turn 2',
+        turnNumber: 2,
+      },
+    ];
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(matchResponse(match)));
+
+    renderMatchPage();
+
+    const summary = await screen.findByText('Latest outcome');
+    expect(summary.closest('summary')).toHaveTextContent(
+      "CPU's Mystic Creature 1 used Quiet Counter. Player's Grit Creature 3 was defeated.",
+    );
+    await userEvent.setup().click(summary.closest('summary')!);
+    const log = screen.getByRole('log', {
+      name: 'Complete authoritative battle log',
+    });
+    expect(log).toHaveAttribute('tabindex', '0');
+    expect(
+      Array.from(log.querySelectorAll('.battle-log__event')).map((event) =>
+        event.textContent?.trim(),
+      ),
+    ).toEqual([
+      'Player selected Grit Creature 3.',
+      'CPU revealed Mystic Creature 1.',
+      'Turn 1 began. Player has the first action.',
+      'Player used Grit Power 2.',
+      "CPU's Mystic Creature 1 took 14 damage.",
+      "Player's Grit Creature 3 restored 6 HP.",
+      "Player's Grit Creature 3 no longer has Damage +10%.",
+      "CPU's Mystic Creature 1 used Quiet Counter.",
+      "Player's Grit Creature 3 was defeated.",
+    ]);
   });
 
   it('prevents duplicate action submission while the server request is in flight', async () => {
@@ -626,9 +778,9 @@ describe('authoritative CPU battle page', () => {
     expect(
       await screen.findByRole('button', { name: /Knowledge Strike 1/ }),
     ).toBeEnabled();
-    expect(
-      within(screen.getByText('Match version').parentElement!).getByText('7'),
-    ).toBeVisible();
+    expect(screen.getByText('Match version').parentElement).toHaveTextContent(
+      '7',
+    );
   });
 
   it('recovers a stale action without replaying it and rejects older versions', async () => {
@@ -651,9 +803,9 @@ describe('authoritative CPU battle page', () => {
     expect(
       await screen.findByText('Your turn. Match version 4.'),
     ).toBeInTheDocument();
-    expect(
-      within(screen.getByText('Match version').parentElement!).getByText('4'),
-    ).toBeVisible();
+    expect(screen.getByText('Match version').parentElement).toHaveTextContent(
+      '4',
+    );
     expect(move).toBeEnabled();
     expect(move).toHaveFocus();
     expect(
@@ -731,9 +883,13 @@ describe('authoritative CPU battle page', () => {
     expect(
       screen.queryByRole('button', { name: /Knowledge Strike/ }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('link', { name: 'Open saved match history' }),
-    ).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Match history' })).toBeVisible();
+    const finalAction = screen.getByText('Latest outcome').closest('summary');
+    expect(finalAction).toHaveTextContent(
+      "Player's Wit Creature used Knowledge Strike 1. CPU's Grit Creature was defeated.",
+    );
+    await user.click(finalAction!);
+    expect(screen.getByRole('log')).toHaveTextContent('Player won the match.');
   });
 
   it('loads persisted completed detail and offers reauthentication after API 401', async () => {

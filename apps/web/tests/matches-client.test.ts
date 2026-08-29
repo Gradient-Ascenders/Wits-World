@@ -64,6 +64,117 @@ describe('CPU match API client', () => {
     );
   });
 
+  it('preserves the authoritative battle-log order across detail refreshes', async () => {
+    const match = activeMatch(3);
+    match.battleLog = [
+      {
+        events: [
+          {
+            id: '1:0',
+            kind: 'action',
+            message: 'Player selected Grit Creature 3.',
+            sequence: 1,
+            side: 'player',
+          },
+          {
+            id: '2:0',
+            kind: 'action',
+            message: 'CPU revealed Mystic Creature 1.',
+            sequence: 2,
+            side: 'cpu',
+          },
+        ],
+        id: 'opening',
+        label: 'Opening',
+        turnNumber: 0,
+      },
+      {
+        events: [
+          {
+            id: '3:0',
+            kind: 'action',
+            message: 'Player used Grit Power 2.',
+            sequence: 3,
+            side: 'player',
+          },
+          {
+            id: '3:1',
+            kind: 'effect',
+            message: "CPU's Mystic Creature 1 took 14 damage.",
+            sequence: 3,
+            side: 'cpu',
+          },
+        ],
+        id: 'turn-1',
+        label: 'Turn 1',
+        turnNumber: 1,
+      },
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(matchResponse(match))
+        .mockResolvedValueOnce(matchResponse(match)),
+    );
+
+    const first = await getCpuMatch({ ...options(), matchId: MATCH_ID });
+    const refreshed = await getCpuMatch({ ...options(), matchId: MATCH_ID });
+
+    expect(first.battleLog.flatMap(({ events }) => events)).toEqual(
+      refreshed.battleLog.flatMap(({ events }) => events),
+    );
+    expect(first.battleLog[1]?.events.map(({ sequence }) => sequence)).toEqual([
+      3, 3,
+    ]);
+  });
+
+  it('rejects duplicate or non-chronological battle-log events', async () => {
+    const duplicate = activeMatch(3);
+    duplicate.battleLog = [
+      {
+        events: [
+          {
+            id: '1:0',
+            kind: 'action',
+            message: 'Player acted.',
+            sequence: 1,
+            side: 'player',
+          },
+          {
+            id: '1:0',
+            kind: 'effect',
+            message: 'An effect resolved.',
+            sequence: 1,
+            side: 'cpu',
+          },
+        ],
+        id: 'turn-1',
+        label: 'Turn 1',
+        turnNumber: 1,
+      },
+    ];
+    const reversed = structuredClone(duplicate);
+    reversed.battleLog[0]!.events = [
+      { ...duplicate.battleLog[0]!.events[0]!, id: '2:0', sequence: 2 },
+      { ...duplicate.battleLog[0]!.events[1]!, id: '1:0', sequence: 1 },
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(matchResponse(duplicate))
+        .mockResolvedValueOnce(matchResponse(reversed)),
+    );
+
+    await expect(
+      getCpuMatch({ ...options(), matchId: MATCH_ID }),
+    ).rejects.toMatchObject({ failure: 'unavailable' });
+    await expect(
+      getCpuMatch({ ...options(), matchId: MATCH_ID }),
+    ).rejects.toMatchObject({ failure: 'unavailable' });
+  });
+
   it('creates only after active reconciliation and submits the exact versioned intent', async () => {
     const created = activeMatch(0);
     const transitioned = activeMatch(1);

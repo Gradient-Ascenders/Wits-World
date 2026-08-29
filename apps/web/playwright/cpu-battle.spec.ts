@@ -1,4 +1,10 @@
-import { expect, test, type Page, type Route } from '@playwright/test';
+import {
+  expect,
+  test,
+  type Locator,
+  type Page,
+  type Route,
+} from '@playwright/test';
 import path from 'node:path';
 
 import { buildStarterCards } from '../tests/fixtures/cards';
@@ -81,6 +87,34 @@ test('completes a mocked authoritative CPU match through the production UI', asy
       name: 'Brace',
       powerCost: 11,
     },
+    {
+      effects: [
+        {
+          damageMultiplier: null,
+          effectType: 'damage',
+          effectValue: 9,
+          modifier: null,
+        },
+      ],
+      id: '00000000-0000-4000-8000-000000001298',
+      moveType: 'spirit',
+      name: 'Hidden Angle',
+      powerCost: 2,
+    },
+    {
+      effects: [
+        {
+          damageMultiplier: null,
+          effectType: 'damage',
+          effectValue: 8,
+          modifier: null,
+        },
+      ],
+      id: '00000000-0000-4000-8000-000000001297',
+      moveType: 'grit',
+      name: 'Stone Rhythm',
+      powerCost: 1,
+    },
   ];
   opening.state.cpu.activeCreature!.name = 'Braam Sentinel';
   opening.state.cpu.activeCreature!.activeModifiers = [
@@ -117,9 +151,41 @@ test('completes a mocked authoritative CPU match through the production UI', asy
   };
   opening.state.legalActions = [
     { moveId: openingPlayer.moves[0]!.id, type: 'use_move' },
+    { moveId: openingPlayer.moves[2]!.id, type: 'use_move' },
+    { moveId: openingPlayer.moves[3]!.id, type: 'use_move' },
     {
       powerCardId: opening.state.player.powerCards[0]!.id,
       type: 'use_power_card',
+    },
+  ];
+  opening.battleLog = [
+    {
+      events: [
+        {
+          id: '1:0',
+          kind: 'action',
+          message: 'Player selected Campus Scholar.',
+          sequence: 1,
+          side: 'player',
+        },
+        {
+          id: '2:0',
+          kind: 'action',
+          message: 'CPU revealed Braam Sentinel.',
+          sequence: 2,
+          side: 'cpu',
+        },
+        {
+          id: '2:1',
+          kind: 'turn',
+          message: 'Turn 1 began. Player has the first action.',
+          sequence: 2,
+          side: 'player',
+        },
+      ],
+      id: 'opening',
+      label: 'Opening',
+      turnNumber: 0,
     },
   ];
   const afterPower = activeMatch(2);
@@ -137,8 +203,84 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     powerCardId: afterPower.state.player.powerCards[0]!.id,
     type: 'use_power_card',
   });
+  afterPower.battleLog = [
+    ...structuredClone(opening.battleLog),
+    {
+      events: [
+        {
+          id: '3:0',
+          kind: 'action',
+          message: 'Player used Tactical Surge.',
+          sequence: 3,
+          side: 'player',
+        },
+        {
+          id: '3:1',
+          kind: 'effect',
+          message: "CPU's Braam Sentinel took 8 damage.",
+          sequence: 3,
+          side: 'cpu',
+        },
+        {
+          id: '3:2',
+          kind: 'effect',
+          message: "Player's Campus Scholar restored 3 Power.",
+          sequence: 3,
+          side: 'player',
+        },
+        {
+          id: '3:3',
+          kind: 'turn',
+          message: 'Turn 1 ended. CPU is next.',
+          sequence: 3,
+          side: 'cpu',
+        },
+      ],
+      id: 'turn-1',
+      label: 'Turn 1',
+      turnNumber: 1,
+    },
+  ];
 
   const replacement = buildMatch({
+    battleLog: [
+      ...structuredClone(afterPower.battleLog),
+      {
+        events: [
+          {
+            id: '4:0',
+            kind: 'action',
+            message: "Player's Campus Scholar used Measured Strike.",
+            sequence: 4,
+            side: 'player',
+          },
+          {
+            id: '5:0',
+            kind: 'action',
+            message: "CPU's Braam Sentinel used Quiet Counter.",
+            sequence: 5,
+            side: 'cpu',
+          },
+          {
+            id: '5:1',
+            kind: 'defeat',
+            message: "Player's Campus Scholar was defeated.",
+            sequence: 5,
+            side: 'player',
+          },
+          {
+            id: '5:2',
+            kind: 'turn',
+            message: 'Turn 2 ended. Player must choose a replacement.',
+            sequence: 5,
+            side: 'player',
+          },
+        ],
+        id: 'turn-2',
+        label: 'Turn 2',
+        turnNumber: 2,
+      },
+    ],
     lastAction: actionResult(
       {
         moveId: afterPower.state.cpu.activeCreature!.moves[0]!.id,
@@ -179,12 +321,60 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     creatureId: replacementCreature.id,
     type: 'select_replacement',
   });
+  continued.battleLog = [
+    ...structuredClone(replacement.battleLog),
+    {
+      events: [
+        {
+          id: '6:0',
+          kind: 'action',
+          message: 'Player sent out Wit Creature 2 as a replacement.',
+          sequence: 6,
+          side: 'player',
+        },
+      ],
+      id: 'turn-3',
+      label: 'Turn 3',
+      turnNumber: 3,
+    },
+  ];
   const reconciled = {
     ...continued,
     state: { ...continued.state, turnNumber: 4 },
     version: 5,
   } satisfies CpuMatch;
   const completed = completedMatch(6);
+  completed.battleLog = [
+    ...structuredClone(continued.battleLog),
+    {
+      events: [
+        {
+          id: '7:0',
+          kind: 'action',
+          message: "Player's Wit Creature 2 used Knowledge Strike 2.",
+          sequence: 7,
+          side: 'player',
+        },
+        {
+          id: '7:1',
+          kind: 'defeat',
+          message: "CPU's Braam Sentinel was defeated.",
+          sequence: 7,
+          side: 'cpu',
+        },
+        {
+          id: '7:2',
+          kind: 'result',
+          message: 'Player won the match.',
+          sequence: 7,
+          side: 'player',
+        },
+      ],
+      id: 'turn-4',
+      label: 'Turn 4',
+      turnNumber: 4,
+    },
+  ];
 
   const touchContext = await browser.newContext({
     ...(baseURL ? { baseURL } : {}),
@@ -266,6 +456,41 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     ).toBeVisible();
     await page.getByRole('button', { name: 'Start CPU match' }).tap();
     await expect(page).toHaveURL(`/matches/${MATCH_ID}`);
+    await expect(
+      page.getByRole('heading', { name: 'Choose your opening Creature' }),
+    ).toBeVisible();
+    await expect(page.locator('.battle-turn-indicator')).toHaveCount(0);
+
+    for (const viewport of [
+      { columns: 1, height: 844, label: '390', width: 390 },
+      { columns: 1, height: 932, label: '430', width: 430 },
+      { columns: 2, height: 1024, label: 'tablet-768', width: 768 },
+      { columns: 3, height: 800, label: 'desktop-1280', width: 1280 },
+      { columns: 3, height: 1000, label: 'wide-1600', width: 1600 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await expectNoHorizontalOverflow(page);
+      await expectCreatureChoiceColumns(page, viewport.columns);
+      if (viewport.width >= 1024) {
+        await expectBattleStageFirstDesktopLayout(page);
+      }
+      if (viewport.width < 1200) {
+        await expect(page.locator('.site-header')).toBeHidden();
+      } else {
+        await expect(page.locator('.site-header')).toBeVisible();
+      }
+      await page.locator('.battle-page').screenshot({
+        path: path.join(
+          screenshotsDirectory,
+          `${viewport.label}-opening-selection.png`,
+        ),
+        style: '.skip-link, .primary-navigation { display: none !important; }',
+      });
+    }
+
+    await page.setViewportSize({ height: 844, width: 390 });
+    await expectBattleViewportBound(page);
+    await expectActionContentScrollsWithinTray(page);
 
     const openingChoice = page.getByRole('button', {
       name: /Choose Creature\s*Wit Creature 1/,
@@ -276,6 +501,20 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     await expect(
       page.getByRole('heading', { name: 'Your turn' }),
     ).toBeFocused();
+    await expectBattleViewportBound(page);
+    const battleLogSummary = page.locator('.battle-log > summary');
+    await expect(battleLogSummary).toContainText('CPU revealed Braam Sentinel');
+    await battleLogSummary.tap();
+    const completeLog = page.getByRole('log', {
+      name: 'Complete authoritative battle log',
+    });
+    await expect(completeLog).toBeVisible();
+    await expect(completeLog).toContainText('Player selected Campus Scholar.');
+    await expect(completeLog).toContainText(
+      'Turn 1 began. Player has the first action.',
+    );
+    await battleLogSummary.tap();
+    await expect(completeLog).toBeHidden();
 
     const zeroCostMove = page.getByRole('button', {
       name: /Measured Strike.*Basic.*7 base damage.*0 Power/i,
@@ -286,6 +525,12 @@ test('completes a mocked authoritative CPU match through the production UI', asy
         name: /Brace.*Opponent damage −15%.*3 turns.*11 Power/i,
       }),
     ).toBeDisabled();
+    const history = page.getByRole('link', { name: 'Match history' });
+    const actions = page.locator('.battle-actions');
+    const historyBeforeTabChange = await history.boundingBox();
+    const actionHeightBeforeTabChange = (await actions.boundingBox())?.height;
+
+    await page.getByRole('tab', { name: /^Power/ }).click();
     await expect(
       page.getByRole('button', {
         name: /Tactical Surge.*8 base damage.*Restore 3 Power.*One use/i,
@@ -294,6 +539,50 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     await expect(page.getByText('Damage +10% · 2 turns')).toBeVisible();
     await expect(page.getByText('Damage +10% · Rest of battle')).toBeVisible();
     await expect(page.getByText('Damage −100% · 2 turns')).toBeVisible();
+    for (const viewport of [
+      { height: 844, label: '390', width: 390 },
+      { height: 1024, label: 'tablet-768', width: 768 },
+      { height: 800, label: 'desktop-1280', width: 1280 },
+      { height: 1000, label: 'wide-1600', width: 1600 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await expectNoHorizontalOverflow(page);
+      await expectControlsContainTheirContent(page);
+      if (viewport.width >= 1024) {
+        await expectBattleStageFirstDesktopLayout(page);
+      }
+      await page.locator('.battle-page').screenshot({
+        path: path.join(
+          screenshotsDirectory,
+          `${viewport.label}-power-actions.png`,
+        ),
+        style: '.skip-link, .primary-navigation { display: none !important; }',
+      });
+    }
+    await page.setViewportSize({ height: 844, width: 390 });
+    const historyAfterTabChange = await history.boundingBox();
+    const actionHeightAfterTabChange = (await actions.boundingBox())?.height;
+    expect(historyBeforeTabChange).not.toBeNull();
+    expect(historyAfterTabChange).not.toBeNull();
+    expect(historyAfterTabChange!.x).toBeCloseTo(historyBeforeTabChange!.x, 0);
+    expect(historyAfterTabChange!.y).toBeCloseTo(historyBeforeTabChange!.y, 0);
+    expect(actionHeightAfterTabChange).toBeCloseTo(
+      actionHeightBeforeTabChange ?? 0,
+      0,
+    );
+
+    const powerTab = page.getByRole('tab', { name: /^Power/ });
+    await powerTab.focus();
+    await page.keyboard.press('ArrowLeft');
+    await expect(page.getByRole('tab', { name: /^Moves/ })).toBeFocused();
+    await expect(page.getByRole('tab', { name: /^Moves/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await page.keyboard.press('ArrowLeft');
+    await expect(page.getByRole('tab', { name: /^Power/ })).toBeFocused();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByRole('tab', { name: /^Moves/ })).toBeFocused();
     await zeroCostMove.focus();
     await expect(zeroCostMove).toBeFocused();
     expect(
@@ -304,7 +593,10 @@ test('completes a mocked authoritative CPU match through the production UI', asy
 
     for (const viewport of [
       { height: 844, label: '390', width: 390 },
+      { height: 932, label: '430', width: 430 },
+      { height: 1024, label: 'tablet-768', width: 768 },
       { height: 800, label: 'desktop-1280', width: 1280 },
+      { height: 1000, label: 'wide-1600', width: 1600 },
     ]) {
       await page.setViewportSize({
         height: viewport.height,
@@ -312,6 +604,14 @@ test('completes a mocked authoritative CPU match through the production UI', asy
       });
       await expectNoHorizontalOverflow(page);
       await expectControlsContainTheirContent(page);
+      if (viewport.width >= 1024) {
+        await expectBattleStageFirstDesktopLayout(page);
+      }
+      if (viewport.width < 1200) {
+        await expect(page.locator('.site-header')).toBeHidden();
+      } else {
+        await expect(page.locator('.site-header')).toBeVisible();
+      }
       await page.locator('.battle-page').screenshot({
         path: path.join(
           screenshotsDirectory,
@@ -322,11 +622,13 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     }
 
     await page.setViewportSize({ height: 844, width: 390 });
+    await page.getByRole('tab', { name: /^Power/ }).tap();
     await page.getByRole('button', { name: /Tactical Surge/ }).tap();
-    await expect(
-      page.getByRole('heading', { name: 'Player used a Power card' }),
-    ).toBeVisible();
+    await expect(page.locator('.battle-log > summary')).toContainText(
+      'Player used Tactical Surge',
+    );
 
+    await page.getByRole('tab', { name: /^Moves/ }).tap();
     const normalMove = page.getByRole('button', {
       name: /Knowledge Strike 1/,
     });
@@ -335,11 +637,36 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     await expect(
       page.getByRole('heading', { name: 'Replacement required' }),
     ).toBeFocused();
+    await expect(page.locator('.battle-turn-indicator')).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
-    await page.locator('.battle-page').screenshot({
-      path: path.join(screenshotsDirectory, '390-replacement.png'),
-      style: '.skip-link, .primary-navigation { display: none !important; }',
-    });
+    await expectBattleViewportBound(page);
+    await expectActionContentScrollsWithinTray(page);
+    await expectVerticallySeparated(
+      page.locator('.battle-actions'),
+      page.locator('.battle-side-rail'),
+    );
+    for (const viewport of [
+      { columns: 1, height: 844, label: '390', width: 390 },
+      { columns: 2, height: 1024, label: 'tablet-768', width: 768 },
+      { columns: 3, height: 800, label: 'desktop-1280', width: 1280 },
+      { columns: 3, height: 1000, label: 'wide-1600', width: 1600 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await expectNoHorizontalOverflow(page);
+      await expectControlsContainTheirContent(page);
+      await expectCreatureChoiceColumns(page, viewport.columns);
+      if (viewport.width >= 1024) {
+        await expectBattleStageFirstDesktopLayout(page);
+      }
+      await page.locator('.battle-page').screenshot({
+        path: path.join(
+          screenshotsDirectory,
+          `${viewport.label}-replacement.png`,
+        ),
+        style: '.skip-link, .primary-navigation { display: none !important; }',
+      });
+    }
+    await page.setViewportSize({ height: 844, width: 390 });
 
     const replacementControl = page.getByRole('button', {
       name: /Use as replacement\s*Wit Creature 2/,
@@ -358,9 +685,58 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     await expect(
       page.getByRole('heading', { name: 'Victory — match saved' }),
     ).toBeVisible();
-    await expectNoHorizontalOverflow(page);
+    for (const viewport of [
+      { height: 844, label: '390', width: 390 },
+      { height: 1024, label: 'tablet-768', width: 768 },
+      { height: 800, label: 'desktop-1280', width: 1280 },
+      { height: 1000, label: 'wide-1600', width: 1600 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await expectNoHorizontalOverflow(page);
+      if (viewport.width >= 1024) {
+        await expectCompletedSideRailLayout(page);
+      }
+      await page.locator('.battle-page').screenshot({
+        path: path.join(
+          screenshotsDirectory,
+          `${viewport.label}-completed-battle.png`,
+        ),
+        style: '.skip-link, .primary-navigation { display: none !important; }',
+      });
+    }
+    await page.setViewportSize({ height: 844, width: 390 });
 
-    await page.getByRole('link', { name: 'Open saved match history' }).tap();
+    const completedLogSummary = page.locator('.battle-log > summary');
+    await expect(completedLogSummary).toContainText(
+      "Player's Wit Creature 2 used Knowledge Strike 2",
+    );
+    await completedLogSummary.tap();
+    const completedLog = page.getByRole('log', {
+      name: 'Complete authoritative battle log',
+    });
+    await expect(completedLog).toContainText('Player won the match.');
+    await expect
+      .poll(() =>
+        completedLog.evaluate(
+          (element) => element.clientHeight / window.innerHeight,
+        ),
+      )
+      .toBeLessThanOrEqual(0.5);
+    await page.locator('.battle-page').screenshot({
+      path: path.join(screenshotsDirectory, '390-battle-log.png'),
+      style: '.skip-link, .primary-navigation { display: none !important; }',
+    });
+    expect(
+      await completedLog.evaluate(
+        (element) =>
+          Math.abs(
+            element.scrollHeight - element.clientHeight - element.scrollTop,
+          ) <= 2,
+      ),
+    ).toBe(true);
+    await completedLogSummary.tap();
+
+    await page.getByRole('link', { name: 'Match history' }).tap();
     await expect(
       page.getByRole('heading', { name: 'Completed CPU matches' }),
     ).toBeVisible();
@@ -368,10 +744,24 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     await expect(
       page.getByRole('heading', { name: 'Victory — match saved' }),
     ).toBeVisible();
+    await page.locator('.battle-log > summary').tap();
+    await expect(
+      page.getByRole('log', { name: 'Complete authoritative battle log' }),
+    ).toContainText('Player selected Campus Scholar.');
+    await expect(
+      page.getByRole('log', { name: 'Complete authoritative battle log' }),
+    ).toContainText('Player won the match.');
     await page.reload();
     await expect(
       page.getByRole('heading', { name: 'Victory — match saved' }),
     ).toBeVisible();
+    await page.locator('.battle-log > summary').tap();
+    await expect(
+      page.getByRole('log', { name: 'Complete authoritative battle log' }),
+    ).toContainText('Player selected Campus Scholar.');
+    await expect(
+      page.getByRole('log', { name: 'Complete authoritative battle log' }),
+    ).toContainText('Player won the match.');
 
     expect(submittedBodies).toHaveLength(6);
     expect(submittedBodies).toEqual(
@@ -437,6 +827,171 @@ test('offers the owned active CPU match for explicit resume', async ({
   await expect(page).toHaveURL(`/matches/${MATCH_ID}`);
   await expect(page.getByRole('heading', { name: 'Your turn' })).toBeVisible();
   expect(activeLookups).toBe(1);
+});
+
+test('keeps processing, timeout, and error states focused with long actions', async ({
+  page,
+}) => {
+  const playerTurn = activeMatch(8);
+  const playerCreature = playerTurn.state.player.creatures[0]!;
+  playerCreature.name =
+    'The exceptionally observant scholar of the Great Hall archives';
+  playerCreature.moves[0]!.name =
+    'Carefully reason through every clue in the campus archive';
+  playerCreature.moves[0]!.effects = [
+    {
+      damageMultiplier: 1.25,
+      effectType: 'buff',
+      effectValue: 25,
+      modifier: {
+        durationTurns: 3,
+        operation: 'multiply',
+        stat: 'damage_multiplier',
+      },
+    },
+  ];
+  playerTurn.state.player.powerCards[0]!.name =
+    'A very long institutional memory Power card';
+  playerTurn.lastAction = actionResult({ type: 'timeout' }, { side: 'cpu' });
+  playerTurn.battleLog = [
+    {
+      events: [
+        {
+          id: '8:0',
+          kind: 'action',
+          message: "CPU's turn timed out.",
+          sequence: 8,
+          side: 'cpu',
+        },
+        {
+          id: '8:1',
+          kind: 'turn',
+          message: 'Turn 1 ended. Player is next.',
+          sequence: 8,
+          side: 'player',
+        },
+      ],
+      id: 'turn-1',
+      label: 'Turn 1',
+      turnNumber: 1,
+    },
+  ];
+
+  const cpuTurn = activeMatch(9);
+  cpuTurn.state.currentSide = 'cpu';
+  cpuTurn.state.legalActions = [];
+  cpuTurn.lastAction = actionResult({ type: 'timeout' }, { side: 'cpu' });
+  cpuTurn.battleLog = structuredClone(playerTurn.battleLog);
+
+  let current = playerTurn;
+  let releaseAction: (() => void) | undefined;
+  const actionGate = new Promise<void>((resolve) => {
+    releaseAction = resolve;
+  });
+
+  await routeCurrentPlayer(page);
+  await page.route('**/api/v1/matches/**', async (route) => {
+    if (new URL(route.request().url()).pathname.endsWith('/actions')) {
+      await actionGate;
+      await json(route, problem('CPU_MATCH_UNAVAILABLE', 503), 503);
+      return;
+    }
+    await json(route, response(current));
+  });
+
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto(`/matches/${MATCH_ID}`);
+  await expect(page.locator('.primary-navigation--mobile')).toHaveCount(0);
+  await expect(page.locator('.site-footer')).toHaveCount(0);
+  await expect(page.locator('.site-header')).toBeHidden();
+  await expect(page.locator('.battle-log > summary')).toContainText(
+    "CPU's turn timed out",
+  );
+  await expectNoHorizontalOverflow(page);
+  await expectControlsContainTheirContent(page);
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  expect(
+    await page.locator('.battle-log').evaluate((element) => {
+      const duration = getComputedStyle(element).animationDuration;
+      return duration.endsWith('ms')
+        ? Number.parseFloat(duration)
+        : Number.parseFloat(duration) * 1000;
+    }),
+  ).toBeLessThanOrEqual(1);
+
+  const battleDetails = page.locator('.battle-details > summary');
+  await battleDetails.click();
+  await expect(page.getByText('Match version', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('Server deadline', { exact: true }),
+  ).toBeVisible();
+  await page.locator('.battle-page').screenshot({
+    path: path.join(screenshotsDirectory, '390-battle-details.png'),
+    style: '.skip-link, .primary-navigation { display: none !important; }',
+  });
+  await page.keyboard.press('Escape');
+  await expect(page.getByText('Match version', { exact: true })).toBeHidden();
+  await expect(battleDetails).toBeFocused();
+
+  const hpBefore = await page
+    .locator('.combatant--player .combatant__meter strong')
+    .textContent();
+  const longMove = page.getByRole('button', {
+    name: /Carefully reason through every clue/,
+  });
+  await longMove.click();
+  await expect(
+    page.getByText('Waiting for server', { exact: true }),
+  ).toBeVisible();
+  await expect(longMove).toBeDisabled();
+  await expect(
+    page.locator('.combatant--player .combatant__meter strong'),
+  ).toHaveText(hpBefore ?? '');
+
+  releaseAction?.();
+  await expect(page.getByRole('alert')).toContainText('Action not applied');
+  await expect(page.getByRole('alert')).toBeFocused();
+
+  current = cpuTurn;
+  await page.getByRole('button', { name: 'Reload match state' }).click();
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'CPU turn resolving' }),
+  ).toBeVisible();
+  await expect(page.getByText('CPU acting', { exact: true })).toBeVisible();
+  await expect(page.locator('.battle-action-control').first()).toBeDisabled();
+  await expectNoHorizontalOverflow(page);
+  await expectBattleViewportBound(page);
+  await expectVerticallySeparated(
+    page.locator('.battle-actions'),
+    page.locator('.battle-side-rail'),
+  );
+  await page.locator('.battle-page').screenshot({
+    path: path.join(screenshotsDirectory, '390-cpu-turn.png'),
+    style: '.skip-link, .primary-navigation { display: none !important; }',
+  });
+
+  for (const viewport of [
+    { height: 1024, label: 'tablet-768', width: 768 },
+    { height: 800, label: 'desktop-1280', width: 1280 },
+    { height: 1000, label: 'wide-1600', width: 1600 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await expectNoHorizontalOverflow(page);
+    await expectControlsContainTheirContent(page);
+    if (viewport.width >= 1024) {
+      await expectBattleStageFirstDesktopLayout(page);
+    }
+    if (viewport.width < 1200) {
+      await expect(page.locator('.site-header')).toBeHidden();
+    } else {
+      await expect(page.locator('.site-header')).toBeVisible();
+    }
+    await page.locator('.battle-page').screenshot({
+      path: path.join(screenshotsDirectory, `${viewport.label}-cpu-turn.png`),
+      style: '.skip-link, .primary-navigation { display: none !important; }',
+    });
+  }
 });
 
 test('renders recent results and starts from the selected deck dashboard', async ({
@@ -640,7 +1195,7 @@ async function expectNoHorizontalOverflow(page: Page) {
 
 async function expectControlsContainTheirContent(page: Page) {
   const controls = await page
-    .locator('.battle-action-control')
+    .locator('.battle-action-control, .creature-choice-control')
     .evaluateAll((elements) =>
       elements.map((element) => ({
         clientHeight: element.clientHeight,
@@ -653,6 +1208,120 @@ async function expectControlsContainTheirContent(page: Page) {
     expect(control.scrollWidth).toBeLessThanOrEqual(control.clientWidth);
     expect(control.scrollHeight).toBeLessThanOrEqual(control.clientHeight);
   }
+}
+
+async function expectCreatureChoiceColumns(page: Page, expected: number) {
+  const controls = page.locator('.creature-choice-control');
+  await expect(controls).toHaveCount(3);
+  const leftEdges = await controls.evaluateAll((elements) =>
+    elements.map((element) => Math.round(element.getBoundingClientRect().x)),
+  );
+  expect(new Set(leftEdges).size).toBe(expected);
+}
+
+async function expectBattleStageFirstDesktopLayout(page: Page) {
+  const stage = await page.locator('.battle-stage').boundingBox();
+  const actions = await page.locator('.battle-actions').boundingBox();
+  const rail = await page.locator('.battle-side-rail').boundingBox();
+  expect(stage).not.toBeNull();
+  expect(actions).not.toBeNull();
+  expect(rail).not.toBeNull();
+  expect(actions!.x).toBeCloseTo(stage!.x, 0);
+  expect(actions!.width).toBeCloseTo(stage!.width, 0);
+  expect(actions!.y).toBeGreaterThanOrEqual(stage!.y + stage!.height);
+  expect(rail!.x).toBeGreaterThanOrEqual(stage!.x + stage!.width - 8);
+  expect(rail!.y).toBeCloseTo(stage!.y, 0);
+  expect(actions!.y + actions!.height).toBeCloseTo(rail!.y + rail!.height, 0);
+  expect(stage!.width).toBeGreaterThan(rail!.width * 2);
+  const actionContent = await page
+    .locator('.battle-action-content')
+    .evaluate((element) => ({
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+    }));
+  expect(actionContent.scrollHeight).toBeLessThanOrEqual(
+    actionContent.clientHeight + 1,
+  );
+
+  const actionSwitch = page.locator('.battle-action-switch');
+  if ((await actionSwitch.count()) > 0) {
+    const switchBox = await actionSwitch.boundingBox();
+    const tabBoxes = await actionSwitch.getByRole('tab').evaluateAll((tabs) =>
+      tabs.map((tab) => {
+        const box = tab.getBoundingClientRect();
+        return { height: box.height, y: box.y };
+      }),
+    );
+    expect(switchBox).not.toBeNull();
+    expect(tabBoxes).toHaveLength(2);
+    const [firstTabBox, secondTabBox] = tabBoxes;
+    if (!firstTabBox || !secondTabBox) {
+      throw new Error('Expected both action tabs to have layout boxes.');
+    }
+    expect(
+      Math.abs(firstTabBox.height - secondTabBox.height),
+    ).toBeLessThanOrEqual(1);
+    const topInset = firstTabBox.y - switchBox!.y;
+    const bottomInset =
+      switchBox!.y + switchBox!.height - secondTabBox.y - secondTabBox.height;
+    expect(Math.abs(topInset - bottomInset)).toBeLessThanOrEqual(1);
+
+    if ((await page.locator('.battle-action-guidance').count()) === 0) {
+      const contentBox = await page
+        .locator('.battle-action-browser .battle-action-content')
+        .boundingBox();
+      const activePanelBox = await page
+        .locator('.battle-action-content [role="tabpanel"]:visible')
+        .boundingBox();
+      expect(contentBox).not.toBeNull();
+      expect(activePanelBox).not.toBeNull();
+      const contentCentre = contentBox!.y + contentBox!.height / 2;
+      const activePanelCentre = activePanelBox!.y + activePanelBox!.height / 2;
+      expect(Math.abs(contentCentre - activePanelCentre)).toBeLessThanOrEqual(
+        1,
+      );
+    }
+  }
+
+  await expect(
+    page.getByRole('log', { name: 'Complete authoritative battle log' }),
+  ).toBeVisible();
+}
+
+async function expectCompletedSideRailLayout(page: Page) {
+  const result = await page.locator('.completed-match').boundingBox();
+  const rail = await page.locator('.battle-side-rail').boundingBox();
+  expect(result).not.toBeNull();
+  expect(rail).not.toBeNull();
+  expect(rail!.x).toBeGreaterThanOrEqual(result!.x + result!.width);
+  expect(rail!.y).toBeCloseTo(result!.y, 0);
+  expect(result!.width).toBeGreaterThan(rail!.width * 2);
+}
+
+async function expectBattleViewportBound(page: Page) {
+  const sizes = await page.evaluate(() => ({
+    documentHeight: document.documentElement.scrollHeight,
+    viewportHeight: window.innerHeight,
+  }));
+  expect(sizes.documentHeight).toBeLessThanOrEqual(sizes.viewportHeight + 1);
+}
+
+async function expectActionContentScrollsWithinTray(page: Page) {
+  const sizes = await page
+    .locator('.battle-action-content')
+    .evaluate((node) => ({
+      clientHeight: node.clientHeight,
+      scrollHeight: node.scrollHeight,
+    }));
+  expect(sizes.scrollHeight).toBeGreaterThan(sizes.clientHeight);
+}
+
+async function expectVerticallySeparated(upper: Locator, lower: Locator) {
+  const upperBox = await upper.boundingBox();
+  const lowerBox = await lower.boundingBox();
+  expect(upperBox).not.toBeNull();
+  expect(lowerBox).not.toBeNull();
+  expect(upperBox!.y + upperBox!.height).toBeLessThanOrEqual(lowerBox!.y);
 }
 
 async function json(route: Route, body: object, status = 200) {

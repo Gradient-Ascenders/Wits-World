@@ -94,6 +94,7 @@ export function buildMatch(
   };
 
   return {
+    battleLog: [],
     completedAt: completed ? '2026-08-16T12:05:00.000Z' : null,
     lastAction: null,
     matchId: MATCH_ID,
@@ -150,6 +151,7 @@ export function actionResult(
     action,
     defeatedCreatureId: null,
     effects: [],
+    expiredEffects: [],
     side: 'player',
     turnEnded: true,
     winner: null,
@@ -159,18 +161,49 @@ export function actionResult(
 
 export function completedMatch(version = 6): CpuMatch {
   const active = activeMatch(version);
+  const finalAction = actionResult(
+    {
+      moveId: active.state.player.creatures[0]!.moves[0]!.id,
+      type: 'use_move',
+    },
+    {
+      defeatedCreatureId: active.state.cpu.activeCreature!.id,
+      winner: 'player',
+    },
+  );
   return buildMatch({
+    battleLog: [
+      {
+        events: [
+          {
+            id: '6:0',
+            kind: 'action',
+            message: "Player's Wit Creature used Knowledge Strike 1.",
+            sequence: 6,
+            side: 'player',
+          },
+          {
+            id: '6:1',
+            kind: 'defeat',
+            message: "CPU's Grit Creature was defeated.",
+            sequence: 6,
+            side: 'cpu',
+          },
+          {
+            id: '6:2',
+            kind: 'result',
+            message: 'Player won the match.',
+            sequence: 6,
+            side: 'player',
+          },
+        ],
+        id: 'turn-8',
+        label: 'Turn 8',
+        turnNumber: 8,
+      },
+    ],
     completedAt: '2026-08-16T12:05:00.000Z',
-    lastAction: actionResult(
-      {
-        moveId: active.state.player.creatures[0]!.moves[0]!.id,
-        type: 'use_move',
-      },
-      {
-        defeatedCreatureId: active.state.cpu.activeCreature!.id,
-        winner: 'player',
-      },
-    ),
+    lastAction: finalAction,
     state: {
       ...active.state,
       cpu: {

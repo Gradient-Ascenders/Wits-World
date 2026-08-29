@@ -64,7 +64,9 @@ Creature actions are `{ type: "use_move", moveId }`; Power-card actions are
 explain that the server did not advertise them. CPU unplayed card identities are
 never reconstructed: the UI names the hidden information and displays only the
 aggregate remaining counts returned by the API. `lastAction` is the recent
-authoritative outcome; the browser does not derive it from card statistics.
+authoritative compatibility field. The primary battle record is `battleLog`, an
+ordered server projection of persisted actions and outcomes; the browser does
+not derive either representation from card statistics.
 
 The public match view projects existing authoritative card and battle data for
 decisions. Revealed Creature moves include their name, move type, Power cost,
@@ -83,16 +85,19 @@ stored modifier remains a separate entry with a signed percentage and the
 authoritative `remainingTurns`; `null` means rest of battle. A finite duration
 counts the affected Creature's subsequent turns and is displayed exactly as it
 decrements in battle state. Damage, healing, and immediate HP or Power changes
-appear in the latest outcome but do not remain in active effects. No browser
+appear in the battle log but do not remain in active effects. No browser
 timer, combined stacking percentage, effect target, or combat result is
 calculated from these values.
 
-Fresh reads enrich older match state with names already present in the
-historical card snapshots. The browser runtime validator also accepts the
-previous response shape for an already-persisted idempotency receipt; it labels
-missing legacy presentation details as unavailable instead of inventing them.
-When new effect or modifier fields are present, malformed values reject the
-response as unavailable.
+Fresh reads enrich older match state and log events with names already present
+in the historical card snapshots. The API also augments an older persisted
+idempotency receipt with a log reconstructed through the final persisted action
+in that receipt's round, including any synchronous CPU or replacement actions,
+while preserving the receipt's original `lastAction`. Normal action submissions
+extend the cumulative log stored in the latest receipt instead of rereading all
+prior action and round-state JSON. Older results without expiry metadata omit
+only that unrecorded event; neither API nor browser guesses it. Malformed effect,
+modifier, expiry, or log fields reject the response as unavailable.
 
 These response and presentation additions do not change damage, affinity,
 Power, regeneration, stacking, duration, legality, CPU choice, replacement,
@@ -137,10 +142,12 @@ and completion. Disabled choices have semantic reasons. Card affinity, HP,
 Power, defeated state, hidden CPU information, current side, and result are
 textual rather than color-only.
 
-At 360px and 390px the order is phase/turn, combatants, hidden CPU counts, legal
-actions, latest outcome, and navigation. Tablet and desktop add columns without
-changing reading order. Controls keep mobile touch targets and all layouts must
-satisfy `scrollWidth <= clientWidth`.
+At 360px and 390px the order is phase/turn, combatants, legal actions, and a
+collapsed latest-outcome/log control beside secondary details. Tablet keeps the
+same compact flow. Desktop keeps the complete independently scrollable log open
+in the secondary rail without competing with the battlefield or action tray.
+Controls keep mobile touch targets and all layouts must satisfy
+`scrollWidth <= clientWidth`.
 
 ## Automated evidence
 
@@ -157,7 +164,8 @@ Power use, defeat/replacement, stale recovery, completion, history/detail, and
 refresh. Its effect-rich fixture checks ordered multi-effects, zero Power,
 finite/permanent stacked modifiers, disabled legality, visible keyboard focus,
 control containment, horizontal overflow, and console/runtime errors at
-390x844 and 1280x800. Screenshots remain under the ignored
+390x844, 768x1024, 1280x800, and 1600x1000. It also checks grouped log access,
+scroll-to-latest, completion, and reconstruction after refresh. Screenshots remain under the ignored
 `.pr-screenshots/issue-76/` path. It also covers the explicit dashboard resume,
 selected-deck start, no-selected-deck recovery, recent results, and full-history
 navigation at representative mobile, tablet, and desktop widths. This is mocked
@@ -165,4 +173,4 @@ API browser evidence, not a claim that a live backend match was completed end to
 end.
 
 This document was generated and edited with assistance from
-Codex-CLI[gpt-5.6-sol] and Codex-CLI[GPT-5].
+Codex-CLI[gpt-5.6-sol], Codex-CLI[GPT-5], and Codex[GPT-5].

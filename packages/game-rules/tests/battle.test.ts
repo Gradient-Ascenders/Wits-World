@@ -450,6 +450,13 @@ describe('Basic battle rules', () => {
     );
 
     expect(afterAttack.result.effects[0]).toMatchObject({ amount: 15 });
+    expect(afterAttack.result.expiredEffects).toEqual([
+      {
+        effectId: 'temporary-buff-effect',
+        targetCreatureId: activeCreature(afterCpu, 'player').card.id,
+        targetSide: 'player',
+      },
+    ]);
     expect(activeCreature(afterAttack.state, 'player').modifiers).toEqual([]);
   });
 
@@ -563,6 +570,7 @@ describe('Basic battle rules', () => {
 
     expect(transition.result.turnEnded).toBe(true);
     expect(transition.result.effects).toEqual([]);
+    expect(transition.result.expiredEffects).toEqual([]);
     expect(transition.state.currentSide).toBe('cpu');
     expect(activeCreature(transition.state, 'player').currentHp).toBe(
       activeCreature(before, 'player').currentHp,

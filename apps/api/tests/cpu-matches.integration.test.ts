@@ -340,6 +340,7 @@ async function authenticatedRequest(options: {
 
 function buildMatch(): CpuMatchResponse {
   return {
+    battleLog: [],
     matchId: MATCH_ID,
     status: 'active',
     version: 0,

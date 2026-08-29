@@ -457,6 +457,17 @@ a:hover {
   padding: 0;
 }
 
+.site-frame--product-navigation .main-content--battle-focus {
+  width: 100%;
+  padding: var(--space-3);
+  padding-top: calc(var(--space-3) + env(safe-area-inset-top));
+  padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom));
+}
+
+.site-frame--battle-focus .site-header {
+  display: none;
+}
+
 .site-footer {
   border-top: 1px solid var(--colour-border-subtle);
   color: var(--colour-text-muted);
@@ -935,12 +946,22 @@ code {
     padding-bottom: calc(var(--player-navigation-height) + var(--space-7));
   }
 
+  .site-frame--product-navigation .main-content--battle-focus {
+    padding: var(--space-4);
+    padding-top: calc(var(--space-4) + env(safe-area-inset-top));
+    padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
+  }
+
   .main-content--explore {
     padding: 0;
   }
 }
 
 @media (min-width: 75rem) {
+  .site-frame--battle-focus .site-header {
+    display: block;
+  }
+
   .site-frame--product-navigation .site-header__inner {
     min-height: 5rem;
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -1001,6 +1022,10 @@ code {
 
   .site-frame--product-navigation .main-content {
     padding-bottom: clamp(var(--space-7), 7vw, 6rem);
+  }
+
+  .site-frame--product-navigation .main-content--battle-focus {
+    padding: var(--space-5);
   }
 
   .main-content--explore {

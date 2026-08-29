@@ -148,6 +148,8 @@ export function AppShell({ children }: AppShellProps) {
   const { state: currentPlayer } = useCurrentPlayer();
   const [pathname] = useLocation();
   const isExplore = pathname === '/explore';
+  const isBattleDetail =
+    pathname.startsWith('/matches/') && pathname !== '/matches/history';
   const isFooterlessProductRoute =
     isExplore ||
     pathname === '/collection' ||
@@ -166,7 +168,7 @@ export function AppShell({ children }: AppShellProps) {
     <div
       className={`site-frame site-frame--${
         hasPlayerNavigation ? 'product-navigation' : 'public'
-      }${isExplore ? ' site-frame--explore' : ''}`}
+      }${isExplore ? ' site-frame--explore' : ''}${isBattleDetail ? ' site-frame--battle-focus' : ''}`}
     >
       <a className="skip-link" href="#main-content">
         Skip to main content
@@ -213,7 +215,7 @@ export function AppShell({ children }: AppShellProps) {
       </header>
 
       <main
-        className={`main-content${isExplore ? ' main-content--explore' : ''}`}
+        className={`main-content${isExplore ? ' main-content--explore' : ''}${isBattleDetail ? ' main-content--battle-focus' : ''}`}
         id="main-content"
         tabIndex={-1}
       >
@@ -229,7 +231,7 @@ export function AppShell({ children }: AppShellProps) {
         </footer>
       ) : null}
 
-      {hasPlayerNavigation ? (
+      {hasPlayerNavigation && !isBattleDetail ? (
         <PlayerNavigation
           isAuthor={isAuthor}
           pathname={pathname}
