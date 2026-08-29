@@ -44,7 +44,8 @@ describe('migration file loading', () => {
         name.startsWith('0025_') ||
         name.startsWith('0026_') ||
         name.startsWith('0027_') ||
-        name.startsWith('0028_'),
+        name.startsWith('0028_') ||
+        name.startsWith('0029_'),
     );
 
     expect(
