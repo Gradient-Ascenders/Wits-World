@@ -778,6 +778,7 @@
 
 @media (min-width: 80rem) {
   .hero__identity {
+    top: calc(-1 * clamp(9rem, 12vw, 15rem));
     margin-left: max(0px, calc((100vw - 90rem) / 2));
   }
 
