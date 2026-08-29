@@ -20,6 +20,8 @@ const QUESTION_A = '40000000-0000-4000-8000-000000000001';
 const CARD_DRAFT = '50000000-0000-4000-8000-000000000001';
 const CARD_CREATURE = '50000000-0000-4000-8000-000000000002';
 const CARD_POWER = '50000000-0000-4000-8000-000000000003';
+const CARD_TALL_CREATURE = '50000000-0000-4000-8000-000000000098';
+const CARD_RETIRED_CREATURE = '50000000-0000-4000-8000-000000000099';
 
 test('desktop Event workspace keeps discovery, detail, editing and readiness focused', async ({
   page,
@@ -608,7 +610,89 @@ test('existing Event location focuses its saved point, supports dragging, and ha
 test('Card catalogue uses filtered master detail and concise real-card read-only views', async ({
   page,
 }, testInfo) => {
-  await installAuthorApi(page);
+  const state = await installAuthorApi(page);
+  state.cards.push(
+    {
+      ...materializeCard(
+        {
+          affinity: 'spark',
+          category: 'creature',
+          description: Array.from(
+            { length: 12 },
+            () =>
+              'This published definition carries detailed authoring context about its campus history, reward role, visual treatment, and intended player experience.',
+          ).join(' '),
+          effects: [],
+          hp: 190,
+          imageUrl: null,
+          moves: [1, 2, 3, 4].map((position) =>
+            moveInput(
+              position,
+              `Extended Great Hall archive technique ${position} with a descriptive tactical name`,
+            ),
+          ),
+          name: 'Great Hall Archive Chronicler',
+          power: 35,
+          rarity: 'legendary',
+        },
+        CARD_TALL_CREATURE,
+      ),
+      authoringStatus: 'published',
+      isActive: true,
+    },
+    {
+      ...materializeCard(
+        {
+          affinity: 'spirit',
+          category: 'creature',
+          description: 'A retired four-move creature definition.',
+          effects: [],
+          hp: 160,
+          imageUrl: null,
+          moves: [1, 2, 3, 4].map((position) =>
+            moveInput(position, `Legacy move ${position}`),
+          ),
+          name: 'Retired Four Move Ibex',
+          power: 25,
+          rarity: 'epic',
+        },
+        CARD_RETIRED_CREATURE,
+      ),
+      authoringStatus: 'retired',
+      isActive: false,
+    },
+    ...Array.from({ length: 30 }, (_, index) => ({
+      ...materializeCard(
+        {
+          affinity: 'mystic' as const,
+          category: 'power' as const,
+          description: 'A retired catalogue definition used to prove density.',
+          effects: [
+            {
+              effectType: 'heal' as const,
+              effectValue: 10,
+              modifierDurationTurns: null,
+              modifierOperation: null,
+              modifierStat: null,
+              position: 1,
+            },
+          ],
+          hp: null,
+          imageUrl: null,
+          moves: [],
+          name:
+            index === 0
+              ? 'A Deliberately Long Card Name for the Great Hall Archive Catalogue'
+              : `Catalogue specimen ${String(index + 1).padStart(2, '0')}`,
+          power: null,
+          rarity: 'epic' as const,
+        },
+        uuid('5', 100 + index),
+      ),
+      authoringStatus: 'retired' as const,
+      isActive: false,
+    })),
+  );
   const consoleErrors = monitorConsoleErrors(page);
   await page.setViewportSize({ height: 800, width: 1280 });
   await page.goto('/author/cards');
@@ -623,16 +707,18 @@ test('Card catalogue uses filtered master detail and concise real-card read-only
     0,
   );
   await search.fill('');
+  await page.locator('.author-filter-menu > summary').click();
   await page.getByLabel('Lifecycle').selectOption('published');
   await page.getByLabel('Category').selectOption('creature');
   await page.getByLabel('Affinity').selectOption('grit');
   await page.getByLabel('Rarity').selectOption('rare');
+  await page.locator('.author-filter-menu > summary').click();
   await expect(
     page.getByRole('link', { name: /Four Move Ibex/u }),
   ).toBeVisible();
   await expect(page.getByRole('link', { name: /Campus Owl/u })).toHaveCount(0);
 
-  await page.getByRole('link', { name: /Four Move Ibex/u }).click();
+  await page.getByRole('link', { name: /^Four Move Ibex/u }).click();
   await expect(page).toHaveURL(`/author/cards/${CARD_CREATURE}`);
   await expect(page.locator('.author-record-view')).toBeFocused();
   await expect(
@@ -643,20 +729,37 @@ test('Card catalogue uses filtered master detail and concise real-card read-only
   await expect(page.getByLabel('Card name')).toHaveCount(0);
   const desktopPublishedCreatureHeight = await documentHeight(page);
 
+  await page.goto(`/author/cards/${CARD_TALL_CREATURE}`);
+  const finalTallMove = page.getByText(
+    'Extended Great Hall archive technique 4 with a descriptive tactical name',
+  );
+  await expect(finalTallMove).toBeAttached();
+  expect(await documentHeight(page)).toBeGreaterThan(800);
+  await finalTallMove.scrollIntoViewIfNeeded();
+  await expect(finalTallMove).toBeInViewport();
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+
   await page.getByRole('link', { name: 'Card catalogue' }).click();
+  await page.locator('.author-filter-menu > summary').click();
   await page.getByLabel('Category').selectOption('power');
   await page.getByLabel('Affinity').selectOption('wit');
   await page.getByLabel('Rarity').selectOption('common');
+  await page.locator('.author-filter-menu > summary').click();
   await page.getByRole('link', { name: /Archive Insight/u }).click();
   await expect(page).toHaveURL(`/author/cards/${CARD_POWER}`);
-  await expect(page.locator('.collectible-card')).toContainText('Heal 30');
+  await expect(page.getByText('Restore 30 HP')).toBeVisible();
+  await expect(page.locator('.collectible-card')).not.toContainText(
+    'Restore 30 HP',
+  );
   await expect(page.getByLabel('Effect type')).toHaveCount(0);
 
   await page.getByRole('link', { name: 'Card catalogue' }).click();
   await page.getByLabel('Lifecycle').selectOption('draft');
+  await page.locator('.author-filter-menu > summary').click();
   await page.getByLabel('Category').selectOption('creature');
   await page.getByLabel('Affinity').selectOption('wit');
   await page.getByLabel('Rarity').selectOption('common');
+  await page.locator('.author-filter-menu > summary').click();
   await page.getByRole('link', { name: /Campus Owl/u }).click();
   await page.getByRole('link', { name: 'Edit card' }).click();
   await page.getByLabel('Card name').fill('Campus Owl revised');
@@ -664,10 +767,12 @@ test('Card catalogue uses filtered master detail and concise real-card read-only
     name: 'Card definitions',
   });
   await cardCatalogue.getByLabel('Lifecycle').selectOption('all');
+  await cardCatalogue.locator('.author-filter-menu > summary').click();
   await cardCatalogue.getByLabel('Category').selectOption('all');
   await cardCatalogue.getByLabel('Affinity').selectOption('all');
   await cardCatalogue.getByLabel('Rarity').selectOption('all');
-  await page.getByRole('link', { name: /Four Move Ibex/u }).click();
+  await cardCatalogue.locator('.author-filter-menu > summary').click();
+  await page.getByRole('link', { name: /^Four Move Ibex/u }).click();
   const dirtyDialog = page.getByRole('alertdialog', {
     name: 'Discard unsaved changes?',
   });
@@ -687,6 +792,25 @@ test('Card catalogue uses filtered master detail and concise real-card read-only
   await page.getByRole('button', { name: 'Create draft card' }).click();
   await expect(page.getByText('Draft card created.')).toBeFocused();
   await expect(page.getByLabel('Card name')).toHaveCount(0);
+  const publishCard = page.getByRole('button', { name: 'Publish card' });
+  await publishCard.click();
+  const lifecycleNotice = page.getByText('Card published and active.');
+  await expect(lifecycleNotice).toBeFocused();
+  const noticeBox = await lifecycleNotice.boundingBox();
+  const lifecycleHeaderBox = await page
+    .locator('.author-card-detail__lifecycle')
+    .boundingBox();
+  expect(noticeBox).not.toBeNull();
+  expect(lifecycleHeaderBox).not.toBeNull();
+  expect((noticeBox?.y ?? 0) - (lifecycleHeaderBox?.y ?? 0)).toBeLessThan(150);
+
+  await page.setViewportSize({ height: 1024, width: 768 });
+  await page.goto(`/author/cards/${CARD_CREATURE}`);
+  await expect(page.locator('.collectible-card')).toBeVisible();
+  await expect(
+    page.getByRole('complementary', { name: 'Card definitions' }),
+  ).toBeHidden();
+  await expectNoHorizontalOverflow(page);
 
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto(`/author/cards/${CARD_CREATURE}`);
@@ -705,6 +829,66 @@ test('Card catalogue uses filtered master detail and concise real-card read-only
   await expectNoHorizontalOverflow(page);
   const creatureEditorHeight = await documentHeight(page);
   expect(mobilePublishedCreatureHeight).toBeLessThan(creatureEditorHeight);
+
+  await page.setViewportSize({ height: 1000, width: 1600 });
+  await page.goto(`/author/cards/${CARD_CREATURE}`);
+  await expect(page.locator('.collectible-card')).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await expect(
+    page.getByRole('link', {
+      name: /A Deliberately Long Card Name for the Great Hall Archive Catalogue/u,
+    }),
+  ).toBeVisible();
+  const catalogueScroll = await page
+    .locator('.author-catalogue__list')
+    .evaluate((element) => ({
+      clientHeight: element.clientHeight,
+      overflowY: getComputedStyle(element).overflowY,
+      scrollHeight: element.scrollHeight,
+    }));
+  expect(catalogueScroll.overflowY).toBe('auto');
+  expect(catalogueScroll.scrollHeight).toBeGreaterThan(
+    catalogueScroll.clientHeight,
+  );
+  const deepLinkedCardId = uuid('5', 128);
+  await page.goto(`/author/cards/${deepLinkedCardId}`);
+  const deepLinkedRow = page.getByRole('link', {
+    name: /Catalogue specimen 29/u,
+  });
+  await expect(deepLinkedRow).toHaveAttribute('aria-current', 'true');
+  await expect
+    .poll(() =>
+      page
+        .locator('.author-catalogue__list')
+        .evaluate((element) => element.scrollTop),
+    )
+    .toBeGreaterThan(0);
+  const selectedRowPosition = await page.evaluate(() => {
+    const list = document.querySelector<HTMLElement>('.author-catalogue__list');
+    const row = document.querySelector<HTMLElement>(
+      '.author-record-summary[aria-current="true"]',
+    );
+    if (!list || !row) throw new Error('Selected catalogue row is missing.');
+    const listBounds = list.getBoundingClientRect();
+    const rowBounds = row.getBoundingClientRect();
+    return {
+      listBottom: listBounds.bottom,
+      listTop: listBounds.top,
+      rowBottom: rowBounds.bottom,
+      rowTop: rowBounds.top,
+    };
+  });
+  expect(selectedRowPosition.rowTop).toBeGreaterThanOrEqual(
+    selectedRowPosition.listTop - 1,
+  );
+  expect(selectedRowPosition.rowBottom).toBeLessThanOrEqual(
+    selectedRowPosition.listBottom + 1,
+  );
+  await page.goto(`/author/cards/${CARD_RETIRED_CREATURE}`);
+  await expect(page.getByText('Legacy move 4')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Retire card' })).toHaveCount(
+    0,
+  );
 
   await testInfo.attach('mobile-card-page-heights.json', {
     body: JSON.stringify(

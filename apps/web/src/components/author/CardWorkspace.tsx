@@ -5,6 +5,7 @@ import {
   useState,
   type Dispatch,
   type FormEvent,
+  type RefObject,
   type SetStateAction,
 } from 'react';
 import { Link } from 'wouter';
@@ -29,6 +30,7 @@ import {
 } from '../../api/author';
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
 import type { OwnedCard } from '../../api/cards';
+import { describeStarterEffect } from '../../battle/effect-presentation';
 import { CollectibleCard } from '../cards/CollectibleCard';
 import '../cards/cards.css';
 import { AuthorFeedback } from './AuthorFeedback';
@@ -76,6 +78,7 @@ export function CardWorkspace({
   const [sortOrder, setSortOrder] = useState<'name' | 'updated'>('name');
   const feedbackRef = useRef<HTMLDivElement>(null);
   const catalogueRef = useRef<HTMLElement>(null);
+  const selectedRowRef = useRef<HTMLLIElement>(null);
   const recordViewRef = useRef<HTMLDivElement>(null);
   const focusRouteRef = useRef<string | null>(null);
   const selectedIdRef = useRef<string | 'new'>('new');
@@ -140,6 +143,28 @@ export function CardWorkspace({
       sortOrder,
     ],
   );
+
+  useEffect(() => {
+    if (state !== 'ready' || selectedId === null) return;
+
+    const timer = window.setTimeout(() => {
+      const list = catalogueRef.current?.querySelector<HTMLElement>(
+        '.author-catalogue__list',
+      );
+      const row = selectedRowRef.current;
+      if (!list || !row || list.clientHeight === 0) return;
+
+      const listBounds = list.getBoundingClientRect();
+      const rowBounds = row.getBoundingClientRect();
+      if (rowBounds.top < listBounds.top) {
+        list.scrollTop -= listBounds.top - rowBounds.top;
+      } else if (rowBounds.bottom > listBounds.bottom) {
+        list.scrollTop += rowBounds.bottom - listBounds.bottom;
+      }
+    });
+
+    return () => window.clearTimeout(timer);
+  }, [selectedId, state, visibleCards]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -211,8 +236,6 @@ export function CardWorkspace({
         )}
       </header>
 
-      <AuthorFeedback message={message} refObject={feedbackRef} />
-
       {state !== 'ready' ? (
         <p className="sr-only" id="card-create-unavailable">
           Load the card catalogue before creating a card.
@@ -239,11 +262,11 @@ export function CardWorkspace({
       ) : null}
       {state === 'ready' ? (
         <div
-          className={`author-management-view${route.mode === 'list' ? ' author-management-view--list' : ' author-management-view--record'}`}
+          className={`author-management-view author-management-view--cards${route.mode === 'list' || route.mode === 'detail' ? ' author-management-view--card-catalogue' : ''}${route.mode === 'list' ? ' author-management-view--list' : ' author-management-view--record'}`}
         >
           <aside
             aria-label="Card definitions"
-            className="author-catalogue"
+            className="author-catalogue author-catalogue--cards"
             ref={catalogueRef}
             tabIndex={-1}
           >
@@ -279,10 +302,13 @@ export function CardWorkspace({
             ) : null}
             <ul className="author-catalogue__list">
               {visibleCards.map((card) => (
-                <li key={card.id}>
+                <li
+                  key={card.id}
+                  ref={selectedId === card.id ? selectedRowRef : undefined}
+                >
                   <Link
                     aria-current={selectedId === card.id ? 'true' : undefined}
-                    className="author-record-summary"
+                    className="author-record-summary author-record-summary--card"
                     href={authorPaths.card(card.id)}
                   >
                     <span className="author-record-summary__heading">
@@ -345,6 +371,8 @@ export function CardWorkspace({
                   card={selected}
                   getAccessToken={getAccessToken}
                   interaction={interactionRef.current}
+                  message={message}
+                  messageRef={feedbackRef}
                   mutationCoordinator={mutationCoordinator}
                   onSaved={updateCard}
                 />
@@ -386,80 +414,102 @@ function CardCatalogueControls({
   search: string;
   sort: 'name' | 'updated';
 }) {
+  const secondaryFilterCount = [category, affinity, rarity].filter(
+    (value) => value !== 'all',
+  ).length;
+
   return (
-    <div aria-label="Filter and sort cards" className="author-filters">
-      <label className="author-filter author-filter--search">
-        <span>Search</span>
+    <div
+      aria-label="Filter and sort cards"
+      className="author-catalogue-toolbar"
+      role="group"
+    >
+      <label className="author-catalogue-toolbar__search">
+        <span className="sr-only">Search</span>
         <input
           onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="Name or description"
+          placeholder="Search cards"
           type="search"
           value={search}
         />
       </label>
-      <label className="author-filter">
-        <span>Lifecycle</span>
-        <select
-          onChange={(event) => onLifecycleChange(event.target.value)}
-          value={lifecycle}
-        >
-          <option value="all">All</option>
-          <option value="draft">Draft</option>
-          <option value="published">Published</option>
-          <option value="retired">Retired</option>
-        </select>
-      </label>
-      <label className="author-filter">
-        <span>Category</span>
-        <select
-          onChange={(event) => onCategoryChange(event.target.value)}
-          value={category}
-        >
-          <option value="all">All</option>
-          <option value="creature">Creature</option>
-          <option value="power">Power</option>
-        </select>
-      </label>
-      <label className="author-filter">
-        <span>Affinity</span>
-        <select
-          onChange={(event) => onAffinityChange(event.target.value)}
-          value={affinity}
-        >
-          <option value="all">All</option>
-          {['wit', 'grit', 'spark', 'spirit', 'mystic'].map((value) => (
-            <option key={value} value={value}>
-              {titleCase(value)}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="author-filter">
-        <span>Rarity</span>
-        <select
-          onChange={(event) => onRarityChange(event.target.value)}
-          value={rarity}
-        >
-          <option value="all">All</option>
-          {['common', 'rare', 'epic', 'legendary'].map((value) => (
-            <option key={value} value={value}>
-              {titleCase(value)}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="author-filter">
-        <span>Sort</span>
-        <select
-          onChange={(event) =>
-            onSortChange(event.target.value as 'name' | 'updated')
-          }
-          value={sort}
-        >
-          <option value="name">A–Z</option>
-          <option value="updated">Recently updated</option>
-        </select>
-      </label>
+      <div className="author-catalogue-toolbar__controls">
+        <label className="author-catalogue-toolbar__select">
+          <span>Lifecycle</span>
+          <select
+            onChange={(event) => onLifecycleChange(event.target.value)}
+            value={lifecycle}
+          >
+            <option value="all">All</option>
+            <option value="draft">Draft</option>
+            <option value="published">Published</option>
+            <option value="retired">Retired</option>
+          </select>
+        </label>
+        <label className="author-catalogue-toolbar__select">
+          <span>Sort</span>
+          <select
+            onChange={(event) =>
+              onSortChange(event.target.value as 'name' | 'updated')
+            }
+            value={sort}
+          >
+            <option value="name">A–Z</option>
+            <option value="updated">Updated</option>
+          </select>
+        </label>
+        <details className="author-filter-menu">
+          <summary>
+            Filters
+            {secondaryFilterCount > 0 ? (
+              <span aria-label={`${secondaryFilterCount} active filters`}>
+                {secondaryFilterCount}
+              </span>
+            ) : null}
+          </summary>
+          <div className="author-filter-menu__panel">
+            <label className="author-filter">
+              <span>Category</span>
+              <select
+                onChange={(event) => onCategoryChange(event.target.value)}
+                value={category}
+              >
+                <option value="all">All</option>
+                <option value="creature">Creature</option>
+                <option value="power">Power</option>
+              </select>
+            </label>
+            <label className="author-filter">
+              <span>Affinity</span>
+              <select
+                onChange={(event) => onAffinityChange(event.target.value)}
+                value={affinity}
+              >
+                <option value="all">All</option>
+                {['wit', 'grit', 'spark', 'spirit', 'mystic'].map((value) => (
+                  <option key={value} value={value}>
+                    {titleCase(value)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="author-filter">
+              <span>Rarity</span>
+              <select
+                onChange={(event) => onRarityChange(event.target.value)}
+                value={rarity}
+              >
+                <option value="all">All</option>
+                {['common', 'rare', 'epic', 'legendary'].map((value) => (
+                  <option key={value} value={value}>
+                    {titleCase(value)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </details>
+      </div>
     </div>
   );
 }
@@ -514,6 +564,8 @@ function CardDetail({
   card,
   getAccessToken,
   interaction,
+  message,
+  messageRef,
   mutationCoordinator,
   onSaved,
 }: {
@@ -521,6 +573,8 @@ function CardDetail({
   card: AuthorCard;
   getAccessToken: ApiAccessTokenProvider;
   interaction: number;
+  message: string;
+  messageRef: RefObject<HTMLDivElement | null>;
   mutationCoordinator: AuthorMutationCoordinator;
   onSaved: CardFormProps['onSaved'];
 }) {
@@ -592,49 +646,17 @@ function CardDetail({
       <Link className="author-back-link" href={authorPaths.cards}>
         <span aria-hidden="true">←</span> Card catalogue
       </Link>
-      <header className="author-detail__heading">
-        <div>
+      <header className="author-card-detail__header">
+        <div className="author-card-detail__identity">
           <p className="eyebrow">Card definition</p>
           <h3 id="card-detail-title">{card.name}</h3>
+          <p className="author-card-detail__definition">
+            {titleCase(card.category)} · {titleCase(card.affinity)} ·{' '}
+            {titleCase(card.rarity)}
+          </p>
         </div>
-        <StatusBadge status={card.authoringStatus} />
-      </header>
-
-      <div className="author-card-detail__layout">
-        <CollectibleCard
-          card={toCollectibleCard(card)}
-          headingLevel={4}
-          showOwnership={false}
-        />
-        <div className="author-card-detail__summary">
-          <dl className="author-metadata">
-            <div>
-              <dt>Lifecycle</dt>
-              <dd>{titleCase(card.authoringStatus)}</dd>
-            </div>
-            <div>
-              <dt>Reward catalogue</dt>
-              <dd>{card.isActive ? 'Active' : 'Not active'}</dd>
-            </div>
-            <div>
-              <dt>Definition</dt>
-              <dd>
-                {titleCase(card.category)} · {titleCase(card.affinity)} ·{' '}
-                {titleCase(card.rarity)}
-              </dd>
-            </div>
-            <div>
-              <dt>Last updated</dt>
-              <dd>
-                <time dateTime={card.updatedAt}>
-                  {formatDateTime(card.updatedAt)}
-                </time>
-              </dd>
-            </div>
-          </dl>
-
-          <AuthorFeedback error={apiError} refObject={feedbackRef} />
-
+        <div className="author-card-detail__lifecycle">
+          <StatusBadge status={card.authoringStatus} />
           <div className="author-actions author-actions--detail">
             {card.authoringStatus === 'draft' ? (
               <>
@@ -663,6 +685,52 @@ function CardDetail({
               </button>
             ) : null}
           </div>
+          <AuthorFeedback error={apiError} refObject={feedbackRef} />
+          <AuthorFeedback message={message} refObject={messageRef} />
+        </div>
+      </header>
+
+      <div className="author-card-detail__layout">
+        <section
+          aria-label={`${card.name} authoring preview`}
+          className="author-card-detail__preview"
+        >
+          <p className="eyebrow">Player card preview</p>
+          <CollectibleCard
+            card={toCollectibleCard(card)}
+            compact
+            headingLevel={4}
+            showOwnership={false}
+          />
+        </section>
+        <div className="author-card-detail__content">
+          <dl className="author-metadata">
+            <div>
+              <dt>Description</dt>
+              <dd>{card.description ?? 'No description provided'}</dd>
+            </div>
+            <div>
+              <dt>Reward catalogue</dt>
+              <dd>{card.isActive ? 'Active' : 'Not active'}</dd>
+            </div>
+            {card.category === 'creature' ? (
+              <div>
+                <dt>Attributes</dt>
+                <dd>
+                  {card.hp ?? '—'} HP · {card.power ?? '—'} Power
+                </dd>
+              </div>
+            ) : null}
+            <div>
+              <dt>Last updated</dt>
+              <dd>
+                <time dateTime={card.updatedAt}>
+                  {formatDateTime(card.updatedAt)}
+                </time>
+              </dd>
+            </div>
+          </dl>
+          <CardMechanicsSummary card={card} />
         </div>
       </div>
 
@@ -684,6 +752,49 @@ function CardDetail({
         />
       ) : null}
     </article>
+  );
+}
+
+function CardMechanicsSummary({ card }: { card: AuthorCard }) {
+  const items = card.category === 'creature' ? card.moves : card.effects;
+
+  if (items.length === 0) return null;
+
+  return (
+    <section
+      aria-labelledby={`card-mechanics-${card.id}`}
+      className="author-card-mechanics"
+    >
+      <div className="author-card-mechanics__heading">
+        <h4 id={`card-mechanics-${card.id}`}>
+          {card.category === 'creature' ? 'Moves' : 'Effects'}
+        </h4>
+        <span>{items.length}</span>
+      </div>
+      <ol className="author-card-mechanics__list">
+        {card.category === 'creature'
+          ? card.moves.map((move) => (
+              <li key={move.id}>
+                <div>
+                  <strong>{move.name}</strong>
+                  <span>{titleCase(move.moveType)}</span>
+                </div>
+                <p>
+                  {describeStarterEffect(move)} · {move.powerCost} power
+                </p>
+              </li>
+            ))
+          : card.effects.map((effect) => (
+              <li key={effect.id}>
+                <div>
+                  <strong>Effect {effect.position}</strong>
+                  <span>{titleCase(effect.effectType)}</span>
+                </div>
+                <p>{describeStarterEffect(effect)}</p>
+              </li>
+            ))}
+      </ol>
+    </section>
   );
 }
 
