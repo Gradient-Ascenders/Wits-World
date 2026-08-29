@@ -173,6 +173,8 @@ describe('player trail service', () => {
     );
     expect(NEARBY_UNVISITED_QUERY).toContain('st_dwithin');
     expect(NEARBY_UNVISITED_QUERY).toContain('event.is_published = true');
+    expect(NEARBY_UNVISITED_QUERY).toContain('resolve_event_availability');
+    expect(NEARBY_UNVISITED_QUERY).toContain('resolve_trail_availability');
     expect(NEARBY_UNVISITED_QUERY).not.toContain('eligible = true');
   });
 });
@@ -183,6 +185,9 @@ function trailRow(position: number, completedAt: Date | null) {
     trail_title: 'East Campus Heritage',
     trail_description: null,
     trail_status: 'published',
+    trail_availability: 'active',
+    trail_starts_at: null,
+    trail_ends_at: null,
     position,
     event_id: `17680000-0000-4000-8000-${position
       .toString()
@@ -196,6 +201,7 @@ function trailRow(position: number, completedAt: Date | null) {
     ends_at: new Date('2026-08-29T12:00:00.000Z'),
     event_is_published: true,
     event_retired_at: null,
+    event_availability: 'active',
     completed_at: completedAt,
   };
 }

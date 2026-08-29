@@ -103,6 +103,9 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
     expect(migrationResult.applied).toContain(
       '0029_curate_author_content_lifecycle.sql',
     );
+    expect(migrationResult.applied).toContain(
+      '0030_create_campaign_scheduling.sql',
+    );
 
     await withDatabaseClient(temporaryConfig, async (client) => {
       const relation = await client.query<{
@@ -184,6 +187,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0027_create_ordered_trails.sql',
           '0028_create_asynchronous_pvp_persistence.sql',
           '0029_curate_author_content_lifecycle.sql',
+          '0030_create_campaign_scheduling.sql',
         ],
       });
 
@@ -303,6 +307,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0027_create_ordered_trails.sql',
           '0028_create_asynchronous_pvp_persistence.sql',
           '0029_curate_author_content_lifecycle.sql',
+          '0030_create_campaign_scheduling.sql',
         ],
       });
 

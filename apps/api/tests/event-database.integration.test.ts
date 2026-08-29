@@ -176,6 +176,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0027_create_ordered_trails.sql',
         '0028_create_asynchronous_pvp_persistence.sql',
         '0029_curate_author_content_lifecycle.sql',
+        '0030_create_campaign_scheduling.sql',
       ],
       skipped: [],
     });
@@ -212,6 +213,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0027_create_ordered_trails.sql',
         '0028_create_asynchronous_pvp_persistence.sql',
         '0029_curate_author_content_lifecycle.sql',
+        '0030_create_campaign_scheduling.sql',
       ],
     });
     expect(readiness).toMatchObject({

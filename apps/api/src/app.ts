@@ -69,6 +69,8 @@ import type { AuthorTrailService } from './trails/author-trail-service.js';
 import type { PlayerTrailService } from './trails/player-trail-service.js';
 import { authorTrailRoutes } from './routes/author-trails.js';
 import { playerTrailRoutes } from './routes/trails.js';
+import type { AuthorCampaignService } from './campaigns/author-campaign-service.js';
+import { authorCampaignRoutes } from './routes/author-campaigns.js';
 
 export interface EventServices {
   discovery: EventDiscoveryService;
@@ -119,6 +121,7 @@ export interface AuthorContentServices {
   challenges?: AuthorChallengeService;
   cards?: AuthorCardService;
   trails?: AuthorTrailService;
+  campaigns?: AuthorCampaignService;
   read?: AuthorContentReadService;
 }
 
@@ -370,6 +373,13 @@ export async function buildApp({
     await app.register(authorTrailRoutes, {
       prefix: '/api/v1',
       service: authorContentServices.trails,
+    });
+  }
+
+  if (authorContentServices?.campaigns) {
+    await app.register(authorCampaignRoutes, {
+      prefix: '/api/v1',
+      service: authorContentServices.campaigns,
     });
   }
 

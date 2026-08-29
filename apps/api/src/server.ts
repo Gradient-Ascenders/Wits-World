@@ -30,6 +30,7 @@ import { createProgressionPersistence } from './progression/progression-persiste
 import { createProgressionReadService } from './progression/progression-read-service.js';
 import { createAuthorTrailService } from './trails/author-trail-service.js';
 import { createPlayerTrailService } from './trails/player-trail-service.js';
+import { createAuthorCampaignService } from './campaigns/author-campaign-service.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
@@ -72,6 +73,7 @@ async function startServer(): Promise<void> {
   const authorChallengeService = createAuthorChallengeService(database);
   const authorCardService = createAuthorCardService(database);
   const authorTrailService = createAuthorTrailService(database);
+  const authorCampaignService = createAuthorCampaignService(database);
   const playerTrailService = createPlayerTrailService(database);
   const authorContentReadService = createAuthorContentReadService(database);
   const cpuMatchService = createCpuMatchService(database, {
@@ -126,6 +128,7 @@ async function startServer(): Promise<void> {
       challenges: authorChallengeService,
       cards: authorCardService,
       trails: authorTrailService,
+      campaigns: authorCampaignService,
       read: authorContentReadService,
     },
   });

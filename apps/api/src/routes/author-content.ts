@@ -21,7 +21,13 @@ interface HistoryQuery {
   pageSize?: number;
 }
 
-const entityTypes = ['event', 'challenge', 'question', 'card'] as const;
+const entityTypes = [
+  'event',
+  'challenge',
+  'question',
+  'card',
+  'campaign',
+] as const;
 const statuses = [
   'draft',
   'in_review',

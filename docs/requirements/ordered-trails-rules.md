@@ -23,6 +23,12 @@ challenge, location eligibility, or reward rules.
   its historical order.
 - Retired trails remain visible only to players who have progress on them.
 - Retiring a trail does not delete event completions or historical progress.
+- A published trail assigned directly to a campaign follows the campaign's
+  effective window. Upcoming and ended trails remain visible but unavailable.
+- Retiring a campaign removes its trail from new discovery while preserving it
+  for players with progress.
+- Campaign membership gates the trail, not its member events in standalone
+  event discovery.
 
 ## Progress rule
 

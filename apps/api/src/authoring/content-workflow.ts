@@ -12,7 +12,7 @@ export const AUTHOR_CONTENT_STATUSES = [
 
 export type AuthorContentStatus = (typeof AUTHOR_CONTENT_STATUSES)[number];
 export type AuthorContentEntityType =
-  'event' | 'challenge' | 'question' | 'card';
+  'event' | 'challenge' | 'question' | 'card' | 'campaign';
 export type PublicationProvenance = 'legacy' | 'controlled_seed' | 'reviewed';
 export type AuthorContentAction =
   'create' | 'edit' | 'submit' | 'approve' | 'return' | 'publish' | 'retire';
@@ -79,6 +79,19 @@ const entitySql: Record<
     statusColumn: 'authoring_status',
     compatibilityUpdate: `,
       is_active = case when $3 = 'published' then true else false end`,
+  },
+  campaign: {
+    table: 'public.campaigns',
+    statusColumn: 'status',
+    compatibilityUpdate: `,
+      published_at = case
+        when $3 = 'published' then now()
+        else published_at
+      end,
+      retired_at = case
+        when $3 = 'retired' then now()
+        else null
+      end`,
   },
 };
 
@@ -294,6 +307,30 @@ async function lockAuthorContentAncestors(
   client: AuthorContentClient,
   input: TransitionAuthorContentInput,
 ) {
+  if (
+    input.entityType === 'campaign' &&
+    (input.action === 'approve' || input.action === 'publish')
+  ) {
+    await client.query(
+      `select event.id
+       from public.events event
+       join public.campaign_events membership on membership.event_id = event.id
+       where membership.campaign_id = $1::uuid
+       order by event.id
+       for update of event`,
+      [input.entityId],
+    );
+    await client.query(
+      `select trail.id
+       from public.trails trail
+       join public.campaign_trails membership on membership.trail_id = trail.id
+       where membership.campaign_id = $1::uuid
+       order by trail.id
+       for update of trail`,
+      [input.entityId],
+    );
+    return;
+  }
   if (input.entityType === 'card' && input.action === 'retire') {
     const target = await client.query<pg.QueryResultRow & { rarity: string }>(
       `select rarity from public.card_definitions where id = $1::uuid`,
@@ -447,6 +484,7 @@ async function assertContentReady(
   entityType: AuthorContentEntityType,
   entityId: string,
 ): Promise<void> {
+  if (entityType === 'campaign') return assertCampaignReady(client, entityId);
   if (entityType === 'question') return assertQuestionReady(client, entityId);
   if (entityType === 'challenge') return assertChallengeReady(client, entityId);
   if (entityType === 'card') return assertCardReady(client, entityId);
@@ -597,6 +635,23 @@ async function assertContainerState(
   client: AuthorContentClient,
   input: TransitionAuthorContentInput,
 ) {
+  if (input.entityType === 'event' && input.action === 'retire') {
+    const campaign = await client.query(
+      `select campaign.id
+       from public.campaigns campaign
+       join public.campaign_events membership
+         on membership.campaign_id = campaign.id
+       where membership.event_id = $1::uuid
+         and campaign.status = 'published'
+       limit 1`,
+      [input.entityId],
+    );
+    if (campaign.rows.length > 0) {
+      throw new AuthorContentStateConflictError(
+        'Retire the published campaign before retiring this event.',
+      );
+    }
+  }
   if (input.entityType === 'card' && input.action === 'retire') {
     if (protectedStarterDefinitionIds.has(input.entityId.toLowerCase())) {
       throw new AuthorContentNotReadyError(
@@ -678,6 +733,33 @@ async function assertContainerState(
         'Retire the event before retiring its published challenge.',
       );
     }
+  }
+}
+
+async function assertCampaignReady(
+  client: AuthorContentClient,
+  id: string,
+): Promise<void> {
+  try {
+    await client.query(`select public.validate_campaign_schedule($1::uuid)`, [
+      id,
+    ]);
+  } catch (error) {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error.code === '23503' ||
+        error.code === '23514' ||
+        error.code === '23P01')
+    ) {
+      const detail =
+        'message' in error && typeof error.message === 'string'
+          ? error.message
+          : 'The campaign schedule or membership is not ready.';
+      throw new AuthorContentNotReadyError(detail);
+    }
+    throw error;
   }
 }
 

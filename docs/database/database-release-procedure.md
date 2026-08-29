@@ -78,6 +78,14 @@ themselves as `controlled_seed`. Run `0029` before deploying the matching API.
 During the database-to-API window, the old direct draft-publish API fails
 closed, so coordinate the releases and keep that window short.
 
+Migration `0030_create_campaign_scheduling.sql` runs after the curated content
+lifecycle. It adds campaign definitions and memberships, extends the Author
+audit entity constraint, installs overlap/retirement guards, and provides the
+effective event/trail availability functions used by the matching API. Existing
+content remains standalone until it has belonged to a published campaign. Run
+`0030` before deploying an API that registers campaign routes or invokes those
+functions; applying it does not create campaign content or run a scheduler.
+
 ## Prerequisites
 
 - Use the Node.js and npm versions declared by the repository.

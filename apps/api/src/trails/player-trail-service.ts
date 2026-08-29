@@ -2,6 +2,8 @@ import type pg from 'pg';
 
 export type PlayerTrailPublicationStatus = 'published' | 'retired';
 export type PlayerTrailProgressStatus = 'in_progress' | 'completed' | 'retired';
+export type PlayerTrailAvailability =
+  'active' | 'upcoming' | 'ended' | 'retired';
 export type PlayerTrailStepState =
   'completed' | 'current' | 'locked' | 'unavailable';
 export type PlayerTrailUnavailableReason =
@@ -12,6 +14,9 @@ export interface PlayerTrailSummary {
   title: string;
   description: string | null;
   publicationStatus: PlayerTrailPublicationStatus;
+  availability: PlayerTrailAvailability;
+  startsAt: string | null;
+  endsAt: string | null;
   progressStatus: PlayerTrailProgressStatus;
   completedStepCount: number;
   totalSteps: number;
@@ -86,6 +91,9 @@ interface PlayerTrailRow extends pg.QueryResultRow {
   trail_title: string;
   trail_description: string | null;
   trail_status: PlayerTrailPublicationStatus;
+  trail_availability: PlayerTrailAvailability;
+  trail_starts_at: Date | null;
+  trail_ends_at: Date | null;
   position: number;
   event_id: string;
   event_title: string;
@@ -97,6 +105,7 @@ interface PlayerTrailRow extends pg.QueryResultRow {
   ends_at: Date;
   event_is_published: boolean;
   event_retired_at: Date | null;
+  event_availability: 'active' | 'upcoming' | 'ended' | 'unpublished';
   completed_at: Date | null;
 }
 
@@ -140,14 +149,16 @@ export function createPlayerTrailService(
 ): PlayerTrailService {
   return {
     async listTrails(playerId) {
-      const rows = await loadVisibleTrailRows(database, playerId);
+      const now = clock();
+      const rows = await loadVisibleTrailRows(database, playerId, now);
 
-      return derivePlayerTrails(rows, clock()).map(mapPlayerTrailSummary);
+      return derivePlayerTrails(rows, now).map(mapPlayerTrailSummary);
     },
 
     async getTrail(playerId, trailId) {
-      const rows = await loadVisibleTrailRows(database, playerId, trailId);
-      const trail = derivePlayerTrails(rows, clock())[0];
+      const now = clock();
+      const rows = await loadVisibleTrailRows(database, playerId, now, trailId);
+      const trail = derivePlayerTrails(rows, now)[0];
 
       if (!trail) {
         throw new PlayerTrailNotFoundError();
@@ -179,6 +190,7 @@ export function createPlayerTrailService(
 async function loadVisibleTrailRows(
   database: PlayerTrailDatabase,
   playerId: string,
+  now: Date,
   trailId?: string,
 ): Promise<PlayerTrailRow[]> {
   const result = await database.query<PlayerTrailRow>(
@@ -188,6 +200,9 @@ async function loadVisibleTrailRows(
         trail.title as trail_title,
         trail.description as trail_description,
         trail.status as trail_status,
+        trail_schedule.availability as trail_availability,
+        trail_schedule.effective_starts_at as trail_starts_at,
+        trail_schedule.effective_ends_at as trail_ends_at,
         step.position,
         event.id::text as event_id,
         event.title as event_title,
@@ -195,23 +210,38 @@ async function loadVisibleTrailRows(
         st_y(event.location::geometry) as latitude,
         st_x(event.location::geometry) as longitude,
         event.radius_metres,
-        event.starts_at,
-        event.ends_at,
+        coalesce(event_schedule.effective_starts_at, event.starts_at) as starts_at,
+        coalesce(event_schedule.effective_ends_at, event.ends_at) as ends_at,
         event.is_published as event_is_published,
         event.retired_at as event_retired_at,
+        event_schedule.availability as event_availability,
         completion.completed_at
       from public.trails trail
       join public.trail_events step
         on step.trail_id = trail.id
       join public.events event
         on event.id = step.event_id
+      cross join lateral public.resolve_trail_availability(
+        trail.id,
+        $3::timestamptz
+      ) trail_schedule
+      cross join lateral public.resolve_event_availability(
+        event.id,
+        $3::timestamptz
+      ) event_schedule
       left join public.event_completions completion
         on completion.player_id = $1::uuid
        and completion.event_id = event.id
       where (
-        trail.status = 'published'
+        (
+          trail.status = 'published'
+          and trail_schedule.availability <> 'retired'
+        )
         or (
-          trail.status = 'retired'
+          (
+            trail.status = 'retired'
+            or trail_schedule.availability = 'retired'
+          )
           and trail.published_at is not null
           and exists (
             select 1
@@ -230,7 +260,7 @@ async function loadVisibleTrailRows(
         trail.id,
         step.position
     `,
-    [playerId, trailId ?? null],
+    [playerId, trailId ?? null, now],
   );
 
   return result.rows;
@@ -260,6 +290,9 @@ function mapPlayerTrailSummary(trail: PlayerTrail): PlayerTrailSummary {
     title: trail.title,
     description: trail.description,
     publicationStatus: trail.publicationStatus,
+    availability: trail.availability,
+    startsAt: trail.startsAt,
+    endsAt: trail.endsAt,
     progressStatus: trail.progressStatus,
     completedStepCount: trail.completedStepCount,
     totalSteps: trail.totalSteps,
@@ -289,9 +322,11 @@ function derivePlayerTrail(rows: PlayerTrailRow[], now: Date): PlayerTrail {
 
   const totalSteps = orderedRows.length;
   const complete = completedStepCount === totalSteps;
+  const trailAvailability: PlayerTrailAvailability =
+    first.trail_status === 'retired' ? 'retired' : first.trail_availability;
   const progressStatus: PlayerTrailProgressStatus = complete
     ? 'completed'
-    : first.trail_status === 'retired'
+    : trailAvailability === 'retired'
       ? 'retired'
       : 'in_progress';
   const currentStepPosition = complete ? null : completedStepCount + 1;
@@ -301,6 +336,9 @@ function derivePlayerTrail(rows: PlayerTrailRow[], now: Date): PlayerTrail {
     title: first.trail_title,
     description: first.trail_description,
     publicationStatus: first.trail_status,
+    availability: trailAvailability,
+    startsAt: first.trail_starts_at?.toISOString() ?? null,
+    endsAt: first.trail_ends_at?.toISOString() ?? null,
     progressStatus,
     completedStepCount,
     totalSteps,
@@ -311,6 +349,7 @@ function derivePlayerTrail(rows: PlayerTrailRow[], now: Date): PlayerTrail {
         index,
         completedStepCount,
         first.trail_status,
+        trailAvailability,
         now,
       ),
     ),
@@ -322,6 +361,7 @@ function mapPlayerTrailStep(
   index: number,
   completedStepCount: number,
   trailStatus: PlayerTrailPublicationStatus,
+  trailAvailability: PlayerTrailAvailability,
   now: Date,
 ): PlayerTrailStep {
   const common = {
@@ -345,7 +385,7 @@ function mapPlayerTrailStep(
     };
   }
 
-  if (trailStatus === 'retired') {
+  if (trailStatus === 'retired' || trailAvailability === 'retired') {
     return {
       ...common,
       state: 'unavailable',
@@ -359,6 +399,15 @@ function mapPlayerTrailStep(
       ...common,
       state: 'locked',
       unavailableReason: null,
+      completedAt: null,
+    };
+  }
+
+  if (trailAvailability === 'upcoming' || trailAvailability === 'ended') {
+    return {
+      ...common,
+      state: 'unavailable',
+      unavailableReason: trailAvailability,
       completedAt: null,
     };
   }
@@ -377,15 +426,25 @@ function currentStepUnavailableReason(
   row: PlayerTrailRow,
   now: Date,
 ): PlayerTrailUnavailableReason | null {
-  if (!row.event_is_published || row.event_retired_at !== null) {
+  if (
+    !row.event_is_published ||
+    row.event_retired_at !== null ||
+    row.event_availability === 'unpublished'
+  ) {
     return 'event_retired';
   }
 
-  if (now.getTime() < row.starts_at.getTime()) {
+  if (
+    row.event_availability === 'upcoming' ||
+    now.getTime() < row.starts_at.getTime()
+  ) {
     return 'upcoming';
   }
 
-  if (now.getTime() >= row.ends_at.getTime()) {
+  if (
+    row.event_availability === 'ended' ||
+    now.getTime() >= row.ends_at.getTime()
+  ) {
     return 'ended';
   }
 
@@ -488,10 +547,15 @@ export const NEARBY_UNVISITED_QUERY = `
     from public.trails trail
     join public.trail_events step
       on step.trail_id = trail.id
+    cross join lateral public.resolve_trail_availability(
+      trail.id,
+      $2::timestamptz
+    ) trail_schedule
     left join public.event_completions completion
       on completion.player_id = $1::uuid
      and completion.event_id = step.event_id
     where trail.status = 'published'
+      and trail_schedule.availability = 'active'
   ),
   trail_current_positions as (
     select
@@ -524,15 +588,18 @@ export const NEARBY_UNVISITED_QUERY = `
       event.description,
       event.location,
       event.radius_metres,
-      event.starts_at,
-      event.ends_at,
+      event_schedule.effective_starts_at as starts_at,
+      event_schedule.effective_ends_at as ends_at,
       st_distance(event.location, claim.location) as distance_metres
     from public.events event
     cross join claim
+    cross join lateral public.resolve_event_availability(
+      event.id,
+      $2::timestamptz
+    ) event_schedule
     where event.is_published = true
       and event.retired_at is null
-      and event.starts_at <= $2::timestamptz
-      and event.ends_at > $2::timestamptz
+      and event_schedule.availability = 'active'
       and not exists (
         select 1
         from public.event_completions completion

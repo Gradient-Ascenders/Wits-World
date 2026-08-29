@@ -64,8 +64,8 @@ deadline indexes, all terminal outcomes, concurrent replay, and the
 two-participant 25/0 activity awards. Route, scheduler, and browser behavior
 remain downstream tests for issues `#180` and `#181`.
 
-Author curation tests cover the five-state transition matrix across all four
-content types, draft-only edits, latest-submitter self-review denial, required
+Author curation tests cover the five-state transition matrix across the four
+original content types plus campaigns, draft-only edits, latest-submitter self-review denial, required
 return reasons, readiness at approval and publication, optimistic concurrency,
 transactional audit rollback, safe queue/history schemas, and exclusion of every
 non-published state from Player paths. Database runs additionally cover migration
@@ -73,6 +73,11 @@ non-published state from Player paths. Database runs additionally cover migratio
 of attempts, rewards, ownership, decks, matches, and progression after
 retirement. These database checks require the dedicated disposable test target;
 they must not be redirected to development or production.
+
+Campaign database tests additionally cover start-inclusive/end-exclusive
+boundaries, effective event and trail windows, adjacent and overlapping member
+reuse, concurrent approvals, publication/retirement races, review history, and
+preservation of completed attempts and derived trail progress.
 
 ## Commands and data isolation
 
