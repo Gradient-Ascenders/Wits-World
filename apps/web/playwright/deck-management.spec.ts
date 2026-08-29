@@ -165,7 +165,7 @@ test('completes the saved-deck journey and records responsive evidence', async (
   await page.keyboard.press('Enter');
   await expect(page.getByText('Selected for matches')).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: 'Library Lineup is active' }),
+    page.getByRole('heading', { name: 'Library Lineup' }),
   ).toBeFocused();
 
   for (const viewport of [
@@ -208,8 +208,8 @@ test('completes the saved-deck journey and records responsive evidence', async (
     page.getByRole('heading', { name: 'No saved decks yet' }),
   ).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: 'Choose an active deck' }),
-  ).toBeVisible();
+    page.getByRole('button', { name: 'Start CPU match' }),
+  ).toHaveCount(0);
 
   expect(consoleErrors).toEqual([]);
   // Chromium reports an intercepted empty 204 as ERR_ABORTED even though the
@@ -326,7 +326,7 @@ test('selects an active deck with a real mobile touch event', async ({
     await touchPage.getByRole('button', { name: 'Make active' }).tap();
     await expect(touchPage.getByText('Selected for matches')).toBeVisible();
     await expect(
-      touchPage.getByRole('heading', { name: 'Touch Campus Five is active' }),
+      touchPage.getByRole('heading', { name: 'Touch Campus Five' }),
     ).toBeFocused();
     await expectNoHorizontalOverflow(touchPage);
 
