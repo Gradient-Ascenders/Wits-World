@@ -22,7 +22,7 @@ import {
 } from '../api/decks';
 import { MatchApiError } from '../api/matches';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
-import { CollectibleCard } from '../components/cards/CollectibleCard';
+import { CardArtwork } from '../components/cards/CollectibleCard';
 import '../components/cards/cards.css';
 import './decks.css';
 
@@ -624,14 +624,29 @@ function RulesPanel() {
     <details className="deck-rules">
       <summary>
         <span>Basic deck rules</span>
-        <small>5 cards · 3 Creature · 2 Power · 10 points maximum</small>
+        <small>
+          {basicDeckRules.deckSize} cards · {basicDeckRules.creatureCount}{' '}
+          Creature · {basicDeckRules.powerCount} Power ·{' '}
+          {basicDeckRules.pointCap} points maximum
+        </small>
       </summary>
       <div>
-        <h2>Five owned copies, built to balance</h2>
+        <h2>A balanced deck from owned copies</h2>
         <ul>
-          <li>Exactly 5 cards: 3 Creature cards and 2 Power cards.</li>
-          <li>No more than 10 rarity points in total.</li>
-          <li>Common costs 1, Rare 2, Epic 3, and Legendary 4 points.</li>
+          <li>
+            Exactly {basicDeckRules.deckSize} cards:{' '}
+            {basicDeckRules.creatureCount} Creature cards and{' '}
+            {basicDeckRules.powerCount} Power cards.
+          </li>
+          <li>
+            No more than {basicDeckRules.pointCap} rarity points in total.
+          </li>
+          <li>
+            Common costs {basicDeckRules.rarityPoints.common}, Rare{' '}
+            {basicDeckRules.rarityPoints.rare}, Epic{' '}
+            {basicDeckRules.rarityPoints.epic}, and Legendary{' '}
+            {basicDeckRules.rarityPoints.legendary} points.
+          </li>
           <li>A duplicate needs another separately owned copy in this deck.</li>
         </ul>
         <p>
@@ -800,11 +815,15 @@ function SavedDeckDetail({
       >
         <div>
           <dt>Cards</dt>
-          <dd>{deck.cards.length} / 5</dd>
+          <dd>
+            {deck.cards.length} / {basicDeckRules.deckSize}
+          </dd>
         </div>
         <div>
           <dt>Rarity points</dt>
-          <dd>{deck.totalPoints} / 10</dd>
+          <dd>
+            {deck.totalPoints} / {basicDeckRules.pointCap}
+          </dd>
         </div>
         <div>
           <dt>Composition</dt>
@@ -1022,10 +1041,15 @@ function DeckEditor({
               aria-labelledby="draft-cards-title"
               className="draft-cards"
             >
-              <h3 id="draft-cards-title">Cards in this draft</h3>
+              <div className="draft-cards__heading">
+                <h3 id="draft-cards-title">Selected copies</h3>
+                <span>
+                  {draft.ownedCardIds.length} / {basicDeckRules.deckSize}
+                </span>
+              </div>
               {draft.ownedCardIds.length === 0 ? (
                 <p className="draft-cards__empty">
-                  No copies chosen yet. Use Add a copy in your collection.
+                  No copies chosen yet. Use + in your collection.
                 </p>
               ) : (
                 <ol>
@@ -1051,18 +1075,13 @@ function DeckEditor({
                           </small>
                         </span>
                         <button
-                          className="button button--quiet"
+                          aria-label={`Remove ${card?.name ?? fallback?.name ?? `card ${index + 1}`} from draft`}
+                          className="draft-cards__remove"
                           disabled={isMutationPending}
                           onClick={() => removeAt(index)}
                           type="button"
                         >
-                          Remove
-                          <span className="sr-only">
-                            {' '}
-                            {card?.name ??
-                              fallback?.name ??
-                              `card ${index + 1}`}
-                          </span>
+                          <span aria-hidden="true">−</span>
                         </button>
                       </li>
                     );
@@ -1070,16 +1089,71 @@ function DeckEditor({
                 </ol>
               )}
             </section>
+
+            <div className="deck-editor__actions">
+              <button
+                className="button"
+                disabled={
+                  isMutationPending ||
+                  !summary.isValid ||
+                  draft.name.trim() === ''
+                }
+                type="submit"
+              >
+                {isSaving
+                  ? 'Saving with the server…'
+                  : draft.mode === 'create'
+                    ? 'Create saved deck'
+                    : 'Save deck changes'}
+              </button>
+              <button
+                className="button button--quiet"
+                disabled={isMutationPending}
+                onClick={onCancel}
+                type="button"
+              >
+                Cancel
+              </button>
+              <p>The server makes the final validity decision.</p>
+            </div>
           </div>
 
           <section aria-labelledby="card-picker-title" className="card-picker">
-            <div>
+            <div className="card-picker__heading">
               <p className="eyebrow">Owned collection</p>
               <h3 id="card-picker-title">Choose exact owned copies</h3>
               <p>
                 Used and remaining counts apply only to this draft. The same
                 owned copy may still appear in another saved deck.
               </p>
+            </div>
+
+            <div className="card-picker__draft-status">
+              <div>
+                <strong>
+                  {summary.totalCards} / {basicDeckRules.deckSize} selected
+                </strong>
+                <span>
+                  {summary.creatureCount} Creature · {summary.powerCount} Power
+                  · {summary.totalPoints} / {basicDeckRules.pointCap} points
+                </span>
+              </div>
+              <button
+                aria-label={
+                  draft.mode === 'create'
+                    ? 'Create saved deck from current draft'
+                    : 'Save current deck changes'
+                }
+                className="button card-picker__save"
+                disabled={
+                  isMutationPending ||
+                  !summary.isValid ||
+                  draft.name.trim() === ''
+                }
+                type="submit"
+              >
+                Save
+              </button>
             </div>
 
             {groupedCards.length === 0 ? (
@@ -1098,78 +1172,77 @@ function DeckEditor({
                     draft.ownedCardIds.includes(copy.ownedCardId),
                   ).length;
                   const remaining = group.length - used;
+                  const isDeckFull =
+                    draft.ownedCardIds.length >= basicDeckRules.deckSize;
+                  const titleId = `deck-picker-${card.cardDefinitionId}-title`;
 
                   return (
                     <li key={card.cardDefinitionId}>
-                      <CollectibleCard
-                        actions={
-                          <>
-                            <p aria-live="polite">
-                              Owned {group.length} · Used {used} · Remaining{' '}
-                              {remaining}
+                      <article
+                        aria-labelledby={titleId}
+                        className={`deck-picker-card card-thumbnail collectible-card--${card.rarity}${used > 0 ? ' deck-picker-card--selected' : ''}${card.isActive ? '' : ' card-thumbnail--inactive'}`}
+                      >
+                        <CardArtwork
+                          badge={used > 0 ? `×${used}` : undefined}
+                          card={card}
+                        />
+                        <div className="deck-picker-card__body">
+                          <p className="deck-picker-card__kind">
+                            {titleCase(card.category)} ·{' '}
+                            {titleCase(card.affinity)}
+                          </p>
+                          <h4 className="card-thumbnail__title" id={titleId}>
+                            {card.name}
+                          </h4>
+                          <p className="deck-picker-card__quantity">
+                            Owned {group.length} · Selected {used}
+                          </p>
+                          <div
+                            aria-label={`Choose copies of ${card.name}`}
+                            className="deck-copy-stepper"
+                            role="group"
+                          >
+                            <button
+                              aria-label={`Remove a copy of ${card.name}`}
+                              disabled={isMutationPending || used === 0}
+                              onClick={() => removeDefinition(group)}
+                              type="button"
+                            >
+                              <span aria-hidden="true">−</span>
+                            </button>
+                            <output
+                              aria-label={`${used} ${used === 1 ? 'copy' : 'copies'} of ${card.name} selected`}
+                            >
+                              {used}
+                            </output>
+                            <button
+                              aria-label={`Add a copy of ${card.name}`}
+                              disabled={
+                                isMutationPending ||
+                                remaining === 0 ||
+                                isDeckFull
+                              }
+                              onClick={() => addCopy(group)}
+                              type="button"
+                            >
+                              <span aria-hidden="true">+</span>
+                            </button>
+                          </div>
+                          {remaining > 0 ? (
+                            <p className="deck-picker-card__availability">
+                              {isDeckFull
+                                ? 'Deck is full'
+                                : `${remaining} ${remaining === 1 ? 'copy' : 'copies'} available`}
                             </p>
-                            <div className="copy-controls">
-                              <button
-                                aria-label={`Add a copy of ${card.name}`}
-                                className="button"
-                                disabled={
-                                  isMutationPending ||
-                                  remaining === 0 ||
-                                  draft.ownedCardIds.length >=
-                                    basicDeckRules.deckSize
-                                }
-                                onClick={() => addCopy(group)}
-                                type="button"
-                              >
-                                Add a copy
-                              </button>
-                              <button
-                                aria-label={`Remove a copy of ${card.name}`}
-                                className="button button--quiet"
-                                disabled={isMutationPending || used === 0}
-                                onClick={() => removeDefinition(group)}
-                                type="button"
-                              >
-                                Remove a copy
-                              </button>
-                            </div>
-                          </>
-                        }
-                        card={card}
-                        compact
-                        copyTotal={group.length}
-                      />
+                          ) : null}
+                        </div>
+                      </article>
                     </li>
                   );
                 })}
               </ul>
             )}
           </section>
-        </div>
-
-        <div className="deck-editor__actions">
-          <button
-            className="button"
-            disabled={
-              isMutationPending || !summary.isValid || draft.name.trim() === ''
-            }
-            type="submit"
-          >
-            {isSaving
-              ? 'Saving with the server…'
-              : draft.mode === 'create'
-                ? 'Create saved deck'
-                : 'Save deck changes'}
-          </button>
-          <button
-            className="button button--quiet"
-            disabled={isMutationPending}
-            onClick={onCancel}
-            type="button"
-          >
-            Cancel
-          </button>
-          <p>The server makes the final validity decision.</p>
         </div>
       </form>
     </section>
@@ -1189,19 +1262,27 @@ function DraftSummaryPanel({ summary }: { summary: DraftSummary }) {
       <dl>
         <div>
           <dt>Cards</dt>
-          <dd>{summary.totalCards} / 5</dd>
+          <dd>
+            {summary.totalCards} / {basicDeckRules.deckSize}
+          </dd>
         </div>
         <div>
           <dt>Creature</dt>
-          <dd>{summary.creatureCount} / 3</dd>
+          <dd>
+            {summary.creatureCount} / {basicDeckRules.creatureCount}
+          </dd>
         </div>
         <div>
           <dt>Power</dt>
-          <dd>{summary.powerCount} / 2</dd>
+          <dd>
+            {summary.powerCount} / {basicDeckRules.powerCount}
+          </dd>
         </div>
         <div>
           <dt>Rarity points</dt>
-          <dd>{summary.totalPoints} / 10</dd>
+          <dd>
+            {summary.totalPoints} / {basicDeckRules.pointCap}
+          </dd>
         </div>
       </dl>
       <div aria-live="polite">

@@ -162,7 +162,7 @@ export function CollectibleCard({
   );
 }
 
-function CardArtwork({
+export function CardArtwork({
   badge,
   card,
   showRarity = false,

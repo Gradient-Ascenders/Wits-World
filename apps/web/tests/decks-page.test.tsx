@@ -347,12 +347,35 @@ describe('saved deck management page', () => {
     const addDuplicate = screen.getByRole('button', {
       name: `Add a copy of ${first.name}`,
     });
+    const duplicatePickerCard = screen.getByRole('article', {
+      name: first.name,
+    });
 
     await user.click(addDuplicate);
-    expect(screen.getByText('Owned 2 · Used 1 · Remaining 1')).toBeVisible();
+    expect(
+      within(duplicatePickerCard).getByText('Owned 2 · Selected 1'),
+    ).toBeVisible();
+    expect(
+      within(duplicatePickerCard).getByText('1 copy available'),
+    ).toBeVisible();
     await user.click(addDuplicate);
-    expect(screen.getByText('Owned 2 · Used 2 · Remaining 0')).toBeVisible();
+    expect(
+      within(duplicatePickerCard).getByText('Owned 2 · Selected 2'),
+    ).toBeVisible();
+    expect(
+      within(duplicatePickerCard).queryByText('All copies selected'),
+    ).not.toBeInTheDocument();
     expect(addDuplicate).toBeDisabled();
+
+    await user.click(
+      screen.getByRole('button', {
+        name: `Remove a copy of ${first.name}`,
+      }),
+    );
+    expect(
+      within(duplicatePickerCard).getByText('Owned 2 · Selected 1'),
+    ).toBeVisible();
+    expect(addDuplicate).toBeEnabled();
     expect(
       screen.getAllByRole('listitem', { hidden: false }).length,
     ).toBeGreaterThan(0);
