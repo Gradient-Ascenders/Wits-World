@@ -1,5 +1,7 @@
 import type pg from 'pg';
 
+import { starterPackageDefinitions } from '../cards/starter-packages.js';
+
 export const AUTHOR_CONTENT_STATUSES = [
   'draft',
   'in_review',
@@ -90,6 +92,13 @@ const transitionTargets: Record<
   publish: { from: ['approved'], to: 'published' },
   retire: { from: ['published'], to: 'retired' },
 };
+
+const protectedStarterDefinitionIds = new Set<string>(
+  Object.values(starterPackageDefinitions).flatMap((definition) => [
+    ...definition.creatureDefinitionIds,
+    ...definition.powerCardDefinitionIds,
+  ]),
+);
 
 export class AuthorContentWorkflowNotFoundError extends Error {
   constructor(readonly entityType: AuthorContentEntityType) {
@@ -306,11 +315,17 @@ async function lockAuthorContentAncestors(
   }
   if (input.entityType === 'challenge') {
     await client.query(
-      `select event.id
-       from public.events event
-       join public.event_challenges challenge on challenge.event_id = event.id
-       where challenge.id = $1::uuid
-       for share of event`,
+      input.action === 'publish'
+        ? `select event.id
+           from public.events event
+           join public.event_challenges challenge on challenge.event_id = event.id
+           where challenge.id = $1::uuid
+           for update of event`
+        : `select event.id
+           from public.events event
+           join public.event_challenges challenge on challenge.event_id = event.id
+           where challenge.id = $1::uuid
+           for share of event`,
       [input.entityId],
     );
     return;
@@ -583,6 +598,11 @@ async function assertContainerState(
   input: TransitionAuthorContentInput,
 ) {
   if (input.entityType === 'card' && input.action === 'retire') {
+    if (protectedStarterDefinitionIds.has(input.entityId.toLowerCase())) {
+      throw new AuthorContentNotReadyError(
+        'A configured starter definition cannot be retired until an authoritative replacement is configured.',
+      );
+    }
     const target = await client.query<pg.QueryResultRow & { rarity: string }>(
       `select rarity from public.card_definitions where id = $1::uuid`,
       [input.entityId],

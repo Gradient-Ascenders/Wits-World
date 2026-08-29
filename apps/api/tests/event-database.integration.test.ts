@@ -174,7 +174,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0025_add_ordering_challenges.sql',
         '0026_create_player_progression.sql',
         '0027_create_ordered_trails.sql',
-        '0028_curate_author_content_lifecycle.sql',
+        '0029_curate_author_content_lifecycle.sql',
       ],
       skipped: [],
     });
@@ -209,7 +209,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0025_add_ordering_challenges.sql',
         '0026_create_player_progression.sql',
         '0027_create_ordered_trails.sql',
-        '0028_curate_author_content_lifecycle.sql',
+        '0029_curate_author_content_lifecycle.sql',
       ],
     });
     expect(readiness).toMatchObject({

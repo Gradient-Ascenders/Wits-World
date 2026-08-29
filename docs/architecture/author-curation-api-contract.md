@@ -59,7 +59,9 @@ Nested publication proceeds from leaves to roots:
 
 The coordinator locks dependencies in stable identifier order. Retirement guards
 prevent removing a dependency that would make still-published parent content
-invalid.
+invalid. Configured canonical starter definitions cannot be retired until their
+authoritative starter-package configuration has been replaced, so one retirement
+cannot break the server-derived starter options.
 
 ## HTTP endpoints
 
@@ -78,8 +80,10 @@ false`.
 
 `GET /api/v1/author/content/:entityType/:entityId/history` returns paginated,
 version-ordered audit records. Queue and history responses contain only stable
-local player IDs and current Player Names. They exclude Auth0 identifiers, email,
-private answers, event coordinates, and full content bodies.
+local player IDs and safe actor labels. The label is the current Player Name,
+`Deleted author` for an account-deletion tombstone, or `Unnamed author` when an
+active account has no Player Name. They exclude Auth0 identifiers, email, private
+answers, event coordinates, and full content bodies.
 
 Stable workflow failures are:
 
@@ -94,7 +98,7 @@ The generated OpenAPI document remains the exact schema reference.
 
 ## Provenance, compatibility, and Web limitation
 
-Migration `0028_curate_author_content_lifecycle.sql` marks existing published or
+Migration `0029_curate_author_content_lifecycle.sql` marks existing published or
 retired rows as `legacy`. Repository-controlled repeatable seeds use
 `controlled_seed`; ordinary reviewed publication uses `reviewed`. Event
 `is_published`/`retired_at` and card `is_active` remain constrained compatibility
@@ -108,5 +112,6 @@ return, or publish. Active Authors can use the documented API in the interim.
 ## AI declaration
 
 This contract was generated, edited, and reviewed with the assistance of
-Codex[gpt-5.6-sol]. It describes the implemented issue `#182` contract; it does
-not claim that issue `#185` reviewer UI or asynchronous PvP is implemented.
+Codex[gpt-5.6-sol] and Codex[GPT-5]. It describes the implemented issue `#182`
+contract; it does not claim that issue `#185` reviewer UI or asynchronous PvP is
+implemented.

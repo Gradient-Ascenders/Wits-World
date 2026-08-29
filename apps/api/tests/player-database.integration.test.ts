@@ -98,7 +98,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
     );
     expect(migrationResult.applied).toContain('0027_create_ordered_trails.sql');
     expect(migrationResult.applied).toContain(
-      '0028_curate_author_content_lifecycle.sql',
+      '0029_curate_author_content_lifecycle.sql',
     );
 
     await withDatabaseClient(temporaryConfig, async (client) => {
@@ -179,7 +179,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0025_add_ordering_challenges.sql',
           '0026_create_player_progression.sql',
           '0027_create_ordered_trails.sql',
-          '0028_curate_author_content_lifecycle.sql',
+          '0029_curate_author_content_lifecycle.sql',
         ],
       });
 
@@ -297,7 +297,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0025_add_ordering_challenges.sql',
           '0026_create_player_progression.sql',
           '0027_create_ordered_trails.sql',
-          '0028_curate_author_content_lifecycle.sql',
+          '0029_curate_author_content_lifecycle.sql',
         ],
       });
 

@@ -77,7 +77,9 @@ in_review → approved → published → retired`. Editing is draft-only. A retu
 - Card definitions use the same five authoring states. Only
   published cards are active for starter and reward selection. Retiring a card
   removes it from future catalogue selection without deleting owned copies that
-  already reference that definition.
+  already reference that definition. A configured canonical starter definition
+  cannot be retired until the authoritative starter-package configuration has a
+  replacement, so all three starter options remain grantable.
 - Approval and publication recheck readiness under dependency locks. Every edit
   and lifecycle request includes the expected version; stale concurrent requests
   fail without changing content. See the

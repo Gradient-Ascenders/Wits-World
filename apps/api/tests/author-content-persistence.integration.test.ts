@@ -10,6 +10,7 @@ import {
   withDatabaseClient,
 } from '../src/database/connection.js';
 import { runMigrations } from '../src/database/migrations.js';
+import { createAuthorContentReadService } from '../src/authoring/content-read-service.js';
 
 const AUTHOR_ID = 'a7700000-0000-4000-8000-000000000001';
 const PLAYER_ID = 'a7700000-0000-4000-8000-000000000002';
@@ -17,6 +18,7 @@ const PLAYER_ID = 'a7700000-0000-4000-8000-000000000002';
 const EVENT_ID = 'a7710000-0000-4000-8000-000000000001';
 const CHALLENGE_ID = 'a7720000-0000-4000-8000-000000000001';
 const QUESTION_ID = 'a7730000-0000-4000-8000-000000000001';
+const TOMBSTONE_EVENT_ID = 'a7710000-0000-4000-8000-000000000002';
 
 const runIntegrationTests =
   process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';
@@ -228,6 +230,108 @@ describe.skipIf(!runIntegrationTests)(
         );
       }
     });
+
+    it('preserves safe queue and history labels after the submitting Author is deleted', async () => {
+      await pool.query(
+        `insert into public.events (
+           id, title, location, radius_metres, starts_at, ends_at
+         ) values (
+           $1::uuid,
+           'Deleted Author review event',
+           st_setsrid(st_makepoint(28.03038, -26.19205), 4326)::geography,
+           75,
+           '2026-09-02T08:00:00Z',
+           '2026-09-02T12:00:00Z'
+         )`,
+        [TOMBSTONE_EVENT_ID],
+      );
+      await pool.query('begin');
+      try {
+        await pool.query(
+          `update public.events
+              set authoring_status = 'in_review',
+                  version = version + 1,
+                  submitted_by_player_id = $2::uuid,
+                  submitted_at = now(),
+                  updated_at = now()
+            where id = $1::uuid`,
+          [TOMBSTONE_EVENT_ID, AUTHOR_ID],
+        );
+        await pool.query(
+          `insert into public.author_content_audit (
+             actor_player_id, entity_type, entity_id, action,
+             from_status, to_status, resulting_version
+           ) values ($1::uuid, 'event', $2::uuid, 'submit', 'draft', 'in_review', 1)`,
+          [AUTHOR_ID, TOMBSTONE_EVENT_ID],
+        );
+        await pool.query('commit');
+      } catch (error) {
+        await pool.query('rollback');
+        throw error;
+      }
+
+      const reads = createAuthorContentReadService(pool);
+      const activeQueue = await reads.listReviewQueue({
+        actorPlayerId: PLAYER_ID,
+        entityType: 'event',
+        page: 1,
+        pageSize: 100,
+      });
+      expect(
+        activeQueue.items.find((item) => item.entityId === TOMBSTONE_EVENT_ID),
+      ).toMatchObject({ submittedByName: 'Unnamed author' });
+
+      await pool.query(
+        `update public.players
+            set auth_issuer = null,
+                auth_subject = null,
+                player_name = null,
+                role = null,
+                lifecycle_status = 'deleted',
+                updated_at = now()
+          where id = $1::uuid`,
+        [AUTHOR_ID],
+      );
+
+      try {
+        const deletedQueue = await reads.listReviewQueue({
+          actorPlayerId: PLAYER_ID,
+          entityType: 'event',
+          page: 1,
+          pageSize: 100,
+        });
+        expect(
+          deletedQueue.items.find(
+            (item) => item.entityId === TOMBSTONE_EVENT_ID,
+          ),
+        ).toMatchObject({ submittedByName: 'Deleted author' });
+
+        const history = await reads.getHistory({
+          entityType: 'event',
+          entityId: TOMBSTONE_EVENT_ID,
+          page: 1,
+          pageSize: 100,
+        });
+        expect(history.items).toEqual([
+          expect.objectContaining({
+            action: 'submit',
+            actorPlayerId: AUTHOR_ID,
+            actorPlayerName: 'Deleted author',
+          }),
+        ]);
+      } finally {
+        await pool.query(
+          `update public.players
+              set auth_issuer = 'https://auth.example.test/',
+                  auth_subject = 'author-content-author',
+                  role = 'author',
+                  lifecycle_status = 'active',
+                  updated_at = now()
+            where id = $1::uuid`,
+          [AUTHOR_ID],
+        );
+      }
+    }, 45_000);
 
     it('keeps audit entries immutable', async () => {
       const inserted = await pool.query<{

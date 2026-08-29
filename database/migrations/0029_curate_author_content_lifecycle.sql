@@ -326,11 +326,21 @@ begin
       raise exception 'Non-draft question % content is immutable', old.id using errcode = '55006';
     end if;
   else
-    question_id_to_check := case when tg_op = 'DELETE' then old.question_id else new.question_id end;
-    select status into question_status from public.challenge_questions where id = question_id_to_check;
-    if question_status <> 'draft' then
-      raise exception 'Nested content for non-draft question % is immutable', question_id_to_check
-        using errcode = '55006';
+    if tg_op in ('UPDATE', 'DELETE') then
+      question_id_to_check := old.question_id;
+      select status into question_status from public.challenge_questions where id = question_id_to_check;
+      if question_status is distinct from 'draft' then
+        raise exception 'Nested content for non-draft question % is immutable', question_id_to_check
+          using errcode = '55006';
+      end if;
+    end if;
+    if tg_op in ('INSERT', 'UPDATE') then
+      question_id_to_check := new.question_id;
+      select status into question_status from public.challenge_questions where id = question_id_to_check;
+      if question_status is distinct from 'draft' then
+        raise exception 'Nested content for non-draft question % is immutable', question_id_to_check
+          using errcode = '55006';
+      end if;
     end if;
   end if;
   if tg_op = 'DELETE' then
@@ -380,11 +390,21 @@ begin
     end if;
     return new;
   end if;
-  card_id := case when tg_op = 'DELETE' then old.card_definition_id else new.card_definition_id end;
-  select authoring_status into card_status from public.card_definitions where id = card_id;
-  if card_status <> 'draft' then
-    raise exception 'Moves and effects for non-draft card definition % are immutable', card_id
-      using errcode = '55006';
+  if tg_op in ('UPDATE', 'DELETE') then
+    card_id := old.card_definition_id;
+    select authoring_status into card_status from public.card_definitions where id = card_id;
+    if card_status is distinct from 'draft' then
+      raise exception 'Moves and effects for non-draft card definition % are immutable', card_id
+        using errcode = '55006';
+    end if;
+  end if;
+  if tg_op in ('INSERT', 'UPDATE') then
+    card_id := new.card_definition_id;
+    select authoring_status into card_status from public.card_definitions where id = card_id;
+    if card_status is distinct from 'draft' then
+      raise exception 'Moves and effects for non-draft card definition % are immutable', card_id
+        using errcode = '55006';
+    end if;
   end if;
   if tg_op = 'DELETE' then
     return old;

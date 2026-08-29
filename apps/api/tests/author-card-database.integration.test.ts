@@ -4,6 +4,8 @@ import { createAuthorCardService } from '../src/cards/author-card-service.js';
 import { AuthorContentStateConflictError } from '../src/authoring/content-workflow.js';
 import { AuthorContentNotReadyError } from '../src/authoring/content-workflow.js';
 import { InvalidCardDefinitionError } from '../src/cards/card-validation.js';
+import { createStarterGrantService } from '../src/cards/starter-grant.js';
+import { starterPackageDefinitions } from '../src/cards/starter-packages.js';
 import {
   buildDatabaseConfig,
   loadApiEnvironment,
@@ -14,6 +16,7 @@ import {
   withDatabaseClient,
 } from '../src/database/connection.js';
 import { runMigrations } from '../src/database/migrations.js';
+import { runSeeds } from '../src/database/seeds.js';
 
 const AUTHOR_ONE_ID = 'a1000000-0000-4000-8000-000000000001';
 const AUTHOR_TWO_ID = 'a1000000-0000-4000-8000-000000000002';
@@ -52,6 +55,7 @@ describe.skipIf(!runIntegrationTests)(
       };
 
       await runMigrations(temporaryConfig);
+      await runSeeds(temporaryConfig);
 
       pool = createDatabasePool(temporaryConfig);
 
@@ -85,7 +89,7 @@ describe.skipIf(!runIntegrationTests)(
         `,
         [AUTHOR_ONE_ID, AUTHOR_TWO_ID, PLAYER_ID],
       );
-    }, 45_000);
+    }, 90_000);
 
     afterAll(async () => {
       if (pool) {
@@ -778,6 +782,82 @@ describe.skipIf(!runIntegrationTests)(
       ]);
     }, 45_000);
 
+    it('prevents moves and effects from being re-parented out of published cards', async () => {
+      const service = createAuthorCardService(pool);
+      const publishedCreature = await service.createCard({
+        actorPlayerId: AUTHOR_ONE_ID,
+        name: 'Published Reparenting Creature',
+        category: 'creature',
+        affinity: 'grit',
+        rarity: 'rare',
+        hp: 120,
+        power: 20,
+        moves: [1, 2, 3, 4].map((position) => ({
+          position,
+          name: `Protected Move ${position}`,
+          moveType: 'basic' as const,
+          effectType: 'damage' as const,
+          effectValue: 10,
+          powerCost: 1,
+        })),
+        effects: [],
+      });
+      const draftCreature = await service.createCard({
+        actorPlayerId: AUTHOR_ONE_ID,
+        name: 'Draft Reparenting Creature',
+        category: 'creature',
+        affinity: 'grit',
+        rarity: 'rare',
+        hp: 120,
+        power: 20,
+        moves: [],
+        effects: [],
+      });
+      const publishedPower = await service.createCard({
+        actorPlayerId: AUTHOR_ONE_ID,
+        name: 'Published Reparenting Power',
+        category: 'power',
+        affinity: 'wit',
+        rarity: 'rare',
+        hp: null,
+        power: null,
+        moves: [],
+        effects: [{ position: 1, effectType: 'heal', effectValue: 10 }],
+      });
+      const draftPower = await service.createCard({
+        actorPlayerId: AUTHOR_ONE_ID,
+        name: 'Draft Reparenting Power',
+        category: 'power',
+        affinity: 'wit',
+        rarity: 'rare',
+        hp: null,
+        power: null,
+        moves: [],
+        effects: [{ position: 1, effectType: 'heal', effectValue: 1 }],
+      });
+
+      await publishCardThroughReview(service, publishedCreature.id);
+      await publishCardThroughReview(service, publishedPower.id);
+
+      await expect(
+        pool.query(
+          `update public.card_moves
+              set card_definition_id = $2::uuid
+            where id = $1::uuid`,
+          [publishedCreature.moves[0]!.id, draftCreature.id],
+        ),
+      ).rejects.toThrow(/non-draft card definition/i);
+      await expect(
+        pool.query(
+          `update public.card_effects
+              set card_definition_id = $2::uuid,
+                  position = 2
+            where id = $1::uuid`,
+          [publishedPower.effects[0]!.id, draftPower.id],
+        ),
+      ).rejects.toThrow(/non-draft card definition/i);
+    }, 180_000);
+
     it('retires a published card without allowing republication', async () => {
       const service = createAuthorCardService(pool);
 
@@ -878,6 +958,42 @@ describe.skipIf(!runIntegrationTests)(
           actor_player_id: AUTHOR_TWO_ID,
         },
       ]);
+    }, 45_000);
+
+    it('refuses to retire a configured starter definition and keeps all options available', async () => {
+      const cardService = createAuthorCardService(pool);
+      const starterService = createStarterGrantService(pool);
+      const starterDefinitionId =
+        starterPackageDefinitions.spark.creatureDefinitionIds[0];
+
+      await expect(
+        cardService.retireCard({
+          actorPlayerId: AUTHOR_TWO_ID,
+          cardId: starterDefinitionId,
+          expectedVersion: 1,
+        }),
+      ).rejects.toMatchObject({
+        message:
+          'A configured starter definition cannot be retired until an authoritative replacement is configured.',
+      });
+
+      const persisted = await pool.query<{
+        authoring_status: string;
+        is_active: boolean;
+        version: number;
+      }>(
+        `select authoring_status, is_active, version
+           from public.card_definitions
+          where id = $1::uuid`,
+        [starterDefinitionId],
+      );
+      expect(persisted.rows).toEqual([
+        { authoring_status: 'published', is_active: true, version: 1 },
+      ]);
+
+      await expect(starterService.listStarterOptions()).resolves.toHaveLength(
+        3,
+      );
     }, 45_000);
   },
 );

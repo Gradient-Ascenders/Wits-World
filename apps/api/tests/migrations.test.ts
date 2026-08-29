@@ -81,7 +81,7 @@ describe('migration file loading', () => {
       },
       {
         checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
-        name: '0028_curate_author_content_lifecycle.sql',
+        name: '0029_curate_author_content_lifecycle.sql',
       },
     ]);
   });

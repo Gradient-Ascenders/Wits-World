@@ -95,7 +95,7 @@ describe.skipIf(!runIntegrationTests)(
       expect(migrationResult.applied).toEqual([
         '0026_create_player_progression.sql',
         '0027_create_ordered_trails.sql',
-        '0028_curate_author_content_lifecycle.sql',
+        '0029_curate_author_content_lifecycle.sql',
       ]);
 
       pool = createDatabasePool(temporaryConfig);
@@ -771,7 +771,7 @@ async function copyMigrationsBeforeProgression(): Promise<string> {
         name.endsWith('.sql') &&
         name !== '0026_create_player_progression.sql' &&
         name !== '0027_create_ordered_trails.sql' &&
-        name !== '0028_curate_author_content_lifecycle.sql',
+        name !== '0029_curate_author_content_lifecycle.sql',
     )
     .sort();
 

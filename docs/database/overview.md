@@ -78,7 +78,7 @@ decision is approved. The Great Hall coordinates, radius, and dates are
 provisional integration data rather than accepted event content.
 
 Migration `0027_create_ordered_trails.sql` follows progression migration `0026`.
-Migration `0028_curate_author_content_lifecycle.sql` then preserves the trail
+Migration `0029_curate_author_content_lifecycle.sql` then preserves the trail
 audit entity while extending events, challenges, questions, and cards. It
 backfills existing published and retired content with `legacy` provenance,
 while repeatable repository seeds explicitly use `controlled_seed`. It does not

@@ -61,7 +61,7 @@ the Author audit entity constraint to accept `trail` and does not rewrite
 existing events, attempts, completions, or player records. Apply it before an
 API version that registers trail routes.
 
-Migration `0028_curate_author_content_lifecycle.sql` must run after ordered
+Migration `0029_curate_author_content_lifecycle.sql` must run after ordered
 trails. It preserves `trail` as an Author audit entity while installing the
 five-state workflow for events, challenges, questions, and cards. It adds
 optimistic versions, provenance, versioned audit fields, review indexes, and

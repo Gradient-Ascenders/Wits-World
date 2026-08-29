@@ -134,7 +134,11 @@ export function createAuthorContentReadService(
         const result = await client.query<QueueRow>(
           `${reviewQueueCte}
            select queue.entity_type, queue.entity_id, queue.label, queue.version,
-                  queue.submitted_by::text, player.player_name submitted_by_name,
+                  queue.submitted_by::text,
+                  case
+                    when player.lifecycle_status = 'deleted' then 'Deleted author'
+                    else coalesce(player.player_name, 'Unnamed author')
+                  end submitted_by_name,
                   queue.submitted_at
            from queue
            join public.players player on player.id = queue.submitted_by
@@ -188,7 +192,11 @@ export function createAuthorContentReadService(
         const result = await client.query<HistoryRow>(
           `select audit.id::text audit_id, audit.action, audit.from_status,
                   audit.to_status, audit.resulting_version, audit.note,
-                  audit.actor_player_id::text, player.player_name actor_player_name,
+                  audit.actor_player_id::text,
+                  case
+                    when player.lifecycle_status = 'deleted' then 'Deleted author'
+                    else coalesce(player.player_name, 'Unnamed author')
+                  end actor_player_name,
                   audit.occurred_at
            from public.author_content_audit audit
            join public.players player on player.id = audit.actor_player_id
