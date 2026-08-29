@@ -139,15 +139,19 @@ describe.skipIf(!runIntegrationTests)(
 
     it('reserves published and retired names globally', async () => {
       const published = await createPowerCard(service, 'Published Reserve');
-      await service.publishCard(AUTHOR_ONE_ID, published.id);
+      await publishCardThroughReview(service, published.id);
 
       await expect(
         createPowerCard(service, ' published reserve '),
       ).rejects.toBeInstanceOf(AuthorCardNameConflictError);
 
       const retired = await createPowerCard(service, 'Retired Reserve');
-      await service.publishCard(AUTHOR_ONE_ID, retired.id);
-      await service.retireCard(AUTHOR_TWO_ID, retired.id);
+      await publishCardThroughReview(service, retired.id);
+      await service.retireCard({
+        actorPlayerId: AUTHOR_TWO_ID,
+        cardId: retired.id,
+        expectedVersion: 3,
+      });
 
       await expect(
         createPowerCard(service, 'RETIRED RESERVE'),
@@ -169,6 +173,7 @@ describe.skipIf(!runIntegrationTests)(
         service,
         first.id,
         '  CASING KEEPER  ',
+        1,
       );
       expect(trimmed.name).toBe('CASING KEEPER');
 
@@ -200,7 +205,8 @@ describe.skipIf(!runIntegrationTests)(
       await expect(
         pool.query(
           `update public.card_definitions
-              set name = 'DIRECT RESERVE'
+              set name = 'DIRECT RESERVE',
+                  version = version + 1
             where id = $1::uuid`,
           [source],
         ),
@@ -505,8 +511,34 @@ function updatePowerCard(
   service: AuthorCardService,
   cardId: string,
   name: string,
+  expectedVersion = 0,
 ) {
-  return service.updateCard({ ...powerCardInput(name), cardId });
+  return service.updateCard({
+    ...powerCardInput(name),
+    cardId,
+    expectedVersion,
+  });
+}
+
+async function publishCardThroughReview(
+  service: AuthorCardService,
+  cardId: string,
+) {
+  await service.submitCard({
+    actorPlayerId: AUTHOR_ONE_ID,
+    cardId,
+    expectedVersion: 0,
+  });
+  await service.approveCard({
+    actorPlayerId: AUTHOR_TWO_ID,
+    cardId,
+    expectedVersion: 1,
+  });
+  return service.publishCard({
+    actorPlayerId: AUTHOR_ONE_ID,
+    cardId,
+    expectedVersion: 2,
+  });
 }
 
 async function insertDirectDefinition(

@@ -103,8 +103,8 @@ export default function AuthorConsolePage({
           <h1 id="author-console-title">Author console</h1>
         </div>
         <p>
-          Build draft content, verify its relationships, and ask the API to
-          publish only when the complete Basic journey is ready.
+          Build draft content and inspect lifecycle state. Review and
+          publication actions are currently available through the Author API.
         </p>
       </header>
 

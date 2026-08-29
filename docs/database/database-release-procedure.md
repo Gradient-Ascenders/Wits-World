@@ -68,6 +68,16 @@ progression sources. It preserves existing CPU-match and progression records.
 Apply it before deploying issue `#180`; applying it alone does not expose PvP
 routes or start deadline processing.
 
+Migration `0029_curate_author_content_lifecycle.sql` must run after ordered
+trails and asynchronous PvP persistence. It preserves `trail` as an Author audit entity while installing the
+five-state workflow for events, challenges, questions, and cards. It adds
+optimistic versions, provenance, versioned audit fields, review indexes, and
+database lifecycle guards. Existing live/history content is retained with
+`legacy` provenance; controlled catalogue and Basic-demo seeds identify
+themselves as `controlled_seed`. Run `0029` before deploying the matching API.
+During the database-to-API window, the old direct draft-publish API fails
+closed, so coordinate the releases and keep that window short.
+
 ## Prerequisites
 
 - Use the Node.js and npm versions declared by the repository.
@@ -93,8 +103,9 @@ npm run db:release --workspace @wits-world/api -- \
 
 Run the same command a second time. The second run must report zero applied
 migrations, all existing migrations skipped, and the expected Basic demo event
-and challenge counts. Seed upserts update the fixed fixtures instead of
-inserting duplicates.
+and challenge counts. Conflict-safe seed operations leave already-published,
+immutable fixtures unchanged instead of inserting duplicates or rewriting live
+content.
 
 Run the database integration suite against the isolated test target:
 
@@ -128,8 +139,13 @@ test command as evidence that production was changed.
      --confirm-database <production-database-name>
    ```
 
-4. Review the successful migration, PostGIS, and verification counts.
-5. Only when demonstration seeding has separate approval, rerun with the seed
+4. Review the successful migration, PostGIS, and verification counts. Confirm
+   `0028` before deploying the API and compatible Web build.
+5. Deploy the matching API and Web build, then verify health and generated
+   OpenAPI. With sanitised evidence, perform an authenticated Author
+   submit/approve/publish check using two Authors and verify unpublished content
+   remains absent from Player APIs.
+6. Only when demonstration seeding has separate approval, rerun with the seed
    option:
 
    ```bash
@@ -139,8 +155,8 @@ test command as evidence that production was changed.
      --seed-basic-demo
    ```
 
-6. Deploy the API only after the required database procedure succeeds.
-7. Verify `/health` and `/api/v1/`, then use an authenticated player session to
+7. Deploy the API only after the required database procedure succeeds.
+8. Verify `/health` and `/api/v1/`, then use an authenticated player session to
    confirm the intended event is returned by event discovery and that
    `/api/v1/progression/me` plus the first all-time standings page return safe
    progression fields. Do not place an access token, player UUID, or private
@@ -181,4 +197,5 @@ subject to the selected Neon plan and are not created by this procedure.
 - authenticated deployed-event verification.
 
 This procedure was planned, generated, edited, and verified with the assistance
-of Codex[GPT-5], Codex[GPT-5.6 Sol], and Codex-CLI[gpt-5.6-sol medium].
+of Codex[GPT-5], Codex[GPT-5.6 Sol], Codex[gpt-5.6-sol], and
+Codex-CLI[gpt-5.6-sol medium].

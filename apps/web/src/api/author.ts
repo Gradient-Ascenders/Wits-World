@@ -1,6 +1,17 @@
 import type { ApiAccessTokenProvider } from '../auth/useApiAccessToken';
 
-export type AuthoringStatus = 'draft' | 'published' | 'retired';
+export type AuthoringStatus =
+  'draft' | 'in_review' | 'approved' | 'published' | 'retired';
+export type PublicationProvenance = 'legacy' | 'controlled_seed' | 'reviewed';
+
+interface AuthorLifecycleMetadata {
+  version: number;
+  submittedBy: string | null;
+  submittedAt: string | null;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  publicationProvenance: PublicationProvenance | null;
+}
 export type AuthorApiFailure =
   | 'authorization'
   | 'conflict'
@@ -28,7 +39,7 @@ export class AuthorApiError extends Error {
   }
 }
 
-export interface AuthorEvent {
+export interface AuthorEvent extends AuthorLifecycleMetadata {
   authoringStatus: AuthoringStatus;
   createdAt: string;
   description: string | null;
@@ -54,7 +65,7 @@ export interface AuthorEventInput {
   title: string;
 }
 
-export interface AuthorChallenge {
+export interface AuthorChallenge extends AuthorLifecycleMetadata {
   challengeId: string;
   createdAt: string;
   eventId: string;
@@ -69,7 +80,7 @@ export interface AuthorQuestionChoice {
   text: string;
 }
 
-export interface AuthorQuestion {
+export interface AuthorQuestion extends AuthorLifecycleMetadata {
   acceptedChoiceId: string | null;
   acceptedChoicePosition: number | null;
   challengeId: string;
@@ -149,7 +160,7 @@ export interface AuthorCardInput {
   rarity: CardRarity;
 }
 
-export interface AuthorCard {
+export interface AuthorCard extends AuthorLifecycleMetadata {
   affinity: CardAffinity;
   authoringStatus: AuthoringStatus;
   category: CardCategory;
@@ -206,33 +217,37 @@ export async function createAuthorEvent(
 }
 
 export async function updateAuthorEvent(
-  options: RequestBase & { eventId: string; input: AuthorEventInput },
+  options: RequestBase & {
+    eventId: string;
+    expectedVersion: number;
+    input: AuthorEventInput;
+  },
 ) {
   return requestEvent({
     ...options,
-    body: options.input,
+    body: { ...options.input, expectedVersion: options.expectedVersion },
     method: 'PUT',
     path: `/author/events/${options.eventId}`,
   });
 }
 
 export async function publishAuthorEvent(
-  options: RequestBase & { eventId: string },
+  options: RequestBase & { eventId: string; expectedVersion: number },
 ) {
   return requestEvent({
     ...options,
-    body: {},
+    body: { expectedVersion: options.expectedVersion },
     method: 'POST',
     path: `/author/events/${options.eventId}/publish`,
   });
 }
 
 export async function retireAuthorEvent(
-  options: RequestBase & { eventId: string },
+  options: RequestBase & { eventId: string; expectedVersion: number },
 ) {
   return requestEvent({
     ...options,
-    body: {},
+    body: { expectedVersion: options.expectedVersion },
     method: 'POST',
     path: `/author/events/${options.eventId}/retire`,
   });
@@ -269,13 +284,13 @@ export async function createAuthorChallenge(
 }
 
 export async function publishAuthorChallenge(
-  options: RequestBase & { challengeId: string },
+  options: RequestBase & { challengeId: string; expectedVersion: number },
 ) {
   return requestChallengeLifecycle(options, 'publish');
 }
 
 export async function retireAuthorChallenge(
-  options: RequestBase & { challengeId: string },
+  options: RequestBase & { challengeId: string; expectedVersion: number },
 ) {
   return requestChallengeLifecycle(options, 'retire');
 }
@@ -312,24 +327,28 @@ export async function createAuthorQuestion(
 }
 
 export async function updateAuthorQuestion(
-  options: RequestBase & { input: AuthorQuestionInput; questionId: string },
+  options: RequestBase & {
+    expectedVersion: number;
+    input: AuthorQuestionInput;
+    questionId: string;
+  },
 ) {
   return requestQuestion({
     ...options,
-    body: options.input,
+    body: { ...options.input, expectedVersion: options.expectedVersion },
     method: 'PUT',
     path: `/author/questions/${options.questionId}`,
   });
 }
 
 export async function publishAuthorQuestion(
-  options: RequestBase & { questionId: string },
+  options: RequestBase & { questionId: string; expectedVersion: number },
 ) {
   return requestQuestionLifecycle(options, 'publish');
 }
 
 export async function retireAuthorQuestion(
-  options: RequestBase & { questionId: string },
+  options: RequestBase & { questionId: string; expectedVersion: number },
 ) {
   return requestQuestionLifecycle(options, 'retire');
 }
@@ -361,24 +380,28 @@ export async function createAuthorCard(
 }
 
 export async function updateAuthorCard(
-  options: RequestBase & { cardId: string; input: AuthorCardInput },
+  options: RequestBase & {
+    cardId: string;
+    expectedVersion: number;
+    input: AuthorCardInput;
+  },
 ) {
   return requestCard({
     ...options,
-    body: options.input,
+    body: { ...options.input, expectedVersion: options.expectedVersion },
     method: 'PUT',
     path: `/author/cards/${options.cardId}`,
   });
 }
 
 export async function publishAuthorCard(
-  options: RequestBase & { cardId: string },
+  options: RequestBase & { cardId: string; expectedVersion: number },
 ) {
   return requestCardLifecycle(options, 'publish');
 }
 
 export async function retireAuthorCard(
-  options: RequestBase & { cardId: string },
+  options: RequestBase & { cardId: string; expectedVersion: number },
 ) {
   return requestCardLifecycle(options, 'retire');
 }
@@ -401,12 +424,12 @@ async function requestCard(options: RequestOptions): Promise<AuthorCard> {
 }
 
 async function requestChallengeLifecycle(
-  options: RequestBase & { challengeId: string },
+  options: RequestBase & { challengeId: string; expectedVersion: number },
   action: 'publish' | 'retire',
 ) {
   const payload = await authorRequest({
     ...options,
-    body: {},
+    body: { expectedVersion: options.expectedVersion },
     method: 'POST',
     path: `/author/challenges/${options.challengeId}/${action}`,
   });
@@ -414,24 +437,24 @@ async function requestChallengeLifecycle(
 }
 
 async function requestQuestionLifecycle(
-  options: RequestBase & { questionId: string },
+  options: RequestBase & { questionId: string; expectedVersion: number },
   action: 'publish' | 'retire',
 ) {
   return requestQuestion({
     ...options,
-    body: {},
+    body: { expectedVersion: options.expectedVersion },
     method: 'POST',
     path: `/author/questions/${options.questionId}/${action}`,
   });
 }
 
 async function requestCardLifecycle(
-  options: RequestBase & { cardId: string },
+  options: RequestBase & { cardId: string; expectedVersion: number },
   action: 'publish' | 'retire',
 ) {
   return requestCard({
     ...options,
-    body: {},
+    body: { expectedVersion: options.expectedVersion },
     method: 'POST',
     path: `/author/cards/${options.cardId}/${action}`,
   });
@@ -588,7 +611,8 @@ function parseAuthorEvent(value: unknown): AuthorEvent {
     !isStatus(value.authoringStatus) ||
     !isNullableDateTime(value.retiredAt) ||
     !isDateTime(value.createdAt) ||
-    !isDateTime(value.updatedAt)
+    !isDateTime(value.updatedAt) ||
+    !isLifecycleMetadata(value)
   ) {
     throw unavailableResponse();
   }
@@ -604,7 +628,8 @@ function parseAuthorChallenge(value: unknown): AuthorChallenge {
     value.format !== 'multiple_choice' ||
     !isStatus(value.status) ||
     !isDateTime(value.createdAt) ||
-    !isDateTime(value.updatedAt)
+    !isDateTime(value.updatedAt) ||
+    !isLifecycleMetadata(value)
   ) {
     throw unavailableResponse();
   }
@@ -625,7 +650,8 @@ function parseAuthorQuestion(value: unknown): AuthorQuestion {
     !isNullableUuid(value.acceptedChoiceId) ||
     !isNullableChoicePosition(value.acceptedChoicePosition) ||
     !isDateTime(value.createdAt) ||
-    !isDateTime(value.updatedAt)
+    !isDateTime(value.updatedAt) ||
+    !isLifecycleMetadata(value)
   ) {
     throw unavailableResponse();
   }
@@ -679,7 +705,8 @@ function parseAuthorCard(value: unknown): AuthorCard {
     !Array.isArray(value.effects) ||
     !isStatus(value.authoringStatus) ||
     !isDateTime(value.createdAt) ||
-    !isDateTime(value.updatedAt)
+    !isDateTime(value.updatedAt) ||
+    !isLifecycleMetadata(value)
   ) {
     throw unavailableResponse();
   }
@@ -797,7 +824,27 @@ function isNullablePositiveInteger(value: unknown): value is number | null {
 }
 
 function isStatus(value: unknown): value is AuthoringStatus {
-  return value === 'draft' || value === 'published' || value === 'retired';
+  return (
+    value === 'draft' ||
+    value === 'in_review' ||
+    value === 'approved' ||
+    value === 'published' ||
+    value === 'retired'
+  );
+}
+
+function isLifecycleMetadata(value: Record<string, unknown>): boolean {
+  return (
+    isNonNegativeInteger(value.version) &&
+    isNullableUuid(value.submittedBy) &&
+    isNullableDateTime(value.submittedAt) &&
+    isNullableUuid(value.reviewedBy) &&
+    isNullableDateTime(value.reviewedAt) &&
+    (value.publicationProvenance === null ||
+      value.publicationProvenance === 'legacy' ||
+      value.publicationProvenance === 'controlled_seed' ||
+      value.publicationProvenance === 'reviewed')
+  );
 }
 
 function isDifficulty(value: unknown): value is 1 | 2 | 3 {

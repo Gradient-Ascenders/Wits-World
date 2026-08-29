@@ -59,10 +59,20 @@ the owning challenge or CPU-match completion.
 
 The asynchronous PvP database suite upgrades retained CPU progression through
 migration `0028`, verifies private-state separation and lifecycle constraints,
-and exercises unordered invitation uniqueness, immutable snapshots and
-history, deadline indexes, all terminal outcomes, concurrent replay, and the
+and exercises unordered invitation uniqueness, immutable snapshots and history,
+deadline indexes, all terminal outcomes, concurrent replay, and the
 two-participant 25/0 activity awards. Route, scheduler, and browser behavior
 remain downstream tests for issues `#180` and `#181`.
+
+Author curation tests cover the five-state transition matrix across all four
+content types, draft-only edits, latest-submitter self-review denial, required
+return reasons, readiness at approval and publication, optimistic concurrency,
+transactional audit rollback, safe queue/history schemas, and exclusion of every
+non-published state from Player paths. Database runs additionally cover migration
+`0029` backfill/constraints, seed provenance, dependency races, and preservation
+of attempts, rewards, ownership, decks, matches, and progression after
+retirement. These database checks require the dedicated disposable test target;
+they must not be redirected to development or production.
 
 ## Commands and data isolation
 
@@ -183,6 +193,6 @@ for demonstrating the acceptance criteria and protected invariants.
 ## AI declaration
 
 This testing strategy was generated, edited, and reviewed with the assistance
-of Codex[GPT-5] and Codex-CLI[gpt-5.6-sol medium]. Repository paths and workflow
-claims were checked against the current source; this declaration is not test
-evidence.
+of Codex[GPT-5], Codex[gpt-5.6-sol], and Codex-CLI[gpt-5.6-sol medium].
+Repository paths and workflow claims were checked against the current source;
+this declaration is not test evidence.

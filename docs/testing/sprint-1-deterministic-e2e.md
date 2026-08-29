@@ -73,8 +73,9 @@ refuses test access when the test and development URLs identify the same host,
 port, and database. The runner never drops a database, never resets
 `DATABASE_URL`, and never prints either URL.
 
-The basic demo seeds use stable identifiers and upserts, so preparation is safe
-to repeat against the dedicated disposable test database. Do not point
+The basic demo seeds use stable identifiers and conflict-safe operations, so
+preparation is safe to repeat against the dedicated disposable test database.
+Published controlled fixtures are left unchanged on a repeat run. Do not point
 `TEST_DATABASE_URL` at shared, development, staging, or production data.
 
 ## Coverage and artifacts
@@ -121,4 +122,5 @@ CI can run the same root command without changing the test architecture.
 This document and the associated implementation were created with assistance
 from Codex[GPT-5].
 The historical-status notice was added with assistance from
-Codex-CLI[GPT-5].
+Codex-CLI[GPT-5]. The curated-content seed clarification was added with
+assistance from Codex[gpt-5.6-sol].

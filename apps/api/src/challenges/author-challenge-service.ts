@@ -1,7 +1,21 @@
 import type pg from 'pg';
 
-export type AuthorChallengeStatus = 'draft' | 'published' | 'retired';
-export type AuthorQuestionStatus = 'draft' | 'published' | 'retired';
+import {
+  AuthorContentStateConflictError,
+  type AuthorContentLifecycle,
+  type AuthorContentStatus,
+  assertDraftVersion,
+  insertAuthorContentAudit,
+  transitionAuthorContent,
+} from '../authoring/content-workflow.js';
+
+export {
+  AuthorContentNotReadyError,
+  AuthorContentStateConflictError,
+} from '../authoring/content-workflow.js';
+
+export type AuthorChallengeStatus = AuthorContentStatus;
+export type AuthorQuestionStatus = AuthorContentStatus;
 export type ChallengeFormat = 'multiple_choice' | 'ordering';
 
 export interface AuthorChallenge {
@@ -11,6 +25,12 @@ export interface AuthorChallenge {
   status: AuthorChallengeStatus;
   createdAt: string;
   updatedAt: string;
+  version: number;
+  submittedBy: string | null;
+  submittedAt: string | null;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  publicationProvenance: AuthorContentLifecycle['publicationProvenance'];
 }
 
 export interface AuthorQuestionChoice {
@@ -29,6 +49,12 @@ interface AuthorChallengeQuestionBase {
   status: AuthorQuestionStatus;
   createdAt: string;
   updatedAt: string;
+  version: number;
+  submittedBy: string | null;
+  submittedAt: string | null;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  publicationProvenance: AuthorContentLifecycle['publicationProvenance'];
 }
 
 export interface AuthorMultipleChoiceQuestion extends AuthorChallengeQuestionBase {
@@ -91,7 +117,22 @@ export type CreateAuthorQuestionInput = AuthorQuestionInput & {
 
 export type UpdateAuthorQuestionInput = AuthorQuestionInput & {
   questionId: string;
+  expectedVersion: number;
 };
+
+export interface AuthorQuestionTransitionInput {
+  actorPlayerId: string;
+  questionId: string;
+  expectedVersion: number;
+  note?: string;
+}
+
+export interface AuthorChallengeTransitionInput {
+  actorPlayerId: string;
+  challengeId: string;
+  expectedVersion: number;
+  note?: string;
+}
 
 export interface AuthorChallengeService {
   listChallenges(eventId: string): Promise<AuthorChallenge[]>;
@@ -105,22 +146,36 @@ export interface AuthorChallengeService {
     input: UpdateAuthorQuestionInput,
   ): Promise<AuthorChallengeQuestion>;
 
+  submitQuestion(
+    input: AuthorQuestionTransitionInput,
+  ): Promise<AuthorChallengeQuestion>;
+  approveQuestion(
+    input: AuthorQuestionTransitionInput,
+  ): Promise<AuthorChallengeQuestion>;
+  returnQuestion(
+    input: AuthorQuestionTransitionInput,
+  ): Promise<AuthorChallengeQuestion>;
   publishQuestion(
-    actorPlayerId: string,
-    questionId: string,
+    input: AuthorQuestionTransitionInput,
   ): Promise<AuthorChallengeQuestion>;
   retireQuestion(
-    actorPlayerId: string,
-    questionId: string,
+    input: AuthorQuestionTransitionInput,
   ): Promise<AuthorChallengeQuestion>;
 
+  submitChallenge(
+    input: AuthorChallengeTransitionInput,
+  ): Promise<AuthorChallenge>;
+  approveChallenge(
+    input: AuthorChallengeTransitionInput,
+  ): Promise<AuthorChallenge>;
+  returnChallenge(
+    input: AuthorChallengeTransitionInput,
+  ): Promise<AuthorChallenge>;
   publishChallenge(
-    actorPlayerId: string,
-    challengeId: string,
+    input: AuthorChallengeTransitionInput,
   ): Promise<AuthorChallenge>;
   retireChallenge(
-    actorPlayerId: string,
-    challengeId: string,
+    input: AuthorChallengeTransitionInput,
   ): Promise<AuthorChallenge>;
 }
 
@@ -147,10 +202,12 @@ interface ChallengeRow extends pg.QueryResultRow {
   status: AuthorChallengeStatus;
   created_at: Date;
   updated_at: Date;
-}
-
-interface ChallengeWithEventLockRow extends ChallengeRow {
-  event_is_published: boolean;
+  version: number;
+  submitted_by_player_id: string | null;
+  submitted_at: Date | null;
+  reviewed_by_player_id: string | null;
+  reviewed_at: Date | null;
+  publication_provenance: AuthorContentLifecycle['publicationProvenance'];
 }
 
 interface QuestionRow extends pg.QueryResultRow {
@@ -163,6 +220,12 @@ interface QuestionRow extends pg.QueryResultRow {
   status: AuthorQuestionStatus;
   created_at: Date;
   updated_at: Date;
+  version: number;
+  submitted_by_player_id: string | null;
+  submitted_at: Date | null;
+  reviewed_by_player_id: string | null;
+  reviewed_at: Date | null;
+  publication_provenance: AuthorContentLifecycle['publicationProvenance'];
   choice_id: string | null;
   choice_position: number | null;
   choice_text: string | null;
@@ -177,6 +240,7 @@ interface QuestionLockRow extends pg.QueryResultRow {
   challenge_format: ChallengeFormat;
   challenge_status: AuthorChallengeStatus;
   question_status: AuthorQuestionStatus;
+  question_version: number;
 }
 
 interface ChoiceInsertRow extends pg.QueryResultRow {
@@ -185,15 +249,6 @@ interface ChoiceInsertRow extends pg.QueryResultRow {
 
 interface OrderingItemInsertRow extends pg.QueryResultRow {
   item_id: string;
-}
-
-interface ReadinessRow extends pg.QueryResultRow {
-  question_id: string;
-  explanation: string | null;
-  choice_count: number;
-  answer_key_count: number;
-  ordering_item_count: number;
-  ordering_answer_key_count: number;
 }
 
 export class AuthorChallengeEventNotFoundError extends Error {
@@ -224,20 +279,6 @@ export class InvalidAuthorQuestionError extends Error {
   }
 }
 
-export class AuthorContentStateConflictError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'AuthorContentStateConflictError';
-  }
-}
-
-export class AuthorContentNotReadyError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'AuthorContentNotReadyError';
-  }
-}
-
 export function createAuthorChallengeService(
   database: AuthorChallengeDatabase,
 ): AuthorChallengeService {
@@ -255,6 +296,12 @@ export function createAuthorChallengeService(
               challenge.event_id::text as event_id,
               challenge.format,
               challenge.status,
+              challenge.version,
+              challenge.submitted_by_player_id::text,
+              challenge.submitted_at,
+              challenge.reviewed_by_player_id::text,
+              challenge.reviewed_at,
+              challenge.publication_provenance,
               challenge.created_at,
               challenge.updated_at
             from public.event_challenges challenge
@@ -286,6 +333,12 @@ export function createAuthorChallengeService(
               event_id::text as event_id,
               format,
               status,
+              version,
+              submitted_by_player_id::text,
+              submitted_at,
+              reviewed_by_player_id::text,
+              reviewed_at,
+              publication_provenance,
               created_at,
               updated_at
           `,
@@ -300,13 +353,15 @@ export function createAuthorChallengeService(
           );
         }
 
-        await insertAudit(
-          client,
-          input.actorPlayerId,
-          'challenge',
-          row.challenge_id,
-          'create',
-        );
+        await insertAuthorContentAudit(client, {
+          actorPlayerId: input.actorPlayerId,
+          entityType: 'challenge',
+          entityId: row.challenge_id,
+          action: 'create',
+          fromStatus: null,
+          toStatus: 'draft',
+          resultingVersion: 0,
+        });
 
         return mapChallenge(row);
       });
@@ -330,9 +385,9 @@ export function createAuthorChallengeService(
       return withTransaction(database, async (client) => {
         const challenge = await lockChallenge(client, input.challengeId);
 
-        if (challenge.status === 'retired') {
+        if (challenge.status !== 'draft') {
           throw new AuthorContentStateConflictError(
-            'Questions cannot be added to a retired challenge.',
+            'Questions can only be added to a draft challenge.',
           );
         }
 
@@ -391,13 +446,15 @@ export function createAuthorChallengeService(
           );
         }
 
-        await insertAudit(
-          client,
-          input.actorPlayerId,
-          'question',
-          questionId,
-          'create',
-        );
+        await insertAuthorContentAudit(client, {
+          actorPlayerId: input.actorPlayerId,
+          entityType: 'question',
+          entityId: questionId,
+          action: 'create',
+          fromStatus: null,
+          toStatus: 'draft',
+          resultingVersion: 0,
+        });
 
         return requireLoadedQuestion(client, questionId);
       });
@@ -409,11 +466,10 @@ export function createAuthorChallengeService(
       return withTransaction(database, async (client) => {
         const locked = await lockQuestion(client, input.questionId);
 
-        if (locked.question_status !== 'draft') {
-          throw new AuthorContentStateConflictError(
-            'Published or retired questions cannot be edited; create a replacement question instead.',
-          );
-        }
+        assertDraftVersion(
+          { status: locked.question_status, version: locked.question_version },
+          input.expectedVersion,
+        );
 
         if (locked.challenge_status === 'retired') {
           throw new AuthorContentStateConflictError(
@@ -434,14 +490,16 @@ export function createAuthorChallengeService(
               prompt = $2,
               difficulty = $3,
               explanation = $4,
+              version = version + 1,
               updated_at = now()
-            where id = $1::uuid
+            where id = $1::uuid and version = $5
           `,
           [
             input.questionId,
             validated.prompt,
             validated.difficulty,
             validated.explanation,
+            input.expectedVersion,
           ],
         );
 
@@ -480,264 +538,88 @@ export function createAuthorChallengeService(
           );
         }
 
-        await insertAudit(
-          client,
-          input.actorPlayerId,
-          'question',
-          input.questionId,
-          'edit',
-        );
+        await insertAuthorContentAudit(client, {
+          actorPlayerId: input.actorPlayerId,
+          entityType: 'question',
+          entityId: input.questionId,
+          action: 'edit',
+          fromStatus: 'draft',
+          toStatus: 'draft',
+          resultingVersion: input.expectedVersion + 1,
+        });
 
         return requireLoadedQuestion(client, input.questionId);
       });
     },
 
-    async publishQuestion(actorPlayerId, questionId) {
-      return withTransaction(database, async (client) => {
-        const locked = await lockQuestion(client, questionId);
-
-        if (locked.question_status !== 'draft') {
-          throw new AuthorContentStateConflictError(
-            'Only a draft question can be published.',
-          );
-        }
-
-        if (locked.challenge_status === 'retired') {
-          throw new AuthorContentStateConflictError(
-            'A question in a retired challenge cannot be published.',
-          );
-        }
-
-        const readiness = await loadQuestionReadiness(client, questionId);
-
-        if (
-          !isQuestionReady(locked.challenge_format, readiness) ||
-          readiness.explanation === null ||
-          readiness.explanation.trim().length === 0
-        ) {
-          throw new AuthorContentNotReadyError(
-            'A question requires four format-appropriate items, a complete private answer, and an explanation before publication.',
-          );
-        }
-
-        await client.query(
-          `
-            update public.challenge_questions
-            set
-              status = 'published',
-              updated_at = now()
-            where id = $1::uuid
-          `,
-          [questionId],
-        );
-
-        await insertAudit(
-          client,
-          actorPlayerId,
-          'question',
-          questionId,
-          'publish',
-        );
-
-        return requireLoadedQuestion(client, questionId);
-      });
-    },
-
-    async retireQuestion(actorPlayerId, questionId) {
-      return withTransaction(database, async (client) => {
-        const locked = await lockQuestion(client, questionId);
-
-        if (locked.question_status === 'retired') {
-          throw new AuthorContentStateConflictError(
-            'The question is already retired.',
-          );
-        }
-
-        if (
-          locked.challenge_status === 'published' &&
-          locked.question_status === 'published'
-        ) {
-          const remaining = await client.query<{
-            published_count: number;
-          }>(
-            `
-              select count(*)::int as published_count
-              from public.challenge_questions
-              where challenge_id = $1::uuid
-                and status = 'published'
-                and id <> $2::uuid
-            `,
-            [locked.challenge_id, questionId],
-          );
-
-          if ((remaining.rows[0]?.published_count ?? 0) < 5) {
-            throw new AuthorContentNotReadyError(
-              'Retiring this question would leave the published challenge with fewer than five published questions.',
-            );
-          }
-        }
-
-        await client.query(
-          `
-            update public.challenge_questions
-            set
-              status = 'retired',
-              updated_at = now()
-            where id = $1::uuid
-          `,
-          [questionId],
-        );
-
-        await insertAudit(
-          client,
-          actorPlayerId,
-          'question',
-          questionId,
-          'retire',
-        );
-
-        return requireLoadedQuestion(client, questionId);
-      });
-    },
-
-    async publishChallenge(actorPlayerId, challengeId) {
-      return withTransaction(database, async (client) => {
-        const challenge = await lockChallengeWithEvent(client, challengeId);
-
-        if (challenge.status !== 'draft') {
-          throw new AuthorContentStateConflictError(
-            'Only a draft challenge can be published.',
-          );
-        }
-
-        const existingPublished = await client.query<{
-          challenge_id: string;
-        }>(
-          `
-            select id::text as challenge_id
-            from public.event_challenges
-            where event_id = $1::uuid
-              and status = 'published'
-              and id <> $2::uuid
-          `,
-          [challenge.event_id, challengeId],
-        );
-
-        if (existingPublished.rows.length > 0) {
-          throw new AuthorContentStateConflictError(
-            'The event already has a published challenge.',
-          );
-        }
-
-        const readiness = await loadChallengeReadiness(client, challengeId);
-
-        if (readiness.length < 5) {
-          throw new AuthorContentNotReadyError(
-            'A challenge requires at least five published questions before publication.',
-          );
-        }
-
-        if (
-          readiness.some(
-            (question) =>
-              !isQuestionReady(challenge.format, question) ||
-              question.explanation === null ||
-              question.explanation.trim().length === 0,
-          )
-        ) {
-          throw new AuthorContentNotReadyError(
-            'Every published question requires four format-appropriate items, a complete private answer, and an explanation.',
-          );
-        }
-
-        const result = await client.query<ChallengeRow>(
-          `
-            update public.event_challenges
-            set
-              status = 'published',
-              updated_at = now()
-            where id = $1::uuid
-            returning
-              id::text as challenge_id,
-              event_id::text as event_id,
-              format,
-              status,
-              created_at,
-              updated_at
-          `,
-          [challengeId],
-        );
-
-        const row = result.rows[0];
-
-        if (!row) {
-          throw new AuthorChallengeNotFoundError();
-        }
-
-        await insertAudit(
-          client,
-          actorPlayerId,
-          'challenge',
-          challengeId,
-          'publish',
-        );
-
-        return mapChallenge(row);
-      });
-    },
-
-    async retireChallenge(actorPlayerId, challengeId) {
-      return withTransaction(database, async (client) => {
-        const challenge = await lockChallengeWithEvent(client, challengeId);
-
-        if (challenge.status === 'retired') {
-          throw new AuthorContentStateConflictError(
-            'The challenge is already retired.',
-          );
-        }
-
-        if (challenge.status === 'published' && challenge.event_is_published) {
-          throw new AuthorContentStateConflictError(
-            'Retire the event before retiring its published challenge.',
-          );
-        }
-
-        const result = await client.query<ChallengeRow>(
-          `
-            update public.event_challenges
-            set
-              status = 'retired',
-              updated_at = now()
-            where id = $1::uuid
-            returning
-              id::text as challenge_id,
-              event_id::text as event_id,
-              format,
-              status,
-              created_at,
-              updated_at
-          `,
-          [challengeId],
-        );
-
-        const row = result.rows[0];
-
-        if (!row) {
-          throw new AuthorChallengeNotFoundError();
-        }
-
-        await insertAudit(
-          client,
-          actorPlayerId,
-          'challenge',
-          challengeId,
-          'retire',
-        );
-
-        return mapChallenge(row);
-      });
-    },
+    submitQuestion: (input) => transitionQuestion(database, input, 'submit'),
+    approveQuestion: (input) => transitionQuestion(database, input, 'approve'),
+    returnQuestion: (input) => transitionQuestion(database, input, 'return'),
+    publishQuestion: (input) => transitionQuestion(database, input, 'publish'),
+    retireQuestion: (input) => transitionQuestion(database, input, 'retire'),
+    submitChallenge: (input) => transitionChallenge(database, input, 'submit'),
+    approveChallenge: (input) =>
+      transitionChallenge(database, input, 'approve'),
+    returnChallenge: (input) => transitionChallenge(database, input, 'return'),
+    publishChallenge: (input) =>
+      transitionChallenge(database, input, 'publish'),
+    retireChallenge: (input) => transitionChallenge(database, input, 'retire'),
   };
+}
+
+type LifecycleAction = 'submit' | 'approve' | 'return' | 'publish' | 'retire';
+
+async function transitionQuestion(
+  database: AuthorChallengeDatabase,
+  input: AuthorQuestionTransitionInput,
+  action: LifecycleAction,
+): Promise<AuthorChallengeQuestion> {
+  return withTransaction(database, async (client) => {
+    await transitionAuthorContent(client, {
+      entityType: 'question',
+      entityId: input.questionId,
+      actorPlayerId: input.actorPlayerId,
+      expectedVersion: input.expectedVersion,
+      note: input.note,
+      action,
+    });
+    return requireLoadedQuestion(client, input.questionId);
+  });
+}
+
+async function transitionChallenge(
+  database: AuthorChallengeDatabase,
+  input: AuthorChallengeTransitionInput,
+  action: LifecycleAction,
+): Promise<AuthorChallenge> {
+  return withTransaction(database, async (client) => {
+    await transitionAuthorContent(client, {
+      entityType: 'challenge',
+      entityId: input.challengeId,
+      actorPlayerId: input.actorPlayerId,
+      expectedVersion: input.expectedVersion,
+      note: input.note,
+      action,
+    });
+    return loadChallenge(client, input.challengeId);
+  });
+}
+
+async function loadChallenge(
+  client: AuthorChallengeTransactionClient,
+  challengeId: string,
+): Promise<AuthorChallenge> {
+  const result = await client.query<ChallengeRow>(
+    `select id::text as challenge_id, event_id::text as event_id, format, status,
+       version, submitted_by_player_id::text, submitted_at,
+       reviewed_by_player_id::text, reviewed_at, publication_provenance,
+       created_at, updated_at
+     from public.event_challenges where id = $1::uuid`,
+    [challengeId],
+  );
+  const row = result.rows[0];
+  if (!row) throw new AuthorChallengeNotFoundError();
+  return mapChallenge(row);
 }
 
 async function requireEvent(
@@ -806,43 +688,17 @@ async function lockChallenge(
         challenge.event_id::text as event_id,
         challenge.format,
         challenge.status,
+        challenge.version,
+        challenge.submitted_by_player_id::text,
+        challenge.submitted_at,
+        challenge.reviewed_by_player_id::text,
+        challenge.reviewed_at,
+        challenge.publication_provenance,
         challenge.created_at,
         challenge.updated_at
       from public.event_challenges challenge
       where challenge.id = $1::uuid
       for update
-    `,
-    [challengeId],
-  );
-
-  const row = result.rows[0];
-
-  if (!row) {
-    throw new AuthorChallengeNotFoundError();
-  }
-
-  return row;
-}
-
-async function lockChallengeWithEvent(
-  client: AuthorChallengeTransactionClient,
-  challengeId: string,
-): Promise<ChallengeWithEventLockRow> {
-  const result = await client.query<ChallengeWithEventLockRow>(
-    `
-      select
-        challenge.id::text as challenge_id,
-        challenge.event_id::text as event_id,
-        challenge.format,
-        challenge.status,
-        challenge.created_at,
-        challenge.updated_at,
-        event.is_published as event_is_published
-      from public.event_challenges challenge
-      join public.events event
-        on event.id = challenge.event_id
-      where challenge.id = $1::uuid
-      for update of event, challenge
     `,
     [challengeId],
   );
@@ -866,6 +722,7 @@ async function lockQuestion(
         question.challenge_id::text as challenge_id,
         challenge.format as challenge_format,
         question.status as question_status,
+        question.version as question_version,
         challenge.status as challenge_status
       from public.challenge_questions question
       join public.event_challenges challenge
@@ -995,6 +852,12 @@ async function loadQuestions(
         question.difficulty,
         question.explanation,
         question.status,
+        question.version,
+        question.submitted_by_player_id::text,
+        question.submitted_at,
+        question.reviewed_by_player_id::text,
+        question.reviewed_at,
+        question.publication_provenance,
         question.created_at,
         question.updated_at,
         choice.id::text as choice_id,
@@ -1042,6 +905,12 @@ async function requireLoadedQuestion(
         question.difficulty,
         question.explanation,
         question.status,
+        question.version,
+        question.submitted_by_player_id::text,
+        question.submitted_at,
+        question.reviewed_by_player_id::text,
+        question.reviewed_at,
+        question.publication_provenance,
         question.created_at,
         question.updated_at,
         choice.id::text as choice_id,
@@ -1095,6 +964,12 @@ function mapQuestionRows(
         difficulty: row.difficulty,
         explanation: row.explanation,
         status: row.status,
+        version: row.version,
+        submittedBy: row.submitted_by_player_id,
+        submittedAt: row.submitted_at?.toISOString() ?? null,
+        reviewedBy: row.reviewed_by_player_id,
+        reviewedAt: row.reviewed_at?.toISOString() ?? null,
+        publicationProvenance: row.publication_provenance,
         createdAt: row.created_at.toISOString(),
         updatedAt: row.updated_at.toISOString(),
       };
@@ -1149,90 +1024,6 @@ function mapQuestionRows(
   }
 
   return [...questions.values()];
-}
-
-async function loadQuestionReadiness(
-  client: AuthorChallengeTransactionClient,
-  questionId: string,
-): Promise<ReadinessRow> {
-  const result = await client.query<ReadinessRow>(
-    `
-      select
-        question.id::text as question_id,
-        question.explanation,
-        (
-          select count(*)::int
-          from public.challenge_choices choice
-          where choice.question_id = question.id
-        ) as choice_count,
-        (
-          select count(*)::int
-          from private.challenge_answer_keys answer_key
-          where answer_key.question_id = question.id
-        ) as answer_key_count,
-        (
-          select count(*)::int
-          from public.challenge_ordering_items item
-          where item.question_id = question.id
-        ) as ordering_item_count,
-        (
-          select count(*)::int
-          from private.challenge_ordering_answer_keys answer_key
-          where answer_key.question_id = question.id
-        ) as ordering_answer_key_count
-      from public.challenge_questions question
-      where question.id = $1::uuid
-    `,
-    [questionId],
-  );
-
-  const row = result.rows[0];
-
-  if (!row) {
-    throw new AuthorQuestionNotFoundError();
-  }
-
-  return row;
-}
-
-async function loadChallengeReadiness(
-  client: AuthorChallengeTransactionClient,
-  challengeId: string,
-): Promise<ReadinessRow[]> {
-  const result = await client.query<ReadinessRow>(
-    `
-      select
-        question.id::text as question_id,
-        question.explanation,
-        (
-          select count(*)::int
-          from public.challenge_choices choice
-          where choice.question_id = question.id
-        ) as choice_count,
-        (
-          select count(*)::int
-          from private.challenge_answer_keys answer_key
-          where answer_key.question_id = question.id
-        ) as answer_key_count,
-        (
-          select count(*)::int
-          from public.challenge_ordering_items item
-          where item.question_id = question.id
-        ) as ordering_item_count,
-        (
-          select count(*)::int
-          from private.challenge_ordering_answer_keys answer_key
-          where answer_key.question_id = question.id
-        ) as ordering_answer_key_count
-      from public.challenge_questions question
-      where question.challenge_id = $1::uuid
-        and question.status = 'published'
-      order by question.id
-    `,
-    [challengeId],
-  );
-
-  return result.rows;
 }
 
 function validateQuestionInput(
@@ -1313,47 +1104,6 @@ function validateQuestionInput(
   return { ...input, prompt, explanation, items };
 }
 
-function isQuestionReady(
-  format: ChallengeFormat,
-  readiness: ReadinessRow,
-): boolean {
-  return format === 'multiple_choice'
-    ? readiness.choice_count === 4 &&
-        readiness.answer_key_count === 1 &&
-        readiness.ordering_item_count === 0 &&
-        readiness.ordering_answer_key_count === 0
-    : readiness.choice_count === 0 &&
-        readiness.answer_key_count === 0 &&
-        readiness.ordering_item_count === 4 &&
-        readiness.ordering_answer_key_count === 4;
-}
-
-async function insertAudit(
-  client: AuthorChallengeTransactionClient,
-  actorPlayerId: string,
-  entityType: 'challenge' | 'question',
-  entityId: string,
-  action: 'create' | 'edit' | 'publish' | 'retire',
-): Promise<void> {
-  await client.query(
-    `
-      insert into public.author_content_audit (
-        actor_player_id,
-        entity_type,
-        entity_id,
-        action
-      )
-      values (
-        $1::uuid,
-        $2,
-        $3::uuid,
-        $4
-      )
-    `,
-    [actorPlayerId, entityType, entityId, action],
-  );
-}
-
 function mapChallenge(row: ChallengeRow): AuthorChallenge {
   return {
     challengeId: row.challenge_id,
@@ -1362,6 +1112,12 @@ function mapChallenge(row: ChallengeRow): AuthorChallenge {
     status: row.status,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
+    version: row.version,
+    submittedBy: row.submitted_by_player_id,
+    submittedAt: row.submitted_at?.toISOString() ?? null,
+    reviewedBy: row.reviewed_by_player_id,
+    reviewedAt: row.reviewed_at?.toISOString() ?? null,
+    publicationProvenance: row.publication_provenance,
   };
 }
 

@@ -57,6 +57,12 @@ const challenge: AuthorChallenge = {
   status: 'draft',
   createdAt: '2026-08-15T21:00:00.000Z',
   updatedAt: '2026-08-15T21:00:00.000Z',
+  version: 0,
+  submittedBy: null,
+  submittedAt: null,
+  reviewedBy: null,
+  reviewedAt: null,
+  publicationProvenance: null,
 };
 
 const question: AuthorChallengeQuestion = {
@@ -93,6 +99,12 @@ const question: AuthorChallengeQuestion = {
   acceptedChoicePosition: 2,
   createdAt: '2026-08-15T21:00:00.000Z',
   updatedAt: '2026-08-15T21:00:00.000Z',
+  version: 0,
+  submittedBy: null,
+  submittedAt: null,
+  reviewedBy: null,
+  reviewedAt: null,
+  publicationProvenance: null,
 };
 
 let app: FastifyInstance;
@@ -160,7 +172,7 @@ describe('author challenge API', () => {
     const response = await authenticatedRequest({
       method: 'POST',
       url: `/api/v1/author/challenges/${CHALLENGE_ID}/retire`,
-      payload: {},
+      payload: { expectedVersion: 0 },
     });
 
     expect(response.statusCode).toBe(403);
@@ -247,6 +259,12 @@ describe('author challenge API', () => {
       })),
       createdAt: '2026-08-15T21:00:00.000Z',
       updatedAt: '2026-08-15T21:00:00.000Z',
+      version: 0,
+      submittedBy: null,
+      submittedAt: null,
+      reviewedBy: null,
+      reviewedAt: null,
+      publicationProvenance: null,
     };
     service.createQuestion.mockResolvedValue(orderingQuestion);
 
@@ -369,28 +387,30 @@ describe('author challenge API', () => {
     const publish = await authenticatedRequest({
       method: 'POST',
       url: `/api/v1/author/questions/${QUESTION_ID}/publish`,
-      payload: {},
+      payload: { expectedVersion: 0 },
     });
 
     expect(publish.statusCode).toBe(200);
 
-    expect(service.publishQuestion).toHaveBeenCalledWith(
-      AUTHOR_ID,
-      QUESTION_ID,
-    );
+    expect(service.publishQuestion).toHaveBeenCalledWith({
+      actorPlayerId: AUTHOR_ID,
+      questionId: QUESTION_ID,
+      expectedVersion: 0,
+    });
 
     const retire = await authenticatedRequest({
       method: 'POST',
       url: `/api/v1/author/challenges/${CHALLENGE_ID}/retire`,
-      payload: {},
+      payload: { expectedVersion: 0 },
     });
 
     expect(retire.statusCode).toBe(200);
 
-    expect(service.retireChallenge).toHaveBeenCalledWith(
-      AUTHOR_ID,
-      CHALLENGE_ID,
-    );
+    expect(service.retireChallenge).toHaveBeenCalledWith({
+      actorPlayerId: AUTHOR_ID,
+      challengeId: CHALLENGE_ID,
+      expectedVersion: 0,
+    });
   });
 
   it('maps publication readiness failures to 422', async () => {
@@ -403,7 +423,7 @@ describe('author challenge API', () => {
     const response = await authenticatedRequest({
       method: 'POST',
       url: `/api/v1/author/challenges/${CHALLENGE_ID}/publish`,
-      payload: {},
+      payload: { expectedVersion: 0 },
     });
 
     expect(response.statusCode).toBe(422);
@@ -423,7 +443,7 @@ describe('author challenge API', () => {
     const response = await authenticatedRequest({
       method: 'POST',
       url: `/api/v1/author/challenges/${CHALLENGE_ID}/retire`,
-      payload: {},
+      payload: { expectedVersion: 0 },
     });
 
     expect(response.statusCode).toBe(409);
@@ -442,7 +462,7 @@ describe('author challenge API', () => {
     const response = await authenticatedRequest({
       method: 'POST',
       url: `/api/v1/author/challenges/${CHALLENGE_ID}/retire`,
-      payload: {},
+      payload: { expectedVersion: 0 },
     });
 
     expect(response.statusCode).toBe(404);
@@ -511,6 +531,9 @@ function createServiceMock() {
     listQuestions: vi.fn().mockResolvedValue([question]),
     createQuestion: vi.fn().mockResolvedValue(question),
     updateQuestion: vi.fn().mockResolvedValue(question),
+    submitQuestion: vi.fn().mockResolvedValue(question),
+    approveQuestion: vi.fn().mockResolvedValue(question),
+    returnQuestion: vi.fn().mockResolvedValue(question),
     publishQuestion: vi.fn().mockResolvedValue({
       ...question,
       status: 'published',
@@ -523,6 +546,9 @@ function createServiceMock() {
       ...challenge,
       status: 'published',
     }),
+    submitChallenge: vi.fn().mockResolvedValue(challenge),
+    approveChallenge: vi.fn().mockResolvedValue(challenge),
+    returnChallenge: vi.fn().mockResolvedValue(challenge),
     retireChallenge: vi.fn().mockResolvedValue({
       ...challenge,
       status: 'retired',

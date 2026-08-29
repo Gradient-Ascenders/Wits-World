@@ -414,7 +414,8 @@ async function seedPlayersAndEvents(
   for (const [id, title, longitude, latitude, isPublished] of events) {
     await database.query(
       `insert into public.events (
-         id, title, location, radius_metres, starts_at, ends_at, is_published
+         id, title, location, radius_metres, starts_at, ends_at, is_published,
+         authoring_status, publication_provenance
        ) values (
          $1,
          $2,
@@ -422,7 +423,9 @@ async function seedPlayersAndEvents(
          75,
          '2026-08-29T08:00:00.000Z',
          '2026-08-29T12:00:00.000Z',
-         $5
+         $5,
+         case when $5 then 'published' else 'draft' end,
+         case when $5 then 'controlled_seed' else null end
        )`,
       [id, title, longitude, latitude, isPublished],
     );

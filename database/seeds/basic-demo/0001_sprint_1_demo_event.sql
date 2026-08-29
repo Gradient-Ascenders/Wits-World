@@ -6,7 +6,9 @@ insert into public.events (
   radius_metres,
   starts_at,
   ends_at,
-  is_published
+  is_published,
+  authoring_status,
+  publication_provenance
 )
 values (
   '00000000-0000-4000-8000-000000000018',
@@ -16,14 +18,8 @@ values (
   75,
   '2026-08-01T00:00:00+02:00'::timestamptz,
   '2026-08-26T00:00:00+02:00'::timestamptz,
-  true
+  true,
+  'published',
+  'controlled_seed'
 )
-on conflict (id) do update
-set title = excluded.title,
-    description = excluded.description,
-    location = excluded.location,
-    radius_metres = excluded.radius_metres,
-    starts_at = excluded.starts_at,
-    ends_at = excluded.ends_at,
-    is_published = excluded.is_published,
-    updated_at = now();
+on conflict (id) do nothing;

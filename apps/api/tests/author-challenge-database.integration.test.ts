@@ -64,7 +64,7 @@ describe.skipIf(!runIntegrationTests)(
       pool = createDatabasePool(temporaryConfig);
 
       await seedFoundation();
-    }, 45_000);
+    }, 180_000);
 
     afterAll(async () => {
       if (pool) {
@@ -175,7 +175,7 @@ describe.skipIf(!runIntegrationTests)(
           action: 'create',
         },
       ]);
-    }, 45_000);
+    }, 180_000);
 
     it('creates, publishes, and reads a complete ordering challenge', async () => {
       const service = createAuthorChallengeService(pool);
@@ -208,11 +208,11 @@ describe.skipIf(!runIntegrationTests)(
 
         assertOrderingQuestion(question);
         createdQuestions.push(question);
-        await service.publishQuestion(AUTHOR_ONE_ID, question.questionId);
+        await publishQuestionThroughReview(service, question.questionId);
       }
 
-      const published = await service.publishChallenge(
-        AUTHOR_ONE_ID,
+      const published = await publishChallengeThroughReview(
+        service,
         challenge.challengeId,
       );
       const listed = await service.listQuestions(challenge.challengeId);
@@ -445,7 +445,134 @@ describe.skipIf(!runIntegrationTests)(
         answeredCount: 2,
         scoreCorrect: 1,
       });
-    }, 60_000);
+    }, 180_000);
+
+    it('prevents choices, answer keys, and ordering rows from being re-parented out of published questions', async () => {
+      const service = createAuthorChallengeService(pool);
+      const eventId = await createTemporaryEvent(
+        'Published question reparenting event',
+      );
+      const multipleChoiceChallenge = await service.createChallenge({
+        actorPlayerId: AUTHOR_ONE_ID,
+        eventId,
+      });
+      const publishedMultipleChoice = await service.createQuestion({
+        actorPlayerId: AUTHOR_ONE_ID,
+        challengeId: multipleChoiceChallenge.challengeId,
+        prompt: 'Protected multiple-choice question',
+        difficulty: 1,
+        explanation: 'Published child rows must remain attached.',
+        choices: ['A', 'B', 'C', 'D'],
+        acceptedChoicePosition: 1,
+      });
+      assertMultipleChoiceQuestion(publishedMultipleChoice);
+      await publishQuestionThroughReview(
+        service,
+        publishedMultipleChoice.questionId,
+      );
+      const draftMultipleChoice = await pool.query<{
+        question_id: string;
+      }>(
+        `insert into public.challenge_questions (
+           challenge_id, prompt, difficulty, explanation
+         ) values ($1::uuid, 'Draft multiple-choice target', 1, 'Draft target')
+         returning id::text question_id`,
+        [multipleChoiceChallenge.challengeId],
+      );
+      const draftMultipleChoiceId = draftMultipleChoice.rows[0]?.question_id;
+      if (!draftMultipleChoiceId) {
+        throw new Error('Expected a draft multiple-choice target.');
+      }
+      const draftChoice = await pool.query<{ choice_id: string }>(
+        `insert into public.challenge_choices (
+           question_id, authoring_position, choice_text
+         ) values ($1::uuid, 1, 'Draft accepted choice')
+         returning id::text choice_id`,
+        [draftMultipleChoiceId],
+      );
+
+      await expect(
+        pool.query(
+          `update public.challenge_choices
+              set question_id = $2::uuid,
+                  authoring_position = 2
+            where id = $1::uuid`,
+          [publishedMultipleChoice.choices[1]!.choiceId, draftMultipleChoiceId],
+        ),
+      ).rejects.toThrow(/non-draft question/i);
+      await expect(
+        pool.query(
+          `update private.challenge_answer_keys
+              set question_id = $2::uuid,
+                  accepted_choice_id = $3::uuid
+            where question_id = $1::uuid`,
+          [
+            publishedMultipleChoice.questionId,
+            draftMultipleChoiceId,
+            draftChoice.rows[0]?.choice_id,
+          ],
+        ),
+      ).rejects.toThrow(/non-draft question/i);
+
+      const orderingChallenge = await service.createChallenge({
+        actorPlayerId: AUTHOR_ONE_ID,
+        eventId,
+        format: 'ordering',
+      });
+      const publishedOrdering = await service.createQuestion({
+        actorPlayerId: AUTHOR_ONE_ID,
+        challengeId: orderingChallenge.challengeId,
+        format: 'ordering',
+        prompt: 'Protected ordering question',
+        difficulty: 1,
+        explanation: 'Published ordering rows must remain attached.',
+        items: ['First', 'Second', 'Third', 'Fourth'],
+      });
+      assertOrderingQuestion(publishedOrdering);
+      await publishQuestionThroughReview(service, publishedOrdering.questionId);
+      const draftOrdering = await pool.query<{ question_id: string }>(
+        `insert into public.challenge_questions (
+           challenge_id, prompt, difficulty, explanation
+         ) values ($1::uuid, 'Draft ordering target', 1, 'Draft target')
+         returning id::text question_id`,
+        [orderingChallenge.challengeId],
+      );
+      const draftOrderingId = draftOrdering.rows[0]?.question_id;
+      if (!draftOrderingId) {
+        throw new Error('Expected a draft ordering target.');
+      }
+      const draftOrderingItem = await pool.query<{ item_id: string }>(
+        `insert into public.challenge_ordering_items (question_id, item_text)
+         values ($1::uuid, 'Draft ordering item')
+         returning id::text item_id`,
+        [draftOrderingId],
+      );
+
+      await expect(
+        pool.query(
+          `update public.challenge_ordering_items
+              set question_id = $2::uuid
+            where id = $1::uuid`,
+          [publishedOrdering.items[0]!.itemId, draftOrderingId],
+        ),
+      ).rejects.toThrow(/non-draft question/i);
+      await expect(
+        pool.query(
+          `update private.challenge_ordering_answer_keys
+              set question_id = $2::uuid,
+                  item_id = $3::uuid,
+                  correct_position = 1
+            where question_id = $1::uuid
+              and item_id = $4::uuid`,
+          [
+            publishedOrdering.questionId,
+            draftOrderingId,
+            draftOrderingItem.rows[0]?.item_id,
+            publishedOrdering.items[0]!.itemId,
+          ],
+        ),
+      ).rejects.toThrow(/non-draft question/i);
+    }, 180_000);
 
     it('replaces a draft question choices and answer key atomically', async () => {
       const service = createAuthorChallengeService(pool);
@@ -471,6 +598,7 @@ describe.skipIf(!runIntegrationTests)(
       );
 
       const updated = await service.updateQuestion({
+        expectedVersion: 0,
         actorPlayerId: AUTHOR_TWO_ID,
         questionId: created.questionId,
         prompt: 'Updated prompt',
@@ -522,7 +650,7 @@ describe.skipIf(!runIntegrationTests)(
           actor_player_id: AUTHOR_TWO_ID,
         },
       ]);
-    }, 45_000);
+    }, 180_000);
 
     it('requires five published complete questions before publishing a challenge', async () => {
       const service = createAuthorChallengeService(pool);
@@ -563,9 +691,25 @@ describe.skipIf(!runIntegrationTests)(
         eventId,
       });
 
+      await service.submitChallenge({
+        actorPlayerId: AUTHOR_ONE_ID,
+        challengeId: challenge.challengeId,
+        expectedVersion: 0,
+      });
       await expect(
-        service.publishChallenge(AUTHOR_ONE_ID, challenge.challengeId),
+        service.approveChallenge({
+          actorPlayerId: AUTHOR_TWO_ID,
+          challengeId: challenge.challengeId,
+          expectedVersion: 1,
+        }),
       ).rejects.toBeInstanceOf(AuthorContentNotReadyError);
+
+      await service.returnChallenge({
+        actorPlayerId: AUTHOR_TWO_ID,
+        challengeId: challenge.challengeId,
+        expectedVersion: 1,
+        note: 'Add the required published questions.',
+      });
 
       const questions = [];
 
@@ -587,13 +731,24 @@ describe.skipIf(!runIntegrationTests)(
 
         questions.push(question);
 
-        await service.publishQuestion(AUTHOR_ONE_ID, question.questionId);
+        await publishQuestionThroughReview(service, question.questionId);
       }
 
-      const published = await service.publishChallenge(
-        AUTHOR_TWO_ID,
-        challenge.challengeId,
-      );
+      await service.submitChallenge({
+        actorPlayerId: AUTHOR_ONE_ID,
+        challengeId: challenge.challengeId,
+        expectedVersion: 2,
+      });
+      await service.approveChallenge({
+        actorPlayerId: AUTHOR_TWO_ID,
+        challengeId: challenge.challengeId,
+        expectedVersion: 3,
+      });
+      const published = await service.publishChallenge({
+        actorPlayerId: AUTHOR_TWO_ID,
+        challengeId: challenge.challengeId,
+        expectedVersion: 4,
+      });
 
       expect(published).toMatchObject({
         challengeId: challenge.challengeId,
@@ -636,7 +791,155 @@ describe.skipIf(!runIntegrationTests)(
           actor_player_id: AUTHOR_TWO_ID,
         },
       ]);
-    }, 45_000);
+    }, 180_000);
+
+    it('serializes concurrent sibling challenge publication through their event', async () => {
+      const eventId = await createTemporaryEvent(
+        'Concurrent sibling challenge publication event',
+      );
+      const firstService = createAuthorChallengeService(pool);
+      const secondPool = createDatabasePool(temporaryConfig);
+      const secondService = createAuthorChallengeService(secondPool);
+
+      try {
+        const [firstChallenge, secondChallenge] = await Promise.all([
+          firstService.createChallenge({
+            actorPlayerId: AUTHOR_ONE_ID,
+            eventId,
+          }),
+          secondService.createChallenge({
+            actorPlayerId: AUTHOR_TWO_ID,
+            eventId,
+          }),
+        ]);
+
+        await seedControlledPublishedQuestions(
+          firstChallenge.challengeId,
+          'First sibling',
+        );
+        await seedControlledPublishedQuestions(
+          secondChallenge.challengeId,
+          'Second sibling',
+        );
+
+        await firstService.submitChallenge({
+          actorPlayerId: AUTHOR_ONE_ID,
+          challengeId: firstChallenge.challengeId,
+          expectedVersion: 0,
+        });
+        await firstService.approveChallenge({
+          actorPlayerId: AUTHOR_TWO_ID,
+          challengeId: firstChallenge.challengeId,
+          expectedVersion: 1,
+        });
+        await secondService.submitChallenge({
+          actorPlayerId: AUTHOR_TWO_ID,
+          challengeId: secondChallenge.challengeId,
+          expectedVersion: 0,
+        });
+        await secondService.approveChallenge({
+          actorPlayerId: AUTHOR_ONE_ID,
+          challengeId: secondChallenge.challengeId,
+          expectedVersion: 1,
+        });
+
+        const results = await Promise.allSettled([
+          firstService.publishChallenge({
+            actorPlayerId: AUTHOR_ONE_ID,
+            challengeId: firstChallenge.challengeId,
+            expectedVersion: 2,
+          }),
+          secondService.publishChallenge({
+            actorPlayerId: AUTHOR_TWO_ID,
+            challengeId: secondChallenge.challengeId,
+            expectedVersion: 2,
+          }),
+        ]);
+
+        expect(
+          results.filter((result) => result.status === 'fulfilled'),
+        ).toHaveLength(1);
+        const rejected = results.find((result) => result.status === 'rejected');
+        expect(rejected).toMatchObject({
+          reason: expect.any(AuthorContentNotReadyError),
+        });
+
+        const persisted = await pool.query<{
+          approved_count: number;
+          published_count: number;
+        }>(
+          `select
+             count(*) filter (where status = 'approved')::int approved_count,
+             count(*) filter (where status = 'published')::int published_count
+           from public.event_challenges
+           where event_id = $1::uuid`,
+          [eventId],
+        );
+        expect(persisted.rows[0]).toEqual({
+          approved_count: 1,
+          published_count: 1,
+        });
+      } finally {
+        await secondPool.end();
+      }
+    }, 180_000);
+
+    it('serializes concurrent question retirement so a published challenge keeps five questions', async () => {
+      const service = createAuthorChallengeService(pool);
+      const eventId = await createTemporaryEvent(
+        'Concurrent question retirement event',
+      );
+      const challenge = await service.createChallenge({
+        actorPlayerId: AUTHOR_ONE_ID,
+        eventId,
+      });
+      const questionIds: string[] = [];
+
+      for (let number = 1; number <= 6; number += 1) {
+        const question = await service.createQuestion({
+          actorPlayerId: AUTHOR_ONE_ID,
+          challengeId: challenge.challengeId,
+          prompt: `Concurrent retirement question ${number}`,
+          difficulty: 1,
+          explanation: `Concurrent retirement explanation ${number}`,
+          choices: ['A', 'B', 'C', 'D'],
+          acceptedChoicePosition: 1,
+        });
+        questionIds.push(question.questionId);
+        await publishQuestionThroughReview(service, question.questionId);
+      }
+
+      await publishChallengeThroughReview(service, challenge.challengeId);
+
+      const results = await Promise.allSettled([
+        service.retireQuestion({
+          actorPlayerId: AUTHOR_ONE_ID,
+          questionId: questionIds[0]!,
+          expectedVersion: 3,
+        }),
+        service.retireQuestion({
+          actorPlayerId: AUTHOR_TWO_ID,
+          questionId: questionIds[1]!,
+          expectedVersion: 3,
+        }),
+      ]);
+
+      expect(
+        results.filter((result) => result.status === 'fulfilled'),
+      ).toHaveLength(1);
+      const rejected = results.find((result) => result.status === 'rejected');
+      expect(rejected).toMatchObject({
+        reason: expect.any(AuthorContentNotReadyError),
+      });
+
+      const persisted = await pool.query<{ published_count: number }>(
+        `select count(*)::int published_count
+         from public.challenge_questions
+         where challenge_id = $1::uuid and status = 'published'`,
+        [challenge.challengeId],
+      );
+      expect(persisted.rows[0]?.published_count).toBe(5);
+    }, 180_000);
 
     it('prevents published questions from being edited through the service', async () => {
       const service = createAuthorChallengeService(pool);
@@ -660,10 +963,11 @@ describe.skipIf(!runIntegrationTests)(
         acceptedChoicePosition: 2,
       });
 
-      await service.publishQuestion(AUTHOR_ONE_ID, question.questionId);
+      await publishQuestionThroughReview(service, question.questionId);
 
       await expect(
         service.updateQuestion({
+          expectedVersion: 3,
           actorPlayerId: AUTHOR_TWO_ID,
           questionId: question.questionId,
           prompt: 'Changed prompt',
@@ -673,7 +977,7 @@ describe.skipIf(!runIntegrationTests)(
           acceptedChoicePosition: 4,
         }),
       ).rejects.toBeInstanceOf(AuthorContentStateConflictError);
-    }, 45_000);
+    }, 180_000);
 
     it('prevents a published challenge from reverting, moving events, or being deleted', async () => {
       const service = createAuthorChallengeService(pool);
@@ -699,10 +1003,10 @@ describe.skipIf(!runIntegrationTests)(
           acceptedChoicePosition: 1,
         });
 
-        await service.publishQuestion(AUTHOR_ONE_ID, question.questionId);
+        await publishQuestionThroughReview(service, question.questionId);
       }
 
-      await service.publishChallenge(AUTHOR_ONE_ID, challenge.challengeId);
+      await publishChallengeThroughReview(service, challenge.challengeId);
 
       await expect(
         pool.query(
@@ -758,7 +1062,7 @@ describe.skipIf(!runIntegrationTests)(
           status: 'published',
         },
       ]);
-    }, 45_000);
+    }, 180_000);
 
     it('retires published challenge content without allowing republication', async () => {
       const service = createAuthorChallengeService(pool);
@@ -781,20 +1085,25 @@ describe.skipIf(!runIntegrationTests)(
           acceptedChoicePosition: 1,
         });
 
-        await service.publishQuestion(AUTHOR_ONE_ID, question.questionId);
+        await publishQuestionThroughReview(service, question.questionId);
       }
 
-      await service.publishChallenge(AUTHOR_ONE_ID, challenge.challengeId);
+      await publishChallengeThroughReview(service, challenge.challengeId);
 
-      const retired = await service.retireChallenge(
-        AUTHOR_TWO_ID,
-        challenge.challengeId,
-      );
+      const retired = await service.retireChallenge({
+        actorPlayerId: AUTHOR_TWO_ID,
+        challengeId: challenge.challengeId,
+        expectedVersion: 3,
+      });
 
       expect(retired.status).toBe('retired');
 
       await expect(
-        service.publishChallenge(AUTHOR_ONE_ID, challenge.challengeId),
+        service.publishChallenge({
+          actorPlayerId: AUTHOR_ONE_ID,
+          challengeId: challenge.challengeId,
+          expectedVersion: 4,
+        }),
       ).rejects.toBeInstanceOf(AuthorContentStateConflictError);
 
       await expect(
@@ -808,7 +1117,7 @@ describe.skipIf(!runIntegrationTests)(
           [challenge.challengeId],
         ),
       ).rejects.toThrow();
-    }, 45_000);
+    }, 180_000);
 
     it('rolls back challenge creation when the audit actor is a Player', async () => {
       const service = createAuthorChallengeService(pool);
@@ -845,7 +1154,7 @@ describe.skipIf(!runIntegrationTests)(
       expect(after.rows[0]?.challenge_count).toBe(
         before.rows[0]?.challenge_count,
       );
-    }, 45_000);
+    }, 180_000);
 
     async function seedFoundation(): Promise<void> {
       await pool.query(
@@ -952,6 +1261,58 @@ describe.skipIf(!runIntegrationTests)(
 
       return eventId;
     }
+
+    async function seedControlledPublishedQuestions(
+      challengeId: string,
+      promptPrefix: string,
+    ): Promise<void> {
+      for (let number = 1; number <= 5; number += 1) {
+        const insertedQuestion = await pool.query<{ question_id: string }>(
+          `insert into public.challenge_questions (
+             challenge_id, prompt, difficulty, explanation
+           ) values ($1::uuid, $2, 1, $3)
+           returning id::text question_id`,
+          [
+            challengeId,
+            `${promptPrefix} question ${number}`,
+            `${promptPrefix} explanation ${number}`,
+          ],
+        );
+        const questionId = insertedQuestion.rows[0]?.question_id;
+        if (!questionId) {
+          throw new Error('Expected a seeded sibling challenge question.');
+        }
+
+        const insertedChoices = await pool.query<{ choice_id: string }>(
+          `insert into public.challenge_choices (
+             question_id, authoring_position, choice_text
+           )
+           select $1::uuid, position, $2 || ' choice ' || position
+           from generate_series(1, 4) position
+           returning id::text choice_id, authoring_position`,
+          [questionId, `${promptPrefix} ${number}`],
+        );
+        const acceptedChoiceId = insertedChoices.rows[0]?.choice_id;
+        if (!acceptedChoiceId) {
+          throw new Error('Expected a seeded sibling challenge choice.');
+        }
+
+        await pool.query(
+          `insert into private.challenge_answer_keys (
+             question_id, accepted_choice_id
+           ) values ($1::uuid, $2::uuid)`,
+          [questionId, acceptedChoiceId],
+        );
+        await pool.query(
+          `update public.challenge_questions
+              set status = 'published',
+                  version = version + 1,
+                  publication_provenance = 'controlled_seed'
+            where id = $1::uuid`,
+          [questionId],
+        );
+      }
+    }
   },
 );
 
@@ -961,6 +1322,48 @@ function assertMultipleChoiceQuestion(
   if (!question || question.format !== 'multiple_choice') {
     throw new Error('Expected a multiple-choice author question.');
   }
+}
+
+async function publishQuestionThroughReview(
+  service: ReturnType<typeof createAuthorChallengeService>,
+  questionId: string,
+) {
+  await service.submitQuestion({
+    actorPlayerId: AUTHOR_ONE_ID,
+    expectedVersion: 0,
+    questionId,
+  });
+  await service.approveQuestion({
+    actorPlayerId: AUTHOR_TWO_ID,
+    expectedVersion: 1,
+    questionId,
+  });
+  return service.publishQuestion({
+    actorPlayerId: AUTHOR_ONE_ID,
+    expectedVersion: 2,
+    questionId,
+  });
+}
+
+async function publishChallengeThroughReview(
+  service: ReturnType<typeof createAuthorChallengeService>,
+  challengeId: string,
+) {
+  await service.submitChallenge({
+    actorPlayerId: AUTHOR_ONE_ID,
+    challengeId,
+    expectedVersion: 0,
+  });
+  await service.approveChallenge({
+    actorPlayerId: AUTHOR_TWO_ID,
+    challengeId,
+    expectedVersion: 1,
+  });
+  return service.publishChallenge({
+    actorPlayerId: AUTHOR_ONE_ID,
+    challengeId,
+    expectedVersion: 2,
+  });
 }
 
 function assertOrderingQuestion(
