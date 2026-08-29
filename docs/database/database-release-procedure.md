@@ -61,13 +61,20 @@ the Author audit entity constraint to accept `trail` and does not rewrite
 existing events, attempts, completions, or player records. Apply it before an
 API version that registers trail routes.
 
+Migration `0028_create_asynchronous_pvp_persistence.sql` adds asynchronous PvP
+invitations, private immutable deck and match snapshots, participants, actions,
+idempotency receipts, terminal history, deadline indexes, and two-participant
+progression sources. It preserves existing CPU-match and progression records.
+Apply it before deploying issue `#180`; applying it alone does not expose PvP
+routes or start deadline processing.
+
 Migration `0029_curate_author_content_lifecycle.sql` must run after ordered
-trails. It preserves `trail` as an Author audit entity while installing the
+trails and asynchronous PvP persistence. It preserves `trail` as an Author audit entity while installing the
 five-state workflow for events, challenges, questions, and cards. It adds
 optimistic versions, provenance, versioned audit fields, review indexes, and
 database lifecycle guards. Existing live/history content is retained with
 `legacy` provenance; controlled catalogue and Basic-demo seeds identify
-themselves as `controlled_seed`. Run `0028` before deploying the matching API.
+themselves as `controlled_seed`. Run `0029` before deploying the matching API.
 During the database-to-API window, the old direct draft-publish API fails
 closed, so coordinate the releases and keep that window short.
 
@@ -190,4 +197,5 @@ subject to the selected Neon plan and are not created by this procedure.
 - authenticated deployed-event verification.
 
 This procedure was planned, generated, edited, and verified with the assistance
-of Codex[GPT-5], Codex[GPT-5.6 Sol], and Codex[gpt-5.6-sol].
+of Codex[GPT-5], Codex[GPT-5.6 Sol], Codex[gpt-5.6-sol], and
+Codex-CLI[gpt-5.6-sol medium].

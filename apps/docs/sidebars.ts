@@ -302,6 +302,11 @@ const sidebars: SidebarsConfig = {
               id: 'database/ordered-trails-persistence',
               label: 'Ordered Trail Persistence',
             },
+            {
+              type: 'doc',
+              id: 'database/asynchronous-pvp-persistence',
+              label: 'Asynchronous PvP Persistence',
+            },
           ],
         },
       ],

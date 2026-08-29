@@ -95,6 +95,7 @@ describe.skipIf(!runIntegrationTests)(
       expect(migrationResult.applied).toEqual([
         '0026_create_player_progression.sql',
         '0027_create_ordered_trails.sql',
+        '0028_create_asynchronous_pvp_persistence.sql',
         '0029_curate_author_content_lifecycle.sql',
       ]);
 
@@ -138,7 +139,7 @@ describe.skipIf(!runIntegrationTests)(
           where is_active = true
           order by source_kind, outcome_key`,
         );
-        expect(rules.rows).toHaveLength(8);
+        expect(rules.rows).toHaveLength(14);
         expect(rules.rows).toContainEqual({
           source_kind: 'challenge_completion',
           outcome_key: 'score_5',
@@ -148,6 +149,11 @@ describe.skipIf(!runIntegrationTests)(
           source_kind: 'cpu_match',
           outcome_key: 'loss',
           points: 0,
+        });
+        expect(rules.rows).toContainEqual({
+          source_kind: 'asynchronous_pvp',
+          outcome_key: 'turn_forfeit_win',
+          points: 25,
         });
 
         const awards = await pool.query<{
@@ -771,6 +777,7 @@ async function copyMigrationsBeforeProgression(): Promise<string> {
         name.endsWith('.sql') &&
         name !== '0026_create_player_progression.sql' &&
         name !== '0027_create_ordered_trails.sql' &&
+        name !== '0028_create_asynchronous_pvp_persistence.sql' &&
         name !== '0029_curate_author_content_lifecycle.sql',
     )
     .sort();

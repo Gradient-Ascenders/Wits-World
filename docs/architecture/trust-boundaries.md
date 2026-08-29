@@ -51,16 +51,20 @@ the winner, or completion status. The API locks the match row, applies the
 shared rules transition, resolves CPU actions, and persists the result
 transactionally. Unplayed CPU cards remain hidden in player-facing responses.
 
-The planned asynchronous PvP boundary follows the same rule but accepts only a
+The asynchronous PvP persistence boundary follows the same rule. Migration
+`0028` separates hidden snapshots, full state, transition history, and replay
+responses into the `private` schema while retaining only lifecycle and legally
+revealed action data in public relations. The planned API accepts only a
 privacy-safe exact Player Name challenge target, invitation/deck intent,
 expected resource version, submission identifier, and one API-returned legal
 action. It never accepts internal player UUIDs as authority, opponent-private
 cards, deadlines, timeout/forfeit results, damage, winners, or progression
 awards. Only the two authenticated participants may read an invitation, match,
 or history record. The
-[asynchronous PvP contract](./asynchronous-pvp-api-contract.md) is a design
-input for issues `#179` through `#181`; it is not a claim that PvP is currently
-implemented.
+[asynchronous PvP contract](./asynchronous-pvp-api-contract.md) and
+[persistence design](../database/asynchronous-pvp-persistence.md) are inputs for
+issues `#180` and `#181`; persistence alone is not a claim that player-facing
+PvP is currently available.
 
 ### Authentication provider
 
@@ -327,4 +331,4 @@ validated.
 This document was originally planned and generated with assistance from
 ChatGPT-Web[GPT-5.6 Thinking], and was reviewed and edited for Sprint 1 release
 validation with assistance from ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5], and
-Codex[gpt-5.6-sol].
+Codex[gpt-5.6-sol], and Codex-CLI[gpt-5.6-sol medium].

@@ -1,6 +1,7 @@
 import type pg from 'pg';
 
-export type ProgressionSourceKind = 'challenge_completion' | 'cpu_match';
+export type ProgressionSourceKind =
+  'challenge_completion' | 'cpu_match' | 'asynchronous_pvp';
 
 export interface ProgressionQueryable {
   query<T extends pg.QueryResultRow>(
@@ -28,6 +29,10 @@ export interface ProgressionPersistence {
     database: ProgressionQueryable,
     matchId: string,
   ): Promise<ProgressionAwardResult>;
+  recordAsynchronousPvpCompletion(
+    database: ProgressionQueryable,
+    matchId: string,
+  ): Promise<readonly ProgressionAwardResult[]>;
 }
 
 interface ProgressionAwardRow extends pg.QueryResultRow {
@@ -58,6 +63,31 @@ export function createProgressionPersistence(): ProgressionPersistence {
         matchId,
       );
     },
+
+    async recordAsynchronousPvpCompletion(database, matchId) {
+      const result = await database.query<ProgressionAwardRow>(
+        `
+          select
+            award_id::text,
+            player_id::text,
+            points_awarded,
+            rule_code,
+            rule_version,
+            was_created
+          from private.record_asynchronous_pvp_completion($1::uuid)
+          order by player_id
+        `,
+        [matchId],
+      );
+
+      if (result.rows.length !== 2) {
+        throw new Error(
+          'Progression persistence requires two asynchronous_pvp awards.',
+        );
+      }
+
+      return result.rows.map((row) => mapAward(row, 'asynchronous_pvp'));
+    },
   };
 }
 
@@ -86,6 +116,13 @@ async function recordSource(
     throw new Error(`Progression persistence returned no ${sourceKind} award.`);
   }
 
+  return mapAward(award, sourceKind);
+}
+
+function mapAward(
+  award: ProgressionAwardRow,
+  sourceKind: ProgressionSourceKind,
+): ProgressionAwardResult {
   return {
     awardId: award.award_id,
     playerId: award.player_id,

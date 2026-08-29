@@ -81,6 +81,10 @@ describe('migration file loading', () => {
       },
       {
         checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0028_create_asynchronous_pvp_persistence.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         name: '0029_curate_author_content_lifecycle.sql',
       },
     ]);

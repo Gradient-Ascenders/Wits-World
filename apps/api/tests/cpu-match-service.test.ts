@@ -1030,6 +1030,7 @@ function progressionMock(): ProgressionPersistence {
       sourceKind: 'cpu_match',
       wasCreated: true,
     }),
+    recordAsynchronousPvpCompletion: vi.fn(),
   };
 }
 

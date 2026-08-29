@@ -7,10 +7,10 @@ title: Asynchronous PvP API contract
 ## Status and purpose
 
 This document is the issue `#178` contract for the planned asynchronous
-player-versus-player mode. It is an implementation input for persistence issue
-`#179`, API and deadline-processing issue `#180`, and player-experience issue
-`#181`. It does not claim that these routes, tables, background jobs, or screens
-are implemented or deployed.
+player-versus-player mode. Migration `0028` implements its persistence boundary
+for issue `#179`. The routes, viewer projections, background deadline work, and
+screens remain owned by API issue `#180` and player-experience issue `#181`; this
+document does not claim those later layers are implemented or deployed.
 
 The contract keeps asynchronous PvP separate from the later one-minute live
 mode. Asynchronous play uses persisted state, polling, and 24-hour response
@@ -507,10 +507,12 @@ opponent cards or private persistence snapshots.
 
 ## Idempotency and concurrency boundary
 
-Persistence issue `#179` must reinforce this contract with foreign keys,
-terminal-state constraints, unique submission receipts, snapshot immutability,
-and indexes for pending invitations, active participant matches, history, and
-overdue work.
+Migration `0028` reinforces this contract with foreign keys, terminal-state
+constraints, unique submission receipts, private immutable snapshots, and
+indexes for pending invitations, active participant matches, history, and
+overdue work. The
+[persistence design](../database/asynchronous-pvp-persistence.md) records the
+implemented relations and downstream transaction boundary.
 
 Invitation creation has no existing resource row to lock. Its transaction must
 serialize the canonical unordered player pair, enforce the one-pending-pair
@@ -580,27 +582,21 @@ The source is processed exactly once even when an action response is replayed,
 a deadline worker retries, or two workers race. Zero-point outcomes must still
 be recordable when the approved progression rules require activity evidence.
 
-Merged issue `#171` and migration `0026` support exactly two source kinds:
-`challenge_completion` and `cpu_match`. Open issue `#172` owns HTTP exposure
-and transaction wiring for those approved sources only; it is not the owner of
-an asynchronous PvP rule or schema.
+Migration `0028` adds the dedicated `asynchronous_pvp` source without
+reclassifying PvP as a CPU match. A defeat, turn forfeit, or account-deletion
+forfeit awards 25 permanent points to the winner and zero to the loser or
+forfeiter. Both participant decisions count as activity. No PvP achievement is
+introduced, although the activity may contribute to the existing streak
+achievement.
 
-The concrete extension gate is recorded in the
-[progression rules](../requirements/player-progression-rules.md#asynchronous-pvp-extension-gate)
-and
-[progression persistence design](../database/player-progression-persistence.md#asynchronous-pvp-extension-gate).
-The Product Lead must approve the outcome values and activity/achievement
-effects there. Persistence issue `#179` must then add the forward schema,
-constraints, and one transaction-aware
-`recordAsynchronousPvpCompletion(client, matchId)` adapter operation for the
-`asynchronous_pvp` source kind, keyed uniquely by match and participant. Issue
-`#180` depends on both merged gates and must call that operation in the terminal
-match transaction.
-
-Until both gates exist, no implementation may invent a point value, spendable
-currency, coin result, achievement, or client-provided award. Issue `#180`
-cannot claim its exactly-once progression criterion is complete, even if match
-completion itself is implemented.
+The transaction-aware
+`recordAsynchronousPvpCompletion(client, matchId)` operation validates the
+terminal match and records both participant decisions in canonical player-ID
+order. The unique `(matchId, participantId)` source converges under replay and
+worker races. Issue `#180` must call it inside the terminal match transaction;
+otherwise its exactly-once progression criterion remains incomplete. See the
+[progression rules](../requirements/player-progression-rules.md#asynchronous-pvp-progression)
+and [persistence design](../database/asynchronous-pvp-persistence.md#progression).
 
 ## Safe errors
 
@@ -642,8 +638,9 @@ A safe invitation-expired example is:
 
 ## Downstream verification matrix
 
-Issues `#179` through `#181` must turn these scenarios into proportionate unit,
-route, database, component, and integration tests:
+Migration `0028` and issues `#180` and `#181` must collectively turn these
+scenarios into proportionate unit, route, database, component, and integration
+tests:
 
 ### Invitation and identity
 
@@ -712,8 +709,8 @@ Before issue `#178` is closed:
 - formatting, linting, type checking, tests, and builds must pass;
 - CI and the documentation build must pass;
 - the pull request must link issue `#178`; and
-- unresolved social/privacy decisions and downstream progression work must
-  remain visible rather than being presented as implemented protections.
+- unresolved social/privacy decisions must remain visible rather than being
+  presented as implemented protections.
 
 This document was planned, generated, edited, and reviewed with the assistance
-of Codex[GPT-5].
+of Codex[GPT-5] and Codex-CLI[gpt-5.6-sol medium].
