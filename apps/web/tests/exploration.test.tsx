@@ -5,6 +5,10 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  getBottomSheetSnapPoints,
+  resolveBottomSheetSnap,
+} from '../src/components/exploration/BottomSheetSurface';
 import { CampusExplorer } from '../src/components/exploration/CampusExplorer';
 import { CampusMap } from '../src/components/exploration/CampusMap';
 import {
@@ -152,6 +156,34 @@ describe('map-first campus exploration', () => {
     await waitFor(() =>
       expect(controller.focusPoint).toHaveBeenCalledWith(point),
     );
+  });
+
+  it('offers keyboard controls for each mobile sheet snap point', async () => {
+    const user = userEvent.setup();
+    const controller = createController();
+    const mapFactory: MapFactory = vi.fn(async () => controller);
+
+    render(<CampusExplorer {...explorerProps(mapFactory)} />);
+
+    await user.click(screen.getByRole('button', { name: /^Events/ }));
+    const panel = screen.getByRole('complementary', { name: 'Campus events' });
+    expect(panel).toHaveAttribute('data-sheet-snap', 'medium');
+
+    await user.click(
+      screen.getByRole('button', { name: 'Expand event sheet fully' }),
+    );
+    expect(panel).toHaveAttribute('data-sheet-snap', 'expanded');
+    expect(
+      screen.getByRole('button', { name: 'Lower event sheet' }),
+    ).toHaveFocus();
+
+    await user.keyboard('{Escape}');
+    expect(panel).toHaveAttribute('data-sheet-snap', 'medium');
+    await user.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^Events/ })).toHaveFocus(),
+    );
+    expect(panel).toHaveAttribute('data-sheet-snap', 'peek');
   });
 
   it('keeps search and status filters synchronized with visible markers', async () => {
@@ -348,6 +380,56 @@ describe('map-first campus exploration', () => {
     expect(
       screen.queryByText('The map could not load.'),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('mobile Explore sheet snapping', () => {
+  const points = getBottomSheetSnapPoints(500);
+
+  it('derives proportional snap points from the measured sheet height', () => {
+    expect(points).toEqual({ expanded: 500, medium: 260, peek: 76 });
+  });
+
+  it('settles slow drags at the nearest snap point', () => {
+    expect(
+      resolveBottomSheetSnap({
+        currentVisibleHeight: 250,
+        movementY: -174,
+        points,
+        startSnap: 'peek',
+        velocityY: -0.2,
+      }),
+    ).toBe('medium');
+    expect(
+      resolveBottomSheetSnap({
+        currentVisibleHeight: 90,
+        movementY: 250,
+        points,
+        startSnap: 'medium',
+        velocityY: 0.2,
+      }),
+    ).toBe('peek');
+  });
+
+  it('uses flick direction without skipping beyond the next nearby snap', () => {
+    expect(
+      resolveBottomSheetSnap({
+        currentVisibleHeight: 100,
+        movementY: -24,
+        points,
+        startSnap: 'peek',
+        velocityY: -0.8,
+      }),
+    ).toBe('medium');
+    expect(
+      resolveBottomSheetSnap({
+        currentVisibleHeight: 250,
+        movementY: 20,
+        points,
+        startSnap: 'medium',
+        velocityY: 0.7,
+      }),
+    ).toBe('peek');
   });
 });
 

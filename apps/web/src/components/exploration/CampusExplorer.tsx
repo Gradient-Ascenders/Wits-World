@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { BottomSheetSurface, type BottomSheetSnap } from './BottomSheetSurface';
 import { CampusMap } from './CampusMap';
 import {
+  availabilityLabels,
   EventList,
   SelectedEventDetails,
   type EventDiscoveryState,
@@ -92,6 +94,7 @@ export function CampusExplorer({
 }: CampusExplorerProps) {
   const [following, setFollowing] = useState(false);
   const [panelMode, setPanelMode] = useState<EventPanelMode>('peek');
+  const [sheetSnap, setSheetSnap] = useState<BottomSheetSnap>('peek');
   const [recenterRequest, setRecenterRequest] = useState(0);
   const [focusPointRequest, setFocusPointRequest] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
@@ -141,11 +144,13 @@ export function CampusExplorer({
     onClearEventSelection();
     setFocusAnnouncement('');
     setPanelMode('list');
+    setSheetSnap('medium');
   }, [discovery.status, onClearEventSelection, selectedEventId, visibleEvents]);
 
   const dismissPanel = useCallback((): void => {
     if (panelMode === 'selected' && selectionFromListRef.current) {
       setPanelMode('list');
+      setSheetSnap('medium');
       window.setTimeout(() => {
         panelRef.current
           ?.querySelector<HTMLElement>('[aria-pressed="true"]')
@@ -155,6 +160,7 @@ export function CampusExplorer({
     }
 
     setPanelMode('peek');
+    setSheetSnap('peek');
     window.setTimeout(() => {
       if (returnFocusRef.current?.isConnected) {
         returnFocusRef.current.focus();
@@ -176,6 +182,7 @@ export function CampusExplorer({
     ) {
       openedSelectedEventIdRef.current = selectedEventId;
       setPanelMode('selected');
+      setSheetSnap('medium');
     }
   }, [selectedEventId, selectedPoint]);
 
@@ -198,12 +205,17 @@ export function CampusExplorer({
         return;
       }
 
+      if (panelMode === 'list' && sheetSnap === 'expanded') {
+        setSheetSnap('medium');
+        return;
+      }
+
       dismissPanel();
     };
 
     document.addEventListener('keydown', closeOnEscape);
     return () => document.removeEventListener('keydown', closeOnEscape);
-  }, [dismissPanel, panelMode]);
+  }, [dismissPanel, panelMode, sheetSnap]);
 
   const selectEvent = (eventId: string): void => {
     returnFocusRef.current =
@@ -222,6 +234,35 @@ export function CampusExplorer({
         : `${event.title} selected and centred on the map. Location following paused.`,
     );
     setPanelMode('selected');
+    setSheetSnap('medium');
+  };
+
+  const changeSheetSnap = (nextSnap: BottomSheetSnap): void => {
+    setSheetSnap(nextSnap);
+    if (nextSnap === 'peek') {
+      setPanelMode('peek');
+      return;
+    }
+
+    if (panelMode === 'peek') {
+      setPanelMode(selectedEvent === null ? 'list' : 'selected');
+    }
+  };
+
+  const openSheet = (): void => {
+    returnFocusRef.current = document.activeElement as HTMLElement;
+    setPanelMode(selectedEvent === null ? 'list' : 'selected');
+    setSheetSnap('medium');
+  };
+
+  const showEventList = (): void => {
+    setPanelMode('list');
+    setSheetSnap('medium');
+    window.setTimeout(() => {
+      panelRef.current
+        ?.querySelector<HTMLElement>('[aria-pressed="true"]')
+        ?.focus();
+    }, 0);
   };
 
   const clearFilters = (): void => {
@@ -248,11 +289,15 @@ export function CampusExplorer({
       onEnableLocation();
     }
   };
+  const activeEventCount = visibleEvents.filter(
+    (event) => event.availability === 'active',
+  ).length;
 
   return (
     <section
       aria-labelledby="campus-map-title"
       className={`exploration-view exploration-view--panel-${panelMode}`}
+      data-sheet-snap={sheetSnap}
     >
       <h1 className="sr-only" id="campus-map-title">
         Explore the campus map
@@ -295,27 +340,59 @@ export function CampusExplorer({
         ) : null}
       </div>
 
-      <aside
-        aria-label="Campus events"
+      <BottomSheetSurface
+        ariaLabel="Campus events"
         className={`event-panel event-panel--${panelMode}`}
-        ref={panelRef}
+        id="explore-event-sheet"
+        onSnapChange={changeSheetSnap}
+        panelRef={panelRef}
+        snap={sheetSnap}
+        view={panelMode}
       >
         {panelMode === 'peek' ? (
           <button
             aria-expanded="false"
+            aria-label={
+              selectedEvent === null
+                ? `Events — ${visibleEvents.length} ${visibleEvents.length === 1 ? 'event' : 'events'}, ${activeEventCount} available now`
+                : `Events — ${selectedEvent.title} selected, open details`
+            }
             className="event-panel__peek"
-            onClick={() => {
-              returnFocusRef.current = document.activeElement as HTMLElement;
-              setPanelMode('list');
-            }}
+            onClick={openSheet}
             ref={peekButtonRef}
             type="button"
           >
-            <span>Events</span>
-            <span className="event-panel__count">
-              {discovery.status === 'ready' ? visibleEvents.length : '—'}
+            <span className="event-panel__peek-copy">
+              <strong>
+                {selectedEvent === null
+                  ? discovery.status === 'ready'
+                    ? `${visibleEvents.length} campus ${visibleEvents.length === 1 ? 'event' : 'events'}`
+                    : 'Campus events'
+                  : selectedEvent.title}
+              </strong>
+              <span>
+                {selectedEvent === null
+                  ? discovery.status === 'ready'
+                    ? `${activeEventCount} available now`
+                    : discovery.status === 'loading'
+                      ? 'Loading published events…'
+                      : 'Open event discovery'
+                  : `${availabilityLabels[selectedEvent.availability]} · View details`}
+              </span>
             </span>
-            <span aria-hidden="true">⌃</span>
+            <svg
+              aria-hidden="true"
+              className="event-panel__peek-chevron"
+              fill="none"
+              focusable="false"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="1.8"
+              viewBox="0 0 16 16"
+            >
+              <path d="m4 10 4-4 4 4" />
+            </svg>
           </button>
         ) : null}
 
@@ -409,7 +486,7 @@ export function CampusExplorer({
             <div className="event-panel__toolbar">
               <button
                 className="event-panel__back"
-                onClick={() => setPanelMode('list')}
+                onClick={showEventList}
                 type="button"
               >
                 All events
@@ -435,7 +512,7 @@ export function CampusExplorer({
             </div>
           </>
         ) : null}
-      </aside>
+      </BottomSheetSurface>
     </section>
   );
 }

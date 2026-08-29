@@ -42,6 +42,39 @@ const EXPLORE_EVENTS = [
   },
 ] as const;
 
+const EXPLORE_SHEET_EVENTS = [
+  ...EXPLORE_EVENTS,
+  {
+    ...EXPLORE_EVENTS[0],
+    eventId: buildUuid(964),
+    latitude: -26.1927,
+    longitude: 28.0296,
+    title:
+      'Origins Centre Heritage Trail with an intentionally long event name',
+  },
+  {
+    ...EXPLORE_EVENTS[1],
+    eventId: buildUuid(965),
+    latitude: -26.1909,
+    longitude: 28.032,
+    title: 'Wits Art Museum Discovery',
+  },
+  {
+    ...EXPLORE_EVENTS[0],
+    eventId: buildUuid(966),
+    latitude: -26.1931,
+    longitude: 28.0316,
+    title: 'Braamfontein Campus Architecture Walk',
+  },
+  {
+    ...EXPLORE_EVENTS[2],
+    eventId: buildUuid(967),
+    latitude: -26.1899,
+    longitude: 28.0308,
+    title: 'Science Stadium Archive Route',
+  },
+] as const;
+
 const correctAnswers: Record<string, string> = {
   'On which Wits campus is the Great Hall located?': 'East Campus',
   'What does the name Wits stand for?': 'University of the Witwatersrand',
@@ -776,6 +809,401 @@ test('focuses and filters Explore events without breaking map following', async 
   expect(consoleErrors).toEqual([]);
 });
 
+test('supports draggable mobile Explore sheet discovery and detail states', async ({
+  context,
+  page,
+}) => {
+  const consoleErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  await mockExploreApi(page, EXPLORE_SHEET_EVENTS);
+  await context.grantPermissions(['geolocation'], {
+    origin: 'http://127.0.0.1:5178',
+  });
+  await context.setGeolocation({ latitude: -26.1922, longitude: 28.0301 });
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto('/explore');
+
+  const map = page.locator('[data-map-provider^="deterministic-"]');
+  const sheet = page.getByRole('complementary', { name: 'Campus events' });
+  await expect(map).toHaveAttribute('data-map-following', 'true');
+  await expect(sheet).toHaveAttribute('data-sheet-snap', 'peek');
+  await expect(sheet).toHaveAttribute('data-sheet-view', 'peek');
+  await expect(page.getByRole('button', { name: /^Events/u })).toContainText(
+    '7 campus events',
+  );
+
+  const snapPoints = await sheet.evaluate((element) => ({
+    expanded: (element as HTMLElement).offsetHeight,
+    medium: Math.round((element as HTMLElement).offsetHeight * 0.52),
+    peek: 76,
+  }));
+  await dragExploreSheet(page, -(snapPoints.medium - snapPoints.peek + 4), {
+    delayMs: 110,
+    steps: 8,
+  });
+  await expect(sheet).toHaveAttribute('data-sheet-snap', 'medium');
+  await expect(sheet).toHaveAttribute('data-sheet-view', 'list');
+  await expect(map).toHaveAttribute('data-map-following', 'true');
+
+  const eventScroll = page.locator('.event-panel__scroll');
+  const scrollMetrics = await eventScroll.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }));
+  expect(scrollMetrics.scrollHeight).toBeGreaterThan(
+    scrollMetrics.clientHeight,
+  );
+  await eventScroll.hover();
+  await page.mouse.wheel(0, 600);
+  await expect
+    .poll(() => eventScroll.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+
+  await page.getByRole('button', { name: 'Expand event sheet fully' }).click();
+  await expect(sheet).toHaveAttribute('data-sheet-snap', 'expanded');
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const root = document.querySelector<HTMLElement>('.exploration-view');
+        const panel = document.querySelector<HTMLElement>('.event-panel');
+        const navigation = document.querySelector<HTMLElement>(
+          '.primary-navigation--mobile',
+        );
+        if (!root || !panel || !navigation) {
+          return Number.POSITIVE_INFINITY;
+        }
+        const visibleHeight = Number.parseFloat(
+          getComputedStyle(root).getPropertyValue('--event-panel-height'),
+        );
+        return Math.abs(
+          panel.getBoundingClientRect().top +
+            visibleHeight -
+            navigation.getBoundingClientRect().top,
+        );
+      }),
+    )
+    .toBeLessThanOrEqual(1);
+  const expandedLayout = await page.evaluate(() => {
+    const root = document.querySelector<HTMLElement>('.exploration-view');
+    const panel = document.querySelector<HTMLElement>('.event-panel');
+    const location = document.querySelector<HTMLElement>(
+      '.location-control-wrap',
+    );
+    const controls = document.querySelector<HTMLElement>(
+      '.mapboxgl-ctrl-top-right',
+    );
+    const attribution = document.querySelector<HTMLElement>(
+      '.mapboxgl-ctrl-bottom-right',
+    );
+    const navigation = document.querySelector<HTMLElement>(
+      '.primary-navigation--mobile',
+    );
+    if (
+      !root ||
+      !panel ||
+      !location ||
+      !controls ||
+      !attribution ||
+      !navigation
+    ) {
+      throw new Error('Expected the mobile Explore layout.');
+    }
+    const overlaps = (first: DOMRect, second: DOMRect) =>
+      first.left < second.right &&
+      first.right > second.left &&
+      first.top < second.bottom &&
+      first.bottom > second.top;
+    const visibleHeight = Number.parseFloat(
+      getComputedStyle(root).getPropertyValue('--event-panel-height'),
+    );
+    return {
+      attributionOverlapsLocation: overlaps(
+        attribution.getBoundingClientRect(),
+        location.getBoundingClientRect(),
+      ),
+      attributionOpacity: Number.parseFloat(
+        getComputedStyle(attribution).opacity,
+      ),
+      controlsOverlapLocation: overlaps(
+        controls.getBoundingClientRect(),
+        location.getBoundingClientRect(),
+      ),
+      controlsOpacity: Number.parseFloat(getComputedStyle(controls).opacity),
+      controlsPointerEvents: getComputedStyle(controls).pointerEvents,
+      locationClearsSheet:
+        location.getBoundingClientRect().bottom <=
+        panel.getBoundingClientRect().top - 8,
+      locationOpacity: Number.parseFloat(getComputedStyle(location).opacity),
+      locationRight: Math.round(
+        window.innerWidth - location.getBoundingClientRect().right,
+      ),
+      navigationClearance: Math.abs(
+        panel.getBoundingClientRect().top +
+          visibleHeight -
+          navigation.getBoundingClientRect().top,
+      ),
+    };
+  });
+  expect(expandedLayout.attributionOverlapsLocation).toBe(false);
+  expect(expandedLayout.attributionOpacity).toBe(1);
+  expect(expandedLayout.controlsOverlapLocation).toBe(true);
+  expect(expandedLayout.controlsOpacity).toBe(0);
+  expect(expandedLayout.controlsPointerEvents).toBe('none');
+  expect(expandedLayout.locationClearsSheet).toBe(true);
+  expect(expandedLayout.locationOpacity).toBe(1);
+  expect(expandedLayout.locationRight).toBe(8);
+  expect(expandedLayout.navigationClearance).toBeLessThanOrEqual(1);
+
+  await page.getByRole('button', { name: 'Zoom in' }).focus();
+  await expect
+    .poll(() =>
+      page.locator('.mapboxgl-ctrl-top-right').evaluate((element) => ({
+        opacity: Number.parseFloat(getComputedStyle(element).opacity),
+        pointerEvents: getComputedStyle(element).pointerEvents,
+      })),
+    )
+    .toEqual({ opacity: 1, pointerEvents: 'auto' });
+
+  await page
+    .getByRole('button', { name: 'Following reported location' })
+    .focus();
+  await expect
+    .poll(() =>
+      page
+        .locator('.location-control-wrap')
+        .evaluate((element) =>
+          Number.parseFloat(getComputedStyle(element).opacity),
+        ),
+    )
+    .toBe(1);
+  await expect
+    .poll(() =>
+      page
+        .locator('.mapboxgl-ctrl-top-right')
+        .evaluate((element) =>
+          Number.parseFloat(getComputedStyle(element).opacity),
+        ),
+    )
+    .toBe(0);
+
+  await dragExploreSheet(page, snapPoints.expanded - snapPoints.medium + 4, {
+    delayMs: 110,
+    steps: 8,
+  });
+  await expect(sheet).toHaveAttribute('data-sheet-snap', 'medium');
+  await expect
+    .poll(() =>
+      page
+        .locator('.location-control-wrap')
+        .evaluate((element) =>
+          Number.parseFloat(getComputedStyle(element).opacity),
+        ),
+    )
+    .toBe(1);
+  await dragExploreSheet(page, 32, { steps: 2 });
+  await expect(sheet).toHaveAttribute('data-sheet-snap', 'peek');
+
+  await page.getByRole('button', { name: /^Events/u }).click();
+  await page
+    .locator('.event-list__items > li')
+    .filter({ hasText: EXPLORE_EVENTS[0].title })
+    .getByRole('button', { name: /View on map/u })
+    .click();
+  await expect(sheet).toHaveAttribute('data-sheet-view', 'selected');
+  await expect(sheet).toHaveAttribute('data-sheet-snap', 'medium');
+  await expect(map).toHaveAttribute(
+    'data-map-focused-event',
+    EXPLORE_EVENTS[0].eventId,
+  );
+  await expect(map).toHaveAttribute('data-map-following', 'false');
+
+  await dragExploreSheet(page, -36, { steps: 2 });
+  await expect(sheet).toHaveAttribute('data-sheet-snap', 'expanded');
+  await dragExploreSheet(page, 36, { steps: 2 });
+  await expect(sheet).toHaveAttribute('data-sheet-snap', 'medium');
+
+  await page.getByRole('button', { name: 'Collapse event details' }).click();
+  await page.getByRole('button', { name: 'Collapse events' }).click();
+  await expect(sheet).toHaveAttribute('data-sheet-snap', 'peek');
+  await expect(page.getByRole('button', { name: /^Events/u })).toContainText(
+    EXPLORE_EVENTS[0].title,
+  );
+
+  await page
+    .getByRole('button', {
+      name: new RegExp(`Select ${EXPLORE_EVENTS[1].title}`, 'u'),
+    })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: EXPLORE_EVENTS[1].title }),
+  ).toBeVisible();
+  await expect(map).toHaveAttribute(
+    'data-map-focused-event',
+    EXPLORE_EVENTS[1].eventId,
+  );
+
+  await page.getByRole('button', { name: 'All events' }).click();
+  await expect(
+    page.locator('.event-summary__action').filter({ hasText: 'Selected' }),
+  ).toBeFocused();
+  const search = page.getByRole('searchbox', {
+    name: 'Search campus events',
+  });
+  await search.fill('Great Hall');
+  await expect(search).toBeFocused();
+  await expect(sheet).toHaveAttribute('data-sheet-view', 'list');
+  await expect(page.locator('.event-marker[aria-pressed="true"]')).toHaveCount(
+    0,
+  );
+
+  await page
+    .getByRole('button', { name: 'Recenter on reported location' })
+    .click();
+  await expect(map).toHaveAttribute('data-map-following', 'true');
+  await map.dispatchEvent('pointerdown');
+  await expect(map).toHaveAttribute('data-map-following', 'false');
+
+  await page.getByRole('link', { name: 'Collection' }).click();
+  await expect(page).toHaveURL(/\/collection$/u);
+  await expectNoHorizontalOverflow(page);
+  expect(consoleErrors).toEqual([]);
+});
+
+test('keeps the Explore sheet responsive and preserves the desktop sidebar', async ({
+  context,
+  page,
+}) => {
+  await mockExploreApi(page, EXPLORE_SHEET_EVENTS);
+  await context.grantPermissions(['geolocation'], {
+    origin: 'http://127.0.0.1:5178',
+  });
+  await context.setGeolocation({ latitude: -26.1922, longitude: 28.0301 });
+
+  for (const viewport of [
+    { height: 932, width: 430 },
+    { height: 1024, width: 768 },
+    { height: 667, width: 390 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto('/explore');
+    const sheet = page.getByRole('complementary', { name: 'Campus events' });
+    await page.getByRole('button', { name: /^Events/u }).click();
+    await expect(sheet).toHaveAttribute('data-sheet-snap', 'medium');
+    await page
+      .getByRole('button', { name: 'Expand event sheet fully' })
+      .click();
+    await expect(sheet).toHaveAttribute('data-sheet-snap', 'expanded');
+    await expect(page.locator('.event-panel__scroll')).toBeVisible();
+    await expect(page.locator('.primary-navigation--mobile')).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollHeight > window.innerHeight,
+      ),
+    ).toBe(false);
+
+    if (viewport.width === 430) {
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      expect(
+        Number.parseFloat(
+          await sheet.evaluate(
+            (element) => getComputedStyle(element).transitionDuration,
+          ),
+        ),
+      ).toBeLessThanOrEqual(0.001);
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+    }
+  }
+
+  await page.setViewportSize({ height: 800, width: 1280 });
+  await page.goto('/explore');
+  const desktopSheet = page.getByRole('complementary', {
+    name: 'Campus events',
+  });
+  await expect(
+    page.getByRole('button', { name: 'Expand event sheet' }),
+  ).toBeHidden();
+  const desktopPeekLayout = await desktopSheet.evaluate((element) => {
+    const panel = element.getBoundingClientRect();
+    const copy = element.querySelector<HTMLElement>('.event-panel__peek-copy');
+    const title = copy?.querySelector<HTMLElement>('strong');
+    const summary = copy?.querySelector<HTMLElement>('span');
+    const chevron = element.querySelector<SVGElement>(
+      '.event-panel__peek-chevron',
+    );
+    if (!copy || !title || !summary || !chevron) {
+      throw new Error('Expected the desktop event summary.');
+    }
+    return {
+      copyDisplay: getComputedStyle(copy).display,
+      height: panel.height,
+      summaryFontSize: getComputedStyle(summary).fontSize,
+      summaryFontWeight: getComputedStyle(summary).fontWeight,
+      titleFontFamily: getComputedStyle(title).fontFamily,
+      titleFontSize: getComputedStyle(title).fontSize,
+      titleFontWeight: getComputedStyle(title).fontWeight,
+      width: panel.width,
+    };
+  });
+  expect(desktopPeekLayout).toEqual({
+    copyDisplay: 'flex',
+    height: 56,
+    summaryFontSize: '14px',
+    summaryFontWeight: '500',
+    titleFontFamily:
+      'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    titleFontSize: '18px',
+    titleFontWeight: '700',
+    width: 336,
+  });
+  await page.getByRole('button', { name: /^Events/u }).click();
+  const desktopLayout = await desktopSheet.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const exploration = element.parentElement?.getBoundingClientRect();
+    if (!exploration) throw new Error('Expected the Explore surface.');
+    return {
+      left: box.left,
+      top: box.top - exploration.top,
+      transform: getComputedStyle(element).transform,
+      width: box.width,
+    };
+  });
+  expect(desktopLayout.left).toBe(16);
+  expect(desktopLayout.top).toBe(16);
+  expect(desktopLayout.transform).toBe('none');
+  expect(desktopLayout.width).toBe(336);
+  await expect(page.locator('.primary-navigation--mobile')).toBeHidden();
+  await expectNoHorizontalOverflow(page);
+});
+
+test('keeps no-event discovery usable when location and map are unavailable', async ({
+  page,
+}) => {
+  await mockExploreApi(page, []);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'permissions', {
+      configurable: true,
+      value: { query: async () => ({ state: 'denied' }) },
+    });
+  });
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto('/explore?map-failure');
+  await expect(page.getByText('The map could not load.')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Location access disabled' }),
+  ).toBeDisabled();
+  await page.getByRole('button', { name: /^Events/u }).click();
+  await expect(
+    page.getByText('No published events are available.'),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('complementary', { name: 'Campus events' }),
+  ).toHaveAttribute('data-sheet-snap', 'medium');
+  await expectNoHorizontalOverflow(page);
+});
+
 test('retains denied-location and failed-map event discovery', async ({
   page,
 }) => {
@@ -863,6 +1291,33 @@ function monitorForbiddenProviders(page: Page): string[] {
   return requests;
 }
 
+async function dragExploreSheet(
+  page: Page,
+  movementY: number,
+  options: { delayMs?: number; steps?: number } = {},
+) {
+  const handle = page.getByRole('button', {
+    name: /event sheet|Lower event sheet/u,
+  });
+  const box = await handle.boundingBox();
+  if (box === null) {
+    throw new Error('Expected the Explore sheet handle to be visible.');
+  }
+
+  const steps = options.steps ?? 8;
+  const startX = box.x + box.width / 2;
+  const startY = box.y + box.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  for (let step = 1; step <= steps; step += 1) {
+    await page.mouse.move(startX, startY + (movementY * step) / steps);
+    if (options.delayMs) {
+      await page.waitForTimeout(options.delayMs);
+    }
+  }
+  await page.mouse.up();
+}
+
 async function expectNoHorizontalOverflow(page: Page) {
   const sizes = await page.evaluate(() => ({
     clientWidth: document.documentElement.clientWidth,
@@ -879,7 +1334,10 @@ async function json(route: Route, body: object, status = 200) {
   });
 }
 
-async function mockExploreApi(page: Page) {
+async function mockExploreApi(
+  page: Page,
+  events: readonly object[] = EXPLORE_EVENTS,
+) {
   await page.route('**/api/v1/**', async (route) => {
     const pathname = new URL(route.request().url()).pathname;
     if (pathname.endsWith('/auth/me')) {
@@ -895,7 +1353,7 @@ async function mockExploreApi(page: Page) {
     }
     if (pathname.endsWith('/events')) {
       await json(route, {
-        events: EXPLORE_EVENTS,
+        events,
         requestId: 'explore-browser-events',
       });
       return;
