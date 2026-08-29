@@ -110,6 +110,7 @@ describe.skipIf(!runIntegrationTests)(
           '0027_create_ordered_trails.sql',
           '0028_create_asynchronous_pvp_persistence.sql',
           '0029_curate_author_content_lifecycle.sql',
+          '0030_create_campaign_scheduling.sql',
         ],
         skipped: [],
       });
@@ -147,6 +148,7 @@ describe.skipIf(!runIntegrationTests)(
           '0027_create_ordered_trails.sql',
           '0028_create_asynchronous_pvp_persistence.sql',
           '0029_curate_author_content_lifecycle.sql',
+          '0030_create_campaign_scheduling.sql',
         ],
       });
     }, 30_000);
@@ -348,6 +350,7 @@ describe.skipIf(!runIntegrationTests)(
             '0027_create_ordered_trails.sql',
             '0028_create_asynchronous_pvp_persistence.sql',
             '0029_curate_author_content_lifecycle.sql',
+            '0030_create_campaign_scheduling.sql',
           ],
         });
 

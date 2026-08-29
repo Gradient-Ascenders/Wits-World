@@ -265,17 +265,34 @@ export function createAuthorTrailService(
           );
         }
 
-        await client.query(
-          `
-            update public.trails
-            set
-              status = 'retired',
-              retired_at = now(),
-              updated_at = now()
-            where id = $1::uuid
-          `,
-          [trailId],
-        );
+        try {
+          await client.query(
+            `
+              update public.trails
+              set
+                status = 'retired',
+                retired_at = now(),
+                updated_at = now()
+              where id = $1::uuid
+            `,
+            [trailId],
+          );
+        } catch (error) {
+          if (
+            typeof error === 'object' &&
+            error !== null &&
+            'code' in error &&
+            error.code === '55006' &&
+            'message' in error &&
+            typeof error.message === 'string' &&
+            error.message.includes('published campaign')
+          ) {
+            throw new AuthorTrailStateConflictError(
+              'Retire the published campaign before retiring this trail.',
+            );
+          }
+          throw error;
+        }
         await insertAudit(client, actorPlayerId, trailId, 'retire');
 
         return loadTrail(client, trailId);

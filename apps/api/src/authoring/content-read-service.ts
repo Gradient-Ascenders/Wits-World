@@ -95,6 +95,7 @@ const entityTables: Record<AuthorContentEntityType, string> = {
   challenge: 'public.event_challenges',
   question: 'public.challenge_questions',
   card: 'public.card_definitions',
+  campaign: 'public.campaigns',
 };
 
 const reviewQueueCte = `with queue as (
@@ -114,6 +115,10 @@ const reviewQueueCte = `with queue as (
   union all
   select 'card', id::text, name, version, submitted_by_player_id, submitted_at
   from public.card_definitions where authoring_status = 'in_review'
+  union all
+  select 'campaign', id::text, title, version,
+         submitted_by_player_id, submitted_at
+  from public.campaigns where status = 'in_review'
 )`;
 
 export function createAuthorContentReadService(

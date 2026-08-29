@@ -85,6 +85,13 @@ backfills existing published and retired content with `legacy` provenance,
 while repeatable repository seeds explicitly use `controlled_seed`. It does not
 rewrite trails, historical gameplay, or progression rows.
 
+Migration `0030_create_campaign_scheduling.sql` adds curated campaign schedules,
+event/trail membership, overlap and retirement guards, and shared effective
+availability functions. It preserves existing standalone content behavior and
+does not rewrite attempts, completions, rewards, ownership, progression, decks,
+or matches. See the
+[campaign persistence design](./campaign-scheduling-persistence.md).
+
 ## Environments and deployment
 
 The repository documents separate PostgreSQL/PostGIS targets:

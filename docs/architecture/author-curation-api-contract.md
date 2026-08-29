@@ -6,8 +6,8 @@ title: Author curation API contract
 
 ## Scope and authority
 
-Events, challenges, questions, and cards share the server-authoritative lifecycle
-`draft → in_review → approved → published → retired`. Only `published` content is
+Events, challenges, questions, cards, and campaigns share the server-authoritative
+lifecycle `draft → in_review → approved → published → retired`. Only `published` content is
 available to player discovery, eligibility, attempts, rewards, starter packages,
 or CPU catalogue selection. Retirement stops future selection without deleting or
 rewriting attempts, snapshots, completions, progression awards, achievements,
@@ -55,7 +55,9 @@ Nested publication proceeds from leaves to roots:
 3. cards with complete executable content (exactly four moves for a Creature, or
    one or more effects for a Power card); and
 4. an event with exactly one published challenge and at least one active,
-   published Common reward card.
+   published Common reward card; and
+5. a campaign with at least one published event or trail, intersecting event
+   periods, and no member schedule overlap.
 
 The coordinator locks dependencies in stable identifier order. Retirement guards
 prevent removing a dependency that would make still-published parent content
@@ -95,6 +97,9 @@ Stable workflow failures are:
 | `422`  | `CONTENT_NOT_READY`      | Content or a locked dependency is incomplete        |
 
 The generated OpenAPI document remains the exact schema reference.
+
+Campaign-specific membership, effective-window, and retirement behavior is
+defined in the [campaign scheduling contract](./campaign-scheduling-api-contract.md).
 
 ## Provenance, compatibility, and Web limitation
 

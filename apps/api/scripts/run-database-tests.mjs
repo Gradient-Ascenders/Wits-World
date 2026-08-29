@@ -31,6 +31,7 @@ const testFiles = [
   'tests/progression-persistence.integration.test.ts',
   'tests/trail-persistence.integration.test.ts',
   'tests/asynchronous-pvp-persistence.integration.test.ts',
+  'tests/campaign-persistence.integration.test.ts',
 ];
 
 // Each file provisions and migrates its own remote test database.

@@ -85,14 +85,22 @@ Published trails are visible to every active player. Retired, previously
 published trails are visible only when that player has a completion for one of
 their events. Never-published retired drafts are not exposed to players.
 
+Migration `0030_create_campaign_scheduling.sql` adds an independent effective
+trail window. A campaign-scheduled trail remains visible as upcoming or ended,
+but only an active window participates in nearby guidance. Campaign retirement
+uses the existing historical visibility rule without deleting the trail,
+membership order, or event completions. A campaign containing a trail does not
+globally schedule the trail's member events.
+
 ## Nearby query
 
 `POST /api/v1/events/nearby-unvisited` uses these server-side filters:
 
 - validated local player ID from the bearer-token identity;
-- published, non-retired, currently active events;
+- effectively published, non-retired, currently active events;
 - no completion for that player and event;
-- current step in a published trail, or no published-trail membership;
+- current step in an effectively active published trail, or no active-trail
+  membership;
 - `ST_DWithin` against the submitted claim and bounded search distance; and
 - deterministic distance and UUID ordering with a bounded result limit.
 

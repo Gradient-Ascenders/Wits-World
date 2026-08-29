@@ -41,6 +41,7 @@ The browser may not determine:
 - card ownership;
 - deck validity;
 - trail progress or unlocked steps;
+- campaign publication, effective windows, or retirement;
 - legal battle actions; or
 - battle outcomes.
 

@@ -45,7 +45,8 @@ describe('migration file loading', () => {
         name.startsWith('0026_') ||
         name.startsWith('0027_') ||
         name.startsWith('0028_') ||
-        name.startsWith('0029_'),
+        name.startsWith('0029_') ||
+        name.startsWith('0030_'),
     );
 
     expect(
@@ -87,6 +88,10 @@ describe('migration file loading', () => {
       {
         checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         name: '0029_curate_author_content_lifecycle.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0030_create_campaign_scheduling.sql',
       },
     ]);
   });

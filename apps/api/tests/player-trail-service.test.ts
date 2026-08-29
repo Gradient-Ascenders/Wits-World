@@ -112,6 +112,27 @@ describe('player trail service', () => {
     expect(trail.steps[2]?.state).toBe('locked');
   });
 
+  it('distinguishes a campaign-hidden event from a retired event', async () => {
+    const fixture = createFixture([
+      {
+        ...trailRow(1, null),
+        event_availability: 'unpublished',
+      },
+      trailRow(2, null),
+    ]);
+    const service = createPlayerTrailService(fixture.database, {
+      clock: () => NOW,
+    });
+
+    const trail = await service.getTrail(PLAYER_ID, TRAIL_ID);
+
+    expect(trail.steps[0]).toMatchObject({
+      state: 'unavailable',
+      unavailableReason: 'event_unavailable',
+    });
+    expect(trail.steps[1]?.state).toBe('locked');
+  });
+
   it('groups one nearby event under every trail where it is current', async () => {
     const eventId = '17680000-0000-4000-8000-000000000001';
     const nearbyRows = [
@@ -173,6 +194,8 @@ describe('player trail service', () => {
     );
     expect(NEARBY_UNVISITED_QUERY).toContain('st_dwithin');
     expect(NEARBY_UNVISITED_QUERY).toContain('event.is_published = true');
+    expect(NEARBY_UNVISITED_QUERY).toContain('resolve_event_availability');
+    expect(NEARBY_UNVISITED_QUERY).toContain('resolve_trail_availability');
     expect(NEARBY_UNVISITED_QUERY).not.toContain('eligible = true');
   });
 });
@@ -183,6 +206,9 @@ function trailRow(position: number, completedAt: Date | null) {
     trail_title: 'East Campus Heritage',
     trail_description: null,
     trail_status: 'published',
+    trail_availability: 'active',
+    trail_starts_at: null,
+    trail_ends_at: null,
     position,
     event_id: `17680000-0000-4000-8000-${position
       .toString()
@@ -196,6 +222,7 @@ function trailRow(position: number, completedAt: Date | null) {
     ends_at: new Date('2026-08-29T12:00:00.000Z'),
     event_is_published: true,
     event_retired_at: null,
+    event_availability: 'active',
     completed_at: completedAt,
   };
 }

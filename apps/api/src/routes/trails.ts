@@ -65,6 +65,12 @@ const playerTrailSummaryProperties = {
   title: { type: 'string' },
   description: { type: 'string', nullable: true },
   publicationStatus: { type: 'string', enum: ['published', 'retired'] },
+  availability: {
+    type: 'string',
+    enum: ['active', 'upcoming', 'ended', 'retired'],
+  },
+  startsAt: { type: 'string', format: 'date-time', nullable: true },
+  endsAt: { type: 'string', format: 'date-time', nullable: true },
   progressStatus: {
     type: 'string',
     enum: ['in_progress', 'completed', 'retired'],
@@ -127,7 +133,13 @@ const playerTrailSchema = {
           },
           unavailableReason: {
             type: 'string',
-            enum: ['upcoming', 'ended', 'event_retired', 'trail_retired'],
+            enum: [
+              'upcoming',
+              'ended',
+              'event_unavailable',
+              'event_retired',
+              'trail_retired',
+            ],
             nullable: true,
           },
           completedAt: {
@@ -203,7 +215,7 @@ export const playerTrailRoutes: FastifyPluginAsync<
         operationId: 'listPlayerTrails',
         summary: 'List visible trails and progress',
         description:
-          "Returns published trails plus retired trails with progress derived from this authenticated player's authoritative event completions.",
+          "Returns effectively scheduled trails plus retired history with progress derived from this authenticated player's authoritative event completions.",
         tags: ['Trails'],
         security: [{ bearerAuth: [] }],
         response: {

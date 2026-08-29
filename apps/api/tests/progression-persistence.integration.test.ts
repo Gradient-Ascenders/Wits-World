@@ -97,6 +97,7 @@ describe.skipIf(!runIntegrationTests)(
         '0027_create_ordered_trails.sql',
         '0028_create_asynchronous_pvp_persistence.sql',
         '0029_curate_author_content_lifecycle.sql',
+        '0030_create_campaign_scheduling.sql',
       ]);
 
       pool = createDatabasePool(temporaryConfig);
@@ -778,7 +779,8 @@ async function copyMigrationsBeforeProgression(): Promise<string> {
         name !== '0026_create_player_progression.sql' &&
         name !== '0027_create_ordered_trails.sql' &&
         name !== '0028_create_asynchronous_pvp_persistence.sql' &&
-        name !== '0029_curate_author_content_lifecycle.sql',
+        name !== '0029_curate_author_content_lifecycle.sql' &&
+        name !== '0030_create_campaign_scheduling.sql',
     )
     .sort();
 
