@@ -148,6 +148,7 @@ export function AppShell({ children }: AppShellProps) {
   const { state: currentPlayer } = useCurrentPlayer();
   const [pathname] = useLocation();
   const isExplore = pathname === '/explore';
+  const showsSiteFooter = !isExplore && pathname !== '/collection';
   const isRestoring =
     isLoading || (isAuthenticated && currentPlayer.status === 'loading');
   const hasPlayerNavigation =
@@ -213,7 +214,7 @@ export function AppShell({ children }: AppShellProps) {
         {children}
       </main>
 
-      {!isExplore ? (
+      {showsSiteFooter ? (
         <footer className="site-footer">
           <div className="site-footer__inner">
             <p>Wits World</p>

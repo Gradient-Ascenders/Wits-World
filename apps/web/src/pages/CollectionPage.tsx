@@ -1,4 +1,5 @@
 import { useAuth0 } from '@auth0/auth0-react';
+import { createPortal } from 'react-dom';
 import {
   useCallback,
   useEffect,
@@ -21,7 +22,10 @@ import {
 } from '../api/cards';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { describeStarterEffect } from '../battle/effect-presentation';
-import { CollectibleCard } from '../components/cards/CollectibleCard';
+import {
+  CardThumbnail,
+  CollectibleCard,
+} from '../components/cards/CollectibleCard';
 import '../components/cards/cards.css';
 
 interface CollectionPageProps {
@@ -249,6 +253,9 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
   }
 
   const cards = collection.status === 'ready' ? collection.cards : [];
+  const cardDefinitionCount = new Set(
+    cards.map((card) => card.cardDefinitionId),
+  ).size;
   const renderStarterSelector = (headingLevel: 1 | 2) => (
     <StarterSelector
       confirmationHeadingRef={confirmationHeading}
@@ -290,13 +297,16 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
         <p className="eyebrow">Player collection</p>
         <h1>Cards you own</h1>
         <p className="lead">
-          Browse every card copy recorded for your account, including duplicate
-          rewards.
+          Browse card designs. Open one for gameplay and ownership details.
         </p>
         {collection.status === 'ready' ? (
           <p aria-live="polite" className="collection-summary">
             <strong>{cards.length}</strong>{' '}
-            {cards.length === 1 ? 'owned copy' : 'owned copies'}
+            <span>
+              {cards.length === 1 ? 'owned copy' : 'owned copies'} across{' '}
+              {cardDefinitionCount}{' '}
+              {cardDefinitionCount === 1 ? 'design' : 'designs'}
+            </span>
           </p>
         ) : null}
       </header>
@@ -736,18 +746,272 @@ function CollectionGrid({
   cards: OwnedCard[];
   headingRef: RefObject<HTMLHeadingElement | null>;
 }) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] =
+    useState<CollectionCategoryFilter>('all');
+  const [rarityFilter, setRarityFilter] =
+    useState<CollectionRarityFilter>('all');
+  const [sortOrder, setSortOrder] = useState<CollectionSortOrder>('name');
+  const [selectedDefinitionId, setSelectedDefinitionId] = useState<
+    string | null
+  >(null);
+  const detailTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const groups = useMemo(() => groupOwnedCards(cards), [cards]);
+  const visibleGroups = useMemo(
+    () =>
+      filterAndSortCardGroups(groups, {
+        category: categoryFilter,
+        rarity: rarityFilter,
+        searchQuery,
+        sortOrder,
+      }),
+    [categoryFilter, groups, rarityFilter, searchQuery, sortOrder],
+  );
+  const selectedGroup =
+    groups.find(
+      (group) => group.card.cardDefinitionId === selectedDefinitionId,
+    ) ?? null;
+  const hasActiveControls =
+    searchQuery !== '' ||
+    categoryFilter !== 'all' ||
+    rarityFilter !== 'all' ||
+    sortOrder !== 'name';
+
+  const closeDetails = useCallback(() => {
+    setSelectedDefinitionId(null);
+    window.setTimeout(() => detailTriggerRef.current?.focus(), 0);
+  }, []);
+
+  const clearControls = () => {
+    setSearchQuery('');
+    setCategoryFilter('all');
+    setRarityFilter('all');
+    setSortOrder('name');
+  };
+
   return (
-    <section aria-labelledby="collection-grid-title">
-      <h2
-        className="collection-grid-heading"
-        id="collection-grid-title"
-        ref={headingRef}
-        tabIndex={-1}
+    <section
+      aria-labelledby="collection-grid-title"
+      className="collection-gallery"
+    >
+      <div className="collection-gallery__heading">
+        <div>
+          <p className="eyebrow">Visual index</p>
+          <h2 id="collection-grid-title" ref={headingRef} tabIndex={-1}>
+            Card gallery
+          </h2>
+        </div>
+        <p className="collection-gallery__count">
+          {groups.length} {groups.length === 1 ? 'design' : 'designs'} ·{' '}
+          {cards.length} {cards.length === 1 ? 'copy' : 'copies'}
+        </p>
+      </div>
+
+      <div
+        aria-label="Filter and sort collection"
+        className="collection-controls"
       >
-        Owned card copies
-      </h2>
-      <CardList cards={cards} label="Owned card copies" />
+        <label className="collection-control collection-control--search">
+          <span>Search</span>
+          <input
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Name or affinity"
+            type="search"
+            value={searchQuery}
+          />
+        </label>
+        <label className="collection-control">
+          <span>Category</span>
+          <select
+            onChange={(event) =>
+              setCategoryFilter(event.target.value as CollectionCategoryFilter)
+            }
+            value={categoryFilter}
+          >
+            <option value="all">All</option>
+            <option value="creature">Creatures</option>
+            <option value="power">Power cards</option>
+          </select>
+        </label>
+        <label className="collection-control">
+          <span>Rarity</span>
+          <select
+            onChange={(event) =>
+              setRarityFilter(event.target.value as CollectionRarityFilter)
+            }
+            value={rarityFilter}
+          >
+            <option value="all">All</option>
+            <option value="common">Common</option>
+            <option value="rare">Rare</option>
+            <option value="epic">Epic</option>
+            <option value="legendary">Legendary</option>
+          </select>
+        </label>
+        <label className="collection-control">
+          <span>Sort</span>
+          <select
+            onChange={(event) =>
+              setSortOrder(event.target.value as CollectionSortOrder)
+            }
+            value={sortOrder}
+          >
+            <option value="name">A–Z</option>
+            <option value="newest">Newest acquired</option>
+            <option value="rarity">Rarity</option>
+          </select>
+        </label>
+        {hasActiveControls ? (
+          <button
+            className="button button--quiet collection-controls__clear"
+            onClick={clearControls}
+            type="button"
+          >
+            Clear
+          </button>
+        ) : null}
+      </div>
+
+      <p aria-live="polite" className="collection-gallery__results">
+        Showing {visibleGroups.length} of {groups.length}{' '}
+        {groups.length === 1 ? 'card design' : 'card designs'}
+      </p>
+
+      {visibleGroups.length === 0 ? (
+        <div className="collection-gallery__empty">
+          <h3>No cards match these filters</h3>
+          <p>Adjust the search, category, or rarity to see more cards.</p>
+          <button
+            className="button button--quiet"
+            onClick={clearControls}
+            type="button"
+          >
+            Clear filters
+          </button>
+        </div>
+      ) : (
+        <ul aria-label="Owned card designs" className="owned-card-gallery">
+          {visibleGroups.map((group) => (
+            <li key={group.card.cardDefinitionId}>
+              <CardThumbnail
+                accessibleLabel={`View ${group.card.name} details${group.copies.length > 1 ? `, ${group.copies.length} owned copies` : ''}`}
+                badge={
+                  group.copies.length > 1
+                    ? `×${group.copies.length}`
+                    : undefined
+                }
+                card={group.card}
+                onClick={(event) => {
+                  detailTriggerRef.current = event.currentTarget;
+                  setSelectedDefinitionId(group.card.cardDefinitionId);
+                }}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {selectedGroup ? (
+        <CardDetailModal group={selectedGroup} onClose={closeDetails} />
+      ) : null}
     </section>
+  );
+}
+
+function CardDetailModal({
+  group,
+  onClose,
+}: {
+  group: OwnedCardGroup;
+  onClose: () => void;
+}) {
+  const dialogRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const applicationRoot = document.getElementById('root');
+    const previousInert = applicationRoot?.inert ?? false;
+    const previousOverflow = document.documentElement.style.overflow;
+    const dialog = dialogRef.current;
+
+    if (applicationRoot) applicationRoot.inert = true;
+    document.documentElement.style.overflow = 'hidden';
+    window.requestAnimationFrame(() => {
+      dialog?.querySelector<HTMLElement>('[data-card-detail-focus]')?.focus();
+    });
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (event.key !== 'Tab' || !dialog) return;
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      if (focusable.length === 0) return;
+
+      const first = focusable[0]!;
+      const last = focusable.at(-1)!;
+      if (!focusable.includes(document.activeElement as HTMLElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      if (applicationRoot) applicationRoot.inert = previousInert;
+      document.documentElement.style.overflow = previousOverflow;
+    };
+  }, [group.card.cardDefinitionId, onClose]);
+
+  return createPortal(
+    <div
+      className="card-detail-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        aria-label={`${group.card.name} card details`}
+        aria-modal="true"
+        className="card-detail-modal"
+        ref={dialogRef}
+        role="dialog"
+      >
+        <header className="card-detail-modal__header">
+          <p className="eyebrow">Card details</p>
+          <button
+            aria-label="Close card details"
+            className="card-detail-modal__close"
+            data-card-detail-focus
+            onClick={onClose}
+            type="button"
+          >
+            <span aria-hidden="true">×</span>
+          </button>
+        </header>
+        <div className="card-detail-modal__scroll">
+          <CollectibleCard
+            card={group.card}
+            headingLevel={2}
+            ownedCopies={group.copies}
+          />
+        </div>
+      </section>
+    </div>,
+    document.body,
   );
 }
 
@@ -767,6 +1031,80 @@ function CardList({ cards, label }: { cards: OwnedCard[]; label: string }) {
       ))}
     </ul>
   );
+}
+
+type CollectionCategoryFilter = 'all' | OwnedCard['category'];
+type CollectionRarityFilter = 'all' | OwnedCard['rarity'];
+type CollectionSortOrder = 'name' | 'newest' | 'rarity';
+
+interface OwnedCardGroup {
+  card: OwnedCard;
+  copies: OwnedCard[];
+}
+
+function groupOwnedCards(cards: readonly OwnedCard[]): OwnedCardGroup[] {
+  const groups = new Map<string, OwnedCardGroup>();
+
+  cards.forEach((card) => {
+    const existing = groups.get(card.cardDefinitionId);
+    if (existing) {
+      existing.copies.push(card);
+    } else {
+      groups.set(card.cardDefinitionId, { card, copies: [card] });
+    }
+  });
+
+  return Array.from(groups.values());
+}
+
+function filterAndSortCardGroups(
+  groups: readonly OwnedCardGroup[],
+  controls: {
+    category: CollectionCategoryFilter;
+    rarity: CollectionRarityFilter;
+    searchQuery: string;
+    sortOrder: CollectionSortOrder;
+  },
+): OwnedCardGroup[] {
+  const query = controls.searchQuery.trim().toLocaleLowerCase();
+  const rarityOrder: Record<OwnedCard['rarity'], number> = {
+    common: 0,
+    epic: 2,
+    legendary: 3,
+    rare: 1,
+  };
+
+  return groups
+    .filter(({ card }) => {
+      const matchesSearch =
+        query === '' ||
+        card.name.toLocaleLowerCase().includes(query) ||
+        card.affinity.toLocaleLowerCase().includes(query);
+      const matchesCategory =
+        controls.category === 'all' || card.category === controls.category;
+      const matchesRarity =
+        controls.rarity === 'all' || card.rarity === controls.rarity;
+      return matchesSearch && matchesCategory && matchesRarity;
+    })
+    .sort((left, right) => {
+      if (controls.sortOrder === 'newest') {
+        return (
+          newestAcquisition(right.copies) - newestAcquisition(left.copies) ||
+          left.card.name.localeCompare(right.card.name)
+        );
+      }
+      if (controls.sortOrder === 'rarity') {
+        return (
+          rarityOrder[right.card.rarity] - rarityOrder[left.card.rarity] ||
+          left.card.name.localeCompare(right.card.name)
+        );
+      }
+      return left.card.name.localeCompare(right.card.name);
+    });
+}
+
+function newestAcquisition(copies: readonly OwnedCard[]) {
+  return Math.max(...copies.map((copy) => Date.parse(copy.acquiredAt)));
 }
 
 function CollectionErrorState({
