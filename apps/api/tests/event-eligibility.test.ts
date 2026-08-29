@@ -38,6 +38,7 @@ describe('event eligibility service', () => {
       EVALUATED_AT,
     ]);
     expect(query.mock.calls[0]?.[0]).toContain('st_dwithin');
+    expect(query.mock.calls[0]?.[0]).toContain('resolve_event_availability');
     expect(query.mock.calls[0]?.[0]).not.toContain(EVENT_ID);
   });
 

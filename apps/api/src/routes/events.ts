@@ -9,10 +9,17 @@ import {
   InvalidLocationClaimError,
   PROVISIONAL_MAX_LOCATION_CLAIM_AGE_MS,
 } from '../events/location-claim.js';
+import {
+  InvalidMovementEvidenceContextError,
+  InvalidMovementEvidenceError,
+  type MovementEvidenceService,
+  NonMonotonicMovementEvidenceError,
+} from '../events/movement-evidence.js';
 
 interface EventRoutesOptions {
   discoveryService: EventDiscoveryService;
   eligibilityService: EventEligibilityService;
+  movementEvidenceService?: MovementEvidenceService;
   clock?: () => Date;
   maxLocationClaimAgeMs?: number;
 }
@@ -75,6 +82,7 @@ export const eventRoutes: FastifyPluginAsync<EventRoutesOptions> = async (
   {
     discoveryService,
     eligibilityService,
+    movementEvidenceService,
     clock = () => new Date(),
     maxLocationClaimAgeMs = PROVISIONAL_MAX_LOCATION_CLAIM_AGE_MS,
   },
@@ -194,7 +202,7 @@ export const eventRoutes: FastifyPluginAsync<EventRoutesOptions> = async (
         operationId: 'evaluateEventEligibility',
         summary: 'Evaluate a player location claim for an event',
         description:
-          'Validates a browser location claim and delegates authoritative distance and radius evaluation to the server-side PostGIS service.',
+          'Validates a browser location claim, delegates authoritative distance and radius evaluation to the server-side PostGIS service, and stores short-lived movement evidence only for this active player-requested operation.',
         tags: ['Events'],
         security: [
           {
@@ -280,6 +288,7 @@ export const eventRoutes: FastifyPluginAsync<EventRoutesOptions> = async (
           401: apiErrorSchema,
           403: apiErrorSchema,
           404: apiErrorSchema,
+          409: apiErrorSchema,
         },
       },
     },
@@ -360,6 +369,59 @@ export const eventRoutes: FastifyPluginAsync<EventRoutesOptions> = async (
         }
 
         throw error;
+      }
+
+      if (movementEvidenceService) {
+        const player = request.player;
+
+        if (!player) {
+          throw new Error(
+            'Active player context was not set before movement evidence persistence.',
+          );
+        }
+
+        try {
+          await movementEvidenceService.record({
+            playerId: player.id,
+            eventId: result.eventId,
+            latitude: request.body.latitude,
+            longitude: request.body.longitude,
+            accuracyMetres: request.body.accuracyMetres,
+            acquiredAt: new Date(request.body.acquiredAt),
+            receivedAt,
+          });
+        } catch (error) {
+          if (error instanceof NonMonotonicMovementEvidenceError) {
+            throw new ApiError({
+              statusCode: 409,
+              code: 'NON_MONOTONIC_MOVEMENT_EVIDENCE',
+              title: 'Movement evidence is out of order',
+              detail:
+                'Use a newly acquired location before checking eligibility again.',
+            });
+          }
+
+          if (error instanceof InvalidMovementEvidenceContextError) {
+            throw new ApiError({
+              statusCode: 409,
+              code: 'MOVEMENT_EVIDENCE_CONTEXT_UNAVAILABLE',
+              title: 'Movement evidence context unavailable',
+              detail:
+                'The active player or event context changed before eligibility evidence could be stored.',
+            });
+          }
+
+          if (error instanceof InvalidMovementEvidenceError) {
+            throw new ApiError({
+              statusCode: 400,
+              code: 'INVALID_LOCATION_CLAIM',
+              title: 'Invalid location claim',
+              detail: error.message,
+            });
+          }
+
+          throw error;
+        }
       }
 
       return {

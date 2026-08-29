@@ -28,11 +28,27 @@ const testFiles = [
   'tests/card-definition-name-uniqueness.integration.test.ts',
   'tests/card-move-position-migration.integration.test.ts',
   'tests/card-roster-rebalance-migration.integration.test.ts',
+  'tests/progression-persistence.integration.test.ts',
+  'tests/trail-persistence.integration.test.ts',
+  'tests/asynchronous-pvp-persistence.integration.test.ts',
+  'tests/campaign-persistence.integration.test.ts',
+  'tests/movement-evidence-database.integration.test.ts',
 ];
 
+// Each file provisions and migrates its own remote test database.
+const maximumDatabaseWorkers = 2;
+const defaultDatabaseTestTimeoutMs = 30_000;
 const result = spawnSync(
   process.execPath,
-  [vitestEntrypoint, 'run', ...testFiles],
+  [
+    vitestEntrypoint,
+    'run',
+    '--maxWorkers',
+    String(maximumDatabaseWorkers),
+    '--testTimeout',
+    String(defaultDatabaseTestTimeoutMs),
+    ...testFiles,
+  ],
   {
     cwd: apiDirectory,
     env: { ...process.env, RUN_DATABASE_INTEGRATION_TESTS: 'true' },

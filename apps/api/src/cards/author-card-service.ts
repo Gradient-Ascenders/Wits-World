@@ -1,9 +1,16 @@
 import type pg from 'pg';
 
 import {
+  type AuthorContentLifecycle,
+  type AuthorContentStatus,
+  assertDraftVersion,
+  insertAuthorContentAudit,
+  transitionAuthorContent,
+} from '../authoring/content-workflow.js';
+
+import {
   InvalidCardDefinitionError,
   validateCardDefinition,
-  validateCardDefinitionForPublication,
   type CardDefinitionInput,
   type CardEffectInput,
   type CardMoveInput,
@@ -17,12 +24,18 @@ import type {
   CardRarity,
 } from './card-types.js';
 
-export type AuthorCardStatus = 'draft' | 'published' | 'retired';
+export type AuthorCardStatus = AuthorContentStatus;
 
 export interface AuthorCardDefinition extends CardDefinition {
   authoringStatus: AuthorCardStatus;
   createdAt: string;
   updatedAt: string;
+  version: number;
+  submittedBy: string | null;
+  submittedAt: string | null;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  publicationProvenance: AuthorContentLifecycle['publicationProvenance'];
 }
 
 export interface CreateAuthorCardInput extends CardDefinitionInput {
@@ -32,6 +45,14 @@ export interface CreateAuthorCardInput extends CardDefinitionInput {
 export interface UpdateAuthorCardInput extends CardDefinitionInput {
   actorPlayerId: string;
   cardId: string;
+  expectedVersion: number;
+}
+
+export interface AuthorCardTransitionInput {
+  actorPlayerId: string;
+  cardId: string;
+  expectedVersion: number;
+  note?: string;
 }
 
 export interface AuthorCardService {
@@ -41,15 +62,11 @@ export interface AuthorCardService {
 
   updateCard(input: UpdateAuthorCardInput): Promise<AuthorCardDefinition>;
 
-  publishCard(
-    actorPlayerId: string,
-    cardId: string,
-  ): Promise<AuthorCardDefinition>;
-
-  retireCard(
-    actorPlayerId: string,
-    cardId: string,
-  ): Promise<AuthorCardDefinition>;
+  submitCard(input: AuthorCardTransitionInput): Promise<AuthorCardDefinition>;
+  approveCard(input: AuthorCardTransitionInput): Promise<AuthorCardDefinition>;
+  returnCard(input: AuthorCardTransitionInput): Promise<AuthorCardDefinition>;
+  publishCard(input: AuthorCardTransitionInput): Promise<AuthorCardDefinition>;
+  retireCard(input: AuthorCardTransitionInput): Promise<AuthorCardDefinition>;
 }
 
 export interface AuthorCardDatabase {
@@ -82,12 +99,19 @@ interface CardRow extends pg.QueryResultRow {
   authoring_status: AuthorCardStatus;
   created_at: Date;
   updated_at: Date;
+  version: number;
+  submitted_by_player_id: string | null;
+  submitted_at: Date | null;
+  reviewed_by_player_id: string | null;
+  reviewed_at: Date | null;
+  publication_provenance: AuthorContentLifecycle['publicationProvenance'];
   moves: CardMove[];
   effects: CardEffect[];
 }
 
 interface CardLockRow extends pg.QueryResultRow {
   authoring_status: AuthorCardStatus;
+  version: number;
 }
 
 interface CardInsertRow extends pg.QueryResultRow {
@@ -108,24 +132,10 @@ export class AuthorCardNotFoundError extends Error {
   }
 }
 
-export class AuthorCardStateConflictError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'AuthorCardStateConflictError';
-  }
-}
-
 export class AuthorCardNameConflictError extends Error {
   constructor() {
     super('Another card definition already uses that name.');
     this.name = 'AuthorCardNameConflictError';
-  }
-}
-
-export class AuthorCardNotReadyError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'AuthorCardNotReadyError';
   }
 }
 
@@ -199,7 +209,15 @@ export function createAuthorCardService(
 
         await insertCardChildren(client, cardId, normalized);
 
-        await insertAudit(client, input.actorPlayerId, cardId, 'create');
+        await insertAuthorContentAudit(client, {
+          actorPlayerId: input.actorPlayerId,
+          entityType: 'card',
+          entityId: cardId,
+          action: 'create',
+          fromStatus: null,
+          toStatus: 'draft',
+          resultingVersion: 0,
+        });
 
         return requireLoadedCard(client, cardId);
       });
@@ -211,11 +229,10 @@ export function createAuthorCardService(
       return withTransaction(database, async (client) => {
         const locked = await lockCard(client, input.cardId);
 
-        if (locked.authoring_status !== 'draft') {
-          throw new AuthorCardStateConflictError(
-            'Published or retired cards cannot be edited; create a replacement card instead.',
-          );
-        }
+        assertDraftVersion(
+          { status: locked.authoring_status, version: locked.version },
+          input.expectedVersion,
+        );
 
         /*
          * Delete draft children before changing category. The existing database
@@ -250,8 +267,9 @@ export function createAuthorCardService(
               power = $7,
               description = $8,
               image_url = $9,
+              version = version + 1,
               updated_at = now()
-            where id = $1::uuid
+            where id = $1::uuid and version = $10
           `,
           [
             input.cardId,
@@ -263,6 +281,7 @@ export function createAuthorCardService(
             normalized.power,
             normalized.description,
             normalized.imageUrl,
+            input.expectedVersion,
           ],
         );
 
@@ -272,72 +291,44 @@ export function createAuthorCardService(
 
         await insertCardChildren(client, input.cardId, normalized);
 
-        await insertAudit(client, input.actorPlayerId, input.cardId, 'edit');
+        await insertAuthorContentAudit(client, {
+          actorPlayerId: input.actorPlayerId,
+          entityType: 'card',
+          entityId: input.cardId,
+          action: 'edit',
+          fromStatus: 'draft',
+          toStatus: 'draft',
+          resultingVersion: input.expectedVersion + 1,
+        });
 
         return requireLoadedCard(client, input.cardId);
       });
     },
 
-    async publishCard(actorPlayerId, cardId) {
-      return withTransaction(database, async (client) => {
-        const locked = await lockCard(client, cardId);
-
-        if (locked.authoring_status !== 'draft') {
-          throw new AuthorCardStateConflictError(
-            'Only a draft card can be published.',
-          );
-        }
-
-        const card = await requireLoadedCard(client, cardId);
-
-        assertCardReadyForPublication(card);
-
-        await client.query(
-          `
-            update public.card_definitions
-            set
-              authoring_status = 'published',
-              is_active = true,
-              updated_at = now()
-            where id = $1::uuid
-          `,
-          [cardId],
-        );
-
-        await insertAudit(client, actorPlayerId, cardId, 'publish');
-
-        return requireLoadedCard(client, cardId);
-      });
-    },
-
-    async retireCard(actorPlayerId, cardId) {
-      return withTransaction(database, async (client) => {
-        const locked = await lockCard(client, cardId);
-
-        if (locked.authoring_status === 'retired') {
-          throw new AuthorCardStateConflictError(
-            'The card is already retired.',
-          );
-        }
-
-        await client.query(
-          `
-            update public.card_definitions
-            set
-              authoring_status = 'retired',
-              is_active = false,
-              updated_at = now()
-            where id = $1::uuid
-          `,
-          [cardId],
-        );
-
-        await insertAudit(client, actorPlayerId, cardId, 'retire');
-
-        return requireLoadedCard(client, cardId);
-      });
-    },
+    submitCard: (input) => transitionCard(database, input, 'submit'),
+    approveCard: (input) => transitionCard(database, input, 'approve'),
+    returnCard: (input) => transitionCard(database, input, 'return'),
+    publishCard: (input) => transitionCard(database, input, 'publish'),
+    retireCard: (input) => transitionCard(database, input, 'retire'),
   };
+}
+
+async function transitionCard(
+  database: AuthorCardDatabase,
+  input: AuthorCardTransitionInput,
+  action: 'submit' | 'approve' | 'return' | 'publish' | 'retire',
+): Promise<AuthorCardDefinition> {
+  return withTransaction(database, async (client) => {
+    await transitionAuthorContent(client, {
+      entityType: 'card',
+      entityId: input.cardId,
+      actorPlayerId: input.actorPlayerId,
+      expectedVersion: input.expectedVersion,
+      note: input.note,
+      action,
+    });
+    return requireLoadedCard(client, input.cardId);
+  });
 }
 
 function normalizeAndValidateCard(
@@ -389,7 +380,7 @@ async function lockCard(
 ): Promise<CardLockRow> {
   const result = await client.query<CardLockRow>(
     `
-      select authoring_status
+      select authoring_status, version
       from public.card_definitions
       where id = $1::uuid
       for update
@@ -524,6 +515,12 @@ function cardSelectSql(): string {
       definition.image_url,
       definition.is_active,
       definition.authoring_status,
+      definition.version,
+      definition.submitted_by_player_id::text,
+      definition.submitted_at,
+      definition.reviewed_by_player_id::text,
+      definition.reviewed_at,
+      definition.publication_provenance,
       definition.created_at,
       definition.updated_at,
       coalesce((
@@ -582,72 +579,13 @@ function mapCard(row: CardRow): AuthorCardDefinition {
     authoringStatus: row.authoring_status,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
+    version: row.version,
+    submittedBy: row.submitted_by_player_id,
+    submittedAt: row.submitted_at?.toISOString() ?? null,
+    reviewedBy: row.reviewed_by_player_id,
+    reviewedAt: row.reviewed_at?.toISOString() ?? null,
+    publicationProvenance: row.publication_provenance,
   };
-}
-
-function assertCardReadyForPublication(card: AuthorCardDefinition): void {
-  try {
-    validateCardDefinitionForPublication({
-      name: card.name,
-      category: card.category,
-      affinity: card.affinity,
-      rarity: card.rarity,
-      hp: card.hp,
-      power: card.power,
-      description: card.description,
-      imageUrl: card.imageUrl,
-      moves: card.moves.map((move) => ({
-        position: move.position,
-        name: move.name,
-        moveType: move.moveType,
-        effectType: move.effectType,
-        effectValue: move.effectValue,
-        modifierStat: move.modifierStat,
-        modifierOperation: move.modifierOperation,
-        modifierDurationTurns: move.modifierDurationTurns,
-        powerCost: move.powerCost,
-      })),
-      effects: card.effects.map((effect) => ({
-        position: effect.position,
-        effectType: effect.effectType,
-        effectValue: effect.effectValue,
-        modifierStat: effect.modifierStat,
-        modifierOperation: effect.modifierOperation,
-        modifierDurationTurns: effect.modifierDurationTurns,
-      })),
-    });
-  } catch (error) {
-    if (error instanceof InvalidCardDefinitionError) {
-      throw new AuthorCardNotReadyError(error.message);
-    }
-
-    throw error;
-  }
-}
-
-async function insertAudit(
-  client: AuthorCardTransactionClient,
-  actorPlayerId: string,
-  cardId: string,
-  action: 'create' | 'edit' | 'publish' | 'retire',
-): Promise<void> {
-  await client.query(
-    `
-      insert into public.author_content_audit (
-        actor_player_id,
-        entity_type,
-        entity_id,
-        action
-      )
-      values (
-        $1::uuid,
-        'card',
-        $2::uuid,
-        $3
-      )
-    `,
-    [actorPlayerId, cardId, action],
-  );
 }
 
 async function withTransaction<T>(

@@ -23,8 +23,16 @@ import { createDeckService } from './cards/deck-service.js';
 import { createAuthorEventService } from './events/author-event-service.js';
 import { createAuthorChallengeService } from './challenges/author-challenge-service.js';
 import { createAuthorCardService } from './cards/author-card-service.js';
+import { createAuthorContentReadService } from './authoring/content-read-service.js';
 import { createCpuMatchService } from './matches/cpu-match-service.js';
 import { createAuthenticatedRateProtection } from './security/rate-protection.js';
+import { createProgressionPersistence } from './progression/progression-persistence.js';
+import { createProgressionReadService } from './progression/progression-read-service.js';
+import { createAuthorTrailService } from './trails/author-trail-service.js';
+import { createPlayerTrailService } from './trails/player-trail-service.js';
+import { createAuthorCampaignService } from './campaigns/author-campaign-service.js';
+import { createMovementEvidenceService } from './events/movement-evidence.js';
+import { createMovementEvidenceCleanupScheduler } from './events/movement-evidence-cleanup-scheduler.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
@@ -49,8 +57,9 @@ async function startServer(): Promise<void> {
     createChallengeAttemptStartService(database);
   const starterGrantService = createStarterGrantService(database);
   const cardCollectionService = createCardCollectionService(database);
+  const progressionPersistence = createProgressionPersistence();
   const challengeAttemptCompletionFinalizer =
-    createChallengeAttemptCompletionFinalizer();
+    createChallengeAttemptCompletionFinalizer({ progressionPersistence });
   const challengeAnswerSubmissionService =
     createChallengeAnswerSubmissionService(database, {
       finalizer: challengeAttemptCompletionFinalizer,
@@ -65,8 +74,18 @@ async function startServer(): Promise<void> {
   const authorEventService = createAuthorEventService(database);
   const authorChallengeService = createAuthorChallengeService(database);
   const authorCardService = createAuthorCardService(database);
-  const cpuMatchService = createCpuMatchService(database);
+  const authorTrailService = createAuthorTrailService(database);
+  const authorCampaignService = createAuthorCampaignService(database);
+  const playerTrailService = createPlayerTrailService(database);
+  const authorContentReadService = createAuthorContentReadService(database);
+  const cpuMatchService = createCpuMatchService(database, {
+    progressionPersistence,
+  });
+  const progressionReadService = createProgressionReadService(database);
   const playerIdentityService = createPlayerIdentityService(database);
+  const movementEvidenceService = createMovementEvidenceService(database, {
+    retentionMs: config.movementEvidenceRetentionMs,
+  });
 
   const app = await buildApp({
     config,
@@ -92,6 +111,7 @@ async function startServer(): Promise<void> {
     },
 
     cpuMatchService,
+    progressionReadService,
 
     accountDeletionServices: {
       reauthenticationVerifier,
@@ -102,12 +122,20 @@ async function startServer(): Promise<void> {
     eventServices: {
       discovery: createEventDiscoveryService(database),
       eligibility: createEventEligibilityService(database),
+      movementEvidence: movementEvidenceService,
+    },
+
+    trailServices: {
+      player: playerTrailService,
     },
 
     authorContentServices: {
       events: authorEventService,
       challenges: authorChallengeService,
       cards: authorCardService,
+      trails: authorTrailService,
+      campaigns: authorCampaignService,
+      read: authorContentReadService,
     },
   });
 
@@ -124,9 +152,16 @@ async function startServer(): Promise<void> {
       intervalMs: config.accountDeletionRetryIntervalMs,
     },
   );
+  const movementEvidenceCleanupScheduler =
+    createMovementEvidenceCleanupScheduler(
+      movementEvidenceService,
+      app.log,
+      config.movementEvidenceCleanupIntervalMs,
+    );
 
   app.addHook('onClose', async () => {
     await accountDeletionRetryScheduler.stop();
+    await movementEvidenceCleanupScheduler.stop();
     await database.end();
   });
 
@@ -137,6 +172,7 @@ async function startServer(): Promise<void> {
     });
 
     accountDeletionRetryScheduler.start();
+    movementEvidenceCleanupScheduler.start();
 
     app.log.info(
       {

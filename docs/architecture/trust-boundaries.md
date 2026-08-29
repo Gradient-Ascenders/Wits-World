@@ -40,6 +40,8 @@ The browser may not determine:
 - reward eligibility;
 - card ownership;
 - deck validity;
+- trail progress or unlocked steps;
+- campaign publication, effective windows, or retirement;
 - legal battle actions; or
 - battle outcomes.
 
@@ -49,6 +51,21 @@ not submit card statistics, effects, CPU actions, random values, round results,
 the winner, or completion status. The API locks the match row, applies the
 shared rules transition, resolves CPU actions, and persists the result
 transactionally. Unplayed CPU cards remain hidden in player-facing responses.
+
+The asynchronous PvP persistence boundary follows the same rule. Migration
+`0028` separates hidden snapshots, full state, transition history, and replay
+responses into the `private` schema while retaining only lifecycle and legally
+revealed action data in public relations. The planned API accepts only a
+privacy-safe exact Player Name challenge target, invitation/deck intent,
+expected resource version, submission identifier, and one API-returned legal
+action. It never accepts internal player UUIDs as authority, opponent-private
+cards, deadlines, timeout/forfeit results, damage, winners, or progression
+awards. Only the two authenticated participants may read an invitation, match,
+or history record. The
+[asynchronous PvP contract](./asynchronous-pvp-api-contract.md) and
+[persistence design](../database/asynchronous-pvp-persistence.md) are inputs for
+issues `#180` and `#181`; persistence alone is not a claim that player-facing
+PvP is currently available.
 
 ### Authentication provider
 
@@ -97,9 +114,14 @@ It is responsible for:
 - validating request parameters and bodies;
 - enforcing role-based authorisation;
 - enforcing object-level authorisation;
+- enforcing Author content state, optimistic versions, different-reviewer
+  approval/return, readiness, and publication provenance;
 - checking event publication and availability;
 - evaluating location claims;
+- deriving ordered trail progress and nearby current steps;
 - calling parameterised database operations;
+- deriving progression points, streaks, achievements, and ranks only from
+  authoritative completed challenge and CPU-match records;
 - enforcing protected game rules; and
 - returning safe responses.
 
@@ -114,7 +136,26 @@ such as:
 - `deckTotalPoints`;
 - `cardRarity` or `cardCategory` as deck-validation input;
 - `winner`; or
-- `matchResult`.
+- `matchResult`;
+- `turnDeadline`;
+- `completionReason`; or
+- `progressionPoints`;
+- `trailCompletedSteps`; or
+- `currentTrailPosition`.
+
+Author requests also cannot assert `isAuthor`, actor identity, `canReview`,
+content status, version success, readiness, reviewer metadata, or publication
+provenance. These are resolved or derived by the API and database. Safe review
+and audit responses expose local actor IDs and current Player Names, never Auth0
+subjects, email, private answers, coordinates, or full content bodies. See the
+[Author curation contract](./author-curation-api-contract.md).
+
+Progression profile and standings requests contain no player selector. The API
+uses the authenticated active player for the private profile and current-rank
+row. Standings fields are restricted to Player Name, points, rank, and streaks;
+email, Auth0 subject, location, internal UUIDs, and gameplay history do not cross
+into the response. Deleted and deletion-pending accounts do not occupy live
+ranks.
 
 ### PostgreSQL/PostGIS
 
@@ -135,17 +176,23 @@ including:
 - card definitions and gameplay metadata;
 - saved decks;
 - exact saved-deck membership by owned-copy ID; and
-- the player's active deck selection.
+- the player's active deck selection;
+- ordered trail definitions and event membership; and
+- event completions used to derive each player's trail prefix.
 
 Database relationships prevent a saved deck from referencing another player's
 owned copy or being selected by another player. Application validation enforces
 the complete five-card composition and rarity-point rules before deck mutations
 commit.
 
-PostGIS performs the authoritative distance calculation between:
+PostGIS performs authoritative distance calculations between:
 
 - the submitted browser location claim; and
 - the stored event point.
+
+The nearby-unvisited trail query uses the same geography index for bounded
+guidance. It does not persist the submitted location and does not replace the
+independent event-eligibility decision.
 
 Database constraints, indexes, and transactions must reinforce important
 application rules.
@@ -250,13 +297,19 @@ Location is requested and processed only when it supports a legitimate
 operation, such as:
 
 - showing the player's current position;
-- checking event eligibility; or
+- checking event eligibility;
+- requesting nearby unvisited trail and standalone event guidance; or
 - submitting an event attempt.
 
-The final location-retention policy remains an open decision.
-
-Until that decision is resolved, processing a location claim must not be assumed
-to require permanent storage of the exact submitted coordinates.
+Issue `#168` permits precise persistence only after an authenticated player
+initiates the active Explore/event flow for a confirmed active event. Existing
+bounded eligibility refreshes may continue for meaningful location changes
+while that event remains selected and the page stays visible; hidden or closed
+pages do not persist a background stream. The current
+provisional retention is configurable and defaults to 24 hours; automatic
+cleanup and account-deletion removal are documented in
+[privacy-limited movement evidence](../database/movement-evidence.md). No public
+history API or longer-lived derived path is created.
 
 ## Open security decisions
 
@@ -264,8 +317,11 @@ The following decisions or operational evidence still require review:
 
 - further campus evidence for the provisional `75 m` event radius, two-minute
   location-claim freshness threshold, and accuracy-envelope handling;
-- location-data retention;
-- operational logging and monitoring providers.
+- final production confirmation of the provisional movement-evidence retention
+  duration and cleanup operation;
+- operational logging and monitoring providers; and
+- asynchronous PvP challenge opt-out, blocking/reporting, moderation,
+  notification, invitation-retention, and broader per-player limit policies.
 
 The Basic application-role representation is resolved: Auth0 authenticates the
 principal, while PostgreSQL stores the local `player` or `author` role and the
@@ -281,4 +337,5 @@ validated.
 
 This document was originally planned and generated with assistance from
 ChatGPT-Web[GPT-5.6 Thinking], and was reviewed and edited for Sprint 1 release
-validation with assistance from ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].
+validation with assistance from ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5], and
+Codex[gpt-5.6-sol], and Codex-CLI[gpt-5.6-sol medium].

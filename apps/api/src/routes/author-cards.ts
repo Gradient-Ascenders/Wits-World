@@ -1,10 +1,9 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 
+import { throwAuthorContentWorkflowError } from '../authoring/workflow-api-error.js';
 import {
   AuthorCardNameConflictError,
   AuthorCardNotFoundError,
-  AuthorCardNotReadyError,
-  AuthorCardStateConflictError,
   type AuthorCardService,
 } from '../cards/author-card-service.js';
 import { InvalidCardDefinitionError } from '../cards/card-validation.js';
@@ -50,6 +49,16 @@ interface CardBody {
   imageUrl?: string | null;
   moves?: CardMoveBody[];
   effects?: CardEffectBody[];
+}
+
+type UpdateCardBody = CardBody & { expectedVersion: number };
+interface LifecycleBody {
+  expectedVersion: number;
+  note?: string;
+}
+interface ReturnBody {
+  expectedVersion: number;
+  reason: string;
 }
 
 const bearerSecurity = [
@@ -298,6 +307,17 @@ const cardBodySchema = {
   oneOf: [creatureCardBodySchema, powerCardBodySchema],
 } as const;
 
+const updateCardBodySchema = {
+  oneOf: cardBodySchema.oneOf.map((schema) => ({
+    ...schema,
+    required: [...schema.required, 'expectedVersion'],
+    properties: {
+      ...schema.properties,
+      expectedVersion: { type: 'integer', minimum: 0 },
+    },
+  })),
+} as const;
+
 const cardMoveSchema = {
   type: 'object',
   additionalProperties: false,
@@ -392,6 +412,12 @@ const authorCardSchema = {
     'authoringStatus',
     'createdAt',
     'updatedAt',
+    'version',
+    'submittedBy',
+    'submittedAt',
+    'reviewedBy',
+    'reviewedAt',
+    'publicationProvenance',
   ],
   properties: {
     id: {
@@ -436,7 +462,7 @@ const authorCardSchema = {
     },
     authoringStatus: {
       type: 'string',
-      enum: ['draft', 'published', 'retired'],
+      enum: ['draft', 'in_review', 'approved', 'published', 'retired'],
     },
     createdAt: {
       type: 'string',
@@ -446,13 +472,37 @@ const authorCardSchema = {
       type: 'string',
       format: 'date-time',
     },
+    version: { type: 'integer', minimum: 0 },
+    submittedBy: { type: 'string', format: 'uuid', nullable: true },
+    submittedAt: { type: 'string', format: 'date-time', nullable: true },
+    reviewedBy: { type: 'string', format: 'uuid', nullable: true },
+    reviewedAt: { type: 'string', format: 'date-time', nullable: true },
+    publicationProvenance: {
+      type: 'string',
+      enum: ['legacy', 'controlled_seed', 'reviewed', null],
+      nullable: true,
+    },
   },
 } as const;
 
-const emptyBodySchema = {
+const lifecycleBodySchema = {
   type: 'object',
   additionalProperties: false,
-  maxProperties: 0,
+  required: ['expectedVersion'],
+  properties: {
+    expectedVersion: { type: 'integer', minimum: 0 },
+    note: { type: 'string', minLength: 1, maxLength: 1000, pattern: '\\S' },
+  },
+} as const;
+
+const returnBodySchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['expectedVersion', 'reason'],
+  properties: {
+    expectedVersion: { type: 'integer', minimum: 0 },
+    reason: { type: 'string', minLength: 1, maxLength: 1000, pattern: '\\S' },
+  },
 } as const;
 
 export const authorCardRoutes: FastifyPluginAsync<
@@ -541,7 +591,7 @@ export const authorCardRoutes: FastifyPluginAsync<
 
   app.put<{
     Params: CardParams;
-    Body: CardBody;
+    Body: UpdateCardBody;
   }>(
     '/author/cards/:cardId',
     {
@@ -552,7 +602,7 @@ export const authorCardRoutes: FastifyPluginAsync<
         tags: ['Authoring'],
         security: bearerSecurity,
         params: cardParamsSchema,
-        body: cardBodySchema,
+        body: updateCardBodySchema,
         response: {
           200: cardEnvelopeSchema(),
           400: apiErrorSchema,
@@ -572,6 +622,75 @@ export const authorCardRoutes: FastifyPluginAsync<
             actorPlayerId: author.id,
             cardId: request.params.cardId,
             ...request.body,
+            expectedVersion: request.body.expectedVersion,
+          }),
+          requestId: request.id,
+        };
+      } catch (error) {
+        throwAuthorCardError(error);
+      }
+    },
+  );
+
+  for (const action of ['submit', 'approve'] as const) {
+    app.post<{ Params: CardParams; Body: LifecycleBody }>(
+      `/author/cards/:cardId/${action}`,
+      {
+        onRequest: authorGuards,
+        schema: {
+          operationId: `${action}AuthorCard`,
+          summary: `${action === 'submit' ? 'Submit' : 'Approve'} a card definition`,
+          tags: ['Authoring'],
+          security: bearerSecurity,
+          params: cardParamsSchema,
+          body: lifecycleBodySchema,
+          response: lifecycleResponses(),
+        },
+      },
+      async (request) => {
+        const author = requireResolvedAuthor(request);
+        try {
+          const transition =
+            action === 'submit' ? service.submitCard : service.approveCard;
+          return {
+            card: await transition({
+              actorPlayerId: author.id,
+              cardId: request.params.cardId,
+              expectedVersion: request.body.expectedVersion,
+              note: request.body.note,
+            }),
+            requestId: request.id,
+          };
+        } catch (error) {
+          throwAuthorCardError(error);
+        }
+      },
+    );
+  }
+
+  app.post<{ Params: CardParams; Body: ReturnBody }>(
+    '/author/cards/:cardId/return',
+    {
+      onRequest: authorGuards,
+      schema: {
+        operationId: 'returnAuthorCard',
+        summary: 'Return a card definition to draft',
+        tags: ['Authoring'],
+        security: bearerSecurity,
+        params: cardParamsSchema,
+        body: returnBodySchema,
+        response: lifecycleResponses(),
+      },
+    },
+    async (request) => {
+      const author = requireResolvedAuthor(request);
+      try {
+        return {
+          card: await service.returnCard({
+            actorPlayerId: author.id,
+            cardId: request.params.cardId,
+            expectedVersion: request.body.expectedVersion,
+            note: request.body.reason,
           }),
           requestId: request.id,
         };
@@ -583,7 +702,7 @@ export const authorCardRoutes: FastifyPluginAsync<
 
   app.post<{
     Params: CardParams;
-    Body: Record<string, never>;
+    Body: LifecycleBody;
   }>(
     '/author/cards/:cardId/publish',
     {
@@ -592,11 +711,11 @@ export const authorCardRoutes: FastifyPluginAsync<
         operationId: 'publishAuthorCard',
         summary: 'Publish a ready card definition',
         description:
-          'Publishes an executable draft only after every Creature move or Power-card effect has a non-null effect value.',
+          'Publishes an approved definition only after rechecking every executable Creature move or Power-card effect.',
         tags: ['Authoring'],
         security: bearerSecurity,
         params: cardParamsSchema,
-        body: emptyBodySchema,
+        body: lifecycleBodySchema,
         response: lifecycleResponses(),
       },
     },
@@ -605,7 +724,12 @@ export const authorCardRoutes: FastifyPluginAsync<
 
       try {
         return {
-          card: await service.publishCard(author.id, request.params.cardId),
+          card: await service.publishCard({
+            actorPlayerId: author.id,
+            cardId: request.params.cardId,
+            expectedVersion: request.body.expectedVersion,
+            note: request.body.note,
+          }),
           requestId: request.id,
         };
       } catch (error) {
@@ -616,7 +740,7 @@ export const authorCardRoutes: FastifyPluginAsync<
 
   app.post<{
     Params: CardParams;
-    Body: Record<string, never>;
+    Body: LifecycleBody;
   }>(
     '/author/cards/:cardId/retire',
     {
@@ -627,7 +751,7 @@ export const authorCardRoutes: FastifyPluginAsync<
         tags: ['Authoring'],
         security: bearerSecurity,
         params: cardParamsSchema,
-        body: emptyBodySchema,
+        body: lifecycleBodySchema,
         response: lifecycleResponses(),
       },
     },
@@ -636,7 +760,12 @@ export const authorCardRoutes: FastifyPluginAsync<
 
       try {
         return {
-          card: await service.retireCard(author.id, request.params.cardId),
+          card: await service.retireCard({
+            actorPlayerId: author.id,
+            cardId: request.params.cardId,
+            expectedVersion: request.body.expectedVersion,
+            note: request.body.note,
+          }),
           requestId: request.id,
         };
       } catch (error) {
@@ -663,7 +792,7 @@ function cardEnvelopeSchema() {
 const cardNameConflictErrorSchema = {
   ...apiErrorSchema,
   description:
-    'Another draft, published, or retired card definition already reserves the normalized name. The error code is CARD_NAME_CONFLICT.',
+    'Another card definition in the Author lifecycle already reserves the normalized name. The error code is CARD_NAME_CONFLICT.',
 } as const;
 
 const cardUpdateConflictErrorSchema = {
@@ -697,6 +826,7 @@ function requireResolvedAuthor(
 }
 
 function throwAuthorCardError(error: unknown): never {
+  throwAuthorContentWorkflowError(error);
   if (error instanceof InvalidCardDefinitionError) {
     throw new ApiError({
       statusCode: 400,
@@ -715,30 +845,12 @@ function throwAuthorCardError(error: unknown): never {
     });
   }
 
-  if (error instanceof AuthorCardStateConflictError) {
-    throw new ApiError({
-      statusCode: 409,
-      code: 'CONTENT_STATE_CONFLICT',
-      title: 'Content state conflict',
-      detail: error.message,
-    });
-  }
-
   if (error instanceof AuthorCardNameConflictError) {
     throw new ApiError({
       statusCode: 409,
       code: 'CARD_NAME_CONFLICT',
       title: 'Card name already in use',
       detail: 'Another card definition already uses that name.',
-    });
-  }
-
-  if (error instanceof AuthorCardNotReadyError) {
-    throw new ApiError({
-      statusCode: 422,
-      code: 'CONTENT_NOT_READY',
-      title: 'Content not ready',
-      detail: error.message,
     });
   }
 

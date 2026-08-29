@@ -5,9 +5,9 @@
 This document records the Sprint 2 persistence foundation for event quizzes,
 reward issuance, player wallets, and owned card copies. Issue #49 was the design
 input; issue #64 implements the migration layer described here. Challenge and reward routes and finalization services are implemented by their
-respective Sprint 2 issues. Protected Author content management is implemented
-by issue #77, including event, challenge, question, and card lifecycle
-operations and audit persistence.
+respective Sprint 2 issues. Issue #182 supersedes issue #77's direct-publish
+authoring model with the five-state reviewed lifecycle documented in the
+[Author curation API contract](../architecture/author-curation-api-contract.md).
 
 The HTTP behavior is defined by the
 [challenge and attempt API contract](../architecture/challenge-attempt-api-contract.md).
@@ -58,10 +58,11 @@ from its shared card definition.
   answers, and the private answer key. Private source identifiers remain
   private; ordering explanations are revealed only after completion.
 - Author content mutations derive the acting Author from the authenticated
-  server context and record create, edit, publish, and retire actions in the
+  server context and record each versioned edit or lifecycle transition in the
   audit trail.
-- Published questions, challenges, cards, and newly authored events cannot
-  silently return to draft.
+- Content follows `draft -> in_review -> approved -> published -> retired`;
+  returns from review or approval go to draft with a required reason, and
+  published content cannot return to draft.
 - Card-definition names are unique across draft, published, and retired rows
   under `lower(btrim(name))`; stored display casing is preserved, and retired
   rows continue to reserve their normalized names.
@@ -110,12 +111,12 @@ players from representing the same external identity. No access token is stored.
 
 ### `event_challenges`
 
-An event challenge stores `id`, `event_id`, `format`, `status`, and lifecycle
-timestamps. `format` is `multiple_choice` or `ordering`; status is `draft`,
-`published`, or `retired`. A partial unique index on `event_id` where status is
+An event challenge stores `id`, `event_id`, `format`, its five-state status,
+optimistic-concurrency version, submission/review metadata, provenance, and
+lifecycle timestamps. A partial unique index on `event_id` where status is
 `published` permits challenge history but allows only one published challenge
-per event. Only a published challenge may be started, and publishing requires at
-least five valid published questions.
+per event. Only a published challenge may be started, and approval and
+publication require at least five complete published questions.
 
 ### `challenge_questions` and `challenge_choices`
 
@@ -223,14 +224,14 @@ after trimming. Retired definitions reserve that key. This invariant belongs to
 `card_definitions` and deliberately does not prevent multiple `player_cards`
 rows from representing separately owned copies of one definition.
 
-Issue #77 adds `authoring_status` with `draft`, `published`, and `retired`
-states. Draft cards are inactive and editable. Publication changes the card to
-published and active only after the persisted definition passes the same
-Creature/Power validation used by the application. Published and retired
-definition content, moves, and effects are immutable. Retirement makes the card
-inactive but preserves the definition so existing `player_cards` ownership rows
-continue to resolve their shared catalogue data. Retired cards cannot be
-republished.
+Issue #182 uses `authoring_status` values `draft`, `in_review`, `approved`,
+`published`, and `retired`. Only drafts are editable; only published cards are
+active. Approval and publication require the persisted definition to pass the
+same Creature/Power validation used by the application. Published and retired
+definition content, moves, and effects are immutable. Retirement makes the
+card inactive but preserves the definition so existing `player_cards`
+ownership rows continue to resolve their shared catalogue data. Retired cards
+cannot be republished.
 
 - Category is `creature` or `power`.
 - Affinity is `wit`, `grit`, `spark`, `spirit`, or `mystic`.
@@ -269,18 +270,20 @@ Reward and starter selection use only active definitions.
 
 ### Event authoring lifecycle
 
-Issue #77 extends the existing event relation with nullable `retired_at` while
-preserving `is_published` as the player-facing visibility flag.
+Issue #182 adds authoritative `authoring_status` while preserving
+`is_published` as the player-facing compatibility flag.
 
 The Author lifecycle is:
 
-- draft: `is_published = false` and `retired_at is null`;
+- draft, in review, or approved: `is_published = false` and
+  `retired_at is null`;
 - published: `is_published = true` and `retired_at is null`;
 - retired: `is_published = false` and `retired_at is not null`.
 
-A newly authored draft may be published only when it has exactly one published
-challenge and the catalogue contains at least one active Common card required
-by the Basic reward policy. Challenge publication already proves that at least
+A newly authored event must be submitted and approved by a different Author
+before it may be published. Approval and publication both require exactly one
+published challenge and at least one active published Common card required by
+the Basic reward policy. Challenge publication already proves that at least
 five valid published questions exist.
 
 Published event content is immutable and cannot return to draft. Retirement
@@ -731,4 +734,4 @@ The player-facing capability remains issue `#161` work.
 
 This design was planned, generated, edited, and reviewed with the assistance of
 Codex[GPT-5.6 Sol], Codex-CLI[gpt-5.6-sol medium], Codex[GPT-5], and
-ChatGPT-Web[GPT-5.6 Sol].
+ChatGPT-Web[GPT-5.6 Sol], and Codex[gpt-5.6-sol].

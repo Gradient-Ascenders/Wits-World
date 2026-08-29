@@ -19,6 +19,7 @@ import { healthRoutes } from './routes/health.js';
 
 import type { EventDiscoveryService } from './events/event-discovery.js';
 import type { EventEligibilityService } from './events/event-eligibility.js';
+import type { MovementEvidenceService } from './events/movement-evidence.js';
 import { eventRoutes } from './routes/events.js';
 
 import cors from '@fastify/cors';
@@ -60,11 +61,22 @@ import { authorChallengeRoutes } from './routes/author-challenges.js';
 
 import type { AuthorCardService } from './cards/author-card-service.js';
 import { authorCardRoutes } from './routes/author-cards.js';
+import type { AuthorContentReadService } from './authoring/content-read-service.js';
+import { authorContentRoutes } from './routes/author-content.js';
 import type { AuthenticatedRateProtection } from './security/rate-protection.js';
+import type { ProgressionReadService } from './progression/progression-read-service.js';
+import { progressionRoutes } from './routes/progression.js';
+import type { AuthorTrailService } from './trails/author-trail-service.js';
+import type { PlayerTrailService } from './trails/player-trail-service.js';
+import { authorTrailRoutes } from './routes/author-trails.js';
+import { playerTrailRoutes } from './routes/trails.js';
+import type { AuthorCampaignService } from './campaigns/author-campaign-service.js';
+import { authorCampaignRoutes } from './routes/author-campaigns.js';
 
 export interface EventServices {
   discovery: EventDiscoveryService;
   eligibility: EventEligibilityService;
+  movementEvidence?: MovementEvidenceService;
   clock?: () => Date;
   maxLocationClaimAgeMs?: number;
 }
@@ -73,6 +85,9 @@ export interface BuildAppOptions {
   authConfig: AuthConfig;
   config?: Pick<ApiConfig, 'logLevel'>;
   logger?: boolean;
+  logDestination?: {
+    write(message: string): void;
+  };
   accessTokenVerifier?: AccessTokenVerifier;
   eventServices?: EventServices;
   corsConfig?: CorsConfig;
@@ -82,7 +97,9 @@ export interface BuildAppOptions {
   challengeAttemptServices?: ChallengeAttemptServices;
   cardServices?: CardServices;
   authorContentServices?: AuthorContentServices;
+  trailServices?: TrailServices;
   cpuMatchService?: CpuMatchService;
+  progressionReadService?: ProgressionReadService;
   rateProtection?: AuthenticatedRateProtection;
 }
 
@@ -108,6 +125,15 @@ export interface AuthorContentServices {
   events?: AuthorEventService;
   challenges?: AuthorChallengeService;
   cards?: AuthorCardService;
+  trails?: AuthorTrailService;
+  campaigns?: AuthorCampaignService;
+  read?: AuthorContentReadService;
+}
+
+export interface TrailServices {
+  player: PlayerTrailService;
+  clock?: () => Date;
+  maxLocationClaimAgeMs?: number;
 }
 
 export async function buildApp({
@@ -116,6 +142,7 @@ export async function buildApp({
     logLevel: 'info',
   },
   logger = true,
+  logDestination,
   accessTokenVerifier,
   eventServices,
   corsConfig,
@@ -125,7 +152,9 @@ export async function buildApp({
   challengeAttemptServices,
   cardServices,
   authorContentServices,
+  trailServices,
   cpuMatchService,
+  progressionReadService,
   rateProtection,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
@@ -140,9 +169,22 @@ export async function buildApp({
               'req.body.reauthenticationToken',
               'request.body.reauthenticationToken',
               'body.reauthenticationToken',
+              'req.body.latitude',
+              'req.body.longitude',
+              'req.body.accuracyMetres',
+              'req.body.acquiredAt',
+              'request.body.latitude',
+              'request.body.longitude',
+              'request.body.accuracyMetres',
+              'request.body.acquiredAt',
+              'body.latitude',
+              'body.longitude',
+              'body.accuracyMetres',
+              'body.acquiredAt',
             ],
             censor: '[REDACTED]',
           },
+          ...(logDestination ? { stream: logDestination } : {}),
         }
       : false,
     genReqId: () => randomUUID(),
@@ -188,8 +230,14 @@ export async function buildApp({
       'Author content services require a player identity service.',
     );
   }
+  if (trailServices && !playerIdentityService) {
+    throw new Error('Trail services require a player identity service.');
+  }
   if (cpuMatchService && !playerIdentityService) {
     throw new Error('CPU match services require a player identity service.');
+  }
+  if (progressionReadService && !playerIdentityService) {
+    throw new Error('Progression services require a player identity service.');
   }
 
   registerErrorHandlers(app);
@@ -232,12 +280,21 @@ export async function buildApp({
           description: 'Player saved decks and active deck selection.',
         },
         {
+          name: 'Trails',
+          description: 'Ordered campus trails and player progress guidance.',
+        },
+        {
           name: 'Authoring',
           description: 'Protected Author-only Basic content management.',
         },
         {
           name: 'Matches',
           description: 'Server-authoritative CPU matches and private history.',
+        },
+        {
+          name: 'Progression',
+          description:
+            'Authenticated player progression and privacy-safe standings.',
         },
       ],
       components: {
@@ -305,6 +362,7 @@ export async function buildApp({
       prefix: '/api/v1',
       discoveryService: eventServices.discovery,
       eligibilityService: eventServices.eligibility,
+      movementEvidenceService: eventServices.movementEvidence,
       clock: eventServices.clock,
       maxLocationClaimAgeMs: eventServices.maxLocationClaimAgeMs,
     });
@@ -328,6 +386,36 @@ export async function buildApp({
     await app.register(authorCardRoutes, {
       prefix: '/api/v1',
       service: authorContentServices.cards,
+    });
+  }
+
+  if (authorContentServices?.trails) {
+    await app.register(authorTrailRoutes, {
+      prefix: '/api/v1',
+      service: authorContentServices.trails,
+    });
+  }
+
+  if (authorContentServices?.campaigns) {
+    await app.register(authorCampaignRoutes, {
+      prefix: '/api/v1',
+      service: authorContentServices.campaigns,
+    });
+  }
+
+  if (trailServices) {
+    await app.register(playerTrailRoutes, {
+      prefix: '/api/v1',
+      service: trailServices.player,
+      clock: trailServices.clock,
+      maxLocationClaimAgeMs: trailServices.maxLocationClaimAgeMs,
+    });
+  }
+
+  if (authorContentServices?.read) {
+    await app.register(authorContentRoutes, {
+      prefix: '/api/v1',
+      service: authorContentServices.read,
     });
   }
 
@@ -359,6 +447,13 @@ export async function buildApp({
     await app.register(cpuMatchRoutes, {
       prefix: '/api/v1',
       service: cpuMatchService,
+    });
+  }
+
+  if (progressionReadService) {
+    await app.register(progressionRoutes, {
+      prefix: '/api/v1',
+      service: progressionReadService,
     });
   }
 

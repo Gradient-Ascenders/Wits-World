@@ -58,6 +58,12 @@ const authoredEvent: AuthorEvent = {
   updatedAt: '2026-08-15T20:00:00.000Z',
   authoringStatus: 'draft',
   retiredAt: null,
+  version: 0,
+  submittedBy: null,
+  submittedAt: null,
+  reviewedBy: null,
+  reviewedAt: null,
+  publicationProvenance: null,
 };
 
 let app: FastifyInstance;
@@ -84,6 +90,9 @@ beforeEach(async () => {
     listEvents,
     createEvent,
     updateEvent,
+    submitEvent: vi.fn().mockResolvedValue(authoredEvent),
+    approveEvent: vi.fn().mockResolvedValue(authoredEvent),
+    returnEvent: vi.fn().mockResolvedValue(authoredEvent),
     publishEvent,
     retireEvent,
   };
@@ -213,7 +222,7 @@ describe('author event API', () => {
     const response = await authenticatedRequest({
       method: 'PUT',
       url: `/api/v1/author/events/${EVENT_ID}`,
-      payload: validEventBody(),
+      payload: { ...validEventBody(), expectedVersion: 0 },
     });
 
     expect(response.statusCode).toBe(200);
@@ -221,6 +230,7 @@ describe('author event API', () => {
     expect(updateEvent).toHaveBeenCalledWith({
       actorPlayerId: AUTHOR_ID,
       eventId: EVENT_ID,
+      expectedVersion: 0,
       ...validEventBody(),
     });
   });
@@ -261,7 +271,7 @@ describe('author event API', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/v1/author/events',
-      payload: {},
+      payload: { expectedVersion: 0 },
     });
 
     expect(response.statusCode).toBe(401);
@@ -277,12 +287,16 @@ describe('author event API', () => {
     const response = await authenticatedRequest({
       method: 'POST',
       url: `/api/v1/author/events/${EVENT_ID}/publish`,
-      payload: {},
+      payload: { expectedVersion: 0 },
     });
 
     expect(response.statusCode).toBe(200);
 
-    expect(publishEvent).toHaveBeenCalledWith(AUTHOR_ID, EVENT_ID);
+    expect(publishEvent).toHaveBeenCalledWith({
+      actorPlayerId: AUTHOR_ID,
+      eventId: EVENT_ID,
+      expectedVersion: 0,
+    });
 
     expect(response.json()).toMatchObject({
       event: {
@@ -299,12 +313,16 @@ describe('author event API', () => {
     const response = await authenticatedRequest({
       method: 'POST',
       url: `/api/v1/author/events/${EVENT_ID}/retire`,
-      payload: {},
+      payload: { expectedVersion: 0 },
     });
 
     expect(response.statusCode).toBe(200);
 
-    expect(retireEvent).toHaveBeenCalledWith(AUTHOR_ID, EVENT_ID);
+    expect(retireEvent).toHaveBeenCalledWith({
+      actorPlayerId: AUTHOR_ID,
+      eventId: EVENT_ID,
+      expectedVersion: 0,
+    });
 
     expect(response.json()).toMatchObject({
       event: {
@@ -322,7 +340,7 @@ describe('author event API', () => {
     const response = await authenticatedRequest({
       method: 'POST',
       url: `/api/v1/author/events/${EVENT_ID}/publish`,
-      payload: {},
+      payload: { expectedVersion: 0 },
     });
 
     expect(response.statusCode).toBe(403);
@@ -344,7 +362,7 @@ describe('author event API', () => {
     const response = await authenticatedRequest({
       method: 'POST',
       url: `/api/v1/author/events/${EVENT_ID}/publish`,
-      payload: {},
+      payload: { expectedVersion: 0 },
     });
 
     expect(response.statusCode).toBe(422);
@@ -362,7 +380,7 @@ describe('author event API', () => {
     const response = await authenticatedRequest({
       method: 'POST',
       url: `/api/v1/author/events/${EVENT_ID}/publish`,
-      payload: {},
+      payload: { expectedVersion: 0 },
     });
 
     expect(response.statusCode).toBe(409);
@@ -382,7 +400,7 @@ describe('author event API', () => {
     const response = await authenticatedRequest({
       method: 'PUT',
       url: `/api/v1/author/events/${EVENT_ID}`,
-      payload: validEventBody(),
+      payload: { ...validEventBody(), expectedVersion: 0 },
     });
 
     expect(response.statusCode).toBe(409);

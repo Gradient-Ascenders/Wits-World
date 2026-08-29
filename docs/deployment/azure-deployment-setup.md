@@ -281,6 +281,23 @@ foundation for the planned account-deletion capability. Their presence does
 not mean that account deletion is implemented. These values are API runtime
 settings and belong in Azure App Service rather than in the deployment ZIP.
 
+Issue `#168` adds two non-secret API runtime controls that production operators
+must set and review before enabling movement-evidence persistence:
+
+```text
+MOVEMENT_EVIDENCE_RETENTION_MS
+MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS
+```
+
+The current defaults are a provisional 24-hour retention and a 60-second
+idempotent cleanup interval. Their final production values require team review;
+see [privacy-limited movement evidence](../database/movement-evidence.md).
+Configuration rejects unsafe integers at startup. The cleanup interval cannot
+exceed Node's `2147483647` ms timer limit, and retention has a separate
+JavaScript `Date` representation guard rather than an invented business-policy
+maximum. Retention changes apply only to new rows; existing evidence keeps its
+stored `expires_at`.
+
 ### 7.1 Runtime configuration incident
 
 An API deployment completed successfully but repeatedly returned HTTP 503

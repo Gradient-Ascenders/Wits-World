@@ -44,35 +44,46 @@ or ownership result.
 - New accounts receive the Player role. Author assignment and revocation happen
   out-of-band through the database or deployment process; no browser or API
   operation may grant or change roles.
-- Authors may create, edit, publish, retire, and manage all Basic content,
-  including content created by other Authors.
+- Authors may create and edit draft Basic content. Publication requires a review
+  cycle; the latest submitting Author cannot approve or return their own
+  submission, while any Author may publish approved content or retire published
+  content.
 - Players cannot access author endpoints, accepted answers, or unpublished
   content.
-- Author create, edit, publish, and retire actions record the acting Author and
-  timestamp in the audit trail. In-app role management and advanced
-  administration are deferred beyond Basic.
+- Author create, edit, submit, approve, return, publish, and retire actions record
+  the acting local Author, transition, version, timestamp, and any safe bounded
+  note in the audit trail. In-app role management and advanced administration are
+  deferred beyond Basic.
 
 ### Author content lifecycle
 
-- Author-created events, challenges, questions, and cards begin as draft content
-  and do not become player-visible merely because they have been created.
-- A multiple-choice question may be published only when it has exactly four
+- Author-created events, challenges, questions, and cards follow `draft →
+in_review → approved → published → retired`. Editing is draft-only. A return
+  from review or approval requires a reason and starts a new draft/review cycle.
+  No state except `published` is player-available.
+- A multiple-choice question may be approved or published only when it has exactly four
   choices, exactly one private accepted choice, a difficulty from `1` through
   `3`, and a nonblank explanation. Published question content is immutable;
   later changes require replacement content.
-- A challenge may be published only when it contains at least five valid
+- A challenge may be approved or published only when it contains at least five valid
   published questions. A published challenge cannot return to draft.
-- A newly authored event may be published only when it has one valid published
+- A newly authored event may be approved or published only when it has one valid published
   challenge and the active catalogue contains at least one Common card required
   by the Basic reward policy.
 - Published event content is immutable. Retiring an event removes it from
   player discovery without deleting its authored record, and a retired event
   cannot be republished. The published challenge belonging to a live published
   event cannot be retired until the event itself has been retired.
-- Card definitions use draft, published, and retired authoring states. Only
+- Card definitions use the same five authoring states. Only
   published cards are active for starter and reward selection. Retiring a card
   removes it from future catalogue selection without deleting owned copies that
-  already reference that definition.
+  already reference that definition. A configured canonical starter definition
+  cannot be retired until the authoritative starter-package configuration has a
+  replacement, so all three starter options remain grantable.
+- Approval and publication recheck readiness under dependency locks. Every edit
+  and lifecycle request includes the expected version; stale concurrent requests
+  fail without changing content. See the
+  [Author curation API contract](../architecture/author-curation-api-contract.md).
 - Protected Author APIs may return private accepted-answer information and
   explanations required for content management. Player APIs never expose
   private answer-key identifiers or explanations. During an active timed
@@ -271,10 +282,12 @@ completed-match history. It does not use direct attribute comparison.
 - A Power card may be played only while an active Creature is on the board. It
   is discarded immediately after use, cannot be reused during that battle, and
   may define multiple authored effects.
-- The PvP turn timer is `1 minute`; the CPU match turn timer is `1.5 minutes`.
-  The shared rule remains configurable.
-- If the timer expires without a selected move or action, the turn ends without
-  an action.
+- The later live PvP mode uses a `1 minute` turn timer; the CPU match turn timer
+  is `1.5 minutes`. The shared rule remains configurable. The planned
+  asynchronous PvP mode is separate and uses 24-hour decision windows.
+- For CPU and later live PvP modes, if the timer expires without a selected
+  move or action, the turn ends without an action. Asynchronous PvP instead
+  applies the forfeit rule documented below.
 - The CPU selects randomly from legal actions using server-side randomness.
   Difficulty levels and machine-learning behaviour are deferred.
 - Ties are not possible in the current move-based system.
@@ -292,12 +305,32 @@ card/deck snapshots, returns a new battle state for every legal action, and
 receives randomness through an injected integer source. Match persistence and
 HTTP coordination remain API responsibilities.
 
+## Planned asynchronous PvP
+
+Issue `#178` defines a planned Intermediate asynchronous mode that reuses the
+same server-authoritative move, effect, replacement, deck, and victory rules.
+It is not the one-minute live mode and is not part of the implemented Basic
+release.
+
+An invitation expires after 24 hours. Once accepted, each active move or
+mandatory-replacement decision receives a 24-hour response window. Missing that
+window completes the match as an automatic forfeit; it does not use the CPU or
+live `timeout` action that merely ends a turn without an action. The browser
+continues to submit intent only, opponent cards remain hidden until legally
+revealed, and persisted deck snapshots prevent later catalogue or saved-deck
+changes from altering the match.
+
+The planned endpoint, privacy, idempotency, polling, deadline, history, and
+progression boundaries are defined in the
+[asynchronous PvP API contract](../architecture/asynchronous-pvp-api-contract.md).
+
 ## Basic exclusions
 
 The following are not Basic game rules: PvP, matchmaking, ratings, spectators,
 trading, selling, evolution, rarity upgrades, offline play, movement tracking,
 anti-cheat trust scoring, territory control, seasons, advanced analytics, or an
-advanced author review workflow.
+advanced administration console. The implemented curated Author review workflow
+is part of Basic content integrity; its reviewer UI is deferred to issue `#185`.
 
 This document was planned, generated, and edited with the assistance of
-Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5].
+Codex-CLI[gpt-5.6-sol medium], Codex[GPT-5], and Codex[gpt-5.6-sol].

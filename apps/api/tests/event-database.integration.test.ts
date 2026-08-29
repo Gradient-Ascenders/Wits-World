@@ -83,7 +83,10 @@ async function insertLegacyPublishedDemoQuestion(
       );
       await client.query(
         `update public.challenge_questions
-            set status = 'published', updated_at = now()
+            set status = 'published',
+                version = version + 1,
+                publication_provenance = 'controlled_seed',
+                updated_at = now()
           where id = md5(
             'wits-world-sprint-1-demo-question:great-hall-campus'
           )::uuid`,
@@ -169,6 +172,12 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0023_rebalance_canonical_card_roster.sql',
         '0024_complete_account_deletion_retention.sql',
         '0025_add_ordering_challenges.sql',
+        '0026_create_player_progression.sql',
+        '0027_create_ordered_trails.sql',
+        '0028_create_asynchronous_pvp_persistence.sql',
+        '0029_curate_author_content_lifecycle.sql',
+        '0030_create_campaign_scheduling.sql',
+        '0031_create_movement_evidence.sql',
       ],
       skipped: [],
     });
@@ -201,6 +210,12 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0023_rebalance_canonical_card_roster.sql',
         '0024_complete_account_deletion_retention.sql',
         '0025_add_ordering_challenges.sql',
+        '0026_create_player_progression.sql',
+        '0027_create_ordered_trails.sql',
+        '0028_create_asynchronous_pvp_persistence.sql',
+        '0029_curate_author_content_lifecycle.sql',
+        '0030_create_campaign_scheduling.sql',
+        '0031_create_movement_evidence.sql',
       ],
     });
     expect(readiness).toMatchObject({
@@ -210,6 +225,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
 
     await withDatabaseClient(temporaryConfig, async (client) => {
       const seededEvent = await client.query<{
+        authoring_status: string;
         count: string;
         ends_at: Date;
         is_published: boolean;
@@ -218,6 +234,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         radius_metres: number;
         starts_at: Date;
         title: string;
+        publication_provenance: string;
       }>(
         `select (select count(*) from public.events)::text as count,
                 title,
@@ -226,7 +243,9 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
                 radius_metres,
                 starts_at,
                 ends_at,
-                is_published
+                is_published,
+                authoring_status,
+                publication_provenance
            from public.events
           where id = $1`,
         [DEMO_EVENT_ID],
@@ -235,11 +254,13 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
       expect(seededEvent.rows).toHaveLength(1);
       expect(seededEvent.rows[0]).toMatchObject({
         count: '5',
+        authoring_status: 'published',
         is_published: true,
         latitude: -26.19205,
         longitude: 28.03038,
         radius_metres: 75,
         title: 'Sprint 1 Demo - Wits Great Hall',
+        publication_provenance: 'controlled_seed',
       });
       expect(seededEvent.rows[0]?.starts_at.toISOString()).toBe(
         '2026-07-31T22:00:00.000Z',
@@ -447,17 +468,18 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
     await withDatabaseClient(temporaryConfig, async (client) => {
       await client.query(
         `insert into public.events (
-           id, title, location, radius_metres, starts_at, ends_at, is_published
+           id, title, location, radius_metres, starts_at, ends_at, is_published,
+           authoring_status, publication_provenance
          ) values
            ($1, 'Unpublished test event',
             st_setsrid(st_makepoint(28.03038, -26.19205), 4326)::geography,
-            75, $5, $6, false),
+            75, $5, $6, false, 'draft', null),
            ($2, 'Future test event',
             st_setsrid(st_makepoint(28.03038, -26.19205), 4326)::geography,
-            75, $6, $7, true),
+            75, $6, $7, true, 'published', 'controlled_seed'),
            ($3, 'Ended test event',
             st_setsrid(st_makepoint(28.03038, -26.19205), 4326)::geography,
-            75, $4, $5, true)
+            75, $4, $5, true, 'published', 'controlled_seed')
          on conflict (id) do nothing`,
         [
           '00000000-0000-4000-8000-000000000091',

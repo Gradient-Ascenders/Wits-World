@@ -18,8 +18,9 @@ active-page browser location watcher to supply ephemeral reported-location
 claims, complete five-question challenges, receive server-selected rewards,
 manage owned cards and legal decks, and play server-resolved CPU matches.
 Challenge start reuses a sufficiently fresh watched claim or requests one newer
-one-shot reading before the API rechecks eligibility. Authors use the protected
-`/author` console to create, publish, retire, and audit shared content.
+one-shot reading before the API rechecks eligibility. Authors use protected APIs
+to curate shared content through review; the `/author` console currently supports
+draft editing and lifecycle display but not reviewer or publication actions.
 
 Issue `#160` implements the mandatory account-deletion persistence and retention
 backend. Password reset and the player-facing account/deletion experience remain
@@ -57,12 +58,16 @@ and [challenge/reward persistence design](database/challenge-reward-persistence-
 ## Authoring and game rules
 
 Basic has Player and Author roles only. Role changes are out-of-band. Authors
-may manage all Basic content; the API records actor and time. Questions must be
-complete before publication, challenges need at least five valid published
+may manage all Basic content through `draft → in_review → approved → published →
+retired`; a different Author reviews the latest submitter and every mutation is
+versioned and audited. Questions must be complete before approval/publication,
+challenges need at least five valid published
 questions, events need a published challenge and viable Common reward pool, and
 Creature publication requires exactly four ordered moves. Draft Creatures may
 have zero through four moves. The unresolved legacy two-move catalogue data must
 be reviewed by the Cards/Game owner; automation must not invent moves.
+See the [Author curation API contract](architecture/author-curation-api-contract.md)
+for endpoints, stable errors, provenance, audit privacy, and rollout order.
 
 ## Testing and release evidence
 
@@ -96,6 +101,6 @@ local test pass.
 ## AI declaration
 
 This release reference was generated, edited, and reviewed with the assistance
-of Codex[GPT-5], ChatGPT-Web[GPT-5.6 Sol], and
+of Codex[GPT-5], Codex[gpt-5.6-sol], ChatGPT-Web[GPT-5.6 Sol], and
 Codex-CLI[gpt-5.6-sol medium]. Evidence statements must still be supported by
 executed checks or named operator confirmation.

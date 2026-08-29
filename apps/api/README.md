@@ -17,7 +17,8 @@ Bearer-token authentication, protected event discovery, and server-side location
 eligibility are implemented in the API. The current API also implements local
 player provisioning and lifecycle, application roles and Author protection,
 challenge attempts and marking, atomic rewards, card collections, saved decks,
-CPU matches/history, and protected Author content operations.
+CPU matches/history, authenticated progression/standings, and protected Author
+content operations.
 
 The detailed challenge and persistence contracts are documented in the
 [challenge attempt API contract](../../docs/architecture/challenge-attempt-api-contract.md)
@@ -694,6 +695,24 @@ Location is submitted only when required for an eligibility operation.
 
 The current endpoint does not continuously track the player.
 
+For issue `#168`, the endpoint persists one validated sample only after the
+authenticated player requests eligibility and the event is confirmed as
+published and active. The internal record contains the server-resolved player,
+event context, coordinates, accuracy, acquisition/receipt times, and expiry. It
+is not returned through an API. Equal or older acquisition timestamps are
+checked against the player's latest physical sample. Older samples and equal
+timestamps with different coordinates or accuracy are rejected with
+`409 NON_MONOTONIC_MOVEMENT_EVIDENCE`. An identical equal-timestamp retry for
+the same event is idempotent; the same physical sample may also be associated
+with another active event without weakening the player-global sequence.
+
+Precise evidence defaults to a provisional 24-hour retention configured by
+`MOVEMENT_EVIDENCE_RETENTION_MS`. An idempotent API worker deletes expired rows
+at `MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS`; account-deletion initiation removes
+the player's rows transactionally. Ordinary logs redact all submitted location
+fields. See the
+[movement-evidence design](../../docs/database/movement-evidence.md).
+
 The API treats latitude, longitude, accuracy, and acquisition time as
 browser-supplied claims. It independently determines:
 
@@ -750,6 +769,32 @@ from attempt snapshots, locked answers, and the private answer key. Active
 responses contain no review, correct choices or item order, correctness, score,
 rewards, or explanations. Ordering answers submit exactly four unique snapshot
 item IDs; marking awards a point only for an exact four-position match.
+
+## Progression API
+
+The progression API is protected by bearer authentication and active Player Name
+setup:
+
+```text
+GET /api/v1/progression/me
+GET /api/v1/progression/standings
+```
+
+The current-player operation returns authoritative points, all-time rank,
+current and longest streaks, and active achievement progress. Standings default
+to `period=all_time`; use `period=monthly&month=YYYY-MM` for a Johannesburg
+calendar month. `page` defaults to `1` and is capped at `10000`; `pageSize`
+defaults to `20` and is capped at `100`.
+
+Each standings response includes the current player's selected-period rank even
+when that player is outside the page. Rows expose only Player Name, points, rank,
+and streaks. They never expose player UUIDs, email, Auth0 subjects, location, or
+private gameplay history. Deleted and deletion-pending accounts are excluded
+from live standings.
+
+Challenge and terminal CPU-match transactions record their progression decision
+before commit. The database adapter returns the existing immutable award on
+replay, and any progression failure rolls the owning completion back.
 
 ## Error-response model
 

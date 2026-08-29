@@ -34,10 +34,12 @@ already been reached.
 | Individual MCQ/ordering answers and format-specific snapshots | Deleted                                                                                  |
 | In-progress challenge attempts                                | Deleted                                                                                  |
 | Active CPU matches, rounds, actions, and card snapshots       | Deleted                                                                                  |
+| Precise movement evidence                                     | Deleted transactionally when the account enters `deletion_pending`; never retained       |
 | Completed challenge attempt summary                           | Retained against the anonymised player UUID                                              |
 | Event completion, score, coin outcome, and coin ledger        | Retained against the anonymised player UUID                                              |
 | Awarded-card outcome                                          | Retained in `event_completion_card_rewards`; owned `player_cards` rows are still deleted |
 | Completed CPU matches, rounds, actions, and card snapshots    | Retained against the anonymised player UUID                                              |
+| Point awards, activity days, streak totals, and achievements  | Retained privately against the anonymised player UUID; excluded from live standings      |
 | Published events, questions, challenges, and cards            | Retained unchanged as system-owned content definitions                                   |
 | Author activity audit                                         | Retained against the anonymised player tombstone                                         |
 
@@ -52,6 +54,11 @@ outcome from current ownership, allowing `player_cards` to be deleted without
 erasing aggregate completion evidence. The migration backfills existing event
 reward ownership before the API begins writing the retained record alongside
 each new card award.
+
+Migration `0031_create_movement_evidence.sql` adds a player-lifecycle trigger
+that removes short-lived precise movement evidence as soon as deletion becomes
+pending. It creates no derived movement record and therefore leaves no path or
+coordinate attached to the anonymous tombstone.
 
 ## Transaction and concurrency rules
 
@@ -86,7 +93,8 @@ player foreign key.
 
 Clearing the unique Auth0 `(issuer, subject)` pair and Player Name allows the
 same person to register later as a new local player. The new UUID has no link to
-the deleted player's cards, balance, decks, attempts, or matches.
+the deleted player's cards, balance, decks, attempts, matches, or retained
+progression. Progression remains attached only to the old anonymous tombstone.
 
 ## Verification
 
@@ -99,4 +107,4 @@ already-absent provider account, while player database tests cover the minimal
 audit shape and twelve-month purge.
 
 The preceding document was generated and edited with the assistance of:
-Codex-CLI[gpt-5.6-sol medium].
+Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5].

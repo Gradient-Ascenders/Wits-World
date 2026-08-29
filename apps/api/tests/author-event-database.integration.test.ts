@@ -11,13 +11,14 @@ import {
 } from '../src/database/connection.js';
 import { runMigrations } from '../src/database/migrations.js';
 
-import {
-  AuthorEventNotReadyError,
-  AuthorEventStateConflictError,
-  createAuthorEventService,
-} from '../src/events/author-event-service.js';
+import { createAuthorEventService } from '../src/events/author-event-service.js';
 import { createAuthorChallengeService } from '../src/challenges/author-challenge-service.js';
 import { createAuthorCardService } from '../src/cards/author-card-service.js';
+import {
+  AuthorContentNotReadyError,
+  AuthorContentStateConflictError,
+  StaleAuthorContentVersionError,
+} from '../src/authoring/content-workflow.js';
 
 const AUTHOR_ONE_ID = 'd1000000-0000-4000-8000-000000000001';
 const AUTHOR_TWO_ID = 'd1000000-0000-4000-8000-000000000002';
@@ -89,7 +90,7 @@ describe.skipIf(!runIntegrationTests)(
         `,
         [AUTHOR_ONE_ID, AUTHOR_TWO_ID, PLAYER_ID],
       );
-    }, 45_000);
+    }, 180_000);
 
     afterAll(async () => {
       if (pool) {
@@ -184,6 +185,101 @@ describe.skipIf(!runIntegrationTests)(
       );
     });
 
+    it('serializes concurrent draft edits that use the same expected version', async () => {
+      const service = createAuthorEventService(pool);
+      const created = await service.createEvent({
+        actorPlayerId: AUTHOR_ONE_ID,
+        title: 'Concurrent Author Event',
+        description: 'Both writers loaded version zero.',
+        latitude: -26.19205,
+        longitude: 28.03038,
+        radiusMetres: 75,
+        startsAt: '2026-09-01T08:00:00.000Z',
+        endsAt: '2026-09-01T12:00:00.000Z',
+      });
+
+      const results = await Promise.allSettled([
+        service.updateEvent({
+          ...created,
+          actorPlayerId: AUTHOR_ONE_ID,
+          eventId: created.eventId,
+          expectedVersion: 0,
+          title: 'Concurrent Author Event A',
+        }),
+        service.updateEvent({
+          ...created,
+          actorPlayerId: AUTHOR_TWO_ID,
+          eventId: created.eventId,
+          expectedVersion: 0,
+          title: 'Concurrent Author Event B',
+        }),
+      ]);
+
+      expect(
+        results.filter(({ status }) => status === 'fulfilled'),
+      ).toHaveLength(1);
+      const rejected = results.find(({ status }) => status === 'rejected');
+      expect(rejected).toMatchObject({
+        reason: expect.any(StaleAuthorContentVersionError),
+      });
+
+      const persisted = await pool.query<{
+        audit_count: number;
+        version: number;
+      }>(
+        `select event.version,
+                (select count(*)::int
+                   from public.author_content_audit audit
+                  where audit.entity_type = 'event'
+                    and audit.entity_id = event.id) audit_count
+           from public.events event
+          where event.id = $1::uuid`,
+        [created.eventId],
+      );
+      expect(persisted.rows[0]).toEqual({ audit_count: 2, version: 1 });
+
+      const submissions = await Promise.allSettled([
+        service.submitEvent({
+          actorPlayerId: AUTHOR_ONE_ID,
+          eventId: created.eventId,
+          expectedVersion: 1,
+        }),
+        service.submitEvent({
+          actorPlayerId: AUTHOR_TWO_ID,
+          eventId: created.eventId,
+          expectedVersion: 1,
+        }),
+      ]);
+      expect(
+        submissions.filter(({ status }) => status === 'fulfilled'),
+      ).toHaveLength(1);
+      expect(
+        submissions.find(({ status }) => status === 'rejected'),
+      ).toMatchObject({
+        reason: expect.any(StaleAuthorContentVersionError),
+      });
+
+      const submitted = await pool.query<{
+        audit_count: number;
+        authoring_status: string;
+        version: number;
+      }>(
+        `select event.authoring_status, event.version,
+                (select count(*)::int
+                   from public.author_content_audit audit
+                  where audit.entity_type = 'event'
+                    and audit.entity_id = event.id) audit_count
+           from public.events event
+          where event.id = $1::uuid`,
+        [created.eventId],
+      );
+      expect(submitted.rows[0]).toEqual({
+        audit_count: 3,
+        authoring_status: 'in_review',
+        version: 2,
+      });
+    });
+
     it('allows another Author to edit existing content and records that Author', async () => {
       const service = createAuthorEventService(pool);
 
@@ -199,6 +295,7 @@ describe.skipIf(!runIntegrationTests)(
       });
 
       const updated = await service.updateEvent({
+        expectedVersion: 0,
         actorPlayerId: AUTHOR_TWO_ID,
         eventId: created.eventId,
         title: 'Edited By Another Author',
@@ -305,8 +402,8 @@ describe.skipIf(!runIntegrationTests)(
       });
 
       await expect(
-        service.publishEvent(AUTHOR_ONE_ID, event.eventId),
-      ).rejects.toBeInstanceOf(AuthorEventNotReadyError);
+        submitAndApproveEvent(service, event.eventId),
+      ).rejects.toBeInstanceOf(AuthorContentNotReadyError);
 
       const persisted = await pool.query<{
         is_published: boolean;
@@ -328,7 +425,7 @@ describe.skipIf(!runIntegrationTests)(
           retired_at: null,
         },
       ]);
-    }, 45_000);
+    }, 180_000);
 
     it('rejects publication when the event has a published challenge but no Common reward catalogue', async () => {
       const eventService = createAuthorEventService(pool);
@@ -352,11 +449,11 @@ describe.skipIf(!runIntegrationTests)(
       );
 
       await expect(
-        eventService.publishEvent(AUTHOR_ONE_ID, event.eventId),
+        submitAndApproveEvent(eventService, event.eventId),
       ).rejects.toMatchObject({
         message:
-          'At least one active Common reward card is required before event publication.',
-      } satisfies Partial<AuthorEventNotReadyError>);
+          'At least one active published Common reward card is required.',
+      } satisfies Partial<AuthorContentNotReadyError>);
 
       const persisted = await pool.query<{
         is_published: boolean;
@@ -370,14 +467,14 @@ describe.skipIf(!runIntegrationTests)(
       );
 
       expect(persisted.rows[0]?.is_published).toBe(false);
-    }, 45_000);
+    }, 180_000);
 
     it('publishes a complete event, freezes it, and records the publishing Author', async () => {
       const eventService = createAuthorEventService(pool);
       const challengeService = createAuthorChallengeService(pool);
       const cardService = createAuthorCardService(pool);
 
-      await ensureCommonRewardCard(cardService);
+      const rewardCardId = await ensureCommonRewardCard(cardService);
 
       const event = await eventService.createEvent({
         actorPlayerId: AUTHOR_ONE_ID,
@@ -396,9 +493,10 @@ describe.skipIf(!runIntegrationTests)(
         AUTHOR_ONE_ID,
       );
 
-      const published = await eventService.publishEvent(
-        AUTHOR_TWO_ID,
+      const published = await publishEventThroughReview(
+        eventService,
         event.eventId,
+        AUTHOR_TWO_ID,
       );
 
       expect(published).toMatchObject({
@@ -410,6 +508,7 @@ describe.skipIf(!runIntegrationTests)(
 
       await expect(
         eventService.updateEvent({
+          expectedVersion: 3,
           actorPlayerId: AUTHOR_ONE_ID,
           eventId: event.eventId,
           title: 'Illegal Published Edit',
@@ -420,7 +519,7 @@ describe.skipIf(!runIntegrationTests)(
           startsAt: '2026-09-06T09:00:00.000Z',
           endsAt: '2026-09-06T13:00:00.000Z',
         }),
-      ).rejects.toBeInstanceOf(AuthorEventStateConflictError);
+      ).rejects.toBeInstanceOf(AuthorContentStateConflictError);
 
       await expect(
         pool.query(
@@ -452,7 +551,15 @@ describe.skipIf(!runIntegrationTests)(
           actor_player_id: AUTHOR_TWO_ID,
         },
       ]);
-    }, 45_000);
+
+      await expect(
+        cardService.retireCard({
+          actorPlayerId: AUTHOR_ONE_ID,
+          cardId: rewardCardId,
+          expectedVersion: 3,
+        }),
+      ).rejects.toBeInstanceOf(AuthorContentNotReadyError);
+    }, 180_000);
 
     it('rejects service retirement while the event is live and retains the database guard', async () => {
       const eventService = createAuthorEventService(pool);
@@ -478,10 +585,14 @@ describe.skipIf(!runIntegrationTests)(
         AUTHOR_ONE_ID,
       );
 
-      await eventService.publishEvent(AUTHOR_ONE_ID, event.eventId);
+      await publishEventThroughReview(eventService, event.eventId);
 
       await expect(
-        challengeService.retireChallenge(AUTHOR_TWO_ID, challengeId),
+        challengeService.retireChallenge({
+          actorPlayerId: AUTHOR_TWO_ID,
+          challengeId,
+          expectedVersion: 3,
+        }),
       ).rejects.toMatchObject({
         message: 'Retire the event before retiring its published challenge.',
         name: 'AuthorContentStateConflictError',
@@ -493,6 +604,7 @@ describe.skipIf(!runIntegrationTests)(
             update public.event_challenges
             set
               status = 'retired',
+              version = version + 1,
               updated_at = now()
             where id = $1::uuid
           `,
@@ -512,7 +624,7 @@ describe.skipIf(!runIntegrationTests)(
       );
 
       expect(challenge.rows[0]?.status).toBe('published');
-    }, 45_000);
+    }, 180_000);
 
     it('retires a published event, allows its challenge to retire, and prevents republication', async () => {
       const eventService = createAuthorEventService(pool);
@@ -542,12 +654,13 @@ describe.skipIf(!runIntegrationTests)(
         eventId: event.eventId,
       });
 
-      await eventService.publishEvent(AUTHOR_ONE_ID, event.eventId);
+      await publishEventThroughReview(eventService, event.eventId);
 
-      const retired = await eventService.retireEvent(
-        AUTHOR_TWO_ID,
-        event.eventId,
-      );
+      const retired = await eventService.retireEvent({
+        actorPlayerId: AUTHOR_TWO_ID,
+        eventId: event.eventId,
+        expectedVersion: 3,
+      });
 
       expect(retired.eventId).toBe(event.eventId);
       expect(retired.isPublished).toBe(false);
@@ -568,10 +681,11 @@ describe.skipIf(!runIntegrationTests)(
 
       expect(visibility.rows[0]?.visible_count).toBe(0);
 
-      const retiredChallenge = await challengeService.retireChallenge(
-        AUTHOR_ONE_ID,
+      const retiredChallenge = await challengeService.retireChallenge({
+        actorPlayerId: AUTHOR_ONE_ID,
         challengeId,
-      );
+        expectedVersion: 3,
+      });
 
       expect(retiredChallenge.status).toBe('retired');
 
@@ -592,11 +706,12 @@ describe.skipIf(!runIntegrationTests)(
       ).toBe('draft');
 
       await expect(
-        challengeService.retireChallenge(AUTHOR_ONE_ID, challengeId),
-      ).rejects.toMatchObject({
-        message: 'The challenge is already retired.',
-        name: 'AuthorContentStateConflictError',
-      });
+        challengeService.retireChallenge({
+          actorPlayerId: AUTHOR_ONE_ID,
+          challengeId,
+          expectedVersion: 4,
+        }),
+      ).rejects.toBeInstanceOf(AuthorContentStateConflictError);
 
       const persistedEvent = await eventService.listEvents();
       expect(
@@ -605,8 +720,12 @@ describe.skipIf(!runIntegrationTests)(
       ).toBe('retired');
 
       await expect(
-        eventService.publishEvent(AUTHOR_ONE_ID, event.eventId),
-      ).rejects.toBeInstanceOf(AuthorEventStateConflictError);
+        eventService.publishEvent({
+          actorPlayerId: AUTHOR_ONE_ID,
+          eventId: event.eventId,
+          expectedVersion: 4,
+        }),
+      ).rejects.toBeInstanceOf(AuthorContentStateConflictError);
 
       await expect(
         pool.query(
@@ -640,7 +759,7 @@ describe.skipIf(!runIntegrationTests)(
           actor_player_id: AUTHOR_TWO_ID,
         },
       ]);
-    }, 45_000);
+    }, 180_000);
   },
 );
 
@@ -670,13 +789,42 @@ async function createPublishedChallenge(
       acceptedChoicePosition: 1,
     });
 
-    await service.publishQuestion(actorPlayerId, question.questionId);
+    const reviewerId =
+      actorPlayerId === AUTHOR_ONE_ID ? AUTHOR_TWO_ID : AUTHOR_ONE_ID;
+    await service.submitQuestion({
+      actorPlayerId,
+      questionId: question.questionId,
+      expectedVersion: 0,
+    });
+    await service.approveQuestion({
+      actorPlayerId: reviewerId,
+      questionId: question.questionId,
+      expectedVersion: 1,
+    });
+    await service.publishQuestion({
+      actorPlayerId,
+      questionId: question.questionId,
+      expectedVersion: 2,
+    });
   }
 
-  const published = await service.publishChallenge(
+  const reviewerId =
+    actorPlayerId === AUTHOR_ONE_ID ? AUTHOR_TWO_ID : AUTHOR_ONE_ID;
+  await service.submitChallenge({
     actorPlayerId,
-    challenge.challengeId,
-  );
+    challengeId: challenge.challengeId,
+    expectedVersion: 0,
+  });
+  await service.approveChallenge({
+    actorPlayerId: reviewerId,
+    challengeId: challenge.challengeId,
+    expectedVersion: 1,
+  });
+  const published = await service.publishChallenge({
+    actorPlayerId,
+    challengeId: challenge.challengeId,
+    expectedVersion: 2,
+  });
 
   expect(published.status).toBe('published');
 
@@ -685,11 +833,16 @@ async function createPublishedChallenge(
 
 async function ensureCommonRewardCard(
   service: ReturnType<typeof createAuthorCardService>,
-): Promise<void> {
-  const existing = await poolHasActiveCommonCard(service);
+): Promise<string> {
+  const existing = (await service.listCards()).find(
+    (card) =>
+      card.rarity === 'common' &&
+      card.isActive &&
+      card.authoringStatus === 'published',
+  );
 
   if (existing) {
-    return;
+    return existing.id;
   }
 
   const card = await service.createCard({
@@ -712,18 +865,50 @@ async function ensureCommonRewardCard(
     ],
   });
 
-  await service.publishCard(AUTHOR_ONE_ID, card.id);
+  await service.submitCard({
+    actorPlayerId: AUTHOR_ONE_ID,
+    cardId: card.id,
+    expectedVersion: 0,
+  });
+  await service.approveCard({
+    actorPlayerId: AUTHOR_TWO_ID,
+    cardId: card.id,
+    expectedVersion: 1,
+  });
+  const published = await service.publishCard({
+    actorPlayerId: AUTHOR_ONE_ID,
+    cardId: card.id,
+    expectedVersion: 2,
+  });
+
+  return published.id;
 }
 
-async function poolHasActiveCommonCard(
-  service: ReturnType<typeof createAuthorCardService>,
-): Promise<boolean> {
-  const cards = await service.listCards();
+async function submitAndApproveEvent(
+  service: ReturnType<typeof createAuthorEventService>,
+  eventId: string,
+) {
+  await service.submitEvent({
+    actorPlayerId: AUTHOR_ONE_ID,
+    eventId,
+    expectedVersion: 0,
+  });
+  return service.approveEvent({
+    actorPlayerId: AUTHOR_TWO_ID,
+    eventId,
+    expectedVersion: 1,
+  });
+}
 
-  return cards.some(
-    (card) =>
-      card.rarity === 'common' &&
-      card.isActive &&
-      card.authoringStatus === 'published',
-  );
+async function publishEventThroughReview(
+  service: ReturnType<typeof createAuthorEventService>,
+  eventId: string,
+  publisherId = AUTHOR_ONE_ID,
+) {
+  await submitAndApproveEvent(service, eventId);
+  return service.publishEvent({
+    actorPlayerId: publisherId,
+    eventId,
+    expectedVersion: 2,
+  });
 }

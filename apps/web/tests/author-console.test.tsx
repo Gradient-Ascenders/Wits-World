@@ -1000,6 +1000,25 @@ describe('Basic author console', () => {
     ).toBe(false);
   });
 
+  it('forwards the event version when saving a draft', async () => {
+    const user = userEvent.setup();
+    const fetchMock = installAuthorApi();
+    renderAuthorRoute(authorPaths.editEvent(eventId));
+
+    const title = await screen.findByLabelText('Event title');
+    await user.type(title, ' unsaved');
+    await user.click(screen.getByRole('button', { name: 'Save event' }));
+    await screen.findByText('Event changes saved.');
+    const updateCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input).endsWith(`/author/events/${eventId}`) &&
+        init?.method === 'PUT',
+    );
+    expect(JSON.parse(String(updateCall?.[1]?.body))).toMatchObject({
+      expectedVersion: 0,
+    });
+  });
+
   it('protects an unsaved question when leaving its editor', async () => {
     const user = userEvent.setup();
     const fetchMock = installAuthorApi({
@@ -1026,6 +1045,33 @@ describe('Basic author console', () => {
     ).toBe(false);
   });
 
+  it('forwards the question version when saving a draft', async () => {
+    const user = userEvent.setup();
+    const fetchMock = installAuthorApi({
+      challenges: [challengeFixture()],
+      questions: [questionFixture(1, 'draft')],
+    });
+    const question = questionFixture(1, 'draft');
+    renderAuthorRoute(
+      authorPaths.editQuestion(eventId, challengeId, question.questionId),
+    );
+
+    await user.type(
+      await screen.findByLabelText('Question prompt'),
+      ' updated',
+    );
+    await user.click(screen.getByRole('button', { name: 'Save question' }));
+    await screen.findByText('Question changes saved.');
+    const updateCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input).endsWith(`/author/questions/${question.questionId}`) &&
+        init?.method === 'PUT',
+    );
+    expect(JSON.parse(String(updateCall?.[1]?.body))).toMatchObject({
+      expectedVersion: 0,
+    });
+  });
+
   it('protects an unsaved card when leaving its editor', async () => {
     const user = userEvent.setup();
     const fetchMock = installAuthorApi({ cards: [cardFixture()] });
@@ -1044,6 +1090,24 @@ describe('Basic author console', () => {
         String(input).endsWith('/publish'),
       ),
     ).toBe(false);
+  });
+
+  it('forwards the card version when saving a draft', async () => {
+    const user = userEvent.setup();
+    const fetchMock = installAuthorApi({ cards: [cardFixture()] });
+    renderAuthorRoute(authorPaths.editCard(cardFixture().id));
+
+    await user.type(await screen.findByLabelText('Card name'), ' updated');
+    await user.click(screen.getByRole('button', { name: 'Save card' }));
+    await screen.findByText('Card changes saved.');
+    const updateCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input).endsWith(`/author/cards/${cardFixture().id}`) &&
+        init?.method === 'PUT',
+    );
+    expect(JSON.parse(String(updateCall?.[1]?.body))).toMatchObject({
+      expectedVersion: 0,
+    });
   });
 
   it('returns saved records to focused read-only detail before lifecycle actions', async () => {
@@ -1098,6 +1162,36 @@ describe('Basic author console', () => {
       }),
     ).toBeVisible();
     expect(screen.queryByLabelText('Card name')).not.toBeInTheDocument();
+  });
+
+  it('keeps reviewed questions and approved cards in read-only detail', async () => {
+    installAuthorApi({
+      cards: [cardFixture({ authoringStatus: 'approved', version: 2 })],
+      challenges: [challengeFixture()],
+      questions: [questionFixture(1, 'in_review')],
+    });
+    const question = questionFixture(1, 'in_review');
+    const view = renderAuthorRoute(
+      authorPaths.editQuestion(eventId, challengeId, question.questionId),
+    );
+
+    expect(
+      await screen.findByRole('heading', { level: 5, name: 'Question 1' }),
+    ).toBeVisible();
+    expect(screen.queryByLabelText('Question prompt')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Edit question' }),
+    ).not.toBeInTheDocument();
+
+    view.unmount();
+    renderAuthorRoute(authorPaths.editCard(cardFixture().id));
+    expect(
+      await screen.findByRole('heading', { level: 3, name: 'Campus Owl' }),
+    ).toBeVisible();
+    expect(screen.queryByLabelText('Card name')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Edit card' }),
+    ).not.toBeInTheDocument();
   });
 
   it('keeps Event B selected and edited when a delayed Event A save completes', async () => {
@@ -1601,6 +1695,22 @@ describe('Basic author console', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('shows an in-review event without lifecycle action controls', async () => {
+    installAuthorApi({
+      events: [eventFixture({ authoringStatus: 'in_review', version: 1 })],
+    });
+    renderAuthorRoute(authorPaths.event(eventId));
+
+    expect((await screen.findAllByText('in_review'))[0]).toBeVisible();
+    expect(screen.queryByLabelText('Event title')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Edit event' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Publish event' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('reconciles a delayed card lifecycle response without touching the newer editor', async () => {
     const user = userEvent.setup();
     const cardB = cardFixture({
@@ -1703,6 +1813,41 @@ describe('Basic author console', () => {
       screen.queryByRole('button', { name: 'Publish challenge' }),
     ).not.toBeInTheDocument();
     expect(selector).toHaveTextContent('Challenge 1 — published');
+  });
+
+  it('shows an approved card without direct publish or edit controls', async () => {
+    installAuthorApi({
+      cards: [cardFixture({ authoringStatus: 'approved', version: 2 })],
+    });
+    renderAuthorRoute(authorPaths.card(cardFixture().id));
+
+    expect(
+      await screen.findByRole('heading', { level: 3, name: 'Campus Owl' }),
+    ).toBeVisible();
+    expect(screen.queryByLabelText('Card name')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Campus Owl/ })).toHaveTextContent(
+      'Approved',
+    );
+    expect(
+      screen.queryByRole('link', { name: 'Edit card' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Publish card' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows an approved challenge in the expanded status enum', async () => {
+    installAuthorApi({
+      challenges: [challengeFixture({ status: 'approved', version: 2 })],
+    });
+    renderAuthorRoute();
+
+    const selector = await screen.findByLabelText('Challenge');
+    expect(selector).toHaveValue(challengeId);
+    expect(selector).toHaveTextContent('Challenge 1 — approved');
+    expect(
+      screen.queryByRole('button', { name: 'Publish challenge' }),
+    ).not.toBeInTheDocument();
   });
 
   it('reconciles a delayed challenge creation without selecting it in a newer context', async () => {
@@ -2199,6 +2344,12 @@ function eventFixture(overrides: Partial<AuthorEvent> = {}): AuthorEvent {
     startsAt: '2026-09-01T08:00:00.000Z',
     title: 'Great Hall history',
     updatedAt: '2026-08-16T08:00:00.000Z',
+    version: 0,
+    submittedBy: null,
+    submittedAt: null,
+    reviewedBy: null,
+    reviewedAt: null,
+    publicationProvenance: null,
     ...overrides,
   };
 }
@@ -2213,13 +2364,20 @@ function challengeFixture(
     format: 'multiple_choice',
     status: 'draft',
     updatedAt: '2026-08-16T08:00:00.000Z',
+    version: 0,
+    submittedBy: null,
+    submittedAt: null,
+    reviewedBy: null,
+    reviewedAt: null,
+    publicationProvenance: null,
     ...overrides,
   };
 }
 
 function questionFixture(
   position: number,
-  status: 'draft' | 'published',
+  status:
+    'draft' | 'in_review' | 'approved' | 'published' | 'retired' = 'draft',
   parentChallengeId = challengeId,
 ): AuthorQuestion {
   const questionId = `40000000-0000-4000-8000-${String(position).padStart(12, '0')}`;
@@ -2239,6 +2397,12 @@ function questionFixture(
     questionId,
     status,
     updatedAt: '2026-08-16T08:00:00.000Z',
+    version: 0,
+    submittedBy: null,
+    submittedAt: null,
+    reviewedBy: null,
+    reviewedAt: null,
+    publicationProvenance: null,
   };
 }
 
@@ -2259,6 +2423,12 @@ function cardFixture(overrides: Partial<AuthorCard> = {}): AuthorCard {
     power: 20,
     rarity: 'common',
     updatedAt: '2026-08-16T08:00:00.000Z',
+    version: 0,
+    submittedBy: null,
+    submittedAt: null,
+    reviewedBy: null,
+    reviewedAt: null,
+    publicationProvenance: null,
     ...overrides,
   };
 }

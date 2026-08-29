@@ -21,6 +21,7 @@ import {
   type CpuMatchClient,
   type CpuMatchDatabase,
 } from '../src/matches/cpu-match-service.js';
+import type { ProgressionPersistence } from '../src/progression/progression-persistence.js';
 
 const PLAYER_ID = 'a1000000-0000-4000-8000-000000000001';
 const MATCH_ID = 'a2000000-0000-4000-8000-000000000001';
@@ -603,6 +604,66 @@ describe('CPU match service', () => {
         },
       }),
     ).rejects.toThrow('transition persistence invariant failed');
+
+    expect(query).toHaveBeenCalledWith('rollback');
+    expect(query).not.toHaveBeenCalledWith('commit');
+  });
+
+  it('records terminal CPU-match progression before committing', async () => {
+    const state = terminalReadyState();
+    const query = terminalActionQuery(state);
+    const progressionPersistence = progressionMock();
+    const service = createCpuMatchService(fakeDatabase(query), {
+      clock: { now: () => new Date('2026-08-16T00:04:00.000Z') },
+      progressionPersistence,
+      randomInt: () => 0,
+    });
+
+    const response = await service.submitAction({
+      playerId: PLAYER_ID,
+      matchId: MATCH_ID,
+      submissionId: 'a5000000-0000-4000-8000-000000000009',
+      expectedVersion: 0,
+      action: { type: 'use_move', moveId: 'player-move-1-1' },
+    });
+
+    expect(response).toMatchObject({ status: 'completed', winner: 'player' });
+    expect(progressionPersistence.recordCpuMatch).toHaveBeenCalledWith(
+      expect.objectContaining({ query: expect.any(Function) }),
+      MATCH_ID,
+    );
+    expect(
+      vi.mocked(progressionPersistence.recordCpuMatch).mock
+        .invocationCallOrder[0]!,
+    ).toBeLessThan(
+      query.mock.invocationCallOrder[
+        query.mock.calls.findIndex(([statement]) => statement === 'commit')
+      ]!,
+    );
+  });
+
+  it('rolls back a terminal CPU match when progression fails', async () => {
+    const state = terminalReadyState();
+    const query = terminalActionQuery(state);
+    const progressionPersistence = progressionMock();
+    vi.mocked(progressionPersistence.recordCpuMatch).mockRejectedValueOnce(
+      new Error('progression write failed'),
+    );
+    const service = createCpuMatchService(fakeDatabase(query), {
+      clock: { now: () => new Date('2026-08-16T00:04:00.000Z') },
+      progressionPersistence,
+      randomInt: () => 0,
+    });
+
+    await expect(
+      service.submitAction({
+        playerId: PLAYER_ID,
+        matchId: MATCH_ID,
+        submissionId: 'a5000000-0000-4000-8000-000000000010',
+        expectedVersion: 0,
+        action: { type: 'use_move', moveId: 'player-move-1-1' },
+      }),
+    ).rejects.toThrow('progression write failed');
 
     expect(query).toHaveBeenCalledWith('rollback');
     expect(query).not.toHaveBeenCalledWith('commit');
@@ -1548,6 +1609,94 @@ function createLogResult(
     turnEnded: true,
     winner: null,
     ...overrides,
+  };
+}
+
+function terminalReadyState(): BattleState {
+  const state = createBattleState(deck('player'), deck('cpu'));
+
+  return {
+    ...state,
+    phase: 'active',
+    currentSide: 'player',
+    firstSide: 'player',
+    selections: {
+      player: 'player-creature-1',
+      cpu: 'cpu-creature-1',
+    },
+    participants: {
+      player: {
+        ...state.participants.player,
+        activeCreatureId: 'player-creature-1',
+      },
+      cpu: {
+        ...state.participants.cpu,
+        activeCreatureId: 'cpu-creature-1',
+        creatures: state.participants.cpu.creatures.map((creature, index) => ({
+          ...creature,
+          currentHp: index === 0 ? 1 : 0,
+          defeated: index !== 0,
+        })),
+      },
+    },
+  };
+}
+
+function terminalActionQuery(state: BattleState) {
+  return vi.fn(async (statement: string) => {
+    if (
+      statement === 'begin' ||
+      statement === 'commit' ||
+      statement === 'rollback'
+    ) {
+      return { rows: [] };
+    }
+
+    if (statement.includes('from public.cpu_matches')) {
+      return {
+        rows: [
+          {
+            id: MATCH_ID,
+            player_id: PLAYER_ID,
+            status: 'active',
+            state,
+            version: 0,
+            turn_started_at: new Date('2026-08-16T00:03:00.000Z'),
+            turn_deadline: new Date('2026-08-16T00:05:00.000Z'),
+            winner: null,
+            started_at: new Date('2026-08-16T00:00:00.000Z'),
+            completed_at: null,
+            card_names: {},
+          },
+        ],
+      };
+    }
+
+    if (statement.includes('submitted.response')) {
+      return { rows: [] };
+    }
+
+    if (statement.includes('with sequence_base as materialized')) {
+      return { rows: [persistenceResult(1)] };
+    }
+
+    throw new Error(`Unexpected SQL: ${statement}`);
+  });
+}
+
+function progressionMock(): ProgressionPersistence {
+  return {
+    recordChallengeCompletion: vi.fn(),
+    recordCpuMatch: vi.fn().mockResolvedValue({
+      awardId: 'a9000000-0000-4000-8000-000000000001',
+      playerId: PLAYER_ID,
+      pointsAwarded: 25,
+      ruleCode: 'cpu_match_win',
+      ruleVersion: 1,
+      sourceKind: 'cpu_match',
+      wasCreated: true,
+    }),
+    recordAsynchronousPvpCompletion: vi.fn(),
   };
 }
 

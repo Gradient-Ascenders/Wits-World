@@ -1222,12 +1222,27 @@ function authorEvents(): AuthorEvent[] {
   ];
 }
 
+function lifecycleMetadata(status: AuthorEvent['authoringStatus']) {
+  return {
+    publicationProvenance:
+      status === 'published' || status === 'retired'
+        ? ('controlled_seed' as const)
+        : null,
+    reviewedAt: null,
+    reviewedBy: null,
+    submittedAt: null,
+    submittedBy: null,
+    version: 0,
+  };
+}
+
 function eventFixture(
   eventId: string,
   title: string,
   authoringStatus: AuthorEvent['authoringStatus'],
 ): AuthorEvent {
   return {
+    ...lifecycleMetadata(authoringStatus),
     authoringStatus,
     createdAt: '2026-08-01T08:00:00.000Z',
     description: `${title} author fixture.`,
@@ -1254,6 +1269,7 @@ function challengeFixture(
   eventId: string,
 ): AuthorChallenge {
   return {
+    ...lifecycleMetadata('draft'),
     challengeId,
     createdAt: '2026-08-01T08:00:00.000Z',
     eventId,
@@ -1286,6 +1302,7 @@ function questionFixture(
     text: `Answer ${choicePosition}`,
   }));
   return {
+    ...lifecycleMetadata(status),
     acceptedChoiceId: choices[1]!.choiceId,
     acceptedChoicePosition: 2,
     challengeId: CHALLENGE_A,
@@ -1311,6 +1328,7 @@ function materializeQuestion(
     text,
   }));
   return {
+    ...lifecycleMetadata('draft'),
     acceptedChoiceId: choices[input.acceptedChoicePosition - 1]!.choiceId,
     acceptedChoicePosition: input.acceptedChoicePosition,
     challengeId,
@@ -1399,6 +1417,7 @@ function authorCards(): AuthorCard[] {
 function materializeCard(input: AuthorCardInput, id: string): AuthorCard {
   return {
     ...input,
+    ...lifecycleMetadata('draft'),
     authoringStatus: 'draft',
     createdAt: '2026-08-01T08:00:00.000Z',
     description: input.description ?? null,

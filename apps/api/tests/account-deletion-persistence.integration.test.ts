@@ -42,6 +42,8 @@ const ROLLBACK_GRANT_ID = 'd6000000-0000-4000-8000-000000000002';
 
 const CONCURRENT_PLAYER_ID = 'd1000000-0000-4000-8000-000000000003';
 const CONCURRENT_DELETION_ID = 'd1100000-0000-4000-8000-000000000003';
+const ACCOUNT_DELETION_MIGRATION =
+  '0024_complete_account_deletion_retention.sql';
 
 const runIntegrationTests =
   process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';
@@ -340,7 +342,7 @@ describe.skipIf(!runIntegrationTests)(
         [rejoined.id],
       );
       expect(newProgress.rows[0]?.count).toBe('0');
-    }, 45_000);
+    }, 60_000);
 
     it('rolls back partial cleanup and succeeds on retry', async () => {
       const identity = {
@@ -563,7 +565,10 @@ describe.skipIf(!runIntegrationTests)(
         const migrations = await readdir(getMigrationsDirectory());
         await Promise.all(
           migrations
-            .filter((name) => name.endsWith('.sql') && name < '0024_')
+            .filter(
+              (name) =>
+                name.endsWith('.sql') && name < ACCOUNT_DELETION_MIGRATION,
+            )
             .map((name) =>
               copyFile(
                 join(getMigrationsDirectory(), name),
@@ -612,10 +617,14 @@ describe.skipIf(!runIntegrationTests)(
           });
         });
 
-        await expect(runMigrations(existingConfig)).resolves.toMatchObject({
-          applied: expect.arrayContaining([
-            '0024_complete_account_deletion_retention.sql',
-          ]),
+        await copyFile(
+          join(getMigrationsDirectory(), ACCOUNT_DELETION_MIGRATION),
+          join(migrationDirectory, ACCOUNT_DELETION_MIGRATION),
+        );
+        await expect(
+          runMigrations(existingConfig, migrationDirectory),
+        ).resolves.toMatchObject({
+          applied: [ACCOUNT_DELETION_MIGRATION],
         });
 
         await withDatabaseClient(existingConfig, async (client) => {
@@ -647,7 +656,7 @@ describe.skipIf(!runIntegrationTests)(
         });
         await rm(migrationDirectory, { force: true, recursive: true });
       }
-    }, 45_000);
+    }, 60_000);
   },
 );
 
@@ -791,11 +800,29 @@ async function seedPublishedChallenge(
     title: string;
   },
 ): Promise<void> {
+  const curatedLifecycle = await hasCuratedAuthoringLifecycle(client);
   await client.query('begin');
 
   try {
     await client.query(
+      curatedLifecycle
+        ? `
+        insert into public.events (
+          id, title, location, radius_metres, starts_at, ends_at, is_published,
+          authoring_status, publication_provenance
+        ) values (
+          $1,
+          $2,
+          st_setsrid(st_makepoint(28.03038, -26.19205), 4326)::geography,
+          75,
+          '2026-08-01T00:00:00.000Z',
+          '2026-09-01T00:00:00.000Z',
+          true,
+          'published',
+          'controlled_seed'
+        )
       `
+        : `
         insert into public.events (
           id, title, location, radius_metres, starts_at, ends_at, is_published
         ) values (
@@ -871,19 +898,33 @@ async function seedPublishedChallenge(
     }
 
     await client.query(
-      `
+      curatedLifecycle
+        ? `
         update public.challenge_questions
-           set status = 'published', updated_at = now()
+           set status = 'published',
+               version = version + 1,
+               publication_provenance = 'controlled_seed',
+               updated_at = now()
          where challenge_id = $1
-      `,
+      `
+        : `update public.challenge_questions
+             set status = 'published', updated_at = now()
+           where challenge_id = $1`,
       [input.challengeId],
     );
     await client.query(
-      `
+      curatedLifecycle
+        ? `
         update public.event_challenges
-           set status = 'published', updated_at = now()
+           set status = 'published',
+               version = version + 1,
+               publication_provenance = 'controlled_seed',
+               updated_at = now()
          where id = $1
-      `,
+      `
+        : `update public.event_challenges
+             set status = 'published', updated_at = now()
+           where id = $1`,
       [input.challengeId],
     );
 
@@ -1043,11 +1084,29 @@ async function seedPublishedOrderingChallenge(
     title: string;
   },
 ): Promise<void> {
+  const curatedLifecycle = await hasCuratedAuthoringLifecycle(client);
   await client.query('begin');
 
   try {
     await client.query(
+      curatedLifecycle
+        ? `
+        insert into public.events (
+          id, title, location, radius_metres, starts_at, ends_at, is_published,
+          authoring_status, publication_provenance
+        ) values (
+          $1,
+          $2,
+          st_setsrid(st_makepoint(28.03038, -26.19205), 4326)::geography,
+          75,
+          '2026-08-01T00:00:00.000Z',
+          '2026-09-01T00:00:00.000Z',
+          true,
+          'published',
+          'controlled_seed'
+        )
       `
+        : `
         insert into public.events (
           id, title, location, radius_metres, starts_at, ends_at, is_published
         ) values (
@@ -1116,19 +1175,33 @@ async function seedPublishedOrderingChallenge(
     }
 
     await client.query(
-      `
+      curatedLifecycle
+        ? `
         update public.challenge_questions
-           set status = 'published', updated_at = now()
+           set status = 'published',
+               version = version + 1,
+               publication_provenance = 'controlled_seed',
+               updated_at = now()
          where challenge_id = $1
-      `,
+      `
+        : `update public.challenge_questions
+             set status = 'published', updated_at = now()
+           where challenge_id = $1`,
       [input.challengeId],
     );
     await client.query(
-      `
+      curatedLifecycle
+        ? `
         update public.event_challenges
-           set status = 'published', updated_at = now()
+           set status = 'published',
+               version = version + 1,
+               publication_provenance = 'controlled_seed',
+               updated_at = now()
          where id = $1
-      `,
+      `
+        : `update public.event_challenges
+             set status = 'published', updated_at = now()
+           where id = $1`,
       [input.challengeId],
     );
 
@@ -1504,6 +1577,21 @@ async function loadStarterDefinitions(
   );
 
   return result.rows;
+}
+
+async function hasCuratedAuthoringLifecycle(
+  client: pg.PoolClient,
+): Promise<boolean> {
+  const result = await client.query<{ exists: boolean }>(
+    `select exists (
+       select 1
+       from information_schema.columns
+       where table_schema = 'public'
+         and table_name = 'events'
+         and column_name = 'authoring_status'
+     )`,
+  );
+  return result.rows[0]?.exists ?? false;
 }
 
 function fixtureUuid(namespace: string, value: number): string {

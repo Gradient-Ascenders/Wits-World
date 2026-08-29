@@ -41,7 +41,13 @@ describe('migration file loading', () => {
         name.startsWith('0022_') ||
         name.startsWith('0023_') ||
         name.startsWith('0024_') ||
-        name.startsWith('0025_'),
+        name.startsWith('0025_') ||
+        name.startsWith('0026_') ||
+        name.startsWith('0027_') ||
+        name.startsWith('0028_') ||
+        name.startsWith('0029_') ||
+        name.startsWith('0030_') ||
+        name.startsWith('0031_'),
     );
 
     expect(
@@ -67,6 +73,30 @@ describe('migration file loading', () => {
       {
         checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         name: '0025_add_ordering_challenges.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0026_create_player_progression.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0027_create_ordered_trails.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0028_create_asynchronous_pvp_persistence.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0029_curate_author_content_lifecycle.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0030_create_campaign_scheduling.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0031_create_movement_evidence.sql',
       },
     ]);
   });

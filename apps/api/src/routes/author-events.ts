@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 
+import { throwAuthorContentWorkflowError } from '../authoring/workflow-api-error.js';
 import { ApiError } from '../errors/api-error.js';
 import {
   AuthorEventNotFoundError,
@@ -25,6 +26,20 @@ interface AuthorEventBody {
   radiusMetres: number;
   startsAt: string;
   endsAt: string;
+}
+
+interface UpdateAuthorEventBody extends AuthorEventBody {
+  expectedVersion: number;
+}
+
+interface LifecycleBody {
+  expectedVersion: number;
+  note?: string;
+}
+
+interface ReturnBody {
+  expectedVersion: number;
+  reason: string;
 }
 
 const apiErrorSchema = {
@@ -86,6 +101,12 @@ const authorEventSchema = {
     'updatedAt',
     'authoringStatus',
     'retiredAt',
+    'version',
+    'submittedBy',
+    'submittedAt',
+    'reviewedBy',
+    'reviewedAt',
+    'publicationProvenance',
   ],
   properties: {
     eventId: {
@@ -126,7 +147,7 @@ const authorEventSchema = {
     },
     authoringStatus: {
       type: 'string',
-      enum: ['draft', 'published', 'retired'],
+      enum: ['draft', 'in_review', 'approved', 'published', 'retired'],
     },
     retiredAt: {
       type: 'string',
@@ -140,6 +161,16 @@ const authorEventSchema = {
     updatedAt: {
       type: 'string',
       format: 'date-time',
+    },
+    version: { type: 'integer', minimum: 0 },
+    submittedBy: { type: 'string', format: 'uuid', nullable: true },
+    submittedAt: { type: 'string', format: 'date-time', nullable: true },
+    reviewedBy: { type: 'string', format: 'uuid', nullable: true },
+    reviewedAt: { type: 'string', format: 'date-time', nullable: true },
+    publicationProvenance: {
+      type: 'string',
+      enum: ['legacy', 'controlled_seed', 'reviewed', null],
+      nullable: true,
     },
   },
 } as const;
@@ -190,6 +221,15 @@ const authorEventBodySchema = {
   },
 } as const;
 
+const updateAuthorEventBodySchema = {
+  ...authorEventBodySchema,
+  required: [...authorEventBodySchema.required, 'expectedVersion'],
+  properties: {
+    ...authorEventBodySchema.properties,
+    expectedVersion: { type: 'integer', minimum: 0 },
+  },
+} as const;
+
 const authorEventParamsSchema = {
   type: 'object',
   additionalProperties: false,
@@ -202,10 +242,24 @@ const authorEventParamsSchema = {
   },
 } as const;
 
-const emptyBodySchema = {
+const lifecycleBodySchema = {
   type: 'object',
   additionalProperties: false,
-  maxProperties: 0,
+  required: ['expectedVersion'],
+  properties: {
+    expectedVersion: { type: 'integer', minimum: 0 },
+    note: { type: 'string', minLength: 1, maxLength: 1000, pattern: '\\S' },
+  },
+} as const;
+
+const returnBodySchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['expectedVersion', 'reason'],
+  properties: {
+    expectedVersion: { type: 'integer', minimum: 0 },
+    reason: { type: 'string', minLength: 1, maxLength: 1000, pattern: '\\S' },
+  },
 } as const;
 
 export const authorEventRoutes: FastifyPluginAsync<
@@ -225,7 +279,7 @@ export const authorEventRoutes: FastifyPluginAsync<
         operationId: 'listAuthorEvents',
         summary: 'List events for Authors',
         description:
-          'Returns draft and published event definitions for protected Basic content management.',
+          'Returns event definitions in every Author lifecycle state for protected Basic content management.',
         tags: ['Authoring'],
         security: [
           {
@@ -325,7 +379,7 @@ export const authorEventRoutes: FastifyPluginAsync<
 
   app.put<{
     Params: AuthorEventParams;
-    Body: AuthorEventBody;
+    Body: UpdateAuthorEventBody;
   }>(
     '/author/events/:eventId',
     {
@@ -342,7 +396,7 @@ export const authorEventRoutes: FastifyPluginAsync<
           },
         ],
         params: authorEventParamsSchema,
-        body: authorEventBodySchema,
+        body: updateAuthorEventBodySchema,
         response: {
           200: {
             type: 'object',
@@ -376,6 +430,7 @@ export const authorEventRoutes: FastifyPluginAsync<
           radiusMetres: request.body.radiusMetres,
           startsAt: request.body.startsAt,
           endsAt: request.body.endsAt,
+          expectedVersion: request.body.expectedVersion,
         });
 
         return {
@@ -388,35 +443,66 @@ export const authorEventRoutes: FastifyPluginAsync<
     },
   );
 
-  app.post<{
-    Params: AuthorEventParams;
-    Body: Record<string, never>;
-  }>(
-    '/author/events/:eventId/publish',
+  for (const action of ['submit', 'approve'] as const) {
+    app.post<{ Params: AuthorEventParams; Body: LifecycleBody }>(
+      `/author/events/:eventId/${action}`,
+      {
+        onRequest: authorGuards,
+        schema: {
+          operationId: `${action}AuthorEvent`,
+          summary: `${action === 'submit' ? 'Submit' : 'Approve'} an event`,
+          tags: ['Authoring'],
+          security: [{ bearerAuth: [] }],
+          params: authorEventParamsSchema,
+          body: lifecycleBodySchema,
+          response: lifecycleEventResponses(),
+        },
+      },
+      async (request) => {
+        const author = requireResolvedAuthor(request);
+        try {
+          const transition =
+            action === 'submit' ? service.submitEvent : service.approveEvent;
+          return {
+            event: await transition({
+              actorPlayerId: author.id,
+              eventId: request.params.eventId,
+              expectedVersion: request.body.expectedVersion,
+              note: request.body.note,
+            }),
+            requestId: request.id,
+          };
+        } catch (error) {
+          throwAuthorEventError(error);
+        }
+      },
+    );
+  }
+
+  app.post<{ Params: AuthorEventParams; Body: ReturnBody }>(
+    '/author/events/:eventId/return',
     {
       onRequest: authorGuards,
       schema: {
-        operationId: 'publishAuthorEvent',
-        summary: 'Publish a ready event',
-        description:
-          'Publishes a draft event only after its Basic challenge and reward catalogue dependencies are ready.',
+        operationId: 'returnAuthorEvent',
+        summary: 'Return an event to draft',
         tags: ['Authoring'],
-        security: [
-          {
-            bearerAuth: [],
-          },
-        ],
+        security: [{ bearerAuth: [] }],
         params: authorEventParamsSchema,
-        body: emptyBodySchema,
+        body: returnBodySchema,
         response: lifecycleEventResponses(),
       },
     },
     async (request) => {
       const author = requireResolvedAuthor(request);
-
       try {
         return {
-          event: await service.publishEvent(author.id, request.params.eventId),
+          event: await service.returnEvent({
+            actorPlayerId: author.id,
+            eventId: request.params.eventId,
+            expectedVersion: request.body.expectedVersion,
+            note: request.body.reason,
+          }),
           requestId: request.id,
         };
       } catch (error) {
@@ -427,7 +513,49 @@ export const authorEventRoutes: FastifyPluginAsync<
 
   app.post<{
     Params: AuthorEventParams;
-    Body: Record<string, never>;
+    Body: LifecycleBody;
+  }>(
+    '/author/events/:eventId/publish',
+    {
+      onRequest: authorGuards,
+      schema: {
+        operationId: 'publishAuthorEvent',
+        summary: 'Publish a ready event',
+        description:
+          'Publishes an approved event only after rechecking its Basic challenge and reward catalogue dependencies.',
+        tags: ['Authoring'],
+        security: [
+          {
+            bearerAuth: [],
+          },
+        ],
+        params: authorEventParamsSchema,
+        body: lifecycleBodySchema,
+        response: lifecycleEventResponses(),
+      },
+    },
+    async (request) => {
+      const author = requireResolvedAuthor(request);
+
+      try {
+        return {
+          event: await service.publishEvent({
+            actorPlayerId: author.id,
+            eventId: request.params.eventId,
+            expectedVersion: request.body.expectedVersion,
+            note: request.body.note,
+          }),
+          requestId: request.id,
+        };
+      } catch (error) {
+        throwAuthorEventError(error);
+      }
+    },
+  );
+
+  app.post<{
+    Params: AuthorEventParams;
+    Body: LifecycleBody;
   }>(
     '/author/events/:eventId/retire',
     {
@@ -444,7 +572,7 @@ export const authorEventRoutes: FastifyPluginAsync<
           },
         ],
         params: authorEventParamsSchema,
-        body: emptyBodySchema,
+        body: lifecycleBodySchema,
         response: lifecycleEventResponses(),
       },
     },
@@ -453,7 +581,12 @@ export const authorEventRoutes: FastifyPluginAsync<
 
       try {
         return {
-          event: await service.retireEvent(author.id, request.params.eventId),
+          event: await service.retireEvent({
+            actorPlayerId: author.id,
+            eventId: request.params.eventId,
+            expectedVersion: request.body.expectedVersion,
+            note: request.body.note,
+          }),
           requestId: request.id,
         };
       } catch (error) {
@@ -498,6 +631,7 @@ function requireResolvedAuthor(
 }
 
 function throwAuthorEventError(error: unknown): never {
+  throwAuthorContentWorkflowError(error);
   if (error instanceof InvalidAuthorEventError) {
     throw new ApiError({
       statusCode: 400,

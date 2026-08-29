@@ -17,15 +17,15 @@ check is automated in CI.
 
 ## Test layers
 
-| Layer                                   | Current repository practice                                                                                                                                                                                                                                                                                                       | Principal evidence                                                                                                                                                                         |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Pure unit tests                         | Vitest exercises domain rules, validation, configuration, timing, security policy, and deterministic state transitions without a browser or external service. The `account-policy` and `game-rules` packages have their own suites.                                                                                               | `packages/*/tests`, focused files under `apps/api/tests` and `apps/web/tests`                                                                                                              |
-| Web component and client tests          | Vitest, jsdom, React Testing Library, `user-event`, and DOM matchers exercise rendered states, typed API clients, forms, focus movement, native keyboard interaction, and provider failure boundaries. Tests normally select controls by accessible role or name.                                                                 | `apps/web/tests` and `apps/web/vite.config.ts`                                                                                                                                             |
-| API route and service tests             | Vitest and Fastify injection exercise route schemas, authentication, authorisation, safe errors, request validation, OpenAPI output, service rules, idempotency, and failure handling without opening a network listener. Authentication tests generate local keys and tokens rather than using a live Auth0 tenant.              | `apps/api/tests`, especially `*.integration.test.ts` route suites                                                                                                                          |
-| Database integration tests              | A dedicated runner enables PostgreSQL/PostGIS suites against `TEST_DATABASE_URL`. The tests use a disposable database created beneath the separate test target and cover migrations, constraints, transactions, concurrency, ownership, recovery, and geospatial behaviour.                                                       | `npm run test:database --workspace @wits-world/api` and `apps/api/scripts/run-database-tests.mjs`                                                                                          |
-| Browser end-to-end tests                | Playwright covers integrated Web/API journeys. The deterministic Basic runner migrates and seeds the test database, starts the real Fastify and Vite applications, and controls Auth0 and Mapbox at their network boundaries. Separate smoke specifications exist for real configured integrations and focused browser behaviour. | [Basic-tier deterministic E2E](./basic-tier-deterministic-e2e.md) and `apps/web/playwright`                                                                                                |
-| Manual, accessibility, and field checks | Release records identify checks that require human judgement or physical context: responsive layout, touch, full keyboard and focus quality, screen-reader use, contrast, reduced motion, real Auth0/Mapbox behaviour, and campus location conditions.                                                                            | [Basic release validation](./basic-tier-release-validation.md) and [location field-test protocol](../requirements/location-eligibility-field-test.md)                                      |
-| Deployment and release validation       | Gitea Actions validates repository changes. Main-branch deployment jobs verify artifacts and smoke the deployed Web/API health boundaries. Documentation deploys through its own path-filtered workflow. Database releases remain explicitly operator-run.                                                                        | [Continuous integration](./continuous-integration.md), [Azure setup](../deployment/azure-deployment-setup.md), and [database release procedure](../database/database-release-procedure.md) |
+| Layer                                   | Current repository practice                                                                                                                                                                                                                                                                                                                     | Principal evidence                                                                                                                                                                         |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Pure unit tests                         | Vitest exercises domain rules, validation, configuration, timing, security policy, and deterministic state transitions without a browser or external service. The `account-policy` and `game-rules` packages have their own suites.                                                                                                             | `packages/*/tests`, focused files under `apps/api/tests` and `apps/web/tests`                                                                                                              |
+| Web component and client tests          | Vitest, jsdom, React Testing Library, `user-event`, and DOM matchers exercise rendered states, typed API clients, forms, focus movement, native keyboard interaction, and provider failure boundaries. Tests normally select controls by accessible role or name.                                                                               | `apps/web/tests` and `apps/web/vite.config.ts`                                                                                                                                             |
+| API route and service tests             | Vitest and Fastify injection exercise route schemas, authentication, authorisation, safe errors, request validation, OpenAPI output, service rules, idempotency, and failure handling without opening a network listener. Authentication tests generate local keys and tokens rather than using a live Auth0 tenant.                            | `apps/api/tests`, especially `*.integration.test.ts` route suites                                                                                                                          |
+| Database integration tests              | A dedicated runner enables PostgreSQL/PostGIS suites against `TEST_DATABASE_URL`. The tests use a disposable database created beneath the separate test target and cover migrations, constraints, transactions, concurrency, ownership, progression backfill, ordered trails, asynchronous PvP persistence, recovery, and geospatial behaviour. | `npm run test:database --workspace @wits-world/api` and `apps/api/scripts/run-database-tests.mjs`                                                                                          |
+| Browser end-to-end tests                | Playwright covers integrated Web/API journeys. The deterministic Basic runner migrates and seeds the test database, starts the real Fastify and Vite applications, and controls Auth0 and Mapbox at their network boundaries. Separate smoke specifications exist for real configured integrations and focused browser behaviour.               | [Basic-tier deterministic E2E](./basic-tier-deterministic-e2e.md) and `apps/web/playwright`                                                                                                |
+| Manual, accessibility, and field checks | Release records identify checks that require human judgement or physical context: responsive layout, touch, full keyboard and focus quality, screen-reader use, contrast, reduced motion, real Auth0/Mapbox behaviour, and campus location conditions.                                                                                          | [Basic release validation](./basic-tier-release-validation.md) and [location field-test protocol](../requirements/location-eligibility-field-test.md)                                      |
+| Deployment and release validation       | Gitea Actions validates repository changes. Main-branch deployment jobs verify artifacts and smoke the deployed Web/API health boundaries. Documentation deploys through its own path-filtered workflow. Database releases remain explicitly operator-run.                                                                                      | [Continuous integration](./continuous-integration.md), [Azure setup](../deployment/azure-deployment-setup.md), and [database release procedure](../database/database-release-procedure.md) |
 
 ## Choosing the test boundary
 
@@ -46,7 +46,38 @@ check is automated in CI.
 Protected game rules are tested at the API, rules-package, or database boundary.
 The browser is tested for submitting player intent and rendering authoritative
 responses, not for independently deciding eligibility, marking, rewards, deck
-legality, or match outcomes.
+legality, trail progress, unlock state, or match outcomes.
+
+Progression route tests verify authentication, Player Name setup, privacy
+allowlists, month and pagination validation, current rank outside the selected
+page, and closed OpenAPI schemas. Database tests verify points and achievement
+backfill, duplicate and concurrent awards, Johannesburg streak boundaries,
+competition ties, stable tie ordering, monthly/all-time reads, zero-point
+players, and deleted-player exclusion. Completion-service tests additionally
+prove that progression runs before commit and that an award failure rolls back
+the owning challenge or CPU-match completion.
+
+The asynchronous PvP database suite upgrades retained CPU progression through
+migration `0028`, verifies private-state separation and lifecycle constraints,
+and exercises unordered invitation uniqueness, immutable snapshots and history,
+deadline indexes, all terminal outcomes, concurrent replay, and the
+two-participant 25/0 activity awards. Route, scheduler, and browser behavior
+remain downstream tests for issues `#180` and `#181`.
+
+Author curation tests cover the five-state transition matrix across the four
+original content types plus campaigns, draft-only edits, latest-submitter self-review denial, required
+return reasons, readiness at approval and publication, optimistic concurrency,
+transactional audit rollback, safe queue/history schemas, and exclusion of every
+non-published state from Player paths. Database runs additionally cover migration
+`0029` backfill/constraints, seed provenance, dependency races, and preservation
+of attempts, rewards, ownership, decks, matches, and progression after
+retirement. These database checks require the dedicated disposable test target;
+they must not be redirected to development or production.
+
+Campaign database tests additionally cover start-inclusive/end-exclusive
+boundaries, effective event and trail windows, adjacent and overlapping member
+reuse, concurrent approvals, publication/retirement races, review history, and
+preservation of completed attempts and derived trail progress.
 
 ## Commands and data isolation
 
@@ -167,5 +198,6 @@ for demonstrating the acceptance criteria and protected invariants.
 ## AI declaration
 
 This testing strategy was generated, edited, and reviewed with the assistance
-of Codex[GPT-5]. Repository paths and workflow claims were checked against the
-current source; this declaration is not test evidence.
+of Codex[GPT-5], Codex[gpt-5.6-sol], and Codex-CLI[gpt-5.6-sol medium].
+Repository paths and workflow claims were checked against the current source;
+this declaration is not test evidence.

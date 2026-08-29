@@ -42,6 +42,16 @@ const sidebars: SidebarsConfig = {
               id: 'requirements/basic-tier-decision-register',
               label: 'Basic-Tier Decision Register',
             },
+            {
+              type: 'doc',
+              id: 'requirements/player-progression-rules',
+              label: 'Player Progression Rules',
+            },
+            {
+              type: 'doc',
+              id: 'requirements/ordered-trails-rules',
+              label: 'Ordered Trail Rules',
+            },
           ],
         },
         {
@@ -120,8 +130,18 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'architecture/author-curation-api-contract',
+              label: 'Author Curation API Contract',
+            },
+            {
+              type: 'doc',
               id: 'architecture/challenge-attempt-api-contract',
               label: 'Challenge & Attempt API Contract',
+            },
+            {
+              type: 'doc',
+              id: 'architecture/asynchronous-pvp-api-contract',
+              label: 'Asynchronous PvP API Contract',
             },
           ],
         },
@@ -271,6 +291,21 @@ const sidebars: SidebarsConfig = {
               type: 'doc',
               id: 'database/cpu-match-persistence-design',
               label: 'CPU Match Persistence',
+            },
+            {
+              type: 'doc',
+              id: 'database/player-progression-persistence',
+              label: 'Player Progression Persistence',
+            },
+            {
+              type: 'doc',
+              id: 'database/ordered-trails-persistence',
+              label: 'Ordered Trail Persistence',
+            },
+            {
+              type: 'doc',
+              id: 'database/asynchronous-pvp-persistence',
+              label: 'Asynchronous PvP Persistence',
             },
           ],
         },
@@ -475,6 +510,11 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'planning/sprint-2-governance-and-evidence',
+              label: 'Sprint 2 Governance & Evidence',
+            },
+            {
+              type: 'doc',
               id: 'planning/ai-use',
               label: 'AI Use',
             },
@@ -497,7 +537,7 @@ const sidebars: SidebarsConfig = {
             {
               type: 'doc',
               id: 'planning/wits-quest-sprint-2-gitea-issues',
-              label: 'Sprint 2 Gitea Issue Plan',
+              label: 'Historical Sprint 2 Gitea Issue Plan',
             },
           ],
         },

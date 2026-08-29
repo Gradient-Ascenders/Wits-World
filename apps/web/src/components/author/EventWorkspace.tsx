@@ -631,6 +631,7 @@ function EventOverview({
       const next = await retireAuthorEvent({
         apiBaseUrl,
         eventId: event.eventId,
+        expectedVersion: event.version,
         getAccessToken,
         signal: controller.signal,
       });
@@ -874,6 +875,7 @@ function EventForm({
         ? await updateAuthorEvent({
             apiBaseUrl,
             eventId: event.eventId,
+            expectedVersion: event.version,
             getAccessToken,
             input: result.input,
             signal: controller.signal,
@@ -1575,12 +1577,14 @@ function ChallengeWorkspace({
           ? await publishAuthorChallenge({
               apiBaseUrl,
               challengeId,
+              expectedVersion: selected.version,
               getAccessToken,
               signal: controller.signal,
             })
           : await retireAuthorChallenge({
               apiBaseUrl,
               challengeId,
+              expectedVersion: selected.version,
               getAccessToken,
               signal: controller.signal,
             });
@@ -1648,6 +1652,7 @@ function ChallengeWorkspace({
       const next = await publishAuthorEvent({
         apiBaseUrl,
         eventId: event.eventId,
+        expectedVersion: event.version,
         getAccessToken,
         signal: controller.signal,
       });
@@ -2396,12 +2401,14 @@ function QuestionDetail({
         action === 'publish'
           ? await publishAuthorQuestion({
               apiBaseUrl,
+              expectedVersion: question.version,
               getAccessToken,
               questionId: question.questionId,
               signal: controller.signal,
             })
           : await retireAuthorQuestion({
               apiBaseUrl,
+              expectedVersion: question.version,
               getAccessToken,
               questionId: question.questionId,
               signal: controller.signal,
@@ -2638,6 +2645,7 @@ function QuestionForm({
             getAccessToken,
             input: draft,
             questionId: question.questionId,
+            expectedVersion: question.version,
             signal: controller.signal,
           })
         : await createAuthorQuestion({
@@ -2854,7 +2862,7 @@ function QuestionForm({
 function StatusBadge({
   status,
 }: {
-  status: 'draft' | 'published' | 'retired';
+  status: 'draft' | 'in_review' | 'approved' | 'published' | 'retired';
 }) {
   return (
     <span className={`status-badge status-badge--author-${status}`}>

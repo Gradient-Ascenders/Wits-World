@@ -46,6 +46,13 @@ The service does not perform movement analysis, spoofing detection, continuous
 tracking, or challenge-session creation. A failed or ambiguous location check
 must not be presented as evidence that a player is cheating.
 
+For issue `#168`, a valid claim for a confirmed active event is passed to the
+internal [privacy-limited movement-evidence service](./movement-evidence.md)
+after reachability is calculated. That service records the authenticated player,
+event context, claim, receipt time, and expiry. Stale, future, unavailable, or
+unknown-event requests do not persist evidence. No movement history is returned
+by this endpoint.
+
 ## Verification
 
 Run the service unit tests with the normal API test command:

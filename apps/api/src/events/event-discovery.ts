@@ -74,14 +74,15 @@ const EVENT_DISCOVERY_QUERY = `
          st_y(event.location::geometry) as latitude,
          st_x(event.location::geometry) as longitude,
          event.radius_metres,
-         event.starts_at,
-         event.ends_at,
-         case
-           when $1::timestamptz < event.starts_at then 'upcoming'
-           when $1::timestamptz >= event.ends_at then 'ended'
-           else 'active'
-         end as availability
+         effective.effective_starts_at as starts_at,
+         effective.effective_ends_at as ends_at,
+         effective.availability
     from public.events event
+    cross join lateral public.resolve_event_availability(
+      event.id,
+      $1::timestamptz
+    ) effective
    where event.is_published = true
-   order by event.starts_at asc, event.id asc
+     and effective.availability <> 'unpublished'
+   order by effective.effective_starts_at asc, event.id asc
 `;

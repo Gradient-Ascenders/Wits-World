@@ -47,6 +47,52 @@ Because account-deletion migration `0024` predates ordering tables, `0025` also
 forward-replaces its cleanup routine and snapshot validator so deletion-pending
 players' ordering answers and snapshots are removed in foreign-key order.
 
+Migration `0026_create_player_progression.sql` must run after the ordering
+migration. It creates the progression ledger and read models, then backfills
+retained event completions and completed CPU matches through the same
+authoritative persistence functions used for new progression awards. Apply it
+before deploying an API version that exposes progression routes or invokes the
+completion hooks; otherwise those operations fail closed and their owning
+transactions roll back.
+
+Migration `0027_create_ordered_trails.sql` adds trail definitions, constrained
+ordered event membership, lifecycle guards, and discovery indexes. It extends
+the Author audit entity constraint to accept `trail` and does not rewrite
+existing events, attempts, completions, or player records. Apply it before an
+API version that registers trail routes.
+
+Migration `0028_create_asynchronous_pvp_persistence.sql` adds asynchronous PvP
+invitations, private immutable deck and match snapshots, participants, actions,
+idempotency receipts, terminal history, deadline indexes, and two-participant
+progression sources. It preserves existing CPU-match and progression records.
+Apply it before deploying issue `#180`; applying it alone does not expose PvP
+routes or start deadline processing.
+
+Migration `0029_curate_author_content_lifecycle.sql` must run after ordered
+trails and asynchronous PvP persistence. It preserves `trail` as an Author audit entity while installing the
+five-state workflow for events, challenges, questions, and cards. It adds
+optimistic versions, provenance, versioned audit fields, review indexes, and
+database lifecycle guards. Existing live/history content is retained with
+`legacy` provenance; controlled catalogue and Basic-demo seeds identify
+themselves as `controlled_seed`. Run `0029` before deploying the matching API.
+During the database-to-API window, the old direct draft-publish API fails
+closed, so coordinate the releases and keep that window short.
+
+Migration `0030_create_campaign_scheduling.sql` runs after the curated content
+lifecycle. It adds campaign definitions and memberships, extends the Author
+audit entity constraint, installs overlap/retirement guards, and provides the
+effective event/trail availability functions used by the matching API. Existing
+content remains standalone until it has belonged to a published campaign. Run
+`0030` before deploying an API that registers campaign routes or invokes those
+functions; applying it does not create campaign content or run a scheduler.
+
+Migration `0031_create_movement_evidence.sql` creates the short-lived precise
+movement-evidence table, its constraints/indexes, immutability guard, and
+account-deletion trigger. Apply it before deploying an API that persists issue
+`#168` evidence. After release, verify the configured retention and cleanup
+interval names, one successful aggregate-only cleanup log, and expiry behavior
+without recording coordinates or connection details.
+
 ## Prerequisites
 
 - Use the Node.js and npm versions declared by the repository.
@@ -72,8 +118,9 @@ npm run db:release --workspace @wits-world/api -- \
 
 Run the same command a second time. The second run must report zero applied
 migrations, all existing migrations skipped, and the expected Basic demo event
-and challenge counts. Seed upserts update the fixed fixtures instead of
-inserting duplicates.
+and challenge counts. Conflict-safe seed operations leave already-published,
+immutable fixtures unchanged instead of inserting duplicates or rewriting live
+content.
 
 Run the database integration suite against the isolated test target:
 
@@ -107,8 +154,13 @@ test command as evidence that production was changed.
      --confirm-database <production-database-name>
    ```
 
-4. Review the successful migration, PostGIS, and verification counts.
-5. Only when demonstration seeding has separate approval, rerun with the seed
+4. Review the successful migration, PostGIS, and verification counts. Confirm
+   `0028` before deploying the API and compatible Web build.
+5. Deploy the matching API and Web build, then verify health and generated
+   OpenAPI. With sanitised evidence, perform an authenticated Author
+   submit/approve/publish check using two Authors and verify unpublished content
+   remains absent from Player APIs.
+6. Only when demonstration seeding has separate approval, rerun with the seed
    option:
 
    ```bash
@@ -118,10 +170,12 @@ test command as evidence that production was changed.
      --seed-basic-demo
    ```
 
-6. Deploy the API only after the required database procedure succeeds.
-7. Verify `/health` and `/api/v1/`, then use an authenticated player session to
-   confirm the intended event is returned by the deployed event-discovery API.
-   Do not place an access token in committed files or captured output.
+7. Deploy the API only after the required database procedure succeeds.
+8. Verify `/health` and `/api/v1/`, then use an authenticated player session to
+   confirm the intended event is returned by event discovery and that
+   `/api/v1/progression/me` plus the first all-time standings page return safe
+   progression fields. Do not place an access token, player UUID, or private
+   profile response in committed files or captured output.
 
 ## Failure and recovery
 
@@ -158,4 +212,5 @@ subject to the selected Neon plan and are not created by this procedure.
 - authenticated deployed-event verification.
 
 This procedure was planned, generated, edited, and verified with the assistance
-of Codex[GPT-5] and Codex[GPT-5.6 Sol].
+of Codex[GPT-5], Codex[GPT-5.6 Sol], Codex[gpt-5.6-sol], and
+Codex-CLI[gpt-5.6-sol medium].

@@ -8,8 +8,8 @@ title: API overview
 
 `apps/api` is the hand-written Fastify and TypeScript HTTP API for Wits Quest.
 It is the protected boundary between the untrusted browser and authoritative
-identity, content, eligibility, challenge, reward, collection, deck, and CPU
-match state.
+identity, content, eligibility, challenge, reward, collection, deck, trail, and
+CPU match and progression state.
 
 The browser sends player intent and renders responses. It does not determine
 authenticated identity, location eligibility, answer correctness, scores,
@@ -71,23 +71,47 @@ authentication mechanism.
 
 The generated OpenAPI groups the current contract into these areas:
 
-| Area                       | Responsibility                                                                              |
-| -------------------------- | ------------------------------------------------------------------------------------------- |
-| System                     | Health and API version information                                                          |
-| Authentication and account | Local identity, Player Name setup, and implemented account-lifecycle API boundaries         |
-| Events                     | Player-safe published-event discovery and server-authoritative location eligibility         |
-| Challenges                 | Timed attempt start/resume, answer locking, completion, marking, and completed-only review  |
-| Cards                      | Server-derived starter-package previews and grants, catalogue-safe rewards, and collection  |
-| Decks                      | Saved-deck CRUD, ownership validation, and active selection                                 |
-| Matches                    | Server-created CPU matches, legal action submission, recovery, and private history          |
-| Authoring                  | Author-only event, challenge, question, and card lifecycle operations plus audit boundaries |
+| Area                       | Responsibility                                                                                               |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| System                     | Health and API version information                                                                           |
+| Authentication and account | Local identity, Player Name setup, and implemented account-lifecycle API boundaries                          |
+| Events                     | Player-safe published-event discovery and server-authoritative location eligibility                          |
+| Challenges                 | Timed attempt start/resume, answer locking, completion, marking, and completed-only review                   |
+| Cards                      | Server-derived starter-package previews and grants, catalogue-safe rewards, and collection                   |
+| Decks                      | Saved-deck CRUD, ownership validation, and active selection                                                  |
+| Trails                     | Ordered trail progress, step state, and bounded nearby-unvisited guidance                                    |
+| Matches                    | Server-created CPU matches, legal action submission, recovery, and private history                           |
+| Progression                | Current-player points, streaks, achievements, rank, and privacy-safe paginated standings                     |
+| Authoring                  | Author-only event, challenge, question, card, trail, and campaign lifecycle operations plus audit boundaries |
+
+The [Author curation contract](./author-curation-api-contract.md) explains the
+five-state review workflow, optimistic concurrency, safe review queue and audit
+history, and temporary Author-console limitation.
 
 The OpenAPI document is the endpoint-level reference for parameters, bodies,
 status codes, and response shapes. Narrative documents explain domain contracts
 that need more context, including the
 [challenge-attempt contract](./challenge-attempt-api-contract.md),
 [saved-deck design](../database/saved-deck-persistence-design.md), and
-[CPU match persistence](../database/cpu-match-persistence-design.md).
+[CPU match persistence](../database/cpu-match-persistence-design.md). Ordered
+trail semantics and endpoints are documented in the
+[trail rules](../requirements/ordered-trails-rules.md) and
+[trail persistence design](../database/ordered-trails-persistence.md). Campaign
+scheduling and effective availability are documented in the
+[campaign API contract](./campaign-scheduling-api-contract.md) and
+[campaign persistence design](../database/campaign-scheduling-persistence.md).
+
+Progression exposes `GET /api/v1/progression/me` and
+`GET /api/v1/progression/standings`. Both derive the player from bearer
+authentication. The standings operation accepts all-time or `YYYY-MM` monthly
+selection plus bounded pagination, and returns the current-player rank outside
+the selected page without exposing a player UUID.
+
+Issue `#178` also defines an
+[OpenAPI-ready asynchronous PvP contract](./asynchronous-pvp-api-contract.md)
+for later persistence, API, and Web issues. Those proposed routes remain
+separate from live PvP and are not included in the current generated OpenAPI or
+the implemented resource-area table above.
 
 ## Validation and errors
 
@@ -146,6 +170,8 @@ protected operation.
 ## Related documentation
 
 - [Trust boundaries](./trust-boundaries.md)
+- [Author curation API contract](./author-curation-api-contract.md)
+- [Asynchronous PvP API contract](./asynchronous-pvp-api-contract.md)
 - [High-level data flow](./data-flow.md)
 - [External integrations](./external-integrations.md)
 - [API application guide](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/apps/api/README.md)
@@ -154,5 +180,5 @@ protected operation.
 ## AI declaration
 
 This API overview was generated, edited, and reviewed with the assistance of
-Codex[GPT-5]. It summarises current repository schemas and recorded deployment
+Codex[GPT-5] and Codex[gpt-5.6-sol]. It summarises current repository schemas and recorded deployment
 evidence rather than replacing the generated OpenAPI contract.

@@ -89,12 +89,29 @@ of Done gate and review responsibility, but Gitea does not mechanically prevent
 every merge with missing or failing status checks. The merge button alone is not
 evidence that CI passed.
 
-## Bugs use the same tracker
+## Bugs, usability findings, and features use the same tracker
 
 Gitea Issues is also the bug tracker. The repository has a `bug` label and uses
 it together with priority, application-area, and testing labels where a work
 item contains confirmed defects. There is no separate bug database and no
 bug-specific issue template in the repository.
+
+Keep these work classes distinct:
+
+- a **bug** is implemented behavior that differs from an agreed requirement or
+  expected safe operation;
+- a **usability finding** is observed friction, confusion, accessibility
+  difficulty, or recovery trouble that does not by itself establish a
+  functional defect; and
+- a **feature** is a new capability or scope addition.
+
+Use `bug` for defects and `feature` for new capability. Mark a usability finding
+explicitly in the issue title or body and retain its `UT-S2-*` identifier when
+user-test sourced. A dedicated `usability` label may be added later as tracker
+hygiene, but its absence is not a blocker for Sprint 2 governance or issue
+#159. See the
+[Sprint 2 governance and evidence](./sprint-2-governance-and-evidence.md#defect-usability-and-feature-classification)
+rules.
 
 A bug report should make reproduction and closure reviewable:
 
@@ -143,6 +160,11 @@ transition. Later issue timelines also preserve project and board movements.
 Do not infer a future milestone, project, label, or board status merely because
 it appears in an old plan. Create or assign it in Gitea before presenting it as
 current tracker state.
+
+For Sprint 2, use the
+[governance and evidence page](./sprint-2-governance-and-evidence.md) for the
+required readiness audit, board transitions, rubric evidence map, weekly
+cadence, and explicit live-tracker follow-ups.
 
 ## Sprint planning and repository records
 

@@ -34,6 +34,10 @@ import type {
   CardMove,
 } from '../cards/card-types.js';
 import { BASIC_CPU_DECK_CONFIGURATION } from './basic-cpu-deck.js';
+import {
+  createProgressionPersistence,
+  type ProgressionPersistence,
+} from '../progression/progression-persistence.js';
 
 const CPU_TURN_SECONDS = 90;
 
@@ -56,6 +60,7 @@ export interface CpuMatchClock {
 export interface CpuMatchServiceOptions {
   clock?: CpuMatchClock;
   randomInt?: RandomInt;
+  progressionPersistence?: ProgressionPersistence;
 }
 
 export interface CreateCpuMatchInput {
@@ -458,6 +463,8 @@ export function createCpuMatchService(
 ): CpuMatchService {
   const clock = options.clock ?? { now: () => new Date() };
   const randomInt = options.randomInt ?? secureRandomInt;
+  const progressionPersistence =
+    options.progressionPersistence ?? createProgressionPersistence();
 
   return {
     async createMatch(input) {
@@ -888,6 +895,10 @@ export function createCpuMatchService(
           baseSequence,
           transitions.length,
         );
+
+        if (completed) {
+          await progressionPersistence.recordCpuMatch(client, match.id);
+        }
 
         await client.query('commit');
         return response;

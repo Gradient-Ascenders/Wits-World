@@ -607,12 +607,14 @@ function CardDetail({
           ? await publishAuthorCard({
               apiBaseUrl,
               cardId: card.id,
+              expectedVersion: card.version,
               getAccessToken,
               signal: controller.signal,
             })
           : await retireAuthorCard({
               apiBaseUrl,
               cardId: card.id,
+              expectedVersion: card.version,
               getAccessToken,
               signal: controller.signal,
             });
@@ -938,6 +940,7 @@ function CardForm({
         ? await updateAuthorCard({
             apiBaseUrl,
             cardId: card.id,
+            expectedVersion: card.version,
             getAccessToken,
             input: result.input,
             signal: controller.signal,

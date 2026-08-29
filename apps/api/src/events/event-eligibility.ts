@@ -137,12 +137,16 @@ const EVENT_ELIGIBILITY_QUERY = `
            event.location,
            event.radius_metres,
            case
-             when not event.is_published then 'unpublished'
-             when $4::timestamptz < event.starts_at then 'not_started'
-             when $4::timestamptz >= event.ends_at then 'ended'
-             else 'available'
+             when effective.availability = 'active' then 'available'
+             when effective.availability = 'upcoming' then 'not_started'
+             when effective.availability = 'ended' then 'ended'
+             else 'unpublished'
            end as availability
       from public.events event
+      cross join lateral public.resolve_event_availability(
+        event.id,
+        $4::timestamptz
+      ) effective
      where event.id = $1::uuid
   )
   select event_status.id::text as event_id,

@@ -93,6 +93,19 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
     expect(migrationResult.applied).toContain(
       '0025_add_ordering_challenges.sql',
     );
+    expect(migrationResult.applied).toContain(
+      '0026_create_player_progression.sql',
+    );
+    expect(migrationResult.applied).toContain('0027_create_ordered_trails.sql');
+    expect(migrationResult.applied).toContain(
+      '0028_create_asynchronous_pvp_persistence.sql',
+    );
+    expect(migrationResult.applied).toContain(
+      '0029_curate_author_content_lifecycle.sql',
+    );
+    expect(migrationResult.applied).toContain(
+      '0030_create_campaign_scheduling.sql',
+    );
 
     await withDatabaseClient(temporaryConfig, async (client) => {
       const relation = await client.query<{
@@ -170,6 +183,12 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0023_rebalance_canonical_card_roster.sql',
           '0024_complete_account_deletion_retention.sql',
           '0025_add_ordering_challenges.sql',
+          '0026_create_player_progression.sql',
+          '0027_create_ordered_trails.sql',
+          '0028_create_asynchronous_pvp_persistence.sql',
+          '0029_curate_author_content_lifecycle.sql',
+          '0030_create_campaign_scheduling.sql',
+          '0031_create_movement_evidence.sql',
         ],
       });
 
@@ -285,6 +304,12 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0023_rebalance_canonical_card_roster.sql',
           '0024_complete_account_deletion_retention.sql',
           '0025_add_ordering_challenges.sql',
+          '0026_create_player_progression.sql',
+          '0027_create_ordered_trails.sql',
+          '0028_create_asynchronous_pvp_persistence.sql',
+          '0029_curate_author_content_lifecycle.sql',
+          '0030_create_campaign_scheduling.sql',
+          '0031_create_movement_evidence.sql',
         ],
       });
 
