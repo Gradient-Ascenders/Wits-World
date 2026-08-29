@@ -8,8 +8,8 @@ title: API overview
 
 `apps/api` is the hand-written Fastify and TypeScript HTTP API for Wits Quest.
 It is the protected boundary between the untrusted browser and authoritative
-identity, content, eligibility, challenge, reward, collection, deck, CPU match,
-and progression state.
+identity, content, eligibility, challenge, reward, collection, deck, trail, and
+CPU match and progression state.
 
 The browser sends player intent and renders responses. It does not determine
 authenticated identity, location eligibility, answer correctness, scores,
@@ -71,24 +71,28 @@ authentication mechanism.
 
 The generated OpenAPI groups the current contract into these areas:
 
-| Area                       | Responsibility                                                                              |
-| -------------------------- | ------------------------------------------------------------------------------------------- |
-| System                     | Health and API version information                                                          |
-| Authentication and account | Local identity, Player Name setup, and implemented account-lifecycle API boundaries         |
-| Events                     | Player-safe published-event discovery and server-authoritative location eligibility         |
-| Challenges                 | Timed attempt start/resume, answer locking, completion, marking, and completed-only review  |
-| Cards                      | Server-derived starter-package previews and grants, catalogue-safe rewards, and collection  |
-| Decks                      | Saved-deck CRUD, ownership validation, and active selection                                 |
-| Matches                    | Server-created CPU matches, legal action submission, recovery, and private history          |
-| Progression                | Current-player points, streaks, achievements, rank, and privacy-safe paginated standings    |
-| Authoring                  | Author-only event, challenge, question, and card lifecycle operations plus audit boundaries |
+| Area                       | Responsibility                                                                                     |
+| -------------------------- | -------------------------------------------------------------------------------------------------- |
+| System                     | Health and API version information                                                                 |
+| Authentication and account | Local identity, Player Name setup, and implemented account-lifecycle API boundaries                |
+| Events                     | Player-safe published-event discovery and server-authoritative location eligibility                |
+| Challenges                 | Timed attempt start/resume, answer locking, completion, marking, and completed-only review         |
+| Cards                      | Server-derived starter-package previews and grants, catalogue-safe rewards, and collection         |
+| Decks                      | Saved-deck CRUD, ownership validation, and active selection                                        |
+| Trails                     | Ordered trail progress, step state, and bounded nearby-unvisited guidance                          |
+| Matches                    | Server-created CPU matches, legal action submission, recovery, and private history                 |
+| Progression                | Current-player points, streaks, achievements, rank, and privacy-safe paginated standings           |
+| Authoring                  | Author-only event, challenge, question, card, and trail lifecycle operations plus audit boundaries |
 
 The OpenAPI document is the endpoint-level reference for parameters, bodies,
 status codes, and response shapes. Narrative documents explain domain contracts
 that need more context, including the
 [challenge-attempt contract](./challenge-attempt-api-contract.md),
 [saved-deck design](../database/saved-deck-persistence-design.md), and
-[CPU match persistence](../database/cpu-match-persistence-design.md).
+[CPU match persistence](../database/cpu-match-persistence-design.md). Ordered
+trail semantics and endpoints are documented in the
+[trail rules](../requirements/ordered-trails-rules.md) and
+[trail persistence design](../database/ordered-trails-persistence.md).
 
 Progression exposes `GET /api/v1/progression/me` and
 `GET /api/v1/progression/standings`. Both derive the player from bearer

@@ -27,6 +27,8 @@ import { createCpuMatchService } from './matches/cpu-match-service.js';
 import { createAuthenticatedRateProtection } from './security/rate-protection.js';
 import { createProgressionPersistence } from './progression/progression-persistence.js';
 import { createProgressionReadService } from './progression/progression-read-service.js';
+import { createAuthorTrailService } from './trails/author-trail-service.js';
+import { createPlayerTrailService } from './trails/player-trail-service.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
@@ -68,6 +70,8 @@ async function startServer(): Promise<void> {
   const authorEventService = createAuthorEventService(database);
   const authorChallengeService = createAuthorChallengeService(database);
   const authorCardService = createAuthorCardService(database);
+  const authorTrailService = createAuthorTrailService(database);
+  const playerTrailService = createPlayerTrailService(database);
   const cpuMatchService = createCpuMatchService(database, {
     progressionPersistence,
   });
@@ -111,10 +115,15 @@ async function startServer(): Promise<void> {
       eligibility: createEventEligibilityService(database),
     },
 
+    trailServices: {
+      player: playerTrailService,
+    },
+
     authorContentServices: {
       events: authorEventService,
       challenges: authorChallengeService,
       cards: authorCardService,
+      trails: authorTrailService,
     },
   });
 

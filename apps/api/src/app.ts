@@ -63,6 +63,10 @@ import { authorCardRoutes } from './routes/author-cards.js';
 import type { AuthenticatedRateProtection } from './security/rate-protection.js';
 import type { ProgressionReadService } from './progression/progression-read-service.js';
 import { progressionRoutes } from './routes/progression.js';
+import type { AuthorTrailService } from './trails/author-trail-service.js';
+import type { PlayerTrailService } from './trails/player-trail-service.js';
+import { authorTrailRoutes } from './routes/author-trails.js';
+import { playerTrailRoutes } from './routes/trails.js';
 
 export interface EventServices {
   discovery: EventDiscoveryService;
@@ -84,6 +88,7 @@ export interface BuildAppOptions {
   challengeAttemptServices?: ChallengeAttemptServices;
   cardServices?: CardServices;
   authorContentServices?: AuthorContentServices;
+  trailServices?: TrailServices;
   cpuMatchService?: CpuMatchService;
   progressionReadService?: ProgressionReadService;
   rateProtection?: AuthenticatedRateProtection;
@@ -111,6 +116,13 @@ export interface AuthorContentServices {
   events?: AuthorEventService;
   challenges?: AuthorChallengeService;
   cards?: AuthorCardService;
+  trails?: AuthorTrailService;
+}
+
+export interface TrailServices {
+  player: PlayerTrailService;
+  clock?: () => Date;
+  maxLocationClaimAgeMs?: number;
 }
 
 export async function buildApp({
@@ -128,6 +140,7 @@ export async function buildApp({
   challengeAttemptServices,
   cardServices,
   authorContentServices,
+  trailServices,
   cpuMatchService,
   progressionReadService,
   rateProtection,
@@ -192,6 +205,9 @@ export async function buildApp({
       'Author content services require a player identity service.',
     );
   }
+  if (trailServices && !playerIdentityService) {
+    throw new Error('Trail services require a player identity service.');
+  }
   if (cpuMatchService && !playerIdentityService) {
     throw new Error('CPU match services require a player identity service.');
   }
@@ -237,6 +253,10 @@ export async function buildApp({
         {
           name: 'Decks',
           description: 'Player saved decks and active deck selection.',
+        },
+        {
+          name: 'Trails',
+          description: 'Ordered campus trails and player progress guidance.',
         },
         {
           name: 'Authoring',
@@ -340,6 +360,22 @@ export async function buildApp({
     await app.register(authorCardRoutes, {
       prefix: '/api/v1',
       service: authorContentServices.cards,
+    });
+  }
+
+  if (authorContentServices?.trails) {
+    await app.register(authorTrailRoutes, {
+      prefix: '/api/v1',
+      service: authorContentServices.trails,
+    });
+  }
+
+  if (trailServices) {
+    await app.register(playerTrailRoutes, {
+      prefix: '/api/v1',
+      service: trailServices.player,
+      clock: trailServices.clock,
+      maxLocationClaimAgeMs: trailServices.maxLocationClaimAgeMs,
     });
   }
 

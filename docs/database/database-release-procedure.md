@@ -55,6 +55,12 @@ before deploying an API version that exposes progression routes or invokes the
 completion hooks; otherwise those operations fail closed and their owning
 transactions roll back.
 
+Migration `0027_create_ordered_trails.sql` adds trail definitions, constrained
+ordered event membership, lifecycle guards, and discovery indexes. It extends
+the Author audit entity constraint to accept `trail` and does not rewrite
+existing events, attempts, completions, or player records. Apply it before an
+API version that registers trail routes.
+
 ## Prerequisites
 
 - Use the Node.js and npm versions declared by the repository.

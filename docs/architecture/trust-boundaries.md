@@ -40,6 +40,7 @@ The browser may not determine:
 - reward eligibility;
 - card ownership;
 - deck validity;
+- trail progress or unlocked steps;
 - legal battle actions; or
 - battle outcomes.
 
@@ -110,6 +111,7 @@ It is responsible for:
 - enforcing object-level authorisation;
 - checking event publication and availability;
 - evaluating location claims;
+- deriving ordered trail progress and nearby current steps;
 - calling parameterised database operations;
 - deriving progression points, streaks, achievements, and ranks only from
   authoritative completed challenge and CPU-match records;
@@ -130,7 +132,9 @@ such as:
 - `matchResult`;
 - `turnDeadline`;
 - `completionReason`; or
-- `progressionPoints`.
+- `progressionPoints`;
+- `trailCompletedSteps`; or
+- `currentTrailPosition`.
 
 Progression profile and standings requests contain no player selector. The API
 uses the authenticated active player for the private profile and current-rank
@@ -158,17 +162,23 @@ including:
 - card definitions and gameplay metadata;
 - saved decks;
 - exact saved-deck membership by owned-copy ID; and
-- the player's active deck selection.
+- the player's active deck selection;
+- ordered trail definitions and event membership; and
+- event completions used to derive each player's trail prefix.
 
 Database relationships prevent a saved deck from referencing another player's
 owned copy or being selected by another player. Application validation enforces
 the complete five-card composition and rarity-point rules before deck mutations
 commit.
 
-PostGIS performs the authoritative distance calculation between:
+PostGIS performs authoritative distance calculations between:
 
 - the submitted browser location claim; and
 - the stored event point.
+
+The nearby-unvisited trail query uses the same geography index for bounded
+guidance. It does not persist the submitted location and does not replace the
+independent event-eligibility decision.
 
 Database constraints, indexes, and transactions must reinforce important
 application rules.
@@ -273,7 +283,8 @@ Location is requested and processed only when it supports a legitimate
 operation, such as:
 
 - showing the player's current position;
-- checking event eligibility; or
+- checking event eligibility;
+- requesting nearby unvisited trail and standalone event guidance; or
 - submitting an event attempt.
 
 The final location-retention policy remains an open decision.

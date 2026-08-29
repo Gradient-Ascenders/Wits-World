@@ -96,6 +96,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
     expect(migrationResult.applied).toContain(
       '0026_create_player_progression.sql',
     );
+    expect(migrationResult.applied).toContain('0027_create_ordered_trails.sql');
 
     await withDatabaseClient(temporaryConfig, async (client) => {
       const relation = await client.query<{
@@ -174,6 +175,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0024_complete_account_deletion_retention.sql',
           '0025_add_ordering_challenges.sql',
           '0026_create_player_progression.sql',
+          '0027_create_ordered_trails.sql',
         ],
       });
 
@@ -290,6 +292,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0024_complete_account_deletion_retention.sql',
           '0025_add_ordering_challenges.sql',
           '0026_create_player_progression.sql',
+          '0027_create_ordered_trails.sql',
         ],
       });
 

@@ -29,6 +29,7 @@ const testFiles = [
   'tests/card-move-position-migration.integration.test.ts',
   'tests/card-roster-rebalance-migration.integration.test.ts',
   'tests/progression-persistence.integration.test.ts',
+  'tests/trail-persistence.integration.test.ts',
 ];
 
 // Each file provisions and migrates its own remote test database.
