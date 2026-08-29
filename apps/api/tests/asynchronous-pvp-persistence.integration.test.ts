@@ -338,6 +338,60 @@ describe.skipIf(!runIntegrationTests)(
       });
     });
 
+    it('rejects an active version advance without its action history', async () => {
+      const match = await createAcceptedMatch(pool, cardDefinitions);
+      const client = await pool.connect();
+
+      try {
+        await client.query('begin');
+        await client.query(
+          `update private.async_pvp_match_states
+              set version = 1,
+                  battle_state = '{"phase":"active","turnNumber":2}',
+                  updated_at = now()
+            where match_id = $1::uuid`,
+          [match.matchId],
+        );
+        await client.query(
+          `update public.async_pvp_matches
+              set version = 1,
+                  current_player_id = $2::uuid,
+                  decision_started_at = now(),
+                  turn_deadline = now() + interval '24 hours',
+                  updated_at = now()
+            where id = $1::uuid`,
+          [match.matchId, match.recipientPlayerId],
+        );
+
+        await expect(client.query('commit')).rejects.toThrow(
+          'version 1 requires 1 committed actions, found 0',
+        );
+        await client.query('rollback');
+      } finally {
+        client.release();
+      }
+
+      const persisted = await pool.query<{
+        match_version: number;
+        state_version: number;
+      }>(
+        `select
+           match.version as match_version,
+           state.version as state_version
+         from public.async_pvp_matches match
+         join private.async_pvp_match_states state
+           on state.match_id = match.id
+        where match.id = $1::uuid`,
+        [match.matchId],
+      );
+      expect(persisted.rows).toEqual([
+        {
+          match_version: 0,
+          state_version: 0,
+        },
+      ]);
+    });
+
     it('rejects incomplete snapshots, invalid deadlines, and wrong receipt actors', async () => {
       const challengerPlayerId = await insertPlayer(pool, 'invalid_challenger');
       const recipientPlayerId = await insertPlayer(pool, 'invalid_recipient');
@@ -711,11 +765,11 @@ async function createAcceptedMatch(
          $1::uuid,
          $2::uuid,
          $3::uuid,
-         '2026-08-29T10:00:00.000Z',
-         '2026-08-30T10:00:00.000Z',
-         '2026-08-29T10:00:00.000Z',
-         '2026-08-29T10:00:00.000Z',
-         '2026-08-29T10:00:00.000Z'
+         now(),
+         now() + interval '24 hours',
+         now(),
+         now(),
+         now()
        )`,
       [matchId, invitation.invitationId, invitation.challengerPlayerId],
     );
@@ -746,7 +800,7 @@ async function createAcceptedMatch(
          $1::uuid,
          0,
          '{"phase":"active","turnNumber":1}',
-         '2026-08-29T10:00:00.000Z'
+         now()
        )`,
       [matchId],
     );
@@ -755,8 +809,8 @@ async function createAcceptedMatch(
           set status = 'accepted',
               version = 1,
               match_id = $2::uuid,
-              responded_at = '2026-08-29T10:00:00.000Z',
-              updated_at = '2026-08-29T10:00:00.000Z'
+              responded_at = now(),
+              updated_at = now()
         where id = $1::uuid`,
       [invitation.invitationId, matchId],
     );
@@ -936,7 +990,7 @@ async function appendAction(
          0,
          '{"type":"use_move","moveId":"10000000-0000-4000-8000-000000000001"}',
          '{"type":"move_resolved"}',
-         '2026-08-29T11:00:00.000Z'
+         now()
        )`,
       [actionId, match.matchId, match.challengerPlayerId, submissionId],
     );
@@ -954,7 +1008,7 @@ async function appendAction(
          '{"phase":"active","turnNumber":1}',
          '{"phase":"active","turnNumber":2}',
          '{"type":"move_resolved"}',
-         '2026-08-29T11:00:00.000Z'
+         now()
        )`,
       [actionId, match.matchId],
     );
@@ -968,7 +1022,7 @@ async function appendAction(
       `update private.async_pvp_match_states
           set version = 1,
               battle_state = '{"phase":"active","turnNumber":2}',
-              updated_at = '2026-08-29T11:00:00.000Z'
+              updated_at = now()
         where match_id = $1::uuid`,
       [match.matchId],
     );
@@ -976,9 +1030,9 @@ async function appendAction(
       `update public.async_pvp_matches
           set version = 1,
               current_player_id = $2::uuid,
-              decision_started_at = '2026-08-29T11:00:00.000Z',
-              turn_deadline = '2026-08-30T11:00:00.000Z',
-              updated_at = '2026-08-29T11:00:00.000Z'
+              decision_started_at = now(),
+              turn_deadline = now() + interval '24 hours',
+              updated_at = now()
         where id = $1::uuid`,
       [match.matchId, match.recipientPlayerId],
     );
@@ -1025,7 +1079,7 @@ async function completeMatch(
            0,
            '{"type":"use_move","moveId":"10000000-0000-4000-8000-000000000002"}',
            '{"type":"match_completed"}',
-           '2026-08-29T11:00:00.000Z'
+           now()
          )`,
         [
           terminalActionId,
@@ -1048,7 +1102,7 @@ async function completeMatch(
            '{"phase":"active","turnNumber":1}',
            '{"phase":"completed","turnNumber":1}',
            '{"type":"match_completed"}',
-           '2026-08-29T11:00:00.000Z'
+           now()
          )`,
         [terminalActionId, match.matchId],
       );
@@ -1063,7 +1117,7 @@ async function completeMatch(
       `update private.async_pvp_match_states
           set version = 1,
               battle_state = '{"phase":"completed","turnNumber":1}',
-              updated_at = '2026-08-29T11:00:00.000Z'
+              updated_at = now()
         where match_id = $1::uuid`,
       [match.matchId],
     );
@@ -1085,8 +1139,8 @@ async function completeMatch(
               completion_reason = $3,
               decision_started_at = null,
               turn_deadline = null,
-              completed_at = '2026-08-29T11:00:00.000Z',
-              updated_at = '2026-08-29T11:00:00.000Z'
+              completed_at = now(),
+              updated_at = now()
         where id = $1::uuid`,
       [match.matchId, match.challengerPlayerId, completionReason],
     );

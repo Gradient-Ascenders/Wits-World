@@ -898,7 +898,8 @@ declare
   null_outcome_count integer;
   win_count integer;
   winner_outcome text;
-  terminal_action_count integer;
+  action_count integer;
+  expected_action_count integer;
 begin
   select match.*
     into match_record
@@ -969,6 +970,31 @@ begin
       using errcode = '23514';
   end if;
 
+  select count(*)::integer
+    into action_count
+    from public.async_pvp_match_actions action
+   where action.match_id = match_id_to_validate;
+
+  expected_action_count := case
+    when match_record.status = 'completed'
+      and match_record.completion_reason in (
+        'turn_forfeit',
+        'account_deletion_forfeit'
+      )
+      then match_record.version - 1
+    else match_record.version
+  end;
+
+  if action_count <> expected_action_count then
+    raise exception
+      'Asynchronous PvP match % version % requires % committed actions, found %',
+      match_id_to_validate,
+      match_record.version,
+      expected_action_count,
+      action_count
+      using errcode = '23514';
+  end if;
+
   if match_record.status = 'active' then
     if null_outcome_count <> 2 then
       raise exception
@@ -992,28 +1018,6 @@ begin
         using errcode = '23514';
     end if;
 
-    select count(*)::integer
-      into terminal_action_count
-      from public.async_pvp_match_actions action
-     where action.match_id = match_id_to_validate
-       and action.sequence = match_record.version
-       and action.expected_version = match_record.version - 1;
-
-    if (
-      match_record.completion_reason = 'defeat'
-      and terminal_action_count <> 1
-    ) or (
-      match_record.completion_reason in (
-        'turn_forfeit',
-        'account_deletion_forfeit'
-      )
-      and terminal_action_count <> 0
-    ) then
-      raise exception
-        'Asynchronous PvP match % terminal history is inconsistent',
-        match_id_to_validate
-        using errcode = '23514';
-    end if;
   end if;
 end;
 $$;
