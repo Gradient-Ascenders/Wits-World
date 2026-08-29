@@ -112,6 +112,7 @@ describe.skipIf(!runIntegrationTests)(
           '0029_curate_author_content_lifecycle.sql',
           '0030_create_campaign_scheduling.sql',
           '0031_create_movement_evidence.sql',
+          '0032_add_movement_eligibility_decisions.sql',
         ],
         skipped: [],
       });
@@ -151,6 +152,7 @@ describe.skipIf(!runIntegrationTests)(
           '0029_curate_author_content_lifecycle.sql',
           '0030_create_campaign_scheduling.sql',
           '0031_create_movement_evidence.sql',
+          '0032_add_movement_eligibility_decisions.sql',
         ],
       });
     }, 30_000);
@@ -354,6 +356,7 @@ describe.skipIf(!runIntegrationTests)(
             '0029_curate_author_content_lifecycle.sql',
             '0030_create_campaign_scheduling.sql',
             '0031_create_movement_evidence.sql',
+            '0032_add_movement_eligibility_decisions.sql',
           ],
         });
 

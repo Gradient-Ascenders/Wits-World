@@ -342,24 +342,28 @@ continue using features that do not require location.
 
 The browser explains the failure and offers a retry or live-location action.
 The active `/explore` watcher may resume after that action; there is no
-timer-only polling loop, background movement tracking, or persisted location
-history.
+timer-only polling loop or background movement tracking. Active eligibility and
+challenge-start operations can create the short-lived internal evidence and
+journey audit described below; the browser receives no location history.
 
 ## Data-retention boundary
 
-The final location-retention policy remains open.
+The final production location-retention policy remains open. Issues `#168` and
+`#169` implement a provisional bounded active-use design: eligible operations
+store precise evidence with an explicit expiry, then store one immutable journey
+decision that cascades when its current evidence expires or account deletion
+starts. No public movement-history API or permanent location record is created.
 
-For the Sprint 1 architecture, processing a location claim does not automatically
-mean the system must permanently store the submitted coordinates.
-
-Any later decision to store location claims must document:
+The maintained [movement-evidence design](../database/movement-evidence.md)
+documents:
 
 - the reason for storage;
 - the required precision;
 - retention duration;
 - access restrictions;
 - deletion behaviour; and
-- privacy implications.
+- privacy implications; and
+- trusted-anchor and neutral-retry rules.
 
 ## Later Basic data flow
 

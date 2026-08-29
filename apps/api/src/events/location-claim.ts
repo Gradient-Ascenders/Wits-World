@@ -1,7 +1,10 @@
 export const PROVISIONAL_MAX_LOCATION_CLAIM_AGE_MS = 120_000;
 
 export type LocationRetryReason =
-  'future_acquisition_time' | 'stale_location' | 'location_accuracy';
+  | 'future_acquisition_time'
+  | 'stale_location'
+  | 'location_accuracy'
+  | 'journey_too_fast';
 
 export type LocationTimingResult =
   | {

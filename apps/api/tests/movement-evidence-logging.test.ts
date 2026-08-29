@@ -26,6 +26,10 @@ describe('movement evidence log redaction', () => {
     output = '';
     app = await buildLoggingApp(
       {
+        evaluateJourney: vi.fn().mockResolvedValue({ outcome: 'baseline' }),
+        evaluateJourneyWithinTransaction: vi
+          .fn()
+          .mockResolvedValue({ outcome: 'baseline' }),
         record: vi.fn().mockResolvedValue(undefined),
         purgeExpired: vi.fn().mockResolvedValue(0),
       },
@@ -84,9 +88,12 @@ describe('movement evidence log redaction', () => {
       query,
       release: vi.fn(),
     } as unknown as pg.PoolClient;
-    const movementEvidence = createMovementEvidenceService({
-      connect: vi.fn().mockResolvedValue(client),
-    } as unknown as Pick<pg.Pool, 'connect'>);
+    const movementEvidence = createMovementEvidenceService(
+      {
+        connect: vi.fn().mockResolvedValue(client),
+      } as unknown as Pick<pg.Pool, 'connect'>,
+      { maxPlausibleJourneySpeedMetresPerSecond: 10 },
+    );
     app = await buildLoggingApp(movementEvidence, (message) => {
       output += message;
     });

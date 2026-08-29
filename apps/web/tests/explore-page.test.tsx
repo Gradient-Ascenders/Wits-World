@@ -352,6 +352,43 @@ describe('selected-event authoritative eligibility', () => {
     expect(mapController.setReportedLocation).toHaveBeenCalled();
   });
 
+  it('communicates a too-fast journey as a neutral retry', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(discoveryResponse())
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              eventId: event.eventId,
+              reachable: null,
+              reason: 'journey_too_fast',
+              requestId: 'request-journey',
+              status: 'retry',
+            }),
+            { headers: { 'Content-Type': 'application/json' }, status: 200 },
+          ),
+        ),
+    );
+    const observation = createObservationHarness();
+    renderExplore({ observation, permission: 'granted' });
+    await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
+    act(() => observation.emit(claim));
+    await selectEvent(user);
+
+    expect(
+      await screen.findByText('Travel time needs another check.'),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        'This event cannot be confirmed from recent reported-location activity yet. Wait briefly, then try again with a fresh reading.',
+      ),
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: /^Try again/ })).toBeEnabled();
+  });
+
   it('forces an explicit eligibility retry without requiring movement', async () => {
     const user = userEvent.setup();
     const fetchMock = vi

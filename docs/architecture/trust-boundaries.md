@@ -188,7 +188,15 @@ commit.
 PostGIS performs authoritative distance calculations between:
 
 - the submitted browser location claim; and
-- the stored event point.
+- the stored event point; or
+- two short-lived accepted reported-location samples for a cross-event journey.
+
+The impossible-journey rule uses server receipt time, subtracts both reported
+accuracy radii from the distance conservatively, and compares only with the
+required configured maximum speed. The browser cannot submit elapsed time,
+speed, a prior anchor, or a decision. Rejected samples never become trusted
+anchors, and the player receives a neutral retry rather than an accusation or
+punishment.
 
 The nearby-unvisited trail query uses the same geography index for bounded
 guidance. It does not persist the submitted location and does not replace the

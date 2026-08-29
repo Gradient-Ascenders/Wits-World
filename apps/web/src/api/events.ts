@@ -35,7 +35,10 @@ export type EventEligibilityResult =
   | { status: 'unreachable' }
   | {
       reason:
-        'future_acquisition_time' | 'location_accuracy' | 'stale_location';
+        | 'future_acquisition_time'
+        | 'journey_too_fast'
+        | 'location_accuracy'
+        | 'stale_location';
       status: 'retry';
     }
   | { reason: 'ended' | 'not_started'; status: 'unavailable' };
@@ -286,9 +289,14 @@ function isAvailability(value: unknown): value is PlayerEventAvailability {
 
 function isRetryReason(
   value: unknown,
-): value is 'future_acquisition_time' | 'location_accuracy' | 'stale_location' {
+): value is
+  | 'future_acquisition_time'
+  | 'journey_too_fast'
+  | 'location_accuracy'
+  | 'stale_location' {
   return (
     value === 'future_acquisition_time' ||
+    value === 'journey_too_fast' ||
     value === 'location_accuracy' ||
     value === 'stale_location'
   );

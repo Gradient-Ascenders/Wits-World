@@ -51,13 +51,14 @@ commit.
 
 ### API variables
 
-| Variable                  | Required | Example     | Purpose                                   |
-| ------------------------- | -------- | ----------- | ----------------------------------------- |
-| `HOST`                    | Yes      | `127.0.0.1` | Network interface used by the API server  |
-| `PORT`                    | Yes      | `3000`      | TCP port used by the API server           |
-| `LOG_LEVEL`               | Yes      | `info`      | Fastify log level                         |
-| `RATE_LIMIT_MAX_REQUESTS` | No       | `120`       | Authenticated requests allowed per window |
-| `RATE_LIMIT_WINDOW_MS`    | No       | `60000`     | Per-process fixed-window duration in ms   |
+| Variable                                        | Required | Example     | Purpose                                       |
+| ----------------------------------------------- | -------- | ----------- | --------------------------------------------- |
+| `HOST`                                          | Yes      | `127.0.0.1` | Network interface used by the API server      |
+| `PORT`                                          | Yes      | `3000`      | TCP port used by the API server               |
+| `LOG_LEVEL`                                     | Yes      | `info`      | Fastify log level                             |
+| `MAX_PLAUSIBLE_JOURNEY_SPEED_METRES_PER_SECOND` | Yes      | `12.5`      | Server-authoritative impossible-journey limit |
+| `RATE_LIMIT_MAX_REQUESTS`                       | No       | `120`       | Authenticated requests allowed per window     |
+| `RATE_LIMIT_WINDOW_MS`                          | No       | `60000`     | Per-process fixed-window duration in ms       |
 
 Supported log levels are:
 
@@ -72,6 +73,9 @@ Supported log levels are:
 `PORT` must be an integer between `1` and `65535`.
 
 Missing or invalid required API configuration prevents the server from starting.
+The journey-speed setting has no default and must be a finite number greater
+than zero. The example illustrates syntax only; operators must use the reviewed
+product value for the environment.
 
 Rate protection is keyed by the verified local player identity and returns
 `429 RATE_LIMITED` with `Retry-After` and `RateLimit-*` headers. It is an
@@ -648,7 +652,8 @@ Retry reasons currently include:
 
 - `location_accuracy`;
 - `stale_location`;
-- `future_acquisition_time`.
+- `future_acquisition_time`;
+- `journey_too_fast`.
 
 An event that has not started or has ended returns `status: "unavailable"`.
 
@@ -713,6 +718,16 @@ the player's rows transactionally. Ordinary logs redact all submitted location
 fields. See the
 [movement-evidence design](../../docs/database/movement-evidence.md).
 
+For cross-event reachable claims, the server compares the newest sample with
+the latest unexpired accepted reachable anchor. PostGIS supplies distance, both
+reported accuracy radii reduce the distance conservatively, and server receipt
+timestamps supply elapsed time. Browser-supplied speed or elapsed-time fields
+are rejected. A journey above the required configured maximum returns the
+neutral `journey_too_fast` retry response and is not trusted as a later anchor.
+The API never returns the calculated distance, speed, prior event, threshold,
+or audit row. Challenge start repeats the same check transactionally, so a
+client cannot bypass it by calling the challenge route directly.
+
 The API treats latitude, longitude, accuracy, and acquisition time as
 browser-supplied claims. It independently determines:
 
@@ -748,6 +763,9 @@ Automated API tests cover:
 - unpublished events;
 - inactive events;
 - rejection of browser-supplied eligibility decisions;
+- neutral impossible-journey retries and rejected-anchor exclusion;
+- accuracy-adjusted threshold boundaries and server-receipt timing;
+- same-event, idempotent, retention-expiry, and concurrency behaviour;
 - OpenAPI bearer protection.
 
 The HTTP integration tests use injected event services and do not require a

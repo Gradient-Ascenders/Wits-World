@@ -101,7 +101,10 @@ Question prompts and shuffled choices or items are player-visible while an
 attempt is in progress. Accepted choices, correct item positions, explanations,
 marking queries, reward rolls, internal reward-policy inputs, and other players'
 attempts are never returned. Exact submitted location values are evaluated for
-the start request but are not persisted by this contract.
+the start request and stored only as short-lived internal movement evidence
+under the documented retention boundary. The matching immutable journey
+decision cascades when that current evidence expires or account deletion starts;
+neither record is returned by this contract.
 
 ## Shared representations
 
@@ -334,8 +337,12 @@ fields are rejected.
 
 Before creating an attempt, the API confirms that the event exists, is
 published, is active at start time, is clearly reachable from the submitted
-claim, and has at least five valid published questions. An event that closes
-after creation does not shorten the attempt deadline.
+claim, passes the same server-authoritative journey check as event eligibility,
+and has at least five valid published questions. Journey evaluation and attempt
+creation share one transaction, so direct challenge start cannot bypass an
+impossible-journey retry. A rejected `too_fast` decision and its short-lived
+evidence commit for audit, while no attempt or content snapshot is created. An
+event that closes after creation does not shorten the attempt deadline.
 
 ## Fetch an attempt
 
@@ -495,19 +502,19 @@ cannot leak into an active payload.
 Errors use the existing problem response with `type`, `title`, `status`, `code`,
 `detail`, `requestId`, and optional `validation` fields.
 
-| HTTP | Code                       | Meaning                                                        |
-| ---- | -------------------------- | -------------------------------------------------------------- |
-| 400  | `INVALID_LOCATION_CLAIM`   | Coordinates, accuracy, or acquisition time are malformed.      |
-| 400  | `INVALID_CHALLENGE_ANSWER` | The question or submitted choice/item relationship is invalid. |
-| 401  | `UNAUTHORIZED`             | No valid access token established identity.                    |
-| 403  | `EVENT_NOT_REACHABLE`      | The claim is clearly outside the event radius.                 |
-| 404  | `EVENT_NOT_FOUND`          | Event is missing or unpublished.                               |
-| 404  | `ATTEMPT_NOT_FOUND`        | Attempt is missing or belongs to another player.               |
-| 409  | `EVENT_NOT_ACTIVE`         | Event has not started or has ended before acceptance.          |
-| 409  | `CHALLENGE_UNAVAILABLE`    | Fewer than five usable questions are configured.               |
-| 409  | `ANSWER_LOCKED`            | A different choice was already locked for the question.        |
-| 409  | `ATTEMPT_COMPLETED`        | A new answer was submitted to an already completed attempt.    |
-| 422  | `LOCATION_RETRY_REQUIRED`  | The claim is stale, future-dated, or accuracy-ambiguous.       |
+| HTTP | Code                       | Meaning                                                                                               |
+| ---- | -------------------------- | ----------------------------------------------------------------------------------------------------- |
+| 400  | `INVALID_LOCATION_CLAIM`   | Coordinates, accuracy, or acquisition time are malformed.                                             |
+| 400  | `INVALID_CHALLENGE_ANSWER` | The question or submitted choice/item relationship is invalid.                                        |
+| 401  | `UNAUTHORIZED`             | No valid access token established identity.                                                           |
+| 403  | `EVENT_NOT_REACHABLE`      | The claim is clearly outside the event radius.                                                        |
+| 404  | `EVENT_NOT_FOUND`          | Event is missing or unpublished.                                                                      |
+| 404  | `ATTEMPT_NOT_FOUND`        | Attempt is missing or belongs to another player.                                                      |
+| 409  | `EVENT_NOT_ACTIVE`         | Event has not started or has ended before acceptance.                                                 |
+| 409  | `CHALLENGE_UNAVAILABLE`    | Fewer than five usable questions are configured.                                                      |
+| 409  | `ANSWER_LOCKED`            | A different choice was already locked for the question.                                               |
+| 409  | `ATTEMPT_COMPLETED`        | A new answer was submitted to an already completed attempt.                                           |
+| 422  | `LOCATION_RETRY_REQUIRED`  | The claim is stale, future-dated, accuracy-ambiguous, or requires a neutral impossible-journey retry. |
 
 Unexpected database or worker failures use the existing safe `500` response and
 request identifier. Error and active-attempt responses never expose SQL, answer

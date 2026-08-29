@@ -54,6 +54,9 @@ describe.skipIf(!runIntegrationTests)(
       expect(migrationResult.applied).toContain(
         '0031_create_movement_evidence.sql',
       );
+      expect(migrationResult.applied).toContain(
+        '0032_add_movement_eligibility_decisions.sql',
+      );
       pool = createDatabasePool(temporaryConfig);
 
       await pool.query(
@@ -430,13 +433,18 @@ describe.skipIf(!runIntegrationTests)(
     });
 
     it('deletes precise evidence transactionally when account deletion starts', async () => {
-      await insertSample({
-        id: '16820000-0000-4000-8000-000000000005',
-        playerId: DELETION_PLAYER_ID,
-        acquiredAt: '2026-08-29T09:59:30.000Z',
-        expiresAt: '2026-08-30T10:00:00.000Z',
-        receivedAt: '2026-08-29T10:00:00.000Z',
+      const evidenceService = createMovementEvidenceService(pool, {
+        createId: () => '16820000-0000-4000-8000-000000000005',
+        createDecisionId: () => '16850000-0000-4000-8000-000000000005',
+        maxPlausibleJourneySpeedMetresPerSecond: 10,
       });
+      await evidenceService.evaluateJourney(
+        {
+          ...sample(),
+          playerId: DELETION_PLAYER_ID,
+        },
+        'reachable',
+      );
       const lifecycle = createAccountDeletionLifecycle(pool, {
         clock: () => new Date('2026-08-29T10:01:00.000Z'),
         createId: () => '16830000-0000-4000-8000-000000000001',
@@ -454,7 +462,213 @@ describe.skipIf(!runIntegrationTests)(
         [DELETION_PLAYER_ID],
       );
       expect(remaining.rows[0]?.count).toBe('0');
+
+      const remainingDecisions = await pool.query<{ count: string }>(
+        `select count(*)::text as count
+           from public.movement_eligibility_decisions
+          where movement_evidence_id = $1::uuid`,
+        ['16820000-0000-4000-8000-000000000005'],
+      );
+      expect(remainingDecisions.rows[0]?.count).toBe('0');
     });
+
+    it('audits plausible and impossible journeys without trusting a rejected sample', async () => {
+      const evidenceIds = [
+        '16840000-0000-4000-8000-000000000001',
+        '16840000-0000-4000-8000-000000000002',
+        '16840000-0000-4000-8000-000000000003',
+      ];
+      const decisionIds = [
+        '16850000-0000-4000-8000-000000000001',
+        '16850000-0000-4000-8000-000000000002',
+        '16850000-0000-4000-8000-000000000003',
+      ];
+      const service = createMovementEvidenceService(pool, {
+        createId: () => requiredNextId(evidenceIds),
+        createDecisionId: () => requiredNextId(decisionIds),
+        maxPlausibleJourneySpeedMetresPerSecond: 10,
+      });
+
+      await expect(
+        service.evaluateJourney(
+          journeySample({
+            acquiredAt: '2026-08-29T10:00:00.000Z',
+            accuracyMetres: 0,
+            receivedAt: '2026-08-29T10:00:00.000Z',
+          }),
+          'reachable',
+        ),
+      ).resolves.toEqual({ outcome: 'baseline' });
+
+      await expect(
+        service.evaluateJourney(
+          journeySample({
+            acquiredAt: '2026-08-29T10:00:01.000Z',
+            accuracyMetres: 0,
+            eventId: SECOND_ACTIVE_EVENT_ID,
+            latitude: -26.193,
+            longitude: 28.031,
+            receivedAt: '2026-08-29T10:00:01.000Z',
+          }),
+          'reachable',
+        ),
+      ).resolves.toEqual({ outcome: 'too_fast' });
+
+      await expect(
+        service.evaluateJourney(
+          journeySample({
+            acquiredAt: '2026-08-29T10:00:30.000Z',
+            accuracyMetres: 0,
+            eventId: SECOND_ACTIVE_EVENT_ID,
+            latitude: -26.193,
+            longitude: 28.031,
+            receivedAt: '2026-08-29T10:00:30.000Z',
+          }),
+          'reachable',
+        ),
+      ).resolves.toEqual({ outcome: 'plausible' });
+
+      const decisions = await pool.query<{
+        evidence_id: string;
+        journey_outcome: string;
+        prior_evidence_id: string | null;
+      }>(
+        `select evidence.id::text as evidence_id,
+                decision.prior_movement_evidence_id::text as prior_evidence_id,
+                decision.journey_outcome
+           from public.movement_eligibility_decisions decision
+           join public.movement_evidence evidence
+             on evidence.id = decision.movement_evidence_id
+          order by evidence.received_at`,
+      );
+
+      expect(decisions.rows).toEqual([
+        {
+          evidence_id: '16840000-0000-4000-8000-000000000001',
+          prior_evidence_id: null,
+          journey_outcome: 'baseline',
+        },
+        {
+          evidence_id: '16840000-0000-4000-8000-000000000002',
+          prior_evidence_id: '16840000-0000-4000-8000-000000000001',
+          journey_outcome: 'too_fast',
+        },
+        {
+          evidence_id: '16840000-0000-4000-8000-000000000003',
+          prior_evidence_id: '16840000-0000-4000-8000-000000000001',
+          journey_outcome: 'plausible',
+        },
+      ]);
+
+      await expect(
+        pool.query(
+          `update public.movement_eligibility_decisions
+              set journey_outcome = 'baseline'
+            where id = $1::uuid`,
+          ['16850000-0000-4000-8000-000000000002'],
+        ),
+      ).rejects.toThrow('Movement eligibility decisions are immutable');
+    });
+
+    it('ignores expired accepted anchors even before the cleanup sweep runs', async () => {
+      const evidenceIds = [
+        '16840000-0000-4000-8000-000000000011',
+        '16840000-0000-4000-8000-000000000012',
+      ];
+      const decisionIds = [
+        '16850000-0000-4000-8000-000000000011',
+        '16850000-0000-4000-8000-000000000012',
+      ];
+      const service = createMovementEvidenceService(pool, {
+        createId: () => requiredNextId(evidenceIds),
+        createDecisionId: () => requiredNextId(decisionIds),
+        maxPlausibleJourneySpeedMetresPerSecond: 10,
+        retentionMs: 1_000,
+      });
+
+      await service.evaluateJourney(
+        journeySample({
+          acquiredAt: '2026-08-29T10:00:00.000Z',
+          receivedAt: '2026-08-29T10:00:00.000Z',
+        }),
+        'reachable',
+      );
+
+      await expect(
+        service.evaluateJourney(
+          journeySample({
+            acquiredAt: '2026-08-29T10:00:02.000Z',
+            eventId: SECOND_ACTIVE_EVENT_ID,
+            latitude: -26.193,
+            longitude: 28.031,
+            receivedAt: '2026-08-29T10:00:02.000Z',
+          }),
+          'reachable',
+        ),
+      ).resolves.toEqual({ outcome: 'baseline' });
+    });
+
+    it('serializes near-simultaneous impossible attempts idempotently', async () => {
+      const baseline = createMovementEvidenceService(pool, {
+        createId: () => '16840000-0000-4000-8000-000000000021',
+        createDecisionId: () => '16850000-0000-4000-8000-000000000021',
+        maxPlausibleJourneySpeedMetresPerSecond: 10,
+      });
+      await baseline.evaluateJourney(
+        journeySample({
+          acquiredAt: '2026-08-29T10:00:00.000Z',
+          accuracyMetres: 0,
+          receivedAt: '2026-08-29T10:00:00.000Z',
+        }),
+        'reachable',
+      );
+
+      const first = createMovementEvidenceService(pool, {
+        createId: () => '16840000-0000-4000-8000-000000000022',
+        createDecisionId: () => '16850000-0000-4000-8000-000000000022',
+        maxPlausibleJourneySpeedMetresPerSecond: 10,
+      });
+      const second = createMovementEvidenceService(pool, {
+        createId: () => '16840000-0000-4000-8000-000000000023',
+        createDecisionId: () => '16850000-0000-4000-8000-000000000023',
+        maxPlausibleJourneySpeedMetresPerSecond: 10,
+      });
+      const impossible = journeySample({
+        acquiredAt: '2026-08-29T10:00:01.000Z',
+        accuracyMetres: 0,
+        eventId: SECOND_ACTIVE_EVENT_ID,
+        latitude: -26.193,
+        longitude: 28.031,
+        receivedAt: '2026-08-29T10:00:01.000Z',
+      });
+
+      await expect(
+        Promise.all([
+          first.evaluateJourney(impossible, 'reachable'),
+          second.evaluateJourney(impossible, 'reachable'),
+        ]),
+      ).resolves.toEqual([{ outcome: 'too_fast' }, { outcome: 'too_fast' }]);
+
+      const counts = await pool.query<{
+        decision_count: string;
+        evidence_count: string;
+      }>(
+        `select
+           (select count(*)::text
+              from public.movement_evidence
+             where event_id = $1::uuid) as evidence_count,
+           (select count(*)::text
+              from public.movement_eligibility_decisions decision
+              join public.movement_evidence evidence
+                on evidence.id = decision.movement_evidence_id
+             where evidence.event_id = $1::uuid) as decision_count`,
+        [SECOND_ACTIVE_EVENT_ID],
+      );
+      expect(counts.rows[0]).toEqual({
+        evidence_count: '1',
+        decision_count: '1',
+      });
+    }, 30_000);
 
     async function insertSample(input: {
       id: string;
@@ -491,4 +705,38 @@ function sample() {
     acquiredAt: new Date('2026-08-29T09:59:30.000Z'),
     receivedAt: new Date('2026-08-29T10:00:00.000Z'),
   };
+}
+
+function journeySample({
+  acquiredAt,
+  accuracyMetres = 10,
+  eventId = EVENT_ID,
+  latitude = -26.19205,
+  longitude = 28.03038,
+  receivedAt,
+}: {
+  acquiredAt: string;
+  accuracyMetres?: number;
+  eventId?: string;
+  latitude?: number;
+  longitude?: number;
+  receivedAt: string;
+}) {
+  return {
+    playerId: PLAYER_ID,
+    eventId,
+    latitude,
+    longitude,
+    accuracyMetres,
+    acquiredAt: new Date(acquiredAt),
+    receivedAt: new Date(receivedAt),
+  };
+}
+
+function requiredNextId(ids: string[]): string {
+  const id = ids.shift();
+  if (!id) {
+    throw new Error('Movement journey test ID sequence was exhausted.');
+  }
+  return id;
 }
