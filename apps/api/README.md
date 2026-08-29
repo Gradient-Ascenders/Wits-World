@@ -695,6 +695,24 @@ Location is submitted only when required for an eligibility operation.
 
 The current endpoint does not continuously track the player.
 
+For issue `#168`, the endpoint persists one validated sample only after the
+authenticated player requests eligibility and the event is confirmed as
+published and active. The internal record contains the server-resolved player,
+event context, coordinates, accuracy, acquisition/receipt times, and expiry. It
+is not returned through an API. Equal or older acquisition timestamps are
+checked against the player's latest physical sample. Older samples and equal
+timestamps with different coordinates or accuracy are rejected with
+`409 NON_MONOTONIC_MOVEMENT_EVIDENCE`. An identical equal-timestamp retry for
+the same event is idempotent; the same physical sample may also be associated
+with another active event without weakening the player-global sequence.
+
+Precise evidence defaults to a provisional 24-hour retention configured by
+`MOVEMENT_EVIDENCE_RETENTION_MS`. An idempotent API worker deletes expired rows
+at `MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS`; account-deletion initiation removes
+the player's rows transactionally. Ordinary logs redact all submitted location
+fields. See the
+[movement-evidence design](../../docs/database/movement-evidence.md).
+
 The API treats latitude, longitude, accuracy, and acquisition time as
 browser-supplied claims. It independently determines:
 

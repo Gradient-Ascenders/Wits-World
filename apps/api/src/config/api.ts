@@ -1,3 +1,12 @@
+import {
+  MAX_NODE_TIMER_DELAY_MS,
+  MIN_MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS,
+} from '../events/movement-evidence-cleanup-scheduler.js';
+import {
+  MAX_MOVEMENT_EVIDENCE_RETENTION_MS,
+  MIN_MOVEMENT_EVIDENCE_RETENTION_MS,
+} from '../events/movement-evidence.js';
+
 export const apiLogLevels = [
   'fatal',
   'error',
@@ -15,6 +24,8 @@ export interface ApiConfig {
   port: number;
   logLevel: ApiLogLevel;
   accountDeletionRetryIntervalMs: number;
+  movementEvidenceCleanupIntervalMs: number;
+  movementEvidenceRetentionMs: number;
   rateLimitMaxRequests: number;
   rateLimitWindowMs: number;
 }
@@ -42,6 +53,12 @@ export function buildApiConfig({
     env.RATE_LIMIT_MAX_REQUESTS?.trim() ?? '120',
   );
   const rateLimitWindowMs = Number(env.RATE_LIMIT_WINDOW_MS?.trim() ?? '60000');
+  const movementEvidenceRetentionMs = Number(
+    env.MOVEMENT_EVIDENCE_RETENTION_MS?.trim() ?? '86400000',
+  );
+  const movementEvidenceCleanupIntervalMs = Number(
+    env.MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS?.trim() ?? '60000',
+  );
 
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {
     throw new Error('PORT must be an integer between 1 and 65535.');
@@ -70,11 +87,34 @@ export function buildApiConfig({
     );
   }
 
+  if (
+    !Number.isSafeInteger(movementEvidenceRetentionMs) ||
+    movementEvidenceRetentionMs < MIN_MOVEMENT_EVIDENCE_RETENTION_MS ||
+    movementEvidenceRetentionMs > MAX_MOVEMENT_EVIDENCE_RETENTION_MS
+  ) {
+    throw new Error(
+      `MOVEMENT_EVIDENCE_RETENTION_MS must be a safe integer between ${MIN_MOVEMENT_EVIDENCE_RETENTION_MS} and ${MAX_MOVEMENT_EVIDENCE_RETENTION_MS} milliseconds.`,
+    );
+  }
+
+  if (
+    !Number.isSafeInteger(movementEvidenceCleanupIntervalMs) ||
+    movementEvidenceCleanupIntervalMs <
+      MIN_MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS ||
+    movementEvidenceCleanupIntervalMs > MAX_NODE_TIMER_DELAY_MS
+  ) {
+    throw new Error(
+      `MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS must be a safe integer between ${MIN_MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS} and ${MAX_NODE_TIMER_DELAY_MS} milliseconds.`,
+    );
+  }
+
   return {
     host,
     port,
     logLevel: logLevelValue,
     accountDeletionRetryIntervalMs,
+    movementEvidenceCleanupIntervalMs,
+    movementEvidenceRetentionMs,
     rateLimitMaxRequests,
     rateLimitWindowMs,
   };

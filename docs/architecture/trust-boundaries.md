@@ -301,10 +301,15 @@ operation, such as:
 - requesting nearby unvisited trail and standalone event guidance; or
 - submitting an event attempt.
 
-The final location-retention policy remains an open decision.
-
-Until that decision is resolved, processing a location claim must not be assumed
-to require permanent storage of the exact submitted coordinates.
+Issue `#168` permits precise persistence only after an authenticated player
+initiates the active Explore/event flow for a confirmed active event. Existing
+bounded eligibility refreshes may continue for meaningful location changes
+while that event remains selected and the page stays visible; hidden or closed
+pages do not persist a background stream. The current
+provisional retention is configurable and defaults to 24 hours; automatic
+cleanup and account-deletion removal are documented in
+[privacy-limited movement evidence](../database/movement-evidence.md). No public
+history API or longer-lived derived path is created.
 
 ## Open security decisions
 
@@ -312,7 +317,8 @@ The following decisions or operational evidence still require review:
 
 - further campus evidence for the provisional `75 m` event radius, two-minute
   location-claim freshness threshold, and accuracy-envelope handling;
-- location-data retention;
+- final production confirmation of the provisional movement-evidence retention
+  duration and cleanup operation;
 - operational logging and monitoring providers; and
 - asynchronous PvP challenge opt-out, blocking/reporting, moderation,
   notification, invitation-retention, and broader per-player limit policies.

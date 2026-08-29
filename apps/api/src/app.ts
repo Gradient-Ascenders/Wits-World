@@ -19,6 +19,7 @@ import { healthRoutes } from './routes/health.js';
 
 import type { EventDiscoveryService } from './events/event-discovery.js';
 import type { EventEligibilityService } from './events/event-eligibility.js';
+import type { MovementEvidenceService } from './events/movement-evidence.js';
 import { eventRoutes } from './routes/events.js';
 
 import cors from '@fastify/cors';
@@ -75,6 +76,7 @@ import { authorCampaignRoutes } from './routes/author-campaigns.js';
 export interface EventServices {
   discovery: EventDiscoveryService;
   eligibility: EventEligibilityService;
+  movementEvidence?: MovementEvidenceService;
   clock?: () => Date;
   maxLocationClaimAgeMs?: number;
 }
@@ -83,6 +85,9 @@ export interface BuildAppOptions {
   authConfig: AuthConfig;
   config?: Pick<ApiConfig, 'logLevel'>;
   logger?: boolean;
+  logDestination?: {
+    write(message: string): void;
+  };
   accessTokenVerifier?: AccessTokenVerifier;
   eventServices?: EventServices;
   corsConfig?: CorsConfig;
@@ -137,6 +142,7 @@ export async function buildApp({
     logLevel: 'info',
   },
   logger = true,
+  logDestination,
   accessTokenVerifier,
   eventServices,
   corsConfig,
@@ -163,9 +169,22 @@ export async function buildApp({
               'req.body.reauthenticationToken',
               'request.body.reauthenticationToken',
               'body.reauthenticationToken',
+              'req.body.latitude',
+              'req.body.longitude',
+              'req.body.accuracyMetres',
+              'req.body.acquiredAt',
+              'request.body.latitude',
+              'request.body.longitude',
+              'request.body.accuracyMetres',
+              'request.body.acquiredAt',
+              'body.latitude',
+              'body.longitude',
+              'body.accuracyMetres',
+              'body.acquiredAt',
             ],
             censor: '[REDACTED]',
           },
+          ...(logDestination ? { stream: logDestination } : {}),
         }
       : false,
     genReqId: () => randomUUID(),
@@ -343,6 +362,7 @@ export async function buildApp({
       prefix: '/api/v1',
       discoveryService: eventServices.discovery,
       eligibilityService: eventServices.eligibility,
+      movementEvidenceService: eventServices.movementEvidence,
       clock: eventServices.clock,
       maxLocationClaimAgeMs: eventServices.maxLocationClaimAgeMs,
     });

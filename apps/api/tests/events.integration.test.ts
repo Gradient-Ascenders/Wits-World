@@ -12,6 +12,10 @@ import type {
   EventEligibilityResult,
   EventEligibilityService,
 } from '../src/events/event-eligibility.js';
+import {
+  NonMonotonicMovementEvidenceError,
+  type MovementEvidenceService,
+} from '../src/events/movement-evidence.js';
 
 import type { PlayerIdentityService } from '../src/players/player-identity.js';
 
@@ -56,11 +60,17 @@ const activeEvent: PlayerEvent = {
 let app: FastifyInstance;
 let discoveryList: ReturnType<typeof createDiscoveryMock>;
 let eligibilityEvaluate: ReturnType<typeof createEligibilityMock>;
+let movementEvidenceRecord: ReturnType<
+  typeof vi.fn<MovementEvidenceService['record']>
+>;
 let playerResolve: ReturnType<typeof createPlayerResolveMock>;
 
 beforeEach(async () => {
   discoveryList = createDiscoveryMock();
   eligibilityEvaluate = createEligibilityMock();
+  movementEvidenceRecord = vi
+    .fn<MovementEvidenceService['record']>()
+    .mockResolvedValue(undefined);
   playerResolve = createPlayerResolveMock();
 
   const discoveryService: EventDiscoveryService = {
@@ -69,6 +79,10 @@ beforeEach(async () => {
 
   const eligibilityService: EventEligibilityService = {
     evaluate: eligibilityEvaluate,
+  };
+  const movementEvidenceService: MovementEvidenceService = {
+    record: movementEvidenceRecord,
+    purgeExpired: vi.fn().mockResolvedValue(0),
   };
 
   const accessTokenVerifier: AccessTokenVerifier = {
@@ -84,6 +98,7 @@ beforeEach(async () => {
     eventServices: {
       discovery: discoveryService,
       eligibility: eligibilityService,
+      movementEvidence: movementEvidenceService,
       clock: () => receivedAt,
       maxLocationClaimAgeMs: 120_000,
     },
@@ -177,6 +192,7 @@ describe('event eligibility API', () => {
 
     expect(response.statusCode).toBe(401);
     expect(eligibilityEvaluate).not.toHaveBeenCalled();
+    expect(movementEvidenceRecord).not.toHaveBeenCalled();
   });
 
   it('rejects a deletion-pending player before evaluating eligibility', async () => {
@@ -197,6 +213,7 @@ describe('event eligibility API', () => {
 
     expect(playerResolve).toHaveBeenCalledWith(authenticatedIdentity);
     expect(eligibilityEvaluate).not.toHaveBeenCalled();
+    expect(movementEvidenceRecord).not.toHaveBeenCalled();
   });
 
   it('authenticates before validating a malformed eligibility request', async () => {
@@ -243,6 +260,15 @@ describe('event eligibility API', () => {
       eventId: EVENT_ID,
       latitude: -26.19205,
       longitude: 28.03038,
+    });
+    expect(movementEvidenceRecord).toHaveBeenCalledWith({
+      playerId: activeLocalPlayer.id,
+      eventId: EVENT_ID,
+      latitude: -26.19205,
+      longitude: 28.03038,
+      accuracyMetres: 10,
+      acquiredAt: new Date('2026-08-10T11:59:30.000Z'),
+      receivedAt,
     });
   });
 
@@ -306,6 +332,7 @@ describe('event eligibility API', () => {
     });
 
     expect(eligibilityEvaluate).not.toHaveBeenCalled();
+    expect(movementEvidenceRecord).not.toHaveBeenCalled();
   });
 
   it('returns retry for a future acquisition timestamp', async () => {
@@ -323,6 +350,7 @@ describe('event eligibility API', () => {
     });
 
     expect(eligibilityEvaluate).not.toHaveBeenCalled();
+    expect(movementEvidenceRecord).not.toHaveBeenCalled();
   });
 
   it('rejects malformed timestamps', async () => {
@@ -337,6 +365,7 @@ describe('event eligibility API', () => {
     });
 
     expect(eligibilityEvaluate).not.toHaveBeenCalled();
+    expect(movementEvidenceRecord).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -377,6 +406,7 @@ describe('event eligibility API', () => {
     });
 
     expect(eligibilityEvaluate).not.toHaveBeenCalled();
+    expect(movementEvidenceRecord).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -401,6 +431,7 @@ describe('event eligibility API', () => {
     });
 
     expect(eligibilityEvaluate).not.toHaveBeenCalled();
+    expect(movementEvidenceRecord).not.toHaveBeenCalled();
   });
 
   it('returns 404 when an event does not exist', async () => {
@@ -417,6 +448,7 @@ describe('event eligibility API', () => {
       code: 'EVENT_NOT_FOUND',
       detail: 'The requested event was not found.',
     });
+    expect(movementEvidenceRecord).not.toHaveBeenCalled();
   });
 
   it('does not reveal unpublished events', async () => {
@@ -433,6 +465,26 @@ describe('event eligibility API', () => {
       status: 404,
       code: 'EVENT_NOT_FOUND',
     });
+    expect(movementEvidenceRecord).not.toHaveBeenCalled();
+  });
+
+  it('rejects reordered movement evidence without exposing the prior sample', async () => {
+    movementEvidenceRecord.mockRejectedValueOnce(
+      new NonMonotonicMovementEvidenceError(),
+    );
+
+    const response = await authenticatedEligibilityRequest();
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      status: 409,
+      code: 'NON_MONOTONIC_MOVEMENT_EVIDENCE',
+      detail:
+        'Use a newly acquired location before checking eligibility again.',
+      requestId: expect.any(String),
+    });
+    expect(JSON.stringify(response.json())).not.toContain('-26.19205');
+    expect(JSON.stringify(response.json())).not.toContain('28.03038');
   });
 
   it.each(['not_started', 'ended'] as const)(

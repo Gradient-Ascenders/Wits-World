@@ -188,6 +188,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0028_create_asynchronous_pvp_persistence.sql',
           '0029_curate_author_content_lifecycle.sql',
           '0030_create_campaign_scheduling.sql',
+          '0031_create_movement_evidence.sql',
         ],
       });
 
@@ -308,6 +309,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0028_create_asynchronous_pvp_persistence.sql',
           '0029_curate_author_content_lifecycle.sql',
           '0030_create_campaign_scheduling.sql',
+          '0031_create_movement_evidence.sql',
         ],
       });
 

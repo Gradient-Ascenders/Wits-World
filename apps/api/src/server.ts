@@ -31,6 +31,8 @@ import { createProgressionReadService } from './progression/progression-read-ser
 import { createAuthorTrailService } from './trails/author-trail-service.js';
 import { createPlayerTrailService } from './trails/player-trail-service.js';
 import { createAuthorCampaignService } from './campaigns/author-campaign-service.js';
+import { createMovementEvidenceService } from './events/movement-evidence.js';
+import { createMovementEvidenceCleanupScheduler } from './events/movement-evidence-cleanup-scheduler.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
@@ -81,6 +83,9 @@ async function startServer(): Promise<void> {
   });
   const progressionReadService = createProgressionReadService(database);
   const playerIdentityService = createPlayerIdentityService(database);
+  const movementEvidenceService = createMovementEvidenceService(database, {
+    retentionMs: config.movementEvidenceRetentionMs,
+  });
 
   const app = await buildApp({
     config,
@@ -117,6 +122,7 @@ async function startServer(): Promise<void> {
     eventServices: {
       discovery: createEventDiscoveryService(database),
       eligibility: createEventEligibilityService(database),
+      movementEvidence: movementEvidenceService,
     },
 
     trailServices: {
@@ -146,9 +152,16 @@ async function startServer(): Promise<void> {
       intervalMs: config.accountDeletionRetryIntervalMs,
     },
   );
+  const movementEvidenceCleanupScheduler =
+    createMovementEvidenceCleanupScheduler(
+      movementEvidenceService,
+      app.log,
+      config.movementEvidenceCleanupIntervalMs,
+    );
 
   app.addHook('onClose', async () => {
     await accountDeletionRetryScheduler.stop();
+    await movementEvidenceCleanupScheduler.stop();
     await database.end();
   });
 
@@ -159,6 +172,7 @@ async function startServer(): Promise<void> {
     });
 
     accountDeletionRetryScheduler.start();
+    movementEvidenceCleanupScheduler.start();
 
     app.log.info(
       {
