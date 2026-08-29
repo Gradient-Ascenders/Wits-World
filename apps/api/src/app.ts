@@ -60,6 +60,8 @@ import { authorChallengeRoutes } from './routes/author-challenges.js';
 
 import type { AuthorCardService } from './cards/author-card-service.js';
 import { authorCardRoutes } from './routes/author-cards.js';
+import type { AuthorContentReadService } from './authoring/content-read-service.js';
+import { authorContentRoutes } from './routes/author-content.js';
 import type { AuthenticatedRateProtection } from './security/rate-protection.js';
 import type { ProgressionReadService } from './progression/progression-read-service.js';
 import { progressionRoutes } from './routes/progression.js';
@@ -117,6 +119,7 @@ export interface AuthorContentServices {
   challenges?: AuthorChallengeService;
   cards?: AuthorCardService;
   trails?: AuthorTrailService;
+  read?: AuthorContentReadService;
 }
 
 export interface TrailServices {
@@ -376,6 +379,13 @@ export async function buildApp({
       service: trailServices.player,
       clock: trailServices.clock,
       maxLocationClaimAgeMs: trailServices.maxLocationClaimAgeMs,
+    });
+  }
+
+  if (authorContentServices?.read) {
+    await app.register(authorContentRoutes, {
+      prefix: '/api/v1',
+      service: authorContentServices.read,
     });
   }
 

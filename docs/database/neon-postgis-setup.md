@@ -85,9 +85,10 @@ npm run db:seed:test --workspace @wits-world/api
 ```
 
 The Basic demonstration events and challenge are provisional, non-production
-content. Their fixed identifiers make repeated demo-seed runs update the
-fixtures rather than create duplicates. Run the following when the complete
-Basic journey is required:
+content. Their fixed identifiers and conflict-safe inserts make repeated
+demo-seed runs leave already-published, immutable fixtures unchanged rather
+than create duplicates. Run the following when the complete Basic journey is
+required:
 
 ```bash
 npm run db:seed:test --workspace @wits-world/api -- --basic-demo
@@ -163,4 +164,5 @@ Use the production target only with explicit release authority. Never substitute
   database or branch.
 
 The preceding document was generated and edited with the assistance of:
-Codex-CLI[GPT-5], Codex[GPT-5], and Codex[GPT-5.6 Sol].
+Codex-CLI[GPT-5], Codex[GPT-5], Codex[GPT-5.6 Sol], and
+Codex[gpt-5.6-sol].

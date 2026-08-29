@@ -247,11 +247,34 @@ on conflict (card_definition_id, position) do update set
   modifier_operation = excluded.modifier_operation,
   modifier_duration_turns = excluded.modifier_duration_turns;
 
-update public.card_definitions definition
-set
-  authoring_status = 'published',
-  is_active = true,
-  updated_at = now()
-from basic_seed_cards seed
-where definition.id = seed.id
-  and definition.authoring_status = 'draft';
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'card_definitions'
+      and column_name = 'publication_provenance'
+  ) then
+    update public.card_definitions definition
+    set
+      authoring_status = 'published',
+      is_active = true,
+      publication_provenance = 'controlled_seed',
+      version = definition.version + 1,
+      updated_at = now()
+    from basic_seed_cards seed
+    where definition.id = seed.id
+      and definition.authoring_status = 'draft';
+  else
+    update public.card_definitions definition
+    set
+      authoring_status = 'published',
+      is_active = true,
+      updated_at = now()
+    from basic_seed_cards seed
+    where definition.id = seed.id
+      and definition.authoring_status = 'draft';
+  end if;
+end;
+$$;

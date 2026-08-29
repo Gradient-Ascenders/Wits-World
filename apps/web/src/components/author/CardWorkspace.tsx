@@ -10,7 +10,6 @@ import {
 import {
   AuthorApiError,
   createAuthorCard,
-  publishAuthorCard,
   retireAuthorCard,
   updateAuthorCard,
   type AuthorCard,
@@ -321,6 +320,7 @@ function CardForm({
         ? await updateAuthorCard({
             apiBaseUrl,
             cardId: card.id,
+            expectedVersion: card.version,
             getAccessToken,
             input: result.input,
             signal: controller.signal,
@@ -355,8 +355,8 @@ function CardForm({
     }
   }
 
-  async function lifecycle(action: 'publish' | 'retire') {
-    if (!card || (action === 'publish' && dirty)) return;
+  async function retireCard() {
+    if (!card) return;
     setBusy(true);
     setApiError(null);
     const controller = new AbortController();
@@ -367,29 +367,20 @@ function CardForm({
       'cards',
     );
     try {
-      const next =
-        action === 'publish'
-          ? await publishAuthorCard({
-              apiBaseUrl,
-              cardId: card.id,
-              getAccessToken,
-              signal: controller.signal,
-            })
-          : await retireAuthorCard({
-              apiBaseUrl,
-              cardId: card.id,
-              getAccessToken,
-              signal: controller.signal,
-            });
+      const next = await retireAuthorCard({
+        apiBaseUrl,
+        cardId: card.id,
+        expectedVersion: card.version,
+        getAccessToken,
+        signal: controller.signal,
+      });
       if (operationRef.current !== controller) return;
       onSaved(
         next,
         ownerId,
         interaction,
         ticket,
-        action === 'publish'
-          ? 'Card published and active.'
-          : 'Card retired. Existing owned copies remain intact.',
+        'Card retired. Existing owned copies remain intact.',
       );
       if (interactionActiveRef.current) setConfirmRetire(false);
     } catch (error) {
@@ -447,8 +438,8 @@ function CardForm({
 
       {!editable ? (
         <p className="author-notice">
-          Published and retired card definitions are immutable. Create a
-          replacement definition to change gameplay metadata.
+          Only draft card definitions are editable. Review, approved, published,
+          and retired definitions are read-only.
         </p>
       ) : null}
       <AuthorFeedback error={apiError} refObject={feedbackRef} />
@@ -759,18 +750,7 @@ function CardForm({
               {busy ? 'Saving…' : card ? 'Save card' : 'Create draft card'}
             </button>
           ) : null}
-          {card?.authoringStatus === 'draft' ? (
-            <button
-              className="button button--quiet"
-              aria-describedby={dirty ? 'card-publish-dirty' : undefined}
-              disabled={busy || dirty}
-              onClick={() => void lifecycle('publish')}
-              type="button"
-            >
-              Publish card
-            </button>
-          ) : null}
-          {card && card.authoringStatus !== 'retired' ? (
+          {card?.authoringStatus === 'published' ? (
             <button
               className="button button--danger"
               disabled={busy}
@@ -781,9 +761,9 @@ function CardForm({
             </button>
           ) : null}
         </div>
-        {dirty ? (
-          <p className="author-notice" id="card-publish-dirty" role="status">
-            Unsaved card changes. Save before publishing.
+        {card ? (
+          <p className="author-notice" role="status">
+            Submit, review, and publication actions are currently API-only.
           </p>
         ) : null}
         {confirmRetire ? (
@@ -797,7 +777,7 @@ function CardForm({
               <button
                 className="button button--danger"
                 disabled={busy}
-                onClick={() => void lifecycle('retire')}
+                onClick={() => void retireCard()}
                 type="button"
               >
                 Confirm retirement

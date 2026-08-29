@@ -84,6 +84,10 @@ The generated OpenAPI groups the current contract into these areas:
 | Progression                | Current-player points, streaks, achievements, rank, and privacy-safe paginated standings           |
 | Authoring                  | Author-only event, challenge, question, card, and trail lifecycle operations plus audit boundaries |
 
+The [Author curation contract](./author-curation-api-contract.md) explains the
+five-state review workflow, optimistic concurrency, safe review queue and audit
+history, and temporary Author-console limitation.
+
 The OpenAPI document is the endpoint-level reference for parameters, bodies,
 status codes, and response shapes. Narrative documents explain domain contracts
 that need more context, including the
@@ -163,6 +167,7 @@ protected operation.
 ## Related documentation
 
 - [Trust boundaries](./trust-boundaries.md)
+- [Author curation API contract](./author-curation-api-contract.md)
 - [Asynchronous PvP API contract](./asynchronous-pvp-api-contract.md)
 - [High-level data flow](./data-flow.md)
 - [External integrations](./external-integrations.md)
@@ -172,5 +177,5 @@ protected operation.
 ## AI declaration
 
 This API overview was generated, edited, and reviewed with the assistance of
-Codex[GPT-5]. It summarises current repository schemas and recorded deployment
+Codex[GPT-5] and Codex[gpt-5.6-sol]. It summarises current repository schemas and recorded deployment
 evidence rather than replacing the generated OpenAPI contract.

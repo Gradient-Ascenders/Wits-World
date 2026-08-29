@@ -109,6 +109,8 @@ It is responsible for:
 - validating request parameters and bodies;
 - enforcing role-based authorisation;
 - enforcing object-level authorisation;
+- enforcing Author content state, optimistic versions, different-reviewer
+  approval/return, readiness, and publication provenance;
 - checking event publication and availability;
 - evaluating location claims;
 - deriving ordered trail progress and nearby current steps;
@@ -135,6 +137,13 @@ such as:
 - `progressionPoints`;
 - `trailCompletedSteps`; or
 - `currentTrailPosition`.
+
+Author requests also cannot assert `isAuthor`, actor identity, `canReview`,
+content status, version success, readiness, reviewer metadata, or publication
+provenance. These are resolved or derived by the API and database. Safe review
+and audit responses expose local actor IDs and current Player Names, never Auth0
+subjects, email, private answers, coordinates, or full content bodies. See the
+[Author curation contract](./author-curation-api-contract.md).
 
 Progression profile and standings requests contain no player selector. The API
 uses the authenticated active player for the private profile and current-rank
@@ -317,4 +326,5 @@ validated.
 
 This document was originally planned and generated with assistance from
 ChatGPT-Web[GPT-5.6 Thinking], and was reviewed and edited for Sprint 1 release
-validation with assistance from ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].
+validation with assistance from ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5], and
+Codex[gpt-5.6-sol].

@@ -1178,7 +1178,9 @@ async function seedPublishedChallenge(
           radius_metres,
           starts_at,
           ends_at,
-          is_published
+          is_published,
+          authoring_status,
+          publication_provenance
         )
         values (
           $1,
@@ -1190,7 +1192,9 @@ async function seedPublishedChallenge(
           75,
           '2026-09-01T09:00:00.000Z',
           '2026-09-01T11:00:00.000Z',
-          true
+          true,
+          'published',
+          'controlled_seed'
         )
       `,
       [EVENT_ID],
@@ -1270,6 +1274,8 @@ async function seedPublishedChallenge(
         update public.challenge_questions
         set
           status = 'published',
+          version = version + 1,
+          publication_provenance = 'controlled_seed',
           updated_at = now()
         where challenge_id = $1
       `,
@@ -1281,6 +1287,8 @@ async function seedPublishedChallenge(
         update public.event_challenges
         set
           status = 'published',
+          version = version + 1,
+          publication_provenance = 'controlled_seed',
           updated_at = now()
         where id = $1
       `,

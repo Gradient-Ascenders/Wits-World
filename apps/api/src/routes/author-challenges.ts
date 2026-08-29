@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 
+import { throwAuthorContentWorkflowError } from '../authoring/workflow-api-error.js';
 import {
   AuthorChallengeEventNotFoundError,
   AuthorChallengeNotFoundError,
@@ -46,6 +47,17 @@ interface OrderingQuestionBody {
 }
 
 type QuestionBody = MultipleChoiceQuestionBody | OrderingQuestionBody;
+type UpdateQuestionBody = QuestionBody & { expectedVersion: number };
+
+interface LifecycleBody {
+  expectedVersion: number;
+  note?: string;
+}
+
+interface ReturnBody {
+  expectedVersion: number;
+  reason: string;
+}
 
 interface CreateChallengeBody {
   format?: ChallengeFormat;
@@ -99,10 +111,46 @@ const bearerSecurity = [
   },
 ] as const;
 
-const emptyBodySchema = {
+const lifecycleBodySchema = {
   type: 'object',
   additionalProperties: false,
-  maxProperties: 0,
+  required: ['expectedVersion'],
+  properties: {
+    expectedVersion: { type: 'integer', minimum: 0 },
+    note: { type: 'string', minLength: 1, maxLength: 1000, pattern: '\\S' },
+  },
+} as const;
+
+const returnBodySchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['expectedVersion', 'reason'],
+  properties: {
+    expectedVersion: { type: 'integer', minimum: 0 },
+    reason: { type: 'string', minLength: 1, maxLength: 1000, pattern: '\\S' },
+  },
+} as const;
+
+const lifecycleRequired = [
+  'version',
+  'submittedBy',
+  'submittedAt',
+  'reviewedBy',
+  'reviewedAt',
+  'publicationProvenance',
+] as const;
+
+const lifecycleProperties = {
+  version: { type: 'integer', minimum: 0 },
+  submittedBy: { type: 'string', format: 'uuid', nullable: true },
+  submittedAt: { type: 'string', format: 'date-time', nullable: true },
+  reviewedBy: { type: 'string', format: 'uuid', nullable: true },
+  reviewedAt: { type: 'string', format: 'date-time', nullable: true },
+  publicationProvenance: {
+    type: 'string',
+    enum: ['legacy', 'controlled_seed', 'reviewed', null],
+    nullable: true,
+  },
 } as const;
 
 const eventParamsSchema = {
@@ -151,6 +199,7 @@ const challengeSchema = {
     'status',
     'createdAt',
     'updatedAt',
+    ...lifecycleRequired,
   ],
   properties: {
     challengeId: {
@@ -167,7 +216,7 @@ const challengeSchema = {
     },
     status: {
       type: 'string',
-      enum: ['draft', 'published', 'retired'],
+      enum: ['draft', 'in_review', 'approved', 'published', 'retired'],
     },
     createdAt: {
       type: 'string',
@@ -177,6 +226,7 @@ const challengeSchema = {
       type: 'string',
       format: 'date-time',
     },
+    ...lifecycleProperties,
   },
 } as const;
 
@@ -216,6 +266,7 @@ const questionSchema = {
     'acceptedChoicePosition',
     'createdAt',
     'updatedAt',
+    ...lifecycleRequired,
   ],
   properties: {
     questionId: {
@@ -250,7 +301,7 @@ const questionSchema = {
     },
     status: {
       type: 'string',
-      enum: ['draft', 'published', 'retired'],
+      enum: ['draft', 'in_review', 'approved', 'published', 'retired'],
     },
     choices: {
       type: 'array',
@@ -287,6 +338,7 @@ const questionSchema = {
       type: 'string',
       format: 'date-time',
     },
+    ...lifecycleProperties,
   },
 } as const;
 
@@ -315,6 +367,7 @@ const orderingQuestionSchema = {
     'items',
     'createdAt',
     'updatedAt',
+    ...lifecycleRequired,
   ],
   properties: {
     questionId: { type: 'string', format: 'uuid' },
@@ -325,7 +378,10 @@ const orderingQuestionSchema = {
     explanation: {
       anyOf: [{ type: 'string' }, { type: 'null' }],
     },
-    status: { type: 'string', enum: ['draft', 'published', 'retired'] },
+    status: {
+      type: 'string',
+      enum: ['draft', 'in_review', 'approved', 'published', 'retired'],
+    },
     items: {
       type: 'array',
       minItems: 4,
@@ -334,6 +390,7 @@ const orderingQuestionSchema = {
     },
     createdAt: { type: 'string', format: 'date-time' },
     updatedAt: { type: 'string', format: 'date-time' },
+    ...lifecycleProperties,
   },
 } as const;
 
@@ -405,6 +462,17 @@ const questionBodySchema = {
       },
     },
   ],
+} as const;
+
+const updateQuestionBodySchema = {
+  oneOf: questionBodySchema.oneOf.map((schema) => ({
+    ...schema,
+    required: [...schema.required, 'expectedVersion'],
+    properties: {
+      ...schema.properties,
+      expectedVersion: { type: 'integer', minimum: 0 },
+    },
+  })),
 } as const;
 
 const createChallengeBodySchema = {
@@ -627,7 +695,7 @@ export const authorChallengeRoutes: FastifyPluginAsync<
 
   app.put<{
     Params: QuestionParams;
-    Body: QuestionBody;
+    Body: UpdateQuestionBody;
   }>(
     '/author/questions/:questionId',
     {
@@ -638,7 +706,7 @@ export const authorChallengeRoutes: FastifyPluginAsync<
         tags: ['Authoring'],
         security: bearerSecurity,
         params: questionParamsSchema,
-        body: questionBodySchema,
+        body: updateQuestionBodySchema,
         response: {
           200: {
             type: 'object',
@@ -667,7 +735,78 @@ export const authorChallengeRoutes: FastifyPluginAsync<
           question: await service.updateQuestion({
             actorPlayerId: author.id,
             questionId: request.params.questionId,
+            expectedVersion: request.body.expectedVersion,
             ...normalizeQuestionBody(request.body),
+          }),
+          requestId: request.id,
+        };
+      } catch (error) {
+        throwAuthorChallengeError(error);
+      }
+    },
+  );
+
+  for (const action of ['submit', 'approve'] as const) {
+    app.post<{ Params: QuestionParams; Body: LifecycleBody }>(
+      `/author/questions/:questionId/${action}`,
+      {
+        onRequest: authorGuards,
+        schema: {
+          operationId: `${action}AuthorQuestion`,
+          summary: `${action === 'submit' ? 'Submit' : 'Approve'} a question`,
+          tags: ['Authoring'],
+          security: bearerSecurity,
+          params: questionParamsSchema,
+          body: lifecycleBodySchema,
+          response: lifecycleQuestionResponses(),
+        },
+      },
+      async (request) => {
+        const author = requireResolvedAuthor(request);
+        try {
+          const transition =
+            action === 'submit'
+              ? service.submitQuestion
+              : service.approveQuestion;
+          return {
+            question: await transition({
+              actorPlayerId: author.id,
+              questionId: request.params.questionId,
+              expectedVersion: request.body.expectedVersion,
+              note: request.body.note,
+            }),
+            requestId: request.id,
+          };
+        } catch (error) {
+          throwAuthorChallengeError(error);
+        }
+      },
+    );
+  }
+
+  app.post<{ Params: QuestionParams; Body: ReturnBody }>(
+    '/author/questions/:questionId/return',
+    {
+      onRequest: authorGuards,
+      schema: {
+        operationId: 'returnAuthorQuestion',
+        summary: 'Return a question to draft',
+        tags: ['Authoring'],
+        security: bearerSecurity,
+        params: questionParamsSchema,
+        body: returnBodySchema,
+        response: lifecycleQuestionResponses(),
+      },
+    },
+    async (request) => {
+      const author = requireResolvedAuthor(request);
+      try {
+        return {
+          question: await service.returnQuestion({
+            actorPlayerId: author.id,
+            questionId: request.params.questionId,
+            expectedVersion: request.body.expectedVersion,
+            note: request.body.reason,
           }),
           requestId: request.id,
         };
@@ -679,7 +818,7 @@ export const authorChallengeRoutes: FastifyPluginAsync<
 
   app.post<{
     Params: QuestionParams;
-    Body: Record<string, never>;
+    Body: LifecycleBody;
   }>(
     '/author/questions/:questionId/publish',
     {
@@ -690,7 +829,7 @@ export const authorChallengeRoutes: FastifyPluginAsync<
         tags: ['Authoring'],
         security: bearerSecurity,
         params: questionParamsSchema,
-        body: emptyBodySchema,
+        body: lifecycleBodySchema,
         response: lifecycleQuestionResponses(),
       },
     },
@@ -699,10 +838,12 @@ export const authorChallengeRoutes: FastifyPluginAsync<
 
       try {
         return {
-          question: await service.publishQuestion(
-            author.id,
-            request.params.questionId,
-          ),
+          question: await service.publishQuestion({
+            actorPlayerId: author.id,
+            questionId: request.params.questionId,
+            expectedVersion: request.body.expectedVersion,
+            note: request.body.note,
+          }),
           requestId: request.id,
         };
       } catch (error) {
@@ -713,7 +854,7 @@ export const authorChallengeRoutes: FastifyPluginAsync<
 
   app.post<{
     Params: QuestionParams;
-    Body: Record<string, never>;
+    Body: LifecycleBody;
   }>(
     '/author/questions/:questionId/retire',
     {
@@ -724,7 +865,7 @@ export const authorChallengeRoutes: FastifyPluginAsync<
         tags: ['Authoring'],
         security: bearerSecurity,
         params: questionParamsSchema,
-        body: emptyBodySchema,
+        body: lifecycleBodySchema,
         response: lifecycleQuestionResponses(),
       },
     },
@@ -733,10 +874,82 @@ export const authorChallengeRoutes: FastifyPluginAsync<
 
       try {
         return {
-          question: await service.retireQuestion(
-            author.id,
-            request.params.questionId,
-          ),
+          question: await service.retireQuestion({
+            actorPlayerId: author.id,
+            questionId: request.params.questionId,
+            expectedVersion: request.body.expectedVersion,
+            note: request.body.note,
+          }),
+          requestId: request.id,
+        };
+      } catch (error) {
+        throwAuthorChallengeError(error);
+      }
+    },
+  );
+
+  for (const action of ['submit', 'approve'] as const) {
+    app.post<{ Params: ChallengeParams; Body: LifecycleBody }>(
+      `/author/challenges/:challengeId/${action}`,
+      {
+        onRequest: authorGuards,
+        schema: {
+          operationId: `${action}AuthorChallenge`,
+          summary: `${action === 'submit' ? 'Submit' : 'Approve'} a challenge`,
+          tags: ['Authoring'],
+          security: bearerSecurity,
+          params: challengeParamsSchema,
+          body: lifecycleBodySchema,
+          response: lifecycleChallengeResponses(),
+        },
+      },
+      async (request) => {
+        const author = requireResolvedAuthor(request);
+        try {
+          const transition =
+            action === 'submit'
+              ? service.submitChallenge
+              : service.approveChallenge;
+          return {
+            challenge: await transition({
+              actorPlayerId: author.id,
+              challengeId: request.params.challengeId,
+              expectedVersion: request.body.expectedVersion,
+              note: request.body.note,
+            }),
+            requestId: request.id,
+          };
+        } catch (error) {
+          throwAuthorChallengeError(error);
+        }
+      },
+    );
+  }
+
+  app.post<{ Params: ChallengeParams; Body: ReturnBody }>(
+    '/author/challenges/:challengeId/return',
+    {
+      onRequest: authorGuards,
+      schema: {
+        operationId: 'returnAuthorChallenge',
+        summary: 'Return a challenge to draft',
+        tags: ['Authoring'],
+        security: bearerSecurity,
+        params: challengeParamsSchema,
+        body: returnBodySchema,
+        response: lifecycleChallengeResponses(),
+      },
+    },
+    async (request) => {
+      const author = requireResolvedAuthor(request);
+      try {
+        return {
+          challenge: await service.returnChallenge({
+            actorPlayerId: author.id,
+            challengeId: request.params.challengeId,
+            expectedVersion: request.body.expectedVersion,
+            note: request.body.reason,
+          }),
           requestId: request.id,
         };
       } catch (error) {
@@ -747,7 +960,7 @@ export const authorChallengeRoutes: FastifyPluginAsync<
 
   app.post<{
     Params: ChallengeParams;
-    Body: Record<string, never>;
+    Body: LifecycleBody;
   }>(
     '/author/challenges/:challengeId/publish',
     {
@@ -758,7 +971,7 @@ export const authorChallengeRoutes: FastifyPluginAsync<
         tags: ['Authoring'],
         security: bearerSecurity,
         params: challengeParamsSchema,
-        body: emptyBodySchema,
+        body: lifecycleBodySchema,
         response: lifecycleChallengeResponses(),
       },
     },
@@ -767,10 +980,12 @@ export const authorChallengeRoutes: FastifyPluginAsync<
 
       try {
         return {
-          challenge: await service.publishChallenge(
-            author.id,
-            request.params.challengeId,
-          ),
+          challenge: await service.publishChallenge({
+            actorPlayerId: author.id,
+            challengeId: request.params.challengeId,
+            expectedVersion: request.body.expectedVersion,
+            note: request.body.note,
+          }),
           requestId: request.id,
         };
       } catch (error) {
@@ -781,7 +996,7 @@ export const authorChallengeRoutes: FastifyPluginAsync<
 
   app.post<{
     Params: ChallengeParams;
-    Body: Record<string, never>;
+    Body: LifecycleBody;
   }>(
     '/author/challenges/:challengeId/retire',
     {
@@ -792,7 +1007,7 @@ export const authorChallengeRoutes: FastifyPluginAsync<
         tags: ['Authoring'],
         security: bearerSecurity,
         params: challengeParamsSchema,
-        body: emptyBodySchema,
+        body: lifecycleBodySchema,
         response: lifecycleChallengeResponses(),
       },
     },
@@ -801,10 +1016,12 @@ export const authorChallengeRoutes: FastifyPluginAsync<
 
       try {
         return {
-          challenge: await service.retireChallenge(
-            author.id,
-            request.params.challengeId,
-          ),
+          challenge: await service.retireChallenge({
+            actorPlayerId: author.id,
+            challengeId: request.params.challengeId,
+            expectedVersion: request.body.expectedVersion,
+            note: request.body.note,
+          }),
           requestId: request.id,
         };
       } catch (error) {
@@ -882,6 +1099,7 @@ function requireResolvedAuthor(
 }
 
 function throwAuthorChallengeError(error: unknown): never {
+  throwAuthorContentWorkflowError(error);
   if (error instanceof InvalidAuthorQuestionError) {
     throw new ApiError({
       statusCode: 400,

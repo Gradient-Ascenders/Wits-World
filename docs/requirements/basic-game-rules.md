@@ -44,35 +44,44 @@ or ownership result.
 - New accounts receive the Player role. Author assignment and revocation happen
   out-of-band through the database or deployment process; no browser or API
   operation may grant or change roles.
-- Authors may create, edit, publish, retire, and manage all Basic content,
-  including content created by other Authors.
+- Authors may create and edit draft Basic content. Publication requires a review
+  cycle; the latest submitting Author cannot approve or return their own
+  submission, while any Author may publish approved content or retire published
+  content.
 - Players cannot access author endpoints, accepted answers, or unpublished
   content.
-- Author create, edit, publish, and retire actions record the acting Author and
-  timestamp in the audit trail. In-app role management and advanced
-  administration are deferred beyond Basic.
+- Author create, edit, submit, approve, return, publish, and retire actions record
+  the acting local Author, transition, version, timestamp, and any safe bounded
+  note in the audit trail. In-app role management and advanced administration are
+  deferred beyond Basic.
 
 ### Author content lifecycle
 
-- Author-created events, challenges, questions, and cards begin as draft content
-  and do not become player-visible merely because they have been created.
-- A multiple-choice question may be published only when it has exactly four
+- Author-created events, challenges, questions, and cards follow `draft →
+in_review → approved → published → retired`. Editing is draft-only. A return
+  from review or approval requires a reason and starts a new draft/review cycle.
+  No state except `published` is player-available.
+- A multiple-choice question may be approved or published only when it has exactly four
   choices, exactly one private accepted choice, a difficulty from `1` through
   `3`, and a nonblank explanation. Published question content is immutable;
   later changes require replacement content.
-- A challenge may be published only when it contains at least five valid
+- A challenge may be approved or published only when it contains at least five valid
   published questions. A published challenge cannot return to draft.
-- A newly authored event may be published only when it has one valid published
+- A newly authored event may be approved or published only when it has one valid published
   challenge and the active catalogue contains at least one Common card required
   by the Basic reward policy.
 - Published event content is immutable. Retiring an event removes it from
   player discovery without deleting its authored record, and a retired event
   cannot be republished. The published challenge belonging to a live published
   event cannot be retired until the event itself has been retired.
-- Card definitions use draft, published, and retired authoring states. Only
+- Card definitions use the same five authoring states. Only
   published cards are active for starter and reward selection. Retiring a card
   removes it from future catalogue selection without deleting owned copies that
   already reference that definition.
+- Approval and publication recheck readiness under dependency locks. Every edit
+  and lifecycle request includes the expected version; stale concurrent requests
+  fail without changing content. See the
+  [Author curation API contract](../architecture/author-curation-api-contract.md).
 - Protected Author APIs may return private accepted-answer information and
   explanations required for content management. Player APIs never expose
   private answer-key identifiers or explanations. During an active timed
@@ -318,7 +327,8 @@ progression boundaries are defined in the
 The following are not Basic game rules: PvP, matchmaking, ratings, spectators,
 trading, selling, evolution, rarity upgrades, offline play, movement tracking,
 anti-cheat trust scoring, territory control, seasons, advanced analytics, or an
-advanced author review workflow.
+advanced administration console. The implemented curated Author review workflow
+is part of Basic content integrity; its reviewer UI is deferred to issue `#185`.
 
 This document was planned, generated, and edited with the assistance of
-Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5].
+Codex-CLI[gpt-5.6-sol medium], Codex[GPT-5], and Codex[gpt-5.6-sol].

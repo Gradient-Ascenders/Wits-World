@@ -51,7 +51,7 @@ describe('author event service', () => {
 
     expect(fixture.query).toHaveBeenCalledWith(
       expect.stringContaining('insert into public.author_content_audit'),
-      [AUTHOR_ID, EVENT_ID, 'create'],
+      [AUTHOR_ID, 'event', EVENT_ID, 'create', null, 'draft', null, 0],
     );
   });
 
@@ -63,6 +63,7 @@ describe('author event service', () => {
     const service = createAuthorEventService(fixture.database);
 
     const event = await service.updateEvent({
+      expectedVersion: 0,
       actorPlayerId: AUTHOR_ID,
       eventId: EVENT_ID,
       title: 'Updated event',
@@ -78,7 +79,7 @@ describe('author event service', () => {
 
     expect(fixture.query).toHaveBeenCalledWith(
       expect.stringContaining('insert into public.author_content_audit'),
-      [AUTHOR_ID, EVENT_ID, 'edit'],
+      [AUTHOR_ID, 'event', EVENT_ID, 'edit', 'draft', 'draft', null, 1],
     );
 
     expect(executedCommands(fixture.query)).toEqual(['begin', 'commit']);
@@ -137,6 +138,7 @@ describe('author event service', () => {
 
     await expect(
       service.updateEvent({
+        expectedVersion: 0,
         ...validInput(),
         eventId: EVENT_ID,
       }),
@@ -200,6 +202,8 @@ describe('author event service', () => {
           ...authorEventRow(),
           event_id: 'b2000000-0000-4000-8000-000000000002',
           is_published: true,
+          authoring_status: 'published',
+          publication_provenance: 'legacy',
         },
       ],
     });
@@ -269,28 +273,29 @@ function successfulImplementation() {
 
     if (
       sql.includes('select') &&
-      sql.includes('is_published') &&
-      sql.includes('retired_at') &&
+      sql.includes('authoring_status as status') &&
+      sql.includes('version') &&
       sql.includes('from public.events') &&
       sql.includes('for update')
     ) {
       return {
         rows: [
           {
-            is_published: false,
-            retired_at: null,
+            status: 'draft',
+            version: 0,
           },
         ],
       };
     }
 
-    if (
-      sql.includes('insert into public.events') ||
-      sql.includes('update public.events')
-    ) {
+    if (sql.includes('insert into public.events')) {
       return {
         rows: [authorEventRow()],
       };
+    }
+
+    if (sql.includes('update public.events')) {
+      return { rows: [{ ...authorEventRow(), version: 1 }] };
     }
 
     if (sql.includes('insert into public.author_content_audit')) {
@@ -321,6 +326,13 @@ function authorEventRow() {
     created_at: new Date('2026-08-15T20:00:00.000Z'),
     updated_at: new Date('2026-08-15T20:00:00.000Z'),
     retired_at: null,
+    authoring_status: 'draft',
+    version: 0,
+    submitted_by_player_id: null,
+    submitted_at: null,
+    reviewed_by_player_id: null,
+    reviewed_at: null,
+    publication_provenance: null,
   };
 }
 

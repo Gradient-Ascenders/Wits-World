@@ -5,11 +5,13 @@ import { buildApp } from '../src/app.js';
 import type { AccessTokenVerifier } from '../src/auth/access-token-verifier.js';
 import {
   AuthorCardNameConflictError,
-  AuthorCardNotReadyError,
-  AuthorCardStateConflictError,
   type AuthorCardDefinition,
   type AuthorCardService,
 } from '../src/cards/author-card-service.js';
+import {
+  AuthorContentNotReadyError,
+  AuthorContentStateConflictError,
+} from '../src/authoring/content-workflow.js';
 import { InvalidCardDefinitionError } from '../src/cards/card-validation.js';
 import type { AuthConfig } from '../src/config/auth.js';
 import type { PlayerIdentityService } from '../src/players/player-identity.js';
@@ -76,6 +78,12 @@ const card: AuthorCardDefinition = {
   authoringStatus: 'draft',
   createdAt: '2026-08-16T00:00:00.000Z',
   updatedAt: '2026-08-16T00:00:00.000Z',
+  version: 0,
+  submittedBy: null,
+  submittedAt: null,
+  reviewedBy: null,
+  reviewedAt: null,
+  publicationProvenance: null,
 };
 
 let app: FastifyInstance;
@@ -226,7 +234,7 @@ describe('author card API', () => {
     const response = await authenticatedRequest({
       method: 'PUT',
       url: `/api/v1/author/cards/${CARD_ID}`,
-      payload: body,
+      payload: { ...body, expectedVersion: 0 },
     });
 
     expect(response.statusCode).toBe(200);
@@ -234,6 +242,7 @@ describe('author card API', () => {
     expect(service.updateCard).toHaveBeenCalledWith({
       actorPlayerId: AUTHOR_ID,
       cardId: CARD_ID,
+      expectedVersion: 0,
       ...body,
     });
   });
@@ -312,7 +321,10 @@ describe('author card API', () => {
       const response = await authenticatedRequest({
         method,
         url,
-        payload: validCreatureBody(),
+        payload:
+          operation === 'create'
+            ? validCreatureBody()
+            : { ...validCreatureBody(), expectedVersion: 0 },
       });
 
       expect(response.statusCode).toBe(409);
@@ -363,27 +375,35 @@ describe('author card API', () => {
     const published = await authenticatedRequest({
       method: 'POST',
       url: `/api/v1/author/cards/${CARD_ID}/publish`,
-      payload: {},
+      payload: { expectedVersion: 0 },
     });
 
     expect(published.statusCode).toBe(200);
 
-    expect(service.publishCard).toHaveBeenCalledWith(AUTHOR_ID, CARD_ID);
+    expect(service.publishCard).toHaveBeenCalledWith({
+      actorPlayerId: AUTHOR_ID,
+      cardId: CARD_ID,
+      expectedVersion: 0,
+    });
 
     const retired = await authenticatedRequest({
       method: 'POST',
       url: `/api/v1/author/cards/${CARD_ID}/retire`,
-      payload: {},
+      payload: { expectedVersion: 0 },
     });
 
     expect(retired.statusCode).toBe(200);
 
-    expect(service.retireCard).toHaveBeenCalledWith(AUTHOR_ID, CARD_ID);
+    expect(service.retireCard).toHaveBeenCalledWith({
+      actorPlayerId: AUTHOR_ID,
+      cardId: CARD_ID,
+      expectedVersion: 0,
+    });
   });
 
   it('maps publication readiness failures to 422', async () => {
     service.publishCard.mockRejectedValue(
-      new AuthorCardNotReadyError(
+      new AuthorContentNotReadyError(
         'Creature cards must define at least one move.',
       ),
     );
@@ -391,7 +411,7 @@ describe('author card API', () => {
     const response = await authenticatedRequest({
       method: 'POST',
       url: `/api/v1/author/cards/${CARD_ID}/publish`,
-      payload: {},
+      payload: { expectedVersion: 0 },
     });
 
     expect(response.statusCode).toBe(422);
@@ -403,13 +423,15 @@ describe('author card API', () => {
 
   it('maps invalid lifecycle transitions to 409', async () => {
     service.publishCard.mockRejectedValue(
-      new AuthorCardStateConflictError('Only a draft card can be published.'),
+      new AuthorContentStateConflictError(
+        'Only a draft card can be published.',
+      ),
     );
 
     const response = await authenticatedRequest({
       method: 'POST',
       url: `/api/v1/author/cards/${CARD_ID}/publish`,
-      payload: {},
+      payload: { expectedVersion: 0 },
     });
 
     expect(response.statusCode).toBe(409);
@@ -703,6 +725,9 @@ function createServiceMock() {
     listCards: vi.fn().mockResolvedValue([card]),
     createCard: vi.fn().mockResolvedValue(card),
     updateCard: vi.fn().mockResolvedValue(card),
+    submitCard: vi.fn().mockResolvedValue(card),
+    approveCard: vi.fn().mockResolvedValue(card),
+    returnCard: vi.fn().mockResolvedValue(card),
     publishCard: vi.fn().mockResolvedValue({
       ...card,
       authoringStatus: 'published',

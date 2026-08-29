@@ -23,6 +23,7 @@ import { createDeckService } from './cards/deck-service.js';
 import { createAuthorEventService } from './events/author-event-service.js';
 import { createAuthorChallengeService } from './challenges/author-challenge-service.js';
 import { createAuthorCardService } from './cards/author-card-service.js';
+import { createAuthorContentReadService } from './authoring/content-read-service.js';
 import { createCpuMatchService } from './matches/cpu-match-service.js';
 import { createAuthenticatedRateProtection } from './security/rate-protection.js';
 import { createProgressionPersistence } from './progression/progression-persistence.js';
@@ -72,6 +73,7 @@ async function startServer(): Promise<void> {
   const authorCardService = createAuthorCardService(database);
   const authorTrailService = createAuthorTrailService(database);
   const playerTrailService = createPlayerTrailService(database);
+  const authorContentReadService = createAuthorContentReadService(database);
   const cpuMatchService = createCpuMatchService(database, {
     progressionPersistence,
   });
@@ -124,6 +126,7 @@ async function startServer(): Promise<void> {
       challenges: authorChallengeService,
       cards: authorCardService,
       trails: authorTrailService,
+      read: authorContentReadService,
     },
   });
 

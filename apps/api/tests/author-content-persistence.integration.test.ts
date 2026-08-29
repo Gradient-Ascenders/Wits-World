@@ -77,7 +77,9 @@ describe.skipIf(!runIntegrationTests)(
       await pool.query(
         `
           update public.challenge_questions
-          set explanation = $2
+          set explanation = $2,
+              version = version + 1,
+              updated_at = now()
           where id = $1::uuid
         `,
         [QUESTION_ID, 'The Great Hall is on East Campus.'],
@@ -398,6 +400,8 @@ describe.skipIf(!runIntegrationTests)(
           `
             update public.challenge_questions
             set status = 'published',
+                version = version + 1,
+                publication_provenance = 'controlled_seed',
                 updated_at = now()
             where id = $1::uuid
           `,

@@ -928,6 +928,7 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
             update public.card_definitions
             set authoring_status = 'retired',
                 is_active = false,
+                version = version + 1,
                 updated_at = now()
             where id = $1::uuid
           `,

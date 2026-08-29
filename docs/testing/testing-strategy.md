@@ -57,6 +57,16 @@ players, and deleted-player exclusion. Completion-service tests additionally
 prove that progression runs before commit and that an award failure rolls back
 the owning challenge or CPU-match completion.
 
+Author curation tests cover the five-state transition matrix across all four
+content types, draft-only edits, latest-submitter self-review denial, required
+return reasons, readiness at approval and publication, optimistic concurrency,
+transactional audit rollback, safe queue/history schemas, and exclusion of every
+non-published state from Player paths. Database runs additionally cover migration
+`0028` backfill/constraints, seed provenance, dependency races, and preservation
+of attempts, rewards, ownership, decks, matches, and progression after
+retirement. These database checks require the dedicated disposable test target;
+they must not be redirected to development or production.
+
 ## Commands and data isolation
 
 The normal repository quality set is:
@@ -176,5 +186,5 @@ for demonstrating the acceptance criteria and protected invariants.
 ## AI declaration
 
 This testing strategy was generated, edited, and reviewed with the assistance
-of Codex[GPT-5]. Repository paths and workflow claims were checked against the
+of Codex[GPT-5] and Codex[gpt-5.6-sol]. Repository paths and workflow claims were checked against the
 current source; this declaration is not test evidence.

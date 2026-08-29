@@ -2,13 +2,15 @@ insert into public.event_challenges (
   id,
   event_id,
   format,
-  status
+  status,
+  publication_provenance
 )
 values (
   md5('wits-world-sprint-1-demo-challenge')::uuid,
   '00000000-0000-4000-8000-000000000018'::uuid,
   'multiple_choice',
-  'published'
+  'published',
+  'controlled_seed'
 )
 on conflict (id) do nothing;
 
@@ -63,7 +65,8 @@ insert into public.challenge_questions (
   prompt,
   difficulty,
   explanation,
-  status
+  status,
+  publication_provenance
 )
 select
   md5('wits-world-sprint-1-demo-question-v2:' || question_key)::uuid,
@@ -71,7 +74,8 @@ select
   prompt,
   difficulty,
   explanation,
-  'published'
+  'draft',
+  null
 from sprint_1_demo_challenge_questions
 on conflict (id) do nothing;
 
@@ -128,6 +132,11 @@ select
   choice.authoring_position,
   choice.choice_text
 from sprint_1_demo_challenge_choices choice
+join public.challenge_questions question
+  on question.id = md5(
+    'wits-world-sprint-1-demo-question-v2:' || choice.question_key
+  )::uuid
+ and question.status = 'draft'
 on conflict (id) do nothing;
 
 insert into private.challenge_answer_keys (
@@ -141,14 +150,33 @@ select
     choice.authoring_position
   )::uuid
 from sprint_1_demo_challenge_choices choice
+join public.challenge_questions question
+  on question.id = md5(
+    'wits-world-sprint-1-demo-question-v2:' || choice.question_key
+  )::uuid
+ and question.status = 'draft'
 where choice.is_correct = true
 on conflict (question_id) do nothing;
+
+-- Assemble controlled questions while they are editable, then publish them
+-- only after their public items and private answers are complete.
+update public.challenge_questions question
+set status = 'published',
+    publication_provenance = 'controlled_seed',
+    version = question.version + 1,
+    updated_at = now()
+from sprint_1_demo_challenge_questions fixture
+where question.id = md5(
+    'wits-world-sprint-1-demo-question-v2:' || fixture.question_key
+  )::uuid
+  and question.status = 'draft';
 
 -- Published fixture content is immutable. Retire the original question IDs only
 -- after their versioned replacements and private answer keys exist, preserving
 -- any historical references held by attempts.
 update public.challenge_questions
 set status = 'retired',
+    version = version + 1,
     updated_at = now()
 where challenge_id = md5('wits-world-sprint-1-demo-challenge')::uuid
   and id in (

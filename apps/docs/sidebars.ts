@@ -130,6 +130,11 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'architecture/author-curation-api-contract',
+              label: 'Author Curation API Contract',
+            },
+            {
+              type: 'doc',
               id: 'architecture/challenge-attempt-api-contract',
               label: 'Challenge & Attempt API Contract',
             },

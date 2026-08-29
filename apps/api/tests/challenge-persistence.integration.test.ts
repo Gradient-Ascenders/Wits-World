@@ -108,6 +108,7 @@ describe.skipIf(!runIntegrationTests)(
           '0025_add_ordering_challenges.sql',
           '0026_create_player_progression.sql',
           '0027_create_ordered_trails.sql',
+          '0028_curate_author_content_lifecycle.sql',
         ],
         skipped: [],
       });
@@ -143,6 +144,7 @@ describe.skipIf(!runIntegrationTests)(
           '0025_add_ordering_challenges.sql',
           '0026_create_player_progression.sql',
           '0027_create_ordered_trails.sql',
+          '0028_curate_author_content_lifecycle.sql',
         ],
       });
     }, 30_000);
@@ -342,6 +344,7 @@ describe.skipIf(!runIntegrationTests)(
             '0025_add_ordering_challenges.sql',
             '0026_create_player_progression.sql',
             '0027_create_ordered_trails.sql',
+            '0028_curate_author_content_lifecycle.sql',
           ],
         });
 
@@ -414,11 +417,13 @@ describe.skipIf(!runIntegrationTests)(
         );
         await client.query(
           `insert into public.events (
-           id, title, location, radius_metres, starts_at, ends_at, is_published
+           id, title, location, radius_metres, starts_at, ends_at, is_published,
+           authoring_status, publication_provenance
          ) values (
            $1, 'Persistence test event',
            st_setsrid(st_makepoint(28.03038, -26.19205), 4326)::geography,
-           75, '2026-08-01T00:00:00Z', '2026-08-25T00:00:00Z', true
+           75, '2026-08-01T00:00:00Z', '2026-08-25T00:00:00Z', true,
+           'published', 'controlled_seed'
          )`,
           [EVENT_ID],
         );
@@ -470,7 +475,10 @@ describe.skipIf(!runIntegrationTests)(
           );
           await client.query(
             `update public.challenge_questions
-              set status = 'published', updated_at = now()
+              set status = 'published',
+                  version = version + 1,
+                  publication_provenance = 'controlled_seed',
+                  updated_at = now()
             where id = $1`,
             [questionId],
           );
@@ -478,7 +486,10 @@ describe.skipIf(!runIntegrationTests)(
 
         await client.query(
           `update public.event_challenges
-            set status = 'published', updated_at = now()
+            set status = 'published',
+                version = version + 1,
+                publication_provenance = 'controlled_seed',
+                updated_at = now()
           where id = $1`,
           [CHALLENGE_ID],
         );
@@ -493,7 +504,10 @@ describe.skipIf(!runIntegrationTests)(
         await expect(
           client.query(
             `update public.event_challenges
-              set status = 'published', updated_at = now()
+              set status = 'published',
+                  version = version + 1,
+                  publication_provenance = 'controlled_seed',
+                  updated_at = now()
             where id = $1`,
             [INVALID_CHALLENGE_ID],
           ),
@@ -676,6 +690,8 @@ describe.skipIf(!runIntegrationTests)(
           `update public.card_definitions
               set is_active = true,
                   authoring_status = 'published',
+                  version = version + 1,
+                  publication_provenance = 'controlled_seed',
                   updated_at = now()
             where id in ($1, $2)`,
           [CARD_ID, SECOND_CARD_ID],
@@ -1058,6 +1074,7 @@ describe.skipIf(!runIntegrationTests)(
             `update public.card_definitions
                 set authoring_status = 'retired',
                     is_active = false,
+                    version = version + 1,
                     updated_at = now()
               where rarity = 'common'`,
           );

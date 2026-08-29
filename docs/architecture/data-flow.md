@@ -217,6 +217,21 @@ An empty owned collection is returned successfully as an empty `cards` array.
 Missing authentication or an inactive local-player lifecycle is rejected before
 the collection query runs.
 
+## Curated Author content flow
+
+For events, challenges, questions, and cards, the browser submits an intended
+edit or lifecycle action with the last observed version. The API resolves the
+active local Author, locks the content row, compares the version, enforces the
+five-state transition and different-reviewer rule, and locks readiness
+dependencies in deterministic order. It then updates the row and inserts one
+safe audit record in the same transaction. Approval and publication both check
+readiness; only the final `published` state crosses into Player queries.
+
+Review queue and history responses return safe summaries, local actor IDs, and
+current Player Names. Auth0 subjects, email, private answers, locations, and full
+content bodies do not cross that boundary. The complete flow is in the
+[Author curation API contract](./author-curation-api-contract.md).
+
 ## Saved-deck flow
 
 The protected deck endpoints operate only on the authenticated active player's
@@ -378,4 +393,4 @@ history are defined in the
 
 The preceding document was planned and generated with the assistance of:
 ChatGPT-Web[GPT-5.6 Thinking] and ChatGPT-Web[GPT-5.6 Sol], and reviewed and
-edited with assistance from Codex[GPT-5].
+edited with assistance from Codex[GPT-5] and Codex[gpt-5.6-sol].

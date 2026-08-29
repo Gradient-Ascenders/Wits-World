@@ -95,6 +95,7 @@ describe.skipIf(!runIntegrationTests)(
       expect(migrationResult.applied).toEqual([
         '0026_create_player_progression.sql',
         '0027_create_ordered_trails.sql',
+        '0028_curate_author_content_lifecycle.sql',
       ]);
 
       pool = createDatabasePool(temporaryConfig);
@@ -262,6 +263,65 @@ describe.skipIf(!runIntegrationTests)(
         ).rejects.toThrow();
       },
     );
+
+    it('preserves historical progression when its completed event is retired', async () => {
+      const readService = createProgressionReadService(pool);
+      const profileBefore =
+        await readService.getCurrentProfile(BACKFILL_PLAYER_ID);
+      const standingsBefore = await pool.query(
+        `select standing_rank, total_points, current_streak, longest_streak
+         from public.player_progression_all_time_standings
+         where player_id = $1::uuid`,
+        [BACKFILL_PLAYER_ID],
+      );
+
+      await pool.query(
+        `update public.events event
+         set authoring_status = 'retired',
+             is_published = false,
+             retired_at = now(),
+             version = version + 1,
+             updated_at = now()
+         from public.event_completions completion
+         where completion.id = $1::uuid
+           and event.id = completion.event_id`,
+        [BACKFILL_COMPLETION_ID],
+      );
+
+      const profileAfter =
+        await readService.getCurrentProfile(BACKFILL_PLAYER_ID);
+      const standingsAfter = await pool.query(
+        `select standing_rank, total_points, current_streak, longest_streak
+         from public.player_progression_all_time_standings
+         where player_id = $1::uuid`,
+        [BACKFILL_PLAYER_ID],
+      );
+      const preserved = await pool.query<{
+        award_count: number;
+        completion_count: number;
+        event_status: string;
+        provenance: string;
+      }>(
+        `select
+           (select count(*)::int from public.event_completions where id = $1::uuid) completion_count,
+           (select count(*)::int from public.player_point_awards where event_completion_id = $1::uuid) award_count,
+           event.authoring_status event_status,
+           event.publication_provenance provenance
+         from public.events event
+         join public.event_completions completion on completion.event_id = event.id
+         where completion.id = $1::uuid`,
+        [BACKFILL_COMPLETION_ID],
+      );
+
+      expect(profileAfter).toEqual(profileBefore);
+      expect(standingsAfter.rows).toEqual(standingsBefore.rows);
+      expect(preserved.rows[0]).toEqual({
+        award_count: 1,
+        completion_count: 1,
+        event_status: 'retired',
+        provenance: 'legacy',
+      });
+    });
 
     it(
       'serializes concurrent unlocks for five completed matches',
@@ -710,7 +770,8 @@ async function copyMigrationsBeforeProgression(): Promise<string> {
       (name) =>
         name.endsWith('.sql') &&
         name !== '0026_create_player_progression.sql' &&
-        name !== '0027_create_ordered_trails.sql',
+        name !== '0027_create_ordered_trails.sql' &&
+        name !== '0028_curate_author_content_lifecycle.sql',
     )
     .sort();
 
@@ -803,7 +864,7 @@ async function insertChallengeCompletion(
          75,
          '2026-01-01T00:00:00.000Z',
          '2027-01-01T00:00:00.000Z',
-         false
+         true
        )`,
       [eventId],
     );

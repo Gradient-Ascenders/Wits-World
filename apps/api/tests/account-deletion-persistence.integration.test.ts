@@ -800,11 +800,29 @@ async function seedPublishedChallenge(
     title: string;
   },
 ): Promise<void> {
+  const curatedLifecycle = await hasCuratedAuthoringLifecycle(client);
   await client.query('begin');
 
   try {
     await client.query(
+      curatedLifecycle
+        ? `
+        insert into public.events (
+          id, title, location, radius_metres, starts_at, ends_at, is_published,
+          authoring_status, publication_provenance
+        ) values (
+          $1,
+          $2,
+          st_setsrid(st_makepoint(28.03038, -26.19205), 4326)::geography,
+          75,
+          '2026-08-01T00:00:00.000Z',
+          '2026-09-01T00:00:00.000Z',
+          true,
+          'published',
+          'controlled_seed'
+        )
       `
+        : `
         insert into public.events (
           id, title, location, radius_metres, starts_at, ends_at, is_published
         ) values (
@@ -880,19 +898,33 @@ async function seedPublishedChallenge(
     }
 
     await client.query(
-      `
+      curatedLifecycle
+        ? `
         update public.challenge_questions
-           set status = 'published', updated_at = now()
+           set status = 'published',
+               version = version + 1,
+               publication_provenance = 'controlled_seed',
+               updated_at = now()
          where challenge_id = $1
-      `,
+      `
+        : `update public.challenge_questions
+             set status = 'published', updated_at = now()
+           where challenge_id = $1`,
       [input.challengeId],
     );
     await client.query(
-      `
+      curatedLifecycle
+        ? `
         update public.event_challenges
-           set status = 'published', updated_at = now()
+           set status = 'published',
+               version = version + 1,
+               publication_provenance = 'controlled_seed',
+               updated_at = now()
          where id = $1
-      `,
+      `
+        : `update public.event_challenges
+             set status = 'published', updated_at = now()
+           where id = $1`,
       [input.challengeId],
     );
 
@@ -1052,11 +1084,29 @@ async function seedPublishedOrderingChallenge(
     title: string;
   },
 ): Promise<void> {
+  const curatedLifecycle = await hasCuratedAuthoringLifecycle(client);
   await client.query('begin');
 
   try {
     await client.query(
+      curatedLifecycle
+        ? `
+        insert into public.events (
+          id, title, location, radius_metres, starts_at, ends_at, is_published,
+          authoring_status, publication_provenance
+        ) values (
+          $1,
+          $2,
+          st_setsrid(st_makepoint(28.03038, -26.19205), 4326)::geography,
+          75,
+          '2026-08-01T00:00:00.000Z',
+          '2026-09-01T00:00:00.000Z',
+          true,
+          'published',
+          'controlled_seed'
+        )
       `
+        : `
         insert into public.events (
           id, title, location, radius_metres, starts_at, ends_at, is_published
         ) values (
@@ -1125,19 +1175,33 @@ async function seedPublishedOrderingChallenge(
     }
 
     await client.query(
-      `
+      curatedLifecycle
+        ? `
         update public.challenge_questions
-           set status = 'published', updated_at = now()
+           set status = 'published',
+               version = version + 1,
+               publication_provenance = 'controlled_seed',
+               updated_at = now()
          where challenge_id = $1
-      `,
+      `
+        : `update public.challenge_questions
+             set status = 'published', updated_at = now()
+           where challenge_id = $1`,
       [input.challengeId],
     );
     await client.query(
-      `
+      curatedLifecycle
+        ? `
         update public.event_challenges
-           set status = 'published', updated_at = now()
+           set status = 'published',
+               version = version + 1,
+               publication_provenance = 'controlled_seed',
+               updated_at = now()
          where id = $1
-      `,
+      `
+        : `update public.event_challenges
+             set status = 'published', updated_at = now()
+           where id = $1`,
       [input.challengeId],
     );
 
@@ -1513,6 +1577,21 @@ async function loadStarterDefinitions(
   );
 
   return result.rows;
+}
+
+async function hasCuratedAuthoringLifecycle(
+  client: pg.PoolClient,
+): Promise<boolean> {
+  const result = await client.query<{ exists: boolean }>(
+    `select exists (
+       select 1
+       from information_schema.columns
+       where table_schema = 'public'
+         and table_name = 'events'
+         and column_name = 'authoring_status'
+     )`,
+  );
+  return result.rows[0]?.exists ?? false;
 }
 
 function fixtureUuid(namespace: string, value: number): string {

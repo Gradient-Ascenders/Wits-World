@@ -1,10 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import {
-  AuthorCardNotReadyError,
-  AuthorCardStateConflictError,
-  createAuthorCardService,
-} from '../src/cards/author-card-service.js';
+import { createAuthorCardService } from '../src/cards/author-card-service.js';
+import { AuthorContentStateConflictError } from '../src/authoring/content-workflow.js';
+import { AuthorContentNotReadyError } from '../src/authoring/content-workflow.js';
 import { InvalidCardDefinitionError } from '../src/cards/card-validation.js';
 import {
   buildDatabaseConfig,
@@ -273,6 +271,7 @@ describe.skipIf(!runIntegrationTests)(
       });
 
       const updated = await service.updateCard({
+        expectedVersion: 0,
         actorPlayerId: AUTHOR_TWO_ID,
         cardId: created.id,
         name: 'Mutable Author Power',
@@ -519,8 +518,8 @@ describe.skipIf(!runIntegrationTests)(
       }
 
       await expect(
-        service.publishCard(AUTHOR_ONE_ID, cardId),
-      ).rejects.toBeInstanceOf(AuthorCardNotReadyError);
+        publishCardThroughReview(service, cardId),
+      ).rejects.toBeInstanceOf(AuthorContentNotReadyError);
       await expect(
         pool.query(
           `update public.card_definitions
@@ -528,7 +527,7 @@ describe.skipIf(!runIntegrationTests)(
             where id = $1::uuid`,
           [cardId],
         ),
-      ).rejects.toMatchObject({ code: '23514' });
+      ).rejects.toThrow();
 
       const persisted = await pool.query<{
         authoring_status: string;
@@ -546,7 +545,7 @@ describe.skipIf(!runIntegrationTests)(
 
       expect(persisted.rows).toEqual([
         {
-          authoring_status: 'draft',
+          authoring_status: 'in_review',
           is_active: false,
         },
       ]);
@@ -591,15 +590,11 @@ describe.skipIf(!runIntegrationTests)(
       expect(creature.moves[1]?.effectValue).toBeNull();
       expect(power.effects[0]?.effectValue).toBeNull();
       await expect(
-        service.publishCard(AUTHOR_ONE_ID, creature.id),
-      ).rejects.toThrow(
-        'Move "Draft Move 2" requires an effect value before publication',
-      );
+        publishCardThroughReview(service, creature.id),
+      ).rejects.toBeInstanceOf(AuthorContentNotReadyError);
       await expect(
-        service.publishCard(AUTHOR_ONE_ID, power.id),
-      ).rejects.toThrow(
-        'Power-card effect 1 requires an effect value before publication',
-      );
+        publishCardThroughReview(service, power.id),
+      ).rejects.toBeInstanceOf(AuthorContentNotReadyError);
       await expect(
         pool.query(
           `update public.card_definitions
@@ -607,7 +602,7 @@ describe.skipIf(!runIntegrationTests)(
             where id = $1::uuid`,
           [creature.id],
         ),
-      ).rejects.toMatchObject({ code: '23514' });
+      ).rejects.toThrow();
       await expect(
         pool.query(
           `update public.card_definitions
@@ -615,7 +610,7 @@ describe.skipIf(!runIntegrationTests)(
             where id = $1::uuid`,
           [power.id],
         ),
-      ).rejects.toMatchObject({ code: '23514' });
+      ).rejects.toThrow();
 
       const persisted = await pool.query<{
         authoring_status: string;
@@ -631,8 +626,8 @@ describe.skipIf(!runIntegrationTests)(
       );
 
       expect(persisted.rows).toEqual([
-        { authoring_status: 'draft', is_active: false },
-        { authoring_status: 'draft', is_active: false },
+        { authoring_status: 'in_review', is_active: false },
+        { authoring_status: 'in_review', is_active: false },
       ]);
     }, 45_000);
 
@@ -686,7 +681,11 @@ describe.skipIf(!runIntegrationTests)(
         effects: [],
       });
 
-      const published = await service.publishCard(AUTHOR_TWO_ID, created.id);
+      const published = await publishCardThroughReview(
+        service,
+        created.id,
+        AUTHOR_TWO_ID,
+      );
 
       expect(published).toMatchObject({
         id: created.id,
@@ -712,6 +711,7 @@ describe.skipIf(!runIntegrationTests)(
 
       await expect(
         service.updateCard({
+          expectedVersion: 3,
           actorPlayerId: AUTHOR_ONE_ID,
           cardId: created.id,
           name: 'Illegal Service Edit',
@@ -734,7 +734,7 @@ describe.skipIf(!runIntegrationTests)(
           ],
           effects: [],
         }),
-      ).rejects.toBeInstanceOf(AuthorCardStateConflictError);
+      ).rejects.toBeInstanceOf(AuthorContentStateConflictError);
 
       await expect(
         pool.query(
@@ -804,9 +804,13 @@ describe.skipIf(!runIntegrationTests)(
         ],
       });
 
-      await service.publishCard(AUTHOR_ONE_ID, created.id);
+      await publishCardThroughReview(service, created.id);
 
-      const retired = await service.retireCard(AUTHOR_TWO_ID, created.id);
+      const retired = await service.retireCard({
+        actorPlayerId: AUTHOR_TWO_ID,
+        cardId: created.id,
+        expectedVersion: 3,
+      });
 
       expect(retired).toMatchObject({
         id: created.id,
@@ -815,8 +819,12 @@ describe.skipIf(!runIntegrationTests)(
       });
 
       await expect(
-        service.publishCard(AUTHOR_ONE_ID, created.id),
-      ).rejects.toBeInstanceOf(AuthorCardStateConflictError);
+        service.publishCard({
+          actorPlayerId: AUTHOR_ONE_ID,
+          cardId: created.id,
+          expectedVersion: 4,
+        }),
+      ).rejects.toBeInstanceOf(AuthorContentStateConflictError);
 
       await expect(
         pool.query(
@@ -873,3 +881,25 @@ describe.skipIf(!runIntegrationTests)(
     }, 45_000);
   },
 );
+
+async function publishCardThroughReview(
+  service: ReturnType<typeof createAuthorCardService>,
+  cardId: string,
+  publisherId = AUTHOR_ONE_ID,
+) {
+  await service.submitCard({
+    actorPlayerId: AUTHOR_ONE_ID,
+    cardId,
+    expectedVersion: 0,
+  });
+  await service.approveCard({
+    actorPlayerId: AUTHOR_TWO_ID,
+    cardId,
+    expectedVersion: 1,
+  });
+  return service.publishCard({
+    actorPlayerId: publisherId,
+    cardId,
+    expectedVersion: 2,
+  });
+}

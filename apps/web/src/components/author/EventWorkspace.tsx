@@ -14,9 +14,6 @@ import {
   listAuthorChallenges,
   listAuthorEvents,
   listAuthorQuestions,
-  publishAuthorChallenge,
-  publishAuthorEvent,
-  publishAuthorQuestion,
   retireAuthorChallenge,
   retireAuthorEvent,
   retireAuthorQuestion,
@@ -72,7 +69,7 @@ export function EventWorkspace({
   const [loadError, setLoadError] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [dirtyEventId, setDirtyEventId] = useState<string | null>(null);
+  const [, setDirtyEventId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const feedbackRef = useRef<HTMLDivElement>(null);
   const requestRef = useRef<AbortController | null>(null);
@@ -319,12 +316,9 @@ export function EventWorkspace({
                   cards={cards}
                   cardsState={cardsState}
                   event={selected}
-                  eventDirty={dirtyEventId === selected.eventId}
                   getAccessToken={getAccessToken}
-                  interaction={interactionRef.current}
                   key={`challenge-workspace:${selected.eventId}`}
                   mutationCoordinator={mutationCoordinator}
-                  onEventChanged={updateEvent}
                   onOpenCards={onOpenCards}
                   onReloadCards={onReloadCards}
                 />
@@ -416,9 +410,7 @@ function EventForm({
   }, [dirty, event, onDirtyChange]);
 
   const coordinate = parseCoordinate(draft.latitude, draft.longitude);
-  const editable =
-    event?.authoringStatus !== 'published' &&
-    event?.authoringStatus !== 'retired';
+  const editable = !event || event.authoringStatus === 'draft';
 
   function setField(field: keyof EventDraft, value: string) {
     setDraft((current) => ({ ...current, [field]: value }));
@@ -453,6 +445,7 @@ function EventForm({
         ? await updateAuthorEvent({
             apiBaseUrl,
             eventId: event.eventId,
+            expectedVersion: event.version,
             getAccessToken,
             input: result.input,
             signal: controller.signal,
@@ -503,6 +496,7 @@ function EventForm({
       const next = await retireAuthorEvent({
         apiBaseUrl,
         eventId: event.eventId,
+        expectedVersion: event.version,
         getAccessToken,
         signal: controller.signal,
       });
@@ -537,8 +531,8 @@ function EventForm({
 
       {!editable ? (
         <p className="author-notice">
-          Published and retired event definitions are read-only. Retire a live
-          event and create a replacement to change its content.
+          Only draft event definitions are editable. Review, approved,
+          published, and retired definitions are read-only.
         </p>
       ) : null}
 
@@ -716,7 +710,7 @@ function EventForm({
               Cancel
             </button>
           ) : null}
-          {event && event.authoringStatus !== 'retired' ? (
+          {event?.authoringStatus === 'published' ? (
             <button
               className="button button--danger"
               disabled={busy}
@@ -762,17 +756,8 @@ interface ChallengeWorkspaceProps {
   cards: readonly AuthorCard[];
   cardsState: 'error' | 'loading' | 'ready';
   event: AuthorEvent;
-  eventDirty: boolean;
   getAccessToken: ApiAccessTokenProvider;
-  interaction: number;
   mutationCoordinator: AuthorMutationCoordinator;
-  onEventChanged: (
-    event: AuthorEvent,
-    ownerId: string,
-    interaction: number,
-    ticket: AuthorMutationTicket,
-    notice?: string,
-  ) => boolean;
   onOpenCards: () => void;
   onReloadCards: () => void;
 }
@@ -782,11 +767,8 @@ function ChallengeWorkspace({
   cards,
   cardsState,
   event,
-  eventDirty,
   getAccessToken,
-  interaction,
   mutationCoordinator,
-  onEventChanged,
   onOpenCards,
   onReloadCards,
 }: ChallengeWorkspaceProps) {
@@ -1099,7 +1081,7 @@ function ChallengeWorkspace({
     }
   }
 
-  async function challengeLifecycle(action: 'publish' | 'retire') {
+  async function retireChallenge() {
     if (!selected) return;
     const controller = beginOperation();
     const challengeId = selected.challengeId;
@@ -1111,20 +1093,13 @@ function ChallengeWorkspace({
     );
     let shouldFocus = false;
     try {
-      const next =
-        action === 'publish'
-          ? await publishAuthorChallenge({
-              apiBaseUrl,
-              challengeId,
-              getAccessToken,
-              signal: controller.signal,
-            })
-          : await retireAuthorChallenge({
-              apiBaseUrl,
-              challengeId,
-              getAccessToken,
-              signal: controller.signal,
-            });
+      const next = await retireAuthorChallenge({
+        apiBaseUrl,
+        challengeId,
+        expectedVersion: selected.version,
+        getAccessToken,
+        signal: controller.signal,
+      });
       const recordKey = `challenge:${next.challengeId}` as const;
       if (!mutationCoordinator.acceptSuccess(ticket, recordKey, next)) return;
       const canApply = mutationCoordinator
@@ -1137,9 +1112,7 @@ function ChallengeWorkspace({
         selectedChallengeIdRef.current === challengeId &&
         challengeInteractionRef.current === startingInteraction
       ) {
-        setMessage(
-          action === 'publish' ? 'Challenge published.' : 'Challenge retired.',
-        );
+        setMessage('Challenge retired.');
         setConfirmRetire(false);
         shouldFocus = true;
       }
@@ -1170,61 +1143,6 @@ function ChallengeWorkspace({
             interactionActiveRef.current &&
             challengeInteractionRef.current === startingInteraction &&
             selectedChallengeIdRef.current === challengeId
-          )
-            feedbackRef.current?.focus();
-        });
-    }
-  }
-
-  async function publishEvent() {
-    if (eventDirty) return;
-    const controller = beginOperation();
-    const startingChallengeId = selectedChallengeIdRef.current;
-    const startingChallengeInteraction = challengeInteractionRef.current;
-    const ticket = mutationCoordinator.beginMutation(
-      `event:${event.eventId}`,
-      'events',
-    );
-    let shouldFocus = false;
-    try {
-      const next = await publishAuthorEvent({
-        apiBaseUrl,
-        eventId: event.eventId,
-        getAccessToken,
-        signal: controller.signal,
-      });
-      if (!onEventChanged(next, event.eventId, interaction, ticket)) return;
-      if (
-        interactionActiveRef.current &&
-        challengeInteractionRef.current === startingChallengeInteraction &&
-        selectedChallengeIdRef.current === startingChallengeId
-      ) {
-        setMessage(
-          'Event published and available to the player API according to its active times.',
-        );
-        shouldFocus = true;
-      }
-    } catch (error) {
-      const accepted = mutationCoordinator.acceptFailure(
-        ticket,
-        isUncertainError(error),
-      );
-      if (
-        accepted &&
-        interactionActiveRef.current &&
-        challengeInteractionRef.current === startingChallengeInteraction &&
-        selectedChallengeIdRef.current === startingChallengeId
-      ) {
-        setApiError(toAuthorError(error));
-        shouldFocus = true;
-      }
-    } finally {
-      if (finishOperation(controller) && shouldFocus)
-        window.setTimeout(() => {
-          if (
-            interactionActiveRef.current &&
-            challengeInteractionRef.current === startingChallengeInteraction &&
-            selectedChallengeIdRef.current === startingChallengeId
           )
             feedbackRef.current?.focus();
         });
@@ -1305,23 +1223,11 @@ function ChallengeWorkspace({
             Check catalogue again
           </button>
         ) : null}
-        {event.authoringStatus === 'draft' ? (
-          <button
-            className="button"
-            aria-describedby={eventDirty ? 'event-publish-dirty' : undefined}
-            disabled={busy || eventDirty}
-            onClick={() => void publishEvent()}
-            type="button"
-          >
-            Ask API to publish event
-          </button>
-        ) : null}
       </div>
-      {eventDirty ? (
-        <p className="author-notice" id="event-publish-dirty" role="status">
-          Save event changes before publishing.
-        </p>
-      ) : null}
+      <p className="author-notice" role="status">
+        Review and publication actions are available through the Author API. The
+        console review workspace will be added separately.
+      </p>
 
       {state === 'loading' ? (
         <p className="author-state" role="status">
@@ -1367,17 +1273,7 @@ function ChallengeWorkspace({
       {selected ? (
         <>
           <div className="author-actions">
-            {selected.status === 'draft' ? (
-              <button
-                className="button button--quiet"
-                disabled={busy}
-                onClick={() => void challengeLifecycle('publish')}
-                type="button"
-              >
-                Publish challenge
-              </button>
-            ) : null}
-            {selected.status !== 'retired' ? (
+            {selected.status === 'published' ? (
               <button
                 aria-describedby={
                   challengeRetirementBlocked
@@ -1410,7 +1306,7 @@ function ChallengeWorkspace({
                 <button
                   className="button button--danger"
                   disabled={busy}
-                  onClick={() => void challengeLifecycle('retire')}
+                  onClick={() => void retireChallenge()}
                   type="button"
                 >
                   Confirm retirement
@@ -1673,8 +1569,7 @@ function QuestionForm({
   useAuthorDraftSession(mutationCoordinator, recordKey, dirty);
 
   const editable =
-    challenge.status !== 'retired' &&
-    (!question || question.status === 'draft');
+    challenge.status === 'draft' && (!question || question.status === 'draft');
 
   async function save(submission: FormEvent) {
     submission.preventDefault();
@@ -1707,6 +1602,7 @@ function QuestionForm({
             getAccessToken,
             input: draft,
             questionId: question.questionId,
+            expectedVersion: question.version,
             signal: controller.signal,
           })
         : await createAuthorQuestion({
@@ -1740,8 +1636,8 @@ function QuestionForm({
     }
   }
 
-  async function lifecycle(action: 'publish' | 'retire') {
-    if (!question || (action === 'publish' && dirty)) return;
+  async function retireQuestion() {
+    if (!question) return;
     setBusy(true);
     setApiError(null);
     const controller = new AbortController();
@@ -1753,28 +1649,15 @@ function QuestionForm({
       collectionKey,
     );
     try {
-      const next =
-        action === 'publish'
-          ? await publishAuthorQuestion({
-              apiBaseUrl,
-              getAccessToken,
-              questionId: question.questionId,
-              signal: controller.signal,
-            })
-          : await retireAuthorQuestion({
-              apiBaseUrl,
-              getAccessToken,
-              questionId: question.questionId,
-              signal: controller.signal,
-            });
+      const next = await retireAuthorQuestion({
+        apiBaseUrl,
+        getAccessToken,
+        questionId: question.questionId,
+        expectedVersion: question.version,
+        signal: controller.signal,
+      });
       if (operationRef.current !== controller) return;
-      onSaved(
-        next,
-        ownerId,
-        interaction,
-        ticket,
-        action === 'publish' ? 'Question published.' : 'Question retired.',
-      );
+      onSaved(next, ownerId, interaction, ticket, 'Question retired.');
       if (interactionActiveRef.current) setConfirmRetire(false);
     } catch (error) {
       if (operationRef.current !== controller) return;
@@ -1930,18 +1813,7 @@ function QuestionForm({
                 : 'Create draft question'}
           </button>
         ) : null}
-        {question?.status === 'draft' ? (
-          <button
-            className="button button--quiet"
-            aria-describedby={dirty ? 'question-publish-dirty' : undefined}
-            disabled={busy || dirty}
-            onClick={() => void lifecycle('publish')}
-            type="button"
-          >
-            Publish question
-          </button>
-        ) : null}
-        {question && question.status !== 'retired' ? (
+        {question?.status === 'published' ? (
           <button
             className="button button--danger"
             disabled={busy}
@@ -1952,9 +1824,9 @@ function QuestionForm({
           </button>
         ) : null}
       </div>
-      {dirty ? (
-        <p className="author-notice" id="question-publish-dirty" role="status">
-          Unsaved question changes. Save before publishing.
+      {question ? (
+        <p className="author-notice" role="status">
+          Submit, review, and publication actions are currently API-only.
         </p>
       ) : null}
       {confirmRetire ? (
@@ -1967,7 +1839,7 @@ function QuestionForm({
             <button
               className="button button--danger"
               disabled={busy}
-              onClick={() => void lifecycle('retire')}
+              onClick={() => void retireQuestion()}
               type="button"
             >
               Confirm retirement
@@ -1989,7 +1861,7 @@ function QuestionForm({
 function StatusBadge({
   status,
 }: {
-  status: 'draft' | 'published' | 'retired';
+  status: 'draft' | 'in_review' | 'approved' | 'published' | 'retired';
 }) {
   return (
     <span className={`status-badge status-badge--author-${status}`}>

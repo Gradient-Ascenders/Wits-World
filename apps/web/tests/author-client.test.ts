@@ -179,6 +179,7 @@ describe('author API client', () => {
       publishAuthorEvent({
         apiBaseUrl,
         eventId,
+        expectedVersion: 0,
         getAccessToken,
         signal: new AbortController().signal,
       }),
@@ -245,7 +246,7 @@ describe('author API client', () => {
       'fetch',
       vi.fn().mockResolvedValue(
         jsonResponse({
-          events: [{ ...eventFixture(), authoringStatus: 'approved' }],
+          events: [{ ...eventFixture(), authoringStatus: 'queued' }],
           requestId: 'request-malformed',
         }),
       ),
@@ -300,6 +301,12 @@ function eventFixture() {
     longitude: 28.03038,
     radiusMetres: 75,
     retiredAt: null,
+    version: 0,
+    submittedBy: null,
+    submittedAt: null,
+    reviewedBy: null,
+    reviewedAt: null,
+    publicationProvenance: null,
     startsAt: '2026-09-01T08:00:00.000Z',
     title: 'Great Hall history',
     updatedAt: '2026-08-16T08:00:00.000Z',
@@ -323,6 +330,12 @@ function questionFixture() {
     prompt: 'Where is the Great Hall?',
     questionId: '40000000-0000-4000-8000-000000000001',
     status: 'draft',
+    version: 0,
+    submittedBy: null,
+    submittedAt: null,
+    reviewedBy: null,
+    reviewedAt: null,
+    publicationProvenance: null,
     updatedAt: '2026-08-16T08:00:00.000Z',
   } as const;
 }
@@ -356,6 +369,12 @@ function cardFixture() {
     name: 'Campus Owl',
     power: 20,
     rarity: 'common',
+    version: 0,
+    submittedBy: null,
+    submittedAt: null,
+    reviewedBy: null,
+    reviewedAt: null,
+    publicationProvenance: null,
     updatedAt: '2026-08-16T08:00:00.000Z',
   } as const;
 }
