@@ -86,6 +86,13 @@ content remains standalone until it has belonged to a published campaign. Run
 `0030` before deploying an API that registers campaign routes or invokes those
 functions; applying it does not create campaign content or run a scheduler.
 
+Migration `0031_create_movement_evidence.sql` creates the short-lived precise
+movement-evidence table, its constraints/indexes, immutability guard, and
+account-deletion trigger. Apply it before deploying an API that persists issue
+`#168` evidence. After release, verify the configured retention and cleanup
+interval names, one successful aggregate-only cleanup log, and expiry behavior
+without recording coordinates or connection details.
+
 ## Prerequisites
 
 - Use the Node.js and npm versions declared by the repository.

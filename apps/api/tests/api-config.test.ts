@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildApiConfig } from '../src/config/api.js';
+import { MAX_NODE_TIMER_DELAY_MS } from '../src/events/movement-evidence-cleanup-scheduler.js';
+import { MAX_MOVEMENT_EVIDENCE_RETENTION_MS } from '../src/events/movement-evidence.js';
 
 const validEnvironment: NodeJS.ProcessEnv = {
   HOST: '127.0.0.1',
@@ -15,6 +17,8 @@ describe('API configuration', () => {
       port: 3000,
       logLevel: 'info',
       accountDeletionRetryIntervalMs: 60000,
+      movementEvidenceCleanupIntervalMs: 60000,
+      movementEvidenceRetentionMs: 86400000,
       rateLimitMaxRequests: 120,
       rateLimitWindowMs: 60000,
     });
@@ -101,6 +105,80 @@ describe('API configuration', () => {
 
     expect(config.rateLimitMaxRequests).toBe(40);
     expect(config.rateLimitWindowMs).toBe(30000);
+  });
+
+  it('reads configured movement evidence retention and cleanup intervals', () => {
+    const config = buildApiConfig({
+      env: {
+        ...validEnvironment,
+        MOVEMENT_EVIDENCE_RETENTION_MS: '3600000',
+        MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS: '30000',
+      },
+    });
+
+    expect(config.movementEvidenceRetentionMs).toBe(3_600_000);
+    expect(config.movementEvidenceCleanupIntervalMs).toBe(30_000);
+  });
+
+  it.each([
+    ['MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS', '1000', 1_000],
+    [
+      'MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS',
+      String(MAX_NODE_TIMER_DELAY_MS),
+      MAX_NODE_TIMER_DELAY_MS,
+    ],
+    ['MOVEMENT_EVIDENCE_RETENTION_MS', '1000', 1_000],
+    [
+      'MOVEMENT_EVIDENCE_RETENTION_MS',
+      String(MAX_MOVEMENT_EVIDENCE_RETENTION_MS),
+      MAX_MOVEMENT_EVIDENCE_RETENTION_MS,
+    ],
+  ])('accepts the safe %s boundary %s', (name, value, expected) => {
+    const config = buildApiConfig({
+      env: {
+        ...validEnvironment,
+        [name]: value,
+      },
+    });
+
+    expect(
+      name === 'MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS'
+        ? config.movementEvidenceCleanupIntervalMs
+        : config.movementEvidenceRetentionMs,
+    ).toBe(expected);
+  });
+
+  it.each([
+    ['MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS', '999'],
+    [
+      'MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS',
+      String(MAX_NODE_TIMER_DELAY_MS + 1),
+    ],
+    ['MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS', String(Number.MAX_SAFE_INTEGER)],
+    [
+      'MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS',
+      String(Number.MAX_SAFE_INTEGER + 1),
+    ],
+    ['MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS', '-1000'],
+    ['MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS', '1.5'],
+    ['MOVEMENT_EVIDENCE_RETENTION_MS', '999'],
+    [
+      'MOVEMENT_EVIDENCE_RETENTION_MS',
+      String(MAX_MOVEMENT_EVIDENCE_RETENTION_MS + 1),
+    ],
+    ['MOVEMENT_EVIDENCE_RETENTION_MS', String(Number.MAX_SAFE_INTEGER)],
+    ['MOVEMENT_EVIDENCE_RETENTION_MS', String(Number.MAX_SAFE_INTEGER + 1)],
+    ['MOVEMENT_EVIDENCE_RETENTION_MS', '-1000'],
+    ['MOVEMENT_EVIDENCE_RETENTION_MS', '1.5'],
+  ])('rejects the unsafe %s value %s', (name, value) => {
+    expect(() =>
+      buildApiConfig({
+        env: {
+          ...validEnvironment,
+          [name]: value,
+        },
+      }),
+    ).toThrow('must be a safe integer between');
   });
 
   it.each([
