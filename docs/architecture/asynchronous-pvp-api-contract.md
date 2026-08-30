@@ -43,8 +43,11 @@ The following rules are fixed by issue `#178` and this contract:
   inventing client-controlled or unapproved award values.
 
 The first delivery deliberately does not add challenge cancellation or a
-voluntary resignation intent. Account deletion invalidates pending invitations
-and finalizes an active match as an account-deletion forfeit for the opponent.
+voluntary resignation intent. Account deletion invalidates pending invitations.
+For an active match whose turn deadline has not elapsed, the deleting player
+loses by `account_deletion_forfeit`. If the deadline has already elapsed when
+deletion begins, deadline authority takes precedence: the current actor loses by
+`turn_forfeit`, even when the other participant is the player being deleted.
 Completed records retain an anonymous player tombstone under the existing
 retention policy.
 
@@ -96,9 +99,12 @@ An invitation has one of these states:
 pending -> accepted
         -> declined
         -> expired
+        -> invalidated
 ```
 
-`accepted`, `declined`, and `expired` are terminal and immutable. There is no
+`accepted`, `declined`, `expired`, and `invalidated` are terminal and immutable.
+`invalidated` means a participant began account deletion before the invitation
+expired; it is not a user cancellation. There is no
 first-delivery cancellation transition.
 
 ### Creation
@@ -432,17 +438,17 @@ identifiers use UUID format.
 
 `PvpInvitationView` is a closed object:
 
-| Field                 | Type                                                 | Required |
-| --------------------- | ---------------------------------------------------- | -------- |
-| `invitationId`        | UUID string                                          | Yes      |
-| `direction`           | `"incoming" \| "outgoing"`                           | Yes      |
-| `status`              | `"pending" \| "accepted" \| "declined" \| "expired"` | Yes      |
-| `version`             | non-negative integer                                 | Yes      |
-| `opponent.playerName` | string                                               | Yes      |
-| `createdAt`           | RFC 3339 timestamp                                   | Yes      |
-| `expiresAt`           | RFC 3339 timestamp                                   | Yes      |
-| `respondedAt`         | RFC 3339 timestamp or null                           | Yes      |
-| `matchId`             | UUID string or null                                  | Yes      |
+| Field                 | Type                                                                  | Required |
+| --------------------- | --------------------------------------------------------------------- | -------- |
+| `invitationId`        | UUID string                                                           | Yes      |
+| `direction`           | `"incoming" \| "outgoing"`                                            | Yes      |
+| `status`              | `"pending" \| "accepted" \| "declined" \| "expired" \| "invalidated"` | Yes      |
+| `version`             | non-negative integer                                                  | Yes      |
+| `opponent.playerName` | string                                                                | Yes      |
+| `createdAt`           | RFC 3339 timestamp                                                    | Yes      |
+| `expiresAt`           | RFC 3339 timestamp                                                    | Yes      |
+| `respondedAt`         | RFC 3339 timestamp or null                                            | Yes      |
+| `matchId`             | UUID string or null                                                   | Yes      |
 
 `respondedAt` is null only while pending. `matchId` is non-null only when the
 invitation was accepted. Both incoming and outgoing views omit deck and initial
@@ -603,20 +609,22 @@ and [persistence design](../database/asynchronous-pvp-persistence.md#progression
 Errors use the existing problem-style envelope with `type`, `title`, `status`,
 `code`, safe `detail`, and `requestId`. The proposed domain codes are:
 
-| Status | Code                              | Use                                          |
-| ------ | --------------------------------- | -------------------------------------------- |
-| `400`  | `VALIDATION_ERROR`                | Malformed parameter or closed request schema |
-| `404`  | `PVP_PLAYER_UNAVAILABLE`          | Exact target cannot safely be challenged     |
-| `404`  | `PVP_INVITATION_NOT_FOUND`        | Missing invitation or wrong participant      |
-| `404`  | `PVP_MATCH_NOT_FOUND`             | Missing match or non-participant access      |
-| `409`  | `PVP_INVITATION_ALREADY_PENDING`  | One-pair pending constraint                  |
-| `409`  | `PVP_INVITATION_EXPIRED`          | Accept or decline lost to expiry             |
-| `409`  | `PVP_INVITATION_VERSION_CONFLICT` | Stale invitation version                     |
-| `409`  | `PVP_MATCH_COMPLETED`             | New action against a terminal match          |
-| `409`  | `PVP_MATCH_VERSION_CONFLICT`      | Stale match version                          |
-| `409`  | `PVP_ACTION_ILLEGAL`              | Intent is not currently legal                |
-| `409`  | `PVP_IDEMPOTENCY_CONFLICT`        | Submission ID reused with another payload    |
-| `429`  | `RATE_LIMITED`                    | Existing authenticated per-process limit     |
+| Status | Code                              | Use                                           |
+| ------ | --------------------------------- | --------------------------------------------- |
+| `400`  | `VALIDATION_ERROR`                | Malformed parameter or closed request schema  |
+| `400`  | `PVP_DECK_INVALID`                | Saved deck or initial Creature is unavailable |
+| `404`  | `PVP_PLAYER_UNAVAILABLE`          | Exact target cannot safely be challenged      |
+| `404`  | `PVP_INVITATION_NOT_FOUND`        | Missing invitation or wrong participant       |
+| `404`  | `PVP_MATCH_NOT_FOUND`             | Missing match or non-participant access       |
+| `409`  | `PVP_INVITATION_ALREADY_PENDING`  | One-pair pending constraint                   |
+| `409`  | `PVP_INVITATION_EXPIRED`          | Accept or decline lost to expiry              |
+| `409`  | `PVP_INVITATION_INVALIDATED`      | Participant account deletion ended invitation |
+| `409`  | `PVP_INVITATION_VERSION_CONFLICT` | Stale invitation version                      |
+| `409`  | `PVP_MATCH_COMPLETED`             | New action against a terminal match           |
+| `409`  | `PVP_MATCH_VERSION_CONFLICT`      | Stale match version                           |
+| `409`  | `PVP_ACTION_ILLEGAL`              | Intent is not currently legal                 |
+| `409`  | `PVP_IDEMPOTENCY_CONFLICT`        | Submission ID reused with another payload     |
+| `429`  | `RATE_LIMITED`                    | Existing authenticated per-process limit      |
 
 Authentication continues to use the existing `401` boundary. Object-level
 authorization uses the same `404` as absence so a caller cannot probe another

@@ -4,7 +4,8 @@ export const MIN_MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS = 1_000;
 
 // Node timers use a signed 32-bit millisecond delay. Larger values are reduced
 // to 1 ms by Node, so reject them before scheduling database work.
-export const MAX_NODE_TIMER_DELAY_MS = 2_147_483_647;
+export { MAX_NODE_TIMER_DELAY_MS } from '../config/timers.js';
+import { MAX_NODE_TIMER_DELAY_MS } from '../config/timers.js';
 
 export interface MovementEvidenceCleanupScheduler {
   start(): void;
