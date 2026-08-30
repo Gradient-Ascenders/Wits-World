@@ -10,6 +10,8 @@ import type { PlayerIdentityService } from '../src/players/player-identity.js';
 const authorId = 'c1000000-0000-4000-8000-000000000001';
 const otherAuthorId = 'c1000000-0000-4000-8000-000000000002';
 const entityId = 'c2000000-0000-4000-8000-000000000001';
+const eventId = 'c2000000-0000-4000-8000-000000000002';
+const challengeId = 'c2000000-0000-4000-8000-000000000003';
 const auditId = 'c3000000-0000-4000-8000-000000000001';
 const authConfig: AuthConfig = {
   audience: 'https://api.example.test',
@@ -35,6 +37,8 @@ beforeEach(async () => {
         canReview: true,
         entityId,
         entityType: 'question',
+        eventId,
+        challengeId,
         label: 'multiple_choice question',
         status: 'in_review',
         submittedAt: '2026-08-29T08:00:00.000Z',
@@ -131,7 +135,15 @@ describe('Author review queue and history API', () => {
     expect(serialized).not.toContain('acceptedAnswer');
     expect(serialized).not.toContain('latitude');
     expect(response.json()).toMatchObject({
-      items: [{ canReview: true, entityType: 'question', status: 'in_review' }],
+      items: [
+        {
+          canReview: true,
+          challengeId,
+          entityType: 'question',
+          eventId,
+          status: 'in_review',
+        },
+      ],
       totalItems: 1,
     });
   });

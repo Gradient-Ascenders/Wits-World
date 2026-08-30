@@ -508,7 +508,7 @@ describe('Basic author console', () => {
   it('surfaces the API publication rule for a Creature with fewer than four moves', async () => {
     const user = userEvent.setup();
     installAuthorApi({
-      cards: [cardFixture()],
+      cards: [cardFixture({ authoringStatus: 'approved', version: 2 })],
       publishCardError: problemResponse(
         422,
         'CONTENT_NOT_READY',
@@ -648,6 +648,7 @@ describe('Basic author console', () => {
   it('shows incomplete associations and the API publication rejection', async () => {
     const user = userEvent.setup();
     installAuthorApi({
+      events: [eventFixture({ authoringStatus: 'approved', version: 2 })],
       publishEventError: problemResponse(
         422,
         'CONTENT_NOT_READY',
@@ -675,6 +676,7 @@ describe('Basic author console', () => {
         { ...cardFixture(), authoringStatus: 'published', isActive: true },
       ],
       challenges: [{ ...challengeFixture(), status: 'published' }],
+      events: [eventFixture({ authoringStatus: 'approved', version: 2 })],
       questions: Array.from({ length: 5 }, (_, index) =>
         questionFixture(index + 1, 'published'),
       ),
@@ -773,6 +775,52 @@ describe('Basic author console', () => {
     await user.click(screen.getByRole('button', { name: 'Save event' }));
     expect(await screen.findByText('This content changed state')).toBeVisible();
     expect(screen.queryByText(/version|etag/i)).not.toBeInTheDocument();
+  });
+
+  it('reloads authoritative event detail after a lifecycle state conflict', async () => {
+    const user = userEvent.setup();
+    const draft = eventFixture();
+    const serverEvent = eventFixture({
+      authoringStatus: 'in_review',
+      submittedAt: '2026-08-30T10:00:00.000Z',
+      submittedBy: '90000000-0000-4000-8000-000000000002',
+      version: 1,
+    });
+    let eventLoads = 0;
+    installAuthorApi({
+      handleRequest: ({ method, path }) => {
+        if (path === '/author/events' && method === 'GET') {
+          eventLoads += 1;
+          return jsonResponse({
+            events: [eventLoads === 1 ? draft : serverEvent],
+            requestId: `request-events-${eventLoads}`,
+          });
+        }
+        if (path === `/author/events/${eventId}/submit` && method === 'POST')
+          return problemResponse(
+            409,
+            'CONTENT_STATE_CONFLICT',
+            'The event is already in review.',
+          );
+        return undefined;
+      },
+    });
+    renderAuthorRoute(authorPaths.event(eventId));
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Submit for review' }),
+    );
+
+    expect(
+      await screen.findByText(
+        'The content changed on the server. Its authoritative state was reloaded.',
+      ),
+    ).toBeVisible();
+    expect(eventLoads).toBe(2);
+    expect(
+      screen.queryByRole('button', { name: 'Submit for review' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('Awaiting independent review')).toBeVisible();
   });
 
   it('renders a recoverable generic author API loading failure', async () => {
@@ -1137,7 +1185,7 @@ describe('Basic author console', () => {
     await user.type(prompt, 'Saved question prompt');
     await user.click(screen.getByRole('button', { name: 'Save question' }));
     await screen.findByText('Question changes saved.');
-    await user.click(screen.getByRole('button', { name: 'Publish question' }));
+    await user.click(screen.getByRole('button', { name: 'Submit for review' }));
     expect(
       await screen.findByRole('heading', {
         level: 5,
@@ -1154,7 +1202,7 @@ describe('Basic author console', () => {
     await user.type(cardName, 'Saved card name');
     await user.click(screen.getByRole('button', { name: 'Save card' }));
     await screen.findByText('Card changes saved.');
-    await user.click(screen.getByRole('button', { name: 'Publish card' }));
+    await user.click(screen.getByRole('button', { name: 'Submit for review' }));
     expect(
       await screen.findByRole('heading', {
         level: 3,
@@ -1655,6 +1703,7 @@ describe('Basic author console', () => {
     const pending = deferred<Response>();
     installAuthorApi({
       challenges: [challengeFixture(), challengeB],
+      events: [eventFixture({ authoringStatus: 'approved', version: 2 })],
       handleRequest: ({ path }) => {
         if (path === `/author/events/${eventId}/publish`)
           return pending.promise;
@@ -1719,7 +1768,7 @@ describe('Basic author console', () => {
     });
     const pending = deferred<Response>();
     installAuthorApi({
-      cards: [cardFixture(), cardB],
+      cards: [cardFixture({ authoringStatus: 'approved', version: 2 }), cardB],
       handleRequest: ({ path }) =>
         path === `/author/cards/${cardFixture().id}/publish`
           ? pending.promise
@@ -1774,7 +1823,10 @@ describe('Basic author console', () => {
     });
     const pending = deferred<Response>();
     installAuthorApi({
-      challenges: [challengeFixture(), challengeB],
+      challenges: [
+        challengeFixture({ status: 'approved', version: 2 }),
+        challengeB,
+      ],
       handleRequest: ({ path }) => {
         if (path === `/author/challenges/${challengeId}/publish`)
           return pending.promise;
@@ -1815,7 +1867,7 @@ describe('Basic author console', () => {
     expect(selector).toHaveTextContent('Challenge 1 — published');
   });
 
-  it('shows an approved card without direct publish or edit controls', async () => {
+  it('shows an approved card with a publish action but no edit control', async () => {
     installAuthorApi({
       cards: [cardFixture({ authoringStatus: 'approved', version: 2 })],
     });
@@ -1831,9 +1883,7 @@ describe('Basic author console', () => {
     expect(
       screen.queryByRole('link', { name: 'Edit card' }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Publish card' }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Publish card' })).toBeEnabled();
   });
 
   it('shows an approved challenge in the expanded status enum', async () => {
@@ -1846,8 +1896,8 @@ describe('Basic author console', () => {
     expect(selector).toHaveValue(challengeId);
     expect(selector).toHaveTextContent('Challenge 1 — approved');
     expect(
-      screen.queryByRole('button', { name: 'Publish challenge' }),
-    ).not.toBeInTheDocument();
+      screen.getByRole('button', { name: 'Publish challenge' }),
+    ).toBeEnabled();
   });
 
   it('reconciles a delayed challenge creation without selecting it in a newer context', async () => {
@@ -2155,6 +2205,17 @@ function installAuthorApi(options: ApiOptions = {}) {
           requestId: 'request-event-publish',
         });
       }
+      if (path === `/author/events/${eventId}/submit`) {
+        const index = events.findIndex((item) => item.eventId === eventId);
+        const event = {
+          ...(events[index] ?? eventFixture()),
+          authoringStatus: 'in_review' as const,
+          submittedAt: '2026-08-20T10:00:00.000Z',
+          submittedBy: '90000000-0000-4000-8000-000000000001',
+        };
+        events.splice(index, 1, event);
+        return jsonResponse({ event, requestId: 'request-event-submit' });
+      }
       if (path === `/author/events/${eventId}/retire`) {
         const index = events.findIndex((item) => item.eventId === eventId);
         const event = {
@@ -2226,6 +2287,25 @@ function installAuthorApi(options: ApiOptions = {}) {
           requestId: 'request-challenge-retire',
         });
       }
+      if (
+        path === `/author/challenges/${challengeId}/submit` &&
+        method === 'POST'
+      ) {
+        const index = challenges.findIndex(
+          (item) => item.challengeId === challengeId,
+        );
+        const challenge = {
+          ...(challenges[index] ?? challengeFixture()),
+          status: 'in_review' as const,
+          submittedAt: '2026-08-20T10:00:00.000Z',
+          submittedBy: '90000000-0000-4000-8000-000000000001',
+        };
+        challenges.splice(index, 1, challenge);
+        return jsonResponse({
+          challenge,
+          requestId: 'request-challenge-submit',
+        });
+      }
       if (path.startsWith('/author/questions/') && method === 'PUT') {
         const body = JSON.parse(String(init?.body));
         const baseQuestion = questionFixture(1, 'draft');
@@ -2264,6 +2344,23 @@ function installAuthorApi(options: ApiOptions = {}) {
           requestId: 'request-question-publish',
         });
       }
+      if (path.startsWith('/author/questions/') && path.endsWith('/submit')) {
+        const submittedQuestionId = path.split('/')[3]!;
+        const index = questions.findIndex(
+          (item) => item.questionId === submittedQuestionId,
+        );
+        const question = {
+          ...(questions[index] ?? questionFixture(1, 'draft')),
+          status: 'in_review' as const,
+          submittedAt: '2026-08-20T10:00:00.000Z',
+          submittedBy: '90000000-0000-4000-8000-000000000001',
+        };
+        questions.splice(index, 1, question);
+        return jsonResponse({
+          question,
+          requestId: 'request-question-submit',
+        });
+      }
       if (path === `/author/cards/${cardFixture().id}` && method === 'PUT') {
         const body = JSON.parse(String(init?.body));
         const card = {
@@ -2293,6 +2390,17 @@ function installAuthorApi(options: ApiOptions = {}) {
           isActive: true,
         };
         return jsonResponse({ card, requestId: 'request-card-publish' });
+      }
+      if (path === `/author/cards/${cardFixture().id}/submit`) {
+        const index = cards.findIndex((item) => item.id === cardFixture().id);
+        const card = {
+          ...(cards[index] ?? cardFixture()),
+          authoringStatus: 'in_review' as const,
+          submittedAt: '2026-08-20T10:00:00.000Z',
+          submittedBy: '90000000-0000-4000-8000-000000000001',
+        };
+        cards.splice(index, 1, card);
+        return jsonResponse({ card, requestId: 'request-card-submit' });
       }
 
       throw new Error(`Unexpected ${method} request: ${path}`);
