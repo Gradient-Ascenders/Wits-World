@@ -166,7 +166,7 @@ jobs:
           # Deliberately unusable development target. The API database
           # configuration requires DATABASE_URL when validating TEST_DATABASE_URL,
           # but PR CI must never receive development or production credentials.
-          DATABASE_URL: postgresql://ci-guard:ci-guard@127.0.0.1:1/wits_world_ci_guard
+          DATABASE_URL: postgresql://ci-guard:ci-guard@127.0.0.1:1/wits_world_ci_guard?sslmode=require
           TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
         run: |
           set -euo pipefail
@@ -177,7 +177,7 @@ jobs:
         env:
           # Keep the ordinary database target deliberately unusable so an
           # accidental non-test connection fails rather than touching real data.
-          DATABASE_URL: postgresql://ci-guard:ci-guard@127.0.0.1:1/wits_world_ci_guard
+          DATABASE_URL: postgresql://ci-guard:ci-guard@127.0.0.1:1/wits_world_ci_guard?sslmode=require
           TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
         run: |
           set -euo pipefail
