@@ -39,12 +39,14 @@ const authConfig: AuthConfig = {
   spaClientId: 'wits-world-spa-client',
   jwksUrl: new URL('https://auth.example.test/.well-known/jwks.json'),
 };
+const TOKEN_ISSUED_AT_SECONDS = Math.floor(Date.now() / 1000) - 60;
 
 const tokenIdentity = {
   connectionStrategy: AUTH0_DATABASE_CONNECTION_STRATEGY,
   issuer: authConfig.issuer,
   playerName: 'naledi',
   subject: 'auth0|player-123',
+  tokenIssuedAt: new Date(TOKEN_ISSUED_AT_SECONDS * 1000),
 };
 
 const localPlayer = {
@@ -202,6 +204,15 @@ describe('API bearer authentication', () => {
     expect(response.body).not.toContain(token);
   });
 
+  it('returns 401 when a token has no issued-at claim', async () => {
+    const token = await createToken({ includeIssuedAt: false });
+
+    const response = await authenticatedRequest(token);
+
+    expectUnauthorized(response);
+    expect(playerIdentityService.resolve).not.toHaveBeenCalled();
+  });
+
   it('accepts the configured player-name claim from a fully validated token', async () => {
     const token = await createToken({ playerName: 'trusted-player' });
 
@@ -241,6 +252,7 @@ describe('API bearer authentication', () => {
       issuer: tokenIdentity.issuer,
       playerName: null,
       subject: tokenIdentity.subject,
+      tokenIssuedAt: tokenIdentity.tokenIssuedAt,
     });
   });
 
@@ -376,7 +388,10 @@ describe('API bearer authentication', () => {
     expect(response.statusCode).toBe(200);
 
     expect(response.json()).toEqual({
-      authenticatedIdentity: tokenIdentity,
+      authenticatedIdentity: {
+        ...tokenIdentity,
+        tokenIssuedAt: tokenIdentity.tokenIssuedAt.toISOString(),
+      },
       submittedBody: {
         issuer: 'https://attacker.example.test/',
         playerName: 'attacker-name',
@@ -626,6 +641,7 @@ interface CreateTokenOptions {
   expirationTime?: number;
   signingKey?: CryptoKey;
   includeExpiration?: boolean;
+  includeIssuedAt?: boolean;
   emailVerified?: boolean;
   email?: string;
   includePlayerName?: boolean;
@@ -643,6 +659,7 @@ async function createToken({
   expirationTime = Math.floor(Date.now() / 1000) + 300,
   signingKey = privateKey,
   includeExpiration = true,
+  includeIssuedAt = true,
   emailVerified,
   email,
   includePlayerName = true,
@@ -668,8 +685,11 @@ async function createToken({
     })
     .setIssuer(issuer)
     .setAudience(audience)
-    .setSubject(subject)
-    .setIssuedAt();
+    .setSubject(subject);
+
+  if (includeIssuedAt) {
+    token = token.setIssuedAt(TOKEN_ISSUED_AT_SECONDS);
+  }
 
   if (includeExpiration) {
     token = token.setExpirationTime(expirationTime);

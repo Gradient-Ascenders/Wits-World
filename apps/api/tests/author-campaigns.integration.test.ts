@@ -116,6 +116,7 @@ beforeEach(async () => {
       issuer: authConfig.issuer,
       subject: 'auth0|campaign-author',
       playerName: 'campaign-author',
+      tokenIssuedAt: new Date(0),
     })),
   };
   app = await buildApp({

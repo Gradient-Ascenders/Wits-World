@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 
 import { ApiError } from '../errors/api-error.js';
 import {
+  DeletedIdentityTokenError,
   PlayerNameConflictError,
   type PlayerIdentityService,
 } from '../players/player-identity.js';
@@ -41,6 +42,15 @@ export function registerAuthorization(
     try {
       player = await playerIdentityService.resolve(identity);
     } catch (error) {
+      if (error instanceof DeletedIdentityTokenError) {
+        throw new ApiError({
+          statusCode: 403,
+          code: 'ACCOUNT_UNAVAILABLE',
+          title: 'Account unavailable',
+          detail: 'This account cannot perform application operations.',
+        });
+      }
+
       if (error instanceof PlayerNameConflictError) {
         throw new ApiError({
           statusCode: 409,

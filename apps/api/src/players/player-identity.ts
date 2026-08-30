@@ -22,6 +22,14 @@ interface PlayerRow {
   lifecycle_status: PlayerLifecycleStatus;
 }
 
+interface ResolvedPlayerRow {
+  id: string | null;
+  identity_denied: boolean;
+  player_name: string | null;
+  role: PlayerRole | null;
+  lifecycle_status: PlayerLifecycleStatus | null;
+}
+
 export interface PlayerIdentityService {
   resolve(identity: InteractivePlayerPrincipal): Promise<LocalPlayer>;
 }
@@ -54,6 +62,13 @@ export class PlayerNameAlreadyAssignedError extends Error {
   }
 }
 
+export class DeletedIdentityTokenError extends Error {
+  public constructor() {
+    super('This access token belongs to a deleted account.');
+    this.name = 'DeletedIdentityTokenError';
+  }
+}
+
 export function createPlayerIdentityService(
   database: Pick<pg.Pool, 'query'>,
 ): PlayerIdentityService & PlayerNameSetupService {
@@ -66,30 +81,54 @@ export function createPlayerIdentityService(
       const synchronizePlayerName =
         identity.connectionStrategy === AUTH0_DATABASE_CONNECTION_STRATEGY;
       const result = await database
-        .query<PlayerRow>(
+        .query<ResolvedPlayerRow>(
           `
-          insert into public.players (
-            id,
-            auth_issuer,
-            auth_subject,
-            player_name,
-            role,
-            lifecycle_status
+          with identity_decision as (
+            select exists (
+              select 1
+                from private.deleted_identity_token_denials denial
+               where denial.expires_at > now()
+                 and $6 <= denial.tokens_issued_before
+                 and denial.identity_digest = sha256(
+                   denial.identity_salt
+                   || int4send(octet_length(convert_to($2, 'UTF8')))
+                   || convert_to($2, 'UTF8')
+                   || convert_to($3, 'UTF8')
+                 )
+            ) as denied
+          ), resolved_player as (
+            insert into public.players (
+              id,
+              auth_issuer,
+              auth_subject,
+              player_name,
+              role,
+              lifecycle_status
+            )
+            select $1, $2, $3, $4, 'player', 'active'
+             where not (select denied from identity_decision)
+            on conflict (auth_issuer, auth_subject)
+            do update
+              set player_name = case
+                    when $5 then excluded.player_name
+                    else public.players.player_name
+                  end,
+                  updated_at = case
+                    when $5
+                      and public.players.player_name is distinct from excluded.player_name
+                      then now()
+                    else public.players.updated_at
+                  end
+            returning id, player_name, role, lifecycle_status
           )
-          values ($1, $2, $3, $4, 'player', 'active')
-          on conflict (auth_issuer, auth_subject)
-          do update
-            set player_name = case
-                  when $5 then excluded.player_name
-                  else public.players.player_name
-                end,
-                updated_at = case
-                  when $5
-                    and public.players.player_name is distinct from excluded.player_name
-                    then now()
-                  else public.players.updated_at
-                end
-          returning id, player_name, role, lifecycle_status
+          select
+            resolved.id,
+            resolved.player_name,
+            resolved.role,
+            resolved.lifecycle_status,
+            decision.denied as identity_denied
+          from identity_decision decision
+          left join resolved_player resolved on true
         `,
           [
             randomUUID(),
@@ -97,6 +136,7 @@ export function createPlayerIdentityService(
             identity.subject,
             playerName,
             synchronizePlayerName,
+            identity.tokenIssuedAt,
           ],
         )
         .catch((error: unknown) => {
@@ -109,7 +149,11 @@ export function createPlayerIdentityService(
 
       const player = result.rows[0];
 
-      if (!player) {
+      if (player?.identity_denied) {
+        throw new DeletedIdentityTokenError();
+      }
+
+      if (!player || !player.id || !player.role || !player.lifecycle_status) {
         throw new Error('Local player resolution returned no player.');
       }
 

@@ -8,6 +8,7 @@ export const SPRINT1_E2E_IDENTITY = {
   issuer: 'https://sprint1-e2e.invalid/',
   playerName: 'sprint1-player',
   subject: 'sprint1-e2e-player',
+  tokenIssuedAt: new Date(0),
 } as const;
 
 export function createSprint1E2eAccessTokenVerifier(): AccessTokenVerifier {

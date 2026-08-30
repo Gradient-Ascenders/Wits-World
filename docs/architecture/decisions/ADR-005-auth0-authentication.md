@@ -352,6 +352,13 @@ matches, and Author audit history remain linked only to the anonymous UUID. The
 exact matrix is documented in
 [Account deletion persistence and retention](../../database/account-deletion-retention.md).
 
+Because a validated Auth0 JWT remains usable until its expiry, local completion
+also creates a private, short-lived denial marker. It contains only a freshly
+salted one-way digest of the issuer/subject pair plus issuance cutoff and expiry
+timestamps; raw Auth0 identifiers and tokens are not retained. The API rejects
+tokens issued at or before completion before local-player provisioning, while a
+later token remains eligible for clean re-registration as a new player.
+
 Because Auth0 deletion and PostgreSQL cleanup cannot form one atomic
 transaction, incomplete deletions are persisted as `pending` or
 `retry_pending`. A database-backed retry processor runs on API startup and at a
@@ -549,5 +556,5 @@ The team must still confirm:
 ---
 
 The preceding document was planned and generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking], ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5], and
-Codex-CLI[gpt-5.6-sol medium].
+ChatGPT-Web[GPT-5.6 Thinking], ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5],
+Codex-CLI[gpt-5.6-sol medium], and Codex-CLI[GPT-5].

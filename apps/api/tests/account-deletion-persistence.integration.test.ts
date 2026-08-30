@@ -3,9 +3,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type pg from 'pg';
+import { generateKeyPair, SignJWT } from 'jose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { AUTH0_DATABASE_CONNECTION_STRATEGY } from '../src/auth/interactive-player-claims.js';
+import { buildApp } from '../src/app.js';
+import { createAccessTokenVerifier } from '../src/auth/access-token-verifier.js';
+import {
+  AUTH0_DATABASE_CONNECTION_STRATEGY,
+  CONNECTION_STRATEGY_CLAIM,
+  PLAYER_NAME_CLAIM,
+} from '../src/auth/interactive-player-claims.js';
+import type { AuthConfig } from '../src/config/auth.js';
 import {
   buildDatabaseConfig,
   loadApiEnvironment,
@@ -42,6 +50,8 @@ const ROLLBACK_GRANT_ID = 'd6000000-0000-4000-8000-000000000002';
 
 const CONCURRENT_PLAYER_ID = 'd1000000-0000-4000-8000-000000000003';
 const CONCURRENT_DELETION_ID = 'd1100000-0000-4000-8000-000000000003';
+const DENIED_TOKEN_PLAYER_ID = 'd1000000-0000-4000-8000-000000000004';
+const DENIED_TOKEN_DELETION_ID = 'd1100000-0000-4000-8000-000000000004';
 const ACCOUNT_DELETION_MIGRATION =
   '0024_complete_account_deletion_retention.sql';
 
@@ -321,6 +331,7 @@ describe.skipIf(!runIntegrationTests)(
         issuer: identity.issuer,
         subject: identity.subject,
         playerName: 'deleted_author',
+        tokenIssuedAt: new Date('2026-08-26T12:00:01.000Z'),
       });
 
       expect(rejoined).toMatchObject({
@@ -343,6 +354,142 @@ describe.skipIf(!runIntegrationTests)(
       );
       expect(newProgress.rows[0]?.count).toBe('0');
     }, 60_000);
+
+    it('rejects the same unexpired access token after completed deletion without reprovisioning', async () => {
+      const identity = {
+        issuer: ISSUER,
+        subject: 'auth0|deleted-token-replay',
+      };
+      const issuedAtSeconds = Math.floor(Date.now() / 1000) - 60;
+      const completedAt = new Date();
+      const keyPair = await generateKeyPair('RS256');
+      const authConfig: AuthConfig = {
+        audience: 'https://api.example.test',
+        domain: 'auth.example.test',
+        issuer: ISSUER,
+        jwksUrl: new URL(`${ISSUER}.well-known/jwks.json`),
+        spaClientId: 'wits-world-spa-client',
+      };
+      const accessToken = await new SignJWT({
+        [CONNECTION_STRATEGY_CLAIM]: AUTH0_DATABASE_CONNECTION_STRATEGY,
+        [PLAYER_NAME_CLAIM]: 'deleted_token_player',
+      })
+        .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
+        .setIssuer(identity.issuer)
+        .setAudience(authConfig.audience)
+        .setSubject(identity.subject)
+        .setIssuedAt(issuedAtSeconds)
+        .setExpirationTime(Math.floor(Date.now() / 1000) + 3_600)
+        .sign(keyPair.privateKey);
+
+      await pool.query(
+        `
+          insert into public.players (
+            id, auth_issuer, auth_subject, player_name, role, lifecycle_status
+          ) values ($1, $2, $3, 'deleted_token_player', 'player', 'active')
+        `,
+        [DENIED_TOKEN_PLAYER_ID, identity.issuer, identity.subject],
+      );
+
+      const deletionCountBefore = await pool.query<{ count: string }>(
+        `select count(*)::text as count from public.account_deletion_requests`,
+      );
+      const lifecycle = createAccountDeletionLifecycle(pool, {
+        clock: () => completedAt,
+        createId: () => DENIED_TOKEN_DELETION_ID,
+      });
+      const playerIdentityService = createPlayerIdentityService(pool);
+      const app = await buildApp({
+        authConfig,
+        accessTokenVerifier: createAccessTokenVerifier(authConfig, {
+          verificationKey: keyPair.publicKey,
+        }),
+        playerIdentityService,
+        accountDeletionServices: {
+          lifecycle,
+          managementClient: { deleteUser: async () => undefined },
+          reauthenticationVerifier: {
+            verify: async () => ({
+              authenticatedAt: new Date(),
+              identity,
+            }),
+          },
+        },
+        logger: false,
+      });
+
+      try {
+        const deletionResponse = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/account-deletion',
+          headers: { authorization: `Bearer ${accessToken}` },
+          payload: {
+            confirmation: 'DELETE_MY_ACCOUNT',
+            reauthenticationToken: 'fresh-id-token',
+          },
+        });
+
+        expect(deletionResponse.statusCode).toBe(200);
+        expect(deletionResponse.json()).toMatchObject({
+          deletionId: DENIED_TOKEN_DELETION_ID,
+          status: 'completed',
+        });
+
+        const protectedResponse = await app.inject({
+          method: 'GET',
+          url: '/api/v1/auth/me',
+          headers: { authorization: `Bearer ${accessToken}` },
+        });
+        const retryResponse = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/account-deletion',
+          headers: { authorization: `Bearer ${accessToken}` },
+          payload: {
+            confirmation: 'DELETE_MY_ACCOUNT',
+            reauthenticationToken: 'fresh-id-token',
+          },
+        });
+
+        expect(protectedResponse.statusCode).toBe(403);
+        expect(protectedResponse.json()).toMatchObject({
+          code: 'ACCOUNT_UNAVAILABLE',
+        });
+        expect(retryResponse.statusCode).toBe(403);
+        expect(retryResponse.json()).toMatchObject({
+          code: 'ACCOUNT_UNAVAILABLE',
+        });
+
+        const persisted = await pool.query<{
+          deletion_count: string;
+          denial_count: string;
+          mapped_players: string;
+        }>(
+          `
+            select
+              (select count(*)::text
+                 from public.account_deletion_requests) as deletion_count,
+              (select count(*)::text
+                 from private.deleted_identity_token_denials
+                where deletion_request_id = $1::uuid) as denial_count,
+              (select count(*)::text
+                 from public.players
+                where auth_issuer = $2
+                  and auth_subject = $3) as mapped_players
+          `,
+          [DENIED_TOKEN_DELETION_ID, identity.issuer, identity.subject],
+        );
+
+        expect(persisted.rows[0]).toEqual({
+          deletion_count: String(
+            Number(deletionCountBefore.rows[0]?.count ?? '0') + 1,
+          ),
+          denial_count: '1',
+          mapped_players: '0',
+        });
+      } finally {
+        await app.close();
+      }
+    }, 30_000);
 
     it('rolls back partial cleanup and succeeds on retry', async () => {
       const identity = {

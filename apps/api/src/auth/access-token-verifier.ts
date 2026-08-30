@@ -38,6 +38,7 @@ export function createAccessTokenVerifier(
         payload.iss !== config.issuer ||
         typeof payload.sub !== 'string' ||
         payload.sub.trim() === '' ||
+        typeof payload.iat !== 'number' ||
         typeof payload.exp !== 'number'
       ) {
         throw new Error(
@@ -51,6 +52,7 @@ export function createAccessTokenVerifier(
         ...interactiveClaims,
         issuer: payload.iss,
         subject: payload.sub,
+        tokenIssuedAt: new Date(payload.iat * 1000),
       };
     },
   };

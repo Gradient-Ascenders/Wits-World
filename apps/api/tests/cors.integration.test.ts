@@ -206,5 +206,6 @@ function createVerifyAccessTokenMock() {
     ...authenticatedIdentity,
     connectionStrategy: 'auth0',
     playerName: 'test-player',
+    tokenIssuedAt: new Date(0),
   }));
 }
