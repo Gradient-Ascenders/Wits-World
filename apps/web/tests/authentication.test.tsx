@@ -104,6 +104,7 @@ function mockCurrentPlayer(
     if (url.endsWith('/auth/me')) {
       return new Response(
         JSON.stringify({
+          connectionStrategy: playerName === null ? 'google-oauth2' : 'auth0',
           playerName,
           playerNameSetupRequired: playerName === null,
           id: playerId,
@@ -424,6 +425,34 @@ describe('player authentication', () => {
     expect(trigger).toHaveFocus();
   });
 
+  it('opens Account from the disclosure without adding it to primary navigation', async () => {
+    const user = userEvent.setup();
+    mockCurrentPlayer();
+
+    renderRoute(
+      '/explore',
+      createAuthValue({
+        getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
+        isAuthenticated: true,
+      }),
+    );
+
+    await openAccountDisclosure(user);
+    await user.click(screen.getByRole('button', { name: 'Manage account' }));
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Account' }),
+    ).toBeVisible();
+    expect(window.location.pathname).toBe('/account');
+    for (const playerNavigation of screen.getAllByRole('navigation', {
+      name: 'Player',
+    })) {
+      expect(
+        within(playerNavigation).queryByRole('link', { name: 'Account' }),
+      ).not.toBeInTheDocument();
+    }
+  });
+
   it.each([
     {
       activeLabel: 'Explore',
@@ -570,6 +599,7 @@ describe('player authentication', () => {
       if (url.endsWith('/auth/me')) {
         return new Response(
           JSON.stringify({
+            connectionStrategy: 'google-oauth2',
             id: playerAId,
             lifecycleStatus: 'active',
             playerName: null,
@@ -632,6 +662,7 @@ describe('player authentication', () => {
       if (url.endsWith('/auth/me')) {
         return new Response(
           JSON.stringify({
+            connectionStrategy: 'google-oauth2',
             id: playerAId,
             lifecycleStatus: 'active',
             playerName: null,
@@ -650,6 +681,7 @@ describe('player authentication', () => {
         });
         return new Response(
           JSON.stringify({
+            connectionStrategy: 'google-oauth2',
             id: playerAId,
             lifecycleStatus: 'active',
             playerName: 'new_google_player',
@@ -702,6 +734,7 @@ describe('player authentication', () => {
 
         return new Response(
           JSON.stringify({
+            connectionStrategy: 'google-oauth2',
             id: playerAId,
             lifecycleStatus: 'active',
             playerName: setupRequired ? null : 'chosen-in-another-tab',
@@ -762,6 +795,7 @@ describe('player authentication', () => {
       if (url.endsWith('/auth/me')) {
         return new Response(
           JSON.stringify({
+            connectionStrategy: 'google-oauth2',
             id: playerAId,
             lifecycleStatus: 'active',
             playerName: null,
@@ -792,6 +826,7 @@ describe('player authentication', () => {
     completeSave(
       new Response(
         JSON.stringify({
+          connectionStrategy: 'google-oauth2',
           id: playerAId,
           lifecycleStatus: 'active',
           playerName: 'stale-player',

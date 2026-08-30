@@ -1,6 +1,7 @@
 import type { ApiAccessTokenProvider } from '../auth/useApiAccessToken';
 
 export interface CurrentPlayer {
+  connectionStrategy: 'auth0' | 'google-oauth2';
   id: string;
   lifecycleStatus: 'active';
   playerName: string | null;
@@ -187,6 +188,8 @@ function isUuid(value: unknown): value is string {
 function parseCurrentPlayer(value: unknown): CurrentPlayer | null {
   if (
     !isRecord(value) ||
+    (value.connectionStrategy !== 'auth0' &&
+      value.connectionStrategy !== 'google-oauth2') ||
     !isUuid(value.id) ||
     !(
       value.playerName === null ||
@@ -202,6 +205,7 @@ function parseCurrentPlayer(value: unknown): CurrentPlayer | null {
   }
 
   return {
+    connectionStrategy: value.connectionStrategy,
     id: value.id,
     lifecycleStatus: 'active',
     playerName: value.playerName,

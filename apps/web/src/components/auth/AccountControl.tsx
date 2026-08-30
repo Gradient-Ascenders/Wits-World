@@ -20,6 +20,7 @@ export function AccountControl() {
   const { state: currentPlayer } = useCurrentPlayer();
   const [isProtectedExploreRoute] = useRoute('/explore');
   const [isProtectedCollectionRoute] = useRoute('/collection');
+  const [isProtectedAccountRoute] = useRoute('/account');
   const [isProtectedAuthorRoute] = useRoute('/author/*?');
 
   useEffect(() => {
@@ -101,6 +102,7 @@ export function AccountControl() {
     if (
       isProtectedExploreRoute ||
       isProtectedCollectionRoute ||
+      isProtectedAccountRoute ||
       isProtectedAuthorRoute
     ) {
       return null;
@@ -125,6 +127,7 @@ export function AccountControl() {
       {isAuthenticated ? (
         <div className="account-disclosure" ref={disclosureRef}>
           <button
+            aria-current={isProtectedAccountRoute ? 'page' : undefined}
             aria-controls={disclosureId}
             aria-expanded={isDisclosureOpen}
             className="button button--quiet account-disclosure__trigger"
@@ -185,6 +188,16 @@ export function AccountControl() {
                   Choose Player Name
                 </button>
               ) : null}
+              <button
+                className="button button--quiet"
+                onClick={() => {
+                  setIsDisclosureOpen(false);
+                  navigate('/account');
+                }}
+                type="button"
+              >
+                Manage account
+              </button>
               <button
                 className="button button--quiet"
                 onClick={signOut}

@@ -222,9 +222,8 @@ complete Basic product. It still records these narrower gates:
 - the final location-data retention policy remains open; the current
   implementation stores active-use eligibility and challenge-start evidence
   under a provisional 24-hour expiry and deletes its journey audit with it;
-- account-deletion persistence and retention are implemented; the player
-  profile/account page, password reset, and deletion UI remain mandatory issue
-  `#161` work;
+- account-deletion persistence, retention, provider-owned password recovery,
+  and issue `#161`'s player profile/account and deletion UI are implemented;
 - Mapbox licensing/terms, production token/CSP/privacy, cost ownership, usage,
   and campus-data evidence remains outstanding; and
 - production observability, backup, and recovery evidence remains

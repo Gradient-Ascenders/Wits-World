@@ -730,7 +730,7 @@ Issue `#160` implements the transactional retention backend, including deletion
 of individual answers/snapshots and separation of retained card-reward outcomes
 from deleted ownership rows. The exact matrix and retry boundary are documented
 in [Account deletion persistence and retention](./account-deletion-retention.md).
-The player-facing capability remains issue `#161` work.
+Issue `#161` implements the player-facing capability.
 
 This design was planned, generated, edited, and reviewed with the assistance of
 Codex[GPT-5.6 Sol], Codex-CLI[gpt-5.6-sol medium], Codex[GPT-5], and

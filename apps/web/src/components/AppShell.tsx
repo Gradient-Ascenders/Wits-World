@@ -159,6 +159,7 @@ export function AppShell({ children }: AppShellProps) {
     pathname === '/decks' ||
     pathname === '/matches' ||
     pathname.startsWith('/matches/') ||
+    pathname === '/account' ||
     isAuthorRoute;
   const showsSiteFooter = !isFooterlessProductRoute;
   const isRestoring =

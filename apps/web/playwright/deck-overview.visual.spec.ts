@@ -7,6 +7,7 @@ import { activeMatch } from '../tests/fixtures/matches';
 
 const API_BASE_URL = 'http://127.0.0.1:3999/api/v1';
 const PLAYER = {
+  connectionStrategy: 'auth0',
   id: buildUuid(980),
   lifecycleStatus: 'active',
   playerName: 'deck_browser_player',

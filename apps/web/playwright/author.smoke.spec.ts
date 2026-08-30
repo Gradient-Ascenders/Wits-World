@@ -41,6 +41,7 @@ test('the author form remains keyboard-usable without map interaction at respons
     await route.fulfill({
       contentType: 'application/json',
       json: {
+        connectionStrategy: 'auth0',
         id: playerId,
         playerName: 'test-player',
         playerNameSetupRequired: false,
@@ -131,6 +132,7 @@ test('card name conflicts preserve the Author draft and allow a unique retry', a
     await route.fulfill({
       contentType: 'application/json',
       json: {
+        connectionStrategy: 'auth0',
         id: playerId,
         playerName: 'test-player',
         playerNameSetupRequired: false,
@@ -275,6 +277,7 @@ test('an Author retires the event before its challenge and sees both states pers
     await route.fulfill({
       contentType: 'application/json',
       json: {
+        connectionStrategy: 'auth0',
         id: playerId,
         playerName: 'test-player',
         playerNameSetupRequired: false,

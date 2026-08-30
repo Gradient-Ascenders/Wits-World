@@ -19,6 +19,9 @@ available through `/decks`. Authors also have a separate protected `/author`
 console for Basic event, challenge, question, and card authoring.
 Server-authoritative CPU battles and private
 completed-match history are available through the protected `/matches` routes.
+The protected `/account` route presents the local player identity, delegates
+credential recovery to the owning provider, and starts permanent account
+deletion with fresh Auth0 reauthentication.
 
 ## Run locally
 
@@ -363,12 +366,46 @@ for the full flow, privacy boundary, browser limitations, and evidence steps.
   authoritative active or completed CPU match state.
 - `/matches/history` requires Auth0 sign-in and lists the authenticated player's
   private completed CPU matches.
+- `/account` requires Auth0 sign-in, shows the API-resolved player identity and
+  provider category, delegates credential recovery, and coordinates permanent
+  deletion without collecting passwords.
 - `/about` explains the Wits World project and Wits Quest game/topic distinction.
 - Any unknown route presents a page-not-found message and a link home.
 
 The application uses browser-history routing. A future static host must route
 unknown application paths back to `index.html`; production deployment remains
 outside issue #6.
+
+## Player account lifecycle
+
+`/account` displays only the server-resolved Player Name, application role,
+lifecycle status, and safe provider category. It deliberately omits email,
+provider profile data, Auth0 identifiers, and token contents.
+
+For an Auth0 database account, **Reset password** returns to Universal Login and
+instructs the player to use Auth0's hosted recovery option.
+Auth0 owns account-identifier collection, recovery email, and replacement
+password entry. For Google accounts, the page instead explains that Google owns
+the credential and links to Google's account recovery. Wits World has no
+password inputs or password API.
+
+Permanent deletion uses two distinct confirmations. A compact first dialog
+explains the security step before opening Auth0 with `prompt=login` and
+`max_age=0`; returning only supplies an in-memory ID token for the API's
+independent five-minute recent-authentication check. A second Wits World dialog
+names the permanent effects and requires an explicit checkbox before the exact
+deletion confirmation is submitted. Completed and
+retry-pending responses clear the local player binding and remain visible until
+the player chooses **Finish and return home**. Ambiguous API failures can safely
+retry the idempotent operation; expired proof restarts reauthentication; an
+already locked account is reported honestly rather than treated as a new
+failure.
+
+Auth0 does not report hosted recovery completion to this SPA. Returning to the
+account page therefore confirms only that the recovery entry point was opened
+and reminds the player to use the newest Auth0 email. Real provider email,
+hosted-page, and recent-`auth_time` behavior remain operator/browser checks. See
+[player account lifecycle validation](../../docs/testing/player-account-lifecycle-validation.md).
 
 ## Basic author console
 

@@ -228,6 +228,7 @@ describe('API bearer authentication', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
+      connectionStrategy: GOOGLE_CONNECTION_STRATEGY,
       id: localPlayer.id,
       lifecycleStatus: 'active',
       playerName: null,
@@ -316,6 +317,7 @@ describe('API bearer authentication', () => {
 
       expect(currentPlayerResponse.statusCode).toBe(200);
       expect(currentPlayerResponse.json()).toEqual({
+        connectionStrategy: AUTH0_DATABASE_CONNECTION_STRATEGY,
         id: localPlayer.id,
         role: 'player',
         playerName: tokenIdentity.playerName,
@@ -460,6 +462,7 @@ describe('API bearer authentication', () => {
       'Google-Player',
     );
     expect(response.json()).toMatchObject({
+      connectionStrategy: GOOGLE_CONNECTION_STRATEGY,
       id: localPlayer.id,
       playerName: 'google-player',
       playerNameSetupRequired: false,

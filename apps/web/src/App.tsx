@@ -27,6 +27,7 @@ const DecksPage = lazy(() => import('./pages/DecksPage'));
 const MatchEntryPage = lazy(() => import('./pages/MatchEntryPage'));
 const CpuMatchPage = lazy(() => import('./pages/CpuMatchPage'));
 const MatchHistoryPage = lazy(() => import('./pages/MatchHistoryPage'));
+const AccountPage = lazy(() => import('./pages/AccountPage'));
 
 interface AppRoutesProps {
   apiBaseUrl: string;
@@ -91,6 +92,14 @@ export function AppRoutes({
             <Route path="/matches">
               <ProtectedRoute destination="play a CPU battle">
                 <MatchEntryPage apiBaseUrl={apiBaseUrl} />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/account">
+              <ProtectedRoute
+                allowPlayerNameSetupRequired
+                destination="manage your player account"
+              >
+                <AccountPage apiBaseUrl={apiBaseUrl} />
               </ProtectedRoute>
             </Route>
             <Route path="/author/*?">

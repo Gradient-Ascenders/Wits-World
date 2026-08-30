@@ -98,7 +98,7 @@ in_review → approved → published → retired`. Editing is draft-only. A retu
 ### Account deletion and re-registration
 
 These are confirmed Basic requirements. Issue `#160` implements the
-transactional persistence and retention backend; issue `#161` still owns the
+transactional persistence and retention backend; issue `#161` implements the
 player-facing profile/account experience.
 
 - Deletion requires recent authentication and explicit permanent-deletion

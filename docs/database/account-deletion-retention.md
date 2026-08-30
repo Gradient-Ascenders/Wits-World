@@ -1,8 +1,11 @@
 # Account deletion persistence and retention
 
 Issue `#160` completes the database and API lifecycle behind permanent account
-deletion. The player-facing profile, password-reset, and deletion experience is
-tracked separately by `#161`; this document does not claim that UI is complete.
+deletion. Issue `#161` adds the player-facing profile, provider-owned password
+recovery, recent-authentication, confirmation, and retry/completion experience.
+This document remains authoritative for the deletion and retention boundary;
+the [player account lifecycle validation](../testing/player-account-lifecycle-validation.md)
+records the browser boundary and remaining external checks.
 
 ## Authority and external boundary
 
