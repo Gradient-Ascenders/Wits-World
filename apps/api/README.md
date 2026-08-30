@@ -17,8 +17,8 @@ Bearer-token authentication, protected event discovery, and server-side location
 eligibility are implemented in the API. The current API also implements local
 player provisioning and lifecycle, application roles and Author protection,
 challenge attempts and marking, atomic rewards, card collections, saved decks,
-CPU matches/history, authenticated progression/standings, and protected Author
-content operations.
+CPU matches/history, asynchronous PvP invitations and matches, authenticated
+progression/standings, and protected Author content operations.
 
 The detailed challenge and persistence contracts are documented in the
 [challenge attempt API contract](../../docs/architecture/challenge-attempt-api-contract.md)
@@ -57,6 +57,8 @@ commit.
 | `PORT`                                          | Yes      | `3000`      | TCP port used by the API server               |
 | `LOG_LEVEL`                                     | Yes      | `info`      | Fastify log level                             |
 | `MAX_PLAUSIBLE_JOURNEY_SPEED_METRES_PER_SECOND` | Yes      | `12.5`      | Server-authoritative impossible-journey limit |
+| `ASYNC_PVP_CURSOR_SIGNING_KEY`                  | Yes      | secret      | HMAC key of at least 32 bytes for PvP cursors |
+| `ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS`          | No       | `60000`     | PvP expiry/forfeit sweep interval             |
 | `RATE_LIMIT_MAX_REQUESTS`                       | No       | `120`       | Authenticated requests allowed per window     |
 | `RATE_LIMIT_WINDOW_MS`                          | No       | `60000`     | Per-process fixed-window duration in ms       |
 

@@ -24,9 +24,14 @@ interface AccountDeletionRow {
   failure_reason: AccountDeletionFailureReason | null;
 }
 
-interface AccountDeletionLifecycleOptions {
+export interface AccountDeletionLifecycleOptions {
   clock?: () => Date;
   createId?: () => string;
+  finalizeDependentGameplay?: (
+    client: pg.PoolClient,
+    playerId: string,
+    requestedAt: Date,
+  ) => Promise<void>;
 }
 
 export interface AccountDeletionWorkItem {
@@ -55,6 +60,7 @@ export function createAccountDeletionLifecycle(
   {
     clock = () => new Date(),
     createId = randomUUID,
+    finalizeDependentGameplay,
   }: AccountDeletionLifecycleOptions = {},
 ): AccountDeletionLifecycle {
   return {
@@ -129,6 +135,10 @@ export function createAccountDeletionLifecycle(
 
         if (!deletionRequest) {
           throw new Error('Account deletion request creation returned no row.');
+        }
+
+        if (finalizeDependentGameplay) {
+          await finalizeDependentGameplay(client, player.id, requestedAt);
         }
 
         await client.query(

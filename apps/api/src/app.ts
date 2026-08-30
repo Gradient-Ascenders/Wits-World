@@ -52,6 +52,8 @@ import type { DeckService } from './cards/deck-service.js';
 import { deckRoutes } from './routes/decks.js';
 import type { CpuMatchService } from './matches/cpu-match-service.js';
 import { cpuMatchRoutes } from './routes/cpu-matches.js';
+import type { AsyncPvpService } from './matches/asynchronous-pvp-service.js';
+import { asynchronousPvpRoutes } from './routes/asynchronous-pvp.js';
 
 import type { AuthorEventService } from './events/author-event-service.js';
 import { authorEventRoutes } from './routes/author-events.js';
@@ -99,6 +101,7 @@ export interface BuildAppOptions {
   authorContentServices?: AuthorContentServices;
   trailServices?: TrailServices;
   cpuMatchService?: CpuMatchService;
+  asyncPvpService?: AsyncPvpService;
   progressionReadService?: ProgressionReadService;
   rateProtection?: AuthenticatedRateProtection;
 }
@@ -154,6 +157,7 @@ export async function buildApp({
   authorContentServices,
   trailServices,
   cpuMatchService,
+  asyncPvpService,
   progressionReadService,
   rateProtection,
 }: BuildAppOptions): Promise<FastifyInstance> {
@@ -235,6 +239,12 @@ export async function buildApp({
   }
   if (cpuMatchService && !playerIdentityService) {
     throw new Error('CPU match services require a player identity service.');
+  }
+
+  if (asyncPvpService && !playerIdentityService) {
+    throw new Error(
+      'Asynchronous PvP routes require the player identity service.',
+    );
   }
   if (progressionReadService && !playerIdentityService) {
     throw new Error('Progression services require a player identity service.');
@@ -447,6 +457,13 @@ export async function buildApp({
     await app.register(cpuMatchRoutes, {
       prefix: '/api/v1',
       service: cpuMatchService,
+    });
+  }
+
+  if (asyncPvpService) {
+    await app.register(asynchronousPvpRoutes, {
+      prefix: '/api/v1',
+      service: asyncPvpService,
     });
   }
 

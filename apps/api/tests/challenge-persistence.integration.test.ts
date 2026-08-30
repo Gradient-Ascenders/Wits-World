@@ -113,6 +113,7 @@ describe.skipIf(!runIntegrationTests)(
           '0030_create_campaign_scheduling.sql',
           '0031_create_movement_evidence.sql',
           '0032_add_movement_eligibility_decisions.sql',
+          '0033_add_async_pvp_invitation_invalidation.sql',
         ],
         skipped: [],
       });
@@ -153,6 +154,7 @@ describe.skipIf(!runIntegrationTests)(
           '0030_create_campaign_scheduling.sql',
           '0031_create_movement_evidence.sql',
           '0032_add_movement_eligibility_decisions.sql',
+          '0033_add_async_pvp_invitation_invalidation.sql',
         ],
       });
     }, 30_000);
@@ -357,6 +359,7 @@ describe.skipIf(!runIntegrationTests)(
             '0030_create_campaign_scheduling.sql',
             '0031_create_movement_evidence.sql',
             '0032_add_movement_eligibility_decisions.sql',
+            '0033_add_async_pvp_invitation_invalidation.sql',
           ],
         });
 

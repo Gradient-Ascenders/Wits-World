@@ -52,10 +52,10 @@ the winner, or completion status. The API locks the match row, applies the
 shared rules transition, resolves CPU actions, and persists the result
 transactionally. Unplayed CPU cards remain hidden in player-facing responses.
 
-The asynchronous PvP persistence boundary follows the same rule. Migration
+The asynchronous PvP boundary follows the same rule. Migration
 `0028` separates hidden snapshots, full state, transition history, and replay
 responses into the `private` schema while retaining only lifecycle and legally
-revealed action data in public relations. The planned API accepts only a
+revealed action data in public relations. The API accepts only a
 privacy-safe exact Player Name challenge target, invitation/deck intent,
 expected resource version, submission identifier, and one API-returned legal
 action. It never accepts internal player UUIDs as authority, opponent-private
@@ -63,9 +63,11 @@ cards, deadlines, timeout/forfeit results, damage, winners, or progression
 awards. Only the two authenticated participants may read an invitation, match,
 or history record. The
 [asynchronous PvP contract](./asynchronous-pvp-api-contract.md) and
-[persistence design](../database/asynchronous-pvp-persistence.md) are inputs for
-issues `#180` and `#181`; persistence alone is not a claim that player-facing
-PvP is currently available.
+[persistence design](../database/asynchronous-pvp-persistence.md) define the
+implemented server authority. The API snapshots both owned decks privately,
+applies shared battle rules, signs viewer-bound cursors, hides unrevealed cards,
+enforces versions and 24-hour deadlines, and records terminal progression in
+the same transaction. The Web experience remains a separate issue.
 
 ### Authentication provider
 
