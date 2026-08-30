@@ -18,9 +18,14 @@ import {
 import { runMigrations } from '../src/database/migrations.js';
 import { getMigrationsDirectory } from '../src/database/paths.js';
 import { runSeeds } from '../src/database/seeds.js';
+import { createAsyncPvpService } from '../src/matches/asynchronous-pvp-service.js';
+import { createAsyncPvpDeadlineProcessor } from '../src/matches/asynchronous-pvp-deadline-processor.js';
+import { createSignedCursorCodec } from '../src/security/signed-cursor.js';
 import { createProgressionPersistence } from '../src/progression/progression-persistence.js';
 
 const MIGRATION_NAME = '0028_create_asynchronous_pvp_persistence.sql';
+const INVALIDATION_MIGRATION_NAME =
+  '0033_add_async_pvp_invitation_invalidation.sql';
 const PRE_MIGRATION_PLAYER_ID = '17900000-0000-4000-8000-000000000001';
 const PRE_MIGRATION_MATCH_ID = '17900000-0000-4000-8000-000000000002';
 const runIntegrationTests =
@@ -83,7 +88,10 @@ describe.skipIf(!runIntegrationTests)(
       }
 
       const migrationResult = await runMigrations(temporaryConfig);
-      expect(migrationResult.applied).toEqual([MIGRATION_NAME]);
+      expect(migrationResult.applied).toEqual([
+        MIGRATION_NAME,
+        INVALIDATION_MIGRATION_NAME,
+      ]);
 
       pool = createDatabasePool(temporaryConfig);
       const retainedAward = await pool.query<{
@@ -193,6 +201,351 @@ describe.skipIf(!runIntegrationTests)(
           'async_pvp_submission_receipts_actor_operation_unique',
         ]),
       );
+    });
+
+    it('records account-deletion invalidation as a distinct immutable terminal state', async () => {
+      const challengerPlayerId = await insertPlayer(
+        pool,
+        'invalidation_challenger',
+      );
+      const recipientPlayerId = await insertPlayer(
+        pool,
+        'invalidation_recipient',
+      );
+      const invitation = await createPendingInvitation(pool, cardDefinitions, {
+        challengerPlayerId,
+        recipientPlayerId,
+      });
+
+      const invalidated = await pool.query<{
+        match_id: string | null;
+        responded_at: Date;
+        status: string;
+        version: number;
+      }>(
+        `update public.async_pvp_invitations
+            set status = 'invalidated',
+                version = version + 1,
+                responded_at = created_at + interval '1 minute',
+                updated_at = created_at + interval '1 minute'
+          where id = $1::uuid
+          returning status, version, responded_at, match_id::text`,
+        [invitation.invitationId],
+      );
+      expect(invalidated.rows[0]).toMatchObject({
+        match_id: null,
+        status: 'invalidated',
+        version: 1,
+      });
+      await expect(
+        pool.query(
+          `update public.async_pvp_invitations
+              set updated_at = updated_at + interval '1 second'
+            where id = $1::uuid`,
+          [invitation.invitationId],
+        ),
+      ).rejects.toThrow('Terminal asynchronous PvP invitation');
+    });
+
+    it('atomically invalidates pending invitations and records account-deletion forfeits with progression', async () => {
+      const pending = await createPendingInvitation(pool, cardDefinitions);
+      const accepted = await createAcceptedMatch(pool, cardDefinitions);
+      const service = createAsyncPvpService(pool, {
+        cursorCodec: createSignedCursorCodec(
+          'database-test-only-cursor-key-with-32-bytes',
+        ),
+      });
+      const requestedAt = new Date();
+      const client = await pool.connect();
+      try {
+        await client.query('begin');
+        await service.finalizeAccountDeletion(
+          client,
+          pending.challengerPlayerId,
+          requestedAt,
+        );
+        await service.finalizeAccountDeletion(
+          client,
+          accepted.challengerPlayerId,
+          requestedAt,
+        );
+        await client.query('commit');
+      } catch (error) {
+        await client.query('rollback');
+        throw error;
+      } finally {
+        client.release();
+      }
+
+      const terminal = await pool.query<{
+        completion_reason: string;
+        invitation_status: string;
+        progression_count: string;
+        winner_player_id: string;
+      }>(
+        `select match.completion_reason,
+                match.winner_player_id::text,
+                invitation.status as invitation_status,
+                (select count(*)::text
+                  from public.player_point_awards award
+                  where award.async_pvp_match_id = match.id
+                ) as progression_count
+           from public.async_pvp_matches match
+           join public.async_pvp_invitations invitation
+             on invitation.id = $1::uuid
+          where match.id = $2::uuid`,
+        [pending.invitationId, accepted.matchId],
+      );
+      expect(terminal.rows).toEqual([
+        {
+          completion_reason: 'account_deletion_forfeit',
+          invitation_status: 'invalidated',
+          progression_count: '2',
+          winner_player_id: accepted.recipientPlayerId,
+        },
+      ]);
+    });
+
+    it('enforces deck, access, hidden-state, action, replay, and concurrency rules through the real service', async () => {
+      const challengerPlayerId = await insertPlayer(pool, 'service_challenger');
+      const recipientPlayerId = await insertPlayer(pool, 'service_recipient');
+      const unrelatedPlayerId = await insertPlayer(pool, 'service_unrelated');
+      const challengerDeck = await createOwnedDeck(
+        pool,
+        challengerPlayerId,
+        cardDefinitions,
+      );
+      const recipientDeck = await createOwnedDeck(
+        pool,
+        recipientPlayerId,
+        cardDefinitions,
+      );
+      const recipientName = await pool.query<{ player_name: string }>(
+        `select player_name from public.players where id = $1::uuid`,
+        [recipientPlayerId],
+      );
+      const service = createAsyncPvpService(pool, {
+        cursorCodec: createSignedCursorCodec(
+          'database-test-only-cursor-key-with-32-bytes',
+        ),
+        randomInt: () => 0,
+      });
+      const submissionId = randomUUID();
+      const createInput = {
+        playerId: challengerPlayerId,
+        opponentPlayerName: recipientName.rows[0]!.player_name,
+        deckId: challengerDeck.deckId,
+        initialCreatureId: challengerDeck.creatureId,
+        submissionId,
+      };
+
+      await expect(
+        service.createInvitation({
+          ...createInput,
+          deckId: randomUUID(),
+          submissionId: randomUUID(),
+        }),
+      ).rejects.toMatchObject({ code: 'PVP_DECK_INVALID' });
+
+      const invitation = await service.createInvitation(createInput);
+      await expect(service.createInvitation(createInput)).resolves.toEqual(
+        invitation,
+      );
+      expect(invitation).toMatchObject({
+        direction: 'outgoing',
+        status: 'pending',
+        opponent: { playerName: recipientName.rows[0]!.player_name },
+      });
+      expect(invitation).not.toHaveProperty('deckId');
+      expect(invitation).not.toHaveProperty('initialCreatureId');
+      await expect(
+        service.listInvitations({
+          playerId: recipientPlayerId,
+          direction: 'incoming',
+          status: 'pending',
+          limit: 1,
+        }),
+      ).resolves.toMatchObject({
+        items: [
+          {
+            invitationId: invitation.invitationId,
+            direction: 'incoming',
+          },
+        ],
+        nextCursor: null,
+      });
+
+      const accepted = await service.acceptInvitation({
+        playerId: recipientPlayerId,
+        invitationId: invitation.invitationId,
+        deckId: recipientDeck.deckId,
+        initialCreatureId: recipientDeck.creatureId,
+        submissionId: randomUUID(),
+        expectedVersion: 0,
+      });
+      expect(accepted.invitation.status).toBe('accepted');
+      expect(accepted.match).toMatchObject({
+        status: 'active',
+        version: 0,
+        currentActor: 'opponent',
+      });
+
+      const challengerView = await service.getMatch(
+        challengerPlayerId,
+        accepted.match.matchId,
+      );
+      expect(challengerView.currentActor).toBe('self');
+      expect(challengerView.state.self.creatures).toHaveLength(3);
+      expect(challengerView.state.opponent).not.toHaveProperty('creatures');
+      expect(challengerView.legalActions.length).toBeGreaterThan(0);
+      await expect(
+        service.getMatch(unrelatedPlayerId, accepted.match.matchId),
+      ).rejects.toMatchObject({ code: 'PVP_MATCH_NOT_FOUND' });
+      await expect(
+        service.listActiveMatches({ playerId: challengerPlayerId, limit: 1 }),
+      ).resolves.toMatchObject({
+        items: [
+          {
+            matchId: challengerView.matchId,
+            currentActor: 'self',
+          },
+        ],
+        nextCursor: null,
+      });
+      const action = challengerView.legalActions[0]!;
+      await expect(
+        service.submitAction({
+          playerId: challengerPlayerId,
+          matchId: challengerView.matchId,
+          submissionId: randomUUID(),
+          expectedVersion: challengerView.version,
+          action: { type: 'use_move', moveId: randomUUID() },
+        }),
+      ).rejects.toMatchObject({ code: 'PVP_ACTION_ILLEGAL' });
+      const actionSubmissionId = randomUUID();
+      const actionInput = {
+        playerId: challengerPlayerId,
+        matchId: challengerView.matchId,
+        submissionId: actionSubmissionId,
+        expectedVersion: challengerView.version,
+        action,
+      };
+      const advanced = await service.submitAction({
+        ...actionInput,
+      });
+      expect(advanced.version).toBe(1);
+      expect(advanced.lastAction).toMatchObject({ side: 'self' });
+      await expect(service.submitAction(actionInput)).resolves.toEqual(
+        advanced,
+      );
+
+      const recipientView = await service.getMatch(
+        recipientPlayerId,
+        challengerView.matchId,
+      );
+      expect(recipientView.currentActor).toBe('self');
+      const competingResults = await Promise.allSettled(
+        [randomUUID(), randomUUID()].map((competingSubmissionId) =>
+          service.submitAction({
+            playerId: recipientPlayerId,
+            matchId: recipientView.matchId,
+            submissionId: competingSubmissionId,
+            expectedVersion: recipientView.version,
+            action: recipientView.legalActions[0]!,
+          }),
+        ),
+      );
+      expect(
+        competingResults.filter((result) => result.status === 'fulfilled'),
+      ).toHaveLength(1);
+      expect(
+        competingResults.filter(
+          (result) =>
+            result.status === 'rejected' &&
+            (result.reason as { code?: string }).code ===
+              'PVP_MATCH_VERSION_CONFLICT',
+        ),
+      ).toHaveLength(1);
+      await expect(
+        service.getMatch(challengerPlayerId, challengerView.matchId),
+      ).resolves.toMatchObject({ version: 2 });
+    });
+
+    it('expires invitations and forfeits overdue matches exactly once into authorized history and progression', async () => {
+      const expiredInvitation = await createPendingInvitation(
+        pool,
+        cardDefinitions,
+        { createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000) },
+      );
+      const overdueMatch = await createAcceptedMatch(pool, cardDefinitions, {
+        acceptedAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
+      });
+      const service = createAsyncPvpService(pool, {
+        cursorCodec: createSignedCursorCodec(
+          'database-test-only-cursor-key-with-32-bytes',
+        ),
+        randomInt: () => 0,
+      });
+      const processor = createAsyncPvpDeadlineProcessor(pool, service, {
+        error: () => undefined,
+      });
+
+      await expect(processor.runOnce()).resolves.toEqual({
+        invitationsExpired: 1,
+        matchesForfeited: 1,
+        failures: 0,
+      });
+      await expect(processor.runOnce()).resolves.toEqual({
+        invitationsExpired: 0,
+        matchesForfeited: 0,
+        failures: 0,
+      });
+
+      const finalized = await pool.query<{
+        invitation_status: string;
+        match_status: string;
+        completion_reason: string;
+        progression_count: string;
+      }>(
+        `select
+           invitation.status as invitation_status,
+           match.status as match_status,
+           match.completion_reason,
+           (select count(*)::text
+              from public.player_point_awards award
+             where award.async_pvp_match_id = match.id) as progression_count
+         from public.async_pvp_invitations invitation
+         cross join public.async_pvp_matches match
+         where invitation.id = $1::uuid and match.id = $2::uuid`,
+        [expiredInvitation.invitationId, overdueMatch.matchId],
+      );
+      expect(finalized.rows).toEqual([
+        {
+          invitation_status: 'expired',
+          match_status: 'completed',
+          completion_reason: 'turn_forfeit',
+          progression_count: '2',
+        },
+      ]);
+
+      await expect(
+        service.listHistory({
+          playerId: overdueMatch.challengerPlayerId,
+          limit: 10,
+        }),
+      ).resolves.toMatchObject({
+        items: [
+          {
+            matchId: overdueMatch.matchId,
+            completionReason: 'turn_forfeit',
+            outcome: 'loss',
+          },
+        ],
+      });
+      const unrelatedPlayerId = await insertPlayer(pool, 'history_unrelated');
+      await expect(
+        service.listHistory({ playerId: unrelatedPlayerId, limit: 10 }),
+      ).resolves.toEqual({ items: [], nextCursor: null });
     });
 
     it('enforces one pending invitation per unordered pair and one logical submission', async () => {
@@ -597,7 +950,12 @@ async function copyPrePvpMigrations(): Promise<string> {
 
   await Promise.all(
     migrationNames
-      .filter((name) => name.endsWith('.sql') && name !== MIGRATION_NAME)
+      .filter(
+        (name) =>
+          name.endsWith('.sql') &&
+          name !== MIGRATION_NAME &&
+          name !== INVALIDATION_MIGRATION_NAME,
+      )
       .map((name) =>
         copyFile(join(sourceDirectory, name), join(targetDirectory, name)),
       ),
@@ -680,12 +1038,51 @@ async function insertPlayer(
   return playerId;
 }
 
+async function createOwnedDeck(
+  database: pg.Pool,
+  playerId: string,
+  definitions: readonly CardDefinitionFixture[],
+): Promise<{ creatureId: string; deckId: string }> {
+  const grantId = randomUUID();
+  const deckId = randomUUID();
+  const ownedCardIds = definitions.map(() => randomUUID());
+  await database.query(
+    `insert into public.player_starter_grants (id, player_id, affinity)
+     values ($1::uuid, $2::uuid, $3)`,
+    [grantId, playerId, definitions[0]!.affinity],
+  );
+  for (const [index, definition] of definitions.entries()) {
+    await database.query(
+      `insert into public.player_cards (
+         id, player_id, card_definition_id, acquisition_kind,
+         source_starter_grant_id
+       ) values ($1::uuid, $2::uuid, $3::uuid, 'starter', $4::uuid)`,
+      [ownedCardIds[index], playerId, definition.id, grantId],
+    );
+  }
+  await database.query(
+    `insert into public.player_decks (id, player_id, name)
+     values ($1::uuid, $2::uuid, 'Async integration deck')`,
+    [deckId, playerId],
+  );
+  for (const [index, ownedCardId] of ownedCardIds.entries()) {
+    await database.query(
+      `insert into public.player_deck_cards (
+         deck_id, player_id, owned_card_id, position
+       ) values ($1::uuid, $2::uuid, $3::uuid, $4)`,
+      [deckId, playerId, ownedCardId, index + 1],
+    );
+  }
+  return { creatureId: ownedCardIds[0]!, deckId };
+}
+
 async function createPendingInvitation(
   database: pg.Pool,
   definitions: readonly CardDefinitionFixture[],
   players?: {
-    challengerPlayerId: string;
-    recipientPlayerId: string;
+    challengerPlayerId?: string;
+    recipientPlayerId?: string;
+    createdAt?: Date;
   },
 ): Promise<PendingInvitationFixture> {
   const challengerPlayerId =
@@ -704,9 +1101,24 @@ async function createPendingInvitation(
       `insert into public.async_pvp_invitations (
          id,
          challenger_player_id,
-         recipient_player_id
-       ) values ($1::uuid, $2::uuid, $3::uuid)`,
-      [invitationId, challengerPlayerId, recipientPlayerId],
+         recipient_player_id,
+         created_at,
+         expires_at,
+         updated_at
+       ) values (
+         $1::uuid,
+         $2::uuid,
+         $3::uuid,
+         coalesce($4::timestamptz, transaction_timestamp()),
+         coalesce($4::timestamptz, transaction_timestamp()) + interval '24 hours',
+         coalesce($4::timestamptz, transaction_timestamp())
+       )`,
+      [
+        invitationId,
+        challengerPlayerId,
+        recipientPlayerId,
+        players?.createdAt?.toISOString() ?? null,
+      ],
     );
     const challengerSnapshotId = await insertDeckSnapshot(client, definitions, {
       invitationId,
@@ -739,8 +1151,16 @@ async function createPendingInvitation(
 async function createAcceptedMatch(
   database: pg.Pool,
   definitions: readonly CardDefinitionFixture[],
+  options?: { acceptedAt?: Date },
 ): Promise<AcceptedMatchFixture> {
-  const invitation = await createPendingInvitation(database, definitions);
+  const acceptedAt = options?.acceptedAt;
+  const invitation = await createPendingInvitation(
+    database,
+    definitions,
+    acceptedAt
+      ? { createdAt: new Date(acceptedAt.getTime() - 60 * 60 * 1000) }
+      : undefined,
+  );
   const matchId = randomUUID();
   const client = await database.connect();
 
@@ -765,13 +1185,18 @@ async function createAcceptedMatch(
          $1::uuid,
          $2::uuid,
          $3::uuid,
-         now(),
-         now() + interval '24 hours',
-         now(),
-         now(),
-         now()
+         coalesce($4::timestamptz, transaction_timestamp()),
+         coalesce($4::timestamptz, transaction_timestamp()) + interval '24 hours',
+         coalesce($4::timestamptz, transaction_timestamp()),
+         coalesce($4::timestamptz, transaction_timestamp()),
+         coalesce($4::timestamptz, transaction_timestamp())
        )`,
-      [matchId, invitation.invitationId, invitation.challengerPlayerId],
+      [
+        matchId,
+        invitation.invitationId,
+        invitation.challengerPlayerId,
+        acceptedAt?.toISOString() ?? null,
+      ],
     );
     await client.query(
       `insert into public.async_pvp_match_participants (
@@ -809,10 +1234,10 @@ async function createAcceptedMatch(
           set status = 'accepted',
               version = 1,
               match_id = $2::uuid,
-              responded_at = now(),
-              updated_at = now()
+              responded_at = coalesce($3::timestamptz, transaction_timestamp()),
+              updated_at = coalesce($3::timestamptz, transaction_timestamp())
         where id = $1::uuid`,
-      [invitation.invitationId, matchId],
+      [invitation.invitationId, matchId, acceptedAt?.toISOString() ?? null],
     );
     await insertReceipt(client, {
       actorPlayerId: invitation.recipientPlayerId,

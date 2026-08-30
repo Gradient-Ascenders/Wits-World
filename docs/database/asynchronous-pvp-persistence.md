@@ -38,7 +38,7 @@ identities, card positions, private transition state, or replay responses.
 Database constraints and deferred validators reinforce these boundaries:
 
 - an invitation starts `pending` at version zero and transitions exactly once
-  to `accepted`, `declined`, or `expired`;
+  to `accepted`, `declined`, `expired`, or account-deletion `invalidated`;
 - one pending invitation may exist for an unordered player pair, so reverse
   concurrent challenges cannot both commit;
 - every invitation has one challenger snapshot and creation receipt;
@@ -109,8 +109,9 @@ not foreign keys, so deleting player-owned decks and cards does not destroy or
 mutate the battle snapshot. Player-facing history must render a null Player Name
 as `Deleted player` and never expose these internal identifiers.
 
-Issue `#180` remains responsible for expiring pending invitations and recording
-an `account_deletion_forfeit` when deletion begins. No automated purge is added
+Issue `#180` implements bounded deadline sweeps, expires pending invitations,
+invalidates not-yet-overdue invitations when account deletion begins, and records
+an `account_deletion_forfeit` for active matches. No automated purge is added
 for declined or expired invitations because their retention period remains an
 explicitly unresolved product decision.
 
@@ -129,8 +130,9 @@ The test is registered in the explicit database runner:
 npm run test:database --workspace @wits-world/api
 ```
 
-Apply migration `0028` before deploying issue `#180`. Applying the migration
-alone does not make asynchronous PvP available to players.
+Apply migrations `0028` and `0033` before deploying issue `#180`. Migration
+`0033` adds the terminal `invalidated` invitation status used only by account
+deletion; applying the migrations alone does not expose player-facing routes.
 
 The preceding document was generated and edited with the assistance of:
-Codex-CLI[gpt-5.6-sol medium].
+Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5].

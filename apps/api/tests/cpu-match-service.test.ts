@@ -1511,11 +1511,14 @@ function createCpuConfigurationQuery(
       return { rows: [] };
     }
 
-    if (statement.includes('from public.player_deck_selections')) {
+    if (statement.includes('select selection.deck_id::text')) {
       return { rows: [{ deck_id: DECK_ID }] };
     }
 
-    if (statement.includes('from public.player_deck_cards')) {
+    if (
+      statement.includes('from public.player_deck_cards') ||
+      statement.includes('from public.player_decks deck')
+    ) {
       return { rows: playerRows };
     }
 
@@ -1597,6 +1600,7 @@ function selectedPlayerDeckRows() {
       hp: category === 'creature' ? 10 : null,
       power: category === 'creature' ? 10 : null,
       is_active: true,
+      authoring_status: 'published',
     };
   });
 }

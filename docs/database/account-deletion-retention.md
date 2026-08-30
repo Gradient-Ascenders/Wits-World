@@ -34,11 +34,14 @@ already been reached.
 | Individual MCQ/ordering answers and format-specific snapshots | Deleted                                                                                  |
 | In-progress challenge attempts                                | Deleted                                                                                  |
 | Active CPU matches, rounds, actions, and card snapshots       | Deleted                                                                                  |
+| Pending asynchronous PvP invitations                          | Expired when overdue; otherwise terminally invalidated as deletion begins                |
+| Active asynchronous PvP matches                               | Retained as completed; deleting player loses by `account_deletion_forfeit`               |
 | Precise movement evidence and journey-decision audit          | Deleted transactionally when the account enters `deletion_pending`; never retained       |
 | Completed challenge attempt summary                           | Retained against the anonymised player UUID                                              |
 | Event completion, score, coin outcome, and coin ledger        | Retained against the anonymised player UUID                                              |
 | Awarded-card outcome                                          | Retained in `event_completion_card_rewards`; owned `player_cards` rows are still deleted |
 | Completed CPU matches, rounds, actions, and card snapshots    | Retained against the anonymised player UUID                                              |
+| Completed asynchronous PvP matches and private snapshots      | Retained against anonymous tombstones; opponent displays `Deleted player`                |
 | Point awards, activity days, streak totals, and achievements  | Retained privately against the anonymised player UUID; excluded from live standings      |
 | Published events, questions, challenges, and cards            | Retained unchanged as system-owned content definitions                                   |
 | Author activity audit                                         | Retained against the anonymised player tombstone                                         |
@@ -62,6 +65,12 @@ immutable journey audit to its current evidence with `ON DELETE CASCADE`, so
 the same operation also removes derived distance, elapsed-time, and speed data.
 No path, coordinate, or journey decision remains attached to the anonymous
 tombstone.
+
+Migration `0033_add_async_pvp_invitation_invalidation.sql` adds the distinct
+terminal `invalidated` invitation state. Deletion-request creation locks and
+finalizes affected invitations and active PvP matches before changing the
+player to `deletion_pending`, in the same PostgreSQL transaction. A failure in
+forfeit progression or invitation finalization rolls back the deletion request.
 
 ## Transaction and concurrency rules
 

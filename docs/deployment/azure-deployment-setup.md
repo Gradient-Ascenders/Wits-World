@@ -301,6 +301,14 @@ stored `expires_at`. The maximum-speed setting is required, has no default, and
 must be a finite number greater than zero. Configure the reviewed environment
 value before deploying the matching API or startup will fail closed.
 
+Asynchronous PvP additionally requires the server-only
+`ASYNC_PVP_CURSOR_SIGNING_KEY` (at least 32 random UTF-8 bytes) and accepts the
+optional `ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS` (default `60000`, minimum
+`1000`). Store the signing key as an App Service secret; it is never a `VITE_*`
+value. The API performs one deadline sweep immediately after startup and then
+on the configured interval. Database row locks and idempotent terminal writes
+preserve correctness across recycle catch-up and future scale-out.
+
 ### 7.1 Runtime configuration incident
 
 An API deployment completed successfully but repeatedly returned HTTP 503

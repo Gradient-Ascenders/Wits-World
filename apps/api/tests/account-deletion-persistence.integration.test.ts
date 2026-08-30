@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type pg from 'pg';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { AUTH0_DATABASE_CONNECTION_STRATEGY } from '../src/auth/interactive-player-claims.js';
 import {
@@ -42,6 +42,8 @@ const ROLLBACK_GRANT_ID = 'd6000000-0000-4000-8000-000000000002';
 
 const CONCURRENT_PLAYER_ID = 'd1000000-0000-4000-8000-000000000003';
 const CONCURRENT_DELETION_ID = 'd1100000-0000-4000-8000-000000000003';
+const GAMEPLAY_ROLLBACK_PLAYER_ID = 'd1000000-0000-4000-8000-000000000004';
+const GAMEPLAY_ROLLBACK_DELETION_ID = 'd1100000-0000-4000-8000-000000000004';
 const ACCOUNT_DELETION_MIGRATION =
   '0024_complete_account_deletion_retention.sql';
 
@@ -343,6 +345,53 @@ describe.skipIf(!runIntegrationTests)(
       );
       expect(newProgress.rows[0]?.count).toBe('0');
     }, 60_000);
+
+    it('rolls back deletion initiation when dependent gameplay finalization fails', async () => {
+      const identity = {
+        issuer: ISSUER,
+        subject: 'auth0|gameplay-finalization-rollback',
+      };
+      await pool.query(
+        `insert into public.players (
+           id, auth_issuer, auth_subject, player_name, role, lifecycle_status
+         ) values ($1::uuid, $2, $3, 'gameplay_rollback', 'player', 'active')`,
+        [GAMEPLAY_ROLLBACK_PLAYER_ID, identity.issuer, identity.subject],
+      );
+      const finalizeDependentGameplay = vi
+        .fn()
+        .mockRejectedValue(new Error('forced PvP finalization failure'));
+      const requestedAt = new Date('2026-08-26T12:30:00.000Z');
+      const lifecycle = createAccountDeletionLifecycle(pool, {
+        clock: () => requestedAt,
+        createId: () => GAMEPLAY_ROLLBACK_DELETION_ID,
+        finalizeDependentGameplay,
+      });
+
+      await expect(lifecycle.request(identity)).rejects.toThrow(
+        'forced PvP finalization failure',
+      );
+      expect(finalizeDependentGameplay).toHaveBeenCalledWith(
+        expect.objectContaining({ query: expect.any(Function) }),
+        GAMEPLAY_ROLLBACK_PLAYER_ID,
+        requestedAt,
+      );
+      const state = await pool.query<{
+        deletion_count: string;
+        lifecycle_status: string;
+      }>(
+        `select player.lifecycle_status,
+                (select count(*)::text
+                   from public.account_deletion_requests deletion
+                  where deletion.id = $2::uuid) as deletion_count
+           from public.players player
+          where player.id = $1::uuid`,
+        [GAMEPLAY_ROLLBACK_PLAYER_ID, GAMEPLAY_ROLLBACK_DELETION_ID],
+      );
+      expect(state.rows[0]).toEqual({
+        deletion_count: '0',
+        lifecycle_status: 'active',
+      });
+    });
 
     it('rolls back partial cleanup and succeeds on retry', async () => {
       const identity = {

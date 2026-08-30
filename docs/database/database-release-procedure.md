@@ -93,6 +93,13 @@ account-deletion trigger. Apply it before deploying an API that persists issue
 interval names, one successful aggregate-only cleanup log, and expiry behavior
 without recording coordinates or connection details.
 
+Migration `0032_add_movement_eligibility_decisions.sql` adds the retained,
+non-precise journey decision audit used by impossible-journey enforcement.
+Migration `0033_add_async_pvp_invitation_invalidation.sql` then extends the
+asynchronous PvP invitation lifecycle with the terminal `invalidated` state
+required by account deletion. Apply both in order before deploying the issue
+`#180` API and deadline worker.
+
 Migration `0032_add_movement_eligibility_decisions.sql` creates the immutable
 journey-decision audit and the server-receipt lookup index. Apply it before the
 issue `#169` API. Configure the required reviewed
