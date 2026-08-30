@@ -3,6 +3,8 @@ import process from 'node:process';
 import { fileURLToPath, URL } from 'node:url';
 import path from 'node:path';
 
+import { resolveDatabaseTestWorkers } from './database-test-workers.mjs';
+
 const apiDirectory = path.resolve(
   fileURLToPath(new URL('..', import.meta.url)),
 );
@@ -35,9 +37,14 @@ const testFiles = [
   'tests/movement-evidence-database.integration.test.ts',
 ];
 
-// Each file provisions and migrates its own remote test database.
-const maximumDatabaseWorkers = 2;
+// Each file provisions and migrates its own isolated test database.
+const maximumDatabaseWorkers = resolveDatabaseTestWorkers(
+  process.env.DATABASE_TEST_WORKERS,
+);
 const defaultDatabaseTestTimeoutMs = 30_000;
+process.stdout.write(
+  `Database integration workers: ${maximumDatabaseWorkers}\n`,
+);
 const result = spawnSync(
   process.execPath,
   [

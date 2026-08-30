@@ -1,4 +1,4 @@
-name: Continuous Integration
+name: Pull Request Validation
 
 on:
   pull_request:
@@ -103,6 +103,58 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  database-validation:
+    name: Validate database and migrations
+    runs-on: wits-world-ci
+
+    services:
+      postgres:
+        image: docker.io/postgis/postgis:17-3.5
+        env:
+          POSTGRES_DB: wits_world_test
+          POSTGRES_USER: wits_world_ci
+          POSTGRES_PASSWORD: wits_world_ci
+        options: >-
+          --health-cmd "pg_isready -U wits_world_ci -d wits_world_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      # The service name is a network alias in the isolated job network.
+      TEST_DATABASE_URL: postgresql://wits_world_ci:wits_world_ci@postgres:5432/wits_world_test
+      # Keep the ordinary database target deliberately unusable so an
+      # accidental non-test connection fails rather than touching real data.
+      DATABASE_URL: postgresql://ci-guard:ci-guard@127.0.0.1:1/wits_world_ci_guard
+      DATABASE_TEST_WORKERS: '4'
+
+    steps:
+      - name: Check out repository
+        uses: https://github.com/actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: https://github.com/actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install dependencies
+        run: time npm ci --prefer-offline --no-audit --fund=false
+
+      - name: Prepare shared API dependencies
+        run: time npm run prepare:api
+
+      - name: Verify local test database readiness
+        run: |
+          set -euo pipefail
+
+          time npm run db:check:test --workspace @wits-world/api
+
+      - name: Run database integration and migration tests
+        run: |
+          set -euo pipefail
+
+          time npm run test:database --workspace @wits-world/api
+
   build:
     name: Build applications
     runs-on: wits-world-ci
@@ -133,9 +185,15 @@ jobs:
     needs:
       - static-analysis
       - test
+      - database-validation
       - build
     runs-on: wits-world-ci
 
     steps:
       - name: Confirm validation gates passed
-        run: echo "All repository and application validation jobs passed."
+        run: |
+          echo "All pull-request validation jobs passed."
+          echo "Static analysis: passed"
+          echo "Application tests and coverage: passed"
+          echo "Database and migration validation: passed"
+          echo "Application builds: passed"
