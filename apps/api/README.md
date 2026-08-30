@@ -87,6 +87,13 @@ Keeping the production values aligned allows an idle serverless PostgreSQL
 compute to suspend between sweeps. Asynchronous PvP reads and mutations still
 enforce the authoritative 24-hour deadlines before the periodic worker runs.
 
+When updating an existing checkout, remove or replace any legacy `60000`
+overrides for `ACCOUNT_DELETION_RETRY_INTERVAL_MS`,
+`ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS`, and
+`MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS` in `apps/api/.env` or the local shell
+environment. Omitting them uses the 30-minute defaults. `RATE_LIMIT_WINDOW_MS`
+is unrelated and may remain `60000`.
+
 Rate protection is keyed by the verified local player identity and returns
 `429 RATE_LIMITED` with `Retry-After` and `RateLimit-*` headers. It is an
 application-process control, not a substitute for deployment-level protection
