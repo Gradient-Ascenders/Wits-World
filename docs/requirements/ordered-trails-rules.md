@@ -37,8 +37,8 @@ authenticated player has an authoritative `event_completions` record.
 
 Any finalised event attempt counts as completion for trail ordering, including
 a timeout or a score of zero. The trail does not create a second success or
-reward rule. Challenge score, coins, and cards remain governed by the challenge
-reward policy.
+reward rule. Challenge score, progression points, and cards remain governed by
+the challenge and progression reward policies.
 
 Example:
 

@@ -345,8 +345,9 @@ Successful local cleanup anonymises the local player into a deleted tombstone
 by removing the Auth0 issuer, subject, mirrored Player Name, and application
 role. The deletion request is then unlinked from that tombstone. Owned and
 active gameplay records plus individual quiz answers/snapshots are deleted;
-completed attempt summaries, reward outcomes, coin transactions, completed
-matches, and Author audit history remain linked only to the anonymous UUID. The
+completed attempt summaries, reward outcomes, legacy coin transactions,
+completed matches, and Author audit history remain linked only to the anonymous
+UUID. The
 exact matrix is documented in
 [Account deletion persistence and retention](../../database/account-deletion-retention.md).
 

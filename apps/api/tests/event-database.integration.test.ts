@@ -180,6 +180,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0031_create_movement_evidence.sql',
         '0032_add_movement_eligibility_decisions.sql',
         '0033_add_async_pvp_invitation_invalidation.sql',
+        '0034_retire_coin_rewards.sql',
       ],
       skipped: [],
     });
@@ -220,6 +221,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0031_create_movement_evidence.sql',
         '0032_add_movement_eligibility_decisions.sql',
         '0033_add_async_pvp_invitation_invalidation.sql',
+        '0034_retire_coin_rewards.sql',
       ],
     });
     expect(readiness).toMatchObject({

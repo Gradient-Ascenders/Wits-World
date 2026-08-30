@@ -300,7 +300,7 @@ describe.skipIf(!runIntegrationTests)(
       expect(retainedData.rows[0]).toEqual({
         completed_attempts: '1',
         completions: '1',
-        ledger_entries: '1',
+        ledger_entries: '0',
         card_reward_outcomes: '1',
         completed_matches: '1',
         completed_match_cards: '1',
@@ -429,14 +429,6 @@ describe.skipIf(!runIntegrationTests)(
         `,
         [ROLLBACK_PLAYER_ID, cardDefinition.id, ROLLBACK_GRANT_ID],
       );
-      await pool.query(
-        `
-          insert into public.player_wallets (player_id, coin_balance)
-          values ($1, 25)
-        `,
-        [ROLLBACK_PLAYER_ID],
-      );
-
       const lifecycle = createAccountDeletionLifecycle(pool, {
         clock: () => new Date('2026-08-26T13:00:00.000Z'),
         createId: () => ROLLBACK_DELETION_ID,
@@ -444,7 +436,7 @@ describe.skipIf(!runIntegrationTests)(
       const requested = await lifecycle.request(identity);
 
       await pool.query(`
-        create function private.reject_wallet_cleanup_for_test()
+        create function private.reject_card_cleanup_for_test()
         returns trigger
         language plpgsql
         as $$
@@ -453,9 +445,9 @@ describe.skipIf(!runIntegrationTests)(
         end;
         $$;
 
-        create trigger reject_wallet_cleanup_for_test
-        before delete on public.player_wallets
-        for each row execute function private.reject_wallet_cleanup_for_test();
+        create trigger reject_card_cleanup_for_test
+        before delete on public.player_cards
+        for each row execute function private.reject_card_cleanup_for_test();
       `);
 
       try {
@@ -489,13 +481,13 @@ describe.skipIf(!runIntegrationTests)(
           cards: '1',
           lifecycle_status: 'deletion_pending',
           request_status: 'pending',
-          wallets: '1',
+          wallets: '0',
         });
       } finally {
         await pool.query(`
-          drop trigger if exists reject_wallet_cleanup_for_test
-            on public.player_wallets;
-          drop function if exists private.reject_wallet_cleanup_for_test();
+          drop trigger if exists reject_card_cleanup_for_test
+            on public.player_cards;
+          drop function if exists private.reject_card_cleanup_for_test();
         `);
       }
 
@@ -544,14 +536,6 @@ describe.skipIf(!runIntegrationTests)(
         `,
         [CONCURRENT_PLAYER_ID, identity.issuer, identity.subject],
       );
-      await pool.query(
-        `
-          insert into public.player_wallets (player_id, coin_balance)
-          values ($1, 10)
-        `,
-        [CONCURRENT_PLAYER_ID],
-      );
-
       const lifecycle = createAccountDeletionLifecycle(pool, {
         clock: () => new Date('2026-08-26T14:00:00.000Z'),
         createId: () => CONCURRENT_DELETION_ID,
@@ -768,13 +752,6 @@ async function seedCompletePlayerJourney(
     );
   }
 
-  await client.query(
-    `
-      insert into public.player_wallets (player_id, coin_balance)
-      values ($1, 150)
-    `,
-    [PLAYER_ID],
-  );
   await client.query(
     `
       insert into public.player_decks (id, player_id, name)
@@ -1464,24 +1441,14 @@ async function completeAttempt(
           attempt.event_id,
           5,
           attempt.average_difficulty,
-          50,
-          'basic-v1',
+          0,
+          'points-cards-v2',
           '2026-08-26T10:01:30.000Z'
         from public.challenge_attempts attempt
         where attempt.id = $2::uuid
           and attempt.player_id = $3::uuid
       `,
       [input.completionId, input.attemptId, input.playerId],
-    );
-    await client.query(
-      `
-        insert into public.coin_ledger_entries (
-          player_id, amount, reason, completion_id, created_at
-        ) values (
-          $1, 50, 'event_reward', $2, '2026-08-26T10:01:30.000Z'
-        )
-      `,
-      [input.playerId, input.completionId],
     );
     await client.query(
       `

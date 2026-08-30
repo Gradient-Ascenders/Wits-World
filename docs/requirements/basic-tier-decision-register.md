@@ -35,6 +35,15 @@ forfeiture. This clarification does not change the implemented Basic CPU timer
 or timeout behavior. See the
 [asynchronous PvP API contract](../architecture/asynchronous-pvp-api-contract.md).
 
+### Reward-currency supersession
+
+Issue `#193` and the confirmed progression rules supersede the coin-band clauses
+in `BASIC-04` and the active coin references in `BASIC-12`. Permanent,
+non-spendable points are the only active progression measure; challenge rewards
+may still issue zero to two cards. Applied coin-schema history is preserved:
+legacy wallets are read-only until account deletion, legacy ledger rows are
+immutable, and new completion rows store zero in the compatibility column.
+
 ## Decision register
 
 | ID         | Topic                                               | Status on 2026-08-21                                               | Decision or blocker                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Owner                                               | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
