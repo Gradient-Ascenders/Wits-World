@@ -252,11 +252,48 @@ describe('local player identity', () => {
     ]);
   });
 
-  it('translates only the player-name unique-index violation', async () => {
-    const query = vi.fn().mockRejectedValue({
-      code: '23505',
-      constraint: 'players_player_name_case_insensitive_unique',
+  it('recovers when a concurrent request resolves the same identity and Player Name', async () => {
+    const resolvedPlayer = {
+      id: '6fe7dc26-cdea-4275-a2df-861724137cbc',
+      role: 'player',
+      player_name: trustedPrincipal.playerName,
+      lifecycle_status: 'active',
+    };
+    const query = vi
+      .fn()
+      .mockRejectedValueOnce({
+        code: '23505',
+        constraint: 'players_player_name_case_insensitive_unique',
+      })
+      .mockResolvedValueOnce({ rows: [resolvedPlayer] });
+    const service = createPlayerIdentityService(
+      createDatabaseQueryTarget(query),
+    );
+
+    await expect(service.resolve(trustedPrincipal)).resolves.toEqual({
+      id: resolvedPlayer.id,
+      role: resolvedPlayer.role,
+      playerName: resolvedPlayer.player_name,
+      lifecycleStatus: resolvedPlayer.lifecycle_status,
     });
+
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(query.mock.calls[1]?.[0]).toContain('auth_issuer = $1');
+    expect(query.mock.calls[1]?.[1]).toEqual([
+      trustedPrincipal.issuer,
+      trustedPrincipal.subject,
+      trustedPrincipal.playerName,
+    ]);
+  });
+
+  it('preserves a genuine Player Name conflict with another identity', async () => {
+    const query = vi
+      .fn()
+      .mockRejectedValueOnce({
+        code: '23505',
+        constraint: 'players_player_name_case_insensitive_unique',
+      })
+      .mockResolvedValueOnce({ rows: [] });
     const service = createPlayerIdentityService(
       createDatabaseQueryTarget(query),
     );
@@ -264,6 +301,21 @@ describe('local player identity', () => {
     await expect(service.resolve(trustedPrincipal)).rejects.toBeInstanceOf(
       PlayerNameConflictError,
     );
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not recover unrelated database errors', async () => {
+    const error = {
+      code: '23505',
+      constraint: 'players_auth_identity_unique',
+    };
+    const query = vi.fn().mockRejectedValue(error);
+    const service = createPlayerIdentityService(
+      createDatabaseQueryTarget(query),
+    );
+
+    await expect(service.resolve(trustedPrincipal)).rejects.toBe(error);
+    expect(query).toHaveBeenCalledOnce();
   });
 
   it('canonicalizes and assigns an initial Player Name', async () => {
