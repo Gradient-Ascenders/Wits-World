@@ -22,10 +22,7 @@ import {
   type RandomInt,
 } from '@wits-world/game-rules';
 
-import {
-  DeckRuleViolationError,
-  validateBasicDeck,
-} from '../cards/deck-rules.js';
+import { DeckRuleViolationError } from '../cards/deck-rules.js';
 import type {
   CardAffinity,
   CardCategory,
@@ -38,6 +35,10 @@ import {
   createProgressionPersistence,
   type ProgressionPersistence,
 } from '../progression/progression-persistence.js';
+import {
+  loadPlayerBattleDeck,
+  PlayerBattleDeckError,
+} from './player-battle-deck.js';
 
 const CPU_TURN_SECONDS = 90;
 
@@ -473,13 +474,14 @@ export function createCpuMatchService(
       try {
         await client.query('begin');
 
-        const playerCards = await loadSelectedDeckCards(
+        const loadedPlayerDeck = await loadSelectedDeckCards(
           client,
           input.playerId,
           input.deckId,
         );
+        const playerCards = loadedPlayerDeck.cards;
         const cpuCards = await loadCpuDeckCards(client);
-        const playerDeck = await buildBattleDeck(client, playerCards, 'player');
+        const playerDeck = loadedPlayerDeck.deck;
         const cpuDeck = await buildBattleDeck(client, cpuCards, 'cpu');
 
         validateBattleDeck(playerDeck);
@@ -965,71 +967,35 @@ async function loadSelectedDeckCards(
   client: CpuMatchClient,
   playerId: string,
   deckId: string,
-): Promise<SavedDeckCardRow[]> {
-  const selection = await client.query<{ deck_id: string }>(
-    `
-      select selection.deck_id::text
-      from public.player_deck_selections selection
-      join public.player_decks deck
-        on deck.id = selection.deck_id
-       and deck.player_id = selection.player_id
-      where selection.player_id = $1::uuid
-        and selection.deck_id = $2::uuid
-      for share of deck
-    `,
-    [playerId, deckId],
-  );
-
-  if (!selection.rows[0]) {
-    throw new CpuMatchDeckError(
-      'The selected deck is not active for this player.',
-    );
+): Promise<{ cards: SavedDeckCardRow[]; deck: BattleDeck }> {
+  try {
+    const loaded = await loadPlayerBattleDeck(client, playerId, deckId, {
+      requirePublished: false,
+      requireSelected: true,
+    });
+    return {
+      cards: loaded.cards.map((card) => ({
+        position: card.position,
+        owned_card_id: card.ownedCardId,
+        card_definition_id: card.cardDefinitionId,
+        name: card.name,
+        category: card.category,
+        affinity: card.affinity,
+        rarity: card.rarity,
+        hp: card.hp,
+        power: card.power,
+        is_active: true,
+      })),
+      deck: loaded.deck,
+    };
+  } catch (error) {
+    if (error instanceof PlayerBattleDeckError) {
+      throw new CpuMatchDeckError(
+        'The selected deck is not a valid active deck.',
+      );
+    }
+    throw error;
   }
-
-  const result = await client.query<SavedDeckCardRow>(
-    `
-      select
-        membership.position,
-        owned.id::text as owned_card_id,
-        definition.id::text as card_definition_id,
-        definition.name,
-        definition.category,
-        definition.affinity,
-        definition.rarity,
-        definition.hp,
-        definition.power,
-        definition.is_active
-      from public.player_deck_cards membership
-      join public.player_decks deck
-        on deck.id = membership.deck_id
-       and deck.player_id = membership.player_id
-      join public.player_cards owned
-        on owned.id = membership.owned_card_id
-       and owned.player_id = membership.player_id
-      join public.card_definitions definition
-        on definition.id = owned.card_definition_id
-      where membership.deck_id = $1::uuid
-        and membership.player_id = $2::uuid
-      order by membership.position
-    `,
-    [deckId, playerId],
-  );
-
-  if (result.rows.length !== 5 || result.rows.some((row) => !row.is_active)) {
-    throw new CpuMatchDeckError(
-      'The selected deck is not a valid active deck.',
-    );
-  }
-
-  validateBasicDeck(
-    result.rows.map((row) => ({
-      ownedCardId: row.owned_card_id,
-      cardDefinitionId: row.card_definition_id,
-      category: row.category,
-      rarity: row.rarity,
-    })),
-  );
-  return result.rows;
 }
 
 async function loadCpuDeckCards(client: CpuMatchClient): Promise<CpuCardRow[]> {

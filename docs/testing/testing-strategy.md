@@ -174,6 +174,18 @@ Likewise, release documents list required screen-reader, keyboard, responsive,
 Auth0, Mapbox, database-operation, and production checks without pre-claiming
 their result.
 
+## Asynchronous PvP verification
+
+Asynchronous PvP changes require route tests for closed schemas, authentication,
+safe errors, object-relative identity, and forbidden browser result fields;
+service/database tests for real deck snapshots, replay receipts, hidden-state
+projection, versioned actions, terminal progression, invitation invalidation,
+and account-deletion rollback; and scheduler tests for immediate startup,
+non-overlap, safe failure containment, and clean shutdown. The explicit
+database runner uses only `TEST_DATABASE_URL`, provisions isolated temporary
+databases, and must cover migrations `0028` and `0033`. Production or shared
+database targets are not substitutes for this evidence.
+
 ## Performance and reliability evidence
 
 The repository contains measured CI and deployment timing comparisons in

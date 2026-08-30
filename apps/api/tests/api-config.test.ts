@@ -9,6 +9,7 @@ const validEnvironment: NodeJS.ProcessEnv = {
   PORT: '3000',
   LOG_LEVEL: 'info',
   MAX_PLAUSIBLE_JOURNEY_SPEED_METRES_PER_SECOND: '12.5',
+  ASYNC_PVP_CURSOR_SIGNING_KEY: 'test-only-key-with-at-least-32-bytes',
 };
 
 describe('API configuration', () => {
@@ -18,6 +19,8 @@ describe('API configuration', () => {
       port: 3000,
       logLevel: 'info',
       accountDeletionRetryIntervalMs: 60000,
+      asyncPvpCursorSigningKey: 'test-only-key-with-at-least-32-bytes',
+      asyncPvpDeadlineSweepIntervalMs: 60000,
       movementEvidenceCleanupIntervalMs: 60000,
       movementEvidenceRetentionMs: 86400000,
       maxPlausibleJourneySpeedMetresPerSecond: 12.5,
@@ -31,6 +34,7 @@ describe('API configuration', () => {
     'PORT',
     'LOG_LEVEL',
     'MAX_PLAUSIBLE_JOURNEY_SPEED_METRES_PER_SECOND',
+    'ASYNC_PVP_CURSOR_SIGNING_KEY',
   ] as const)('rejects a missing %s value', (variableName) => {
     const env = {
       ...validEnvironment,
@@ -105,6 +109,28 @@ describe('API configuration', () => {
 
     expect(config.rateLimitMaxRequests).toBe(40);
     expect(config.rateLimitWindowMs).toBe(30000);
+  });
+
+  it('reads and validates asynchronous PvP worker configuration', () => {
+    const config = buildApiConfig({
+      env: {
+        ...validEnvironment,
+        ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS: '15000',
+      },
+    });
+
+    expect(config.asyncPvpDeadlineSweepIntervalMs).toBe(15_000);
+  });
+
+  it('rejects a short asynchronous PvP cursor key', () => {
+    expect(() =>
+      buildApiConfig({
+        env: {
+          ...validEnvironment,
+          ASYNC_PVP_CURSOR_SIGNING_KEY: 'too-short',
+        },
+      }),
+    ).toThrow('must contain at least 32 UTF-8 bytes');
   });
 
   it('reads configured movement evidence retention and cleanup intervals', () => {
