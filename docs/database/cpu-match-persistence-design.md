@@ -24,7 +24,9 @@ Migration `0012_create_cpu_matches.sql` adds:
 - `cpu_match_rounds` for before/after state and the results of one submitted
   transition; and
 - `cpu_match_actions` for each player and server CPU action, including ordering,
-  submission id, action input, and result.
+  submission id, action input, and result. Action results also identify effects
+  that expire during that transition, so expiry ordering does not need to be
+  inferred from a multi-action round snapshot.
 
 The current state and round snapshots are JSONB because they are the complete
 state accepted by the pure rules package. The relational match, player, side,
@@ -36,12 +38,19 @@ does not remove or invalidate a match snapshot.
 
 Every player action runs in a transaction:
 
-1. Lock the owning `cpu_matches` row with `FOR UPDATE`.
+1. Lock the owning `cpu_matches` row with `FOR UPDATE`, while reading the
+   current maximum action sequence and only the cumulative `battleLog` from the
+   latest receipt. A modern action therefore extends that compact projection
+   without a separate or growing full-history query. The same statement loads
+   raw history only for a legacy match whose latest receipt predates
+   `battleLog`; the next successful action stores the upgraded projection.
 2. In a fresh statement after the lock is acquired, return the previously
    stored response when the submission id was already completed. This lookup
    must not be folded into the locking statement: a statement snapshot created
    while waiting for another writer does not see that writer's newly committed
-   action receipt through a subquery.
+   action receipt through a subquery. When that receipt is legacy, this same
+   fresh statement reconstructs through the final action in the receipt's
+   round, because synchronous CPU transitions follow the player's receipt row.
 3. Reject a completed match or stale expected version.
 4. Apply the player action through the shared rules package.
 5. Apply all required CPU actions using the server random source.
@@ -64,11 +73,13 @@ turns are resolved synchronously by the API and are never delegated to the
 browser.
 
 Match reads are read-only. Both active recovery and a direct owned-match read
-select the match and its latest action in one PostgreSQL statement, so each
-response represents one coherent committed database snapshot. Concurrent reads
-do not lock or mutate the match. When an action commits during a read, the read
-observes either the committed state and latest action before that transition or
-both values after it; it cannot assemble them from different statements. When
+select the match, immutable card names, and ordered action/round records in one
+PostgreSQL statement. The service projects those records into `battleLog` and
+derives `lastAction` from the same final ordered action, so each response
+represents one coherent committed database snapshot. Concurrent reads do not
+lock or mutate the match. When an action commits during a read, the read observes
+either the state and log before that transition or both values after it; it
+cannot assemble them from different statements. When
 completion is already visible to an active recovery read, the row no longer
 qualifies as active and the API returns the no-active result. The partial unique
 index on `cpu_matches.player_id` where `status = 'active'` remains the final
@@ -103,6 +114,13 @@ match is completed, it returns the established problem response:
   "requestId": "<server request ID>"
 }
 ```
+
+`battleLog` groups deterministic, sequence-keyed event messages by opening and
+battle turn. It contains only events supported by persisted action results and
+immutable match snapshots. Older actions that predate explicit expiry metadata
+remain readable, but the projection does not invent an expiry for them from a
+round-level before/after comparison. Unrevealed CPU reserve identities remain
+absent.
 
 Completed matches remain available through `/matches/history` and their known
 `/matches/:matchId` detail route; they are never returned by the active lookup.

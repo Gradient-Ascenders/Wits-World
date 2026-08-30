@@ -222,7 +222,7 @@ describe('saved deck management page', () => {
       await screen.findByText('Library Lineup is now your active deck.'),
     ).toBeVisible();
     expect(
-      screen.getByRole('heading', { name: 'Library Lineup is active' }),
+      screen.getByRole('heading', { name: 'Library Lineup' }),
     ).toHaveFocus();
     expect(screen.getByText('Selected for matches')).toBeVisible();
 
@@ -265,8 +265,63 @@ describe('saved deck management page', () => {
     ).toBeVisible();
     expect(screen.getByText(/owned cards were not removed/i)).toBeVisible();
     expect(
-      screen.getByRole('heading', { name: 'Choose an active deck' }),
+      screen.queryByRole('button', { name: 'Start CPU match' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows one selected deck detail and switches it from compact summaries', async () => {
+    const user = userEvent.setup();
+    const firstDeck = buildSavedDeck({ name: 'First Campus Five' });
+    const activeDeck = buildSavedDeck({
+      cards: firstDeck.cards.map((card) => ({
+        ...card,
+        name: `Active ${card.name}`,
+      })),
+      deckId: '00000000-0000-4000-8000-000000000901',
+      isSelected: true,
+      name: 'The Exceptionally Long-Named Senate House Strategy Deck',
+    });
+    const thirdDeck = buildSavedDeck({
+      cards: firstDeck.cards.map((card) => ({
+        ...card,
+        affinity: 'spark',
+        name: `Spark ${card.name}`,
+      })),
+      deckId: '00000000-0000-4000-8000-000000000902',
+      name: 'Spark Five',
+    });
+    stubInitialState(
+      [firstDeck, activeDeck, thirdDeck],
+      buildStarterCards('wit'),
+    );
+
+    renderDecks();
+
+    expect(
+      await screen.findByRole('article', {
+        name: 'The Exceptionally Long-Named Senate House Strategy Deck',
+      }),
     ).toBeVisible();
+    expect(screen.getAllByRole('list', { name: / cards$/u })).toHaveLength(1);
+    expect(
+      screen.getAllByRole('button', { name: 'Edit or rename' }),
+    ).toHaveLength(1);
+    expect(screen.getAllByText('Wit ×5')).toHaveLength(3);
+
+    const sparkSummary = screen.getByRole('button', {
+      name: 'View details for Spark Five',
+    });
+    sparkSummary.focus();
+    await user.keyboard('{Enter}');
+
+    expect(screen.getByRole('heading', { name: 'Spark Five' })).toHaveFocus();
+    expect(screen.getByRole('article', { name: 'Spark Five' })).toBeVisible();
+    expect(screen.getAllByText('Spark ×5')).toHaveLength(2);
+    expect(
+      screen.queryByRole('list', {
+        name: 'The Exceptionally Long-Named Senate House Strategy Deck cards',
+      }),
+    ).not.toBeInTheDocument();
   });
 
   it('never exposes more duplicate copies than the collection owns', async () => {
@@ -292,12 +347,35 @@ describe('saved deck management page', () => {
     const addDuplicate = screen.getByRole('button', {
       name: `Add a copy of ${first.name}`,
     });
+    const duplicatePickerCard = screen.getByRole('article', {
+      name: first.name,
+    });
 
     await user.click(addDuplicate);
-    expect(screen.getByText('Owned 2 · Used 1 · Remaining 1')).toBeVisible();
+    expect(
+      within(duplicatePickerCard).getByText('Owned 2 · Selected 1'),
+    ).toBeVisible();
+    expect(
+      within(duplicatePickerCard).getByText('1 copy available'),
+    ).toBeVisible();
     await user.click(addDuplicate);
-    expect(screen.getByText('Owned 2 · Used 2 · Remaining 0')).toBeVisible();
+    expect(
+      within(duplicatePickerCard).getByText('Owned 2 · Selected 2'),
+    ).toBeVisible();
+    expect(
+      within(duplicatePickerCard).queryByText('All copies selected'),
+    ).not.toBeInTheDocument();
     expect(addDuplicate).toBeDisabled();
+
+    await user.click(
+      screen.getByRole('button', {
+        name: `Remove a copy of ${first.name}`,
+      }),
+    );
+    expect(
+      within(duplicatePickerCard).getByText('Owned 2 · Selected 1'),
+    ).toBeVisible();
+    expect(addDuplicate).toBeEnabled();
     expect(
       screen.getAllByRole('listitem', { hidden: false }).length,
     ).toBeGreaterThan(0);
@@ -340,10 +418,10 @@ describe('saved deck management page', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderDecks();
-    const selectButtons = await screen.findAllByRole('button', {
+    const selectButton = await screen.findByRole('button', {
       name: 'Make active',
     });
-    await user.click(selectButtons[0]!);
+    await user.click(selectButton);
 
     expect(
       await screen.findByRole('button', { name: 'Selecting…' }),
@@ -351,7 +429,12 @@ describe('saved deck management page', () => {
     expect(
       screen.getByRole('button', { name: 'Create a deck' }),
     ).toBeDisabled();
-    expect(selectButtons[1]).toBeDisabled();
+    const summaryButtons = screen.getAllByRole('button', {
+      name: /View details for/u,
+    });
+    for (const button of summaryButtons) {
+      expect(button).toBeDisabled();
+    }
     for (const button of screen.getAllByRole('button', {
       name: 'Edit or rename',
     })) {
@@ -361,7 +444,7 @@ describe('saved deck management page', () => {
       expect(button).toBeDisabled();
     }
 
-    await user.click(selectButtons[1]!);
+    await user.click(summaryButtons[1]!);
     expect(fetchMock).toHaveBeenCalledTimes(3);
 
     resolveSelection(deckResponse({ ...firstDeck, isSelected: true }));

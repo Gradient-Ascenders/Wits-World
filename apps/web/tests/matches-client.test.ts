@@ -10,6 +10,7 @@ import {
   submitCpuMatchAction,
 } from '../src/api/matches';
 import {
+  actionResult,
   activeMatch,
   completedMatch,
   DECK_ID,
@@ -62,6 +63,117 @@ describe('CPU match API client', () => {
         method: 'GET',
       }),
     );
+  });
+
+  it('preserves the authoritative battle-log order across detail refreshes', async () => {
+    const match = activeMatch(3);
+    match.battleLog = [
+      {
+        events: [
+          {
+            id: '1:0',
+            kind: 'action',
+            message: 'Player selected Grit Creature 3.',
+            sequence: 1,
+            side: 'player',
+          },
+          {
+            id: '2:0',
+            kind: 'action',
+            message: 'CPU revealed Mystic Creature 1.',
+            sequence: 2,
+            side: 'cpu',
+          },
+        ],
+        id: 'opening',
+        label: 'Opening',
+        turnNumber: 0,
+      },
+      {
+        events: [
+          {
+            id: '3:0',
+            kind: 'action',
+            message: 'Player used Grit Power 2.',
+            sequence: 3,
+            side: 'player',
+          },
+          {
+            id: '3:1',
+            kind: 'effect',
+            message: "CPU's Mystic Creature 1 took 14 damage.",
+            sequence: 3,
+            side: 'cpu',
+          },
+        ],
+        id: 'turn-1',
+        label: 'Turn 1',
+        turnNumber: 1,
+      },
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(matchResponse(match))
+        .mockResolvedValueOnce(matchResponse(match)),
+    );
+
+    const first = await getCpuMatch({ ...options(), matchId: MATCH_ID });
+    const refreshed = await getCpuMatch({ ...options(), matchId: MATCH_ID });
+
+    expect(first.battleLog.flatMap(({ events }) => events)).toEqual(
+      refreshed.battleLog.flatMap(({ events }) => events),
+    );
+    expect(first.battleLog[1]?.events.map(({ sequence }) => sequence)).toEqual([
+      3, 3,
+    ]);
+  });
+
+  it('rejects duplicate or non-chronological battle-log events', async () => {
+    const duplicate = activeMatch(3);
+    duplicate.battleLog = [
+      {
+        events: [
+          {
+            id: '1:0',
+            kind: 'action',
+            message: 'Player acted.',
+            sequence: 1,
+            side: 'player',
+          },
+          {
+            id: '1:0',
+            kind: 'effect',
+            message: 'An effect resolved.',
+            sequence: 1,
+            side: 'cpu',
+          },
+        ],
+        id: 'turn-1',
+        label: 'Turn 1',
+        turnNumber: 1,
+      },
+    ];
+    const reversed = structuredClone(duplicate);
+    reversed.battleLog[0]!.events = [
+      { ...duplicate.battleLog[0]!.events[0]!, id: '2:0', sequence: 2 },
+      { ...duplicate.battleLog[0]!.events[1]!, id: '1:0', sequence: 1 },
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(matchResponse(duplicate))
+        .mockResolvedValueOnce(matchResponse(reversed)),
+    );
+
+    await expect(
+      getCpuMatch({ ...options(), matchId: MATCH_ID }),
+    ).rejects.toMatchObject({ failure: 'unavailable' });
+    await expect(
+      getCpuMatch({ ...options(), matchId: MATCH_ID }),
+    ).rejects.toMatchObject({ failure: 'unavailable' });
   });
 
   it('creates only after active reconciliation and submits the exact versioned intent', async () => {
@@ -181,7 +293,7 @@ describe('CPU match API client', () => {
     });
   });
 
-  it('accepts the public projection of a rules-clamped 150% damage debuff', async () => {
+  it('accepts the public projection of a rules-clamped 150% damage debuff through expiry', async () => {
     const match = activeMatch(3);
     match.state.player.creatures[0]!.moves[0]!.effects = [
       {
@@ -203,9 +315,30 @@ describe('CPU match API client', () => {
         remainingTurns: 2,
       },
     ];
+    match.lastAction = actionResult(
+      { type: 'timeout' },
+      {
+        expiredEffects: [
+          {
+            damageMultiplier: 0,
+            effectId: uuid(1400),
+            targetCreatureId: match.state.cpu.activeCreature!.id,
+            targetSide: 'cpu',
+          },
+        ],
+      },
+    );
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(matchResponse(match)));
 
     await expect(getActiveCpuMatch(options())).resolves.toMatchObject({
+      lastAction: {
+        expiredEffects: [
+          expect.objectContaining({
+            damageMultiplier: 0,
+            targetSide: 'cpu',
+          }),
+        ],
+      },
       state: {
         cpu: {
           activeCreature: {

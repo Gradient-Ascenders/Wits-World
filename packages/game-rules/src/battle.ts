@@ -6,6 +6,7 @@ import {
   modifierStats,
   moveTypes,
   type BattleAction,
+  type BattleActionResult,
   type AppliedEffect,
   type BattleCreatureCard,
   type BattleCreatureState,
@@ -704,7 +705,11 @@ function finishNormalTurn(
   effects: readonly AppliedEffect[],
   defeatedCreatureId: string | null = null,
 ): BattleTransition {
-  decrementExpiredModifiers(draft.participants[side], draft.turnNumber);
+  const expiredEffects = decrementExpiredModifiers(
+    draft.participants[side],
+    side,
+    draft.turnNumber,
+  );
   draft.turnNumber += 1;
 
   if (defeatedCreatureId !== null) {
@@ -729,6 +734,7 @@ function finishNormalTurn(
         defeatedCreatureId,
         side,
         true,
+        expiredEffects,
       );
     }
 
@@ -743,11 +749,21 @@ function finishNormalTurn(
       defeatedCreatureId,
       null,
       true,
+      expiredEffects,
     );
   }
 
   draft.currentSide = opponentOf(side);
-  return transition(draft, side, action, effects, null, null, true);
+  return transition(
+    draft,
+    side,
+    action,
+    effects,
+    null,
+    null,
+    true,
+    expiredEffects,
+  );
 }
 
 function transition(
@@ -758,6 +774,7 @@ function transition(
   defeatedCreatureId: string | null,
   winner: BattleSide | null,
   turnEnded: boolean,
+  expiredEffects: BattleActionResult['expiredEffects'] = [],
 ): BattleTransition {
   return {
     state: draft as BattleState,
@@ -765,6 +782,7 @@ function transition(
       side,
       action,
       effects,
+      expiredEffects,
       defeatedCreatureId,
       winner,
       turnEnded,
@@ -836,13 +854,17 @@ function markDefeatedIfNecessary(creature: MutableCreatureState): void {
 
 function decrementExpiredModifiers(
   participant: MutableParticipantState,
+  side: BattleSide,
   currentTurn: number,
-): void {
+): BattleActionResult['expiredEffects'] {
   const active = getActiveCreature(participant);
 
   if (!active) {
-    return;
+    return [];
   }
+
+  const expiredEffects: Array<BattleActionResult['expiredEffects'][number]> =
+    [];
 
   active.modifiers = active.modifiers.flatMap((modifier) => {
     if (
@@ -853,8 +875,21 @@ function decrementExpiredModifiers(
     }
 
     const remainingTurns = modifier.remainingTurns - 1;
-    return remainingTurns > 0 ? [{ ...modifier, remainingTurns }] : [];
+    if (remainingTurns > 0) {
+      return [{ ...modifier, remainingTurns }];
+    }
+
+    expiredEffects.push({
+      effectId: modifier.id,
+      targetSide: side,
+      targetCreatureId: active.card.id,
+      damageMultiplier:
+        modifier.stat === 'damage_multiplier' ? modifier.value : null,
+    });
+    return [];
   });
+
+  return expiredEffects;
 }
 
 function getDamageMultiplier(

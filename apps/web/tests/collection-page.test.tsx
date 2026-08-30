@@ -224,7 +224,9 @@ describe('card collection page', () => {
     renderCollection();
 
     expect(
-      await screen.findByRole('heading', { name: rewardCard.name }),
+      await screen.findByRole('button', {
+        name: `View ${rewardCard.name} details`,
+      }),
     ).toBeVisible();
     expect(
       screen.getByRole('heading', { level: 1, name: 'Cards you own' }),
@@ -247,7 +249,9 @@ describe('card collection page', () => {
 
     expect(await screen.findByText('Pressure')).toBeVisible();
     expect(
-      screen.getByRole('heading', { name: rewardCard.name }),
+      screen.getByRole('button', {
+        name: `View ${rewardCard.name} details`,
+      }),
     ).toBeVisible();
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
@@ -316,17 +320,18 @@ describe('card collection page', () => {
     );
 
     expect(
-      await screen.findByRole('heading', { name: starterCard.name }),
+      await screen.findByRole('button', {
+        name: `View ${starterCard.name} details`,
+      }),
     ).toBeVisible();
-    expect(
-      screen.getByRole('heading', { name: 'Owned card copies' }),
-    ).toHaveFocus();
+    expect(screen.getByRole('heading', { name: 'Card gallery' })).toHaveFocus();
     expect(
       screen.queryByRole('heading', { name: 'Choose your starter affinity' }),
     ).not.toBeInTheDocument();
   });
 
-  it('renders every duplicate copy and labels its individual ownership', async () => {
+  it('groups duplicate definitions while retaining every owned copy in details', async () => {
+    const user = userEvent.setup();
     const definitionId = buildUuid(901);
     const first = buildCard(1, {
       cardDefinitionId: definitionId,
@@ -346,19 +351,31 @@ describe('card collection page', () => {
 
     renderCollection();
 
-    const list = await screen.findByRole('list', { name: 'Owned card copies' });
-    expect(list.children).toHaveLength(2);
-    expect(
-      within(list).getAllByRole('heading', { name: first.name }),
-    ).toHaveLength(2);
-    expect(within(list).getByText('Copy 1 of 2')).toBeVisible();
-    expect(within(list).getByText('Copy 2 of 2')).toBeVisible();
-    expect(within(list).getAllByText('Individually owned copy')).toHaveLength(
-      2,
-    );
+    const list = await screen.findByRole('list', {
+      name: 'Owned card designs',
+    });
+    expect(list.children).toHaveLength(1);
+    const trigger = within(list).getByRole('button', {
+      name: `View ${first.name} details, 2 owned copies`,
+    });
+    expect(within(trigger).getByText('×2')).toBeVisible();
+    expect(within(trigger).queryByRole('heading')).not.toBeInTheDocument();
+
+    await user.click(trigger);
+    const dialog = screen.getByRole('dialog', {
+      name: `${first.name} card details`,
+    });
+    expect(within(dialog).getByText('×2 owned')).toBeVisible();
+    const copies = within(dialog).getByRole('list', {
+      name: `${first.name} owned copies`,
+    });
+    expect(copies.children).toHaveLength(2);
+    expect(within(copies).getByText('Starter card')).toBeVisible();
+    expect(within(copies).getByText('Event reward')).toBeVisible();
   });
 
-  it('communicates creature attributes and move gameplay information as text', async () => {
+  it('opens complete creature details and restores focus after Escape', async () => {
+    const user = userEvent.setup();
     const card = buildCard(1, {
       description:
         'A very long campus story that remains readable instead of being encoded in its illustration.',
@@ -371,7 +388,15 @@ describe('card collection page', () => {
 
     renderCollection();
 
-    const article = await screen.findByRole('article', { name: card.name });
+    const trigger = await screen.findByRole('button', {
+      name: `View ${card.name} details`,
+    });
+    expect(screen.queryByText('Knowledge Surge')).not.toBeInTheDocument();
+    await user.click(trigger);
+    const dialog = screen.getByRole('dialog', {
+      name: `${card.name} card details`,
+    });
+    const article = within(dialog).getByRole('article', { name: card.name });
     expect(within(article).getByText('Creature · Wit')).toBeVisible();
     expect(within(article).getByText('Common')).toBeVisible();
     expect(within(article).getByText('HP')).toBeVisible();
@@ -382,10 +407,19 @@ describe('card collection page', () => {
     expect(within(article).getByText('Knowledge Surge')).toBeVisible();
     expect(within(article).getByText('Damage 20')).toBeVisible();
     expect(within(article).getByText('3')).toBeVisible();
-    expect(within(article).queryByRole('button')).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        within(dialog).getByRole('button', { name: 'Close card details' }),
+      ).toHaveFocus(),
+    );
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 
   it('renders Power-card effects without irrelevant Creature placeholders', async () => {
+    const user = userEvent.setup();
     const card = buildCard(4, {
       affinity: 'spirit',
       category: 'power',
@@ -412,7 +446,14 @@ describe('card collection page', () => {
 
     renderCollection();
 
-    const article = await screen.findByRole('article', { name: card.name });
+    await user.click(
+      await screen.findByRole('button', {
+        name: `View ${card.name} details`,
+      }),
+    );
+    const article = within(screen.getByRole('dialog')).getByRole('article', {
+      name: card.name,
+    });
     expect(within(article).getByText('Power · Spirit')).toBeVisible();
     expect(
       within(article).getByRole('heading', { name: 'Effects' }),
@@ -420,6 +461,84 @@ describe('card collection page', () => {
     expect(within(article).getByText('Heal 12')).toBeVisible();
     expect(within(article).queryByText('HP')).not.toBeInTheDocument();
     expect(within(article).queryByText('Power cost')).not.toBeInTheDocument();
+  });
+
+  it('filters and sorts the gallery using existing card fields', async () => {
+    const user = userEvent.setup();
+    const cards = [
+      buildCard(1, { affinity: 'grit', name: 'Braamfontein Bulwark' }),
+      buildCard(2, {
+        category: 'power',
+        effects: [],
+        hp: null,
+        name: 'Arcane Library Pass',
+        power: null,
+        rarity: 'legendary',
+      }),
+      buildCard(3, { name: 'Origins Sentinel', rarity: 'rare' }),
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(collectionResponse(cards)),
+    );
+
+    renderCollection();
+    const gallery = await screen.findByRole('list', {
+      name: 'Owned card designs',
+    });
+    expect(
+      within(gallery).getAllByRole('button', { name: /View .* details/u }),
+    ).toHaveLength(3);
+
+    await user.type(screen.getByRole('searchbox', { name: 'Search' }), 'grit');
+    expect(within(gallery).getByText('Braamfontein Bulwark')).toBeVisible();
+    expect(
+      within(gallery).queryByText('Origins Sentinel'),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Clear' }));
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Category' }),
+      'power',
+    );
+    expect(within(gallery).getByText('Arcane Library Pass')).toBeVisible();
+    expect(
+      within(gallery).queryByText('Braamfontein Bulwark'),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Clear' }));
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Sort' }),
+      'rarity',
+    );
+    expect(
+      Array.from(
+        gallery.querySelectorAll('.card-thumbnail__title'),
+        (title) => title.textContent,
+      ),
+    ).toEqual([
+      'Arcane Library Pass',
+      'Origins Sentinel',
+      'Braamfontein Bulwark',
+    ]);
+  });
+
+  it('replaces failed artwork with the accessible fallback', async () => {
+    const card = buildCard(1, { imageUrl: 'https://example.test/missing.png' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(collectionResponse([card])),
+    );
+
+    renderCollection();
+    const artwork = await screen.findByRole('img', {
+      name: `${card.name} card artwork`,
+    });
+    fireEvent.error(artwork);
+
+    expect(
+      screen.getByRole('img', { name: `${card.name} artwork unavailable` }),
+    ).toBeVisible();
   });
 
   it('offers re-authentication when the collection session expires', async () => {
@@ -470,7 +589,9 @@ describe('card collection page', () => {
     await user.click(screen.getByRole('button', { name: 'Try loading again' }));
 
     expect(
-      await screen.findByRole('heading', { name: card.name }),
+      await screen.findByRole('button', {
+        name: `View ${card.name} details`,
+      }),
     ).toBeVisible();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });

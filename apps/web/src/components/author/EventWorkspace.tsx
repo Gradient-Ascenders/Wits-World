@@ -1,10 +1,12 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
 } from 'react';
+import { Link } from 'wouter';
 
 import {
   AuthorApiError,
@@ -14,6 +16,9 @@ import {
   listAuthorChallenges,
   listAuthorEvents,
   listAuthorQuestions,
+  publishAuthorChallenge,
+  publishAuthorEvent,
+  publishAuthorQuestion,
   retireAuthorChallenge,
   retireAuthorEvent,
   retireAuthorQuestion,
@@ -29,7 +34,10 @@ import {
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
 import type { MapFactory } from '../exploration/map-provider';
 import { AuthorFeedback } from './AuthorFeedback';
+import { AuthorConfirmationDialog } from './AuthorConfirmationDialog';
 import { AuthorLocationMap } from './AuthorLocationMap';
+import { useUnsavedAuthorChanges } from './AuthorNavigationGuard';
+import { authorPaths, type AuthorWorkspaceRoute } from './author-routing';
 import {
   type AuthorMutationCoordinator,
   type AuthorMutationTicket,
@@ -47,8 +55,10 @@ interface EventWorkspaceProps {
   mapFactory?: MapFactory;
   mapboxAccessToken: string;
   mutationCoordinator: AuthorMutationCoordinator;
+  navigate: (to: string, options?: { replace?: boolean }) => void;
   onOpenCards: () => void;
   onReloadCards: () => void;
+  route: Extract<AuthorWorkspaceRoute, { section: 'events' }>;
 }
 
 type LoadState = 'error' | 'loading' | 'ready';
@@ -61,20 +71,28 @@ export function EventWorkspace({
   mapFactory,
   mapboxAccessToken,
   mutationCoordinator,
+  navigate,
   onOpenCards,
   onReloadCards,
+  route,
 }: EventWorkspaceProps) {
   const [events, setEvents] = useState<AuthorEvent[]>([]);
   const [state, setState] = useState<LoadState>('loading');
   const [loadError, setLoadError] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [, setDirtyEventId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [lifecycleFilter, setLifecycleFilter] = useState('all');
+  const [scheduleFilter, setScheduleFilter] = useState('all');
+  const [sortOrder, setSortOrder] = useState<'name' | 'schedule' | 'updated'>(
+    'schedule',
+  );
   const [message, setMessage] = useState('');
   const feedbackRef = useRef<HTMLDivElement>(null);
   const requestRef = useRef<AbortController | null>(null);
+  const catalogueRef = useRef<HTMLElement>(null);
+  const recordViewRef = useRef<HTMLDivElement>(null);
+  const focusRouteRef = useRef<string | null>(null);
   const selectedIdRef = useRef<string | null>(null);
-  const creatingRef = useRef(false);
+  const routeContextRef = useRef('');
   const interactionRef = useRef(0);
   const mountedRef = useRef(true);
   const appliedEventResultsRef = useRef(new Map<AuthorRecordKey, number>());
@@ -104,16 +122,6 @@ export function EventWorkspace({
           true,
         ),
       );
-      setSelectedId((current) => {
-        const next =
-          current && nextEvents.some((event) => event.eventId === current)
-            ? current
-            : (nextEvents[0]?.eventId ?? null);
-        selectedIdRef.current = next;
-        creatingRef.current = false;
-        interactionRef.current += 1;
-        return next;
-      });
       setState('ready');
       setLoadError('');
     } catch (error) {
@@ -147,18 +155,66 @@ export function EventWorkspace({
     );
   }, [mutationCoordinator, mutationRevision]);
 
-  const selected = events.find((event) => event.eventId === selectedId) ?? null;
-
-  function selectEvent(eventId: string | null, creatingEvent = false) {
+  const selectedId = 'eventId' in route ? route.eventId : null;
+  const routeContext = `${route.mode}:${selectedId ?? ''}`;
+  if (routeContextRef.current !== routeContext) {
+    routeContextRef.current = routeContext;
     interactionRef.current += 1;
-    selectedIdRef.current = eventId;
-    creatingRef.current = creatingEvent;
-    setCreating(creatingEvent);
-    setSelectedId(eventId);
-    setMessage('');
-    if (eventId && mutationCoordinator.isCollectionUncertain('events'))
-      void load();
+    selectedIdRef.current = selectedId;
   }
+
+  useEffect(() => {
+    if (state !== 'ready') return;
+    if (focusRouteRef.current === null) {
+      focusRouteRef.current = routeContext;
+      return;
+    }
+    if (focusRouteRef.current === routeContext) return;
+    focusRouteRef.current = routeContext;
+    const timer = window.setTimeout(() => {
+      (route.mode === 'list'
+        ? catalogueRef.current
+        : recordViewRef.current
+      )?.focus();
+    });
+    return () => window.clearTimeout(timer);
+  }, [route.mode, routeContext, state]);
+
+  const selected = events.find((event) => event.eventId === selectedId) ?? null;
+  const visibleEvents = useMemo(
+    () =>
+      [...events]
+        .filter((event) => {
+          const query = searchQuery.trim().toLocaleLowerCase();
+          const schedule = eventScheduleState(event);
+          return (
+            (!query ||
+              event.title.toLocaleLowerCase().includes(query) ||
+              event.description?.toLocaleLowerCase().includes(query)) &&
+            (lifecycleFilter === 'all' ||
+              event.authoringStatus === lifecycleFilter) &&
+            (scheduleFilter === 'all' || schedule === scheduleFilter)
+          );
+        })
+        .sort((left, right) => {
+          if (sortOrder === 'name')
+            return left.title.localeCompare(right.title);
+          if (sortOrder === 'updated')
+            return Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
+          return Date.parse(left.startsAt) - Date.parse(right.startsAt);
+        }),
+    [events, lifecycleFilter, scheduleFilter, searchQuery, sortOrder],
+  );
+
+  useEffect(() => {
+    setMessage('');
+    if (
+      selectedId &&
+      route.mode !== 'edit' &&
+      mutationCoordinator.isCollectionUncertain('events')
+    )
+      void load();
+  }, [load, mutationCoordinator, mutationRevision, route.mode, selectedId]);
 
   function updateEvent(
     event: AuthorEvent,
@@ -166,6 +222,7 @@ export function EventWorkspace({
     interaction: number,
     ticket: AuthorMutationTicket,
     notice?: string,
+    operationContextIsCurrent?: () => boolean,
   ): boolean {
     const recordKey = `event:${event.eventId}` as const;
     if (!mutationCoordinator.acceptSuccess(ticket, recordKey, event))
@@ -174,8 +231,9 @@ export function EventWorkspace({
       mountedRef.current &&
       interactionRef.current === interaction &&
       (ownerId === 'new'
-        ? creatingRef.current
-        : selectedIdRef.current === ownerId);
+        ? route.mode === 'new'
+        : selectedIdRef.current === ownerId) &&
+      (operationContextIsCurrent?.() ?? true);
     const canApply = mutationCoordinator
       .getResults<AuthorEvent>('events')
       .some((result) => result.recordKey === recordKey);
@@ -183,28 +241,17 @@ export function EventWorkspace({
 
     if (!isCurrentInteraction) return true;
     selectedIdRef.current = event.eventId;
-    creatingRef.current = false;
-    setSelectedId(event.eventId);
-    setCreating(false);
-    setDirtyEventId((current) => (current === event.eventId ? null : current));
+    const targetContext = `overview:${event.eventId}`;
+    navigate(authorPaths.event(event.eventId));
     if (notice)
       announce(
         notice,
         setMessage,
         feedbackRef,
-        () =>
-          mountedRef.current &&
-          interactionRef.current === interaction &&
-          selectedIdRef.current === event.eventId,
+        () => mountedRef.current && routeContextRef.current === targetContext,
       );
     return true;
   }
-
-  const updateEventDirty = useCallback((eventId: string, dirty: boolean) => {
-    setDirtyEventId((current) =>
-      dirty ? eventId : current === eventId ? null : current,
-    );
-  }, []);
 
   return (
     <section
@@ -214,16 +261,29 @@ export function EventWorkspace({
       <header className="author-workspace__heading">
         <div>
           <p className="eyebrow">Playable content</p>
-          <h2 id="events-workspace-title">Events & challenges</h2>
+          <h2 id="events-workspace-title">Events</h2>
         </div>
-        <button
-          className="button"
-          onClick={() => selectEvent(null, true)}
-          type="button"
-        >
-          Create event
-        </button>
+        {state === 'ready' ? (
+          <Link className="button" href={authorPaths.newEvent}>
+            New event
+          </Link>
+        ) : (
+          <button
+            aria-describedby="event-create-unavailable"
+            className="button"
+            disabled
+            type="button"
+          >
+            New event
+          </button>
+        )}
       </header>
+
+      {state !== 'ready' ? (
+        <p className="sr-only" id="event-create-unavailable">
+          Load the event catalogue before creating an event.
+        </p>
+      ) : null}
 
       <AuthorFeedback message={message} refObject={feedbackRef} />
 
@@ -247,42 +307,81 @@ export function EventWorkspace({
         </div>
       ) : null}
 
-      {state === 'ready' && events.length === 0 && !creating ? (
-        <div className="author-state">
-          <strong>No authored events yet.</strong>
-          <p>Create a draft event to begin the Basic publication workflow.</p>
-        </div>
-      ) : null}
-
-      {state === 'ready' && (events.length > 0 || creating) ? (
+      {state === 'ready' ? (
         <div
-          className={`author-split-view${events.length === 0 ? ' author-split-view--single' : ''}`}
+          className={`author-management-view${route.mode === 'list' ? ' author-management-view--list' : ' author-management-view--record'}${route.mode === 'questions' ? ' author-management-view--questions' : ''}`}
         >
-          {events.length > 0 ? (
-            <aside aria-label="Authored events" className="author-record-list">
-              <p className="author-record-list__label">Events</p>
-              <ul>
-                {events.map((event) => (
-                  <li key={event.eventId}>
-                    <button
-                      aria-current={
-                        selectedId === event.eventId ? 'true' : undefined
-                      }
-                      className="author-record-list__item"
-                      onClick={() => selectEvent(event.eventId)}
-                      type="button"
-                    >
-                      <span>{event.title}</span>
+          <aside
+            aria-label="Authored events"
+            className="author-catalogue"
+            ref={catalogueRef}
+            tabIndex={-1}
+          >
+            <EventCatalogueControls
+              lifecycle={lifecycleFilter}
+              onLifecycleChange={setLifecycleFilter}
+              onScheduleChange={setScheduleFilter}
+              onSearchChange={setSearchQuery}
+              onSortChange={setSortOrder}
+              schedule={scheduleFilter}
+              search={searchQuery}
+              sort={sortOrder}
+            />
+            <p aria-live="polite" className="author-catalogue__results">
+              {visibleEvents.length} of {events.length}{' '}
+              {events.length === 1 ? 'event' : 'events'}
+            </p>
+            {events.length === 0 ? (
+              <div className="author-empty author-empty--compact">
+                <strong>No authored events yet</strong>
+                <p>Create a draft to begin the publication workflow.</p>
+              </div>
+            ) : null}
+            {events.length > 0 && visibleEvents.length === 0 ? (
+              <div className="author-empty author-empty--compact">
+                <strong>No events match</strong>
+                <p>Adjust the event filters.</p>
+              </div>
+            ) : null}
+            <ul className="author-catalogue__list">
+              {visibleEvents.map((event) => (
+                <li key={event.eventId}>
+                  <Link
+                    aria-current={
+                      selectedId === event.eventId ? 'true' : undefined
+                    }
+                    className="author-record-summary"
+                    href={authorPaths.event(event.eventId)}
+                  >
+                    <span className="author-record-summary__heading">
+                      <strong>{event.title}</strong>
                       <StatusBadge status={event.authoringStatus} />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </aside>
-          ) : null}
+                    </span>
+                    <span className="author-record-summary__meta">
+                      {eventScheduleLabel(event)}
+                    </span>
+                    <span
+                      aria-hidden="true"
+                      className="author-record-summary__chevron"
+                    >
+                      ›
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </aside>
 
-          <div className="author-editor">
-            {creating ? (
+          <div
+            aria-label="Event workspace detail"
+            className="author-record-view"
+            ref={recordViewRef}
+            role="region"
+            tabIndex={-1}
+          >
+            {route.mode === 'list' ? (
+              <EventCatalogueWelcome count={events.length} />
+            ) : route.mode === 'new' ? (
               <EventForm
                 apiBaseUrl={apiBaseUrl}
                 getAccessToken={getAccessToken}
@@ -291,14 +390,11 @@ export function EventWorkspace({
                 mapboxAccessToken={mapboxAccessToken}
                 interaction={interactionRef.current}
                 mutationCoordinator={mutationCoordinator}
-                onDirtyChange={updateEventDirty}
-                onCancel={() => {
-                  selectEvent(events[0]?.eventId ?? null);
-                }}
+                onCancel={() => navigate(authorPaths.events)}
                 onSaved={updateEvent}
               />
             ) : selected ? (
-              <>
+              route.mode === 'edit' && selected.authoringStatus === 'draft' ? (
                 <EventForm
                   apiBaseUrl={apiBaseUrl}
                   event={selected}
@@ -308,26 +404,353 @@ export function EventWorkspace({
                   mapFactory={mapFactory}
                   mapboxAccessToken={mapboxAccessToken}
                   mutationCoordinator={mutationCoordinator}
-                  onDirtyChange={updateEventDirty}
+                  onCancel={() => navigate(authorPaths.event(selected.eventId))}
                   onSaved={updateEvent}
                 />
+              ) : route.mode === 'challenge' || route.mode === 'questions' ? (
                 <ChallengeWorkspace
                   apiBaseUrl={apiBaseUrl}
                   cards={cards}
                   cardsState={cardsState}
                   event={selected}
                   getAccessToken={getAccessToken}
+                  interaction={interactionRef.current}
                   key={`challenge-workspace:${selected.eventId}`}
                   mutationCoordinator={mutationCoordinator}
+                  navigate={navigate}
+                  onEventChanged={updateEvent}
                   onOpenCards={onOpenCards}
                   onReloadCards={onReloadCards}
+                  route={route}
+                  view={route.mode}
                 />
-              </>
-            ) : null}
+              ) : (
+                <EventOverview
+                  apiBaseUrl={apiBaseUrl}
+                  event={selected}
+                  getAccessToken={getAccessToken}
+                  interaction={interactionRef.current}
+                  mutationCoordinator={mutationCoordinator}
+                  onSaved={updateEvent}
+                />
+              )
+            ) : (
+              <MissingEvent />
+            )}
           </div>
         </div>
       ) : null}
     </section>
+  );
+}
+
+function EventCatalogueControls({
+  lifecycle,
+  onLifecycleChange,
+  onScheduleChange,
+  onSearchChange,
+  onSortChange,
+  schedule,
+  search,
+  sort,
+}: {
+  lifecycle: string;
+  onLifecycleChange: (value: string) => void;
+  onScheduleChange: (value: string) => void;
+  onSearchChange: (value: string) => void;
+  onSortChange: (value: 'name' | 'schedule' | 'updated') => void;
+  schedule: string;
+  search: string;
+  sort: 'name' | 'schedule' | 'updated';
+}) {
+  return (
+    <div aria-label="Filter and sort events" className="author-filters">
+      <label className="author-filter author-filter--search">
+        <span>Search</span>
+        <input
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder="Title or description"
+          type="search"
+          value={search}
+        />
+      </label>
+      <label className="author-filter">
+        <span>Lifecycle</span>
+        <select
+          onChange={(event) => onLifecycleChange(event.target.value)}
+          value={lifecycle}
+        >
+          <option value="all">All</option>
+          <option value="draft">Draft</option>
+          <option value="published">Published</option>
+          <option value="retired">Retired</option>
+        </select>
+      </label>
+      <label className="author-filter">
+        <span>Schedule</span>
+        <select
+          onChange={(event) => onScheduleChange(event.target.value)}
+          value={schedule}
+        >
+          <option value="all">All</option>
+          <option value="current">In window</option>
+          <option value="upcoming">Upcoming</option>
+          <option value="ended">Ended</option>
+        </select>
+      </label>
+      <label className="author-filter author-filter--wide">
+        <span>Sort</span>
+        <select
+          onChange={(event) =>
+            onSortChange(event.target.value as 'name' | 'schedule' | 'updated')
+          }
+          value={sort}
+        >
+          <option value="schedule">Start time</option>
+          <option value="name">A–Z</option>
+          <option value="updated">Recently updated</option>
+        </select>
+      </label>
+    </div>
+  );
+}
+
+function EventCatalogueWelcome({ count }: { count: number }) {
+  return (
+    <section className="author-welcome">
+      <p className="eyebrow">Event management</p>
+      <h3>{count > 0 ? 'Select an event' : 'Create the first event'}</h3>
+      <p>
+        {count > 0
+          ? 'Choose an event to review its schedule, challenge, questions, and publication readiness.'
+          : 'New events begin as editable drafts.'}
+      </p>
+      <Link className="button" href={authorPaths.newEvent}>
+        New event
+      </Link>
+    </section>
+  );
+}
+
+function MissingEvent() {
+  return (
+    <section className="author-state author-state--error" role="alert">
+      <strong>This event is not in the loaded catalogue.</strong>
+      <p>It may have been removed or the address may be incorrect.</p>
+      <Link className="button button--quiet" href={authorPaths.events}>
+        Back to events
+      </Link>
+    </section>
+  );
+}
+
+function EventContextHeader({
+  active,
+  event,
+}: {
+  active: 'challenge' | 'overview' | 'questions';
+  event: AuthorEvent;
+}) {
+  return (
+    <>
+      <Link className="author-back-link" href={authorPaths.events}>
+        <span aria-hidden="true">←</span> Events
+      </Link>
+      <header className="author-detail__heading">
+        <div>
+          <p className="eyebrow">Selected event</p>
+          <h3>{event.title}</h3>
+        </div>
+        <StatusBadge status={event.authoringStatus} />
+      </header>
+      <nav aria-label={`${event.title} sections`} className="author-tabs">
+        <Link
+          aria-current={active === 'overview' ? 'page' : undefined}
+          className="author-tabs__link"
+          href={authorPaths.event(event.eventId)}
+        >
+          Overview
+        </Link>
+        <Link
+          aria-current={active === 'challenge' ? 'page' : undefined}
+          className="author-tabs__link"
+          href={authorPaths.eventChallenge(event.eventId)}
+        >
+          Challenge
+        </Link>
+        <Link
+          aria-current={active === 'questions' ? 'page' : undefined}
+          className="author-tabs__link"
+          href={authorPaths.eventQuestions(event.eventId)}
+        >
+          Questions
+        </Link>
+      </nav>
+    </>
+  );
+}
+
+function EventOverview({
+  apiBaseUrl,
+  event,
+  getAccessToken,
+  interaction,
+  mutationCoordinator,
+  onSaved,
+}: {
+  apiBaseUrl: string;
+  event: AuthorEvent;
+  getAccessToken: ApiAccessTokenProvider;
+  interaction: number;
+  mutationCoordinator: AuthorMutationCoordinator;
+  onSaved: EventFormProps['onSaved'];
+}) {
+  const [apiError, setApiError] = useState<AuthorApiError | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [confirmRetire, setConfirmRetire] = useState(false);
+  const feedbackRef = useRef<HTMLDivElement>(null);
+  const retireButtonRef = useRef<HTMLButtonElement>(null);
+  const operationRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => operationRef.current?.abort(), []);
+  useEffect(() => {
+    setApiError(null);
+    setConfirmRetire(false);
+  }, [event.authoringStatus, event.eventId]);
+
+  async function retire() {
+    const controller = new AbortController();
+    operationRef.current = controller;
+    setBusy(true);
+    setApiError(null);
+    const ticket = mutationCoordinator.beginMutation(
+      `event:${event.eventId}`,
+      'events',
+    );
+    try {
+      const next = await retireAuthorEvent({
+        apiBaseUrl,
+        eventId: event.eventId,
+        expectedVersion: event.version,
+        getAccessToken,
+        signal: controller.signal,
+      });
+      if (operationRef.current !== controller) return;
+      onSaved(next, event.eventId, interaction, ticket, 'Event retired.');
+      setConfirmRetire(false);
+    } catch (error) {
+      if (operationRef.current !== controller) return;
+      if (mutationCoordinator.acceptFailure(ticket, isUncertainError(error))) {
+        setApiError(toAuthorError(error));
+        window.setTimeout(() => feedbackRef.current?.focus());
+      }
+    } finally {
+      if (operationRef.current === controller) {
+        operationRef.current = null;
+        setBusy(false);
+      }
+    }
+  }
+
+  return (
+    <article aria-label={`${event.title} overview`} className="author-detail">
+      <EventContextHeader active="overview" event={event} />
+      <AuthorFeedback error={apiError} refObject={feedbackRef} />
+
+      <div className="author-overview-grid">
+        <section className="author-summary-block">
+          <p className="eyebrow">Summary</p>
+          <h4>Event definition</h4>
+          <p>
+            {event.description?.trim() ||
+              'No public description has been added.'}
+          </p>
+          <dl className="author-metadata">
+            <div>
+              <dt>Schedule</dt>
+              <dd>{eventScheduleLabel(event)}</dd>
+            </div>
+            <div>
+              <dt>Starts</dt>
+              <dd>
+                <time dateTime={event.startsAt}>
+                  {formatAuthorDateTime(event.startsAt)}
+                </time>
+              </dd>
+            </div>
+            <div>
+              <dt>Ends</dt>
+              <dd>
+                <time dateTime={event.endsAt}>
+                  {formatAuthorDateTime(event.endsAt)}
+                </time>
+              </dd>
+            </div>
+            <div>
+              <dt>Location</dt>
+              <dd>Configured · {event.radiusMetres} m radius</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="author-summary-block author-summary-block--next">
+          <p className="eyebrow">Next action</p>
+          <h4>
+            {event.authoringStatus === 'draft'
+              ? 'Prepare the event for publication'
+              : event.authoringStatus === 'published'
+                ? 'Published event'
+                : 'Retired event'}
+          </h4>
+          <p>
+            {event.authoringStatus === 'draft'
+              ? 'Edit the definition, then complete its challenge and questions.'
+              : event.authoringStatus === 'published'
+                ? 'Review the live definition or retire it when it should leave discovery.'
+                : 'This definition is preserved as a read-only historical record.'}
+          </p>
+          <div className="author-actions author-actions--detail">
+            {event.authoringStatus === 'draft' ? (
+              <Link
+                className="button"
+                href={authorPaths.editEvent(event.eventId)}
+              >
+                Edit event
+              </Link>
+            ) : null}
+            {event.authoringStatus !== 'retired' ? (
+              <button
+                className="button button--danger"
+                disabled={busy}
+                onClick={() => setConfirmRetire(true)}
+                ref={retireButtonRef}
+                type="button"
+              >
+                Retire event
+              </button>
+            ) : null}
+          </div>
+        </section>
+      </div>
+
+      {confirmRetire ? (
+        <AuthorConfirmationDialog
+          busy={busy}
+          cancelLabel="Keep event"
+          confirmLabel={busy ? 'Retiring…' : 'Retire event'}
+          description={
+            <p>
+              This event will leave player discovery and cannot be republished.
+              Historical attempts remain intact.
+            </p>
+          }
+          onCancel={() => setConfirmRetire(false)}
+          onConfirm={() => void retire()}
+          returnFocusRef={retireButtonRef}
+          title={`Retire ${event.title}?`}
+        />
+      ) : null}
+    </article>
   );
 }
 
@@ -339,14 +762,14 @@ interface EventFormProps {
   mapFactory?: MapFactory;
   mapboxAccessToken: string;
   mutationCoordinator: AuthorMutationCoordinator;
-  onCancel?: () => void;
-  onDirtyChange: (eventId: string, dirty: boolean) => void;
+  onCancel: () => void;
   onSaved: (
     event: AuthorEvent,
     ownerId: string | 'new',
     interaction: number,
     ticket: AuthorMutationTicket,
     notice?: string,
+    operationContextIsCurrent?: () => boolean,
   ) => void;
 }
 
@@ -360,6 +783,8 @@ interface EventDraft {
   title: string;
 }
 
+const EVENT_RADIUS_PRESETS = [25, 50, 75, 100] as const;
+
 function EventForm({
   apiBaseUrl,
   event,
@@ -369,14 +794,12 @@ function EventForm({
   mapboxAccessToken,
   mutationCoordinator,
   onCancel,
-  onDirtyChange,
   onSaved,
 }: EventFormProps) {
   const [draft, setDraft] = useState<EventDraft>(() => eventDraft(event));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [apiError, setApiError] = useState<AuthorApiError | null>(null);
   const [busy, setBusy] = useState(false);
-  const [confirmRetire, setConfirmRetire] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const feedbackRef = useRef<HTMLDivElement>(null);
   const operationRef = useRef<AbortController | null>(null);
@@ -386,7 +809,6 @@ function EventForm({
     setDraft(eventDraft(event));
     setErrors({});
     setApiError(null);
-    setConfirmRetire(false);
   }, [event]);
 
   useEffect(() => {
@@ -396,25 +818,33 @@ function EventForm({
     };
   }, []);
 
-  const dirty = Boolean(
-    event && JSON.stringify(draft) !== JSON.stringify(eventDraft(event)),
-  );
+  const dirty = JSON.stringify(draft) !== JSON.stringify(eventDraft(event));
   const recordKey = `event:${event?.eventId ?? 'new'}` as AuthorRecordKey;
   useAuthorDraftSession(mutationCoordinator, recordKey, dirty);
-
-  useEffect(() => {
-    if (event) onDirtyChange(event.eventId, dirty);
-    return () => {
-      if (event) onDirtyChange(event.eventId, false);
-    };
-  }, [dirty, event, onDirtyChange]);
+  const clearNavigationGuard = useUnsavedAuthorChanges(dirty, 'event draft');
 
   const coordinate = parseCoordinate(draft.latitude, draft.longitude);
-  const editable = !event || event.authoringStatus === 'draft';
+  const radiusMetres = parseRadius(draft.radiusMetres);
 
   function setField(field: keyof EventDraft, value: string) {
     setDraft((current) => ({ ...current, [field]: value }));
     setErrors((current) => ({ ...current, [field]: '' }));
+  }
+
+  function setCoordinate(nextCoordinate: {
+    latitude: number;
+    longitude: number;
+  }) {
+    setDraft((current) => ({
+      ...current,
+      latitude: String(Number(nextCoordinate.latitude.toFixed(6))),
+      longitude: String(Number(nextCoordinate.longitude.toFixed(6))),
+    }));
+    setErrors((current) => ({
+      ...current,
+      latitude: '',
+      longitude: '',
+    }));
   }
 
   async function save(submission: FormEvent) {
@@ -457,6 +887,7 @@ function EventForm({
             signal: controller.signal,
           });
       if (operationRef.current !== controller) return;
+      clearNavigationGuard();
       onSaved(
         saved,
         ownerId,
@@ -480,47 +911,17 @@ function EventForm({
     }
   }
 
-  async function retireEvent() {
-    if (!event) return;
-    setBusy(true);
-    setApiError(null);
-    const controller = new AbortController();
-    operationRef.current = controller;
-    const ownerId = event.eventId;
-    const ticket = mutationCoordinator.beginMutation(
-      `event:${event.eventId}`,
-      'events',
-    );
-
-    try {
-      const next = await retireAuthorEvent({
-        apiBaseUrl,
-        eventId: event.eventId,
-        expectedVersion: event.version,
-        getAccessToken,
-        signal: controller.signal,
-      });
-      if (operationRef.current !== controller) return;
-      onSaved(next, ownerId, interaction, ticket, 'Event retired.');
-      if (interactionActiveRef.current) setConfirmRetire(false);
-    } catch (error) {
-      if (operationRef.current !== controller) return;
-      const accepted = mutationCoordinator.acceptFailure(
-        ticket,
-        isUncertainError(error),
-      );
-      if (!accepted || !interactionActiveRef.current) return;
-      handleOperationError(error, setApiError, setErrors, formRef, feedbackRef);
-    } finally {
-      if (operationRef.current === controller) {
-        operationRef.current = null;
-        if (interactionActiveRef.current) setBusy(false);
-      }
-    }
-  }
-
   return (
-    <section aria-labelledby="event-editor-title" className="author-panel">
+    <section
+      aria-labelledby="event-editor-title"
+      className="author-panel author-panel--editor"
+    >
+      <Link
+        className="author-back-link"
+        href={event ? authorPaths.event(event.eventId) : authorPaths.events}
+      >
+        <span aria-hidden="true">←</span> {event ? 'Event overview' : 'Events'}
+      </Link>
       <header className="author-panel__heading">
         <div>
           <p className="eyebrow">Event definition</p>
@@ -529,13 +930,6 @@ function EventForm({
         {event ? <StatusBadge status={event.authoringStatus} /> : null}
       </header>
 
-      {!editable ? (
-        <p className="author-notice">
-          Only draft event definitions are editable. Review, approved,
-          published, and retired definitions are read-only.
-        </p>
-      ) : null}
-
       <AuthorFeedback error={apiError} refObject={feedbackRef} />
 
       <form className="author-form" noValidate onSubmit={save} ref={formRef}>
@@ -543,7 +937,7 @@ function EventForm({
           <input
             aria-describedby={errors.title ? 'event-title-error' : undefined}
             aria-invalid={Boolean(errors.title)}
-            disabled={!editable || busy}
+            disabled={busy}
             id="event-title"
             onChange={(change) => setField('title', change.target.value)}
             required
@@ -562,7 +956,7 @@ function EventForm({
               errors.description ? 'event-description-error' : undefined
             }
             aria-invalid={Boolean(errors.description)}
-            disabled={!editable || busy}
+            disabled={busy}
             id="event-description"
             onChange={(change) => setField('description', change.target.value)}
             rows={3}
@@ -570,62 +964,61 @@ function EventForm({
           />
         </FormField>
 
-        <fieldset className="author-fieldset" disabled={!editable || busy}>
-          <legend>Event position and radius</legend>
-          <div className="author-form__grid">
-            <FormField
-              error={errors.latitude}
-              label="Latitude"
-              name="event-latitude"
+        <fieldset
+          className="author-fieldset author-location-editor"
+          disabled={busy}
+        >
+          <legend>Event location</legend>
+          <p className="author-location-editor__intro">
+            Select the event point on the campus map. The marker and radius are
+            an authoring aid; the saved coordinates and distance remain exact.
+          </p>
+          <AuthorLocationMap
+            coordinate={coordinate}
+            disabled={busy}
+            mapboxAccessToken={mapboxAccessToken}
+            mapFactory={mapFactory}
+            onChange={setCoordinate}
+            radiusMetres={radiusMetres}
+          />
+
+          <section
+            aria-labelledby="event-radius-heading"
+            className="author-radius-editor"
+          >
+            <div className="author-radius-editor__heading">
+              <strong id="event-radius-heading">Event radius</strong>
+              <span>How close a player needs to be.</span>
+            </div>
+            <div
+              aria-label="Common event radii"
+              className="author-radius-presets"
+              role="group"
             >
-              <input
-                aria-describedby={
-                  errors.latitude ? 'event-latitude-error' : undefined
-                }
-                aria-invalid={Boolean(errors.latitude)}
-                id="event-latitude"
-                inputMode="decimal"
-                max="90"
-                min="-90"
-                onChange={(change) => setField('latitude', change.target.value)}
-                required
-                step="any"
-                type="number"
-                value={draft.latitude}
-              />
-            </FormField>
-            <FormField
-              error={errors.longitude}
-              label="Longitude"
-              name="event-longitude"
-            >
-              <input
-                aria-describedby={
-                  errors.longitude ? 'event-longitude-error' : undefined
-                }
-                aria-invalid={Boolean(errors.longitude)}
-                id="event-longitude"
-                inputMode="decimal"
-                max="180"
-                min="-180"
-                onChange={(change) =>
-                  setField('longitude', change.target.value)
-                }
-                required
-                step="any"
-                type="number"
-                value={draft.longitude}
-              />
-            </FormField>
+              {EVENT_RADIUS_PRESETS.map((radius) => (
+                <button
+                  aria-pressed={radiusMetres === radius}
+                  className="author-radius-preset"
+                  key={radius}
+                  onClick={() => setField('radiusMetres', String(radius))}
+                  type="button"
+                >
+                  {radius} m
+                </button>
+              ))}
+            </div>
             <FormField
               error={errors.radiusMetres}
               label="Radius (metres)"
               name="event-radius"
             >
               <input
-                aria-describedby={
-                  errors.radiusMetres ? 'event-radius-error' : undefined
-                }
+                aria-describedby={[
+                  'event-radius-help',
+                  errors.radiusMetres ? 'event-radius-error' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
                 aria-invalid={Boolean(errors.radiusMetres)}
                 id="event-radius"
                 inputMode="numeric"
@@ -638,27 +1031,77 @@ function EventForm({
                 type="number"
                 value={draft.radiusMetres}
               />
+              <span className="field-help" id="event-radius-help">
+                Choose a preset or enter any positive whole number of metres.
+              </span>
             </FormField>
-          </div>
+          </section>
+
+          <section
+            aria-labelledby="event-coordinates-heading"
+            className="author-location-advanced"
+          >
+            <div className="author-location-advanced__heading">
+              <strong id="event-coordinates-heading">
+                Advanced coordinates
+              </strong>
+              <span>
+                Keyboard and map-fallback controls. Values stay synchronized
+                with the marker.
+              </span>
+            </div>
+            <div className="author-form__grid">
+              <FormField
+                error={errors.latitude}
+                label="Latitude"
+                name="event-latitude"
+              >
+                <input
+                  aria-describedby={
+                    errors.latitude ? 'event-latitude-error' : undefined
+                  }
+                  aria-invalid={Boolean(errors.latitude)}
+                  id="event-latitude"
+                  inputMode="decimal"
+                  max="90"
+                  min="-90"
+                  onChange={(change) =>
+                    setField('latitude', change.target.value)
+                  }
+                  required
+                  step="any"
+                  type="number"
+                  value={draft.latitude}
+                />
+              </FormField>
+              <FormField
+                error={errors.longitude}
+                label="Longitude"
+                name="event-longitude"
+              >
+                <input
+                  aria-describedby={
+                    errors.longitude ? 'event-longitude-error' : undefined
+                  }
+                  aria-invalid={Boolean(errors.longitude)}
+                  id="event-longitude"
+                  inputMode="decimal"
+                  max="180"
+                  min="-180"
+                  onChange={(change) =>
+                    setField('longitude', change.target.value)
+                  }
+                  required
+                  step="any"
+                  type="number"
+                  value={draft.longitude}
+                />
+              </FormField>
+            </div>
+          </section>
         </fieldset>
 
-        {coordinate ? (
-          <AuthorLocationMap
-            coordinate={coordinate}
-            mapboxAccessToken={mapboxAccessToken}
-            mapFactory={mapFactory}
-            onChange={(next) => {
-              setField('latitude', String(Number(next.latitude.toFixed(6))));
-              setField('longitude', String(Number(next.longitude.toFixed(6))));
-            }}
-          />
-        ) : (
-          <p className="author-notice">
-            Enter valid latitude and longitude values to open the placement map.
-          </p>
-        )}
-
-        <fieldset className="author-fieldset" disabled={!editable || busy}>
+        <fieldset className="author-fieldset" disabled={busy}>
           <legend>Active times</legend>
           <div className="author-form__grid">
             <FormField
@@ -695,56 +1138,22 @@ function EventForm({
         </fieldset>
 
         <div className="author-actions">
-          {editable ? (
-            <button className="button" disabled={busy} type="submit">
-              {busy ? 'Saving…' : event ? 'Save event' : 'Create draft event'}
-            </button>
-          ) : null}
-          {onCancel ? (
-            <button
-              className="button button--quiet"
-              disabled={busy}
-              onClick={onCancel}
-              type="button"
-            >
-              Cancel
-            </button>
-          ) : null}
-          {event?.authoringStatus === 'published' ? (
-            <button
-              className="button button--danger"
-              disabled={busy}
-              onClick={() => setConfirmRetire(true)}
-              type="button"
-            >
-              Retire event
-            </button>
-          ) : null}
+          <button className="button" disabled={busy} type="submit">
+            {busy ? 'Saving…' : event ? 'Save event' : 'Create draft event'}
+          </button>
+          <button
+            className="button button--quiet"
+            disabled={busy}
+            onClick={onCancel}
+            type="button"
+          >
+            Cancel
+          </button>
         </div>
-
-        {confirmRetire ? (
-          <div className="author-confirmation" role="alert">
-            <strong>Retire this event permanently?</strong>
-            <p>It will leave player discovery and cannot be republished.</p>
-            <div className="author-actions">
-              <button
-                className="button button--danger"
-                disabled={busy}
-                onClick={() => void retireEvent()}
-                type="button"
-              >
-                Confirm retirement
-              </button>
-              <button
-                className="button button--quiet"
-                disabled={busy}
-                onClick={() => setConfirmRetire(false)}
-                type="button"
-              >
-                Keep event
-              </button>
-            </div>
-          </div>
+        {dirty ? (
+          <p className="author-dirty-state" role="status">
+            Unsaved changes
+          </p>
         ) : null}
       </form>
     </section>
@@ -757,9 +1166,21 @@ interface ChallengeWorkspaceProps {
   cardsState: 'error' | 'loading' | 'ready';
   event: AuthorEvent;
   getAccessToken: ApiAccessTokenProvider;
+  interaction: number;
   mutationCoordinator: AuthorMutationCoordinator;
+  navigate: (to: string, options?: { replace?: boolean }) => void;
+  onEventChanged: (
+    event: AuthorEvent,
+    ownerId: string,
+    interaction: number,
+    ticket: AuthorMutationTicket,
+    notice?: string,
+    operationContextIsCurrent?: () => boolean,
+  ) => boolean;
   onOpenCards: () => void;
   onReloadCards: () => void;
+  route: Extract<AuthorWorkspaceRoute, { section: 'events' }>;
+  view: 'challenge' | 'questions';
 }
 
 function ChallengeWorkspace({
@@ -768,9 +1189,14 @@ function ChallengeWorkspace({
   cardsState,
   event,
   getAccessToken,
+  interaction,
   mutationCoordinator,
+  navigate,
+  onEventChanged,
   onOpenCards,
   onReloadCards,
+  route,
+  view,
 }: ChallengeWorkspaceProps) {
   const [challenges, setChallenges] = useState<AuthorChallenge[]>([]);
   const [questions, setQuestions] = useState<AuthorQuestion[]>([]);
@@ -783,19 +1209,31 @@ function ChallengeWorkspace({
     null,
   );
   const [apiError, setApiError] = useState<AuthorApiError | null>(null);
+  const [feedbackPlacement, setFeedbackPlacement] = useState<
+    'challenge' | 'publication'
+  >('challenge');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmRetire, setConfirmRetire] = useState(false);
   const feedbackRef = useRef<HTMLDivElement>(null);
+  const retireButtonRef = useRef<HTMLButtonElement>(null);
   const challengeRequestRef = useRef<AbortController | null>(null);
   const questionRequestRef = useRef<AbortController | null>(null);
   const operationRef = useRef<AbortController | null>(null);
+  const initialRouteChallengeIdRef = useRef(
+    route.mode === 'questions' ? route.challengeId : undefined,
+  );
   const selectedChallengeIdRef = useRef<string | null>(null);
   const challengeInteractionRef = useRef(0);
   const interactionActiveRef = useRef(true);
   const appliedChallengeResultsRef = useRef(new Map<AuthorRecordKey, number>());
   const appliedQuestionResultsRef = useRef(new Map<AuthorRecordKey, number>());
   const mutationRevision = useAuthorMutationRevision(mutationCoordinator);
+
+  useEffect(() => {
+    if (!apiError && !message) return;
+    feedbackRef.current?.focus();
+  }, [apiError, feedbackPlacement, message]);
 
   const loadChallenges = useCallback(
     async (preferredChallengeId?: string) => {
@@ -812,6 +1250,7 @@ function ChallengeWorkspace({
       setQuestions([]);
       setQuestionsState('loading');
       setQuestionsError(null);
+      setFeedbackPlacement('challenge');
       setApiError(null);
 
       try {
@@ -867,13 +1306,46 @@ function ChallengeWorkspace({
 
   useEffect(() => {
     interactionActiveRef.current = true;
-    void loadChallenges();
+    void loadChallenges(initialRouteChallengeIdRef.current);
     return () => {
       interactionActiveRef.current = false;
       challengeRequestRef.current?.abort();
       questionRequestRef.current?.abort();
     };
   }, [loadChallenges]);
+
+  useEffect(() => {
+    if (
+      route.mode !== 'questions' ||
+      !route.challengeId ||
+      route.challengeId === selectedChallengeId ||
+      !challenges.some(
+        (challenge) => challenge.challengeId === route.challengeId,
+      )
+    )
+      return;
+    challengeInteractionRef.current += 1;
+    selectedChallengeIdRef.current = route.challengeId;
+    setSelectedChallengeId(route.challengeId);
+    setQuestions([]);
+    setQuestionsState('loading');
+    setQuestionsError(null);
+    setMessage('');
+    setApiError(null);
+  }, [challenges, route, selectedChallengeId]);
+
+  useEffect(() => {
+    if (
+      view === 'questions' &&
+      route.mode === 'questions' &&
+      !route.challengeId &&
+      selectedChallengeId
+    ) {
+      navigate(authorPaths.questions(event.eventId, selectedChallengeId), {
+        replace: true,
+      });
+    }
+  }, [event.eventId, navigate, route, selectedChallengeId, view]);
 
   const loadQuestions = useCallback(async () => {
     questionRequestRef.current?.abort();
@@ -982,11 +1454,15 @@ function ChallengeWorkspace({
   );
   const hasAuthoritativeCommon = cardsState === 'ready' && hasActiveCommon;
 
-  function beginOperation() {
+  function beginOperation(
+    placement: 'challenge' | 'publication' = 'challenge',
+  ) {
     const controller = new AbortController();
     operationRef.current = controller;
     setBusy(true);
+    setFeedbackPlacement(placement);
     setApiError(null);
+    setMessage('');
     return controller;
   }
 
@@ -1007,6 +1483,9 @@ function ChallengeWorkspace({
     setQuestionsError(null);
     setMessage('');
     setApiError(null);
+    if (view === 'questions') {
+      navigate(authorPaths.questions(event.eventId, challengeId));
+    }
     if (
       mutationCoordinator.isCollectionUncertain(
         challengeCollectionKey(event.eventId),
@@ -1081,7 +1560,7 @@ function ChallengeWorkspace({
     }
   }
 
-  async function retireChallenge() {
+  async function challengeLifecycle(action: 'publish' | 'retire') {
     if (!selected) return;
     const controller = beginOperation();
     const challengeId = selected.challengeId;
@@ -1093,13 +1572,22 @@ function ChallengeWorkspace({
     );
     let shouldFocus = false;
     try {
-      const next = await retireAuthorChallenge({
-        apiBaseUrl,
-        challengeId,
-        expectedVersion: selected.version,
-        getAccessToken,
-        signal: controller.signal,
-      });
+      const next =
+        action === 'publish'
+          ? await publishAuthorChallenge({
+              apiBaseUrl,
+              challengeId,
+              expectedVersion: selected.version,
+              getAccessToken,
+              signal: controller.signal,
+            })
+          : await retireAuthorChallenge({
+              apiBaseUrl,
+              challengeId,
+              expectedVersion: selected.version,
+              getAccessToken,
+              signal: controller.signal,
+            });
       const recordKey = `challenge:${next.challengeId}` as const;
       if (!mutationCoordinator.acceptSuccess(ticket, recordKey, next)) return;
       const canApply = mutationCoordinator
@@ -1112,7 +1600,9 @@ function ChallengeWorkspace({
         selectedChallengeIdRef.current === challengeId &&
         challengeInteractionRef.current === startingInteraction
       ) {
-        setMessage('Challenge retired.');
+        setMessage(
+          action === 'publish' ? 'Challenge published.' : 'Challenge retired.',
+        );
         setConfirmRetire(false);
         shouldFocus = true;
       }
@@ -1149,183 +1639,375 @@ function ChallengeWorkspace({
     }
   }
 
+  async function publishEvent() {
+    const controller = beginOperation('publication');
+    const startingChallengeId = selectedChallengeIdRef.current;
+    const startingChallengeInteraction = challengeInteractionRef.current;
+    const ticket = mutationCoordinator.beginMutation(
+      `event:${event.eventId}`,
+      'events',
+    );
+    let shouldFocus = false;
+    try {
+      const next = await publishAuthorEvent({
+        apiBaseUrl,
+        eventId: event.eventId,
+        expectedVersion: event.version,
+        getAccessToken,
+        signal: controller.signal,
+      });
+      if (
+        !onEventChanged(
+          next,
+          event.eventId,
+          interaction,
+          ticket,
+          'Event published and available to the player API according to its active times.',
+          () =>
+            interactionActiveRef.current &&
+            challengeInteractionRef.current === startingChallengeInteraction &&
+            selectedChallengeIdRef.current === startingChallengeId,
+        )
+      )
+        return;
+    } catch (error) {
+      const accepted = mutationCoordinator.acceptFailure(
+        ticket,
+        isUncertainError(error),
+      );
+      if (
+        accepted &&
+        interactionActiveRef.current &&
+        challengeInteractionRef.current === startingChallengeInteraction &&
+        selectedChallengeIdRef.current === startingChallengeId
+      ) {
+        setApiError(toAuthorError(error));
+        shouldFocus = true;
+      }
+    } finally {
+      if (finishOperation(controller) && shouldFocus)
+        window.setTimeout(() => {
+          if (
+            interactionActiveRef.current &&
+            challengeInteractionRef.current === startingChallengeInteraction &&
+            selectedChallengeIdRef.current === startingChallengeId
+          )
+            feedbackRef.current?.focus();
+        });
+    }
+  }
+
+  const publishedChallengeCount = challenges.filter(
+    (challenge) => challenge.status === 'published',
+  ).length;
+  const publishedChallengeReady = publishedChallengeCount === 1;
+  const questionRequirementReady =
+    publishedChallengeReady ||
+    (questionsState === 'ready' && publishedQuestions >= 5);
+  const readinessChecking =
+    state === 'loading' ||
+    cardsState === 'loading' ||
+    (!publishedChallengeReady &&
+      Boolean(selected) &&
+      questionsState === 'loading');
+  const readinessUnavailable =
+    state === 'error' ||
+    cardsState === 'error' ||
+    (!publishedChallengeReady &&
+      Boolean(selected) &&
+      questionsState === 'error');
+  const readyCount = [
+    publishedChallengeReady,
+    questionRequirementReady,
+    hasAuthoritativeCommon,
+  ].filter(Boolean).length;
+  const nextAction =
+    state === 'loading'
+      ? 'Checking event challenges.'
+      : state === 'error'
+        ? 'Reload the event challenges.'
+        : publishedChallengeCount > 1
+          ? 'Resolve the published challenge conflict on the server.'
+          : !selected
+            ? 'Create the event challenge.'
+            : !publishedChallengeReady && questionsState === 'loading'
+              ? 'Checking published questions.'
+              : !publishedChallengeReady && questionsState === 'error'
+                ? 'Reload the question readiness check.'
+                : !publishedChallengeReady && selected.status === 'retired'
+                  ? 'Create or select a draft challenge.'
+                  : !publishedChallengeReady && publishedQuestions < 5
+                    ? 'Publish at least five questions.'
+                    : !publishedChallengeReady
+                      ? 'Publish the completed challenge.'
+                      : cardsState === 'loading'
+                        ? 'Checking the reward catalogue.'
+                        : cardsState === 'error'
+                          ? 'Check the reward catalogue again.'
+                          : !hasAuthoritativeCommon
+                            ? 'Publish an active Common reward card.'
+                            : 'Ask the server to publish the event.';
+
   return (
-    <section aria-labelledby="challenge-editor-title" className="author-panel">
-      <header className="author-panel__heading">
-        <div>
-          <p className="eyebrow">Content association</p>
-          <h3 id="challenge-editor-title">Challenge & publication</h3>
-        </div>
-        <button
-          className="button button--quiet"
-          disabled={busy}
-          onClick={() => void createChallenge()}
-          type="button"
-        >
-          Create challenge
-        </button>
-      </header>
+    <section aria-label={`${event.title} ${view}`} className="author-detail">
+      <EventContextHeader active={view} event={event} />
 
-      <AuthorFeedback
-        error={apiError}
-        message={message}
-        refObject={feedbackRef}
-      />
-
-      <div className="readiness-grid" aria-label="Publication requirements">
-        <ReadinessItem
-          ready={
-            challenges.filter((challenge) => challenge.status === 'published')
-              .length === 1
-          }
-          title="Published challenge"
-        >
-          Exactly one is required.
-        </ReadinessItem>
-        <ReadinessItem
-          ready={publishedQuestions >= 5}
-          title="Published questions"
-        >
-          {publishedQuestions} of at least 5 in the selected challenge.
-        </ReadinessItem>
-        <ReadinessItem
-          ready={hasAuthoritativeCommon}
-          title="Common reward catalogue"
-        >
-          {cardsState === 'loading'
-            ? 'Checking catalogue…'
-            : cardsState === 'error'
-              ? 'Catalogue could not be checked.'
-              : hasActiveCommon
-                ? 'At least one active Common card is available.'
-                : 'Publish a Common card for server-selected rewards.'}
-        </ReadinessItem>
-      </div>
-      <p className="field-help">
-        This summary is guidance. The API rechecks every authoritative rule at
-        publication time. Rewards use the global active catalogue; Basic has no
-        event-to-card assignment.
-      </p>
-      <div className="author-actions">
-        <button
-          className="button button--quiet"
-          onClick={onOpenCards}
-          type="button"
-        >
-          Open card catalogue
-        </button>
-        {cardsState === 'error' ? (
-          <button
-            className="button button--quiet"
-            onClick={onReloadCards}
-            type="button"
-          >
-            Check catalogue again
-          </button>
-        ) : null}
-      </div>
-      <p className="author-notice" role="status">
-        Review and publication actions are available through the Author API. The
-        console review workspace will be added separately.
-      </p>
-
-      {state === 'loading' ? (
-        <p className="author-state" role="status">
-          Loading event challenges…
-        </p>
-      ) : null}
-      {state === 'error' ? (
-        <button
-          className="button button--quiet"
-          onClick={() => void loadChallenges()}
-          type="button"
-        >
-          Reload challenges
-        </button>
-      ) : null}
-      {state === 'ready' && challenges.length === 0 ? (
-        <div className="author-state">
-          <strong>No challenge is associated.</strong>
-          <p>
-            Create one, add at least five questions, publish each question, then
-            publish the challenge.
-          </p>
-        </div>
+      {view === 'questions' || feedbackPlacement === 'challenge' ? (
+        <AuthorFeedback
+          error={apiError}
+          message={message}
+          refObject={feedbackRef}
+        />
       ) : null}
 
-      {challenges.length > 0 ? (
-        <div className="challenge-selector">
-          <label htmlFor="event-challenge">Challenge</label>
-          <select
-            id="event-challenge"
-            onChange={(change) => selectChallenge(change.target.value)}
-            value={selectedChallengeId ?? ''}
-          >
-            {challenges.map((challenge, index) => (
-              <option key={challenge.challengeId} value={challenge.challengeId}>
-                Challenge {index + 1} — {challenge.status}
-              </option>
-            ))}
-          </select>
-        </div>
-      ) : null}
-
-      {selected ? (
+      {view === 'challenge' ? (
         <>
-          <div className="author-actions">
-            {selected.status === 'published' ? (
+          <header className="author-section-heading">
+            <div>
+              <p className="eyebrow">Publication workflow</p>
+              <h4>Challenge readiness</h4>
+              <p>
+                {readyCount} of 3 requirements ready.{' '}
+                <strong>{nextAction}</strong>
+              </p>
+            </div>
+            {state === 'ready' ? (
               <button
-                aria-describedby={
-                  challengeRetirementBlocked
-                    ? 'challenge-retirement-order'
-                    : undefined
-                }
-                className="button button--danger"
-                disabled={busy || challengeRetirementBlocked}
-                onClick={() => setConfirmRetire(true)}
+                className="button button--quiet"
+                disabled={busy}
+                onClick={() => void createChallenge()}
                 type="button"
               >
-                Retire challenge
+                Create challenge
               </button>
             ) : null}
+          </header>
+
+          <div className="readiness-grid" aria-label="Publication requirements">
+            <ReadinessItem ready={publishedChallengeReady} title="Challenge">
+              {publishedChallengeReady
+                ? 'Exactly one challenge is published.'
+                : 'Publish exactly one challenge.'}
+            </ReadinessItem>
+            <ReadinessItem ready={questionRequirementReady} title="Questions">
+              {publishedChallengeReady
+                ? 'The published challenge meets the server-enforced question minimum.'
+                : questionsState === 'loading'
+                  ? 'Checking published questions…'
+                  : questionsState === 'error'
+                    ? 'Question readiness could not be checked.'
+                    : `${publishedQuestions} of at least 5 are published in this challenge.`}
+            </ReadinessItem>
+            <ReadinessItem ready={hasAuthoritativeCommon} title="Rewards">
+              {cardsState === 'loading'
+                ? 'Checking the Common catalogue…'
+                : cardsState === 'error'
+                  ? 'The reward catalogue could not be checked.'
+                  : hasActiveCommon
+                    ? 'An active Common card is available.'
+                    : 'Publish an active Common card.'}
+            </ReadinessItem>
           </div>
-          {challengeRetirementBlocked ? (
-            <p
-              className="author-notice"
-              id="challenge-retirement-order"
-              role="status"
-            >
-              Retire the event before retiring its published challenge.
+
+          {state === 'loading' ? (
+            <p className="author-state" role="status">
+              Loading event challenges…
             </p>
           ) : null}
-          {confirmRetire ? (
-            <div className="author-confirmation" role="alert">
-              <strong>Retire this challenge permanently?</strong>
-              <p>It cannot be edited or published again.</p>
-              <div className="author-actions">
-                <button
-                  className="button button--danger"
-                  disabled={busy}
-                  onClick={() => void retireChallenge()}
-                  type="button"
-                >
-                  Confirm retirement
-                </button>
-                <button
-                  className="button button--quiet"
-                  disabled={busy}
-                  onClick={() => setConfirmRetire(false)}
-                  type="button"
-                >
-                  Keep challenge
-                </button>
-              </div>
+          {state === 'error' ? (
+            <div className="author-state author-state--error" role="alert">
+              <strong>Challenges are unavailable.</strong>
+              <button
+                className="button button--quiet"
+                onClick={() => void loadChallenges()}
+                type="button"
+              >
+                Reload challenges
+              </button>
             </div>
           ) : null}
-          {questionsState === 'loading' ? (
+
+          {challenges.length > 0 ? (
+            <div className="challenge-selector">
+              <label htmlFor="event-challenge">Challenge</label>
+              <select
+                id="event-challenge"
+                onChange={(change) => selectChallenge(change.target.value)}
+                value={selectedChallengeId ?? ''}
+              >
+                {challenges.map((challenge, index) => (
+                  <option
+                    key={challenge.challengeId}
+                    value={challenge.challengeId}
+                  >
+                    Challenge {index + 1} — {challenge.status}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+
+          {selected ? (
+            <section className="author-summary-block">
+              <div className="author-section-heading">
+                <div>
+                  <p className="eyebrow">Selected challenge</p>
+                  <h4>Multiple choice</h4>
+                </div>
+                <StatusBadge status={selected.status} />
+              </div>
+              <p>
+                {questions.length} total questions · {publishedQuestions}{' '}
+                published
+              </p>
+              <div className="author-actions">
+                <Link
+                  className="button button--quiet"
+                  href={authorPaths.questions(
+                    event.eventId,
+                    selected.challengeId,
+                  )}
+                >
+                  Manage questions
+                </Link>
+                {selected.status === 'draft' ? (
+                  <button
+                    className="button button--quiet"
+                    disabled={busy}
+                    onClick={() => void challengeLifecycle('publish')}
+                    type="button"
+                  >
+                    Publish challenge
+                  </button>
+                ) : null}
+                {selected.status !== 'retired' ? (
+                  <button
+                    aria-describedby={
+                      challengeRetirementBlocked
+                        ? 'challenge-retirement-order'
+                        : undefined
+                    }
+                    className="button button--danger"
+                    disabled={busy || challengeRetirementBlocked}
+                    onClick={() => setConfirmRetire(true)}
+                    ref={retireButtonRef}
+                    type="button"
+                  >
+                    Retire challenge
+                  </button>
+                ) : null}
+              </div>
+              {challengeRetirementBlocked ? (
+                <p
+                  className="author-notice"
+                  id="challenge-retirement-order"
+                  role="status"
+                >
+                  Retire the event before retiring its published challenge.
+                </p>
+              ) : null}
+            </section>
+          ) : null}
+
+          {feedbackPlacement === 'publication' ? (
+            <AuthorFeedback
+              error={apiError}
+              message={message}
+              refObject={feedbackRef}
+            />
+          ) : null}
+          <div className="author-publish-bar">
+            <div>
+              <strong>
+                {readinessChecking
+                  ? 'Checking readiness'
+                  : readinessUnavailable
+                    ? 'Readiness check incomplete'
+                    : readyCount === 3
+                      ? 'Ready for server review'
+                      : 'Publication blocked'}
+              </strong>
+              <p>{nextAction}</p>
+            </div>
+            <div className="author-actions">
+              {!hasAuthoritativeCommon ? (
+                <button
+                  className="button button--quiet"
+                  onClick={onOpenCards}
+                  type="button"
+                >
+                  Open cards
+                </button>
+              ) : null}
+              {cardsState === 'error' ? (
+                <button
+                  className="button button--quiet"
+                  onClick={onReloadCards}
+                  type="button"
+                >
+                  Check cards again
+                </button>
+              ) : null}
+              {event.authoringStatus === 'draft' ? (
+                <button
+                  className="button"
+                  disabled={busy}
+                  onClick={() => void publishEvent()}
+                  type="button"
+                >
+                  {busy ? 'Publishing…' : 'Publish event'}
+                </button>
+              ) : null}
+            </div>
+          </div>
+          <p className="field-help">
+            The server rechecks every lifecycle and content requirement when
+            publication is requested.
+          </p>
+        </>
+      ) : (
+        <>
+          <header className="author-section-heading">
+            <div>
+              <p className="eyebrow">Question bank</p>
+              <h4>Questions</h4>
+            </div>
+          </header>
+          {challenges.length > 1 ? (
+            <div className="challenge-selector">
+              <label htmlFor="question-challenge">Challenge</label>
+              <select
+                id="question-challenge"
+                onChange={(change) => selectChallenge(change.target.value)}
+                value={selectedChallengeId ?? ''}
+              >
+                {challenges.map((challenge, index) => (
+                  <option
+                    key={challenge.challengeId}
+                    value={challenge.challengeId}
+                  >
+                    Challenge {index + 1} — {challenge.status}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          {state === 'loading' || questionsState === 'loading' ? (
             <p className="author-state" role="status">
               Loading challenge questions…
             </p>
+          ) : null}
+          {state === 'ready' && !selected ? (
+            <div className="author-state">
+              <strong>No challenge is associated.</strong>
+              <p>Create the event challenge before adding questions.</p>
+              <Link
+                className="button button--quiet"
+                href={authorPaths.eventChallenge(event.eventId)}
+              >
+                Open challenge workflow
+              </Link>
+            </div>
           ) : null}
           {questionsState === 'error' ? (
             <div className="author-state author-state--error" role="alert">
@@ -1340,21 +2022,44 @@ function ChallengeWorkspace({
               </button>
             </div>
           ) : null}
-          {questionsState === 'ready' ? (
+          {selected &&
+          questionsState === 'ready' &&
+          route.mode === 'questions' ? (
             <QuestionWorkspace
               apiBaseUrl={apiBaseUrl}
               challenge={selected}
+              event={event}
               getAccessToken={getAccessToken}
               key={selected.challengeId}
               mutationCoordinator={mutationCoordinator}
-              onReload={() => void loadQuestions()}
+              navigate={navigate}
+              onReload={loadQuestions}
               onQuestionsChange={setQuestions}
               questions={questions.filter(
                 (question) => question.challengeId === selected.challengeId,
               )}
+              route={route}
             />
           ) : null}
         </>
+      )}
+
+      {confirmRetire && selected ? (
+        <AuthorConfirmationDialog
+          busy={busy}
+          cancelLabel="Keep challenge"
+          confirmLabel={busy ? 'Retiring…' : 'Retire challenge'}
+          description={
+            <p>
+              This challenge cannot be edited or published again. Retire its
+              event first when the challenge is already published.
+            </p>
+          }
+          onCancel={() => setConfirmRetire(false)}
+          onConfirm={() => void challengeLifecycle('retire')}
+          returnFocusRef={retireButtonRef}
+          title="Retire this challenge?"
+        />
       ) : null}
     </section>
   );
@@ -1363,31 +2068,64 @@ function ChallengeWorkspace({
 interface QuestionWorkspaceProps {
   apiBaseUrl: string;
   challenge: AuthorChallenge;
+  event: AuthorEvent;
   getAccessToken: ApiAccessTokenProvider;
   mutationCoordinator: AuthorMutationCoordinator;
+  navigate: (to: string, options?: { replace?: boolean }) => void;
   onReload: () => void;
   onQuestionsChange: React.Dispatch<React.SetStateAction<AuthorQuestion[]>>;
   questions: AuthorQuestion[];
+  route: Extract<AuthorWorkspaceRoute, { mode: 'questions' }>;
 }
 
 function QuestionWorkspace({
   apiBaseUrl,
   challenge,
+  event,
   getAccessToken,
   mutationCoordinator,
+  navigate,
   onReload,
   onQuestionsChange,
   questions,
+  route,
 }: QuestionWorkspaceProps) {
-  const [selectedId, setSelectedId] = useState<string | 'new'>('new');
   const [message, setMessage] = useState('');
   const feedbackRef = useRef<HTMLDivElement>(null);
+  const catalogueRef = useRef<HTMLElement>(null);
+  const recordViewRef = useRef<HTMLDivElement>(null);
+  const focusRouteRef = useRef<string | null>(null);
   const selectedIdRef = useRef<string | 'new'>('new');
+  const routeContextRef = useRef('');
   const interactionRef = useRef(0);
   const mountedRef = useRef(true);
+  const selectedId = route.questionId ?? null;
+  const routeContext = `${route.questionMode}:${selectedId ?? ''}`;
+  if (routeContextRef.current !== routeContext) {
+    routeContextRef.current = routeContext;
+    interactionRef.current += 1;
+    selectedIdRef.current =
+      route.questionMode === 'new' ? 'new' : (selectedId ?? 'new');
+  }
   const selected = questions.find(
     (question) => question.questionId === selectedId,
   );
+
+  useEffect(() => {
+    if (focusRouteRef.current === null) {
+      focusRouteRef.current = routeContext;
+      return;
+    }
+    if (focusRouteRef.current === routeContext) return;
+    focusRouteRef.current = routeContext;
+    const timer = window.setTimeout(() => {
+      (route.questionMode === 'list'
+        ? catalogueRef.current
+        : recordViewRef.current
+      )?.focus();
+    });
+    return () => window.clearTimeout(timer);
+  }, [route.questionMode, routeContext]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -1397,29 +2135,21 @@ function QuestionWorkspace({
   }, []);
 
   useEffect(() => {
-    if (
-      selectedId !== 'new' &&
-      !questions.some((question) => question.questionId === selectedId)
-    ) {
-      interactionRef.current += 1;
-      setSelectedId('new');
-      selectedIdRef.current = 'new';
-    }
-  }, [questions, selectedId]);
-
-  function selectQuestion(questionId: string | 'new') {
-    interactionRef.current += 1;
-    selectedIdRef.current = questionId;
-    setSelectedId(questionId);
     setMessage('');
     if (
-      questionId !== 'new' &&
+      selectedId &&
       mutationCoordinator.isCollectionUncertain(
         questionCollectionKey(challenge.challengeId),
       )
     )
       onReload();
-  }
+  }, [
+    challenge.challengeId,
+    mutationCoordinator,
+    onReload,
+    route.questionMode,
+    selectedId,
+  ]);
 
   function updateQuestion(
     question: AuthorQuestion,
@@ -1442,79 +2172,396 @@ function QuestionWorkspace({
 
     if (!isCurrentInteraction) return;
     selectedIdRef.current = question.questionId;
-    setSelectedId(question.questionId);
+    const targetContext = `detail:${question.questionId}`;
+    navigate(
+      authorPaths.question(
+        event.eventId,
+        challenge.challengeId,
+        question.questionId,
+      ),
+    );
     if (notice)
       announce(
         notice,
         setMessage,
         feedbackRef,
-        () =>
-          mountedRef.current &&
-          interactionRef.current === interaction &&
-          selectedIdRef.current === question.questionId,
+        () => mountedRef.current && routeContextRef.current === targetContext,
       );
   }
 
   return (
-    <section aria-labelledby="questions-title" className="question-workspace">
-      <div className="author-panel__heading">
-        <div>
-          <p className="eyebrow">Question bank</p>
-          <h4 id="questions-title">Questions</h4>
+    <section
+      aria-label="Questions"
+      className={`question-workspace${route.questionMode === 'list' ? ' question-workspace--list' : ' question-workspace--record'}`}
+    >
+      <aside
+        aria-label="Challenge questions"
+        className="question-catalogue"
+        ref={catalogueRef}
+        tabIndex={-1}
+      >
+        <div className="author-panel__heading">
+          <div>
+            <p className="eyebrow">Question bank</p>
+            <h5>{questions.length} questions</h5>
+          </div>
+          {challenge.status !== 'retired' ? (
+            <Link
+              className="button button--quiet"
+              href={authorPaths.newQuestion(
+                event.eventId,
+                challenge.challengeId,
+              )}
+            >
+              New question
+            </Link>
+          ) : (
+            <button className="button button--quiet" disabled type="button">
+              New question
+            </button>
+          )}
         </div>
-        <button
-          className="button button--quiet"
-          disabled={challenge.status === 'retired'}
-          onClick={() => selectQuestion('new')}
-          type="button"
-        >
-          Create question
-        </button>
-      </div>
-      {questions.length === 0 ? (
-        <p className="author-state">
-          No questions yet. A published challenge needs at least five published
-          questions.
-        </p>
-      ) : (
-        <ul className="question-tabs" aria-label="Questions">
-          {questions.map((question, index) => (
-            <li key={question.questionId}>
-              <button
-                aria-current={
-                  selectedId === question.questionId ? 'true' : undefined
-                }
-                className="question-tabs__item"
-                onClick={() => selectQuestion(question.questionId)}
-                type="button"
+        {questions.length === 0 ? (
+          <div className="author-empty author-empty--compact">
+            <strong>No questions yet</strong>
+            <p>
+              A published challenge needs at least five published questions.
+            </p>
+          </div>
+        ) : (
+          <ol aria-label="Questions" className="question-summary-list">
+            {questions.map((question) => (
+              <li key={question.questionId}>
+                <Link
+                  aria-current={
+                    selectedId === question.questionId ? 'true' : undefined
+                  }
+                  className="question-summary"
+                  href={authorPaths.question(
+                    event.eventId,
+                    challenge.challengeId,
+                    question.questionId,
+                  )}
+                >
+                  <span className="question-summary__prompt">
+                    {questionPromptExcerpt(question.prompt)}
+                  </span>
+                  <span className="question-summary__meta">
+                    Difficulty {question.difficulty} ·{' '}
+                    <StatusBadge status={question.status} />
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    className="question-summary__chevron"
+                  >
+                    ›
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ol>
+        )}
+      </aside>
+
+      <div
+        aria-label="Question workspace detail"
+        className="question-record-view"
+        ref={recordViewRef}
+        role="region"
+        tabIndex={-1}
+      >
+        <AuthorFeedback message={message} refObject={feedbackRef} />
+        {route.questionMode === 'list' ? (
+          <section className="author-welcome author-welcome--compact">
+            <p className="eyebrow">Question detail</p>
+            <h5>
+              {questions.length > 0 ? 'Select a question' : 'Create a question'}
+            </h5>
+            <p>
+              Review one prompt at a time. Creating a question is always an
+              explicit action.
+            </p>
+          </section>
+        ) : route.questionMode === 'new' ? (
+          challenge.status !== 'retired' ? (
+            <QuestionForm
+              apiBaseUrl={apiBaseUrl}
+              challenge={challenge}
+              event={event}
+              getAccessToken={getAccessToken}
+              interaction={interactionRef.current}
+              key="new-question"
+              mutationCoordinator={mutationCoordinator}
+              navigate={navigate}
+              onSaved={updateQuestion}
+            />
+          ) : (
+            <section className="author-state" role="status">
+              <strong>This challenge is retired.</strong>
+              <p>New questions cannot be added to its historical record.</p>
+              <Link
+                className="button button--quiet"
+                href={authorPaths.questions(
+                  event.eventId,
+                  challenge.challengeId,
+                )}
               >
-                Q{index + 1} <StatusBadge status={question.status} />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <AuthorFeedback message={message} refObject={feedbackRef} />
-      <QuestionForm
-        apiBaseUrl={apiBaseUrl}
-        challenge={challenge}
-        getAccessToken={getAccessToken}
-        interaction={interactionRef.current}
-        mutationCoordinator={mutationCoordinator}
-        key={selected ? selected.questionId : 'new-question'}
-        onSaved={updateQuestion}
-        question={selected}
-      />
+                Back to questions
+              </Link>
+            </section>
+          )
+        ) : selected ? (
+          route.questionMode === 'edit' &&
+          selected.status === 'draft' &&
+          challenge.status !== 'retired' ? (
+            <QuestionForm
+              apiBaseUrl={apiBaseUrl}
+              challenge={challenge}
+              event={event}
+              getAccessToken={getAccessToken}
+              interaction={interactionRef.current}
+              key={selected.questionId}
+              mutationCoordinator={mutationCoordinator}
+              navigate={navigate}
+              onSaved={updateQuestion}
+              question={selected}
+            />
+          ) : (
+            <QuestionDetail
+              apiBaseUrl={apiBaseUrl}
+              challenge={challenge}
+              event={event}
+              getAccessToken={getAccessToken}
+              interaction={interactionRef.current}
+              mutationCoordinator={mutationCoordinator}
+              onSaved={updateQuestion}
+              question={selected}
+            />
+          )
+        ) : (
+          <section className="author-state author-state--error" role="alert">
+            <strong>This question is not in the loaded challenge.</strong>
+            <Link
+              className="button button--quiet"
+              href={authorPaths.questions(event.eventId, challenge.challengeId)}
+            >
+              Back to questions
+            </Link>
+          </section>
+        )}
+      </div>
     </section>
+  );
+}
+
+function QuestionDetail({
+  apiBaseUrl,
+  challenge,
+  event,
+  getAccessToken,
+  interaction,
+  mutationCoordinator,
+  onSaved,
+  question,
+}: {
+  apiBaseUrl: string;
+  challenge: AuthorChallenge;
+  event: AuthorEvent;
+  getAccessToken: ApiAccessTokenProvider;
+  interaction: number;
+  mutationCoordinator: AuthorMutationCoordinator;
+  onSaved: QuestionFormProps['onSaved'];
+  question: AuthorQuestion;
+}) {
+  const [apiError, setApiError] = useState<AuthorApiError | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [confirmRetire, setConfirmRetire] = useState(false);
+  const feedbackRef = useRef<HTMLDivElement>(null);
+  const retireButtonRef = useRef<HTMLButtonElement>(null);
+  const operationRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => operationRef.current?.abort(), []);
+  useEffect(() => {
+    setApiError(null);
+    setConfirmRetire(false);
+  }, [question.questionId, question.status]);
+
+  async function lifecycle(action: 'publish' | 'retire') {
+    const controller = new AbortController();
+    operationRef.current = controller;
+    setBusy(true);
+    setApiError(null);
+    const collectionKey = questionCollectionKey(challenge.challengeId);
+    const ticket = mutationCoordinator.beginMutation(
+      `question:${question.questionId}`,
+      collectionKey,
+    );
+    try {
+      const next =
+        action === 'publish'
+          ? await publishAuthorQuestion({
+              apiBaseUrl,
+              expectedVersion: question.version,
+              getAccessToken,
+              questionId: question.questionId,
+              signal: controller.signal,
+            })
+          : await retireAuthorQuestion({
+              apiBaseUrl,
+              expectedVersion: question.version,
+              getAccessToken,
+              questionId: question.questionId,
+              signal: controller.signal,
+            });
+      if (operationRef.current !== controller) return;
+      onSaved(
+        next,
+        question.questionId,
+        interaction,
+        ticket,
+        action === 'publish' ? 'Question published.' : 'Question retired.',
+      );
+      setConfirmRetire(false);
+    } catch (error) {
+      if (operationRef.current !== controller) return;
+      if (mutationCoordinator.acceptFailure(ticket, isUncertainError(error))) {
+        setApiError(toAuthorError(error));
+        window.setTimeout(() => feedbackRef.current?.focus());
+      }
+    } finally {
+      if (operationRef.current === controller) {
+        operationRef.current = null;
+        setBusy(false);
+      }
+    }
+  }
+
+  return (
+    <article
+      aria-labelledby="question-detail-title"
+      className="question-detail"
+    >
+      <Link
+        className="author-back-link"
+        href={authorPaths.questions(event.eventId, challenge.challengeId)}
+      >
+        <span aria-hidden="true">←</span> Questions
+      </Link>
+      <header className="author-detail__heading">
+        <div>
+          <p className="eyebrow">Question detail</p>
+          <h5 id="question-detail-title">{question.prompt}</h5>
+        </div>
+        <StatusBadge status={question.status} />
+      </header>
+      <dl className="author-metadata author-metadata--compact">
+        <div>
+          <dt>Difficulty</dt>
+          <dd>{question.difficulty}</dd>
+        </div>
+        <div>
+          <dt>Updated</dt>
+          <dd>
+            <time dateTime={question.updatedAt}>
+              {formatAuthorDateTime(question.updatedAt)}
+            </time>
+          </dd>
+        </div>
+      </dl>
+      <section className="question-answer-summary">
+        <h6>Choices and accepted answer</h6>
+        <ol>
+          {[...question.choices]
+            .sort((left, right) => left.position - right.position)
+            .map((choice) => (
+              <li
+                className={
+                  choice.choiceId === question.acceptedChoiceId
+                    ? 'question-answer-summary__accepted'
+                    : undefined
+                }
+                key={choice.choiceId}
+              >
+                <span>{choice.text}</span>
+                {choice.choiceId === question.acceptedChoiceId ? (
+                  <strong>Accepted answer</strong>
+                ) : null}
+              </li>
+            ))}
+        </ol>
+      </section>
+      {question.explanation ? (
+        <section className="author-summary-block author-summary-block--plain">
+          <h6>Author explanation</h6>
+          <p>{question.explanation}</p>
+        </section>
+      ) : null}
+      <AuthorFeedback error={apiError} refObject={feedbackRef} />
+      <div className="author-actions author-actions--detail">
+        {question.status === 'draft' && challenge.status !== 'retired' ? (
+          <>
+            <Link
+              className="button"
+              href={authorPaths.editQuestion(
+                event.eventId,
+                challenge.challengeId,
+                question.questionId,
+              )}
+            >
+              Edit question
+            </Link>
+            <button
+              className="button button--quiet"
+              disabled={busy}
+              onClick={() => void lifecycle('publish')}
+              type="button"
+            >
+              {busy ? 'Publishing…' : 'Publish question'}
+            </button>
+          </>
+        ) : null}
+        {question.status !== 'retired' && challenge.status !== 'retired' ? (
+          <button
+            className="button button--danger"
+            disabled={busy}
+            onClick={() => setConfirmRetire(true)}
+            ref={retireButtonRef}
+            type="button"
+          >
+            Retire question
+          </button>
+        ) : null}
+      </div>
+
+      {confirmRetire ? (
+        <AuthorConfirmationDialog
+          busy={busy}
+          cancelLabel="Keep question"
+          confirmLabel={busy ? 'Retiring…' : 'Retire question'}
+          description={
+            <p>
+              This question cannot be published again. A published challenge
+              must retain at least five published questions.
+            </p>
+          }
+          onCancel={() => setConfirmRetire(false)}
+          onConfirm={() => void lifecycle('retire')}
+          returnFocusRef={retireButtonRef}
+          title="Retire this question?"
+        />
+      ) : null}
+    </article>
   );
 }
 
 interface QuestionFormProps {
   apiBaseUrl: string;
   challenge: AuthorChallenge;
+  event: AuthorEvent;
   getAccessToken: ApiAccessTokenProvider;
   interaction: number;
   mutationCoordinator: AuthorMutationCoordinator;
+  navigate: (to: string, options?: { replace?: boolean }) => void;
   onSaved: (
     question: AuthorQuestion,
     ownerId: string | 'new',
@@ -1528,9 +2575,11 @@ interface QuestionFormProps {
 function QuestionForm({
   apiBaseUrl,
   challenge,
+  event,
   getAccessToken,
   interaction,
   mutationCoordinator,
+  navigate,
   onSaved,
   question,
 }: QuestionFormProps) {
@@ -1540,7 +2589,6 @@ function QuestionForm({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [apiError, setApiError] = useState<AuthorApiError | null>(null);
   const [busy, setBusy] = useState(false);
-  const [confirmRetire, setConfirmRetire] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const feedbackRef = useRef<HTMLDivElement>(null);
   const operationRef = useRef<AbortController | null>(null);
@@ -1550,7 +2598,6 @@ function QuestionForm({
     setDraft(questionDraft(question));
     setErrors({});
     setApiError(null);
-    setConfirmRetire(false);
   }, [question]);
 
   useEffect(() => {
@@ -1560,16 +2607,12 @@ function QuestionForm({
     };
   }, []);
 
-  const dirty = Boolean(
-    question &&
-    JSON.stringify(draft) !== JSON.stringify(questionDraft(question)),
-  );
+  const dirty =
+    JSON.stringify(draft) !== JSON.stringify(questionDraft(question));
   const recordKey =
     `question:${question?.questionId ?? 'new'}` as AuthorRecordKey;
   useAuthorDraftSession(mutationCoordinator, recordKey, dirty);
-
-  const editable =
-    challenge.status === 'draft' && (!question || question.status === 'draft');
+  const clearNavigationGuard = useUnsavedAuthorChanges(dirty, 'question draft');
 
   async function save(submission: FormEvent) {
     submission.preventDefault();
@@ -1613,6 +2656,7 @@ function QuestionForm({
             signal: controller.signal,
           });
       if (operationRef.current !== controller) return;
+      clearNavigationGuard();
       onSaved(
         saved,
         ownerId,
@@ -1636,52 +2680,28 @@ function QuestionForm({
     }
   }
 
-  async function retireQuestion() {
-    if (!question) return;
-    setBusy(true);
-    setApiError(null);
-    const controller = new AbortController();
-    operationRef.current = controller;
-    const ownerId = question.questionId;
-    const collectionKey = questionCollectionKey(challenge.challengeId);
-    const ticket = mutationCoordinator.beginMutation(
-      `question:${question.questionId}`,
-      collectionKey,
-    );
-    try {
-      const next = await retireAuthorQuestion({
-        apiBaseUrl,
-        getAccessToken,
-        questionId: question.questionId,
-        expectedVersion: question.version,
-        signal: controller.signal,
-      });
-      if (operationRef.current !== controller) return;
-      onSaved(next, ownerId, interaction, ticket, 'Question retired.');
-      if (interactionActiveRef.current) setConfirmRetire(false);
-    } catch (error) {
-      if (operationRef.current !== controller) return;
-      const accepted = mutationCoordinator.acceptFailure(
-        ticket,
-        isUncertainError(error),
-      );
-      if (!accepted || !interactionActiveRef.current) return;
-      handleOperationError(error, setApiError, setErrors, formRef, feedbackRef);
-    } finally {
-      if (operationRef.current === controller) {
-        operationRef.current = null;
-        if (interactionActiveRef.current) setBusy(false);
-      }
-    }
-  }
-
   return (
     <form
-      className="author-form question-form"
+      className="author-form question-form author-panel--editor"
       noValidate
       onSubmit={save}
       ref={formRef}
     >
+      <Link
+        className="author-back-link"
+        href={
+          question
+            ? authorPaths.question(
+                event.eventId,
+                challenge.challengeId,
+                question.questionId,
+              )
+            : authorPaths.questions(event.eventId, challenge.challengeId)
+        }
+      >
+        <span aria-hidden="true">←</span>{' '}
+        {question ? 'Question detail' : 'Questions'}
+      </Link>
       <div className="author-panel__heading">
         <h5>{question ? 'Edit question' : 'New question'}</h5>
         {question ? <StatusBadge status={question.status} /> : null}
@@ -1695,7 +2715,7 @@ function QuestionForm({
         <textarea
           aria-describedby={errors.prompt ? 'question-prompt-error' : undefined}
           aria-invalid={Boolean(errors.prompt)}
-          disabled={!editable || busy}
+          disabled={busy}
           id="question-prompt"
           onChange={(change) =>
             setDraft((current) => ({ ...current, prompt: change.target.value }))
@@ -1715,7 +2735,7 @@ function QuestionForm({
             errors.difficulty ? 'question-difficulty-error' : undefined
           }
           aria-invalid={Boolean(errors.difficulty)}
-          disabled={!editable || busy}
+          disabled={busy}
           id="question-difficulty"
           onChange={(change) =>
             setDraft((current) => ({
@@ -1730,7 +2750,7 @@ function QuestionForm({
           <option value="3">3 — demanding</option>
         </select>
       </FormField>
-      <fieldset className="author-fieldset" disabled={!editable || busy}>
+      <fieldset className="author-fieldset" disabled={busy}>
         <legend>Choices and accepted answer</legend>
         <p className="field-help">
           Choose exactly one accepted answer. This marking relationship is
@@ -1787,7 +2807,7 @@ function QuestionForm({
         <textarea
           aria-describedby={`${errors.explanation ? 'question-explanation-error ' : ''}question-explanation-help`.trim()}
           aria-invalid={Boolean(errors.explanation)}
-          disabled={!editable || busy}
+          disabled={busy}
           id="question-explanation"
           onChange={(change) =>
             setDraft((current) => ({
@@ -1804,55 +2824,36 @@ function QuestionForm({
         </span>
       </FormField>
       <div className="author-actions">
-        {editable ? (
-          <button className="button" disabled={busy} type="submit">
-            {busy
-              ? 'Saving…'
-              : question
-                ? 'Save question'
-                : 'Create draft question'}
-          </button>
-        ) : null}
-        {question?.status === 'published' ? (
-          <button
-            className="button button--danger"
-            disabled={busy}
-            onClick={() => setConfirmRetire(true)}
-            type="button"
-          >
-            Retire question
-          </button>
-        ) : null}
+        <button className="button" disabled={busy} type="submit">
+          {busy
+            ? 'Saving…'
+            : question
+              ? 'Save question'
+              : 'Create draft question'}
+        </button>
+        <button
+          className="button button--quiet"
+          disabled={busy}
+          onClick={() =>
+            navigate(
+              question
+                ? authorPaths.question(
+                    event.eventId,
+                    challenge.challengeId,
+                    question.questionId,
+                  )
+                : authorPaths.questions(event.eventId, challenge.challengeId),
+            )
+          }
+          type="button"
+        >
+          Cancel
+        </button>
       </div>
-      {question ? (
-        <p className="author-notice" role="status">
-          Submit, review, and publication actions are currently API-only.
+      {dirty ? (
+        <p className="author-dirty-state" role="status">
+          Unsaved changes
         </p>
-      ) : null}
-      {confirmRetire ? (
-        <div className="author-confirmation" role="alert">
-          <strong>Retire this question?</strong>
-          <p>
-            A published challenge must retain at least five published questions.
-          </p>
-          <div className="author-actions">
-            <button
-              className="button button--danger"
-              disabled={busy}
-              onClick={() => void retireQuestion()}
-              type="button"
-            >
-              Confirm retirement
-            </button>
-            <button
-              className="button button--quiet"
-              onClick={() => setConfirmRetire(false)}
-              type="button"
-            >
-              Keep question
-            </button>
-          </div>
-        </div>
       ) : null}
     </form>
   );
@@ -2035,6 +3036,40 @@ function parseCoordinate(latitude: string, longitude: string) {
     lng <= 180
     ? { latitude: lat, longitude: lng }
     : null;
+}
+
+function parseRadius(radiusMetres: string): number | null {
+  const radius = Number(radiusMetres);
+  return radiusMetres && Number.isInteger(radius) && radius > 0 ? radius : null;
+}
+
+function eventScheduleState(
+  event: AuthorEvent,
+): 'current' | 'ended' | 'upcoming' {
+  const now = Date.now();
+  if (Date.parse(event.startsAt) > now) return 'upcoming';
+  if (Date.parse(event.endsAt) < now) return 'ended';
+  return 'current';
+}
+
+function eventScheduleLabel(event: AuthorEvent) {
+  const state = eventScheduleState(event);
+  if (state === 'current') return 'In schedule window';
+  if (state === 'upcoming')
+    return `Starts ${formatAuthorDateTime(event.startsAt)}`;
+  return `Ended ${formatAuthorDateTime(event.endsAt)}`;
+}
+
+function formatAuthorDateTime(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value));
+}
+
+function questionPromptExcerpt(prompt: string) {
+  const normalized = prompt.trim();
+  return normalized.length > 92 ? `${normalized.slice(0, 89)}…` : normalized;
 }
 
 function toDateTimeLocal(value: string): string {

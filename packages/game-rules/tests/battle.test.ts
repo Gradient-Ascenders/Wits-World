@@ -450,6 +450,14 @@ describe('Basic battle rules', () => {
     );
 
     expect(afterAttack.result.effects[0]).toMatchObject({ amount: 15 });
+    expect(afterAttack.result.expiredEffects).toEqual([
+      {
+        damageMultiplier: 1.5,
+        effectId: 'temporary-buff-effect',
+        targetCreatureId: activeCreature(afterCpu, 'player').card.id,
+        targetSide: 'player',
+      },
+    ]);
     expect(activeCreature(afterAttack.state, 'player').modifiers).toEqual([]);
   });
 
@@ -549,6 +557,29 @@ describe('Basic battle rules', () => {
     expect(
       activeCreature(attack.state, 'cpu').modifiers[0]?.remainingTurns,
     ).toBe(1);
+
+    const afterPlayerTurn = action(attack.state, 'player', { type: 'timeout' });
+    const expired = applyBattleAction(
+      afterPlayerTurn,
+      'cpu',
+      { type: 'timeout' },
+      randomZero,
+    );
+
+    expect(applied.result.effects).toEqual([
+      expect.objectContaining({
+        damageMultiplier: 0,
+        effectId: 'overkill-debuff-effect',
+      }),
+    ]);
+    expect(expired.result.expiredEffects).toEqual([
+      {
+        damageMultiplier: 0,
+        effectId: 'overkill-debuff-effect',
+        targetCreatureId: activeCreature(afterPlayerTurn, 'cpu').card.id,
+        targetSide: 'cpu',
+      },
+    ]);
   });
 
   it('ends a timed-out turn without changing battle stats', () => {
@@ -563,6 +594,7 @@ describe('Basic battle rules', () => {
 
     expect(transition.result.turnEnded).toBe(true);
     expect(transition.result.effects).toEqual([]);
+    expect(transition.result.expiredEffects).toEqual([]);
     expect(transition.state.currentSide).toBe('cpu');
     expect(activeCreature(transition.state, 'player').currentHp).toBe(
       activeCreature(before, 'player').currentHp,

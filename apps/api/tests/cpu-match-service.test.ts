@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   createBattleState,
+  type BattleAction,
+  type BattleActionResult,
   type BattleCreatureCard,
   type BattleDeck,
   type BattlePowerCard,
@@ -197,6 +199,9 @@ describe('CPU match service', () => {
               winner: null,
               started_at: new Date('2026-08-16T00:00:00.000Z'),
               completed_at: null,
+              action_sequence: 0,
+              latest_battle_log: null,
+              legacy_log_actions: [],
             },
           ],
         };
@@ -206,7 +211,11 @@ describe('CPU match service', () => {
         return { rows: [persistenceResult(2)] };
       }
 
-      if (statement.includes('select response')) {
+      if (statement.includes('submission_id =')) {
+        return { rows: [] };
+      }
+
+      if (statement.includes('join public.cpu_match_rounds')) {
         return { rows: [] };
       }
 
@@ -249,6 +258,12 @@ describe('CPU match service', () => {
       query.mock.calls.filter(([statement]) => statement === 'commit'),
     ).toHaveLength(1);
     expect(query).toHaveBeenCalledTimes(5);
+    const lockedRead = query.mock.calls.find(([statement]) =>
+      statement.includes('for update of cpu_matches'),
+    );
+    expect(lockedRead?.[0]).toContain('action_summary.latest_battle_log');
+    expect(lockedRead?.[0]).toContain("action.response -> 'battleLog'");
+    expect(lockedRead?.[0]).toContain('legacy_log_actions');
     const persistenceCall = query.mock.calls.find(([statement]) =>
       statement.includes('with sequence_base as materialized'),
     );
@@ -274,6 +289,266 @@ describe('CPU match service', () => {
         statement.includes('update public.cpu_match_actions'),
       ),
     ).toBe(false);
+  });
+
+  it('extends the latest receipt log without a full-history action query', async () => {
+    const initial = createBattleState(deck('player'), deck('cpu'));
+    const playerCreature = initial.participants.player.creatures[0]!;
+    const cpuCreature = initial.participants.cpu.creatures[0]!;
+    const state: BattleState = {
+      ...initial,
+      currentSide: 'player',
+      firstSide: 'player',
+      phase: 'active',
+      selections: {
+        cpu: cpuCreature.card.id,
+        player: playerCreature.card.id,
+      },
+      turnNumber: 1,
+      participants: {
+        cpu: {
+          ...initial.participants.cpu,
+          activeCreatureId: cpuCreature.card.id,
+        },
+        player: {
+          ...initial.participants.player,
+          activeCreatureId: playerCreature.card.id,
+        },
+      },
+    };
+    const previousBattleLog = [
+      {
+        events: [
+          {
+            id: '1:0',
+            kind: 'action',
+            message: 'Player selected Wit Creature.',
+            sequence: 1,
+            side: 'player',
+          },
+          {
+            id: '2:0',
+            kind: 'action',
+            message: 'CPU revealed Wit Creature.',
+            sequence: 2,
+            side: 'cpu',
+          },
+        ],
+        id: 'opening',
+        label: 'Opening',
+        turnNumber: 0,
+      },
+    ];
+    const query = vi.fn(async (statement: string) => {
+      if (statement === 'begin' || statement === 'commit') {
+        return { rows: [] };
+      }
+      if (statement.includes('from public.cpu_matches')) {
+        return {
+          rows: [
+            {
+              action_sequence: 2,
+              card_names: {},
+              completed_at: null,
+              id: MATCH_ID,
+              latest_battle_log: previousBattleLog,
+              legacy_log_actions: [],
+              player_id: PLAYER_ID,
+              started_at: new Date('2026-08-16T00:00:00.000Z'),
+              state,
+              status: 'active',
+              turn_deadline: new Date('2026-08-16T00:01:30.000Z'),
+              turn_started_at: new Date('2026-08-16T00:00:00.000Z'),
+              version: 1,
+              winner: null,
+            },
+          ],
+        };
+      }
+      if (statement.includes('submitted.submission_id =')) {
+        return { rows: [] };
+      }
+      if (statement.includes('with sequence_base as materialized')) {
+        return { rows: [persistenceResult(2, 2)] };
+      }
+
+      throw new Error(`Unexpected SQL: ${statement}`);
+    });
+    const service = createCpuMatchService(fakeDatabase(query), {
+      clock: { now: () => new Date('2026-08-16T00:00:02.000Z') },
+      randomInt: () => 0,
+    });
+
+    const response = await service.submitAction({
+      action: {
+        moveId: playerCreature.card.moves[0]!.id,
+        type: 'use_move',
+      },
+      expectedVersion: 1,
+      matchId: MATCH_ID,
+      playerId: PLAYER_ID,
+      submissionId: 'a5000000-0000-4000-8000-000000000004',
+    });
+
+    expect(query).toHaveBeenCalledTimes(5);
+    expect(response.battleLog[0]).toEqual(previousBattleLog[0]);
+    expect(
+      response.battleLog.flatMap(({ events }) => events.map(({ id }) => id)),
+    ).toEqual(expect.arrayContaining(['1:0', '2:0', '3:0', '4:0']));
+    expect(
+      query.mock.calls.some(
+        ([statement]) =>
+          statement.includes('join public.cpu_match_rounds round') &&
+          !statement.includes('submitted.submission_id =') &&
+          !statement.includes('from public.cpu_matches'),
+      ),
+    ).toBe(false);
+  });
+
+  it('reconstructs a legacy duplicate through its round and preserves its last action', async () => {
+    const initial = createBattleState(deck('player'), deck('cpu'));
+    const playerCreature = initial.participants.player.creatures[0]!;
+    const cpuCreature = initial.participants.cpu.creatures[0]!;
+    const stateBefore: BattleState = {
+      ...initial,
+      currentSide: 'player',
+      firstSide: 'player',
+      phase: 'active',
+      selections: {
+        cpu: cpuCreature.card.id,
+        player: playerCreature.card.id,
+      },
+      turnNumber: 1,
+      participants: {
+        cpu: {
+          ...initial.participants.cpu,
+          activeCreatureId: cpuCreature.card.id,
+        },
+        player: {
+          ...initial.participants.player,
+          activeCreatureId: playerCreature.card.id,
+        },
+      },
+    };
+    const stateAfter = {
+      ...stateBefore,
+      currentSide: 'player' as const,
+      turnNumber: 3,
+    };
+    const playerResult = createLogResult('player', {
+      moveId: playerCreature.card.moves[0]!.id,
+      type: 'use_move',
+    });
+    const cpuResult = createLogResult('cpu', {
+      moveId: cpuCreature.card.moves[0]!.id,
+      type: 'use_move',
+    });
+    const legacyLogActions = [
+      {
+        result: playerResult,
+        roundNumber: 2,
+        roundStateAfter: stateAfter,
+        roundStateBefore: stateBefore,
+        sequence: 5,
+      },
+      {
+        result: cpuResult,
+        roundNumber: 2,
+        roundStateAfter: stateAfter,
+        roundStateBefore: stateBefore,
+        sequence: 6,
+      },
+    ];
+    const legacyResponse = {
+      completedAt: null,
+      lastAction: {
+        ...cpuResult,
+        effects: [],
+        expiredEffects: undefined,
+      },
+      matchId: MATCH_ID,
+      startedAt: '2026-08-16T00:00:00.000Z',
+      state: {},
+      status: 'active',
+      version: 2,
+      winner: null,
+    };
+    const query = vi.fn(async (statement: string) => {
+      if (statement === 'begin' || statement === 'commit') {
+        return { rows: [] };
+      }
+      if (statement.includes('from public.cpu_matches')) {
+        return {
+          rows: [
+            {
+              action_sequence: 6,
+              card_names: {},
+              completed_at: null,
+              id: MATCH_ID,
+              latest_battle_log: null,
+              legacy_log_actions: legacyLogActions,
+              player_id: PLAYER_ID,
+              started_at: new Date('2026-08-16T00:00:00.000Z'),
+              state: stateAfter,
+              status: 'active',
+              turn_deadline: new Date('2026-08-16T00:01:30.000Z'),
+              turn_started_at: new Date('2026-08-16T00:00:00.000Z'),
+              version: 2,
+              winner: null,
+            },
+          ],
+        };
+      }
+      if (statement.includes('submitted.submission_id =')) {
+        expect(statement).toContain(
+          'round_action.round_id = submitted.round_id',
+        );
+        expect(statement).toContain('log_action.sequence <=');
+        return {
+          rows: [
+            {
+              legacy_log_actions: legacyLogActions,
+              response: legacyResponse,
+              sequence: 5,
+            },
+          ],
+        };
+      }
+
+      throw new Error(`Unexpected SQL: ${statement}`);
+    });
+    const service = createCpuMatchService(fakeDatabase(query));
+
+    const response = await service.submitAction({
+      action: {
+        moveId: playerCreature.card.moves[0]!.id,
+        type: 'use_move',
+      },
+      expectedVersion: 1,
+      matchId: MATCH_ID,
+      playerId: PLAYER_ID,
+      submissionId: 'a5000000-0000-4000-8000-000000000005',
+    });
+
+    expect(query).toHaveBeenCalledTimes(4);
+    expect(response.lastAction).toMatchObject({
+      action: cpuResult.action,
+      expiredEffects: [],
+      side: 'cpu',
+    });
+    expect(
+      response.battleLog.flatMap(({ events }) =>
+        events.map(({ message }) => message),
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        "Player's Wit Creature used Strike.",
+        "CPU's Wit Creature used Strike.",
+      ]),
+    );
+    expect(
+      response.battleLog.flatMap(({ events }) => events.map(({ id }) => id)),
+    ).toEqual(expect.arrayContaining(['5:0', '6:0']));
   });
 
   it('rolls back when combined persistence invariants are not satisfied', async () => {
@@ -305,7 +580,10 @@ describe('CPU match service', () => {
           rows: [{ ...persistenceResult(2), match_update_count: 0 }],
         };
       }
-      if (statement.includes('select response')) {
+      if (statement.includes('submission_id =')) {
+        return { rows: [] };
+      }
+      if (statement.includes('join public.cpu_match_rounds')) {
         return { rows: [] };
       }
       throw new Error(`Unexpected SQL: ${statement}`);
@@ -391,13 +669,13 @@ describe('CPU match service', () => {
     expect(query).not.toHaveBeenCalledWith('commit');
   });
 
-  it('recovers one active match and its latest action in one read snapshot', async () => {
+  it('recovers one active match and its ordered log in one read snapshot', async () => {
     const state = createBattleState(deck('player'), deck('cpu'));
     const query = vi.fn(async (statement: string, values?: unknown[]) => {
       expect(values).toEqual([PLAYER_ID, null, true]);
       expect(statement).toContain("match.status = 'active'");
-      expect(statement).toContain('select action.result');
-      expect(statement).toContain('order by action.sequence desc');
+      expect(statement).toContain('jsonb_agg');
+      expect(statement).toContain('order by action.sequence');
 
       return {
         rows: [
@@ -412,7 +690,7 @@ describe('CPU match service', () => {
             winner: null,
             started_at: new Date('2026-08-15T23:59:00.000Z'),
             completed_at: null,
-            latest_action: null,
+            log_actions: [],
           },
         ],
       };
@@ -536,7 +814,15 @@ describe('CPU match service', () => {
           },
           completed_at: null,
           id: MATCH_ID,
-          latest_action: latestAction,
+          log_actions: [
+            {
+              result: latestAction,
+              roundNumber: 4,
+              roundStateAfter: state,
+              roundStateBefore: state,
+              sequence: 1,
+            },
+          ],
           player_id: PLAYER_ID,
           started_at: new Date('2026-08-16T00:00:00.000Z'),
           state,
@@ -604,6 +890,387 @@ describe('CPU match service', () => {
     });
   });
 
+  it('reconstructs one deterministic chronological log from persisted player and CPU actions', async () => {
+    const playerDeck = effectRichDeck('player');
+    const temporaryOverkillDeck: BattleDeck = {
+      ...playerDeck,
+      powerCards: playerDeck.powerCards.map((powerCard, index) =>
+        index === 0
+          ? {
+              ...powerCard,
+              effects: powerCard.effects.map((effect) =>
+                effect.id === 'player-power-effect-5'
+                  ? {
+                      ...effect,
+                      effectType: 'debuff',
+                      effectValue: 150,
+                      modifier: {
+                        stat: 'damage_multiplier',
+                        operation: 'multiply',
+                        durationTurns: 1,
+                      },
+                    }
+                  : effect,
+              ),
+            }
+          : powerCard,
+      ),
+    };
+    const initial = createBattleState(
+      temporaryOverkillDeck,
+      effectRichDeck('cpu'),
+    );
+    const playerOne = initial.participants.player.creatures[0]!.card.id;
+    const playerTwo = initial.participants.player.creatures[1]!.card.id;
+    const cpuOne = initial.participants.cpu.creatures[0]!.card.id;
+    const selections = { cpu: cpuOne, player: playerOne };
+    const active: BattleState = {
+      ...initial,
+      currentSide: 'player',
+      firstSide: 'player',
+      phase: 'active',
+      selections,
+      turnNumber: 1,
+      participants: {
+        player: {
+          ...initial.participants.player,
+          activeCreatureId: playerOne,
+        },
+        cpu: { ...initial.participants.cpu, activeCreatureId: cpuOne },
+      },
+    };
+    const cpuTurn: BattleState = {
+      ...active,
+      currentSide: 'cpu',
+      turnNumber: 2,
+    };
+    const replacement: BattleState = {
+      ...cpuTurn,
+      currentSide: 'player',
+      phase: 'replacement',
+      replacementSide: 'player',
+      turnNumber: 3,
+      participants: {
+        ...cpuTurn.participants,
+        player: {
+          ...cpuTurn.participants.player,
+          activeCreatureId: null,
+        },
+      },
+    };
+    const resumed: BattleState = {
+      ...replacement,
+      phase: 'active',
+      replacementSide: null,
+      participants: {
+        ...replacement.participants,
+        player: {
+          ...replacement.participants.player,
+          activeCreatureId: playerTwo,
+        },
+      },
+    };
+    const completed: BattleState = {
+      ...resumed,
+      currentSide: null,
+      phase: 'completed',
+      winner: 'player',
+    };
+    const result = (
+      side: 'player' | 'cpu',
+      action: Parameters<typeof createLogResult>[1],
+      overrides: Partial<ReturnType<typeof createLogResult>> = {},
+    ) => createLogResult(side, action, overrides);
+    const logActions = [
+      {
+        result: result(
+          'player',
+          {
+            creatureId: playerOne,
+            type: 'select_initial_creature',
+          },
+          { turnEnded: false },
+        ),
+        roundNumber: 1,
+        roundStateAfter: active,
+        roundStateBefore: initial,
+        sequence: 1,
+      },
+      {
+        result: result(
+          'cpu',
+          {
+            creatureId: cpuOne,
+            type: 'select_initial_creature',
+          },
+          { turnEnded: false },
+        ),
+        roundNumber: 1,
+        roundStateAfter: active,
+        roundStateBefore: initial,
+        sequence: 2,
+      },
+      {
+        result: result(
+          'player',
+          {
+            powerCardId: active.participants.player.powerCards[0]!.id,
+            type: 'use_power_card',
+          },
+          {
+            effects: [
+              {
+                amount: 8,
+                damageMultiplier: null,
+                effectId: 'player-power-effect-1',
+                effectType: 'damage',
+                targetCreatureId: cpuOne,
+                targetSide: 'cpu',
+              },
+              {
+                amount: 5,
+                damageMultiplier: null,
+                effectId: 'player-power-effect-2',
+                effectType: 'heal',
+                targetCreatureId: playerOne,
+                targetSide: 'player',
+              },
+              {
+                amount: 3,
+                damageMultiplier: null,
+                effectId: 'player-power-effect-3',
+                effectType: 'buff',
+                targetCreatureId: playerOne,
+                targetSide: 'player',
+              },
+              {
+                amount: 150,
+                damageMultiplier: 0,
+                effectId: 'player-power-effect-5',
+                effectType: 'debuff',
+                targetCreatureId: cpuOne,
+                targetSide: 'cpu',
+              },
+            ],
+          },
+        ),
+        roundNumber: 2,
+        roundStateAfter: cpuTurn,
+        roundStateBefore: active,
+        sequence: 3,
+      },
+      {
+        result: result(
+          'cpu',
+          {
+            moveId: cpuTurn.participants.cpu.creatures[0]!.card.moves[0]!.id,
+            type: 'use_move',
+          },
+          {
+            defeatedCreatureId: playerOne,
+            effects: [
+              {
+                amount: 10,
+                damageMultiplier: null,
+                effectId: 'cpu-effect-1-1',
+                effectType: 'damage',
+                targetCreatureId: playerOne,
+                targetSide: 'player',
+              },
+            ],
+            expiredEffects: [
+              {
+                damageMultiplier: 0,
+                effectId: 'player-power-effect-5',
+                targetCreatureId: cpuOne,
+                targetSide: 'cpu',
+              },
+            ],
+          },
+        ),
+        roundNumber: 3,
+        roundStateAfter: replacement,
+        roundStateBefore: cpuTurn,
+        sequence: 4,
+      },
+      {
+        result: result(
+          'player',
+          {
+            creatureId: playerTwo,
+            type: 'select_replacement',
+          },
+          { turnEnded: false },
+        ),
+        roundNumber: 4,
+        roundStateAfter: resumed,
+        roundStateBefore: replacement,
+        sequence: 5,
+      },
+      {
+        result: result(
+          'player',
+          {
+            moveId: resumed.participants.player.creatures[1]!.card.moves[0]!.id,
+            type: 'use_move',
+          },
+          {
+            defeatedCreatureId: cpuOne,
+            effects: [
+              {
+                amount: 10,
+                damageMultiplier: null,
+                effectId: 'player-effect-2-1',
+                effectType: 'damage',
+                targetCreatureId: cpuOne,
+                targetSide: 'cpu',
+              },
+            ],
+            winner: 'player',
+          },
+        ),
+        roundNumber: 5,
+        roundStateAfter: completed,
+        roundStateBefore: resumed,
+        sequence: 6,
+      },
+    ];
+    const query = vi.fn().mockResolvedValue({
+      rows: [
+        {
+          card_names: {
+            [active.participants.player.powerCards[0]!.id]: 'Grit Power 2',
+            [cpuOne]: 'Mystic Creature 1',
+            [playerOne]: 'Grit Creature 3',
+            [playerTwo]: 'Wit Creature 2',
+          },
+          completed_at: new Date('2026-08-16T00:06:00.000Z'),
+          id: MATCH_ID,
+          log_actions: logActions,
+          player_id: PLAYER_ID,
+          started_at: new Date('2026-08-16T00:00:00.000Z'),
+          state: completed,
+          status: 'completed',
+          turn_deadline: null,
+          turn_started_at: null,
+          version: 5,
+          winner: 'player',
+        },
+      ],
+    });
+    const service = createCpuMatchService(fakeDatabase(query));
+
+    const firstRead = await service.getMatch(PLAYER_ID, MATCH_ID);
+    const refreshRead = await service.getMatch(PLAYER_ID, MATCH_ID);
+    const messages = firstRead.battleLog.flatMap((group) =>
+      group.events.map((event) => event.message),
+    );
+
+    expect(firstRead.battleLog.map((group) => group.label)).toEqual([
+      'Opening',
+      'Turn 1',
+      'Turn 2',
+      'Turn 3',
+    ]);
+    expect(messages).toEqual([
+      'Player selected Grit Creature 3.',
+      'CPU revealed Mystic Creature 1.',
+      'Turn 1 began. Player has the first action.',
+      'Player used Grit Power 2.',
+      "CPU's Mystic Creature 1 took 8 damage.",
+      "Player's Grit Creature 3 restored 5 HP.",
+      "Player's Grit Creature 3 restored 3 Power.",
+      "CPU's Mystic Creature 1 gained Damage −100% for 1 turn.",
+      'Turn 1 ended. CPU is next.',
+      "CPU's Mystic Creature 1 used Strike.",
+      "Player's Grit Creature 3 took 10 damage.",
+      "CPU's Mystic Creature 1 no longer has Damage −100%.",
+      "Player's Grit Creature 3 was defeated.",
+      'Turn 2 ended. Player must choose a replacement.',
+      'Player sent out Wit Creature 2 as a replacement.',
+      "Player's Wit Creature 2 used Strike.",
+      "CPU's Mystic Creature 1 took 10 damage.",
+      "CPU's Mystic Creature 1 was defeated.",
+      'Player won the match.',
+    ]);
+    expect(
+      new Set(
+        firstRead.battleLog.flatMap((group) =>
+          group.events.map(({ id }) => id),
+        ),
+      ).size,
+    ).toBe(messages.length);
+    expect(firstRead.lastAction?.winner).toBe('player');
+    expect(refreshRead.battleLog).toEqual(firstRead.battleLog);
+  });
+
+  it('records an authoritative timeout and its turn transition', async () => {
+    const initial = createBattleState(deck('player'), deck('cpu'));
+    const state: BattleState = {
+      ...initial,
+      currentSide: 'cpu',
+      firstSide: 'player',
+      phase: 'active',
+      selections: {
+        cpu: initial.participants.cpu.creatures[0]!.card.id,
+        player: initial.participants.player.creatures[0]!.card.id,
+      },
+      turnNumber: 7,
+      participants: {
+        cpu: {
+          ...initial.participants.cpu,
+          activeCreatureId: initial.participants.cpu.creatures[0]!.card.id,
+        },
+        player: {
+          ...initial.participants.player,
+          activeCreatureId: initial.participants.player.creatures[0]!.card.id,
+        },
+      },
+    };
+    const afterTimeout: BattleState = {
+      ...state,
+      currentSide: 'player',
+      turnNumber: 8,
+    };
+    const query = vi.fn().mockResolvedValue({
+      rows: [
+        {
+          card_names: {},
+          completed_at: null,
+          id: MATCH_ID,
+          log_actions: [
+            {
+              result: createLogResult('cpu', { type: 'timeout' }),
+              roundNumber: 1,
+              roundStateAfter: afterTimeout,
+              roundStateBefore: state,
+              sequence: 1,
+            },
+          ],
+          player_id: PLAYER_ID,
+          started_at: new Date('2026-08-16T00:00:00.000Z'),
+          state: afterTimeout,
+          status: 'active',
+          turn_deadline: new Date('2026-08-16T00:01:30.000Z'),
+          turn_started_at: new Date('2026-08-16T00:00:00.000Z'),
+          version: 1,
+          winner: null,
+        },
+      ],
+    });
+
+    const response = await createCpuMatchService(fakeDatabase(query)).getMatch(
+      PLAYER_ID,
+      MATCH_ID,
+    );
+
+    expect(
+      response.battleLog.flatMap(({ events }) =>
+        events.map(({ message }) => message),
+      ),
+    ).toEqual(["CPU's turn timed out.", 'Turn 7 ended. Player is next.']);
+  });
+
   it.each([
     {
       completedAt: null,
@@ -637,15 +1304,23 @@ describe('CPU match service', () => {
         expect(values).toEqual([PLAYER_ID, MATCH_ID, false]);
         expect(statement).toContain('match.player_id = $1::uuid');
         expect(statement).toContain('match.id = $2::uuid');
-        expect(statement).toContain('select action.result');
-        expect(statement).toContain('order by action.sequence desc');
+        expect(statement).toContain('jsonb_agg');
+        expect(statement).toContain('order by action.sequence');
 
         return {
           rows: [
             {
               completed_at: completedAt,
               id: MATCH_ID,
-              latest_action: latestAction,
+              log_actions: [
+                {
+                  result: latestAction,
+                  roundNumber: 4,
+                  roundStateAfter: state,
+                  roundStateBefore: state,
+                  sequence: 1,
+                },
+              ],
               player_id: PLAYER_ID,
               started_at: new Date('2026-08-16T00:00:00.000Z'),
               state,
@@ -687,7 +1362,7 @@ describe('CPU match service', () => {
       winner: null,
       started_at: new Date('2026-08-16T00:00:00.000Z'),
       completed_at: null,
-      latest_action: null,
+      log_actions: [],
     };
     const query = vi.fn().mockResolvedValue({
       rows: [
@@ -926,16 +1601,16 @@ function selectedPlayerDeckRows() {
   });
 }
 
-function persistenceResult(actionCount: number) {
+function persistenceResult(actionCount: number, baseSequence = 0) {
   const roundId = 'a3000000-0000-4000-8000-000000000001';
 
   return {
     action_count: actionCount,
     action_match_matches: true,
     action_round_matches: true,
-    base_sequence: 0,
-    first_sequence: 1,
-    last_sequence: actionCount,
+    base_sequence: baseSequence,
+    first_sequence: baseSequence + 1,
+    last_sequence: baseSequence + actionCount,
     match_update_count: 1,
     player_receipt_count: 1,
     round_count: 1,
@@ -943,6 +1618,23 @@ function persistenceResult(actionCount: number) {
     round_match_id: MATCH_ID,
     unexpected_receipt_count: 0,
     updated_match_id: MATCH_ID,
+  };
+}
+
+function createLogResult(
+  side: 'player' | 'cpu',
+  action: BattleAction,
+  overrides: Partial<BattleActionResult> = {},
+): BattleActionResult {
+  return {
+    action,
+    defeatedCreatureId: null,
+    effects: [],
+    expiredEffects: [],
+    side,
+    turnEnded: true,
+    winner: null,
+    ...overrides,
   };
 }
 
@@ -1006,7 +1698,7 @@ function terminalActionQuery(state: BattleState) {
       };
     }
 
-    if (statement.includes('select response')) {
+    if (statement.includes('submitted.response')) {
       return { rows: [] };
     }
 

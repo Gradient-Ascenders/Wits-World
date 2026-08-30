@@ -1,15 +1,19 @@
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type Dispatch,
   type FormEvent,
+  type RefObject,
   type SetStateAction,
 } from 'react';
+import { Link } from 'wouter';
 
 import {
   AuthorApiError,
   createAuthorCard,
+  publishAuthorCard,
   retireAuthorCard,
   updateAuthorCard,
   type AuthorCard,
@@ -25,7 +29,14 @@ import {
   type CardRarity,
 } from '../../api/author';
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
+import type { OwnedCard } from '../../api/cards';
+import { describeStarterEffect } from '../../battle/effect-presentation';
+import { CollectibleCard } from '../cards/CollectibleCard';
+import '../cards/cards.css';
 import { AuthorFeedback } from './AuthorFeedback';
+import { AuthorConfirmationDialog } from './AuthorConfirmationDialog';
+import { useUnsavedAuthorChanges } from './AuthorNavigationGuard';
+import { authorPaths, type AuthorWorkspaceRoute } from './author-routing';
 import {
   type AuthorMutationCoordinator,
   type AuthorMutationTicket,
@@ -39,8 +50,10 @@ interface CardWorkspaceProps {
   errorMessage: string;
   getAccessToken: ApiAccessTokenProvider;
   mutationCoordinator: AuthorMutationCoordinator;
+  navigate: (to: string, options?: { replace?: boolean }) => void;
   onCardsChange: Dispatch<SetStateAction<AuthorCard[]>>;
   onReload: () => void;
+  route: Extract<AuthorWorkspaceRoute, { section: 'cards' }>;
   state: 'error' | 'loading' | 'ready';
 }
 
@@ -50,17 +63,108 @@ export function CardWorkspace({
   errorMessage,
   getAccessToken,
   mutationCoordinator,
+  navigate,
   onCardsChange,
   onReload,
+  route,
   state,
 }: CardWorkspaceProps) {
-  const [selectedId, setSelectedId] = useState<string | 'new'>('new');
   const [message, setMessage] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [lifecycleFilter, setLifecycleFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [affinityFilter, setAffinityFilter] = useState('all');
+  const [rarityFilter, setRarityFilter] = useState('all');
+  const [sortOrder, setSortOrder] = useState<'name' | 'updated'>('name');
   const feedbackRef = useRef<HTMLDivElement>(null);
+  const catalogueRef = useRef<HTMLElement>(null);
+  const selectedRowRef = useRef<HTMLLIElement>(null);
+  const recordViewRef = useRef<HTMLDivElement>(null);
+  const focusRouteRef = useRef<string | null>(null);
   const selectedIdRef = useRef<string | 'new'>('new');
+  const routeContextRef = useRef('');
   const interactionRef = useRef(0);
   const mountedRef = useRef(true);
+  const selectedId = 'cardId' in route ? route.cardId : null;
+  const routeContext = `${route.mode}:${selectedId ?? ''}`;
+  if (routeContextRef.current !== routeContext) {
+    routeContextRef.current = routeContext;
+    interactionRef.current += 1;
+    selectedIdRef.current =
+      route.mode === 'new' ? 'new' : (selectedId ?? 'new');
+  }
+
+  useEffect(() => {
+    if (state !== 'ready') return;
+    if (focusRouteRef.current === null) {
+      focusRouteRef.current = routeContext;
+      return;
+    }
+    if (focusRouteRef.current === routeContext) return;
+    focusRouteRef.current = routeContext;
+    const timer = window.setTimeout(() => {
+      (route.mode === 'list'
+        ? catalogueRef.current
+        : recordViewRef.current
+      )?.focus();
+    });
+    return () => window.clearTimeout(timer);
+  }, [route.mode, routeContext, state]);
+
   const selected = cards.find((card) => card.id === selectedId);
+  const visibleCards = useMemo(
+    () =>
+      [...cards]
+        .filter((card) => {
+          const query = searchQuery.trim().toLocaleLowerCase();
+          return (
+            (!query ||
+              card.name.toLocaleLowerCase().includes(query) ||
+              card.description?.toLocaleLowerCase().includes(query)) &&
+            (lifecycleFilter === 'all' ||
+              card.authoringStatus === lifecycleFilter) &&
+            (categoryFilter === 'all' || card.category === categoryFilter) &&
+            (affinityFilter === 'all' || card.affinity === affinityFilter) &&
+            (rarityFilter === 'all' || card.rarity === rarityFilter)
+          );
+        })
+        .sort((left, right) =>
+          sortOrder === 'updated'
+            ? Date.parse(right.updatedAt) - Date.parse(left.updatedAt)
+            : left.name.localeCompare(right.name),
+        ),
+    [
+      affinityFilter,
+      cards,
+      categoryFilter,
+      lifecycleFilter,
+      rarityFilter,
+      searchQuery,
+      sortOrder,
+    ],
+  );
+
+  useEffect(() => {
+    if (state !== 'ready' || selectedId === null) return;
+
+    const timer = window.setTimeout(() => {
+      const list = catalogueRef.current?.querySelector<HTMLElement>(
+        '.author-catalogue__list',
+      );
+      const row = selectedRowRef.current;
+      if (!list || !row || list.clientHeight === 0) return;
+
+      const listBounds = list.getBoundingClientRect();
+      const rowBounds = row.getBoundingClientRect();
+      if (rowBounds.top < listBounds.top) {
+        list.scrollTop -= listBounds.top - rowBounds.top;
+      } else if (rowBounds.bottom > listBounds.bottom) {
+        list.scrollTop += rowBounds.bottom - listBounds.bottom;
+      }
+    });
+
+    return () => window.clearTimeout(timer);
+  }, [selectedId, state, visibleCards]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -70,21 +174,10 @@ export function CardWorkspace({
   }, []);
 
   useEffect(() => {
-    if (selectedId !== 'new' && !cards.some((card) => card.id === selectedId)) {
-      interactionRef.current += 1;
-      setSelectedId('new');
-      selectedIdRef.current = 'new';
-    }
-  }, [cards, selectedId]);
-
-  function selectCard(cardId: string | 'new') {
-    interactionRef.current += 1;
-    selectedIdRef.current = cardId;
-    setSelectedId(cardId);
     setMessage('');
-    if (cardId !== 'new' && mutationCoordinator.isCollectionUncertain('cards'))
+    if (selectedId && mutationCoordinator.isCollectionUncertain('cards'))
       onReload();
-  }
+  }, [mutationCoordinator, onReload, route.mode, selectedId]);
 
   function updateCard(
     card: AuthorCard,
@@ -106,16 +199,14 @@ export function CardWorkspace({
 
     if (!isCurrentInteraction) return;
     selectedIdRef.current = card.id;
-    setSelectedId(card.id);
+    const targetContext = `detail:${card.id}`;
+    navigate(authorPaths.card(card.id));
     if (notice)
       announce(
         notice,
         setMessage,
         feedbackRef,
-        () =>
-          mountedRef.current &&
-          interactionRef.current === interaction &&
-          selectedIdRef.current === card.id,
+        () => mountedRef.current && routeContextRef.current === targetContext,
       );
   }
 
@@ -127,23 +218,29 @@ export function CardWorkspace({
       <header className="author-workspace__heading">
         <div>
           <p className="eyebrow">Reward catalogue</p>
-          <h2 id="cards-workspace-title">Cards</h2>
+          <h2 id="cards-workspace-title">Card catalogue</h2>
         </div>
-        <button
-          className="button"
-          onClick={() => selectCard('new')}
-          type="button"
-        >
-          Create card
-        </button>
+        {state === 'ready' ? (
+          <Link className="button" href={authorPaths.newCard}>
+            New card
+          </Link>
+        ) : (
+          <button
+            aria-describedby="card-create-unavailable"
+            className="button"
+            disabled
+            type="button"
+          >
+            New card
+          </button>
+        )}
       </header>
 
-      <AuthorFeedback message={message} refObject={feedbackRef} />
-
-      <p className="author-workspace__intro">
-        Published definitions become active for server-selected starter and
-        event rewards. Authors do not assign reward outcomes to an event.
-      </p>
+      {state !== 'ready' ? (
+        <p className="sr-only" id="card-create-unavailable">
+          Load the card catalogue before creating a card.
+        </p>
+      ) : null}
 
       {state === 'loading' ? (
         <p className="author-state" role="status">
@@ -164,45 +261,570 @@ export function CardWorkspace({
         </div>
       ) : null}
       {state === 'ready' ? (
-        <div className="author-split-view">
-          <aside aria-label="Card definitions" className="author-record-list">
-            <p className="author-record-list__label">Catalogue</p>
-            {cards.length === 0 ? <p>No cards yet.</p> : null}
-            <ul>
-              {cards.map((card) => (
-                <li key={card.id}>
-                  <button
+        <div
+          className={`author-management-view author-management-view--cards${route.mode === 'list' || route.mode === 'detail' ? ' author-management-view--card-catalogue' : ''}${route.mode === 'list' ? ' author-management-view--list' : ' author-management-view--record'}`}
+        >
+          <aside
+            aria-label="Card definitions"
+            className="author-catalogue author-catalogue--cards"
+            ref={catalogueRef}
+            tabIndex={-1}
+          >
+            <CardCatalogueControls
+              affinity={affinityFilter}
+              category={categoryFilter}
+              lifecycle={lifecycleFilter}
+              onAffinityChange={setAffinityFilter}
+              onCategoryChange={setCategoryFilter}
+              onLifecycleChange={setLifecycleFilter}
+              onRarityChange={setRarityFilter}
+              onSearchChange={setSearchQuery}
+              onSortChange={setSortOrder}
+              rarity={rarityFilter}
+              search={searchQuery}
+              sort={sortOrder}
+            />
+            <p aria-live="polite" className="author-catalogue__results">
+              {visibleCards.length} of {cards.length}{' '}
+              {cards.length === 1 ? 'card' : 'cards'}
+            </p>
+            {cards.length === 0 ? (
+              <div className="author-empty author-empty--compact">
+                <strong>No card definitions yet</strong>
+                <p>Create a draft to begin the catalogue.</p>
+              </div>
+            ) : null}
+            {cards.length > 0 && visibleCards.length === 0 ? (
+              <div className="author-empty author-empty--compact">
+                <strong>No cards match</strong>
+                <p>Adjust the catalogue filters.</p>
+              </div>
+            ) : null}
+            <ul className="author-catalogue__list">
+              {visibleCards.map((card) => (
+                <li
+                  key={card.id}
+                  ref={selectedId === card.id ? selectedRowRef : undefined}
+                >
+                  <Link
                     aria-current={selectedId === card.id ? 'true' : undefined}
-                    className="author-record-list__item"
-                    onClick={() => selectCard(card.id)}
-                    type="button"
+                    className="author-record-summary author-record-summary--card"
+                    href={authorPaths.card(card.id)}
                   >
-                    <span>{card.name}</span>
-                    <span
-                      className={`status-badge status-badge--author-${card.authoringStatus}`}
-                    >
-                      {card.authoringStatus}
+                    <span className="author-record-summary__heading">
+                      <strong>{card.name}</strong>
+                      <StatusBadge status={card.authoringStatus} />
                     </span>
-                  </button>
+                    <span className="author-record-summary__meta">
+                      {titleCase(card.category)} · {titleCase(card.affinity)} ·{' '}
+                      {titleCase(card.rarity)}
+                    </span>
+                    <span
+                      aria-hidden="true"
+                      className="author-record-summary__chevron"
+                    >
+                      ›
+                    </span>
+                  </Link>
                 </li>
               ))}
             </ul>
           </aside>
-          <div className="author-editor">
-            <CardForm
-              apiBaseUrl={apiBaseUrl}
-              card={selected}
-              getAccessToken={getAccessToken}
-              interaction={interactionRef.current}
-              mutationCoordinator={mutationCoordinator}
-              key={selected ? selected.id : 'new-card'}
-              onSaved={updateCard}
-            />
+          <div
+            aria-label="Card workspace detail"
+            className="author-record-view"
+            ref={recordViewRef}
+            role="region"
+            tabIndex={-1}
+          >
+            {route.mode === 'list' ? (
+              <CatalogueWelcome
+                count={cards.length}
+                noun="card"
+                onCreatePath={authorPaths.newCard}
+              />
+            ) : route.mode === 'new' ? (
+              <CardForm
+                apiBaseUrl={apiBaseUrl}
+                getAccessToken={getAccessToken}
+                interaction={interactionRef.current}
+                key="new-card"
+                mutationCoordinator={mutationCoordinator}
+                onCancel={() => navigate(authorPaths.cards)}
+                onSaved={updateCard}
+              />
+            ) : selected ? (
+              route.mode === 'edit' && selected.authoringStatus === 'draft' ? (
+                <CardForm
+                  apiBaseUrl={apiBaseUrl}
+                  card={selected}
+                  getAccessToken={getAccessToken}
+                  interaction={interactionRef.current}
+                  key={selected.id}
+                  mutationCoordinator={mutationCoordinator}
+                  onCancel={() => navigate(authorPaths.card(selected.id))}
+                  onSaved={updateCard}
+                />
+              ) : (
+                <CardDetail
+                  apiBaseUrl={apiBaseUrl}
+                  card={selected}
+                  getAccessToken={getAccessToken}
+                  interaction={interactionRef.current}
+                  message={message}
+                  messageRef={feedbackRef}
+                  mutationCoordinator={mutationCoordinator}
+                  onSaved={updateCard}
+                />
+              )
+            ) : (
+              <MissingRecord backPath={authorPaths.cards} kind="card" />
+            )}
           </div>
         </div>
       ) : null}
     </section>
   );
+}
+
+function CardCatalogueControls({
+  affinity,
+  category,
+  lifecycle,
+  onAffinityChange,
+  onCategoryChange,
+  onLifecycleChange,
+  onRarityChange,
+  onSearchChange,
+  onSortChange,
+  rarity,
+  search,
+  sort,
+}: {
+  affinity: string;
+  category: string;
+  lifecycle: string;
+  onAffinityChange: (value: string) => void;
+  onCategoryChange: (value: string) => void;
+  onLifecycleChange: (value: string) => void;
+  onRarityChange: (value: string) => void;
+  onSearchChange: (value: string) => void;
+  onSortChange: (value: 'name' | 'updated') => void;
+  rarity: string;
+  search: string;
+  sort: 'name' | 'updated';
+}) {
+  const secondaryFilterCount = [category, affinity, rarity].filter(
+    (value) => value !== 'all',
+  ).length;
+
+  return (
+    <div
+      aria-label="Filter and sort cards"
+      className="author-catalogue-toolbar"
+      role="group"
+    >
+      <label className="author-catalogue-toolbar__search">
+        <span className="sr-only">Search</span>
+        <input
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder="Search cards"
+          type="search"
+          value={search}
+        />
+      </label>
+      <div className="author-catalogue-toolbar__controls">
+        <label className="author-catalogue-toolbar__select">
+          <span>Lifecycle</span>
+          <select
+            onChange={(event) => onLifecycleChange(event.target.value)}
+            value={lifecycle}
+          >
+            <option value="all">All</option>
+            <option value="draft">Draft</option>
+            <option value="published">Published</option>
+            <option value="retired">Retired</option>
+          </select>
+        </label>
+        <label className="author-catalogue-toolbar__select">
+          <span>Sort</span>
+          <select
+            onChange={(event) =>
+              onSortChange(event.target.value as 'name' | 'updated')
+            }
+            value={sort}
+          >
+            <option value="name">A–Z</option>
+            <option value="updated">Updated</option>
+          </select>
+        </label>
+        <details className="author-filter-menu">
+          <summary>
+            Filters
+            {secondaryFilterCount > 0 ? (
+              <span aria-label={`${secondaryFilterCount} active filters`}>
+                {secondaryFilterCount}
+              </span>
+            ) : null}
+          </summary>
+          <div className="author-filter-menu__panel">
+            <label className="author-filter">
+              <span>Category</span>
+              <select
+                onChange={(event) => onCategoryChange(event.target.value)}
+                value={category}
+              >
+                <option value="all">All</option>
+                <option value="creature">Creature</option>
+                <option value="power">Power</option>
+              </select>
+            </label>
+            <label className="author-filter">
+              <span>Affinity</span>
+              <select
+                onChange={(event) => onAffinityChange(event.target.value)}
+                value={affinity}
+              >
+                <option value="all">All</option>
+                {['wit', 'grit', 'spark', 'spirit', 'mystic'].map((value) => (
+                  <option key={value} value={value}>
+                    {titleCase(value)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="author-filter">
+              <span>Rarity</span>
+              <select
+                onChange={(event) => onRarityChange(event.target.value)}
+                value={rarity}
+              >
+                <option value="all">All</option>
+                {['common', 'rare', 'epic', 'legendary'].map((value) => (
+                  <option key={value} value={value}>
+                    {titleCase(value)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </details>
+      </div>
+    </div>
+  );
+}
+
+function CatalogueWelcome({
+  count,
+  noun,
+  onCreatePath,
+}: {
+  count: number;
+  noun: string;
+  onCreatePath: string;
+}) {
+  return (
+    <section className="author-welcome">
+      <p className="eyebrow">Catalogue</p>
+      <h3>{count > 0 ? `Select a ${noun}` : `Create the first ${noun}`}</h3>
+      <p>
+        {count > 0
+          ? `Choose a ${noun} to review its authoritative lifecycle and content.`
+          : `New ${noun}s begin as editable drafts.`}
+      </p>
+      <Link className="button" href={onCreatePath}>
+        New {noun}
+      </Link>
+    </section>
+  );
+}
+
+function MissingRecord({ backPath, kind }: { backPath: string; kind: string }) {
+  return (
+    <section className="author-state author-state--error" role="alert">
+      <strong>This {kind} is not in the loaded catalogue.</strong>
+      <p>It may have been removed or the address may be incorrect.</p>
+      <Link className="button button--quiet" href={backPath}>
+        Back to {kind}s
+      </Link>
+    </section>
+  );
+}
+
+function StatusBadge({ status }: { status: AuthorCard['authoringStatus'] }) {
+  return (
+    <span className={`status-badge status-badge--author-${status}`}>
+      {titleCase(status)}
+    </span>
+  );
+}
+
+function CardDetail({
+  apiBaseUrl,
+  card,
+  getAccessToken,
+  interaction,
+  message,
+  messageRef,
+  mutationCoordinator,
+  onSaved,
+}: {
+  apiBaseUrl: string;
+  card: AuthorCard;
+  getAccessToken: ApiAccessTokenProvider;
+  interaction: number;
+  message: string;
+  messageRef: RefObject<HTMLDivElement | null>;
+  mutationCoordinator: AuthorMutationCoordinator;
+  onSaved: CardFormProps['onSaved'];
+}) {
+  const [apiError, setApiError] = useState<AuthorApiError | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [confirmRetire, setConfirmRetire] = useState(false);
+  const feedbackRef = useRef<HTMLDivElement>(null);
+  const retireButtonRef = useRef<HTMLButtonElement>(null);
+  const operationRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => operationRef.current?.abort(), []);
+  useEffect(() => {
+    setApiError(null);
+    setConfirmRetire(false);
+  }, [card.id, card.authoringStatus]);
+
+  async function lifecycle(action: 'publish' | 'retire') {
+    const controller = new AbortController();
+    operationRef.current = controller;
+    setBusy(true);
+    setApiError(null);
+    const ticket = mutationCoordinator.beginMutation(
+      `card:${card.id}`,
+      'cards',
+    );
+
+    try {
+      const next =
+        action === 'publish'
+          ? await publishAuthorCard({
+              apiBaseUrl,
+              cardId: card.id,
+              expectedVersion: card.version,
+              getAccessToken,
+              signal: controller.signal,
+            })
+          : await retireAuthorCard({
+              apiBaseUrl,
+              cardId: card.id,
+              expectedVersion: card.version,
+              getAccessToken,
+              signal: controller.signal,
+            });
+      if (operationRef.current !== controller) return;
+      onSaved(
+        next,
+        card.id,
+        interaction,
+        ticket,
+        action === 'publish'
+          ? 'Card published and active.'
+          : 'Card retired. Existing owned copies remain intact.',
+      );
+      setConfirmRetire(false);
+    } catch (error) {
+      if (operationRef.current !== controller) return;
+      if (mutationCoordinator.acceptFailure(ticket, isUncertainError(error))) {
+        setApiError(toAuthorError(error));
+        window.setTimeout(() => feedbackRef.current?.focus());
+      }
+    } finally {
+      if (operationRef.current === controller) {
+        operationRef.current = null;
+        setBusy(false);
+      }
+    }
+  }
+
+  return (
+    <article aria-labelledby="card-detail-title" className="author-detail">
+      <Link className="author-back-link" href={authorPaths.cards}>
+        <span aria-hidden="true">←</span> Card catalogue
+      </Link>
+      <header className="author-card-detail__header">
+        <div className="author-card-detail__identity">
+          <p className="eyebrow">Card definition</p>
+          <h3 id="card-detail-title">{card.name}</h3>
+          <p className="author-card-detail__definition">
+            {titleCase(card.category)} · {titleCase(card.affinity)} ·{' '}
+            {titleCase(card.rarity)}
+          </p>
+        </div>
+        <div className="author-card-detail__lifecycle">
+          <StatusBadge status={card.authoringStatus} />
+          <div className="author-actions author-actions--detail">
+            {card.authoringStatus === 'draft' ? (
+              <>
+                <Link className="button" href={authorPaths.editCard(card.id)}>
+                  Edit card
+                </Link>
+                <button
+                  className="button button--quiet"
+                  disabled={busy}
+                  onClick={() => void lifecycle('publish')}
+                  type="button"
+                >
+                  {busy ? 'Publishing…' : 'Publish card'}
+                </button>
+              </>
+            ) : null}
+            {card.authoringStatus !== 'retired' ? (
+              <button
+                className="button button--danger"
+                disabled={busy}
+                onClick={() => setConfirmRetire(true)}
+                ref={retireButtonRef}
+                type="button"
+              >
+                Retire card
+              </button>
+            ) : null}
+          </div>
+          <AuthorFeedback error={apiError} refObject={feedbackRef} />
+          <AuthorFeedback message={message} refObject={messageRef} />
+        </div>
+      </header>
+
+      <div className="author-card-detail__layout">
+        <section
+          aria-label={`${card.name} authoring preview`}
+          className="author-card-detail__preview"
+        >
+          <p className="eyebrow">Player card preview</p>
+          <CollectibleCard
+            card={toCollectibleCard(card)}
+            compact
+            headingLevel={4}
+            showOwnership={false}
+          />
+        </section>
+        <div className="author-card-detail__content">
+          <dl className="author-metadata">
+            <div>
+              <dt>Description</dt>
+              <dd>{card.description ?? 'No description provided'}</dd>
+            </div>
+            <div>
+              <dt>Reward catalogue</dt>
+              <dd>{card.isActive ? 'Active' : 'Not active'}</dd>
+            </div>
+            {card.category === 'creature' ? (
+              <div>
+                <dt>Attributes</dt>
+                <dd>
+                  {card.hp ?? '—'} HP · {card.power ?? '—'} Power
+                </dd>
+              </div>
+            ) : null}
+            <div>
+              <dt>Last updated</dt>
+              <dd>
+                <time dateTime={card.updatedAt}>
+                  {formatDateTime(card.updatedAt)}
+                </time>
+              </dd>
+            </div>
+          </dl>
+          <CardMechanicsSummary card={card} />
+        </div>
+      </div>
+
+      {confirmRetire ? (
+        <AuthorConfirmationDialog
+          busy={busy}
+          cancelLabel="Keep card"
+          confirmLabel={busy ? 'Retiring…' : 'Retire card'}
+          description={
+            <p>
+              This definition will leave future reward selection and cannot be
+              republished. Existing owned copies remain intact.
+            </p>
+          }
+          onCancel={() => setConfirmRetire(false)}
+          onConfirm={() => void lifecycle('retire')}
+          returnFocusRef={retireButtonRef}
+          title={`Retire ${card.name}?`}
+        />
+      ) : null}
+    </article>
+  );
+}
+
+function CardMechanicsSummary({ card }: { card: AuthorCard }) {
+  const items = card.category === 'creature' ? card.moves : card.effects;
+
+  if (items.length === 0) return null;
+
+  return (
+    <section
+      aria-labelledby={`card-mechanics-${card.id}`}
+      className="author-card-mechanics"
+    >
+      <div className="author-card-mechanics__heading">
+        <h4 id={`card-mechanics-${card.id}`}>
+          {card.category === 'creature' ? 'Moves' : 'Effects'}
+        </h4>
+        <span>{items.length}</span>
+      </div>
+      <ol className="author-card-mechanics__list">
+        {card.category === 'creature'
+          ? card.moves.map((move) => (
+              <li key={move.id}>
+                <div>
+                  <strong>{move.name}</strong>
+                  <span>{titleCase(move.moveType)}</span>
+                </div>
+                <p>
+                  {describeStarterEffect(move)} · {move.powerCost} power
+                </p>
+              </li>
+            ))
+          : card.effects.map((effect) => (
+              <li key={effect.id}>
+                <div>
+                  <strong>Effect {effect.position}</strong>
+                  <span>{titleCase(effect.effectType)}</span>
+                </div>
+                <p>{describeStarterEffect(effect)}</p>
+              </li>
+            ))}
+      </ol>
+    </section>
+  );
+}
+
+function toCollectibleCard(card: AuthorCard): OwnedCard {
+  return {
+    acquiredAt: card.createdAt,
+    acquisitionKind: 'event_reward',
+    affinity: card.affinity,
+    cardDefinitionId: card.id,
+    category: card.category,
+    description: card.description,
+    effects: card.effects,
+    hp: card.hp,
+    imageUrl: card.imageUrl,
+    isActive: card.isActive,
+    moves: card.moves,
+    name: card.name,
+    ownedCardId: `author-${card.id}`,
+    power: card.power,
+    rarity: card.rarity,
+  };
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value));
 }
 
 interface CardFormProps {
@@ -211,6 +833,7 @@ interface CardFormProps {
   getAccessToken: ApiAccessTokenProvider;
   interaction: number;
   mutationCoordinator: AuthorMutationCoordinator;
+  onCancel: () => void;
   onSaved: (
     card: AuthorCard,
     ownerId: string | 'new',
@@ -253,13 +876,13 @@ function CardForm({
   getAccessToken,
   interaction,
   mutationCoordinator,
+  onCancel,
   onSaved,
 }: CardFormProps) {
   const [draft, setDraft] = useState<CardDraft>(() => cardDraft(card));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [apiError, setApiError] = useState<AuthorApiError | null>(null);
   const [busy, setBusy] = useState(false);
-  const [confirmRetire, setConfirmRetire] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const feedbackRef = useRef<HTMLDivElement>(null);
   const operationRef = useRef<AbortController | null>(null);
@@ -269,7 +892,6 @@ function CardForm({
     setDraft(cardDraft(card));
     setErrors({});
     setApiError(null);
-    setConfirmRetire(false);
   }, [card]);
 
   useEffect(() => {
@@ -285,12 +907,10 @@ function CardForm({
     }
   }, [apiError?.code, busy, errors.name]);
 
-  const editable = !card || card.authoringStatus === 'draft';
-  const dirty = Boolean(
-    card && JSON.stringify(draft) !== JSON.stringify(cardDraft(card)),
-  );
+  const dirty = JSON.stringify(draft) !== JSON.stringify(cardDraft(card));
   const recordKey = `card:${card?.id ?? 'new'}` as AuthorRecordKey;
   useAuthorDraftSession(mutationCoordinator, recordKey, dirty);
+  const clearNavigationGuard = useUnsavedAuthorChanges(dirty, 'card draft');
 
   async function save(submission: FormEvent) {
     submission.preventDefault();
@@ -332,6 +952,7 @@ function CardForm({
             signal: controller.signal,
           });
       if (operationRef.current !== controller) return;
+      clearNavigationGuard();
       onSaved(
         saved,
         ownerId,
@@ -339,50 +960,6 @@ function CardForm({
         ticket,
         card ? 'Card changes saved.' : 'Draft card created.',
       );
-    } catch (error) {
-      if (operationRef.current !== controller) return;
-      const accepted = mutationCoordinator.acceptFailure(
-        ticket,
-        isUncertainError(error),
-      );
-      if (!accepted || !interactionActiveRef.current) return;
-      handleCardError(error, setApiError, setErrors, formRef, feedbackRef);
-    } finally {
-      if (operationRef.current === controller) {
-        operationRef.current = null;
-        if (interactionActiveRef.current) setBusy(false);
-      }
-    }
-  }
-
-  async function retireCard() {
-    if (!card) return;
-    setBusy(true);
-    setApiError(null);
-    const controller = new AbortController();
-    operationRef.current = controller;
-    const ownerId = card.id;
-    const ticket = mutationCoordinator.beginMutation(
-      `card:${card.id}`,
-      'cards',
-    );
-    try {
-      const next = await retireAuthorCard({
-        apiBaseUrl,
-        cardId: card.id,
-        expectedVersion: card.version,
-        getAccessToken,
-        signal: controller.signal,
-      });
-      if (operationRef.current !== controller) return;
-      onSaved(
-        next,
-        ownerId,
-        interaction,
-        ticket,
-        'Card retired. Existing owned copies remain intact.',
-      );
-      if (interactionActiveRef.current) setConfirmRetire(false);
     } catch (error) {
       if (operationRef.current !== controller) return;
       const accepted = mutationCoordinator.acceptFailure(
@@ -421,27 +998,24 @@ function CardForm({
   }
 
   return (
-    <section aria-labelledby="card-editor-title" className="author-panel">
+    <section
+      aria-labelledby="card-editor-title"
+      className="author-panel author-panel--editor"
+    >
+      <Link
+        className="author-back-link"
+        href={card ? authorPaths.card(card.id) : authorPaths.cards}
+      >
+        <span aria-hidden="true">←</span>{' '}
+        {card ? 'Card detail' : 'Card catalogue'}
+      </Link>
       <header className="author-panel__heading">
         <div>
           <p className="eyebrow">Card definition</p>
           <h3 id="card-editor-title">{card ? card.name : 'New card'}</h3>
         </div>
-        {card ? (
-          <span
-            className={`status-badge status-badge--author-${card.authoringStatus}`}
-          >
-            {card.authoringStatus}
-          </span>
-        ) : null}
+        {card ? <StatusBadge status={card.authoringStatus} /> : null}
       </header>
-
-      {!editable ? (
-        <p className="author-notice">
-          Only draft card definitions are editable. Review, approved, published,
-          and retired definitions are read-only.
-        </p>
-      ) : null}
       <AuthorFeedback error={apiError} refObject={feedbackRef} />
 
       <form className="author-form" noValidate onSubmit={save} ref={formRef}>
@@ -450,7 +1024,7 @@ function CardForm({
             <input
               aria-describedby={errors.name ? 'card-name-error' : undefined}
               aria-invalid={Boolean(errors.name)}
-              disabled={!editable || busy}
+              disabled={busy}
               id="card-name"
               onChange={(change) => {
                 setDraft((current) => ({
@@ -472,7 +1046,7 @@ function CardForm({
           </Field>
           <Field label="Category" name="card-category">
             <select
-              disabled={!editable || busy}
+              disabled={busy}
               id="card-category"
               onChange={(change) =>
                 changeCategory(change.target.value as CardCategory)
@@ -485,7 +1059,7 @@ function CardForm({
           </Field>
           <Field label="Affinity" name="card-affinity">
             <select
-              disabled={!editable || busy}
+              disabled={busy}
               id="card-affinity"
               onChange={(change) =>
                 setDraft((current) => ({
@@ -504,7 +1078,7 @@ function CardForm({
           </Field>
           <Field label="Rarity" name="card-rarity">
             <select
-              disabled={!editable || busy}
+              disabled={busy}
               id="card-rarity"
               onChange={(change) =>
                 setDraft((current) => ({
@@ -527,7 +1101,7 @@ function CardForm({
                 <input
                   aria-describedby={errors.hp ? 'card-hp-error' : undefined}
                   aria-invalid={Boolean(errors.hp)}
-                  disabled={!editable || busy}
+                  disabled={busy}
                   id="card-hp"
                   inputMode="numeric"
                   min="1"
@@ -553,7 +1127,7 @@ function CardForm({
                     errors.power ? 'card-power-error' : undefined
                   }
                   aria-invalid={Boolean(errors.power)}
-                  disabled={!editable || busy}
+                  disabled={busy}
                   id="card-power"
                   inputMode="numeric"
                   min="0"
@@ -583,7 +1157,7 @@ function CardForm({
               errors.description ? 'card-description-error' : undefined
             }
             aria-invalid={Boolean(errors.description)}
-            disabled={!editable || busy}
+            disabled={busy}
             id="card-description"
             onChange={(change) =>
               setDraft((current) => ({
@@ -603,7 +1177,7 @@ function CardForm({
           <input
             aria-describedby={`${errors.imageUrl ? 'card-image-url-error ' : ''}card-image-help`.trim()}
             aria-invalid={Boolean(errors.imageUrl)}
-            disabled={!editable || busy}
+            disabled={busy}
             id="card-image-url"
             onChange={(change) =>
               setDraft((current) => ({
@@ -624,7 +1198,7 @@ function CardForm({
             aria-describedby={errors.moves ? 'card-moves-error' : undefined}
             aria-invalid={Boolean(errors.moves)}
             className="author-fieldset"
-            disabled={!editable || busy}
+            disabled={busy}
             tabIndex={errors.moves ? -1 : undefined}
           >
             <legend>Creature moves</legend>
@@ -685,7 +1259,7 @@ function CardForm({
             aria-describedby={errors.effects ? 'card-effects-error' : undefined}
             aria-invalid={Boolean(errors.effects)}
             className="author-fieldset"
-            disabled={!editable || busy}
+            disabled={busy}
             tabIndex={errors.effects ? -1 : undefined}
           >
             <legend>Power-card effects</legend>
@@ -745,52 +1319,22 @@ function CardForm({
         </div>
 
         <div className="author-actions">
-          {editable ? (
-            <button className="button" disabled={busy} type="submit">
-              {busy ? 'Saving…' : card ? 'Save card' : 'Create draft card'}
-            </button>
-          ) : null}
-          {card?.authoringStatus === 'published' ? (
-            <button
-              className="button button--danger"
-              disabled={busy}
-              onClick={() => setConfirmRetire(true)}
-              type="button"
-            >
-              Retire card
-            </button>
-          ) : null}
+          <button className="button" disabled={busy} type="submit">
+            {busy ? 'Saving…' : card ? 'Save card' : 'Create draft card'}
+          </button>
+          <button
+            className="button button--quiet"
+            disabled={busy}
+            onClick={onCancel}
+            type="button"
+          >
+            Cancel
+          </button>
         </div>
-        {card ? (
-          <p className="author-notice" role="status">
-            Submit, review, and publication actions are currently API-only.
+        {dirty ? (
+          <p className="author-dirty-state" role="status">
+            Unsaved changes
           </p>
-        ) : null}
-        {confirmRetire ? (
-          <div className="author-confirmation" role="alert">
-            <strong>Retire this card definition?</strong>
-            <p>
-              It will leave future reward selection. Existing owned copies
-              remain.
-            </p>
-            <div className="author-actions">
-              <button
-                className="button button--danger"
-                disabled={busy}
-                onClick={() => void retireCard()}
-                type="button"
-              >
-                Confirm retirement
-              </button>
-              <button
-                className="button button--quiet"
-                onClick={() => setConfirmRetire(false)}
-                type="button"
-              >
-                Keep card
-              </button>
-            </div>
-          </div>
         ) : null}
       </form>
     </section>

@@ -1,4 +1,9 @@
-import type { ReactNode } from 'react';
+import {
+  useEffect,
+  useState,
+  type MouseEventHandler,
+  type ReactNode,
+} from 'react';
 
 import type { CardEffect, CardMove, OwnedCard } from '../../api/cards';
 
@@ -8,6 +13,37 @@ interface CollectibleCardProps {
   compact?: boolean;
   copyNumber?: number;
   copyTotal?: number;
+  headingLevel?: 2 | 3 | 4;
+  ownedCopies?: readonly OwnedCard[];
+  showOwnership?: boolean;
+}
+
+interface CardThumbnailProps {
+  accessibleLabel: string;
+  badge?: string;
+  card: OwnedCard;
+  onClick: MouseEventHandler<HTMLButtonElement>;
+}
+
+export function CardThumbnail({
+  accessibleLabel,
+  badge,
+  card,
+  onClick,
+}: CardThumbnailProps) {
+  return (
+    <button
+      aria-label={accessibleLabel}
+      className={`card-thumbnail card-thumbnail__button collectible-card--${card.rarity}${card.isActive ? '' : ' card-thumbnail--inactive'}`}
+      onClick={onClick}
+      type="button"
+    >
+      <CardArtwork badge={badge} card={card} />
+      <span className="card-thumbnail__caption">
+        <span className="card-thumbnail__title">{card.name}</span>
+      </span>
+    </button>
+  );
 }
 
 export function CollectibleCard({
@@ -16,30 +52,22 @@ export function CollectibleCard({
   compact = false,
   copyNumber = 1,
   copyTotal = 1,
+  headingLevel = 3,
+  ownedCopies,
+  showOwnership = true,
 }: CollectibleCardProps) {
   const titleId = `owned-card-${card.ownedCardId}-title`;
-  const hasDuplicates = copyTotal > 1;
+  const Heading: 'h2' | 'h3' | 'h4' =
+    headingLevel === 2 ? 'h2' : headingLevel === 4 ? 'h4' : 'h3';
+  const displayedCopyTotal = ownedCopies?.length ?? copyTotal;
+  const hasDuplicates = displayedCopyTotal > 1;
 
   return (
     <article
       aria-labelledby={titleId}
       className={`collectible-card collectible-card--${card.rarity}${compact ? ' collectible-card--compact' : ''}`}
     >
-      <div className="collectible-card__artwork">
-        {card.imageUrl ? (
-          <img alt={`${card.name} card artwork`} src={card.imageUrl} />
-        ) : (
-          <div
-            aria-hidden="true"
-            className="collectible-card__artwork-fallback"
-          >
-            <span>{card.name.slice(0, 1).toUpperCase()}</span>
-          </div>
-        )}
-        <span className="collectible-card__rarity">
-          {titleCase(card.rarity)}
-        </span>
-      </div>
+      <CardArtwork card={card} showRarity />
 
       <div className="collectible-card__body">
         <div className="collectible-card__heading">
@@ -47,11 +75,13 @@ export function CollectibleCard({
             <p className="collectible-card__kind">
               {titleCase(card.category)} · {titleCase(card.affinity)}
             </p>
-            <h3 id={titleId}>{card.name}</h3>
+            <Heading id={titleId}>{card.name}</Heading>
           </div>
           {hasDuplicates ? (
             <p className="collectible-card__copy">
-              Copy {copyNumber} of {copyTotal}
+              {ownedCopies
+                ? `×${displayedCopyTotal} owned`
+                : `Copy ${copyNumber} of ${displayedCopyTotal}`}
             </p>
           ) : null}
         </div>
@@ -108,15 +138,25 @@ export function CollectibleCard({
           </section>
         ) : null}
 
-        <div className="collectible-card__ownership">
-          <p>
-            {card.acquisitionKind === 'starter'
-              ? 'Starter card'
-              : 'Event reward'}
-          </p>
-          {hasDuplicates ? <p>Individually owned copy</p> : null}
-          {!card.isActive ? <p>Retired from the active catalogue</p> : null}
-        </div>
+        {showOwnership ? (
+          <div className="collectible-card__ownership">
+            <p>
+              {ownedCopies
+                ? `${displayedCopyTotal} ${displayedCopyTotal === 1 ? 'owned copy' : 'owned copies'}`
+                : card.acquisitionKind === 'starter'
+                  ? 'Starter card'
+                  : 'Event reward'}
+            </p>
+            {hasDuplicates && ownedCopies === undefined ? (
+              <p>Individually owned copy</p>
+            ) : null}
+            {!card.isActive ? <p>Retired from the active catalogue</p> : null}
+          </div>
+        ) : null}
+
+        {ownedCopies ? (
+          <OwnedCopyDetails cardName={card.name} copies={ownedCopies} />
+        ) : null}
 
         {actions ? (
           <div className="collectible-card__actions">{actions}</div>
@@ -124,6 +164,91 @@ export function CollectibleCard({
       </div>
     </article>
   );
+}
+
+export function CardArtwork({
+  badge,
+  card,
+  showRarity = false,
+}: {
+  badge?: string;
+  card: OwnedCard;
+  showRarity?: boolean;
+}) {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [card.imageUrl]);
+
+  const showImage = card.imageUrl !== null && !imageFailed;
+
+  return (
+    <span className="collectible-card__artwork">
+      {showImage ? (
+        <img
+          alt={`${card.name} card artwork`}
+          onError={() => setImageFailed(true)}
+          src={card.imageUrl ?? undefined}
+        />
+      ) : (
+        <span
+          aria-label={`${card.name} artwork unavailable`}
+          className="collectible-card__artwork-fallback"
+          role="img"
+        >
+          <span aria-hidden="true">{card.name.slice(0, 1).toUpperCase()}</span>
+        </span>
+      )}
+      {showRarity ? (
+        <span className="collectible-card__rarity">
+          {titleCase(card.rarity)}
+        </span>
+      ) : null}
+      {badge ? (
+        <span className="card-thumbnail__duplicate">{badge}</span>
+      ) : null}
+    </span>
+  );
+}
+
+function OwnedCopyDetails({
+  cardName,
+  copies,
+}: {
+  cardName: string;
+  copies: readonly OwnedCard[];
+}) {
+  return (
+    <section
+      aria-label={`${cardName} owned copies`}
+      className="owned-copy-details"
+    >
+      <h4>Owned copies</h4>
+      <ol aria-label={`${cardName} owned copies`}>
+        {copies.map((copy, index) => (
+          <li key={copy.ownedCardId}>
+            <strong>Copy {index + 1}</strong>
+            <span>
+              {copy.acquisitionKind === 'starter'
+                ? 'Starter card'
+                : 'Event reward'}
+            </span>
+            <time dateTime={copy.acquiredAt}>
+              Acquired {formatAcquiredDate(copy.acquiredAt)}
+            </time>
+            {!copy.isActive ? <span>Retired catalogue card</span> : null}
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function formatAcquiredDate(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+  }).format(new Date(value));
 }
 
 function MoveDetails({ move }: { move: CardMove }) {

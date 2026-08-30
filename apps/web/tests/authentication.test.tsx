@@ -122,6 +122,13 @@ function mockCurrentPlayer(
   });
 }
 
+async function openAccountDisclosure(user: ReturnType<typeof userEvent.setup>) {
+  const trigger = await screen.findByRole('button', { name: 'Account' });
+  await user.click(trigger);
+  expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  return trigger;
+}
+
 describe('player authentication', () => {
   it('keeps protected content hidden while authentication loads', () => {
     renderRoute('/explore', createAuthValue({ isLoading: true }));
@@ -198,9 +205,7 @@ describe('player authentication', () => {
 
     renderRoute('/explore', createAuthValue({ loginWithRedirect }));
 
-    await user.click(
-      screen.getByRole('button', { name: 'Use a different account' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Switch account' }));
 
     expect(loginWithRedirect).toHaveBeenCalledWith({
       appState: { returnTo: '/explore' },
@@ -314,6 +319,7 @@ describe('player authentication', () => {
   ])(
     'renders the protected route for an authenticated player with $label',
     async ({ emailClaims }) => {
+      const user = userEvent.setup();
       mockCurrentPlayer();
       expect(bindAuthenticatedPlayer(playerAId)).toBe('matched');
 
@@ -336,6 +342,7 @@ describe('player authentication', () => {
           { timeout: 5_000 },
         ),
       ).toBeVisible();
+      await openAccountDisclosure(user);
       expect(
         screen.getByText('test-player').closest('.account-control__identity'),
       ).toHaveTextContent('Signed in as test-player');
@@ -344,6 +351,7 @@ describe('player authentication', () => {
   );
 
   it('renders the authoritative player name instead of Auth0 name or email', async () => {
+    const user = userEvent.setup();
     mockCurrentPlayer(playerAId, 'naledi-star');
 
     renderRoute(
@@ -359,10 +367,9 @@ describe('player authentication', () => {
       }),
     );
 
+    await openAccountDisclosure(user);
     expect(
-      (await screen.findByText('naledi-star')).closest(
-        '.account-control__identity',
-      ),
+      screen.getByText('naledi-star').closest('.account-control__identity'),
     ).toHaveTextContent('Signed in as naledi-star');
     expect(screen.queryByText('player@example.test')).not.toBeInTheDocument();
     expect(
@@ -371,20 +378,79 @@ describe('player authentication', () => {
     expect(
       screen.queryByRole('button', { name: 'Signed in as naledi-star' }),
     ).not.toBeInTheDocument();
-    const playerNavigation = screen.getByRole('navigation', {
+    const playerNavigations = screen.getAllByRole('navigation', {
       name: 'Player',
     });
-    expect(
-      within(playerNavigation)
-        .getAllByRole('link')
-        .map((link) => link.textContent),
-    ).toEqual(['Explore', 'Collection', 'Decks', 'Battles']);
+    for (const playerNavigation of playerNavigations) {
+      expect(
+        within(playerNavigation)
+          .getAllByRole('link')
+          .map((link) => link.textContent),
+      ).toEqual(['Explore', 'Collection', 'Decks', 'Battles']);
+      for (const link of within(playerNavigation).getAllByRole('link')) {
+        expect(link.querySelector('.primary-navigation__icon')).toHaveAttribute(
+          'aria-hidden',
+          'true',
+        );
+      }
+    }
     expect(
       within(screen.getByRole('main')).getByRole('link', {
         name: 'Explore campus',
       }),
     ).toHaveAttribute('href', '/explore');
   });
+
+  it('closes the account disclosure with Escape and restores trigger focus', async () => {
+    const user = userEvent.setup();
+    mockCurrentPlayer();
+
+    renderRoute(
+      '/',
+      createAuthValue({
+        getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
+        isAuthenticated: true,
+      }),
+    );
+
+    const trigger = await openAccountDisclosure(user);
+    expect(screen.getByLabelText('Account options')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeVisible();
+
+    await user.keyboard('{Escape}');
+
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByLabelText('Account options')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it.each([
+    {
+      activeLabel: 'Explore',
+      path: '/challenge-attempts/31000000-0000-4000-8000-000000000001',
+    },
+    { activeLabel: 'Battles', path: '/matches/history' },
+  ])(
+    'keeps $activeLabel active on the grouped $path route',
+    async ({ activeLabel, path }) => {
+      mockCurrentPlayer();
+
+      renderRoute(
+        path,
+        createAuthValue({
+          getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
+          isAuthenticated: true,
+        }),
+      );
+
+      await screen.findByRole('button', { name: 'Account' });
+      const activeLinks = screen.getAllByRole('link', { name: activeLabel });
+      expect(activeLinks).toHaveLength(2);
+      for (const activeLink of activeLinks) {
+        expect(activeLink).toHaveAttribute('aria-current', 'page');
+      }
+    },
+  );
 
   it('keeps Player Name onboarding on the protected Explore path from Home', async () => {
     mockCurrentPlayer(playerAId, null);
@@ -405,6 +471,7 @@ describe('player authentication', () => {
   });
 
   it('requires a Google player with no name to complete setup before gameplay', async () => {
+    const user = userEvent.setup();
     mockCurrentPlayer(playerAId, null);
 
     renderRoute(
@@ -430,6 +497,7 @@ describe('player authentication', () => {
       screen.queryByText('google-player@example.test'),
     ).not.toBeInTheDocument();
     expect(screen.queryByText('Google Profile Name')).not.toBeInTheDocument();
+    await openAccountDisclosure(user);
     expect(
       screen.getByRole('button', { name: 'Choose Player Name' }),
     ).toBeVisible();
@@ -463,6 +531,7 @@ describe('player authentication', () => {
   });
 
   it('lets an already-configured Google player bypass setup', async () => {
+    const user = userEvent.setup();
     mockCurrentPlayer(playerAId, 'configured-google');
 
     renderRoute(
@@ -483,6 +552,7 @@ describe('player authentication', () => {
     ).toBeVisible();
     expect(screen.getByRole('main')).toHaveClass('main-content--explore');
     expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument();
+    await openAccountDisclosure(user);
     expect(screen.getByText('configured-google')).toBeVisible();
     expect(
       screen.queryByRole('heading', { name: 'Choose your Player Name' }),
@@ -613,6 +683,7 @@ describe('player authentication', () => {
     expect(
       await screen.findByRole('heading', { name: 'Explore the campus map' }),
     ).toBeVisible();
+    await openAccountDisclosure(user);
     expect(screen.getByText('new_google_player')).toBeVisible();
     expect(
       screen.queryByRole('textbox', { name: 'Player Name' }),
@@ -674,6 +745,7 @@ describe('player authentication', () => {
     expect(
       await screen.findByRole('heading', { name: 'Explore the campus map' }),
     ).toBeVisible();
+    await openAccountDisclosure(user);
     expect(screen.getByText('chosen-in-another-tab')).toBeVisible();
     expect(
       screen.queryByRole('textbox', { name: 'Player Name' }),
@@ -750,7 +822,8 @@ describe('player authentication', () => {
       }),
     );
 
-    await user.click(await screen.findByRole('button', { name: 'Sign out' }));
+    await openAccountDisclosure(user);
+    await user.click(screen.getByRole('button', { name: 'Sign out' }));
     expect(logout).toHaveBeenCalledWith({
       logoutParams: { returnTo: window.location.origin },
     });
@@ -772,7 +845,8 @@ describe('player authentication', () => {
       }),
     );
 
-    await user.click(await screen.findByRole('button', { name: 'Sign out' }));
+    await openAccountDisclosure(user);
+    await user.click(screen.getByRole('button', { name: 'Sign out' }));
     expect(logout).toHaveBeenCalledWith({
       logoutParams: { returnTo: window.location.origin },
     });
@@ -834,6 +908,7 @@ describe('player authentication', () => {
       screen.queryByRole('heading', { name: 'Explore the campus map' }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText('Signed in as')).not.toBeInTheDocument();
+    await openAccountDisclosure(user);
     const signOut = screen.getByRole('button', { name: 'Sign out' });
     expect(signOut).toBeVisible();
 
@@ -845,6 +920,7 @@ describe('player authentication', () => {
   });
 
   it('keeps logout available when current-player restoration is unavailable', async () => {
+    const user = userEvent.setup();
     const logout = vi.fn().mockResolvedValue(undefined);
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response('unavailable', { status: 503 }),
@@ -866,10 +942,12 @@ describe('player authentication', () => {
       }),
     ).toBeVisible();
     expect(screen.queryByText('Signed in as')).not.toBeInTheDocument();
+    await openAccountDisclosure(user);
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeVisible();
   });
 
   it('signs out instead of substituting a different restored player', async () => {
+    const user = userEvent.setup();
     const logout = vi.fn().mockResolvedValue(undefined);
     mockCurrentPlayer(playerBId);
     expect(bindAuthenticatedPlayer(playerAId)).toBe('matched');
@@ -891,6 +969,7 @@ describe('player authentication', () => {
       screen.queryByRole('heading', { name: 'Explore the campus map' }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText('Signed in as')).not.toBeInTheDocument();
+    await openAccountDisclosure(user);
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeVisible();
     expect(logout).toHaveBeenCalledWith({
       logoutParams: { returnTo: window.location.origin },

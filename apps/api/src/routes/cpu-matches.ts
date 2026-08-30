@@ -126,6 +126,7 @@ const battleActionResultSchema = {
     'side',
     'action',
     'effects',
+    'expiredEffects',
     'defeatedCreatureId',
     'winner',
     'turnEnded',
@@ -184,11 +185,73 @@ const battleActionResultSchema = {
         },
       },
     },
+    expiredEffects: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'effectId',
+          'targetSide',
+          'targetCreatureId',
+          'damageMultiplier',
+        ],
+        properties: {
+          effectId: { type: 'string' },
+          targetSide: { type: 'string', enum: ['player', 'cpu'] },
+          targetCreatureId: { type: 'string' },
+          damageMultiplier: {
+            anyOf: [{ type: 'number', minimum: 0 }, { type: 'null' }],
+          },
+        },
+      },
+    },
     defeatedCreatureId: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     winner: {
       anyOf: [{ type: 'string', enum: ['player', 'cpu'] }, { type: 'null' }],
     },
     turnEnded: { type: 'boolean' },
+  },
+} as const;
+
+const battleLogGroupSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['id', 'label', 'turnNumber', 'events'],
+  properties: {
+    id: { type: 'string' },
+    label: { type: 'string' },
+    turnNumber: { type: 'integer', minimum: 0 },
+    events: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id', 'sequence', 'side', 'kind', 'message'],
+        properties: {
+          id: { type: 'string' },
+          sequence: { type: 'integer', minimum: 1 },
+          side: {
+            anyOf: [
+              { type: 'string', enum: ['player', 'cpu'] },
+              { type: 'null' },
+            ],
+          },
+          kind: {
+            type: 'string',
+            enum: [
+              'action',
+              'defeat',
+              'effect',
+              'effect_expired',
+              'result',
+              'turn',
+            ],
+          },
+          message: { type: 'string' },
+        },
+      },
+    },
   },
 } as const;
 
@@ -425,6 +488,7 @@ const matchResponseSchema = {
     'completedAt',
     'state',
     'lastAction',
+    'battleLog',
     'requestId',
   ],
   properties: {
@@ -440,6 +504,7 @@ const matchResponseSchema = {
     },
     state: matchStateSchema,
     lastAction: { anyOf: [battleActionResultSchema, { type: 'null' }] },
+    battleLog: { type: 'array', items: battleLogGroupSchema },
     requestId: { type: 'string' },
   },
 } as const;

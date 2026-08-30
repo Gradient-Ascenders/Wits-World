@@ -18,8 +18,13 @@ const mapboxState = vi.hoisted(() => ({
   jumpTo: vi.fn(),
   mapConstructor: vi.fn(),
   markerConstructor: vi.fn(),
+  markerDragEnd: null as (() => void) | null,
   markerElements: [] as HTMLElement[],
+  markerLngLat: { lat: -26.19205, lng: 28.03038 },
+  markerOff: vi.fn(),
+  markerOn: vi.fn(),
   markerRemove: vi.fn(),
+  markerSetDraggable: vi.fn(),
   off: vi.fn(),
   on: vi.fn(),
   once: vi.fn(),
@@ -110,9 +115,33 @@ vi.mock('mapbox-gl/esm', () => ({
       return this;
     }
 
+    public getLngLat() {
+      return mapboxState.markerLngLat;
+    }
+
+    public off = (event: string, listener: () => void) => {
+      mapboxState.markerOff(event, listener);
+      if (event === 'dragend' && mapboxState.markerDragEnd === listener) {
+        mapboxState.markerDragEnd = null;
+      }
+      return this;
+    };
+
+    public on = (event: string, listener: () => void) => {
+      mapboxState.markerOn(event, listener);
+      if (event === 'dragend') mapboxState.markerDragEnd = listener;
+      return this;
+    };
+
     public remove = mapboxState.markerRemove;
 
-    public setLngLat() {
+    public setDraggable = (draggable: boolean) => {
+      mapboxState.markerSetDraggable(draggable);
+      return this;
+    };
+
+    public setLngLat(coordinate: [number, number]) {
+      mapboxState.markerLngLat = { lat: coordinate[1], lng: coordinate[0] };
       return this;
     }
   },
@@ -146,6 +175,8 @@ beforeEach(() => {
   mapboxState.isLoaded = false;
   mapboxState.isStyleLoaded = false;
   mapboxState.markerElements.length = 0;
+  mapboxState.markerDragEnd = null;
+  mapboxState.markerLngLat = { lat: -26.19205, lng: 28.03038 };
   mapboxState.addLayer.mockClear();
   mapboxState.addLayer.mockImplementation((layer: { id: string }) => {
     mapboxState.layers.add(layer.id);
@@ -163,7 +194,10 @@ beforeEach(() => {
   mapboxState.jumpTo.mockClear();
   mapboxState.mapConstructor.mockClear();
   mapboxState.markerConstructor.mockClear();
+  mapboxState.markerOff.mockClear();
+  mapboxState.markerOn.mockClear();
   mapboxState.markerRemove.mockClear();
+  mapboxState.markerSetDraggable.mockClear();
   mapboxState.off.mockClear();
   mapboxState.on.mockClear();
   mapboxState.once.mockClear();
@@ -206,6 +240,37 @@ describe('Mapbox Standard provider', () => {
       }),
     );
     expect(mapboxState.attributionOptions).toContainEqual({ compact: true });
+  });
+
+  it('fits an explicit initial authoring area instead of forcing one zoom level', async () => {
+    const initialBounds = [
+      [28.0185, -26.195],
+      [28.034, -26.1845],
+    ] as const;
+
+    await createMapboxMap(
+      document.createElement('div'),
+      {
+        ...configuration,
+        initialBounds,
+        initialBoundsPadding: 32,
+      },
+      [],
+      new AbortController().signal,
+    );
+
+    const options = mapboxState.mapConstructor.mock.calls[0]?.[0];
+    expect(options).toEqual(
+      expect.objectContaining({
+        bounds: [
+          [28.0185, -26.195],
+          [28.034, -26.1845],
+        ],
+        fitBoundsOptions: { padding: 32 },
+      }),
+    );
+    expect(options).not.toHaveProperty('center');
+    expect(options).not.toHaveProperty('zoom');
   });
 
   it('renders keyboard-selectable event markers with selected and reachable semantics', async () => {
@@ -290,6 +355,56 @@ describe('Mapbox Standard provider', () => {
     ).toMatchObject({ slot: 'middle', type: 'fill' });
   });
 
+  it('makes only opted-in author markers draggable and reports their final coordinate', async () => {
+    const controller = await createMapboxMap(
+      document.createElement('div'),
+      configuration,
+      [
+        {
+          draggable: true,
+          id: 'author-event-position',
+          label: 'selected event location',
+          latitude: -26.19205,
+          longitude: 28.03038,
+          radiusMetres: 75,
+        },
+      ],
+      new AbortController().signal,
+    );
+    const listener = vi.fn();
+    controller.setCoordinateSelectionListener?.(listener);
+
+    expect(mapboxState.markerConstructor).toHaveBeenCalledWith(
+      expect.objectContaining({ draggable: true }),
+    );
+    expect(mapboxState.markerElements[0]).toHaveAttribute(
+      'aria-label',
+      'Focus selected event location. Drag the marker to adjust it, or use the coordinate fields for keyboard entry.',
+    );
+    mapboxState.markerLngLat = { lat: -26.1907, lng: 28.0289 };
+    mapboxState.markerDragEnd?.();
+    expect(listener).toHaveBeenCalledWith({
+      latitude: -26.1907,
+      longitude: 28.0289,
+    });
+
+    controller.setPoints([
+      {
+        draggable: false,
+        id: 'author-event-position',
+        label: 'selected event location',
+        latitude: -26.1907,
+        longitude: 28.0289,
+      },
+    ]);
+    expect(mapboxState.markerSetDraggable).toHaveBeenLastCalledWith(false);
+    controller.remove();
+    expect(mapboxState.markerOff).toHaveBeenCalledWith(
+      'dragend',
+      expect.any(Function),
+    );
+  });
+
   it('centres the first fix, stops following after a drag, and recentres without resetting camera language', async () => {
     const controller = await createMapboxMap(
       document.createElement('div'),
@@ -320,6 +435,38 @@ describe('Mapbox Standard provider', () => {
         pitch: expect.anything(),
       }),
     );
+  });
+
+  it('centres a selected event and suspends location following', async () => {
+    const controller = await createMapboxMap(
+      document.createElement('div'),
+      configuration,
+      [],
+      new AbortController().signal,
+    );
+    const followListener = vi.fn();
+    controller.setFollowStateListener?.(followListener);
+    controller.setReportedLocation({
+      latitude: -26.19205,
+      longitude: 28.03038,
+    });
+
+    controller.focusPoint({
+      id: 'event-2',
+      label: 'Library Quest',
+      latitude: -26.1914,
+      longitude: 28.0311,
+      radiusMetres: 60,
+    });
+
+    expect(followListener).toHaveBeenLastCalledWith(false);
+    expect(mapboxState.easeTo).toHaveBeenLastCalledWith({
+      center: [28.0311, -26.1914],
+      duration: 650,
+      zoom: 17,
+    });
+    controller.recenterReportedLocation?.();
+    expect(followListener).toHaveBeenLastCalledWith(true);
   });
 
   it('reports a map that loaded before the consumer registered its listener', async () => {

@@ -8,6 +8,7 @@ import type {
 
 export interface MapPoint {
   availability?: 'active' | 'ended' | 'upcoming';
+  draggable?: boolean;
   id: string;
   label: string;
   latitude: number;
@@ -20,6 +21,11 @@ export interface MapCoordinate {
   latitude: number;
   longitude: number;
 }
+
+export type MapBounds = readonly [
+  southWest: readonly [longitude: number, latitude: number],
+  northEast: readonly [longitude: number, latitude: number],
+];
 
 export type MapboxLightPreset = 'dawn' | 'day' | 'dusk' | 'night';
 
@@ -72,6 +78,8 @@ export interface MapConfiguration {
   bearing: number;
   campusLayer?: CampusLayerConfiguration;
   center: readonly [longitude: number, latitude: number];
+  initialBounds?: MapBounds;
+  initialBoundsPadding?: number;
   pitch: number;
   standardConfig: MapboxStandardConfiguration;
   styleUrl: string;
@@ -79,6 +87,7 @@ export interface MapConfiguration {
 }
 
 export interface MapController {
+  focusPoint: (point: MapPoint) => boolean;
   onError: (listener: () => void) => void;
   onFatalError?: (listener: () => void) => void;
   onLoad: (listener: () => void) => void;
@@ -117,6 +126,7 @@ const EVENT_RADIUS_FILL_LAYER_ID = 'wits-selected-event-radius-fill';
 const EVENT_RADIUS_LINE_LAYER_ID = 'wits-selected-event-radius-line';
 const EARTH_RADIUS_METRES = 6_371_008.8;
 const FOLLOW_MOVEMENT_METRES = 5;
+const EVENT_FOCUS_ZOOM = 17;
 const PLAYER_FOCUS_ZOOM = 17;
 
 export function createGeodesicCircle(
@@ -374,6 +384,7 @@ function createController(
   map: MapboxMap,
   renderPoints: (points: readonly MapPoint[]) => void,
   markerInteraction: {
+    coordinateSelectionListener: ((coordinate: MapCoordinate) => void) | null;
     listener: ((pointId: string) => void) | null;
     selectedPointId: string | null;
   },
@@ -387,11 +398,8 @@ function createController(
   let following = false;
   let hasReceivedFirstFix = false;
   let lastFollowedLocation: MapCoordinate | null = null;
-  let coordinateSelectionListener:
-    ((coordinate: MapCoordinate) => void) | null = null;
-
   const handleCoordinateSelection = (event: MapMouseEvent): void => {
-    coordinateSelectionListener?.({
+    markerInteraction.coordinateSelectionListener?.({
       latitude: event.lngLat.lat,
       longitude: event.lngLat.lng,
     });
@@ -433,6 +441,20 @@ function createController(
     });
     lastFollowedLocation = reportedLocation;
     setFollowing(true);
+    return true;
+  };
+
+  const focusPoint = (point: MapPoint): boolean => {
+    if (!Number.isFinite(point.latitude) || !Number.isFinite(point.longitude)) {
+      return false;
+    }
+
+    setFollowing(false);
+    map.easeTo({
+      center: [point.longitude, point.latitude],
+      duration: 650,
+      zoom: Math.max(map.getZoom(), EVENT_FOCUS_ZOOM),
+    });
     return true;
   };
 
@@ -499,6 +521,7 @@ function createController(
   map.on('dragstart', handleDeliberatePan);
 
   return {
+    focusPoint,
     onError(listener) {
       map.on('error', listener);
     },
@@ -514,7 +537,7 @@ function createController(
       map.once('load', listener);
     },
     remove() {
-      coordinateSelectionListener = null;
+      markerInteraction.coordinateSelectionListener = null;
       followStateListener = null;
       markerInteraction.listener = null;
       map.off('click', handleCoordinateSelection);
@@ -528,7 +551,7 @@ function createController(
     },
     setCoordinateSelectionListener(listener) {
       map.off('click', handleCoordinateSelection);
-      coordinateSelectionListener = listener;
+      markerInteraction.coordinateSelectionListener = listener;
 
       if (listener !== null) {
         map.on('click', handleCoordinateSelection);
@@ -577,11 +600,25 @@ export const createMapboxMap: MapFactory = async (
     throw new Error('Map creation was cancelled.');
   }
 
+  const initialCamera = configuration.initialBounds
+    ? {
+        bounds: configuration.initialBounds.map((coordinate) => [
+          coordinate[0],
+          coordinate[1],
+        ]) as [[number, number], [number, number]],
+        fitBoundsOptions: {
+          padding: configuration.initialBoundsPadding ?? 24,
+        },
+      }
+    : {
+        center: [...configuration.center] as [number, number],
+        zoom: configuration.zoom,
+      };
+
   const map = new mapboxgl.Map({
     accessToken: configuration.accessToken,
     attributionControl: false,
     bearing: configuration.bearing,
-    center: [...configuration.center],
     config: {
       basemap: configuration.standardConfig,
     },
@@ -590,7 +627,7 @@ export const createMapboxMap: MapFactory = async (
     pitch: configuration.pitch,
     respectPrefersReducedMotion: true,
     style: configuration.styleUrl,
-    zoom: configuration.zoom,
+    ...initialCamera,
   });
 
   map.addControl(
@@ -617,12 +654,18 @@ export const createMapboxMap: MapFactory = async (
   }
 
   const markerInteraction = {
+    coordinateSelectionListener: null as
+      ((coordinate: MapCoordinate) => void) | null,
     listener: null as ((pointId: string) => void) | null,
     selectedPointId: null as string | null,
   };
   const markerRecords = new Map<
     string,
-    { button: HTMLButtonElement; marker: MapboxMarker }
+    {
+      button: HTMLButtonElement;
+      handleDragEnd: () => void;
+      marker: MapboxMarker;
+    }
   >();
   const availabilityLabels = {
     active: 'available now',
@@ -635,6 +678,7 @@ export const createMapboxMap: MapFactory = async (
 
     for (const [pointId, record] of markerRecords) {
       if (!pointIds.has(pointId)) {
+        record.marker.off('dragend', record.handleDragEnd);
         record.marker.remove();
         markerRecords.delete(pointId);
       }
@@ -654,22 +698,36 @@ export const createMapboxMap: MapFactory = async (
         markerGlyph.className = 'event-marker__glyph';
         markerGlyph.textContent = '✦';
         markerBody.append(markerGlyph);
-        button.append(markerBody);
+        const markerLabel = document.createElement('span');
+        markerLabel.className = 'event-marker__label';
+        markerLabel.setAttribute('aria-hidden', 'true');
+        markerLabel.textContent = point.label;
+        button.append(markerBody, markerLabel);
         button.addEventListener('click', (event) => {
           event.stopPropagation();
           markerInteraction.listener?.(point.id);
         });
 
-        const marker = new mapboxgl.Marker({
+        const marker: MapboxMarker = new mapboxgl.Marker({
           anchor: 'center',
+          draggable: point.draggable === true,
           element: button,
         })
           .setLngLat([point.longitude, point.latitude])
           .addTo(map);
-        record = { button, marker };
+        const handleDragEnd = (): void => {
+          const coordinate = marker.getLngLat();
+          markerInteraction.coordinateSelectionListener?.({
+            latitude: coordinate.lat,
+            longitude: coordinate.lng,
+          });
+        };
+        marker.on('dragend', handleDragEnd);
+        record = { button, handleDragEnd, marker };
         markerRecords.set(point.id, record);
       } else {
         record.marker.setLngLat([point.longitude, point.latitude]);
+        record.marker.setDraggable(point.draggable === true);
       }
 
       const availability = point.availability ?? 'active';
@@ -678,16 +736,23 @@ export const createMapboxMap: MapFactory = async (
         'event-marker',
         `event-marker--${availability}`,
         selected ? 'event-marker--selected' : '',
+        point.draggable ? 'event-marker--draggable' : '',
         point.reachable ? 'event-marker--reachable' : '',
       ]
         .filter(Boolean)
         .join(' ');
       record.button.setAttribute(
         'aria-label',
-        `Select ${point.label}, ${availabilityLabels[availability]}${point.reachable ? ', in range' : ''}`,
+        point.draggable
+          ? `Focus ${point.label}. Drag the marker to adjust it, or use the coordinate fields for keyboard entry.`
+          : `Select ${point.label}, ${availabilityLabels[availability]}${point.reachable ? ', in range' : ''}`,
       );
       record.button.setAttribute('aria-pressed', String(selected));
       record.button.title = point.label;
+      const markerLabel = record.button.querySelector('.event-marker__label');
+      if (markerLabel !== null) {
+        markerLabel.textContent = point.label;
+      }
     }
   };
 
@@ -727,7 +792,7 @@ export const createMapboxMap: MapFactory = async (
         id: EVENT_RADIUS_FILL_LAYER_ID,
         paint: {
           'fill-color': '#2a6bff',
-          'fill-opacity': 0.15,
+          'fill-opacity': 0.2,
         },
         slot: 'middle',
         source: EVENT_RADIUS_SOURCE_ID,
@@ -742,7 +807,7 @@ export const createMapboxMap: MapFactory = async (
           'line-color': '#d4af37',
           'line-emissive-strength': 0.75,
           'line-opacity': 0.9,
-          'line-width': 2,
+          'line-width': 2.5,
         },
         slot: 'middle',
         source: EVENT_RADIUS_SOURCE_ID,

@@ -72,13 +72,39 @@ export interface AppliedMatchEffect {
   targetSide: BattleSide;
 }
 
+export interface ExpiredMatchEffect {
+  damageMultiplier: number | null;
+  effectId: string;
+  targetCreatureId: string;
+  targetSide: BattleSide;
+}
+
 export interface MatchActionResult {
   action: CpuMatchAction;
   defeatedCreatureId: string | null;
   effects: AppliedMatchEffect[];
+  expiredEffects: ExpiredMatchEffect[];
   side: BattleSide;
   turnEnded: boolean;
   winner: BattleSide | null;
+}
+
+export type BattleLogEventKind =
+  'action' | 'defeat' | 'effect' | 'effect_expired' | 'result' | 'turn';
+
+export interface BattleLogEvent {
+  id: string;
+  kind: BattleLogEventKind;
+  message: string;
+  sequence: number;
+  side: BattleSide | null;
+}
+
+export interface BattleLogGroup {
+  events: BattleLogEvent[];
+  id: string;
+  label: string;
+  turnNumber: number;
 }
 
 export interface CpuMatchState {
@@ -106,6 +132,7 @@ export interface CpuMatchState {
 }
 
 export interface CpuMatch {
+  battleLog: BattleLogGroup[];
   completedAt: string | null;
   lastAction: MatchActionResult | null;
   matchId: string;
@@ -188,6 +215,7 @@ interface SubmitActionOptions extends GetMatchOptions {
 }
 
 const matchKeys = [
+  'battleLog',
   'completedAt',
   'lastAction',
   'matchId',
@@ -229,6 +257,7 @@ const resultKeys = [
   'action',
   'defeatedCreatureId',
   'effects',
+  'expiredEffects',
   'side',
   'turnEnded',
   'winner',
@@ -526,6 +555,7 @@ function parseMatch(payload: unknown): CpuMatch {
   }
 
   const state = parseState(payload.state);
+  const battleLog = parseBattleLog(payload.battleLog);
   const lastAction =
     payload.lastAction === null ? null : parseActionResult(payload.lastAction);
 
@@ -544,6 +574,7 @@ function parseMatch(payload: unknown): CpuMatch {
   }
 
   return {
+    battleLog,
     completedAt: payload.completedAt,
     lastAction,
     matchId: payload.matchId,
@@ -807,6 +838,7 @@ function parseActionResult(value: unknown): MatchActionResult {
     !hasExactKeys(value, resultKeys) ||
     !isSide(value.side) ||
     !Array.isArray(value.effects) ||
+    !Array.isArray(value.expiredEffects) ||
     !isNullableUuid(value.defeatedCreatureId) ||
     !isNullableSide(value.winner) ||
     typeof value.turnEnded !== 'boolean'
@@ -817,10 +849,124 @@ function parseActionResult(value: unknown): MatchActionResult {
     action: parseAction(value.action),
     defeatedCreatureId: value.defeatedCreatureId,
     effects: value.effects.map(parseEffect),
+    expiredEffects: value.expiredEffects.map(parseExpiredEffect),
     side: value.side,
     turnEnded: value.turnEnded,
     winner: value.winner,
   };
+}
+
+function parseExpiredEffect(value: unknown): ExpiredMatchEffect {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      'damageMultiplier',
+      'effectId',
+      'targetCreatureId',
+      'targetSide',
+    ]) ||
+    (value.damageMultiplier !== null &&
+      (!Number.isFinite(value.damageMultiplier) ||
+        Number(value.damageMultiplier) < 0)) ||
+    !isUuid(value.effectId) ||
+    !isUuid(value.targetCreatureId) ||
+    !isSide(value.targetSide)
+  ) {
+    throw new MatchApiError('unavailable');
+  }
+
+  return {
+    damageMultiplier:
+      value.damageMultiplier === null ? null : Number(value.damageMultiplier),
+    effectId: value.effectId,
+    targetCreatureId: value.targetCreatureId,
+    targetSide: value.targetSide,
+  };
+}
+
+function parseBattleLog(value: unknown): BattleLogGroup[] {
+  if (!Array.isArray(value)) {
+    throw new MatchApiError('unavailable');
+  }
+
+  const groups = value.map(parseBattleLogGroup);
+  const groupIds = new Set<string>();
+  const eventIds = new Set<string>();
+  let previousTurn = -1;
+  let previousSequence = 0;
+
+  for (const group of groups) {
+    if (groupIds.has(group.id) || group.turnNumber <= previousTurn) {
+      throw new MatchApiError('unavailable');
+    }
+    groupIds.add(group.id);
+    previousTurn = group.turnNumber;
+
+    for (const event of group.events) {
+      if (eventIds.has(event.id) || event.sequence < previousSequence) {
+        throw new MatchApiError('unavailable');
+      }
+      eventIds.add(event.id);
+      previousSequence = event.sequence;
+    }
+  }
+
+  return groups;
+}
+
+function parseBattleLogGroup(value: unknown): BattleLogGroup {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ['events', 'id', 'label', 'turnNumber']) ||
+    typeof value.id !== 'string' ||
+    typeof value.label !== 'string' ||
+    !isNonNegativeInteger(value.turnNumber) ||
+    !Array.isArray(value.events) ||
+    value.events.length === 0 ||
+    value.id !==
+      (value.turnNumber === 0 ? 'opening' : `turn-${value.turnNumber}`) ||
+    value.label !==
+      (value.turnNumber === 0 ? 'Opening' : `Turn ${value.turnNumber}`)
+  ) {
+    throw new MatchApiError('unavailable');
+  }
+
+  return {
+    events: value.events.map(parseBattleLogEvent),
+    id: value.id,
+    label: value.label,
+    turnNumber: value.turnNumber,
+  };
+}
+
+function parseBattleLogEvent(value: unknown): BattleLogEvent {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ['id', 'kind', 'message', 'sequence', 'side']) ||
+    typeof value.id !== 'string' ||
+    value.id.trim() === '' ||
+    !isBattleLogEventKind(value.kind) ||
+    typeof value.message !== 'string' ||
+    value.message.trim() === '' ||
+    !Number.isInteger(value.sequence) ||
+    Number(value.sequence) < 1 ||
+    !isNullableSide(value.side)
+  ) {
+    throw new MatchApiError('unavailable');
+  }
+
+  return value as unknown as BattleLogEvent;
+}
+
+function isBattleLogEventKind(value: unknown): value is BattleLogEventKind {
+  return [
+    'action',
+    'defeat',
+    'effect',
+    'effect_expired',
+    'result',
+    'turn',
+  ].includes(String(value));
 }
 
 function parseEffect(value: unknown): AppliedMatchEffect {

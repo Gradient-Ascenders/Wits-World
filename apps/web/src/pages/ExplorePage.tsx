@@ -556,6 +556,20 @@ export default function ExplorePage({
     [clearEligibilityTimer, queueEligibility],
   );
 
+  const clearSelectedEvent = useCallback((): void => {
+    selectedEventIdRef.current = null;
+    setSelectedEventId(null);
+    clearEligibilityTimer();
+    pendingEligibilityRef.current = null;
+    if (eligibilityRequest.current !== null) {
+      eligibilityRequest.current.abort();
+      eligibilityRequest.current = null;
+      setCheckingEventId(null);
+    }
+    lastEligibilityEventIdRef.current = null;
+    rejectedLocationClaimRef.current = null;
+  }, [clearEligibilityTimer]);
+
   const retryEligibility = useCallback(
     (eventId: string): void => {
       const claim = latestClaimRef.current;
@@ -709,6 +723,7 @@ export default function ExplorePage({
       locationState={locationState}
       mapConfiguration={mapConfiguration}
       mapFactory={mapFactory}
+      onClearEventSelection={clearSelectedEvent}
       onEnableLocation={startLocationWatch}
       onRetry={() => setAttempt((current) => current + 1)}
       onRetryEligibility={retryEligibility}

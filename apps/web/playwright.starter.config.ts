@@ -11,7 +11,8 @@ export default defineConfig({
   outputDir: 'playwright/test-results/starter',
   reporter: 'line',
   testDir: './playwright',
-  testMatch: /starter-selection\.visual\.spec\.ts/,
+  testMatch:
+    /(collection-gallery|starter-selection|deck-overview)\.visual\.spec\.ts/,
   timeout: 60_000,
   use: {
     ...devices['Desktop Chrome'],

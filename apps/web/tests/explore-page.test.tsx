@@ -52,6 +52,7 @@ function createAuthValue(): Auth0ContextInterface {
 
 function createMapController(): MapController {
   return {
+    focusPoint: vi.fn(() => true),
     onError: vi.fn(),
     onLoad(listener) {
       listener();

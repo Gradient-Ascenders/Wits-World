@@ -143,10 +143,18 @@ export interface AppliedEffect {
   readonly damageMultiplier: number | null;
 }
 
+export interface ExpiredEffect {
+  readonly effectId: string;
+  readonly targetSide: BattleSide;
+  readonly targetCreatureId: string;
+  readonly damageMultiplier: number | null;
+}
+
 export interface BattleActionResult {
   readonly side: BattleSide;
   readonly action: BattleAction;
   readonly effects: readonly AppliedEffect[];
+  readonly expiredEffects: readonly ExpiredEffect[];
   readonly defeatedCreatureId: string | null;
   readonly winner: BattleSide | null;
   readonly turnEnded: boolean;
