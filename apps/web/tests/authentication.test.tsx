@@ -264,6 +264,22 @@ describe('player authentication', () => {
     });
   });
 
+  it('protects the progression profile route and returns there after sign-in', async () => {
+    const user = userEvent.setup();
+    const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
+
+    renderRoute('/profile', createAuthValue({ loginWithRedirect }));
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Sign in to view your progression profile',
+      }),
+    );
+    expect(loginWithRedirect).toHaveBeenCalledWith({
+      appState: { returnTo: '/profile' },
+    });
+  });
+
   it('shows a safe recoverable message for an authentication error', async () => {
     const user = userEvent.setup();
     const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
@@ -386,7 +402,7 @@ describe('player authentication', () => {
         within(playerNavigation)
           .getAllByRole('link')
           .map((link) => link.textContent),
-      ).toEqual(['Explore', 'Collection', 'Decks', 'Battles']);
+      ).toEqual(['Explore', 'Collection', 'Decks', 'Battles', 'Profile']);
       for (const link of within(playerNavigation).getAllByRole('link')) {
         expect(link.querySelector('.primary-navigation__icon')).toHaveAttribute(
           'aria-hidden',
@@ -430,6 +446,7 @@ describe('player authentication', () => {
       path: '/challenge-attempts/31000000-0000-4000-8000-000000000001',
     },
     { activeLabel: 'Battles', path: '/matches/history' },
+    { activeLabel: 'Profile', path: '/profile' },
   ])(
     'keeps $activeLabel active on the grouped $path route',
     async ({ activeLabel, path }) => {

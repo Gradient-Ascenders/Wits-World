@@ -20,6 +20,7 @@ export function AccountControl() {
   const { state: currentPlayer } = useCurrentPlayer();
   const [isProtectedExploreRoute] = useRoute('/explore');
   const [isProtectedCollectionRoute] = useRoute('/collection');
+  const [isProtectedProfileRoute] = useRoute('/profile');
   const [isProtectedAuthorRoute] = useRoute('/author/*?');
 
   useEffect(() => {
@@ -101,6 +102,7 @@ export function AccountControl() {
     if (
       isProtectedExploreRoute ||
       isProtectedCollectionRoute ||
+      isProtectedProfileRoute ||
       isProtectedAuthorRoute
     ) {
       return null;
