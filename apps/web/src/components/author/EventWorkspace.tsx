@@ -1236,7 +1236,9 @@ function ChallengeWorkspace({
   const questionRequestRef = useRef<AbortController | null>(null);
   const operationRef = useRef<AbortController | null>(null);
   const initialRouteChallengeIdRef = useRef(
-    route.mode === 'questions' ? route.challengeId : undefined,
+    route.mode === 'questions' || route.mode === 'challenge'
+      ? route.challengeId
+      : undefined,
   );
   const selectedChallengeIdRef = useRef<string | null>(null);
   const challengeInteractionRef = useRef(0);
@@ -1291,11 +1293,12 @@ function ChallengeWorkspace({
         setChallenges(reconciled);
         setSelectedChallengeId((current) => {
           const nextId =
-            preferredChallengeId &&
-            reconciled.some(
-              (challenge) => challenge.challengeId === preferredChallengeId,
-            )
-              ? preferredChallengeId
+            preferredChallengeId !== undefined
+              ? reconciled.some(
+                  (challenge) => challenge.challengeId === preferredChallengeId,
+                )
+                ? preferredChallengeId
+                : null
               : current &&
                   reconciled.some(
                     (challenge) => challenge.challengeId === current,
@@ -1330,18 +1333,21 @@ function ChallengeWorkspace({
   }, [loadChallenges]);
 
   useEffect(() => {
+    const routeChallengeId =
+      route.mode === 'questions' || route.mode === 'challenge'
+        ? route.challengeId
+        : undefined;
     if (
-      route.mode !== 'questions' ||
-      !route.challengeId ||
-      route.challengeId === selectedChallengeId ||
+      !routeChallengeId ||
+      routeChallengeId === selectedChallengeId ||
       !challenges.some(
-        (challenge) => challenge.challengeId === route.challengeId,
+        (challenge) => challenge.challengeId === routeChallengeId,
       )
     )
       return;
     challengeInteractionRef.current += 1;
-    selectedChallengeIdRef.current = route.challengeId;
-    setSelectedChallengeId(route.challengeId);
+    selectedChallengeIdRef.current = routeChallengeId;
+    setSelectedChallengeId(routeChallengeId);
     setQuestions([]);
     setQuestionsState('loading');
     setQuestionsError(null);
@@ -1494,6 +1500,8 @@ function ChallengeWorkspace({
     setApiError(null);
     if (view === 'questions') {
       navigate(authorPaths.questions(event.eventId, challengeId));
+    } else if (route.mode === 'challenge') {
+      navigate(authorPaths.challenge(event.eventId, challengeId));
     }
     if (
       mutationCoordinator.isCollectionUncertain(

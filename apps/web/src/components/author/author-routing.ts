@@ -3,7 +3,13 @@ export type AuthorWorkspaceRoute =
   | { mode: 'new'; section: 'events' }
   | {
       eventId: string;
-      mode: 'challenge' | 'edit' | 'overview';
+      mode: 'edit' | 'overview';
+      section: 'events';
+    }
+  | {
+      challengeId?: string;
+      eventId: string;
+      mode: 'challenge';
       section: 'events';
     }
   | {
@@ -123,6 +129,9 @@ export function parseAuthorWorkspaceRoute(
         section: 'events',
       };
     }
+    if (segments.length === 4) {
+      return { challengeId, eventId, mode: 'challenge', section: 'events' };
+    }
   }
 
   return { eventId, mode: 'overview', section: 'events' };
@@ -146,6 +155,8 @@ export const authorPaths = {
     `${AUTHOR_ROOT}/events/${encodeURIComponent(eventId)}/edit`,
   eventChallenge: (eventId: string) =>
     `${AUTHOR_ROOT}/events/${encodeURIComponent(eventId)}/challenge`,
+  challenge: (eventId: string, challengeId: string) =>
+    `${AUTHOR_ROOT}/events/${encodeURIComponent(eventId)}/challenges/${encodeURIComponent(challengeId)}`,
   eventQuestions: (eventId: string) =>
     `${AUTHOR_ROOT}/events/${encodeURIComponent(eventId)}/questions`,
   questions: (eventId: string, challengeId: string) =>

@@ -231,6 +231,83 @@ describe('Basic author console', () => {
     ).toBe(true);
   });
 
+  it('opens the exact queued challenge when an event has multiple challenges', async () => {
+    const user = userEvent.setup();
+    const queuedChallengeId = '20000000-0000-4000-8000-000000000002';
+    const queuedChallenge = challengeFixture({
+      challengeId: queuedChallengeId,
+      status: 'in_review',
+      submittedAt: '2026-08-29T08:00:00.000Z',
+      submittedBy: '90000000-0000-4000-8000-000000000002',
+      version: 2,
+    });
+    installAuthorApi({
+      challenges: [challengeFixture(), queuedChallenge],
+      handleRequest: ({ method, path }) => {
+        if (path === '/author/review-queue' && method === 'GET')
+          return jsonResponse({
+            items: [
+              {
+                canReview: true,
+                challengeId: null,
+                entityId: queuedChallengeId,
+                entityType: 'challenge',
+                eventId,
+                label: 'Multiple-choice challenge',
+                status: 'in_review',
+                submittedAt: queuedChallenge.submittedAt,
+                submittedBy: queuedChallenge.submittedBy,
+                submittedByName: 'Other Author',
+                version: queuedChallenge.version,
+              },
+            ],
+            page: 1,
+            pageSize: 20,
+            requestId: 'request-review-queue',
+            totalItems: 1,
+            totalPages: 1,
+          });
+        if (
+          path === `/author/challenges/${queuedChallengeId}/questions` &&
+          method === 'GET'
+        )
+          return jsonResponse({
+            questions: [],
+            requestId: 'request-queued-challenge-questions',
+          });
+        return undefined;
+      },
+    });
+    renderAuthorRoute(authorPaths.review);
+
+    const reviewLink = await screen.findByRole('link', {
+      name: 'Review challenge',
+    });
+    expect(reviewLink).toHaveAttribute(
+      'href',
+      authorPaths.challenge(eventId, queuedChallengeId),
+    );
+    await user.click(reviewLink);
+
+    expect(await screen.findByLabelText('Challenge')).toHaveValue(
+      queuedChallengeId,
+    );
+    const selectedChallenge = screen
+      .getByText('Selected challenge')
+      .closest('section');
+    expect(selectedChallenge).not.toBeNull();
+    expect(
+      await within(selectedChallenge!).findByRole('button', {
+        name: 'Approve challenge',
+      }),
+    ).toBeEnabled();
+    expect(
+      within(selectedChallenge!).queryByRole('button', {
+        name: 'Submit for review',
+      }),
+    ).not.toBeInTheDocument();
+  });
+
   it('shows a recoverable authorization state when the current role cannot be resolved', async () => {
     const fetchMock = vi.fn(async () =>
       problemResponse(401, 'UNAUTHORIZED', 'The access token is not valid.'),
