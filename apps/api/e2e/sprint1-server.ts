@@ -7,6 +7,7 @@ import {
 import { createDatabasePool } from '../src/database/connection.js';
 import { createEventDiscoveryService } from '../src/events/event-discovery.js';
 import { createEventEligibilityService } from '../src/events/event-eligibility.js';
+import { createMovementEvidenceService } from '../src/events/movement-evidence.js';
 import { createPlayerIdentityService } from '../src/players/player-identity.js';
 import { createSprint1E2eAccessTokenVerifier } from './sprint1-auth.js';
 
@@ -27,6 +28,10 @@ async function startServer(): Promise<void> {
   const database = createDatabasePool(databaseConfig);
   const clock = () => new Date(SPRINT1_E2E_NOW);
   const playerIdentityService = createPlayerIdentityService(database);
+  const movementEvidenceService = createMovementEvidenceService(database, {
+    // Historical deterministic runner only; production has no default.
+    maxPlausibleJourneySpeedMetresPerSecond: 1_000,
+  });
 
   const app = await buildApp({
     accessTokenVerifier: createSprint1E2eAccessTokenVerifier(),
@@ -37,6 +42,7 @@ async function startServer(): Promise<void> {
       clock,
       discovery: createEventDiscoveryService(database, { clock }),
       eligibility: createEventEligibilityService(database, { clock }),
+      movementEvidence: movementEvidenceService,
     },
     playerIdentityService,
     playerNameSetupService: playerIdentityService,

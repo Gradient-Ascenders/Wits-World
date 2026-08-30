@@ -217,10 +217,11 @@ The current repository implements the core Basic gameplay rather than the
 complete Basic product. It still records these narrower gates:
 
 - the seeded `75 m` event radius, two-minute claim freshness threshold, and
-  accuracy-envelope handling remain provisional pending further campus field
-  evidence;
-- the final location-data retention policy remains open, although the current
-  implementation does not persist exact eligibility or challenge-start claims;
+  accuracy-envelope and maximum-journey-speed thresholds remain provisional
+  pending further campus field evidence;
+- the final location-data retention policy remains open; the current
+  implementation stores active-use eligibility and challenge-start evidence
+  under a provisional 24-hour expiry and deletes its journey audit with it;
 - account-deletion persistence and retention are implemented; the player
   profile/account page, password reset, and deletion UI remain mandatory issue
   `#161` work;

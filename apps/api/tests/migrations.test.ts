@@ -47,7 +47,8 @@ describe('migration file loading', () => {
         name.startsWith('0028_') ||
         name.startsWith('0029_') ||
         name.startsWith('0030_') ||
-        name.startsWith('0031_'),
+        name.startsWith('0031_') ||
+        name.startsWith('0032_'),
     );
 
     expect(
@@ -97,6 +98,10 @@ describe('migration file loading', () => {
       {
         checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         name: '0031_create_movement_evidence.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0032_add_movement_eligibility_decisions.sql',
       },
     ]);
   });

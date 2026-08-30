@@ -115,6 +115,10 @@ function toEligibilityState(
     return { status: 'location-uncertain' };
   }
 
+  if (result.reason === 'journey_too_fast') {
+    return { status: 'journey-too-fast' };
+  }
+
   return { status: 'location-stale' };
 }
 
@@ -271,7 +275,10 @@ export default function ExplorePage({
 
         if (mounted.current && !controller.signal.aborted) {
           const nextState = toEligibilityState(result);
-          if (nextState.status === 'location-stale') {
+          if (
+            nextState.status === 'location-stale' ||
+            nextState.status === 'journey-too-fast'
+          ) {
             rejectedLocationClaimRef.current = { claim, eventId };
           } else if (rejectedLocationClaimRef.current?.eventId === eventId) {
             rejectedLocationClaimRef.current = null;

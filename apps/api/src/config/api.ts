@@ -26,6 +26,7 @@ export interface ApiConfig {
   accountDeletionRetryIntervalMs: number;
   movementEvidenceCleanupIntervalMs: number;
   movementEvidenceRetentionMs: number;
+  maxPlausibleJourneySpeedMetresPerSecond: number;
   rateLimitMaxRequests: number;
   rateLimitWindowMs: number;
 }
@@ -40,8 +41,15 @@ export function buildApiConfig({
   const host = requireEnvironmentValue(env, 'HOST');
   const portValue = requireEnvironmentValue(env, 'PORT');
   const logLevelValue = requireEnvironmentValue(env, 'LOG_LEVEL');
+  const maxPlausibleJourneySpeedValue = requireEnvironmentValue(
+    env,
+    'MAX_PLAUSIBLE_JOURNEY_SPEED_METRES_PER_SECOND',
+  );
 
   const port = Number(portValue);
+  const maxPlausibleJourneySpeedMetresPerSecond = Number(
+    maxPlausibleJourneySpeedValue,
+  );
 
   const accountDeletionRetryIntervalValue =
     env.ACCOUNT_DELETION_RETRY_INTERVAL_MS?.trim() ?? '60000';
@@ -66,6 +74,15 @@ export function buildApiConfig({
 
   if (!isApiLogLevel(logLevelValue)) {
     throw new Error(`LOG_LEVEL must be one of: ${apiLogLevels.join(', ')}.`);
+  }
+
+  if (
+    !Number.isFinite(maxPlausibleJourneySpeedMetresPerSecond) ||
+    maxPlausibleJourneySpeedMetresPerSecond <= 0
+  ) {
+    throw new Error(
+      'MAX_PLAUSIBLE_JOURNEY_SPEED_METRES_PER_SECOND must be a finite number greater than zero.',
+    );
   }
 
   if (
@@ -115,6 +132,7 @@ export function buildApiConfig({
     accountDeletionRetryIntervalMs,
     movementEvidenceCleanupIntervalMs,
     movementEvidenceRetentionMs,
+    maxPlausibleJourneySpeedMetresPerSecond,
     rateLimitMaxRequests,
     rateLimitWindowMs,
   };

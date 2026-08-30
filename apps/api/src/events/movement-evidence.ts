@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 import type pg from 'pg';
 
+import { evaluateJourney as evaluateJourneyPlausibility } from './journey-evaluation.js';
+
 const DEFAULT_RETENTION_MS = 24 * 60 * 60 * 1000;
 const MIN_RETENTION_MS = 1_000;
 
@@ -20,14 +22,42 @@ export interface MovementEvidenceInput {
   receivedAt: Date;
 }
 
+export type MovementEvidenceReachabilityStatus =
+  'reachable' | 'unreachable' | 'retry';
+
+export type MovementJourneyOutcome =
+  'not_evaluated' | 'baseline' | 'same_event' | 'plausible' | 'too_fast';
+
+export interface MovementJourneyDecision {
+  outcome: MovementJourneyOutcome;
+}
+
+export interface MovementEvidenceTransactionClient {
+  query<T extends pg.QueryResultRow = pg.QueryResultRow>(
+    statement: string,
+    values?: unknown[],
+  ): Promise<{ rows: T[] }>;
+}
+
 export interface MovementEvidenceService {
   record(input: MovementEvidenceInput): Promise<void>;
+  evaluateJourney(
+    input: MovementEvidenceInput,
+    reachabilityStatus: MovementEvidenceReachabilityStatus,
+  ): Promise<MovementJourneyDecision>;
+  evaluateJourneyWithinTransaction(
+    client: MovementEvidenceTransactionClient,
+    input: MovementEvidenceInput,
+    reachabilityStatus: MovementEvidenceReachabilityStatus,
+  ): Promise<MovementJourneyDecision>;
   purgeExpired(expiredAt?: Date): Promise<number>;
 }
 
 interface CreateMovementEvidenceServiceOptions {
   clock?: () => Date;
   createId?: () => string;
+  createDecisionId?: () => string;
+  maxPlausibleJourneySpeedMetresPerSecond?: number;
   retentionMs?: number;
 }
 
@@ -37,6 +67,20 @@ interface LatestEvidenceRow extends pg.QueryResultRow {
   event_id: string;
   latitude: number;
   longitude: number;
+}
+
+interface JourneyEvidenceRow extends LatestEvidenceRow {
+  evidence_id: string;
+  expires_at: Date;
+  received_at: Date;
+}
+
+interface ExistingDecisionRow extends pg.QueryResultRow {
+  journey_outcome: MovementJourneyOutcome;
+}
+
+interface DistanceRow extends pg.QueryResultRow {
+  distance_metres: number;
 }
 
 export class InvalidMovementEvidenceError extends RangeError {
@@ -74,10 +118,47 @@ export function createMovementEvidenceService(
   {
     clock = () => new Date(),
     createId = randomUUID,
+    createDecisionId = randomUUID,
+    maxPlausibleJourneySpeedMetresPerSecond,
     retentionMs = DEFAULT_RETENTION_MS,
   }: CreateMovementEvidenceServiceOptions = {},
 ): MovementEvidenceService {
   validateRetention(retentionMs);
+
+  if (maxPlausibleJourneySpeedMetresPerSecond !== undefined) {
+    validateMaxPlausibleSpeed(maxPlausibleJourneySpeedMetresPerSecond);
+  }
+
+  const evaluateJourneyWithinTransaction = async (
+    client: MovementEvidenceTransactionClient,
+    input: MovementEvidenceInput,
+    reachabilityStatus: MovementEvidenceReachabilityStatus,
+  ): Promise<MovementJourneyDecision> => {
+    validateInput(input);
+    validateReachabilityStatus(reachabilityStatus);
+
+    if (maxPlausibleJourneySpeedMetresPerSecond === undefined) {
+      throw new InvalidMovementEvidenceError(
+        'Maximum plausible journey speed must be configured before movement journeys can be evaluated.',
+      );
+    }
+
+    try {
+      return await evaluateAndRecordJourney(client, input, reachabilityStatus, {
+        createDecisionId,
+        createEvidenceId: createId,
+        maxPlausibleSpeedMetresPerSecond:
+          maxPlausibleJourneySpeedMetresPerSecond,
+        retentionMs,
+      });
+    } catch (error) {
+      if (isExpectedMovementEvidenceError(error)) {
+        throw error;
+      }
+
+      throw new MovementEvidencePersistenceError();
+    }
+  };
 
   return {
     async record(input) {
@@ -208,6 +289,33 @@ export function createMovementEvidenceService(
       }
     },
 
+    async evaluateJourney(input, reachabilityStatus) {
+      const client = await database.connect();
+
+      try {
+        await client.query('begin');
+        const decision = await evaluateJourneyWithinTransaction(
+          client,
+          input,
+          reachabilityStatus,
+        );
+        await client.query('commit');
+        return decision;
+      } catch (error) {
+        await client.query('rollback');
+
+        if (isExpectedMovementEvidenceError(error)) {
+          throw error;
+        }
+
+        throw new MovementEvidencePersistenceError();
+      } finally {
+        client.release();
+      }
+    },
+
+    evaluateJourneyWithinTransaction,
+
     async purgeExpired(expiredAt = clock()) {
       if (!isValidDate(expiredAt)) {
         throw new InvalidMovementEvidenceError(
@@ -233,6 +341,256 @@ export function createMovementEvidenceService(
       }
     },
   };
+}
+
+interface EvaluateAndRecordJourneyOptions {
+  createDecisionId: () => string;
+  createEvidenceId: () => string;
+  maxPlausibleSpeedMetresPerSecond: number;
+  retentionMs: number;
+}
+
+async function evaluateAndRecordJourney(
+  client: MovementEvidenceTransactionClient,
+  input: MovementEvidenceInput,
+  reachabilityStatus: MovementEvidenceReachabilityStatus,
+  options: EvaluateAndRecordJourneyOptions,
+): Promise<MovementJourneyDecision> {
+  const context = await client.query<{ player_id: string }>(
+    `
+      select player.id::text as player_id
+        from public.players player
+       where player.id = $1::uuid
+         and player.lifecycle_status = 'active'
+         and exists (
+           select 1
+             from public.events event
+             cross join lateral public.resolve_event_availability(
+               event.id,
+               $3::timestamptz
+             ) effective
+            where event.id = $2::uuid
+              and effective.availability = 'active'
+         )
+       for update
+    `,
+    [input.playerId, input.eventId, input.receivedAt],
+  );
+
+  if (!context.rows[0]) {
+    throw new InvalidMovementEvidenceContextError();
+  }
+
+  const latest = await client.query<JourneyEvidenceRow>(
+    `
+      select id::text as evidence_id,
+             event_id::text,
+             latitude,
+             longitude,
+             accuracy_metres,
+             acquired_at,
+             received_at,
+             expires_at
+        from public.movement_evidence
+       where player_id = $1::uuid
+         and acquired_at = (
+           select max(existing.acquired_at)
+             from public.movement_evidence existing
+            where existing.player_id = $1::uuid
+         )
+       order by event_id
+    `,
+    [input.playerId],
+  );
+
+  const latestAcquiredAt = latest.rows[0]?.acquired_at.getTime();
+  let evidenceId: string | undefined;
+
+  if (latestAcquiredAt !== undefined) {
+    const incomingAcquiredAt = input.acquiredAt.getTime();
+
+    if (incomingAcquiredAt < latestAcquiredAt) {
+      throw new NonMonotonicMovementEvidenceError();
+    }
+
+    if (incomingAcquiredAt === latestAcquiredAt) {
+      const physicalSampleMatches = latest.rows.every(
+        (row) =>
+          row.latitude === input.latitude &&
+          row.longitude === input.longitude &&
+          row.accuracy_metres === input.accuracyMetres,
+      );
+
+      if (!physicalSampleMatches) {
+        throw new NonMonotonicMovementEvidenceError();
+      }
+
+      evidenceId = latest.rows.find(
+        (row) => row.event_id === input.eventId,
+      )?.evidence_id;
+    }
+  }
+
+  if (evidenceId !== undefined) {
+    const existingDecision = await client.query<ExistingDecisionRow>(
+      `
+        select journey_outcome
+          from public.movement_eligibility_decisions
+         where movement_evidence_id = $1::uuid
+      `,
+      [evidenceId],
+    );
+
+    if (existingDecision.rows[0]) {
+      return { outcome: existingDecision.rows[0].journey_outcome };
+    }
+  } else {
+    evidenceId = options.createEvidenceId();
+    const expiresAt = calculateExpiry(input.receivedAt, options.retentionMs);
+
+    await client.query(
+      `
+        insert into public.movement_evidence (
+          id,
+          player_id,
+          event_id,
+          latitude,
+          longitude,
+          accuracy_metres,
+          acquired_at,
+          received_at,
+          expires_at,
+          created_at
+        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $8)
+      `,
+      [
+        evidenceId,
+        input.playerId,
+        input.eventId,
+        input.latitude,
+        input.longitude,
+        input.accuracyMetres,
+        input.acquiredAt,
+        input.receivedAt,
+        expiresAt,
+      ],
+    );
+  }
+
+  let outcome: MovementJourneyOutcome;
+  let priorEvidenceId: string | null = null;
+  let distanceMetres: number | null = null;
+  let uncertaintyAdjustedDistanceMetres: number | null = null;
+  let elapsedMilliseconds: number | null = null;
+  let requiredSpeedMetresPerSecond: number | null = null;
+
+  if (reachabilityStatus !== 'reachable') {
+    outcome = 'not_evaluated';
+  } else {
+    const trustedAnchor = await client.query<JourneyEvidenceRow>(
+      `
+        select evidence.id::text as evidence_id,
+               evidence.event_id::text,
+               evidence.latitude,
+               evidence.longitude,
+               evidence.accuracy_metres,
+               evidence.acquired_at,
+               evidence.received_at,
+               evidence.expires_at
+          from public.movement_evidence evidence
+          join public.movement_eligibility_decisions decision
+            on decision.movement_evidence_id = evidence.id
+         where evidence.player_id = $1::uuid
+           and evidence.id <> $2::uuid
+           and evidence.expires_at > $3::timestamptz
+           and decision.reachability_status = 'reachable'
+           and decision.journey_outcome in (
+             'baseline',
+             'same_event',
+             'plausible'
+           )
+         order by evidence.received_at desc,
+                  evidence.acquired_at desc,
+                  evidence.id desc
+         limit 1
+      `,
+      [input.playerId, evidenceId, input.receivedAt],
+    );
+    const anchor = trustedAnchor.rows[0];
+
+    if (!anchor) {
+      outcome = 'baseline';
+    } else if (anchor.event_id === input.eventId) {
+      outcome = 'same_event';
+      priorEvidenceId = anchor.evidence_id;
+    } else {
+      priorEvidenceId = anchor.evidence_id;
+      const distance = await client.query<DistanceRow>(
+        `
+          select st_distance(
+                   st_setsrid(
+                     st_makepoint($1::double precision, $2::double precision),
+                     4326
+                   )::geography,
+                   st_setsrid(
+                     st_makepoint($3::double precision, $4::double precision),
+                     4326
+                   )::geography
+                 ) as distance_metres
+        `,
+        [anchor.longitude, anchor.latitude, input.longitude, input.latitude],
+      );
+      const journey = evaluateJourneyPlausibility({
+        distanceMetres: distance.rows[0]?.distance_metres ?? Number.NaN,
+        previousAccuracyMetres: anchor.accuracy_metres,
+        currentAccuracyMetres: input.accuracyMetres,
+        previousReceivedAt: anchor.received_at,
+        currentReceivedAt: input.receivedAt,
+        maxPlausibleSpeedMetresPerSecond:
+          options.maxPlausibleSpeedMetresPerSecond,
+      });
+
+      outcome = journey.outcome;
+      distanceMetres = journey.distanceMetres;
+      uncertaintyAdjustedDistanceMetres =
+        journey.uncertaintyAdjustedDistanceMetres;
+      elapsedMilliseconds = journey.elapsedMilliseconds;
+      requiredSpeedMetresPerSecond = journey.requiredSpeedMetresPerSecond;
+    }
+  }
+
+  await client.query(
+    `
+      insert into public.movement_eligibility_decisions (
+        id,
+        movement_evidence_id,
+        prior_movement_evidence_id,
+        reachability_status,
+        journey_outcome,
+        distance_metres,
+        uncertainty_adjusted_distance_metres,
+        elapsed_milliseconds,
+        required_speed_metres_per_second,
+        max_plausible_speed_metres_per_second,
+        created_at
+      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    `,
+    [
+      options.createDecisionId(),
+      evidenceId,
+      priorEvidenceId,
+      reachabilityStatus,
+      outcome,
+      distanceMetres,
+      uncertaintyAdjustedDistanceMetres,
+      elapsedMilliseconds,
+      requiredSpeedMetresPerSecond,
+      options.maxPlausibleSpeedMetresPerSecond,
+      input.receivedAt,
+    ],
+  );
+
+  return { outcome };
 }
 
 function validateInput(input: MovementEvidenceInput): void {
@@ -285,6 +643,37 @@ function validateRetention(retentionMs: number): void {
       `Movement evidence retention must be a safe integer between ${MIN_RETENTION_MS} and ${MAX_MOVEMENT_EVIDENCE_RETENTION_MS} milliseconds.`,
     );
   }
+}
+
+function validateMaxPlausibleSpeed(speedMetresPerSecond: number): void {
+  if (!Number.isFinite(speedMetresPerSecond) || speedMetresPerSecond <= 0) {
+    throw new InvalidMovementEvidenceError(
+      'Maximum plausible journey speed must be a finite number greater than zero.',
+    );
+  }
+}
+
+function validateReachabilityStatus(
+  status: MovementEvidenceReachabilityStatus,
+): void {
+  if (
+    status !== 'reachable' &&
+    status !== 'unreachable' &&
+    status !== 'retry'
+  ) {
+    throw new InvalidMovementEvidenceError(
+      'Movement evidence reachability status is invalid.',
+    );
+  }
+}
+
+function isExpectedMovementEvidenceError(error: unknown): boolean {
+  return (
+    error instanceof InvalidMovementEvidenceError ||
+    error instanceof InvalidMovementEvidenceContextError ||
+    error instanceof NonMonotonicMovementEvidenceError ||
+    error instanceof MovementEvidencePersistenceError
+  );
 }
 
 function calculateExpiry(receivedAt: Date, retentionMs: number): Date {

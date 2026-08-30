@@ -287,6 +287,7 @@ must set and review before enabling movement-evidence persistence:
 ```text
 MOVEMENT_EVIDENCE_RETENTION_MS
 MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS
+MAX_PLAUSIBLE_JOURNEY_SPEED_METRES_PER_SECOND
 ```
 
 The current defaults are a provisional 24-hour retention and a 60-second
@@ -296,7 +297,9 @@ Configuration rejects unsafe integers at startup. The cleanup interval cannot
 exceed Node's `2147483647` ms timer limit, and retention has a separate
 JavaScript `Date` representation guard rather than an invented business-policy
 maximum. Retention changes apply only to new rows; existing evidence keeps its
-stored `expires_at`.
+stored `expires_at`. The maximum-speed setting is required, has no default, and
+must be a finite number greater than zero. Configure the reviewed environment
+value before deploying the matching API or startup will fail closed.
 
 ### 7.1 Runtime configuration incident
 
@@ -1447,6 +1450,8 @@ Before considering a production release healthy:
 - [ ] `/health` returned HTTP 200.
 - [ ] `/api/v1/` returned HTTP 200 when smoke-tested.
 - [ ] `CORS_ALLOWED_ORIGIN` matches the exact production web origin.
+- [ ] `MAX_PLAUSIBLE_JOURNEY_SPEED_METRES_PER_SECOND` is set to the reviewed
+      environment value before the issue `#169` API starts.
 - [ ] No secrets appeared in workflow logs.
 
 ### Database
@@ -1454,6 +1459,8 @@ Before considering a production release healthy:
 - [ ] The database release target and exact database name were confirmed before any write.
 - [ ] The guarded database release procedure completed for the exact release commit.
 - [ ] PostGIS and migration verification passed.
+- [ ] Migration `0032_add_movement_eligibility_decisions.sql` was applied before
+      deploying the issue `#169` API.
 - [ ] Demonstration seeding was either separately approved and verified or deliberately skipped.
 - [ ] No database connection URL or credential appeared in evidence or logs.
 - [ ] The authenticated deployed event-discovery path returned the intended seeded event when seeding was approved.

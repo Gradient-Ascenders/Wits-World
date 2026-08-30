@@ -14,6 +14,7 @@ import {
   withDatabaseClient,
 } from '../src/database/connection.js';
 import { runMigrations } from '../src/database/migrations.js';
+import { createMovementEvidenceService } from '../src/events/movement-evidence.js';
 
 import {
   ChallengeAnswerLockedError,
@@ -113,6 +114,7 @@ describe.skipIf(!runIntegrationTests)(
 
       const service = createChallengeAttemptStartService(pool, {
         clock: () => STARTED_AT,
+        movementEvidenceService: createTestMovementEvidenceService(pool),
         randomIndex: () => 0,
       });
 
@@ -309,6 +311,7 @@ describe.skipIf(!runIntegrationTests)(
 
       const service = createChallengeAttemptStartService(pool, {
         clock: () => STARTED_AT,
+        movementEvidenceService: createTestMovementEvidenceService(pool),
         randomIndex: () => 0,
       });
 
@@ -374,11 +377,13 @@ describe.skipIf(!runIntegrationTests)(
 
       const firstService = createChallengeAttemptStartService(pool, {
         clock: () => STARTED_AT,
+        movementEvidenceService: createTestMovementEvidenceService(pool),
         randomIndex: () => 0,
       });
 
       const secondService = createChallengeAttemptStartService(pool, {
         clock: () => STARTED_AT,
+        movementEvidenceService: createTestMovementEvidenceService(pool),
         randomIndex: (upperExclusive) => upperExclusive - 1,
       });
 
@@ -1072,6 +1077,7 @@ async function createAttemptForPlayer(
 
   const service = createChallengeAttemptStartService(pool, {
     clock: () => STARTED_AT,
+    movementEvidenceService: createTestMovementEvidenceService(pool),
     randomIndex: () => 0,
   });
 
@@ -1085,6 +1091,15 @@ async function createAttemptForPlayer(
   }
 
   return result.attempt;
+}
+
+function createTestMovementEvidenceService(
+  pool: ReturnType<typeof createDatabasePool>,
+) {
+  return createMovementEvidenceService(pool, {
+    // Test-only permissive threshold; production has no default.
+    maxPlausibleJourneySpeedMetresPerSecond: 1_000,
+  });
 }
 
 async function submitNonFinalizingAnswer(

@@ -24,6 +24,7 @@ export type EventEligibilityState =
   | { status: 'checking' }
   | { status: 'event-unavailable' }
   | { status: 'idle' }
+  | { status: 'journey-too-fast' }
   | { status: 'locating' }
   | { status: 'location-denied' }
   | { status: 'location-stale' }
@@ -254,6 +255,7 @@ function EligibilityStatus({
   const canRetry =
     state.status === 'api-error' ||
     state.status === 'authorization-error' ||
+    state.status === 'journey-too-fast' ||
     state.status === 'location-stale' ||
     state.status === 'start-error';
 
@@ -298,6 +300,12 @@ function getEligibilityContent(
       return {
         detail: 'A newer reading is needed before Wits World can decide.',
         title: 'Reported location needs refreshing.',
+      };
+    case 'journey-too-fast':
+      return {
+        detail:
+          'This event cannot be confirmed from recent reported-location activity yet. Wait briefly, then try again with a fresh reading.',
+        title: 'Travel time needs another check.',
       };
     case 'unreachable':
       return {

@@ -19,7 +19,7 @@ import {
 interface EventRoutesOptions {
   discoveryService: EventDiscoveryService;
   eligibilityService: EventEligibilityService;
-  movementEvidenceService?: MovementEvidenceService;
+  movementEvidenceService: MovementEvidenceService;
   clock?: () => Date;
   maxLocationClaimAgeMs?: number;
 }
@@ -87,6 +87,12 @@ export const eventRoutes: FastifyPluginAsync<EventRoutesOptions> = async (
     maxLocationClaimAgeMs = PROVISIONAL_MAX_LOCATION_CLAIM_AGE_MS,
   },
 ) => {
+  if (!movementEvidenceService) {
+    throw new Error(
+      'Movement evidence service is required for event eligibility routes.',
+    );
+  }
+
   app.get(
     '/events',
     {
@@ -202,7 +208,7 @@ export const eventRoutes: FastifyPluginAsync<EventRoutesOptions> = async (
         operationId: 'evaluateEventEligibility',
         summary: 'Evaluate a player location claim for an event',
         description:
-          'Validates a browser location claim, delegates authoritative distance and radius evaluation to the server-side PostGIS service, and stores short-lived movement evidence only for this active player-requested operation.',
+          'Validates a browser location claim, delegates authoritative distance, radius, and recent-journey evaluation to server-side services, and stores short-lived movement evidence only for this active player-requested operation.',
         tags: ['Events'],
         security: [
           {
@@ -275,6 +281,7 @@ export const eventRoutes: FastifyPluginAsync<EventRoutesOptions> = async (
                   'location_accuracy',
                   'stale_location',
                   'future_acquisition_time',
+                  'journey_too_fast',
                   'not_started',
                   'ended',
                 ],
@@ -371,17 +378,17 @@ export const eventRoutes: FastifyPluginAsync<EventRoutesOptions> = async (
         throw error;
       }
 
-      if (movementEvidenceService) {
-        const player = request.player;
+      const player = request.player;
 
-        if (!player) {
-          throw new Error(
-            'Active player context was not set before movement evidence persistence.',
-          );
-        }
+      if (!player) {
+        throw new Error(
+          'Active player context was not set before movement evidence persistence.',
+        );
+      }
 
-        try {
-          await movementEvidenceService.record({
+      try {
+        const journeyDecision = await movementEvidenceService.evaluateJourney(
+          {
             playerId: player.id,
             eventId: result.eventId,
             latitude: request.body.latitude,
@@ -389,39 +396,50 @@ export const eventRoutes: FastifyPluginAsync<EventRoutesOptions> = async (
             accuracyMetres: request.body.accuracyMetres,
             acquiredAt: new Date(request.body.acquiredAt),
             receivedAt,
-          });
-        } catch (error) {
-          if (error instanceof NonMonotonicMovementEvidenceError) {
-            throw new ApiError({
-              statusCode: 409,
-              code: 'NON_MONOTONIC_MOVEMENT_EVIDENCE',
-              title: 'Movement evidence is out of order',
-              detail:
-                'Use a newly acquired location before checking eligibility again.',
-            });
-          }
+          },
+          reachability.status,
+        );
 
-          if (error instanceof InvalidMovementEvidenceContextError) {
-            throw new ApiError({
-              statusCode: 409,
-              code: 'MOVEMENT_EVIDENCE_CONTEXT_UNAVAILABLE',
-              title: 'Movement evidence context unavailable',
-              detail:
-                'The active player or event context changed before eligibility evidence could be stored.',
-            });
-          }
-
-          if (error instanceof InvalidMovementEvidenceError) {
-            throw new ApiError({
-              statusCode: 400,
-              code: 'INVALID_LOCATION_CLAIM',
-              title: 'Invalid location claim',
-              detail: error.message,
-            });
-          }
-
-          throw error;
+        if (journeyDecision.outcome === 'too_fast') {
+          return {
+            eventId: result.eventId,
+            status: 'retry' as const,
+            reachable: null,
+            reason: 'journey_too_fast' as const,
+            requestId: request.id,
+          };
         }
+      } catch (error) {
+        if (error instanceof NonMonotonicMovementEvidenceError) {
+          throw new ApiError({
+            statusCode: 409,
+            code: 'NON_MONOTONIC_MOVEMENT_EVIDENCE',
+            title: 'Movement evidence is out of order',
+            detail:
+              'Use a newly acquired location before checking eligibility again.',
+          });
+        }
+
+        if (error instanceof InvalidMovementEvidenceContextError) {
+          throw new ApiError({
+            statusCode: 409,
+            code: 'MOVEMENT_EVIDENCE_CONTEXT_UNAVAILABLE',
+            title: 'Movement evidence context unavailable',
+            detail:
+              'The active player or event context changed before eligibility evidence could be stored.',
+          });
+        }
+
+        if (error instanceof InvalidMovementEvidenceError) {
+          throw new ApiError({
+            statusCode: 400,
+            code: 'INVALID_LOCATION_CLAIM',
+            title: 'Invalid location claim',
+            detail: error.message,
+          });
+        }
+
+        throw error;
       }
 
       return {

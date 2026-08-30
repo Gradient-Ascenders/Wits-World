@@ -16,6 +16,11 @@ const CHALLENGE_ID = '30000000-0000-4000-8000-000000000001';
 const ATTEMPT_ID = '31000000-0000-4000-8000-000000000001';
 
 const startedAt = new Date('2026-09-01T10:00:00.000Z');
+const acceptingMovementEvidenceService = {
+  evaluateJourneyWithinTransaction: vi.fn(async () => ({
+    outcome: 'baseline' as const,
+  })),
+};
 
 describe('challenge attempt start service', () => {
   it('resumes an existing attempt without re-evaluating location or rerolling content', async () => {
@@ -25,6 +30,7 @@ describe('challenge attempt start service', () => {
 
     const service = createChallengeAttemptStartService(fixture.database, {
       clock: () => startedAt,
+      movementEvidenceService: acceptingMovementEvidenceService,
       randomIndex: () => 0,
     });
 
@@ -54,6 +60,7 @@ describe('challenge attempt start service', () => {
 
     const service = createChallengeAttemptStartService(fixture.database, {
       clock: () => startedAt,
+      movementEvidenceService: acceptingMovementEvidenceService,
       randomIndex: () => 0,
     });
 
@@ -80,6 +87,7 @@ describe('challenge attempt start service', () => {
 
     const service = createChallengeAttemptStartService(fixture.database, {
       clock: () => startedAt,
+      movementEvidenceService: acceptingMovementEvidenceService,
       randomIndex: () => 0,
     });
 
@@ -94,11 +102,47 @@ describe('challenge attempt start service', () => {
     expect(sql).not.toContain('insert into public.challenge_attempts');
   });
 
+  it('rejects a too-fast journey before challenge content is loaded', async () => {
+    const fixture = createDatabaseFixture();
+    const evaluateJourneyWithinTransaction = vi.fn().mockResolvedValue({
+      outcome: 'too_fast' as const,
+    });
+    const service = createChallengeAttemptStartService(fixture.database, {
+      clock: () => startedAt,
+      movementEvidenceService: { evaluateJourneyWithinTransaction },
+      randomIndex: () => 0,
+    });
+
+    await expect(service.startOrResume(validInput())).rejects.toMatchObject({
+      name: 'ChallengeLocationRetryRequiredError',
+      reason: 'journey_too_fast',
+    } satisfies Partial<ChallengeLocationRetryRequiredError>);
+
+    expect(evaluateJourneyWithinTransaction).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        ...validInput(),
+        acquiredAt: new Date(validInput().acquiredAt),
+        receivedAt: startedAt,
+      },
+      'reachable',
+    );
+    expect(executedSql(fixture.query)).not.toContain(
+      'from public.challenge_questions question',
+    );
+    expect(executedSql(fixture.query)).not.toContain(
+      'insert into public.challenge_attempts',
+    );
+    expect(fixture.query).toHaveBeenCalledWith('commit', []);
+    expect(fixture.query).not.toHaveBeenCalledWith('rollback', []);
+  });
+
   it('creates and reloads one player-safe persisted attempt', async () => {
     const fixture = createDatabaseFixture();
 
     const service = createChallengeAttemptStartService(fixture.database, {
       clock: () => startedAt,
+      movementEvidenceService: acceptingMovementEvidenceService,
       randomIndex: () => 0,
     });
 
@@ -164,6 +208,7 @@ describe('challenge attempt start service', () => {
     const fixture = createDatabaseFixture({ format: 'ordering' });
     const service = createChallengeAttemptStartService(fixture.database, {
       clock: () => startedAt,
+      movementEvidenceService: acceptingMovementEvidenceService,
       randomIndex: () => 0,
     });
 
@@ -199,6 +244,7 @@ describe('challenge attempt start service', () => {
 
     const service = createChallengeAttemptStartService(fixture.database, {
       clock: () => startedAt,
+      movementEvidenceService: acceptingMovementEvidenceService,
       randomIndex: () => 0,
     });
 
@@ -230,6 +276,7 @@ describe('challenge attempt start service', () => {
 
     const service = createChallengeAttemptStartService(fixture.database, {
       clock: () => startedAt,
+      movementEvidenceService: acceptingMovementEvidenceService,
       randomIndex: () => 0,
     });
 
@@ -251,6 +298,7 @@ describe('challenge attempt start service', () => {
 
     const service = createChallengeAttemptStartService(fixture.database, {
       clock: () => startedAt,
+      movementEvidenceService: acceptingMovementEvidenceService,
       randomIndex: () => 0,
     });
 
