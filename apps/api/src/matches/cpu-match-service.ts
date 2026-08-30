@@ -1862,9 +1862,9 @@ function describeBattleLogEffect(
   }
   if (definition?.modifier?.stat === 'damage_multiplier') {
     const sign = effect.effectType === 'buff' ? '+' : '−';
-    return `${subject} gained Damage ${sign}${amount}% for ${battleLogDuration(
-      definition.modifier.durationTurns ?? null,
-    )}.`;
+    return `${subject} gained Damage ${sign}${battleLogDamagePercentage(
+      effect.damageMultiplier,
+    )}% for ${battleLogDuration(definition.modifier.durationTurns ?? null)}.`;
   }
 
   return `${subject} received ${effect.effectType} ${effect.amount}.`;
@@ -1883,8 +1883,8 @@ function describeExpiredBattleLogEffect(
 
   if (definition?.modifier?.stat === 'damage_multiplier') {
     const sign = definition.effectType === 'buff' ? '+' : '−';
-    return `${subject} no longer has Damage ${sign}${Math.abs(
-      definition.effectValue ?? 0,
+    return `${subject} no longer has Damage ${sign}${battleLogDamagePercentage(
+      effect.damageMultiplier,
     )}%.`;
   }
 
@@ -1894,6 +1894,20 @@ function describeExpiredBattleLogEffect(
 function battleLogDuration(durationTurns: number | null): string {
   if (durationTurns === null) return 'the rest of the battle';
   return `${durationTurns} ${durationTurns === 1 ? 'turn' : 'turns'}`;
+}
+
+function battleLogDamagePercentage(damageMultiplier: number | null): number {
+  if (
+    damageMultiplier === null ||
+    !Number.isFinite(damageMultiplier) ||
+    damageMultiplier < 0
+  ) {
+    throw new CpuMatchSetupError(
+      'Persisted damage modifier is missing its effective multiplier.',
+    );
+  }
+
+  return Math.abs(Math.round((damageMultiplier - 1) * 100));
 }
 
 function battleCreatureName(

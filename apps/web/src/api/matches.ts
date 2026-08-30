@@ -73,6 +73,7 @@ export interface AppliedMatchEffect {
 }
 
 export interface ExpiredMatchEffect {
+  damageMultiplier: number | null;
   effectId: string;
   targetCreatureId: string;
   targetSide: BattleSide;
@@ -858,7 +859,15 @@ function parseActionResult(value: unknown): MatchActionResult {
 function parseExpiredEffect(value: unknown): ExpiredMatchEffect {
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, ['effectId', 'targetCreatureId', 'targetSide']) ||
+    !hasExactKeys(value, [
+      'damageMultiplier',
+      'effectId',
+      'targetCreatureId',
+      'targetSide',
+    ]) ||
+    (value.damageMultiplier !== null &&
+      (!Number.isFinite(value.damageMultiplier) ||
+        Number(value.damageMultiplier) < 0)) ||
     !isUuid(value.effectId) ||
     !isUuid(value.targetCreatureId) ||
     !isSide(value.targetSide)
@@ -867,6 +876,8 @@ function parseExpiredEffect(value: unknown): ExpiredMatchEffect {
   }
 
   return {
+    damageMultiplier:
+      value.damageMultiplier === null ? null : Number(value.damageMultiplier),
     effectId: value.effectId,
     targetCreatureId: value.targetCreatureId,
     targetSide: value.targetSide,

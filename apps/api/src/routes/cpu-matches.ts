@@ -190,11 +190,19 @@ const battleActionResultSchema = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['effectId', 'targetSide', 'targetCreatureId'],
+        required: [
+          'effectId',
+          'targetSide',
+          'targetCreatureId',
+          'damageMultiplier',
+        ],
         properties: {
           effectId: { type: 'string' },
           targetSide: { type: 'string', enum: ['player', 'cpu'] },
           targetCreatureId: { type: 'string' },
+          damageMultiplier: {
+            anyOf: [{ type: 'number', minimum: 0 }, { type: 'null' }],
+          },
         },
       },
     },

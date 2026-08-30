@@ -10,6 +10,7 @@ import {
   submitCpuMatchAction,
 } from '../src/api/matches';
 import {
+  actionResult,
   activeMatch,
   completedMatch,
   DECK_ID,
@@ -292,7 +293,7 @@ describe('CPU match API client', () => {
     });
   });
 
-  it('accepts the public projection of a rules-clamped 150% damage debuff', async () => {
+  it('accepts the public projection of a rules-clamped 150% damage debuff through expiry', async () => {
     const match = activeMatch(3);
     match.state.player.creatures[0]!.moves[0]!.effects = [
       {
@@ -314,9 +315,30 @@ describe('CPU match API client', () => {
         remainingTurns: 2,
       },
     ];
+    match.lastAction = actionResult(
+      { type: 'timeout' },
+      {
+        expiredEffects: [
+          {
+            damageMultiplier: 0,
+            effectId: uuid(1400),
+            targetCreatureId: match.state.cpu.activeCreature!.id,
+            targetSide: 'cpu',
+          },
+        ],
+      },
+    );
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(matchResponse(match)));
 
     await expect(getActiveCpuMatch(options())).resolves.toMatchObject({
+      lastAction: {
+        expiredEffects: [
+          expect.objectContaining({
+            damageMultiplier: 0,
+            targetSide: 'cpu',
+          }),
+        ],
+      },
       state: {
         cpu: {
           activeCreature: {

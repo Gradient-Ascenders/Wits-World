@@ -883,6 +883,8 @@ function decrementExpiredModifiers(
       effectId: modifier.id,
       targetSide: side,
       targetCreatureId: active.card.id,
+      damageMultiplier:
+        modifier.stat === 'damage_multiplier' ? modifier.value : null,
     });
     return [];
   });

@@ -147,6 +147,7 @@ export interface ExpiredEffect {
   readonly effectId: string;
   readonly targetSide: BattleSide;
   readonly targetCreatureId: string;
+  readonly damageMultiplier: number | null;
 }
 
 export interface BattleActionResult {

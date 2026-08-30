@@ -891,8 +891,33 @@ describe('CPU match service', () => {
   });
 
   it('reconstructs one deterministic chronological log from persisted player and CPU actions', async () => {
+    const playerDeck = effectRichDeck('player');
+    const temporaryOverkillDeck: BattleDeck = {
+      ...playerDeck,
+      powerCards: playerDeck.powerCards.map((powerCard, index) =>
+        index === 0
+          ? {
+              ...powerCard,
+              effects: powerCard.effects.map((effect) =>
+                effect.id === 'player-power-effect-5'
+                  ? {
+                      ...effect,
+                      effectType: 'debuff',
+                      effectValue: 150,
+                      modifier: {
+                        stat: 'damage_multiplier',
+                        operation: 'multiply',
+                        durationTurns: 1,
+                      },
+                    }
+                  : effect,
+              ),
+            }
+          : powerCard,
+      ),
+    };
     const initial = createBattleState(
-      effectRichDeck('player'),
+      temporaryOverkillDeck,
       effectRichDeck('cpu'),
     );
     const playerOne = initial.participants.player.creatures[0]!.card.id;
@@ -1019,12 +1044,12 @@ describe('CPU match service', () => {
                 targetSide: 'player',
               },
               {
-                amount: 15,
-                damageMultiplier: 1.15,
+                amount: 150,
+                damageMultiplier: 0,
                 effectId: 'player-power-effect-5',
-                effectType: 'buff',
-                targetCreatureId: playerOne,
-                targetSide: 'player',
+                effectType: 'debuff',
+                targetCreatureId: cpuOne,
+                targetSide: 'cpu',
               },
             ],
           },
@@ -1051,6 +1076,14 @@ describe('CPU match service', () => {
                 effectType: 'damage',
                 targetCreatureId: playerOne,
                 targetSide: 'player',
+              },
+            ],
+            expiredEffects: [
+              {
+                damageMultiplier: 0,
+                effectId: 'player-power-effect-5',
+                targetCreatureId: cpuOne,
+                targetSide: 'cpu',
               },
             ],
           },
@@ -1091,13 +1124,6 @@ describe('CPU match service', () => {
                 effectType: 'damage',
                 targetCreatureId: cpuOne,
                 targetSide: 'cpu',
-              },
-            ],
-            expiredEffects: [
-              {
-                effectId: 'player-power-effect-5',
-                targetCreatureId: playerTwo,
-                targetSide: 'player',
               },
             ],
             winner: 'player',
@@ -1154,16 +1180,16 @@ describe('CPU match service', () => {
       "CPU's Mystic Creature 1 took 8 damage.",
       "Player's Grit Creature 3 restored 5 HP.",
       "Player's Grit Creature 3 restored 3 Power.",
-      "Player's Grit Creature 3 gained Damage +15% for 3 turns.",
+      "CPU's Mystic Creature 1 gained Damage −100% for 1 turn.",
       'Turn 1 ended. CPU is next.',
       "CPU's Mystic Creature 1 used Strike.",
       "Player's Grit Creature 3 took 10 damage.",
+      "CPU's Mystic Creature 1 no longer has Damage −100%.",
       "Player's Grit Creature 3 was defeated.",
       'Turn 2 ended. Player must choose a replacement.',
       'Player sent out Wit Creature 2 as a replacement.',
       "Player's Wit Creature 2 used Strike.",
       "CPU's Mystic Creature 1 took 10 damage.",
-      "Player's Wit Creature 2 no longer has Damage +15%.",
       "CPU's Mystic Creature 1 was defeated.",
       'Player won the match.',
     ]);
