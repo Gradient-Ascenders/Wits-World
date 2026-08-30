@@ -107,6 +107,27 @@ jobs:
     name: Validate database and migrations
     runs-on: wits-world-ci
 
+    services:
+      postgres:
+        image: docker.io/postgis/postgis:17-3.5
+        env:
+          POSTGRES_DB: wits_world_test
+          POSTGRES_USER: wits_world_ci
+          POSTGRES_PASSWORD: wits_world_ci
+        options: >-
+          --health-cmd "pg_isready -U wits_world_ci -d wits_world_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      # The service name is a network alias in the isolated job network.
+      TEST_DATABASE_URL: postgresql://wits_world_ci:wits_world_ci@postgres:5432/wits_world_test
+      # Keep the ordinary database target deliberately unusable so an
+      # accidental non-test connection fails rather than touching real data.
+      DATABASE_URL: postgresql://ci-guard:ci-guard@127.0.0.1:1/wits_world_ci_guard
+      DATABASE_TEST_WORKERS: '4'
+
     steps:
       - name: Check out repository
         uses: https://github.com/actions/checkout@v4
@@ -119,66 +140,16 @@ jobs:
       - name: Install dependencies
         run: time npm ci --prefer-offline --no-audit --fund=false
 
-      - name: Confirm disposable test database is configured
-        env:
-          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
-        run: |
-          set -euo pipefail
-
-          if [ -z "${TEST_DATABASE_URL:-}" ]; then
-            echo "::error::TEST_DATABASE_URL is not configured for pull-request database validation."
-            echo "Configure it as a Gitea Actions secret pointing to a disposable PostgreSQL/PostGIS test database."
-            exit 1
-          fi
-
-          node --input-type=module <<'NODE'
-          const connectionString = process.env.TEST_DATABASE_URL;
-
-          if (!connectionString) {
-            throw new Error('TEST_DATABASE_URL is missing.');
-          }
-
-          const url = new URL(connectionString);
-
-          if (url.protocol !== 'postgres:' && url.protocol !== 'postgresql:') {
-            throw new Error(
-              'TEST_DATABASE_URL must be a PostgreSQL connection string.',
-            );
-          }
-
-          const database = url.pathname.replace(/^\/+/, '');
-
-          if (!url.hostname || !database) {
-            throw new Error(
-              'TEST_DATABASE_URL must contain a database hostname and database name.',
-            );
-          }
-
-          console.log(`Test database host: ${url.hostname}`);
-          console.log(`Test database name: ${database}`);
-          NODE
-
       - name: Prepare shared API dependencies
         run: time npm run prepare:api
 
-      - name: Verify test database readiness
-        env:
-          # Deliberately unusable development target. The API database
-          # configuration requires DATABASE_URL when validating TEST_DATABASE_URL,
-          # but PR CI must never receive development or production credentials.
-          DATABASE_URL: postgresql://ci-guard:ci-guard@127.0.0.1:1/wits_world_ci_guard?sslmode=require
-          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+      - name: Verify local test database readiness
         run: |
           set -euo pipefail
 
           time npm run db:check:test --workspace @wits-world/api
 
       - name: Run database integration and migration tests
-        env:
-          # Keep the ordinary database target deliberately unusable so an
-          # accidental non-test connection fails rather than touching real data.
-          DATABASE_URL: postgresql://ci-guard:ci-guard@127.0.0.1:1/wits_world_ci_guard?sslmode=require
-          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
         run: |
           set -euo pipefail
 

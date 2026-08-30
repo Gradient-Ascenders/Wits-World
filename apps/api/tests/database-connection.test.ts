@@ -34,6 +34,28 @@ describe('database connection pool', () => {
     });
   });
 
+  it('does not enable TLS for a local connection without an SSL mode', () => {
+    const pool = createDatabasePool({
+      ...databaseConfig,
+      connectionString:
+        'postgresql://wits_world_ci:password@postgres:5432/wits_world_test',
+    });
+    pools.push(pool);
+
+    expect(pool.options.ssl).toBe(false);
+  });
+
+  it('does not enable TLS when SSL is explicitly disabled', () => {
+    const pool = createDatabasePool({
+      ...databaseConfig,
+      connectionString:
+        'postgresql://wits_world_ci:password@postgres:5432/wits_world_test?sslmode=disable',
+    });
+    pools.push(pool);
+
+    expect(pool.options.ssl).toBe(false);
+  });
+
   it('handles idle-client errors without logging the error or client', () => {
     const logger: DatabasePoolLogger = {
       error: vi.fn(),

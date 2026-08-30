@@ -22,6 +22,7 @@ export function createDatabasePool(
   { logger = console }: CreateDatabasePoolOptions = {},
 ) {
   const connectionUrl = new URL(databaseConfig.connectionString);
+  const sslMode = connectionUrl.searchParams.get('sslmode');
   connectionUrl.searchParams.delete('sslmode');
 
   const pool = new Pool({
@@ -33,9 +34,10 @@ export function createDatabasePool(
     idleTimeoutMillis: 75_000,
     max: 4,
     min: 0,
-    ssl: {
-      rejectUnauthorized: true,
-    },
+    ssl:
+      sslMode === null || sslMode === 'disable'
+        ? false
+        : { rejectUnauthorized: true },
   });
 
   pool.on('error', (error) => {

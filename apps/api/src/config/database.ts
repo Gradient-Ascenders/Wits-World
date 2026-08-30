@@ -96,19 +96,29 @@ function parsePostgresConnectionString(
     );
   }
 
-  if (!parsedUrl.searchParams.has('sslmode')) {
-    throw new Error(
-      `${variableName} must include sslmode=require for Neon connections.`,
-    );
-  }
+  if (isNeonHostname(parsedUrl.hostname)) {
+    if (!parsedUrl.searchParams.has('sslmode')) {
+      throw new Error(
+        `${variableName} must include sslmode=require for Neon connections.`,
+      );
+    }
 
-  if (parsedUrl.searchParams.get('sslmode') !== 'require') {
-    throw new Error(
-      `${variableName} must set sslmode=require for Neon connections.`,
-    );
+    if (parsedUrl.searchParams.get('sslmode') !== 'require') {
+      throw new Error(
+        `${variableName} must set sslmode=require for Neon connections.`,
+      );
+    }
   }
 
   return parsedUrl;
+}
+
+function isNeonHostname(hostname: string) {
+  const normalizedHostname = hostname.toLowerCase().replace(/\.$/u, '');
+  return (
+    normalizedHostname === 'neon.tech' ||
+    normalizedHostname.endsWith('.neon.tech')
+  );
 }
 
 function sameDatabaseIdentity(left: URL, right: URL) {
