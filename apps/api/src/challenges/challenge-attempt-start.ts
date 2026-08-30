@@ -25,6 +25,11 @@ import {
   type LocationRetryReason,
   PROVISIONAL_MAX_LOCATION_CLAIM_AGE_MS,
 } from '../events/location-claim.js';
+import {
+  InvalidMovementEvidenceContextError,
+  type MovementEvidenceService,
+  NonMonotonicMovementEvidenceError,
+} from '../events/movement-evidence.js';
 
 export interface ChallengeAttemptTransactionClient extends ChallengeAttemptQueryable {
   release(): void;
@@ -96,6 +101,10 @@ export class ChallengeUnavailableError extends Error {
 
 interface CreateChallengeAttemptStartServiceOptions {
   clock?: () => Date;
+  movementEvidenceService: Pick<
+    MovementEvidenceService,
+    'evaluateJourneyWithinTransaction'
+  >;
   randomIndex?: RandomIndexSource;
   maxLocationClaimAgeMs?: number;
 }
@@ -160,9 +169,10 @@ export function createChallengeAttemptStartService(
   database: ChallengeAttemptDatabase,
   {
     clock = () => new Date(),
+    movementEvidenceService,
     randomIndex = secureRandomIndex,
     maxLocationClaimAgeMs = PROVISIONAL_MAX_LOCATION_CLAIM_AGE_MS,
-  }: CreateChallengeAttemptStartServiceOptions = {},
+  }: CreateChallengeAttemptStartServiceOptions,
 ): ChallengeAttemptStartService {
   return {
     async startOrResume(input) {
@@ -236,6 +246,39 @@ export function createChallengeAttemptStartService(
 
         if (reachability.status === 'retry') {
           throw new ChallengeLocationRetryRequiredError(reachability.reason);
+        }
+
+        try {
+          const journeyDecision =
+            await movementEvidenceService.evaluateJourneyWithinTransaction(
+              client,
+              {
+                playerId: input.playerId,
+                eventId: input.eventId,
+                latitude: input.latitude,
+                longitude: input.longitude,
+                accuracyMetres: input.accuracyMetres,
+                acquiredAt: new Date(input.acquiredAt),
+                receivedAt: startedAt,
+              },
+              'reachable',
+            );
+
+          if (journeyDecision.outcome === 'too_fast') {
+            await client.query('commit', []);
+            transactionOpen = false;
+            throw new ChallengeLocationRetryRequiredError('journey_too_fast');
+          }
+        } catch (error) {
+          if (error instanceof NonMonotonicMovementEvidenceError) {
+            throw new ChallengeLocationRetryRequiredError('stale_location');
+          }
+
+          if (error instanceof InvalidMovementEvidenceContextError) {
+            throw new ChallengeUnavailableError();
+          }
+
+          throw error;
         }
 
         const challengeResult = await client.query<PublishedChallengeRow>(

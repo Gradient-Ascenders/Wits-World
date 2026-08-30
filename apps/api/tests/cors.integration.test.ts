@@ -76,6 +76,12 @@ beforeEach(async () => {
           };
         },
       },
+      movementEvidence: {
+        record: vi.fn(),
+        evaluateJourney: vi.fn(),
+        evaluateJourneyWithinTransaction: vi.fn(),
+        purgeExpired: vi.fn(),
+      },
     },
     logger: false,
   });

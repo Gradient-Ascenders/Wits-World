@@ -76,7 +76,7 @@ import { authorCampaignRoutes } from './routes/author-campaigns.js';
 export interface EventServices {
   discovery: EventDiscoveryService;
   eligibility: EventEligibilityService;
-  movementEvidence?: MovementEvidenceService;
+  movementEvidence: MovementEvidenceService;
   clock?: () => Date;
   maxLocationClaimAgeMs?: number;
 }

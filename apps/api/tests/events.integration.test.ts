@@ -60,17 +60,17 @@ const activeEvent: PlayerEvent = {
 let app: FastifyInstance;
 let discoveryList: ReturnType<typeof createDiscoveryMock>;
 let eligibilityEvaluate: ReturnType<typeof createEligibilityMock>;
-let movementEvidenceRecord: ReturnType<
-  typeof vi.fn<MovementEvidenceService['record']>
+let evaluateMovementJourney: ReturnType<
+  typeof vi.fn<MovementEvidenceService['evaluateJourney']>
 >;
 let playerResolve: ReturnType<typeof createPlayerResolveMock>;
 
 beforeEach(async () => {
   discoveryList = createDiscoveryMock();
   eligibilityEvaluate = createEligibilityMock();
-  movementEvidenceRecord = vi
-    .fn<MovementEvidenceService['record']>()
-    .mockResolvedValue(undefined);
+  evaluateMovementJourney = vi
+    .fn<MovementEvidenceService['evaluateJourney']>()
+    .mockResolvedValue({ outcome: 'baseline' });
   playerResolve = createPlayerResolveMock();
 
   const discoveryService: EventDiscoveryService = {
@@ -81,7 +81,11 @@ beforeEach(async () => {
     evaluate: eligibilityEvaluate,
   };
   const movementEvidenceService: MovementEvidenceService = {
-    record: movementEvidenceRecord,
+    record: vi.fn().mockResolvedValue(undefined),
+    evaluateJourney: evaluateMovementJourney,
+    evaluateJourneyWithinTransaction: vi
+      .fn()
+      .mockResolvedValue({ outcome: 'baseline' }),
     purgeExpired: vi.fn().mockResolvedValue(0),
   };
 
@@ -192,7 +196,7 @@ describe('event eligibility API', () => {
 
     expect(response.statusCode).toBe(401);
     expect(eligibilityEvaluate).not.toHaveBeenCalled();
-    expect(movementEvidenceRecord).not.toHaveBeenCalled();
+    expect(evaluateMovementJourney).not.toHaveBeenCalled();
   });
 
   it('rejects a deletion-pending player before evaluating eligibility', async () => {
@@ -213,7 +217,7 @@ describe('event eligibility API', () => {
 
     expect(playerResolve).toHaveBeenCalledWith(authenticatedIdentity);
     expect(eligibilityEvaluate).not.toHaveBeenCalled();
-    expect(movementEvidenceRecord).not.toHaveBeenCalled();
+    expect(evaluateMovementJourney).not.toHaveBeenCalled();
   });
 
   it('authenticates before validating a malformed eligibility request', async () => {
@@ -261,15 +265,18 @@ describe('event eligibility API', () => {
       latitude: -26.19205,
       longitude: 28.03038,
     });
-    expect(movementEvidenceRecord).toHaveBeenCalledWith({
-      playerId: activeLocalPlayer.id,
-      eventId: EVENT_ID,
-      latitude: -26.19205,
-      longitude: 28.03038,
-      accuracyMetres: 10,
-      acquiredAt: new Date('2026-08-10T11:59:30.000Z'),
-      receivedAt,
-    });
+    expect(evaluateMovementJourney).toHaveBeenCalledWith(
+      {
+        playerId: activeLocalPlayer.id,
+        eventId: EVENT_ID,
+        latitude: -26.19205,
+        longitude: 28.03038,
+        accuracyMetres: 10,
+        acquiredAt: new Date('2026-08-10T11:59:30.000Z'),
+        receivedAt,
+      },
+      'reachable',
+    );
   });
 
   it('returns unreachable when the accuracy envelope is clearly outside the radius', async () => {
@@ -317,6 +324,21 @@ describe('event eligibility API', () => {
     });
   });
 
+  it('returns a neutral retry when the server rejects a too-fast journey', async () => {
+    evaluateMovementJourney.mockResolvedValueOnce({ outcome: 'too_fast' });
+
+    const response = await authenticatedEligibilityRequest();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      eventId: EVENT_ID,
+      status: 'retry',
+      reachable: null,
+      reason: 'journey_too_fast',
+      requestId: expect.any(String),
+    });
+  });
+
   it('returns retry for a stale location claim without evaluating PostGIS eligibility', async () => {
     const response = await authenticatedEligibilityRequest({
       acquiredAt: '2026-08-10T11:57:59.000Z',
@@ -332,7 +354,7 @@ describe('event eligibility API', () => {
     });
 
     expect(eligibilityEvaluate).not.toHaveBeenCalled();
-    expect(movementEvidenceRecord).not.toHaveBeenCalled();
+    expect(evaluateMovementJourney).not.toHaveBeenCalled();
   });
 
   it('returns retry for a future acquisition timestamp', async () => {
@@ -350,7 +372,7 @@ describe('event eligibility API', () => {
     });
 
     expect(eligibilityEvaluate).not.toHaveBeenCalled();
-    expect(movementEvidenceRecord).not.toHaveBeenCalled();
+    expect(evaluateMovementJourney).not.toHaveBeenCalled();
   });
 
   it('rejects malformed timestamps', async () => {
@@ -365,7 +387,7 @@ describe('event eligibility API', () => {
     });
 
     expect(eligibilityEvaluate).not.toHaveBeenCalled();
-    expect(movementEvidenceRecord).not.toHaveBeenCalled();
+    expect(evaluateMovementJourney).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -406,7 +428,7 @@ describe('event eligibility API', () => {
     });
 
     expect(eligibilityEvaluate).not.toHaveBeenCalled();
-    expect(movementEvidenceRecord).not.toHaveBeenCalled();
+    expect(evaluateMovementJourney).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -414,6 +436,9 @@ describe('event eligibility API', () => {
     ['insideRadius', true],
     ['playerId', '00000000-0000-4000-8000-000000000999'],
     ['rewardEligible', true],
+    ['elapsedMilliseconds', 60_000],
+    ['requiredSpeedMetresPerSecond', 1],
+    ['maxPlausibleSpeedMetresPerSecond', 1000],
   ])('rejects the client-supplied authority field %s', async (field, value) => {
     const response = await authenticatedRequest({
       method: 'POST',
@@ -431,7 +456,7 @@ describe('event eligibility API', () => {
     });
 
     expect(eligibilityEvaluate).not.toHaveBeenCalled();
-    expect(movementEvidenceRecord).not.toHaveBeenCalled();
+    expect(evaluateMovementJourney).not.toHaveBeenCalled();
   });
 
   it('returns 404 when an event does not exist', async () => {
@@ -448,7 +473,7 @@ describe('event eligibility API', () => {
       code: 'EVENT_NOT_FOUND',
       detail: 'The requested event was not found.',
     });
-    expect(movementEvidenceRecord).not.toHaveBeenCalled();
+    expect(evaluateMovementJourney).not.toHaveBeenCalled();
   });
 
   it('does not reveal unpublished events', async () => {
@@ -465,11 +490,11 @@ describe('event eligibility API', () => {
       status: 404,
       code: 'EVENT_NOT_FOUND',
     });
-    expect(movementEvidenceRecord).not.toHaveBeenCalled();
+    expect(evaluateMovementJourney).not.toHaveBeenCalled();
   });
 
   it('rejects reordered movement evidence without exposing the prior sample', async () => {
-    movementEvidenceRecord.mockRejectedValueOnce(
+    evaluateMovementJourney.mockRejectedValueOnce(
       new NonMonotonicMovementEvidenceError(),
     );
 

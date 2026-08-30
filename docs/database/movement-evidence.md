@@ -4,8 +4,9 @@ title: Privacy-limited movement evidence
 
 # Privacy-limited movement evidence
 
-Issue `#168` adds the minimum precise evidence needed for later Intermediate
-movement checks without creating a general location-history product. Browser
+Issues `#168` and `#169` add the minimum precise evidence and derived journey
+decisions needed for impossible-journey checks without creating a general
+location-history product. Browser
 geolocation remains an untrusted claim; authentication supplies the player
 identity, and the API/database own validation and persistence.
 
@@ -25,7 +26,9 @@ endpoint, or movement-history response.
 Stale, future, malformed, unauthenticated, nonexistent-event, unpublished, and
 inactive-event requests do not create evidence. A valid claim can be stored for
 a reachable, unreachable, or accuracy-ambiguous result because all three arose
-from the same legitimate active eligibility operation.
+from the same legitimate active eligibility operation. Only reachable claims
+whose journey decision is accepted as a baseline, same-event continuation, or
+plausible cross-event journey may anchor a later journey comparison.
 
 ## Stored precise evidence
 
@@ -64,6 +67,52 @@ geolocation acquisition merely because the player selects another event.
 The table is internal database evidence. No public or player-facing API reads
 it, and another player cannot supply or retrieve its ownership identity.
 
+## Server-authoritative journey decisions
+
+Migration `0032_add_movement_eligibility_decisions.sql` adds one immutable
+`movement_eligibility_decisions` row per evaluated movement-evidence context.
+It records the reachability status, decision outcome, prior anchor identifier,
+server-computed distance and elapsed time where applicable, uncertainty-adjusted
+distance, required speed, and the configured maximum-speed snapshot. The prior
+identifier is intentionally historical rather than a foreign key: an older
+anchor may expire first, while the later decision must remain immutable until
+its own evidence expires.
+
+The server locks the active player while recording and evaluating a sample. It
+selects the most recent unexpired accepted reachable sample by server receipt
+time. Unreachable, accuracy-retry, and `too_fast` samples are audited but never
+become trusted anchors. A first accepted sample is a `baseline`; a reachable
+sample for the same event is `same_event` and does not require travel-speed
+mathematics.
+
+For a cross-event comparison, PostGIS calculates geodesic distance between the
+two reported points. The decision is:
+
+```text
+adjusted distance = max(0, distance - previous accuracy - current accuracy)
+elapsed time      = max(0, current server receipt - previous server receipt)
+required speed    = adjusted distance / elapsed time
+plausible         = adjusted distance is zero, or required speed <= configured maximum
+```
+
+Device acquisition timestamps still enforce sample ordering and identity, but
+cannot increase the travel interval. This prevents a browser from forging an
+older acquisition time to make an impossible trip appear slower. A zero or
+negative server interval with positive adjusted distance is `too_fast`.
+
+`MAX_PLAUSIBLE_JOURNEY_SPEED_METRES_PER_SECOND` is required and has no default.
+It must be a finite number greater than zero. The threshold is an operational
+product setting that must be chosen and documented by the team before each
+deployment; repository code does not invent a campus policy value.
+
+A `too_fast` eligibility request returns a neutral `journey_too_fast` retry and
+does not expose coordinates, distance, speed, the prior event, or the threshold.
+Challenge start applies the same check inside the attempt-creation transaction,
+so calling the challenge route directly cannot bypass it. A direct-start
+`too_fast` decision commits its evidence and audit row before the safe retry is
+returned, but creates no challenge attempt. The result creates no punishment,
+account flag, trust score, reward effect, or permanent gameplay state.
+
 ## Retention and automatic cleanup
 
 `MOVEMENT_EVIDENCE_RETENTION_MS` controls precise-data retention. The current
@@ -101,19 +150,18 @@ and safe API errors contain no prior or submitted coordinates. Ordinary logs
 may contain a request ID and aggregate cleanup count only.
 
 When an account enters `deletion_pending`, a database trigger deletes all of
-that player's precise movement evidence in the same transaction. Nothing from
-this table is retained against the anonymous player tombstone. Issue `#168`
-adds no longer-lived derived decision table because the current eligibility
-response and existing gameplay records are sufficient; storing another audit
-record is not yet justified.
+that player's precise movement evidence in the same transaction. Journey
+decision rows cascade from their current evidence row, so no movement decision,
+path, coordinate, or speed remains attached to the anonymous player tombstone.
 
-## Relationship to issue #169 and limitations
+## Limitations
 
-Issue `#169` may read recent rows through an internal server-side service to
-compare event journeys. It must continue to ignore browser-calculated speed and
-must not turn this table into a public history, permanent punishment, trust
-score, or behavioural profile. This implementation does not detect spoofing,
-collusion, impossible journeys, or poor-GPS alternatives.
+The check detects only travel that exceeds the configured threshold between
+recent accepted reported-location claims. It does not prove physical presence,
+detect all spoofing or collusion, infer transport mode, or create a statistical
+behavioural profile. Generous device accuracy can reduce adjusted distance, and
+an expired or absent anchor intentionally produces a new baseline. These are
+bounded false-positive/privacy trade-offs, not guarantees of legitimacy.
 
 The 24-hour default and production scheduling evidence remain decisions for
 team/operator confirmation. Passing local tests does not prove that production
@@ -130,8 +178,13 @@ cleanup is running.
   redacted from ordinary structured logs.
 - `movement-evidence-database.integration.test.ts` covers real constraints,
   immutability, ownership/context, player-global ordering, same-event and
-  cross-event concurrency, expiry, idempotent cleanup, and account-deletion
-  removal.
+  cross-event concurrency, expiry, idempotent cleanup, account-deletion
+  removal, rejected-anchor exclusion, audit immutability, threshold-boundary
+  outcomes, and concurrent impossible attempts.
+- `journey-evaluation.test.ts` covers accuracy adjustment, exact-threshold,
+  zero-time, negative-time, and invalid-metric cases.
+- `movement-journey.test.ts` covers trusted-anchor selection, server receipt
+  timing, same-event handling, and idempotent retries without a live database.
 
 The preceding document was generated and edited with the assistance of:
 Codex[GPT-5].

@@ -226,6 +226,9 @@ describe('challenge attempt start API', () => {
       playerId: PLAYER_ID,
       reachable: true,
       scoreCorrect: 5,
+      elapsedMilliseconds: 60_000,
+      requiredSpeedMetresPerSecond: 1,
+      maxPlausibleSpeedMetresPerSecond: 1000,
     });
 
     expect(response.statusCode).toBe(400);

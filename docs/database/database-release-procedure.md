@@ -93,6 +93,14 @@ account-deletion trigger. Apply it before deploying an API that persists issue
 interval names, one successful aggregate-only cleanup log, and expiry behavior
 without recording coordinates or connection details.
 
+Migration `0032_add_movement_eligibility_decisions.sql` creates the immutable
+journey-decision audit and the server-receipt lookup index. Apply it before the
+issue `#169` API. Configure the required reviewed
+`MAX_PLAUSIBLE_JOURNEY_SPEED_METRES_PER_SECOND` value before starting that API;
+there is deliberately no fallback. Rehearsal must confirm migration checksum,
+expiry cleanup, rejected-anchor exclusion, and account-deletion cascade without
+recording precise evidence or threshold values in release logs.
+
 ## Prerequisites
 
 - Use the Node.js and npm versions declared by the repository.

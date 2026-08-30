@@ -53,8 +53,15 @@ async function startServer(): Promise<void> {
   const auth0ManagementClient =
     createAuth0ManagementClient(authManagementConfig);
 
-  const challengeAttemptStartService =
-    createChallengeAttemptStartService(database);
+  const movementEvidenceService = createMovementEvidenceService(database, {
+    maxPlausibleJourneySpeedMetresPerSecond:
+      config.maxPlausibleJourneySpeedMetresPerSecond,
+    retentionMs: config.movementEvidenceRetentionMs,
+  });
+  const challengeAttemptStartService = createChallengeAttemptStartService(
+    database,
+    { movementEvidenceService },
+  );
   const starterGrantService = createStarterGrantService(database);
   const cardCollectionService = createCardCollectionService(database);
   const progressionPersistence = createProgressionPersistence();
@@ -83,10 +90,6 @@ async function startServer(): Promise<void> {
   });
   const progressionReadService = createProgressionReadService(database);
   const playerIdentityService = createPlayerIdentityService(database);
-  const movementEvidenceService = createMovementEvidenceService(database, {
-    retentionMs: config.movementEvidenceRetentionMs,
-  });
-
   const app = await buildApp({
     config,
     authConfig,

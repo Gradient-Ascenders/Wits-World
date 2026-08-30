@@ -331,10 +331,12 @@ and does not accept a cached reading. A retry requests a new reading; the
 application does not poll or track location continuously.
 
 The browser treats the reading as a claim. It does not calculate authoritative
-distance, compare the event radius, or decide reachability. Reachable,
-unreachable, inaccurate, stale, unavailable, and failure states come from the
-API or browser boundary and are displayed with accessible text rather than
-colour alone.
+distance, compare the event radius, calculate travel speed, select a prior
+movement anchor, or decide reachability. Reachable, unreachable, inaccurate,
+stale, neutral journey-retry, unavailable, and failure states come from the API
+or browser boundary and are displayed with accessible text rather than colour
+alone. The journey-retry copy asks for a fresh reading without alleging
+cheating or revealing internal distance, speed, or threshold values.
 
 The location values are not written to React state, browser storage, logs, or
 the map provider. Permission can be denied without losing access to event

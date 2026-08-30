@@ -22,6 +22,7 @@ import { createAuthorEventService } from '../src/events/author-event-service.js'
 import { createAuthorChallengeService } from '../src/challenges/author-challenge-service.js';
 import { createAuthorCardService } from '../src/cards/author-card-service.js';
 import { createAuthenticatedRateProtection } from '../src/security/rate-protection.js';
+import { createMovementEvidenceService } from '../src/events/movement-evidence.js';
 import { SPRINT1_E2E_ACCESS_TOKEN } from './sprint1-auth.js';
 
 export const BASIC_E2E_NOW = new Date('2026-08-18T10:00:00.000Z');
@@ -49,6 +50,10 @@ async function startServer(): Promise<void> {
   const subject = `basic-e2e-${runId}`;
   const playerName = `e2e_${runId.replaceAll('-', '').slice(0, 16)}`;
   const clock = () => new Date(BASIC_E2E_NOW);
+  const movementEvidenceService = createMovementEvidenceService(database, {
+    // Test-only permissive value; production has no default.
+    maxPlausibleJourneySpeedMetresPerSecond: 1_000,
+  });
 
   await database.query(
     `
@@ -97,10 +102,12 @@ async function startServer(): Promise<void> {
       clock,
       discovery: createEventDiscoveryService(database, { clock }),
       eligibility: createEventEligibilityService(database, { clock }),
+      movementEvidence: movementEvidenceService,
     },
     challengeAttemptServices: {
       start: createChallengeAttemptStartService(database, {
         clock,
+        movementEvidenceService,
         randomIndex: () => 0,
       }),
       answerSubmission: createChallengeAnswerSubmissionService(database, {

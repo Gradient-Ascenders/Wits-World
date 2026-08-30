@@ -163,6 +163,14 @@ describe('event eligibility client', () => {
       { reason: 'location_accuracy', status: 'retry' },
     ],
     [
+      {
+        reachable: null,
+        reason: 'journey_too_fast',
+        status: 'retry',
+      },
+      { reason: 'journey_too_fast', status: 'retry' },
+    ],
+    [
       { reachable: false, reason: 'ended', status: 'unavailable' },
       { reason: 'ended', status: 'unavailable' },
     ],

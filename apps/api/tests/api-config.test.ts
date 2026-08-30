@@ -8,6 +8,7 @@ const validEnvironment: NodeJS.ProcessEnv = {
   HOST: '127.0.0.1',
   PORT: '3000',
   LOG_LEVEL: 'info',
+  MAX_PLAUSIBLE_JOURNEY_SPEED_METRES_PER_SECOND: '12.5',
 };
 
 describe('API configuration', () => {
@@ -19,25 +20,28 @@ describe('API configuration', () => {
       accountDeletionRetryIntervalMs: 60000,
       movementEvidenceCleanupIntervalMs: 60000,
       movementEvidenceRetentionMs: 86400000,
+      maxPlausibleJourneySpeedMetresPerSecond: 12.5,
       rateLimitMaxRequests: 120,
       rateLimitWindowMs: 60000,
     });
   });
 
-  it.each(['HOST', 'PORT', 'LOG_LEVEL'] as const)(
-    'rejects a missing %s value',
-    (variableName) => {
-      const env = {
-        ...validEnvironment,
-      };
+  it.each([
+    'HOST',
+    'PORT',
+    'LOG_LEVEL',
+    'MAX_PLAUSIBLE_JOURNEY_SPEED_METRES_PER_SECOND',
+  ] as const)('rejects a missing %s value', (variableName) => {
+    const env = {
+      ...validEnvironment,
+    };
 
-      delete env[variableName];
+    delete env[variableName];
 
-      expect(() => buildApiConfig({ env })).toThrow(
-        `${variableName} is required to start the API.`,
-      );
-    },
-  );
+    expect(() => buildApiConfig({ env })).toThrow(
+      `${variableName} is required to start the API.`,
+    );
+  });
 
   it.each(['0', '65536', '3.5', 'not-a-port'])(
     'rejects the invalid port %s',
@@ -69,9 +73,7 @@ describe('API configuration', () => {
   it('reads a configured account deletion retry interval', () => {
     const config = buildApiConfig({
       env: {
-        HOST: '127.0.0.1',
-        PORT: '3000',
-        LOG_LEVEL: 'info',
+        ...validEnvironment,
         ACCOUNT_DELETION_RETRY_INTERVAL_MS: '15000',
       },
     });
@@ -83,9 +85,7 @@ describe('API configuration', () => {
     expect(() =>
       buildApiConfig({
         env: {
-          HOST: '127.0.0.1',
-          PORT: '3000',
-          LOG_LEVEL: 'info',
+          ...validEnvironment,
           ACCOUNT_DELETION_RETRY_INTERVAL_MS: '0',
         },
       }),
@@ -119,6 +119,22 @@ describe('API configuration', () => {
     expect(config.movementEvidenceRetentionMs).toBe(3_600_000);
     expect(config.movementEvidenceCleanupIntervalMs).toBe(30_000);
   });
+
+  it.each(['0', '-1', 'Infinity', 'not-a-number'])(
+    'rejects the invalid maximum plausible journey speed %s',
+    (value) => {
+      expect(() =>
+        buildApiConfig({
+          env: {
+            ...validEnvironment,
+            MAX_PLAUSIBLE_JOURNEY_SPEED_METRES_PER_SECOND: value,
+          },
+        }),
+      ).toThrow(
+        'MAX_PLAUSIBLE_JOURNEY_SPEED_METRES_PER_SECOND must be a finite number greater than zero.',
+      );
+    },
+  );
 
   it.each([
     ['MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS', '1000', 1_000],

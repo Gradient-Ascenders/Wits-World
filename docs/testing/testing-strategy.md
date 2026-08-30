@@ -79,6 +79,14 @@ boundaries, effective event and trail windows, adjacent and overlapping member
 reuse, concurrent approvals, publication/retirement races, review history, and
 preservation of completed attempts and derived trail progress.
 
+Impossible-journey tests separate the pure uncertainty-adjusted speed rule from
+the PostgreSQL/PostGIS evidence path. API and Web tests cover neutral retries
+and direct challenge-start enforcement. The disposable database suite covers
+the forward migration, immutable audit, accepted-anchor selection, retention,
+account deletion, idempotency, and concurrent requests. Physical campus and
+transport-mode calibration remain manual evidence; automated tests do not prove
+that a chosen production threshold is appropriate.
+
 ## Commands and data isolation
 
 The normal repository quality set is:
