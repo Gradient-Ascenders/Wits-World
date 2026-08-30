@@ -757,10 +757,29 @@ jobs:
         with:
           node-version: ${{ steps.api_checkout.outputs.node-version }}
 
+      - name: Authenticate to Azure
+        run: |
+          set -euo pipefail
+
+          DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
+
+          if [ ! -f "$DEPLOY_ROOT/deploy-required" ]; then
+            echo "Skipping Azure authentication for the API."
+            exit 0
+          fi
+
+          az login --identity --output none
+          az account set --subscription "Azure for Students"
+
+          az webapp show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEBAPP_NAME" \
+            --query '{name:name,state:state}' \
+            --output table
+
       - name: Release production database
         if: ${{ steps.api_deployment_changes.outputs.required == 'true' }}
         env:
-          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
           CONFIRM_DATABASE: ${{ vars.PRODUCTION_DATABASE_NAME }}
           CONFIRM_DATABASE_HOST: ${{ vars.PRODUCTION_DATABASE_HOST }}
         run: |
@@ -769,8 +788,18 @@ jobs:
           DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
           RELEASE_ROOT="$DEPLOY_ROOT/database-release"
 
+          DATABASE_URL="$(
+            az webapp config appsettings list \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --name "$AZURE_WEBAPP_NAME" \
+              --query "[?name=='DATABASE_URL'].value | [0]" \
+              --output tsv \
+              --only-show-errors
+          )"
+          export DATABASE_URL
+
           if [ -z "${DATABASE_URL:-}" ]; then
-            echo "PRODUCTION_DATABASE_URL is not configured."
+            echo "DATABASE_URL is not configured on the production API App Service."
             exit 1
           fi
 
@@ -834,27 +863,6 @@ jobs:
           )
 
           echo "Production database release completed successfully."
-
-      - name: Authenticate to Azure
-        run: |
-          set -euo pipefail
-
-          DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
-
-          if [ ! -f "$DEPLOY_ROOT/deploy-required" ]; then
-            echo "Skipping Azure authentication for the API."
-            exit 0
-          fi
-
-          az login --identity --output none
-          az account set --subscription "Azure for Students"
-
-          az webapp show \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --name "$AZURE_WEBAPP_NAME" \
-            --query '{name:name,state:state}' \
-            --output table
-
       - name: Deploy API to Azure
         run: |
           set -euo pipefail

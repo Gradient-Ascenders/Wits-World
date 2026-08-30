@@ -1011,7 +1011,9 @@ SHA and repeats the same change detection. When required it downloads
 `api-deploy-${{ gitea.sha }}`, verifies the recorded commit, ZIP checksum and
 integrity, and requires the API entry point, direct runtime dependencies,
 migrations, and seeds. Only then does it authenticate with managed identity,
-deploy the ZIP, and verify `/health`.
+read the existing `DATABASE_URL` App Service setting without logging it, run
+the guarded database release against the separately confirmed production host
+and database name, deploy the ZIP, and verify `/health`.
 
 The Azure runner performs no API dependency installation, TypeScript build,
 production dependency materialization, or ZIP construction. Stage 1 proved the
