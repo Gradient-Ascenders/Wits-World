@@ -570,6 +570,7 @@ jobs:
       REPOSITORY_URL: https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World.git
       AZURE_RESOURCE_GROUP: witsworld-rg
       AZURE_WEBAPP_NAME: witsworld-api
+      PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS: '1800000'
 
     steps:
       - name: Check out exact main commit
@@ -776,6 +777,22 @@ jobs:
             --name "$AZURE_WEBAPP_NAME" \
             --query '{name:name,state:state}' \
             --output table
+
+      - name: Configure production database maintenance cadence
+        if: ${{ steps.api_deployment_changes.outputs.required == 'true' }}
+        run: |
+          set -euo pipefail
+
+          # Keep the database-backed workers aligned so serverless Postgres can
+          # suspend between sweeps instead of receiving a query every minute.
+          az webapp config appsettings set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEBAPP_NAME" \
+            --settings \
+              "ACCOUNT_DELETION_RETRY_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
+              "ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
+              "MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
+            --output none
 
       - name: Release production database
         if: ${{ steps.api_deployment_changes.outputs.required == 'true' }}

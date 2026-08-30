@@ -28,9 +28,8 @@ export function createDatabasePool(
   const pool = new Pool({
     connectionString: connectionUrl.toString(),
     connectionTimeoutMillis: 5_000,
-    // The shared API pool serves a worker every 60 seconds. Keep released
-    // clients through the next normal sweep, but retain no permanent floor so
-    // the pool can still drain when legitimate database activity stops.
+    // Retain no permanent connection floor. Background maintenance is spaced
+    // far enough apart for this pool and a serverless database compute to idle.
     idleTimeoutMillis: 75_000,
     max: 4,
     min: 0,

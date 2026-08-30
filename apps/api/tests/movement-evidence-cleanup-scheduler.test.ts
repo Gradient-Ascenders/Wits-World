@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
+  MIN_DATABASE_MAINTENANCE_INTERVAL_MS,
+} from '../src/config/timers.js';
+import {
   createMovementEvidenceCleanupScheduler,
   MAX_NODE_TIMER_DELAY_MS,
 } from '../src/events/movement-evidence-cleanup-scheduler.js';
@@ -15,7 +19,11 @@ describe('movement evidence cleanup scheduler', () => {
     const logger = { info: vi.fn(), error: vi.fn() };
 
     expect(() =>
-      createMovementEvidenceCleanupScheduler(service, logger, 1_000),
+      createMovementEvidenceCleanupScheduler(
+        service,
+        logger,
+        MIN_DATABASE_MAINTENANCE_INTERVAL_MS,
+      ),
     ).not.toThrow();
     expect(() =>
       createMovementEvidenceCleanupScheduler(
@@ -27,7 +35,7 @@ describe('movement evidence cleanup scheduler', () => {
   });
 
   it.each([
-    999,
+    MIN_DATABASE_MAINTENANCE_INTERVAL_MS - 1,
     MAX_NODE_TIMER_DELAY_MS + 1,
     Number.MAX_SAFE_INTEGER,
     Number.MAX_SAFE_INTEGER + 1,
@@ -53,7 +61,7 @@ describe('movement evidence cleanup scheduler', () => {
     const scheduler = createMovementEvidenceCleanupScheduler(
       { purgeExpired },
       logger,
-      1_000,
+      MIN_DATABASE_MAINTENANCE_INTERVAL_MS,
     );
 
     scheduler.start();
@@ -79,7 +87,7 @@ describe('movement evidence cleanup scheduler', () => {
     const scheduler = createMovementEvidenceCleanupScheduler(
       { purgeExpired: vi.fn().mockRejectedValue(failure) },
       logger,
-      60_000,
+      DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
     );
 
     scheduler.start();
