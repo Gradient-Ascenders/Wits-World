@@ -184,9 +184,7 @@ describe('timed player challenge', () => {
     );
     expect(screen.getByText('3', { selector: 'strong' })).toBeVisible();
     expect(screen.getByText(/out of 5 correct/)).toBeVisible();
-    expect(
-      screen.getByText('37 coins were added to your account.'),
-    ).toBeVisible();
+    expect(screen.queryByText(/coins?/i)).not.toBeInTheDocument();
     expect(
       screen.getByRole('list', { name: 'Earned cards' }),
     ).toHaveTextContent('Campus Spark');
@@ -211,9 +209,7 @@ describe('timed player challenge', () => {
       vi
         .fn()
         .mockResolvedValue(
-          jsonResponse(
-            completedAttempt('answered', { cards: [], coinsAwarded: 20 }),
-          ),
+          jsonResponse(completedAttempt('answered', { cards: [] })),
         ),
     );
 
@@ -802,7 +798,6 @@ function completedAttempt(
         rarity: 'common',
       },
     ],
-    coinsAwarded: 37,
   },
 ) {
   return {

@@ -52,7 +52,7 @@ export interface CompletedChallengeAttempt {
   eventId: string;
   format: 'multiple_choice';
   review: CompletedChallengeQuestionReview[];
-  reward: { cards: CompletedChallengeCard[]; coinsAwarded: number };
+  reward: { cards: CompletedChallengeCard[] };
   scoreCorrect: number;
   status: 'completed';
   totalQuestions: 5;
@@ -404,8 +404,7 @@ function parseCompletedAttempt(
     !Array.isArray(payload.review) ||
     payload.review.length !== 5 ||
     !isRecord(payload.reward) ||
-    !hasOnlyKeys(payload.reward, ['cards', 'coinsAwarded']) ||
-    !isNonNegativeInteger(payload.reward.coinsAwarded) ||
+    !hasOnlyKeys(payload.reward, ['cards']) ||
     !Array.isArray(payload.reward.cards) ||
     payload.reward.cards.length > 2
   ) {
@@ -441,7 +440,6 @@ function parseCompletedAttempt(
     review,
     reward: {
       cards: payload.reward.cards.map(parseRewardCard),
-      coinsAwarded: payload.reward.coinsAwarded,
     },
     scoreCorrect: payload.scoreCorrect,
     status: 'completed',
@@ -602,10 +600,6 @@ function isQuestionPosition(value: unknown): value is number {
     value >= 1 &&
     value <= 5
   );
-}
-
-function isNonNegativeInteger(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
 
 function isCompletionReason(value: unknown): value is 'answered' | 'timeout' {

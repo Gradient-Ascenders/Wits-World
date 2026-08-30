@@ -108,6 +108,19 @@ there is deliberately no fallback. Rehearsal must confirm migration checksum,
 expiry cleanup, rejected-anchor exclusion, and account-deletion cascade without
 recording precise evidence or threshold values in release logs.
 
+Migration `0034_retire_coin_rewards.sql` is the exception to the usual
+database-first ordering. Quiesce challenge traffic and perform a coordinated
+API/Web cutover because the old and new completed-attempt response shapes are
+not cross-compatible. Drain onto the API that writes `coins_awarded = 0`,
+creates no wallet or ledger entry, and returns only card rewards; deploy the
+matching Web contract before reopening challenge traffic; only then apply
+`0034`. Require already-open old Web sessions to refresh before resuming a
+challenge. The migration preserves historical non-zero completion values,
+makes legacy wallets read-only except for account-deletion cleanup, and makes
+the coin ledger fully immutable. An older API instance will fail challenge
+finalisation after `0034`, so do not leave mixed API versions serving traffic.
+No new environment variable, dependency, seed, or data backfill is required.
+
 ## Prerequisites
 
 - Use the Node.js and npm versions declared by the repository.
@@ -161,7 +174,14 @@ test command as evidence that production was changed.
 1. Confirm that CI passes for the exact release commit.
 2. Confirm the intended Neon production database name and that `DATABASE_URL` is
    available without printing it.
-3. Run migrations without demonstration data:
+3. For a release containing `0034`, quiesce challenge traffic, deploy the
+   matching API, ensure every old API instance is drained, deploy the matching
+   Web build, and require old sessions to refresh. Before reopening challenge
+   traffic, verify a completed challenge persists zero in `coins_awarded`,
+   creates no wallet or ledger row, and returns the card-only result. For other
+   releases, retain the migration-first ordering described by their migration
+   notes.
+4. Run migrations without demonstration data:
 
    ```bash
    npm run db:release --workspace @wits-world/api -- \
@@ -169,13 +189,15 @@ test command as evidence that production was changed.
      --confirm-database <production-database-name>
    ```
 
-4. Review the successful migration, PostGIS, and verification counts. Confirm
-   `0028` before deploying the API and compatible Web build.
-5. Deploy the matching API and Web build, then verify health and generated
-   OpenAPI. With sanitised evidence, perform an authenticated Author
+5. Review the successful migration, PostGIS, and verification counts. Confirm
+   `0028` before deploying the API and compatible Web build. For `0034`, confirm
+   the migration applied only after the compatible application checks in step 3.
+6. Deploy any matching API and Web build not already deployed by the `0034`
+   choreography, then verify health and generated OpenAPI. With sanitised
+   evidence, perform an authenticated Author
    submit/approve/publish check using two Authors and verify unpublished content
    remains absent from Player APIs.
-6. Only when demonstration seeding has separate approval, rerun with the seed
+7. Only when demonstration seeding has separate approval, rerun with the seed
    option:
 
    ```bash
@@ -185,8 +207,9 @@ test command as evidence that production was changed.
      --seed-basic-demo
    ```
 
-7. Deploy the API only after the required database procedure succeeds.
-8. Verify `/health` and `/api/v1/`, then use an authenticated player session to
+8. Except for the documented `0034` application-first release, deploy the API
+   only after the required database procedure succeeds.
+9. Verify `/health` and `/api/v1/`, then use an authenticated player session to
    confirm the intended event is returned by event discovery and that
    `/api/v1/progression/me` plus the first all-time standings page return safe
    progression fields. Do not place an access token, player UUID, or private

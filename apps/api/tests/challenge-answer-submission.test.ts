@@ -359,7 +359,6 @@ function createFixture({
           rows: [
             {
               completion_id: '41000000-0000-4000-8000-000000000066',
-              coins_awarded: 40,
             },
           ],
         };

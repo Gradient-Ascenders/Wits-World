@@ -990,7 +990,6 @@ function completedAttempt(
     totalQuestions: 5,
     scoreCorrect: 3,
     reward: {
-      coinsAwarded: 37,
       cards: [
         {
           ownedCardId: '51000000-0000-4000-8000-000000000001',
@@ -1052,7 +1051,7 @@ function completedOrderingAttempt({
     completionReason,
     totalQuestions: 5,
     scoreCorrect,
-    reward: { coinsAwarded: 60, cards: [] },
+    reward: { cards: [] },
     review: active.questions.map((question) => {
       const unanswered =
         completionReason === 'timeout' && question.position === 5;

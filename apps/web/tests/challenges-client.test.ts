@@ -376,7 +376,6 @@ function completedAttempt() {
     review: completedReview(),
     reward: {
       cards: [],
-      coinsAwarded: 37,
     },
     scoreCorrect: 3,
     status: 'completed',

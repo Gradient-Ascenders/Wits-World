@@ -360,12 +360,8 @@ const completedAttemptResponseSchema = {
     reward: {
       type: 'object',
       additionalProperties: false,
-      required: ['coinsAwarded', 'cards'],
+      required: ['cards'],
       properties: {
-        coinsAwarded: {
-          type: 'integer',
-          minimum: 0,
-        },
         cards: {
           type: 'array',
           minItems: 0,

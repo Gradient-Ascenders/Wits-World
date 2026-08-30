@@ -11,9 +11,10 @@ activity days, totals, or ranks.
 
 Points are permanent and non-spendable. This migration and its persistence
 adapter neither read nor write coin wallets or coin-ledger entries. Applied
-migrations that introduced the legacy coin schema remain immutable; issue
-`#193` owns its forward-only retirement and the removal of active coin response
-fields.
+migrations that introduced the legacy coin schema remain immutable. Migration
+`0034_retire_coin_rewards.sql` completes issue `#193`: active responses omit
+coins, new completions persist zero in the compatibility column, wallets accept
+no inserts or updates, and the historical ledger accepts no mutations.
 
 ## Relations
 
