@@ -290,21 +290,22 @@ MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS
 MAX_PLAUSIBLE_JOURNEY_SPEED_METRES_PER_SECOND
 ```
 
-The current defaults are a provisional 24-hour retention and a 60-second
+The current defaults are a provisional 24-hour retention and a 30-minute
 idempotent cleanup interval. Their final production values require team review;
 see [privacy-limited movement evidence](../database/movement-evidence.md).
 Configuration rejects unsafe integers at startup. The cleanup interval cannot
-exceed Node's `2147483647` ms timer limit, and retention has a separate
-JavaScript `Date` representation guard rather than an invented business-policy
-maximum. Retention changes apply only to new rows; existing evidence keeps its
-stored `expires_at`. The maximum-speed setting is required, has no default, and
-must be a finite number greater than zero. Configure the reviewed environment
-value before deploying the matching API or startup will fail closed.
+be shorter than `900000` ms or exceed Node's `2147483647` ms timer limit, and
+retention has a separate JavaScript `Date` representation guard rather than an
+invented business-policy maximum. Retention changes apply only to new rows;
+existing evidence keeps its stored `expires_at`. The maximum-speed setting is
+required, has no default, and must be a finite number greater than zero.
+Configure the reviewed environment value before deploying the matching API or
+startup will fail closed.
 
 Asynchronous PvP additionally requires the server-only
 `ASYNC_PVP_CURSOR_SIGNING_KEY` (at least 32 random UTF-8 bytes) and accepts the
-optional `ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS` (default `60000`, minimum
-`1000`). Store the signing key as an App Service secret; it is never a `VITE_*`
+optional `ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS` (default `1800000`, minimum
+`900000`). Store the signing key as an App Service secret; it is never a `VITE_*`
 value. The API performs one deadline sweep immediately after startup and then
 on the configured interval. Database row locks and idempotent terminal writes
 preserve correctness across recycle catch-up and future scale-out.
@@ -1014,6 +1015,15 @@ migrations, and seeds. Only then does it authenticate with managed identity,
 read the existing `DATABASE_URL` App Service setting without logging it, run
 the guarded database release against the separately confirmed production host
 and database name, deploy the ZIP, and verify `/health`.
+
+Before the database release, the workflow configures account-deletion retry,
+movement-evidence cleanup, and asynchronous-PvP deadline processing to the same
+`1800000` ms production interval. Coalescing these database-backed sweeps into
+one approximate wake window allows the Neon compute and the API connection pool
+to become idle between runs. The API rejects intervals shorter than `900000` ms
+to prevent a one-minute polling regression. Request-time checks remain
+authoritative, so this maintenance cadence does not extend persisted deadlines
+or make expired evidence valid.
 
 The Azure runner performs no API dependency installation, TypeScript build,
 production dependency materialization, or ZIP construction. Stage 1 proved the

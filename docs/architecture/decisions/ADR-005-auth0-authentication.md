@@ -418,8 +418,12 @@ The account-deletion backend defines:
 ACCOUNT_DELETION_RETRY_INTERVAL_MS
 ```
 
-The committed development default is one minute. This is the operational retry
-cadence, not the recent-authentication security threshold.
+The committed and deployed default is 30 minutes. The initial provider deletion
+still runs synchronously; this interval applies only after a provider or local
+cleanup failure. It is an operational retry cadence, not the
+recent-authentication security threshold. Database-backed maintenance intervals
+have a 15-minute floor so an otherwise idle serverless PostgreSQL compute can
+suspend between sweeps.
 
 Management credentials must never use a `VITE_` prefix.
 

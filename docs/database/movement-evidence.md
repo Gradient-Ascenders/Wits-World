@@ -128,14 +128,21 @@ stores its calculated `expires_at` when collected. Changing configuration
 affects newly collected evidence only; existing rows keep their recorded expiry.
 
 The API process starts an idempotent cleanup sweep immediately and then every
-`MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS` (default `60000` ms). Each sweep deletes
-rows whose `expires_at` is at or before the database operation's cutoff. It logs
-only the number deleted; failures use a fixed safe message without row content.
-Repeated execution is safe.
+`MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS` (default `1800000` ms, or 30 minutes).
+Each sweep deletes rows whose `expires_at` is at or before the database
+operation's cutoff. Under normal successful worker operation, expired evidence
+may remain physically present until the next cleanup sweep, typically no more
+than one configured interval after expiry. Worker failure, API downtime, or
+delayed execution can extend physical retention, but expired evidence is never
+considered current after `expires_at`. The worker logs only the number deleted;
+failures use a fixed safe message without row content. Repeated execution is
+safe.
 
-The cleanup interval must be a safe integer from `1000` through
+The cleanup interval must be a safe integer from `900000` through
 `2147483647` milliseconds. The upper value is Node's signed 32-bit timer limit;
 larger delays would otherwise be reduced to an unsafe one-millisecond interval.
+The lower bound leaves room for an idle serverless database compute to suspend
+between maintenance sweeps.
 
 Production deployment must set and review both values. The worker runs per API
 instance, so overlapping sweeps are expected and safe. Operators should verify
