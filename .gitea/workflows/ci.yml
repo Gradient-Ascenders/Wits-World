@@ -573,6 +573,7 @@ jobs:
 
     steps:
       - name: Check out exact main commit
+        id: api_checkout
         run: |
           set -euo pipefail
 
@@ -614,6 +615,15 @@ jobs:
             echo "Refusing to deploy the wrong commit."
             exit 1
           fi
+
+          NODE_VERSION="$(tr -d '\r\n' < .nvmrc)"
+
+          if [[ ! "$NODE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "The deployment commit contains an invalid .nvmrc version."
+            exit 1
+          fi
+
+          printf 'node-version=%s\n' "$NODE_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Detect API deployment changes
         id: api_deployment_changes
@@ -745,7 +755,7 @@ jobs:
         if: ${{ steps.api_deployment_changes.outputs.required == 'true' }}
         uses: https://github.com/actions/setup-node@v4
         with:
-          node-version-file: /tmp/witsworld-api-deploy-${{ gitea.sha }}/repository/.nvmrc
+          node-version: ${{ steps.api_checkout.outputs.node-version }}
 
       - name: Release production database
         if: ${{ steps.api_deployment_changes.outputs.required == 'true' }}
