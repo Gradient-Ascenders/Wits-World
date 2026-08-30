@@ -38,7 +38,8 @@ The implemented core Basic gameplay allows an authenticated player to:
 3. submit a browser-reported location claim;
 4. have the server determine whether the event is reachable;
 5. complete one timed five-question challenge per event;
-6. receive the persisted score-based coin and zero-to-two-card reward result;
+6. receive the persisted score-based zero-to-two-card reward result while the
+   server records permanent progression points;
 7. manage collected cards and a valid deck;
 8. play a server-controlled turn-based match against the computer; and
 9. view the stored match result.

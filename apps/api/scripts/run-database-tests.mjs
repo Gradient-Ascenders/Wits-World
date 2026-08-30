@@ -17,6 +17,7 @@ const testFiles = [
   'tests/player-database.integration.test.ts',
   'tests/account-deletion-persistence.integration.test.ts',
   'tests/challenge-persistence.integration.test.ts',
+  'tests/coin-retirement-migration.integration.test.ts',
   'tests/challenge-attempt-database.integration.test.ts',
   'tests/card-catalogue.integration.test.ts',
   'tests/deck-persistence.integration.test.ts',

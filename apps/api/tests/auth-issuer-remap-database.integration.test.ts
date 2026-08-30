@@ -14,6 +14,8 @@ const TO_ISSUER = 'https://login.wits-world.example/';
 const FIRST_PLAYER_ID = '91000000-0000-4000-8000-000000000001';
 const SECOND_PLAYER_ID = '91000000-0000-4000-8000-000000000002';
 const DESTINATION_PLAYER_ID = '91000000-0000-4000-8000-000000000003';
+const FIRST_STARTER_GRANT_ID = '91000000-0000-4000-8000-000000000004';
+const SECOND_STARTER_GRANT_ID = '91000000-0000-4000-8000-000000000005';
 const ORIGINAL_UPDATED_AT = new Date('2026-01-01T00:00:00.000Z');
 
 const runIntegrationTests =
@@ -117,17 +119,9 @@ describe.skipIf(!runIntegrationTests)(
       expect(
         state.players.every(({ updatedAt }) => updatedAt > ORIGINAL_UPDATED_AT),
       ).toBe(true);
-      expect(state.wallets).toEqual([
-        {
-          coinBalance: 125,
-          ledgerEntries: 1,
-          playerId: FIRST_PLAYER_ID,
-        },
-        {
-          coinBalance: 75,
-          ledgerEntries: 1,
-          playerId: SECOND_PLAYER_ID,
-        },
+      expect(state.starterGrants).toEqual([
+        { affinity: 'wit', playerId: FIRST_PLAYER_ID },
+        { affinity: 'spark', playerId: SECOND_PLAYER_ID },
       ]);
     }, 30_000);
 
@@ -193,17 +187,9 @@ describe.skipIf(!runIntegrationTests)(
           updatedAt: ORIGINAL_UPDATED_AT,
         },
       ]);
-      expect(state.wallets).toEqual([
-        {
-          coinBalance: 125,
-          ledgerEntries: 1,
-          playerId: FIRST_PLAYER_ID,
-        },
-        {
-          coinBalance: 75,
-          ledgerEntries: 1,
-          playerId: SECOND_PLAYER_ID,
-        },
+      expect(state.starterGrants).toEqual([
+        { affinity: 'wit', playerId: FIRST_PLAYER_ID },
+        { affinity: 'spark', playerId: SECOND_PLAYER_ID },
       ]);
     }, 30_000);
 
@@ -238,19 +224,14 @@ describe.skipIf(!runIntegrationTests)(
           [FIRST_PLAYER_ID, SECOND_PLAYER_ID, FROM_ISSUER, ORIGINAL_UPDATED_AT],
         );
         await client.query(
-          `insert into public.player_wallets (player_id, coin_balance)
-           values ($1, 125), ($2, 75)`,
-          [FIRST_PLAYER_ID, SECOND_PLAYER_ID],
-        );
-        await client.query(
-          `insert into public.coin_ledger_entries (
-             player_id,
-             amount,
-             reason
-           ) values
-             ($1, 125, 'manual_adjustment'),
-             ($2, 75, 'manual_adjustment')`,
-          [FIRST_PLAYER_ID, SECOND_PLAYER_ID],
+          `insert into public.player_starter_grants (id, player_id, affinity)
+           values ($1, $3, 'wit'), ($2, $4, 'spark')`,
+          [
+            FIRST_STARTER_GRANT_ID,
+            SECOND_STARTER_GRANT_ID,
+            FIRST_PLAYER_ID,
+            SECOND_PLAYER_ID,
+          ],
         );
       });
     }
@@ -302,21 +283,14 @@ describe.skipIf(!runIntegrationTests)(
            order by id`,
           [FIRST_PLAYER_ID, SECOND_PLAYER_ID],
         );
-        const wallets = await client.query<{
-          coin_balance: number;
-          ledger_entries: number;
+        const starterGrants = await client.query<{
+          affinity: string;
           player_id: string;
         }>(
-          `select
-             wallet.player_id::text,
-             wallet.coin_balance,
-             count(ledger.id)::integer as ledger_entries
-           from public.player_wallets wallet
-           left join public.coin_ledger_entries ledger
-             on ledger.player_id = wallet.player_id
-           where wallet.player_id in ($1, $2)
-           group by wallet.player_id, wallet.coin_balance
-           order by wallet.player_id`,
+          `select player_id::text, affinity
+             from public.player_starter_grants
+            where player_id in ($1, $2)
+            order by player_id`,
           [FIRST_PLAYER_ID, SECOND_PLAYER_ID],
         );
 
@@ -328,9 +302,8 @@ describe.skipIf(!runIntegrationTests)(
             role: row.role,
             updatedAt: row.updated_at,
           })),
-          wallets: wallets.rows.map((row) => ({
-            coinBalance: row.coin_balance,
-            ledgerEntries: row.ledger_entries,
+          starterGrants: starterGrants.rows.map((row) => ({
+            affinity: row.affinity,
             playerId: row.player_id,
           })),
         };

@@ -8,40 +8,25 @@ import {
 const allRarities = ['common', 'rare', 'epic', 'legendary'] as const;
 
 describe('challenge reward policy', () => {
-  it.each([
-    [0, 1, 0],
-    [1, 1, 10],
-    [1, 3, 20],
-    [2, 1, 20],
-    [2, 3, 30],
-    [3, 1, 30],
-    [3, 3, 40],
-    [4, 1, 40],
-    [4, 3, 50],
-    [5, 1, 50],
-    [5, 3, 75],
-  ])(
-    'calculates the score-band coins for %s correct at difficulty %s',
-    (scoreCorrect, averageDifficulty, expectedCoins) => {
-      const result = calculateChallengeRewardPlan(
-        scoreCorrect,
-        averageDifficulty,
-        allRarities,
-        () => 1,
-      );
+  it.each([0, 1, 2])('awards no cards for a score of %s', (scoreCorrect) => {
+    const result = calculateChallengeRewardPlan(
+      scoreCorrect,
+      allRarities,
+      () => 1,
+    );
 
-      expect(result.coinsAwarded).toBe(expectedCoins);
-    },
-  );
+    expect(result).toEqual({ cardRarities: [] });
+    expect(result).not.toHaveProperty('coinsAwarded');
+  });
 
   it('guarantees one Common card for three correct answers', () => {
-    const result = calculateChallengeRewardPlan(3, 2, ['common'], () => 0);
+    const result = calculateChallengeRewardPlan(3, ['common'], () => 0);
 
     expect(result.cardRarities).toEqual(['common']);
   });
 
   it('redistributes a four-answer reward when only Rare cards are available', () => {
-    const result = calculateChallengeRewardPlan(4, 2, ['rare'], () => 0);
+    const result = calculateChallengeRewardPlan(4, ['rare'], () => 0);
 
     expect(result.cardRarities).toEqual(['rare']);
   });
@@ -56,7 +41,6 @@ describe('challenge reward policy', () => {
     (rarityRoll, expectedRarity) => {
       const result = calculateChallengeRewardPlan(
         4,
-        2,
         ['common', 'rare'],
         () => rarityRoll,
       );
@@ -66,7 +50,7 @@ describe('challenge reward policy', () => {
   );
 
   it('supports the two-card perfect-score outcome', () => {
-    const result = calculateChallengeRewardPlan(5, 2, ['common'], () => 0);
+    const result = calculateChallengeRewardPlan(5, ['common'], () => 0);
 
     expect(result.cardRarities).toEqual(['common', 'common']);
   });
@@ -80,7 +64,6 @@ describe('challenge reward policy', () => {
     (cardCountRoll, expectedCards) => {
       const result = calculateChallengeRewardPlan(
         5,
-        2,
         ['common'],
         (maxExclusive) => (maxExclusive === 5 ? cardCountRoll : 0),
       );
@@ -102,7 +85,6 @@ describe('challenge reward policy', () => {
     (rarityRoll, expectedRarity) => {
       const result = calculateChallengeRewardPlan(
         5,
-        2,
         allRarities,
         (maxExclusive) => (maxExclusive === 5 ? 1 : rarityRoll),
       );
@@ -112,17 +94,14 @@ describe('challenge reward policy', () => {
   );
 
   it('fails a guaranteed Common reward when the catalogue is empty', () => {
-    expect(() => calculateChallengeRewardPlan(3, 2, [], () => 0)).toThrow(
+    expect(() => calculateChallengeRewardPlan(3, [], () => 0)).toThrow(
       RewardCatalogUnavailableError,
     );
   });
 
-  it('rejects invalid score and difficulty input', () => {
+  it('rejects invalid score input', () => {
     expect(() =>
-      calculateChallengeRewardPlan(6, 2, allRarities, () => 0),
-    ).toThrow();
-    expect(() =>
-      calculateChallengeRewardPlan(3, 4, allRarities, () => 0),
+      calculateChallengeRewardPlan(6, allRarities, () => 0),
     ).toThrow();
   });
 });

@@ -101,6 +101,7 @@ describe.skipIf(!runIntegrationTests)(
         '0031_create_movement_evidence.sql',
         '0032_add_movement_eligibility_decisions.sql',
         '0033_add_async_pvp_invitation_invalidation.sql',
+        '0034_retire_coin_rewards.sql',
       ]);
 
       pool = createDatabasePool(temporaryConfig);
@@ -786,7 +787,8 @@ async function copyMigrationsBeforeProgression(): Promise<string> {
         name !== '0030_create_campaign_scheduling.sql' &&
         name !== '0031_create_movement_evidence.sql' &&
         name !== '0032_add_movement_eligibility_decisions.sql' &&
-        name !== '0033_add_async_pvp_invitation_invalidation.sql',
+        name !== '0033_add_async_pvp_invitation_invalidation.sql' &&
+        name !== '0034_retire_coin_rewards.sql',
     )
     .sort();
 

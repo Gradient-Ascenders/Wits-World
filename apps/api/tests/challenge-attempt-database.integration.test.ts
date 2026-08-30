@@ -956,7 +956,6 @@ describe.skipIf(!runIntegrationTests)(
         totalQuestions: 5,
         scoreCorrect: 1,
         reward: {
-          coinsAwarded: expect.any(Number),
           cards: [],
         },
       });
@@ -965,7 +964,6 @@ describe.skipIf(!runIntegrationTests)(
         throw new Error('Expected timeout fetch to return completed state.');
       }
 
-      expect(first.reward.coinsAwarded).toBeGreaterThan(0);
       expect(first.review).toHaveLength(5);
       expect(first.review[0]).toMatchObject({
         attemptQuestionId: accepted.attempt_question_id,
@@ -998,9 +996,10 @@ describe.skipIf(!runIntegrationTests)(
         completion_count: string;
         completion_reason: string;
         ledger_count: string;
+        point_award_count: string;
         score_correct: number;
         status: string;
-        wallet_balance: number;
+        wallet_balance: number | null;
       }>(
         `
           select
@@ -1031,6 +1030,13 @@ describe.skipIf(!runIntegrationTests)(
             ) as wallet_balance,
             (
               select count(*)::text
+              from public.player_point_awards award
+              join public.event_completions completion
+                on completion.id = award.event_completion_id
+              where completion.attempt_id = attempt.id
+            ) as point_award_count,
+            (
+              select count(*)::text
               from public.player_cards owned
               join public.event_completions completion
                 on completion.id = owned.source_completion_id
@@ -1048,9 +1054,10 @@ describe.skipIf(!runIntegrationTests)(
         completion_reason: 'timeout',
         score_correct: 1,
         completion_count: '1',
-        coins_awarded: first.reward.coinsAwarded,
-        ledger_count: '1',
-        wallet_balance: first.reward.coinsAwarded,
+        coins_awarded: 0,
+        ledger_count: '0',
+        wallet_balance: null,
+        point_award_count: '1',
         card_count: '0',
       });
     }, 45_000);
