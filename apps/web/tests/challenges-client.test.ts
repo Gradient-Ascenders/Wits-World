@@ -10,6 +10,7 @@ import {
 const apiBaseUrl = 'https://api.example.test/api/v1';
 const attemptId = '31000000-0000-4000-8000-000000000001';
 const eventId = '00000000-0000-4000-8000-000000000018';
+const challengeContractVersion = '2';
 const claim = {
   accuracyMetres: 12,
   acquiredAt: '2026-08-08T10:30:00.000Z',
@@ -42,6 +43,7 @@ describe('challenge attempt client', () => {
           Accept: 'application/json',
           Authorization: 'Bearer private-access-token',
           'Content-Type': 'application/json',
+          'X-Wits-Challenge-Contract-Version': challengeContractVersion,
         },
         method: 'POST',
         signal: controller.signal,
@@ -83,6 +85,7 @@ describe('challenge attempt client', () => {
         headers: {
           Accept: 'application/json',
           Authorization: 'Bearer access-token',
+          'X-Wits-Challenge-Contract-Version': challengeContractVersion,
         },
         method: 'GET',
         signal: controller.signal,
@@ -111,9 +114,43 @@ describe('challenge attempt client', () => {
           attemptQuestionId: questionId(1),
           choiceId: choiceId(1, 1),
         }),
+        headers: expect.objectContaining({
+          'X-Wits-Challenge-Contract-Version': challengeContractVersion,
+        }),
         method: 'POST',
       }),
     );
+  });
+
+  it('maps a stale challenge contract response to an explicit refresh failure', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(
+          {
+            code: 'CHALLENGE_CLIENT_UPGRADE_REQUIRED',
+            detail: 'Refresh before continuing.',
+            requestId: 'request-upgrade',
+            status: 409,
+            title: 'Challenge client update required',
+            type: 'https://wits.world/problems/challenge-client-upgrade-required',
+          },
+          409,
+        ),
+      ),
+    );
+
+    await expect(
+      getChallengeAttempt({
+        apiBaseUrl,
+        attemptId,
+        getAccessToken: vi.fn().mockResolvedValue('access-token'),
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toMatchObject({
+      failure: 'client-upgrade-required',
+      requestId: 'request-upgrade',
+    });
   });
 
   it.each([

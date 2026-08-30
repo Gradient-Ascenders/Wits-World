@@ -594,10 +594,13 @@ canonical Basic card roster for all affinities plus the approved Spark
 high-rarity definitions. Card artwork remains separate from this gameplay
 content specification.
 
-Migration `0034_retire_coin_rewards.sql` is deliberately deployed after a
+Migration `0034_retire_coin_rewards.sql` is deliberately deployed during a
 coordinated API/Web cutover that stops writing and returning coins. Challenge
-traffic must be quiesced during that breaking response-shape change, and old Web
-sessions must refresh before challenge traffic resumes. The migration adds a
+traffic remains quiesced until the migration and a post-migration completion
+smoke test succeed. The replacement API requires challenge contract version `2`
+on every challenge-attempt request and rejects absent or stale versions before
+any challenge service runs, so an old Web session cannot mutate or finalise a
+challenge until it hard-refreshes onto the matching build. The migration adds a
 not-valid zero-only constraint so new completion rows cannot award coins without
 scanning or rewriting historical rows, guards the legacy wallet against inserts
 and updates, and guards the legacy ledger against every mutation. Deploying this

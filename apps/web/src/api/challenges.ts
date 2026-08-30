@@ -66,6 +66,7 @@ export type ChallengeApiFailure =
   | 'attempt-completed'
   | 'attempt-not-found'
   | 'authorization'
+  | 'client-upgrade-required'
   | 'event-not-reachable'
   | 'event-unavailable'
   | 'location-retry'
@@ -159,6 +160,8 @@ interface RequestAttemptOptions extends ChallengeRequestBase {
   path: string;
 }
 
+const ACTIVE_CHALLENGE_CONTRACT_VERSION = '2';
+
 async function requestAttempt({
   apiBaseUrl,
   body,
@@ -183,6 +186,7 @@ async function requestAttempt({
       headers: {
         Accept: 'application/json',
         Authorization: `Bearer ${accessToken}`,
+        'X-Wits-Challenge-Contract-Version': ACTIVE_CHALLENGE_CONTRACT_VERSION,
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
       },
       method,
@@ -244,6 +248,10 @@ async function parseChallengeError(
 
   if (code === 'ATTEMPT_COMPLETED') {
     return new ChallengeApiError('attempt-completed', requestId);
+  }
+
+  if (code === 'CHALLENGE_CLIENT_UPGRADE_REQUIRED') {
+    return new ChallengeApiError('client-upgrade-required', requestId);
   }
 
   if (code === 'EVENT_NOT_REACHABLE') {

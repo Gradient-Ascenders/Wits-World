@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 
 import {
   ChallengeEventNotActiveError,
@@ -59,6 +59,22 @@ interface OrderingAnswerBody {
 }
 
 type SubmitAnswerBody = MultipleChoiceAnswerBody | OrderingAnswerBody;
+
+const CHALLENGE_CONTRACT_HEADER = 'x-wits-challenge-contract-version';
+const ACTIVE_CHALLENGE_CONTRACT_VERSION = '2';
+
+const challengeContractHeadersSchema = {
+  type: 'object',
+  required: [CHALLENGE_CONTRACT_HEADER],
+  properties: {
+    [CHALLENGE_CONTRACT_HEADER]: {
+      type: 'string',
+      const: ACTIVE_CHALLENGE_CONTRACT_VERSION,
+      description:
+        'Required challenge response-contract version. Refresh the Web application when the active version changes.',
+    },
+  },
+} as const;
 
 const apiErrorSchema = {
   type: 'object',
@@ -586,7 +602,11 @@ export const challengeAttemptRoutes: FastifyPluginAsync<
   }>(
     '/events/:eventId/challenge-attempts',
     {
-      onRequest: [app.authenticate, app.requireActivePlayer],
+      onRequest: [
+        app.authenticate,
+        app.requireActivePlayer,
+        requireActiveChallengeContract,
+      ],
       schema: {
         operationId: 'startOrResumeChallengeAttempt',
         summary: 'Start or resume an event challenge attempt',
@@ -598,6 +618,7 @@ export const challengeAttemptRoutes: FastifyPluginAsync<
             bearerAuth: [],
           },
         ],
+        headers: challengeContractHeadersSchema,
         params: {
           type: 'object',
           additionalProperties: false,
@@ -691,7 +712,11 @@ export const challengeAttemptRoutes: FastifyPluginAsync<
     }>(
       '/challenge-attempts/:attemptId',
       {
-        onRequest: [app.authenticate, app.requireActivePlayer],
+        onRequest: [
+          app.authenticate,
+          app.requireActivePlayer,
+          requireActiveChallengeContract,
+        ],
         schema: {
           operationId: 'fetchChallengeAttempt',
           summary: 'Fetch the current challenge attempt state',
@@ -703,6 +728,7 @@ export const challengeAttemptRoutes: FastifyPluginAsync<
               bearerAuth: [],
             },
           ],
+          headers: challengeContractHeadersSchema,
           params: {
             type: 'object',
             additionalProperties: false,
@@ -722,6 +748,7 @@ export const challengeAttemptRoutes: FastifyPluginAsync<
             401: apiErrorSchema,
             403: apiErrorSchema,
             404: apiErrorSchema,
+            409: apiErrorSchema,
             500: apiErrorSchema,
           },
         },
@@ -767,7 +794,11 @@ export const challengeAttemptRoutes: FastifyPluginAsync<
     }>(
       '/challenge-attempts/:attemptId/answers',
       {
-        onRequest: [app.authenticate, app.requireActivePlayer],
+        onRequest: [
+          app.authenticate,
+          app.requireActivePlayer,
+          requireActiveChallengeContract,
+        ],
         schema: {
           operationId: 'submitChallengeAnswer',
           summary: 'Submit and lock a challenge answer',
@@ -779,6 +810,7 @@ export const challengeAttemptRoutes: FastifyPluginAsync<
               bearerAuth: [],
             },
           ],
+          headers: challengeContractHeadersSchema,
           params: {
             type: 'object',
             additionalProperties: false,
@@ -830,6 +862,25 @@ export const challengeAttemptRoutes: FastifyPluginAsync<
     );
   }
 };
+
+async function requireActiveChallengeContract(
+  request: FastifyRequest,
+): Promise<void> {
+  if (
+    request.headers[CHALLENGE_CONTRACT_HEADER] ===
+    ACTIVE_CHALLENGE_CONTRACT_VERSION
+  ) {
+    return;
+  }
+
+  throw new ApiError({
+    statusCode: 409,
+    code: 'CHALLENGE_CLIENT_UPGRADE_REQUIRED',
+    title: 'Challenge client update required',
+    detail:
+      'Refresh Wits World before continuing this challenge. No challenge answer was changed.',
+  });
+}
 
 function normalizeAnswerBody(body: SubmitAnswerBody) {
   if (body.format === 'ordering') {

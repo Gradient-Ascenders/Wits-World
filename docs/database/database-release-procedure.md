@@ -112,14 +112,23 @@ Migration `0034_retire_coin_rewards.sql` is the exception to the usual
 database-first ordering. Quiesce challenge traffic and perform a coordinated
 API/Web cutover because the old and new completed-attempt response shapes are
 not cross-compatible. Drain onto the API that writes `coins_awarded = 0`,
-creates no wallet or ledger entry, and returns only card rewards; deploy the
-matching Web contract before reopening challenge traffic; only then apply
-`0034`. Require already-open old Web sessions to refresh before resuming a
-challenge. The migration preserves historical non-zero completion values,
-makes legacy wallets read-only except for account-deletion cleanup, and makes
-the coin ledger fully immutable. An older API instance will fail challenge
-finalisation after `0034`, so do not leave mixed API versions serving traffic.
-No new environment variable, dependency, seed, or data backfill is required.
+creates no wallet or ledger entry, and returns only card rewards; then deploy
+the matching Web contract and apply `0034` while challenge traffic remains
+quiesced. The new API requires
+`X-Wits-Challenge-Contract-Version: 2` on every challenge-attempt operation and
+rejects a missing or different value with
+`CHALLENGE_CLIENT_UPGRADE_REQUIRED` before a challenge service can mutate or
+finalise state. The matching Web build sends that value and presents an explicit
+hard-refresh action. This makes refresh enforceable for already-open old tabs:
+they cannot submit or finalise against the new contract until refreshed.
+
+After `0034` applies, run the cards-only completion smoke test against the
+post-migration schema and reopen challenge traffic only when it succeeds. The
+migration preserves historical non-zero completion values, makes legacy wallets
+read-only except for account-deletion cleanup, and makes the coin ledger fully
+immutable. An older API instance will fail challenge finalisation after `0034`,
+so do not leave mixed API versions serving traffic. No new environment variable,
+dependency, seed, or data backfill is required.
 
 ## Prerequisites
 
@@ -176,11 +185,10 @@ test command as evidence that production was changed.
    available without printing it.
 3. For a release containing `0034`, quiesce challenge traffic, deploy the
    matching API, ensure every old API instance is drained, deploy the matching
-   Web build, and require old sessions to refresh. Before reopening challenge
-   traffic, verify a completed challenge persists zero in `coins_awarded`,
-   creates no wallet or ledger row, and returns the card-only result. For other
-   releases, retain the migration-first ordering described by their migration
-   notes.
+   Web build, and confirm the API rejects a challenge request without
+   `X-Wits-Challenge-Contract-Version: 2` before invoking challenge services.
+   Keep challenge traffic quiesced through steps 4 and 5. For other releases,
+   retain the migration-first ordering described by their migration notes.
 4. Run migrations without demonstration data:
 
    ```bash
@@ -191,7 +199,11 @@ test command as evidence that production was changed.
 
 5. Review the successful migration, PostGIS, and verification counts. Confirm
    `0028` before deploying the API and compatible Web build. For `0034`, confirm
-   the migration applied only after the compatible application checks in step 3.
+   the migration applied only after the compatible application checks in step 3,
+   then use the versioned Web client to complete a challenge against the
+   post-migration schema. Verify it persists zero in `coins_awarded`, creates no
+   wallet or ledger row, and returns the card-only result. Reopen challenge
+   traffic only after this smoke test succeeds; otherwise keep it quiesced.
 6. Deploy any matching API and Web build not already deployed by the `0034`
    choreography, then verify health and generated OpenAPI. With sanitised
    evidence, perform an authenticated Author

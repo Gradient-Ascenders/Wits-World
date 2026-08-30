@@ -739,6 +739,34 @@ describe('timed player challenge', () => {
     );
     expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
   });
+
+  it('requires a hard refresh when the challenge contract is stale', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          problemResponse('CHALLENGE_CLIENT_UPGRADE_REQUIRED', 409),
+        ),
+    );
+
+    renderChallenge();
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Refresh Wits World to continue',
+      }),
+    ).toBeVisible();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'This version cannot safely continue the challenge.',
+    );
+    expect(
+      screen.getByRole('button', { name: 'Refresh Wits World' }),
+    ).toBeEnabled();
+    expect(
+      screen.queryByRole('button', { name: 'Try again' }),
+    ).not.toBeInTheDocument();
+  });
 });
 
 function authValue(): Auth0ContextInterface {
