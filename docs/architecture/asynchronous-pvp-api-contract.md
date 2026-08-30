@@ -43,8 +43,11 @@ The following rules are fixed by issue `#178` and this contract:
   inventing client-controlled or unapproved award values.
 
 The first delivery deliberately does not add challenge cancellation or a
-voluntary resignation intent. Account deletion invalidates pending invitations
-and finalizes an active match as an account-deletion forfeit for the opponent.
+voluntary resignation intent. Account deletion invalidates pending invitations.
+For an active match whose turn deadline has not elapsed, the deleting player
+loses by `account_deletion_forfeit`. If the deadline has already elapsed when
+deletion begins, deadline authority takes precedence: the current actor loses by
+`turn_forfeit`, even when the other participant is the player being deleted.
 Completed records retain an anonymous player tombstone under the existing
 retention policy.
 
@@ -609,6 +612,7 @@ Errors use the existing problem-style envelope with `type`, `title`, `status`,
 | Status | Code                              | Use                                           |
 | ------ | --------------------------------- | --------------------------------------------- |
 | `400`  | `VALIDATION_ERROR`                | Malformed parameter or closed request schema  |
+| `400`  | `PVP_DECK_INVALID`                | Saved deck or initial Creature is unavailable |
 | `404`  | `PVP_PLAYER_UNAVAILABLE`          | Exact target cannot safely be challenged      |
 | `404`  | `PVP_INVITATION_NOT_FOUND`        | Missing invitation or wrong participant       |
 | `404`  | `PVP_MATCH_NOT_FOUND`             | Missing match or non-participant access       |

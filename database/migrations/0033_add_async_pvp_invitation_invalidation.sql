@@ -46,6 +46,7 @@ alter table public.async_pvp_invitations
       (
         status = 'invalidated'
         and responded_at is not null
+        and responded_at < expires_at
         and match_id is null
       )
     );

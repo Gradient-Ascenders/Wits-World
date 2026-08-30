@@ -111,9 +111,11 @@ as `Deleted player` and never expose these internal identifiers.
 
 Issue `#180` implements bounded deadline sweeps, expires pending invitations,
 invalidates not-yet-overdue invitations when account deletion begins, and records
-an `account_deletion_forfeit` for active matches. No automated purge is added
-for declined or expired invitations because their retention period remains an
-explicitly unresolved product decision.
+an `account_deletion_forfeit` for active matches whose deadline has not elapsed.
+For an already-overdue match, the current actor instead loses by `turn_forfeit`;
+account deletion cannot reverse that elapsed deadline outcome. No automated
+purge is added for declined or expired invitations because their retention
+period remains an explicitly unresolved product decision.
 
 ## Verification and release
 

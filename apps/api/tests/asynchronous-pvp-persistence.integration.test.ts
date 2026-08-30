@@ -51,6 +51,13 @@ interface AcceptedMatchFixture extends PendingInvitationFixture {
   recipientSnapshotId: string;
 }
 
+interface SnapshotBattleCardFixture extends pg.QueryResultRow {
+  participant_role: 'challenger' | 'recipient';
+  battle_card_id: string;
+  category: 'creature' | 'power';
+  affinity: CardDefinitionFixture['affinity'];
+}
+
 describe.skipIf(!runIntegrationTests)(
   'asynchronous PvP persistence integration',
   () => {
@@ -245,11 +252,35 @@ describe.skipIf(!runIntegrationTests)(
           [invitation.invitationId],
         ),
       ).rejects.toThrow('Terminal asynchronous PvP invitation');
+
+      const lateInvitation = await createPendingInvitation(
+        pool,
+        cardDefinitions,
+      );
+      await expect(
+        pool.query(
+          `update public.async_pvp_invitations
+              set status = 'invalidated',
+                  version = version + 1,
+                  responded_at = expires_at,
+                  updated_at = expires_at
+            where id = $1::uuid`,
+          [lateInvitation.invitationId],
+        ),
+      ).rejects.toMatchObject({
+        constraint: 'async_pvp_invitations_lifecycle_check',
+      });
     });
 
-    it('atomically invalidates pending invitations and records account-deletion forfeits with progression', async () => {
+    it('preserves elapsed deadline outcomes while finalizing account deletion atomically', async () => {
       const pending = await createPendingInvitation(pool, cardDefinitions);
       const accepted = await createAcceptedMatch(pool, cardDefinitions);
+      const overdueActor = await createAcceptedMatch(pool, cardDefinitions, {
+        acceptedAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
+      });
+      const overdueOpponent = await createAcceptedMatch(pool, cardDefinitions, {
+        acceptedAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
+      });
       const service = createAsyncPvpService(pool, {
         cursorCodec: createSignedCursorCodec(
           'database-test-only-cursor-key-with-32-bytes',
@@ -269,6 +300,16 @@ describe.skipIf(!runIntegrationTests)(
           accepted.challengerPlayerId,
           requestedAt,
         );
+        await service.finalizeAccountDeletion(
+          client,
+          overdueActor.challengerPlayerId,
+          requestedAt,
+        );
+        await service.finalizeAccountDeletion(
+          client,
+          overdueOpponent.recipientPlayerId,
+          requestedAt,
+        );
         await client.query('commit');
       } catch (error) {
         await client.query('rollback');
@@ -279,31 +320,51 @@ describe.skipIf(!runIntegrationTests)(
 
       const terminal = await pool.query<{
         completion_reason: string;
-        invitation_status: string;
+        match_id: string;
         progression_count: string;
         winner_player_id: string;
       }>(
-        `select match.completion_reason,
+        `select match.id::text as match_id,
+                match.completion_reason,
                 match.winner_player_id::text,
-                invitation.status as invitation_status,
                 (select count(*)::text
                   from public.player_point_awards award
                   where award.async_pvp_match_id = match.id
                 ) as progression_count
            from public.async_pvp_matches match
-           join public.async_pvp_invitations invitation
-             on invitation.id = $1::uuid
-          where match.id = $2::uuid`,
-        [pending.invitationId, accepted.matchId],
+          where match.id = any($1::uuid[])`,
+        [[accepted.matchId, overdueActor.matchId, overdueOpponent.matchId]],
       );
-      expect(terminal.rows).toEqual([
-        {
-          completion_reason: 'account_deletion_forfeit',
-          invitation_status: 'invalidated',
-          progression_count: '2',
-          winner_player_id: accepted.recipientPlayerId,
-        },
-      ]);
+      expect(terminal.rows).toEqual(
+        expect.arrayContaining([
+          {
+            match_id: accepted.matchId,
+            completion_reason: 'account_deletion_forfeit',
+            progression_count: '2',
+            winner_player_id: accepted.recipientPlayerId,
+          },
+          {
+            match_id: overdueActor.matchId,
+            completion_reason: 'turn_forfeit',
+            progression_count: '2',
+            winner_player_id: overdueActor.recipientPlayerId,
+          },
+          {
+            match_id: overdueOpponent.matchId,
+            completion_reason: 'turn_forfeit',
+            progression_count: '2',
+            winner_player_id: overdueOpponent.recipientPlayerId,
+          },
+        ]),
+      );
+      await expect(
+        pool.query<{ status: string }>(
+          `select status
+             from public.async_pvp_invitations
+            where id = $1::uuid`,
+          [pending.invitationId],
+        ),
+      ).resolves.toMatchObject({ rows: [{ status: 'invalidated' }] });
     });
 
     it('enforces deck, access, hidden-state, action, replay, and concurrency rules through the real service', async () => {
@@ -469,6 +530,223 @@ describe.skipIf(!runIntegrationTests)(
       await expect(
         service.getMatch(challengerPlayerId, challengerView.matchId),
       ).resolves.toMatchObject({ version: 2 });
+    });
+
+    it('rechecks invitation expiry against the clock after crossing the deadline while blocked', async () => {
+      const invitation = await createPendingInvitation(pool, cardDefinitions, {
+        createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000 + 20_000),
+      });
+      const deadline = await pool.query<{ expires_at: Date }>(
+        `select expires_at
+             from public.async_pvp_invitations
+            where id = $1::uuid`,
+        [invitation.invitationId],
+      );
+      const service = createAsyncPvpService(pool, {
+        cursorCodec: createSignedCursorCodec(
+          'database-test-only-cursor-key-with-32-bytes',
+        ),
+      });
+      const blocker = await pool.connect();
+      try {
+        await blocker.query('begin');
+        await blocker.query(
+          `select id
+               from public.async_pvp_invitations
+              where id = $1::uuid
+              for update`,
+          [invitation.invitationId],
+        );
+        expect(Date.now()).toBeLessThan(deadline.rows[0]!.expires_at.getTime());
+        const decline = service.declineInvitation({
+          playerId: invitation.recipientPlayerId,
+          invitationId: invitation.invitationId,
+          submissionId: randomUUID(),
+          expectedVersion: 0,
+        });
+        await waitForBlockedQuery(pool, 'for update of invitation');
+        await waitUntilAfter(deadline.rows[0]!.expires_at);
+        await blocker.query('commit');
+
+        await expect(decline).rejects.toMatchObject({
+          code: 'PVP_INVITATION_EXPIRED',
+        });
+        await expect(
+          pool.query<{ status: string }>(
+            `select status
+                 from public.async_pvp_invitations
+                where id = $1::uuid`,
+            [invitation.invitationId],
+          ),
+        ).resolves.toMatchObject({ rows: [{ status: 'expired' }] });
+      } finally {
+        await blocker.query('rollback');
+        blocker.release();
+      }
+    }, 45_000);
+
+    it('rechecks match expiry against the clock after crossing the deadline while blocked', async () => {
+      const match = await createAcceptedMatch(pool, cardDefinitions, {
+        acceptedAt: new Date(Date.now() - 24 * 60 * 60 * 1000 + 20_000),
+      });
+      const deadline = await pool.query<{ turn_deadline: Date }>(
+        `select turn_deadline
+             from public.async_pvp_matches
+            where id = $1::uuid`,
+        [match.matchId],
+      );
+      const service = createAsyncPvpService(pool, {
+        cursorCodec: createSignedCursorCodec(
+          'database-test-only-cursor-key-with-32-bytes',
+        ),
+      });
+      const blocker = await pool.connect();
+      try {
+        await blocker.query('begin');
+        await blocker.query(
+          `select id
+               from public.async_pvp_matches
+              where id = $1::uuid
+              for update`,
+          [match.matchId],
+        );
+        expect(Date.now()).toBeLessThan(
+          deadline.rows[0]!.turn_deadline.getTime(),
+        );
+        const getMatch = service.getMatch(
+          match.challengerPlayerId,
+          match.matchId,
+        );
+        await waitForBlockedQuery(pool, 'from public.async_pvp_matches match');
+        await waitUntilAfter(deadline.rows[0]!.turn_deadline);
+        await blocker.query('commit');
+
+        await expect(getMatch).resolves.toMatchObject({
+          status: 'completed',
+          completionReason: 'turn_forfeit',
+          outcome: 'loss',
+        });
+      } finally {
+        await blocker.query('rollback');
+        blocker.release();
+      }
+    }, 45_000);
+
+    it('rejects an invitation creator whose account deletion commits while creation is blocked', async () => {
+      const challengerPlayerId = await insertPlayer(
+        pool,
+        'deleting_challenger',
+      );
+      const recipientPlayerId = await insertPlayer(pool, 'race_recipient');
+      const challengerDeck = await createOwnedDeck(
+        pool,
+        challengerPlayerId,
+        cardDefinitions,
+      );
+      const recipient = await pool.query<{ player_name: string }>(
+        `select player_name
+           from public.players
+          where id = $1::uuid`,
+        [recipientPlayerId],
+      );
+      const service = createAsyncPvpService(pool, {
+        cursorCodec: createSignedCursorCodec(
+          'database-test-only-cursor-key-with-32-bytes',
+        ),
+      });
+      const blocker = await pool.connect();
+      try {
+        await blocker.query('begin');
+        await blocker.query(
+          `select id
+             from public.players
+            where id = $1::uuid
+            for update`,
+          [challengerPlayerId],
+        );
+        const deletionRequestId = randomUUID();
+        const requestedAt = new Date();
+        await blocker.query(
+          `insert into public.account_deletion_requests (
+             id, requested_at, status
+           ) values ($1::uuid, $2, 'pending')`,
+          [deletionRequestId, requestedAt],
+        );
+        await blocker.query(
+          `update public.players
+              set lifecycle_status = 'deletion_pending',
+                  deletion_request_id = $2::uuid,
+                  updated_at = $3
+            where id = $1::uuid`,
+          [challengerPlayerId, deletionRequestId, requestedAt],
+        );
+
+        const create = service.createInvitation({
+          playerId: challengerPlayerId,
+          opponentPlayerName: recipient.rows[0]!.player_name,
+          deckId: challengerDeck.deckId,
+          initialCreatureId: challengerDeck.creatureId,
+          submissionId: randomUUID(),
+        });
+        await waitForBlockedQuery(pool, 'for share');
+        await blocker.query('commit');
+
+        await expect(create).rejects.toMatchObject({
+          code: 'PVP_PLAYER_UNAVAILABLE',
+        });
+        await expect(
+          pool.query<{ invitation_count: string }>(
+            `select count(*)::text as invitation_count
+               from public.async_pvp_invitations
+              where challenger_player_id = $1::uuid`,
+            [challengerPlayerId],
+          ),
+        ).resolves.toMatchObject({
+          rows: [{ invitation_count: '0' }],
+        });
+      } finally {
+        await blocker.query('rollback');
+        blocker.release();
+      }
+    });
+
+    it('does not list an overdue active match when bounded finalization skips its lock', async () => {
+      const overdueMatch = await createAcceptedMatch(pool, cardDefinitions, {
+        acceptedAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
+      });
+      const service = createAsyncPvpService(pool, {
+        cursorCodec: createSignedCursorCodec(
+          'database-test-only-cursor-key-with-32-bytes',
+        ),
+      });
+      const blocker = await pool.connect();
+      try {
+        await blocker.query('begin');
+        await blocker.query(
+          `select id
+             from public.async_pvp_matches
+            where id = $1::uuid
+            for update`,
+          [overdueMatch.matchId],
+        );
+
+        await expect(
+          service.listActiveMatches({
+            playerId: overdueMatch.challengerPlayerId,
+            limit: 10,
+          }),
+        ).resolves.toEqual({ items: [], nextCursor: null });
+      } finally {
+        await blocker.query('rollback');
+        blocker.release();
+      }
+
+      await expect(
+        service.getMatch(overdueMatch.challengerPlayerId, overdueMatch.matchId),
+      ).resolves.toMatchObject({
+        status: 'completed',
+        completionReason: 'turn_forfeit',
+      });
     });
 
     it('expires invitations and forfeits overdue matches exactly once into authorized history and progression', async () => {
@@ -943,6 +1221,36 @@ describe.skipIf(!runIntegrationTests)(
   },
 );
 
+async function waitForBlockedQuery(
+  database: pg.Pool,
+  queryFragment: string,
+): Promise<void> {
+  const timeoutAt = Date.now() + 10_000;
+  while (Date.now() < timeoutAt) {
+    const blocked = await database.query<{ blocked: boolean }>(
+      `select exists (
+         select 1
+           from pg_stat_activity
+          where datname = current_database()
+            and pid <> pg_backend_pid()
+            and wait_event_type = 'Lock'
+            and query ilike $1
+       ) as blocked`,
+      [`%${queryFragment}%`],
+    );
+    if (blocked.rows[0]?.blocked) return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`Timed out waiting for blocked query: ${queryFragment}`);
+}
+
+async function waitUntilAfter(deadline: Date): Promise<void> {
+  const remainingMilliseconds = deadline.getTime() - Date.now() + 100;
+  if (remainingMilliseconds > 0) {
+    await new Promise((resolve) => setTimeout(resolve, remainingMilliseconds));
+  }
+}
+
 async function copyPrePvpMigrations(): Promise<string> {
   const sourceDirectory = getMigrationsDirectory();
   const targetDirectory = await mkdtemp(join(tmpdir(), 'wits-pvp-migrations-'));
@@ -1215,6 +1523,19 @@ async function createAcceptedMatch(
         recipientSnapshotId,
       ],
     );
+    const snapshotCards = await client.query<SnapshotBattleCardFixture>(
+      `select snapshot.participant_role,
+              card.battle_card_id::text,
+              card.category,
+              card.affinity
+         from private.async_pvp_deck_snapshots snapshot
+         join private.async_pvp_deck_snapshot_cards card
+           on card.snapshot_id = snapshot.id
+        where snapshot.id = any($1::uuid[])
+        order by snapshot.participant_role, card.position`,
+      [[invitation.challengerSnapshotId, recipientSnapshotId]],
+    );
+    const battleState = createFixtureBattleState(snapshotCards.rows);
     await client.query(
       `insert into private.async_pvp_match_states (
          match_id,
@@ -1224,10 +1545,10 @@ async function createAcceptedMatch(
        ) values (
          $1::uuid,
          0,
-         '{"phase":"active","turnNumber":1}',
+         $2::jsonb,
          now()
        )`,
-      [matchId],
+      [matchId, JSON.stringify(battleState)],
     );
     await client.query(
       `update public.async_pvp_invitations
@@ -1258,6 +1579,56 @@ async function createAcceptedMatch(
   } finally {
     client.release();
   }
+}
+
+function createFixtureBattleState(cards: readonly SnapshotBattleCardFixture[]) {
+  const participant = (role: 'challenger' | 'recipient') => {
+    const participantCards = cards.filter(
+      (card) => card.participant_role === role,
+    );
+    const creatures = participantCards
+      .filter((card) => card.category === 'creature')
+      .map((card) => ({
+        card: {
+          id: card.battle_card_id,
+          affinity: card.affinity,
+          maxHp: 10,
+          maxPower: 10,
+          moves: [],
+        },
+        currentHp: 10,
+        remainingPower: 10,
+        defeated: false,
+        modifiers: [],
+      }));
+    return {
+      creatures,
+      powerCards: participantCards
+        .filter((card) => card.category === 'power')
+        .map((card) => ({
+          id: card.battle_card_id,
+          affinity: card.affinity,
+          effects: [],
+        })),
+      usedPowerCardIds: [],
+      activeCreatureId: creatures[0]!.card.id,
+    };
+  };
+  const player = participant('challenger');
+  const cpu = participant('recipient');
+  return {
+    phase: 'active',
+    turnNumber: 1,
+    currentSide: 'player',
+    replacementSide: null,
+    firstSide: 'player',
+    selections: {
+      player: player.activeCreatureId,
+      cpu: cpu.activeCreatureId,
+    },
+    participants: { player, cpu },
+    winner: null,
+  };
 }
 
 async function insertDeckSnapshot(

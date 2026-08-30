@@ -349,12 +349,39 @@ export function createAsyncPvpService(
                and lifecycle_status = 'active'
                and player_name is not null
                and id <> $2::uuid
-             for share
           `,
           [input.opponentPlayerName, input.playerId],
         );
-        const opponent = opponentResult.rows[0];
-        if (!opponent) throw unavailablePlayer();
+        const opponentLookup = opponentResult.rows[0];
+        if (!opponentLookup) throw unavailablePlayer();
+
+        const lockedPlayers = await client.query<{
+          id: string;
+          lifecycle_status: string;
+          player_name: string | null;
+        }>(
+          `
+            select id::text, lifecycle_status, player_name
+              from public.players
+             where id = any($1::uuid[])
+             order by id
+             for share
+          `,
+          [[input.playerId, opponentLookup.id].sort()],
+        );
+        const playersById = new Map(
+          lockedPlayers.rows.map((player) => [player.id, player]),
+        );
+        const challenger = playersById.get(input.playerId);
+        const opponent = playersById.get(opponentLookup.id);
+        if (
+          challenger?.lifecycle_status !== 'active' ||
+          challenger.player_name === null ||
+          opponent?.lifecycle_status !== 'active' ||
+          opponent.player_name !== opponentLookup.player_name
+        ) {
+          throw unavailablePlayer();
+        }
 
         const pair = [input.playerId, opponent.id].sort();
         await client.query(
@@ -1014,12 +1041,14 @@ export function createAsyncPvpService(
       for (const row of matches.rows) {
         const match = await lockMatchById(client, row.id, false);
         if (match?.status === 'active') {
+          const deadlineElapsed =
+            match.turn_deadline !== null && requestedAt >= match.turn_deadline;
           await completeForfeit(
             client,
             match,
-            playerId,
+            deadlineElapsed ? match.current_player_id! : playerId,
             requestedAt,
-            'account_deletion_forfeit',
+            deadlineElapsed ? 'turn_forfeit' : 'account_deletion_forfeit',
             progressionPersistence,
           );
         }
@@ -1058,9 +1087,7 @@ async function withExistingClientTransaction<T>(
 }
 
 async function databaseNow(client: AsyncPvpClient): Promise<Date> {
-  const result = await client.query<NowRow>(
-    `select transaction_timestamp() as now`,
-  );
+  const result = await client.query<NowRow>(`select clock_timestamp() as now`);
   const now = result.rows[0]?.now;
   if (!now) throw new Error('Database did not return its transaction time.');
   return now;
@@ -1914,6 +1941,7 @@ async function listMatchSummaries(
             on opponent.match_id = match.id and opponent.player_id <> viewer.player_id
           join public.players opponent_player on opponent_player.id = opponent.player_id
          where match.status = $2
+           and ($2::text <> 'active' or match.turn_deadline > clock_timestamp())
            and ($3::timestamptz is null
                 or (${timestampColumn}, match.id) < ($3::timestamptz, $4::uuid))
          order by ${timestampColumn} desc, match.id desc
