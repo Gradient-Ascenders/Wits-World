@@ -1,4 +1,4 @@
-name: Continuous Integration
+name: Pull Request Validation
 
 on:
   pull_request:
@@ -103,6 +103,87 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  database-validation:
+    name: Validate database and migrations
+    runs-on: wits-world-ci
+
+    steps:
+      - name: Check out repository
+        uses: https://github.com/actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: https://github.com/actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install dependencies
+        run: time npm ci --prefer-offline --no-audit --fund=false
+
+      - name: Confirm disposable test database is configured
+        env:
+          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${TEST_DATABASE_URL:-}" ]; then
+            echo "::error::TEST_DATABASE_URL is not configured for pull-request database validation."
+            echo "Configure it as a Gitea Actions secret pointing to a disposable PostgreSQL/PostGIS test database."
+            exit 1
+          fi
+
+          node --input-type=module <<'NODE'
+          const connectionString = process.env.TEST_DATABASE_URL;
+
+          if (!connectionString) {
+            throw new Error('TEST_DATABASE_URL is missing.');
+          }
+
+          const url = new URL(connectionString);
+
+          if (url.protocol !== 'postgres:' && url.protocol !== 'postgresql:') {
+            throw new Error(
+              'TEST_DATABASE_URL must be a PostgreSQL connection string.',
+            );
+          }
+
+          const database = url.pathname.replace(/^\/+/, '');
+
+          if (!url.hostname || !database) {
+            throw new Error(
+              'TEST_DATABASE_URL must contain a database hostname and database name.',
+            );
+          }
+
+          console.log(`Test database host: ${url.hostname}`);
+          console.log(`Test database name: ${database}`);
+          NODE
+
+      - name: Prepare shared API dependencies
+        run: time npm run prepare:api
+
+      - name: Verify test database readiness
+        env:
+          # Deliberately unusable development target. The API database
+          # configuration requires DATABASE_URL when validating TEST_DATABASE_URL,
+          # but PR CI must never receive development or production credentials.
+          DATABASE_URL: postgresql://ci-guard:ci-guard@127.0.0.1:1/wits_world_ci_guard
+          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+
+          time npm run db:check:test --workspace @wits-world/api
+
+      - name: Run database integration and migration tests
+        env:
+          # Keep the ordinary database target deliberately unusable so an
+          # accidental non-test connection fails rather than touching real data.
+          DATABASE_URL: postgresql://ci-guard:ci-guard@127.0.0.1:1/wits_world_ci_guard
+          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+
+          time npm run test:database --workspace @wits-world/api
+
   build:
     name: Build applications
     runs-on: wits-world-ci
@@ -133,9 +214,15 @@ jobs:
     needs:
       - static-analysis
       - test
+      - database-validation
       - build
     runs-on: wits-world-ci
 
     steps:
       - name: Confirm validation gates passed
-        run: echo "All repository and application validation jobs passed."
+        run: |
+          echo "All pull-request validation jobs passed."
+          echo "Static analysis: passed"
+          echo "Application tests and coverage: passed"
+          echo "Database and migration validation: passed"
+          echo "Application builds: passed"

@@ -1,4 +1,4 @@
-﻿name: Continuous Integration
+name: Continuous Integration
 
 on:
   push:
@@ -358,6 +358,7 @@ jobs:
           mkdir -p "$ARTIFACT_ROOT/package/apps/api"
 
           test -f apps/api/dist/server.js
+          test -f apps/api/dist/database/release.js
 
           rm -rf node_modules
 
@@ -459,6 +460,9 @@ jobs:
 
           unzip -l "$ARTIFACT_ROOT/witsworld-api-deploy.zip" |
             grep 'apps/api/dist/server.js'
+
+          unzip -l "$ARTIFACT_ROOT/witsworld-api-deploy.zip" |
+            grep 'apps/api/dist/database/release.js'
 
           echo "API artifact packaging completed in $((SECONDS - PACKAGE_STARTED_AT)) seconds."
 
@@ -706,6 +710,7 @@ jobs:
             package-lock.json \
             apps/api/package.json \
             apps/api/dist/server.js \
+            apps/api/dist/database/release.js \
             node_modules/@wits-world/account-policy/package.json \
             node_modules/@wits-world/account-policy/dist/src/index.js \
             node_modules/@wits-world/game-rules/package.json \
@@ -735,6 +740,90 @@ jobs:
             echo "The deployment commit does not contain tracked database files."
             exit 1
           fi
+
+      - name: Set up Node.js for production database release
+        if: ${{ steps.api_deployment_changes.outputs.required == 'true' }}
+        uses: https://github.com/actions/setup-node@v4
+        with:
+          node-version-file: /tmp/witsworld-api-deploy-${{ gitea.sha }}/repository/.nvmrc
+
+      - name: Release production database
+        if: ${{ steps.api_deployment_changes.outputs.required == 'true' }}
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          CONFIRM_DATABASE: ${{ vars.PRODUCTION_DATABASE_NAME }}
+          CONFIRM_DATABASE_HOST: ${{ vars.PRODUCTION_DATABASE_HOST }}
+        run: |
+          set -euo pipefail
+
+          DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
+          RELEASE_ROOT="$DEPLOY_ROOT/database-release"
+
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "PRODUCTION_DATABASE_URL is not configured."
+            exit 1
+          fi
+
+          if [ -z "${CONFIRM_DATABASE:-}" ]; then
+            echo "PRODUCTION_DATABASE_NAME is not configured."
+            exit 1
+          fi
+
+          if [ -z "${CONFIRM_DATABASE_HOST:-}" ]; then
+            echo "PRODUCTION_DATABASE_HOST is not configured."
+            exit 1
+          fi
+
+          # Confirm that the secret points to the expected production Neon host
+          # before allowing any database release procedure to run.
+          node --input-type=module <<'NODE'
+          const connectionString = process.env.DATABASE_URL;
+          const expectedDatabase = process.env.CONFIRM_DATABASE;
+          const expectedHost = process.env.CONFIRM_DATABASE_HOST;
+
+          if (!connectionString) {
+            throw new Error('DATABASE_URL is missing.');
+          }
+
+          const url = new URL(connectionString);
+          const actualDatabase = url.pathname.replace(/^\/+/, '');
+
+          if (url.hostname !== expectedHost) {
+            throw new Error(
+              `Production database host confirmation failed: expected ${expectedHost}, received ${url.hostname}.`,
+            );
+          }
+
+          if (actualDatabase !== expectedDatabase) {
+            throw new Error(
+              `Production database name confirmation failed: expected ${expectedDatabase}, received ${actualDatabase}.`,
+            );
+          }
+
+          console.log(`Confirmed production database host: ${url.hostname}`);
+          console.log(`Confirmed production database name: ${actualDatabase}`);
+          NODE
+
+          rm -rf "$RELEASE_ROOT"
+          mkdir -p "$RELEASE_ROOT"
+
+          unzip -q \
+            "$DEPLOY_ROOT/witsworld-api-deploy.zip" \
+            -d "$RELEASE_ROOT"
+
+          test -f "$RELEASE_ROOT/apps/api/dist/database/release.js"
+          test -d "$RELEASE_ROOT/database/migrations"
+          test -d "$RELEASE_ROOT/node_modules"
+
+          (
+            cd "$RELEASE_ROOT"
+
+            node apps/api/dist/database/release.js \
+              --target production \
+              --confirm-database "$CONFIRM_DATABASE"
+          )
+
+          echo "Production database release completed successfully."
 
       - name: Authenticate to Azure
         run: |
