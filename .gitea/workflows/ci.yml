@@ -391,6 +391,9 @@ jobs:
           cp apps/api/package.json \
             "$ARTIFACT_ROOT/package/apps/api/"
 
+          cp apps/api/startup.sh \
+            "$ARTIFACT_ROOT/package/apps/api/"
+
           cp -a apps/api/dist \
             "$ARTIFACT_ROOT/package/apps/api/"
 
@@ -429,6 +432,14 @@ jobs:
           cp -a database \
             "$ARTIFACT_ROOT/package/"
 
+          tar -czf "$ARTIFACT_ROOT/package/node_modules.tar.gz" \
+            -C "$ARTIFACT_ROOT/package/node_modules" \
+            .
+
+          test -s "$ARTIFACT_ROOT/package/node_modules.tar.gz"
+          rm -rf "$ARTIFACT_ROOT/package/node_modules"
+          test ! -e "$ARTIFACT_ROOT/package/node_modules"
+
           (
             cd "$ARTIFACT_ROOT/package"
             zip -qr "$ARTIFACT_ROOT/witsworld-api-deploy.zip" .
@@ -444,18 +455,42 @@ jobs:
           test -s "$ARTIFACT_ROOT/witsworld-api-deploy.zip"
           unzip -t "$ARTIFACT_ROOT/witsworld-api-deploy.zip" >/dev/null
 
+          ARTIFACT_CONTENTS="$ARTIFACT_ROOT/artifact-contents.txt"
+          unzip -Z1 "$ARTIFACT_ROOT/witsworld-api-deploy.zip" > "$ARTIFACT_CONTENTS"
+
+          test "$(grep -Fxc 'node_modules.tar.gz' "$ARTIFACT_CONTENTS")" -eq 1
+
+          if grep -Eq '^node_modules(/|$)' "$ARTIFACT_CONTENTS"; then
+            echo "The Azure deployment ZIP contains an unpacked node_modules tree."
+            exit 1
+          fi
+
           RUNTIME_SMOKE_ROOT="$(mktemp -d /tmp/witsworld-api-runtime.XXXXXX)"
           trap 'rm -rf "$NPM_TOOL_ROOT" "$RUNTIME_SMOKE_ROOT"' EXIT
 
+          RUNTIME_SMOKE_APP_ROOT="$RUNTIME_SMOKE_ROOT/wwwroot"
+          RUNTIME_SMOKE_MODULES="$RUNTIME_SMOKE_ROOT/node_modules"
+          mkdir "$RUNTIME_SMOKE_APP_ROOT" "$RUNTIME_SMOKE_MODULES"
+
           unzip -q "$ARTIFACT_ROOT/witsworld-api-deploy.zip" \
-            -d "$RUNTIME_SMOKE_ROOT"
+            -d "$RUNTIME_SMOKE_APP_ROOT"
+
+          test -s "$RUNTIME_SMOKE_APP_ROOT/node_modules.tar.gz"
+          test -x "$RUNTIME_SMOKE_APP_ROOT/apps/api/startup.sh"
+          test -f "$RUNTIME_SMOKE_APP_ROOT/apps/api/dist/server.js"
+          sh -n "$RUNTIME_SMOKE_APP_ROOT/apps/api/startup.sh"
+
+          tar -xzf "$RUNTIME_SMOKE_APP_ROOT/node_modules.tar.gz" \
+            -C "$RUNTIME_SMOKE_MODULES"
+          ln -s "$RUNTIME_SMOKE_MODULES" \
+            "$RUNTIME_SMOKE_APP_ROOT/node_modules"
+          test "$(readlink -f "$RUNTIME_SMOKE_APP_ROOT/node_modules")" = \
+            "$RUNTIME_SMOKE_MODULES"
 
           (
-            cd "$RUNTIME_SMOKE_ROOT"
+            cd "$RUNTIME_SMOKE_APP_ROOT"
             node --input-type=module \
-              --eval "await import('@wits-world/account-policy'); console.log('Imported @wits-world/account-policy from the API artifact')"
-            node --input-type=module \
-              --eval "await import('@wits-world/game-rules'); console.log('Imported @wits-world/game-rules from the API artifact')"
+              --eval "await Promise.all(['@wits-world/account-policy', '@wits-world/game-rules', '@fastify/cors', '@fastify/swagger', '@fastify/swagger-ui', 'fastify', 'jose', 'pg'].map((dependency) => import(dependency))); console.log('Imported production dependencies from the API artifact')"
           )
 
           unzip -l "$ARTIFACT_ROOT/witsworld-api-deploy.zip" |
@@ -720,21 +755,56 @@ jobs:
             package.json \
             package-lock.json \
             apps/api/package.json \
+            apps/api/startup.sh \
             apps/api/dist/server.js \
             apps/api/dist/database/release.js \
-            node_modules/@wits-world/account-policy/package.json \
-            node_modules/@wits-world/account-policy/dist/src/index.js \
-            node_modules/@wits-world/game-rules/package.json \
-            node_modules/@wits-world/game-rules/dist/src/index.js \
-            node_modules/@fastify/cors/package.json \
-            node_modules/@fastify/swagger/package.json \
-            node_modules/@fastify/swagger-ui/package.json \
-            node_modules/dotenv/package.json \
-            node_modules/fastify/package.json \
-            node_modules/jose/package.json \
-            node_modules/pg/package.json
+            node_modules.tar.gz
           do
             require_artifact_path "$required_path"
+          done
+
+          if grep -Eq '^node_modules(/|$)' "$ARTIFACT_CONTENTS"; then
+            echo "The Azure deployment ZIP contains an unpacked node_modules tree."
+            exit 1
+          fi
+
+          ARTIFACT_VERIFY_ROOT="$(mktemp -d /tmp/witsworld-api-verify.XXXXXX)"
+          trap 'rm -rf "$ARTIFACT_VERIFY_ROOT"' EXIT
+
+          unzip -q "$DEPLOY_ROOT/witsworld-api-deploy.zip" \
+            node_modules.tar.gz \
+            apps/api/startup.sh \
+            -d "$ARTIFACT_VERIFY_ROOT"
+
+          test -s "$ARTIFACT_VERIFY_ROOT/node_modules.tar.gz"
+          test -x "$ARTIFACT_VERIFY_ROOT/apps/api/startup.sh"
+          sh -n "$ARTIFACT_VERIFY_ROOT/apps/api/startup.sh"
+
+          TARBALL_CONTENTS="$ARTIFACT_VERIFY_ROOT/node-modules-contents.txt"
+          tar -tzf "$ARTIFACT_VERIFY_ROOT/node_modules.tar.gz" > "$TARBALL_CONTENTS"
+
+          require_runtime_package() {
+            local package_name="$1"
+            local package_path="./${package_name}/package.json"
+
+            if ! grep -Fx "$package_path" "$TARBALL_CONTENTS"; then
+              echo "Required runtime package is missing from node_modules.tar.gz: $package_name"
+              return 1
+            fi
+          }
+
+          for package_name in \
+            @wits-world/account-policy \
+            @wits-world/game-rules \
+            @fastify/cors \
+            @fastify/swagger \
+            @fastify/swagger-ui \
+            dotenv \
+            fastify \
+            jose \
+            pg
+          do
+            require_runtime_package "$package_name"
           done
 
           DATABASE_FILE_COUNT=0
@@ -869,7 +939,13 @@ jobs:
 
           test -f "$RELEASE_ROOT/apps/api/dist/database/release.js"
           test -d "$RELEASE_ROOT/database/migrations"
-          test -d "$RELEASE_ROOT/node_modules"
+          test -s "$RELEASE_ROOT/node_modules.tar.gz"
+
+          mkdir "$RELEASE_ROOT/node_modules"
+          tar -xzf "$RELEASE_ROOT/node_modules.tar.gz" \
+            -C "$RELEASE_ROOT/node_modules"
+
+          test -f "$RELEASE_ROOT/node_modules/pg/package.json"
 
           (
             cd "$RELEASE_ROOT"

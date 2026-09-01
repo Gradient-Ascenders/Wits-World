@@ -152,13 +152,35 @@ Application Insights was not enabled during this setup phase.
 
 ### 5.1 Runtime configuration
 
-The production startup command is:
+The committed production startup command is:
 
 ```bash
-node /home/site/wwwroot/apps/api/dist/server.js
+/home/site/wwwroot/apps/api/startup.sh
 ```
 
-This directly starts the compiled Fastify server from the deployed artifact.
+The script recreates `/node_modules`, extracts the CI-prepared
+`/home/site/wwwroot/node_modules.tar.gz` into it, links
+`/home/site/wwwroot/node_modules` to `/node_modules` for Node ESM package
+resolution, and uses `exec` to start the compiled Fastify server. The deployment
+workflow does not change the configured startup command. Before the first
+deployment of this artifact, replace the emergency inline command with the
+transition-safe inline command in section 19.1. That command creates the
+`/home/site/wwwroot/node_modules` symlink needed after a clean ZipDeploy removes
+the former unpacked dependency tree.
+
+The pre-built artifact strategy requires these App Service settings:
+
+```text
+BUILD_FLAGS:                    Off
+SCM_DO_BUILD_DURING_DEPLOYMENT: unset (do not enable)
+SCM basic authentication:      Disabled
+```
+
+`BUILD_FLAGS=Off` prevents App Service from re-optimising the production
+dependency archive already prepared by CI. Deployment authentication continues
+to use Azure managed identity / Entra authentication. CI does not currently
+read or validate `BUILD_FLAGS`; confirming that it remains exactly `Off` is an
+operational prerequisite for every deployment using this artifact strategy.
 
 Important App Service configuration:
 
@@ -810,13 +832,19 @@ The API deployment ZIP contains:
 ```text
 package.json
 package-lock.json
-node_modules/
+node_modules.tar.gz
 apps/
 └── api/
     ├── package.json
+    ├── startup.sh
     └── dist/
 database/
 ```
+
+`node_modules.tar.gz` contains the contents of the production dependency tree
+at its root. The outer ZIP must not contain a `node_modules/` tree; keeping the
+dependencies in one compressed entry avoids making Kudu expand thousands of
+dependency files in `LocalZipHandler`.
 
 The first validated deployment ZIP was approximately:
 
@@ -989,8 +1017,10 @@ Service, or running unnecessary production health polling.
 For API-relevant pushes, the C220 `build` job reuses its existing dependency
 installation and compiled `apps/api/dist`. After all validation builds finish,
 it uses a job-local npm 11.18.0 CLI to materialize the API-only production
-dependency tree and packages the compiled API, package metadata, production
-`node_modules`, database migrations, and seeds.
+dependency tree, replaces workspace-package symlinks with built package
+contents, archives the tree as `node_modules.tar.gz`, and removes the unpacked
+tree before creating the outer Azure ZIP. It packages the compiled API,
+committed startup script, package metadata, database migrations, and seeds.
 
 The artifact is bound to the exact pushed commit:
 
@@ -1010,11 +1040,101 @@ logic, so it conservatively requires a fresh API artifact and deployment.
 After the combined validation gate succeeds, Azure checks out the exact main
 SHA and repeats the same change detection. When required it downloads
 `api-deploy-${{ gitea.sha }}`, verifies the recorded commit, ZIP checksum and
-integrity, and requires the API entry point, direct runtime dependencies,
-migrations, and seeds. Only then does it authenticate with managed identity,
-read the existing `DATABASE_URL` App Service setting without logging it, run
-the guarded database release against the separately confirmed production host
-and database name, deploy the ZIP, and verify `/health`.
+integrity, rejects an unpacked `node_modules` tree, checks the startup script and
+API entry point, and verifies the required runtime packages inside
+`node_modules.tar.gz`. Only then does it authenticate with managed identity,
+read the existing `DATABASE_URL` App Service setting without logging it, extract
+the dependency archive for the guarded database release, run that release
+against the separately confirmed production host and database name, deploy the
+ZIP, and verify `/health`.
+
+The workflow deliberately does not update the App Service startup command. The
+current emergency command extracts the dependency archive but does not create
+`/home/site/wwwroot/node_modules`. A clean deployment of the new artifact can
+therefore remove the dependency path that Node ESM resolution needs before the
+committed script is active.
+
+Use the following three-stage rollout on the managed-identity Azure deployment
+runner. Before merging, confirm the required `BUILD_FLAGS=Off` setting, replace
+the emergency command with a transition-safe inline command, restart, and verify
+health:
+
+```bash
+set -eu
+
+az login --identity --output none
+az account set --subscription "Azure for Students"
+
+API_HOST="$(az webapp show --resource-group witsworld-rg --name witsworld-api --query defaultHostName --output tsv)"
+
+BUILD_FLAGS="$(az webapp config appsettings list \
+  --resource-group witsworld-rg \
+  --name witsworld-api \
+  --query "[?name=='BUILD_FLAGS'].value | [0]" \
+  --output tsv)"
+test "$BUILD_FLAGS" = "Off"
+
+az webapp config set \
+  --resource-group witsworld-rg \
+  --name witsworld-api \
+  --startup-file 'set -eu; rm -rf /node_modules; mkdir -p /node_modules; tar -xzf /home/site/wwwroot/node_modules.tar.gz -C /node_modules; rm -rf /home/site/wwwroot/node_modules; ln -s /node_modules /home/site/wwwroot/node_modules; exec node /home/site/wwwroot/apps/api/dist/server.js' \
+  --output none
+
+az webapp restart \
+  --resource-group witsworld-rg \
+  --name witsworld-api \
+  --output none
+
+curl --fail --retry 60 --retry-delay 5 --retry-all-errors \
+  --silent --show-error \
+  "https://${API_HOST}/health"
+```
+
+Only after that health check succeeds, merge the hotfix and allow its API
+deployment workflow to complete. Do not change the inline command during the
+deployment. When the workflow reports success, verify the newly deployed
+artifact again:
+
+```bash
+API_HOST="$(az webapp show --resource-group witsworld-rg --name witsworld-api --query defaultHostName --output tsv)"
+curl --fail --retry 60 --retry-delay 5 --retry-all-errors \
+  --silent --show-error \
+  "https://${API_HOST}/health"
+```
+
+Only after the post-deployment health check succeeds, switch to the committed
+startup script, restart, and perform the final health check:
+
+```bash
+set -eu
+
+API_HOST="$(az webapp show --resource-group witsworld-rg --name witsworld-api --query defaultHostName --output tsv)"
+
+az webapp config set \
+  --resource-group witsworld-rg \
+  --name witsworld-api \
+  --startup-file /home/site/wwwroot/apps/api/startup.sh \
+  --output none
+
+az webapp restart \
+  --resource-group witsworld-rg \
+  --name witsworld-api \
+  --output none
+
+curl --fail --retry 60 --retry-delay 5 --retry-all-errors \
+  --silent --show-error \
+  "https://${API_HOST}/health"
+
+az webapp config show \
+  --resource-group witsworld-rg \
+  --name witsworld-api \
+  --query appCommandLine \
+  --output tsv
+```
+
+The final command must print
+`/home/site/wwwroot/apps/api/startup.sh`. These commands do not alter
+`BUILD_FLAGS`, enable App Service build automation, or change SCM Basic Auth.
 
 Before the database release, the workflow configures account-deletion retry,
 movement-evidence cleanup, and asynchronous-PvP deadline processing to the same
@@ -1326,6 +1446,22 @@ GET /health
 ```
 
 The first manual API deployment demonstrated this case: `az webapp deploy` stopped waiting, but the application later completed startup successfully.
+
+### API ZipDeploy stalls in `LocalZipHandler`
+
+If Kudu stops progressing while extracting the outer deployment ZIP, inspect
+the archive before retrying:
+
+```bash
+unzip -Z1 witsworld-api-deploy.zip
+```
+
+The expected dependency entry is the single `node_modules.tar.gz` file. An
+outer `node_modules/` tree is invalid because it makes Kudu extract thousands of
+small dependency files before the application can restart. CI rejects that
+layout and separately verifies the contents of the dependency tarball. Keep
+`BUILD_FLAGS=Off`; do not work around this failure by enabling App Service build
+automation or SCM Basic Auth.
 
 ### Frontend ZIP deployment fails with HTTP 400
 
