@@ -415,7 +415,6 @@ function queryImplementation({
         rows: [
           {
             completion_id: '41000000-0000-4000-8000-000000000001',
-            coins_awarded: completedAttempt().reward.coinsAwarded,
           },
         ],
       };
@@ -481,7 +480,6 @@ function completedAttempt(
     totalQuestions: 5 as const,
     scoreCorrect: 3,
     reward: {
-      coinsAwarded: 37,
       cards: [],
     },
     review: Array.from({ length: 5 }, (_, index) => {

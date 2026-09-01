@@ -30,7 +30,7 @@ already been reached.
 | Auth0 issuer/subject, Player Name, and role                   | Cleared from the local player tombstone                                                                                                                      |
 | Owned cards and starter selection                             | Deleted                                                                                                                                                      |
 | Saved decks, deck membership, and active selection            | Deleted                                                                                                                                                      |
-| Wallet balance                                                | Deleted                                                                                                                                                      |
+| Retired legacy wallet                                         | Deleted                                                                                                                                                      |
 | Individual MCQ/ordering answers and format-specific snapshots | Deleted                                                                                                                                                      |
 | In-progress challenge attempts                                | Deleted                                                                                                                                                      |
 | Active CPU matches, rounds, actions, and card snapshots       | Deleted                                                                                                                                                      |
@@ -38,7 +38,7 @@ already been reached.
 | Active asynchronous PvP matches                               | Retained as completed; deleting player loses by `account_deletion_forfeit` unless an elapsed deadline already makes the current actor lose by `turn_forfeit` |
 | Precise movement evidence and journey-decision audit          | Deleted transactionally when the account enters `deletion_pending`; never retained                                                                           |
 | Completed challenge attempt summary                           | Retained against the anonymised player UUID                                                                                                                  |
-| Event completion, score, coin outcome, and coin ledger        | Retained against the anonymised player UUID                                                                                                                  |
+| Event completion, score, legacy coin outcome, and coin ledger | Retained against the anonymised player UUID                                                                                                                  |
 | Awarded-card outcome                                          | Retained in `event_completion_card_rewards`; owned `player_cards` rows are still deleted                                                                     |
 | Completed CPU matches, rounds, actions, and card snapshots    | Retained against the anonymised player UUID                                                                                                                  |
 | Completed asynchronous PvP matches and private snapshots      | Retained against anonymous tombstones; opponent displays `Deleted player`                                                                                    |
@@ -73,6 +73,12 @@ player to `deletion_pending`, in the same PostgreSQL transaction. A failure in
 forfeit progression or invitation finalization rolls back the deletion request.
 An already-elapsed decision deadline takes precedence over account deletion, so
 the current actor remains the forfeiter even when the opponent begins deletion.
+
+Migration `0034_retire_coin_rewards.sql` prevents new wallet and coin-ledger
+activity but deliberately permits deletion of a retained wallet through this
+cleanup transaction. Historical ledger rows and non-zero completion outcomes
+remain immutable against the anonymised tombstone; they are not recalculated as
+progression points.
 
 ## Transaction and concurrency rules
 
