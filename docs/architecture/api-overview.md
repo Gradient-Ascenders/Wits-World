@@ -86,7 +86,8 @@ The generated OpenAPI groups the current contract into these areas:
 
 The [Author curation contract](./author-curation-api-contract.md) explains the
 five-state review workflow, optimistic concurrency, safe review queue and audit
-history, and temporary Author-console limitation.
+history, and the Author-console integration. Question analytics remains blocked
+by issue `#184` / S3-06 and is not represented by a provisional browser contract.
 
 The OpenAPI document is the endpoint-level reference for parameters, bodies,
 status codes, and response shapes. Narrative documents explain domain contracts

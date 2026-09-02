@@ -121,6 +121,8 @@ export const authorContentRoutes: FastifyPluginAsync<Options> = async (
                   required: [
                     'entityType',
                     'entityId',
+                    'eventId',
+                    'challengeId',
                     'label',
                     'status',
                     'version',
@@ -132,6 +134,16 @@ export const authorContentRoutes: FastifyPluginAsync<Options> = async (
                   properties: {
                     entityType: { type: 'string', enum: entityTypes },
                     entityId: { type: 'string', format: 'uuid' },
+                    eventId: {
+                      type: 'string',
+                      format: 'uuid',
+                      nullable: true,
+                    },
+                    challengeId: {
+                      type: 'string',
+                      format: 'uuid',
+                      nullable: true,
+                    },
                     label: { type: 'string' },
                     status: { type: 'string', enum: ['in_review'] },
                     version: { type: 'integer', minimum: 0 },

@@ -18,9 +18,10 @@ active-page browser location watcher to supply ephemeral reported-location
 claims, complete five-question challenges, receive server-selected rewards,
 manage owned cards and legal decks, and play server-resolved CPU matches.
 Challenge start reuses a sufficiently fresh watched claim or requests one newer
-one-shot reading before the API rechecks eligibility. Authors use protected APIs
-to curate shared content through review; the `/author` console currently supports
-draft editing and lifecycle display but not reviewer or publication actions.
+one-shot reading before the API rechecks eligibility. Authors use the protected
+`/author` console to edit drafts, submit and independently review content,
+publish approved content, inspect review history, retire content with
+confirmation, and schedule event/trail campaigns.
 
 Issue `#160` implements the mandatory account-deletion persistence and retention
 backend. Password reset and the player-facing account/deletion experience remain
@@ -68,6 +69,9 @@ have zero through four moves. The unresolved legacy two-move catalogue data must
 be reviewed by the Cards/Game owner; automation must not invent moves.
 See the [Author curation API contract](architecture/author-curation-api-contract.md)
 for endpoints, stable errors, provenance, audit privacy, and rollout order.
+Question analytics and flagged-question curation remain blocked by issue `#184`
+/ S3-06. Ordering-question authoring is also not claimed because the current
+Author editor/API contract supports multiple-choice questions only.
 
 ## Testing and release evidence
 

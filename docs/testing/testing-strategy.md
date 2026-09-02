@@ -79,6 +79,15 @@ boundaries, effective event and trail windows, adjacent and overlapping member
 reuse, concurrent approvals, publication/retirement races, review history, and
 preservation of completed attempts and derived trail progress.
 
+Author Web component/client tests cover queue parent-route context, required
+return reasons and keyboard focus, lifecycle request bodies, lazy history reads,
+campaign schedule and membership submission, and preservation of campaign form
+input after a stale-version conflict. They also cover navigation-only queue
+summaries, authoritative refresh after `CONTENT_STATE_CONFLICT`, confirmed
+replacement of a preserved campaign draft, server-returned lifecycle feedback,
+and read-only non-draft campaign edit deep links. Analytics UI tests remain
+blocked with issue `#184` / S3-06; no mock analytics contract is used.
+
 Impossible-journey tests separate the pure uncertainty-adjusted speed rule from
 the PostgreSQL/PostGIS evidence path. API and Web tests cover neutral retries
 and direct challenge-start enforcement. The disposable database suite covers

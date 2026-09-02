@@ -327,7 +327,10 @@ The following are not Basic game rules: PvP, matchmaking, ratings, spectators,
 trading, selling, evolution, rarity upgrades, offline play, movement tracking,
 anti-cheat trust scoring, territory control, seasons, advanced analytics, or an
 advanced administration console. The implemented curated Author review workflow
-is part of Basic content integrity; its reviewer UI is deferred to issue `#185`.
+is part of Basic content integrity and its unblocked Author-console review and
+campaign controls are implemented under issue `#185`. Question analytics remains
+blocked by issue `#184` / S3-06, and ordering-question authoring remains a
+follow-up to the current multiple-choice-only editor contract.
 
 This document was planned, generated, and edited with the assistance of
 Codex-CLI[gpt-5.6-sol medium], Codex[GPT-5], and Codex[gpt-5.6-sol].

@@ -8,7 +8,9 @@ import {
 } from '../api/author';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { CardWorkspace } from '../components/author/CardWorkspace';
+import { CampaignWorkspace } from '../components/author/CampaignWorkspace';
 import { EventWorkspace } from '../components/author/EventWorkspace';
+import { ReviewWorkspace } from '../components/author/ReviewWorkspace';
 import {
   authorPaths,
   parseAuthorWorkspaceRoute,
@@ -129,6 +131,20 @@ export default function AuthorConsolePage({
           >
             Cards
           </Link>
+          <Link
+            aria-current={route.section === 'campaigns' ? 'page' : undefined}
+            className="author-sections__link"
+            href={authorPaths.campaigns}
+          >
+            Campaigns
+          </Link>
+          <Link
+            aria-current={route.section === 'review' ? 'page' : undefined}
+            className="author-sections__link"
+            href={authorPaths.review}
+          >
+            Review
+          </Link>
         </nav>
       </header>
 
@@ -147,7 +163,7 @@ export default function AuthorConsolePage({
             onReloadCards={loadCards}
             route={route}
           />
-        ) : (
+        ) : route.section === 'cards' ? (
           <CardWorkspace
             apiBaseUrl={apiBaseUrl}
             cards={cards}
@@ -159,6 +175,18 @@ export default function AuthorConsolePage({
             onReload={loadCards}
             route={route}
             state={cardsState}
+          />
+        ) : route.section === 'campaigns' ? (
+          <CampaignWorkspace
+            apiBaseUrl={apiBaseUrl}
+            getAccessToken={getAccessToken}
+            navigate={navigate}
+            route={route}
+          />
+        ) : (
+          <ReviewWorkspace
+            apiBaseUrl={apiBaseUrl}
+            getAccessToken={getAccessToken}
           />
         )}
       </div>
