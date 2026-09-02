@@ -1,10 +1,12 @@
-import { MIN_MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS } from '../events/movement-evidence-cleanup-scheduler.js';
 import {
   MAX_MOVEMENT_EVIDENCE_RETENTION_MS,
   MIN_MOVEMENT_EVIDENCE_RETENTION_MS,
 } from '../events/movement-evidence.js';
-import { MIN_ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS } from '../matches/asynchronous-pvp-deadline-scheduler.js';
-import { MAX_NODE_TIMER_DELAY_MS } from './timers.js';
+import {
+  DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
+  MAX_NODE_TIMER_DELAY_MS,
+  MIN_DATABASE_MAINTENANCE_INTERVAL_MS,
+} from './timers.js';
 
 export const apiLogLevels = [
   'fatal',
@@ -53,7 +55,8 @@ export function buildApiConfig({
   );
 
   const accountDeletionRetryIntervalValue =
-    env.ACCOUNT_DELETION_RETRY_INTERVAL_MS?.trim() ?? '60000';
+    env.ACCOUNT_DELETION_RETRY_INTERVAL_MS?.trim() ??
+    String(DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS);
 
   const accountDeletionRetryIntervalMs = Number(
     accountDeletionRetryIntervalValue,
@@ -63,7 +66,8 @@ export function buildApiConfig({
     'ASYNC_PVP_CURSOR_SIGNING_KEY',
   );
   const asyncPvpDeadlineSweepIntervalMs = Number(
-    env.ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS?.trim() ?? '60000',
+    env.ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS?.trim() ??
+      String(DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS),
   );
   const rateLimitMaxRequests = Number(
     env.RATE_LIMIT_MAX_REQUESTS?.trim() ?? '120',
@@ -73,7 +77,8 @@ export function buildApiConfig({
     env.MOVEMENT_EVIDENCE_RETENTION_MS?.trim() ?? '86400000',
   );
   const movementEvidenceCleanupIntervalMs = Number(
-    env.MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS?.trim() ?? '60000',
+    env.MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS?.trim() ??
+      String(DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS),
   );
 
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {
@@ -94,11 +99,12 @@ export function buildApiConfig({
   }
 
   if (
-    !Number.isInteger(accountDeletionRetryIntervalMs) ||
-    accountDeletionRetryIntervalMs < 1000
+    !Number.isSafeInteger(accountDeletionRetryIntervalMs) ||
+    accountDeletionRetryIntervalMs < MIN_DATABASE_MAINTENANCE_INTERVAL_MS ||
+    accountDeletionRetryIntervalMs > MAX_NODE_TIMER_DELAY_MS
   ) {
     throw new Error(
-      'ACCOUNT_DELETION_RETRY_INTERVAL_MS must be an integer of at least 1000 milliseconds.',
+      `ACCOUNT_DELETION_RETRY_INTERVAL_MS must be a safe integer between ${MIN_DATABASE_MAINTENANCE_INTERVAL_MS} and ${MAX_NODE_TIMER_DELAY_MS} milliseconds.`,
     );
   }
 
@@ -110,12 +116,11 @@ export function buildApiConfig({
 
   if (
     !Number.isSafeInteger(asyncPvpDeadlineSweepIntervalMs) ||
-    asyncPvpDeadlineSweepIntervalMs <
-      MIN_ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS ||
+    asyncPvpDeadlineSweepIntervalMs < MIN_DATABASE_MAINTENANCE_INTERVAL_MS ||
     asyncPvpDeadlineSweepIntervalMs > MAX_NODE_TIMER_DELAY_MS
   ) {
     throw new Error(
-      `ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS must be a safe integer between ${MIN_ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS} and ${MAX_NODE_TIMER_DELAY_MS} milliseconds.`,
+      `ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS must be a safe integer between ${MIN_DATABASE_MAINTENANCE_INTERVAL_MS} and ${MAX_NODE_TIMER_DELAY_MS} milliseconds.`,
     );
   }
 
@@ -141,12 +146,11 @@ export function buildApiConfig({
 
   if (
     !Number.isSafeInteger(movementEvidenceCleanupIntervalMs) ||
-    movementEvidenceCleanupIntervalMs <
-      MIN_MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS ||
+    movementEvidenceCleanupIntervalMs < MIN_DATABASE_MAINTENANCE_INTERVAL_MS ||
     movementEvidenceCleanupIntervalMs > MAX_NODE_TIMER_DELAY_MS
   ) {
     throw new Error(
-      `MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS must be a safe integer between ${MIN_MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS} and ${MAX_NODE_TIMER_DELAY_MS} milliseconds.`,
+      `MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS must be a safe integer between ${MIN_DATABASE_MAINTENANCE_INTERVAL_MS} and ${MAX_NODE_TIMER_DELAY_MS} milliseconds.`,
     );
   }
 

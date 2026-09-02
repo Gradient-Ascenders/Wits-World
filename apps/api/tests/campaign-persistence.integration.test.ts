@@ -572,7 +572,7 @@ async function insertCompletion(
       `insert into public.event_completions (
          id, attempt_id, player_id, event_id, score_correct,
          average_difficulty, coins_awarded, reward_policy_version, completed_at
-       ) values ($1, $2, $3, $4, 3, 1.00, 30, 'campaign-test',
+       ) values ($1, $2, $3, $4, 3, 1.00, 0, 'campaign-test',
                  '2026-09-08T09:01:00Z')`,
       [completionId, attemptId, playerId, eventId],
     );

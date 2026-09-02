@@ -338,7 +338,11 @@ export async function buildApp({
     await app.register(cors, {
       origin: [corsConfig.allowedOrigin],
       methods: ['GET', 'POST', 'PUT', 'DELETE'],
-      allowedHeaders: ['Authorization', 'Content-Type'],
+      allowedHeaders: [
+        'Authorization',
+        'Content-Type',
+        'X-Wits-Challenge-Contract-Version',
+      ],
       credentials: false,
       preflight: true,
       strictPreflight: true,
