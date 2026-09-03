@@ -2,6 +2,7 @@ import { useAuth0 } from '@auth0/auth0-react';
 import { useCallback, useState, type ReactNode } from 'react';
 
 import { useCurrentPlayer } from '../../auth/CurrentPlayerProvider';
+import { clearAuthenticatedPlayerBinding } from '../../auth/player-session-binding';
 import { PlayerNameSetup } from './PlayerNameSetup';
 
 interface ProtectedRouteProps {
@@ -19,7 +20,8 @@ export function ProtectedRoute({
   children,
   destination = 'explore Wits World',
 }: ProtectedRouteProps) {
-  const { error, isAuthenticated, isLoading, loginWithRedirect } = useAuth0();
+  const { error, isAuthenticated, isLoading, loginWithRedirect, logout } =
+    useAuth0();
   const { reload, state: currentPlayer } = useCurrentPlayer();
   const [actionFailed, setActionFailed] = useState(false);
   const focusHeading = useCallback((heading: HTMLHeadingElement | null) => {
@@ -34,6 +36,19 @@ export function ProtectedRoute({
         appState: {
           returnTo: currentRoute(),
         },
+      });
+    } catch {
+      setActionFailed(true);
+    }
+  }
+
+  async function signOut() {
+    setActionFailed(false);
+    clearAuthenticatedPlayerBinding();
+
+    try {
+      await logout({
+        logoutParams: { returnTo: window.location.origin },
       });
     } catch {
       setActionFailed(true);
@@ -105,11 +120,27 @@ export function ProtectedRoute({
           {currentPlayer.status === 'error' &&
           currentPlayer.failure === 'identity_changed'
             ? 'The restored Auth0 session did not match the Wits World player who was active in this browser. Wits World signed out instead of opening another player.'
-            : 'Wits World could not safely confirm the current player. Protected player data remains hidden.'}
+            : currentPlayer.status === 'error' &&
+                currentPlayer.failure === 'authorization'
+              ? 'The API rejected the restored sign-in. Sign out and sign in again before retrying.'
+              : currentPlayer.status === 'error' &&
+                  currentPlayer.failure === 'identity_conflict'
+                ? 'This sign-in resolves to a Player Name that is already linked to another Wits World identity. Sign out, then sign in through the Auth0 domain configured for this environment.'
+                : 'The Wits World API could not be reached or did not return a valid player. When testing locally, keep the API terminal running and then retry.'}
         </p>
         <button className="button" onClick={reload} type="button">
           Check session again
         </button>
+        {currentPlayer.status === 'error' &&
+        currentPlayer.failure === 'identity_conflict' ? (
+          <button
+            className="button button--quiet"
+            onClick={signOut}
+            type="button"
+          >
+            Sign out
+          </button>
+        ) : null}
       </section>
     );
   }

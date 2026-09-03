@@ -28,10 +28,11 @@ import type {
   LocationExperienceState,
 } from '../components/exploration/EventList';
 import type {
-  MapCoordinate,
   MapConfiguration,
   MapFactory,
+  ReportedMapLocation,
 } from '../components/exploration/map-provider';
+import { selectReportedLocation } from '../reported-location-selection';
 
 const CAMPUS_MAP_CONFIGURATION: MapConfiguration = {
   accessToken: '',
@@ -182,6 +183,8 @@ export default function ExplorePage({
   const eligibilityRequest = useRef<AbortController | null>(null);
   const challengeStartRequest = useRef<AbortController | null>(null);
   const latestClaimRef = useRef<LocationClaim | null>(null);
+  const displayedClaimRef = useRef<LocationClaim | null>(null);
+  const locationSamplesRef = useRef<readonly LocationClaim[]>([]);
   const rejectedLocationClaimRef = useRef<{
     claim: LocationClaim;
     eventId: string;
@@ -360,11 +363,24 @@ export default function ExplorePage({
   );
   queueEligibilityRef.current = queueEligibility;
 
-  const rememberReportedLocation = useCallback((claim: LocationClaim): void => {
-    latestClaimRef.current = claim;
-    setReportedLocationRevision((revision) => revision + 1);
-    setLocationState('tracking');
-  }, []);
+  const rememberReportedLocation = useCallback(
+    (claim: LocationClaim, resetSamples = false): LocationClaim => {
+      const selection = resetSamples
+        ? { samples: [claim], selected: claim }
+        : selectReportedLocation(locationSamplesRef.current, claim);
+      latestClaimRef.current = claim;
+      locationSamplesRef.current = selection.samples;
+
+      if (displayedClaimRef.current !== selection.selected) {
+        displayedClaimRef.current = selection.selected;
+        setReportedLocationRevision((revision) => revision + 1);
+      }
+
+      setLocationState('tracking');
+      return selection.selected;
+    },
+    [],
+  );
 
   const acquireNewerReportedLocation = useCallback(
     async (previousClaim: LocationClaim | null): Promise<LocationClaim> => {
@@ -376,7 +392,7 @@ export default function ExplorePage({
         throw new FreshReportedLocationRequiredError();
       }
 
-      rememberReportedLocation(claim);
+      rememberReportedLocation(claim, true);
       return claim;
     },
     [locationClaimProvider, rememberReportedLocation],
@@ -432,6 +448,8 @@ export default function ExplorePage({
         rememberReportedLocation(claim);
         const eventId = selectedEventIdRef.current;
         if (eventId !== null) {
+          // Marker stabilisation is presentation-only. Eligibility must receive
+          // the current device claim and remain server-authoritative.
           queueEligibilityRef.current(eventId, claim);
         }
       },
@@ -489,6 +507,8 @@ export default function ExplorePage({
       clearEligibilityTimer();
       pendingEligibilityRef.current = null;
       latestClaimRef.current = null;
+      displayedClaimRef.current = null;
+      locationSamplesRef.current = [];
       rejectedLocationClaimRef.current = null;
       locationRefreshInFlightRef.current = false;
     };
@@ -703,12 +723,13 @@ export default function ExplorePage({
     ],
   );
 
-  const reportedLocation: MapCoordinate | null =
-    latestClaimRef.current === null
+  const reportedLocation: ReportedMapLocation | null =
+    displayedClaimRef.current === null
       ? null
       : {
-          latitude: latestClaimRef.current.latitude,
-          longitude: latestClaimRef.current.longitude,
+          latitude: displayedClaimRef.current.latitude,
+          longitude: displayedClaimRef.current.longitude,
+          accuracyMetres: displayedClaimRef.current.accuracyMetres,
         };
 
   return (

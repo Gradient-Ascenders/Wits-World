@@ -9,7 +9,8 @@ export interface CurrentPlayer {
   role: 'author' | 'player';
 }
 
-export type CurrentPlayerFailure = 'authorization' | 'unavailable';
+export type CurrentPlayerFailure =
+  'authorization' | 'identity_conflict' | 'unavailable';
 
 export class CurrentPlayerError extends Error {
   public constructor(public readonly failure: CurrentPlayerFailure) {
@@ -70,6 +71,14 @@ export async function getCurrentPlayer({
 
   if (response.status === 401 || response.status === 403) {
     throw new CurrentPlayerError('authorization');
+  }
+
+  if (response.status === 409) {
+    const problem = await readProblem(response);
+
+    if (problem?.code === 'PLAYER_NAME_CONFLICT') {
+      throw new CurrentPlayerError('identity_conflict');
+    }
   }
 
   if (!response.ok) {

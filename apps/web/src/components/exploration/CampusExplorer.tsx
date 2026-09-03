@@ -13,9 +13,9 @@ import {
 } from './EventList';
 import type {
   MapConfiguration,
-  MapCoordinate,
   MapFactory,
   MapPoint,
+  ReportedMapLocation,
 } from './map-provider';
 import './exploration.css';
 
@@ -32,7 +32,7 @@ interface CampusExplorerProps {
   onRetryEligibility: (eventId: string) => void;
   onSelectEvent: (eventId: string) => void;
   onStartChallenge?: (eventId: string) => void;
-  reportedLocation?: MapCoordinate | null;
+  reportedLocation?: ReportedMapLocation | null;
   selectedEventId: string | null;
 }
 
@@ -276,7 +276,7 @@ export function CampusExplorer({
 
   const locationControl = getLocationControl(
     locationState,
-    reportedLocation !== null,
+    reportedLocation,
     following,
   );
   const locationAction = (): void => {
@@ -527,14 +527,18 @@ interface LocationControlPresentation {
 
 function getLocationControl(
   state: LocationExperienceState,
-  hasLocation: boolean,
+  reportedLocation: ReportedMapLocation | null,
   following: boolean,
 ): LocationControlPresentation {
-  if (state === 'tracking' && hasLocation) {
+  if (state === 'tracking' && reportedLocation !== null) {
+    const accuracy = Math.max(0, Math.round(reportedLocation.accuracyMetres));
     return {
       action: 'recenter',
       active: following,
       disabled: false,
+      guidance: following
+        ? `Reported accuracy is approximately ±${accuracy} m.`
+        : `Map following is paused. Reported accuracy is approximately ±${accuracy} m.`,
       label: following
         ? 'Following reported location'
         : 'Recenter on reported location',

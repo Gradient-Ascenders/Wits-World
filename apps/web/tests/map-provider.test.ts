@@ -25,6 +25,7 @@ const mapboxState = vi.hoisted(() => ({
   markerOn: vi.fn(),
   markerRemove: vi.fn(),
   markerSetDraggable: vi.fn(),
+  markerSetLngLat: vi.fn(),
   off: vi.fn(),
   on: vi.fn(),
   once: vi.fn(),
@@ -104,7 +105,10 @@ vi.mock('mapbox-gl/esm', () => ({
     public remove = mapboxState.remove;
   },
   Marker: class {
+    private readonly element?: HTMLElement;
+
     public constructor(options?: { element?: HTMLElement }) {
+      this.element = options?.element;
       mapboxState.markerConstructor(options);
       if (options?.element) {
         mapboxState.markerElements.push(options.element);
@@ -112,6 +116,9 @@ vi.mock('mapbox-gl/esm', () => ({
     }
 
     public addTo() {
+      if (this.element) {
+        mapboxState.canvasContainer?.append(this.element);
+      }
       return this;
     }
 
@@ -133,7 +140,10 @@ vi.mock('mapbox-gl/esm', () => ({
       return this;
     };
 
-    public remove = mapboxState.markerRemove;
+    public remove = () => {
+      this.element?.remove();
+      mapboxState.markerRemove();
+    };
 
     public setDraggable = (draggable: boolean) => {
       mapboxState.markerSetDraggable(draggable);
@@ -141,6 +151,7 @@ vi.mock('mapbox-gl/esm', () => ({
     };
 
     public setLngLat(coordinate: [number, number]) {
+      mapboxState.markerSetLngLat(coordinate);
       mapboxState.markerLngLat = { lat: coordinate[1], lng: coordinate[0] };
       return this;
     }
@@ -198,6 +209,7 @@ beforeEach(() => {
   mapboxState.markerOn.mockClear();
   mapboxState.markerRemove.mockClear();
   mapboxState.markerSetDraggable.mockClear();
+  mapboxState.markerSetLngLat.mockClear();
   mapboxState.off.mockClear();
   mapboxState.on.mockClear();
   mapboxState.once.mockClear();
@@ -415,6 +427,7 @@ describe('Mapbox Standard provider', () => {
     const followListener = vi.fn();
     controller.setFollowStateListener?.(followListener);
     controller.setReportedLocation({
+      accuracyMetres: 12,
       latitude: -26.19205,
       longitude: 28.03038,
     });
@@ -437,6 +450,38 @@ describe('Mapbox Standard provider', () => {
     );
   });
 
+  it('does not chase accuracy-sized jitter while following', async () => {
+    const controller = await createMapboxMap(
+      document.createElement('div'),
+      configuration,
+      [],
+      new AbortController().signal,
+    );
+    controller.setReportedLocation({
+      accuracyMetres: 25,
+      latitude: -26.19205,
+      longitude: 28.03038,
+    });
+    mapboxState.easeTo.mockClear();
+
+    controller.setReportedLocation({
+      accuracyMetres: 25,
+      latitude: -26.192,
+      longitude: 28.03038,
+    });
+    expect(mapboxState.easeTo).not.toHaveBeenCalled();
+
+    controller.setReportedLocation({
+      accuracyMetres: 25,
+      latitude: -26.1917,
+      longitude: 28.03038,
+    });
+    expect(mapboxState.easeTo).toHaveBeenCalledWith({
+      center: [28.03038, -26.1917],
+      duration: 250,
+    });
+  });
+
   it('centres a selected event and suspends location following', async () => {
     const controller = await createMapboxMap(
       document.createElement('div'),
@@ -447,6 +492,7 @@ describe('Mapbox Standard provider', () => {
     const followListener = vi.fn();
     controller.setFollowStateListener?.(followListener);
     controller.setReportedLocation({
+      accuracyMetres: 12,
       latitude: -26.19205,
       longitude: 28.03038,
     });
@@ -520,7 +566,7 @@ describe('Mapbox Standard provider', () => {
     );
   });
 
-  it('renders the reported location as a local overlay without a Mapbox marker', async () => {
+  it('anchors the local reported-location element with a viewport-aligned Mapbox marker', async () => {
     const controller = await createMapboxMap(
       document.createElement('div'),
       configuration,
@@ -529,6 +575,7 @@ describe('Mapbox Standard provider', () => {
     );
 
     controller.setReportedLocation({
+      accuracyMetres: 12,
       latitude: -26.19205,
       longitude: 28.03038,
     });
@@ -538,11 +585,19 @@ describe('Mapbox Standard provider', () => {
     );
     expect(pointer).toHaveAttribute('aria-hidden', 'true');
     expect(pointer).toHaveAttribute('title', 'Reported location');
-    expect(mapboxState.project).toHaveBeenCalledWith([28.03038, -26.19205]);
-    expect(pointer).toHaveStyle(
-      'transform: translate3d(120px, 80px, 0) translate(-50%, -50%)',
+    expect(mapboxState.markerConstructor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        anchor: 'center',
+        draggable: false,
+        element: pointer,
+        pitchAlignment: 'viewport',
+        rotationAlignment: 'viewport',
+      }),
     );
-    expect(mapboxState.markerConstructor).not.toHaveBeenCalled();
+    expect(mapboxState.markerSetLngLat).toHaveBeenCalledWith([
+      28.03038, -26.19205,
+    ]);
+    expect(mapboxState.project).not.toHaveBeenCalled();
     expect(
       mapboxState.addSource.mock.calls.some(([sourceId]) =>
         String(sourceId).includes('player'),
@@ -556,6 +611,7 @@ describe('Mapbox Standard provider', () => {
         '[data-map-reported-location]',
       ),
     ).not.toBeInTheDocument();
+    expect(mapboxState.markerRemove).toHaveBeenCalledOnce();
   });
 
   it('reports optional author coordinate selection without making the map required', async () => {
@@ -714,11 +770,12 @@ describe('Mapbox Standard provider', () => {
     );
 
     controller.setReportedLocation({
+      accuracyMetres: 12,
       latitude: -26.19205,
       longitude: 28.03038,
     });
     controller.remove();
-    expect(mapboxState.markerRemove).toHaveBeenCalledOnce();
+    expect(mapboxState.markerRemove).toHaveBeenCalledTimes(2);
     expect(
       mapboxState.canvasContainer?.querySelector(
         '[data-map-reported-location]',

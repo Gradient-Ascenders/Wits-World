@@ -981,6 +981,72 @@ describe('player authentication', () => {
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeVisible();
   });
 
+  it('identifies a current-player identity conflict and offers sign-out', async () => {
+    const user = userEvent.setup();
+    const logout = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 'PLAYER_NAME_CONFLICT',
+          detail: 'Safe conflict detail.',
+          requestId: 'identity-conflict-request',
+          status: 409,
+          title: 'Player name conflict',
+          type: 'https://wits.world/problems/player_name_conflict',
+        }),
+        { status: 409 },
+      ),
+    );
+
+    renderRoute(
+      '/explore',
+      createAuthValue({
+        getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
+        isAuthenticated: true,
+        logout,
+      }),
+    );
+
+    expect(
+      await screen.findByText(/Player Name that is already linked/),
+    ).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Sign out' }));
+    expect(logout).toHaveBeenCalledWith({
+      logoutParams: { returnTo: window.location.origin },
+    });
+  });
+
+  it('does not repeat a failed restore when Auth0 callback identities change', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('unavailable', { status: 503 }));
+    const view = renderRoute(
+      '/explore',
+      createAuthValue({
+        getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
+        isAuthenticated: true,
+        logout: vi.fn().mockResolvedValue(undefined),
+      }),
+    );
+
+    expect(
+      await screen.findByText(/keep the API terminal running/i),
+    ).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledOnce();
+
+    view.rerender(
+      routeTree(
+        createAuthValue({
+          getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
+          isAuthenticated: true,
+          logout: vi.fn().mockResolvedValue(undefined),
+        }),
+      ),
+    );
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it('signs out instead of substituting a different restored player', async () => {
     const user = userEvent.setup();
     const logout = vi.fn().mockResolvedValue(undefined);
