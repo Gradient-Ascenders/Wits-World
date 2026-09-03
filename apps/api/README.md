@@ -58,7 +58,9 @@ commit.
 | `LOG_LEVEL`                                     | Yes      | `info`      | Fastify log level                             |
 | `MAX_PLAUSIBLE_JOURNEY_SPEED_METRES_PER_SECOND` | Yes      | `12.5`      | Server-authoritative impossible-journey limit |
 | `ASYNC_PVP_CURSOR_SIGNING_KEY`                  | Yes      | secret      | HMAC key of at least 32 bytes for PvP cursors |
-| `ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS`          | No       | `60000`     | PvP expiry/forfeit sweep interval             |
+| `ACCOUNT_DELETION_RETRY_INTERVAL_MS`            | No       | `1800000`   | Failed account-deletion retry interval        |
+| `ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS`          | No       | `1800000`   | PvP expiry/forfeit sweep interval             |
+| `MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS`         | No       | `1800000`   | Expired movement-evidence cleanup interval    |
 | `RATE_LIMIT_MAX_REQUESTS`                       | No       | `120`       | Authenticated requests allowed per window     |
 | `RATE_LIMIT_WINDOW_MS`                          | No       | `60000`     | Per-process fixed-window duration in ms       |
 
@@ -78,6 +80,19 @@ Missing or invalid required API configuration prevents the server from starting.
 The journey-speed setting has no default and must be a finite number greater
 than zero. The example illustrates syntax only; operators must use the reviewed
 product value for the environment.
+
+The three database-backed maintenance workers run once at startup and default
+to the same 30-minute interval. Their minimum supported interval is 15 minutes.
+Keeping the production values aligned allows an idle serverless PostgreSQL
+compute to suspend between sweeps. Asynchronous PvP reads and mutations still
+enforce the authoritative 24-hour deadlines before the periodic worker runs.
+
+When updating an existing checkout, remove or replace any legacy `60000`
+overrides for `ACCOUNT_DELETION_RETRY_INTERVAL_MS`,
+`ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS`, and
+`MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS` in `apps/api/.env` or the local shell
+environment. Omitting them uses the 30-minute defaults. `RATE_LIMIT_WINDOW_MS`
+is unrelated and may remain `60000`.
 
 Rate protection is keyed by the verified local player identity and returns
 `429 RATE_LIMITED` with `Retry-After` and `RateLimit-*` headers. It is an

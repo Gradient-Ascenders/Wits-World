@@ -13,8 +13,8 @@ authoritative explanation. Multiple-choice explanations remain outside the
 Player contract.
 
 The browser renders player-safe API state. It does not decide eligibility,
-deadline validity, answer correctness, score, completion, coin amounts, card
-selection, or reward ownership.
+deadline validity, answer correctness, score, completion, progression points,
+card selection, or reward ownership.
 
 The browser renders the same completed review returned by the API; it does not
 compare answers or calculate correctness itself.
@@ -41,8 +41,8 @@ compare answers or calculate correctness itself.
    “Answer saved” confirmation and advances to the first server-unanswered
    question. It does not reveal whether that answer was correct.
 7. A fifth accepted answer, or expiry, returns the persisted completed result:
-   final score, coins, zero to two awarded cards, and the five-question answer
-   review.
+   final score, zero to two awarded cards, and the five-question answer review.
+   The server records progression points separately and atomically.
 8. Reopening or refreshing the route always reloads authoritative attempt state.
    A completed result is rendered as already saved to the player account; the
    browser does not claim that a repeat response created a new reward.

@@ -5,12 +5,13 @@ title: Player progression rules
 # Player progression rules
 
 Issue `#171` defines the first Intermediate-tier progression rules. Progression
-points are the only active player progression and reward measure. They are
-permanent and non-spendable, and the API and database remain authoritative for
-every award. Coins, wallets, card selling for currency, and a card shop are
-deferred until all Advanced features are complete and time remains. Issue
-`#193` owns the forward-only retirement of the legacy coin behavior already
-introduced by applied migrations and active challenge responses.
+points are the only active player progression measure. They are permanent and
+non-spendable, and the API and database remain authoritative for every award.
+Cards remain score-based challenge rewards. Coins, card selling for currency,
+and a card shop are deferred until all Advanced features are complete and time
+remains. Migration `0034_retire_coin_rewards.sql` implements issue `#193` by
+retiring the legacy wallet and coin-ledger behavior without rewriting applied
+migration history.
 
 ## Point awards
 
@@ -118,9 +119,9 @@ history. Issue `#172` exposes authenticated profile and standings operations
 and wires challenge and CPU completion transactions to the progression adapter
 before commit. A progression failure therefore rolls the authoritative
 completion back rather than leaving gameplay and progression inconsistent.
-Neither issue may add or derive a spendable balance. Issue
-`#193` separately removes the existing coin writes and player-facing fields
-without rewriting applied migration history.
+Neither issue may add or derive a spendable balance. Issue `#193` removes coin
+writes and player-facing fields while preserving historical completion, wallet,
+and ledger values under the documented retirement boundary.
 
 The current-player profile returns the stable achievement code, accessible title
 and description, earned status, current metric, and target for every active

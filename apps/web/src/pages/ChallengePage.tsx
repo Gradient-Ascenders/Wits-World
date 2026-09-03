@@ -688,6 +688,7 @@ function ChallengeError({
   onRetry: () => void;
 }) {
   const isMissing = error.failure === 'attempt-not-found';
+  const requiresRefresh = error.failure === 'client-upgrade-required';
   const canReturnToExplore = isMissing || error.failure === 'authorization';
 
   return (
@@ -699,7 +700,9 @@ function ChallengeError({
       <h1>
         {isMissing
           ? 'This challenge is not available'
-          : 'We could not load your challenge'}
+          : requiresRefresh
+            ? 'Refresh Wits World to continue'
+            : 'We could not load your challenge'}
       </h1>
       <p>{messageForChallengeError(error)}</p>
       {canReturnToExplore ? (
@@ -707,8 +710,12 @@ function ChallengeError({
           Return to explore
         </Link>
       ) : (
-        <button className="button" onClick={onRetry} type="button">
-          Try again
+        <button
+          className="button"
+          onClick={requiresRefresh ? () => window.location.reload() : onRetry}
+          type="button"
+        >
+          {requiresRefresh ? 'Refresh Wits World' : 'Try again'}
         </button>
       )}
     </section>
@@ -723,7 +730,9 @@ function toChallengeError(error: unknown): ChallengeApiError {
 
 function isTerminalChallengeError(error: ChallengeApiError): boolean {
   return (
-    error.failure === 'attempt-not-found' || error.failure === 'authorization'
+    error.failure === 'attempt-not-found' ||
+    error.failure === 'authorization' ||
+    error.failure === 'client-upgrade-required'
   );
 }
 
@@ -775,6 +784,10 @@ function messageForChallengeError(error: ChallengeApiError): string {
 
   if (error.failure === 'attempt-not-found') {
     return 'This saved challenge could not be found for your account.';
+  }
+
+  if (error.failure === 'client-upgrade-required') {
+    return 'This version cannot safely continue the challenge. Refresh before submitting another answer.';
   }
 
   return 'Check your connection and try again. Your saved answers and rewards remain protected.';

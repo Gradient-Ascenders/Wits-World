@@ -35,7 +35,7 @@ Reward persistence and issuance are implemented through migrations `0007` and
 `0008` and the atomic completion finalizer from closed issue #67. The linked
 [persistence foundation issue](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/49)
 records the original design input. The browser never chooses correctness,
-score, coin value, rarity, card definitions, or reward outcomes.
+score, progression points, rarity, card definitions, or reward outcomes.
 
 ## Approved product decisions
 
@@ -65,10 +65,18 @@ decisions into HTTP behavior; it does not independently choose the game rules.
 - Completion and its reward result are retry-safe. Repeated requests return the
   persisted completion and reward without rerolling or issuing duplicate
   rewards.
-- The score-based reward system supersedes the earlier simplified one-card-per-event
-  planning rule. A player still receives only one completed attempt and one
-  persisted reward result per event, although that result may contain coins and
-  zero, one, or two awarded cards according to the server-side reward policy.
+- Every challenge-attempt request must send
+  `X-Wits-Challenge-Contract-Version: 2`. Missing or different values receive a
+  `409 CHALLENGE_CLIENT_UPGRADE_REQUIRED` response before start/resume, answer,
+  fetch, timeout-finalisation, or completion services run. This prevents a stale
+  tab from completing server-side and then failing to parse the newer response;
+  the player must hard-refresh onto the matching Web build.
+- The score-based reward system supersedes the earlier simplified
+  one-card-per-event planning rule. A player still receives only one completed
+  attempt and one persisted reward result per event. That result contains zero,
+  one, or two awarded cards according to the server-side reward policy.
+  Challenge points are recorded by the separate authoritative progression
+  ledger.
 - An event remains available to other players after one player completes it.
 
 The selected questions determine the deadline:
@@ -187,7 +195,6 @@ exactly four choices for `multiple_choice` or four items for `ordering`.
   "totalQuestions": 5,
   "scoreCorrect": 3,
   "reward": {
-    "coinsAwarded": 37,
     "cards": [
       {
         "ownedCardId": "51000000-0000-4000-8000-000000000001",
@@ -275,9 +282,9 @@ exactly four choices for `multiple_choice` or four items for `ordering`.
 }
 ```
 
-`scoreCorrect` is an integer from `0` through `5`. `reward.coinsAwarded` is the
-persisted coin award and `reward.cards` contains zero, one, or two persisted
-card awards according to the server-side reward policy.
+`scoreCorrect` is an integer from `0` through `5`. `reward.cards` contains zero,
+one, or two persisted card awards according to the server-side reward policy.
+The completed-attempt contract has no coin or wallet field.
 
 The completed representation retains non-sensitive resource metadata so clients
 can correlate the result with the attempt and event and distinguish the
@@ -457,40 +464,40 @@ contract. The authoritative deadline remains the stored attempt deadline.
 
 ## OpenAPI-compatible schema summary
 
-| Field                  | Schema rule                                          |
-| ---------------------- | ---------------------------------------------------- |
-| `eventId`, `attemptId` | string, UUID                                         |
-| `attemptQuestionId`    | string, UUID                                         |
-| `choiceId`, `itemId`   | string, UUID                                         |
-| `latitude`             | finite number, `-90` through `90`                    |
-| `longitude`            | finite number, `-180` through `180`                  |
-| `accuracyMetres`       | finite number, minimum `0`                           |
-| `acquiredAt`           | string, date-time                                    |
-| `format`               | enum: `multiple_choice`, `ordering`                  |
-| `status`               | enum: `in_progress`, `completed`                     |
-| `position`             | integer, `1` through `5`                             |
-| `totalQuestions`       | integer, constant `5`                                |
-| `answeredCount`        | integer, `0` through `5`; in-progress responses only |
-| `questions`            | array, exactly `5` items; in-progress responses only |
-| question `choices`     | array, exactly `4` items                             |
-| question `items`       | array, exactly `4` unique items; ordering only       |
-| `itemIds`              | array, exactly `4` unique UUIDs; ordering answer     |
-| `scoreCorrect`         | integer, `0` through `5`; completed results only     |
-| `reward.coinsAwarded`  | integer, minimum `0`                                 |
-| `reward.cards`         | array, `0` through `2` items                         |
-| `review`               | array, exactly `5` items; completed results only     |
-| `selectedChoice`       | choice object or `null`; completed review only       |
-| `correctChoice`        | choice object; completed review only                 |
-| `selectedItems`        | four item objects or `null`; ordering review only    |
-| `correctItems`         | four item objects; ordering review only              |
-| `explanation`          | nonblank string; completed ordering review only      |
-| `isCorrect`            | boolean; completed review only                       |
-| card `category`        | enum: `creature`, `power`                            |
-| card `affinity`        | enum: `wit`, `grit`, `spark`, `spirit`, `mystic`     |
-| card `rarity`          | enum: `common`, `rare`, `epic`, `legendary`          |
-| request object schemas | `additionalProperties: false`                        |
-| `completionReason`     | enum: `answered`, `timeout`; completed attempts only |
-| `completedAt`          | string, date-time; completed attempts only           |
+| Field                               | Schema rule                                          |
+| ----------------------------------- | ---------------------------------------------------- |
+| `eventId`, `attemptId`              | string, UUID                                         |
+| `attemptQuestionId`                 | string, UUID                                         |
+| `choiceId`, `itemId`                | string, UUID                                         |
+| `latitude`                          | finite number, `-90` through `90`                    |
+| `longitude`                         | finite number, `-180` through `180`                  |
+| `accuracyMetres`                    | finite number, minimum `0`                           |
+| `acquiredAt`                        | string, date-time                                    |
+| `format`                            | enum: `multiple_choice`, `ordering`                  |
+| `status`                            | enum: `in_progress`, `completed`                     |
+| `position`                          | integer, `1` through `5`                             |
+| `totalQuestions`                    | integer, constant `5`                                |
+| `answeredCount`                     | integer, `0` through `5`; in-progress responses only |
+| `questions`                         | array, exactly `5` items; in-progress responses only |
+| question `choices`                  | array, exactly `4` items                             |
+| question `items`                    | array, exactly `4` unique items; ordering only       |
+| `itemIds`                           | array, exactly `4` unique UUIDs; ordering answer     |
+| `scoreCorrect`                      | integer, `0` through `5`; completed results only     |
+| `reward.cards`                      | array, `0` through `2` items                         |
+| `X-Wits-Challenge-Contract-Version` | request header, exact value `2`                      |
+| `review`                            | array, exactly `5` items; completed results only     |
+| `selectedChoice`                    | choice object or `null`; completed review only       |
+| `correctChoice`                     | choice object; completed review only                 |
+| `selectedItems`                     | four item objects or `null`; ordering review only    |
+| `correctItems`                      | four item objects; ordering review only              |
+| `explanation`                       | nonblank string; completed ordering review only      |
+| `isCorrect`                         | boolean; completed review only                       |
+| card `category`                     | enum: `creature`, `power`                            |
+| card `affinity`                     | enum: `wit`, `grit`, `spark`, `spirit`, `mystic`     |
+| card `rarity`                       | enum: `common`, `rare`, `epic`, `legendary`          |
+| request object schemas              | `additionalProperties: false`                        |
+| `completionReason`                  | enum: `answered`, `timeout`; completed attempts only |
+| `completedAt`                       | string, date-time; completed attempts only           |
 
 The implementation uses four OpenAPI-compatible response schemas: active and
 completed representations for each format. Review, correctness, correct

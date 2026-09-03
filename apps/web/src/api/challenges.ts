@@ -78,7 +78,7 @@ export interface CompletedMultipleChoiceChallengeAttempt {
   eventId: string;
   format: 'multiple_choice';
   review: CompletedMultipleChoiceQuestionReview[];
-  reward: { cards: CompletedChallengeCard[]; coinsAwarded: number };
+  reward: { cards: CompletedChallengeCard[] };
   scoreCorrect: number;
   status: 'completed';
   totalQuestions: 5;
@@ -101,7 +101,7 @@ export interface CompletedOrderingChallengeAttempt {
   eventId: string;
   format: 'ordering';
   review: CompletedOrderingQuestionReview[];
-  reward: { cards: CompletedChallengeCard[]; coinsAwarded: number };
+  reward: { cards: CompletedChallengeCard[] };
   scoreCorrect: number;
   status: 'completed';
   totalQuestions: 5;
@@ -121,6 +121,7 @@ export type ChallengeApiFailure =
   | 'attempt-completed'
   | 'attempt-not-found'
   | 'authorization'
+  | 'client-upgrade-required'
   | 'event-not-reachable'
   | 'event-unavailable'
   | 'location-retry'
@@ -231,6 +232,8 @@ interface RequestAttemptOptions extends ChallengeRequestBase {
   path: string;
 }
 
+const ACTIVE_CHALLENGE_CONTRACT_VERSION = '2';
+
 async function requestAttempt({
   apiBaseUrl,
   body,
@@ -255,6 +258,7 @@ async function requestAttempt({
       headers: {
         Accept: 'application/json',
         Authorization: `Bearer ${accessToken}`,
+        'X-Wits-Challenge-Contract-Version': ACTIVE_CHALLENGE_CONTRACT_VERSION,
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
       },
       method,
@@ -316,6 +320,10 @@ async function parseChallengeError(
 
   if (code === 'ATTEMPT_COMPLETED') {
     return new ChallengeApiError('attempt-completed', requestId);
+  }
+
+  if (code === 'CHALLENGE_CLIENT_UPGRADE_REQUIRED') {
+    return new ChallengeApiError('client-upgrade-required', requestId);
   }
 
   if (code === 'EVENT_NOT_REACHABLE') {
@@ -566,8 +574,7 @@ function parseCompletedAttempt(
     !Array.isArray(payload.review) ||
     payload.review.length !== 5 ||
     !isRecord(payload.reward) ||
-    !hasOnlyKeys(payload.reward, ['cards', 'coinsAwarded']) ||
-    !isNonNegativeInteger(payload.reward.coinsAwarded) ||
+    !hasOnlyKeys(payload.reward, ['cards']) ||
     !Array.isArray(payload.reward.cards) ||
     payload.reward.cards.length > 2
   ) {
@@ -603,7 +610,6 @@ function parseCompletedAttempt(
     review,
     reward: {
       cards: payload.reward.cards.map(parseRewardCard),
-      coinsAwarded: payload.reward.coinsAwarded,
     },
     scoreCorrect: payload.scoreCorrect,
     status: 'completed',
@@ -678,8 +684,7 @@ function parseCompletedOrderingAttempt(
     !Array.isArray(payload.review) ||
     payload.review.length !== 5 ||
     !isRecord(payload.reward) ||
-    !hasOnlyKeys(payload.reward, ['cards', 'coinsAwarded']) ||
-    !isNonNegativeInteger(payload.reward.coinsAwarded) ||
+    !hasOnlyKeys(payload.reward, ['cards']) ||
     !Array.isArray(payload.reward.cards) ||
     payload.reward.cards.length > 2
   ) {
@@ -708,7 +713,6 @@ function parseCompletedOrderingAttempt(
     review,
     reward: {
       cards: payload.reward.cards.map(parseRewardCard),
-      coinsAwarded: payload.reward.coinsAwarded,
     },
     scoreCorrect: payload.scoreCorrect,
     status: 'completed',
@@ -893,10 +897,6 @@ function isQuestionPosition(value: unknown): value is number {
     value >= 1 &&
     value <= 5
   );
-}
-
-function isNonNegativeInteger(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
 
 function isCompletionReason(value: unknown): value is 'answered' | 'timeout' {

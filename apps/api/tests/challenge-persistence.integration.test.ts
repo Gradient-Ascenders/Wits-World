@@ -114,6 +114,7 @@ describe.skipIf(!runIntegrationTests)(
           '0031_create_movement_evidence.sql',
           '0032_add_movement_eligibility_decisions.sql',
           '0033_add_async_pvp_invitation_invalidation.sql',
+          '0034_retire_coin_rewards.sql',
         ],
         skipped: [],
       });
@@ -155,6 +156,7 @@ describe.skipIf(!runIntegrationTests)(
           '0031_create_movement_evidence.sql',
           '0032_add_movement_eligibility_decisions.sql',
           '0033_add_async_pvp_invitation_invalidation.sql',
+          '0034_retire_coin_rewards.sql',
         ],
       });
     }, 30_000);
@@ -360,6 +362,7 @@ describe.skipIf(!runIntegrationTests)(
             '0031_create_movement_evidence.sql',
             '0032_add_movement_eligibility_decisions.sql',
             '0033_add_async_pvp_invitation_invalidation.sql',
+            '0034_retire_coin_rewards.sql',
           ],
         });
 
@@ -679,7 +682,7 @@ describe.skipIf(!runIntegrationTests)(
       });
     }, 45_000);
 
-    it('finalizes one completion, prevents duplicate coins, and allows duplicate card grants', async () => {
+    it('finalizes one completion with points and cards but no coin writes', async () => {
       await withDatabaseClient(temporaryConfig, async (client) => {
         const cardResult = await client.query(
           `insert into public.card_definitions (
@@ -860,11 +863,13 @@ describe.skipIf(!runIntegrationTests)(
           ),
         ).rejects.toThrow();
 
-        const wallet = await client.query<{ coin_balance: number }>(
-          `select coin_balance from public.player_wallets where player_id = $1`,
+        const wallet = await client.query<{ count: string }>(
+          `select count(*)::text as count
+             from public.player_wallets
+            where player_id = $1`,
           [PLAYER_ID],
         );
-        expect(wallet.rows[0]?.coin_balance).toBe(63);
+        expect(wallet.rows[0]?.count).toBe('0');
 
         const ledger = await client.query<{ count: string }>(
           `select count(*)::text as count
@@ -872,7 +877,21 @@ describe.skipIf(!runIntegrationTests)(
             where completion_id = $1`,
           [completionId],
         );
-        expect(ledger.rows[0]?.count).toBe('1');
+        expect(ledger.rows[0]?.count).toBe('0');
+
+        const pointAward = await client.query<{
+          count: string;
+          points_awarded: number;
+        }>(
+          `select count(*)::text as count, max(points_awarded) as points_awarded
+             from public.player_point_awards
+            where event_completion_id = $1`,
+          [completionId],
+        );
+        expect(pointAward.rows[0]).toEqual({
+          count: '1',
+          points_awarded: 50,
+        });
 
         await expect(
           client.query(
@@ -1027,13 +1046,13 @@ describe.skipIf(!runIntegrationTests)(
         );
         expect(completionCount.rows[0]?.count).toBe('1');
 
-        const wallet = await client.query<{ coin_balance: number }>(
-          `select coin_balance
+        const wallet = await client.query<{ count: string }>(
+          `select count(*)::text as count
              from public.player_wallets
             where player_id = $1`,
           [CONCURRENT_PLAYER_ID],
         );
-        expect(wallet.rows[0]?.coin_balance).toBe(63);
+        expect(wallet.rows[0]?.count).toBe('0');
 
         const ledgerCount = await client.query<{ count: string }>(
           `select count(*)::text as count
@@ -1041,7 +1060,15 @@ describe.skipIf(!runIntegrationTests)(
             where player_id = $1`,
           [CONCURRENT_PLAYER_ID],
         );
-        expect(ledgerCount.rows[0]?.count).toBe('1');
+        expect(ledgerCount.rows[0]?.count).toBe('0');
+
+        const pointAwardCount = await client.query<{ count: string }>(
+          `select count(*)::text as count
+             from public.player_point_awards
+            where player_id = $1`,
+          [CONCURRENT_PLAYER_ID],
+        );
+        expect(pointAwardCount.rows[0]?.count).toBe('1');
 
         const cardCount = await client.query<{ count: string }>(
           `select count(*)::text as count

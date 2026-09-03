@@ -379,9 +379,9 @@ request includes the Auth0 bearer token, and the API independently applies its
 authentication, active-player, and Author guards. Player roles are assigned and
 revoked out of band; the console has no role-management operation.
 
-The Basic workflow is:
+The author workflow is:
 
-1. Open **Author → Events & challenges**, create or select a draft event, and
+1. Open **Author → Events**, create or select a draft event, and
    enter its title, optional description, active times, positive whole-number
    radius, latitude, and longitude. The coordinate fields are always available;
    clicking the placement map is optional.
@@ -389,25 +389,28 @@ The Basic workflow is:
    challenge. Multiple-choice questions require exactly four non-blank choices
    and one accepted-answer position. Ordering questions require exactly four
    non-blank items entered in their correct sequence. Both formats require
-   difficulty 1–3 and a non-blank author explanation. Publish at least five
-   questions, then publish exactly one challenge for the event. A challenge's
-   format is fixed when it is created.
+   difficulty 1–3 and a non-blank author explanation. For each question, submit
+   the draft for review, have a different Author approve it, and then publish
+   it. After at least five questions are published, take the challenge through
+   the same lifecycle. A challenge's format is fixed when it is created.
 3. Open **Card catalogue** and create or update the global definitions used by
    rewards. A Creature has positive HP, non-negative Power, and at least one
    move. A Power card has null HP/Power and at least one effect. Publish at least
-   one Common card so the authoritative reward catalogue is ready.
+   one Common card through independent review and publication so the
+   authoritative reward catalogue is ready.
 4. Return to the event's publication summary. It explains the three Basic
-   relationships, but remains advisory. Select **Ask API to publish event**;
-   success is shown only after the API accepts the request.
+   relationships, but remains advisory. Submit the event for review, have a
+   different Author approve it, then select **Publish event**; success is shown
+   only after the API accepts the request.
 
 Basic does not expose an event-to-card assignment or author-defined reward
-amount. The reward service selects from the global active catalogue. Published
-event, card, and question definitions cannot be edited under the current API,
-and retirement is permanent. A `409` response therefore reports a lifecycle
-conflict and reload is the recovery path; there is no client-invented version or
-optimistic-concurrency field. A `422` publication response reports that
-authoritative readiness rules are not met. Validation details identify controls
-when the API supplies field paths, while other API failures remain visible as
+amount. The reward service selects from the global active catalogue. Only draft
+content can be edited, and retirement is permanent. Lifecycle mutations send
+the API-provided `version` as `expectedVersion`; the API remains authoritative
+when it accepts or rejects the transition. A `409` conflict reloads the current
+authoritative detail, while a `422` approval or publication response reports
+that readiness rules are not met. Validation details identify controls when the
+API supplies field paths, while other API failures remain visible as
 request-level alerts.
 
 Accepted-choice identifiers and accepted positions are read only by the
@@ -782,15 +785,18 @@ With `apps/web/.env` configured and the development server running:
    end time later than the start time.
 3. Create one multiple-choice challenge and five questions. For each question,
    enter four choices, choose the accepted answer with its radio control, add an
-   author explanation, publish the question, then publish the challenge.
-   Confirm the current question's accepted marker is visible only inside
-   `/author`. Repeat with an ordering challenge: enter four items in correct
-   sequence for each question and confirm that sequence is visible in the
-   protected question detail.
+   author explanation, and save the draft. Submit each question for review; use
+   a different Author to approve it, then publish it. Once all five are
+   published, repeat those lifecycle steps for the challenge. Confirm the
+   current question's accepted marker is visible only inside `/author`. Repeat
+   with an ordering challenge: enter four items in correct sequence for each
+   question and confirm that sequence is visible in the protected question
+   detail. A draft must offer **Submit for review**, not direct publication.
 4. In **Card catalogue**, create a Common card with valid category-specific
-   moves or effects and publish it. Return to the event and confirm all three
-   readiness summaries read **Ready**. Publish the event and confirm the API
-   success message receives focus.
+   moves or effects and take it through review and publication. Return to the
+   event and confirm all three readiness summaries read **Ready**. Take the
+   event through review and publication, then confirm the API success message
+   receives focus.
 5. Open `/explore` and confirm the newly published, currently active event is
    available through the player event response. Start its challenge where local
    reported-location configuration permits. Inspect the active network response

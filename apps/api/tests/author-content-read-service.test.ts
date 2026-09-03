@@ -6,6 +6,9 @@ import {
 } from '../src/authoring/content-read-service.js';
 
 const entityId = 'c2000000-0000-4000-8000-000000000001';
+const eventId = 'c2000000-0000-4000-8000-000000000002';
+const challengeId = 'c2000000-0000-4000-8000-000000000003';
+const otherAuthorId = 'c2000000-0000-4000-8000-000000000004';
 
 describe('Author content paginated reads', () => {
   it('retains review-queue totals when the requested page is empty', async () => {
@@ -33,6 +36,43 @@ describe('Author content paginated reads', () => {
       totalPages: 3,
     });
     expect(release).toHaveBeenCalledOnce();
+  });
+
+  it('returns the parent identifiers required by nested question routes', async () => {
+    const { database } = databaseFixture((statement) => {
+      if (statement.includes('count(*)::int total_items from queue')) {
+        return { rows: [{ total_items: 1 }] };
+      }
+      return {
+        rows: [
+          {
+            can_review: true,
+            challenge_id: challengeId,
+            entity_id: entityId,
+            entity_type: 'question',
+            event_id: eventId,
+            label: 'multiple_choice question',
+            submitted_at: new Date('2026-08-30T08:00:00.000Z'),
+            submitted_by: otherAuthorId,
+            submitted_by_name: 'reviewer',
+            version: 2,
+          },
+        ],
+      };
+    });
+
+    const result = await createAuthorContentReadService(
+      database,
+    ).listReviewQueue({
+      actorPlayerId: entityId,
+      entityType: 'question',
+      page: 1,
+      pageSize: 20,
+    });
+
+    expect(result.items).toEqual([
+      expect.objectContaining({ challengeId, entityId, eventId }),
+    ]);
   });
 
   it('retains history totals when the requested page is empty', async () => {

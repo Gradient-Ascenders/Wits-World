@@ -1,10 +1,12 @@
 # Neon PostgreSQL and PostGIS Setup
 
-This guide covers the Sprint 1 database setup for Wits Quest.
+This guide covers the managed database setup for Wits Quest.
 
-The team uses Neon as the PostgreSQL and PostGIS development environment for
-Sprint 1. No Docker or self-hosted local PostgreSQL service is configured in
-this issue.
+The deployed API uses Neon PostgreSQL and PostGIS. Pull-request database
+validation uses the disposable `postgis/postgis:17-3.5` service defined in
+`.gitea/workflows/pr-validation.yml`; it does not connect to Neon. Developers
+may use Neon for manual integration and release rehearsals when a local PostGIS
+service is unavailable, but routine PR validation should remain local to CI.
 
 ## Required databases
 
@@ -14,7 +16,10 @@ Create or select two separate Neon database targets:
 - test: used through `TEST_DATABASE_URL`
 
 The two URLs must not point at the same database or branch. This keeps migration
-and integration tests from damaging development data.
+and integration tests from damaging development data. When both targets are
+hosted by Neon, prefer separate Neon projects rather than branches of one
+project so their monthly compute allowances and failure boundaries are also
+separate.
 
 ## Local environment file
 
@@ -99,8 +104,9 @@ guide](event-schema.md) for fixture values and availability periods.
 
 ## Database integration test
 
-Run the destructive database integration test only against the separate Neon
-test branch configured by `TEST_DATABASE_URL`:
+Pull requests run the destructive database suite automatically against the
+job-local PostGIS service. For an authorised manual run, use only the separate
+test target configured by `TEST_DATABASE_URL`:
 
 ```bash
 npm run test:database --workspace @wits-world/api
@@ -113,6 +119,26 @@ and drops only that temporary database in cleanup. The configured test database
 itself is not dropped or cleared. Follow the
 [PostGIS recovery rehearsal](postgis-recovery-rehearsal.md) when collecting
 release evidence.
+
+## Serverless compute usage
+
+The API starts account-deletion retry, movement-evidence cleanup, and
+asynchronous-PvP deadline workers together. Production configures all three to
+the same 30-minute interval, and the API rejects intervals shorter than 15
+minutes. This leaves an idle window between maintenance batches instead of
+querying the database every minute. Request-time checks remain authoritative;
+the background jobs only converge failed or inactive work.
+
+In the Neon console, keep the production compute minimum at `0.25 CU` and keep
+scale-to-zero enabled with the five-minute inactivity delay. Review project
+consumption and branch computes after each release. Delete unused branch
+computes, and investigate any long continuous active period because normal
+idle maintenance should now appear as short, approximately 30-minute-spaced
+bursts.
+
+Do not run the full database suite repeatedly against the production project.
+Use PR CI for routine verification and reserve hosted test runs for release
+smoke or recovery evidence.
 
 ## Check readiness
 

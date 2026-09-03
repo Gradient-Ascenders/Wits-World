@@ -240,6 +240,10 @@ Mark quiz answers on the server while keeping Basic player feedback safe.
 
 ### Purpose
 
+> Historical planning note: issue `#193` later retired active coin rewards.
+> Permanent progression points and score-based card awards are the current
+> contract; the coin wording below records the original Sprint 2 scope only.
+
 Convert a completed quiz into authoritative coins and cards without duplicate
 grants or partial writes.
 

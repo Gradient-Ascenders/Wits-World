@@ -4,11 +4,15 @@ import {
   AuthorApiError,
   createAuthorCard,
   createAuthorChallenge,
+  createAuthorCampaign,
   createAuthorEvent,
   createAuthorQuestion,
+  listAuthorCampaigns,
   listAuthorEvents,
   listAuthorQuestions,
+  listAuthorReviewQueue,
   publishAuthorEvent,
+  transitionAuthorContent,
 } from '../src/api/author';
 
 const apiBaseUrl = 'https://api.example.test/api/v1';
@@ -172,6 +176,82 @@ describe('author API client', () => {
     );
   });
 
+  it('keeps review queue parent identifiers for nested detail routes', async () => {
+    const item = {
+      canReview: true,
+      challengeId,
+      entityId: questionFixture().questionId,
+      entityType: 'question',
+      eventId,
+      label: 'multiple_choice question',
+      status: 'in_review',
+      submittedAt: '2026-08-29T08:00:00.000Z',
+      submittedBy: '90000000-0000-4000-8000-000000000002',
+      submittedByName: 'Other Author',
+      version: 2,
+    } as const;
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        items: [item],
+        page: 1,
+        pageSize: 20,
+        requestId: 'request-review',
+        totalItems: 1,
+        totalPages: 1,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      listAuthorReviewQueue({
+        apiBaseUrl,
+        entityType: 'question',
+        getAccessToken,
+        signal: new AbortController().signal,
+      }),
+    ).resolves.toMatchObject({ items: [item] });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `${apiBaseUrl}/author/review-queue?page=1&pageSize=20&entityType=question`,
+    );
+  });
+
+  it('sends a required review-return reason with optimistic version control', async () => {
+    const returned = {
+      ...eventFixture(),
+      authoringStatus: 'draft',
+      version: 3,
+    } as const;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ event: returned, requestId: 'request-return' }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      transitionAuthorContent({
+        action: 'return',
+        apiBaseUrl,
+        entityId: eventId,
+        entityType: 'event',
+        expectedVersion: 2,
+        getAccessToken,
+        reason: 'Clarify the player-facing description.',
+        signal: new AbortController().signal,
+      }),
+    ).resolves.toEqual(returned);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${apiBaseUrl}/author/events/${eventId}/return`,
+      expect.objectContaining({
+        body: JSON.stringify({
+          expectedVersion: 2,
+          reason: 'Clarify the player-facing description.',
+        }),
+        method: 'POST',
+      }),
+    );
+  });
+
   it('parses an Author-only ordering sequence and rejects malformed positions', async () => {
     const question = orderingQuestionFixture();
     const fetchMock = vi
@@ -210,6 +290,46 @@ describe('author API client', () => {
         signal: new AbortController().signal,
       }),
     ).rejects.toMatchObject({ failure: 'unavailable' });
+  });
+
+  it('loads campaign membership and submits only editable campaign fields', async () => {
+    const campaign = campaignFixture();
+    const input = {
+      description: 'Orientation schedule.',
+      endsAt: '2026-09-05T16:00:00.000Z',
+      eventIds: [eventId],
+      startsAt: '2026-09-01T06:00:00.000Z',
+      title: 'Welcome Week',
+      trailIds: [],
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ campaigns: [campaign], requestId: 'request-campaigns' }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ campaign, requestId: 'request-campaign-create' }, 201),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      listAuthorCampaigns({
+        apiBaseUrl,
+        getAccessToken,
+        signal: new AbortController().signal,
+      }),
+    ).resolves.toEqual([campaign]);
+    await createAuthorCampaign({
+      apiBaseUrl,
+      getAccessToken,
+      input,
+      signal: new AbortController().signal,
+    });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `${apiBaseUrl}/author/campaigns`,
+      expect.objectContaining({ body: JSON.stringify(input), method: 'POST' }),
+    );
+    expect(JSON.stringify(fetchMock.mock.calls[1])).not.toContain('status');
   });
 
   it('submits the category-specific Creature card shape without lifecycle authority', async () => {
@@ -511,6 +631,37 @@ function cardFixture() {
     reviewedAt: null,
     publicationProvenance: null,
     updatedAt: '2026-08-16T08:00:00.000Z',
+  } as const;
+}
+
+function campaignFixture() {
+  return {
+    campaignId: '70000000-0000-4000-8000-000000000001',
+    createdAt: '2026-08-16T08:00:00.000Z',
+    description: 'Orientation schedule.',
+    endsAt: '2026-09-05T16:00:00.000Z',
+    events: [
+      {
+        authoringStatus: 'published',
+        endsAt: '2026-09-03T16:00:00.000Z',
+        eventId,
+        startsAt: '2026-09-01T08:00:00.000Z',
+        title: 'Great Hall history',
+      },
+    ],
+    publicationProvenance: null,
+    publishedAt: null,
+    retiredAt: null,
+    reviewedAt: null,
+    reviewedBy: null,
+    startsAt: '2026-09-01T06:00:00.000Z',
+    status: 'draft',
+    submittedAt: null,
+    submittedBy: null,
+    title: 'Welcome Week',
+    trails: [],
+    updatedAt: '2026-08-16T08:00:00.000Z',
+    version: 0,
   } as const;
 }
 

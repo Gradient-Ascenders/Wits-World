@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { MIN_DATABASE_MAINTENANCE_INTERVAL_MS } from '../src/config/timers.js';
 import { createAsyncPvpDeadlineScheduler } from '../src/matches/asynchronous-pvp-deadline-scheduler.js';
 
 afterEach(() => vi.useRealTimers());
@@ -26,11 +27,11 @@ describe('asynchronous PvP deadline scheduler', () => {
     const scheduler = createAsyncPvpDeadlineScheduler(
       { runOnce },
       logger,
-      1_000,
+      MIN_DATABASE_MAINTENANCE_INTERVAL_MS,
     );
 
     scheduler.start();
-    await vi.advanceTimersByTimeAsync(3_000);
+    await vi.advanceTimersByTimeAsync(MIN_DATABASE_MAINTENANCE_INTERVAL_MS * 3);
     expect(runOnce).toHaveBeenCalledTimes(1);
 
     const stopped = scheduler.stop();
@@ -53,7 +54,7 @@ describe('asynchronous PvP deadline scheduler', () => {
       createAsyncPvpDeadlineScheduler(
         { runOnce: vi.fn() },
         { info: vi.fn(), error: vi.fn() },
-        999,
+        MIN_DATABASE_MAINTENANCE_INTERVAL_MS - 1,
       ),
     ).toThrow('safe integer between');
 
@@ -62,7 +63,7 @@ describe('asynchronous PvP deadline scheduler', () => {
     const scheduler = createAsyncPvpDeadlineScheduler(
       { runOnce: vi.fn().mockRejectedValue(new Error('private state')) },
       logger,
-      1_000,
+      MIN_DATABASE_MAINTENANCE_INTERVAL_MS,
     );
     scheduler.start();
     await vi.runOnlyPendingTimersAsync();
