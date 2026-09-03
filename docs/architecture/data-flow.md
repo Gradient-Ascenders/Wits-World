@@ -70,9 +70,12 @@ authoritative event record.
    - longitude;
    - reported accuracy; and
    - acquisition timestamp.
-4. The browser updates its ephemeral reported-location marker. When the player
-   selects an active event, it submits the latest claim with the event
-   identifier.
+4. The browser updates its ephemeral reported-location marker. The visual marker
+   uses a short rolling sample window to resist briefly degraded readings and a
+   Mapbox marker anchor so it remains attached to the coordinate during camera
+   movement. This presentation-only selection does not decide eligibility.
+   When the player selects an active event, the browser submits the current raw
+   device claim with the event identifier.
 5. The API validates the access token.
 6. The API validates:
    - the event identifier;
@@ -94,7 +97,8 @@ authoritative event record.
 12. The API returns a safe eligibility result.
 13. The browser displays the result using accessible text and status messaging.
 14. Meaningful watcher updates may drive a coalesced refresh, with no more than
-    one eligibility request every 15 seconds. This is only a frontend network
+    one eligibility request every 15 seconds. An accuracy improvement can count
+    as meaningful even when movement is small. This is only a frontend network
     limit; there is no timer-only polling loop.
 15. Challenge start reuses a sufficiently fresh watched reported-location claim
     or requests a newer one-shot claim, then sends it through the
@@ -102,8 +106,8 @@ authoritative event record.
     a fresher location, the same rejected acquisition is not resubmitted.
 
 The browser does not calculate the authoritative distance or final eligibility.
-The selected event interaction area is a visual geodesic polygon only. Basic
-Tier does not display a GPS accuracy circle.
+The selected event interaction area is a visual geodesic polygon only. Reported
+accuracy is shown as text; Basic Tier does not display a GPS accuracy circle.
 
 ## Eligibility outcomes
 

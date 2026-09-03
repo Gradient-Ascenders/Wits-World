@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -14,6 +15,7 @@ import {
   getCurrentPlayer,
   PlayerNameSetupError,
   type CurrentPlayer,
+  type CurrentPlayerFailure,
 } from '../api/authentication';
 import { useApiAccessToken } from './useApiAccessToken';
 import { bindAuthenticatedPlayer } from './player-session-binding';
@@ -22,7 +24,7 @@ type CurrentPlayerState =
   | { status: 'anonymous' }
   | {
       status: 'error';
-      failure: 'authorization' | 'identity_changed' | 'unavailable';
+      failure: CurrentPlayerFailure | 'identity_changed';
     }
   | { status: 'loading' }
   | { player: CurrentPlayer; status: 'ready' };
@@ -50,6 +52,10 @@ export function CurrentPlayerProvider({
 }: CurrentPlayerProviderProps) {
   const { isAuthenticated, isLoading, logout } = useAuth0();
   const getAccessToken = useApiAccessToken();
+  const getAccessTokenRef = useRef(getAccessToken);
+  const logoutRef = useRef(logout);
+  getAccessTokenRef.current = getAccessToken;
+  logoutRef.current = logout;
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<CurrentPlayerState>(
     isLoading || isAuthenticated
@@ -73,7 +79,7 @@ export function CurrentPlayerProvider({
 
     void getCurrentPlayer({
       apiBaseUrl,
-      getAccessToken,
+      getAccessToken: getAccessTokenRef.current,
       signal: controller.signal,
     })
       .then((player) => {
@@ -85,9 +91,11 @@ export function CurrentPlayerProvider({
 
         if (bindingResult === 'mismatched') {
           setState({ failure: 'identity_changed', status: 'error' });
-          void logout({
-            logoutParams: { returnTo: window.location.origin },
-          }).catch(() => undefined);
+          void logoutRef
+            .current({
+              logoutParams: { returnTo: window.location.origin },
+            })
+            .catch(() => undefined);
           return;
         }
 
@@ -111,7 +119,7 @@ export function CurrentPlayerProvider({
       });
 
     return () => controller.abort();
-  }, [apiBaseUrl, attempt, getAccessToken, isAuthenticated, isLoading, logout]);
+  }, [apiBaseUrl, attempt, isAuthenticated, isLoading]);
 
   const value = useMemo<CurrentPlayerContextValue>(
     () => ({

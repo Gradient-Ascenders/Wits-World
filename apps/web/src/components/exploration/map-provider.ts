@@ -4,6 +4,7 @@ import type {
   Map as MapboxMap,
   MapMouseEvent,
   Marker as MapboxMarker,
+  MarkerOptions,
 } from 'mapbox-gl/esm';
 
 export interface MapPoint {
@@ -20,6 +21,10 @@ export interface MapPoint {
 export interface MapCoordinate {
   latitude: number;
   longitude: number;
+}
+
+export interface ReportedMapLocation extends MapCoordinate {
+  accuracyMetres: number;
 }
 
 export type MapBounds = readonly [
@@ -93,7 +98,7 @@ export interface MapController {
   onLoad: (listener: () => void) => void;
   remove: () => void;
   recenterReportedLocation?: () => boolean;
-  setReportedLocation: (coordinate: MapCoordinate | null) => void;
+  setReportedLocation: (coordinate: ReportedMapLocation | null) => void;
   setCoordinateSelectionListener?: (
     listener: ((coordinate: MapCoordinate) => void) | null,
   ) => void;
@@ -125,7 +130,9 @@ const EVENT_RADIUS_SOURCE_ID = 'wits-selected-event-radius';
 const EVENT_RADIUS_FILL_LAYER_ID = 'wits-selected-event-radius-fill';
 const EVENT_RADIUS_LINE_LAYER_ID = 'wits-selected-event-radius-line';
 const EARTH_RADIUS_METRES = 6_371_008.8;
-const FOLLOW_MOVEMENT_METRES = 5;
+const MIN_FOLLOW_MOVEMENT_METRES = 10;
+const MAX_FOLLOW_MOVEMENT_METRES = 40;
+const LIVE_FOLLOW_DURATION_MS = 250;
 const EVENT_FOCUS_ZOOM = 17;
 const PLAYER_FOCUS_ZOOM = 17;
 
@@ -382,6 +389,7 @@ function addCampusDatasetLayers(
 
 function createController(
   map: MapboxMap,
+  MarkerConstructor: new (options?: MarkerOptions) => MapboxMarker,
   renderPoints: (points: readonly MapPoint[]) => void,
   markerInteraction: {
     coordinateSelectionListener: ((coordinate: MapCoordinate) => void) | null;
@@ -391,30 +399,18 @@ function createController(
   setSelectedRadius: (point: MapPoint | null) => void,
 ): MapController {
   let currentPoints: readonly MapPoint[] = [];
-  let reportedLocation: MapCoordinate | null = null;
+  let reportedLocation: ReportedMapLocation | null = null;
   let reportedLocationPointer: HTMLSpanElement | undefined;
-  let reportedLocationListenersAttached = false;
+  let reportedLocationMarker: MapboxMarker | undefined;
   let followStateListener: ((following: boolean) => void) | null = null;
   let following = false;
   let hasReceivedFirstFix = false;
-  let lastFollowedLocation: MapCoordinate | null = null;
+  let lastFollowedLocation: ReportedMapLocation | null = null;
   const handleCoordinateSelection = (event: MapMouseEvent): void => {
     markerInteraction.coordinateSelectionListener?.({
       latitude: event.lngLat.lat,
       longitude: event.lngLat.lng,
     });
-  };
-
-  const updateReportedLocationPointer = (): void => {
-    if (reportedLocationPointer === undefined || reportedLocation === null) {
-      return;
-    }
-
-    const projectedPoint = map.project([
-      reportedLocation.longitude,
-      reportedLocation.latitude,
-    ]);
-    reportedLocationPointer.style.transform = `translate3d(${projectedPoint.x}px, ${projectedPoint.y}px, 0) translate(-50%, -50%)`;
   };
 
   const setFollowing = (nextFollowing: boolean): void => {
@@ -426,7 +422,10 @@ function createController(
     followStateListener?.(following);
   };
 
-  const focusReportedLocation = (restoreZoom: boolean): boolean => {
+  const focusReportedLocation = (
+    restoreZoom: boolean,
+    duration = 700,
+  ): boolean => {
     if (reportedLocation === null) {
       return false;
     }
@@ -436,7 +435,7 @@ function createController(
       : undefined;
     map.easeTo({
       center: [reportedLocation.longitude, reportedLocation.latitude],
-      duration: 700,
+      duration,
       ...(zoom === undefined ? {} : { zoom }),
     });
     lastFollowedLocation = reportedLocation;
@@ -462,23 +461,16 @@ function createController(
     setFollowing(false);
   };
 
-  const detachReportedLocationListeners = (): void => {
-    if (!reportedLocationListenersAttached) {
-      return;
-    }
-
-    map.off('move', updateReportedLocationPointer);
-    map.off('resize', updateReportedLocationPointer);
-    reportedLocationListenersAttached = false;
-  };
-
-  const setReportedLocation = (coordinate: MapCoordinate | null): void => {
+  const setReportedLocation = (
+    coordinate: ReportedMapLocation | null,
+  ): void => {
     reportedLocation = coordinate;
 
     if (coordinate === null) {
+      reportedLocationMarker?.remove();
+      reportedLocationMarker = undefined;
       reportedLocationPointer?.remove();
       reportedLocationPointer = undefined;
-      detachReportedLocationListeners();
       hasReceivedFirstFix = false;
       lastFollowedLocation = null;
       setFollowing(false);
@@ -491,16 +483,21 @@ function createController(
       reportedLocationPointer.dataset.mapReportedLocation = 'true';
       reportedLocationPointer.setAttribute('aria-hidden', 'true');
       reportedLocationPointer.title = 'Reported location';
-      map.getCanvasContainer().append(reportedLocationPointer);
+      reportedLocationMarker = new MarkerConstructor({
+        anchor: 'center',
+        draggable: false,
+        element: reportedLocationPointer,
+        pitchAlignment: 'viewport',
+        rotationAlignment: 'viewport',
+      })
+        .setLngLat([coordinate.longitude, coordinate.latitude])
+        .addTo(map);
+    } else {
+      reportedLocationMarker?.setLngLat([
+        coordinate.longitude,
+        coordinate.latitude,
+      ]);
     }
-
-    if (!reportedLocationListenersAttached) {
-      map.on('move', updateReportedLocationPointer);
-      map.on('resize', updateReportedLocationPointer);
-      reportedLocationListenersAttached = true;
-    }
-
-    updateReportedLocationPointer();
 
     if (!hasReceivedFirstFix) {
       hasReceivedFirstFix = true;
@@ -512,9 +509,9 @@ function createController(
       following &&
       (lastFollowedLocation === null ||
         distanceBetweenCoordinatesMetres(lastFollowedLocation, coordinate) >=
-          FOLLOW_MOVEMENT_METRES)
+          followMovementThresholdMetres(lastFollowedLocation, coordinate))
     ) {
-      focusReportedLocation(false);
+      focusReportedLocation(false, LIVE_FOLLOW_DURATION_MS);
     }
   };
 
@@ -575,6 +572,17 @@ function createController(
       renderPoints(currentPoints);
     },
   };
+}
+
+function followMovementThresholdMetres(
+  previous: ReportedMapLocation,
+  next: ReportedMapLocation,
+): number {
+  const averageAccuracy = (previous.accuracyMetres + next.accuracyMetres) / 2;
+  return Math.min(
+    MAX_FOLLOW_MOVEMENT_METRES,
+    Math.max(MIN_FOLLOW_MOVEMENT_METRES, averageAccuracy),
+  );
 }
 
 export const createMapboxMap: MapFactory = async (
@@ -823,6 +831,7 @@ export const createMapboxMap: MapFactory = async (
 
   const controller = createController(
     map,
+    mapboxgl.Marker,
     renderPoints,
     markerInteraction,
     (point) => {

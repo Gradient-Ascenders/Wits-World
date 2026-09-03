@@ -199,12 +199,48 @@ describe('live reported-location permission and lifecycle', () => {
     act(() => observation.emit(claim));
     await waitFor(() =>
       expect(mapController.setReportedLocation).toHaveBeenCalledWith({
+        accuracyMetres: claim.accuracyMetres,
         latitude: claim.latitude,
         longitude: claim.longitude,
       }),
     );
     view.unmount();
     expect(observation.stop).toHaveBeenCalledOnce();
+  });
+
+  it('keeps a recent accurate marker fix when a callback briefly degrades', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(discoveryResponse()));
+    const observation = createObservationHarness();
+    const mapController = createMapController();
+    renderExplore({ mapController, observation, permission: 'granted' });
+
+    await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
+    act(() => observation.emit(claim));
+    await waitFor(() =>
+      expect(mapController.setReportedLocation).toHaveBeenCalledWith({
+        accuracyMetres: claim.accuracyMetres,
+        latitude: claim.latitude,
+        longitude: claim.longitude,
+      }),
+    );
+
+    act(() =>
+      observation.emit({
+        ...claim,
+        accuracyMetres: 80,
+        acquiredAt: '2026-08-23T10:30:02.000Z',
+        latitude: claim.latitude + 0.001,
+      }),
+    );
+
+    expect(mapController.setReportedLocation).not.toHaveBeenCalledWith(
+      expect.objectContaining({ latitude: claim.latitude + 0.001 }),
+    );
+    expect(mapController.setReportedLocation).toHaveBeenLastCalledWith({
+      accuracyMetres: claim.accuracyMetres,
+      latitude: claim.latitude,
+      longitude: claim.longitude,
+    });
   });
 
   it('does not leave duplicate watchers after Strict Mode remounting', async () => {
@@ -469,7 +505,8 @@ describe('selected-event authoritative eligibility', () => {
       .mockResolvedValue(eligibilityResponse('unreachable'));
     vi.stubGlobal('fetch', fetchMock);
     const observation = createObservationHarness();
-    renderExplore({ observation, permission: 'granted' });
+    const mapController = createMapController();
+    renderExplore({ mapController, observation, permission: 'granted' });
     await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
     act(() => observation.emit(claim));
     await selectEvent(user);
@@ -485,8 +522,9 @@ describe('selected-event authoritative eligibility', () => {
     };
     const newest = {
       ...moved,
+      accuracyMetres: 80,
       acquiredAt: '2026-08-23T10:30:08.000Z',
-      latitude: claim.latitude + 0.0003,
+      latitude: claim.latitude + 0.001,
     };
     act(() => {
       observation.emit(moved);
@@ -494,6 +532,9 @@ describe('selected-event authoritative eligibility', () => {
       vi.advanceTimersByTime(14_999);
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(mapController.setReportedLocation).not.toHaveBeenCalledWith(
+      expect.objectContaining({ latitude: newest.latitude }),
+    );
     await act(async () => vi.advanceTimersByTime(1));
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock).toHaveBeenLastCalledWith(
@@ -605,6 +646,53 @@ describe('selected-event authoritative eligibility', () => {
       expect(onChallengeStarted).toHaveBeenCalledWith(
         '31000000-0000-4000-8000-000000000001',
       ),
+    );
+  });
+
+  it('submits the latest raw claim when the marker prefers an older accurate fix', async () => {
+    const user = userEvent.setup();
+    const accurateClaim = freshClaim(-2_000);
+    const latestRawClaim = {
+      ...freshClaim(),
+      accuracyMetres: 80,
+      latitude: claim.latitude + 0.001,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(discoveryResponse())
+      .mockResolvedValueOnce(eligibilityResponse('reachable'))
+      .mockResolvedValueOnce(challengeResponse());
+    vi.stubGlobal('fetch', fetchMock);
+    const mapController = createMapController();
+    const observation = createObservationHarness();
+    renderExplore({ mapController, observation, permission: 'granted' });
+    await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
+
+    act(() => {
+      observation.emit(accurateClaim);
+      observation.emit(latestRawClaim);
+    });
+    await waitFor(() =>
+      expect(mapController.setReportedLocation).toHaveBeenLastCalledWith({
+        accuracyMetres: accurateClaim.accuracyMetres,
+        latitude: accurateClaim.latitude,
+        longitude: accurateClaim.longitude,
+      }),
+    );
+
+    await selectEvent(user);
+    await user.click(
+      await screen.findByRole('button', {
+        name: `Start challenge for ${event.title}`,
+      }),
+    );
+
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `${apiBaseUrl}/events/${event.eventId}/challenge-attempts`,
+      expect.objectContaining({
+        body: JSON.stringify(latestRawClaim),
+        method: 'POST',
+      }),
     );
   });
 
