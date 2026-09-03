@@ -118,6 +118,86 @@
   margin-top: var(--space-5);
 }
 
+.challenge-ordering__instruction {
+  margin: 0 0 var(--space-3);
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.challenge-ordering {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.challenge-ordering__item {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-3);
+  border: 1px solid var(--colour-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--colour-surface-glass);
+}
+
+.challenge-ordering__item--dragging {
+  border-color: var(--colour-blue-300);
+  box-shadow: var(--glow-blue);
+}
+
+.challenge-ordering__drag-handle {
+  display: inline-flex;
+  min-width: var(--touch-target-min);
+  min-height: var(--touch-target-min);
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--colour-border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--colour-text-secondary);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.challenge-ordering__item--dragging .challenge-ordering__drag-handle {
+  cursor: grabbing;
+}
+
+.challenge-ordering__position {
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--colour-border-default);
+  border-radius: 50%;
+  color: var(--colour-gold-400);
+  background: var(--colour-background-secondary);
+  font-weight: 800;
+}
+
+.challenge-ordering__text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 700;
+}
+
+.challenge-ordering__controls {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.challenge-ordering__controls .button {
+  min-height: var(--touch-target-min);
+  padding: var(--space-2) var(--space-3);
+}
+
 .challenge-status {
   min-height: 1.5rem;
   margin-top: var(--space-4);
@@ -223,6 +303,36 @@
   overflow-wrap: anywhere;
 }
 
+.challenge-review__order {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.challenge-review__order li::marker {
+  color: var(--colour-gold-400);
+  font-weight: 800;
+}
+
+.challenge-review__explanation {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--colour-border-subtle);
+}
+
+.challenge-review__explanation h4,
+.challenge-review__explanation p {
+  margin: 0;
+}
+
+.challenge-review__explanation h4 {
+  margin-bottom: var(--space-1);
+  color: var(--colour-text-secondary);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+}
+
 .challenge-result__cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
@@ -258,6 +368,15 @@
 
   .challenge-review__answers {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .challenge-ordering__item {
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+  }
+
+  .challenge-ordering__controls {
+    grid-column: auto;
+    grid-template-columns: repeat(2, auto);
   }
 }
 

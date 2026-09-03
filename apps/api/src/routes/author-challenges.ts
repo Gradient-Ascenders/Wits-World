@@ -646,9 +646,9 @@ export const authorChallengeRoutes: FastifyPluginAsync<
       onRequest: authorGuards,
       schema: {
         operationId: 'createAuthorQuestion',
-        summary: 'Create a draft multiple-choice question',
+        summary: 'Create a draft challenge question',
         description:
-          'Creates four choices and stores the accepted-answer relationship privately using the Author-supplied accepted choice position.',
+          'Creates a format-matching four-choice or four-item question and stores its accepted answer or correct sequence privately.',
         tags: ['Authoring'],
         security: bearerSecurity,
         params: challengeParamsSchema,

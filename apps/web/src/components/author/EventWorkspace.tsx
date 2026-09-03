@@ -30,6 +30,7 @@ import {
   type AuthorEventInput,
   type AuthorQuestion,
   type AuthorQuestionInput,
+  type ChallengeFormat,
 } from '../../api/author';
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
 import type { MapFactory } from '../exploration/map-provider';
@@ -1214,6 +1215,8 @@ function ChallengeWorkspace({
   >('challenge');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [newChallengeFormat, setNewChallengeFormat] =
+    useState<ChallengeFormat>('multiple_choice');
   const [confirmRetire, setConfirmRetire] = useState(false);
   const feedbackRef = useRef<HTMLDivElement>(null);
   const retireButtonRef = useRef<HTMLButtonElement>(null);
@@ -1506,6 +1509,7 @@ function ChallengeWorkspace({
       const challenge = await createAuthorChallenge({
         apiBaseUrl,
         eventId: event.eventId,
+        format: newChallengeFormat,
         getAccessToken,
         signal: controller.signal,
       });
@@ -1525,7 +1529,9 @@ function ChallengeWorkspace({
         selectChallenge(challenge.challengeId);
         focusChallengeId = challenge.challengeId;
         focusInteraction = challengeInteractionRef.current;
-        setMessage('Draft challenge associated with this event.');
+        setMessage(
+          `Draft ${challengeFormatLabel(challenge.format).toLowerCase()} challenge associated with this event.`,
+        );
       }
     } catch (error) {
       const accepted = mutationCoordinator.acceptFailure(
@@ -1772,14 +1778,32 @@ function ChallengeWorkspace({
               </p>
             </div>
             {state === 'ready' ? (
-              <button
-                className="button button--quiet"
-                disabled={busy}
-                onClick={() => void createChallenge()}
-                type="button"
-              >
-                Create challenge
-              </button>
+              <div className="challenge-create-controls">
+                <label htmlFor="new-challenge-format">
+                  New challenge format
+                </label>
+                <select
+                  disabled={busy}
+                  id="new-challenge-format"
+                  onChange={(change) =>
+                    setNewChallengeFormat(
+                      change.target.value as ChallengeFormat,
+                    )
+                  }
+                  value={newChallengeFormat}
+                >
+                  <option value="multiple_choice">Multiple choice</option>
+                  <option value="ordering">Ordering</option>
+                </select>
+                <button
+                  className="button button--quiet"
+                  disabled={busy}
+                  onClick={() => void createChallenge()}
+                  type="button"
+                >
+                  {busy ? 'Creating…' : 'Create challenge'}
+                </button>
+              </div>
             ) : null}
           </header>
 
@@ -1840,7 +1864,9 @@ function ChallengeWorkspace({
                     key={challenge.challengeId}
                     value={challenge.challengeId}
                   >
-                    Challenge {index + 1} — {challenge.status}
+                    Challenge {index + 1} —{' '}
+                    {challengeFormatLabel(challenge.format)} —{' '}
+                    {challenge.status}
                   </option>
                 ))}
               </select>
@@ -1852,7 +1878,7 @@ function ChallengeWorkspace({
               <div className="author-section-heading">
                 <div>
                   <p className="eyebrow">Selected challenge</p>
-                  <h4>Multiple choice</h4>
+                  <h4>{challengeFormatLabel(selected.format)}</h4>
                 </div>
                 <StatusBadge status={selected.status} />
               </div>
@@ -1986,7 +2012,9 @@ function ChallengeWorkspace({
                     key={challenge.challengeId}
                     value={challenge.challengeId}
                   >
-                    Challenge {index + 1} — {challenge.status}
+                    Challenge {index + 1} —{' '}
+                    {challengeFormatLabel(challenge.format)} —{' '}
+                    {challenge.status}
                   </option>
                 ))}
               </select>
@@ -2469,25 +2497,37 @@ function QuestionDetail({
         </div>
       </dl>
       <section className="question-answer-summary">
-        <h6>Choices and accepted answer</h6>
-        <ol>
-          {[...question.choices]
-            .sort((left, right) => left.position - right.position)
-            .map((choice) => (
-              <li
-                className={
-                  choice.choiceId === question.acceptedChoiceId
-                    ? 'question-answer-summary__accepted'
-                    : undefined
-                }
-                key={choice.choiceId}
-              >
-                <span>{choice.text}</span>
-                {choice.choiceId === question.acceptedChoiceId ? (
-                  <strong>Accepted answer</strong>
-                ) : null}
-              </li>
-            ))}
+        <h6>
+          {question.format === 'ordering'
+            ? 'Correct sequence'
+            : 'Choices and accepted answer'}
+        </h6>
+        <ol className={question.format === 'ordering' ? 'is-numbered' : ''}>
+          {question.format === 'ordering'
+            ? [...question.items]
+                .sort((left, right) => left.position - right.position)
+                .map((item) => (
+                  <li key={item.itemId}>
+                    <span>{item.text}</span>
+                  </li>
+                ))
+            : [...question.choices]
+                .sort((left, right) => left.position - right.position)
+                .map((choice) => (
+                  <li
+                    className={
+                      choice.choiceId === question.acceptedChoiceId
+                        ? 'question-answer-summary__accepted'
+                        : undefined
+                    }
+                    key={choice.choiceId}
+                  >
+                    <span>{choice.text}</span>
+                    {choice.choiceId === question.acceptedChoiceId ? (
+                      <strong>Accepted answer</strong>
+                    ) : null}
+                  </li>
+                ))}
         </ol>
       </section>
       {question.explanation ? (
@@ -2584,7 +2624,7 @@ function QuestionForm({
   question,
 }: QuestionFormProps) {
   const [draft, setDraft] = useState<AuthorQuestionInput>(() =>
-    questionDraft(question),
+    questionDraft(challenge.format, question),
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [apiError, setApiError] = useState<AuthorApiError | null>(null);
@@ -2593,12 +2633,13 @@ function QuestionForm({
   const feedbackRef = useRef<HTMLDivElement>(null);
   const operationRef = useRef<AbortController | null>(null);
   const interactionActiveRef = useRef(true);
+  const focusInvalidFieldRef = useRef(false);
 
   useEffect(() => {
-    setDraft(questionDraft(question));
+    setDraft(questionDraft(challenge.format, question));
     setErrors({});
     setApiError(null);
-  }, [question]);
+  }, [challenge.format, question]);
 
   useEffect(() => {
     interactionActiveRef.current = true;
@@ -2607,8 +2648,17 @@ function QuestionForm({
     };
   }, []);
 
+  useEffect(() => {
+    if (!focusInvalidFieldRef.current) return;
+    focusInvalidFieldRef.current = false;
+    formRef.current
+      ?.querySelector<HTMLElement>('[aria-invalid="true"]')
+      ?.focus();
+  }, [errors]);
+
   const dirty =
-    JSON.stringify(draft) !== JSON.stringify(questionDraft(question));
+    JSON.stringify(draft) !==
+    JSON.stringify(questionDraft(challenge.format, question));
   const recordKey =
     `question:${question?.questionId ?? 'new'}` as AuthorRecordKey;
   useAuthorDraftSession(mutationCoordinator, recordKey, dirty);
@@ -2618,12 +2668,8 @@ function QuestionForm({
     submission.preventDefault();
     const nextErrors = validateQuestion(draft);
     if (Object.keys(nextErrors).length > 0) {
+      focusInvalidFieldRef.current = true;
       setErrors(nextErrors);
-      window.setTimeout(() =>
-        formRef.current
-          ?.querySelector<HTMLElement>('[aria-invalid="true"]')
-          ?.focus(),
-      );
       return;
     }
     setBusy(true);
@@ -2703,7 +2749,12 @@ function QuestionForm({
         {question ? 'Question detail' : 'Questions'}
       </Link>
       <div className="author-panel__heading">
-        <h5>{question ? 'Edit question' : 'New question'}</h5>
+        <div>
+          <h5>{question ? 'Edit question' : 'New question'}</h5>
+          <p className="field-help">
+            {challengeFormatLabel(challenge.format)} challenge
+          </p>
+        </div>
         {question ? <StatusBadge status={question.status} /> : null}
       </div>
       <AuthorFeedback error={apiError} refObject={feedbackRef} />
@@ -2750,55 +2801,108 @@ function QuestionForm({
           <option value="3">3 — demanding</option>
         </select>
       </FormField>
-      <fieldset className="author-fieldset" disabled={busy}>
-        <legend>Choices and accepted answer</legend>
-        <p className="field-help">
-          Choose exactly one accepted answer. This marking relationship is
-          visible only in the protected author console.
-        </p>
-        {draft.choices.map((choice, index) => (
-          <div className="choice-field" key={index}>
-            <input
-              aria-label={`Mark choice ${index + 1} as accepted`}
-              checked={draft.acceptedChoicePosition === index + 1}
-              name="accepted-answer"
-              onChange={() =>
-                setDraft((current) => ({
-                  ...current,
-                  acceptedChoicePosition: index + 1,
-                }))
-              }
-              type="radio"
-            />
+      {draft.format === 'ordering' ? (
+        <fieldset className="author-fieldset" disabled={busy}>
+          <legend>Correct sequence</legend>
+          <p className="field-help">
+            Enter exactly four items in their correct order. Players receive a
+            shuffled sequence; only the API stores and marks this order.
+          </p>
+          {draft.items.map((item, index) => (
             <FormField
-              error={errors[`choice${index}`]}
-              label={`Choice ${index + 1}`}
-              name={`question-choice-${index + 1}`}
+              error={errors[`item${index}`]}
+              key={index}
+              label={`Correct position ${index + 1}`}
+              name={`question-item-${index + 1}`}
             >
               <input
                 aria-describedby={
-                  errors[`choice${index}`]
-                    ? `question-choice-${index + 1}-error`
+                  errors[`item${index}`]
+                    ? `question-item-${index + 1}-error`
                     : undefined
                 }
-                aria-invalid={Boolean(errors[`choice${index}`])}
-                id={`question-choice-${index + 1}`}
+                aria-invalid={Boolean(errors[`item${index}`])}
+                id={`question-item-${index + 1}`}
                 onChange={(change) =>
-                  setDraft((current) => ({
-                    ...current,
-                    choices: current.choices.map((item, itemIndex) =>
-                      itemIndex === index ? change.target.value : item,
-                    ),
-                  }))
+                  setDraft((current) =>
+                    current.format === 'ordering'
+                      ? {
+                          ...current,
+                          items: current.items.map((currentItem, itemIndex) =>
+                            itemIndex === index
+                              ? change.target.value
+                              : currentItem,
+                          ),
+                        }
+                      : current,
+                  )
                 }
                 required
                 type="text"
-                value={choice}
+                value={item}
               />
             </FormField>
-          </div>
-        ))}
-      </fieldset>
+          ))}
+        </fieldset>
+      ) : (
+        <fieldset className="author-fieldset" disabled={busy}>
+          <legend>Choices and accepted answer</legend>
+          <p className="field-help">
+            Choose exactly one accepted answer. This marking relationship is
+            visible only in the protected author console.
+          </p>
+          {draft.choices.map((choice, index) => (
+            <div className="choice-field" key={index}>
+              <input
+                aria-label={`Mark choice ${index + 1} as accepted`}
+                checked={draft.acceptedChoicePosition === index + 1}
+                name="accepted-answer"
+                onChange={() =>
+                  setDraft((current) =>
+                    current.format === 'multiple_choice'
+                      ? { ...current, acceptedChoicePosition: index + 1 }
+                      : current,
+                  )
+                }
+                type="radio"
+              />
+              <FormField
+                error={errors[`choice${index}`]}
+                label={`Choice ${index + 1}`}
+                name={`question-choice-${index + 1}`}
+              >
+                <input
+                  aria-describedby={
+                    errors[`choice${index}`]
+                      ? `question-choice-${index + 1}-error`
+                      : undefined
+                  }
+                  aria-invalid={Boolean(errors[`choice${index}`])}
+                  id={`question-choice-${index + 1}`}
+                  onChange={(change) =>
+                    setDraft((current) =>
+                      current.format === 'multiple_choice'
+                        ? {
+                            ...current,
+                            choices: current.choices.map(
+                              (currentChoice, choiceIndex) =>
+                                choiceIndex === index
+                                  ? change.target.value
+                                  : currentChoice,
+                            ),
+                          }
+                        : current,
+                    )
+                  }
+                  required
+                  type="text"
+                  value={choice}
+                />
+              </FormField>
+            </div>
+          ))}
+        </fieldset>
+      )}
       <FormField
         error={errors.explanation}
         label="Author explanation"
@@ -2820,7 +2924,9 @@ function QuestionForm({
           value={draft.explanation}
         />
         <span className="field-help" id="question-explanation-help">
-          Required for publication and excluded from player responses.
+          {draft.format === 'ordering'
+            ? 'Required for publication and revealed only in the API-completed player review.'
+            : 'Required for publication and excluded from player responses.'}
         </span>
       </FormField>
       <div className="author-actions">
@@ -2989,22 +3095,49 @@ function validateEventDraft(draft: EventDraft): {
   };
 }
 
-function questionDraft(question?: AuthorQuestion): AuthorQuestionInput {
-  return question
+function questionDraft(
+  challengeFormat: ChallengeFormat,
+  question?: AuthorQuestion,
+): AuthorQuestionInput {
+  if (question?.format === 'ordering') {
+    return {
+      difficulty: question.difficulty,
+      explanation: question.explanation ?? '',
+      format: 'ordering',
+      items: [...question.items]
+        .sort((left, right) => left.position - right.position)
+        .map((item) => item.text),
+      prompt: question.prompt,
+    };
+  }
+
+  if (question?.format === 'multiple_choice') {
+    return {
+      acceptedChoicePosition: question.acceptedChoicePosition ?? 1,
+      choices: [...question.choices]
+        .sort((left, right) => left.position - right.position)
+        .map((choice) => choice.text),
+      difficulty: question.difficulty,
+      explanation: question.explanation ?? '',
+      format: 'multiple_choice',
+      prompt: question.prompt,
+    };
+  }
+
+  return challengeFormat === 'ordering'
     ? {
-        acceptedChoicePosition: question.acceptedChoicePosition ?? 1,
-        choices: [...question.choices]
-          .sort((a, b) => a.position - b.position)
-          .map((choice) => choice.text),
-        difficulty: question.difficulty,
-        explanation: question.explanation ?? '',
-        prompt: question.prompt,
+        difficulty: 1,
+        explanation: '',
+        format: 'ordering',
+        items: ['', '', '', ''],
+        prompt: '',
       }
     : {
         acceptedChoicePosition: 1,
         choices: ['', '', '', ''],
         difficulty: 1,
         explanation: '',
+        format: 'multiple_choice',
         prompt: '',
       };
 }
@@ -3014,9 +3147,15 @@ function validateQuestion(draft: AuthorQuestionInput): Record<string, string> {
   if (!draft.prompt.trim()) errors.prompt = 'Enter a question prompt.';
   if (![1, 2, 3].includes(draft.difficulty))
     errors.difficulty = 'Choose difficulty 1, 2, or 3.';
-  draft.choices.forEach((choice, index) => {
-    if (!choice.trim()) errors[`choice${index}`] = 'Enter choice text.';
-  });
+  if (draft.format === 'ordering') {
+    draft.items.forEach((item, index) => {
+      if (!item.trim()) errors[`item${index}`] = 'Enter item text.';
+    });
+  } else {
+    draft.choices.forEach((choice, index) => {
+      if (!choice.trim()) errors[`choice${index}`] = 'Enter choice text.';
+    });
+  }
   if (!draft.explanation.trim())
     errors.explanation =
       'Enter the author explanation required for publication.';
@@ -3119,8 +3258,14 @@ function apiFieldName(field: string): string {
   const normalized = field.replace(/^\/body\//, '').replace(/^\//, '');
   if (normalized.startsWith('choices/'))
     return `choice${normalized.split('/')[1] ?? '0'}`;
+  if (normalized.startsWith('items/'))
+    return `item${normalized.split('/')[1] ?? '0'}`;
   if (normalized === 'radiusMetres') return 'radiusMetres';
   return normalized;
+}
+
+function challengeFormatLabel(format: ChallengeFormat): string {
+  return format === 'ordering' ? 'Ordering' : 'Multiple choice';
 }
 
 function challengeCollectionKey(eventId: string): `challenges:${string}` {

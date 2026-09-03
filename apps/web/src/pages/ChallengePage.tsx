@@ -5,6 +5,9 @@ import {
   ChallengeApiError,
   getChallengeAttempt,
   submitChallengeAnswer,
+  type InProgressChallengeAttempt,
+  type MultipleChoiceChallengeQuestion,
+  type OrderingChallengeQuestion,
   type PlayerSafeChallengeAttempt,
 } from '../api/challenges';
 import {
@@ -14,6 +17,7 @@ import {
 } from '../challenge-deadline';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { ChallengeQuestion } from '../components/challenge/ChallengeQuestion';
+import { OrderingChallengeQuestion as OrderingChallengeQuestionView } from '../components/challenge/OrderingChallengeQuestion';
 import { ChallengeResult } from '../components/challenge/ChallengeResult';
 import '../components/challenge/challenge.css';
 
@@ -35,6 +39,7 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
   );
   const [error, setError] = useState<ChallengeApiError | null>(null);
   const [selectedChoiceId, setSelectedChoiceId] = useState<string | null>(null);
+  const [orderedItemIds, setOrderedItemIds] = useState<string[]>([]);
   const [statusMessage, setStatusMessage] = useState('');
   const [viewState, setViewState] = useState<ChallengeViewState>('loading');
   const [reloadRevision, setReloadRevision] = useState(0);
@@ -118,6 +123,12 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
         currentQuestionId(currentAttempt) !== currentQuestionId(nextAttempt)
       ) {
         setSelectedChoiceId(null);
+        const nextQuestion = findCurrentQuestion(nextAttempt);
+        setOrderedItemIds(
+          nextQuestion?.format === 'ordering'
+            ? nextQuestion.question.items.map((item) => item.itemId)
+            : [],
+        );
       }
 
       attemptRef.current = nextAttempt;
@@ -168,6 +179,7 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
       attemptRef.current = null;
       setAttempt(null);
       setSelectedChoiceId(null);
+      setOrderedItemIds([]);
       setError(nextError);
       setViewState('ready');
       setStatusMessage(
@@ -203,13 +215,11 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
           return;
         }
 
-        const nextQuestion = nextAttempt.questions.find(
-          (question) => question.selectedChoiceId === null,
-        );
+        const nextQuestion = findCurrentQuestion(nextAttempt);
         shouldFocusQuestion.current = nextQuestion !== undefined;
         setStatusMessage(
           nextQuestion
-            ? `Challenge ready. Question ${nextQuestion.position} of ${nextAttempt.totalQuestions}.`
+            ? `Challenge ready. Question ${nextQuestion.question.position} of ${nextAttempt.totalQuestions}.`
             : 'All answers are saved. Checking your result…',
         );
         setViewState(timeoutMode.current ? 'expired' : 'ready');
@@ -355,15 +365,10 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
     };
   }, [attempt, reconcileTimeout]);
 
-  const currentQuestion =
-    attempt?.status === 'in_progress'
-      ? (attempt.questions.find(
-          (question) => question.selectedChoiceId === null,
-        ) ?? null)
-      : null;
+  const currentQuestion = findCurrentQuestion(attempt);
 
   useEffect(() => {
-    if (shouldFocusQuestion.current && currentQuestion !== null) {
+    if (shouldFocusQuestion.current && currentQuestion !== undefined) {
       shouldFocusQuestion.current = false;
       questionHeading.current?.focus();
     }
@@ -386,9 +391,12 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
   const submitAnswer = useCallback(async () => {
     if (
       attempt?.status !== 'in_progress' ||
-      currentQuestion === null ||
-      selectedChoiceId === null ||
-      viewState !== 'ready'
+      currentQuestion === undefined ||
+      viewState !== 'ready' ||
+      answerRequest.current !== null ||
+      (currentQuestion.format === 'multiple_choice' &&
+        selectedChoiceId === null) ||
+      (currentQuestion.format === 'ordering' && orderedItemIds.length !== 4)
     ) {
       return;
     }
@@ -402,14 +410,26 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
     answerRequest.current = controller;
 
     try {
-      const nextAttempt = await submitChallengeAnswer({
-        apiBaseUrl,
-        attemptId: attempt.attemptId,
-        attemptQuestionId: currentQuestion.attemptQuestionId,
-        choiceId: selectedChoiceId,
-        getAccessToken,
-        signal: controller.signal,
-      });
+      const nextAttempt =
+        currentQuestion.format === 'ordering'
+          ? await submitChallengeAnswer({
+              apiBaseUrl,
+              attemptId: attempt.attemptId,
+              attemptQuestionId: currentQuestion.question.attemptQuestionId,
+              format: 'ordering',
+              getAccessToken,
+              itemIds: orderedItemIds,
+              signal: controller.signal,
+            })
+          : await submitChallengeAnswer({
+              apiBaseUrl,
+              attemptId: attempt.attemptId,
+              attemptQuestionId: currentQuestion.question.attemptQuestionId,
+              choiceId: selectedChoiceId!,
+              format: 'multiple_choice',
+              getAccessToken,
+              signal: controller.signal,
+            });
 
       if (
         controller.signal.aborted ||
@@ -421,6 +441,7 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
       setSelectedChoiceId(null);
 
       if (nextAttempt.status === 'completed') {
+        setOrderedItemIds([]);
         timeoutMode.current = false;
         shouldFocusResult.current = true;
         setViewState('ready');
@@ -430,12 +451,10 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
         setStatusMessage('Time has ended. Checking your saved result…');
       } else {
         shouldFocusQuestion.current = true;
-        const nextQuestion = nextAttempt.questions.find(
-          (question) => question.selectedChoiceId === null,
-        );
+        const nextQuestion = findCurrentQuestion(nextAttempt);
         setStatusMessage(
           nextQuestion
-            ? `Answer saved. Question ${nextQuestion.position} of ${nextAttempt.totalQuestions}.`
+            ? `Answer saved. Question ${nextQuestion.question.position} of ${nextAttempt.totalQuestions}.`
             : 'Answer saved. Checking your result…',
         );
         setViewState('ready');
@@ -492,6 +511,7 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
     attempt,
     currentQuestion,
     getAccessToken,
+    orderedItemIds,
     selectedChoiceId,
     showTerminalError,
     viewState,
@@ -559,7 +579,7 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
     );
   }
 
-  if (currentQuestion === null) {
+  if (currentQuestion === undefined) {
     return (
       <section
         aria-live="polite"
@@ -581,7 +601,7 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
   }
 
   const isSubmitting = viewState === 'submitting';
-  const questionKey = `${attempt.attemptId}:${currentQuestion.position}`;
+  const questionKey = `${attempt.attemptId}:${currentQuestion.question.position}`;
 
   return (
     <div className="challenge-page">
@@ -592,7 +612,11 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
         <header className="challenge-header">
           <div>
             <p className="eyebrow">Campus challenge</p>
-            <h1>Five-question quiz</h1>
+            <h1>
+              {attempt.format === 'ordering'
+                ? 'Five-question ordering challenge'
+                : 'Five-question quiz'}
+            </h1>
           </div>
           <div
             aria-label={describeChallengeTime(remainingSeconds)}
@@ -616,15 +640,27 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
         </div>
 
         <div key={questionKey}>
-          <ChallengeQuestion
-            headingRef={questionHeading}
-            isSubmitting={isSubmitting}
-            onSelectChoice={setSelectedChoiceId}
-            onSubmit={() => void submitAnswer()}
-            question={currentQuestion}
-            selectedChoiceId={selectedChoiceId}
-            totalQuestions={attempt.totalQuestions}
-          />
+          {currentQuestion.format === 'ordering' ? (
+            <OrderingChallengeQuestionView
+              headingRef={questionHeading}
+              isSubmitting={isSubmitting}
+              itemIds={orderedItemIds}
+              onOrderChange={setOrderedItemIds}
+              onSubmit={() => void submitAnswer()}
+              question={currentQuestion.question}
+              totalQuestions={attempt.totalQuestions}
+            />
+          ) : (
+            <ChallengeQuestion
+              headingRef={questionHeading}
+              isSubmitting={isSubmitting}
+              onSelectChoice={setSelectedChoiceId}
+              onSubmit={() => void submitAnswer()}
+              question={currentQuestion.question}
+              selectedChoiceId={selectedChoiceId}
+              totalQuestions={attempt.totalQuestions}
+            />
+          )}
         </div>
 
         {error !== null ? (
@@ -694,14 +730,42 @@ function isTerminalChallengeError(error: ChallengeApiError): boolean {
 function currentQuestionId(
   attempt: PlayerSafeChallengeAttempt | null,
 ): string | null {
-  if (attempt?.status !== 'in_progress') {
-    return null;
-  }
+  return findCurrentQuestion(attempt)?.question.attemptQuestionId ?? null;
+}
 
-  return (
-    attempt.questions.find((question) => question.selectedChoiceId === null)
-      ?.attemptQuestionId ?? null
+type CurrentQuestion =
+  | {
+      format: 'multiple_choice';
+      question: MultipleChoiceChallengeQuestion;
+    }
+  | { format: 'ordering'; question: OrderingChallengeQuestion };
+
+function findCurrentQuestion(
+  attempt: PlayerSafeChallengeAttempt | null,
+): CurrentQuestion | undefined {
+  if (attempt?.status !== 'in_progress') return undefined;
+
+  return attempt.format === 'ordering'
+    ? orderingCurrentQuestion(attempt)
+    : multipleChoiceCurrentQuestion(attempt);
+}
+
+function orderingCurrentQuestion(
+  attempt: Extract<InProgressChallengeAttempt, { format: 'ordering' }>,
+): CurrentQuestion | undefined {
+  const question = attempt.questions.find(
+    (candidate) => candidate.selectedItemIds === null,
   );
+  return question ? { format: 'ordering', question } : undefined;
+}
+
+function multipleChoiceCurrentQuestion(
+  attempt: Extract<InProgressChallengeAttempt, { format: 'multiple_choice' }>,
+): CurrentQuestion | undefined {
+  const question = attempt.questions.find(
+    (candidate) => candidate.selectedChoiceId === null,
+  );
+  return question ? { format: 'multiple_choice', question } : undefined;
 }
 
 function messageForChallengeError(error: ChallengeApiError): string {

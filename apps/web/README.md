@@ -385,10 +385,13 @@ The Basic workflow is:
    enter its title, optional description, active times, positive whole-number
    radius, latitude, and longitude. The coordinate fields are always available;
    clicking the placement map is optional.
-2. Create the event's multiple-choice challenge. Add questions with exactly four
-   non-blank choices, difficulty 1–3, one accepted-answer position, and a
-   non-blank author explanation. Publish at least five questions, then publish
-   exactly one challenge for the event.
+2. Choose either **Multiple choice** or **Ordering** when creating the event's
+   challenge. Multiple-choice questions require exactly four non-blank choices
+   and one accepted-answer position. Ordering questions require exactly four
+   non-blank items entered in their correct sequence. Both formats require
+   difficulty 1–3 and a non-blank author explanation. Publish at least five
+   questions, then publish exactly one challenge for the event. A challenge's
+   format is fixed when it is created.
 3. Open **Card catalogue** and create or update the global definitions used by
    rewards. A Creature has positive HP, non-negative Power, and at least one
    move. A Power card has null HP/Power and at least one effect. Publish at least
@@ -407,11 +410,14 @@ authoritative readiness rules are not met. Validation details identify controls
 when the API supplies field paths, while other API failures remain visible as
 request-level alerts.
 
-Accepted-choice identifiers, accepted positions, and author explanations are
-read only by the lazy-loaded author client. The in-progress player challenge
-client rejects responses containing any of those author-only keys. The player
-route still submits choice intent and renders only the server's safe active or
-completed-attempt contract.
+Accepted-choice identifiers and accepted positions are read only by the
+lazy-loaded author client. The ordering answer key is likewise author-only
+during an active attempt. The in-progress player challenge client rejects
+responses containing correctness, correct answers, explanations, scores, or
+rewards. The player route submits only choice or ordered-item intent and renders
+the server's safe active or completed-attempt contract. Ordering explanations
+are shown only when supplied by the authoritative completed response;
+multiple-choice explanations remain excluded from Player responses.
 
 The authoritative validation and publication rules live in the API, principally
 in [`author-event-service.ts`](../api/src/events/author-event-service.ts),
@@ -424,7 +430,7 @@ rewards, eligibility, marking, or lifecycle authorization.
 Run the focused author tests from the repository root with:
 
 ```bash
-npm test --workspace @wits-world/web -- --run tests/author-client.test.ts tests/author-console.test.tsx tests/challenges-client.test.ts
+npm test --workspace @wits-world/web -- --run tests/author-client.test.ts tests/author-console.test.tsx tests/challenges-client.test.ts tests/challenge-page.test.tsx
 ```
 
 ## Initial structure
@@ -451,19 +457,23 @@ apps/web/
 
 ## Timed challenge development
 
-The Basic challenge is a server-authoritative, five-question multiple-choice
-attempt. The browser sends only the chosen `attemptQuestionId` and `choiceId`.
-It derives its timer from the absolute server deadline and reloads an attempt
-through `GET /api/v1/challenge-attempts/:attemptId` after refresh or timeout.
+The Basic challenge is a server-authoritative, five-question multiple-choice or
+ordering attempt. For multiple choice, the browser sends the chosen
+`attemptQuestionId` and `choiceId`. For ordering, it sends the
+`attemptQuestionId`, `format`, and the four item identifiers in the player's
+current order. It derives its timer from the absolute server deadline and
+reloads an attempt through `GET /api/v1/challenge-attempts/:attemptId` after
+refresh or timeout.
 
 During an in-progress Basic attempt, keep feedback neutral: show “Answer saved”
 and never render correctness, correct choices, answer keys, explanations, score,
 or reward information. Once the API authoritatively completes the attempt, the
 final result renders only the persisted score, reward, and answer-review data in
-that completed response. The browser does not compare choices or mark answers.
-Unanswered timeout items use “Not answered” while still displaying the completed
-response's correct choice. Explanations remain absent until the authoritative
-content model and completed API contract support them.
+that completed response. The browser does not compare choices or sequences and
+does not mark answers. Unanswered timeout items use “Not answered” while still
+displaying the completed response's correct answer. Ordering reviews also show
+the API-supplied correct sequence and explanation; multiple-choice reviews do
+not expose author explanations.
 
 The production-like browser flow requires an authenticated player and an active
 event with a published challenge containing five valid questions. The Great Hall
@@ -770,10 +780,13 @@ With `apps/web/.env` configured and the development server running:
    then click a different point on the optional map and confirm the labelled
    latitude and longitude inputs update. Set a positive integer radius and an
    end time later than the start time.
-3. Create one challenge and five questions. For each question, enter four
-   choices, choose the accepted answer with its radio control, add an author
-   explanation, publish the question, then publish the challenge. Confirm the
-   current question's accepted marker is visible only inside `/author`.
+3. Create one multiple-choice challenge and five questions. For each question,
+   enter four choices, choose the accepted answer with its radio control, add an
+   author explanation, publish the question, then publish the challenge.
+   Confirm the current question's accepted marker is visible only inside
+   `/author`. Repeat with an ordering challenge: enter four items in correct
+   sequence for each question and confirm that sequence is visible in the
+   protected question detail.
 4. In **Card catalogue**, create a Common card with valid category-specific
    moves or effects and publish it. Return to the event and confirm all three
    readiness summaries read **Ready**. Publish the event and confirm the API
@@ -781,10 +794,16 @@ With `apps/web/.env` configured and the development server running:
 5. Open `/explore` and confirm the newly published, currently active event is
    available through the player event response. Start its challenge where local
    reported-location configuration permits. Inspect the active network response
-   and rendered page: neither accepted-choice identifiers/positions nor author
-   explanations may appear. Complete the challenge only through normal player
-   choices and confirm the server result is rendered.
-6. Repeat the author layout check at 360×800, 390×844, 768×1024, and 1280×800.
+   and rendered page: neither accepted-choice identifiers/positions nor an
+   ordering answer key or explanation may appear while the attempt is active.
+   Complete each format through normal player controls and confirm only the
+   server result is rendered. For ordering, reorder once by pointer and once by
+   the keyboard-operable Move Up/Move Down controls; confirm each movement and
+   the current order are announced, then confirm the completed API explanation
+   is visible.
+6. Repeat the author and both player challenge layout checks at 390×844 and
+   1280×800. Add 360×800 only when checking minimum-width pressure and 768×1024
+   only when investigating breakpoint behaviour.
    Confirm no horizontal overflow, clipped controls, or covered final actions.
    At each meaningful form, use Tab/Shift+Tab, arrow keys for radios/selects, and
    Enter/Space for buttons; map pointer input must never be required.

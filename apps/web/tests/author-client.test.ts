@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AuthorApiError,
   createAuthorCard,
+  createAuthorChallenge,
   createAuthorEvent,
+  createAuthorQuestion,
   listAuthorEvents,
   listAuthorQuestions,
   publishAuthorEvent,
@@ -101,6 +103,113 @@ describe('author API client', () => {
         signal: new AbortController().signal,
       }),
     ).resolves.toEqual([question]);
+  });
+
+  it('creates an ordering challenge and submits its four-item correct sequence', async () => {
+    const challenge = {
+      challengeId,
+      createdAt: '2026-08-16T08:00:00.000Z',
+      eventId,
+      format: 'ordering',
+      publicationProvenance: null,
+      reviewedAt: null,
+      reviewedBy: null,
+      status: 'draft',
+      submittedAt: null,
+      submittedBy: null,
+      updatedAt: '2026-08-16T08:00:00.000Z',
+      version: 0,
+    } as const;
+    const question = orderingQuestionFixture();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ challenge, requestId: 'request-challenge' }, 201),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ question, requestId: 'request-question' }, 201),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await createAuthorChallenge({
+      apiBaseUrl,
+      eventId,
+      format: 'ordering',
+      getAccessToken,
+      signal: new AbortController().signal,
+    });
+    await createAuthorQuestion({
+      apiBaseUrl,
+      challengeId,
+      getAccessToken,
+      input: {
+        difficulty: 2,
+        explanation: 'The milestones follow this historical sequence.',
+        format: 'ordering',
+        items: ['Milestone 1', 'Milestone 2', 'Milestone 3', 'Milestone 4'],
+        prompt: 'Order the milestones.',
+      },
+      signal: new AbortController().signal,
+    });
+
+    expect(fetchMock.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        body: JSON.stringify({ format: 'ordering' }),
+        method: 'POST',
+      }),
+    );
+    expect(fetchMock.mock.calls[1]?.[1]).toEqual(
+      expect.objectContaining({
+        body: JSON.stringify({
+          difficulty: 2,
+          explanation: 'The milestones follow this historical sequence.',
+          format: 'ordering',
+          items: ['Milestone 1', 'Milestone 2', 'Milestone 3', 'Milestone 4'],
+          prompt: 'Order the milestones.',
+        }),
+        method: 'POST',
+      }),
+    );
+  });
+
+  it('parses an Author-only ordering sequence and rejects malformed positions', async () => {
+    const question = orderingQuestionFixture();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ questions: [question], requestId: 'request-ordering' }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          questions: [
+            {
+              ...question,
+              items: question.items.map((item, index) =>
+                index === 3 ? { ...item, position: 3 } : item,
+              ),
+            },
+          ],
+          requestId: 'request-malformed-ordering',
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      listAuthorQuestions({
+        apiBaseUrl,
+        challengeId,
+        getAccessToken,
+        signal: new AbortController().signal,
+      }),
+    ).resolves.toEqual([question]);
+    await expect(
+      listAuthorQuestions({
+        apiBaseUrl,
+        challengeId,
+        getAccessToken,
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toMatchObject({ failure: 'unavailable' });
   });
 
   it('submits the category-specific Creature card shape without lifecycle authority', async () => {
@@ -327,6 +436,7 @@ function questionFixture() {
     createdAt: '2026-08-16T08:00:00.000Z',
     difficulty: 2,
     explanation: 'Author-only explanation.',
+    format: 'multiple_choice',
     prompt: 'Where is the Great Hall?',
     questionId: '40000000-0000-4000-8000-000000000001',
     status: 'draft',
@@ -337,6 +447,31 @@ function questionFixture() {
     reviewedAt: null,
     publicationProvenance: null,
     updatedAt: '2026-08-16T08:00:00.000Z',
+  } as const;
+}
+
+function orderingQuestionFixture() {
+  return {
+    challengeId,
+    createdAt: '2026-08-16T08:00:00.000Z',
+    difficulty: 2,
+    explanation: 'The milestones follow this historical sequence.',
+    format: 'ordering',
+    items: [1, 2, 3, 4].map((position) => ({
+      itemId: `42000000-0000-4000-8000-${String(position).padStart(12, '0')}`,
+      position,
+      text: `Milestone ${position}`,
+    })),
+    prompt: 'Order the milestones.',
+    publicationProvenance: null,
+    questionId: '40000000-0000-4000-8000-000000000002',
+    reviewedAt: null,
+    reviewedBy: null,
+    status: 'draft',
+    submittedAt: null,
+    submittedBy: null,
+    updatedAt: '2026-08-16T08:00:00.000Z',
+    version: 0,
   } as const;
 }
 
