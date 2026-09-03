@@ -14,12 +14,21 @@ import type {
   PlayerLifecycleStatus,
   PlayerRole,
 } from './types.js';
+import { lockPlayerIdentity } from './player-identity-lock.js';
 
 interface PlayerRow {
   id: string;
   player_name: string | null;
   role: PlayerRole;
   lifecycle_status: PlayerLifecycleStatus;
+}
+
+interface ResolvedPlayerRow {
+  id: string | null;
+  identity_denied: boolean;
+  player_name: string | null;
+  role: PlayerRole | null;
+  lifecycle_status: PlayerLifecycleStatus | null;
 }
 
 export interface PlayerIdentityService {
@@ -54,8 +63,18 @@ export class PlayerNameAlreadyAssignedError extends Error {
   }
 }
 
+export class DeletedIdentityTokenError extends Error {
+  public constructor() {
+    super('This access token belongs to a deleted account.');
+    this.name = 'DeletedIdentityTokenError';
+  }
+}
+
+type PlayerIdentityDatabase =
+  Pick<pg.Pool, 'connect' | 'query'> | Pick<pg.PoolClient, 'query' | 'release'>;
+
 export function createPlayerIdentityService(
-  database: Pick<pg.Pool, 'query'>,
+  database: PlayerIdentityDatabase,
 ): PlayerIdentityService & PlayerNameSetupService {
   return {
     async resolve(identity) {
@@ -65,66 +84,84 @@ export function createPlayerIdentityService(
           : null;
       const synchronizePlayerName =
         identity.connectionStrategy === AUTH0_DATABASE_CONNECTION_STRATEGY;
-      const result = await database
-        .query<PlayerRow>(
-          `
-          insert into public.players (
-            id,
-            auth_issuer,
-            auth_subject,
-            player_name,
-            role,
-            lifecycle_status
-          )
-          values ($1, $2, $3, $4, 'player', 'active')
-          on conflict (auth_issuer, auth_subject)
-          do update
-            set player_name = case
-                  when $5 then excluded.player_name
-                  else public.players.player_name
-                end,
-                updated_at = case
-                  when $5
-                    and public.players.player_name is distinct from excluded.player_name
-                    then now()
-                  else public.players.updated_at
-                end
-          returning id, player_name, role, lifecycle_status
-        `,
-          [
-            randomUUID(),
-            identity.issuer,
-            identity.subject,
-            playerName,
-            synchronizePlayerName,
-          ],
-        )
-        .catch(async (error: unknown) => {
-          if (!isPlayerNameUniqueViolation(error)) {
-            throw error;
-          }
+      const result = await withTransaction(database, async (client) => {
+        await lockPlayerIdentity(client, identity);
 
-          const concurrentlyResolved = await database.query<PlayerRow>(
+        return client
+          .query<ResolvedPlayerRow>(
             `
-              select id, player_name, role, lifecycle_status
-                from public.players
-               where auth_issuer = $1
-                 and auth_subject = $2
-                 and player_name = $3
-            `,
-            [identity.issuer, identity.subject, playerName],
-          );
+          with identity_decision as (
+            select exists (
+              select 1
+                from private.deleted_identity_token_denials denial
+               where denial.expires_at > now()
+                 and $6 <= denial.tokens_issued_before
+                 and denial.identity_digest = sha256(
+                   denial.identity_salt
+                   || int4send(octet_length(convert_to($2, 'UTF8')))
+                   || convert_to($2, 'UTF8')
+                   || convert_to($3, 'UTF8')
+                 )
+            ) as denied
+          ), resolved_player as (
+            insert into public.players (
+              id,
+              auth_issuer,
+              auth_subject,
+              player_name,
+              role,
+              lifecycle_status
+            )
+            select $1, $2, $3, $4, 'player', 'active'
+             where not (select denied from identity_decision)
+            on conflict (auth_issuer, auth_subject)
+            do update
+              set player_name = case
+                    when $5 then excluded.player_name
+                    else public.players.player_name
+                  end,
+                  updated_at = case
+                    when $5
+                      and public.players.player_name is distinct from excluded.player_name
+                      then now()
+                    else public.players.updated_at
+                  end
+            returning id, player_name, role, lifecycle_status
+          )
+          select
+            resolved.id,
+            resolved.player_name,
+            resolved.role,
+            resolved.lifecycle_status,
+            decision.denied as identity_denied
+          from identity_decision decision
+          left join resolved_player resolved on true
+        `,
+            [
+              randomUUID(),
+              identity.issuer,
+              identity.subject,
+              playerName,
+              synchronizePlayerName,
+              identity.tokenIssuedAt,
+            ],
+          )
+          .catch((error: unknown) => {
+            if (!isPlayerNameUniqueViolation(error)) {
+              throw error;
+            }
 
-          if (concurrentlyResolved.rows.length === 0) {
             throw new PlayerNameConflictError();
-          }
-
-          return concurrentlyResolved;
-        });
+          });
+      });
 
       const player = result.rows[0];
 
-      if (!player) {
+      if (player?.identity_denied) {
+        throw new DeletedIdentityTokenError();
+      }
+
+      if (!player || !player.id || !player.role || !player.lifecycle_status) {
         throw new Error('Local player resolution returned no player.');
       }
 
@@ -178,6 +215,27 @@ export function createPlayerIdentityService(
       };
     },
   };
+}
+
+async function withTransaction<T>(
+  database: PlayerIdentityDatabase,
+  callback: (client: Pick<pg.PoolClient, 'query'>) => Promise<T>,
+): Promise<T> {
+  const connectedClient =
+    'release' in database ? undefined : await database.connect();
+  const client = connectedClient ?? database;
+
+  try {
+    await client.query('begin');
+    const result = await callback(client);
+    await client.query('commit');
+    return result;
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  } finally {
+    connectedClient?.release();
+  }
 }
 
 function isPlayerNameUniqueViolation(error: unknown): boolean {

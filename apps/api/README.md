@@ -350,6 +350,7 @@ Example successful response:
 
 ```json
 {
+  "connectionStrategy": "auth0",
   "id": "00000000-0000-4000-8000-000000000001",
   "playerName": "example-player",
   "playerNameSetupRequired": false,
@@ -360,14 +361,33 @@ Example successful response:
 ```
 
 The example player ID and name are illustrative and do not identify a real
-account. The player-facing route does not return the Auth0 issuer, subject, or
-bearer token.
+account. `connectionStrategy` is the validated safe provider category used to
+select the correct account-recovery guidance. The player-facing route does not
+return the Auth0 issuer, subject, email, or bearer token.
 
 A Google player awaiting setup receives `playerName: null` and
 `playerNameSetupRequired: true`. The authenticated
 `PUT /api/v1/auth/me/player-name` endpoint assigns that supported social player
 one locally unique, Auth0-compatible Player Name. It does not accept a player ID,
 cannot be used by database accounts, and cannot change an existing name.
+
+### Permanent account deletion
+
+The authenticated `POST /api/v1/auth/account-deletion` route coordinates the
+server-authoritative deletion lifecycle. It accepts only the exact destructive
+confirmation and a separately acquired Auth0 ID token proving authentication no
+more than five minutes ago. The API independently verifies that proof and its
+exact `(iss, sub)` match; it never accepts the ID token as the API bearer token.
+
+A completed request returns `200` with `status: "completed"`. When Auth0 or
+local cleanup cannot finish immediately, the account remains locked and the
+route returns `202` with `status: "retry_pending"`; the persisted retry worker
+continues idempotently. Safe error responses never echo credentials, identity
+claims, or provider details. The browser and API never create, accept, or render
+Wits World password fields.
+
+See the [account deletion persistence and retention contract](../../docs/database/account-deletion-retention.md)
+and [player account lifecycle validation](../../docs/testing/player-account-lifecycle-validation.md).
 
 ### Authentication failures
 

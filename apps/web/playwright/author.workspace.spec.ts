@@ -1083,6 +1083,7 @@ async function installAuthorApi(page: Page): Promise<AuthorApiState> {
 
     if (path === '/auth/me') {
       await json(route, {
+        connectionStrategy: 'auth0',
         id: uuid('9', 1),
         lifecycleStatus: 'active',
         playerName: 'author-e2e',

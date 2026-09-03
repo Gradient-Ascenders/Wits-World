@@ -205,6 +205,7 @@ describe('Basic author console', () => {
       const url = String(input);
       if (url.endsWith('/auth/me')) {
         return jsonResponse({
+          connectionStrategy: 'auth0',
           id: '90000000-0000-4000-8000-000000000001',
           playerName: 'test-player',
           playerNameSetupRequired: false,
@@ -2222,6 +2223,7 @@ function installAuthorApi(options: ApiOptions = {}) {
 
       if (path === '/auth/me') {
         return jsonResponse({
+          connectionStrategy: 'auth0',
           id: '90000000-0000-4000-8000-000000000001',
           playerName: 'test-player',
           playerNameSetupRequired: false,

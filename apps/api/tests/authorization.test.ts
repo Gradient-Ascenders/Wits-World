@@ -3,9 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { registerAuthorization } from '../src/auth/authorization.js';
 import {
+  DeletedIdentityTokenError,
   PlayerNameConflictError,
   type PlayerIdentityService,
 } from '../src/players/player-identity.js';
+
+const tokenIssuedAt = new Date('2026-08-30T12:00:00.000Z');
 
 describe('application authorisation', () => {
   let app: FastifyInstance;
@@ -43,6 +46,7 @@ describe('application authorisation', () => {
         issuer: 'https://auth.example.test/',
         playerName: 'test-player',
         subject: 'auth0|player-123',
+        tokenIssuedAt,
       };
     });
 
@@ -68,6 +72,7 @@ describe('application authorisation', () => {
       issuer: 'https://auth.example.test/',
       playerName: 'test-player',
       subject: 'auth0|player-123',
+      tokenIssuedAt,
     });
   });
 
@@ -85,6 +90,7 @@ describe('application authorisation', () => {
         issuer: 'https://auth.example.test/',
         playerName: 'test-player',
         subject: 'auth0|player-123',
+        tokenIssuedAt,
       };
     });
 
@@ -123,6 +129,7 @@ describe('application authorisation', () => {
         issuer: 'https://auth.example.test/',
         playerName: null,
         subject: 'google-oauth2|player-123',
+        tokenIssuedAt,
       };
     });
     app.get('/test', { preHandler: app.loadActivePlayer }, async (request) => ({
@@ -150,6 +157,7 @@ describe('application authorisation', () => {
         issuer: 'https://auth.example.test/',
         playerName: null,
         subject: 'google-oauth2|player-123',
+        tokenIssuedAt,
       };
     });
     app.get('/test', { preHandler: app.requireActivePlayer }, async () => ({
@@ -171,6 +179,7 @@ describe('application authorisation', () => {
         issuer: 'https://auth.example.test/',
         playerName: null,
         subject: 'client-credentials-client',
+        tokenIssuedAt,
       };
     });
     app.get('/test', { preHandler: app.loadActivePlayer }, async () => ({
@@ -194,6 +203,7 @@ describe('application authorisation', () => {
         issuer: 'https://auth.example.test/',
         playerName: 'conflicting-player',
         subject: 'auth0|losing-player',
+        tokenIssuedAt,
       };
     });
     app.get('/test', { preHandler: app.requireActivePlayer }, async () => ({
@@ -204,6 +214,30 @@ describe('application authorisation', () => {
 
     expect(response.statusCode).toBe(409);
     expect(response.json()).toMatchObject({ code: 'PLAYER_NAME_CONFLICT' });
+  });
+
+  it('rejects an access token issued before its identity was deleted', async () => {
+    vi.mocked(playerIdentityService.resolve).mockRejectedValue(
+      new DeletedIdentityTokenError(),
+    );
+
+    app.addHook('preHandler', async (request) => {
+      request.auth = {
+        connectionStrategy: 'auth0',
+        issuer: 'https://auth.example.test/',
+        playerName: 'deleted-player',
+        subject: 'auth0|deleted-player',
+        tokenIssuedAt,
+      };
+    });
+    app.get('/test', { preHandler: app.loadActivePlayer }, async () => ({
+      ok: true,
+    }));
+
+    const response = await app.inject({ method: 'GET', url: '/test' });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ code: 'ACCOUNT_UNAVAILABLE' });
   });
 
   it('allows an Author through the Author guard', async () => {

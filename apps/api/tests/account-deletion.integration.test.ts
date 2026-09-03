@@ -12,6 +12,7 @@ const identity = {
   issuer: 'https://auth.example.test/',
   subject: 'auth0|player-123',
 };
+const tokenIssuedAt = new Date('2026-08-14T04:55:00.000Z');
 
 const player = {
   id: '00000000-0000-4000-8000-000000000500',
@@ -89,6 +90,7 @@ describe('account deletion API', () => {
           ...identity,
           connectionStrategy: 'google-oauth2' as const,
           playerName: null,
+          tokenIssuedAt,
         })),
       },
       playerIdentityService: {
@@ -356,6 +358,7 @@ async function buildDeletionApp(overrides: BuildDeletionAppOverrides = {}) {
         ...identity,
         connectionStrategy: 'auth0' as const,
         playerName: 'test-player',
+        tokenIssuedAt,
       })),
     };
 

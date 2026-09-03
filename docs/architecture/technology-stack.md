@@ -98,9 +98,8 @@ roles from validated issuer and subject claims. The application does not trust
 browser-supplied identity or role values.
 
 Wits World does not store passwords. Account-deletion persistence and retention
-are implemented server-side; the player-facing deletion entry point and
-password-reset capability remain issue `#161` work. Password reset may use
-Auth0's hosted capability.
+are implemented server-side; issue `#161` adds the player-facing deletion entry
+point and delegates database password recovery to Auth0's hosted capability.
 
 Public browser configuration may include:
 

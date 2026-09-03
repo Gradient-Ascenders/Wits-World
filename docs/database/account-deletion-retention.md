@@ -1,8 +1,11 @@
 # Account deletion persistence and retention
 
 Issue `#160` completes the database and API lifecycle behind permanent account
-deletion. The player-facing profile, password-reset, and deletion experience is
-tracked separately by `#161`; this document does not claim that UI is complete.
+deletion. Issue `#161` adds the player-facing profile, provider-owned password
+recovery, recent-authentication, confirmation, and retry/completion experience.
+This document remains authoritative for the deletion and retention boundary;
+the [player account lifecycle validation](../testing/player-account-lifecycle-validation.md)
+records the browser boundary and remaining external checks.
 
 ## Authority and external boundary
 
@@ -15,7 +18,9 @@ confirmation. It then:
 2. deletes the Auth0 user through the server-only Management API client;
 3. runs all local deletion, anonymisation, and retained-history updates in one
    PostgreSQL transaction; and
-4. marks the minimal audit record `completed` only when that transaction commits.
+4. records a short-lived, one-way denial marker for access tokens issued before
+   completion; and
+5. marks the minimal audit record `completed` only when that transaction commits.
 
 Auth0 and PostgreSQL cannot share one transaction. A provider or database
 failure therefore leaves the player locked and records only
@@ -45,6 +50,7 @@ already been reached.
 | Point awards, activity days, streak totals, and achievements  | Retained privately against the anonymised player UUID; excluded from live standings                                                                          |
 | Published events, questions, challenges, and cards            | Retained unchanged as system-owned content definitions                                                                                                       |
 | Author activity audit                                         | Retained against the anonymised player tombstone                                                                                                             |
+| Deleted-identity access denial                                | Salted digest retained privately for at most 30 days; no raw identity or token is stored                                                                     |
 
 Content definitions do not store a mutable Author owner, so no ownership row
 needs reassignment. Their immutable `author_content_audit` actor reference keeps
@@ -86,8 +92,11 @@ progression points.
 player before invoking `private.delete_player_owned_data(...)`. The function
 validates that the same player is still `deletion_pending`, removes dependent
 rows in foreign-key order, and leaves completed summaries untouched. Identity
-anonymisation and audit completion occur in that same transaction. Any failure
-rolls every local change back.
+anonymisation, the temporary token-denial marker, and audit completion occur in
+that same transaction. Any failure rolls every local change back. The identity
+resolver checks the marker in the same SQL statement that would otherwise
+provision a player, so it cannot recreate the account between the denial
+decision and insertion.
 
 Two workers processing one request serialize on the deletion-request lock. The
 first successful worker commits the tombstone and completed audit; later calls
@@ -106,10 +115,25 @@ ordering item snapshots while preserving format-aware snapshot validation.
 
 ## Audit expiry and re-registration
 
-The completed deletion audit contains only its random ID, request/completion
-timestamps, status, and safe failure reason. Records at least twelve months old
-are purged. It contains no Auth0 subject, Player Name, email, location, or
-player foreign key.
+The completed deletion audit remains unchanged: it contains only its random ID,
+request/completion timestamps, status, and safe failure reason. Records at
+least twelve months old are purged. It contains no Auth0 subject, Player Name,
+email, location, or player foreign key.
+
+Migration `0035_deny_deleted_identity_tokens.sql` adds a separate private
+security marker. Completion stores a SHA-256 digest of the issuer/subject pair
+with a fresh random 32-byte salt, the completion cutoff, and a 30-day expiry.
+It never stores the raw issuer, subject, access token, token signature, Player
+Name, or email. The 30-day bound covers
+[Auth0's maximum configurable JWT access-token lifetime](https://auth0.com/docs/secure/tokens/access-tokens/update-access-token-lifetime);
+expired markers are ignored immediately and are eligible for purge by the
+deletion retry sweep.
+
+An access token issued at or before the completion cutoff is rejected with
+`ACCOUNT_UNAVAILABLE`, even if its JWT expiry has not yet elapsed. A token
+issued after completion is not denied by the old marker. This preserves clean
+re-registration with a genuinely new Auth0 session while preventing an old
+self-contained JWT from silently provisioning a replacement local player.
 
 Clearing the unique Auth0 `(issuer, subject)` pair and Player Name allows the
 same person to register later as a new local player. The new UUID has no link to
@@ -121,10 +145,11 @@ progression. Progression remains attached only to the old anonymous tombstone.
 `apps/api/tests/account-deletion-persistence.integration.test.ts` covers a
 clean migration, current-schema reward backfill, ordinary snapshot
 immutability, complete cleanup and anonymous retention, transaction rollback,
-retry, concurrent completion, tombstones, fresh re-registration, and cleanup of
-an in-progress ordering attempt. Existing Auth0 Management API tests cover an
+retry, concurrent completion, tombstones, fresh re-registration, denial of the
+same unexpired access token without reprovisioning, and cleanup of an
+in-progress ordering attempt. Existing Auth0 Management API tests cover an
 already-absent provider account, while player database tests cover the minimal
 audit shape and twelve-month purge.
 
 The preceding document was generated and edited with the assistance of:
-Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5].
+Codex-CLI[gpt-5.6-sol medium], Codex-CLI[GPT-5], and Codex[GPT-5].

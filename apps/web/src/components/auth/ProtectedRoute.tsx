@@ -5,6 +5,7 @@ import { useCurrentPlayer } from '../../auth/CurrentPlayerProvider';
 import { PlayerNameSetup } from './PlayerNameSetup';
 
 interface ProtectedRouteProps {
+  allowPlayerNameSetupRequired?: boolean;
   children: ReactNode;
   destination?: string;
 }
@@ -14,6 +15,7 @@ function currentRoute(): string {
 }
 
 export function ProtectedRoute({
+  allowPlayerNameSetupRequired = false,
   children,
   destination = 'explore Wits World',
 }: ProtectedRouteProps) {
@@ -112,7 +114,10 @@ export function ProtectedRoute({
     );
   }
 
-  if (currentPlayer.player.playerNameSetupRequired) {
+  if (
+    currentPlayer.player.playerNameSetupRequired &&
+    !allowPlayerNameSetupRequired
+  ) {
     return <PlayerNameSetup />;
   }
 

@@ -16,6 +16,10 @@ import {
 } from '../players/player-identity.js';
 
 const currentPlayerProperties = {
+  connectionStrategy: {
+    type: 'string',
+    enum: ['auth0', 'google-oauth2'],
+  },
   id: {
     type: 'string',
     format: 'uuid',
@@ -45,6 +49,7 @@ const currentPlayerResponse = {
   type: 'object',
   additionalProperties: false,
   required: [
+    'connectionStrategy',
     'id',
     'playerName',
     'playerNameSetupRequired',
@@ -119,15 +124,17 @@ export const authenticationRoutes: FastifyPluginAsync<
       },
     },
     async (request) => {
+      const identity = request.auth;
       const player = request.player;
 
-      if (!player) {
+      if (!identity || identity.connectionStrategy === null || !player) {
         throw new Error(
-          'Active player context was not set by the authorisation pre-handler.',
+          'Active interactive player context was not set by the authorisation pre-handler.',
         );
       }
 
       return {
+        connectionStrategy: identity.connectionStrategy,
         id: player.id,
         playerName: player.playerName,
         playerNameSetupRequired: player.playerName === null,
@@ -227,6 +234,7 @@ export const authenticationRoutes: FastifyPluginAsync<
         }
 
         return {
+          connectionStrategy: identity.connectionStrategy,
           id: updatedPlayer.id,
           playerName: updatedPlayer.playerName,
           playerNameSetupRequired: false,

@@ -23,9 +23,11 @@ one-shot reading before the API rechecks eligibility. Authors use the protected
 publish approved content, inspect review history, retire content with
 confirmation, and schedule event/trail campaigns.
 
-Issue `#160` implements the mandatory account-deletion persistence and retention
-backend. Password reset and the player-facing account/deletion experience remain
-issue `#161` work, so the complete account-lifecycle journey is not yet claimed.
+Issues `#160` and `#161` implement the mandatory account-deletion persistence,
+retention, provider-owned password recovery, and player-facing account journey.
+Real Auth0 recovery-email/hosted-page evidence and a production
+recent-authentication smoke check remain operator-run release evidence; see the
+[player account lifecycle validation](testing/player-account-lifecycle-validation.md).
 
 The React/Vite browser is presentation and untrusted input. Fastify resolves the
 verified Auth0 principal to a local player and role. PostgreSQL/PostGIS stores

@@ -6,6 +6,7 @@ const listeners = new Set<() => void>();
 interface FixtureAuthState {
   error: undefined;
   getAccessTokenSilently: () => Promise<string>;
+  getIdTokenClaims: () => Promise<{ __raw: string }>;
   isAuthenticated: boolean;
   isLoading: boolean;
   loginWithRedirect: () => Promise<void>;
@@ -16,6 +17,9 @@ interface FixtureAuthState {
 let authState: FixtureAuthState = {
   error: undefined,
   getAccessTokenSilently: async () => ACCESS_TOKEN,
+  getIdTokenClaims: async () => ({
+    __raw: 'wits-world-browser-fixture-recent-id-token',
+  }),
   isAuthenticated: true,
   isLoading: false,
   loginWithRedirect: async () => undefined,

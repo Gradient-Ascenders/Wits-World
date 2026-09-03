@@ -42,6 +42,7 @@ describe('authenticated API rate protection', () => {
             issuer: authConfig.issuer,
             playerName: token,
             subject: token,
+            tokenIssuedAt: new Date(0),
           };
         },
       },
@@ -80,6 +81,7 @@ describe('authenticated API rate protection', () => {
             issuer: authConfig.issuer,
             playerName: 'real-subject',
             subject: 'real-subject',
+            tokenIssuedAt: new Date(0),
           };
         },
       },
@@ -128,6 +130,7 @@ describe('authenticated API rate protection', () => {
             issuer: authConfig.issuer,
             playerName: 'documented-subject',
             subject: 'documented-subject',
+            tokenIssuedAt: new Date(0),
           };
         },
       },
