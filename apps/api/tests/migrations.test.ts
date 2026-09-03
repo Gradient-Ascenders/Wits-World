@@ -57,7 +57,8 @@ describe('migration file loading', () => {
         name.startsWith('0031_') ||
         name.startsWith('0032_') ||
         name.startsWith('0033_') ||
-        name.startsWith('0034_'),
+        name.startsWith('0034_') ||
+        name.startsWith('0035_'),
     );
 
     expect(
@@ -139,6 +140,10 @@ describe('migration file loading', () => {
       {
         checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         name: '0034_retire_coin_rewards.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0035_deny_deleted_identity_tokens.sql',
       },
     ]);
   });

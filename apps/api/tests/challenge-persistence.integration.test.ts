@@ -115,6 +115,7 @@ describe.skipIf(!runIntegrationTests)(
           '0032_add_movement_eligibility_decisions.sql',
           '0033_add_async_pvp_invitation_invalidation.sql',
           '0034_retire_coin_rewards.sql',
+          '0035_deny_deleted_identity_tokens.sql',
         ],
         skipped: [],
       });
@@ -157,6 +158,7 @@ describe.skipIf(!runIntegrationTests)(
           '0032_add_movement_eligibility_decisions.sql',
           '0033_add_async_pvp_invitation_invalidation.sql',
           '0034_retire_coin_rewards.sql',
+          '0035_deny_deleted_identity_tokens.sql',
         ],
       });
     }, 30_000);
@@ -363,6 +365,7 @@ describe.skipIf(!runIntegrationTests)(
             '0032_add_movement_eligibility_decisions.sql',
             '0033_add_async_pvp_invitation_invalidation.sql',
             '0034_retire_coin_rewards.sql',
+            '0035_deny_deleted_identity_tokens.sql',
           ],
         });
 

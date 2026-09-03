@@ -22,6 +22,7 @@ test('renders and confirms the server starter flow at mobile and desktop widths'
 
   await page.route(`${API_BASE_URL}/auth/me`, (route) =>
     json(route, {
+      connectionStrategy: 'auth0',
       id: buildUuid(900),
       lifecycleStatus: 'active',
       playerName: 'starter_browser_player',

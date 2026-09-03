@@ -17,7 +17,13 @@ import { runMigrations } from '../src/database/migrations.js';
 import { getMigrationsDirectory } from '../src/database/paths.js';
 import { createAccountDeletionLifecycle } from '../src/players/account-deletion-lifecycle.js';
 
-const MIGRATION_NAME = '0034_retire_coin_rewards.sql';
+const COIN_RETIREMENT_MIGRATION = '0034_retire_coin_rewards.sql';
+const DELETED_IDENTITY_DENIAL_MIGRATION =
+  '0035_deny_deleted_identity_tokens.sql';
+const MIGRATION_NAMES = [
+  COIN_RETIREMENT_MIGRATION,
+  DELETED_IDENTITY_DENIAL_MIGRATION,
+];
 const LEGACY_PLAYER_ID = '19300000-0000-4000-8000-000000000001';
 const LEGACY_EVENT_ID = '19300000-0000-4000-8000-000000000002';
 const LEGACY_CHALLENGE_ID = '19300000-0000-4000-8000-000000000003';
@@ -50,13 +56,14 @@ describe.skipIf(!runIntegrationTests)('coin retirement migration', () => {
     await withPreRetirementDatabase(async (databaseConfig, directory) => {
       await seedLegacyCoinHistory(databaseConfig);
 
-      await copyFile(
-        join(getMigrationsDirectory(), MIGRATION_NAME),
-        join(directory, MIGRATION_NAME),
+      await Promise.all(
+        MIGRATION_NAMES.map((name) =>
+          copyFile(join(getMigrationsDirectory(), name), join(directory, name)),
+        ),
       );
 
       await expect(runMigrations(databaseConfig, directory)).resolves.toEqual(
-        expect.objectContaining({ applied: [MIGRATION_NAME] }),
+        expect.objectContaining({ applied: MIGRATION_NAMES }),
       );
 
       await withDatabaseClient(databaseConfig, async (client) => {
@@ -209,7 +216,7 @@ describe.skipIf(!runIntegrationTests)('coin retirement migration', () => {
       await expect(runMigrations(databaseConfig, directory)).resolves.toEqual(
         expect.objectContaining({
           applied: [],
-          skipped: expect.arrayContaining([MIGRATION_NAME]),
+          skipped: expect.arrayContaining(MIGRATION_NAMES),
         }),
       );
     });
@@ -229,7 +236,7 @@ async function withPreRetirementDatabase(
   temporaryDirectories.push(directory);
 
   const migrationNames = (await readdir(getMigrationsDirectory())).filter(
-    (name) => name.endsWith('.sql') && name < MIGRATION_NAME,
+    (name) => name.endsWith('.sql') && name < COIN_RETIREMENT_MIGRATION,
   );
   await Promise.all(
     migrationNames.map((name) =>

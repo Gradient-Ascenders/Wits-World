@@ -96,24 +96,31 @@ active: previously granted permission starts it automatically, while prompt or
 unknown permission requires the player's **Enable live location** action. The
 watcher pauses while the document is hidden and is cleared on unmount.
 
-The latest reported location is shown as a transient, browser-only DOM overlay.
-It is positioned with the map's local screen projection, never as a Mapbox
-marker or GeoJSON source, and is removed with the map controller. It is not
-persisted in storage, URLs, or location history. Basic Tier does not show a GPS
-accuracy circle. See [Mapbox
+The latest reported location is shown with an application-owned, transient DOM
+element anchored by Mapbox's local `Marker` runtime. Using the provider's marker
+anchor keeps the dot attached to its longitude and latitude while the map pans,
+zooms, pitches, or rotates; it does not install Mapbox's geolocation control or
+publish the coordinate as a GeoJSON source. The element is removed with the map
+controller and the claim is not persisted in storage, URLs, or location
+history. The interface reports the browser's approximate accuracy in text.
+Basic Tier does not show a GPS accuracy circle. See [Mapbox
 operations](../deployment/mapbox-operations.md) for token, CSP, pricing,
 monitoring, and deployment notes.
 
 The selected event interaction area is a 64-segment geodesic GeoJSON polygon
 generated from the API's event coordinate and metre radius. It is visual-only;
-the browser does not calculate player-to-event distance. Live location updates
-move the local player marker immediately, but eligibility refreshes are
-location-driven, coalesced, and limited to at most one request per 15 seconds
-after meaningful movement. The API and PostGIS decide every result. Challenge
-start reuses a sufficiently fresh watched claim or requests a newer one-shot
-claim before submitting through the existing API for a server-authoritative
-recheck. A location-retry response requires a newer acquisition rather than
-resubmitting the same rejected claim.
+the browser does not calculate player-to-event distance. The location watcher
+requests uncached, high-accuracy readings. For display only, a rolling
+ten-second sample window avoids replacing a recent accurate fix with a briefly
+degraded reading. Follow mode ignores movement within the readings' reported
+uncertainty and uses short camera transitions, reducing jitter without changing
+the coordinates supplied by the browser. Eligibility refreshes continue to use
+the current raw claim, are location-driven and coalesced, and are limited to at
+most one request per 15 seconds after meaningful movement. The API and PostGIS
+decide every result. Challenge start reuses a sufficiently fresh watched claim
+or requests a newer one-shot claim before submitting through the existing API
+for a server-authoritative recheck. A location-retry response requires a newer
+acquisition rather than resubmitting the same rejected claim.
 
 The Mapbox logo and Mapbox/OpenStreetMap attribution remain enabled. The
 attribution control uses Mapbox's compact mode on constrained layouts and both

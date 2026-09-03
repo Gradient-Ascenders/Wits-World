@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 
 import type pg from 'pg';
 
@@ -9,12 +9,17 @@ import type {
   AccountDeletionStatus,
   PlayerLifecycleStatus,
 } from './types.js';
+import { lockPlayerIdentity } from './player-identity-lock.js';
 
 interface PlayerDeletionRow {
+  auth_issuer: string;
+  auth_subject: string;
   id: string;
   lifecycle_status: PlayerLifecycleStatus;
   deletion_request_id: string | null;
 }
+
+const DELETED_IDENTITY_TOKEN_DENIAL_RETENTION_DAYS = 30;
 
 interface AccountDeletionRow {
   id: string;
@@ -72,7 +77,12 @@ export function createAccountDeletionLifecycle(
 
         const playerResult = await client.query<PlayerDeletionRow>(
           `
-            select id, lifecycle_status, deletion_request_id
+            select
+              id,
+              auth_issuer,
+              auth_subject,
+              lifecycle_status,
+              deletion_request_id
               from public.players
              where auth_issuer = $1
                and auth_subject = $2
@@ -220,20 +230,62 @@ export function createAccountDeletionLifecycle(
       try {
         await client.query('begin');
 
-        const current = await loadDeletionRequest(
-          client,
-          deletionRequestId,
-          true,
-        );
+        let current = await loadDeletionRequest(client, deletionRequestId);
 
         if (current.status === 'completed') {
           await client.query('commit');
           return current;
         }
 
-        const playerResult = await client.query<{ id: string }>(
+        const playerIdentityResult = await client.query<PlayerDeletionRow>(
           `
-            select id
+            select
+              id,
+              auth_issuer,
+              auth_subject,
+              lifecycle_status,
+              deletion_request_id
+              from public.players
+             where deletion_request_id = $1
+          `,
+          [deletionRequestId],
+        );
+
+        const playerIdentity = playerIdentityResult.rows[0];
+
+        if (!playerIdentity) {
+          current = await loadDeletionRequest(client, deletionRequestId);
+
+          if (current.status === 'completed') {
+            await client.query('commit');
+            return current;
+          }
+
+          throw new Error(
+            'Pending deletion request has no linked local player.',
+          );
+        }
+
+        await lockPlayerIdentity(client, {
+          issuer: playerIdentity.auth_issuer,
+          subject: playerIdentity.auth_subject,
+        });
+
+        current = await loadDeletionRequest(client, deletionRequestId, true);
+
+        if (current.status === 'completed') {
+          await client.query('commit');
+          return current;
+        }
+
+        const playerResult = await client.query<PlayerDeletionRow>(
+          `
+            select
+              id,
+              auth_issuer,
+              auth_subject,
+              lifecycle_status,
+              deletion_request_id
               from public.players
              where deletion_request_id = $1
              for update
@@ -250,6 +302,44 @@ export function createAccountDeletionLifecycle(
         }
 
         const completedAt = clock();
+        const denialExpiresAt = new Date(completedAt);
+        denialExpiresAt.setUTCDate(
+          denialExpiresAt.getUTCDate() +
+            DELETED_IDENTITY_TOKEN_DENIAL_RETENTION_DAYS,
+        );
+        const identitySalt = randomBytes(32);
+
+        await client.query(
+          `
+            insert into private.deleted_identity_token_denials (
+              deletion_request_id,
+              identity_salt,
+              identity_digest,
+              tokens_issued_before,
+              expires_at
+            )
+            values (
+              $1,
+              $2,
+              sha256(
+                $2
+                || int4send(octet_length(convert_to($3, 'UTF8')))
+                || convert_to($3, 'UTF8')
+                || convert_to($4, 'UTF8')
+              ),
+              $5,
+              $6
+            )
+          `,
+          [
+            deletionRequestId,
+            identitySalt,
+            player.auth_issuer,
+            player.auth_subject,
+            completedAt,
+            denialExpiresAt,
+          ],
+        );
 
         await client.query(
           `select private.delete_player_owned_data($1::uuid, $2::uuid)`,
@@ -357,6 +447,14 @@ export function createAccountDeletionLifecycle(
       const client = await database.connect();
 
       try {
+        await client.query(
+          `
+            delete from private.deleted_identity_token_denials
+             where expires_at <= $1
+          `,
+          [clock()],
+        );
+
         const cutoff = new Date(clock());
         cutoff.setUTCFullYear(cutoff.getUTCFullYear() - 1);
 

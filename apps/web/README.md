@@ -9,8 +9,8 @@ a protected campus map, authenticated published-event discovery, safe API
 access-token retrieval, and a premium editorial home page. The home-page map,
 event status, and collectible cards are explicitly static product previews; the
 live seeded-event experience is available through the protected `/explore`
-route. The protected experience includes one-shot browser geolocation and
-API-authoritative event eligibility and the protected timed challenge journey.
+route. The protected experience includes foreground browser geolocation,
+API-authoritative event eligibility, and the protected timed challenge journey.
 Challenges restore their server-owned attempt, submit answer intent only, and
 display the persisted final score, rewards, and completed answer review. Card
 starter selection and collection browsing are available through the protected
@@ -19,6 +19,9 @@ available through `/decks`. Authors also have a separate protected `/author`
 console for Basic event, challenge, question, and card authoring.
 Server-authoritative CPU battles and private
 completed-match history are available through the protected `/matches` routes.
+The protected `/account` route presents the local player identity, delegates
+credential recovery to the owning provider, and starts permanent account
+deletion with fresh Auth0 reauthentication.
 
 ## Run locally
 
@@ -288,6 +291,8 @@ The current map adapter:
 - starts at zoom 16.5, pitch 52, and bearing 20 around the approved Sprint 1
   event area, with a keyboard-accessible reset bearing/pitch control;
 - updates event markers without destroying and recreating the WebGL map;
+- anchors the application-owned reported-location dot with Mapbox's marker
+  runtime so it remains attached to the coordinate during camera movement;
 - keeps the map host sized when Mapbox's runtime class and stylesheet arrive;
 - leaves Mapbox's attribution control enabled and expanded;
 - provides 44px zoom controls;
@@ -309,10 +314,12 @@ availability is always written as text and does not rely on marker colour. A
 failed API request provides a retry action; a failed tile or style request leaves
 the event list available.
 
-The map does not request or send the player's browser location. The event list
-requests a fresh position only after the player selects an active event's Check
-reachability action. The reported coordinates are sent to the Wits World API,
-not to the map provider.
+The map does not request the player's browser location. `/explore` owns that
+permission and lifecycle: an existing grant starts one watcher, while a prompt
+or unknown state requires the player's Enable live location action. Reported
+coordinates are sent only to the Wits World API for authoritative checks. The
+map receives them locally to position the transient dot; Mapbox's geolocation
+control is not installed and the claim is not published as provider data.
 
 The production Content Security Policy must account for Mapbox's `blob:` worker,
 image data, WebAssembly evaluation, and `api.mapbox.com` style/tile/glyph/image
@@ -323,12 +330,20 @@ service acceptance and licensed campus-data approval remain pending.
 
 ## Browser location and eligibility
 
-The `/explore` event list calls the protected
+The `/explore` route calls the protected
 `POST /api/v1/events/:eventId/eligibility` endpoint after a clear player action.
 Each request contains the browser-reported latitude, longitude, accuracy, and
-acquisition time. The browser uses a ten-second timeout, asks for high accuracy,
-and does not accept a cached reading. A retry requests a new reading; the
-application does not poll or track location continuously.
+acquisition time. The browser watcher uses a fifteen-second timeout, asks for
+high accuracy, and does not accept a cached reading. It pauses while the page is
+hidden and is removed on unmount. A retry that needs a newer claim uses a fresh
+one-shot request rather than resubmitting the rejected acquisition.
+
+The displayed dot keeps a short rolling set of fixes and temporarily prefers a
+recent, substantially more accurate fix when the next callback degrades. Follow
+mode ignores movement inside the readings' reported uncertainty and uses short
+camera transitions. These are presentation behaviours only: eligibility always
+receives the current raw browser claim, and reported accuracy is visible as
+approximate text rather than implied precision.
 
 The browser treats the reading as a claim. It does not calculate authoritative
 distance, compare the event radius, calculate travel speed, select a prior
@@ -363,12 +378,46 @@ for the full flow, privacy boundary, browser limitations, and evidence steps.
   authoritative active or completed CPU match state.
 - `/matches/history` requires Auth0 sign-in and lists the authenticated player's
   private completed CPU matches.
+- `/account` requires Auth0 sign-in, shows the API-resolved player identity and
+  provider category, delegates credential recovery, and coordinates permanent
+  deletion without collecting passwords.
 - `/about` explains the Wits World project and Wits Quest game/topic distinction.
 - Any unknown route presents a page-not-found message and a link home.
 
 The application uses browser-history routing. A future static host must route
 unknown application paths back to `index.html`; production deployment remains
 outside issue #6.
+
+## Player account lifecycle
+
+`/account` displays only the server-resolved Player Name, application role,
+lifecycle status, and safe provider category. It deliberately omits email,
+provider profile data, Auth0 identifiers, and token contents.
+
+For an Auth0 database account, **Reset password** returns to Universal Login and
+instructs the player to use Auth0's hosted recovery option.
+Auth0 owns account-identifier collection, recovery email, and replacement
+password entry. For Google accounts, the page instead explains that Google owns
+the credential and links to Google's account recovery. Wits World has no
+password inputs or password API.
+
+Permanent deletion uses two distinct confirmations. A compact first dialog
+explains the security step before opening Auth0 with `prompt=login` and
+`max_age=0`; returning only supplies an in-memory ID token for the API's
+independent five-minute recent-authentication check. A second Wits World dialog
+names the permanent effects and requires an explicit checkbox before the exact
+deletion confirmation is submitted. Completed and
+retry-pending responses clear the local player binding and remain visible until
+the player chooses **Finish and return home**. Ambiguous API failures can safely
+retry the idempotent operation; expired proof restarts reauthentication; an
+already locked account is reported honestly rather than treated as a new
+failure.
+
+Auth0 does not report hosted recovery completion to this SPA. Returning to the
+account page therefore confirms only that the recovery entry point was opened
+and reminds the player to use the newest Auth0 email. Real provider email,
+hosted-page, and recent-`auth_time` behavior remain operator/browser checks. See
+[player account lifecycle validation](../../docs/testing/player-account-lifecycle-validation.md).
 
 ## Basic author console
 
@@ -715,16 +764,20 @@ With `apps/web/.env` configured and the development server running:
 3. Select Check reachability and grant permission. Confirm the requesting and
    checking states are announced, followed by the exact reachable, unreachable,
    or retry result returned by the API.
-4. Select Check again and confirm a new one-shot request occurs without ongoing
-   location updates.
-5. Reset the browser's site permission, deny location, and confirm the denial
+4. Keep `/explore` visible and confirm the reported-location dot remains attached
+   to its map coordinate while panning, zooming, pitching, and rotating. Confirm
+   the approximate reported accuracy is visible and that normal GPS jitter does
+   not make the camera chase every callback.
+5. Select Check again after a location retry and confirm a newer claim is used
+   rather than resubmitting the rejected acquisition.
+6. Reset the browser's site permission, deny location, and confirm the denial
    explanation, Check again action, map, and event list remain usable.
-6. Press Tab with a connected keyboard. Confirm visible focus reaches the event
+7. Press Tab with a connected keyboard. Confirm visible focus reaches the event
    action in logical order and the result does not rely on colour alone.
-7. Repeat the layout check at 360px, 768px, and approximately 1280px. Confirm the
+8. Repeat the layout check at 360px, 768px, and approximately 1280px. Confirm the
    status panel, text, button, event badge, map attribution, and navigation do not
    overlap or cause horizontal scrolling.
-8. Record the actual device, operating system, browser version, permission state,
+9. Record the actual device, operating system, browser version, permission state,
    and API outcome. Store screenshots under `.pr-screenshots/issue-21/` and
    attach them to the pull request without exposing tokens or precise location
    values.

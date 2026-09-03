@@ -6,19 +6,26 @@ export interface AuthenticatedIdentity {
   subject: string;
 }
 
+interface AccessTokenMetadata {
+  tokenIssuedAt: Date;
+}
+
 export type SupportedConnectionStrategy = 'auth0' | 'google-oauth2';
 
-export interface MachinePrincipal extends AuthenticatedIdentity {
+export interface MachinePrincipal
+  extends AuthenticatedIdentity, AccessTokenMetadata {
   connectionStrategy: null;
   playerName: null;
 }
 
-export interface DatabasePlayerPrincipal extends AuthenticatedIdentity {
+export interface DatabasePlayerPrincipal
+  extends AuthenticatedIdentity, AccessTokenMetadata {
   connectionStrategy: 'auth0';
   playerName: string;
 }
 
-export interface GooglePlayerPrincipal extends AuthenticatedIdentity {
+export interface GooglePlayerPrincipal
+  extends AuthenticatedIdentity, AccessTokenMetadata {
   connectionStrategy: 'google-oauth2';
   playerName: null;
 }

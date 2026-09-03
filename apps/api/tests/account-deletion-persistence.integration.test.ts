@@ -3,9 +3,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type pg from 'pg';
+import { generateKeyPair, SignJWT } from 'jose';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { AUTH0_DATABASE_CONNECTION_STRATEGY } from '../src/auth/interactive-player-claims.js';
+import { buildApp } from '../src/app.js';
+import { createAccessTokenVerifier } from '../src/auth/access-token-verifier.js';
+import {
+  AUTH0_DATABASE_CONNECTION_STRATEGY,
+  CONNECTION_STRATEGY_CLAIM,
+  PLAYER_NAME_CLAIM,
+} from '../src/auth/interactive-player-claims.js';
+import type { AuthConfig } from '../src/config/auth.js';
 import {
   buildDatabaseConfig,
   loadApiEnvironment,
@@ -19,7 +27,10 @@ import { runMigrations } from '../src/database/migrations.js';
 import { getMigrationsDirectory } from '../src/database/paths.js';
 import { runSeeds } from '../src/database/seeds.js';
 import { createAccountDeletionLifecycle } from '../src/players/account-deletion-lifecycle.js';
-import { createPlayerIdentityService } from '../src/players/player-identity.js';
+import {
+  createPlayerIdentityService,
+  DeletedIdentityTokenError,
+} from '../src/players/player-identity.js';
 
 const ISSUER = 'https://auth.example.test/';
 const PLAYER_ID = 'd1000000-0000-4000-8000-000000000001';
@@ -44,6 +55,10 @@ const CONCURRENT_PLAYER_ID = 'd1000000-0000-4000-8000-000000000003';
 const CONCURRENT_DELETION_ID = 'd1100000-0000-4000-8000-000000000003';
 const GAMEPLAY_ROLLBACK_PLAYER_ID = 'd1000000-0000-4000-8000-000000000004';
 const GAMEPLAY_ROLLBACK_DELETION_ID = 'd1100000-0000-4000-8000-000000000004';
+const DENIED_TOKEN_PLAYER_ID = 'd1000000-0000-4000-8000-000000000005';
+const DENIED_TOKEN_DELETION_ID = 'd1100000-0000-4000-8000-000000000005';
+const RACING_TOKEN_PLAYER_ID = 'd1000000-0000-4000-8000-000000000006';
+const RACING_TOKEN_DELETION_ID = 'd1100000-0000-4000-8000-000000000006';
 const ACCOUNT_DELETION_MIGRATION =
   '0024_complete_account_deletion_retention.sql';
 
@@ -323,6 +338,7 @@ describe.skipIf(!runIntegrationTests)(
         issuer: identity.issuer,
         subject: identity.subject,
         playerName: 'deleted_author',
+        tokenIssuedAt: new Date('2026-08-26T12:00:01.000Z'),
       });
 
       expect(rejoined).toMatchObject({
@@ -345,6 +361,278 @@ describe.skipIf(!runIntegrationTests)(
       );
       expect(newProgress.rows[0]?.count).toBe('0');
     }, 60_000);
+
+    it('rejects the same unexpired access token after completed deletion without reprovisioning', async () => {
+      const identity = {
+        issuer: ISSUER,
+        subject: 'auth0|deleted-token-replay',
+      };
+      const issuedAtSeconds = Math.floor(Date.now() / 1000) - 60;
+      const completedAt = new Date();
+      const keyPair = await generateKeyPair('RS256');
+      const authConfig: AuthConfig = {
+        audience: 'https://api.example.test',
+        domain: 'auth.example.test',
+        issuer: ISSUER,
+        jwksUrl: new URL(`${ISSUER}.well-known/jwks.json`),
+        spaClientId: 'wits-world-spa-client',
+      };
+      const accessToken = await new SignJWT({
+        [CONNECTION_STRATEGY_CLAIM]: AUTH0_DATABASE_CONNECTION_STRATEGY,
+        [PLAYER_NAME_CLAIM]: 'deleted_token_player',
+      })
+        .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
+        .setIssuer(identity.issuer)
+        .setAudience(authConfig.audience)
+        .setSubject(identity.subject)
+        .setIssuedAt(issuedAtSeconds)
+        .setExpirationTime(Math.floor(Date.now() / 1000) + 3_600)
+        .sign(keyPair.privateKey);
+
+      await pool.query(
+        `
+          insert into public.players (
+            id, auth_issuer, auth_subject, player_name, role, lifecycle_status
+          ) values ($1, $2, $3, 'deleted_token_player', 'player', 'active')
+        `,
+        [DENIED_TOKEN_PLAYER_ID, identity.issuer, identity.subject],
+      );
+
+      const deletionCountBefore = await pool.query<{ count: string }>(
+        `select count(*)::text as count from public.account_deletion_requests`,
+      );
+      const lifecycle = createAccountDeletionLifecycle(pool, {
+        clock: () => completedAt,
+        createId: () => DENIED_TOKEN_DELETION_ID,
+      });
+      const playerIdentityService = createPlayerIdentityService(pool);
+      const app = await buildApp({
+        authConfig,
+        accessTokenVerifier: createAccessTokenVerifier(authConfig, {
+          verificationKey: keyPair.publicKey,
+        }),
+        playerIdentityService,
+        accountDeletionServices: {
+          lifecycle,
+          managementClient: { deleteUser: async () => undefined },
+          reauthenticationVerifier: {
+            verify: async () => ({
+              authenticatedAt: new Date(),
+              identity,
+            }),
+          },
+        },
+        logger: false,
+      });
+
+      try {
+        const deletionResponse = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/account-deletion',
+          headers: { authorization: `Bearer ${accessToken}` },
+          payload: {
+            confirmation: 'DELETE_MY_ACCOUNT',
+            reauthenticationToken: 'fresh-id-token',
+          },
+        });
+
+        expect(deletionResponse.statusCode).toBe(200);
+        expect(deletionResponse.json()).toMatchObject({
+          deletionId: DENIED_TOKEN_DELETION_ID,
+          status: 'completed',
+        });
+
+        const protectedResponse = await app.inject({
+          method: 'GET',
+          url: '/api/v1/auth/me',
+          headers: { authorization: `Bearer ${accessToken}` },
+        });
+        const retryResponse = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/account-deletion',
+          headers: { authorization: `Bearer ${accessToken}` },
+          payload: {
+            confirmation: 'DELETE_MY_ACCOUNT',
+            reauthenticationToken: 'fresh-id-token',
+          },
+        });
+
+        expect(protectedResponse.statusCode).toBe(403);
+        expect(protectedResponse.json()).toMatchObject({
+          code: 'ACCOUNT_UNAVAILABLE',
+        });
+        expect(retryResponse.statusCode).toBe(403);
+        expect(retryResponse.json()).toMatchObject({
+          code: 'ACCOUNT_UNAVAILABLE',
+        });
+
+        const persisted = await pool.query<{
+          deletion_count: string;
+          denial_count: string;
+          mapped_players: string;
+        }>(
+          `
+            select
+              (select count(*)::text
+                 from public.account_deletion_requests) as deletion_count,
+              (select count(*)::text
+                 from private.deleted_identity_token_denials
+                where deletion_request_id = $1::uuid) as denial_count,
+              (select count(*)::text
+                 from public.players
+                where auth_issuer = $2
+                  and auth_subject = $3) as mapped_players
+          `,
+          [DENIED_TOKEN_DELETION_ID, identity.issuer, identity.subject],
+        );
+
+        expect(persisted.rows[0]).toEqual({
+          deletion_count: String(
+            Number(deletionCountBefore.rows[0]?.count ?? '0') + 1,
+          ),
+          denial_count: '1',
+          mapped_players: '0',
+        });
+      } finally {
+        await app.close();
+      }
+    }, 30_000);
+
+    it('rejects an old token whose resolution starts during deletion completion', async () => {
+      const identity = {
+        issuer: ISSUER,
+        subject: 'auth0|deletion-resolution-race',
+      };
+      const tokenIssuedAt = new Date('2026-08-26T12:59:00.000Z');
+      const completedAt = new Date('2026-08-26T13:00:00.000Z');
+      const deletionCountBefore = await pool.query<{ count: string }>(
+        `select count(*)::text as count from public.account_deletion_requests`,
+      );
+
+      await pool.query(
+        `
+          insert into public.players (
+            id, auth_issuer, auth_subject, player_name, role, lifecycle_status
+          ) values ($1, $2, $3, 'racing_token_player', 'player', 'active')
+        `,
+        [RACING_TOKEN_PLAYER_ID, identity.issuer, identity.subject],
+      );
+
+      const lifecycle = createAccountDeletionLifecycle(pool, {
+        clock: () => completedAt,
+        createId: () => RACING_TOKEN_DELETION_ID,
+      });
+      const requested = await lifecycle.request(identity);
+      const completionPaused = createDeferred<void>();
+      const releaseCompletion = createDeferred<void>();
+      const resolutionLockAttempted = createDeferred<number>();
+      const completionClient = await pool.connect();
+      const resolutionClient = await pool.connect();
+      let completionPauseObserved = false;
+
+      const pausedCompletionLifecycle = createAccountDeletionLifecycle(
+        {
+          connect: async () =>
+            createInterceptedClient(completionClient, async (statement) => {
+              if (
+                !completionPauseObserved &&
+                statement.includes(
+                  'insert into private.deleted_identity_token_denials',
+                )
+              ) {
+                completionPauseObserved = true;
+                completionPaused.resolve();
+                await releaseCompletion.promise;
+              }
+            }),
+        } as Pick<pg.Pool, 'connect'>,
+        { clock: () => completedAt },
+      );
+      const identityService = createPlayerIdentityService({
+        query: pool.query.bind(pool),
+        connect: async () =>
+          createInterceptedClient(resolutionClient, async (statement) => {
+            if (statement.includes('pg_advisory_xact_lock')) {
+              const backend = await resolutionClient.query<{ pid: number }>(
+                `select pg_backend_pid() as pid`,
+              );
+              resolutionLockAttempted.resolve(backend.rows[0]?.pid ?? -1);
+            }
+          }),
+      });
+
+      const completion = pausedCompletionLifecycle.complete(requested.id);
+      let resolution:
+        | Promise<
+            { status: 'fulfilled' } | { status: 'rejected'; reason: unknown }
+          >
+        | undefined;
+
+      try {
+        await completionPaused.promise;
+
+        resolution = identityService
+          .resolve({
+            connectionStrategy: AUTH0_DATABASE_CONNECTION_STRATEGY,
+            issuer: identity.issuer,
+            subject: identity.subject,
+            playerName: 'racing_token_player',
+            tokenIssuedAt,
+          })
+          .then(
+            () => ({ status: 'fulfilled' as const }),
+            (reason: unknown) => ({ status: 'rejected' as const, reason }),
+          );
+        const resolutionBackendPid = await resolutionLockAttempted.promise;
+        await waitForAdvisoryLockWait(pool, resolutionBackendPid);
+
+        releaseCompletion.resolve();
+        await expect(completion).resolves.toMatchObject({
+          id: RACING_TOKEN_DELETION_ID,
+          status: 'completed',
+        });
+        const resolutionResult = await resolution;
+        expect(resolutionResult.status).toBe('rejected');
+        if (resolutionResult.status === 'rejected') {
+          expect(resolutionResult.reason).toBeInstanceOf(
+            DeletedIdentityTokenError,
+          );
+        }
+
+        const persisted = await pool.query<{
+          deletion_count: string;
+          denial_count: string;
+          mapped_players: string;
+        }>(
+          `
+          select
+            (select count(*)::text
+               from public.account_deletion_requests) as deletion_count,
+            (select count(*)::text
+               from private.deleted_identity_token_denials
+              where deletion_request_id = $1::uuid) as denial_count,
+            (select count(*)::text
+               from public.players
+              where auth_issuer = $2
+                and auth_subject = $3) as mapped_players
+          `,
+          [RACING_TOKEN_DELETION_ID, identity.issuer, identity.subject],
+        );
+
+        expect(persisted.rows[0]).toEqual({
+          deletion_count: String(
+            Number(deletionCountBefore.rows[0]?.count ?? '0') + 1,
+          ),
+          denial_count: '1',
+          mapped_players: '0',
+        });
+      } finally {
+        releaseCompletion.resolve();
+        await Promise.allSettled(
+          resolution ? [completion, resolution] : [completion],
+        );
+      }
+    }, 30_000);
 
     it('rolls back deletion initiation when dependent gameplay finalization fails', async () => {
       const identity = {
@@ -1496,6 +1784,58 @@ async function completeAttempt(
     await client.query('rollback');
     throw error;
   }
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+
+  return { promise, resolve };
+}
+
+function createInterceptedClient(
+  client: pg.PoolClient,
+  beforeQuery: (statement: string) => Promise<void>,
+): pg.PoolClient {
+  return {
+    query: (async (statement: string, parameters?: unknown[]) => {
+      await beforeQuery(statement);
+      return client.query(statement, parameters as never);
+    }) as pg.PoolClient['query'],
+    release: () => client.release(),
+  } as pg.PoolClient;
+}
+
+async function waitForAdvisoryLockWait(
+  database: Pick<pg.Pool, 'query'>,
+  backendPid: number,
+): Promise<void> {
+  const deadline = Date.now() + 5_000;
+
+  while (Date.now() < deadline) {
+    const result = await database.query<{ waiting: boolean }>(
+      `
+        select exists (
+          select 1
+            from pg_locks
+           where pid = $1
+             and locktype = 'advisory'
+             and not granted
+        ) as waiting
+      `,
+      [backendPid],
+    );
+
+    if (result.rows[0]?.waiting) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+
+  throw new Error('Identity resolution did not wait on the deletion lock.');
 }
 
 async function seedMatches(

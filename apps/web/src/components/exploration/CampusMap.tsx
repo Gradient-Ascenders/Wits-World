@@ -7,6 +7,7 @@ import {
   type MapController,
   type MapFactory,
   type MapPoint,
+  type ReportedMapLocation,
 } from './map-provider';
 
 interface CampusMapProps {
@@ -20,7 +21,7 @@ interface CampusMapProps {
   onPointSelect?: (pointId: string) => void;
   points: readonly MapPoint[];
   recenterRequest?: number;
-  reportedLocation?: MapCoordinate | null;
+  reportedLocation?: ReportedMapLocation | null;
   selectedPoint?: MapPoint | null;
 }
 
@@ -49,7 +50,9 @@ export function CampusMap({
   const onPointSelectRef = useRef(onPointSelect);
   const pointsRef = useRef(points);
   const focusPointRequestRef = useRef(focusPointRequest);
-  const reportedLocationRef = useRef<MapCoordinate | null>(reportedLocation);
+  const reportedLocationRef = useRef<ReportedMapLocation | null>(
+    reportedLocation,
+  );
   const selectedPointRef = useRef<MapPoint | null>(selectedPoint);
   const [status, setStatus] = useState<MapStatus>('loading');
 

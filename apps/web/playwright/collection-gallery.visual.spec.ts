@@ -29,6 +29,7 @@ test('groups, filters, and reveals card details across collection layouts', asyn
 
   await page.route(`${API_BASE_URL}/auth/me`, (route) =>
     json(route, {
+      connectionStrategy: 'auth0',
       id: buildUuid(980),
       lifecycleStatus: 'active',
       playerName: 'collection_browser_player',

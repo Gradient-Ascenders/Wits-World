@@ -1335,6 +1335,7 @@ async function json(route: Route, body: object, status = 200) {
 async function routeCurrentPlayer(page: Page) {
   await page.route('**/api/v1/auth/me', (route) =>
     json(route, {
+      connectionStrategy: 'auth0',
       id: CURRENT_PLAYER_ID,
       lifecycleStatus: 'active',
       playerName: 'battle_reader',

@@ -441,6 +441,7 @@ test('keeps the authenticated shared application shell responsive and accessible
 
     if (pathname.endsWith('/auth/me')) {
       await json(route, {
+        connectionStrategy: 'auth0',
         id: buildUuid(950),
         lifecycleStatus: 'active',
         playerName: 'shell_browser_player',
@@ -1345,6 +1346,7 @@ async function mockExploreApi(
     const pathname = new URL(route.request().url()).pathname;
     if (pathname.endsWith('/auth/me')) {
       await json(route, {
+        connectionStrategy: 'auth0',
         id: buildUuid(960),
         lifecycleStatus: 'active',
         playerName: 'explore_browser_player',
