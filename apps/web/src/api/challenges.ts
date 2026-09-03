@@ -479,6 +479,14 @@ function parseInProgressOrderingAttempt(
 function parseOrderingQuestion(payload: unknown): OrderingChallengeQuestion {
   if (
     !isRecord(payload) ||
+    !hasOnlyKeys(payload, [
+      'answeredAt',
+      'attemptQuestionId',
+      'items',
+      'position',
+      'prompt',
+      'selectedItemIds',
+    ]) ||
     !isUuid(payload.attemptQuestionId) ||
     !isQuestionPosition(payload.position) ||
     typeof payload.prompt !== 'string' ||

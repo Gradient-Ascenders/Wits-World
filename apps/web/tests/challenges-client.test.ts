@@ -313,6 +313,23 @@ describe('challenge attempt client', () => {
       }),
     ],
     [
+      'an unexpected active question field',
+      () => {
+        const attempt = activeOrderingAttempt();
+        return {
+          ...attempt,
+          questions: attempt.questions.map((question, index) =>
+            index === 0
+              ? {
+                  ...question,
+                  correctItemIds: [1, 2, 3, 4].map((item) => itemId(1, item)),
+                }
+              : question,
+          ),
+        };
+      },
+    ],
+    [
       'a blank completed explanation',
       () => {
         const attempt = completedOrderingAttempt();
