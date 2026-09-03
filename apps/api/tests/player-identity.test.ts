@@ -290,40 +290,6 @@ describe('local player identity', () => {
     );
   });
 
-  it('recovers when a concurrent request resolves the same identity and Player Name', async () => {
-    const resolvedPlayer = {
-      id: '6fe7dc26-cdea-4275-a2df-861724137cbc',
-      role: 'player',
-      player_name: trustedPrincipal.playerName,
-      lifecycle_status: 'active',
-    };
-    const query = vi
-      .fn()
-      .mockRejectedValueOnce({
-        code: '23505',
-        constraint: 'players_player_name_case_insensitive_unique',
-      })
-      .mockResolvedValueOnce({ rows: [resolvedPlayer] });
-    const service = createPlayerIdentityService(
-      createDatabaseQueryTarget(query),
-    );
-
-    await expect(service.resolve(trustedPrincipal)).resolves.toEqual({
-      id: resolvedPlayer.id,
-      role: resolvedPlayer.role,
-      playerName: resolvedPlayer.player_name,
-      lifecycleStatus: resolvedPlayer.lifecycle_status,
-    });
-
-    expect(query).toHaveBeenCalledTimes(2);
-    expect(query.mock.calls[1]?.[0]).toContain('auth_issuer = $1');
-    expect(query.mock.calls[1]?.[1]).toEqual([
-      trustedPrincipal.issuer,
-      trustedPrincipal.subject,
-      trustedPrincipal.playerName,
-    ]);
-  });
-
   it('preserves a genuine Player Name conflict with another identity', async () => {
     const query = vi
       .fn()
@@ -339,7 +305,7 @@ describe('local player identity', () => {
     await expect(service.resolve(trustedPrincipal)).rejects.toBeInstanceOf(
       PlayerNameConflictError,
     );
-    expect(query).toHaveBeenCalledTimes(2);
+    expect(query).toHaveBeenCalledOnce();
   });
 
   it('does not recover unrelated database errors', async () => {
@@ -414,7 +380,31 @@ describe('local player identity', () => {
 });
 
 function createDatabaseQueryTarget(query: ReturnType<typeof vi.fn>) {
+  const client = {
+    async query(statement: string, parameters?: unknown[]) {
+      const normalized = statement.trim().toLowerCase();
+
+      if (
+        normalized === 'begin' ||
+        normalized === 'commit' ||
+        normalized === 'rollback' ||
+        normalized.includes('pg_advisory_xact_lock')
+      ) {
+        return { rows: [] };
+      }
+
+      return (
+        query as unknown as (
+          statement: string,
+          parameters?: unknown[],
+        ) => Promise<unknown>
+      )(statement, parameters);
+    },
+    release: vi.fn(),
+  };
+
   return {
     query,
-  } as unknown as Pick<pg.Pool, 'query'>;
+    connect: vi.fn(async () => client),
+  } as unknown as Pick<pg.Pool, 'query' | 'connect'>;
 }

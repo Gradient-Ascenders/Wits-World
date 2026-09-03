@@ -9,6 +9,7 @@ import type {
   AccountDeletionStatus,
   PlayerLifecycleStatus,
 } from './types.js';
+import { lockPlayerIdentity } from './player-identity-lock.js';
 
 interface PlayerDeletionRow {
   auth_issuer: string;
@@ -229,11 +230,48 @@ export function createAccountDeletionLifecycle(
       try {
         await client.query('begin');
 
-        const current = await loadDeletionRequest(
-          client,
-          deletionRequestId,
-          true,
+        let current = await loadDeletionRequest(client, deletionRequestId);
+
+        if (current.status === 'completed') {
+          await client.query('commit');
+          return current;
+        }
+
+        const playerIdentityResult = await client.query<PlayerDeletionRow>(
+          `
+            select
+              id,
+              auth_issuer,
+              auth_subject,
+              lifecycle_status,
+              deletion_request_id
+              from public.players
+             where deletion_request_id = $1
+          `,
+          [deletionRequestId],
         );
+
+        const playerIdentity = playerIdentityResult.rows[0];
+
+        if (!playerIdentity) {
+          current = await loadDeletionRequest(client, deletionRequestId);
+
+          if (current.status === 'completed') {
+            await client.query('commit');
+            return current;
+          }
+
+          throw new Error(
+            'Pending deletion request has no linked local player.',
+          );
+        }
+
+        await lockPlayerIdentity(client, {
+          issuer: playerIdentity.auth_issuer,
+          subject: playerIdentity.auth_subject,
+        });
+
+        current = await loadDeletionRequest(client, deletionRequestId, true);
 
         if (current.status === 'completed') {
           await client.query('commit');

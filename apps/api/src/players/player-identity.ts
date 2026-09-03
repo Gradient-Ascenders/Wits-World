@@ -14,6 +14,7 @@ import type {
   PlayerLifecycleStatus,
   PlayerRole,
 } from './types.js';
+import { lockPlayerIdentity } from './player-identity-lock.js';
 
 interface PlayerRow {
   id: string;
@@ -69,8 +70,11 @@ export class DeletedIdentityTokenError extends Error {
   }
 }
 
+type PlayerIdentityDatabase =
+  Pick<pg.Pool, 'connect' | 'query'> | Pick<pg.PoolClient, 'query' | 'release'>;
+
 export function createPlayerIdentityService(
-  database: Pick<pg.Pool, 'query'>,
+  database: PlayerIdentityDatabase,
 ): PlayerIdentityService & PlayerNameSetupService {
   return {
     async resolve(identity) {
@@ -80,9 +84,12 @@ export function createPlayerIdentityService(
           : null;
       const synchronizePlayerName =
         identity.connectionStrategy === AUTH0_DATABASE_CONNECTION_STRATEGY;
-      const result = await database
-        .query<ResolvedPlayerRow>(
-          `
+      const result = await withTransaction(database, async (client) => {
+        await lockPlayerIdentity(client, identity);
+
+        return client
+          .query<ResolvedPlayerRow>(
+            `
           with identity_decision as (
             select exists (
               select 1
@@ -130,42 +137,23 @@ export function createPlayerIdentityService(
           from identity_decision decision
           left join resolved_player resolved on true
         `,
-          [
-            randomUUID(),
-            identity.issuer,
-            identity.subject,
-            playerName,
-            synchronizePlayerName,
-            identity.tokenIssuedAt,
-          ],
-        )
-        .catch(async (error: unknown) => {
-          if (!isPlayerNameUniqueViolation(error)) {
-            throw error;
-          }
+            [
+              randomUUID(),
+              identity.issuer,
+              identity.subject,
+              playerName,
+              synchronizePlayerName,
+              identity.tokenIssuedAt,
+            ],
+          )
+          .catch((error: unknown) => {
+            if (!isPlayerNameUniqueViolation(error)) {
+              throw error;
+            }
 
-          const concurrentlyResolved = await database.query<ResolvedPlayerRow>(
-            `
-              select
-                id,
-                player_name,
-                role,
-                lifecycle_status,
-                false as identity_denied
-                from public.players
-               where auth_issuer = $1
-                 and auth_subject = $2
-                 and player_name = $3
-            `,
-            [identity.issuer, identity.subject, playerName],
-          );
-
-          if (concurrentlyResolved.rows.length === 0) {
             throw new PlayerNameConflictError();
-          }
-
-          return concurrentlyResolved;
-        });
+          });
+      });
 
       const player = result.rows[0];
 
@@ -227,6 +215,27 @@ export function createPlayerIdentityService(
       };
     },
   };
+}
+
+async function withTransaction<T>(
+  database: PlayerIdentityDatabase,
+  callback: (client: Pick<pg.PoolClient, 'query'>) => Promise<T>,
+): Promise<T> {
+  const connectedClient =
+    'release' in database ? undefined : await database.connect();
+  const client = connectedClient ?? database;
+
+  try {
+    await client.query('begin');
+    const result = await callback(client);
+    await client.query('commit');
+    return result;
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  } finally {
+    connectedClient?.release();
+  }
 }
 
 function isPlayerNameUniqueViolation(error: unknown): boolean {
