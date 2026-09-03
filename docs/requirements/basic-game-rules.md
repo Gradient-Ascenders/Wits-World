@@ -91,9 +91,9 @@ in_review → approved → published → retired`. Editing is draft-only. A retu
   after authoritative completion the defined five-question review may return
   the player's selected choice, the correct choice, and server-derived
   correctness.
-- Authors do not configure authoritative coin values, reward rarity outcomes, or
-  awarded card definitions. Basic rewards remain server-authoritative and are
-  calculated from the approved score policy.
+- Authors do not configure progression-point values, reward rarity outcomes, or
+  awarded card definitions. Challenge points and card rewards remain
+  server-authoritative and are calculated from their approved score policies.
 
 ### Account deletion and re-registration
 
@@ -106,10 +106,10 @@ player-facing profile/account experience.
 - The Auth0 account is permanently deleted. The local record remains only as an
   anonymised tombstone such as `Deleted player`; the Auth0 subject, name, email,
   and other identifying data are removed.
-- Player-owned cards, decks, active-deck selection, coin balance, and starter
-  selection are permanently deleted.
-- Completed challenges, reward records, coin transactions, matches, and
-  anonymous final results are retained for integrity and aggregate statistics.
+- Player-owned cards, decks, active-deck selection, any retired legacy wallet,
+  and starter selection are permanently deleted.
+- Completed challenges, reward records, any legacy coin transactions, matches,
+  and anonymous final results are retained for integrity and aggregate statistics.
   Individual answers and answer snapshots are deleted. Anonymous gameplay
   history is retained indefinitely unless a later formal retention rule is
   established.
@@ -120,7 +120,7 @@ player-facing profile/account experience.
   operational alert while the account remains locked. The workflow is marked
   pending until cleanup completes.
 - A person may register again as a completely new player with no previous
-  progress, cards, coins, or decks.
+  progress, cards, or decks.
 - A minimal deletion audit record is retained for `12 months` and contains only
   a random deletion ID, request/completion timestamps, status, and applicable
   failure reason. It contains no email, Auth0 subject, name, location, or other
@@ -176,21 +176,18 @@ player-facing profile/account experience.
 
 ## Rewards
 
-Coins are selected deterministically within the score band using the attempt's
-average difficulty:
+Challenge points follow the permanent, non-spendable progression table in
+[Player progression rules](./player-progression-rules.md). Cards follow this
+separate score policy:
 
-```text
-coins = min + round(((averageDifficulty - 1) / 2) * (max - min))
-```
-
-| Correct | Coin band | Card award                     |
-| ------: | --------: | ------------------------------ |
-|       0 |         0 | None                           |
-|       1 |     10-20 | None                           |
-|       2 |     20-30 | None                           |
-|       3 |     30-40 | One guaranteed Common          |
-|       4 |     40-50 | One card: 75% Common, 25% Rare |
-|       5 |     50-75 | 80% one card, 20% two cards    |
+| Correct | Card award                     |
+| ------: | ------------------------------ |
+|       0 | None                           |
+|       1 | None                           |
+|       2 | None                           |
+|       3 | One guaranteed Common          |
+|       4 | One card: 75% Common, 25% Rare |
+|       5 | 80% one card, 20% two cards    |
 
 Each card for a five-correct reward independently rolls 45% Common, 40% Rare,
 14% Epic, and 1% Legendary. After rarity selection, the server selects uniformly
@@ -200,9 +197,9 @@ are not separately weighted.
 If a positive-probability rarity has no active definition, the server
 redistributes its probability proportionally over the available
 positive-probability rarities. A guaranteed Common reward requires an active
-Common definition. Completion, the coin credit, card awards, owned copies, and
-the persisted result commit atomically; a retry returns the same result instead
-of rerolling.
+Common definition. Completion, its progression award, card awards, owned
+copies, and the persisted result commit atomically; a retry returns the same
+result instead of rerolling.
 
 ## Cards and ownership
 
@@ -330,7 +327,10 @@ The following are not Basic game rules: PvP, matchmaking, ratings, spectators,
 trading, selling, evolution, rarity upgrades, offline play, movement tracking,
 anti-cheat trust scoring, territory control, seasons, advanced analytics, or an
 advanced administration console. The implemented curated Author review workflow
-is part of Basic content integrity; its reviewer UI is deferred to issue `#185`.
+is part of Basic content integrity and its unblocked Author-console review and
+campaign controls are implemented under issue `#185`. Question analytics remains
+blocked by issue `#184` / S3-06, and ordering-question authoring remains a
+follow-up to the current multiple-choice-only editor contract.
 
 This document was planned, generated, and edited with the assistance of
 Codex-CLI[gpt-5.6-sol medium], Codex[GPT-5], and Codex[gpt-5.6-sol].

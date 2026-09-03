@@ -3,7 +3,13 @@ export type AuthorWorkspaceRoute =
   | { mode: 'new'; section: 'events' }
   | {
       eventId: string;
-      mode: 'challenge' | 'edit' | 'overview';
+      mode: 'edit' | 'overview';
+      section: 'events';
+    }
+  | {
+      challengeId?: string;
+      eventId: string;
+      mode: 'challenge';
       section: 'events';
     }
   | {
@@ -16,7 +22,14 @@ export type AuthorWorkspaceRoute =
     }
   | { mode: 'list'; section: 'cards' }
   | { mode: 'new'; section: 'cards' }
-  | { cardId: string; mode: 'detail' | 'edit'; section: 'cards' };
+  | { cardId: string; mode: 'detail' | 'edit'; section: 'cards' }
+  | { mode: 'list'; section: 'review' }
+  | { mode: 'list' | 'new'; section: 'campaigns' }
+  | {
+      campaignId: string;
+      mode: 'detail' | 'edit';
+      section: 'campaigns';
+    };
 
 const AUTHOR_ROOT = '/author';
 
@@ -28,6 +41,24 @@ export function parseAuthorWorkspaceRoute(
     .split('/')
     .filter(Boolean)
     .map((segment) => decodeURIComponent(segment));
+
+  if (segments[0] === 'review') {
+    return { mode: 'list', section: 'review' };
+  }
+
+  if (segments[0] === 'campaigns') {
+    if (segments[1] === 'new' && segments.length === 2) {
+      return { mode: 'new', section: 'campaigns' };
+    }
+    if (segments[1] && segments.length <= 3) {
+      return {
+        campaignId: segments[1],
+        mode: segments[2] === 'edit' ? 'edit' : 'detail',
+        section: 'campaigns',
+      };
+    }
+    return { mode: 'list', section: 'campaigns' };
+  }
 
   if (segments[0] === 'cards') {
     if (segments[1] === 'new' && segments.length === 2) {
@@ -98,12 +129,20 @@ export function parseAuthorWorkspaceRoute(
         section: 'events',
       };
     }
+    if (segments.length === 4) {
+      return { challengeId, eventId, mode: 'challenge', section: 'events' };
+    }
   }
 
   return { eventId, mode: 'overview', section: 'events' };
 }
 
 export const authorPaths = {
+  campaigns: `${AUTHOR_ROOT}/campaigns`,
+  campaign: (campaignId: string) =>
+    `${AUTHOR_ROOT}/campaigns/${encodeURIComponent(campaignId)}`,
+  editCampaign: (campaignId: string) =>
+    `${AUTHOR_ROOT}/campaigns/${encodeURIComponent(campaignId)}/edit`,
   cards: `${AUTHOR_ROOT}/cards`,
   card: (cardId: string) =>
     `${AUTHOR_ROOT}/cards/${encodeURIComponent(cardId)}`,
@@ -116,6 +155,8 @@ export const authorPaths = {
     `${AUTHOR_ROOT}/events/${encodeURIComponent(eventId)}/edit`,
   eventChallenge: (eventId: string) =>
     `${AUTHOR_ROOT}/events/${encodeURIComponent(eventId)}/challenge`,
+  challenge: (eventId: string, challengeId: string) =>
+    `${AUTHOR_ROOT}/events/${encodeURIComponent(eventId)}/challenges/${encodeURIComponent(challengeId)}`,
   eventQuestions: (eventId: string) =>
     `${AUTHOR_ROOT}/events/${encodeURIComponent(eventId)}/questions`,
   questions: (eventId: string, challengeId: string) =>
@@ -125,7 +166,9 @@ export const authorPaths = {
   editQuestion: (eventId: string, challengeId: string, questionId: string) =>
     `${authorPaths.question(eventId, challengeId, questionId)}/edit`,
   newCard: `${AUTHOR_ROOT}/cards/new`,
+  newCampaign: `${AUTHOR_ROOT}/campaigns/new`,
   newEvent: `${AUTHOR_ROOT}/events/new`,
   newQuestion: (eventId: string, challengeId: string) =>
     `${authorPaths.questions(eventId, challengeId)}/new`,
+  review: `${AUTHOR_ROOT}/review`,
 } as const;

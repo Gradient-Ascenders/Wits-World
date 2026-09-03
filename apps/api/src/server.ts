@@ -33,6 +33,10 @@ import { createPlayerTrailService } from './trails/player-trail-service.js';
 import { createAuthorCampaignService } from './campaigns/author-campaign-service.js';
 import { createMovementEvidenceService } from './events/movement-evidence.js';
 import { createMovementEvidenceCleanupScheduler } from './events/movement-evidence-cleanup-scheduler.js';
+import { createSignedCursorCodec } from './security/signed-cursor.js';
+import { createAsyncPvpService } from './matches/asynchronous-pvp-service.js';
+import { createAsyncPvpDeadlineProcessor } from './matches/asynchronous-pvp-deadline-processor.js';
+import { createAsyncPvpDeadlineScheduler } from './matches/asynchronous-pvp-deadline-scheduler.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
@@ -48,7 +52,6 @@ async function startServer(): Promise<void> {
   const databaseConfig = buildDatabaseConfig();
 
   const database = createDatabasePool(databaseConfig);
-  const accountDeletionLifecycle = createAccountDeletionLifecycle(database);
 
   const auth0ManagementClient =
     createAuth0ManagementClient(authManagementConfig);
@@ -65,6 +68,14 @@ async function startServer(): Promise<void> {
   const starterGrantService = createStarterGrantService(database);
   const cardCollectionService = createCardCollectionService(database);
   const progressionPersistence = createProgressionPersistence();
+  const asyncPvpService = createAsyncPvpService(database, {
+    cursorCodec: createSignedCursorCodec(config.asyncPvpCursorSigningKey),
+    progressionPersistence,
+  });
+  const accountDeletionLifecycle = createAccountDeletionLifecycle(database, {
+    finalizeDependentGameplay: (client, playerId, requestedAt) =>
+      asyncPvpService.finalizeAccountDeletion(client, playerId, requestedAt),
+  });
   const challengeAttemptCompletionFinalizer =
     createChallengeAttemptCompletionFinalizer({ progressionPersistence });
   const challengeAnswerSubmissionService =
@@ -114,6 +125,7 @@ async function startServer(): Promise<void> {
     },
 
     cpuMatchService,
+    asyncPvpService,
     progressionReadService,
 
     accountDeletionServices: {
@@ -161,10 +173,21 @@ async function startServer(): Promise<void> {
       app.log,
       config.movementEvidenceCleanupIntervalMs,
     );
+  const asyncPvpDeadlineProcessor = createAsyncPvpDeadlineProcessor(
+    database,
+    asyncPvpService,
+    app.log,
+  );
+  const asyncPvpDeadlineScheduler = createAsyncPvpDeadlineScheduler(
+    asyncPvpDeadlineProcessor,
+    app.log,
+    config.asyncPvpDeadlineSweepIntervalMs,
+  );
 
   app.addHook('onClose', async () => {
     await accountDeletionRetryScheduler.stop();
     await movementEvidenceCleanupScheduler.stop();
+    await asyncPvpDeadlineScheduler.stop();
     await database.end();
   });
 
@@ -176,6 +199,7 @@ async function startServer(): Promise<void> {
 
     accountDeletionRetryScheduler.start();
     movementEvidenceCleanupScheduler.start();
+    asyncPvpDeadlineScheduler.start();
 
     app.log.info(
       {

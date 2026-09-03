@@ -191,7 +191,9 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0030_create_campaign_scheduling.sql',
           '0031_create_movement_evidence.sql',
           '0032_add_movement_eligibility_decisions.sql',
-          '0033_deny_deleted_identity_tokens.sql',
+          '0033_add_async_pvp_invitation_invalidation.sql',
+          '0034_retire_coin_rewards.sql',
+          '0035_deny_deleted_identity_tokens.sql',
         ],
       });
 
@@ -314,7 +316,9 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0030_create_campaign_scheduling.sql',
           '0031_create_movement_evidence.sql',
           '0032_add_movement_eligibility_decisions.sql',
-          '0033_deny_deleted_identity_tokens.sql',
+          '0033_add_async_pvp_invitation_invalidation.sql',
+          '0034_retire_coin_rewards.sql',
+          '0035_deny_deleted_identity_tokens.sql',
         ],
       });
 
@@ -479,11 +483,10 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
         [playerId, issuer, subject],
       );
       await client.query(
-        `insert into public.player_wallets (player_id, coin_balance)
-         values ($1, 17)`,
+        `insert into public.player_starter_grants (id, player_id, affinity)
+         values ('00000000-0000-4000-8000-000000000244', $1, 'wit')`,
         [playerId],
       );
-
       const service = createPlayerIdentityService(client);
       const populated = await service.resolve({
         connectionStrategy: 'auth0',
@@ -525,16 +528,19 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
       expect(populated.id).toBe(playerId);
       expect(synchronized.id).toBe(playerId);
 
-      const wallet = await client.query<{
-        coin_balance: number;
+      const starterGrant = await client.query<{
+        affinity: string;
         player_id: string;
       }>(
-        `select player_id, coin_balance
-           from public.player_wallets
+        `select player_id, affinity
+           from public.player_starter_grants
           where player_id = $1`,
         [playerId],
       );
-      expect(wallet.rows[0]).toEqual({ coin_balance: 17, player_id: playerId });
+      expect(starterGrant.rows[0]).toEqual({
+        affinity: 'wit',
+        player_id: playerId,
+      });
     });
   });
 
@@ -665,11 +671,10 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
         [winningPlayerId, losingPlayerId, issuer],
       );
       await client.query(
-        `insert into public.player_wallets (player_id, coin_balance)
-         values ($1, 23)`,
+        `insert into public.player_starter_grants (id, player_id, affinity)
+         values ('00000000-0000-4000-8000-000000000249', $1, 'spark')`,
         [losingPlayerId],
       );
-
       const service = createPlayerIdentityService(client);
       await expect(
         service.resolve({
@@ -708,17 +713,17 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
         },
       ]);
 
-      const wallet = await client.query<{
-        coin_balance: number;
+      const starterGrant = await client.query<{
+        affinity: string;
         player_id: string;
       }>(
-        `select player_id, coin_balance
-           from public.player_wallets
+        `select player_id, affinity
+           from public.player_starter_grants
           where player_id = $1`,
         [losingPlayerId],
       );
-      expect(wallet.rows).toEqual([
-        { coin_balance: 23, player_id: losingPlayerId },
+      expect(starterGrant.rows).toEqual([
+        { affinity: 'spark', player_id: losingPlayerId },
       ]);
     });
   });

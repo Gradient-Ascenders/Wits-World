@@ -30,24 +30,27 @@ already been reached.
 
 ## Deleted and retained records
 
-| Data                                                          | Deletion result                                                                          |
-| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Auth0 issuer/subject, Player Name, and role                   | Cleared from the local player tombstone                                                  |
-| Owned cards and starter selection                             | Deleted                                                                                  |
-| Saved decks, deck membership, and active selection            | Deleted                                                                                  |
-| Wallet balance                                                | Deleted                                                                                  |
-| Individual MCQ/ordering answers and format-specific snapshots | Deleted                                                                                  |
-| In-progress challenge attempts                                | Deleted                                                                                  |
-| Active CPU matches, rounds, actions, and card snapshots       | Deleted                                                                                  |
-| Precise movement evidence and journey-decision audit          | Deleted transactionally when the account enters `deletion_pending`; never retained       |
-| Completed challenge attempt summary                           | Retained against the anonymised player UUID                                              |
-| Event completion, score, coin outcome, and coin ledger        | Retained against the anonymised player UUID                                              |
-| Awarded-card outcome                                          | Retained in `event_completion_card_rewards`; owned `player_cards` rows are still deleted |
-| Completed CPU matches, rounds, actions, and card snapshots    | Retained against the anonymised player UUID                                              |
-| Point awards, activity days, streak totals, and achievements  | Retained privately against the anonymised player UUID; excluded from live standings      |
-| Published events, questions, challenges, and cards            | Retained unchanged as system-owned content definitions                                   |
-| Author activity audit                                         | Retained against the anonymised player tombstone                                         |
-| Deleted-identity access denial                                | Salted digest retained privately for at most 30 days; no raw identity or token is stored |
+| Data                                                          | Deletion result                                                                                                                                              |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Auth0 issuer/subject, Player Name, and role                   | Cleared from the local player tombstone                                                                                                                      |
+| Owned cards and starter selection                             | Deleted                                                                                                                                                      |
+| Saved decks, deck membership, and active selection            | Deleted                                                                                                                                                      |
+| Retired legacy wallet                                         | Deleted                                                                                                                                                      |
+| Individual MCQ/ordering answers and format-specific snapshots | Deleted                                                                                                                                                      |
+| In-progress challenge attempts                                | Deleted                                                                                                                                                      |
+| Active CPU matches, rounds, actions, and card snapshots       | Deleted                                                                                                                                                      |
+| Pending asynchronous PvP invitations                          | Expired when overdue; otherwise terminally invalidated as deletion begins                                                                                    |
+| Active asynchronous PvP matches                               | Retained as completed; deleting player loses by `account_deletion_forfeit` unless an elapsed deadline already makes the current actor lose by `turn_forfeit` |
+| Precise movement evidence and journey-decision audit          | Deleted transactionally when the account enters `deletion_pending`; never retained                                                                           |
+| Completed challenge attempt summary                           | Retained against the anonymised player UUID                                                                                                                  |
+| Event completion, score, legacy coin outcome, and coin ledger | Retained against the anonymised player UUID                                                                                                                  |
+| Awarded-card outcome                                          | Retained in `event_completion_card_rewards`; owned `player_cards` rows are still deleted                                                                     |
+| Completed CPU matches, rounds, actions, and card snapshots    | Retained against the anonymised player UUID                                                                                                                  |
+| Completed asynchronous PvP matches and private snapshots      | Retained against anonymous tombstones; opponent displays `Deleted player`                                                                                    |
+| Point awards, activity days, streak totals, and achievements  | Retained privately against the anonymised player UUID; excluded from live standings                                                                          |
+| Published events, questions, challenges, and cards            | Retained unchanged as system-owned content definitions                                                                                                       |
+| Author activity audit                                         | Retained against the anonymised player tombstone                                                                                                             |
+| Deleted-identity access denial                                | Salted digest retained privately for at most 30 days; no raw identity or token is stored                                                                     |
 
 Content definitions do not store a mutable Author owner, so no ownership row
 needs reassignment. Their immutable `author_content_audit` actor reference keeps
@@ -68,6 +71,20 @@ immutable journey audit to its current evidence with `ON DELETE CASCADE`, so
 the same operation also removes derived distance, elapsed-time, and speed data.
 No path, coordinate, or journey decision remains attached to the anonymous
 tombstone.
+
+Migration `0033_add_async_pvp_invitation_invalidation.sql` adds the distinct
+terminal `invalidated` invitation state. Deletion-request creation locks and
+finalizes affected invitations and active PvP matches before changing the
+player to `deletion_pending`, in the same PostgreSQL transaction. A failure in
+forfeit progression or invitation finalization rolls back the deletion request.
+An already-elapsed decision deadline takes precedence over account deletion, so
+the current actor remains the forfeiter even when the opponent begins deletion.
+
+Migration `0034_retire_coin_rewards.sql` prevents new wallet and coin-ledger
+activity but deliberately permits deletion of a retained wallet through this
+cleanup transaction. Historical ledger rows and non-zero completion outcomes
+remain immutable against the anonymised tombstone; they are not recalculated as
+progression points.
 
 ## Transaction and concurrency rules
 
@@ -103,7 +120,7 @@ request/completion timestamps, status, and safe failure reason. Records at
 least twelve months old are purged. It contains no Auth0 subject, Player Name,
 email, location, or player foreign key.
 
-Migration `0033_deny_deleted_identity_tokens.sql` adds a separate private
+Migration `0035_deny_deleted_identity_tokens.sql` adds a separate private
 security marker. Completion stores a SHA-256 digest of the issuer/subject pair
 with a fresh random 32-byte salt, the completion cutoff, and a 30-day expiry.
 It never stores the raw issuer, subject, access token, token signature, Player

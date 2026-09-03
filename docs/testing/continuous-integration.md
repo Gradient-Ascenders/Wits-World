@@ -147,8 +147,10 @@ The ZIP contains the contents of `apps/web/dist`, with `index.html` and
 
 The API validation build has already compiled `apps/api/dist`. After the other
 build work is complete, the job uses an isolated npm 11.18.0 CLI to materialize
-the API-only production dependency tree and packages the compiled API, root and
-API package metadata, production `node_modules`, migrations, and seeds:
+the API-only production dependency tree. It archives that tree as the single
+`node_modules.tar.gz` ZIP entry, removes the unpacked tree, and packages the
+compiled API, startup script, root and API package metadata, migrations, and
+seeds:
 
 ```text
 api-deploy-${{ gitea.sha }}
@@ -165,9 +167,12 @@ container from mutating tooling used by another.
 The Azure jobs independently verify the exact checked-out main SHA and repeat
 the application change check. When deployment is required they download the
 SHA-named artifact, verify `commit-sha.txt`, verify the ZIP SHA-256 and
-integrity, and require known runtime files before authenticating. Azure deploys
-that verified ZIP and performs the existing production health checks. It runs
-no Web/API `npm ci`, TypeScript build, Vite build, or production package build.
+integrity, reject any unpacked `node_modules` ZIP entry, and inspect the inner
+archive for the known runtime packages before authenticating. The database
+release extracts the inner archive into its temporary release directory. Azure
+deploys the same verified ZIP and performs the existing production health
+checks. It runs no Web/API `npm ci`, TypeScript build, Vite build, or production
+package build.
 
 Web change detection covers its application and shared build inputs, including
 `/.gitea/workflows/ci.yml`. API detection also includes that workflow file, in

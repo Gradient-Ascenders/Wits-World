@@ -79,6 +79,15 @@ boundaries, effective event and trail windows, adjacent and overlapping member
 reuse, concurrent approvals, publication/retirement races, review history, and
 preservation of completed attempts and derived trail progress.
 
+Author Web component/client tests cover queue parent-route context, required
+return reasons and keyboard focus, lifecycle request bodies, lazy history reads,
+campaign schedule and membership submission, and preservation of campaign form
+input after a stale-version conflict. They also cover navigation-only queue
+summaries, authoritative refresh after `CONTENT_STATE_CONFLICT`, confirmed
+replacement of a preserved campaign draft, server-returned lifecycle feedback,
+and read-only non-draft campaign edit deep links. Analytics UI tests remain
+blocked with issue `#184` / S3-06; no mock analytics contract is used.
+
 Impossible-journey tests separate the pure uncertainty-adjusted speed rule from
 the PostgreSQL/PostGIS evidence path. API and Web tests cover neutral retries
 and direct challenge-start enforcement. The disposable database suite covers
@@ -173,6 +182,18 @@ provisional until reviewed evidence is recorded.
 Likewise, release documents list required screen-reader, keyboard, responsive,
 Auth0, Mapbox, database-operation, and production checks without pre-claiming
 their result.
+
+## Asynchronous PvP verification
+
+Asynchronous PvP changes require route tests for closed schemas, authentication,
+safe errors, object-relative identity, and forbidden browser result fields;
+service/database tests for real deck snapshots, replay receipts, hidden-state
+projection, versioned actions, terminal progression, invitation invalidation,
+and account-deletion rollback; and scheduler tests for immediate startup,
+non-overlap, safe failure containment, and clean shutdown. The explicit
+database runner uses only `TEST_DATABASE_URL`, provisions isolated temporary
+databases, and must cover migrations `0028` and `0033`. Production or shared
+database targets are not substitutes for this evidence.
 
 ## Performance and reliability evidence
 

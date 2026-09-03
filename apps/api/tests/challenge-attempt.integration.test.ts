@@ -37,6 +37,8 @@ import {
 const EVENT_ID = '00000000-0000-4000-8000-000000000018';
 const PLAYER_ID = '00000000-0000-4000-8000-000000000101';
 const ATTEMPT_ID = '31000000-0000-4000-8000-000000000001';
+const CHALLENGE_CONTRACT_HEADER = 'x-wits-challenge-contract-version';
+const ACTIVE_CHALLENGE_CONTRACT_VERSION = '2';
 
 const authConfig: AuthConfig = {
   domain: 'auth.example.test',
@@ -146,6 +148,24 @@ describe('challenge attempt start API', () => {
     });
 
     expect(playerResolve).toHaveBeenCalledWith(authenticatedIdentity);
+    expect(startOrResume).not.toHaveBeenCalled();
+  });
+
+  it('rejects a stale client before starting or resuming an attempt', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/events/${EVENT_ID}/challenge-attempts`,
+      headers: {
+        authorization: 'Bearer test-access-token',
+      },
+      payload: validLocationClaim(),
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      code: 'CHALLENGE_CLIENT_UPGRADE_REQUIRED',
+      requestId: expect.any(String),
+    });
     expect(startOrResume).not.toHaveBeenCalled();
   });
 
@@ -379,6 +399,31 @@ describe('challenge answer submission API', () => {
 
     expect(submitAnswer).not.toHaveBeenCalled();
   });
+
+  it.each([undefined, '1'])(
+    'rejects stale contract version %s before changing an answer',
+    async (contractVersion) => {
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/v1/challenge-attempts/${ATTEMPT_ID}/answers`,
+        headers: {
+          authorization: 'Bearer test-access-token',
+          ...(contractVersion === undefined
+            ? {}
+            : { [CHALLENGE_CONTRACT_HEADER]: contractVersion }),
+        },
+        payload: validAnswer(),
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({
+        code: 'CHALLENGE_CLIENT_UPGRADE_REQUIRED',
+        detail: expect.stringContaining('No challenge answer was changed'),
+        requestId: expect.any(String),
+      });
+      expect(submitAnswer).not.toHaveBeenCalled();
+    },
+  );
 
   it('submits an answer using only the authenticated local player identity', async () => {
     const attempt = inProgressAttempt();
@@ -720,6 +765,23 @@ describe('challenge attempt fetch API', () => {
     expect(fetchAttempt).not.toHaveBeenCalled();
   });
 
+  it('rejects a stale client before fetching or finalizing an attempt', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/challenge-attempts/${ATTEMPT_ID}`,
+      headers: {
+        authorization: 'Bearer test-access-token',
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      code: 'CHALLENGE_CLIENT_UPGRADE_REQUIRED',
+      requestId: expect.any(String),
+    });
+    expect(fetchAttempt).not.toHaveBeenCalled();
+  });
+
   it('derives attempt ownership from the authenticated player', async () => {
     const attempt = inProgressAttempt();
 
@@ -884,6 +946,7 @@ async function authenticatedStartRequest(
     url: `/api/v1/events/${EVENT_ID}/challenge-attempts`,
     headers: {
       authorization: 'Bearer test-access-token',
+      [CHALLENGE_CONTRACT_HEADER]: ACTIVE_CHALLENGE_CONTRACT_VERSION,
     },
     payload,
   });
@@ -905,6 +968,7 @@ async function authenticatedAnswerRequest(
     url: `/api/v1/challenge-attempts/${attemptId}/answers`,
     headers: {
       authorization: 'Bearer test-access-token',
+      [CHALLENGE_CONTRACT_HEADER]: ACTIVE_CHALLENGE_CONTRACT_VERSION,
     },
     payload,
   });
@@ -990,7 +1054,6 @@ function completedAttempt(
     totalQuestions: 5,
     scoreCorrect: 3,
     reward: {
-      coinsAwarded: 37,
       cards: [
         {
           ownedCardId: '51000000-0000-4000-8000-000000000001',
@@ -1052,7 +1115,7 @@ function completedOrderingAttempt({
     completionReason,
     totalQuestions: 5,
     scoreCorrect,
-    reward: { coinsAwarded: 60, cards: [] },
+    reward: { cards: [] },
     review: active.questions.map((question) => {
       const unanswered =
         completionReason === 'timeout' && question.position === 5;
@@ -1149,6 +1212,7 @@ async function authenticatedFetchRequest(attemptId = ATTEMPT_ID) {
     url: `/api/v1/challenge-attempts/${attemptId}`,
     headers: {
       authorization: 'Bearer test-access-token',
+      [CHALLENGE_CONTRACT_HEADER]: ACTIVE_CHALLENGE_CONTRACT_VERSION,
     },
   });
 }

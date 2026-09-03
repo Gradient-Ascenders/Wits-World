@@ -66,7 +66,6 @@ describe('challenge attempt reader', () => {
         rows: [
           {
             completion_id: '41000000-0000-4000-8000-000000000066',
-            coins_awarded: 40,
           },
         ],
       })
@@ -91,7 +90,6 @@ describe('challenge attempt reader', () => {
       totalQuestions: 5,
       scoreCorrect: 4,
       reward: {
-        coinsAwarded: 40,
         cards: [],
       },
       review: completedReview({ scoreCorrect: 4 }),
@@ -286,7 +284,6 @@ describe('challenge attempt reader', () => {
         rows: [
           {
             completion_id: '71000000-0000-4000-8000-000000000001',
-            coins_awarded: 60,
           },
         ],
       })
@@ -353,7 +350,6 @@ describe('challenge attempt reader', () => {
         rows: [
           {
             completion_id: '41000000-0000-4000-8000-000000000001',
-            coins_awarded: 37,
           },
         ],
       })
@@ -387,7 +383,6 @@ describe('challenge attempt reader', () => {
       totalQuestions: 5,
       scoreCorrect: 3,
       reward: {
-        coinsAwarded: 37,
         cards: [
           {
             ownedCardId: '51000000-0000-4000-8000-000000000001',
@@ -429,7 +424,6 @@ describe('challenge attempt reader', () => {
         rows: [
           {
             completion_id: '41000000-0000-4000-8000-000000000001',
-            coins_awarded: 25,
           },
         ],
       })
@@ -484,7 +478,6 @@ describe('challenge attempt reader', () => {
         rows: [
           {
             completion_id: '41000000-0000-4000-8000-000000000001',
-            coins_awarded: 40,
           },
         ],
       })

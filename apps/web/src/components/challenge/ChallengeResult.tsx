@@ -8,7 +8,7 @@ interface ChallengeResultProps {
 }
 
 export function ChallengeResult({ attempt, headingRef }: ChallengeResultProps) {
-  const { cards, coinsAwarded } = attempt.reward;
+  const { cards } = attempt.reward;
 
   return (
     <section
@@ -39,11 +39,6 @@ export function ChallengeResult({ attempt, headingRef }: ChallengeResultProps) {
       >
         <p className="eyebrow">Saved reward</p>
         <h2 id="challenge-reward-title">Your rewards are recorded</h2>
-        <p>
-          {coinsAwarded === 0
-            ? 'No coins were awarded for this result.'
-            : `${coinsAwarded} ${coinsAwarded === 1 ? 'coin was' : 'coins were'} added to your account.`}
-        </p>
 
         {cards.length === 0 ? (
           <p>No new cards were awarded for this result.</p>

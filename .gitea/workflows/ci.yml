@@ -1,4 +1,4 @@
-﻿name: Continuous Integration
+name: Continuous Integration
 
 on:
   push:
@@ -358,6 +358,7 @@ jobs:
           mkdir -p "$ARTIFACT_ROOT/package/apps/api"
 
           test -f apps/api/dist/server.js
+          test -f apps/api/dist/database/release.js
 
           rm -rf node_modules
 
@@ -388,6 +389,9 @@ jobs:
             "$ARTIFACT_ROOT/package/"
 
           cp apps/api/package.json \
+            "$ARTIFACT_ROOT/package/apps/api/"
+
+          cp apps/api/startup.sh \
             "$ARTIFACT_ROOT/package/apps/api/"
 
           cp -a apps/api/dist \
@@ -428,6 +432,14 @@ jobs:
           cp -a database \
             "$ARTIFACT_ROOT/package/"
 
+          tar -czf "$ARTIFACT_ROOT/package/node_modules.tar.gz" \
+            -C "$ARTIFACT_ROOT/package/node_modules" \
+            .
+
+          test -s "$ARTIFACT_ROOT/package/node_modules.tar.gz"
+          rm -rf "$ARTIFACT_ROOT/package/node_modules"
+          test ! -e "$ARTIFACT_ROOT/package/node_modules"
+
           (
             cd "$ARTIFACT_ROOT/package"
             zip -qr "$ARTIFACT_ROOT/witsworld-api-deploy.zip" .
@@ -443,22 +455,49 @@ jobs:
           test -s "$ARTIFACT_ROOT/witsworld-api-deploy.zip"
           unzip -t "$ARTIFACT_ROOT/witsworld-api-deploy.zip" >/dev/null
 
+          ARTIFACT_CONTENTS="$ARTIFACT_ROOT/artifact-contents.txt"
+          unzip -Z1 "$ARTIFACT_ROOT/witsworld-api-deploy.zip" > "$ARTIFACT_CONTENTS"
+
+          test "$(grep -Fxc 'node_modules.tar.gz' "$ARTIFACT_CONTENTS")" -eq 1
+
+          if grep -Eq '^node_modules(/|$)' "$ARTIFACT_CONTENTS"; then
+            echo "The Azure deployment ZIP contains an unpacked node_modules tree."
+            exit 1
+          fi
+
           RUNTIME_SMOKE_ROOT="$(mktemp -d /tmp/witsworld-api-runtime.XXXXXX)"
           trap 'rm -rf "$NPM_TOOL_ROOT" "$RUNTIME_SMOKE_ROOT"' EXIT
 
+          RUNTIME_SMOKE_APP_ROOT="$RUNTIME_SMOKE_ROOT/wwwroot"
+          RUNTIME_SMOKE_MODULES="$RUNTIME_SMOKE_ROOT/node_modules"
+          mkdir "$RUNTIME_SMOKE_APP_ROOT" "$RUNTIME_SMOKE_MODULES"
+
           unzip -q "$ARTIFACT_ROOT/witsworld-api-deploy.zip" \
-            -d "$RUNTIME_SMOKE_ROOT"
+            -d "$RUNTIME_SMOKE_APP_ROOT"
+
+          test -s "$RUNTIME_SMOKE_APP_ROOT/node_modules.tar.gz"
+          test -x "$RUNTIME_SMOKE_APP_ROOT/apps/api/startup.sh"
+          test -f "$RUNTIME_SMOKE_APP_ROOT/apps/api/dist/server.js"
+          sh -n "$RUNTIME_SMOKE_APP_ROOT/apps/api/startup.sh"
+
+          tar -xzf "$RUNTIME_SMOKE_APP_ROOT/node_modules.tar.gz" \
+            -C "$RUNTIME_SMOKE_MODULES"
+          ln -s "$RUNTIME_SMOKE_MODULES" \
+            "$RUNTIME_SMOKE_APP_ROOT/node_modules"
+          test "$(readlink -f "$RUNTIME_SMOKE_APP_ROOT/node_modules")" = \
+            "$RUNTIME_SMOKE_MODULES"
 
           (
-            cd "$RUNTIME_SMOKE_ROOT"
+            cd "$RUNTIME_SMOKE_APP_ROOT"
             node --input-type=module \
-              --eval "await import('@wits-world/account-policy'); console.log('Imported @wits-world/account-policy from the API artifact')"
-            node --input-type=module \
-              --eval "await import('@wits-world/game-rules'); console.log('Imported @wits-world/game-rules from the API artifact')"
+              --eval "await Promise.all(['@wits-world/account-policy', '@wits-world/game-rules', '@fastify/cors', '@fastify/swagger', '@fastify/swagger-ui', 'fastify', 'jose', 'pg'].map((dependency) => import(dependency))); console.log('Imported production dependencies from the API artifact')"
           )
 
           unzip -l "$ARTIFACT_ROOT/witsworld-api-deploy.zip" |
             grep 'apps/api/dist/server.js'
+
+          unzip -l "$ARTIFACT_ROOT/witsworld-api-deploy.zip" |
+            grep 'apps/api/dist/database/release.js'
 
           echo "API artifact packaging completed in $((SECONDS - PACKAGE_STARTED_AT)) seconds."
 
@@ -566,9 +605,11 @@ jobs:
       REPOSITORY_URL: https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World.git
       AZURE_RESOURCE_GROUP: witsworld-rg
       AZURE_WEBAPP_NAME: witsworld-api
+      PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS: '1800000'
 
     steps:
       - name: Check out exact main commit
+        id: api_checkout
         run: |
           set -euo pipefail
 
@@ -610,6 +651,15 @@ jobs:
             echo "Refusing to deploy the wrong commit."
             exit 1
           fi
+
+          NODE_VERSION="$(tr -d '\r\n' < .nvmrc)"
+
+          if [[ ! "$NODE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "The deployment commit contains an invalid .nvmrc version."
+            exit 1
+          fi
+
+          printf 'node-version=%s\n' "$NODE_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Detect API deployment changes
         id: api_deployment_changes
@@ -705,20 +755,56 @@ jobs:
             package.json \
             package-lock.json \
             apps/api/package.json \
+            apps/api/startup.sh \
             apps/api/dist/server.js \
-            node_modules/@wits-world/account-policy/package.json \
-            node_modules/@wits-world/account-policy/dist/src/index.js \
-            node_modules/@wits-world/game-rules/package.json \
-            node_modules/@wits-world/game-rules/dist/src/index.js \
-            node_modules/@fastify/cors/package.json \
-            node_modules/@fastify/swagger/package.json \
-            node_modules/@fastify/swagger-ui/package.json \
-            node_modules/dotenv/package.json \
-            node_modules/fastify/package.json \
-            node_modules/jose/package.json \
-            node_modules/pg/package.json
+            apps/api/dist/database/release.js \
+            node_modules.tar.gz
           do
             require_artifact_path "$required_path"
+          done
+
+          if grep -Eq '^node_modules(/|$)' "$ARTIFACT_CONTENTS"; then
+            echo "The Azure deployment ZIP contains an unpacked node_modules tree."
+            exit 1
+          fi
+
+          ARTIFACT_VERIFY_ROOT="$(mktemp -d /tmp/witsworld-api-verify.XXXXXX)"
+          trap 'rm -rf "$ARTIFACT_VERIFY_ROOT"' EXIT
+
+          unzip -q "$DEPLOY_ROOT/witsworld-api-deploy.zip" \
+            node_modules.tar.gz \
+            apps/api/startup.sh \
+            -d "$ARTIFACT_VERIFY_ROOT"
+
+          test -s "$ARTIFACT_VERIFY_ROOT/node_modules.tar.gz"
+          test -x "$ARTIFACT_VERIFY_ROOT/apps/api/startup.sh"
+          sh -n "$ARTIFACT_VERIFY_ROOT/apps/api/startup.sh"
+
+          TARBALL_CONTENTS="$ARTIFACT_VERIFY_ROOT/node-modules-contents.txt"
+          tar -tzf "$ARTIFACT_VERIFY_ROOT/node_modules.tar.gz" > "$TARBALL_CONTENTS"
+
+          require_runtime_package() {
+            local package_name="$1"
+            local package_path="./${package_name}/package.json"
+
+            if ! grep -Fx "$package_path" "$TARBALL_CONTENTS"; then
+              echo "Required runtime package is missing from node_modules.tar.gz: $package_name"
+              return 1
+            fi
+          }
+
+          for package_name in \
+            @wits-world/account-policy \
+            @wits-world/game-rules \
+            @fastify/cors \
+            @fastify/swagger \
+            @fastify/swagger-ui \
+            dotenv \
+            fastify \
+            jose \
+            pg
+          do
+            require_runtime_package "$package_name"
           done
 
           DATABASE_FILE_COUNT=0
@@ -735,6 +821,12 @@ jobs:
             echo "The deployment commit does not contain tracked database files."
             exit 1
           fi
+
+      - name: Set up Node.js for production database release
+        if: ${{ steps.api_deployment_changes.outputs.required == 'true' }}
+        uses: https://github.com/actions/setup-node@v4
+        with:
+          node-version: ${{ steps.api_checkout.outputs.node-version }}
 
       - name: Authenticate to Azure
         run: |
@@ -756,6 +848,114 @@ jobs:
             --query '{name:name,state:state}' \
             --output table
 
+      - name: Configure production database maintenance cadence
+        if: ${{ steps.api_deployment_changes.outputs.required == 'true' }}
+        run: |
+          set -euo pipefail
+
+          # Keep the database-backed workers aligned so serverless Postgres can
+          # suspend between sweeps instead of receiving a query every minute.
+          az webapp config appsettings set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEBAPP_NAME" \
+            --settings \
+              "ACCOUNT_DELETION_RETRY_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
+              "ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
+              "MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
+            --output none
+
+      - name: Release production database
+        if: ${{ steps.api_deployment_changes.outputs.required == 'true' }}
+        env:
+          CONFIRM_DATABASE: ${{ vars.PRODUCTION_DATABASE_NAME }}
+          CONFIRM_DATABASE_HOST: ${{ vars.PRODUCTION_DATABASE_HOST }}
+        run: |
+          set -euo pipefail
+
+          DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
+          RELEASE_ROOT="$DEPLOY_ROOT/database-release"
+
+          DATABASE_URL="$(
+            az webapp config appsettings list \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --name "$AZURE_WEBAPP_NAME" \
+              --query "[?name=='DATABASE_URL'].value | [0]" \
+              --output tsv \
+              --only-show-errors
+          )"
+          export DATABASE_URL
+
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "DATABASE_URL is not configured on the production API App Service."
+            exit 1
+          fi
+
+          if [ -z "${CONFIRM_DATABASE:-}" ]; then
+            echo "PRODUCTION_DATABASE_NAME is not configured."
+            exit 1
+          fi
+
+          if [ -z "${CONFIRM_DATABASE_HOST:-}" ]; then
+            echo "PRODUCTION_DATABASE_HOST is not configured."
+            exit 1
+          fi
+
+          # Confirm that the secret points to the expected production Neon host
+          # before allowing any database release procedure to run.
+          node --input-type=module <<'NODE'
+          const connectionString = process.env.DATABASE_URL;
+          const expectedDatabase = process.env.CONFIRM_DATABASE;
+          const expectedHost = process.env.CONFIRM_DATABASE_HOST;
+
+          if (!connectionString) {
+            throw new Error('DATABASE_URL is missing.');
+          }
+
+          const url = new URL(connectionString);
+          const actualDatabase = url.pathname.replace(/^\/+/, '');
+
+          if (url.hostname !== expectedHost) {
+            throw new Error(
+              `Production database host confirmation failed: expected ${expectedHost}, received ${url.hostname}.`,
+            );
+          }
+
+          if (actualDatabase !== expectedDatabase) {
+            throw new Error(
+              `Production database name confirmation failed: expected ${expectedDatabase}, received ${actualDatabase}.`,
+            );
+          }
+
+          console.log(`Confirmed production database host: ${url.hostname}`);
+          console.log(`Confirmed production database name: ${actualDatabase}`);
+          NODE
+
+          rm -rf "$RELEASE_ROOT"
+          mkdir -p "$RELEASE_ROOT"
+
+          unzip -q \
+            "$DEPLOY_ROOT/witsworld-api-deploy.zip" \
+            -d "$RELEASE_ROOT"
+
+          test -f "$RELEASE_ROOT/apps/api/dist/database/release.js"
+          test -d "$RELEASE_ROOT/database/migrations"
+          test -s "$RELEASE_ROOT/node_modules.tar.gz"
+
+          mkdir "$RELEASE_ROOT/node_modules"
+          tar -xzf "$RELEASE_ROOT/node_modules.tar.gz" \
+            -C "$RELEASE_ROOT/node_modules"
+
+          test -f "$RELEASE_ROOT/node_modules/pg/package.json"
+
+          (
+            cd "$RELEASE_ROOT"
+
+            node apps/api/dist/database/release.js \
+              --target production \
+              --confirm-database "$CONFIRM_DATABASE"
+          )
+
+          echo "Production database release completed successfully."
       - name: Deploy API to Azure
         run: |
           set -euo pipefail

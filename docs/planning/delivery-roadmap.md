@@ -44,8 +44,8 @@ from manual, external, or stakeholder acceptance:
 
 The older Sprint 2 and final target journeys below preserve the planning intent
 that a correct answer awarded one event card. That reward model is superseded by
-the confirmed five-question, score-based coin and zero-to-two-card policy in the
-[Basic game rules](../requirements/basic-game-rules.md#rewards).
+the confirmed five-question, permanent-points and zero-to-two-card policies in
+the [Basic game rules](../requirements/basic-game-rules.md#rewards).
 
 The original roadmap placed password reset and account deletion in Sprint 3.
 The current team plan supersedes that timing: issue #160 implements

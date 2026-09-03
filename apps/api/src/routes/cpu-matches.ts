@@ -12,6 +12,7 @@ import {
   type SubmitCpuMatchActionInput,
 } from '../matches/cpu-match-service.js';
 import type { BattleAction } from '@wits-world/game-rules';
+import { apiErrorSchema } from '../openapi/battle-schemas.js';
 
 interface CpuMatchRoutesOptions {
   service: CpuMatchService;
@@ -30,20 +31,6 @@ interface SubmitActionBody {
   expectedVersion: number;
   action: Exclude<BattleAction, { type: 'timeout' }>;
 }
-
-const apiErrorSchema = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['type', 'title', 'status', 'code', 'detail', 'requestId'],
-  properties: {
-    type: { type: 'string' },
-    title: { type: 'string' },
-    status: { type: 'integer' },
-    code: { type: 'string' },
-    detail: { type: 'string' },
-    requestId: { type: 'string' },
-  },
-} as const;
 
 const matchParamsSchema = {
   type: 'object',

@@ -20,6 +20,8 @@ export interface AuthorContentReadDatabase {
 export interface AuthorReviewQueueItem {
   entityType: AuthorContentEntityType;
   entityId: string;
+  eventId: string | null;
+  challengeId: string | null;
   label: string;
   status: 'in_review';
   version: number;
@@ -67,6 +69,8 @@ export interface AuthorContentReadService {
 interface QueueRow extends pg.QueryResultRow {
   entity_type: AuthorContentEntityType;
   entity_id: string;
+  event_id: string | null;
+  challenge_id: string | null;
   label: string;
   version: number;
   submitted_by: string;
@@ -99,24 +103,28 @@ const entityTables: Record<AuthorContentEntityType, string> = {
 };
 
 const reviewQueueCte = `with queue as (
-  select 'event'::text entity_type, id::text entity_id, title label,
+  select 'event'::text entity_type, id::text entity_id,
+         null::uuid event_id, null::uuid challenge_id, title label,
          version, submitted_by_player_id submitted_by, submitted_at
   from public.events where authoring_status = 'in_review'
   union all
-  select 'challenge', challenge.id::text, challenge.format || ' challenge',
+  select 'challenge', challenge.id::text, challenge.event_id, null::uuid,
+         challenge.format || ' challenge',
          challenge.version, challenge.submitted_by_player_id, challenge.submitted_at
   from public.event_challenges challenge where challenge.status = 'in_review'
   union all
-  select 'question', question.id::text, challenge.format || ' question',
+  select 'question', question.id::text, challenge.event_id, question.challenge_id,
+         challenge.format || ' question',
          question.version, question.submitted_by_player_id, question.submitted_at
   from public.challenge_questions question
   join public.event_challenges challenge on challenge.id = question.challenge_id
   where question.status = 'in_review'
   union all
-  select 'card', id::text, name, version, submitted_by_player_id, submitted_at
+  select 'card', id::text, null::uuid, null::uuid, name,
+         version, submitted_by_player_id, submitted_at
   from public.card_definitions where authoring_status = 'in_review'
   union all
-  select 'campaign', id::text, title, version,
+  select 'campaign', id::text, null::uuid, null::uuid, title, version,
          submitted_by_player_id, submitted_at
   from public.campaigns where status = 'in_review'
 )`;
@@ -138,7 +146,9 @@ export function createAuthorContentReadService(
         );
         const result = await client.query<QueueRow>(
           `${reviewQueueCte}
-           select queue.entity_type, queue.entity_id, queue.label, queue.version,
+           select queue.entity_type, queue.entity_id,
+                  queue.event_id::text, queue.challenge_id::text,
+                  queue.label, queue.version,
                   queue.submitted_by::text,
                   case
                     when player.lifecycle_status = 'deleted' then 'Deleted author'
@@ -157,6 +167,8 @@ export function createAuthorContentReadService(
           items: result.rows.map((row) => ({
             entityType: row.entity_type,
             entityId: row.entity_id,
+            eventId: row.event_id,
+            challengeId: row.challenge_id,
             label: row.label,
             status: 'in_review',
             version: row.version,

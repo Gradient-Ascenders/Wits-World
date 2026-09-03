@@ -139,12 +139,32 @@ export function createPlayerIdentityService(
             identity.tokenIssuedAt,
           ],
         )
-        .catch((error: unknown) => {
-          if (isPlayerNameUniqueViolation(error)) {
+        .catch(async (error: unknown) => {
+          if (!isPlayerNameUniqueViolation(error)) {
+            throw error;
+          }
+
+          const concurrentlyResolved = await database.query<ResolvedPlayerRow>(
+            `
+              select
+                id,
+                player_name,
+                role,
+                lifecycle_status,
+                false as identity_denied
+                from public.players
+               where auth_issuer = $1
+                 and auth_subject = $2
+                 and player_name = $3
+            `,
+            [identity.issuer, identity.subject, playerName],
+          );
+
+          if (concurrentlyResolved.rows.length === 0) {
             throw new PlayerNameConflictError();
           }
 
-          throw error;
+          return concurrentlyResolved;
         });
 
       const player = result.rows[0];

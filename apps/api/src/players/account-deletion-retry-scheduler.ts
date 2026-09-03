@@ -1,3 +1,7 @@
+import {
+  MAX_NODE_TIMER_DELAY_MS,
+  MIN_DATABASE_MAINTENANCE_INTERVAL_MS,
+} from '../config/timers.js';
 import type { AccountDeletionRetryProcessor } from './account-deletion-retry-processor.js';
 
 export interface AccountDeletionRetryScheduler {
@@ -28,6 +32,16 @@ export function createAccountDeletionRetryScheduler(
   logger: AccountDeletionRetrySchedulerLogger,
   { intervalMs }: CreateAccountDeletionRetrySchedulerOptions,
 ): AccountDeletionRetryScheduler {
+  if (
+    !Number.isSafeInteger(intervalMs) ||
+    intervalMs < MIN_DATABASE_MAINTENANCE_INTERVAL_MS ||
+    intervalMs > MAX_NODE_TIMER_DELAY_MS
+  ) {
+    throw new Error(
+      `Account deletion retry interval must be a safe integer between ${MIN_DATABASE_MAINTENANCE_INTERVAL_MS} and ${MAX_NODE_TIMER_DELAY_MS} milliseconds.`,
+    );
+  }
+
   let timer: NodeJS.Timeout | undefined;
   let activeRun: Promise<void> | undefined;
 

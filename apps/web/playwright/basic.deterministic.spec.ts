@@ -1260,6 +1260,9 @@ async function browserApi<T = unknown>(
         headers: {
           Accept: 'application/json',
           Authorization: `Bearer ${token}`,
+          ...(path.includes('/challenge-attempts')
+            ? { 'X-Wits-Challenge-Contract-Version': '2' }
+            : {}),
           ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
         },
         method,

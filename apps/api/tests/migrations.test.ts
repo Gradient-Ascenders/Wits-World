@@ -33,8 +33,15 @@ afterEach(async () => {
 });
 
 describe('migration file loading', () => {
-  it('keeps the published 0021 checksum and orders later migrations after it', async () => {
+  it('keeps published migration checksums and orders later migrations after them', async () => {
     const migrationFiles = await loadMigrationFiles(getMigrationsDirectory());
+    const immutableCoinMigrations = migrationFiles.filter(({ name }) =>
+      [
+        '0007_create_cards_rewards_and_ownership.sql',
+        '0024_complete_account_deletion_retention.sql',
+        '0025_add_ordering_challenges.sql',
+      ].includes(name),
+    );
     const playerNameMigrations = migrationFiles.filter(
       ({ name }) =>
         name.startsWith('0021_') ||
@@ -49,8 +56,30 @@ describe('migration file loading', () => {
         name.startsWith('0030_') ||
         name.startsWith('0031_') ||
         name.startsWith('0032_') ||
-        name.startsWith('0033_'),
+        name.startsWith('0033_') ||
+        name.startsWith('0034_') ||
+        name.startsWith('0035_'),
     );
+
+    expect(
+      immutableCoinMigrations.map(({ checksum, name }) => ({ checksum, name })),
+    ).toEqual([
+      {
+        checksum:
+          'ca9c7b036cac67e70b4f72c4c6a8a239ae0083745193dadfbeff6503cd18b9f7',
+        name: '0007_create_cards_rewards_and_ownership.sql',
+      },
+      {
+        checksum:
+          '8f4a493bf38fe7a221ce0a6ed645a1e2911b8062bebc925dae70a3f0e1eca12e',
+        name: '0024_complete_account_deletion_retention.sql',
+      },
+      {
+        checksum:
+          'dcea7cd694a95f2a46a148b8d48f404a092ac3c0582bcf479befb5ccfdce5835',
+        name: '0025_add_ordering_challenges.sql',
+      },
+    ]);
 
     expect(
       playerNameMigrations.map(({ checksum, name }) => ({ checksum, name })),
@@ -106,7 +135,15 @@ describe('migration file loading', () => {
       },
       {
         checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
-        name: '0033_deny_deleted_identity_tokens.sql',
+        name: '0033_add_async_pvp_invitation_invalidation.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0034_retire_coin_rewards.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0035_deny_deleted_identity_tokens.sql',
       },
     ]);
   });

@@ -13,8 +13,8 @@ import { Link } from 'wouter';
 import {
   AuthorApiError,
   createAuthorCard,
-  publishAuthorCard,
-  retireAuthorCard,
+  isAuthorContentConflict,
+  transitionAuthorContent,
   updateAuthorCard,
   type AuthorCard,
   type AuthorCardEffectInput,
@@ -27,6 +27,7 @@ import {
   type CardModifierStat,
   type CardMoveType,
   type CardRarity,
+  type AuthorTransitionAction,
 } from '../../api/author';
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
 import type { OwnedCard } from '../../api/cards';
@@ -34,7 +35,8 @@ import { describeStarterEffect } from '../../battle/effect-presentation';
 import { CollectibleCard } from '../cards/CollectibleCard';
 import '../cards/cards.css';
 import { AuthorFeedback } from './AuthorFeedback';
-import { AuthorConfirmationDialog } from './AuthorConfirmationDialog';
+import { AuthorHistoryPanel } from './AuthorHistoryPanel';
+import { AuthorLifecycleControls } from './AuthorLifecycleControls';
 import { useUnsavedAuthorChanges } from './AuthorNavigationGuard';
 import { authorPaths, type AuthorWorkspaceRoute } from './author-routing';
 import {
@@ -52,7 +54,7 @@ interface CardWorkspaceProps {
   mutationCoordinator: AuthorMutationCoordinator;
   navigate: (to: string, options?: { replace?: boolean }) => void;
   onCardsChange: Dispatch<SetStateAction<AuthorCard[]>>;
-  onReload: () => void;
+  onReload: () => Promise<void> | void;
   route: Extract<AuthorWorkspaceRoute, { section: 'cards' }>;
   state: 'error' | 'loading' | 'ready';
 }
@@ -374,6 +376,13 @@ export function CardWorkspace({
                   message={message}
                   messageRef={feedbackRef}
                   mutationCoordinator={mutationCoordinator}
+                  onConflict={async () => {
+                    await onReload();
+                    if (mountedRef.current)
+                      setMessage(
+                        'The card changed on the server. Its authoritative state was reloaded.',
+                      );
+                  }}
                   onSaved={updateCard}
                 />
               )
@@ -559,6 +568,16 @@ function StatusBadge({ status }: { status: AuthorCard['authoringStatus'] }) {
   );
 }
 
+function cardLifecycleNotice(card: AuthorCard) {
+  return {
+    approved: 'Card approved.',
+    draft: 'Card returned to draft.',
+    in_review: 'Card submitted for independent review.',
+    published: 'Card published and active.',
+    retired: 'Card retired. Existing owned copies remain intact.',
+  }[card.authoringStatus];
+}
+
 function CardDetail({
   apiBaseUrl,
   card,
@@ -567,6 +586,7 @@ function CardDetail({
   message,
   messageRef,
   mutationCoordinator,
+  onConflict,
   onSaved,
 }: {
   apiBaseUrl: string;
@@ -576,22 +596,20 @@ function CardDetail({
   message: string;
   messageRef: RefObject<HTMLDivElement | null>;
   mutationCoordinator: AuthorMutationCoordinator;
+  onConflict: () => Promise<void>;
   onSaved: CardFormProps['onSaved'];
 }) {
   const [apiError, setApiError] = useState<AuthorApiError | null>(null);
   const [busy, setBusy] = useState(false);
-  const [confirmRetire, setConfirmRetire] = useState(false);
   const feedbackRef = useRef<HTMLDivElement>(null);
-  const retireButtonRef = useRef<HTMLButtonElement>(null);
   const operationRef = useRef<AbortController | null>(null);
 
   useEffect(() => () => operationRef.current?.abort(), []);
   useEffect(() => {
     setApiError(null);
-    setConfirmRetire(false);
   }, [card.id, card.authoringStatus]);
 
-  async function lifecycle(action: 'publish' | 'retire') {
+  async function lifecycle(action: AuthorTransitionAction, reason?: string) {
     const controller = new AbortController();
     operationRef.current = controller;
     setBusy(true);
@@ -602,38 +620,25 @@ function CardDetail({
     );
 
     try {
-      const next =
-        action === 'publish'
-          ? await publishAuthorCard({
-              apiBaseUrl,
-              cardId: card.id,
-              expectedVersion: card.version,
-              getAccessToken,
-              signal: controller.signal,
-            })
-          : await retireAuthorCard({
-              apiBaseUrl,
-              cardId: card.id,
-              expectedVersion: card.version,
-              getAccessToken,
-              signal: controller.signal,
-            });
+      const next = await transitionAuthorContent({
+        action,
+        apiBaseUrl,
+        entityId: card.id,
+        entityType: 'card',
+        expectedVersion: card.version,
+        getAccessToken,
+        reason,
+        signal: controller.signal,
+      });
       if (operationRef.current !== controller) return;
-      onSaved(
-        next,
-        card.id,
-        interaction,
-        ticket,
-        action === 'publish'
-          ? 'Card published and active.'
-          : 'Card retired. Existing owned copies remain intact.',
-      );
-      setConfirmRetire(false);
+      onSaved(next, card.id, interaction, ticket, cardLifecycleNotice(next));
     } catch (error) {
       if (operationRef.current !== controller) return;
       if (mutationCoordinator.acceptFailure(ticket, isUncertainError(error))) {
-        setApiError(toAuthorError(error));
-        window.setTimeout(() => feedbackRef.current?.focus());
+        const nextError = toAuthorError(error);
+        setApiError(nextError);
+        if (isAuthorContentConflict(nextError)) await onConflict();
+        else window.setTimeout(() => feedbackRef.current?.focus());
       }
     } finally {
       if (operationRef.current === controller) {
@@ -659,34 +664,25 @@ function CardDetail({
         </div>
         <div className="author-card-detail__lifecycle">
           <StatusBadge status={card.authoringStatus} />
-          <div className="author-actions author-actions--detail">
-            {card.authoringStatus === 'draft' ? (
-              <>
-                <Link className="button" href={authorPaths.editCard(card.id)}>
-                  Edit card
-                </Link>
-                <button
-                  className="button button--quiet"
-                  disabled={busy}
-                  onClick={() => void lifecycle('publish')}
-                  type="button"
-                >
-                  {busy ? 'Publishing…' : 'Publish card'}
-                </button>
-              </>
-            ) : null}
-            {card.authoringStatus !== 'retired' ? (
-              <button
-                className="button button--danger"
-                disabled={busy}
-                onClick={() => setConfirmRetire(true)}
-                ref={retireButtonRef}
-                type="button"
-              >
-                Retire card
-              </button>
-            ) : null}
-          </div>
+          <AuthorLifecycleControls
+            busy={busy}
+            editControl={
+              <Link className="button" href={authorPaths.editCard(card.id)}>
+                Edit card
+              </Link>
+            }
+            noun="card"
+            onAction={(action, reason) => void lifecycle(action, reason)}
+            retirementDescription={
+              <p>
+                This definition will leave future reward selection and cannot be
+                republished. Existing owned copies remain intact.
+              </p>
+            }
+            retirementTitle={`Retire ${card.name}?`}
+            status={card.authoringStatus}
+            submittedBy={card.submittedBy}
+          />
           <AuthorFeedback error={apiError} refObject={feedbackRef} />
           <AuthorFeedback message={message} refObject={messageRef} />
         </div>
@@ -735,24 +731,13 @@ function CardDetail({
           <CardMechanicsSummary card={card} />
         </div>
       </div>
-
-      {confirmRetire ? (
-        <AuthorConfirmationDialog
-          busy={busy}
-          cancelLabel="Keep card"
-          confirmLabel={busy ? 'Retiring…' : 'Retire card'}
-          description={
-            <p>
-              This definition will leave future reward selection and cannot be
-              republished. Existing owned copies remain intact.
-            </p>
-          }
-          onCancel={() => setConfirmRetire(false)}
-          onConfirm={() => void lifecycle('retire')}
-          returnFocusRef={retireButtonRef}
-          title={`Retire ${card.name}?`}
-        />
-      ) : null}
+      <AuthorHistoryPanel
+        apiBaseUrl={apiBaseUrl}
+        entityId={card.id}
+        entityType="card"
+        getAccessToken={getAccessToken}
+        revision={card.version}
+      />
     </article>
   );
 }

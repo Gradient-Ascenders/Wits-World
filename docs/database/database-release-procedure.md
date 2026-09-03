@@ -93,6 +93,13 @@ account-deletion trigger. Apply it before deploying an API that persists issue
 interval names, one successful aggregate-only cleanup log, and expiry behavior
 without recording coordinates or connection details.
 
+Migration `0032_add_movement_eligibility_decisions.sql` adds the retained,
+non-precise journey decision audit used by impossible-journey enforcement.
+Migration `0033_add_async_pvp_invitation_invalidation.sql` then extends the
+asynchronous PvP invitation lifecycle with the terminal `invalidated` state
+required by account deletion. Apply both in order before deploying the issue
+`#180` API and deadline worker.
+
 Migration `0032_add_movement_eligibility_decisions.sql` creates the immutable
 journey-decision audit and the server-receipt lookup index. Apply it before the
 issue `#169` API. Configure the required reviewed
@@ -100,6 +107,28 @@ issue `#169` API. Configure the required reviewed
 there is deliberately no fallback. Rehearsal must confirm migration checksum,
 expiry cleanup, rejected-anchor exclusion, and account-deletion cascade without
 recording precise evidence or threshold values in release logs.
+
+Migration `0034_retire_coin_rewards.sql` is the exception to the usual
+database-first ordering. Quiesce challenge traffic and perform a coordinated
+API/Web cutover because the old and new completed-attempt response shapes are
+not cross-compatible. Drain onto the API that writes `coins_awarded = 0`,
+creates no wallet or ledger entry, and returns only card rewards; then deploy
+the matching Web contract and apply `0034` while challenge traffic remains
+quiesced. The new API requires
+`X-Wits-Challenge-Contract-Version: 2` on every challenge-attempt operation and
+rejects a missing or different value with
+`CHALLENGE_CLIENT_UPGRADE_REQUIRED` before a challenge service can mutate or
+finalise state. The matching Web build sends that value and presents an explicit
+hard-refresh action. This makes refresh enforceable for already-open old tabs:
+they cannot submit or finalise against the new contract until refreshed.
+
+After `0034` applies, run the cards-only completion smoke test against the
+post-migration schema and reopen challenge traffic only when it succeeds. The
+migration preserves historical non-zero completion values, makes legacy wallets
+read-only except for account-deletion cleanup, and makes the coin ledger fully
+immutable. An older API instance will fail challenge finalisation after `0034`,
+so do not leave mixed API versions serving traffic. No new environment variable,
+dependency, seed, or data backfill is required.
 
 ## Prerequisites
 
@@ -154,7 +183,13 @@ test command as evidence that production was changed.
 1. Confirm that CI passes for the exact release commit.
 2. Confirm the intended Neon production database name and that `DATABASE_URL` is
    available without printing it.
-3. Run migrations without demonstration data:
+3. For a release containing `0034`, quiesce challenge traffic, deploy the
+   matching API, ensure every old API instance is drained, deploy the matching
+   Web build, and confirm the API rejects a challenge request without
+   `X-Wits-Challenge-Contract-Version: 2` before invoking challenge services.
+   Keep challenge traffic quiesced through steps 4 and 5. For other releases,
+   retain the migration-first ordering described by their migration notes.
+4. Run migrations without demonstration data:
 
    ```bash
    npm run db:release --workspace @wits-world/api -- \
@@ -162,13 +197,19 @@ test command as evidence that production was changed.
      --confirm-database <production-database-name>
    ```
 
-4. Review the successful migration, PostGIS, and verification counts. Confirm
-   `0028` before deploying the API and compatible Web build.
-5. Deploy the matching API and Web build, then verify health and generated
-   OpenAPI. With sanitised evidence, perform an authenticated Author
+5. Review the successful migration, PostGIS, and verification counts. Confirm
+   `0028` before deploying the API and compatible Web build. For `0034`, confirm
+   the migration applied only after the compatible application checks in step 3,
+   then use the versioned Web client to complete a challenge against the
+   post-migration schema. Verify it persists zero in `coins_awarded`, creates no
+   wallet or ledger row, and returns the card-only result. Reopen challenge
+   traffic only after this smoke test succeeds; otherwise keep it quiesced.
+6. Deploy any matching API and Web build not already deployed by the `0034`
+   choreography, then verify health and generated OpenAPI. With sanitised
+   evidence, perform an authenticated Author
    submit/approve/publish check using two Authors and verify unpublished content
    remains absent from Player APIs.
-6. Only when demonstration seeding has separate approval, rerun with the seed
+7. Only when demonstration seeding has separate approval, rerun with the seed
    option:
 
    ```bash
@@ -178,8 +219,9 @@ test command as evidence that production was changed.
      --seed-basic-demo
    ```
 
-7. Deploy the API only after the required database procedure succeeds.
-8. Verify `/health` and `/api/v1/`, then use an authenticated player session to
+8. Except for the documented `0034` application-first release, deploy the API
+   only after the required database procedure succeeds.
+9. Verify `/health` and `/api/v1/`, then use an authenticated player session to
    confirm the intended event is returned by event discovery and that
    `/api/v1/progression/me` plus the first all-time standings page return safe
    progression fields. Do not place an access token, player UUID, or private
