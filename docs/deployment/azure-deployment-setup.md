@@ -1241,6 +1241,8 @@ Deployment waits for all required validation jobs and the combined gate
 Missing comparison data triggers deployment rather than an unsafe skip
 Main branch protected through PR workflow
 Web/API artifact names and metadata bound to the exact main commit SHA
+Remote main revalidated before change detection and every production mutation
+Stale restarted runs skip database and Azure changes instead of rolling production back
 Deployment ZIP checksums, integrity, and required files verified before authentication
 Public frontend build values stored as Gitea Variables and scoped to C220 build steps
 API runtime configuration and secrets stored in Azure App Service settings

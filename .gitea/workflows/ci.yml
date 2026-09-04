@@ -171,7 +171,8 @@ jobs:
             package-lock.json \
             tsconfig.base.json \
             apps/web \
-            packages/account-policy
+            packages/account-policy \
+            scripts/confirm-current-main.sh
           DIFF_STATUS=$?
           set -e
 
@@ -323,6 +324,7 @@ jobs:
             apps/api \
             packages/account-policy \
             packages/game-rules \
+            scripts/confirm-current-main.sh \
             scripts/prepare-api.mjs \
             database
           DIFF_STATUS=$?
@@ -668,9 +670,18 @@ jobs:
 
           DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
           DEPLOY_MARKER="$DEPLOY_ROOT/deploy-required"
+          CURRENT_MAIN_MARKER="$DEPLOY_ROOT/current-main"
 
           cd "$DEPLOY_ROOT/repository"
           rm -f "$DEPLOY_MARKER"
+
+          bash scripts/confirm-current-main.sh "$CURRENT_MAIN_MARKER"
+
+          if [ ! -f "$CURRENT_MAIN_MARKER" ]; then
+            echo "The API deployment run is stale; API deployment will be skipped."
+            echo "required=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           if [[ "$PREVIOUS_SHA" =~ ^[0-9a-f]{40}$ ]] && \
             [ "$PREVIOUS_SHA" != "0000000000000000000000000000000000000000" ] && \
@@ -693,6 +704,7 @@ jobs:
             apps/api \
             packages/account-policy \
             packages/game-rules \
+            scripts/confirm-current-main.sh \
             scripts/prepare-api.mjs \
             database
           then
@@ -822,6 +834,22 @@ jobs:
             exit 1
           fi
 
+      - name: Reconfirm API deployment commit is current main
+        if: ${{ steps.api_deployment_changes.outputs.required == 'true' }}
+        run: |
+          set -euo pipefail
+
+          DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
+          CURRENT_MAIN_MARKER="$DEPLOY_ROOT/current-main"
+
+          bash \
+            "$DEPLOY_ROOT/repository/scripts/confirm-current-main.sh" \
+            "$CURRENT_MAIN_MARKER"
+
+          if [ ! -f "$CURRENT_MAIN_MARKER" ]; then
+            rm -f "$DEPLOY_ROOT/deploy-required"
+          fi
+
       - name: Set up Node.js for production database release
         if: ${{ steps.api_deployment_changes.outputs.required == 'true' }}
         uses: https://github.com/actions/setup-node@v4
@@ -853,6 +881,24 @@ jobs:
         run: |
           set -euo pipefail
 
+          DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
+          CURRENT_MAIN_MARKER="$DEPLOY_ROOT/current-main"
+
+          if [ ! -f "$DEPLOY_ROOT/deploy-required" ]; then
+            echo "Skipping production database maintenance configuration."
+            exit 0
+          fi
+
+          bash \
+            "$DEPLOY_ROOT/repository/scripts/confirm-current-main.sh" \
+            "$CURRENT_MAIN_MARKER"
+
+          if [ ! -f "$CURRENT_MAIN_MARKER" ]; then
+            rm -f "$DEPLOY_ROOT/deploy-required"
+            echo "Skipping stale production database maintenance configuration."
+            exit 0
+          fi
+
           # Keep the database-backed workers aligned so serverless Postgres can
           # suspend between sweeps instead of receiving a query every minute.
           az webapp config appsettings set \
@@ -873,7 +919,23 @@ jobs:
           set -euo pipefail
 
           DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
+          CURRENT_MAIN_MARKER="$DEPLOY_ROOT/current-main"
           RELEASE_ROOT="$DEPLOY_ROOT/database-release"
+
+          if [ ! -f "$DEPLOY_ROOT/deploy-required" ]; then
+            echo "Skipping the production database release."
+            exit 0
+          fi
+
+          bash \
+            "$DEPLOY_ROOT/repository/scripts/confirm-current-main.sh" \
+            "$CURRENT_MAIN_MARKER"
+
+          if [ ! -f "$CURRENT_MAIN_MARKER" ]; then
+            rm -f "$DEPLOY_ROOT/deploy-required"
+            echo "Skipping stale production database release."
+            exit 0
+          fi
 
           DATABASE_URL="$(
             az webapp config appsettings list \
@@ -961,9 +1023,20 @@ jobs:
           set -euo pipefail
 
           DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
+          CURRENT_MAIN_MARKER="$DEPLOY_ROOT/current-main"
 
           if [ ! -f "$DEPLOY_ROOT/deploy-required" ]; then
             echo "Skipping the API deployment."
+            exit 0
+          fi
+
+          bash \
+            "$DEPLOY_ROOT/repository/scripts/confirm-current-main.sh" \
+            "$CURRENT_MAIN_MARKER"
+
+          if [ ! -f "$CURRENT_MAIN_MARKER" ]; then
+            rm -f "$DEPLOY_ROOT/deploy-required"
+            echo "Skipping stale API deployment."
             exit 0
           fi
 
@@ -1113,9 +1186,18 @@ jobs:
 
           DEPLOY_ROOT="/tmp/witsworld-web-deploy-${DEPLOY_SHA}"
           DEPLOY_MARKER="$DEPLOY_ROOT/deploy-required"
+          CURRENT_MAIN_MARKER="$DEPLOY_ROOT/current-main"
 
           cd "$DEPLOY_ROOT/repository"
           rm -f "$DEPLOY_MARKER"
+
+          bash scripts/confirm-current-main.sh "$CURRENT_MAIN_MARKER"
+
+          if [ ! -f "$CURRENT_MAIN_MARKER" ]; then
+            echo "The web deployment run is stale; web deployment will be skipped."
+            echo "required=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           if [[ "$PREVIOUS_SHA" =~ ^[0-9a-f]{40}$ ]] && \
             [ "$PREVIOUS_SHA" != "0000000000000000000000000000000000000000" ] && \
@@ -1136,7 +1218,8 @@ jobs:
             package-lock.json \
             tsconfig.base.json \
             apps/web \
-            packages/account-policy
+            packages/account-policy \
+            scripts/confirm-current-main.sh
           then
             echo "No web or shared runtime changes detected; web deployment will be skipped."
             echo "required=false" >> "$GITHUB_OUTPUT"
@@ -1187,6 +1270,22 @@ jobs:
           unzip -Z1 "$DEPLOY_ROOT/witsworld-web-deploy.zip" |
             grep -E '^assets/.+'
 
+      - name: Reconfirm web deployment commit is current main
+        if: ${{ steps.web_deployment_changes.outputs.required == 'true' }}
+        run: |
+          set -euo pipefail
+
+          DEPLOY_ROOT="/tmp/witsworld-web-deploy-${DEPLOY_SHA}"
+          CURRENT_MAIN_MARKER="$DEPLOY_ROOT/current-main"
+
+          bash \
+            "$DEPLOY_ROOT/repository/scripts/confirm-current-main.sh" \
+            "$CURRENT_MAIN_MARKER"
+
+          if [ ! -f "$CURRENT_MAIN_MARKER" ]; then
+            rm -f "$DEPLOY_ROOT/deploy-required"
+          fi
+
       - name: Authenticate to Azure
         run: |
           set -euo pipefail
@@ -1212,9 +1311,20 @@ jobs:
           set -euo pipefail
 
           DEPLOY_ROOT="/tmp/witsworld-web-deploy-${DEPLOY_SHA}"
+          CURRENT_MAIN_MARKER="$DEPLOY_ROOT/current-main"
 
           if [ ! -f "$DEPLOY_ROOT/deploy-required" ]; then
             echo "Skipping the web deployment."
+            exit 0
+          fi
+
+          bash \
+            "$DEPLOY_ROOT/repository/scripts/confirm-current-main.sh" \
+            "$CURRENT_MAIN_MARKER"
+
+          if [ ! -f "$CURRENT_MAIN_MARKER" ]; then
+            rm -f "$DEPLOY_ROOT/deploy-required"
+            echo "Skipping stale web deployment."
             exit 0
           fi
 
