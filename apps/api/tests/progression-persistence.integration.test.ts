@@ -103,6 +103,7 @@ describe.skipIf(!runIntegrationTests)(
         '0033_add_async_pvp_invitation_invalidation.sql',
         '0034_retire_coin_rewards.sql',
         '0035_deny_deleted_identity_tokens.sql',
+        '0036_remove_duplicate_indexes.sql',
       ]);
 
       pool = createDatabasePool(temporaryConfig);
@@ -780,17 +781,7 @@ async function copyMigrationsBeforeProgression(): Promise<string> {
   const migrationNames = (await readdir(sourceDirectory))
     .filter(
       (name) =>
-        name.endsWith('.sql') &&
-        name !== '0026_create_player_progression.sql' &&
-        name !== '0027_create_ordered_trails.sql' &&
-        name !== '0028_create_asynchronous_pvp_persistence.sql' &&
-        name !== '0029_curate_author_content_lifecycle.sql' &&
-        name !== '0030_create_campaign_scheduling.sql' &&
-        name !== '0031_create_movement_evidence.sql' &&
-        name !== '0032_add_movement_eligibility_decisions.sql' &&
-        name !== '0033_add_async_pvp_invitation_invalidation.sql' &&
-        name !== '0034_retire_coin_rewards.sql' &&
-        name !== '0035_deny_deleted_identity_tokens.sql',
+        name.endsWith('.sql') && name < '0026_create_player_progression.sql',
     )
     .sort();
 
