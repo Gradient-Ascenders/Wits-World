@@ -135,6 +135,10 @@ string and must be recorded by an authorised operator.
 
 ## Open operational evidence
 
+The [September architecture review](./architecture-review-2026-09.md) records
+live metadata findings, the duplicate-index cleanup, nullable-field decisions,
+and follow-up storage and query-plan work.
+
 The schema, motivation, migration mechanism, release procedure, and disposable
 database tests are documented. The repository does not yet contain final
 provider backup/point-in-time-recovery guarantees, a completed production

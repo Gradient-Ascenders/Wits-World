@@ -26,6 +26,7 @@ import { createProgressionPersistence } from '../src/progression/progression-per
 const MIGRATION_NAME = '0028_create_asynchronous_pvp_persistence.sql';
 const INVALIDATION_MIGRATION_NAME =
   '0033_add_async_pvp_invitation_invalidation.sql';
+const INDEX_CLEANUP_MIGRATION_NAME = '0036_remove_duplicate_indexes.sql';
 const PRE_MIGRATION_PLAYER_ID = '17900000-0000-4000-8000-000000000001';
 const PRE_MIGRATION_MATCH_ID = '17900000-0000-4000-8000-000000000002';
 const runIntegrationTests =
@@ -98,6 +99,7 @@ describe.skipIf(!runIntegrationTests)(
       expect(migrationResult.applied).toEqual([
         MIGRATION_NAME,
         INVALIDATION_MIGRATION_NAME,
+        INDEX_CLEANUP_MIGRATION_NAME,
       ]);
 
       pool = createDatabasePool(temporaryConfig);
@@ -204,7 +206,7 @@ describe.skipIf(!runIntegrationTests)(
           'async_pvp_matches_active_idx',
           'async_pvp_matches_history_idx',
           'async_pvp_matches_overdue_idx',
-          'async_pvp_match_actions_history_idx',
+          'async_pvp_match_actions_sequence_unique',
           'async_pvp_submission_receipts_actor_operation_unique',
         ]),
       );
@@ -1270,7 +1272,8 @@ async function copyPrePvpMigrations(): Promise<string> {
         (name) =>
           name.endsWith('.sql') &&
           name !== MIGRATION_NAME &&
-          name !== INVALIDATION_MIGRATION_NAME,
+          name !== INVALIDATION_MIGRATION_NAME &&
+          name !== INDEX_CLEANUP_MIGRATION_NAME,
       )
       .map((name) =>
         copyFile(join(sourceDirectory, name), join(targetDirectory, name)),
