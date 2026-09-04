@@ -6,7 +6,7 @@ export interface ChallengeChoice {
   text: string;
 }
 
-export interface ChallengeQuestion {
+export interface MultipleChoiceChallengeQuestion {
   answeredAt: string | null;
   attemptQuestionId: string;
   choices: ChallengeChoice[];
@@ -15,13 +15,39 @@ export interface ChallengeQuestion {
   selectedChoiceId: string | null;
 }
 
-export interface InProgressChallengeAttempt {
+export interface OrderingChallengeItem {
+  itemId: string;
+  text: string;
+}
+
+export interface OrderingChallengeQuestion {
+  answeredAt: string | null;
+  attemptQuestionId: string;
+  items: OrderingChallengeItem[];
+  position: number;
+  prompt: string;
+  selectedItemIds: string[] | null;
+}
+
+export interface InProgressMultipleChoiceChallengeAttempt {
   answeredCount: number;
   attemptId: string;
   deadline: string;
   eventId: string;
   format: 'multiple_choice';
-  questions: ChallengeQuestion[];
+  questions: MultipleChoiceChallengeQuestion[];
+  startedAt: string;
+  status: 'in_progress';
+  totalQuestions: 5;
+}
+
+export interface InProgressOrderingChallengeAttempt {
+  answeredCount: number;
+  attemptId: string;
+  deadline: string;
+  eventId: string;
+  format: 'ordering';
+  questions: OrderingChallengeQuestion[];
   startedAt: string;
   status: 'in_progress';
   totalQuestions: 5;
@@ -36,7 +62,7 @@ export interface CompletedChallengeCard {
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
 }
 
-export interface CompletedChallengeQuestionReview {
+export interface CompletedMultipleChoiceQuestionReview {
   attemptQuestionId: string;
   correctChoice: ChallengeChoice;
   isCorrect: boolean;
@@ -45,18 +71,47 @@ export interface CompletedChallengeQuestionReview {
   selectedChoice: ChallengeChoice | null;
 }
 
-export interface CompletedChallengeAttempt {
+export interface CompletedMultipleChoiceChallengeAttempt {
   attemptId: string;
   completedAt: string;
   completionReason: 'answered' | 'timeout';
   eventId: string;
   format: 'multiple_choice';
-  review: CompletedChallengeQuestionReview[];
+  review: CompletedMultipleChoiceQuestionReview[];
   reward: { cards: CompletedChallengeCard[] };
   scoreCorrect: number;
   status: 'completed';
   totalQuestions: 5;
 }
+
+export interface CompletedOrderingQuestionReview {
+  attemptQuestionId: string;
+  correctItems: OrderingChallengeItem[];
+  explanation: string;
+  isCorrect: boolean;
+  position: number;
+  prompt: string;
+  selectedItems: OrderingChallengeItem[] | null;
+}
+
+export interface CompletedOrderingChallengeAttempt {
+  attemptId: string;
+  completedAt: string;
+  completionReason: 'answered' | 'timeout';
+  eventId: string;
+  format: 'ordering';
+  review: CompletedOrderingQuestionReview[];
+  reward: { cards: CompletedChallengeCard[] };
+  scoreCorrect: number;
+  status: 'completed';
+  totalQuestions: 5;
+}
+
+export type InProgressChallengeAttempt =
+  InProgressMultipleChoiceChallengeAttempt | InProgressOrderingChallengeAttempt;
+
+export type CompletedChallengeAttempt =
+  CompletedMultipleChoiceChallengeAttempt | CompletedOrderingChallengeAttempt;
 
 export type PlayerSafeChallengeAttempt =
   CompletedChallengeAttempt | InProgressChallengeAttempt;
@@ -98,11 +153,21 @@ interface GetChallengeAttemptOptions extends ChallengeRequestBase {
   attemptId: string;
 }
 
-interface SubmitChallengeAnswerOptions extends ChallengeRequestBase {
-  attemptId: string;
-  attemptQuestionId: string;
-  choiceId: string;
-}
+type SubmitChallengeAnswerOptions = ChallengeRequestBase &
+  (
+    | {
+        attemptId: string;
+        attemptQuestionId: string;
+        choiceId: string;
+        format?: 'multiple_choice';
+      }
+    | {
+        attemptId: string;
+        attemptQuestionId: string;
+        format: 'ordering';
+        itemIds: string[];
+      }
+  );
 
 export async function startChallengeAttempt({
   apiBaseUrl,
@@ -136,21 +201,28 @@ export async function getChallengeAttempt({
   });
 }
 
-export async function submitChallengeAnswer({
-  apiBaseUrl,
-  attemptId,
-  attemptQuestionId,
-  choiceId,
-  getAccessToken,
-  signal,
-}: SubmitChallengeAnswerOptions): Promise<PlayerSafeChallengeAttempt> {
+export async function submitChallengeAnswer(
+  options: SubmitChallengeAnswerOptions,
+): Promise<PlayerSafeChallengeAttempt> {
+  const body =
+    options.format === 'ordering'
+      ? {
+          attemptQuestionId: options.attemptQuestionId,
+          format: 'ordering' as const,
+          itemIds: options.itemIds,
+        }
+      : {
+          attemptQuestionId: options.attemptQuestionId,
+          choiceId: options.choiceId,
+        };
+
   return requestAttempt({
-    apiBaseUrl,
-    body: { attemptQuestionId, choiceId },
-    getAccessToken,
+    apiBaseUrl: options.apiBaseUrl,
+    body,
+    getAccessToken: options.getAccessToken,
     method: 'POST',
-    path: `/challenge-attempts/${attemptId}/answers`,
-    signal,
+    path: `/challenge-attempts/${options.attemptId}/answers`,
+    signal: options.signal,
   });
 }
 
@@ -299,7 +371,7 @@ function parseInProgressAttempt(
   if (
     !isUuid(payload.attemptId) ||
     !isUuid(payload.eventId) ||
-    payload.format !== 'multiple_choice' ||
+    (payload.format !== 'multiple_choice' && payload.format !== 'ordering') ||
     !isDateTime(payload.startedAt) ||
     !isDateTime(payload.deadline) ||
     payload.totalQuestions !== 5 ||
@@ -311,7 +383,11 @@ function parseInProgressAttempt(
     throw new ChallengeApiError('unavailable');
   }
 
-  const questions = payload.questions.map(parseQuestion);
+  if (payload.format === 'ordering') {
+    return parseInProgressOrderingAttempt(payload);
+  }
+
+  const questions = payload.questions.map(parseMultipleChoiceQuestion);
 
   if (
     new Set(questions.map((question) => question.position)).size !== 5 ||
@@ -335,7 +411,9 @@ function parseInProgressAttempt(
   };
 }
 
-function parseQuestion(payload: unknown): ChallengeQuestion {
+function parseMultipleChoiceQuestion(
+  payload: unknown,
+): MultipleChoiceChallengeQuestion {
   if (
     !isRecord(payload) ||
     !isUuid(payload.attemptQuestionId) ||
@@ -371,6 +449,80 @@ function parseQuestion(payload: unknown): ChallengeQuestion {
   };
 }
 
+function parseInProgressOrderingAttempt(
+  payload: Record<string, unknown>,
+): InProgressOrderingChallengeAttempt {
+  const questions = (payload.questions as unknown[]).map(parseOrderingQuestion);
+
+  if (
+    new Set(questions.map((question) => question.position)).size !== 5 ||
+    !questions.every((question, index) => question.position === index + 1) ||
+    questions.filter((question) => question.selectedItemIds !== null).length !==
+      payload.answeredCount
+  ) {
+    throw new ChallengeApiError('unavailable');
+  }
+
+  return {
+    answeredCount: payload.answeredCount as number,
+    attemptId: payload.attemptId as string,
+    deadline: payload.deadline as string,
+    eventId: payload.eventId as string,
+    format: 'ordering',
+    questions,
+    startedAt: payload.startedAt as string,
+    status: 'in_progress',
+    totalQuestions: 5,
+  };
+}
+
+function parseOrderingQuestion(payload: unknown): OrderingChallengeQuestion {
+  if (
+    !isRecord(payload) ||
+    !hasOnlyKeys(payload, [
+      'answeredAt',
+      'attemptQuestionId',
+      'items',
+      'position',
+      'prompt',
+      'selectedItemIds',
+    ]) ||
+    !isUuid(payload.attemptQuestionId) ||
+    !isQuestionPosition(payload.position) ||
+    typeof payload.prompt !== 'string' ||
+    payload.prompt.trim() === '' ||
+    !Array.isArray(payload.items) ||
+    payload.items.length !== 4 ||
+    !isNullableUuidArray(payload.selectedItemIds) ||
+    !isNullableDateTime(payload.answeredAt) ||
+    hasForbiddenActiveAttemptFeedback(payload)
+  ) {
+    throw new ChallengeApiError('unavailable');
+  }
+
+  const items = payload.items.map(parseOrderingItem);
+  const itemIds = items.map((item) => item.itemId);
+
+  if (
+    new Set(itemIds).size !== 4 ||
+    (payload.selectedItemIds !== null &&
+      (payload.selectedItemIds.length !== 4 ||
+        new Set(payload.selectedItemIds).size !== 4 ||
+        payload.selectedItemIds.some((itemId) => !itemIds.includes(itemId))))
+  ) {
+    throw new ChallengeApiError('unavailable');
+  }
+
+  return {
+    answeredAt: payload.answeredAt,
+    attemptQuestionId: payload.attemptQuestionId,
+    items,
+    position: payload.position,
+    prompt: payload.prompt,
+    selectedItemIds: payload.selectedItemIds,
+  };
+}
+
 function parseChoice(payload: unknown): ChallengeChoice {
   if (
     !isRecord(payload) ||
@@ -385,9 +537,27 @@ function parseChoice(payload: unknown): ChallengeChoice {
   return { choiceId: payload.choiceId, text: payload.text };
 }
 
+function parseOrderingItem(payload: unknown): OrderingChallengeItem {
+  if (
+    !isRecord(payload) ||
+    !hasOnlyKeys(payload, ['itemId', 'text']) ||
+    !isUuid(payload.itemId) ||
+    typeof payload.text !== 'string' ||
+    payload.text.trim() === ''
+  ) {
+    throw new ChallengeApiError('unavailable');
+  }
+
+  return { itemId: payload.itemId, text: payload.text };
+}
+
 function parseCompletedAttempt(
   payload: Record<string, unknown>,
 ): CompletedChallengeAttempt {
+  if (payload.format === 'ordering') {
+    return parseCompletedOrderingAttempt(payload);
+  }
+
   if (
     !hasOnlyKeys(payload, [
       'attemptId',
@@ -457,7 +627,7 @@ function parseCompletedAttempt(
 
 function parseCompletedQuestionReview(
   payload: unknown,
-): CompletedChallengeQuestionReview {
+): CompletedMultipleChoiceQuestionReview {
   if (
     !isRecord(payload) ||
     !hasOnlyKeys(payload, [
@@ -492,6 +662,127 @@ function parseCompletedQuestionReview(
     position: payload.position,
     prompt: payload.prompt,
     selectedChoice,
+  };
+}
+
+function parseCompletedOrderingAttempt(
+  payload: Record<string, unknown>,
+): CompletedOrderingChallengeAttempt {
+  if (
+    !hasOnlyKeys(payload, [
+      'attemptId',
+      'completedAt',
+      'completionReason',
+      'eventId',
+      'format',
+      'requestId',
+      'review',
+      'reward',
+      'scoreCorrect',
+      'status',
+      'totalQuestions',
+    ]) ||
+    !isUuid(payload.attemptId) ||
+    !isUuid(payload.eventId) ||
+    payload.format !== 'ordering' ||
+    !isDateTime(payload.completedAt) ||
+    !isCompletionReason(payload.completionReason) ||
+    payload.totalQuestions !== 5 ||
+    !isAnswerCount(payload.scoreCorrect) ||
+    !Array.isArray(payload.review) ||
+    payload.review.length !== 5 ||
+    !isRecord(payload.reward) ||
+    !hasOnlyKeys(payload.reward, ['cards']) ||
+    !Array.isArray(payload.reward.cards) ||
+    payload.reward.cards.length > 2
+  ) {
+    throw new ChallengeApiError('unavailable');
+  }
+
+  const review = payload.review.map(parseCompletedOrderingReview);
+
+  if (
+    new Set(review.map((question) => question.position)).size !== 5 ||
+    !review.every((question, index) => question.position === index + 1) ||
+    (payload.completionReason === 'answered' &&
+      review.some((question) => question.selectedItems === null)) ||
+    review.filter((question) => question.isCorrect).length !==
+      payload.scoreCorrect
+  ) {
+    throw new ChallengeApiError('unavailable');
+  }
+
+  return {
+    attemptId: payload.attemptId,
+    completedAt: payload.completedAt,
+    completionReason: payload.completionReason,
+    eventId: payload.eventId,
+    format: 'ordering',
+    review,
+    reward: {
+      cards: payload.reward.cards.map(parseRewardCard),
+    },
+    scoreCorrect: payload.scoreCorrect,
+    status: 'completed',
+    totalQuestions: 5,
+  };
+}
+
+function parseCompletedOrderingReview(
+  payload: unknown,
+): CompletedOrderingQuestionReview {
+  if (
+    !isRecord(payload) ||
+    !hasOnlyKeys(payload, [
+      'attemptQuestionId',
+      'position',
+      'prompt',
+      'selectedItems',
+      'correctItems',
+      'isCorrect',
+      'explanation',
+    ]) ||
+    !isUuid(payload.attemptQuestionId) ||
+    !isQuestionPosition(payload.position) ||
+    typeof payload.prompt !== 'string' ||
+    payload.prompt.trim() === '' ||
+    (payload.selectedItems !== null && !Array.isArray(payload.selectedItems)) ||
+    !Array.isArray(payload.correctItems) ||
+    typeof payload.isCorrect !== 'boolean' ||
+    typeof payload.explanation !== 'string' ||
+    payload.explanation.trim() === ''
+  ) {
+    throw new ChallengeApiError('unavailable');
+  }
+
+  const selectedItems =
+    payload.selectedItems === null
+      ? null
+      : payload.selectedItems.map(parseOrderingItem);
+  const correctItems = payload.correctItems.map(parseOrderingItem);
+  const correctIds = correctItems.map((item) => item.itemId);
+  const selectedIds = selectedItems?.map((item) => item.itemId) ?? null;
+
+  if (
+    correctItems.length !== 4 ||
+    new Set(correctIds).size !== 4 ||
+    (selectedItems !== null &&
+      (selectedItems.length !== 4 ||
+        new Set(selectedIds ?? []).size !== 4 ||
+        (selectedIds ?? []).some((itemId) => !correctIds.includes(itemId)))) ||
+    (selectedItems === null && payload.isCorrect)
+  ) {
+    throw new ChallengeApiError('unavailable');
+  }
+
+  return {
+    attemptQuestionId: payload.attemptQuestionId,
+    correctItems,
+    explanation: payload.explanation,
+    isCorrect: payload.isCorrect,
+    position: payload.position,
+    prompt: payload.prompt,
+    selectedItems,
   };
 }
 
@@ -554,11 +845,13 @@ function hasForbiddenActiveAttemptFeedback(
     'correctAnswers',
     'correctChoice',
     'correctChoiceId',
+    'correctItems',
     'explanation',
     'isCorrect',
     'review',
     'reward',
     'scoreCorrect',
+    'selectedItems',
   ].some((key) => key in payload);
 }
 
@@ -586,6 +879,10 @@ function isDateTime(value: unknown): value is string {
 
 function isNullableUuid(value: unknown): value is string | null {
   return value === null || isUuid(value);
+}
+
+function isNullableUuidArray(value: unknown): value is string[] | null {
+  return value === null || (Array.isArray(value) && value.every(isUuid));
 }
 
 function isNullableDateTime(value: unknown): value is string | null {

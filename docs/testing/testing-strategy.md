@@ -48,6 +48,14 @@ The browser is tested for submitting player intent and rendering authoritative
 responses, not for independently deciding eligibility, marking, rewards, deck
 legality, trail progress, unlock state, or match outcomes.
 
+Ordering-challenge web coverage validates the discriminated author and Player
+API contracts, exact four-item authoring, pointer reordering, keyboard-operable
+Move Up / Move Down controls and announcements, ordered submission intent,
+double-submit prevention, timeout reconciliation, malformed payload rejection,
+and API-supplied completed feedback. Server route, service, and database tests
+remain the evidence for shuffling, answer locking, exact-sequence marking,
+deadlines, score, completion, and explanation privacy.
+
 Progression route tests verify authentication, Player Name setup, privacy
 allowlists, month and pagination validation, current rank outside the selected
 page, and closed OpenAPI schemas. Database tests verify points and achievement

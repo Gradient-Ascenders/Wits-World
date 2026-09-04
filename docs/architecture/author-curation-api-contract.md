@@ -113,23 +113,24 @@ fields rather than independent sources of lifecycle truth.
 
 The Author console exposes submission, independent review, return reasons,
 approval, publication, confirmed retirement, the filtered review queue, and
-lazy review history for events, multiple-choice challenges/questions, cards,
-and campaigns. Queue summaries navigate to the authoritative entity detail
-before review actions are offered. Editing remains draft-only; lifecycle
-conflicts reload authoritative detail, while stale campaign edits preserve the
-local form until the Author confirms replacing it with the server version. The
-browser derives successful lifecycle feedback from the returned resource and
-does not infer a new state from the requested action.
+lazy review history for events, multiple-choice and ordering
+challenges/questions, cards, and campaigns. Ordering authoring records exactly
+four nonblank items in authoritative correct-sequence order. Queue summaries
+navigate to the authoritative entity detail before review actions are offered.
+Editing remains draft-only; lifecycle conflicts reload authoritative detail,
+while stale campaign edits preserve the local form until the Author confirms
+replacing it with the server version. The browser derives successful lifecycle
+feedback from the returned resource and does not infer a new state from the
+requested action.
 
 Question analytics and flagged-question workflows remain blocked by issue
 `#184` / S3-06 because no current analytics contract is available. The console
-does not invent or mock that data. Ordering-question authoring also remains a
-follow-up: the current Author question contract and editor accept only
-`multiple_choice`, so ordering support needs its own agreed API/editor scope.
+does not invent or mock that data.
 
 ## AI declaration
 
 This contract was generated, edited, and reviewed with the assistance of
 Codex[gpt-5.6-sol] and Codex[GPT-5]. It describes the implemented issue `#182`
-contract and issue `#185` Author-console integration; it does not claim that
-blocked analytics, ordering-question editing, or asynchronous PvP is implemented.
+contract, issue `#185` Author-console integration, and issue `#163` ordering
+authoring integration; it does not claim that blocked analytics or asynchronous
+PvP is implemented.

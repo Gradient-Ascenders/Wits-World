@@ -744,7 +744,8 @@
 }
 
 .form-field label,
-.challenge-selector label {
+.challenge-selector label,
+.challenge-create-controls label {
   color: var(--colour-text-primary);
   font-size: var(--text-sm);
   font-weight: 750;
@@ -753,7 +754,8 @@
 .form-field input,
 .form-field textarea,
 .form-field select,
-.challenge-selector select {
+.challenge-selector select,
+.challenge-create-controls select {
   width: 100%;
   min-height: var(--touch-target-min);
   padding: 0.7rem 0.8rem;
@@ -1090,6 +1092,18 @@
   gap: var(--space-2);
 }
 
+.challenge-create-controls {
+  display: grid;
+  width: min(100%, 28rem);
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: end;
+}
+
+.challenge-create-controls label {
+  grid-column: 1 / -1;
+}
+
 .question-workspace--list .question-record-view,
 .question-workspace--record > .question-catalogue {
   display: none;
@@ -1174,6 +1188,20 @@
   list-style: none;
 }
 
+.question-answer-summary ol.is-numbered {
+  padding-left: 1.5rem;
+  list-style: decimal;
+}
+
+.question-answer-summary ol.is-numbered li {
+  display: list-item;
+}
+
+.question-answer-summary ol.is-numbered li::marker {
+  color: var(--colour-gold-400);
+  font-weight: 800;
+}
+
 .question-answer-summary li {
   display: flex;
   min-height: var(--touch-target-min);
@@ -1217,6 +1245,16 @@
   height: 1.25rem;
   margin: 2.25rem auto 0;
   accent-color: var(--colour-gold-500);
+}
+
+@media (max-width: 24rem) {
+  .challenge-create-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .challenge-create-controls label {
+    grid-column: auto;
+  }
 }
 
 .nested-editor {

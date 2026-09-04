@@ -3,6 +3,7 @@ import type { ApiAccessTokenProvider } from '../auth/useApiAccessToken';
 export type AuthoringStatus =
   'draft' | 'in_review' | 'approved' | 'published' | 'retired';
 export type PublicationProvenance = 'legacy' | 'controlled_seed' | 'reviewed';
+export type ChallengeFormat = 'multiple_choice' | 'ordering';
 export type AuthorContentEntityType =
   'event' | 'challenge' | 'question' | 'card' | 'campaign';
 export type AuthorContentAction =
@@ -87,7 +88,7 @@ export interface AuthorChallenge extends AuthorLifecycleMetadata {
   challengeId: string;
   createdAt: string;
   eventId: string;
-  format: 'multiple_choice';
+  format: ChallengeFormat;
   status: AuthoringStatus;
   updatedAt: string;
 }
@@ -98,11 +99,8 @@ export interface AuthorQuestionChoice {
   text: string;
 }
 
-export interface AuthorQuestion extends AuthorLifecycleMetadata {
-  acceptedChoiceId: string | null;
-  acceptedChoicePosition: number | null;
+interface AuthorQuestionBase extends AuthorLifecycleMetadata {
   challengeId: string;
-  choices: AuthorQuestionChoice[];
   createdAt: string;
   difficulty: 1 | 2 | 3;
   explanation: string | null;
@@ -112,13 +110,46 @@ export interface AuthorQuestion extends AuthorLifecycleMetadata {
   updatedAt: string;
 }
 
-export interface AuthorQuestionInput {
-  acceptedChoicePosition: number;
-  choices: string[];
+export interface AuthorMultipleChoiceQuestion extends AuthorQuestionBase {
+  acceptedChoiceId: string | null;
+  acceptedChoicePosition: number | null;
+  choices: AuthorQuestionChoice[];
+  format: 'multiple_choice';
+}
+
+export interface AuthorOrderingItem {
+  itemId: string;
+  position: number;
+  text: string;
+}
+
+export interface AuthorOrderingQuestion extends AuthorQuestionBase {
+  format: 'ordering';
+  items: AuthorOrderingItem[];
+}
+
+export type AuthorQuestion =
+  AuthorMultipleChoiceQuestion | AuthorOrderingQuestion;
+
+interface AuthorQuestionInputBase {
   difficulty: 1 | 2 | 3;
   explanation: string;
   prompt: string;
 }
+
+export interface AuthorMultipleChoiceQuestionInput extends AuthorQuestionInputBase {
+  acceptedChoicePosition: number;
+  choices: string[];
+  format: 'multiple_choice';
+}
+
+export interface AuthorOrderingQuestionInput extends AuthorQuestionInputBase {
+  format: 'ordering';
+  items: string[];
+}
+
+export type AuthorQuestionInput =
+  AuthorMultipleChoiceQuestionInput | AuthorOrderingQuestionInput;
 
 export type CardAffinity = 'grit' | 'mystic' | 'spark' | 'spirit' | 'wit';
 export type CardCategory = 'creature' | 'power';
@@ -388,11 +419,11 @@ export async function listAuthorChallenges(
 }
 
 export async function createAuthorChallenge(
-  options: RequestBase & { eventId: string },
+  options: RequestBase & { eventId: string; format: ChallengeFormat },
 ) {
   const payload = await authorRequest({
     ...options,
-    body: {},
+    body: { format: options.format },
     method: 'POST',
     path: `/author/events/${options.eventId}/challenges`,
   });
@@ -917,7 +948,7 @@ function parseAuthorChallenge(value: unknown): AuthorChallenge {
     !isRecord(value) ||
     !isUuid(value.challengeId) ||
     !isUuid(value.eventId) ||
-    value.format !== 'multiple_choice' ||
+    !isChallengeFormat(value.format) ||
     !isStatus(value.status) ||
     !isDateTime(value.createdAt) ||
     !isDateTime(value.updatedAt) ||
@@ -934,16 +965,45 @@ function parseAuthorQuestion(value: unknown): AuthorQuestion {
     !isRecord(value) ||
     !isUuid(value.questionId) ||
     !isUuid(value.challengeId) ||
+    !isChallengeFormat(value.format) ||
     !isNonBlank(value.prompt) ||
     !isDifficulty(value.difficulty) ||
     !isNullableString(value.explanation) ||
     !isStatus(value.status) ||
-    !Array.isArray(value.choices) ||
-    !isNullableUuid(value.acceptedChoiceId) ||
-    !isNullableChoicePosition(value.acceptedChoicePosition) ||
     !isDateTime(value.createdAt) ||
     !isDateTime(value.updatedAt) ||
     !isLifecycleMetadata(value)
+  ) {
+    throw unavailableResponse();
+  }
+
+  if (value.format === 'ordering') {
+    if (!Array.isArray(value.items)) {
+      throw unavailableResponse();
+    }
+
+    const items = value.items.map(parseOrderingItem);
+
+    if (
+      items.length !== 4 ||
+      new Set(items.map((item) => item.itemId)).size !== 4 ||
+      new Set(items.map((item) => item.position)).size !== 4 ||
+      !items.every((item, index) => item.position === index + 1)
+    ) {
+      throw unavailableResponse();
+    }
+
+    return {
+      ...(value as unknown as AuthorOrderingQuestion),
+      format: 'ordering',
+      items,
+    };
+  }
+
+  if (
+    !Array.isArray(value.choices) ||
+    !isNullableUuid(value.acceptedChoiceId) ||
+    !isNullableChoicePosition(value.acceptedChoicePosition)
   ) {
     throw unavailableResponse();
   }
@@ -964,7 +1024,11 @@ function parseAuthorQuestion(value: unknown): AuthorQuestion {
     throw unavailableResponse();
   }
 
-  return { ...(value as unknown as AuthorQuestion), choices };
+  return {
+    ...(value as unknown as AuthorMultipleChoiceQuestion),
+    format: 'multiple_choice',
+    choices,
+  };
 }
 
 function parseQuestionChoice(value: unknown): AuthorQuestionChoice {
@@ -978,6 +1042,19 @@ function parseQuestionChoice(value: unknown): AuthorQuestionChoice {
   }
 
   return value as unknown as AuthorQuestionChoice;
+}
+
+function parseOrderingItem(value: unknown): AuthorOrderingItem {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.itemId) ||
+    !isChoicePosition(value.position) ||
+    !isNonBlank(value.text)
+  ) {
+    throw unavailableResponse();
+  }
+
+  return value as unknown as AuthorOrderingItem;
 }
 
 function parseAuthorCard(value: unknown): AuthorCard {
@@ -1256,6 +1333,10 @@ function isStatus(value: unknown): value is AuthoringStatus {
     value === 'published' ||
     value === 'retired'
   );
+}
+
+function isChallengeFormat(value: unknown): value is ChallengeFormat {
+  return value === 'multiple_choice' || value === 'ordering';
 }
 
 function isTrailStatus(

@@ -2,13 +2,15 @@
 
 ## Status and authority
 
-This journey implements issue #68 for the Wits Quest Basic tier.
+This journey implements issues #68 and #163 for the Wits Quest Basic tier.
 
 `BASIC-03` is authoritative: marking is server-authoritative. During an active
 timed attempt, no correctness or answer key is revealed. After authoritative
 completion, the player receives a five-question review containing their locked
 answer (or `null` when timeout left it unanswered), the correct answer, and
-server-derived correctness. The current content model has no explanation field.
+server-derived correctness. An ordering review additionally contains the
+authoritative explanation. Multiple-choice explanations remain outside the
+Player contract.
 
 The browser renders player-safe API state. It does not decide eligibility,
 deadline validity, answer correctness, score, completion, progression points,
@@ -29,8 +31,12 @@ compare answers or calculate correctness itself.
    through `GET /api/v1/challenge-attempts/{attemptId}`. This route requires no
    location claim and returns the same safe `404 ATTEMPT_NOT_FOUND` for missing
    and wrong-owner attempts.
-5. The player sees one unanswered question at a time, chooses one of four
-   native radio controls, and submits only `attemptQuestionId` and `choiceId`.
+5. The player sees one unanswered question at a time. Multiple choice uses four
+   native radio controls and submits `attemptQuestionId` and `choiceId`.
+   Ordering starts from the API-shuffled four-item sequence and submits
+   `attemptQuestionId`, `format: "ordering"`, and the four `itemIds` in the
+   player's current order. Pointer reordering and the visible Move Up / Move
+   Down buttons update the same ordered intent.
 6. The API locks the answer. An in-progress response produces a neutral
    “Answer saved” confirmation and advances to the first server-unanswered
    question. It does not reveal whether that answer was correct.
@@ -64,8 +70,12 @@ its own clock.
 
 ## Accessibility
 
-- The challenge uses a labelled progress element, headings, a native radio
-  group, and a native submit button.
+- The challenge uses a labelled progress element, headings, native controls,
+  and a native submit button. Multiple choice uses a radio group. Ordering uses
+  a labelled ordered list plus keyboard-operable Move Up / Move Down buttons.
+- Each ordering movement announces the moved item's new position and the full
+  current order. The list itself exposes the current numbered sequence without
+  requiring pointer input.
 - Answer controls meet the shared 44px touch-target minimum and retain the
   global visible focus treatment.
 - Focus moves to the next question after an answer is saved and to the result
@@ -80,8 +90,9 @@ its own clock.
 The Great Hall development seed includes an active published event, a published
 five-question challenge, and active reward cards. Manual evidence still requires
 an authenticated local player and a reported location the API accepts. Capture
-360px, 390px, 768px, and desktop evidence under ignored `.pr-screenshots/`. Do
-not capture access tokens, precise location values, answer keys, or other
-players' data.
+representative 390px mobile and 1280px desktop evidence under ignored
+`.pr-screenshots/`; add another width only for a concrete breakpoint or
+minimum-width question. Do not capture access tokens, precise location values,
+answer keys, or other players' data.
 
 This document was planned and edited with assistance from Codex[GPT-5].

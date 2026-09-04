@@ -568,8 +568,11 @@ Prioritise:
 Marking is server-authoritative. While the timed attempt is active, challenge UI
 must not reveal correctness or answer keys; saved-answer feedback remains neutral.
 After authoritative completion, it presents the five-question review with the
-player's answer, the correct answer, and server-derived correctness. Do not
-invent explanations: the current Player response has no explanation field. This follows
+player's answer, the correct answer, and server-derived correctness. Ordering
+questions use a four-item ordered list with pointer reordering and visible Move
+Up / Move Down controls; changes announce both the new position and current
+order. Ordering explanations are rendered only from the completed Player
+response, while multiple-choice explanations remain private. This follows
 `BASIC-03` in the Basic-tier decision register. The browser never calculates the
 review itself.
 

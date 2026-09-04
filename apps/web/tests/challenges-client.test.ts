@@ -122,6 +122,67 @@ describe('challenge attempt client', () => {
     );
   });
 
+  it('submits an ordering answer as four attempt-item IDs in player order', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(activeOrderingAttempt(1)));
+    vi.stubGlobal('fetch', fetchMock);
+    const itemIds = [3, 1, 4, 2].map((item) => itemId(1, item));
+
+    await submitChallengeAnswer({
+      apiBaseUrl,
+      attemptId,
+      attemptQuestionId: questionId(1),
+      format: 'ordering',
+      getAccessToken: vi.fn().mockResolvedValue('access-token'),
+      itemIds,
+      signal: new AbortController().signal,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${apiBaseUrl}/challenge-attempts/${attemptId}/answers`,
+      expect.objectContaining({
+        body: JSON.stringify({
+          attemptQuestionId: questionId(1),
+          format: 'ordering',
+          itemIds,
+        }),
+        method: 'POST',
+      }),
+    );
+  });
+
+  it('parses a player-safe ordering attempt without answer feedback', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse(activeOrderingAttempt())),
+    );
+
+    const attempt = await getChallengeAttempt({
+      apiBaseUrl,
+      attemptId,
+      getAccessToken: vi.fn().mockResolvedValue('access-token'),
+      signal: new AbortController().signal,
+    });
+
+    expect(attempt).toMatchObject({
+      format: 'ordering',
+      status: 'in_progress',
+    });
+    if (attempt.status !== 'in_progress' || attempt.format !== 'ordering') {
+      throw new Error('Expected an active ordering attempt.');
+    }
+    expect(attempt.questions[0]).toMatchObject({
+      items: [
+        { itemId: itemId(1, 3), text: 'Item 1.3' },
+        { itemId: itemId(1, 1), text: 'Item 1.1' },
+        { itemId: itemId(1, 4), text: 'Item 1.4' },
+        { itemId: itemId(1, 2), text: 'Item 1.2' },
+      ],
+      selectedItemIds: null,
+    });
+  });
+
   it('maps a stale challenge contract response to an explicit refresh failure', async () => {
     vi.stubGlobal(
       'fetch',
@@ -201,6 +262,106 @@ describe('challenge attempt client', () => {
       isCorrect: true,
     });
   });
+
+  it('accepts the API ordering result, correct sequence, and explanation only after completion', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse(completedOrderingAttempt())),
+    );
+
+    const result = await getChallengeAttempt({
+      apiBaseUrl,
+      attemptId,
+      getAccessToken: vi.fn().mockResolvedValue('access-token'),
+      signal: new AbortController().signal,
+    });
+
+    expect(result).toMatchObject({
+      format: 'ordering',
+      scoreCorrect: 3,
+      status: 'completed',
+    });
+    if (result.status !== 'completed' || result.format !== 'ordering') {
+      throw new Error('Expected a completed ordering attempt.');
+    }
+    expect(result.review[0]).toMatchObject({
+      correctItems: [
+        { itemId: itemId(1, 1) },
+        { itemId: itemId(1, 2) },
+        { itemId: itemId(1, 3) },
+        { itemId: itemId(1, 4) },
+      ],
+      explanation: 'Ordering explanation 1.',
+      isCorrect: true,
+    });
+  });
+
+  it.each([
+    [
+      'a duplicate active item',
+      () => {
+        const attempt = activeOrderingAttempt();
+        attempt.questions[0]!.items[3] = attempt.questions[0]!.items[0]!;
+        return attempt;
+      },
+    ],
+    [
+      'active answer feedback',
+      () => ({
+        ...activeOrderingAttempt(),
+        explanation: 'Leaked explanation.',
+      }),
+    ],
+    [
+      'an unexpected active question field',
+      () => {
+        const attempt = activeOrderingAttempt();
+        return {
+          ...attempt,
+          questions: attempt.questions.map((question, index) =>
+            index === 0
+              ? {
+                  ...question,
+                  correctItemIds: [1, 2, 3, 4].map((item) => itemId(1, item)),
+                }
+              : question,
+          ),
+        };
+      },
+    ],
+    [
+      'a blank completed explanation',
+      () => {
+        const attempt = completedOrderingAttempt();
+        attempt.review[0]!.explanation = ' ';
+        return attempt;
+      },
+    ],
+    [
+      'an inconsistent ordering score',
+      () => ({
+        ...completedOrderingAttempt(),
+        scoreCorrect: 4,
+      }),
+    ],
+  ])(
+    'rejects malformed ordering data containing %s',
+    async (_name, fixture) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(jsonResponse(fixture())),
+      );
+
+      await expect(
+        getChallengeAttempt({
+          apiBaseUrl,
+          attemptId,
+          getAccessToken: vi.fn().mockResolvedValue('access-token'),
+          signal: new AbortController().signal,
+        }),
+      ).rejects.toBeInstanceOf(ChallengeApiError);
+    },
+  );
 
   it('rejects an unanswered review item marked correct', async () => {
     const completed = completedAttempt();
@@ -443,6 +604,79 @@ function completedReview() {
   });
 }
 
+function activeOrderingAttempt(answeredCount = 0) {
+  return {
+    answeredCount,
+    attemptId,
+    deadline: '2099-09-01T10:02:00.000Z',
+    eventId,
+    format: 'ordering',
+    questions: Array.from({ length: 5 }, (_, index) => {
+      const position = index + 1;
+      const items = [3, 1, 4, 2].map((item) => ({
+        itemId: itemId(position, item),
+        text: `Item ${position}.${item}`,
+      }));
+      const selectedItemIds =
+        position <= answeredCount ? items.map((item) => item.itemId) : null;
+
+      return {
+        answeredAt:
+          selectedItemIds === null ? null : '2099-09-01T10:00:20.000Z',
+        attemptQuestionId: questionId(position),
+        items,
+        position,
+        prompt: `Ordering question ${position}`,
+        selectedItemIds,
+      };
+    }),
+    requestId: 'request-active-ordering',
+    startedAt: '2099-09-01T10:00:00.000Z',
+    status: 'in_progress',
+    totalQuestions: 5,
+  };
+}
+
+function completedOrderingAttempt(
+  completionReason: 'answered' | 'timeout' = 'answered',
+) {
+  return {
+    attemptId,
+    completedAt: '2099-09-01T10:01:25.000Z',
+    completionReason,
+    eventId,
+    format: 'ordering',
+    requestId: 'request-completed-ordering',
+    review: Array.from({ length: 5 }, (_, index) => {
+      const position = index + 1;
+      const isUnanswered = completionReason === 'timeout' && position > 3;
+      const isCorrect = !isUnanswered && position <= 3;
+      const correctItems = [1, 2, 3, 4].map((item) => ({
+        itemId: itemId(position, item),
+        text: `Item ${position}.${item}`,
+      }));
+
+      return {
+        attemptQuestionId: questionId(position),
+        correctItems,
+        explanation: `Ordering explanation ${position}.`,
+        isCorrect,
+        position,
+        prompt: `Ordering question ${position}`,
+        selectedItems: isUnanswered
+          ? null
+          : isCorrect
+            ? correctItems
+            : [correctItems[1]!, correctItems[0]!, ...correctItems.slice(2)],
+      };
+    }),
+    reward: { cards: [] },
+    scoreCorrect: 3,
+    status: 'completed',
+    totalQuestions: 5,
+  };
+}
+
 function jsonResponse(payload: object, status = 200): Response {
   return new Response(JSON.stringify(payload), {
     headers: { 'Content-Type': 'application/json' },
@@ -467,4 +701,8 @@ function questionId(position: number): string {
 
 function choiceId(position: number, choice: number): string {
   return `33000000-0000-4000-${String(position).padStart(4, '0')}-${String(choice).padStart(12, '0')}`;
+}
+
+function itemId(position: number, item: number): string {
+  return `34000000-0000-4000-${String(position).padStart(4, '0')}-${String(item).padStart(12, '0')}`;
 }

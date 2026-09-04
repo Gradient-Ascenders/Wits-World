@@ -3,7 +3,7 @@ import {
   initialContext,
   type Auth0ContextInterface,
 } from '@auth0/auth0-react';
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -12,6 +12,8 @@ import type {
   AuthorCard,
   AuthorChallenge,
   AuthorEvent,
+  AuthorMultipleChoiceQuestion,
+  AuthorOrderingQuestion,
   AuthorQuestion,
 } from '../src/api/author';
 import {
@@ -403,11 +405,42 @@ describe('Basic author console', () => {
     );
 
     expect(
-      await screen.findByText('Draft challenge associated with this event.'),
+      await screen.findByText(
+        'Draft multiple choice challenge associated with this event.',
+      ),
     ).toHaveFocus();
     expect(fetchMock).toHaveBeenCalledWith(
       `${apiBaseUrl}/author/events/${eventId}/challenges`,
-      expect.objectContaining({ body: '{}', method: 'POST' }),
+      expect.objectContaining({
+        body: JSON.stringify({ format: 'multiple_choice' }),
+        method: 'POST',
+      }),
+    );
+  });
+
+  it('selects and creates an ordering challenge format', async () => {
+    const user = userEvent.setup();
+    const fetchMock = installAuthorApi({ challenges: [] });
+    renderAuthorRoute();
+
+    await user.selectOptions(
+      await screen.findByLabelText('New challenge format'),
+      'ordering',
+    );
+    await user.click(screen.getByRole('button', { name: 'Create challenge' }));
+
+    expect(
+      await screen.findByText(
+        'Draft ordering challenge associated with this event.',
+      ),
+    ).toHaveFocus();
+    expect(screen.getByRole('heading', { name: 'Ordering' })).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${apiBaseUrl}/author/events/${eventId}/challenges`,
+      expect.objectContaining({
+        body: JSON.stringify({ format: 'ordering' }),
+        method: 'POST',
+      }),
     );
   });
 
@@ -450,8 +483,76 @@ describe('Basic author console', () => {
       choices: ['Answer 1', 'Answer 2', 'Answer 3', 'Answer 4'],
       difficulty: 1,
       explanation: 'The Great Hall is on East Campus.',
+      format: 'multiple_choice',
       prompt: 'Where is the Great Hall?',
     });
+  });
+
+  it('validates and creates a four-item ordering question in correct sequence', async () => {
+    const user = userEvent.setup();
+    const fetchMock = installAuthorApi({
+      challenges: [challengeFixture({ format: 'ordering' })],
+      questions: [],
+    });
+    renderAuthorRoute(authorPaths.newQuestion(eventId, challengeId));
+
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(4));
+    await user.type(
+      await screen.findByLabelText('Question prompt'),
+      'Order the eras.',
+    );
+    expect(screen.getByLabelText('Question prompt')).toHaveValue(
+      'Order the eras.',
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Create draft question' }),
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText('Correct position 1')).toHaveFocus(),
+    );
+    expect(screen.getByLabelText('Correct position 1')).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
+
+    for (let index = 1; index <= 4; index += 1) {
+      await user.type(
+        screen.getByLabelText(`Correct position ${index}`),
+        `Era ${index}`,
+      );
+    }
+    await user.type(
+      screen.getByLabelText('Author explanation'),
+      'The eras follow this established chronology.',
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Create draft question' }),
+    );
+
+    expect(await screen.findByText('Draft question created.')).toHaveFocus();
+    const createCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input).includes(`/author/challenges/${challengeId}/questions`) &&
+        init?.method === 'POST',
+    );
+    expect(JSON.parse(String(createCall?.[1]?.body))).toEqual({
+      difficulty: 1,
+      explanation: 'The eras follow this established chronology.',
+      format: 'ordering',
+      items: ['Era 1', 'Era 2', 'Era 3', 'Era 4'],
+      prompt: 'Order the eras.',
+    });
+    expect(
+      screen.queryByRole('button', { name: 'Publish question' }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Submit for review' }));
+    expect(
+      await screen.findByText('Question submitted for independent review.'),
+    ).toHaveFocus();
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/author\/questions\/[^/]+\/submit$/u),
+      expect.objectContaining({ method: 'POST' }),
+    );
   });
 
   it('edits a draft question and updates its accepted answer', async () => {
@@ -826,7 +927,9 @@ describe('Basic author console', () => {
     renderAuthorRoute(authorPaths.eventChallenge(eventId));
 
     expect(
-      await screen.findByRole('option', { name: 'Challenge 1 — retired' }),
+      await screen.findByRole('option', {
+        name: 'Challenge 1 — Multiple choice — retired',
+      }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Retire challenge' }),
@@ -1708,10 +1811,12 @@ describe('Basic author console', () => {
 
     expect(selector).toHaveValue(challengeId);
     expect(
-      screen.getByRole('option', { name: 'Challenge 2 — draft' }),
+      screen.getByRole('option', {
+        name: 'Challenge 2 — Multiple choice — draft',
+      }),
     ).toHaveValue(createdChallenge.challengeId);
     expect(
-      screen.queryByText('Draft challenge associated with this event.'),
+      screen.queryByText(/Draft .* challenge associated with this event\./),
     ).not.toBeInTheDocument();
   });
 
@@ -1942,7 +2047,9 @@ describe('Basic author console', () => {
     expect(
       screen.queryByRole('button', { name: 'Publish challenge' }),
     ).not.toBeInTheDocument();
-    expect(selector).toHaveTextContent('Challenge 1 — published');
+    expect(selector).toHaveTextContent(
+      'Challenge 1 — Multiple choice — published',
+    );
   });
 
   it('shows an approved card with a publish action but no edit control', async () => {
@@ -1972,7 +2079,9 @@ describe('Basic author console', () => {
 
     const selector = await screen.findByLabelText('Challenge');
     expect(selector).toHaveValue(challengeId);
-    expect(selector).toHaveTextContent('Challenge 1 — approved');
+    expect(selector).toHaveTextContent(
+      'Challenge 1 — Multiple choice — approved',
+    );
     expect(
       screen.getByRole('button', { name: 'Publish challenge' }),
     ).toBeEnabled();
@@ -2026,10 +2135,12 @@ describe('Basic author console', () => {
     expect(selector).toHaveValue(challengeB.challengeId);
     expect(selector).toHaveFocus();
     expect(
-      screen.queryByText('Draft challenge associated with this event.'),
+      screen.queryByText(/Draft .* challenge associated with this event\./),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole('option', { name: 'Challenge 3 — draft' }),
+      screen.getByRole('option', {
+        name: 'Challenge 3 — Multiple choice — draft',
+      }),
     ).toBeInTheDocument();
 
     await user.selectOptions(selector, createdChallenge.challengeId);
@@ -2313,7 +2424,8 @@ function installAuthorApi(options: ApiOptions = {}) {
         path === `/author/events/${eventId}/challenges` &&
         method === 'POST'
       ) {
-        const challenge = challengeFixture();
+        const body = JSON.parse(String(init?.body));
+        const challenge = challengeFixture({ format: body.format });
         challenges.push(challenge);
         return jsonResponse(
           { challenge, requestId: 'request-challenge-create' },
@@ -2331,6 +2443,25 @@ function installAuthorApi(options: ApiOptions = {}) {
         method === 'POST'
       ) {
         const body = JSON.parse(String(init?.body));
+
+        if (body.format === 'ordering') {
+          const baseQuestion = orderingQuestionFixture(1, 'draft');
+          const question = {
+            ...baseQuestion,
+            ...body,
+            items: body.items.map((text: string, index: number) => ({
+              itemId: baseQuestion.items[index]!.itemId,
+              position: index + 1,
+              text,
+            })),
+          };
+          questions.push(question);
+          return jsonResponse(
+            { question, requestId: 'request-question-create' },
+            201,
+          );
+        }
+
         const baseQuestion = questionFixture(1, 'draft');
         const choices = body.choices.map((text: string, index: number) => ({
           choiceId: baseQuestion.choices[index]!.choiceId,
@@ -2387,6 +2518,31 @@ function installAuthorApi(options: ApiOptions = {}) {
       }
       if (path.startsWith('/author/questions/') && method === 'PUT') {
         const body = JSON.parse(String(init?.body));
+
+        if (body.format === 'ordering') {
+          const baseQuestion = orderingQuestionFixture(1, 'draft');
+          const question = {
+            ...baseQuestion,
+            ...body,
+            items: body.items.map((text: string, index: number) => ({
+              itemId: baseQuestion.items[index]!.itemId,
+              position: index + 1,
+              text,
+            })),
+          };
+          questions.splice(
+            questions.findIndex(
+              (item) => item.questionId === question.questionId,
+            ),
+            1,
+            question,
+          );
+          return jsonResponse({
+            question,
+            requestId: 'request-question-update',
+          });
+        }
+
         const baseQuestion = questionFixture(1, 'draft');
         const choices = body.choices.map((text: string, index: number) => ({
           choiceId: baseQuestion.choices[index]!.choiceId,
@@ -2566,7 +2722,7 @@ function questionFixture(
   status:
     'draft' | 'in_review' | 'approved' | 'published' | 'retired' = 'draft',
   parentChallengeId = challengeId,
-): AuthorQuestion {
+): AuthorMultipleChoiceQuestion {
   const questionId = `40000000-0000-4000-8000-${String(position).padStart(12, '0')}`;
   return {
     acceptedChoiceId: `41000000-0000-4000-8000-${String(position * 10 + 2).padStart(12, '0')}`,
@@ -2580,6 +2736,7 @@ function questionFixture(
     createdAt: '2026-08-16T08:00:00.000Z',
     difficulty: 1,
     explanation: 'Author-only explanation.',
+    format: 'multiple_choice',
     prompt: `Question ${position}`,
     questionId,
     status,
@@ -2590,6 +2747,37 @@ function questionFixture(
     reviewedBy: null,
     reviewedAt: null,
     publicationProvenance: null,
+  };
+}
+
+function orderingQuestionFixture(
+  position: number,
+  status:
+    'draft' | 'in_review' | 'approved' | 'published' | 'retired' = 'draft',
+  parentChallengeId = challengeId,
+): AuthorOrderingQuestion {
+  const questionId = `42000000-0000-4000-8000-${String(position).padStart(12, '0')}`;
+  return {
+    challengeId: parentChallengeId,
+    createdAt: '2026-08-16T08:00:00.000Z',
+    difficulty: 1,
+    explanation: 'The eras follow this established chronology.',
+    format: 'ordering',
+    items: [1, 2, 3, 4].map((itemPosition) => ({
+      itemId: `43000000-0000-4000-8000-${String(position * 10 + itemPosition).padStart(12, '0')}`,
+      position: itemPosition,
+      text: `Era ${itemPosition}`,
+    })),
+    prompt: `Ordering question ${position}`,
+    publicationProvenance: null,
+    questionId,
+    reviewedAt: null,
+    reviewedBy: null,
+    status,
+    submittedAt: null,
+    submittedBy: null,
+    updatedAt: '2026-08-16T08:00:00.000Z',
+    version: 0,
   };
 }
 
