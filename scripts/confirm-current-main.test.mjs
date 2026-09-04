@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -13,6 +14,45 @@ const scriptPath = path.join(
 );
 const selectedSha = '1'.repeat(40);
 const newerSha = '2'.repeat(40);
+
+function resolveBashExecutable() {
+  const configuredBash = process.env.BASH_EXECUTABLE?.trim();
+
+  if (configuredBash) {
+    return configuredBash;
+  }
+
+  if (process.platform !== 'win32') {
+    return 'bash';
+  }
+
+  const gitExecPathResult = spawnSync('git', ['--exec-path'], {
+    encoding: 'utf8',
+  });
+
+  if (gitExecPathResult.status !== 0) {
+    throw new Error(
+      `Could not locate Git Bash: ${gitExecPathResult.stderr || gitExecPathResult.error}`,
+    );
+  }
+
+  const bashExecutable = path.resolve(
+    gitExecPathResult.stdout.trim(),
+    '..',
+    '..',
+    '..',
+    'bin',
+    'bash.exe',
+  );
+
+  if (!existsSync(bashExecutable)) {
+    throw new Error(`Could not locate Git Bash at ${bashExecutable}.`);
+  }
+
+  return bashExecutable;
+}
+
+const bashExecutable = resolveBashExecutable();
 
 function toShellPath(value) {
   if (process.platform !== 'win32') {
@@ -56,7 +96,7 @@ async function runConfirmation({ currentSha, failGit = false, markerExists }) {
     }
 
     const result = spawnSync(
-      'sh',
+      bashExecutable,
       [toShellPath(scriptPath), toShellPath(markerPath)],
       {
         encoding: 'utf8',
