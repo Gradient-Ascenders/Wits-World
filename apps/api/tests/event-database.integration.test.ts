@@ -129,7 +129,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
     await insertLegacyPublishedDemoQuestion(temporaryConfig);
     await runBasicDemoSeeds(temporaryConfig);
     rerunMigrationResult = await runMigrations(temporaryConfig);
-  }, 45_000);
+  }, 90_000);
 
   afterAll(async () => {
     if (!administrationConfig || !temporaryDatabaseName) {

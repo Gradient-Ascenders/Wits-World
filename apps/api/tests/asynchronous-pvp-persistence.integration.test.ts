@@ -565,7 +565,7 @@ describe.skipIf(!runIntegrationTests)(
           expectedVersion: 0,
         });
         await waitForBlockedQuery(pool, 'for update of invitation');
-        await waitUntilAfter(deadline.rows[0]!.expires_at);
+        await waitUntilDatabaseAfter(pool, deadline.rows[0]!.expires_at);
         await blocker.query('commit');
 
         await expect(decline).rejects.toMatchObject({
@@ -618,7 +618,7 @@ describe.skipIf(!runIntegrationTests)(
           match.matchId,
         );
         await waitForBlockedQuery(pool, 'from public.async_pvp_matches match');
-        await waitUntilAfter(deadline.rows[0]!.turn_deadline);
+        await waitUntilDatabaseAfter(pool, deadline.rows[0]!.turn_deadline);
         await blocker.query('commit');
 
         await expect(getMatch).resolves.toMatchObject({
@@ -1244,11 +1244,19 @@ async function waitForBlockedQuery(
   throw new Error(`Timed out waiting for blocked query: ${queryFragment}`);
 }
 
-async function waitUntilAfter(deadline: Date): Promise<void> {
-  const remainingMilliseconds = deadline.getTime() - Date.now() + 100;
-  if (remainingMilliseconds > 0) {
-    await new Promise((resolve) => setTimeout(resolve, remainingMilliseconds));
-  }
+async function waitUntilDatabaseAfter(
+  database: pg.Pool,
+  deadline: Date,
+): Promise<void> {
+  await database.query(
+    `select pg_sleep(
+       greatest(
+         0,
+         extract(epoch from ($1::timestamptz - clock_timestamp())) + 0.1
+       )
+     )`,
+    [deadline],
+  );
 }
 
 async function copyPrePvpMigrations(): Promise<string> {
