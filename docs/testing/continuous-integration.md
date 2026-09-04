@@ -165,22 +165,29 @@ job to lose its npm executable. Isolating the packaging CLI prevents one C220
 container from mutating tooling used by another.
 
 The Azure jobs independently verify the exact checked-out main SHA and repeat
-the application change check. When deployment is required they download the
-SHA-named artifact, verify `commit-sha.txt`, verify the ZIP SHA-256 and
-integrity, reject any unpacked `node_modules` ZIP entry, and inspect the inner
-archive for the known runtime packages before authenticating. The database
-release extracts the inner archive into its temporary release directory. Azure
-deploys the same verified ZIP and performs the existing production health
-checks. It runs no Web/API `npm ci`, TypeScript build, Vite build, or production
-package build.
+the application change check. They also resolve the remote `main` ref before
+change detection, after artifact verification, and immediately before each
+database or Azure mutation. If the run commit is no longer current, the
+deployment marker is cleared and the stale run finishes without changing
+production. A failure to resolve `main` fails closed. This explicit guard is
+required because Gitea 1.24 ignores workflow `concurrency` declarations and an
+older run can otherwise be restarted after a newer run has deployed.
+
+When deployment is required, the jobs download the SHA-named artifact, verify
+`commit-sha.txt`, verify the ZIP SHA-256 and integrity, reject any unpacked
+`node_modules` ZIP entry, and inspect the inner archive for the known runtime
+packages before authenticating. The database release extracts the inner archive
+into its temporary release directory. Azure deploys the same verified ZIP and
+performs the existing production health checks. It runs no Web/API `npm ci`,
+TypeScript build, Vite build, or production package build.
 
 Web change detection covers its application and shared build inputs, including
-`/.gitea/workflows/ci.yml`. API detection also includes that workflow file, in
-addition to `apps/api`, `database`, and its shared runtime/build inputs. A CI
-workflow change can alter API packaging, artifact contents, or deployment logic,
-so it must conservatively require a fresh API artifact and deployment. If
-comparison data is unavailable, both paths require artifact production and
-deployment.
+`/.gitea/workflows/ci.yml` and the current-main deployment guard. API detection
+also includes the workflow and guard, in addition to `apps/api`, `database`, and
+its shared runtime/build inputs. A deployment-control change can alter API
+packaging, artifact contents, or deployment logic, so it must conservatively
+require fresh artifacts and deployments. If comparison data is unavailable,
+both paths require artifact production and deployment.
 
 ## Configuration and credential boundaries
 
