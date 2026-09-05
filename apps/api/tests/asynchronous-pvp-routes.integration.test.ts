@@ -25,7 +25,8 @@ const DECK_ID = 'a3000000-0000-4000-8000-000000000001';
 const CREATURE_ID = 'a4000000-0000-4000-8000-000000000001';
 const SUBMISSION_ID = 'a5000000-0000-4000-8000-000000000001';
 const PVP_ACCEPT =
-  'application/vnd.wits-world.pvp.v2+json, application/json;q=0.9';
+  'application/vnd.wits-world.pvp.v3+json, application/vnd.wits-world.pvp.v2+json;q=0.9, application/json;q=0.8';
+const PVP_V2_ACCEPT = 'application/vnd.wits-world.pvp.v2+json';
 
 let app: FastifyInstance;
 let service: { [K in keyof AsyncPvpService]: ReturnType<typeof vi.fn> };
@@ -51,6 +52,7 @@ beforeEach(async () => {
     listInvitations: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
     acceptInvitation: vi.fn(),
     declineInvitation: vi.fn(),
+    cancelInvitation: vi.fn(),
     listActiveMatches: vi
       .fn()
       .mockResolvedValue({ items: [], nextCursor: null }),
@@ -100,6 +102,9 @@ describe('asynchronous PvP routes', () => {
       submissionId: SUBMISSION_ID,
     });
     expect(valid.statusCode).toBe(201);
+    expect(valid.json()).toMatchObject({
+      invitation: { canCancel: true, direction: 'outgoing', status: 'pending' },
+    });
     expect(service.createInvitation).toHaveBeenCalledWith({
       playerId: PLAYER_ID,
       opponentPlayerName: 'opponent_player',
@@ -117,6 +122,153 @@ describe('asynchronous PvP routes', () => {
       eligible: true,
     });
     expect(invalid.statusCode).toBe(400);
+  });
+
+  it('lets only the authenticated challenger cancel a pending invitation', async () => {
+    service.cancelInvitation.mockResolvedValueOnce(
+      invitation({
+        status: 'cancelled',
+        version: 1,
+        respondedAt: '2026-08-30T01:00:00.000Z',
+      }),
+    );
+
+    const response = await request(
+      'POST',
+      `/api/v1/matches/pvp/invitations/${INVITATION_ID}/cancel`,
+      { submissionId: SUBMISSION_ID, expectedVersion: 0 },
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(service.cancelInvitation).toHaveBeenCalledWith({
+      playerId: PLAYER_ID,
+      invitationId: INVITATION_ID,
+      submissionId: SUBMISSION_ID,
+      expectedVersion: 0,
+    });
+    expect(response.json()).toMatchObject({
+      invitation: {
+        canCancel: false,
+        direction: 'outgoing',
+        opponent: { playerName: 'opponent_player' },
+        status: 'cancelled',
+        version: 1,
+      },
+      requestId: expect.any(String),
+    });
+    expect(response.body).not.toContain(PLAYER_ID);
+
+    const invalid = await request(
+      'POST',
+      `/api/v1/matches/pvp/invitations/${INVITATION_ID}/cancel`,
+      {
+        submissionId: SUBMISSION_ID,
+        expectedVersion: 0,
+        recipientPlayerId: PLAYER_ID,
+        result: 'cancelled',
+      },
+    );
+    expect(invalid.statusCode).toBe(400);
+    expect(service.cancelInvitation).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps pre-cancellation clients safe from the new operation and status', async () => {
+    const legacyHeaders = {
+      accept: PVP_V2_ACCEPT,
+      authorization: 'Bearer valid-token',
+    };
+    const unsupported = await app.inject({
+      method: 'POST',
+      url: `/api/v1/matches/pvp/invitations/${INVITATION_ID}/cancel`,
+      headers: legacyHeaders,
+      payload: { submissionId: SUBMISSION_ID, expectedVersion: 0 },
+    });
+    expect(unsupported.statusCode).toBe(409);
+    expect(unsupported.json()).toMatchObject({
+      code: 'PVP_CLIENT_UPDATE_REQUIRED',
+    });
+    expect(service.cancelInvitation).not.toHaveBeenCalled();
+
+    service.listInvitations.mockResolvedValue({
+      items: [
+        invitation({
+          status: 'cancelled',
+          version: 1,
+          respondedAt: '2026-08-30T01:00:00.000Z',
+        }),
+      ],
+      nextCursor: null,
+    });
+    const legacyList = await app.inject({
+      method: 'GET',
+      url: '/api/v1/matches/pvp/invitations?direction=outgoing',
+      headers: legacyHeaders,
+    });
+    expect(legacyList.statusCode).toBe(409);
+    expect(legacyList.json()).toMatchObject({
+      code: 'PVP_CLIENT_UPDATE_REQUIRED',
+    });
+
+    const currentList = await request(
+      'GET',
+      '/api/v1/matches/pvp/invitations?direction=outgoing',
+    );
+    expect(currentList.statusCode).toBe(200);
+    expect(currentList.json()).toMatchObject({
+      invitations: [{ canCancel: false, status: 'cancelled' }],
+    });
+  });
+
+  it.each(['accept', 'decline'] as const)(
+    'translates a cancelled %s race for pre-v3 clients',
+    async (operation) => {
+      const method =
+        operation === 'accept'
+          ? service.acceptInvitation
+          : service.declineInvitation;
+      for (const accept of [undefined, PVP_V2_ACCEPT, PVP_ACCEPT]) {
+        method.mockRejectedValueOnce(
+          new AsyncPvpError(
+            'PVP_INVITATION_CANCELLED',
+            'Invitation was cancelled.',
+          ),
+        );
+        const response = await app.inject({
+          method: 'POST',
+          url: `/api/v1/matches/pvp/invitations/${INVITATION_ID}/${operation}`,
+          headers: {
+            authorization: 'Bearer valid-token',
+            ...(accept ? { accept } : {}),
+          },
+          payload: {
+            submissionId: SUBMISSION_ID,
+            expectedVersion: 0,
+            ...(operation === 'accept'
+              ? { deckId: DECK_ID, initialCreatureId: CREATURE_ID }
+              : {}),
+          },
+        });
+        expect(response.statusCode).toBe(409);
+        expect(response.json().code).toBe(
+          accept === PVP_ACCEPT
+            ? 'PVP_INVITATION_CANCELLED'
+            : 'PVP_CLIENT_UPDATE_REQUIRED',
+        );
+      }
+      expect(method).toHaveBeenCalledTimes(3);
+    },
+  );
+
+  it('requires authentication before resolving a cancellation challenger', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/matches/pvp/invitations/${INVITATION_ID}/cancel`,
+      headers: { accept: PVP_ACCEPT },
+      payload: { submissionId: SUBMISSION_ID, expectedVersion: 0 },
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(service.cancelInvitation).not.toHaveBeenCalled();
   });
 
   it('rejects timeout and initial-selection actions at the PvP action route', async () => {
@@ -320,7 +472,7 @@ describe('asynchronous PvP routes', () => {
     expect(service.getMatch).not.toHaveBeenCalled();
   });
 
-  it('documents all ten protected operations', async () => {
+  it('documents all eleven protected operations', async () => {
     await app.ready();
     const paths = app.swagger().paths ?? {};
     expect(paths['/api/v1/matches/pvp/players']?.get).toBeDefined();
@@ -332,6 +484,12 @@ describe('asynchronous PvP routes', () => {
     expect(
       paths['/api/v1/matches/pvp/invitations/{invitationId}/decline']?.post,
     ).toBeDefined();
+    const cancellationOperation =
+      paths['/api/v1/matches/pvp/invitations/{invitationId}/cancel']?.post;
+    expect(cancellationOperation).toBeDefined();
+    expect(JSON.stringify(cancellationOperation)).toContain(
+      'application/vnd.wits-world.pvp.v3+json',
+    );
     expect(paths['/api/v1/matches/pvp']?.get).toBeDefined();
     expect(paths['/api/v1/matches/pvp/history']?.get).toBeDefined();
     expect(paths['/api/v1/matches/pvp/{matchId}']?.get).toBeDefined();
@@ -386,7 +544,9 @@ function match(overrides: Partial<AsyncPvpMatchView> = {}): AsyncPvpMatchView {
   };
 }
 
-function invitation(): PvpInvitationView {
+function invitation(
+  overrides: Partial<PvpInvitationView> = {},
+): PvpInvitationView {
   return {
     invitationId: INVITATION_ID,
     direction: 'outgoing',
@@ -397,6 +557,7 @@ function invitation(): PvpInvitationView {
     expiresAt: '2026-08-31T00:00:00.000Z',
     respondedAt: null,
     matchId: null,
+    ...overrides,
   };
 }
 

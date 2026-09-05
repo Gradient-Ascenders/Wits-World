@@ -572,6 +572,7 @@
 }
 
 .pvp-match-summary--loss,
+.pvp-invitation--cancelled,
 .pvp-invitation--expired,
 .pvp-invitation--invalidated {
   border-left: 0.2rem solid var(--colour-status-danger);
@@ -2860,5 +2861,25 @@
 
   .battle-page--live .battle-actions--selection {
     min-height: 0;
+  }
+
+  .pvp-battle-page.battle-page--live {
+    height: auto;
+    min-height: calc(
+      100dvh - (var(--space-3) * 2) - env(safe-area-inset-top) -
+        env(safe-area-inset-bottom)
+    );
+    overflow: visible;
+  }
+
+  .pvp-battle-page.battle-page--live .battle-live-layout {
+    flex: 0 0 auto;
+    grid-template-rows: clamp(14rem, 32dvh, 17rem) minmax(12rem, auto) auto;
+  }
+
+  .pvp-battle-page.battle-page--live .battle-actions {
+    height: min(34dvh, 20rem);
+    min-height: 12rem;
+    max-height: min(34dvh, 20rem);
   }
 }

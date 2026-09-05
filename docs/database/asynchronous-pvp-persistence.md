@@ -38,12 +38,16 @@ identities, card positions, private transition state, or replay responses.
 Database constraints and deferred validators reinforce these boundaries:
 
 - an invitation starts `pending` at version zero and transitions exactly once
-  to `accepted`, `declined`, `expired`, or account-deletion `invalidated`;
+  to `accepted`, recipient-owned `declined`, challenger-owned `cancelled`,
+  time-owned `expired`, or account-deletion `invalidated`;
 - one pending invitation may exist for an unordered player pair, so reverse
   concurrent challenges cannot both commit;
 - every invitation has one challenger snapshot and creation receipt;
 - acceptance atomically adds the recipient snapshot, two participants, one
   private state, the match, and the acceptance receipt;
+- cancellation atomically adds exactly one challenger-owned
+  `invitation_cancel` receipt, retains the challenger snapshot, and adds no
+  recipient snapshot or match;
 - each snapshot contains exactly three Creature and two Power cards, costs at
   most ten rarity points, and selects one Creature from that snapshot;
 - active matches have one current participant and an exact 24-hour deadline;
@@ -70,7 +74,10 @@ response so issue `#180` can distinguish an identical replay from an ID reused
 with different intent. Match actions additionally enforce unique sequence and
 actor submission identifiers. Migration `0037` adds a per-match unique
 resignation-receipt index so a replay can return the committed response without
-creating a second terminal operation.
+creating a second terminal operation. Migration `0039` adds the corresponding
+per-invitation cancellation index and extends deferred receipt validation so a
+`cancelled` record has exactly one matching challenger-owned receipt and no
+competing accept or decline receipt.
 
 Indexes support incoming and outgoing invitation pages, one-pair pending
 checks, bounded invitation expiry, participant match lookup, active pages,
@@ -119,8 +126,8 @@ invalidates not-yet-overdue invitations when account deletion begins, and record
 an `account_deletion_forfeit` for active matches whose deadline has not elapsed.
 For an already-overdue match, the current actor instead loses by `turn_forfeit`;
 account deletion cannot reverse that elapsed deadline outcome. No automated
-purge is added for declined or expired invitations because their retention
-period remains an explicitly unresolved product decision.
+purge is added for declined, cancelled, or expired invitations because their
+retention period remains an explicitly unresolved product decision.
 
 ## Verification and release
 
@@ -130,7 +137,9 @@ database at the pre-`0028` schema, records existing CPU progression, applies
 separation, indexes, unordered-pair uniqueness, complete snapshots, lifecycle
 and receipt constraints, immutable history, all completion reasons, concurrent
 replay, resignation/action/deletion races, deadline precedence, 25/0 awards,
-and activity for both participants.
+activity for both participants, cancellation authorization and replay,
+cancel/accept/decline/expiry/invalidation races, retained cancellation audit,
+pair reuse, pagination, and deadline-worker terminal skipping.
 
 The test is registered in the explicit database runner:
 
@@ -142,7 +151,12 @@ Apply migrations `0028` and `0033` before deploying issue `#180`. Migration
 `0033` adds the terminal `invalidated` invitation status used only by account
 deletion. Apply migration `0037` before the issue `#219` API; it adds the
 voluntary terminal reason, receipt invariants, and progression rules. Applying
-the migrations alone does not expose player-facing routes.
+the migrations alone does not expose player-facing routes. Apply forward-only
+migration `0039_add_async_pvp_invitation_cancellation.sql` before the issue
+`#220` API. It adds `cancelled`, the `invitation_cancel` receipt operation and
+unique index, and replacement cross-row validators. Once a `cancelled` row has
+been stored, do not roll the API back to a build whose invitation status parser
+does not understand it; retain `0039` and roll the API/Web forward.
 
 The preceding document was generated and edited with the assistance of:
-Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5].
+Codex-CLI[gpt-5.6-sol medium], Codex[GPT-5], and Codex[GPT-6].

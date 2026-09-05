@@ -29,6 +29,8 @@ const INVALIDATION_MIGRATION_NAME =
 const INDEX_CLEANUP_MIGRATION_NAME = '0036_remove_duplicate_indexes.sql';
 const RESIGNATION_MIGRATION_NAME =
   '0037_add_async_pvp_voluntary_resignation.sql';
+const CANCELLATION_MIGRATION_NAME =
+  '0039_add_async_pvp_invitation_cancellation.sql';
 const PRE_MIGRATION_PLAYER_ID = '17900000-0000-4000-8000-000000000001';
 const PRE_MIGRATION_MATCH_ID = '17900000-0000-4000-8000-000000000002';
 const runIntegrationTests =
@@ -132,6 +134,7 @@ describe.skipIf(!runIntegrationTests)(
         INVALIDATION_MIGRATION_NAME,
         INDEX_CLEANUP_MIGRATION_NAME,
         RESIGNATION_MIGRATION_NAME,
+        CANCELLATION_MIGRATION_NAME,
       ]);
 
       pool = createDatabasePool(temporaryConfig);
@@ -241,6 +244,7 @@ describe.skipIf(!runIntegrationTests)(
           'async_pvp_match_actions_sequence_unique',
           'async_pvp_submission_receipts_actor_operation_unique',
           'async_pvp_submission_receipts_match_resign_unique_idx',
+          'async_pvp_submission_receipts_invitation_cancel_unique_idx',
         ]),
       );
     });
@@ -565,6 +569,375 @@ describe.skipIf(!runIntegrationTests)(
       await expect(
         service.getMatch(challengerPlayerId, challengerView.matchId),
       ).resolves.toMatchObject({ version: 2 });
+    });
+
+    it('cancels only the challenger, retains an auditable terminal record, and supports replay and pagination', async () => {
+      const invitation = await createPendingInvitation(pool, cardDefinitions);
+      const service = createAsyncPvpService(pool, {
+        cursorCodec: createSignedCursorCodec(
+          'database-test-only-cursor-key-with-32-bytes',
+        ),
+      });
+      const submissionId = randomUUID();
+      const input = {
+        playerId: invitation.challengerPlayerId,
+        invitationId: invitation.invitationId,
+        submissionId,
+        expectedVersion: 0,
+      };
+
+      await expect(
+        service.cancelInvitation({
+          ...input,
+          playerId: invitation.recipientPlayerId,
+        }),
+      ).rejects.toMatchObject({ code: 'PVP_INVITATION_NOT_FOUND' });
+
+      const cancelled = await service.cancelInvitation(input);
+      expect(cancelled).toMatchObject({
+        direction: 'outgoing',
+        matchId: null,
+        status: 'cancelled',
+        version: 1,
+      });
+      expect(cancelled.respondedAt).not.toBeNull();
+      expect(cancelled).not.toHaveProperty('challengerPlayerId');
+      expect(cancelled).not.toHaveProperty('recipientPlayerId');
+      await expect(service.cancelInvitation(input)).resolves.toEqual(cancelled);
+      await expect(
+        service.cancelInvitation({ ...input, expectedVersion: 1 }),
+      ).rejects.toMatchObject({ code: 'PVP_IDEMPOTENCY_CONFLICT' });
+      await expect(
+        service.cancelInvitation({ ...input, submissionId: randomUUID() }),
+      ).rejects.toMatchObject({ code: 'PVP_INVITATION_CANCELLED' });
+      await expect(
+        service.declineInvitation({
+          playerId: invitation.recipientPlayerId,
+          invitationId: invitation.invitationId,
+          submissionId: randomUUID(),
+          expectedVersion: 0,
+        }),
+      ).rejects.toMatchObject({ code: 'PVP_INVITATION_CANCELLED' });
+      await expect(
+        service.acceptInvitation({
+          playerId: invitation.recipientPlayerId,
+          invitationId: invitation.invitationId,
+          deckId: randomUUID(),
+          initialCreatureId: randomUUID(),
+          submissionId: randomUUID(),
+          expectedVersion: 0,
+        }),
+      ).rejects.toMatchObject({ code: 'PVP_INVITATION_CANCELLED' });
+
+      const persisted = await pool.query<{
+        cancel_receipt_count: string;
+        match_count: string;
+        match_id: string | null;
+        snapshot_count: string;
+        status: string;
+      }>(
+        `select invitation.status,
+                invitation.match_id::text,
+                (select count(*)::text
+                   from private.async_pvp_deck_snapshots snapshot
+                  where snapshot.invitation_id = invitation.id) as snapshot_count,
+                (select count(*)::text
+                   from private.async_pvp_submission_receipts receipt
+                  where receipt.invitation_id = invitation.id
+                    and receipt.operation = 'invitation_cancel') as cancel_receipt_count,
+                (select count(*)::text
+                   from public.async_pvp_matches match
+                  where match.invitation_id = invitation.id) as match_count
+           from public.async_pvp_invitations invitation
+          where invitation.id = $1::uuid`,
+        [invitation.invitationId],
+      );
+      expect(persisted.rows).toEqual([
+        {
+          cancel_receipt_count: '1',
+          match_count: '0',
+          match_id: null,
+          snapshot_count: '1',
+          status: 'cancelled',
+        },
+      ]);
+      await expect(
+        insertReceipt(pool, {
+          actorPlayerId: invitation.recipientPlayerId,
+          operation: 'invitation_decline',
+          submissionId: randomUUID(),
+          invitationId: invitation.invitationId,
+        }),
+      ).rejects.toThrow('does not match invitation status');
+      await expect(
+        pool.query(
+          `update public.async_pvp_invitations
+              set updated_at = updated_at + interval '1 second'
+            where id = $1::uuid`,
+          [invitation.invitationId],
+        ),
+      ).rejects.toThrow('Terminal asynchronous PvP invitation');
+
+      const workerClient = await pool.connect();
+      try {
+        await workerClient.query('begin');
+        await expect(
+          service.expireInvitation(workerClient, invitation.invitationId),
+        ).resolves.toBe(false);
+        await workerClient.query('commit');
+      } finally {
+        workerClient.release();
+      }
+
+      const second = await createPendingInvitation(pool, cardDefinitions, {
+        challengerPlayerId: invitation.challengerPlayerId,
+        recipientPlayerId: invitation.recipientPlayerId,
+      });
+      await service.cancelInvitation({
+        playerId: second.challengerPlayerId,
+        invitationId: second.invitationId,
+        submissionId: randomUUID(),
+        expectedVersion: 0,
+      });
+      const firstPage = await service.listInvitations({
+        playerId: invitation.challengerPlayerId,
+        direction: 'outgoing',
+        status: 'cancelled',
+        limit: 1,
+      });
+      expect(firstPage.items).toHaveLength(1);
+      expect(firstPage.nextCursor).not.toBeNull();
+      const secondPage = await service.listInvitations({
+        playerId: invitation.challengerPlayerId,
+        direction: 'outgoing',
+        status: 'cancelled',
+        cursor: firstPage.nextCursor!,
+        limit: 1,
+      });
+      expect(secondPage.items).toHaveLength(1);
+      expect(
+        new Set(
+          [...firstPage.items, ...secondPage.items].map(
+            (item) => item.invitationId,
+          ),
+        ),
+      ).toEqual(new Set([invitation.invitationId, second.invitationId]));
+      await expect(
+        service.listInvitations({
+          playerId: invitation.recipientPlayerId,
+          direction: 'incoming',
+          status: 'cancelled',
+          limit: 10,
+        }),
+      ).resolves.toMatchObject({
+        items: expect.arrayContaining([
+          expect.objectContaining({
+            direction: 'incoming',
+            invitationId: invitation.invitationId,
+            status: 'cancelled',
+          }),
+        ]),
+      });
+    });
+
+    it('serializes cancellation against acceptance and never alters an accepted match', async () => {
+      const invitation = await createPendingInvitation(pool, cardDefinitions);
+      const recipientDeck = await createOwnedDeck(
+        pool,
+        invitation.recipientPlayerId,
+        cardDefinitions,
+      );
+      const service = createAsyncPvpService(pool, {
+        cursorCodec: createSignedCursorCodec(
+          'database-test-only-cursor-key-with-32-bytes',
+        ),
+        randomInt: () => 0,
+      });
+      const results = await Promise.allSettled([
+        service.cancelInvitation({
+          playerId: invitation.challengerPlayerId,
+          invitationId: invitation.invitationId,
+          submissionId: randomUUID(),
+          expectedVersion: 0,
+        }),
+        service.acceptInvitation({
+          playerId: invitation.recipientPlayerId,
+          invitationId: invitation.invitationId,
+          deckId: recipientDeck.deckId,
+          initialCreatureId: recipientDeck.creatureId,
+          submissionId: randomUUID(),
+          expectedVersion: 0,
+        }),
+      ]);
+      expect(
+        results.filter((result) => result.status === 'fulfilled'),
+      ).toHaveLength(1);
+      expect(
+        results.filter((result) => result.status === 'rejected'),
+      ).toHaveLength(1);
+
+      const persisted = await pool.query<{
+        cancel_receipt_count: string;
+        match_count: string;
+        status: 'accepted' | 'cancelled';
+      }>(
+        `select invitation.status,
+                (select count(*)::text
+                   from public.async_pvp_matches match
+                  where match.invitation_id = invitation.id) as match_count,
+                (select count(*)::text
+                   from private.async_pvp_submission_receipts receipt
+                  where receipt.invitation_id = invitation.id
+                    and receipt.operation = 'invitation_cancel') as cancel_receipt_count
+           from public.async_pvp_invitations invitation
+          where invitation.id = $1::uuid`,
+        [invitation.invitationId],
+      );
+      const row = persisted.rows[0]!;
+      expect(['accepted', 'cancelled']).toContain(row.status);
+      expect(row.match_count).toBe(row.status === 'accepted' ? '1' : '0');
+      expect(row.cancel_receipt_count).toBe(
+        row.status === 'cancelled' ? '1' : '0',
+      );
+
+      if (row.status === 'accepted') {
+        const match = await pool.query<{ id: string; status: string }>(
+          `select id::text, status
+             from public.async_pvp_matches
+            where invitation_id = $1::uuid`,
+          [invitation.invitationId],
+        );
+        await expect(
+          service.cancelInvitation({
+            playerId: invitation.challengerPlayerId,
+            invitationId: invitation.invitationId,
+            submissionId: randomUUID(),
+            expectedVersion: 0,
+          }),
+        ).rejects.toMatchObject({ code: 'PVP_INVITATION_VERSION_CONFLICT' });
+        await expect(
+          pool.query<{ status: string }>(
+            `select status from public.async_pvp_matches where id = $1::uuid`,
+            [match.rows[0]!.id],
+          ),
+        ).resolves.toMatchObject({ rows: [{ status: 'active' }] });
+      }
+    });
+
+    it('serializes cancellation against decline, expiry, and account invalidation', async () => {
+      const service = createAsyncPvpService(pool, {
+        cursorCodec: createSignedCursorCodec(
+          'database-test-only-cursor-key-with-32-bytes',
+        ),
+      });
+      const responseRace = await createPendingInvitation(pool, cardDefinitions);
+      const responseResults = await Promise.allSettled([
+        service.cancelInvitation({
+          playerId: responseRace.challengerPlayerId,
+          invitationId: responseRace.invitationId,
+          submissionId: randomUUID(),
+          expectedVersion: 0,
+        }),
+        service.declineInvitation({
+          playerId: responseRace.recipientPlayerId,
+          invitationId: responseRace.invitationId,
+          submissionId: randomUUID(),
+          expectedVersion: 0,
+        }),
+      ]);
+      expect(
+        responseResults.filter((result) => result.status === 'fulfilled'),
+      ).toHaveLength(1);
+      await expect(
+        pool.query<{ status: string }>(
+          `select status from public.async_pvp_invitations where id = $1::uuid`,
+          [responseRace.invitationId],
+        ),
+      ).resolves.toMatchObject({
+        rows: [{ status: expect.stringMatching(/^(cancelled|declined)$/u) }],
+      });
+
+      const overdue = await createPendingInvitation(pool, cardDefinitions, {
+        createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
+      });
+      await expect(
+        service.cancelInvitation({
+          playerId: overdue.challengerPlayerId,
+          invitationId: overdue.invitationId,
+          submissionId: randomUUID(),
+          expectedVersion: 0,
+        }),
+      ).rejects.toMatchObject({ code: 'PVP_INVITATION_EXPIRED' });
+      await expect(
+        pool.query<{ cancel_receipt_count: string; status: string }>(
+          `select invitation.status,
+                  (select count(*)::text
+                     from private.async_pvp_submission_receipts receipt
+                    where receipt.invitation_id = invitation.id
+                      and receipt.operation = 'invitation_cancel') as cancel_receipt_count
+             from public.async_pvp_invitations invitation
+            where invitation.id = $1::uuid`,
+          [overdue.invitationId],
+        ),
+      ).resolves.toMatchObject({
+        rows: [{ cancel_receipt_count: '0', status: 'expired' }],
+      });
+
+      const accountRace = await createPendingInvitation(pool, cardDefinitions);
+      const deletionClient = await pool.connect();
+      const deletion = (async () => {
+        try {
+          await deletionClient.query('begin');
+          await service.finalizeAccountDeletion(
+            deletionClient,
+            accountRace.recipientPlayerId,
+            new Date(),
+          );
+          await deletionClient.query('commit');
+        } catch (error) {
+          await deletionClient.query('rollback');
+          throw error;
+        } finally {
+          deletionClient.release();
+        }
+      })();
+      const cancellation = service.cancelInvitation({
+        playerId: accountRace.challengerPlayerId,
+        invitationId: accountRace.invitationId,
+        submissionId: randomUUID(),
+        expectedVersion: 0,
+      });
+      await expect(
+        Promise.allSettled([deletion, cancellation]),
+      ).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ status: 'fulfilled' }),
+        ]),
+      );
+      const accountResult = await pool.query<{
+        cancel_receipt_count: string;
+        match_count: string;
+        status: 'cancelled' | 'invalidated';
+      }>(
+        `select invitation.status,
+                (select count(*)::text
+                   from private.async_pvp_submission_receipts receipt
+                  where receipt.invitation_id = invitation.id
+                    and receipt.operation = 'invitation_cancel') as cancel_receipt_count,
+                (select count(*)::text
+                   from public.async_pvp_matches match
+                  where match.invitation_id = invitation.id) as match_count
+           from public.async_pvp_invitations invitation
+          where invitation.id = $1::uuid`,
+        [accountRace.invitationId],
+      );
+      expect(['cancelled', 'invalidated']).toContain(
+        accountResult.rows[0]!.status,
+      );
+      expect(accountResult.rows[0]!.match_count).toBe('0');
+      expect(accountResult.rows[0]!.cancel_receipt_count).toBe(
+        accountResult.rows[0]!.status === 'cancelled' ? '1' : '0',
+      );
     });
 
     it('resigns once into viewer-relative history, receipts, and progression', async () => {
@@ -1691,7 +2064,8 @@ async function copyPrePvpMigrations(): Promise<string> {
           name !== MIGRATION_NAME &&
           name !== INVALIDATION_MIGRATION_NAME &&
           name !== INDEX_CLEANUP_MIGRATION_NAME &&
-          name !== RESIGNATION_MIGRATION_NAME,
+          name !== RESIGNATION_MIGRATION_NAME &&
+          name !== CANCELLATION_MIGRATION_NAME,
       )
       .map((name) =>
         copyFile(join(sourceDirectory, name), join(targetDirectory, name)),
@@ -2194,6 +2568,7 @@ async function insertReceipt(
       | 'invitation_create'
       | 'invitation_accept'
       | 'invitation_decline'
+      | 'invitation_cancel'
       | 'match_action';
     submissionId: string;
     invitationId?: string;

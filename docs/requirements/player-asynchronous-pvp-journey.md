@@ -6,8 +6,8 @@ title: Player asynchronous PvP journey
 
 ## Purpose and authority
 
-Issues #181 and #219 provide asynchronous player-versus-player play and
-voluntary match resignation alongside the existing CPU journey. The protected
+Issues #181, #219, and #220 provide asynchronous player-versus-player play,
+voluntary match resignation, and outgoing invitation cancellation alongside the existing CPU journey. The protected
 `/matches` routes continue to provide CPU play;
 `/matches/pvp` provides invitations, active asynchronous matches, and PvP
 history. The [asynchronous PvP API contract](../architecture/asynchronous-pvp-api-contract.md)
@@ -41,15 +41,28 @@ is submitted. A rejected or changed deck returns safe recovery guidance.
 
 ## Invitations
 
-Incoming and sent groups render `pending`, `accepted`, `declined`, `expired`,
-and `invalidated` states. The player can accept or decline only a pending
+Incoming and sent groups render `pending`, `accepted`, `declined`, `cancelled`,
+`expired`, and `invalidated` states. The player can accept or decline only a pending
 incoming invitation. Accept requires a deck and opening Creature and navigates
 to the server-created match. Accepted invitations link to that persisted
 match. `invalidated` is presented as **Unavailable**, because it represents an
 account-lifecycle change rather than a user cancellation.
 
-The current API does not support invitation cancellation. The UI therefore
-does not invent a Cancel action or state transition.
+A pending sent invitation exposes **Cancel challenge** only when the version 3
+API returns `canCancel: true`. The action is never shown for incoming or
+terminal invitations, and an absent capability is treated as false during a
+mixed rollout. Cancellation is single-flight and submits only `submissionId`
+and `expectedVersion`; repeated clicks are disabled. Success replaces the item
+in place, including when it came from a later cursor page, and shows
+**Cancelled** plus “You cancelled this invitation.” The recipient sees the
+retained terminal record and “This invitation was cancelled by the opponent's
+Player Name.”
+
+An ambiguous cancellation response triggers an authoritative first-page poll
+and offers a same-submission retry only if the invitation remains pending and
+cancellable. Stale, expired, invalidated, accepted, declined, or already
+cancelled server state is rendered as terminal without inventing a second
+transition.
 
 ## Match interaction and recovery
 
@@ -105,15 +118,17 @@ or runtime errors.
 ## Automated coverage
 
 `apps/web/tests/pvp-client.test.ts` validates privacy-safe closed contracts,
-invitation states, versioned intent bodies, legal actions, hidden-information
+invitation states and cancellation capability fallback, versioned intent bodies, legal actions, hidden-information
 rejection, error mapping, and ambiguous-response recovery metadata.
 `apps/web/tests/pvp-pages.test.tsx` covers the hub state matrix, Player Name
-challenge flow, accept/decline/expiry handling, duplicate-click protection,
+challenge flow, accept/decline/cancel/expiry handling, duplicate-click protection,
 cursor navigation, own/opponent turns, move and Power controls, polling,
-deadline refresh, stale reconciliation, confirmed resignation, ambiguous
+deadline refresh, cancellation terminal presentation and same-reference
+recovery, stale reconciliation, confirmed resignation, ambiguous
 same-reference retry, capability gating, terminal outcomes, hidden opponent
-presentation, and retry. Playwright also checks the dialog's keyboard focus,
-single submission, responsive layout, and terminal result. Existing CPU match
+presentation, and retry. Playwright also checks single-request cancellation and
+terminal presentation, the resignation dialog's keyboard focus, responsive
+layout, and terminal match result. Existing CPU match
 client/page tests remain the regression boundary for the shared presentation
 extraction.
 
