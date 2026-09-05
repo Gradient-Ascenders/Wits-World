@@ -60,6 +60,8 @@ import { authorEventRoutes } from './routes/author-events.js';
 
 import type { AuthorChallengeService } from './challenges/author-challenge-service.js';
 import { authorChallengeRoutes } from './routes/author-challenges.js';
+import type { QuestionPerformanceService } from './challenges/question-performance-service.js';
+import { authorQuestionPerformanceRoutes } from './routes/author-question-performance.js';
 
 import type { AuthorCardService } from './cards/author-card-service.js';
 import { authorCardRoutes } from './routes/author-cards.js';
@@ -131,6 +133,7 @@ export interface AuthorContentServices {
   trails?: AuthorTrailService;
   campaigns?: AuthorCampaignService;
   read?: AuthorContentReadService;
+  questionPerformance?: QuestionPerformanceService;
 }
 
 export interface TrailServices {
@@ -393,6 +396,13 @@ export async function buildApp({
     await app.register(authorChallengeRoutes, {
       prefix: '/api/v1',
       service: authorContentServices.challenges,
+    });
+  }
+
+  if (authorContentServices?.questionPerformance) {
+    await app.register(authorQuestionPerformanceRoutes, {
+      prefix: '/api/v1',
+      service: authorContentServices.questionPerformance,
     });
   }
 

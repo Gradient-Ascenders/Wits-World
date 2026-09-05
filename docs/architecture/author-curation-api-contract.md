@@ -4,6 +4,14 @@ title: Author curation API contract
 
 # Author curation API contract
 
+## Question performance projection
+
+`GET /api/v1/author/question-performance` is an active-Author-only, bounded aggregate projection for issue `#184`. It accepts optional `eventId`, `challengeId`, `format`, `difficulty`, inclusive `from`, and exclusive `to` filters plus `page` and `pageSize` (`1` through `100`). UUIDs, enums, timestamps, pagination, and range ordering are validated before query execution.
+
+Each item contains `questionId`, `challengeId`, `eventId`, `eventTitle`, current prompt/format/difficulty/status, aggregate answer/correct/incorrect/timeout counts, rates, and the server-derived `hasSufficientSample` and `isProblematic` flags. Those identifiers are sufficient for the existing Author question route. The projection excludes attempt IDs, player identity, submitted choices/order, and location. It never returns attempt rows for browser-side aggregation.
+
+The threshold constants are returned with every page: minimum sample size `10` and problematic incorrect rate `0.7`. `answerCount` means submitted answers plus at most one legitimate current-question timeout per timed-out attempt; future unanswered snapshots are excluded. Empty and out-of-range pages retain correct total metadata. See [Question performance analytics](../database/question-performance-analytics.md) for exact timeout, denominator, filtering, and index semantics.
+
 ## Scope and authority
 
 Events, challenges, questions, cards, and campaigns share the server-authoritative

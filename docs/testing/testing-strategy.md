@@ -4,6 +4,10 @@ title: Testing strategy and policy
 
 # Testing strategy and policy
 
+## Question performance analytics
+
+Issue `#184` adds service, route, client, and Author-workspace coverage for the 10-answer sample boundary, exact and just-below 70% incorrect rates, larger samples, MCQ and ordering aggregation, part-way timeout exclusion of unseen snapshots, timeout counts, composed filters, empty and out-of-range pages, malformed filters, Author authorization, page bounds, closed privacy-safe response parsing, keyboard-accessible horizontal results, and edit navigation. Database query-plan evidence and its remaining representative-data gate are documented in [Question performance analytics](../database/question-performance-analytics.md).
+
 ## Purpose
 
 Wits World uses the smallest test boundary that can reliably demonstrate a

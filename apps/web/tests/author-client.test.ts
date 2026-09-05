@@ -10,6 +10,7 @@ import {
   listAuthorCampaigns,
   listAuthorEvents,
   listAuthorQuestions,
+  listAuthorQuestionPerformance,
   listAuthorReviewQueue,
   publishAuthorEvent,
   transitionAuthorContent,
@@ -107,6 +108,67 @@ describe('author API client', () => {
         signal: new AbortController().signal,
       }),
     ).resolves.toEqual([question]);
+  });
+
+  it('loads only the bounded aggregate question-performance projection', async () => {
+    const item = performanceFixture();
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        items: [item],
+        minimumSampleSize: 10,
+        page: 1,
+        pageSize: 25,
+        problematicIncorrectRate: 0.7,
+        requestId: 'request-performance',
+        totalItems: 1,
+        totalPages: 1,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      listAuthorQuestionPerformance({
+        apiBaseUrl,
+        eventId,
+        format: 'ordering',
+        difficulty: 2,
+        from: '2026-09-01T00:00:00.000Z',
+        getAccessToken,
+        signal: new AbortController().signal,
+      }),
+    ).resolves.toMatchObject({ items: [item], totalItems: 1 });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `${apiBaseUrl}/author/question-performance?page=1&pageSize=25&eventId=${eventId}&format=ordering&difficulty=2&from=2026-09-01T00%3A00%3A00.000Z`,
+    );
+    expect(JSON.stringify(item)).not.toMatch(
+      /player|selected|latitude|longitude|location/i,
+    );
+  });
+
+  it('rejects inconsistent aggregate counts from the API', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          items: [{ ...performanceFixture(), incorrectCount: 8 }],
+          minimumSampleSize: 10,
+          page: 1,
+          pageSize: 25,
+          problematicIncorrectRate: 0.7,
+          requestId: 'request-performance',
+          totalItems: 1,
+          totalPages: 1,
+        }),
+      ),
+    );
+
+    await expect(
+      listAuthorQuestionPerformance({
+        apiBaseUrl,
+        getAccessToken,
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toMatchObject({ failure: 'unavailable' });
   });
 
   it('creates an ordering challenge and submits its four-item correct sequence', async () => {
@@ -631,6 +693,27 @@ function cardFixture() {
     reviewedAt: null,
     publicationProvenance: null,
     updatedAt: '2026-08-16T08:00:00.000Z',
+  } as const;
+}
+
+function performanceFixture() {
+  return {
+    answerCount: 10,
+    challengeId,
+    correctCount: 3,
+    correctRate: 0.3,
+    difficulty: 2,
+    eventId,
+    eventTitle: 'Great Hall history',
+    format: 'ordering',
+    hasSufficientSample: true,
+    incorrectCount: 7,
+    incorrectRate: 0.7,
+    isProblematic: true,
+    prompt: 'Order the milestones.',
+    questionId: '40000000-0000-4000-8000-000000000002',
+    status: 'published',
+    timeoutCount: 1,
   } as const;
 }
 
