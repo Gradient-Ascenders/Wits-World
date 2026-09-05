@@ -327,6 +327,103 @@ describe('Mapbox Standard provider', () => {
     expect(listener).toHaveBeenCalledWith('event-1');
   });
 
+  it('represents ordered trail states and only lets the current stop open from the map', async () => {
+    const controller = await createMapboxMap(
+      document.createElement('div'),
+      configuration,
+      [
+        {
+          id: 'completed-stop',
+          label: 'Great Hall',
+          latitude: -26.19205,
+          longitude: 28.03038,
+          selectable: false,
+          trailState: 'completed',
+        },
+        {
+          id: 'current-stop',
+          label: 'Senate House',
+          latitude: -26.19195,
+          longitude: 28.03048,
+          selectable: true,
+          trailState: 'current',
+        },
+        {
+          id: 'locked-stop',
+          label: 'Origins Centre',
+          latitude: -26.19185,
+          longitude: 28.03058,
+          selectable: false,
+          trailState: 'locked',
+        },
+        {
+          id: 'unavailable-stop',
+          label: 'Old Fort',
+          latitude: -26.19175,
+          longitude: 28.03068,
+          selectable: false,
+          trailState: 'unavailable',
+        },
+        {
+          id: 'retired-stop',
+          label: 'Former Observatory',
+          latitude: -26.19165,
+          longitude: 28.03078,
+          selectable: false,
+          trailState: 'retired',
+        },
+      ],
+      new AbortController().signal,
+    );
+    const listener = vi.fn();
+    controller.setPointSelectionListener?.(listener);
+
+    const completed = mapboxState.markerElements[0] as HTMLButtonElement;
+    const current = mapboxState.markerElements[1] as HTMLButtonElement;
+    const locked = mapboxState.markerElements[2] as HTMLButtonElement;
+    const unavailable = mapboxState.markerElements[3] as HTMLButtonElement;
+    const retired = mapboxState.markerElements[4] as HTMLButtonElement;
+    expect(completed).toBeDisabled();
+    expect(completed).toHaveClass('event-marker--trail-completed');
+    expect(completed).toHaveAttribute(
+      'aria-label',
+      'Great Hall, completed trail stop',
+    );
+    expect(current).toBeEnabled();
+    expect(current).toHaveClass('event-marker--trail-current');
+    expect(current).toHaveAttribute(
+      'aria-label',
+      'Select Senate House, current trail stop',
+    );
+    expect(locked).toBeDisabled();
+    expect(locked).toHaveClass('event-marker--trail-locked');
+    expect(locked).toHaveAttribute(
+      'aria-label',
+      'Origins Centre, locked trail stop',
+    );
+    expect(unavailable).toBeDisabled();
+    expect(unavailable).toHaveClass('event-marker--trail-unavailable');
+    expect(unavailable).toHaveAttribute(
+      'aria-label',
+      'Old Fort, unavailable trail stop',
+    );
+    expect(retired).toBeDisabled();
+    expect(retired).toHaveClass('event-marker--trail-retired');
+    expect(retired).toHaveAttribute(
+      'aria-label',
+      'Former Observatory, retired trail stop',
+    );
+
+    completed.click();
+    locked.click();
+    unavailable.click();
+    retired.click();
+    expect(listener).not.toHaveBeenCalled();
+    current.click();
+    expect(listener).toHaveBeenCalledOnce();
+    expect(listener).toHaveBeenCalledWith('current-stop');
+  });
+
   it('renders and replaces only the selected event geodesic source', async () => {
     mapboxState.isStyleLoaded = true;
     const controller = await createMapboxMap(

@@ -778,6 +778,277 @@ describe('selected-event authoritative eligibility', () => {
   });
 });
 
+describe('trails and nearby vertical discovery', () => {
+  it('loads authoritative trail detail and opens its current stop in the existing event journey', async () => {
+    const user = userEvent.setup();
+    const trailId = '17700000-0000-4000-8000-000000000001';
+    const trailSummary = {
+      availability: 'active',
+      completedStepCount: 0,
+      currentStepPosition: 1,
+      description: 'A connected campus story.',
+      endsAt: null,
+      progressStatus: 'in_progress',
+      publicationStatus: 'published',
+      startsAt: null,
+      title: 'Campus History Trail',
+      totalSteps: 1,
+      trailId,
+    };
+    const trailStep = {
+      completedAt: null,
+      description: event.description,
+      endsAt: event.endsAt,
+      eventId: event.eventId,
+      latitude: event.latitude,
+      longitude: event.longitude,
+      position: 1,
+      radiusMetres: event.radiusMetres,
+      startsAt: event.startsAt,
+      state: 'current',
+      title: event.title,
+      unavailableReason: null,
+    };
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith(`/trails/${trailId}`)) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              requestId: 'trail-detail',
+              trail: { ...trailSummary, steps: [trailStep] },
+            }),
+            { headers: { 'Content-Type': 'application/json' }, status: 200 },
+          ),
+        );
+      }
+      if (url.endsWith('/trails')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              requestId: 'trail-list',
+              trails: [trailSummary],
+            }),
+            { headers: { 'Content-Type': 'application/json' }, status: 200 },
+          ),
+        );
+      }
+      return Promise.resolve(discoveryResponse());
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderExplore({ permission: 'denied' });
+
+    await user.click(await screen.findByRole('button', { name: /^Events/ }));
+    await user.click(screen.getByRole('button', { name: 'Trails' }));
+    await user.click(
+      await screen.findByRole('button', {
+        name: `View trail: ${trailSummary.title}`,
+      }),
+    );
+    await user.click(
+      await screen.findByRole('button', {
+        name: `Open event: ${event.title}`,
+      }),
+    );
+
+    expect(screen.getByRole('heading', { name: event.title })).toBeVisible();
+    expect(screen.getByText('Live location is disabled.')).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${apiBaseUrl}/trails/${trailId}`,
+      expect.any(Object),
+    );
+  });
+
+  it('does not call nearby discovery when location permission is denied', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue(discoveryResponse());
+    vi.stubGlobal('fetch', fetchMock);
+    renderExplore({ permission: 'denied' });
+
+    await user.click(await screen.findByRole('button', { name: /^Events/ }));
+    await user.click(screen.getByRole('button', { name: 'Nearby' }));
+
+    expect(screen.getByText('Location permission is denied.')).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it('shows the authoritative nearby-empty state for a fresh reported location', async () => {
+    const user = userEvent.setup();
+    const reportedClaim = freshClaim();
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      return Promise.resolve(
+        url.endsWith('/events/nearby-unvisited')
+          ? new Response(
+              JSON.stringify({ events: [], requestId: 'nearby-empty' }),
+              { headers: { 'Content-Type': 'application/json' }, status: 200 },
+            )
+          : discoveryResponse(),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const observation = createObservationHarness();
+    renderExplore({ observation, permission: 'granted' });
+    await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
+    act(() => observation.emit(reportedClaim));
+
+    await user.click(await screen.findByRole('button', { name: /^Events/ }));
+    await user.click(screen.getByRole('button', { name: 'Nearby' }));
+
+    expect(
+      await screen.findByText('No nearby unvisited events.'),
+    ).toBeVisible();
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `${apiBaseUrl}/events/nearby-unvisited`,
+      expect.objectContaining({
+        body: JSON.stringify(reportedClaim),
+        method: 'POST',
+      }),
+    );
+  });
+
+  it('resumes a pending nearby retry when the location watcher later recovers', async () => {
+    const user = userEvent.setup();
+    const initialClaim = freshClaim();
+    const recoveredClaim = freshClaim(1_000);
+    const observation = createObservationHarness();
+    const locationClaimProvider = vi
+      .fn<LocationClaimProvider>()
+      .mockRejectedValue(new BrowserLocationError('timeout'));
+    let nearbyCalls = 0;
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/events/nearby-unvisited')) {
+        nearbyCalls += 1;
+        return Promise.resolve(
+          nearbyCalls === 1
+            ? nearbyLocationRetryRequiredResponse()
+            : new Response(
+                JSON.stringify({ events: [], requestId: 'nearby-recovered' }),
+                {
+                  headers: { 'Content-Type': 'application/json' },
+                  status: 200,
+                },
+              ),
+        );
+      }
+      return Promise.resolve(discoveryResponse());
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderExplore({
+      locationClaimProvider,
+      observation,
+      permission: 'granted',
+    });
+    await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
+    act(() => observation.emit(initialClaim));
+
+    await user.click(await screen.findByRole('button', { name: /^Events/ }));
+    await user.click(screen.getByRole('button', { name: 'Nearby' }));
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Get a new reported location',
+      }),
+    );
+    expect(
+      await screen.findByText('The location signal timed out.'),
+    ).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Retry location' }));
+    await waitFor(() => expect(observation.provider).toHaveBeenCalledTimes(2));
+    act(() => observation.emit(recoveredClaim));
+
+    expect(
+      await screen.findByText('No nearby unvisited events.'),
+    ).toBeVisible();
+    expect(nearbyCalls).toBe(2);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `${apiBaseUrl}/events/nearby-unvisited`,
+      expect.objectContaining({
+        body: JSON.stringify(recoveredClaim),
+        method: 'POST',
+      }),
+    );
+  });
+
+  it('ignores a late one-shot location after the watcher wins the nearby retry', async () => {
+    const user = userEvent.setup();
+    const initialClaim = freshClaim(-3_000);
+    const watcherClaim = freshClaim(-2_000);
+    const lateOneShotClaim = freshClaim(-1_000);
+    const observation = createObservationHarness();
+    let resolveOneShot!: (claim: LocationClaim) => void;
+    const pendingOneShot = new Promise<LocationClaim>((resolve) => {
+      resolveOneShot = resolve;
+    });
+    const locationClaimProvider = vi
+      .fn<LocationClaimProvider>()
+      .mockReturnValue(pendingOneShot);
+    let nearbyCalls = 0;
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/events/nearby-unvisited')) {
+        nearbyCalls += 1;
+        return Promise.resolve(
+          nearbyCalls === 1
+            ? nearbyLocationRetryRequiredResponse()
+            : new Response(
+                JSON.stringify({
+                  events: [],
+                  requestId: 'nearby-watcher-winner',
+                }),
+                {
+                  headers: { 'Content-Type': 'application/json' },
+                  status: 200,
+                },
+              ),
+        );
+      }
+      return Promise.resolve(discoveryResponse());
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderExplore({
+      locationClaimProvider,
+      observation,
+      permission: 'granted',
+    });
+    await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
+    act(() => observation.emit(initialClaim));
+
+    await user.click(await screen.findByRole('button', { name: /^Events/ }));
+    await user.click(screen.getByRole('button', { name: 'Nearby' }));
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Get a new reported location',
+      }),
+    );
+    await waitFor(() => expect(locationClaimProvider).toHaveBeenCalledOnce());
+
+    act(() => observation.emit(watcherClaim));
+    expect(
+      await screen.findByText('No nearby unvisited events.'),
+    ).toBeVisible();
+    expect(nearbyCalls).toBe(2);
+
+    await act(async () => {
+      resolveOneShot(lateOneShotClaim);
+      await pendingOneShot;
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(nearbyCalls).toBe(2);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `${apiBaseUrl}/events/nearby-unvisited`,
+      expect.objectContaining({
+        body: JSON.stringify(watcherClaim),
+        method: 'POST',
+      }),
+    );
+    expect(screen.getByText('No nearby unvisited events.')).toBeVisible();
+  });
+});
+
 function freshClaim(offsetMilliseconds = 0): LocationClaim {
   return {
     ...claim,
@@ -830,5 +1101,18 @@ function locationRetryRequiredResponse(): Response {
       title: 'Location retry required',
     }),
     { headers: { 'Content-Type': 'application/problem+json' }, status: 400 },
+  );
+}
+
+function nearbyLocationRetryRequiredResponse(): Response {
+  return new Response(
+    JSON.stringify({
+      code: 'LOCATION_RETRY_REQUIRED',
+      detail: 'A fresher reported location is required.',
+      requestId: 'request-nearby-location-retry',
+      status: 422,
+      title: 'Location retry required',
+    }),
+    { headers: { 'Content-Type': 'application/problem+json' }, status: 422 },
   );
 }

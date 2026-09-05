@@ -9,6 +9,13 @@ import {
   type EventEligibilityResult,
   type PlayerEvent,
 } from '../api/events';
+import {
+  getPlayerTrail,
+  listNearbyUnvisited,
+  listPlayerTrails,
+  NearbyUnvisitedError,
+  TrailDiscoveryError,
+} from '../api/trails';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import {
   BrowserLocationError,
@@ -27,6 +34,11 @@ import type {
   EventEligibilityState,
   LocationExperienceState,
 } from '../components/exploration/EventList';
+import type {
+  NearbyDiscoveryState,
+  TrailDetailState,
+  TrailListState,
+} from '../components/exploration/TrailDiscovery';
 import type {
   MapConfiguration,
   MapFactory,
@@ -167,6 +179,15 @@ export default function ExplorePage({
   const [discovery, setDiscovery] = useState<EventDiscoveryState>({
     status: 'loading',
   });
+  const [trailDiscovery, setTrailDiscovery] = useState<TrailListState>({
+    status: 'idle',
+  });
+  const [trailDetail, setTrailDetail] = useState<TrailDetailState>({
+    status: 'idle',
+  });
+  const [nearbyDiscovery, setNearbyDiscovery] = useState<NearbyDiscoveryState>({
+    status: 'idle',
+  });
   const [eligibility, setEligibility] = useState<
     Record<string, EventEligibilityState | undefined>
   >({});
@@ -182,6 +203,12 @@ export default function ExplorePage({
   const [, setReportedLocationRevision] = useState(0);
   const eligibilityRequest = useRef<AbortController | null>(null);
   const challengeStartRequest = useRef<AbortController | null>(null);
+  const trailListRequest = useRef<AbortController | null>(null);
+  const trailDetailRequest = useRef<AbortController | null>(null);
+  const nearbyRequest = useRef<AbortController | null>(null);
+  const nearbyRequestedRef = useRef(false);
+  const nearbyNeedsFreshClaimRef = useRef(false);
+  const loadNearbyRef = useRef<(claim: LocationClaim) => void>(() => undefined);
   const latestClaimRef = useRef<LocationClaim | null>(null);
   const displayedClaimRef = useRef<LocationClaim | null>(null);
   const locationSamplesRef = useRef<readonly LocationClaim[]>([]);
@@ -240,6 +267,83 @@ export default function ExplorePage({
 
     return () => controller.abort();
   }, [apiBaseUrl, attempt, getAccessToken]);
+
+  const loadTrails = useCallback((): void => {
+    trailListRequest.current?.abort();
+    const controller = new AbortController();
+    trailListRequest.current = controller;
+    setTrailDiscovery({ status: 'loading' });
+
+    void listPlayerTrails({
+      apiBaseUrl,
+      getAccessToken,
+      signal: controller.signal,
+    })
+      .then((trails) => {
+        if (!controller.signal.aborted && mounted.current) {
+          setTrailDiscovery(
+            trails.length === 0
+              ? { status: 'empty' }
+              : { status: 'ready', trails },
+          );
+        }
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted && mounted.current) {
+          setTrailDiscovery({
+            failure:
+              error instanceof TrailDiscoveryError
+                ? error.failure
+                : 'unavailable',
+            status: 'error',
+          });
+        }
+      })
+      .finally(() => {
+        if (trailListRequest.current === controller) {
+          trailListRequest.current = null;
+        }
+      });
+  }, [apiBaseUrl, getAccessToken]);
+
+  const openTrail = useCallback(
+    (trailId: string): void => {
+      trailDetailRequest.current?.abort();
+      const controller = new AbortController();
+      trailDetailRequest.current = controller;
+      setTrailDetail({ status: 'loading', trailId });
+
+      void getPlayerTrail({
+        apiBaseUrl,
+        getAccessToken,
+        signal: controller.signal,
+        trailId,
+      })
+        .then((trail) => {
+          if (!controller.signal.aborted && mounted.current) {
+            setTrailDetail({ status: 'ready', trail });
+          }
+        })
+        .catch((error: unknown) => {
+          if (!controller.signal.aborted && mounted.current) {
+            setTrailDetail({
+              failure:
+                error instanceof TrailDiscoveryError
+                  ? error.failure
+                  : 'unavailable',
+              status: 'error',
+              trailId,
+            });
+          }
+        })
+        .finally(() => {
+          if (trailDetailRequest.current === controller) {
+            trailDetailRequest.current = null;
+          }
+        });
+    },
+    [apiBaseUrl, getAccessToken],
+  );
 
   const clearEligibilityTimer = useCallback((): void => {
     if (eligibilityTimerRef.current !== null) {
@@ -398,6 +502,49 @@ export default function ExplorePage({
     [locationClaimProvider, rememberReportedLocation],
   );
 
+  const loadNearbyFromClaim = useCallback(
+    (claim: LocationClaim): void => {
+      nearbyRequest.current?.abort();
+      const controller = new AbortController();
+      nearbyRequest.current = controller;
+      setNearbyDiscovery({ status: 'loading' });
+
+      void listNearbyUnvisited({
+        apiBaseUrl,
+        claim,
+        getAccessToken,
+        signal: controller.signal,
+      })
+        .then((events) => {
+          if (!controller.signal.aborted && mounted.current) {
+            nearbyNeedsFreshClaimRef.current = false;
+            setNearbyDiscovery(
+              events.length === 0
+                ? { status: 'empty' }
+                : { events, status: 'ready' },
+            );
+          }
+        })
+        .catch((error: unknown) => {
+          if (!controller.signal.aborted && mounted.current) {
+            const failure =
+              error instanceof NearbyUnvisitedError
+                ? error.failure
+                : 'unavailable';
+            nearbyNeedsFreshClaimRef.current = failure === 'location-retry';
+            setNearbyDiscovery({ failure, status: 'error' });
+          }
+        })
+        .finally(() => {
+          if (nearbyRequest.current === controller) {
+            nearbyRequest.current = null;
+          }
+        });
+    },
+    [apiBaseUrl, getAccessToken],
+  );
+  loadNearbyRef.current = loadNearbyFromClaim;
+
   const stopLocationWatch = useCallback((retainIntent = false): void => {
     stopLocationWatchRef.current?.();
     stopLocationWatchRef.current = null;
@@ -446,6 +593,10 @@ export default function ExplorePage({
         }
 
         rememberReportedLocation(claim);
+        if (nearbyRequestedRef.current) {
+          nearbyRequestedRef.current = false;
+          loadNearbyRef.current(claim);
+        }
         const eventId = selectedEventIdRef.current;
         if (eventId !== null) {
           // Marker stabilisation is presentation-only. Eligibility must receive
@@ -463,6 +614,53 @@ export default function ExplorePage({
     rememberReportedLocation,
     stopLocationWatch,
   ]);
+
+  const requestNearby = useCallback((): void => {
+    if (nearbyRequest.current !== null) {
+      return;
+    }
+
+    const latestClaim = latestClaimRef.current;
+    const needsFreshClaim =
+      nearbyNeedsFreshClaimRef.current ||
+      (latestClaim !== null && !isFreshReusableLocationClaim(latestClaim));
+
+    if (latestClaim !== null && !needsFreshClaim) {
+      nearbyRequestedRef.current = false;
+      loadNearbyFromClaim(latestClaim);
+      return;
+    }
+
+    if (needsFreshClaim) {
+      nearbyRequestedRef.current = true;
+      setNearbyDiscovery({ status: 'loading' });
+      void acquireNewerReportedLocation(latestClaim)
+        .then((claim) => {
+          if (mounted.current && nearbyRequestedRef.current) {
+            nearbyRequestedRef.current = false;
+            loadNearbyFromClaim(claim);
+          }
+        })
+        .catch((error: unknown) => {
+          if (!mounted.current || !nearbyRequestedRef.current) return;
+          if (error instanceof BrowserLocationError) {
+            setLocationState(
+              toLocationExperienceState(error, latestClaim !== null),
+            );
+            setNearbyDiscovery({ status: 'waiting-location' });
+          } else {
+            setNearbyDiscovery({
+              failure: 'location-retry',
+              status: 'error',
+            });
+          }
+        });
+      return;
+    }
+
+    nearbyRequestedRef.current = true;
+    setNearbyDiscovery({ status: 'waiting-location' });
+  }, [acquireNewerReportedLocation, loadNearbyFromClaim]);
 
   useEffect(() => {
     mounted.current = true;
@@ -504,6 +702,9 @@ export default function ExplorePage({
       stopLocationWatch();
       eligibilityRequest.current?.abort();
       challengeStartRequest.current?.abort();
+      trailListRequest.current?.abort();
+      trailDetailRequest.current?.abort();
+      nearbyRequest.current?.abort();
       clearEligibilityTimer();
       pendingEligibilityRef.current = null;
       latestClaimRef.current = null;
@@ -511,6 +712,7 @@ export default function ExplorePage({
       locationSamplesRef.current = [];
       rejectedLocationClaimRef.current = null;
       locationRefreshInFlightRef.current = false;
+      nearbyRequestedRef.current = false;
     };
   }, [
     clearEligibilityTimer,
@@ -744,14 +946,20 @@ export default function ExplorePage({
       locationState={locationState}
       mapConfiguration={mapConfiguration}
       mapFactory={mapFactory}
+      nearbyDiscovery={nearbyDiscovery}
       onClearEventSelection={clearSelectedEvent}
       onEnableLocation={startLocationWatch}
+      onLoadNearby={requestNearby}
+      onLoadTrails={loadTrails}
+      onOpenTrail={openTrail}
       onRetry={() => setAttempt((current) => current + 1)}
       onRetryEligibility={retryEligibility}
       onSelectEvent={selectEvent}
       onStartChallenge={(eventId) => void startChallenge(eventId)}
       reportedLocation={reportedLocation}
       selectedEventId={selectedEventId}
+      trailDetail={trailDetail}
+      trailDiscovery={trailDiscovery}
     />
   );
 }
