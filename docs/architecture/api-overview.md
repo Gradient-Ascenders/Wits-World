@@ -110,7 +110,8 @@ the selected page without exposing a player UUID.
 
 The [asynchronous PvP contract](./asynchronous-pvp-api-contract.md) defines the
 implemented exact Player Name lookup, invitations, viewer-safe match reads,
-signed keyset pages, legal-action submissions, and 24-hour deadline behavior.
+signed keyset pages, legal-action submissions, participant-only voluntary
+resignation, and 24-hour deadline behavior.
 These routes remain separate from CPU and live PvP; the Web experience is
 tracked independently.
 

@@ -6,8 +6,9 @@ title: Player asynchronous PvP journey
 
 ## Purpose and authority
 
-Issue #181 adds asynchronous player-versus-player play alongside the existing
-CPU journey. The protected `/matches` routes continue to provide CPU play;
+Issues #181 and #219 provide asynchronous player-versus-player play and
+voluntary match resignation alongside the existing CPU journey. The protected
+`/matches` routes continue to provide CPU play;
 `/matches/pvp` provides invitations, active asynchronous matches, and PvP
 history. The [asynchronous PvP API contract](../architecture/asynchronous-pvp-api-contract.md)
 remains the source of truth for privacy, identity, deck snapshots, legal
@@ -73,10 +74,18 @@ The opponent projection shows only the active and defeated Creatures, legally
 played Power cards, and aggregate remaining counts supplied by the API. There
 is no placeholder array or accessibility text for unrevealed cards.
 
-Completed views distinguish battle defeat, missed-deadline forfeit, and
-account-deletion forfeit using viewer-relative win/loss language. Voluntary
-forfeit is not offered because S3-02 has no resignation intent or completion
-reason; adding it requires an approved API contract and API-owned implementation.
+When the API returns `canResign: true`, either participant may open a warning
+dialog and confirm an immediate loss; the opponent receives the win. This action
+is available on either player's turn and disappears as soon as the server reports
+the match terminal. The request contains only the current version and one stable
+submission ID. Ambiguous delivery is reconciled with a match read before the UI
+offers a same-ID retry, while stale or completed state is rendered without an
+automatic second resignation.
+
+Completed views distinguish battle defeat, missed-deadline forfeit,
+account-deletion forfeit, and voluntary resignation using viewer-relative
+win/loss language. The client never infers availability or sends a resigning
+participant, winner, outcome, completion reason, or progression value.
 
 ## Accessibility and responsive behaviour
 
@@ -101,9 +110,12 @@ rejection, error mapping, and ambiguous-response recovery metadata.
 `apps/web/tests/pvp-pages.test.tsx` covers the hub state matrix, Player Name
 challenge flow, accept/decline/expiry handling, duplicate-click protection,
 cursor navigation, own/opponent turns, move and Power controls, polling,
-deadline refresh, stale reconciliation, terminal outcomes, hidden opponent
-presentation, and retry. Existing CPU match client/page tests remain the
-regression boundary for the shared presentation extraction.
+deadline refresh, stale reconciliation, confirmed resignation, ambiguous
+same-reference retry, capability gating, terminal outcomes, hidden opponent
+presentation, and retry. Playwright also checks the dialog's keyboard focus,
+single submission, responsive layout, and terminal result. Existing CPU match
+client/page tests remain the regression boundary for the shared presentation
+extraction.
 
 This document was generated and reviewed with assistance from
-Codex-CLI[GPT-5].
+Codex-CLI[GPT-5] and Codex[GPT-5].

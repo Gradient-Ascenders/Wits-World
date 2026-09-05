@@ -1,10 +1,17 @@
 import { useAuth0 } from '@auth0/auth0-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from 'react';
 import { Link, useParams } from 'wouter';
 
 import {
   getPvpMatch,
   PvpApiError,
+  resignPvpMatch,
   submitPvpAction,
   type AsyncPvpMatch,
   type PvpAction,
@@ -15,6 +22,7 @@ import {
   BattleCombatant,
   type BattleActionIntent,
 } from '../components/matches/BattlePresentation';
+import { ResignMatchDialog } from '../components/matches/ResignMatchDialog';
 import './matches.css';
 
 interface RouteParams {
@@ -25,6 +33,17 @@ interface ActionAttempt {
   action: PvpAction;
   expectedVersion: number;
   submissionId: string;
+}
+
+interface ResignationAttempt {
+  expectedVersion: number;
+  submissionId: string;
+}
+
+interface ResignationRecovery {
+  attempt: ResignationAttempt;
+  error: PvpApiError;
+  stage: 'check' | 'retry';
 }
 
 type RequestStatus = 'loading' | 'ready' | 'reconciling' | 'submitting';
@@ -43,6 +62,12 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const [revision, setRevision] = useState(0);
   const [reauthFailed, setReauthFailed] = useState(false);
   const [retryAttempt, setRetryAttempt] = useState<ActionAttempt | null>(null);
+  const [confirmingResignation, setConfirmingResignation] = useState(false);
+  const [errorContext, setErrorContext] = useState<'action' | 'resignation'>(
+    'action',
+  );
+  const [resignationRecovery, setResignationRecovery] =
+    useState<ResignationRecovery | null>(null);
   const matchRef = useRef<AsyncPvpMatch | null>(null);
   const routeMatchId = useRef(matchId);
   const mounted = useRef(true);
@@ -53,6 +78,7 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const pollFailures = useRef(0);
   const phaseHeading = useRef<HTMLHeadingElement | null>(null);
   const alert = useRef<HTMLDivElement | null>(null);
+  const resignTrigger = useRef<HTMLButtonElement | null>(null);
   const countdown = useDeadlineCountdown(match?.turnDeadline ?? null);
   routeMatchId.current = matchId;
 
@@ -68,6 +94,10 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   useEffect(() => {
     if (error) alert.current?.focus();
   }, [error]);
+
+  useEffect(() => {
+    if (!match?.canResign) setConfirmingResignation(false);
+  }, [match?.canResign]);
 
   const applyMatch = useCallback(
     (next: AsyncPvpMatch, responseGeneration: number) => {
@@ -94,6 +124,7 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       setMatch(next);
       setError(null);
       setRetryAttempt(null);
+      setResignationRecovery(null);
       setStatusMessage(matchStatusMessage(next));
       if (turnChanged) queueMicrotask(() => phaseHeading.current?.focus());
       return true;
@@ -154,6 +185,8 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     setMatch(null);
     setError(null);
     setPollWarning(false);
+    setConfirmingResignation(false);
+    setResignationRecovery(null);
     setRequestStatus('loading');
     const responseGeneration = ++generation.current;
     void getPvpMatch({
@@ -240,6 +273,7 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     mutation.current = controller;
     const responseGeneration = ++generation.current;
     setError(null);
+    setErrorContext('action');
     setRetryAttempt(null);
     setRequestStatus('submitting');
     setStatusMessage('Submitting one versioned intent to the server…');
@@ -301,6 +335,127 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         setError(parsed);
         setStatusMessage(
           'The action was not applied. The visible state remains unchanged.',
+        );
+      }
+      setRequestStatus('ready');
+    } finally {
+      if (mutation.current === controller) mutation.current = null;
+    }
+  }
+
+  async function reconcileResignation(
+    recovery: ResignationRecovery,
+    controller: AbortController,
+  ) {
+    try {
+      const reconciled = await getPvpMatch({
+        apiBaseUrl,
+        getAccessToken,
+        matchId,
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted) return;
+      const unchanged =
+        reconciled.version === recovery.attempt.expectedVersion &&
+        reconciled.status === 'active' &&
+        reconciled.canResign;
+      applyMatch(reconciled, ++generation.current);
+      if (recovery.error.options.ambiguous && unchanged) {
+        setResignationRecovery({ ...recovery, stage: 'retry' });
+        setError(recovery.error);
+        setErrorContext('resignation');
+        setStatusMessage(
+          'Server state did not advance. You may safely retry the same resignation reference.',
+        );
+      } else {
+        setStatusMessage(
+          'Authoritative state restored. Review the current match before resigning.',
+        );
+      }
+    } catch (recoveryError) {
+      if (controller.signal.aborted) return;
+      setResignationRecovery({ ...recovery, stage: 'check' });
+      setError(toPvpError(recoveryError));
+      setErrorContext('resignation');
+      setStatusMessage(
+        'Server state is still uncertain. Check it again before retrying the resignation.',
+      );
+    }
+  }
+
+  async function checkResignationState(recovery: ResignationRecovery) {
+    if (mutation.current) return;
+    const controller = new AbortController();
+    mutation.current = controller;
+    setRequestStatus('reconciling');
+    setError(null);
+    setStatusMessage('Checking whether the resignation was committed…');
+    try {
+      await reconcileResignation(recovery, controller);
+    } finally {
+      if (mutation.current === controller) mutation.current = null;
+      setRequestStatus('ready');
+    }
+  }
+
+  async function submitResignation(attempt?: ResignationAttempt) {
+    const current = matchRef.current;
+    if (
+      !current ||
+      current.status !== 'active' ||
+      !current.canResign ||
+      mutation.current
+    )
+      return;
+    const nextAttempt = attempt ?? {
+      expectedVersion: current.version,
+      submissionId: crypto.randomUUID(),
+    };
+    const controller = new AbortController();
+    mutation.current = controller;
+    const responseGeneration = ++generation.current;
+    setConfirmingResignation(false);
+    setError(null);
+    setErrorContext('resignation');
+    setRetryAttempt(null);
+    setResignationRecovery(null);
+    setRequestStatus('submitting');
+    setStatusMessage('Submitting one versioned resignation to the server…');
+    try {
+      const response = await resignPvpMatch({
+        ...nextAttempt,
+        apiBaseUrl,
+        getAccessToken,
+        matchId,
+        signal: controller.signal,
+      });
+      if (!controller.signal.aborted) {
+        applyMatch(response, responseGeneration);
+        setRequestStatus('ready');
+      }
+    } catch (nextError) {
+      if (controller.signal.aborted) return;
+      const parsed = toPvpError(nextError);
+      if (
+        parsed.options.ambiguous ||
+        ['completed', 'stale'].includes(parsed.failure)
+      ) {
+        const recovery: ResignationRecovery = {
+          attempt: nextAttempt,
+          error: parsed,
+          stage: 'check',
+        };
+        setResignationRecovery(parsed.options.ambiguous ? recovery : null);
+        setRequestStatus('reconciling');
+        setStatusMessage(
+          'The resignation response was stale or uncertain. Restoring authoritative state before another submission is allowed…',
+        );
+        await reconcileResignation(recovery, controller);
+      } else {
+        setError(parsed);
+        setErrorContext('resignation');
+        setStatusMessage(
+          'The resignation was not applied. The visible state remains unchanged.',
         );
       }
       setRequestStatus('ready');
@@ -450,9 +605,34 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           role="alert"
           tabIndex={-1}
         >
-          <strong>Action not applied.</strong> {errorMessage(error)}
+          <strong>
+            {errorContext === 'resignation'
+              ? 'Resignation not confirmed.'
+              : 'Action not applied.'}
+          </strong>{' '}
+          {errorMessage(error, errorContext)}
           <div className="match-state-actions">
-            {retryAttempt ? (
+            {resignationRecovery?.stage === 'retry' ? (
+              <button
+                className="button"
+                disabled={busy}
+                onClick={() =>
+                  void submitResignation(resignationRecovery.attempt)
+                }
+                type="button"
+              >
+                Retry same resignation safely
+              </button>
+            ) : resignationRecovery?.stage === 'check' ? (
+              <button
+                className="button"
+                disabled={busy}
+                onClick={() => void checkResignationState(resignationRecovery)}
+                type="button"
+              >
+                Check server state
+              </button>
+            ) : retryAttempt ? (
               <button
                 className="button"
                 disabled={busy}
@@ -544,14 +724,38 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
             powerCards={match.state.self.powerCards}
           />
 
-          <PvpSideRail match={match} />
+          <PvpSideRail
+            busy={busy}
+            match={match}
+            onResign={() => setConfirmingResignation(true)}
+            resignTrigger={resignTrigger}
+          />
         </div>
       )}
+      {confirmingResignation && match.canResign ? (
+        <ResignMatchDialog
+          busy={busy}
+          onCancel={() => setConfirmingResignation(false)}
+          onConfirm={() => void submitResignation()}
+          opponentLabel={match.opponent.playerName}
+          returnFocusRef={resignTrigger}
+        />
+      ) : null}
     </div>
   );
 }
 
-function PvpSideRail({ match }: { match: AsyncPvpMatch }) {
+function PvpSideRail({
+  busy = false,
+  match,
+  onResign,
+  resignTrigger,
+}: {
+  busy?: boolean;
+  match: AsyncPvpMatch;
+  onResign?: () => void;
+  resignTrigger?: RefObject<HTMLButtonElement | null>;
+}) {
   return (
     <aside
       aria-label="PvP match activity and details"
@@ -626,6 +830,25 @@ function PvpSideRail({ match }: { match: AsyncPvpMatch }) {
           </ul>
         ) : null}
       </details>
+      {match.canResign && onResign ? (
+        <section className="battle-rail-card pvp-resign-card">
+          <p className="eyebrow">Permanent match action</p>
+          <h2>Leave this match</h2>
+          <p>
+            Resigning records an immediate loss and gives{' '}
+            {match.opponent.playerName} the win.
+          </p>
+          <button
+            className="button button--danger"
+            disabled={busy}
+            onClick={onResign}
+            ref={resignTrigger}
+            type="button"
+          >
+            Resign match
+          </button>
+        </section>
+      ) : null}
     </aside>
   );
 }
@@ -749,6 +972,10 @@ function completedReason(match: AsyncPvpMatch) {
     return match.outcome === 'win'
       ? 'Your opponent became unavailable and forfeited the match.'
       : 'Your account lifecycle caused this match to be forfeited.';
+  if (match.completionReason === 'voluntary_resignation')
+    return match.outcome === 'win'
+      ? `${match.opponent.playerName} resigned the match.`
+      : 'You resigned the match.';
   return match.outcome === 'win'
     ? 'Your opponent missed the server’s 24-hour decision deadline.'
     : 'Your 24-hour decision deadline expired, so the server recorded a forfeit.';
@@ -773,13 +1000,16 @@ function toPvpAction(action: BattleActionIntent): PvpAction | null {
   return action.type === 'select_initial_creature' ? null : action;
 }
 
-function errorMessage(error: PvpApiError) {
+function errorMessage(
+  error: PvpApiError,
+  context: 'action' | 'resignation' = 'action',
+) {
   if (error.failure === 'authorization')
     return 'Your session expired. Sign in again before continuing.';
   if (error.failure === 'not-found')
     return 'This match is not available to the signed-in player.';
   if (error.failure === 'completed')
-    return 'The match completed before that action arrived. Reload its saved result.';
+    return `The match completed before that ${context === 'resignation' ? 'resignation' : 'action'} arrived. Reload its saved result.`;
   if (error.failure === 'stale' || error.failure === 'illegal-action')
     return 'The match changed before that intent was accepted. Reload the current legal actions.';
   if (error.options.ambiguous)

@@ -38,7 +38,10 @@ const DEFAULT_PAGE_LIMIT = 20;
 export type PvpInvitationStatus =
   'pending' | 'accepted' | 'declined' | 'expired' | 'invalidated';
 export type PvpCompletionReason =
-  'defeat' | 'turn_forfeit' | 'account_deletion_forfeit';
+  | 'defeat'
+  | 'turn_forfeit'
+  | 'account_deletion_forfeit'
+  | 'voluntary_resignation';
 
 export interface AsyncPvpClient {
   query<T extends pg.QueryResultRow>(
@@ -161,6 +164,12 @@ export interface AsyncPvpService {
     submissionId: string;
     expectedVersion: number;
     action: PvpAction;
+  }): Promise<AsyncPvpMatchView>;
+  resignMatch(input: {
+    playerId: string;
+    matchId: string;
+    submissionId: string;
+    expectedVersion: number;
   }): Promise<AsyncPvpMatchView>;
   expireInvitation(
     client: AsyncPvpClient,
@@ -950,6 +959,88 @@ export function createAsyncPvpService(
         throw new AsyncPvpError(
           'PVP_MATCH_COMPLETED',
           'The match deadline passed before this action was applied.',
+        );
+      }
+      return response;
+    },
+
+    async resignMatch(input) {
+      const payloadHash = hashPayload({
+        matchId: input.matchId,
+        expectedVersion: input.expectedVersion,
+      });
+      let deadlineLost = false;
+      const response = await withTransaction(database, async (client) => {
+        const match = await lockMatch(client, input.playerId, input.matchId);
+        await lockSubmissionKey(
+          client,
+          input.playerId,
+          'match_resign',
+          input.submissionId,
+        );
+        const replay = await loadReceipt<AsyncPvpMatchView>(
+          client,
+          input.playerId,
+          'match_resign',
+          input.submissionId,
+          payloadHash,
+        );
+        if (replay) return replay;
+
+        const now = await databaseNow(client);
+        if (
+          match.status === 'active' &&
+          match.turn_deadline &&
+          now >= match.turn_deadline
+        ) {
+          await completeForfeit(
+            client,
+            match,
+            match.current_player_id!,
+            now,
+            'turn_forfeit',
+            progressionPersistence,
+          );
+          deadlineLost = true;
+          return loadMatchView(client, input.playerId, input.matchId);
+        }
+        if (match.status === 'completed') {
+          throw new AsyncPvpError(
+            'PVP_MATCH_COMPLETED',
+            'Completed PvP matches cannot be resigned.',
+          );
+        }
+        if (match.version !== input.expectedVersion) {
+          throw new AsyncPvpError(
+            'PVP_MATCH_VERSION_CONFLICT',
+            'The match changed before this resignation was applied.',
+          );
+        }
+
+        await completeForfeit(
+          client,
+          match,
+          input.playerId,
+          now,
+          'voluntary_resignation',
+          progressionPersistence,
+        );
+        const view = await loadMatchView(client, input.playerId, match.id);
+        await insertReceipt(client, {
+          actorId: input.playerId,
+          operation: 'match_resign',
+          submissionId: input.submissionId,
+          matchId: match.id,
+          payloadHash,
+          response: view,
+          now,
+        });
+        return view;
+      });
+      if (deadlineLost) {
+        throw new AsyncPvpError(
+          'PVP_MATCH_COMPLETED',
+          'The match deadline passed before this resignation was applied.',
         );
       }
       return response;
@@ -1839,7 +1930,7 @@ async function completeForfeit(
   match: MatchRow,
   losingPlayerId: string,
   completedAt: Date,
-  reason: 'turn_forfeit' | 'account_deletion_forfeit',
+  reason: 'turn_forfeit' | 'account_deletion_forfeit' | 'voluntary_resignation',
   progressionPersistence: ProgressionPersistence,
 ): Promise<void> {
   const winnerPlayerId =

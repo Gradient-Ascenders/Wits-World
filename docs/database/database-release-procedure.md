@@ -1,16 +1,18 @@
 # Basic Database Release Procedure
 
 This procedure prepares the PostgreSQL/PostGIS database used by the Wits Quest
-API. It is intentionally operator-run. Gitea Actions does not migrate or seed a
-database, and an API deployment must not be treated as ready when this procedure
-fails.
+API. It remains operator-run for rehearsals and manual releases. For a validated
+push to `main`, the Gitea `deploy-api` job runs the same guarded production
+release before deploying the API; it never seeds demonstration data. An API
+deployment must not be treated as ready when the database release fails.
 
 ## Authority and ownership
 
-The Data and Infrastructure Lead executes the procedure. The API and Security
-Lead approves production database writes and reviews secret handling. A second
-explicit release decision is required before adding Basic demonstration content
-to production.
+The Data and Infrastructure Lead executes manual procedures and owns the
+guarded Gitea deployment configuration. The API and Security Lead approves
+production database writes and reviews secret handling. A second explicit
+release decision is required before adding Basic demonstration content to
+production.
 
 Never run a production command only because a branch or deployment workflow was
 started. Record the approved commit, environment, database name, operator, and
@@ -130,6 +132,21 @@ immutable. An older API instance will fail challenge finalisation after `0034`,
 so do not leave mixed API versions serving traffic. No new environment variable,
 dependency, seed, or data backfill is required.
 
+Migration `0037_add_async_pvp_voluntary_resignation.sql` is database-first and
+forward-only. It extends the asynchronous PvP terminal-reason and submission-
+receipt constraints, adds the unique per-match resignation receipt, replaces
+the deferred validators, and installs 25/0 progression rules. It does not alter
+existing matches. Apply it before the issue `#219` API.
+
+The Web sends `X-Wits-PvP-Contract-Version: 2` on PvP calls. Before the new API
+is live, the old API ignores the header and the Web treats an absent `canResign`
+as unavailable. Before the new Web is live, the new API keeps the legacy match
+shape and rejects resignation; it returns `PVP_CLIENT_UPDATE_REQUIRED` rather
+than exposing a voluntary terminal reason to an old tab. This protects the
+parallel API/Web deployment window. Once any voluntary resignation is stored,
+do not roll the API back to a version that cannot parse that reason; recover by
+rolling forward with the migration retained.
+
 ## Prerequisites
 
 - Use the Node.js and npm versions declared by the repository.
@@ -198,7 +215,10 @@ test command as evidence that production was changed.
    ```
 
 5. Review the successful migration, PostGIS, and verification counts. Confirm
-   `0028` before deploying the API and compatible Web build. For `0034`, confirm
+   `0028` before deploying the API and compatible Web build. For `0037`, confirm
+   the new reason, receipt index, deferred validators, and progression rules,
+   then smoke-test resignation from both viewer perspectives without logging
+   player identifiers. For `0034`, confirm
    the migration applied only after the compatible application checks in step 3,
    then use the versioned Web client to complete a challenge against the
    post-migration schema. Verify it persists zero in `coins_awarded`, creates no
@@ -258,7 +278,8 @@ subject to the selected Neon plan and are not created by this procedure.
 - selecting and confirming the intended Neon target;
 - deciding whether demonstration data belongs in production;
 - reviewing sanitised evidence;
-- starting the API deployment after database success; and
+- initiating and supervising any manual deployment outside the guarded Gitea
+  `main` workflow; and
 - authenticated deployed-event verification.
 
 This procedure was planned, generated, edited, and verified with the assistance

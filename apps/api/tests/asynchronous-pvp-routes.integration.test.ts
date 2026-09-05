@@ -6,6 +6,7 @@ import type { AccessTokenVerifier } from '../src/auth/access-token-verifier.js';
 import type { AuthConfig } from '../src/config/auth.js';
 import {
   AsyncPvpError,
+  type AsyncPvpMatchView,
   type AsyncPvpService,
   type PvpInvitationView,
 } from '../src/matches/asynchronous-pvp-service.js';
@@ -54,6 +55,7 @@ beforeEach(async () => {
     listHistory: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
     getMatch: vi.fn(),
     submitAction: vi.fn(),
+    resignMatch: vi.fn(),
     expireInvitation: vi.fn(),
     forfeitOverdueMatch: vi.fn(),
     finalizeAccountDeletion: vi.fn(),
@@ -134,6 +136,140 @@ describe('asynchronous PvP routes', () => {
     expect(service.submitAction).not.toHaveBeenCalled();
   });
 
+  it('derives resignation availability, loser, and winner on the server', async () => {
+    service.getMatch.mockResolvedValueOnce(match());
+    service.resignMatch.mockResolvedValueOnce(
+      match({
+        status: 'completed',
+        currentActor: null,
+        turnDeadline: null,
+        outcome: 'loss',
+        completionReason: 'voluntary_resignation',
+        completedAt: '2026-09-05T10:00:00.000Z',
+        version: 4,
+      }),
+    );
+
+    const active = await request('GET', `/api/v1/matches/pvp/${INVITATION_ID}`);
+    expect(active.statusCode).toBe(200);
+    expect(active.json()).toMatchObject({ canResign: true, status: 'active' });
+
+    const resigned = await request(
+      'POST',
+      `/api/v1/matches/pvp/${INVITATION_ID}/resign`,
+      { submissionId: SUBMISSION_ID, expectedVersion: 3 },
+    );
+    expect(resigned.statusCode).toBe(200);
+    expect(service.resignMatch).toHaveBeenCalledWith({
+      playerId: PLAYER_ID,
+      matchId: INVITATION_ID,
+      submissionId: SUBMISSION_ID,
+      expectedVersion: 3,
+    });
+    expect(resigned.json()).toMatchObject({
+      canResign: false,
+      completionReason: 'voluntary_resignation',
+      outcome: 'loss',
+      status: 'completed',
+    });
+    expect(resigned.body).not.toContain(PLAYER_ID);
+
+    const invalid = await request(
+      'POST',
+      `/api/v1/matches/pvp/${INVITATION_ID}/resign`,
+      {
+        submissionId: SUBMISSION_ID,
+        expectedVersion: 3,
+        winner: 'self',
+        resigningPlayerId: PLAYER_ID,
+      },
+    );
+    expect(invalid.statusCode).toBe(400);
+    expect(service.resignMatch).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps legacy clients safe throughout the resignation rollout', async () => {
+    service.getMatch.mockResolvedValueOnce(match()).mockResolvedValueOnce(
+      match({
+        status: 'completed',
+        currentActor: null,
+        turnDeadline: null,
+        outcome: 'loss',
+        completionReason: 'voluntary_resignation',
+        completedAt: '2026-09-05T10:00:00.000Z',
+        version: 4,
+      }),
+    );
+
+    const legacyHeaders = { authorization: 'Bearer valid-token' };
+    const active = await app.inject({
+      method: 'GET',
+      url: `/api/v1/matches/pvp/${INVITATION_ID}`,
+      headers: legacyHeaders,
+    });
+    expect(active.statusCode).toBe(200);
+    expect(active.json()).not.toHaveProperty('canResign');
+
+    const unsupported = await app.inject({
+      method: 'POST',
+      url: `/api/v1/matches/pvp/${INVITATION_ID}/resign`,
+      headers: legacyHeaders,
+      payload: { submissionId: SUBMISSION_ID, expectedVersion: 3 },
+    });
+    expect(unsupported.statusCode).toBe(409);
+    expect(unsupported.json()).toMatchObject({
+      code: 'PVP_CLIENT_UPDATE_REQUIRED',
+    });
+    expect(service.resignMatch).not.toHaveBeenCalled();
+
+    const completed = await app.inject({
+      method: 'GET',
+      url: `/api/v1/matches/pvp/${INVITATION_ID}`,
+      headers: legacyHeaders,
+    });
+    expect(completed.statusCode).toBe(409);
+    expect(completed.json()).toMatchObject({
+      code: 'PVP_CLIENT_UPDATE_REQUIRED',
+    });
+
+    service.listHistory.mockResolvedValueOnce({
+      items: [
+        {
+          matchId: INVITATION_ID,
+          mode: 'asynchronous',
+          status: 'completed',
+          opponent: { playerName: 'opponent_player' },
+          outcome: 'loss',
+          completionReason: 'voluntary_resignation',
+          startedAt: '2026-09-05T08:00:00.000Z',
+          completedAt: '2026-09-05T10:00:00.000Z',
+        },
+      ],
+      nextCursor: null,
+    });
+    const history = await app.inject({
+      method: 'GET',
+      url: '/api/v1/matches/pvp/history',
+      headers: legacyHeaders,
+    });
+    expect(history.statusCode).toBe(409);
+    expect(history.json()).toMatchObject({
+      code: 'PVP_CLIENT_UPDATE_REQUIRED',
+    });
+  });
+
+  it('requires authentication before resolving a resignation participant', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/matches/pvp/${INVITATION_ID}/resign`,
+      headers: { 'x-wits-pvp-contract-version': '2' },
+      payload: { submissionId: SUBMISSION_ID, expectedVersion: 3 },
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(service.resignMatch).not.toHaveBeenCalled();
+  });
+
   it('maps unavailable players and publishes static history before match detail', async () => {
     service.findPlayer.mockRejectedValueOnce(
       new AsyncPvpError(
@@ -156,7 +292,7 @@ describe('asynchronous PvP routes', () => {
     expect(service.getMatch).not.toHaveBeenCalled();
   });
 
-  it('documents all nine protected operations', async () => {
+  it('documents all ten protected operations', async () => {
     await app.ready();
     const paths = app.swagger().paths ?? {};
     expect(paths['/api/v1/matches/pvp/players']?.get).toBeDefined();
@@ -172,8 +308,55 @@ describe('asynchronous PvP routes', () => {
     expect(paths['/api/v1/matches/pvp/history']?.get).toBeDefined();
     expect(paths['/api/v1/matches/pvp/{matchId}']?.get).toBeDefined();
     expect(paths['/api/v1/matches/pvp/{matchId}/actions']?.post).toBeDefined();
+    const resignationOperation =
+      paths['/api/v1/matches/pvp/{matchId}/resign']?.post;
+    expect(resignationOperation).toBeDefined();
+    expect(JSON.stringify(resignationOperation)).toContain(
+      'x-wits-pvp-contract-version',
+    );
   });
 });
+
+function match(overrides: Partial<AsyncPvpMatchView> = {}): AsyncPvpMatchView {
+  const status = overrides.status ?? 'active';
+  const completed = status === 'completed';
+  return {
+    matchId: INVITATION_ID,
+    mode: 'asynchronous',
+    status,
+    version: 3,
+    opponent: { playerName: 'opponent_player' },
+    currentActor: completed ? null : 'self',
+    turnDeadline: completed ? null : '2026-09-06T10:00:00.000Z',
+    state: {
+      phase: completed ? 'completed' : 'active',
+      turnNumber: 2,
+      self: {
+        playerName: 'self_player',
+        creatures: [],
+        powerCards: [],
+        usedPowerCardIds: [],
+        activeCreatureId: null,
+      },
+      opponent: {
+        playerName: 'opponent_player',
+        activeCreature: null,
+        defeatedCreatures: [],
+        remainingCreatureCount: 0,
+        playedPowerCards: [],
+        remainingPowerCardCount: 0,
+      },
+    },
+    legalActions: [],
+    lastAction: null,
+    outcome: completed ? 'loss' : null,
+    completionReason: completed ? 'voluntary_resignation' : null,
+    startedAt: '2026-09-05T08:00:00.000Z',
+    updatedAt: '2026-09-05T09:00:00.000Z',
+    completedAt: completed ? '2026-09-05T10:00:00.000Z' : null,
+    ...overrides,
+  };
+}
 
 function invitation(): PvpInvitationView {
   return {
@@ -197,7 +380,10 @@ function request(
   return app.inject({
     method,
     url,
-    headers: { authorization: 'Bearer valid-token' },
+    headers: {
+      authorization: 'Bearer valid-token',
+      'x-wits-pvp-contract-version': '2',
+    },
     ...(payload ? { payload } : {}),
   });
 }

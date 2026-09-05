@@ -342,6 +342,7 @@ export async function buildApp({
         'Authorization',
         'Content-Type',
         'X-Wits-Challenge-Contract-Version',
+        'X-Wits-PvP-Contract-Version',
       ],
       credentials: false,
       preflight: true,

@@ -726,6 +726,93 @@
   color: var(--colour-text-secondary);
 }
 
+.pvp-resign-card {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-color: rgb(220 91 101 / 46%);
+}
+
+.pvp-resign-card .eyebrow,
+.pvp-resign-card h2,
+.pvp-resign-card p {
+  margin: 0;
+}
+
+.pvp-resign-card h2 {
+  font-size: var(--text-lg);
+}
+
+.pvp-resign-card p {
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.pvp-resign-card .button {
+  width: fit-content;
+}
+
+.pvp-battle-page .button--danger {
+  border-color: rgb(220 91 101 / 68%);
+  color: var(--colour-text-primary);
+  background: rgb(220 91 101 / 10%);
+  box-shadow: none;
+}
+
+.pvp-battle-page .button--danger:hover:not(:disabled) {
+  background: rgb(220 91 101 / 18%);
+  box-shadow: none;
+}
+
+.pvp-resign-dialog-backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  align-items: end;
+  padding: var(--space-3);
+  padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom));
+  background: rgb(2 7 15 / 78%);
+  backdrop-filter: blur(0.35rem);
+}
+
+.pvp-resign-dialog {
+  display: grid;
+  width: min(100%, 32rem);
+  max-height: calc(100dvh - var(--space-6) - env(safe-area-inset-bottom));
+  justify-self: center;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  overflow-y: auto;
+  border: 1px solid rgb(220 91 101 / 56%);
+  border-radius: var(--radius-lg);
+  color: var(--colour-text-primary);
+  background: var(--colour-navy-900);
+  box-shadow: var(--shadow-floating);
+}
+
+.pvp-resign-dialog .eyebrow,
+.pvp-resign-dialog h2,
+.pvp-resign-dialog p {
+  margin: 0;
+}
+
+.pvp-resign-dialog h2 {
+  font-size: var(--text-2xl);
+}
+
+.pvp-resign-dialog > div:not(.pvp-resign-dialog__actions) {
+  color: var(--colour-text-secondary);
+}
+
+.pvp-resign-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
 .pvp-played-cards {
   display: grid;
   gap: var(--space-3);
@@ -2631,6 +2718,11 @@
 }
 
 @media (max-width: 37.49rem) {
+  .pvp-resign-card .button,
+  .pvp-resign-dialog__actions .button {
+    width: 100%;
+  }
+
   .pvp-section-tabs {
     gap: 0;
   }
@@ -2724,6 +2816,12 @@
     max-height: 58dvh;
     overflow-y: auto;
     overscroll-behavior: contain;
+  }
+}
+
+@media (min-width: 37.5rem) {
+  .pvp-resign-dialog-backdrop {
+    align-items: center;
   }
 }
 

@@ -55,6 +55,7 @@ export function pvpMatch(
     ...overrides.state,
   };
   return {
+    canResign: !completed,
     completedAt: completed ? '2026-09-05T09:30:00.000Z' : null,
     completionReason: completed ? 'defeat' : null,
     currentActor: completed ? null : 'self',

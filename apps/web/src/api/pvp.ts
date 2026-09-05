@@ -8,6 +8,9 @@ import {
   type MatchPowerCard,
 } from './matches';
 
+const PVP_CONTRACT_VERSION_HEADER = 'X-Wits-PvP-Contract-Version';
+const RESIGNATION_CONTRACT_VERSION = '2';
+
 export type PvpInvitationStatus =
   'pending' | 'accepted' | 'declined' | 'expired' | 'invalidated';
 
@@ -40,7 +43,10 @@ export interface PvpMatchSummary {
 }
 
 export type PvpCompletionReason =
-  'account_deletion_forfeit' | 'defeat' | 'turn_forfeit';
+  | 'account_deletion_forfeit'
+  | 'defeat'
+  | 'turn_forfeit'
+  | 'voluntary_resignation';
 
 export interface PvpHistorySummary {
   completedAt: string;
@@ -73,6 +79,7 @@ export interface PvpActionResult {
 }
 
 export interface AsyncPvpMatch {
+  canResign: boolean;
   completedAt: string | null;
   completionReason: PvpCompletionReason | null;
   currentActor: 'opponent' | 'self' | null;
@@ -327,6 +334,27 @@ export async function submitPvpAction(
   return match;
 }
 
+export async function resignPvpMatch(
+  options: BaseOptions & {
+    expectedVersion: number;
+    matchId: string;
+    submissionId: string;
+  },
+): Promise<AsyncPvpMatch> {
+  const payload = await pvpRequest({
+    ...options,
+    body: {
+      expectedVersion: options.expectedVersion,
+      submissionId: options.submissionId,
+    },
+    method: 'POST',
+    path: `/matches/pvp/${encodeURIComponent(options.matchId)}/resign`,
+  });
+  const match = parsePvpMatch(payload);
+  if (match.matchId !== options.matchId) throw new PvpApiError('unavailable');
+  return match;
+}
+
 async function pvpRequest({
   apiBaseUrl,
   body,
@@ -349,6 +377,7 @@ async function pvpRequest({
       headers: {
         Accept: 'application/json',
         Authorization: `Bearer ${accessToken}`,
+        [PVP_CONTRACT_VERSION_HEADER]: RESIGNATION_CONTRACT_VERSION,
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
       },
       method,
@@ -535,26 +564,29 @@ function parseHistorySummary(value: unknown): PvpHistorySummary {
 }
 
 function parsePvpMatch(value: unknown): AsyncPvpMatch {
+  const matchKeys = [
+    'matchId',
+    'mode',
+    'status',
+    'version',
+    'opponent',
+    'currentActor',
+    'turnDeadline',
+    'state',
+    'legalActions',
+    'lastAction',
+    'outcome',
+    'completionReason',
+    'startedAt',
+    'updatedAt',
+    'completedAt',
+    'requestId',
+  ] as const;
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, [
-      'matchId',
-      'mode',
-      'status',
-      'version',
-      'opponent',
-      'currentActor',
-      'turnDeadline',
-      'state',
-      'legalActions',
-      'lastAction',
-      'outcome',
-      'completionReason',
-      'startedAt',
-      'updatedAt',
-      'completedAt',
-      'requestId',
-    ]) ||
+    (!hasExactKeys(value, matchKeys) &&
+      !hasExactKeys(value, [...matchKeys, 'canResign'])) ||
+    (value.canResign !== undefined && typeof value.canResign !== 'boolean') ||
     !isUuid(value.matchId) ||
     value.mode !== 'asynchronous' ||
     (value.status !== 'active' && value.status !== 'completed') ||
@@ -594,13 +626,15 @@ function parsePvpMatch(value: unknown): AsyncPvpMatch {
         value.completionReason === null ||
         value.completedAt === null ||
         state.phase !== 'completed' ||
-        legalActions.length !== 0)) ||
+        legalActions.length !== 0 ||
+        value.canResign === true)) ||
     (value.currentActor === 'opponent' && legalActions.length !== 0) ||
     state.opponent.playerName !== value.opponent.playerName
   ) {
     throw new PvpApiError('unavailable');
   }
   return {
+    canResign: value.canResign === true,
     completedAt: value.completedAt,
     completionReason: value.completionReason,
     currentActor: value.currentActor,
@@ -870,9 +904,12 @@ function isInvitationStatus(value: unknown): value is PvpInvitationStatus {
 }
 
 function isCompletionReason(value: unknown): value is PvpCompletionReason {
-  return ['account_deletion_forfeit', 'defeat', 'turn_forfeit'].includes(
-    String(value),
-  );
+  return [
+    'account_deletion_forfeit',
+    'defeat',
+    'turn_forfeit',
+    'voluntary_resignation',
+  ].includes(String(value));
 }
 
 function isNonNegativeInteger(value: unknown): value is number {

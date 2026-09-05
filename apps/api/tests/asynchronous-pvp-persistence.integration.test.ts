@@ -27,6 +27,8 @@ const MIGRATION_NAME = '0028_create_asynchronous_pvp_persistence.sql';
 const INVALIDATION_MIGRATION_NAME =
   '0033_add_async_pvp_invitation_invalidation.sql';
 const INDEX_CLEANUP_MIGRATION_NAME = '0036_remove_duplicate_indexes.sql';
+const RESIGNATION_MIGRATION_NAME =
+  '0037_add_async_pvp_voluntary_resignation.sql';
 const PRE_MIGRATION_PLAYER_ID = '17900000-0000-4000-8000-000000000001';
 const PRE_MIGRATION_MATCH_ID = '17900000-0000-4000-8000-000000000002';
 const runIntegrationTests =
@@ -57,6 +59,35 @@ interface SnapshotBattleCardFixture extends pg.QueryResultRow {
   battle_card_id: string;
   category: 'creature' | 'power';
   affinity: CardDefinitionFixture['affinity'];
+}
+
+interface TerminalMoveStateRow extends pg.QueryResultRow {
+  battle_state: {
+    participants: Record<
+      'cpu' | 'player',
+      {
+        activeCreatureId: string;
+        creatures: Array<{
+          card: {
+            id: string;
+            moves: Array<{
+              id: string;
+              name: string;
+              moveType: 'basic';
+              powerCost: number;
+              effects: Array<{
+                id: string;
+                effectType: 'damage';
+                effectValue: number;
+              }>;
+            }>;
+          };
+          currentHp: number;
+          defeated: boolean;
+        }>;
+      }
+    >;
+  };
 }
 
 describe.skipIf(!runIntegrationTests)(
@@ -100,6 +131,7 @@ describe.skipIf(!runIntegrationTests)(
         MIGRATION_NAME,
         INVALIDATION_MIGRATION_NAME,
         INDEX_CLEANUP_MIGRATION_NAME,
+        RESIGNATION_MIGRATION_NAME,
       ]);
 
       pool = createDatabasePool(temporaryConfig);
@@ -208,6 +240,7 @@ describe.skipIf(!runIntegrationTests)(
           'async_pvp_matches_overdue_idx',
           'async_pvp_match_actions_sequence_unique',
           'async_pvp_submission_receipts_actor_operation_unique',
+          'async_pvp_submission_receipts_match_resign_unique_idx',
         ]),
       );
     });
@@ -532,6 +565,324 @@ describe.skipIf(!runIntegrationTests)(
       await expect(
         service.getMatch(challengerPlayerId, challengerView.matchId),
       ).resolves.toMatchObject({ version: 2 });
+    });
+
+    it('resigns once into viewer-relative history, receipts, and progression', async () => {
+      const match = await createAcceptedMatch(pool, cardDefinitions);
+      const unrelatedPlayerId = await insertPlayer(pool, 'resign_unrelated');
+      const service = createAsyncPvpService(pool, {
+        cursorCodec: createSignedCursorCodec(
+          'database-test-only-cursor-key-with-32-bytes',
+        ),
+      });
+      const submissionId = randomUUID();
+      const input = {
+        playerId: match.challengerPlayerId,
+        matchId: match.matchId,
+        submissionId,
+        expectedVersion: 0,
+      };
+
+      await expect(
+        service.resignMatch({
+          ...input,
+          submissionId: randomUUID(),
+          expectedVersion: 1,
+        }),
+      ).rejects.toMatchObject({ code: 'PVP_MATCH_VERSION_CONFLICT' });
+      const resigned = await service.resignMatch(input);
+      expect(resigned).toMatchObject({
+        status: 'completed',
+        version: 1,
+        currentActor: null,
+        turnDeadline: null,
+        completionReason: 'voluntary_resignation',
+        outcome: 'loss',
+        legalActions: [],
+      });
+      await expect(service.resignMatch(input)).resolves.toEqual(resigned);
+      await expect(
+        service.resignMatch({ ...input, expectedVersion: 1 }),
+      ).rejects.toMatchObject({ code: 'PVP_IDEMPOTENCY_CONFLICT' });
+      await expect(
+        service.resignMatch({
+          ...input,
+          playerId: unrelatedPlayerId,
+          submissionId: randomUUID(),
+        }),
+      ).rejects.toMatchObject({ code: 'PVP_MATCH_NOT_FOUND' });
+      await expect(
+        service.resignMatch({ ...input, submissionId: randomUUID() }),
+      ).rejects.toMatchObject({ code: 'PVP_MATCH_COMPLETED' });
+
+      await expect(
+        service.getMatch(match.recipientPlayerId, match.matchId),
+      ).resolves.toMatchObject({
+        completionReason: 'voluntary_resignation',
+        outcome: 'win',
+      });
+      await expect(
+        service.listHistory({ playerId: match.challengerPlayerId }),
+      ).resolves.toMatchObject({
+        items: [
+          {
+            matchId: match.matchId,
+            completionReason: 'voluntary_resignation',
+            outcome: 'loss',
+          },
+        ],
+      });
+
+      const persisted = await pool.query<{
+        action_count: string;
+        activity_count: string;
+        award_count: string;
+        receipt_count: string;
+      }>(
+        `select
+           (select count(*)::text
+              from public.async_pvp_match_actions action
+             where action.match_id = $1::uuid) as action_count,
+           (select count(*)::text
+              from public.player_activity_days activity
+             where activity.player_id in ($2::uuid, $3::uuid)) as activity_count,
+           (select count(*)::text
+              from public.player_point_awards award
+             where award.async_pvp_match_id = $1::uuid) as award_count,
+           (select count(*)::text
+              from private.async_pvp_submission_receipts receipt
+             where receipt.match_id = $1::uuid
+               and receipt.operation = 'match_resign') as receipt_count`,
+        [match.matchId, match.challengerPlayerId, match.recipientPlayerId],
+      );
+      expect(persisted.rows).toEqual([
+        {
+          action_count: '0',
+          activity_count: '2',
+          award_count: '2',
+          receipt_count: '1',
+        },
+      ]);
+    });
+
+    it('gives an elapsed deadline precedence over resignation', async () => {
+      const match = await createAcceptedMatch(pool, cardDefinitions);
+      await pool.query(
+        `update public.async_pvp_matches
+            set decision_started_at = deadline.now - interval '24 hours',
+                turn_deadline = deadline.now,
+                updated_at = deadline.now
+           from (select clock_timestamp() as now) deadline
+          where id = $1::uuid`,
+        [match.matchId],
+      );
+      const service = createAsyncPvpService(pool, {
+        cursorCodec: createSignedCursorCodec(
+          'database-test-only-cursor-key-with-32-bytes',
+        ),
+      });
+
+      await expect(
+        service.resignMatch({
+          playerId: match.challengerPlayerId,
+          matchId: match.matchId,
+          submissionId: randomUUID(),
+          expectedVersion: 0,
+        }),
+      ).rejects.toMatchObject({ code: 'PVP_MATCH_COMPLETED' });
+      await expect(
+        service.getMatch(match.challengerPlayerId, match.matchId),
+      ).resolves.toMatchObject({
+        status: 'completed',
+        completionReason: 'turn_forfeit',
+      });
+      await expect(
+        pool.query<{ count: string }>(
+          `select count(*)::text
+             from private.async_pvp_submission_receipts
+            where match_id = $1::uuid and operation = 'match_resign'`,
+          [match.matchId],
+        ),
+      ).resolves.toMatchObject({ rows: [{ count: '0' }] });
+    });
+
+    it('converges a resignation race with the deadline worker on turn forfeit', async () => {
+      const match = await createAcceptedMatch(pool, cardDefinitions, {
+        acceptedAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
+      });
+      const service = createAsyncPvpService(pool, {
+        cursorCodec: createSignedCursorCodec(
+          'database-test-only-cursor-key-with-32-bytes',
+        ),
+      });
+      const processor = createAsyncPvpDeadlineProcessor(pool, service, {
+        error: () => undefined,
+      });
+
+      const results = await Promise.allSettled([
+        processor.runOnce(),
+        service.resignMatch({
+          playerId: match.challengerPlayerId,
+          matchId: match.matchId,
+          submissionId: randomUUID(),
+          expectedVersion: 0,
+        }),
+      ]);
+      expect(results[0]?.status).toBe('fulfilled');
+      expect(results[1]).toMatchObject({
+        status: 'rejected',
+        reason: { code: 'PVP_MATCH_COMPLETED' },
+      });
+      await expect(
+        service.getMatch(match.challengerPlayerId, match.matchId),
+      ).resolves.toMatchObject({
+        status: 'completed',
+        completionReason: 'turn_forfeit',
+        version: 1,
+      });
+      await expect(
+        pool.query<{
+          award_count: string;
+          resignation_count: string;
+        }>(
+          `select
+             (select count(*)::text
+                from public.player_point_awards
+               where async_pvp_match_id = $1::uuid) as award_count,
+             (select count(*)::text
+                from private.async_pvp_submission_receipts
+               where match_id = $1::uuid
+                 and operation = 'match_resign') as resignation_count`,
+          [match.matchId],
+        ),
+      ).resolves.toMatchObject({
+        rows: [{ award_count: '2', resignation_count: '0' }],
+      });
+    });
+
+    it('serializes resignation against a match-completing legal action', async () => {
+      const match = await createAcceptedMatch(pool, cardDefinitions);
+      const moveId = await prepareTerminalMove(pool, match.matchId);
+      const service = createAsyncPvpService(pool, {
+        cursorCodec: createSignedCursorCodec(
+          'database-test-only-cursor-key-with-32-bytes',
+        ),
+      });
+      const current = await service.getMatch(
+        match.challengerPlayerId,
+        match.matchId,
+      );
+      const results = await Promise.allSettled([
+        service.submitAction({
+          playerId: match.challengerPlayerId,
+          matchId: match.matchId,
+          submissionId: randomUUID(),
+          expectedVersion: current.version,
+          action: { type: 'use_move', moveId },
+        }),
+        service.resignMatch({
+          playerId: match.challengerPlayerId,
+          matchId: match.matchId,
+          submissionId: randomUUID(),
+          expectedVersion: current.version,
+        }),
+      ]);
+
+      expect(
+        results.filter((result) => result.status === 'fulfilled'),
+      ).toHaveLength(1);
+      const finalMatch = await service.getMatch(
+        match.challengerPlayerId,
+        match.matchId,
+      );
+      expect(finalMatch.version).toBe(1);
+      expect(finalMatch.status).toBe('completed');
+      expect(['defeat', 'voluntary_resignation']).toContain(
+        finalMatch.completionReason,
+      );
+      const persisted = await pool.query<{
+        action_count: string;
+        resignation_count: string;
+      }>(
+        `select
+           (select count(*)::text
+              from public.async_pvp_match_actions
+             where match_id = $1::uuid) as action_count,
+           (select count(*)::text
+              from private.async_pvp_submission_receipts
+             where match_id = $1::uuid
+               and operation = 'match_resign') as resignation_count`,
+        [match.matchId],
+      );
+      expect(
+        Number(persisted.rows[0]!.action_count) +
+          Number(persisted.rows[0]!.resignation_count),
+      ).toBe(1);
+      await expect(
+        pool.query<{ count: string }>(
+          `select count(*)::text
+             from public.player_point_awards
+            where async_pvp_match_id = $1::uuid`,
+          [match.matchId],
+        ),
+      ).resolves.toMatchObject({ rows: [{ count: '2' }] });
+    });
+
+    it('serializes resignation against account deletion finalization', async () => {
+      const match = await createAcceptedMatch(pool, cardDefinitions);
+      const service = createAsyncPvpService(pool, {
+        cursorCodec: createSignedCursorCodec(
+          'database-test-only-cursor-key-with-32-bytes',
+        ),
+      });
+      const deletionClient = await pool.connect();
+      try {
+        await deletionClient.query('begin');
+        const deletion = service
+          .finalizeAccountDeletion(
+            deletionClient,
+            match.challengerPlayerId,
+            new Date(),
+          )
+          .then(() => deletionClient.query('commit'));
+        const resignation = service.resignMatch({
+          playerId: match.challengerPlayerId,
+          matchId: match.matchId,
+          submissionId: randomUUID(),
+          expectedVersion: 0,
+        });
+        const results = await Promise.allSettled([deletion, resignation]);
+        expect(results[0]?.status).toBe('fulfilled');
+        if (results[1]?.status === 'rejected') {
+          expect(results[1].reason).toMatchObject({
+            code: 'PVP_MATCH_COMPLETED',
+          });
+        }
+
+        const finalMatch = await service.getMatch(
+          match.challengerPlayerId,
+          match.matchId,
+        );
+        expect(finalMatch).toMatchObject({
+          status: 'completed',
+          outcome: 'loss',
+          version: 1,
+        });
+        expect(['account_deletion_forfeit', 'voluntary_resignation']).toContain(
+          finalMatch.completionReason,
+        );
+        await expect(
+          pool.query<{ count: string }>(
+            `select count(*)::text
+               from public.player_point_awards
+              where async_pvp_match_id = $1::uuid`,
+            [match.matchId],
+          ),
+        ).resolves.toMatchObject({ rows: [{ count: '2' }] });
+      } finally {
+        await deletionClient.query('rollback');
+        deletionClient.release();
+      }
     });
 
     it('rechecks invitation expiry against the clock after crossing the deadline while blocked', async () => {
@@ -1025,6 +1376,32 @@ describe.skipIf(!runIntegrationTests)(
       ]);
     });
 
+    it('rejects a resignation receipt without its terminal losing result', async () => {
+      const match = await createAcceptedMatch(pool, cardDefinitions);
+      const client = await pool.connect();
+      try {
+        await client.query('begin');
+        await client.query(
+          `insert into private.async_pvp_submission_receipts (
+             actor_player_id, operation, submission_id, match_id,
+             payload_hash, committed_response
+           ) values ($1::uuid, 'match_resign', $2::uuid, $3::uuid,
+                     repeat('a', 64), '{}'::jsonb)`,
+          [match.challengerPlayerId, randomUUID(), match.matchId],
+        );
+        await expect(client.query('commit')).rejects.toThrow(
+          'does not match its terminal loser',
+        );
+        await client.query('rollback');
+      } finally {
+        client.release();
+      }
+
+      await expect(
+        completeMatch(pool, match, 'voluntary_resignation'),
+      ).rejects.toThrow('requires one resignation receipt');
+    });
+
     it('rejects incomplete snapshots, invalid deadlines, and wrong receipt actors', async () => {
       const challengerPlayerId = await insertPlayer(pool, 'invalid_challenger');
       const recipientPlayerId = await insertPlayer(pool, 'invalid_recipient');
@@ -1273,7 +1650,8 @@ async function copyPrePvpMigrations(): Promise<string> {
           name.endsWith('.sql') &&
           name !== MIGRATION_NAME &&
           name !== INVALIDATION_MIGRATION_NAME &&
-          name !== INDEX_CLEANUP_MIGRATION_NAME,
+          name !== INDEX_CLEANUP_MIGRATION_NAME &&
+          name !== RESIGNATION_MIGRATION_NAME,
       )
       .map((name) =>
         copyFile(join(sourceDirectory, name), join(targetDirectory, name)),
@@ -1592,6 +1970,66 @@ async function createAcceptedMatch(
   }
 }
 
+async function prepareTerminalMove(
+  database: pg.Pool,
+  matchId: string,
+): Promise<string> {
+  const result = await database.query<TerminalMoveStateRow>(
+    `select battle_state
+       from private.async_pvp_match_states
+      where match_id = $1::uuid`,
+    [matchId],
+  );
+  const state = result.rows[0]?.battle_state;
+  if (!state) throw new Error('Expected an asynchronous PvP fixture state.');
+
+  const player = state.participants.player;
+  const opponent = state.participants.cpu;
+  const actingCreature = player.creatures.find(
+    (creature) => creature.card.id === player.activeCreatureId,
+  );
+  const targetCreature = opponent.creatures.find(
+    (creature) => creature.card.id === opponent.activeCreatureId,
+  );
+  if (!actingCreature || !targetCreature || opponent.creatures.length < 2) {
+    throw new Error('Expected active fixture Creatures on both sides.');
+  }
+
+  const moveId = randomUUID();
+  actingCreature.card.moves = [
+    {
+      id: moveId,
+      name: 'Terminal fixture move',
+      moveType: 'basic',
+      powerCost: 1,
+      effects: [
+        {
+          id: randomUUID(),
+          effectType: 'damage',
+          effectValue: 10,
+        },
+      ],
+    },
+  ];
+  for (const creature of opponent.creatures) {
+    if (creature.card.id === opponent.activeCreatureId) {
+      creature.currentHp = 1;
+      creature.defeated = false;
+    } else {
+      creature.currentHp = 0;
+      creature.defeated = true;
+    }
+  }
+
+  await database.query(
+    `update private.async_pvp_match_states
+        set battle_state = $2::jsonb, updated_at = now()
+      where match_id = $1::uuid`,
+    [matchId, JSON.stringify(state)],
+  );
+  return moveId;
+}
+
 function createFixtureBattleState(cards: readonly SnapshotBattleCardFixture[]) {
   const participant = (role: 'challenger' | 'recipient') => {
     const participantCards = cards.filter(
@@ -1857,7 +2295,11 @@ async function appendAction(
 async function completeMatch(
   database: pg.Pool,
   match: AcceptedMatchFixture,
-  completionReason: 'defeat' | 'turn_forfeit' | 'account_deletion_forfeit',
+  completionReason:
+    | 'defeat'
+    | 'turn_forfeit'
+    | 'account_deletion_forfeit'
+    | 'voluntary_resignation',
 ): Promise<void> {
   const client = await database.connect();
   const terminalActionId = randomUUID();
