@@ -124,7 +124,9 @@ function mockCurrentPlayer(
 }
 
 async function openAccountDisclosure(user: ReturnType<typeof userEvent.setup>) {
-  const trigger = await screen.findByRole('button', { name: 'Account' });
+  const trigger = await screen.findByRole('button', {
+    name: /(?:^Account|, account) menu$/u,
+  });
   await user.click(trigger);
   expect(trigger).toHaveAttribute('aria-expanded', 'true');
   return trigger;
@@ -265,6 +267,22 @@ describe('player authentication', () => {
     });
   });
 
+  it('protects the progression profile route and returns there after sign-in', async () => {
+    const user = userEvent.setup();
+    const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
+
+    renderRoute('/profile', createAuthValue({ loginWithRedirect }));
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Sign in to view your progression profile',
+      }),
+    );
+    expect(loginWithRedirect).toHaveBeenCalledWith({
+      appState: { returnTo: '/profile' },
+    });
+  });
+
   it('shows a safe recoverable message for an authentication error', async () => {
     const user = userEvent.setup();
     const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
@@ -345,7 +363,11 @@ describe('player authentication', () => {
       ).toBeVisible();
       await openAccountDisclosure(user);
       expect(
-        screen.getByText('test-player').closest('.account-control__identity'),
+        screen
+          .getByText('test-player', {
+            selector: '.account-control__identity strong',
+          })
+          .closest('.account-control__identity'),
       ).toHaveTextContent('Signed in as test-player');
       expect(screen.queryByText('Kevin')).not.toBeInTheDocument();
     },
@@ -370,7 +392,11 @@ describe('player authentication', () => {
 
     await openAccountDisclosure(user);
     expect(
-      screen.getByText('naledi-star').closest('.account-control__identity'),
+      screen
+        .getByText('naledi-star', {
+          selector: '.account-control__identity strong',
+        })
+        .closest('.account-control__identity'),
     ).toHaveTextContent('Signed in as naledi-star');
     expect(screen.queryByText('player@example.test')).not.toBeInTheDocument();
     expect(
@@ -425,7 +451,7 @@ describe('player authentication', () => {
     expect(trigger).toHaveFocus();
   });
 
-  it('opens Account from the disclosure without adding it to primary navigation', async () => {
+  it('opens profile and account destinations from the disclosure without adding them to primary navigation', async () => {
     const user = userEvent.setup();
     mockCurrentPlayer();
 
@@ -438,17 +464,36 @@ describe('player authentication', () => {
     );
 
     await openAccountDisclosure(user);
-    await user.click(screen.getByRole('button', { name: 'Manage account' }));
+    expect(
+      screen.getByRole('link', {
+        name: 'Player profile, Progress and achievements',
+      }),
+    ).toHaveAttribute('href', '/profile');
+    await user.click(
+      screen.getByRole('link', {
+        name: 'Account settings, Security and account',
+      }),
+    );
 
     expect(
-      await screen.findByRole('heading', { level: 1, name: 'Account' }),
+      await screen.findByRole('heading', {
+        level: 1,
+        name: 'Account settings',
+      }),
     ).toBeVisible();
     expect(window.location.pathname).toBe('/account');
     for (const playerNavigation of screen.getAllByRole('navigation', {
       name: 'Player',
     })) {
       expect(
-        within(playerNavigation).queryByRole('link', { name: 'Account' }),
+        within(playerNavigation).queryByRole('link', {
+          name: 'Account settings',
+        }),
+      ).not.toBeInTheDocument();
+      expect(
+        within(playerNavigation).queryByRole('link', {
+          name: 'Player profile',
+        }),
       ).not.toBeInTheDocument();
     }
   });
@@ -472,7 +517,7 @@ describe('player authentication', () => {
         }),
       );
 
-      await screen.findByRole('button', { name: 'Account' });
+      await screen.findByRole('button', { name: /account menu$/u });
       const activeLinks = screen.getAllByRole('link', { name: activeLabel });
       expect(activeLinks).toHaveLength(2);
       for (const activeLink of activeLinks) {
@@ -582,7 +627,11 @@ describe('player authentication', () => {
     expect(screen.getByRole('main')).toHaveClass('main-content--explore');
     expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument();
     await openAccountDisclosure(user);
-    expect(screen.getByText('configured-google')).toBeVisible();
+    expect(
+      screen.getByText('configured-google', {
+        selector: '.account-control__identity strong',
+      }),
+    ).toBeVisible();
     expect(
       screen.queryByRole('heading', { name: 'Choose your Player Name' }),
     ).not.toBeInTheDocument();
@@ -716,7 +765,11 @@ describe('player authentication', () => {
       await screen.findByRole('heading', { name: 'Explore the campus map' }),
     ).toBeVisible();
     await openAccountDisclosure(user);
-    expect(screen.getByText('new_google_player')).toBeVisible();
+    expect(
+      screen.getByText('new_google_player', {
+        selector: '.account-control__identity strong',
+      }),
+    ).toBeVisible();
     expect(
       screen.queryByRole('textbox', { name: 'Player Name' }),
     ).not.toBeInTheDocument();
@@ -779,7 +832,11 @@ describe('player authentication', () => {
       await screen.findByRole('heading', { name: 'Explore the campus map' }),
     ).toBeVisible();
     await openAccountDisclosure(user);
-    expect(screen.getByText('chosen-in-another-tab')).toBeVisible();
+    expect(
+      screen.getByText('chosen-in-another-tab', {
+        selector: '.account-control__identity strong',
+      }),
+    ).toBeVisible();
     expect(
       screen.queryByRole('textbox', { name: 'Player Name' }),
     ).not.toBeInTheDocument();

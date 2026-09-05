@@ -124,6 +124,7 @@ describe('Wits World public application shell', () => {
     '/matches',
     '/matches/history',
     '/matches/00000000-0000-4000-8000-000000000001',
+    '/profile',
   ])(
     'omits the document footer from the application surface at %s',
     async (path) => {

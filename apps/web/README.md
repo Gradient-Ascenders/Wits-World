@@ -19,6 +19,8 @@ available through `/decks`. Authors also have a separate protected `/author`
 console for Basic event, challenge, question, and card authoring.
 Server-authoritative CPU battles and private
 completed-match history are available through the protected `/matches` routes.
+The protected `/profile` route presents server-authoritative points, rank,
+streaks, achievement progress, and privacy-safe all-time or monthly standings.
 The protected `/account` route presents the local player identity, delegates
 credential recovery to the owning provider, and starts permanent account
 deletion with fresh Auth0 reauthentication.
@@ -378,6 +380,8 @@ for the full flow, privacy boundary, browser limitations, and evidence steps.
   authoritative active or completed CPU match state.
 - `/matches/history` requires Auth0 sign-in and lists the authenticated player's
   private completed CPU matches.
+- `/profile` requires Auth0 sign-in and shows the current player's approved
+  progression fields, achievement progress, and paginated standings.
 - `/account` requires Auth0 sign-in, shows the API-resolved player identity and
   provider category, delegates credential recovery, and coordinates permanent
   deletion without collecting passwords.
@@ -644,6 +648,40 @@ See the complete [player CPU battle journey](../../docs/requirements/player-cpu-
 the [authoritative Basic game rules](../../docs/requirements/basic-game-rules.md),
 and the [CPU match API and persistence contract](../../docs/database/cpu-match-persistence-design.md).
 
+## Progression profile and standings
+
+The protected `/profile` route loads `GET /api/v1/progression/me` and
+`GET /api/v1/progression/standings` independently. A profile failure therefore
+does not hide available standings, and either request can be retried without
+replaying or changing gameplay. The browser displays only Player Name, points,
+all-time rank, current and longest streak, achievement definition and progress
+fields, and the privacy-safe standings fields. Its closed runtime validation
+rejects unexpected keys such as email, Auth0 identity, location, or gameplay
+history rather than rendering a partial response.
+
+All-time standings load first with a server-bounded page size of 20. Players may
+select a `YYYY-MM` Johannesburg calendar month, and Previous/Next requests use
+the page metadata returned by the API. The current player is identified with
+both visible “Current player” text and `aria-current`, or in a separate “Your
+standing” summary containing the server-provided rank when outside the selected
+page. A nullable standings Player Name is presented only as `Deleted player`,
+without an identifier or other retained account data.
+
+Under the approved progression rules every active account participates in live
+standings, including zero-point accounts, so the browser never derives or
+invents an “unranked” value. `ACCOUNT_UNAVAILABLE` is the useful no-active-rank
+state: it explains that deleted and pending-deletion accounts do not occupy live
+standings. Loading, empty achievement catalogue, empty page, malformed response,
+expired session, unavailable account, and general API failure states all remain
+explicit and recoverable.
+
+Run the focused component and client coverage from the repository root:
+
+```bash
+npm test --workspace @wits-world/web -- --run tests/progression-client.test.ts tests/profile-page.test.tsx
+npm run test:e2e:progression --workspace @wits-world/web
+```
+
 ## Verification
 
 Run automated checks from the repository root:
@@ -686,6 +724,11 @@ and API failure recovery. The CPU battle Playwright scenario uses the real
 authenticated application shell and production routes with deterministic
 intercepted API responses; it is frontend browser evidence, not a live-backend
 match E2E test.
+Progression tests cover approved-field runtime validation, private-field
+rejection, populated and empty achievements, current and off-page standings,
+pagination, monthly selection, zero/no-active-rank handling, tombstones, long
+names, request cancellation, keyboard activation, session expiry, malformed
+data, and independent API failure recovery.
 
 ### Manual browser checks
 
@@ -947,6 +990,39 @@ With `apps/web/.env` configured and the development server running:
    Its touch-enabled context performs real tap events and writes disposable
    responsive evidence under `.pr-screenshots/issue-76/`. Inspect the browser
    console and page errors; do not describe this fixture as a live API E2E match.
+
+#### Authenticated progression profile and standings
+
+1. Prepare and seed PostgreSQL, then start
+   `npm run dev --workspace @wits-world/api` and
+   `npm run dev --workspace @wits-world/web` from the repository root.
+2. Sign in as an active development player with a Player Name and open
+   `http://localhost:5173/profile`. Confirm the profile name, points, all-time
+   rank, current and longest streak, achievement statuses, and progress values
+   match the two progression API responses. Do not use email, location, or
+   private gameplay history as evidence.
+3. Choose Monthly, select a Johannesburg calendar month, and activate View
+   standings. Use Previous and Next where available. Confirm the selected
+   period, page count, and off-page “Your standing” rank come from the response,
+   and that the current row is identified by text as well as its blue treatment.
+4. Inspect an account with zero points. Confirm it still displays its
+   server-provided live rank. Exercise an `ACCOUNT_UNAVAILABLE` fixture or
+   disposable deleted-account response and confirm the page reports that no
+   active standing is available instead of fabricating an unranked value.
+5. Exercise an empty achievement catalogue, an empty requested standings page,
+   a nullable standings Player Name, a `401`, a general API error, and a response
+   containing an unexpected field. Confirm the tombstone reads `Deleted player`,
+   errors provide safe retry/sign-in actions, and malformed/private data is not
+   rendered.
+6. Inspect the populated route at approximately 390×844 and 1280×800 with a long
+   Player Name. Confirm there is no horizontal overflow, names wrap without
+   clipping, all touch targets remain reachable, and the mobile navigation does
+   not cover page controls.
+7. Navigate using only Tab, Shift+Tab, arrow keys in the period selector, Enter,
+   and Space. Confirm visible focus, logical order, labelled period/month fields,
+   announced loading/error/page changes, achievement status text independent of
+   colour, and focus moving to the standings heading after a filter or page
+   change. Check the browser console and page errors throughout.
 
 The preceding document was generated and edited with the assistance of:
 Codex-CLI[gpt-5.6-sol medium], Codex-CLI[gpt-5.6-sol], Codex-CLI[GPT-5], and Codex[GPT-5].

@@ -44,7 +44,9 @@ setup('authenticate through Auth0 Universal Login', async ({ page }) => {
   await expect(
     page.getByRole('heading', { name: 'Explore the campus map' }),
   ).toBeVisible();
-  await expect(page.getByText(/^Signed in as .+$/)).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: /, account menu$/u }),
+  ).toBeVisible();
 
   await page.context().storageState({ path: authenticationStatePath });
 });

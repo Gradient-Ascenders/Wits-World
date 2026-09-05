@@ -19,20 +19,27 @@ test('renders and restores the authoritative player name without exposing email'
   await page.goto('/');
 
   await expect(page).toHaveTitle('Wits World');
-  await expect(page.getByText('Signed in as sprint1-player')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'sprint1-player, account menu' }),
+  ).toBeVisible();
   await expect(page.getByText(/player@example\.test/i)).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: /player name/i })).toHaveCount(
     0,
   );
 
   await page.reload();
-  await expect(page.getByText('Signed in as sprint1-player')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'sprint1-player, account menu' }),
+  ).toBeVisible();
 
   await page.setViewportSize({ width: 768, height: 844 });
   const tabletHeader = await page.locator('.site-header__inner').boundingBox();
   expect(tabletHeader?.height).toBeLessThanOrEqual(80);
 
   await page.setViewportSize({ width: 390, height: 844 });
+  await page
+    .getByRole('button', { name: 'sprint1-player, account menu' })
+    .click();
   await expect(page.getByText('Signed in as sprint1-player')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
   await expect(page.getByText(/player@example\.test/i)).toHaveCount(0);
@@ -127,15 +134,22 @@ test('onboards a Google player once and resumes the protected route', async ({
   await expect(
     page.getByRole('heading', { name: 'Explore the campus map' }),
   ).toBeVisible();
-  await expect(page.getByText('Signed in as google_player')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'google_player, account menu' }),
+  ).toBeVisible();
 
   await page.reload();
-  await expect(page.getByText('Signed in as google_player')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'google_player, account menu' }),
+  ).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'Explore the campus map' }),
   ).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
+  await page
+    .getByRole('button', { name: 'google_player, account menu' })
+    .click();
   await expect(page.getByText('Signed in as google_player')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
   await expect(page.getByText(/player@example\.test/i)).toHaveCount(0);

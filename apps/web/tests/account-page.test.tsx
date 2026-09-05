@@ -30,7 +30,10 @@ describe('player account page', () => {
     renderAccount('/account', { loginWithRedirect });
 
     expect(
-      await screen.findByRole('heading', { level: 1, name: 'Account' }),
+      await screen.findByRole('heading', {
+        level: 1,
+        name: 'Account settings',
+      }),
     ).toBeVisible();
     expect(
       screen.getByRole('heading', { level: 2, name: 'test-player' }),
