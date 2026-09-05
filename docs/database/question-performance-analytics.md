@@ -46,13 +46,24 @@ challenge_attempts_completed_at_analytics_idx
   where status = 'completed'
 ```
 
-The first two support high-selectivity event and challenge workflows. The completed-at index supports the default view's optional date window without requiring an event or challenge prefix. All three exclude in-progress attempts. Existing unique/indexed attempt-question relationships bound fan-out to the five immutable snapshots in an attempt. Format and difficulty filters are applied after establishing the active unanswered position across the complete snapshot. Separate infrastructure or a maintained summary is not justified at the current scale.
+The first two support high-selectivity event and challenge workflows, including event/date and challenge/date combinations. The completed-at index supports the default view's optional date window without requiring an event or challenge prefix. All three exclude in-progress attempts. Existing unique/indexed attempt-question relationships bound fan-out to the five immutable snapshots in an attempt. Format and difficulty filters are applied after establishing the active unanswered position across the complete snapshot. Separate infrastructure or a maintained summary is not justified at the current scale.
 
 ## Query-plan evidence
 
 `question-performance-database.integration.test.ts` is the durable query-plan evidence harness. It provisions a disposable fully migrated database with selective event/challenge distributions, runs the real service query, and executes `EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)` for event-filtered, challenge-filtered, and unfiltered date-range requests. Assertions require bounded actual work and verify that the filtered shapes are index-supported without making one exact planner choice an application-correctness requirement. A small empty database is not used because it may legitimately produce an unrepresentative plan.
 
-The local run on 5 September 2026 did not reach database creation, migration, seed, aggregate, or `EXPLAIN`: the ignored `TEST_DATABASE_URL` and `DATABASE_URL` were present, valid Neon URLs, and identified separate targets, but PostgreSQL rejected the configured test credential for `neondb_owner`. No local PostgreSQL service, `psql`, or Docker runtime was available as the repository-documented alternative. The exact test command therefore failed, and no migration or plan result is claimed. Refreshing the disposable test credential and passing this integration test remains an explicit acceptance gate.
+The refreshed disposable Neon test target was validated as distinct from the development target on 5 September 2026. The suite created a unique temporary database, applied the complete migration chain including migration `0038`, seeded 4,201 completed attempts and 4,205 question snapshots, ran the aggregate regressions, captured the plans below, and dropped the temporary database. The final database test run passed all four tests.
+
+Observed warm-cache PostgreSQL plans were:
+
+| Query shape        | Attempt access                                                              |  Rows | Shared hits | Planning | Execution |
+| ------------------ | --------------------------------------------------------------------------- | ----: | ----------: | -------: | --------: |
+| Event filtered     | Bitmap heap scan via existing `challenge_attempts_event_status_idx`         |   100 |         616 | 1.299 ms |  1.821 ms |
+| Challenge filtered | Bitmap heap scan via `challenge_attempts_completed_challenge_analytics_idx` |   100 |       1,630 | 1.283 ms |  3.508 ms |
+| Date range         | Bitmap heap scan via `challenge_attempts_completed_at_analytics_idx`        |   201 |       2,204 | 1.336 ms |  3.527 ms |
+| Default/unfiltered | Sequential scan of all completed attempts                                   | 4,201 |      10,387 | 1.275 ms | 21.413 ms |
+
+The unfiltered sequential scan is appropriate because that shape consumes the full completed-attempt population. The event-only plan validly preferred the older compact event/status index; migration `0038` retains its event/date covering index for composed event/date queries. The selective challenge and date-range plans used the new partial indexes, and no plan required disabled sequential scans or other planner forcing. These measurements describe the disposable representative fixture and are not production latency claims.
 
 ## Privacy and limitations
 
