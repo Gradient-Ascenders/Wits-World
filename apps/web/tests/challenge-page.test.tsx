@@ -165,6 +165,148 @@ describe('timed player challenge', () => {
     expect(screen.getByRole('button', { name: 'Submit answer' })).toHaveFocus();
   });
 
+  it('reorders through accessible controls and announces the current order', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse(activeOrderingAttempt())),
+    );
+
+    renderChallenge();
+    const order = await screen.findByRole('list', { name: 'Current order' });
+    const moveDown = within(order).getByRole('button', {
+      name: 'Move Item 1.3 down from position 1',
+    });
+    moveDown.focus();
+    await user.keyboard('{Enter}');
+
+    await waitFor(() =>
+      expect(orderText(order)).toEqual([
+        'Item 1.1',
+        'Item 1.3',
+        'Item 1.4',
+        'Item 1.2',
+      ]),
+    );
+    expect(
+      screen
+        .getAllByRole('status')
+        .some((status) =>
+          status.textContent?.includes(
+            'Item 1.3 moved to position 2 of 4. Current order:',
+          ),
+        ),
+    ).toBe(true);
+    expect(
+      within(order).getByRole('button', {
+        name: 'Move Item 1.3 down from position 2',
+      }),
+    ).toHaveFocus();
+  });
+
+  it('supports pointer reordering and prevents a double ordering submission', async () => {
+    const user = userEvent.setup();
+    const answer = deferred<Response>();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(activeOrderingAttempt()))
+      .mockImplementationOnce(() => answer.promise);
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderChallenge();
+    const order = await screen.findByRole('list', { name: 'Current order' });
+    const items = within(order).getAllByRole('listitem');
+    const handle = items[0]!.querySelector<HTMLElement>(
+      '.challenge-ordering__drag-handle',
+    );
+    expect(handle).not.toBeNull();
+
+    fireEvent.pointerDown(handle!, { pointerId: 7 });
+    fireEvent.pointerEnter(items[1]!, { pointerId: 7 });
+    fireEvent.pointerUp(order, { pointerId: 7 });
+
+    expect(orderText(order)).toEqual([
+      'Item 1.1',
+      'Item 1.3',
+      'Item 1.4',
+      'Item 1.2',
+    ]);
+
+    const submit = screen.getByRole('button', { name: 'Submit order' });
+    await user.click(submit);
+    await user.click(submit);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.calls[1]?.[1]).toEqual(
+      expect.objectContaining({
+        body: JSON.stringify({
+          attemptQuestionId: questionId(1),
+          format: 'ordering',
+          itemIds: [1, 3, 4, 2].map((item) => itemId(1, item)),
+        }),
+      }),
+    );
+    expect(
+      screen.getByRole('button', { name: 'Saving order…' }),
+    ).toBeDisabled();
+
+    await act(async () => {
+      answer.resolve(jsonResponse(activeOrderingAttempt(1)));
+      await Promise.resolve();
+    });
+    expect(
+      await screen.findByRole('heading', { name: 'Ordering question 2' }),
+    ).toHaveFocus();
+  });
+
+  it('preserves the current order across a retryable submission error', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(activeOrderingAttempt()))
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockResolvedValueOnce(jsonResponse(activeOrderingAttempt(1)));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderChallenge();
+    const order = await screen.findByRole('list', { name: 'Current order' });
+    await user.click(
+      within(order).getByRole('button', {
+        name: 'Move Item 1.3 down from position 1',
+      }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Submit order' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Check your connection and try again.',
+    );
+    expect(orderText(order)).toEqual([
+      'Item 1.1',
+      'Item 1.3',
+      'Item 1.4',
+      'Item 1.2',
+    ]);
+
+    await user.click(screen.getByRole('button', { name: 'Retry answer' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Ordering question 2' }),
+    ).toHaveFocus();
+    expect(
+      fetchMock.mock.calls.slice(1).map((call) => String(call[1]?.body)),
+    ).toEqual([
+      JSON.stringify({
+        attemptQuestionId: questionId(1),
+        format: 'ordering',
+        itemIds: [1, 3, 4, 2].map((item) => itemId(1, item)),
+      }),
+      JSON.stringify({
+        attemptQuestionId: questionId(1),
+        format: 'ordering',
+        itemIds: [1, 3, 4, 2].map((item) => itemId(1, item)),
+      }),
+    ]);
+  });
+
   it('renders the persisted final score, rewards, and authoritative answer review', async () => {
     vi.stubGlobal(
       'fetch',
@@ -184,9 +326,7 @@ describe('timed player challenge', () => {
     );
     expect(screen.getByText('3', { selector: 'strong' })).toBeVisible();
     expect(screen.getByText(/out of 5 correct/)).toBeVisible();
-    expect(
-      screen.getByText('37 coins were added to your account.'),
-    ).toBeVisible();
+    expect(screen.queryByText(/coins?/i)).not.toBeInTheDocument();
     expect(
       screen.getByRole('list', { name: 'Earned cards' }),
     ).toHaveTextContent('Campus Spark');
@@ -205,15 +345,54 @@ describe('timed player challenge', () => {
     expect(within(questions[3]!).getByText('Choice 4.2')).toBeVisible();
   });
 
+  it('renders authoritative ordering feedback, correct sequence, and explanation', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse(completedOrderingAttempt())),
+    );
+
+    renderChallenge();
+
+    await screen.findByRole('heading', { name: 'Your challenge result' });
+    const review = screen.getByRole('list', { name: 'Answer review' });
+    const firstQuestion = review.children[0] as HTMLElement;
+    expect(within(firstQuestion).getByText('Correct')).toBeVisible();
+    expect(within(firstQuestion).getByText('Your order')).toBeVisible();
+    expect(within(firstQuestion).getByText('Correct order')).toBeVisible();
+    expect(
+      within(firstQuestion).getByText('Ordering explanation 1.'),
+    ).toBeVisible();
+    expect(within(firstQuestion).getAllByText('Item 1.1')).toHaveLength(2);
+  });
+
+  it('renders an unanswered ordering timeout from the completed API result', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(jsonResponse(completedOrderingAttempt('timeout'))),
+    );
+
+    renderChallenge();
+
+    expect(await screen.findByText(/Time ran out/)).toBeVisible();
+    const review = screen.getByRole('list', { name: 'Answer review' });
+    const directQuestions = Array.from(review.children);
+    const unanswered = directQuestions[3] as HTMLElement;
+    expect(within(unanswered).getAllByText('Not answered')).toHaveLength(2);
+    expect(within(unanswered).getByText('Item 4.1')).toBeVisible();
+    expect(
+      within(unanswered).getByText('Ordering explanation 4.'),
+    ).toBeVisible();
+  });
+
   it('renders a persisted result with no new cards without inventing a reward', async () => {
     vi.stubGlobal(
       'fetch',
       vi
         .fn()
         .mockResolvedValue(
-          jsonResponse(
-            completedAttempt('answered', { cards: [], coinsAwarded: 20 }),
-          ),
+          jsonResponse(completedAttempt('answered', { cards: [] })),
         ),
     );
 
@@ -743,6 +922,34 @@ describe('timed player challenge', () => {
     );
     expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
   });
+
+  it('requires a hard refresh when the challenge contract is stale', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          problemResponse('CHALLENGE_CLIENT_UPGRADE_REQUIRED', 409),
+        ),
+    );
+
+    renderChallenge();
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Refresh Wits World to continue',
+      }),
+    ).toBeVisible();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'This version cannot safely continue the challenge.',
+    );
+    expect(
+      screen.getByRole('button', { name: 'Refresh Wits World' }),
+    ).toBeEnabled();
+    expect(
+      screen.queryByRole('button', { name: 'Try again' }),
+    ).not.toBeInTheDocument();
+  });
 });
 
 function authValue(): Auth0ContextInterface {
@@ -802,7 +1009,6 @@ function completedAttempt(
         rarity: 'common',
       },
     ],
-    coinsAwarded: 37,
   },
 ) {
   return {
@@ -846,6 +1052,82 @@ function completedReview(completionReason: 'answered' | 'timeout') {
   });
 }
 
+function activeOrderingAttempt(
+  answeredCount = 0,
+  deadline = '2099-09-01T10:02:00.000Z',
+) {
+  return {
+    answeredCount,
+    attemptId,
+    deadline,
+    eventId,
+    format: 'ordering',
+    questions: Array.from({ length: 5 }, (_, index) => {
+      const position = index + 1;
+      const items = [3, 1, 4, 2].map((item) => ({
+        itemId: itemId(position, item),
+        text: `Item ${position}.${item}`,
+      }));
+      const selectedItemIds =
+        position <= answeredCount ? items.map((item) => item.itemId) : null;
+
+      return {
+        answeredAt:
+          selectedItemIds === null ? null : '2099-09-01T10:00:20.000Z',
+        attemptQuestionId: questionId(position),
+        items,
+        position,
+        prompt: `Ordering question ${position}`,
+        selectedItemIds,
+      };
+    }),
+    requestId: 'request-active-ordering',
+    startedAt: '2099-09-01T10:00:00.000Z',
+    status: 'in_progress',
+    totalQuestions: 5,
+  };
+}
+
+function completedOrderingAttempt(
+  completionReason: 'answered' | 'timeout' = 'answered',
+) {
+  return {
+    attemptId,
+    completedAt: '2026-09-01T10:01:25.000Z',
+    completionReason,
+    eventId,
+    format: 'ordering',
+    requestId: 'request-completed-ordering',
+    review: Array.from({ length: 5 }, (_, index) => {
+      const position = index + 1;
+      const unanswered = completionReason === 'timeout' && position > 3;
+      const correct = !unanswered && position <= 3;
+      const correctItems = [1, 2, 3, 4].map((item) => ({
+        itemId: itemId(position, item),
+        text: `Item ${position}.${item}`,
+      }));
+
+      return {
+        attemptQuestionId: questionId(position),
+        correctItems,
+        explanation: `Ordering explanation ${position}.`,
+        isCorrect: correct,
+        position,
+        prompt: `Ordering question ${position}`,
+        selectedItems: unanswered
+          ? null
+          : correct
+            ? correctItems
+            : [correctItems[1]!, correctItems[0]!, ...correctItems.slice(2)],
+      };
+    }),
+    reward: { cards: [] },
+    scoreCorrect: 3,
+    status: 'completed',
+    totalQuestions: 5,
+  };
+}
+
 function jsonResponse(payload: object): Response {
   return new Response(JSON.stringify(payload), {
     headers: { 'Content-Type': 'application/json' },
@@ -882,4 +1164,16 @@ function questionId(position: number): string {
 
 function choiceId(position: number, choice: number): string {
   return `33000000-0000-4000-${String(position).padStart(4, '0')}-${String(choice).padStart(12, '0')}`;
+}
+
+function itemId(position: number, item: number): string {
+  return `34000000-0000-4000-${String(position).padStart(4, '0')}-${String(item).padStart(12, '0')}`;
+}
+
+function orderText(order: HTMLElement): string[] {
+  return Array.from(order.children).map((item) => {
+    const text = item.querySelector('.challenge-ordering__text')?.textContent;
+    if (!text) throw new Error('Expected an ordering item label.');
+    return text;
+  });
 }

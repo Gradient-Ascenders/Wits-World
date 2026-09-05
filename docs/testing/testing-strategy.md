@@ -48,6 +48,14 @@ The browser is tested for submitting player intent and rendering authoritative
 responses, not for independently deciding eligibility, marking, rewards, deck
 legality, trail progress, unlock state, or match outcomes.
 
+Ordering-challenge web coverage validates the discriminated author and Player
+API contracts, exact four-item authoring, pointer reordering, keyboard-operable
+Move Up / Move Down controls and announcements, ordered submission intent,
+double-submit prevention, timeout reconciliation, malformed payload rejection,
+and API-supplied completed feedback. Server route, service, and database tests
+remain the evidence for shuffling, answer locking, exact-sequence marking,
+deadlines, score, completion, and explanation privacy.
+
 Progression route tests verify authentication, Player Name setup, privacy
 allowlists, month and pagination validation, current rank outside the selected
 page, and closed OpenAPI schemas. Database tests verify points and achievement
@@ -78,6 +86,15 @@ Campaign database tests additionally cover start-inclusive/end-exclusive
 boundaries, effective event and trail windows, adjacent and overlapping member
 reuse, concurrent approvals, publication/retirement races, review history, and
 preservation of completed attempts and derived trail progress.
+
+Author Web component/client tests cover queue parent-route context, required
+return reasons and keyboard focus, lifecycle request bodies, lazy history reads,
+campaign schedule and membership submission, and preservation of campaign form
+input after a stale-version conflict. They also cover navigation-only queue
+summaries, authoritative refresh after `CONTENT_STATE_CONFLICT`, confirmed
+replacement of a preserved campaign draft, server-returned lifecycle feedback,
+and read-only non-draft campaign edit deep links. Analytics UI tests remain
+blocked with issue `#184` / S3-06; no mock analytics contract is used.
 
 Impossible-journey tests separate the pure uncertainty-adjusted speed rule from
 the PostgreSQL/PostGIS evidence path. API and Web tests cover neutral retries

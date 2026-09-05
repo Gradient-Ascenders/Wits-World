@@ -3,6 +3,15 @@ import type { ApiAccessTokenProvider } from '../auth/useApiAccessToken';
 export type AuthoringStatus =
   'draft' | 'in_review' | 'approved' | 'published' | 'retired';
 export type PublicationProvenance = 'legacy' | 'controlled_seed' | 'reviewed';
+export type ChallengeFormat = 'multiple_choice' | 'ordering';
+export type AuthorContentEntityType =
+  'event' | 'challenge' | 'question' | 'card' | 'campaign';
+export type AuthorContentAction =
+  'create' | 'edit' | 'submit' | 'approve' | 'return' | 'publish' | 'retire';
+export type AuthorTransitionAction = Extract<
+  AuthorContentAction,
+  'submit' | 'approve' | 'return' | 'publish' | 'retire'
+>;
 
 interface AuthorLifecycleMetadata {
   version: number;
@@ -39,6 +48,16 @@ export class AuthorApiError extends Error {
   }
 }
 
+export function isAuthorContentConflict(
+  error: unknown,
+): error is AuthorApiError {
+  return (
+    error instanceof AuthorApiError &&
+    (error.code === 'CONTENT_STATE_CONFLICT' ||
+      error.code === 'STALE_CONTENT_VERSION')
+  );
+}
+
 export interface AuthorEvent extends AuthorLifecycleMetadata {
   authoringStatus: AuthoringStatus;
   createdAt: string;
@@ -69,7 +88,7 @@ export interface AuthorChallenge extends AuthorLifecycleMetadata {
   challengeId: string;
   createdAt: string;
   eventId: string;
-  format: 'multiple_choice';
+  format: ChallengeFormat;
   status: AuthoringStatus;
   updatedAt: string;
 }
@@ -80,11 +99,8 @@ export interface AuthorQuestionChoice {
   text: string;
 }
 
-export interface AuthorQuestion extends AuthorLifecycleMetadata {
-  acceptedChoiceId: string | null;
-  acceptedChoicePosition: number | null;
+interface AuthorQuestionBase extends AuthorLifecycleMetadata {
   challengeId: string;
-  choices: AuthorQuestionChoice[];
   createdAt: string;
   difficulty: 1 | 2 | 3;
   explanation: string | null;
@@ -94,13 +110,46 @@ export interface AuthorQuestion extends AuthorLifecycleMetadata {
   updatedAt: string;
 }
 
-export interface AuthorQuestionInput {
-  acceptedChoicePosition: number;
-  choices: string[];
+export interface AuthorMultipleChoiceQuestion extends AuthorQuestionBase {
+  acceptedChoiceId: string | null;
+  acceptedChoicePosition: number | null;
+  choices: AuthorQuestionChoice[];
+  format: 'multiple_choice';
+}
+
+export interface AuthorOrderingItem {
+  itemId: string;
+  position: number;
+  text: string;
+}
+
+export interface AuthorOrderingQuestion extends AuthorQuestionBase {
+  format: 'ordering';
+  items: AuthorOrderingItem[];
+}
+
+export type AuthorQuestion =
+  AuthorMultipleChoiceQuestion | AuthorOrderingQuestion;
+
+interface AuthorQuestionInputBase {
   difficulty: 1 | 2 | 3;
   explanation: string;
   prompt: string;
 }
+
+export interface AuthorMultipleChoiceQuestionInput extends AuthorQuestionInputBase {
+  acceptedChoicePosition: number;
+  choices: string[];
+  format: 'multiple_choice';
+}
+
+export interface AuthorOrderingQuestionInput extends AuthorQuestionInputBase {
+  format: 'ordering';
+  items: string[];
+}
+
+export type AuthorQuestionInput =
+  AuthorMultipleChoiceQuestionInput | AuthorOrderingQuestionInput;
 
 export type CardAffinity = 'grit' | 'mystic' | 'spark' | 'spirit' | 'wit';
 export type CardCategory = 'creature' | 'power';
@@ -176,6 +225,105 @@ export interface AuthorCard extends AuthorLifecycleMetadata {
   power: number | null;
   rarity: CardRarity;
   updatedAt: string;
+}
+
+export interface AuthorCampaignEvent {
+  authoringStatus: AuthoringStatus;
+  endsAt: string;
+  eventId: string;
+  startsAt: string;
+  title: string;
+}
+
+export interface AuthorCampaignTrail {
+  status: 'draft' | 'published' | 'retired';
+  title: string;
+  trailId: string;
+}
+
+export interface AuthorCampaign extends AuthorLifecycleMetadata {
+  campaignId: string;
+  createdAt: string;
+  description: string | null;
+  endsAt: string;
+  events: AuthorCampaignEvent[];
+  publishedAt: string | null;
+  retiredAt: string | null;
+  startsAt: string;
+  status: AuthoringStatus;
+  title: string;
+  trails: AuthorCampaignTrail[];
+  updatedAt: string;
+}
+
+export interface AuthorCampaignInput {
+  description?: string | null;
+  endsAt: string;
+  eventIds: string[];
+  startsAt: string;
+  title: string;
+  trailIds: string[];
+}
+
+export interface AuthorTrailStep {
+  eventId: string;
+  eventStatus: 'draft' | 'published' | 'retired';
+  position: number;
+  title: string;
+}
+
+export interface AuthorTrail {
+  createdAt: string;
+  description: string | null;
+  publishedAt: string | null;
+  retiredAt: string | null;
+  status: 'draft' | 'published' | 'retired';
+  steps: AuthorTrailStep[];
+  title: string;
+  trailId: string;
+  updatedAt: string;
+}
+
+export interface AuthorReviewQueueItem {
+  canReview: boolean;
+  challengeId: string | null;
+  entityId: string;
+  entityType: AuthorContentEntityType;
+  eventId: string | null;
+  label: string;
+  status: 'in_review';
+  submittedAt: string;
+  submittedBy: string;
+  submittedByName: string;
+  version: number;
+}
+
+export interface AuthorContentHistoryItem {
+  action: AuthorContentAction;
+  actorPlayerId: string;
+  actorPlayerName: string;
+  auditId: string;
+  fromStatus: AuthoringStatus | null;
+  note: string | null;
+  occurredAt: string;
+  resultingVersion: number;
+  toStatus: AuthoringStatus;
+}
+
+export interface AuthorPage<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+}
+
+interface AuthorContentByType {
+  event: AuthorEvent;
+  challenge: AuthorChallenge;
+  question: AuthorQuestion;
+  card: AuthorCard;
+  campaign: AuthorCampaign;
 }
 
 interface RequestBase {
@@ -271,11 +419,11 @@ export async function listAuthorChallenges(
 }
 
 export async function createAuthorChallenge(
-  options: RequestBase & { eventId: string },
+  options: RequestBase & { eventId: string; format: ChallengeFormat },
 ) {
   const payload = await authorRequest({
     ...options,
-    body: {},
+    body: { format: options.format },
     method: 'POST',
     path: `/author/events/${options.eventId}/challenges`,
   });
@@ -406,6 +554,132 @@ export async function retireAuthorCard(
   return requestCardLifecycle(options, 'retire');
 }
 
+export async function listAuthorReviewQueue(
+  options: RequestBase & {
+    entityType?: AuthorContentEntityType;
+    page?: number;
+    pageSize?: number;
+  },
+): Promise<AuthorPage<AuthorReviewQueueItem>> {
+  const query = new URLSearchParams({
+    page: String(options.page ?? 1),
+    pageSize: String(options.pageSize ?? 20),
+  });
+  if (options.entityType) query.set('entityType', options.entityType);
+  const payload = await authorRequest({
+    ...options,
+    method: 'GET',
+    path: `/author/review-queue?${query.toString()}`,
+  });
+  return parsePage(payload, parseAuthorReviewQueueItem);
+}
+
+export async function getAuthorContentHistory(
+  options: RequestBase & {
+    entityId: string;
+    entityType: AuthorContentEntityType;
+    page?: number;
+    pageSize?: number;
+  },
+): Promise<AuthorPage<AuthorContentHistoryItem>> {
+  const query = new URLSearchParams({
+    page: String(options.page ?? 1),
+    pageSize: String(options.pageSize ?? 20),
+  });
+  const payload = await authorRequest({
+    ...options,
+    method: 'GET',
+    path: `/author/content/${options.entityType}/${options.entityId}/history?${query.toString()}`,
+  });
+  return parsePage(payload, parseAuthorContentHistoryItem);
+}
+
+export async function transitionAuthorContent<
+  T extends AuthorContentEntityType,
+>(
+  options: RequestBase & {
+    action: AuthorTransitionAction;
+    entityId: string;
+    entityType: T;
+    expectedVersion: number;
+    reason?: string;
+  },
+): Promise<AuthorContentByType[T]> {
+  const collection = {
+    event: 'events',
+    challenge: 'challenges',
+    question: 'questions',
+    card: 'cards',
+    campaign: 'campaigns',
+  }[options.entityType];
+  const payload = await authorRequest({
+    ...options,
+    body:
+      options.action === 'return'
+        ? { expectedVersion: options.expectedVersion, reason: options.reason }
+        : { expectedVersion: options.expectedVersion },
+    method: 'POST',
+    path: `/author/${collection}/${options.entityId}/${options.action}`,
+  });
+  return parseAuthorContentEnvelope(payload, options.entityType);
+}
+
+export async function listAuthorCampaigns(
+  options: RequestBase,
+): Promise<AuthorCampaign[]> {
+  const payload = await authorRequest({
+    ...options,
+    method: 'GET',
+    path: '/author/campaigns',
+  });
+  if (!isRecord(payload) || !Array.isArray(payload.campaigns)) {
+    throw unavailableResponse();
+  }
+  requireRequestId(payload);
+  return payload.campaigns.map(parseAuthorCampaign);
+}
+
+export async function createAuthorCampaign(
+  options: RequestBase & { input: AuthorCampaignInput },
+): Promise<AuthorCampaign> {
+  return requestCampaign({
+    ...options,
+    body: options.input,
+    method: 'POST',
+    path: '/author/campaigns',
+  });
+}
+
+export async function updateAuthorCampaign(
+  options: RequestBase & {
+    campaignId: string;
+    expectedVersion: number;
+    input: AuthorCampaignInput;
+  },
+): Promise<AuthorCampaign> {
+  return requestCampaign({
+    ...options,
+    body: { ...options.input, expectedVersion: options.expectedVersion },
+    method: 'PUT',
+    path: `/author/campaigns/${options.campaignId}`,
+  });
+}
+
+export async function listAuthorTrails(
+  options: RequestBase,
+): Promise<AuthorTrail[]> {
+  const payload = await authorRequest({
+    ...options,
+    method: 'GET',
+    path: '/author/trails',
+  });
+  if (!isRecord(payload) || !Array.isArray(payload.trails)) {
+    throw unavailableResponse();
+  }
+  requireRequestId(payload);
+  return payload.trails.map(parseAuthorTrail);
+}
+
 async function requestEvent(options: RequestOptions): Promise<AuthorEvent> {
   const payload = await authorRequest(options);
   return parseEnvelope(payload, 'event', parseAuthorEvent);
@@ -421,6 +695,13 @@ async function requestQuestion(
 async function requestCard(options: RequestOptions): Promise<AuthorCard> {
   const payload = await authorRequest(options);
   return parseEnvelope(payload, 'card', parseAuthorCard);
+}
+
+async function requestCampaign(
+  options: RequestOptions,
+): Promise<AuthorCampaign> {
+  const payload = await authorRequest(options);
+  return parseEnvelope(payload, 'campaign', parseAuthorCampaign);
 }
 
 async function requestChallengeLifecycle(
@@ -596,6 +877,48 @@ function parseEnvelope<T>(
   return parser(payload[key]);
 }
 
+function parseAuthorContentEnvelope<T extends AuthorContentEntityType>(
+  payload: unknown,
+  entityType: T,
+): AuthorContentByType[T] {
+  const parsers = {
+    event: parseAuthorEvent,
+    challenge: parseAuthorChallenge,
+    question: parseAuthorQuestion,
+    card: parseAuthorCard,
+    campaign: parseAuthorCampaign,
+  } as const;
+  return parseEnvelope(
+    payload,
+    entityType,
+    parsers[entityType] as (value: unknown) => AuthorContentByType[T],
+  );
+}
+
+function parsePage<T>(
+  payload: unknown,
+  itemParser: (value: unknown) => T,
+): AuthorPage<T> {
+  if (
+    !isRecord(payload) ||
+    !Array.isArray(payload.items) ||
+    !isPositiveInteger(payload.page) ||
+    !isPositiveInteger(payload.pageSize) ||
+    !isNonNegativeInteger(payload.totalItems) ||
+    !isNonNegativeInteger(payload.totalPages)
+  ) {
+    throw unavailableResponse();
+  }
+  requireRequestId(payload);
+  return {
+    items: payload.items.map(itemParser),
+    page: payload.page,
+    pageSize: payload.pageSize,
+    totalItems: payload.totalItems,
+    totalPages: payload.totalPages,
+  };
+}
+
 function parseAuthorEvent(value: unknown): AuthorEvent {
   if (
     !isRecord(value) ||
@@ -625,7 +948,7 @@ function parseAuthorChallenge(value: unknown): AuthorChallenge {
     !isRecord(value) ||
     !isUuid(value.challengeId) ||
     !isUuid(value.eventId) ||
-    value.format !== 'multiple_choice' ||
+    !isChallengeFormat(value.format) ||
     !isStatus(value.status) ||
     !isDateTime(value.createdAt) ||
     !isDateTime(value.updatedAt) ||
@@ -642,16 +965,45 @@ function parseAuthorQuestion(value: unknown): AuthorQuestion {
     !isRecord(value) ||
     !isUuid(value.questionId) ||
     !isUuid(value.challengeId) ||
+    !isChallengeFormat(value.format) ||
     !isNonBlank(value.prompt) ||
     !isDifficulty(value.difficulty) ||
     !isNullableString(value.explanation) ||
     !isStatus(value.status) ||
-    !Array.isArray(value.choices) ||
-    !isNullableUuid(value.acceptedChoiceId) ||
-    !isNullableChoicePosition(value.acceptedChoicePosition) ||
     !isDateTime(value.createdAt) ||
     !isDateTime(value.updatedAt) ||
     !isLifecycleMetadata(value)
+  ) {
+    throw unavailableResponse();
+  }
+
+  if (value.format === 'ordering') {
+    if (!Array.isArray(value.items)) {
+      throw unavailableResponse();
+    }
+
+    const items = value.items.map(parseOrderingItem);
+
+    if (
+      items.length !== 4 ||
+      new Set(items.map((item) => item.itemId)).size !== 4 ||
+      new Set(items.map((item) => item.position)).size !== 4 ||
+      !items.every((item, index) => item.position === index + 1)
+    ) {
+      throw unavailableResponse();
+    }
+
+    return {
+      ...(value as unknown as AuthorOrderingQuestion),
+      format: 'ordering',
+      items,
+    };
+  }
+
+  if (
+    !Array.isArray(value.choices) ||
+    !isNullableUuid(value.acceptedChoiceId) ||
+    !isNullableChoicePosition(value.acceptedChoicePosition)
   ) {
     throw unavailableResponse();
   }
@@ -672,7 +1024,11 @@ function parseAuthorQuestion(value: unknown): AuthorQuestion {
     throw unavailableResponse();
   }
 
-  return { ...(value as unknown as AuthorQuestion), choices };
+  return {
+    ...(value as unknown as AuthorMultipleChoiceQuestion),
+    format: 'multiple_choice',
+    choices,
+  };
 }
 
 function parseQuestionChoice(value: unknown): AuthorQuestionChoice {
@@ -686,6 +1042,19 @@ function parseQuestionChoice(value: unknown): AuthorQuestionChoice {
   }
 
   return value as unknown as AuthorQuestionChoice;
+}
+
+function parseOrderingItem(value: unknown): AuthorOrderingItem {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.itemId) ||
+    !isChoicePosition(value.position) ||
+    !isNonBlank(value.text)
+  ) {
+    throw unavailableResponse();
+  }
+
+  return value as unknown as AuthorOrderingItem;
 }
 
 function parseAuthorCard(value: unknown): AuthorCard {
@@ -715,6 +1084,139 @@ function parseAuthorCard(value: unknown): AuthorCard {
   const effects = value.effects.map(parseCardEffect);
 
   return { ...(value as unknown as AuthorCard), effects, moves };
+}
+
+function parseAuthorCampaign(value: unknown): AuthorCampaign {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.campaignId) ||
+    !isNonBlank(value.title) ||
+    !isNullableString(value.description) ||
+    !isStatus(value.status) ||
+    !isDateTime(value.startsAt) ||
+    !isDateTime(value.endsAt) ||
+    !isNullableDateTime(value.publishedAt) ||
+    !isNullableDateTime(value.retiredAt) ||
+    !isDateTime(value.createdAt) ||
+    !isDateTime(value.updatedAt) ||
+    !Array.isArray(value.events) ||
+    !Array.isArray(value.trails) ||
+    !isLifecycleMetadata(value)
+  ) {
+    throw unavailableResponse();
+  }
+  return {
+    ...(value as unknown as AuthorCampaign),
+    events: value.events.map(parseAuthorCampaignEvent),
+    trails: value.trails.map(parseAuthorCampaignTrail),
+  };
+}
+
+function parseAuthorCampaignEvent(value: unknown): AuthorCampaignEvent {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.eventId) ||
+    !isNonBlank(value.title) ||
+    !isStatus(value.authoringStatus) ||
+    !isDateTime(value.startsAt) ||
+    !isDateTime(value.endsAt)
+  ) {
+    throw unavailableResponse();
+  }
+  return value as unknown as AuthorCampaignEvent;
+}
+
+function parseAuthorCampaignTrail(value: unknown): AuthorCampaignTrail {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.trailId) ||
+    !isNonBlank(value.title) ||
+    !isTrailStatus(value.status)
+  ) {
+    throw unavailableResponse();
+  }
+  return value as unknown as AuthorCampaignTrail;
+}
+
+function parseAuthorTrail(value: unknown): AuthorTrail {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.trailId) ||
+    !isNonBlank(value.title) ||
+    !isNullableString(value.description) ||
+    !isTrailStatus(value.status) ||
+    !isNullableDateTime(value.publishedAt) ||
+    !isNullableDateTime(value.retiredAt) ||
+    !isDateTime(value.createdAt) ||
+    !isDateTime(value.updatedAt) ||
+    !Array.isArray(value.steps)
+  ) {
+    throw unavailableResponse();
+  }
+  return {
+    ...(value as unknown as AuthorTrail),
+    steps: value.steps.map(parseAuthorTrailStep),
+  };
+}
+
+function parseAuthorTrailStep(value: unknown): AuthorTrailStep {
+  if (
+    !isRecord(value) ||
+    !isPositiveInteger(value.position) ||
+    !isUuid(value.eventId) ||
+    !isNonBlank(value.title) ||
+    !isTrailStatus(value.eventStatus)
+  ) {
+    throw unavailableResponse();
+  }
+  return value as unknown as AuthorTrailStep;
+}
+
+function parseAuthorReviewQueueItem(value: unknown): AuthorReviewQueueItem {
+  if (
+    !isRecord(value) ||
+    !isContentEntityType(value.entityType) ||
+    !isUuid(value.entityId) ||
+    !isNullableUuid(value.eventId) ||
+    !isNullableUuid(value.challengeId) ||
+    !isNonBlank(value.label) ||
+    value.status !== 'in_review' ||
+    !isNonNegativeInteger(value.version) ||
+    !isUuid(value.submittedBy) ||
+    !isNonBlank(value.submittedByName) ||
+    !isDateTime(value.submittedAt) ||
+    typeof value.canReview !== 'boolean'
+  ) {
+    throw unavailableResponse();
+  }
+  if (
+    (value.entityType === 'challenge' && value.eventId === null) ||
+    (value.entityType === 'question' &&
+      (value.eventId === null || value.challengeId === null))
+  ) {
+    throw unavailableResponse();
+  }
+  return value as unknown as AuthorReviewQueueItem;
+}
+
+function parseAuthorContentHistoryItem(
+  value: unknown,
+): AuthorContentHistoryItem {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.auditId) ||
+    !isContentAction(value.action) ||
+    !(value.fromStatus === null || isStatus(value.fromStatus)) ||
+    !isStatus(value.toStatus) ||
+    !isNonNegativeInteger(value.resultingVersion) ||
+    !isNullableString(value.note) ||
+    !isUuid(value.actorPlayerId) ||
+    !isNonBlank(value.actorPlayerName) ||
+    !isDateTime(value.occurredAt)
+  ) {
+    throw unavailableResponse();
+  }
+  return value as unknown as AuthorContentHistoryItem;
 }
 
 function parseCardMove(value: unknown): AuthorCardMove {
@@ -830,6 +1332,38 @@ function isStatus(value: unknown): value is AuthoringStatus {
     value === 'approved' ||
     value === 'published' ||
     value === 'retired'
+  );
+}
+
+function isChallengeFormat(value: unknown): value is ChallengeFormat {
+  return value === 'multiple_choice' || value === 'ordering';
+}
+
+function isTrailStatus(
+  value: unknown,
+): value is 'draft' | 'published' | 'retired' {
+  return value === 'draft' || value === 'published' || value === 'retired';
+}
+
+function isContentEntityType(value: unknown): value is AuthorContentEntityType {
+  return (
+    value === 'event' ||
+    value === 'challenge' ||
+    value === 'question' ||
+    value === 'card' ||
+    value === 'campaign'
+  );
+}
+
+function isContentAction(value: unknown): value is AuthorContentAction {
+  return (
+    value === 'create' ||
+    value === 'edit' ||
+    value === 'submit' ||
+    value === 'approve' ||
+    value === 'return' ||
+    value === 'publish' ||
+    value === 'retire'
   );
 }
 

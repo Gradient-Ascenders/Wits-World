@@ -87,6 +87,7 @@ async function startServer(): Promise<void> {
           issuer: authConfig.issuer,
           playerName,
           subject,
+          tokenIssuedAt: new Date(),
         };
       },
     },

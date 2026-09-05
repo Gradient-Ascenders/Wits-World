@@ -63,6 +63,7 @@ test('onboards a Google player once and resumes the protected route', async ({
       contentType: 'application/json',
       status: 200,
       body: JSON.stringify({
+        connectionStrategy: 'google-oauth2',
         id: playerId,
         lifecycleStatus: 'active',
         playerName,
@@ -79,6 +80,7 @@ test('onboards a Google player once and resumes the protected route', async ({
       contentType: 'application/json',
       status: 200,
       body: JSON.stringify({
+        connectionStrategy: 'google-oauth2',
         id: playerId,
         lifecycleStatus: 'active',
         playerName,
@@ -152,6 +154,7 @@ async function mockCurrentPlayer(page: Page) {
       contentType: 'application/json',
       status: 200,
       body: JSON.stringify({
+        connectionStrategy: 'auth0',
         id: playerId,
         lifecycleStatus: 'active',
         playerName: 'sprint1-player',

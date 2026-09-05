@@ -570,6 +570,11 @@ The future processor must:
 - stop cleanly during API shutdown; and
 - catch up all overdue work after restart.
 
+Production runs this worker on the aligned 30-minute database-maintenance
+cadence. This does not extend a persisted 24-hour deadline: reads and mutations
+finalize overdue state against database time before returning, while the worker
+converges matches that receive no further traffic.
+
 The current single Azure API instance with Always On can host the processor in
 the API process, following the account-deletion retry scheduler pattern.
 Database locking and idempotency remain mandatory so correctness survives a

@@ -99,7 +99,8 @@ describe('browser-to-API CORS policy', () => {
       headers: {
         origin: ALLOWED_ORIGIN,
         'access-control-request-method': 'GET',
-        'access-control-request-headers': 'authorization',
+        'access-control-request-headers':
+          'authorization,x-wits-challenge-contract-version',
       },
     });
 
@@ -117,6 +118,9 @@ describe('browser-to-API CORS policy', () => {
 
     expect(response.headers['access-control-allow-headers']).toContain(
       'Authorization',
+    );
+    expect(response.headers['access-control-allow-headers']).toContain(
+      'X-Wits-Challenge-Contract-Version',
     );
 
     expect(verifyAccessToken).not.toHaveBeenCalled();
@@ -206,5 +210,6 @@ function createVerifyAccessTokenMock() {
     ...authenticatedIdentity,
     connectionStrategy: 'auth0',
     playerName: 'test-player',
+    tokenIssuedAt: new Date(0),
   }));
 }

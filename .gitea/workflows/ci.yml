@@ -171,7 +171,8 @@ jobs:
             package-lock.json \
             tsconfig.base.json \
             apps/web \
-            packages/account-policy
+            packages/account-policy \
+            scripts/confirm-current-main.sh
           DIFF_STATUS=$?
           set -e
 
@@ -323,6 +324,7 @@ jobs:
             apps/api \
             packages/account-policy \
             packages/game-rules \
+            scripts/confirm-current-main.sh \
             scripts/prepare-api.mjs \
             database
           DIFF_STATUS=$?
@@ -391,6 +393,9 @@ jobs:
           cp apps/api/package.json \
             "$ARTIFACT_ROOT/package/apps/api/"
 
+          cp apps/api/startup.sh \
+            "$ARTIFACT_ROOT/package/apps/api/"
+
           cp -a apps/api/dist \
             "$ARTIFACT_ROOT/package/apps/api/"
 
@@ -429,6 +434,14 @@ jobs:
           cp -a database \
             "$ARTIFACT_ROOT/package/"
 
+          tar -czf "$ARTIFACT_ROOT/package/node_modules.tar.gz" \
+            -C "$ARTIFACT_ROOT/package/node_modules" \
+            .
+
+          test -s "$ARTIFACT_ROOT/package/node_modules.tar.gz"
+          rm -rf "$ARTIFACT_ROOT/package/node_modules"
+          test ! -e "$ARTIFACT_ROOT/package/node_modules"
+
           (
             cd "$ARTIFACT_ROOT/package"
             zip -qr "$ARTIFACT_ROOT/witsworld-api-deploy.zip" .
@@ -444,18 +457,42 @@ jobs:
           test -s "$ARTIFACT_ROOT/witsworld-api-deploy.zip"
           unzip -t "$ARTIFACT_ROOT/witsworld-api-deploy.zip" >/dev/null
 
+          ARTIFACT_CONTENTS="$ARTIFACT_ROOT/artifact-contents.txt"
+          unzip -Z1 "$ARTIFACT_ROOT/witsworld-api-deploy.zip" > "$ARTIFACT_CONTENTS"
+
+          test "$(grep -Fxc 'node_modules.tar.gz' "$ARTIFACT_CONTENTS")" -eq 1
+
+          if grep -Eq '^node_modules(/|$)' "$ARTIFACT_CONTENTS"; then
+            echo "The Azure deployment ZIP contains an unpacked node_modules tree."
+            exit 1
+          fi
+
           RUNTIME_SMOKE_ROOT="$(mktemp -d /tmp/witsworld-api-runtime.XXXXXX)"
           trap 'rm -rf "$NPM_TOOL_ROOT" "$RUNTIME_SMOKE_ROOT"' EXIT
 
+          RUNTIME_SMOKE_APP_ROOT="$RUNTIME_SMOKE_ROOT/wwwroot"
+          RUNTIME_SMOKE_MODULES="$RUNTIME_SMOKE_ROOT/node_modules"
+          mkdir "$RUNTIME_SMOKE_APP_ROOT" "$RUNTIME_SMOKE_MODULES"
+
           unzip -q "$ARTIFACT_ROOT/witsworld-api-deploy.zip" \
-            -d "$RUNTIME_SMOKE_ROOT"
+            -d "$RUNTIME_SMOKE_APP_ROOT"
+
+          test -s "$RUNTIME_SMOKE_APP_ROOT/node_modules.tar.gz"
+          test -x "$RUNTIME_SMOKE_APP_ROOT/apps/api/startup.sh"
+          test -f "$RUNTIME_SMOKE_APP_ROOT/apps/api/dist/server.js"
+          sh -n "$RUNTIME_SMOKE_APP_ROOT/apps/api/startup.sh"
+
+          tar -xzf "$RUNTIME_SMOKE_APP_ROOT/node_modules.tar.gz" \
+            -C "$RUNTIME_SMOKE_MODULES"
+          ln -s "$RUNTIME_SMOKE_MODULES" \
+            "$RUNTIME_SMOKE_APP_ROOT/node_modules"
+          test "$(readlink -f "$RUNTIME_SMOKE_APP_ROOT/node_modules")" = \
+            "$RUNTIME_SMOKE_MODULES"
 
           (
-            cd "$RUNTIME_SMOKE_ROOT"
+            cd "$RUNTIME_SMOKE_APP_ROOT"
             node --input-type=module \
-              --eval "await import('@wits-world/account-policy'); console.log('Imported @wits-world/account-policy from the API artifact')"
-            node --input-type=module \
-              --eval "await import('@wits-world/game-rules'); console.log('Imported @wits-world/game-rules from the API artifact')"
+              --eval "await Promise.all(['@wits-world/account-policy', '@wits-world/game-rules', '@fastify/cors', '@fastify/swagger', '@fastify/swagger-ui', 'fastify', 'jose', 'pg'].map((dependency) => import(dependency))); console.log('Imported production dependencies from the API artifact')"
           )
 
           unzip -l "$ARTIFACT_ROOT/witsworld-api-deploy.zip" |
@@ -570,6 +607,7 @@ jobs:
       REPOSITORY_URL: https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World.git
       AZURE_RESOURCE_GROUP: witsworld-rg
       AZURE_WEBAPP_NAME: witsworld-api
+      PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS: '1800000'
 
     steps:
       - name: Check out exact main commit
@@ -632,9 +670,18 @@ jobs:
 
           DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
           DEPLOY_MARKER="$DEPLOY_ROOT/deploy-required"
+          CURRENT_MAIN_MARKER="$DEPLOY_ROOT/current-main"
 
           cd "$DEPLOY_ROOT/repository"
           rm -f "$DEPLOY_MARKER"
+
+          bash scripts/confirm-current-main.sh "$CURRENT_MAIN_MARKER"
+
+          if [ ! -f "$CURRENT_MAIN_MARKER" ]; then
+            echo "The API deployment run is stale; API deployment will be skipped."
+            echo "required=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           if [[ "$PREVIOUS_SHA" =~ ^[0-9a-f]{40}$ ]] && \
             [ "$PREVIOUS_SHA" != "0000000000000000000000000000000000000000" ] && \
@@ -657,6 +704,7 @@ jobs:
             apps/api \
             packages/account-policy \
             packages/game-rules \
+            scripts/confirm-current-main.sh \
             scripts/prepare-api.mjs \
             database
           then
@@ -719,21 +767,56 @@ jobs:
             package.json \
             package-lock.json \
             apps/api/package.json \
+            apps/api/startup.sh \
             apps/api/dist/server.js \
             apps/api/dist/database/release.js \
-            node_modules/@wits-world/account-policy/package.json \
-            node_modules/@wits-world/account-policy/dist/src/index.js \
-            node_modules/@wits-world/game-rules/package.json \
-            node_modules/@wits-world/game-rules/dist/src/index.js \
-            node_modules/@fastify/cors/package.json \
-            node_modules/@fastify/swagger/package.json \
-            node_modules/@fastify/swagger-ui/package.json \
-            node_modules/dotenv/package.json \
-            node_modules/fastify/package.json \
-            node_modules/jose/package.json \
-            node_modules/pg/package.json
+            node_modules.tar.gz
           do
             require_artifact_path "$required_path"
+          done
+
+          if grep -Eq '^node_modules(/|$)' "$ARTIFACT_CONTENTS"; then
+            echo "The Azure deployment ZIP contains an unpacked node_modules tree."
+            exit 1
+          fi
+
+          ARTIFACT_VERIFY_ROOT="$(mktemp -d /tmp/witsworld-api-verify.XXXXXX)"
+          trap 'rm -rf "$ARTIFACT_VERIFY_ROOT"' EXIT
+
+          unzip -q "$DEPLOY_ROOT/witsworld-api-deploy.zip" \
+            node_modules.tar.gz \
+            apps/api/startup.sh \
+            -d "$ARTIFACT_VERIFY_ROOT"
+
+          test -s "$ARTIFACT_VERIFY_ROOT/node_modules.tar.gz"
+          test -x "$ARTIFACT_VERIFY_ROOT/apps/api/startup.sh"
+          sh -n "$ARTIFACT_VERIFY_ROOT/apps/api/startup.sh"
+
+          TARBALL_CONTENTS="$ARTIFACT_VERIFY_ROOT/node-modules-contents.txt"
+          tar -tzf "$ARTIFACT_VERIFY_ROOT/node_modules.tar.gz" > "$TARBALL_CONTENTS"
+
+          require_runtime_package() {
+            local package_name="$1"
+            local package_path="./${package_name}/package.json"
+
+            if ! grep -Fx "$package_path" "$TARBALL_CONTENTS"; then
+              echo "Required runtime package is missing from node_modules.tar.gz: $package_name"
+              return 1
+            fi
+          }
+
+          for package_name in \
+            @wits-world/account-policy \
+            @wits-world/game-rules \
+            @fastify/cors \
+            @fastify/swagger \
+            @fastify/swagger-ui \
+            dotenv \
+            fastify \
+            jose \
+            pg
+          do
+            require_runtime_package "$package_name"
           done
 
           DATABASE_FILE_COUNT=0
@@ -749,6 +832,22 @@ jobs:
           if [ "$DATABASE_FILE_COUNT" -eq 0 ]; then
             echo "The deployment commit does not contain tracked database files."
             exit 1
+          fi
+
+      - name: Reconfirm API deployment commit is current main
+        if: ${{ steps.api_deployment_changes.outputs.required == 'true' }}
+        run: |
+          set -euo pipefail
+
+          DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
+          CURRENT_MAIN_MARKER="$DEPLOY_ROOT/current-main"
+
+          bash \
+            "$DEPLOY_ROOT/repository/scripts/confirm-current-main.sh" \
+            "$CURRENT_MAIN_MARKER"
+
+          if [ ! -f "$CURRENT_MAIN_MARKER" ]; then
+            rm -f "$DEPLOY_ROOT/deploy-required"
           fi
 
       - name: Set up Node.js for production database release
@@ -777,6 +876,40 @@ jobs:
             --query '{name:name,state:state}' \
             --output table
 
+      - name: Configure production database maintenance cadence
+        if: ${{ steps.api_deployment_changes.outputs.required == 'true' }}
+        run: |
+          set -euo pipefail
+
+          DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
+          CURRENT_MAIN_MARKER="$DEPLOY_ROOT/current-main"
+
+          if [ ! -f "$DEPLOY_ROOT/deploy-required" ]; then
+            echo "Skipping production database maintenance configuration."
+            exit 0
+          fi
+
+          bash \
+            "$DEPLOY_ROOT/repository/scripts/confirm-current-main.sh" \
+            "$CURRENT_MAIN_MARKER"
+
+          if [ ! -f "$CURRENT_MAIN_MARKER" ]; then
+            rm -f "$DEPLOY_ROOT/deploy-required"
+            echo "Skipping stale production database maintenance configuration."
+            exit 0
+          fi
+
+          # Keep the database-backed workers aligned so serverless Postgres can
+          # suspend between sweeps instead of receiving a query every minute.
+          az webapp config appsettings set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEBAPP_NAME" \
+            --settings \
+              "ACCOUNT_DELETION_RETRY_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
+              "ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
+              "MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS=${PRODUCTION_DATABASE_MAINTENANCE_INTERVAL_MS}" \
+            --output none
+
       - name: Release production database
         if: ${{ steps.api_deployment_changes.outputs.required == 'true' }}
         env:
@@ -786,7 +919,23 @@ jobs:
           set -euo pipefail
 
           DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
+          CURRENT_MAIN_MARKER="$DEPLOY_ROOT/current-main"
           RELEASE_ROOT="$DEPLOY_ROOT/database-release"
+
+          if [ ! -f "$DEPLOY_ROOT/deploy-required" ]; then
+            echo "Skipping the production database release."
+            exit 0
+          fi
+
+          bash \
+            "$DEPLOY_ROOT/repository/scripts/confirm-current-main.sh" \
+            "$CURRENT_MAIN_MARKER"
+
+          if [ ! -f "$CURRENT_MAIN_MARKER" ]; then
+            rm -f "$DEPLOY_ROOT/deploy-required"
+            echo "Skipping stale production database release."
+            exit 0
+          fi
 
           DATABASE_URL="$(
             az webapp config appsettings list \
@@ -852,7 +1001,13 @@ jobs:
 
           test -f "$RELEASE_ROOT/apps/api/dist/database/release.js"
           test -d "$RELEASE_ROOT/database/migrations"
-          test -d "$RELEASE_ROOT/node_modules"
+          test -s "$RELEASE_ROOT/node_modules.tar.gz"
+
+          mkdir "$RELEASE_ROOT/node_modules"
+          tar -xzf "$RELEASE_ROOT/node_modules.tar.gz" \
+            -C "$RELEASE_ROOT/node_modules"
+
+          test -f "$RELEASE_ROOT/node_modules/pg/package.json"
 
           (
             cd "$RELEASE_ROOT"
@@ -868,9 +1023,20 @@ jobs:
           set -euo pipefail
 
           DEPLOY_ROOT="/tmp/witsworld-api-deploy-${DEPLOY_SHA}"
+          CURRENT_MAIN_MARKER="$DEPLOY_ROOT/current-main"
 
           if [ ! -f "$DEPLOY_ROOT/deploy-required" ]; then
             echo "Skipping the API deployment."
+            exit 0
+          fi
+
+          bash \
+            "$DEPLOY_ROOT/repository/scripts/confirm-current-main.sh" \
+            "$CURRENT_MAIN_MARKER"
+
+          if [ ! -f "$CURRENT_MAIN_MARKER" ]; then
+            rm -f "$DEPLOY_ROOT/deploy-required"
+            echo "Skipping stale API deployment."
             exit 0
           fi
 
@@ -1020,9 +1186,18 @@ jobs:
 
           DEPLOY_ROOT="/tmp/witsworld-web-deploy-${DEPLOY_SHA}"
           DEPLOY_MARKER="$DEPLOY_ROOT/deploy-required"
+          CURRENT_MAIN_MARKER="$DEPLOY_ROOT/current-main"
 
           cd "$DEPLOY_ROOT/repository"
           rm -f "$DEPLOY_MARKER"
+
+          bash scripts/confirm-current-main.sh "$CURRENT_MAIN_MARKER"
+
+          if [ ! -f "$CURRENT_MAIN_MARKER" ]; then
+            echo "The web deployment run is stale; web deployment will be skipped."
+            echo "required=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           if [[ "$PREVIOUS_SHA" =~ ^[0-9a-f]{40}$ ]] && \
             [ "$PREVIOUS_SHA" != "0000000000000000000000000000000000000000" ] && \
@@ -1043,7 +1218,8 @@ jobs:
             package-lock.json \
             tsconfig.base.json \
             apps/web \
-            packages/account-policy
+            packages/account-policy \
+            scripts/confirm-current-main.sh
           then
             echo "No web or shared runtime changes detected; web deployment will be skipped."
             echo "required=false" >> "$GITHUB_OUTPUT"
@@ -1094,6 +1270,22 @@ jobs:
           unzip -Z1 "$DEPLOY_ROOT/witsworld-web-deploy.zip" |
             grep -E '^assets/.+'
 
+      - name: Reconfirm web deployment commit is current main
+        if: ${{ steps.web_deployment_changes.outputs.required == 'true' }}
+        run: |
+          set -euo pipefail
+
+          DEPLOY_ROOT="/tmp/witsworld-web-deploy-${DEPLOY_SHA}"
+          CURRENT_MAIN_MARKER="$DEPLOY_ROOT/current-main"
+
+          bash \
+            "$DEPLOY_ROOT/repository/scripts/confirm-current-main.sh" \
+            "$CURRENT_MAIN_MARKER"
+
+          if [ ! -f "$CURRENT_MAIN_MARKER" ]; then
+            rm -f "$DEPLOY_ROOT/deploy-required"
+          fi
+
       - name: Authenticate to Azure
         run: |
           set -euo pipefail
@@ -1119,9 +1311,20 @@ jobs:
           set -euo pipefail
 
           DEPLOY_ROOT="/tmp/witsworld-web-deploy-${DEPLOY_SHA}"
+          CURRENT_MAIN_MARKER="$DEPLOY_ROOT/current-main"
 
           if [ ! -f "$DEPLOY_ROOT/deploy-required" ]; then
             echo "Skipping the web deployment."
+            exit 0
+          fi
+
+          bash \
+            "$DEPLOY_ROOT/repository/scripts/confirm-current-main.sh" \
+            "$CURRENT_MAIN_MARKER"
+
+          if [ ! -f "$CURRENT_MAIN_MARKER" ]; then
+            rm -f "$DEPLOY_ROOT/deploy-required"
+            echo "Skipping stale web deployment."
             exit 0
           fi
 

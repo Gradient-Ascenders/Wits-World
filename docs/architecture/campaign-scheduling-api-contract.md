@@ -94,15 +94,19 @@ Stable campaign-specific failures include `400 INVALID_CAMPAIGN` for invalid
 draft data and `404 CAMPAIGN_NOT_FOUND` for an absent campaign. Shared curation
 errors cover self-review, stale versions, invalid transitions, and readiness.
 
-## Current limitation
+## Author console coverage and limitations
 
-Issue `#183` implements persistence and HTTP APIs. Campaign forms, review
-controls, and retirement controls in the Author console belong to issue `#185`.
+The Author console lists, filters, creates, edits, schedules, and assigns event
+and trail membership for campaigns. It exposes the shared review lifecycle,
+history, stale-version feedback, and confirmed retirement while leaving every
+readiness, overlap, and effective-window decision to these APIs.
+
 There is no public standalone campaign endpoint, automatic event placement,
 offline campaign mode, scheduler worker, or campaign analytics dashboard.
+Question analytics remains blocked separately by issue `#184` / S3-06.
 
 ## AI declaration
 
 This contract was generated, edited, and reviewed with the assistance of
-Codex-CLI[gpt-5.6-sol medium]. It records the implemented issue `#183` behavior
-and does not claim that the issue `#185` Author interface is complete.
+Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5]. It records the implemented issue
+`#183` behavior and the unblocked issue `#185` Author interface.

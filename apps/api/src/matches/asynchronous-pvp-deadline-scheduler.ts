@@ -1,7 +1,11 @@
-import { MAX_NODE_TIMER_DELAY_MS } from '../config/timers.js';
+import {
+  MAX_NODE_TIMER_DELAY_MS,
+  MIN_DATABASE_MAINTENANCE_INTERVAL_MS,
+} from '../config/timers.js';
 import type { AsyncPvpDeadlineProcessor } from './asynchronous-pvp-deadline-processor.js';
 
-export const MIN_ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS = 1_000;
+export const MIN_ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS =
+  MIN_DATABASE_MAINTENANCE_INTERVAL_MS;
 
 export interface AsyncPvpDeadlineScheduler {
   start(): void;

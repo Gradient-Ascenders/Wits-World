@@ -1,6 +1,7 @@
 import type { ApiAccessTokenProvider } from '../auth/useApiAccessToken';
 
 export interface CurrentPlayer {
+  connectionStrategy: 'auth0' | 'google-oauth2';
   id: string;
   lifecycleStatus: 'active';
   playerName: string | null;
@@ -8,7 +9,8 @@ export interface CurrentPlayer {
   role: 'author' | 'player';
 }
 
-export type CurrentPlayerFailure = 'authorization' | 'unavailable';
+export type CurrentPlayerFailure =
+  'authorization' | 'identity_conflict' | 'unavailable';
 
 export class CurrentPlayerError extends Error {
   public constructor(public readonly failure: CurrentPlayerFailure) {
@@ -69,6 +71,14 @@ export async function getCurrentPlayer({
 
   if (response.status === 401 || response.status === 403) {
     throw new CurrentPlayerError('authorization');
+  }
+
+  if (response.status === 409) {
+    const problem = await readProblem(response);
+
+    if (problem?.code === 'PLAYER_NAME_CONFLICT') {
+      throw new CurrentPlayerError('identity_conflict');
+    }
   }
 
   if (!response.ok) {
@@ -187,6 +197,8 @@ function isUuid(value: unknown): value is string {
 function parseCurrentPlayer(value: unknown): CurrentPlayer | null {
   if (
     !isRecord(value) ||
+    (value.connectionStrategy !== 'auth0' &&
+      value.connectionStrategy !== 'google-oauth2') ||
     !isUuid(value.id) ||
     !(
       value.playerName === null ||
@@ -202,6 +214,7 @@ function parseCurrentPlayer(value: unknown): CurrentPlayer | null {
   }
 
   return {
+    connectionStrategy: value.connectionStrategy,
     id: value.id,
     lifecycleStatus: 'active',
     playerName: value.playerName,

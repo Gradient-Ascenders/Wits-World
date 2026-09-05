@@ -327,13 +327,12 @@ application roles are insufficient.
 
 ## Password reset
 
-Database-connection users will reset passwords through Auth0 Universal Login or
-the Auth0 password-reset flow.
-
-The Wits World password-reset capability is not currently implemented. It is a
-Basic requirement planned for Sprint 2 after, or together with, a proper player
-profile/account page. The provider-hosted flow is an available implementation
-option; the requirement does not mandate a custom Wits World reset mechanism.
+Database-connection users reset passwords through Auth0 Universal Login's
+hosted recovery flow. The protected Wits World account page opens Universal
+Login and tells the player to choose Auth0 recovery; Auth0 collects the account
+identifier, sends the email, and hosts replacement-password entry. Auth0 does
+not report recovery completion to the SPA, so the return state describes the
+handoff without claiming a password was changed.
 
 Wits World will not receive, store, compare, or log user passwords.
 
@@ -357,7 +356,7 @@ The browser must not receive an Auth0 Management API credential.
 
 `BASIC-12` subsequently confirmed the deletion and retention policy. Issue
 `#160` implements the transactional persistence and retention backend; issue
-`#161` retains the player profile/account and deletion UI. See
+`#161` implements the player profile/account and deletion UI. See
 [ADR-005](decisions/ADR-005-auth0-authentication.md#account-deletion) and the
 [retention design](../database/account-deletion-retention.md).
 
@@ -399,8 +398,9 @@ player-owned data cleanup or production retention operation has been completed.
 The original comparison did not itself implement authentication. The repository
 now contains React sign-in/sign-out and protected routes, access-token
 acquisition, Fastify token validation, local-player provisioning, local
-Player/Author authorisation, Google Player Name setup, preliminary
-account-deletion artifacts, and production custom-domain configuration.
+Player/Author authorisation, Google Player Name setup, the server-side
+account-deletion lifecycle, the complete player-facing account lifecycle, and
+production custom-domain configuration.
 
 Production currently uses the Auth0 SPA/application named `Wits World` with
 both localhost and production callback, logout, and web-origin entries. Allowed
@@ -408,10 +408,10 @@ Origins (CORS) is empty. ADR-005 treats this as a temporary deviation: separate
 development and production Auth0 resources remain outstanding remediation,
 without requiring separate tenants specifically.
 
-Password reset, account deletion, and their proper player profile/account page
-are unimplemented Basic requirements planned for Sprint 2. Other remaining work
-includes release-specific production Auth0 operator evidence, remediation of
-the shared SPA resource, and Wits SSO if it is approved and available.
+Password recovery, account deletion, and their protected player account page
+are implemented. Remaining work includes real Auth0 recovery and deletion smoke
+evidence, remediation of the shared SPA resource, and Wits SSO if it is approved
+and available.
 
 ---
 

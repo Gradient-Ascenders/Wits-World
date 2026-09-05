@@ -129,7 +129,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
     await insertLegacyPublishedDemoQuestion(temporaryConfig);
     await runBasicDemoSeeds(temporaryConfig);
     rerunMigrationResult = await runMigrations(temporaryConfig);
-  }, 45_000);
+  }, 90_000);
 
   afterAll(async () => {
     if (!administrationConfig || !temporaryDatabaseName) {
@@ -180,6 +180,9 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0031_create_movement_evidence.sql',
         '0032_add_movement_eligibility_decisions.sql',
         '0033_add_async_pvp_invitation_invalidation.sql',
+        '0034_retire_coin_rewards.sql',
+        '0035_deny_deleted_identity_tokens.sql',
+        '0036_remove_duplicate_indexes.sql',
       ],
       skipped: [],
     });
@@ -220,6 +223,9 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0031_create_movement_evidence.sql',
         '0032_add_movement_eligibility_decisions.sql',
         '0033_add_async_pvp_invitation_invalidation.sql',
+        '0034_retire_coin_rewards.sql',
+        '0035_deny_deleted_identity_tokens.sql',
+        '0036_remove_duplicate_indexes.sql',
       ],
     });
     expect(readiness).toMatchObject({
@@ -228,6 +234,44 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
     });
 
     await withDatabaseClient(temporaryConfig, async (client) => {
+      const redundantIndexes = [
+        'card_moves_definition_position_idx',
+        'card_effects_definition_position_idx',
+        'cpu_match_cards_match_idx',
+        'cpu_match_rounds_match_idx',
+        'cpu_match_actions_match_idx',
+        'async_pvp_match_actions_history_idx',
+      ];
+      const retainedIndexes = [
+        'card_moves_card_position_unique',
+        'card_effects_card_position_unique',
+        'cpu_match_cards_primary_key',
+        'cpu_match_rounds_identity_unique',
+        'cpu_match_actions_identity_unique',
+        'async_pvp_match_actions_sequence_unique',
+      ];
+      const removed = await client.query(
+        `select indexname from pg_indexes
+          where schemaname = 'public' and indexname = any($1::text[])`,
+        [redundantIndexes],
+      );
+      expect(removed.rows).toEqual([]);
+
+      const retained = await client.query<{ name: string }>(
+        `select c.relname as name
+           from pg_index i
+           join pg_class c on c.oid = i.indexrelid
+           join pg_namespace n on n.oid = c.relnamespace
+           join pg_constraint k on k.conindid = i.indexrelid
+          where n.nspname = 'public' and c.relname = any($1::text[])
+            and i.indisunique and i.indisvalid and i.indisready
+            and k.contype in ('p', 'u')`,
+        [retainedIndexes],
+      );
+      expect(retained.rows.map((row) => row.name).sort()).toEqual(
+        [...retainedIndexes].sort(),
+      );
+
       const seededEvent = await client.query<{
         authoring_status: string;
         count: string;

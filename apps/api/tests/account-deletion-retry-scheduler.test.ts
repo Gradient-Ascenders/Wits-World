@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
+  MAX_NODE_TIMER_DELAY_MS,
+  MIN_DATABASE_MAINTENANCE_INTERVAL_MS,
+} from '../src/config/timers.js';
 import type { AccountDeletionRetryProcessor } from '../src/players/account-deletion-retry-processor.js';
 import { createAccountDeletionRetryScheduler } from '../src/players/account-deletion-retry-scheduler.js';
 
@@ -27,7 +32,7 @@ describe('account deletion retry scheduler', () => {
       createProcessor(runOnce),
       logger,
       {
-        intervalMs: 60_000,
+        intervalMs: DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
       },
     );
 
@@ -37,7 +42,7 @@ describe('account deletion retry scheduler', () => {
       expect(runOnce).toHaveBeenCalledTimes(1);
     });
 
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS);
 
     expect(runOnce).toHaveBeenCalledTimes(2);
 
@@ -74,7 +79,7 @@ describe('account deletion retry scheduler', () => {
         error: vi.fn(),
       },
       {
-        intervalMs: 1_000,
+        intervalMs: MIN_DATABASE_MAINTENANCE_INTERVAL_MS,
       },
     );
 
@@ -84,7 +89,7 @@ describe('account deletion retry scheduler', () => {
       expect(runOnce).toHaveBeenCalledTimes(1);
     });
 
-    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersByTimeAsync(MIN_DATABASE_MAINTENANCE_INTERVAL_MS * 5);
 
     expect(runOnce).toHaveBeenCalledTimes(1);
 
@@ -92,7 +97,7 @@ describe('account deletion retry scheduler', () => {
 
     await Promise.resolve();
 
-    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(MIN_DATABASE_MAINTENANCE_INTERVAL_MS);
 
     expect(runOnce).toHaveBeenCalledTimes(2);
 
@@ -117,7 +122,7 @@ describe('account deletion retry scheduler', () => {
       createProcessor(runOnce),
       logger,
       {
-        intervalMs: 60_000,
+        intervalMs: DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
       },
     );
 
@@ -156,7 +161,7 @@ describe('account deletion retry scheduler', () => {
         error: vi.fn(),
       },
       {
-        intervalMs: 60_000,
+        intervalMs: DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
       },
     );
 
@@ -168,9 +173,26 @@ describe('account deletion retry scheduler', () => {
 
     await scheduler.stop();
 
-    await vi.advanceTimersByTimeAsync(180_000);
+    await vi.advanceTimersByTimeAsync(
+      DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS * 3,
+    );
 
     expect(runOnce).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    MIN_DATABASE_MAINTENANCE_INTERVAL_MS - 1,
+    MAX_NODE_TIMER_DELAY_MS + 1,
+    Number.MAX_SAFE_INTEGER,
+    1.5,
+  ])('rejects the unsafe interval %s', (intervalMs) => {
+    expect(() =>
+      createAccountDeletionRetryScheduler(
+        createProcessor(vi.fn()),
+        { info: vi.fn(), error: vi.fn() },
+        { intervalMs },
+      ),
+    ).toThrow('must be a safe integer between');
   });
 });
 

@@ -13,15 +13,11 @@ import {
   createAuthorChallenge,
   createAuthorEvent,
   createAuthorQuestion,
+  isAuthorContentConflict,
   listAuthorChallenges,
   listAuthorEvents,
   listAuthorQuestions,
-  publishAuthorChallenge,
-  publishAuthorEvent,
-  publishAuthorQuestion,
-  retireAuthorChallenge,
-  retireAuthorEvent,
-  retireAuthorQuestion,
+  transitionAuthorContent,
   updateAuthorEvent,
   updateAuthorQuestion,
   type AuthorCard,
@@ -30,11 +26,14 @@ import {
   type AuthorEventInput,
   type AuthorQuestion,
   type AuthorQuestionInput,
+  type AuthorTransitionAction,
+  type ChallengeFormat,
 } from '../../api/author';
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
 import type { MapFactory } from '../exploration/map-provider';
 import { AuthorFeedback } from './AuthorFeedback';
-import { AuthorConfirmationDialog } from './AuthorConfirmationDialog';
+import { AuthorHistoryPanel } from './AuthorHistoryPanel';
+import { AuthorLifecycleControls } from './AuthorLifecycleControls';
 import { AuthorLocationMap } from './AuthorLocationMap';
 import { useUnsavedAuthorChanges } from './AuthorNavigationGuard';
 import { authorPaths, type AuthorWorkspaceRoute } from './author-routing';
@@ -134,6 +133,14 @@ export function EventWorkspace({
       setState('error');
     }
   }, [apiBaseUrl, getAccessToken, mutationCoordinator]);
+
+  const reloadAfterLifecycleConflict = useCallback(async () => {
+    await load();
+    if (mountedRef.current)
+      setMessage(
+        'The content changed on the server. Its authoritative state was reloaded.',
+      );
+  }, [load]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -419,6 +426,7 @@ export function EventWorkspace({
                   mutationCoordinator={mutationCoordinator}
                   navigate={navigate}
                   onEventChanged={updateEvent}
+                  onEventConflict={reloadAfterLifecycleConflict}
                   onOpenCards={onOpenCards}
                   onReloadCards={onReloadCards}
                   route={route}
@@ -431,6 +439,7 @@ export function EventWorkspace({
                   getAccessToken={getAccessToken}
                   interaction={interactionRef.current}
                   mutationCoordinator={mutationCoordinator}
+                  onConflict={reloadAfterLifecycleConflict}
                   onSaved={updateEvent}
                 />
               )
@@ -596,6 +605,7 @@ function EventOverview({
   getAccessToken,
   interaction,
   mutationCoordinator,
+  onConflict,
   onSaved,
 }: {
   apiBaseUrl: string;
@@ -603,22 +613,20 @@ function EventOverview({
   getAccessToken: ApiAccessTokenProvider;
   interaction: number;
   mutationCoordinator: AuthorMutationCoordinator;
+  onConflict: () => Promise<void>;
   onSaved: EventFormProps['onSaved'];
 }) {
   const [apiError, setApiError] = useState<AuthorApiError | null>(null);
   const [busy, setBusy] = useState(false);
-  const [confirmRetire, setConfirmRetire] = useState(false);
   const feedbackRef = useRef<HTMLDivElement>(null);
-  const retireButtonRef = useRef<HTMLButtonElement>(null);
   const operationRef = useRef<AbortController | null>(null);
 
   useEffect(() => () => operationRef.current?.abort(), []);
   useEffect(() => {
     setApiError(null);
-    setConfirmRetire(false);
   }, [event.authoringStatus, event.eventId]);
 
-  async function retire() {
+  async function lifecycle(action: AuthorTransitionAction, reason?: string) {
     const controller = new AbortController();
     operationRef.current = controller;
     setBusy(true);
@@ -628,21 +636,31 @@ function EventOverview({
       'events',
     );
     try {
-      const next = await retireAuthorEvent({
+      const next = await transitionAuthorContent({
+        action,
         apiBaseUrl,
-        eventId: event.eventId,
+        entityId: event.eventId,
+        entityType: 'event',
         expectedVersion: event.version,
         getAccessToken,
+        reason,
         signal: controller.signal,
       });
       if (operationRef.current !== controller) return;
-      onSaved(next, event.eventId, interaction, ticket, 'Event retired.');
-      setConfirmRetire(false);
+      onSaved(
+        next,
+        event.eventId,
+        interaction,
+        ticket,
+        lifecycleNotice('event', next.authoringStatus),
+      );
     } catch (error) {
       if (operationRef.current !== controller) return;
       if (mutationCoordinator.acceptFailure(ticket, isUncertainError(error))) {
-        setApiError(toAuthorError(error));
-        window.setTimeout(() => feedbackRef.current?.focus());
+        const nextError = toAuthorError(error);
+        setApiError(nextError);
+        if (isAuthorContentConflict(nextError)) await onConflict();
+        else window.setTimeout(() => feedbackRef.current?.focus());
       }
     } finally {
       if (operationRef.current === controller) {
@@ -697,59 +715,57 @@ function EventOverview({
           <p className="eyebrow">Next action</p>
           <h4>
             {event.authoringStatus === 'draft'
-              ? 'Prepare the event for publication'
-              : event.authoringStatus === 'published'
-                ? 'Published event'
-                : 'Retired event'}
+              ? 'Prepare the event for review'
+              : event.authoringStatus === 'in_review'
+                ? 'Awaiting independent review'
+                : event.authoringStatus === 'approved'
+                  ? 'Approved for publication'
+                  : event.authoringStatus === 'published'
+                    ? 'Published event'
+                    : 'Retired event'}
           </h4>
           <p>
             {event.authoringStatus === 'draft'
               ? 'Edit the definition, then complete its challenge and questions.'
-              : event.authoringStatus === 'published'
-                ? 'Review the live definition or retire it when it should leave discovery.'
-                : 'This definition is preserved as a read-only historical record.'}
+              : event.authoringStatus === 'in_review'
+                ? 'Another Author must approve this submission or return it with a reason.'
+                : event.authoringStatus === 'approved'
+                  ? 'The reviewed version can now be published.'
+                  : event.authoringStatus === 'published'
+                    ? 'Review the live definition or retire it when it should leave discovery.'
+                    : 'This definition is preserved as a read-only historical record.'}
           </p>
-          <div className="author-actions author-actions--detail">
-            {event.authoringStatus === 'draft' ? (
+          <AuthorLifecycleControls
+            busy={busy}
+            editControl={
               <Link
                 className="button"
                 href={authorPaths.editEvent(event.eventId)}
               >
                 Edit event
               </Link>
-            ) : null}
-            {event.authoringStatus !== 'retired' ? (
-              <button
-                className="button button--danger"
-                disabled={busy}
-                onClick={() => setConfirmRetire(true)}
-                ref={retireButtonRef}
-                type="button"
-              >
-                Retire event
-              </button>
-            ) : null}
-          </div>
+            }
+            noun="event"
+            onAction={(action, reason) => void lifecycle(action, reason)}
+            retirementDescription={
+              <p>
+                This event will leave player discovery and cannot be
+                republished. Historical attempts remain intact.
+              </p>
+            }
+            retirementTitle={`Retire ${event.title}?`}
+            status={event.authoringStatus}
+            submittedBy={event.submittedBy}
+          />
         </section>
       </div>
-
-      {confirmRetire ? (
-        <AuthorConfirmationDialog
-          busy={busy}
-          cancelLabel="Keep event"
-          confirmLabel={busy ? 'Retiring…' : 'Retire event'}
-          description={
-            <p>
-              This event will leave player discovery and cannot be republished.
-              Historical attempts remain intact.
-            </p>
-          }
-          onCancel={() => setConfirmRetire(false)}
-          onConfirm={() => void retire()}
-          returnFocusRef={retireButtonRef}
-          title={`Retire ${event.title}?`}
-        />
-      ) : null}
+      <AuthorHistoryPanel
+        apiBaseUrl={apiBaseUrl}
+        entityId={event.eventId}
+        entityType="event"
+        getAccessToken={getAccessToken}
+        revision={event.version}
+      />
     </article>
   );
 }
@@ -1177,6 +1193,7 @@ interface ChallengeWorkspaceProps {
     notice?: string,
     operationContextIsCurrent?: () => boolean,
   ) => boolean;
+  onEventConflict: () => Promise<void>;
   onOpenCards: () => void;
   onReloadCards: () => void;
   route: Extract<AuthorWorkspaceRoute, { section: 'events' }>;
@@ -1193,6 +1210,7 @@ function ChallengeWorkspace({
   mutationCoordinator,
   navigate,
   onEventChanged,
+  onEventConflict,
   onOpenCards,
   onReloadCards,
   route,
@@ -1214,14 +1232,16 @@ function ChallengeWorkspace({
   >('challenge');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  const [confirmRetire, setConfirmRetire] = useState(false);
+  const [newChallengeFormat, setNewChallengeFormat] =
+    useState<ChallengeFormat>('multiple_choice');
   const feedbackRef = useRef<HTMLDivElement>(null);
-  const retireButtonRef = useRef<HTMLButtonElement>(null);
   const challengeRequestRef = useRef<AbortController | null>(null);
   const questionRequestRef = useRef<AbortController | null>(null);
   const operationRef = useRef<AbortController | null>(null);
   const initialRouteChallengeIdRef = useRef(
-    route.mode === 'questions' ? route.challengeId : undefined,
+    route.mode === 'questions' || route.mode === 'challenge'
+      ? route.challengeId
+      : undefined,
   );
   const selectedChallengeIdRef = useRef<string | null>(null);
   const challengeInteractionRef = useRef(0);
@@ -1276,11 +1296,12 @@ function ChallengeWorkspace({
         setChallenges(reconciled);
         setSelectedChallengeId((current) => {
           const nextId =
-            preferredChallengeId &&
-            reconciled.some(
-              (challenge) => challenge.challengeId === preferredChallengeId,
-            )
-              ? preferredChallengeId
+            preferredChallengeId !== undefined
+              ? reconciled.some(
+                  (challenge) => challenge.challengeId === preferredChallengeId,
+                )
+                ? preferredChallengeId
+                : null
               : current &&
                   reconciled.some(
                     (challenge) => challenge.challengeId === current,
@@ -1315,18 +1336,21 @@ function ChallengeWorkspace({
   }, [loadChallenges]);
 
   useEffect(() => {
+    const routeChallengeId =
+      route.mode === 'questions' || route.mode === 'challenge'
+        ? route.challengeId
+        : undefined;
     if (
-      route.mode !== 'questions' ||
-      !route.challengeId ||
-      route.challengeId === selectedChallengeId ||
+      !routeChallengeId ||
+      routeChallengeId === selectedChallengeId ||
       !challenges.some(
-        (challenge) => challenge.challengeId === route.challengeId,
+        (challenge) => challenge.challengeId === routeChallengeId,
       )
     )
       return;
     challengeInteractionRef.current += 1;
-    selectedChallengeIdRef.current = route.challengeId;
-    setSelectedChallengeId(route.challengeId);
+    selectedChallengeIdRef.current = routeChallengeId;
+    setSelectedChallengeId(routeChallengeId);
     setQuestions([]);
     setQuestionsState('loading');
     setQuestionsError(null);
@@ -1392,11 +1416,6 @@ function ChallengeWorkspace({
     void loadQuestions();
     return () => questionRequestRef.current?.abort();
   }, [loadQuestions]);
-
-  useEffect(
-    () => setConfirmRetire(false),
-    [event.authoringStatus, selectedChallengeId],
-  );
 
   useEffect(() => {
     const collectionKey = challengeCollectionKey(event.eventId);
@@ -1475,7 +1494,6 @@ function ChallengeWorkspace({
 
   function selectChallenge(challengeId: string) {
     challengeInteractionRef.current += 1;
-    setConfirmRetire(false);
     selectedChallengeIdRef.current = challengeId;
     setSelectedChallengeId(challengeId);
     setQuestions([]);
@@ -1485,6 +1503,8 @@ function ChallengeWorkspace({
     setApiError(null);
     if (view === 'questions') {
       navigate(authorPaths.questions(event.eventId, challengeId));
+    } else if (route.mode === 'challenge') {
+      navigate(authorPaths.challenge(event.eventId, challengeId));
     }
     if (
       mutationCoordinator.isCollectionUncertain(
@@ -1506,6 +1526,7 @@ function ChallengeWorkspace({
       const challenge = await createAuthorChallenge({
         apiBaseUrl,
         eventId: event.eventId,
+        format: newChallengeFormat,
         getAccessToken,
         signal: controller.signal,
       });
@@ -1525,7 +1546,9 @@ function ChallengeWorkspace({
         selectChallenge(challenge.challengeId);
         focusChallengeId = challenge.challengeId;
         focusInteraction = challengeInteractionRef.current;
-        setMessage('Draft challenge associated with this event.');
+        setMessage(
+          `Draft ${challengeFormatLabel(challenge.format).toLowerCase()} challenge associated with this event.`,
+        );
       }
     } catch (error) {
       const accepted = mutationCoordinator.acceptFailure(
@@ -1560,7 +1583,10 @@ function ChallengeWorkspace({
     }
   }
 
-  async function challengeLifecycle(action: 'publish' | 'retire') {
+  async function challengeLifecycle(
+    action: AuthorTransitionAction,
+    reason?: string,
+  ) {
     if (!selected) return;
     const controller = beginOperation();
     const challengeId = selected.challengeId;
@@ -1572,22 +1598,16 @@ function ChallengeWorkspace({
     );
     let shouldFocus = false;
     try {
-      const next =
-        action === 'publish'
-          ? await publishAuthorChallenge({
-              apiBaseUrl,
-              challengeId,
-              expectedVersion: selected.version,
-              getAccessToken,
-              signal: controller.signal,
-            })
-          : await retireAuthorChallenge({
-              apiBaseUrl,
-              challengeId,
-              expectedVersion: selected.version,
-              getAccessToken,
-              signal: controller.signal,
-            });
+      const next = await transitionAuthorContent({
+        action,
+        apiBaseUrl,
+        entityId: challengeId,
+        entityType: 'challenge',
+        expectedVersion: selected.version,
+        getAccessToken,
+        reason,
+        signal: controller.signal,
+      });
       const recordKey = `challenge:${next.challengeId}` as const;
       if (!mutationCoordinator.acceptSuccess(ticket, recordKey, next)) return;
       const canApply = mutationCoordinator
@@ -1600,10 +1620,7 @@ function ChallengeWorkspace({
         selectedChallengeIdRef.current === challengeId &&
         challengeInteractionRef.current === startingInteraction
       ) {
-        setMessage(
-          action === 'publish' ? 'Challenge published.' : 'Challenge retired.',
-        );
-        setConfirmRetire(false);
+        setMessage(lifecycleNotice('challenge', next.status));
         shouldFocus = true;
       }
     } catch (error) {
@@ -1617,8 +1634,18 @@ function ChallengeWorkspace({
         selectedChallengeIdRef.current === challengeId &&
         challengeInteractionRef.current === startingInteraction
       ) {
-        setApiError(toAuthorError(error));
-        shouldFocus = true;
+        const nextError = toAuthorError(error);
+        setApiError(nextError);
+        if (isAuthorContentConflict(nextError)) {
+          await loadChallenges(challengeId);
+          if (
+            interactionActiveRef.current &&
+            selectedChallengeIdRef.current === challengeId
+          )
+            setMessage(
+              'The challenge changed on the server. Its authoritative state was reloaded.',
+            );
+        } else shouldFocus = true;
       }
     } finally {
       if (
@@ -1639,7 +1666,10 @@ function ChallengeWorkspace({
     }
   }
 
-  async function publishEvent() {
+  async function eventLifecycle(
+    action: AuthorTransitionAction,
+    reason?: string,
+  ) {
     const controller = beginOperation('publication');
     const startingChallengeId = selectedChallengeIdRef.current;
     const startingChallengeInteraction = challengeInteractionRef.current;
@@ -1649,11 +1679,14 @@ function ChallengeWorkspace({
     );
     let shouldFocus = false;
     try {
-      const next = await publishAuthorEvent({
+      const next = await transitionAuthorContent({
+        action,
         apiBaseUrl,
-        eventId: event.eventId,
+        entityId: event.eventId,
+        entityType: 'event',
         expectedVersion: event.version,
         getAccessToken,
+        reason,
         signal: controller.signal,
       });
       if (
@@ -1662,7 +1695,7 @@ function ChallengeWorkspace({
           event.eventId,
           interaction,
           ticket,
-          'Event published and available to the player API according to its active times.',
+          lifecycleNotice('event', next.authoringStatus),
           () =>
             interactionActiveRef.current &&
             challengeInteractionRef.current === startingChallengeInteraction &&
@@ -1681,8 +1714,10 @@ function ChallengeWorkspace({
         challengeInteractionRef.current === startingChallengeInteraction &&
         selectedChallengeIdRef.current === startingChallengeId
       ) {
-        setApiError(toAuthorError(error));
-        shouldFocus = true;
+        const nextError = toAuthorError(error);
+        setApiError(nextError);
+        if (isAuthorContentConflict(nextError)) await onEventConflict();
+        else shouldFocus = true;
       }
     } finally {
       if (finishOperation(controller) && shouldFocus)
@@ -1772,14 +1807,32 @@ function ChallengeWorkspace({
               </p>
             </div>
             {state === 'ready' ? (
-              <button
-                className="button button--quiet"
-                disabled={busy}
-                onClick={() => void createChallenge()}
-                type="button"
-              >
-                Create challenge
-              </button>
+              <div className="challenge-create-controls">
+                <label htmlFor="new-challenge-format">
+                  New challenge format
+                </label>
+                <select
+                  disabled={busy}
+                  id="new-challenge-format"
+                  onChange={(change) =>
+                    setNewChallengeFormat(
+                      change.target.value as ChallengeFormat,
+                    )
+                  }
+                  value={newChallengeFormat}
+                >
+                  <option value="multiple_choice">Multiple choice</option>
+                  <option value="ordering">Ordering</option>
+                </select>
+                <button
+                  className="button button--quiet"
+                  disabled={busy}
+                  onClick={() => void createChallenge()}
+                  type="button"
+                >
+                  {busy ? 'Creating…' : 'Create challenge'}
+                </button>
+              </div>
             ) : null}
           </header>
 
@@ -1840,7 +1893,9 @@ function ChallengeWorkspace({
                     key={challenge.challengeId}
                     value={challenge.challengeId}
                   >
-                    Challenge {index + 1} — {challenge.status}
+                    Challenge {index + 1} —{' '}
+                    {challengeFormatLabel(challenge.format)} —{' '}
+                    {challenge.status}
                   </option>
                 ))}
               </select>
@@ -1852,7 +1907,7 @@ function ChallengeWorkspace({
               <div className="author-section-heading">
                 <div>
                   <p className="eyebrow">Selected challenge</p>
-                  <h4>Multiple choice</h4>
+                  <h4>{challengeFormatLabel(selected.format)}</h4>
                 </div>
                 <StatusBadge status={selected.status} />
               </div>
@@ -1860,52 +1915,42 @@ function ChallengeWorkspace({
                 {questions.length} total questions · {publishedQuestions}{' '}
                 published
               </p>
-              <div className="author-actions">
-                <Link
-                  className="button button--quiet"
-                  href={authorPaths.questions(
-                    event.eventId,
-                    selected.challengeId,
-                  )}
-                >
-                  Manage questions
-                </Link>
-                {selected.status === 'draft' ? (
-                  <button
+              <AuthorLifecycleControls
+                busy={busy}
+                editControl={
+                  <Link
                     className="button button--quiet"
-                    disabled={busy}
-                    onClick={() => void challengeLifecycle('publish')}
-                    type="button"
+                    href={authorPaths.questions(
+                      event.eventId,
+                      selected.challengeId,
+                    )}
                   >
-                    Publish challenge
-                  </button>
-                ) : null}
-                {selected.status !== 'retired' ? (
-                  <button
-                    aria-describedby={
-                      challengeRetirementBlocked
-                        ? 'challenge-retirement-order'
-                        : undefined
-                    }
-                    className="button button--danger"
-                    disabled={busy || challengeRetirementBlocked}
-                    onClick={() => setConfirmRetire(true)}
-                    ref={retireButtonRef}
-                    type="button"
-                  >
-                    Retire challenge
-                  </button>
-                ) : null}
-              </div>
-              {challengeRetirementBlocked ? (
-                <p
-                  className="author-notice"
-                  id="challenge-retirement-order"
-                  role="status"
-                >
-                  Retire the event before retiring its published challenge.
-                </p>
-              ) : null}
+                    Manage questions
+                  </Link>
+                }
+                noun="challenge"
+                onAction={(action, reason) =>
+                  void challengeLifecycle(action, reason)
+                }
+                retirementDescription={
+                  <p>
+                    This challenge cannot be edited or published again. Its
+                    event must be retired first when both are published.
+                  </p>
+                }
+                retirementDisabled={challengeRetirementBlocked}
+                retirementDisabledDescription="Retire the event before retiring its published challenge."
+                retirementTitle="Retire this challenge?"
+                status={selected.status}
+                submittedBy={selected.submittedBy}
+              />
+              <AuthorHistoryPanel
+                apiBaseUrl={apiBaseUrl}
+                entityId={selected.challengeId}
+                entityType="challenge"
+                getAccessToken={getAccessToken}
+                revision={selected.version}
+              />
             </section>
           ) : null}
 
@@ -1948,16 +1993,22 @@ function ChallengeWorkspace({
                   Check cards again
                 </button>
               ) : null}
-              {event.authoringStatus === 'draft' ? (
-                <button
-                  className="button"
-                  disabled={busy}
-                  onClick={() => void publishEvent()}
-                  type="button"
-                >
-                  {busy ? 'Publishing…' : 'Publish event'}
-                </button>
-              ) : null}
+              <AuthorLifecycleControls
+                busy={busy}
+                noun="event"
+                onAction={(action, reason) =>
+                  void eventLifecycle(action, reason)
+                }
+                retirementDescription={
+                  <p>
+                    This event will leave player discovery and cannot be
+                    republished. Historical attempts remain intact.
+                  </p>
+                }
+                retirementTitle={`Retire ${event.title}?`}
+                status={event.authoringStatus}
+                submittedBy={event.submittedBy}
+              />
             </div>
           </div>
           <p className="field-help">
@@ -1986,7 +2037,9 @@ function ChallengeWorkspace({
                     key={challenge.challengeId}
                     value={challenge.challengeId}
                   >
-                    Challenge {index + 1} — {challenge.status}
+                    Challenge {index + 1} —{' '}
+                    {challengeFormatLabel(challenge.format)} —{' '}
+                    {challenge.status}
                   </option>
                 ))}
               </select>
@@ -2033,6 +2086,15 @@ function ChallengeWorkspace({
               key={selected.challengeId}
               mutationCoordinator={mutationCoordinator}
               navigate={navigate}
+              onLifecycleConflict={async () => {
+                await loadQuestions();
+                if (interactionActiveRef.current) {
+                  setApiError(null);
+                  setMessage(
+                    'The question changed on the server. Its authoritative state was reloaded.',
+                  );
+                }
+              }}
               onReload={loadQuestions}
               onQuestionsChange={setQuestions}
               questions={questions.filter(
@@ -2043,24 +2105,6 @@ function ChallengeWorkspace({
           ) : null}
         </>
       )}
-
-      {confirmRetire && selected ? (
-        <AuthorConfirmationDialog
-          busy={busy}
-          cancelLabel="Keep challenge"
-          confirmLabel={busy ? 'Retiring…' : 'Retire challenge'}
-          description={
-            <p>
-              This challenge cannot be edited or published again. Retire its
-              event first when the challenge is already published.
-            </p>
-          }
-          onCancel={() => setConfirmRetire(false)}
-          onConfirm={() => void challengeLifecycle('retire')}
-          returnFocusRef={retireButtonRef}
-          title="Retire this challenge?"
-        />
-      ) : null}
     </section>
   );
 }
@@ -2072,7 +2116,8 @@ interface QuestionWorkspaceProps {
   getAccessToken: ApiAccessTokenProvider;
   mutationCoordinator: AuthorMutationCoordinator;
   navigate: (to: string, options?: { replace?: boolean }) => void;
-  onReload: () => void;
+  onLifecycleConflict: () => Promise<void>;
+  onReload: () => Promise<void> | void;
   onQuestionsChange: React.Dispatch<React.SetStateAction<AuthorQuestion[]>>;
   questions: AuthorQuestion[];
   route: Extract<AuthorWorkspaceRoute, { mode: 'questions' }>;
@@ -2085,6 +2130,7 @@ function QuestionWorkspace({
   getAccessToken,
   mutationCoordinator,
   navigate,
+  onLifecycleConflict,
   onReload,
   onQuestionsChange,
   questions,
@@ -2334,6 +2380,7 @@ function QuestionWorkspace({
               getAccessToken={getAccessToken}
               interaction={interactionRef.current}
               mutationCoordinator={mutationCoordinator}
+              onConflict={onLifecycleConflict}
               onSaved={updateQuestion}
               question={selected}
             />
@@ -2361,6 +2408,7 @@ function QuestionDetail({
   getAccessToken,
   interaction,
   mutationCoordinator,
+  onConflict,
   onSaved,
   question,
 }: {
@@ -2370,23 +2418,21 @@ function QuestionDetail({
   getAccessToken: ApiAccessTokenProvider;
   interaction: number;
   mutationCoordinator: AuthorMutationCoordinator;
+  onConflict: () => Promise<void>;
   onSaved: QuestionFormProps['onSaved'];
   question: AuthorQuestion;
 }) {
   const [apiError, setApiError] = useState<AuthorApiError | null>(null);
   const [busy, setBusy] = useState(false);
-  const [confirmRetire, setConfirmRetire] = useState(false);
   const feedbackRef = useRef<HTMLDivElement>(null);
-  const retireButtonRef = useRef<HTMLButtonElement>(null);
   const operationRef = useRef<AbortController | null>(null);
 
   useEffect(() => () => operationRef.current?.abort(), []);
   useEffect(() => {
     setApiError(null);
-    setConfirmRetire(false);
   }, [question.questionId, question.status]);
 
-  async function lifecycle(action: 'publish' | 'retire') {
+  async function lifecycle(action: AuthorTransitionAction, reason?: string) {
     const controller = new AbortController();
     operationRef.current = controller;
     setBusy(true);
@@ -2397,36 +2443,31 @@ function QuestionDetail({
       collectionKey,
     );
     try {
-      const next =
-        action === 'publish'
-          ? await publishAuthorQuestion({
-              apiBaseUrl,
-              expectedVersion: question.version,
-              getAccessToken,
-              questionId: question.questionId,
-              signal: controller.signal,
-            })
-          : await retireAuthorQuestion({
-              apiBaseUrl,
-              expectedVersion: question.version,
-              getAccessToken,
-              questionId: question.questionId,
-              signal: controller.signal,
-            });
+      const next = await transitionAuthorContent({
+        action,
+        apiBaseUrl,
+        entityId: question.questionId,
+        entityType: 'question',
+        expectedVersion: question.version,
+        getAccessToken,
+        reason,
+        signal: controller.signal,
+      });
       if (operationRef.current !== controller) return;
       onSaved(
         next,
         question.questionId,
         interaction,
         ticket,
-        action === 'publish' ? 'Question published.' : 'Question retired.',
+        lifecycleNotice('question', next.status),
       );
-      setConfirmRetire(false);
     } catch (error) {
       if (operationRef.current !== controller) return;
       if (mutationCoordinator.acceptFailure(ticket, isUncertainError(error))) {
-        setApiError(toAuthorError(error));
-        window.setTimeout(() => feedbackRef.current?.focus());
+        const nextError = toAuthorError(error);
+        setApiError(nextError);
+        if (isAuthorContentConflict(nextError)) await onConflict();
+        else window.setTimeout(() => feedbackRef.current?.focus());
       }
     } finally {
       if (operationRef.current === controller) {
@@ -2469,25 +2510,37 @@ function QuestionDetail({
         </div>
       </dl>
       <section className="question-answer-summary">
-        <h6>Choices and accepted answer</h6>
-        <ol>
-          {[...question.choices]
-            .sort((left, right) => left.position - right.position)
-            .map((choice) => (
-              <li
-                className={
-                  choice.choiceId === question.acceptedChoiceId
-                    ? 'question-answer-summary__accepted'
-                    : undefined
-                }
-                key={choice.choiceId}
-              >
-                <span>{choice.text}</span>
-                {choice.choiceId === question.acceptedChoiceId ? (
-                  <strong>Accepted answer</strong>
-                ) : null}
-              </li>
-            ))}
+        <h6>
+          {question.format === 'ordering'
+            ? 'Correct sequence'
+            : 'Choices and accepted answer'}
+        </h6>
+        <ol className={question.format === 'ordering' ? 'is-numbered' : ''}>
+          {question.format === 'ordering'
+            ? [...question.items]
+                .sort((left, right) => left.position - right.position)
+                .map((item) => (
+                  <li key={item.itemId}>
+                    <span>{item.text}</span>
+                  </li>
+                ))
+            : [...question.choices]
+                .sort((left, right) => left.position - right.position)
+                .map((choice) => (
+                  <li
+                    className={
+                      choice.choiceId === question.acceptedChoiceId
+                        ? 'question-answer-summary__accepted'
+                        : undefined
+                    }
+                    key={choice.choiceId}
+                  >
+                    <span>{choice.text}</span>
+                    {choice.choiceId === question.acceptedChoiceId ? (
+                      <strong>Accepted answer</strong>
+                    ) : null}
+                  </li>
+                ))}
         </ol>
       </section>
       {question.explanation ? (
@@ -2497,9 +2550,10 @@ function QuestionDetail({
         </section>
       ) : null}
       <AuthorFeedback error={apiError} refObject={feedbackRef} />
-      <div className="author-actions author-actions--detail">
-        {question.status === 'draft' && challenge.status !== 'retired' ? (
-          <>
+      {challenge.status !== 'retired' ? (
+        <AuthorLifecycleControls
+          busy={busy}
+          editControl={
             <Link
               className="button"
               href={authorPaths.editQuestion(
@@ -2510,46 +2564,27 @@ function QuestionDetail({
             >
               Edit question
             </Link>
-            <button
-              className="button button--quiet"
-              disabled={busy}
-              onClick={() => void lifecycle('publish')}
-              type="button"
-            >
-              {busy ? 'Publishing…' : 'Publish question'}
-            </button>
-          </>
-        ) : null}
-        {question.status !== 'retired' && challenge.status !== 'retired' ? (
-          <button
-            className="button button--danger"
-            disabled={busy}
-            onClick={() => setConfirmRetire(true)}
-            ref={retireButtonRef}
-            type="button"
-          >
-            Retire question
-          </button>
-        ) : null}
-      </div>
-
-      {confirmRetire ? (
-        <AuthorConfirmationDialog
-          busy={busy}
-          cancelLabel="Keep question"
-          confirmLabel={busy ? 'Retiring…' : 'Retire question'}
-          description={
+          }
+          noun="question"
+          onAction={(action, reason) => void lifecycle(action, reason)}
+          retirementDescription={
             <p>
               This question cannot be published again. A published challenge
               must retain at least five published questions.
             </p>
           }
-          onCancel={() => setConfirmRetire(false)}
-          onConfirm={() => void lifecycle('retire')}
-          returnFocusRef={retireButtonRef}
-          title="Retire this question?"
+          retirementTitle="Retire this question?"
+          status={question.status}
+          submittedBy={question.submittedBy}
         />
       ) : null}
+      <AuthorHistoryPanel
+        apiBaseUrl={apiBaseUrl}
+        entityId={question.questionId}
+        entityType="question"
+        getAccessToken={getAccessToken}
+        revision={question.version}
+      />
     </article>
   );
 }
@@ -2584,7 +2619,7 @@ function QuestionForm({
   question,
 }: QuestionFormProps) {
   const [draft, setDraft] = useState<AuthorQuestionInput>(() =>
-    questionDraft(question),
+    questionDraft(challenge.format, question),
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [apiError, setApiError] = useState<AuthorApiError | null>(null);
@@ -2593,12 +2628,13 @@ function QuestionForm({
   const feedbackRef = useRef<HTMLDivElement>(null);
   const operationRef = useRef<AbortController | null>(null);
   const interactionActiveRef = useRef(true);
+  const focusInvalidFieldRef = useRef(false);
 
   useEffect(() => {
-    setDraft(questionDraft(question));
+    setDraft(questionDraft(challenge.format, question));
     setErrors({});
     setApiError(null);
-  }, [question]);
+  }, [challenge.format, question]);
 
   useEffect(() => {
     interactionActiveRef.current = true;
@@ -2607,8 +2643,17 @@ function QuestionForm({
     };
   }, []);
 
+  useEffect(() => {
+    if (!focusInvalidFieldRef.current) return;
+    focusInvalidFieldRef.current = false;
+    formRef.current
+      ?.querySelector<HTMLElement>('[aria-invalid="true"]')
+      ?.focus();
+  }, [errors]);
+
   const dirty =
-    JSON.stringify(draft) !== JSON.stringify(questionDraft(question));
+    JSON.stringify(draft) !==
+    JSON.stringify(questionDraft(challenge.format, question));
   const recordKey =
     `question:${question?.questionId ?? 'new'}` as AuthorRecordKey;
   useAuthorDraftSession(mutationCoordinator, recordKey, dirty);
@@ -2618,12 +2663,8 @@ function QuestionForm({
     submission.preventDefault();
     const nextErrors = validateQuestion(draft);
     if (Object.keys(nextErrors).length > 0) {
+      focusInvalidFieldRef.current = true;
       setErrors(nextErrors);
-      window.setTimeout(() =>
-        formRef.current
-          ?.querySelector<HTMLElement>('[aria-invalid="true"]')
-          ?.focus(),
-      );
       return;
     }
     setBusy(true);
@@ -2703,7 +2744,12 @@ function QuestionForm({
         {question ? 'Question detail' : 'Questions'}
       </Link>
       <div className="author-panel__heading">
-        <h5>{question ? 'Edit question' : 'New question'}</h5>
+        <div>
+          <h5>{question ? 'Edit question' : 'New question'}</h5>
+          <p className="field-help">
+            {challengeFormatLabel(challenge.format)} challenge
+          </p>
+        </div>
         {question ? <StatusBadge status={question.status} /> : null}
       </div>
       <AuthorFeedback error={apiError} refObject={feedbackRef} />
@@ -2750,55 +2796,108 @@ function QuestionForm({
           <option value="3">3 — demanding</option>
         </select>
       </FormField>
-      <fieldset className="author-fieldset" disabled={busy}>
-        <legend>Choices and accepted answer</legend>
-        <p className="field-help">
-          Choose exactly one accepted answer. This marking relationship is
-          visible only in the protected author console.
-        </p>
-        {draft.choices.map((choice, index) => (
-          <div className="choice-field" key={index}>
-            <input
-              aria-label={`Mark choice ${index + 1} as accepted`}
-              checked={draft.acceptedChoicePosition === index + 1}
-              name="accepted-answer"
-              onChange={() =>
-                setDraft((current) => ({
-                  ...current,
-                  acceptedChoicePosition: index + 1,
-                }))
-              }
-              type="radio"
-            />
+      {draft.format === 'ordering' ? (
+        <fieldset className="author-fieldset" disabled={busy}>
+          <legend>Correct sequence</legend>
+          <p className="field-help">
+            Enter exactly four items in their correct order. Players receive a
+            shuffled sequence; only the API stores and marks this order.
+          </p>
+          {draft.items.map((item, index) => (
             <FormField
-              error={errors[`choice${index}`]}
-              label={`Choice ${index + 1}`}
-              name={`question-choice-${index + 1}`}
+              error={errors[`item${index}`]}
+              key={index}
+              label={`Correct position ${index + 1}`}
+              name={`question-item-${index + 1}`}
             >
               <input
                 aria-describedby={
-                  errors[`choice${index}`]
-                    ? `question-choice-${index + 1}-error`
+                  errors[`item${index}`]
+                    ? `question-item-${index + 1}-error`
                     : undefined
                 }
-                aria-invalid={Boolean(errors[`choice${index}`])}
-                id={`question-choice-${index + 1}`}
+                aria-invalid={Boolean(errors[`item${index}`])}
+                id={`question-item-${index + 1}`}
                 onChange={(change) =>
-                  setDraft((current) => ({
-                    ...current,
-                    choices: current.choices.map((item, itemIndex) =>
-                      itemIndex === index ? change.target.value : item,
-                    ),
-                  }))
+                  setDraft((current) =>
+                    current.format === 'ordering'
+                      ? {
+                          ...current,
+                          items: current.items.map((currentItem, itemIndex) =>
+                            itemIndex === index
+                              ? change.target.value
+                              : currentItem,
+                          ),
+                        }
+                      : current,
+                  )
                 }
                 required
                 type="text"
-                value={choice}
+                value={item}
               />
             </FormField>
-          </div>
-        ))}
-      </fieldset>
+          ))}
+        </fieldset>
+      ) : (
+        <fieldset className="author-fieldset" disabled={busy}>
+          <legend>Choices and accepted answer</legend>
+          <p className="field-help">
+            Choose exactly one accepted answer. This marking relationship is
+            visible only in the protected author console.
+          </p>
+          {draft.choices.map((choice, index) => (
+            <div className="choice-field" key={index}>
+              <input
+                aria-label={`Mark choice ${index + 1} as accepted`}
+                checked={draft.acceptedChoicePosition === index + 1}
+                name="accepted-answer"
+                onChange={() =>
+                  setDraft((current) =>
+                    current.format === 'multiple_choice'
+                      ? { ...current, acceptedChoicePosition: index + 1 }
+                      : current,
+                  )
+                }
+                type="radio"
+              />
+              <FormField
+                error={errors[`choice${index}`]}
+                label={`Choice ${index + 1}`}
+                name={`question-choice-${index + 1}`}
+              >
+                <input
+                  aria-describedby={
+                    errors[`choice${index}`]
+                      ? `question-choice-${index + 1}-error`
+                      : undefined
+                  }
+                  aria-invalid={Boolean(errors[`choice${index}`])}
+                  id={`question-choice-${index + 1}`}
+                  onChange={(change) =>
+                    setDraft((current) =>
+                      current.format === 'multiple_choice'
+                        ? {
+                            ...current,
+                            choices: current.choices.map(
+                              (currentChoice, choiceIndex) =>
+                                choiceIndex === index
+                                  ? change.target.value
+                                  : currentChoice,
+                            ),
+                          }
+                        : current,
+                    )
+                  }
+                  required
+                  type="text"
+                  value={choice}
+                />
+              </FormField>
+            </div>
+          ))}
+        </fieldset>
+      )}
       <FormField
         error={errors.explanation}
         label="Author explanation"
@@ -2820,7 +2919,9 @@ function QuestionForm({
           value={draft.explanation}
         />
         <span className="field-help" id="question-explanation-help">
-          Required for publication and excluded from player responses.
+          {draft.format === 'ordering'
+            ? 'Required for publication and revealed only in the API-completed player review.'
+            : 'Required for publication and excluded from player responses.'}
         </span>
       </FormField>
       <div className="author-actions">
@@ -2869,6 +2970,22 @@ function StatusBadge({
       {status}
     </span>
   );
+}
+
+function lifecycleNotice(
+  noun: 'challenge' | 'event' | 'question',
+  status: 'approved' | 'draft' | 'in_review' | 'published' | 'retired',
+) {
+  const label = noun[0]!.toUpperCase() + noun.slice(1);
+  if (noun === 'event' && status === 'published')
+    return 'Event published and available to the player API according to its active times.';
+  return {
+    approved: `${label} approved.`,
+    draft: `${label} returned to draft.`,
+    in_review: `${label} submitted for independent review.`,
+    published: `${label} published.`,
+    retired: `${label} retired.`,
+  }[status];
 }
 
 function ReadinessItem({
@@ -2989,22 +3106,49 @@ function validateEventDraft(draft: EventDraft): {
   };
 }
 
-function questionDraft(question?: AuthorQuestion): AuthorQuestionInput {
-  return question
+function questionDraft(
+  challengeFormat: ChallengeFormat,
+  question?: AuthorQuestion,
+): AuthorQuestionInput {
+  if (question?.format === 'ordering') {
+    return {
+      difficulty: question.difficulty,
+      explanation: question.explanation ?? '',
+      format: 'ordering',
+      items: [...question.items]
+        .sort((left, right) => left.position - right.position)
+        .map((item) => item.text),
+      prompt: question.prompt,
+    };
+  }
+
+  if (question?.format === 'multiple_choice') {
+    return {
+      acceptedChoicePosition: question.acceptedChoicePosition ?? 1,
+      choices: [...question.choices]
+        .sort((left, right) => left.position - right.position)
+        .map((choice) => choice.text),
+      difficulty: question.difficulty,
+      explanation: question.explanation ?? '',
+      format: 'multiple_choice',
+      prompt: question.prompt,
+    };
+  }
+
+  return challengeFormat === 'ordering'
     ? {
-        acceptedChoicePosition: question.acceptedChoicePosition ?? 1,
-        choices: [...question.choices]
-          .sort((a, b) => a.position - b.position)
-          .map((choice) => choice.text),
-        difficulty: question.difficulty,
-        explanation: question.explanation ?? '',
-        prompt: question.prompt,
+        difficulty: 1,
+        explanation: '',
+        format: 'ordering',
+        items: ['', '', '', ''],
+        prompt: '',
       }
     : {
         acceptedChoicePosition: 1,
         choices: ['', '', '', ''],
         difficulty: 1,
         explanation: '',
+        format: 'multiple_choice',
         prompt: '',
       };
 }
@@ -3014,9 +3158,15 @@ function validateQuestion(draft: AuthorQuestionInput): Record<string, string> {
   if (!draft.prompt.trim()) errors.prompt = 'Enter a question prompt.';
   if (![1, 2, 3].includes(draft.difficulty))
     errors.difficulty = 'Choose difficulty 1, 2, or 3.';
-  draft.choices.forEach((choice, index) => {
-    if (!choice.trim()) errors[`choice${index}`] = 'Enter choice text.';
-  });
+  if (draft.format === 'ordering') {
+    draft.items.forEach((item, index) => {
+      if (!item.trim()) errors[`item${index}`] = 'Enter item text.';
+    });
+  } else {
+    draft.choices.forEach((choice, index) => {
+      if (!choice.trim()) errors[`choice${index}`] = 'Enter choice text.';
+    });
+  }
   if (!draft.explanation.trim())
     errors.explanation =
       'Enter the author explanation required for publication.';
@@ -3119,8 +3269,14 @@ function apiFieldName(field: string): string {
   const normalized = field.replace(/^\/body\//, '').replace(/^\//, '');
   if (normalized.startsWith('choices/'))
     return `choice${normalized.split('/')[1] ?? '0'}`;
+  if (normalized.startsWith('items/'))
+    return `item${normalized.split('/')[1] ?? '0'}`;
   if (normalized === 'radiusMetres') return 'radiusMetres';
   return normalized;
+}
+
+function challengeFormatLabel(format: ChallengeFormat): string {
+  return format === 'ordering' ? 'Ordering' : 'Multiple choice';
 }
 
 function challengeCollectionKey(eventId: string): `challenges:${string}` {

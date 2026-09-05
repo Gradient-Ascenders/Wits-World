@@ -9,8 +9,8 @@ a protected campus map, authenticated published-event discovery, safe API
 access-token retrieval, and a premium editorial home page. The home-page map,
 event status, and collectible cards are explicitly static product previews; the
 live seeded-event experience is available through the protected `/explore`
-route. The protected experience includes one-shot browser geolocation and
-API-authoritative event eligibility and the protected timed challenge journey.
+route. The protected experience includes foreground browser geolocation,
+API-authoritative event eligibility, and the protected timed challenge journey.
 Challenges restore their server-owned attempt, submit answer intent only, and
 display the persisted final score, rewards, and completed answer review. Card
 starter selection and collection browsing are available through the protected
@@ -21,6 +21,9 @@ Server-authoritative CPU battles and private
 completed-match history are available through the protected `/matches` routes.
 The protected `/profile` route presents server-authoritative points, rank,
 streaks, achievement progress, and privacy-safe all-time or monthly standings.
+The protected `/account` route presents the local player identity, delegates
+credential recovery to the owning provider, and starts permanent account
+deletion with fresh Auth0 reauthentication.
 
 ## Run locally
 
@@ -290,6 +293,8 @@ The current map adapter:
 - starts at zoom 16.5, pitch 52, and bearing 20 around the approved Sprint 1
   event area, with a keyboard-accessible reset bearing/pitch control;
 - updates event markers without destroying and recreating the WebGL map;
+- anchors the application-owned reported-location dot with Mapbox's marker
+  runtime so it remains attached to the coordinate during camera movement;
 - keeps the map host sized when Mapbox's runtime class and stylesheet arrive;
 - leaves Mapbox's attribution control enabled and expanded;
 - provides 44px zoom controls;
@@ -311,10 +316,12 @@ availability is always written as text and does not rely on marker colour. A
 failed API request provides a retry action; a failed tile or style request leaves
 the event list available.
 
-The map does not request or send the player's browser location. The event list
-requests a fresh position only after the player selects an active event's Check
-reachability action. The reported coordinates are sent to the Wits World API,
-not to the map provider.
+The map does not request the player's browser location. `/explore` owns that
+permission and lifecycle: an existing grant starts one watcher, while a prompt
+or unknown state requires the player's Enable live location action. Reported
+coordinates are sent only to the Wits World API for authoritative checks. The
+map receives them locally to position the transient dot; Mapbox's geolocation
+control is not installed and the claim is not published as provider data.
 
 The production Content Security Policy must account for Mapbox's `blob:` worker,
 image data, WebAssembly evaluation, and `api.mapbox.com` style/tile/glyph/image
@@ -325,12 +332,20 @@ service acceptance and licensed campus-data approval remain pending.
 
 ## Browser location and eligibility
 
-The `/explore` event list calls the protected
+The `/explore` route calls the protected
 `POST /api/v1/events/:eventId/eligibility` endpoint after a clear player action.
 Each request contains the browser-reported latitude, longitude, accuracy, and
-acquisition time. The browser uses a ten-second timeout, asks for high accuracy,
-and does not accept a cached reading. A retry requests a new reading; the
-application does not poll or track location continuously.
+acquisition time. The browser watcher uses a fifteen-second timeout, asks for
+high accuracy, and does not accept a cached reading. It pauses while the page is
+hidden and is removed on unmount. A retry that needs a newer claim uses a fresh
+one-shot request rather than resubmitting the rejected acquisition.
+
+The displayed dot keeps a short rolling set of fixes and temporarily prefers a
+recent, substantially more accurate fix when the next callback degrades. Follow
+mode ignores movement inside the readings' reported uncertainty and uses short
+camera transitions. These are presentation behaviours only: eligibility always
+receives the current raw browser claim, and reported accuracy is visible as
+approximate text rather than implied precision.
 
 The browser treats the reading as a claim. It does not calculate authoritative
 distance, compare the event radius, calculate travel speed, select a prior
@@ -367,12 +382,46 @@ for the full flow, privacy boundary, browser limitations, and evidence steps.
   private completed CPU matches.
 - `/profile` requires Auth0 sign-in and shows the current player's approved
   progression fields, achievement progress, and paginated standings.
+- `/account` requires Auth0 sign-in, shows the API-resolved player identity and
+  provider category, delegates credential recovery, and coordinates permanent
+  deletion without collecting passwords.
 - `/about` explains the Wits World project and Wits Quest game/topic distinction.
 - Any unknown route presents a page-not-found message and a link home.
 
 The application uses browser-history routing. A future static host must route
 unknown application paths back to `index.html`; production deployment remains
 outside issue #6.
+
+## Player account lifecycle
+
+`/account` displays only the server-resolved Player Name, application role,
+lifecycle status, and safe provider category. It deliberately omits email,
+provider profile data, Auth0 identifiers, and token contents.
+
+For an Auth0 database account, **Reset password** returns to Universal Login and
+instructs the player to use Auth0's hosted recovery option.
+Auth0 owns account-identifier collection, recovery email, and replacement
+password entry. For Google accounts, the page instead explains that Google owns
+the credential and links to Google's account recovery. Wits World has no
+password inputs or password API.
+
+Permanent deletion uses two distinct confirmations. A compact first dialog
+explains the security step before opening Auth0 with `prompt=login` and
+`max_age=0`; returning only supplies an in-memory ID token for the API's
+independent five-minute recent-authentication check. A second Wits World dialog
+names the permanent effects and requires an explicit checkbox before the exact
+deletion confirmation is submitted. Completed and
+retry-pending responses clear the local player binding and remain visible until
+the player chooses **Finish and return home**. Ambiguous API failures can safely
+retry the idempotent operation; expired proof restarts reauthentication; an
+already locked account is reported honestly rather than treated as a new
+failure.
+
+Auth0 does not report hosted recovery completion to this SPA. Returning to the
+account page therefore confirms only that the recovery entry point was opened
+and reminds the player to use the newest Auth0 email. Real provider email,
+hosted-page, and recent-`auth_time` behavior remain operator/browser checks. See
+[player account lifecycle validation](../../docs/testing/player-account-lifecycle-validation.md).
 
 ## Basic author console
 
@@ -383,39 +432,48 @@ request includes the Auth0 bearer token, and the API independently applies its
 authentication, active-player, and Author guards. Player roles are assigned and
 revoked out of band; the console has no role-management operation.
 
-The Basic workflow is:
+The author workflow is:
 
-1. Open **Author → Events & challenges**, create or select a draft event, and
+1. Open **Author → Events**, create or select a draft event, and
    enter its title, optional description, active times, positive whole-number
    radius, latitude, and longitude. The coordinate fields are always available;
    clicking the placement map is optional.
-2. Create the event's multiple-choice challenge. Add questions with exactly four
-   non-blank choices, difficulty 1–3, one accepted-answer position, and a
-   non-blank author explanation. Publish at least five questions, then publish
-   exactly one challenge for the event.
+2. Choose either **Multiple choice** or **Ordering** when creating the event's
+   challenge. Multiple-choice questions require exactly four non-blank choices
+   and one accepted-answer position. Ordering questions require exactly four
+   non-blank items entered in their correct sequence. Both formats require
+   difficulty 1–3 and a non-blank author explanation. For each question, submit
+   the draft for review, have a different Author approve it, and then publish
+   it. After at least five questions are published, take the challenge through
+   the same lifecycle. A challenge's format is fixed when it is created.
 3. Open **Card catalogue** and create or update the global definitions used by
    rewards. A Creature has positive HP, non-negative Power, and at least one
    move. A Power card has null HP/Power and at least one effect. Publish at least
-   one Common card so the authoritative reward catalogue is ready.
+   one Common card through independent review and publication so the
+   authoritative reward catalogue is ready.
 4. Return to the event's publication summary. It explains the three Basic
-   relationships, but remains advisory. Select **Ask API to publish event**;
-   success is shown only after the API accepts the request.
+   relationships, but remains advisory. Submit the event for review, have a
+   different Author approve it, then select **Publish event**; success is shown
+   only after the API accepts the request.
 
 Basic does not expose an event-to-card assignment or author-defined reward
-amount. The reward service selects from the global active catalogue. Published
-event, card, and question definitions cannot be edited under the current API,
-and retirement is permanent. A `409` response therefore reports a lifecycle
-conflict and reload is the recovery path; there is no client-invented version or
-optimistic-concurrency field. A `422` publication response reports that
-authoritative readiness rules are not met. Validation details identify controls
-when the API supplies field paths, while other API failures remain visible as
+amount. The reward service selects from the global active catalogue. Only draft
+content can be edited, and retirement is permanent. Lifecycle mutations send
+the API-provided `version` as `expectedVersion`; the API remains authoritative
+when it accepts or rejects the transition. A `409` conflict reloads the current
+authoritative detail, while a `422` approval or publication response reports
+that readiness rules are not met. Validation details identify controls when the
+API supplies field paths, while other API failures remain visible as
 request-level alerts.
 
-Accepted-choice identifiers, accepted positions, and author explanations are
-read only by the lazy-loaded author client. The in-progress player challenge
-client rejects responses containing any of those author-only keys. The player
-route still submits choice intent and renders only the server's safe active or
-completed-attempt contract.
+Accepted-choice identifiers and accepted positions are read only by the
+lazy-loaded author client. The ordering answer key is likewise author-only
+during an active attempt. The in-progress player challenge client rejects
+responses containing correctness, correct answers, explanations, scores, or
+rewards. The player route submits only choice or ordered-item intent and renders
+the server's safe active or completed-attempt contract. Ordering explanations
+are shown only when supplied by the authoritative completed response;
+multiple-choice explanations remain excluded from Player responses.
 
 The authoritative validation and publication rules live in the API, principally
 in [`author-event-service.ts`](../api/src/events/author-event-service.ts),
@@ -428,7 +486,7 @@ rewards, eligibility, marking, or lifecycle authorization.
 Run the focused author tests from the repository root with:
 
 ```bash
-npm test --workspace @wits-world/web -- --run tests/author-client.test.ts tests/author-console.test.tsx tests/challenges-client.test.ts
+npm test --workspace @wits-world/web -- --run tests/author-client.test.ts tests/author-console.test.tsx tests/challenges-client.test.ts tests/challenge-page.test.tsx
 ```
 
 ## Initial structure
@@ -455,19 +513,23 @@ apps/web/
 
 ## Timed challenge development
 
-The Basic challenge is a server-authoritative, five-question multiple-choice
-attempt. The browser sends only the chosen `attemptQuestionId` and `choiceId`.
-It derives its timer from the absolute server deadline and reloads an attempt
-through `GET /api/v1/challenge-attempts/:attemptId` after refresh or timeout.
+The Basic challenge is a server-authoritative, five-question multiple-choice or
+ordering attempt. For multiple choice, the browser sends the chosen
+`attemptQuestionId` and `choiceId`. For ordering, it sends the
+`attemptQuestionId`, `format`, and the four item identifiers in the player's
+current order. It derives its timer from the absolute server deadline and
+reloads an attempt through `GET /api/v1/challenge-attempts/:attemptId` after
+refresh or timeout.
 
 During an in-progress Basic attempt, keep feedback neutral: show “Answer saved”
 and never render correctness, correct choices, answer keys, explanations, score,
 or reward information. Once the API authoritatively completes the attempt, the
 final result renders only the persisted score, reward, and answer-review data in
-that completed response. The browser does not compare choices or mark answers.
-Unanswered timeout items use “Not answered” while still displaying the completed
-response's correct choice. Explanations remain absent until the authoritative
-content model and completed API contract support them.
+that completed response. The browser does not compare choices or sequences and
+does not mark answers. Unanswered timeout items use “Not answered” while still
+displaying the completed response's correct answer. Ordering reviews also show
+the API-supplied correct sequence and explanation; multiple-choice reviews do
+not expose author explanations.
 
 The production-like browser flow requires an authenticated player and an active
 event with a published challenge containing five valid questions. The Great Hall
@@ -745,16 +807,20 @@ With `apps/web/.env` configured and the development server running:
 3. Select Check reachability and grant permission. Confirm the requesting and
    checking states are announced, followed by the exact reachable, unreachable,
    or retry result returned by the API.
-4. Select Check again and confirm a new one-shot request occurs without ongoing
-   location updates.
-5. Reset the browser's site permission, deny location, and confirm the denial
+4. Keep `/explore` visible and confirm the reported-location dot remains attached
+   to its map coordinate while panning, zooming, pitching, and rotating. Confirm
+   the approximate reported accuracy is visible and that normal GPS jitter does
+   not make the camera chase every callback.
+5. Select Check again after a location retry and confirm a newer claim is used
+   rather than resubmitting the rejected acquisition.
+6. Reset the browser's site permission, deny location, and confirm the denial
    explanation, Check again action, map, and event list remain usable.
-6. Press Tab with a connected keyboard. Confirm visible focus reaches the event
+7. Press Tab with a connected keyboard. Confirm visible focus reaches the event
    action in logical order and the result does not rely on colour alone.
-7. Repeat the layout check at 360px, 768px, and approximately 1280px. Confirm the
+8. Repeat the layout check at 360px, 768px, and approximately 1280px. Confirm the
    status panel, text, button, event badge, map attribution, and navigation do not
    overlap or cause horizontal scrolling.
-8. Record the actual device, operating system, browser version, permission state,
+9. Record the actual device, operating system, browser version, permission state,
    and API outcome. Store screenshots under `.pr-screenshots/issue-21/` and
    attach them to the pull request without exposing tokens or precise location
    values.
@@ -813,21 +879,33 @@ With `apps/web/.env` configured and the development server running:
    then click a different point on the optional map and confirm the labelled
    latitude and longitude inputs update. Set a positive integer radius and an
    end time later than the start time.
-3. Create one challenge and five questions. For each question, enter four
-   choices, choose the accepted answer with its radio control, add an author
-   explanation, publish the question, then publish the challenge. Confirm the
-   current question's accepted marker is visible only inside `/author`.
+3. Create one multiple-choice challenge and five questions. For each question,
+   enter four choices, choose the accepted answer with its radio control, add an
+   author explanation, and save the draft. Submit each question for review; use
+   a different Author to approve it, then publish it. Once all five are
+   published, repeat those lifecycle steps for the challenge. Confirm the
+   current question's accepted marker is visible only inside `/author`. Repeat
+   with an ordering challenge: enter four items in correct sequence for each
+   question and confirm that sequence is visible in the protected question
+   detail. A draft must offer **Submit for review**, not direct publication.
 4. In **Card catalogue**, create a Common card with valid category-specific
-   moves or effects and publish it. Return to the event and confirm all three
-   readiness summaries read **Ready**. Publish the event and confirm the API
-   success message receives focus.
+   moves or effects and take it through review and publication. Return to the
+   event and confirm all three readiness summaries read **Ready**. Take the
+   event through review and publication, then confirm the API success message
+   receives focus.
 5. Open `/explore` and confirm the newly published, currently active event is
    available through the player event response. Start its challenge where local
    reported-location configuration permits. Inspect the active network response
-   and rendered page: neither accepted-choice identifiers/positions nor author
-   explanations may appear. Complete the challenge only through normal player
-   choices and confirm the server result is rendered.
-6. Repeat the author layout check at 360×800, 390×844, 768×1024, and 1280×800.
+   and rendered page: neither accepted-choice identifiers/positions nor an
+   ordering answer key or explanation may appear while the attempt is active.
+   Complete each format through normal player controls and confirm only the
+   server result is rendered. For ordering, reorder once by pointer and once by
+   the keyboard-operable Move Up/Move Down controls; confirm each movement and
+   the current order are announced, then confirm the completed API explanation
+   is visible.
+6. Repeat the author and both player challenge layout checks at 390×844 and
+   1280×800. Add 360×800 only when checking minimum-width pressure and 768×1024
+   only when investigating breakpoint behaviour.
    Confirm no horizontal overflow, clipped controls, or covered final actions.
    At each meaningful form, use Tab/Shift+Tab, arrow keys for radios/selects, and
    Enter/Space for buttons; map pointer input must never be required.

@@ -1,4 +1,4 @@
-import type { ChallengeQuestion as ChallengeQuestionData } from '../../api/challenges';
+import type { MultipleChoiceChallengeQuestion as ChallengeQuestionData } from '../../api/challenges';
 import type { Ref } from 'react';
 
 interface ChallengeQuestionProps {

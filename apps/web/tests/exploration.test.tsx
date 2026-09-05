@@ -334,9 +334,18 @@ describe('map-first campus exploration', () => {
       <CampusExplorer
         {...explorerProps(mapFactory)}
         locationState="tracking"
-        reportedLocation={{ latitude: -26.19205, longitude: 28.03038 }}
+        reportedLocation={{
+          accuracyMetres: 18,
+          latitude: -26.19205,
+          longitude: 28.03038,
+        }}
       />,
     );
+    expect(
+      screen.getByText(
+        'Map following is paused. Reported accuracy is approximately ±18 m.',
+      ),
+    ).toBeVisible();
     await user.click(
       screen.getByRole('button', { name: 'Recenter on reported location' }),
     );

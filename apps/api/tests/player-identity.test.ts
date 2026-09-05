@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   createPlayerIdentityService,
+  DeletedIdentityTokenError,
   InvalidPlayerNameError,
   PlayerNameAlreadyAssignedError,
   PlayerNameConflictError,
@@ -13,6 +14,7 @@ const trustedPrincipal = {
   issuer: 'https://auth.example.test/',
   playerName: 'naledi',
   subject: 'auth0|player-123',
+  tokenIssuedAt: new Date('2026-08-30T12:00:00.000Z'),
 };
 
 describe('local player identity', () => {
@@ -37,6 +39,7 @@ describe('local player identity', () => {
         issuer: trustedPrincipal.issuer,
         playerName: null,
         subject: 'google-player',
+        tokenIssuedAt: trustedPrincipal.tokenIssuedAt,
       }),
     ).resolves.toMatchObject({ playerName: null });
     expect(query.mock.calls[0]?.[1]).toEqual([
@@ -45,6 +48,7 @@ describe('local player identity', () => {
       'google-player',
       null,
       false,
+      trustedPrincipal.tokenIssuedAt,
     ]);
   });
 
@@ -69,6 +73,7 @@ describe('local player identity', () => {
         issuer: trustedPrincipal.issuer,
         playerName: null,
         subject: 'google-player',
+        tokenIssuedAt: trustedPrincipal.tokenIssuedAt,
       }),
     ).resolves.toMatchObject({ playerName: 'google-player' });
   });
@@ -104,6 +109,7 @@ describe('local player identity', () => {
       'auth0|player-123',
       trustedPrincipal.playerName,
       true,
+      trustedPrincipal.tokenIssuedAt,
     ]);
   });
 
@@ -130,6 +136,7 @@ describe('local player identity', () => {
       issuer: 'https://auth.example.test/',
       playerName: 'trusted-name',
       subject: hostileSubject,
+      tokenIssuedAt: trustedPrincipal.tokenIssuedAt,
     });
 
     const [statement, parameters] = query.mock.calls[0] ?? [];
@@ -142,6 +149,7 @@ describe('local player identity', () => {
       hostileSubject,
       'trusted-name',
       true,
+      trustedPrincipal.tokenIssuedAt,
     ]);
   });
 
@@ -167,6 +175,7 @@ describe('local player identity', () => {
         issuer: 'https://auth.example.test/',
         playerName: 'professor-nova',
         subject: 'auth0|author-123',
+        tokenIssuedAt: trustedPrincipal.tokenIssuedAt,
       }),
     ).resolves.toMatchObject({
       playerName: 'professor-nova',
@@ -196,6 +205,7 @@ describe('local player identity', () => {
         issuer: 'https://auth.example.test/',
         playerName: 'pending-player',
         subject: 'auth0|pending-123',
+        tokenIssuedAt: trustedPrincipal.tokenIssuedAt,
       }),
     ).resolves.toMatchObject({
       playerName: 'pending-player',
@@ -249,41 +259,35 @@ describe('local player identity', () => {
       trustedPrincipal.subject,
       'renamed-player',
       true,
+      trustedPrincipal.tokenIssuedAt,
     ]);
   });
 
-  it('recovers when a concurrent request resolves the same identity and Player Name', async () => {
-    const resolvedPlayer = {
-      id: '6fe7dc26-cdea-4275-a2df-861724137cbc',
-      role: 'player',
-      player_name: trustedPrincipal.playerName,
-      lifecycle_status: 'active',
-    };
-    const query = vi
-      .fn()
-      .mockRejectedValueOnce({
-        code: '23505',
-        constraint: 'players_player_name_case_insensitive_unique',
-      })
-      .mockResolvedValueOnce({ rows: [resolvedPlayer] });
+  it('does not provision a player for a token denied after account deletion', async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [
+        {
+          id: null,
+          identity_denied: true,
+          lifecycle_status: null,
+          player_name: null,
+          role: null,
+        },
+      ],
+    });
     const service = createPlayerIdentityService(
       createDatabaseQueryTarget(query),
     );
 
-    await expect(service.resolve(trustedPrincipal)).resolves.toEqual({
-      id: resolvedPlayer.id,
-      role: resolvedPlayer.role,
-      playerName: resolvedPlayer.player_name,
-      lifecycleStatus: resolvedPlayer.lifecycle_status,
-    });
+    await expect(service.resolve(trustedPrincipal)).rejects.toBeInstanceOf(
+      DeletedIdentityTokenError,
+    );
 
-    expect(query).toHaveBeenCalledTimes(2);
-    expect(query.mock.calls[1]?.[0]).toContain('auth_issuer = $1');
-    expect(query.mock.calls[1]?.[1]).toEqual([
-      trustedPrincipal.issuer,
-      trustedPrincipal.subject,
-      trustedPrincipal.playerName,
-    ]);
+    const statement = String(query.mock.calls[0]?.[0]);
+    expect(statement).toContain('deleted_identity_token_denials');
+    expect(statement).toContain(
+      'where not (select denied from identity_decision)',
+    );
   });
 
   it('preserves a genuine Player Name conflict with another identity', async () => {
@@ -301,7 +305,7 @@ describe('local player identity', () => {
     await expect(service.resolve(trustedPrincipal)).rejects.toBeInstanceOf(
       PlayerNameConflictError,
     );
-    expect(query).toHaveBeenCalledTimes(2);
+    expect(query).toHaveBeenCalledOnce();
   });
 
   it('does not recover unrelated database errors', async () => {
@@ -376,7 +380,31 @@ describe('local player identity', () => {
 });
 
 function createDatabaseQueryTarget(query: ReturnType<typeof vi.fn>) {
+  const client = {
+    async query(statement: string, parameters?: unknown[]) {
+      const normalized = statement.trim().toLowerCase();
+
+      if (
+        normalized === 'begin' ||
+        normalized === 'commit' ||
+        normalized === 'rollback' ||
+        normalized.includes('pg_advisory_xact_lock')
+      ) {
+        return { rows: [] };
+      }
+
+      return (
+        query as unknown as (
+          statement: string,
+          parameters?: unknown[],
+        ) => Promise<unknown>
+      )(statement, parameters);
+    },
+    release: vi.fn(),
+  };
+
   return {
     query,
-  } as unknown as Pick<pg.Pool, 'query'>;
+    connect: vi.fn(async () => client),
+  } as unknown as Pick<pg.Pool, 'query' | 'connect'>;
 }

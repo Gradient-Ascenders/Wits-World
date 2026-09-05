@@ -58,7 +58,9 @@ commit.
 | `LOG_LEVEL`                                     | Yes      | `info`      | Fastify log level                             |
 | `MAX_PLAUSIBLE_JOURNEY_SPEED_METRES_PER_SECOND` | Yes      | `12.5`      | Server-authoritative impossible-journey limit |
 | `ASYNC_PVP_CURSOR_SIGNING_KEY`                  | Yes      | secret      | HMAC key of at least 32 bytes for PvP cursors |
-| `ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS`          | No       | `60000`     | PvP expiry/forfeit sweep interval             |
+| `ACCOUNT_DELETION_RETRY_INTERVAL_MS`            | No       | `1800000`   | Failed account-deletion retry interval        |
+| `ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS`          | No       | `1800000`   | PvP expiry/forfeit sweep interval             |
+| `MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS`         | No       | `1800000`   | Expired movement-evidence cleanup interval    |
 | `RATE_LIMIT_MAX_REQUESTS`                       | No       | `120`       | Authenticated requests allowed per window     |
 | `RATE_LIMIT_WINDOW_MS`                          | No       | `60000`     | Per-process fixed-window duration in ms       |
 
@@ -78,6 +80,19 @@ Missing or invalid required API configuration prevents the server from starting.
 The journey-speed setting has no default and must be a finite number greater
 than zero. The example illustrates syntax only; operators must use the reviewed
 product value for the environment.
+
+The three database-backed maintenance workers run once at startup and default
+to the same 30-minute interval. Their minimum supported interval is 15 minutes.
+Keeping the production values aligned allows an idle serverless PostgreSQL
+compute to suspend between sweeps. Asynchronous PvP reads and mutations still
+enforce the authoritative 24-hour deadlines before the periodic worker runs.
+
+When updating an existing checkout, remove or replace any legacy `60000`
+overrides for `ACCOUNT_DELETION_RETRY_INTERVAL_MS`,
+`ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS`, and
+`MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS` in `apps/api/.env` or the local shell
+environment. Omitting them uses the 30-minute defaults. `RATE_LIMIT_WINDOW_MS`
+is unrelated and may remain `60000`.
 
 Rate protection is keyed by the verified local player identity and returns
 `429 RATE_LIMITED` with `Retry-After` and `RateLimit-*` headers. It is an
@@ -335,6 +350,7 @@ Example successful response:
 
 ```json
 {
+  "connectionStrategy": "auth0",
   "id": "00000000-0000-4000-8000-000000000001",
   "playerName": "example-player",
   "playerNameSetupRequired": false,
@@ -345,14 +361,33 @@ Example successful response:
 ```
 
 The example player ID and name are illustrative and do not identify a real
-account. The player-facing route does not return the Auth0 issuer, subject, or
-bearer token.
+account. `connectionStrategy` is the validated safe provider category used to
+select the correct account-recovery guidance. The player-facing route does not
+return the Auth0 issuer, subject, email, or bearer token.
 
 A Google player awaiting setup receives `playerName: null` and
 `playerNameSetupRequired: true`. The authenticated
 `PUT /api/v1/auth/me/player-name` endpoint assigns that supported social player
 one locally unique, Auth0-compatible Player Name. It does not accept a player ID,
 cannot be used by database accounts, and cannot change an existing name.
+
+### Permanent account deletion
+
+The authenticated `POST /api/v1/auth/account-deletion` route coordinates the
+server-authoritative deletion lifecycle. It accepts only the exact destructive
+confirmation and a separately acquired Auth0 ID token proving authentication no
+more than five minutes ago. The API independently verifies that proof and its
+exact `(iss, sub)` match; it never accepts the ID token as the API bearer token.
+
+A completed request returns `200` with `status: "completed"`. When Auth0 or
+local cleanup cannot finish immediately, the account remains locked and the
+route returns `202` with `status: "retry_pending"`; the persisted retry worker
+continues idempotently. Safe error responses never echo credentials, identity
+claims, or provider details. The browser and API never create, accept, or render
+Wits World password fields.
+
+See the [account deletion persistence and retention contract](../../docs/database/account-deletion-retention.md)
+and [player account lifecycle validation](../../docs/testing/player-account-lifecycle-validation.md).
 
 ### Authentication failures
 

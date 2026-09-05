@@ -3,25 +3,29 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 import type {
   AuthorCard,
   AuthorCardInput,
+  AuthorCampaign,
   AuthorChallenge,
   AuthorEvent,
   AuthorEventInput,
   AuthorQuestion,
   AuthorQuestionInput,
+  AuthorTrail,
 } from '../src/api/author';
 
-const API_ORIGIN = 'http://127.0.0.1:3999/api/v1';
 const EVENT_A = '10000000-0000-4000-8000-000000000001';
 const EVENT_B = '10000000-0000-4000-8000-000000000002';
 const EVENT_C = '10000000-0000-4000-8000-000000000003';
 const EVENT_NEW = '10000000-0000-4000-8000-000000000004';
 const CHALLENGE_A = '20000000-0000-4000-8000-000000000001';
 const QUESTION_A = '40000000-0000-4000-8000-000000000001';
+const ORDERING_ATTEMPT = '30000000-0000-4000-8000-000000000001';
 const CARD_DRAFT = '50000000-0000-4000-8000-000000000001';
 const CARD_CREATURE = '50000000-0000-4000-8000-000000000002';
 const CARD_POWER = '50000000-0000-4000-8000-000000000003';
 const CARD_TALL_CREATURE = '50000000-0000-4000-8000-000000000098';
 const CARD_RETIRED_CREATURE = '50000000-0000-4000-8000-000000000099';
+const CAMPAIGN_A = '70000000-0000-4000-8000-000000000001';
+const TRAIL_A = '80000000-0000-4000-8000-000000000001';
 
 test('desktop Event workspace keeps discovery, detail, editing and readiness focused', async ({
   page,
@@ -102,6 +106,22 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
   await expect(page.getByText('Event changes saved.')).toBeFocused();
   await expect(page).toHaveURL(`/author/events/${EVENT_A}`);
 
+  const savedEvent = state.events.find((event) => event.eventId === EVENT_A)!;
+  replaceById(
+    state.events,
+    {
+      ...savedEvent,
+      authoringStatus: 'approved',
+      reviewedAt: '2026-08-29T09:00:00.000Z',
+      reviewedBy: uuid('9', 2),
+      submittedAt: '2026-08-29T08:00:00.000Z',
+      submittedBy: uuid('9', 1),
+      version: 2,
+    },
+    (event) => event.eventId,
+  );
+  await page.reload();
+
   await page.getByRole('link', { name: 'Challenge' }).click();
   await expect(page).toHaveURL(`/author/events/${EVENT_A}/challenge`);
   await expect(
@@ -137,7 +157,12 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
   await expect(
     page.getByRole('heading', { name: 'Challenge readiness' }),
   ).toBeVisible();
-  await page.getByRole('link', { name: 'Overview' }).click();
+  await page.getByRole('button', { name: 'Publish event' }).click();
+  await expect(
+    page.getByText(
+      'Event published and available to the player API according to its active times.',
+    ),
+  ).toBeFocused();
   await page.goBack();
   await expect(page).toHaveURL(`/author/events/${EVENT_A}/challenge`);
   await page.goForward();
@@ -308,6 +333,199 @@ test('mobile Event and Question routes use list to detail to editor views', asyn
     ),
     contentType: 'application/json',
   });
+  expect(consoleErrors).toEqual([]);
+});
+
+test('ordering authoring and player reordering work at desktop and mobile widths', async ({
+  page,
+}, testInfo) => {
+  const state = await installAuthorApi(page);
+  const consoleErrors = monitorConsoleErrors(page);
+
+  await page.setViewportSize({ height: 800, width: 1280 });
+  await page.goto(`/author/events/${EVENT_A}/challenge`);
+  await page.getByLabel('New challenge format').selectOption('ordering');
+  await page.getByRole('button', { name: 'Create challenge' }).click();
+  await expect(
+    page.getByText('Draft ordering challenge associated with this event.'),
+  ).toBeFocused();
+  await expect(page.getByRole('heading', { name: 'Ordering' })).toBeVisible();
+
+  await page
+    .getByRole('navigation', { name: 'Great Hall Discovery sections' })
+    .getByRole('link', { name: 'Questions' })
+    .click();
+  await page.getByRole('link', { name: 'New question' }).click();
+  await page.getByLabel('Question prompt').fill('Order these campus eras.');
+  await page.getByRole('button', { name: 'Create draft question' }).click();
+  await expect(page.getByLabel('Correct position 1')).toBeFocused();
+  for (const [index, value] of [
+    'Founding',
+    'Expansion',
+    'Transformation',
+    'Present day',
+  ].entries()) {
+    await page.getByLabel(`Correct position ${index + 1}`).fill(value);
+  }
+  await page
+    .getByLabel('Author explanation')
+    .fill('The sequence follows the documented campus chronology.');
+  await page.getByRole('button', { name: 'Create draft question' }).click();
+  await expect(page.getByText('Draft question created.')).toBeFocused();
+  await expect(
+    page.getByRole('heading', { name: 'Correct sequence' }),
+  ).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await testInfo.attach('ordering-author-desktop.png', {
+    body: await page.screenshot({ fullPage: true }),
+    contentType: 'image/png',
+  });
+
+  await page.setViewportSize({ height: 844, width: 390 });
+  await expect(
+    page.getByRole('heading', { name: 'Correct sequence' }),
+  ).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await page.goto(`/challenge-attempts/${ORDERING_ATTEMPT}`);
+  const currentOrder = page.getByRole('list', { name: 'Current order' });
+  await expect(currentOrder).toBeVisible();
+  const moveDown = currentOrder.getByRole('button', {
+    name: 'Move Campus era 3 down from position 1',
+  });
+  await moveDown.focus();
+  await page.keyboard.press('Enter');
+  await expect(currentOrder.locator('.challenge-ordering__text')).toHaveText([
+    'Campus era 1',
+    'Campus era 3',
+    'Campus era 4',
+    'Campus era 2',
+  ]);
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Current order:' }),
+  ).toContainText('Campus era 3 moved to position 2 of 4.');
+
+  const firstHandle = currentOrder
+    .getByRole('listitem')
+    .first()
+    .locator('.challenge-ordering__drag-handle');
+  const thirdItem = currentOrder.getByRole('listitem').nth(2);
+  const handleBox = await firstHandle.boundingBox();
+  const targetBox = await thirdItem.boundingBox();
+  expect(handleBox).not.toBeNull();
+  expect(targetBox).not.toBeNull();
+  await page.mouse.move(
+    (handleBox?.x ?? 0) + (handleBox?.width ?? 0) / 2,
+    (handleBox?.y ?? 0) + (handleBox?.height ?? 0) / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    (targetBox?.x ?? 0) + (targetBox?.width ?? 0) / 2,
+    (targetBox?.y ?? 0) + (targetBox?.height ?? 0) / 2,
+    { steps: 5 },
+  );
+  await page.mouse.up();
+  await expect(currentOrder.locator('.challenge-ordering__text')).toHaveText([
+    'Campus era 3',
+    'Campus era 1',
+    'Campus era 4',
+    'Campus era 2',
+  ]);
+  await expectNoHorizontalOverflow(page);
+  await testInfo.attach('ordering-player-mobile.png', {
+    body: await page.screenshot({ fullPage: true }),
+    contentType: 'image/png',
+  });
+
+  await page.getByRole('button', { name: 'Submit order' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Ordering question 2' }),
+  ).toBeFocused();
+  expect(state.orderingSubmissions).toEqual([
+    {
+      attemptQuestionId: orderingQuestionId(1),
+      format: 'ordering',
+      itemIds: [3, 1, 4, 2].map((item) => orderingItemId(1, item)),
+    },
+  ]);
+
+  state.orderingCompleted = true;
+  await page.setViewportSize({ height: 800, width: 1280 });
+  await page.reload();
+  await expect(
+    page.getByRole('heading', { name: 'Your challenge result' }),
+  ).toBeFocused();
+  await expect(page.getByText('Ordering explanation 1.')).toBeVisible();
+  await expect(page.getByText('Correct order').first()).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await testInfo.attach('ordering-result-desktop.png', {
+    body: await page.screenshot({ fullPage: true }),
+    contentType: 'image/png',
+  });
+  expect(consoleErrors).toEqual([]);
+});
+
+test('Review and campaign workspaces preserve lifecycle, keyboard and responsive states', async ({
+  page,
+}) => {
+  const state = await installAuthorApi(page);
+  const consoleErrors = monitorConsoleErrors(page);
+  state.questions[0] = {
+    ...state.questions[0]!,
+    status: 'in_review',
+    submittedAt: '2026-08-29T08:00:00.000Z',
+    submittedBy: uuid('9', 2),
+    version: 2,
+  };
+
+  await page.setViewportSize({ height: 800, width: 1280 });
+  await page.goto('/author/review');
+  await expect(
+    page.getByRole('heading', { name: 'Review queue' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'Review question' }),
+  ).toHaveAttribute(
+    'href',
+    `/author/events/${EVENT_A}/challenges/${CHALLENGE_A}/questions/${QUESTION_A}`,
+  );
+  await expect(page.getByText('In review', { exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'Review question' }).click();
+  await page.getByRole('button', { name: 'Approve question' }).click();
+  await expect(page.getByText('Question approved.')).toBeFocused();
+  await page.getByText('Review history').click();
+  await expect(page.getByText('Approve: in review to approved')).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+
+  await page.getByRole('link', { name: 'Campaigns' }).click();
+  await expect(page.getByRole('heading', { name: 'Campaigns' })).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: /Orientation Week/u }),
+  ).toBeVisible();
+  await page.getByRole('link', { name: /Orientation Week/u }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Orientation Week' }),
+  ).toBeVisible();
+  await expect(page.getByText('1 events · 1 trails')).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto('/author/campaigns/new');
+  await expect(
+    page.getByRole('heading', { name: 'Create campaign' }),
+  ).toBeVisible();
+  await page.getByLabel('Title').fill('Open Day Schedule');
+  await page.getByLabel('Starts').fill('2026-09-10T08:00');
+  await page.getByLabel('Ends').fill('2026-09-10T17:00');
+  await page.getByRole('checkbox', { name: /MSL Open Day/u }).check();
+  await page.getByRole('button', { name: 'Create campaign' }).click();
+  await expect(page.getByText('Campaign draft created.')).toBeFocused();
+  await expect(
+    page.getByRole('heading', { name: 'Open Day Schedule' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Submit for review' }),
+  ).toBeVisible();
+  await expectNoHorizontalOverflow(page);
   expect(consoleErrors).toEqual([]);
 });
 
@@ -792,9 +1010,11 @@ test('Card catalogue uses filtered master detail and concise real-card read-only
   await page.getByRole('button', { name: 'Create draft card' }).click();
   await expect(page.getByText('Draft card created.')).toBeFocused();
   await expect(page.getByLabel('Card name')).toHaveCount(0);
-  const publishCard = page.getByRole('button', { name: 'Publish card' });
-  await publishCard.click();
-  const lifecycleNotice = page.getByText('Card published and active.');
+  const submitCard = page.getByRole('button', { name: 'Submit for review' });
+  await submitCard.click();
+  const lifecycleNotice = page.getByText(
+    'Card submitted for independent review.',
+  );
   await expect(lifecycleNotice).toBeFocused();
   const noticeBox = await lifecycleNotice.boundingBox();
   const lifecycleHeaderBox = await page
@@ -960,33 +1180,42 @@ test('tablet and wide workspaces preserve loading, error, empty and deep-link st
 });
 
 interface AuthorApiState {
+  campaigns: AuthorCampaign[];
   cards: AuthorCard[];
   challenges: AuthorChallenge[];
   eventDelayMs: number;
   events: AuthorEvent[];
   failEvents: boolean;
+  orderingCompleted: boolean;
+  orderingSubmissions: unknown[];
   questions: AuthorQuestion[];
   rejectEventPublication: boolean;
+  trails: AuthorTrail[];
 }
 
 async function installAuthorApi(page: Page): Promise<AuthorApiState> {
   const state: AuthorApiState = {
+    campaigns: authorCampaigns(),
     cards: authorCards(),
     challenges: authorChallenges(),
     eventDelayMs: 0,
     events: authorEvents(),
     failEvents: false,
+    orderingCompleted: false,
+    orderingSubmissions: [],
     questions: authorQuestions(),
     rejectEventPublication: true,
+    trails: authorTrails(),
   };
 
-  await page.route(`${API_ORIGIN}/**`, async (route) => {
+  await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
     const method = request.method();
     const path = new URL(request.url()).pathname.replace('/api/v1', '');
 
     if (path === '/auth/me') {
       await json(route, {
+        connectionStrategy: 'auth0',
         id: uuid('9', 1),
         lifecycleStatus: 'active',
         playerName: 'author-e2e',
@@ -994,6 +1223,118 @@ async function installAuthorApi(page: Page): Promise<AuthorApiState> {
         requestId: 'request-current-player',
         role: 'author',
       });
+      return;
+    }
+
+    if (
+      path === `/challenge-attempts/${ORDERING_ATTEMPT}` &&
+      method === 'GET'
+    ) {
+      await json(
+        route,
+        state.orderingCompleted
+          ? completedOrderingAttempt()
+          : activeOrderingAttempt(),
+      );
+      return;
+    }
+    if (
+      path === `/challenge-attempts/${ORDERING_ATTEMPT}/answers` &&
+      method === 'POST'
+    ) {
+      state.orderingSubmissions.push(request.postDataJSON());
+      await json(route, activeOrderingAttempt(1));
+      return;
+    }
+
+    if (path === '/author/review-queue' && method === 'GET') {
+      const items = state.questions
+        .filter((question) => question.status === 'in_review')
+        .map((question) => ({
+          canReview: question.submittedBy !== uuid('9', 1),
+          challengeId: question.challengeId,
+          entityId: question.questionId,
+          entityType: 'question' as const,
+          eventId:
+            state.challenges.find(
+              (challenge) => challenge.challengeId === question.challengeId,
+            )?.eventId ?? null,
+          label: question.prompt,
+          status: 'in_review' as const,
+          submittedAt: question.submittedAt,
+          submittedBy: question.submittedBy,
+          submittedByName: 'Review submitter',
+          version: question.version,
+        }));
+      await json(route, {
+        items,
+        page: 1,
+        pageSize: 20,
+        requestId: 'request-review-queue',
+        totalItems: items.length,
+        totalPages: items.length === 0 ? 0 : 1,
+      });
+      return;
+    }
+
+    const historyMatch = path.match(
+      /^\/author\/content\/([^/]+)\/([^/]+)\/history$/u,
+    );
+    if (historyMatch && method === 'GET') {
+      await json(route, {
+        items: [
+          {
+            action: 'approve',
+            actorPlayerId: uuid('9', 1),
+            actorPlayerName: 'author-e2e',
+            auditId: uuid('8', 10),
+            fromStatus: 'in_review',
+            note: null,
+            occurredAt: '2026-08-29T09:00:00.000Z',
+            resultingVersion: 3,
+            toStatus: 'approved',
+          },
+        ],
+        page: 1,
+        pageSize: 10,
+        requestId: 'request-history',
+        totalItems: 1,
+        totalPages: 1,
+      });
+      return;
+    }
+
+    if (path === '/author/campaigns' && method === 'GET') {
+      await json(route, {
+        campaigns: state.campaigns,
+        requestId: 'request-campaigns',
+      });
+      return;
+    }
+    if (path === '/author/campaigns' && method === 'POST') {
+      const input = request.postDataJSON() as {
+        description?: string | null;
+        endsAt: string;
+        eventIds: string[];
+        startsAt: string;
+        title: string;
+        trailIds: string[];
+      };
+      const campaign = materializeCampaign(
+        input,
+        uuid('7', state.campaigns.length + 1),
+        state,
+      );
+      state.campaigns.unshift(campaign);
+      await json(
+        route,
+        { campaign, requestId: 'request-campaign-create' },
+        201,
+      );
+      return;
+    }
+    if (path === '/author/trails' && method === 'GET') {
+      await json(route, { requestId: 'request-trails', trails: state.trails });
       return;
     }
 
@@ -1035,7 +1376,7 @@ async function installAuthorApi(page: Page): Promise<AuthorApiState> {
     }
 
     const eventLifecycle = path.match(
-      /^\/author\/events\/([^/]+)\/(publish|retire)$/u,
+      /^\/author\/events\/([^/]+)\/(submit|approve|return|publish|retire)$/u,
     );
     if (eventLifecycle && method === 'POST') {
       const eventId = eventLifecycle[1]!;
@@ -1050,11 +1391,17 @@ async function installAuthorApi(page: Page): Promise<AuthorApiState> {
         return;
       }
       const current = state.events.find((event) => event.eventId === eventId)!;
+      const status = lifecycleStatus(action);
       const event: AuthorEvent = {
         ...current,
-        authoringStatus: action === 'publish' ? 'published' : 'retired',
+        authoringStatus: status,
         isPublished: action === 'publish',
         retiredAt: action === 'retire' ? '2026-08-29T12:00:00.000Z' : null,
+        submittedAt:
+          action === 'submit'
+            ? '2026-08-29T08:00:00.000Z'
+            : current.submittedAt,
+        submittedBy: action === 'submit' ? uuid('9', 1) : current.submittedBy,
       };
       replaceById(state.events, event, (item) => item.eventId);
       await json(route, { event, requestId: `request-event-${action}` });
@@ -1074,11 +1421,15 @@ async function installAuthorApi(page: Page): Promise<AuthorApiState> {
       return;
     }
     if (challengeList && method === 'POST') {
+      const input = request.postDataJSON() as {
+        format: AuthorChallenge['format'];
+      };
       const challenge: AuthorChallenge = {
         ...challengeFixture(
           uuid('2', state.challenges.length + 1),
           challengeList[1]!,
         ),
+        format: input.format,
       };
       state.challenges.push(challenge);
       await json(
@@ -1090,7 +1441,7 @@ async function installAuthorApi(page: Page): Promise<AuthorApiState> {
     }
 
     const challengeLifecycle = path.match(
-      /^\/author\/challenges\/([^/]+)\/(publish|retire)$/u,
+      /^\/author\/challenges\/([^/]+)\/(submit|approve|return|publish|retire)$/u,
     );
     if (challengeLifecycle && method === 'POST') {
       const current = state.challenges.find(
@@ -1098,7 +1449,7 @@ async function installAuthorApi(page: Page): Promise<AuthorApiState> {
       )!;
       const challenge: AuthorChallenge = {
         ...current,
-        status: challengeLifecycle[2] === 'publish' ? 'published' : 'retired',
+        status: lifecycleStatus(challengeLifecycle[2]!),
       };
       replaceById(state.challenges, challenge, (item) => item.challengeId);
       await json(route, {
@@ -1152,7 +1503,7 @@ async function installAuthorApi(page: Page): Promise<AuthorApiState> {
     }
 
     const questionLifecycle = path.match(
-      /^\/author\/questions\/([^/]+)\/(publish|retire)$/u,
+      /^\/author\/questions\/([^/]+)\/(submit|approve|return|publish|retire)$/u,
     );
     if (questionLifecycle && method === 'POST') {
       const current = state.questions.find(
@@ -1160,7 +1511,7 @@ async function installAuthorApi(page: Page): Promise<AuthorApiState> {
       )!;
       const question: AuthorQuestion = {
         ...current,
-        status: questionLifecycle[2] === 'publish' ? 'published' : 'retired',
+        status: lifecycleStatus(questionLifecycle[2]!),
       };
       replaceById(state.questions, question, (item) => item.questionId);
       await json(route, { question, requestId: 'request-question-lifecycle' });
@@ -1193,14 +1544,13 @@ async function installAuthorApi(page: Page): Promise<AuthorApiState> {
     }
 
     const cardLifecycle = path.match(
-      /^\/author\/cards\/([^/]+)\/(publish|retire)$/u,
+      /^\/author\/cards\/([^/]+)\/(submit|approve|return|publish|retire)$/u,
     );
     if (cardLifecycle && method === 'POST') {
       const current = state.cards.find((card) => card.id === cardLifecycle[1])!;
       const card: AuthorCard = {
         ...current,
-        authoringStatus:
-          cardLifecycle[2] === 'publish' ? 'published' : 'retired',
+        authoringStatus: lifecycleStatus(cardLifecycle[2]!),
         isActive: cardLifecycle[2] === 'publish',
       };
       replaceById(state.cards, card, (item) => item.id);
@@ -1214,12 +1564,195 @@ async function installAuthorApi(page: Page): Promise<AuthorApiState> {
   return state;
 }
 
+function lifecycleStatus(action: string): AuthorEvent['authoringStatus'] {
+  return {
+    approve: 'approved',
+    publish: 'published',
+    retire: 'retired',
+    return: 'draft',
+    submit: 'in_review',
+  }[action] as AuthorEvent['authoringStatus'];
+}
+
+function authorTrails(): AuthorTrail[] {
+  return [
+    {
+      createdAt: '2026-08-01T08:00:00.000Z',
+      description: 'An orientation trail.',
+      publishedAt: '2026-08-20T10:00:00.000Z',
+      retiredAt: null,
+      status: 'published',
+      steps: [
+        {
+          eventId: EVENT_B,
+          eventStatus: 'published',
+          position: 1,
+          title: 'MSL Open Day',
+        },
+      ],
+      title: 'Campus orientation trail',
+      trailId: TRAIL_A,
+      updatedAt: '2026-08-20T10:00:00.000Z',
+    },
+  ];
+}
+
+function authorCampaigns(): AuthorCampaign[] {
+  return [
+    {
+      ...lifecycleMetadata('draft'),
+      campaignId: CAMPAIGN_A,
+      createdAt: '2026-08-20T10:00:00.000Z',
+      description: 'The first-week orientation schedule.',
+      endsAt: '2026-09-30T16:00:00.000Z',
+      events: [
+        campaignEvent(eventFixture(EVENT_B, 'MSL Open Day', 'published')),
+      ],
+      publishedAt: null,
+      retiredAt: null,
+      startsAt: '2026-09-01T06:00:00.000Z',
+      status: 'draft',
+      title: 'Orientation Week',
+      trails: [
+        {
+          status: 'published',
+          title: 'Campus orientation trail',
+          trailId: TRAIL_A,
+        },
+      ],
+      updatedAt: '2026-08-20T10:00:00.000Z',
+    },
+  ];
+}
+
+function materializeCampaign(
+  input: {
+    description?: string | null;
+    endsAt: string;
+    eventIds: string[];
+    startsAt: string;
+    title: string;
+    trailIds: string[];
+  },
+  campaignId: string,
+  state: AuthorApiState,
+): AuthorCampaign {
+  return {
+    ...lifecycleMetadata('draft'),
+    campaignId,
+    createdAt: '2026-08-29T10:00:00.000Z',
+    description: input.description ?? null,
+    endsAt: input.endsAt,
+    events: input.eventIds.map((eventId) =>
+      campaignEvent(state.events.find((event) => event.eventId === eventId)!),
+    ),
+    publishedAt: null,
+    retiredAt: null,
+    startsAt: input.startsAt,
+    status: 'draft',
+    title: input.title,
+    trails: input.trailIds.map((trailId) => {
+      const trail = state.trails.find(
+        (candidate) => candidate.trailId === trailId,
+      )!;
+      return {
+        status: trail.status,
+        title: trail.title,
+        trailId: trail.trailId,
+      };
+    }),
+    updatedAt: '2026-08-29T10:00:00.000Z',
+  };
+}
+
+function campaignEvent(event: AuthorEvent) {
+  return {
+    authoringStatus: event.authoringStatus,
+    endsAt: event.endsAt,
+    eventId: event.eventId,
+    startsAt: event.startsAt,
+    title: event.title,
+  };
+}
+
 function authorEvents(): AuthorEvent[] {
   return [
     eventFixture(EVENT_A, 'Great Hall Discovery', 'draft'),
     eventFixture(EVENT_B, 'MSL Open Day', 'published'),
     eventFixture(EVENT_C, 'Retired Sprint Demo', 'retired'),
   ];
+}
+
+function activeOrderingAttempt(answeredCount = 0) {
+  return {
+    answeredCount,
+    attemptId: ORDERING_ATTEMPT,
+    deadline: new Date(Date.now() + 120_000).toISOString(),
+    eventId: EVENT_A,
+    format: 'ordering',
+    questions: Array.from({ length: 5 }, (_, index) => {
+      const position = index + 1;
+      const items = [3, 1, 4, 2].map((item) => ({
+        itemId: orderingItemId(position, item),
+        text: `Campus era ${item}`,
+      }));
+      return {
+        answeredAt: position <= answeredCount ? new Date().toISOString() : null,
+        attemptQuestionId: orderingQuestionId(position),
+        items,
+        position,
+        prompt: `Ordering question ${position}`,
+        selectedItemIds:
+          position <= answeredCount ? items.map((item) => item.itemId) : null,
+      };
+    }),
+    requestId: 'request-ordering-attempt',
+    startedAt: new Date(Date.now() - 30_000).toISOString(),
+    status: 'in_progress',
+    totalQuestions: 5,
+  };
+}
+
+function completedOrderingAttempt() {
+  return {
+    attemptId: ORDERING_ATTEMPT,
+    completedAt: new Date().toISOString(),
+    completionReason: 'answered',
+    eventId: EVENT_A,
+    format: 'ordering',
+    requestId: 'request-ordering-result',
+    review: Array.from({ length: 5 }, (_, index) => {
+      const position = index + 1;
+      const correctItems = [1, 2, 3, 4].map((item) => ({
+        itemId: orderingItemId(position, item),
+        text: `Campus era ${item}`,
+      }));
+      return {
+        attemptQuestionId: orderingQuestionId(position),
+        correctItems,
+        explanation: `Ordering explanation ${position}.`,
+        isCorrect: position <= 3,
+        position,
+        prompt: `Ordering question ${position}`,
+        selectedItems:
+          position <= 3
+            ? correctItems
+            : [correctItems[1], correctItems[0], ...correctItems.slice(2)],
+      };
+    }),
+    reward: { cards: [] },
+    scoreCorrect: 3,
+    status: 'completed',
+    totalQuestions: 5,
+  };
+}
+
+function orderingQuestionId(position: number) {
+  return `31000000-0000-4000-${String(position).padStart(4, '0')}-000000000001`;
+}
+
+function orderingItemId(position: number, item: number) {
+  return `32000000-0000-4000-${String(position).padStart(4, '0')}-${String(item).padStart(12, '0')}`;
 }
 
 function lifecycleMetadata(status: AuthorEvent['authoringStatus']) {
@@ -1310,6 +1843,7 @@ function questionFixture(
     createdAt: '2026-08-01T08:00:00.000Z',
     difficulty: position > 3 ? 2 : 1,
     explanation: 'Author-only fixture explanation.',
+    format: 'multiple_choice',
     prompt,
     questionId,
     status,
@@ -1322,6 +1856,26 @@ function materializeQuestion(
   questionId: string,
   challengeId: string,
 ): AuthorQuestion {
+  if (input.format === 'ordering') {
+    return {
+      ...lifecycleMetadata('draft'),
+      challengeId,
+      createdAt: '2026-08-29T08:00:00.000Z',
+      difficulty: input.difficulty,
+      explanation: input.explanation,
+      format: 'ordering',
+      items: input.items.map((text, index) => ({
+        itemId: uuid('7', 100 + index),
+        position: index + 1,
+        text,
+      })),
+      prompt: input.prompt,
+      questionId,
+      status: 'draft',
+      updatedAt: '2026-08-29T08:00:00.000Z',
+    };
+  }
+
   const choices = input.choices.map((text, index) => ({
     choiceId: uuid('6', 100 + index),
     position: index + 1,
@@ -1336,6 +1890,7 @@ function materializeQuestion(
     createdAt: '2026-08-29T08:00:00.000Z',
     difficulty: input.difficulty,
     explanation: input.explanation,
+    format: 'multiple_choice',
     prompt: input.prompt,
     questionId,
     status: 'draft',

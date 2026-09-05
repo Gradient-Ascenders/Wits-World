@@ -28,6 +28,7 @@ const MatchEntryPage = lazy(() => import('./pages/MatchEntryPage'));
 const CpuMatchPage = lazy(() => import('./pages/CpuMatchPage'));
 const MatchHistoryPage = lazy(() => import('./pages/MatchHistoryPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const AccountPage = lazy(() => import('./pages/AccountPage'));
 
 interface AppRoutesProps {
   apiBaseUrl: string;
@@ -97,6 +98,14 @@ export function AppRoutes({
             <Route path="/profile">
               <ProtectedRoute destination="view your progression profile">
                 <ProfilePage apiBaseUrl={apiBaseUrl} />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/account">
+              <ProtectedRoute
+                allowPlayerNameSetupRequired
+                destination="manage your player account"
+              >
+                <AccountPage apiBaseUrl={apiBaseUrl} />
               </ProtectedRoute>
             </Route>
             <Route path="/author/*?">

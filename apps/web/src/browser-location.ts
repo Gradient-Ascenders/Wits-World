@@ -116,7 +116,7 @@ export const observeBrowserLocation: LocationObservationProvider = ({
       },
       {
         enableHighAccuracy: true,
-        maximumAge: 5_000,
+        maximumAge: 0,
         timeout: LOCATION_WATCH_TIMEOUT_MS,
       },
     );

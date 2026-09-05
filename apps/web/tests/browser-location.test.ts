@@ -169,7 +169,7 @@ describe('live browser location observation', () => {
     expect(watchPosition).toHaveBeenCalledWith(
       expect.any(Function),
       expect.any(Function),
-      { enableHighAccuracy: true, maximumAge: 5_000, timeout: 15_000 },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 },
     );
 
     stop();

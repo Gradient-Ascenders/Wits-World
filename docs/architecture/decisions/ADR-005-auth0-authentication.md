@@ -300,26 +300,28 @@ handling.
 
 ## Password reset
 
-Password reset is a Basic requirement planned for Sprint 2 after, or together
-with, a proper player profile/account page. It is not currently implemented.
-The eventual user capability may use Auth0's hosted reset flow for
-database-connection users; Wits World does not need to implement its own reset
-mechanism.
+Password recovery is implemented through the protected player account page.
+Database-connection users continue to Auth0 Universal Login and choose Auth0's
+hosted recovery option; Auth0 collects the identifier, sends the email, and
+hosts replacement-password entry. Google users receive provider-specific
+guidance and continue to Google's recovery service instead.
 
 The Wits World web application and API will not receive or process the user's
 current or replacement password.
 
-Email delivery and password-reset configuration must be tested before the
-feature is considered complete.
+Auth0 does not send hosted recovery completion back to the SPA. The browser
+therefore reports the completed handoff, not a completed password change. Real
+email delivery and hosted reset behavior remain an operator-run release check.
 
 ## Account deletion
 
 `BASIC-12` defines the Basic-tier deletion and retention policy.
 
 The account-deletion persistence and retention backend is implemented by issue
-`#160`. The player-facing profile/account entry point remains tracked by issue
-`#161`, so the complete user-facing Basic capability is not yet claimed. The
-security and data-lifecycle rules below define the implemented backend boundary.
+`#160`. Issue `#161` implements the protected player account entry point,
+provider guidance, recent-Auth0 handoff, explicit final confirmation, and
+completed/retry/error states. The security and data-lifecycle rules below remain
+the authoritative backend boundary.
 
 Permanent deletion requires:
 
@@ -345,10 +347,18 @@ Successful local cleanup anonymises the local player into a deleted tombstone
 by removing the Auth0 issuer, subject, mirrored Player Name, and application
 role. The deletion request is then unlinked from that tombstone. Owned and
 active gameplay records plus individual quiz answers/snapshots are deleted;
-completed attempt summaries, reward outcomes, coin transactions, completed
-matches, and Author audit history remain linked only to the anonymous UUID. The
+completed attempt summaries, reward outcomes, legacy coin transactions,
+completed matches, and Author audit history remain linked only to the anonymous
+UUID. The
 exact matrix is documented in
 [Account deletion persistence and retention](../../database/account-deletion-retention.md).
+
+Because a validated Auth0 JWT remains usable until its expiry, local completion
+also creates a private, short-lived denial marker. It contains only a freshly
+salted one-way digest of the issuer/subject pair plus issuance cutoff and expiry
+timestamps; raw Auth0 identifiers and tokens are not retained. The API rejects
+tokens issued at or before completion before local-player provisioning, while a
+later token remains eligible for clean re-registration as a new player.
 
 Because Auth0 deletion and PostgreSQL cleanup cannot form one atomic
 transaction, incomplete deletions are persisted as `pending` or
@@ -371,9 +381,9 @@ challenge answers, authored-content audit history, and CPU gameplay history.
 Any later player-linked model must be added to the same `BASIC-12` matrix before
 deployment.
 
-Hosted registration and sign-in are available through Auth0 Universal Login.
-The password-reset and permanent-deletion profile/account entry points remain
-Sprint 2 work in issue `#161`; permanent-deletion persistence is implemented.
+Hosted registration, sign-in, and database password recovery are available
+through Auth0 Universal Login. The permanent-deletion profile/account entry
+point and persistence are implemented.
 
 ## Environment configuration
 
@@ -417,8 +427,12 @@ The account-deletion backend defines:
 ACCOUNT_DELETION_RETRY_INTERVAL_MS
 ```
 
-The committed development default is one minute. This is the operational retry
-cadence, not the recent-authentication security threshold.
+The committed and deployed default is 30 minutes. The initial provider deletion
+still runs synchronously; this interval applies only after a provider or local
+cleanup failure. It is an operational retry cadence, not the
+recent-authentication security threshold. Database-backed maintenance intervals
+have a 15-minute floor so an otherwise idle serverless PostgreSQL compute can
+suspend between sweeps.
 
 Management credentials must never use a `VITE_` prefix.
 
@@ -522,14 +536,13 @@ The following closed Gitea issues implemented this decision:
 
 Gitea #63 established account-lifecycle, reauthentication, Auth0 deletion, and
 retry foundations. Gitea #160 completes transactional local cleanup and the
-confirmed retention policy. Neither issue replaces the player-facing work in
-Gitea #161.
+confirmed retention policy. Gitea #161 completes the player-facing account,
+provider recovery, and deletion journey.
 
-Sprint 2 work still covers:
+Remaining authentication work still covers:
 
-- a proper player profile/account page;
-- password-reset capability, which may use Auth0's hosted flow;
-- the player-facing permanent account-deletion experience;
+- real Auth0 recovery-email, hosted-page, and recent-authentication release
+  evidence;
 - production signed-in storage/console/log evidence and Auth0 email-policy
   confirmation;
 - remediation of the temporary shared development/production Auth0 SPA
@@ -548,5 +561,5 @@ The team must still confirm:
 ---
 
 The preceding document was planned and generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking], ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5], and
-Codex-CLI[gpt-5.6-sol medium].
+ChatGPT-Web[GPT-5.6 Thinking], ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5],
+Codex-CLI[gpt-5.6-sol medium], and Codex-CLI[GPT-5].

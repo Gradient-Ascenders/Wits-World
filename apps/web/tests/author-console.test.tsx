@@ -3,7 +3,7 @@ import {
   initialContext,
   type Auth0ContextInterface,
 } from '@auth0/auth0-react';
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -12,6 +12,8 @@ import type {
   AuthorCard,
   AuthorChallenge,
   AuthorEvent,
+  AuthorMultipleChoiceQuestion,
+  AuthorOrderingQuestion,
   AuthorQuestion,
 } from '../src/api/author';
 import {
@@ -212,6 +214,7 @@ describe('Basic author console', () => {
       const url = String(input);
       if (url.endsWith('/auth/me')) {
         return jsonResponse({
+          connectionStrategy: 'auth0',
           id: '90000000-0000-4000-8000-000000000001',
           playerName: 'test-player',
           playerNameSetupRequired: false,
@@ -236,6 +239,83 @@ describe('Basic author console', () => {
         ([input]) => !String(input).includes('/author/'),
       ),
     ).toBe(true);
+  });
+
+  it('opens the exact queued challenge when an event has multiple challenges', async () => {
+    const user = userEvent.setup();
+    const queuedChallengeId = '20000000-0000-4000-8000-000000000002';
+    const queuedChallenge = challengeFixture({
+      challengeId: queuedChallengeId,
+      status: 'in_review',
+      submittedAt: '2026-08-29T08:00:00.000Z',
+      submittedBy: '90000000-0000-4000-8000-000000000002',
+      version: 2,
+    });
+    installAuthorApi({
+      challenges: [challengeFixture(), queuedChallenge],
+      handleRequest: ({ method, path }) => {
+        if (path === '/author/review-queue' && method === 'GET')
+          return jsonResponse({
+            items: [
+              {
+                canReview: true,
+                challengeId: null,
+                entityId: queuedChallengeId,
+                entityType: 'challenge',
+                eventId,
+                label: 'Multiple-choice challenge',
+                status: 'in_review',
+                submittedAt: queuedChallenge.submittedAt,
+                submittedBy: queuedChallenge.submittedBy,
+                submittedByName: 'Other Author',
+                version: queuedChallenge.version,
+              },
+            ],
+            page: 1,
+            pageSize: 20,
+            requestId: 'request-review-queue',
+            totalItems: 1,
+            totalPages: 1,
+          });
+        if (
+          path === `/author/challenges/${queuedChallengeId}/questions` &&
+          method === 'GET'
+        )
+          return jsonResponse({
+            questions: [],
+            requestId: 'request-queued-challenge-questions',
+          });
+        return undefined;
+      },
+    });
+    renderAuthorRoute(authorPaths.review);
+
+    const reviewLink = await screen.findByRole('link', {
+      name: 'Review challenge',
+    });
+    expect(reviewLink).toHaveAttribute(
+      'href',
+      authorPaths.challenge(eventId, queuedChallengeId),
+    );
+    await user.click(reviewLink);
+
+    expect(await screen.findByLabelText('Challenge')).toHaveValue(
+      queuedChallengeId,
+    );
+    const selectedChallenge = screen
+      .getByText('Selected challenge')
+      .closest('section');
+    expect(selectedChallenge).not.toBeNull();
+    expect(
+      await within(selectedChallenge!).findByRole('button', {
+        name: 'Approve challenge',
+      }),
+    ).toBeEnabled();
+    expect(
+      within(selectedChallenge!).queryByRole('button', {
+        name: 'Submit for review',
+      }),
+    ).not.toBeInTheDocument();
   });
 
   it('shows a recoverable authorization state when the current role cannot be resolved', async () => {
@@ -332,11 +412,42 @@ describe('Basic author console', () => {
     );
 
     expect(
-      await screen.findByText('Draft challenge associated with this event.'),
+      await screen.findByText(
+        'Draft multiple choice challenge associated with this event.',
+      ),
     ).toHaveFocus();
     expect(fetchMock).toHaveBeenCalledWith(
       `${apiBaseUrl}/author/events/${eventId}/challenges`,
-      expect.objectContaining({ body: '{}', method: 'POST' }),
+      expect.objectContaining({
+        body: JSON.stringify({ format: 'multiple_choice' }),
+        method: 'POST',
+      }),
+    );
+  });
+
+  it('selects and creates an ordering challenge format', async () => {
+    const user = userEvent.setup();
+    const fetchMock = installAuthorApi({ challenges: [] });
+    renderAuthorRoute();
+
+    await user.selectOptions(
+      await screen.findByLabelText('New challenge format'),
+      'ordering',
+    );
+    await user.click(screen.getByRole('button', { name: 'Create challenge' }));
+
+    expect(
+      await screen.findByText(
+        'Draft ordering challenge associated with this event.',
+      ),
+    ).toHaveFocus();
+    expect(screen.getByRole('heading', { name: 'Ordering' })).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${apiBaseUrl}/author/events/${eventId}/challenges`,
+      expect.objectContaining({
+        body: JSON.stringify({ format: 'ordering' }),
+        method: 'POST',
+      }),
     );
   });
 
@@ -379,8 +490,76 @@ describe('Basic author console', () => {
       choices: ['Answer 1', 'Answer 2', 'Answer 3', 'Answer 4'],
       difficulty: 1,
       explanation: 'The Great Hall is on East Campus.',
+      format: 'multiple_choice',
       prompt: 'Where is the Great Hall?',
     });
+  });
+
+  it('validates and creates a four-item ordering question in correct sequence', async () => {
+    const user = userEvent.setup();
+    const fetchMock = installAuthorApi({
+      challenges: [challengeFixture({ format: 'ordering' })],
+      questions: [],
+    });
+    renderAuthorRoute(authorPaths.newQuestion(eventId, challengeId));
+
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(4));
+    await user.type(
+      await screen.findByLabelText('Question prompt'),
+      'Order the eras.',
+    );
+    expect(screen.getByLabelText('Question prompt')).toHaveValue(
+      'Order the eras.',
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Create draft question' }),
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText('Correct position 1')).toHaveFocus(),
+    );
+    expect(screen.getByLabelText('Correct position 1')).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
+
+    for (let index = 1; index <= 4; index += 1) {
+      await user.type(
+        screen.getByLabelText(`Correct position ${index}`),
+        `Era ${index}`,
+      );
+    }
+    await user.type(
+      screen.getByLabelText('Author explanation'),
+      'The eras follow this established chronology.',
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Create draft question' }),
+    );
+
+    expect(await screen.findByText('Draft question created.')).toHaveFocus();
+    const createCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input).includes(`/author/challenges/${challengeId}/questions`) &&
+        init?.method === 'POST',
+    );
+    expect(JSON.parse(String(createCall?.[1]?.body))).toEqual({
+      difficulty: 1,
+      explanation: 'The eras follow this established chronology.',
+      format: 'ordering',
+      items: ['Era 1', 'Era 2', 'Era 3', 'Era 4'],
+      prompt: 'Order the eras.',
+    });
+    expect(
+      screen.queryByRole('button', { name: 'Publish question' }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Submit for review' }));
+    expect(
+      await screen.findByText('Question submitted for independent review.'),
+    ).toHaveFocus();
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/author\/questions\/[^/]+\/submit$/u),
+      expect.objectContaining({ method: 'POST' }),
+    );
   });
 
   it('edits a draft question and updates its accepted answer', async () => {
@@ -515,7 +694,7 @@ describe('Basic author console', () => {
   it('surfaces the API publication rule for a Creature with fewer than four moves', async () => {
     const user = userEvent.setup();
     installAuthorApi({
-      cards: [cardFixture()],
+      cards: [cardFixture({ authoringStatus: 'approved', version: 2 })],
       publishCardError: problemResponse(
         422,
         'CONTENT_NOT_READY',
@@ -655,6 +834,7 @@ describe('Basic author console', () => {
   it('shows incomplete associations and the API publication rejection', async () => {
     const user = userEvent.setup();
     installAuthorApi({
+      events: [eventFixture({ authoringStatus: 'approved', version: 2 })],
       publishEventError: problemResponse(
         422,
         'CONTENT_NOT_READY',
@@ -682,6 +862,7 @@ describe('Basic author console', () => {
         { ...cardFixture(), authoringStatus: 'published', isActive: true },
       ],
       challenges: [{ ...challengeFixture(), status: 'published' }],
+      events: [eventFixture({ authoringStatus: 'approved', version: 2 })],
       questions: Array.from({ length: 5 }, (_, index) =>
         questionFixture(index + 1, 'published'),
       ),
@@ -753,7 +934,9 @@ describe('Basic author console', () => {
     renderAuthorRoute(authorPaths.eventChallenge(eventId));
 
     expect(
-      await screen.findByRole('option', { name: 'Challenge 1 — retired' }),
+      await screen.findByRole('option', {
+        name: 'Challenge 1 — Multiple choice — retired',
+      }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Retire challenge' }),
@@ -780,6 +963,52 @@ describe('Basic author console', () => {
     await user.click(screen.getByRole('button', { name: 'Save event' }));
     expect(await screen.findByText('This content changed state')).toBeVisible();
     expect(screen.queryByText(/version|etag/i)).not.toBeInTheDocument();
+  });
+
+  it('reloads authoritative event detail after a lifecycle state conflict', async () => {
+    const user = userEvent.setup();
+    const draft = eventFixture();
+    const serverEvent = eventFixture({
+      authoringStatus: 'in_review',
+      submittedAt: '2026-08-30T10:00:00.000Z',
+      submittedBy: '90000000-0000-4000-8000-000000000002',
+      version: 1,
+    });
+    let eventLoads = 0;
+    installAuthorApi({
+      handleRequest: ({ method, path }) => {
+        if (path === '/author/events' && method === 'GET') {
+          eventLoads += 1;
+          return jsonResponse({
+            events: [eventLoads === 1 ? draft : serverEvent],
+            requestId: `request-events-${eventLoads}`,
+          });
+        }
+        if (path === `/author/events/${eventId}/submit` && method === 'POST')
+          return problemResponse(
+            409,
+            'CONTENT_STATE_CONFLICT',
+            'The event is already in review.',
+          );
+        return undefined;
+      },
+    });
+    renderAuthorRoute(authorPaths.event(eventId));
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Submit for review' }),
+    );
+
+    expect(
+      await screen.findByText(
+        'The content changed on the server. Its authoritative state was reloaded.',
+      ),
+    ).toBeVisible();
+    expect(eventLoads).toBe(2);
+    expect(
+      screen.queryByRole('button', { name: 'Submit for review' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('Awaiting independent review')).toBeVisible();
   });
 
   it('renders a recoverable generic author API loading failure', async () => {
@@ -1144,7 +1373,7 @@ describe('Basic author console', () => {
     await user.type(prompt, 'Saved question prompt');
     await user.click(screen.getByRole('button', { name: 'Save question' }));
     await screen.findByText('Question changes saved.');
-    await user.click(screen.getByRole('button', { name: 'Publish question' }));
+    await user.click(screen.getByRole('button', { name: 'Submit for review' }));
     expect(
       await screen.findByRole('heading', {
         level: 5,
@@ -1161,7 +1390,7 @@ describe('Basic author console', () => {
     await user.type(cardName, 'Saved card name');
     await user.click(screen.getByRole('button', { name: 'Save card' }));
     await screen.findByText('Card changes saved.');
-    await user.click(screen.getByRole('button', { name: 'Publish card' }));
+    await user.click(screen.getByRole('button', { name: 'Submit for review' }));
     expect(
       await screen.findByRole('heading', {
         level: 3,
@@ -1589,10 +1818,12 @@ describe('Basic author console', () => {
 
     expect(selector).toHaveValue(challengeId);
     expect(
-      screen.getByRole('option', { name: 'Challenge 2 — draft' }),
+      screen.getByRole('option', {
+        name: 'Challenge 2 — Multiple choice — draft',
+      }),
     ).toHaveValue(createdChallenge.challengeId);
     expect(
-      screen.queryByText('Draft challenge associated with this event.'),
+      screen.queryByText(/Draft .* challenge associated with this event\./),
     ).not.toBeInTheDocument();
   });
 
@@ -1662,6 +1893,7 @@ describe('Basic author console', () => {
     const pending = deferred<Response>();
     installAuthorApi({
       challenges: [challengeFixture(), challengeB],
+      events: [eventFixture({ authoringStatus: 'approved', version: 2 })],
       handleRequest: ({ path }) => {
         if (path === `/author/events/${eventId}/publish`)
           return pending.promise;
@@ -1726,7 +1958,7 @@ describe('Basic author console', () => {
     });
     const pending = deferred<Response>();
     installAuthorApi({
-      cards: [cardFixture(), cardB],
+      cards: [cardFixture({ authoringStatus: 'approved', version: 2 }), cardB],
       handleRequest: ({ path }) =>
         path === `/author/cards/${cardFixture().id}/publish`
           ? pending.promise
@@ -1781,7 +2013,10 @@ describe('Basic author console', () => {
     });
     const pending = deferred<Response>();
     installAuthorApi({
-      challenges: [challengeFixture(), challengeB],
+      challenges: [
+        challengeFixture({ status: 'approved', version: 2 }),
+        challengeB,
+      ],
       handleRequest: ({ path }) => {
         if (path === `/author/challenges/${challengeId}/publish`)
           return pending.promise;
@@ -1819,10 +2054,12 @@ describe('Basic author console', () => {
     expect(
       screen.queryByRole('button', { name: 'Publish challenge' }),
     ).not.toBeInTheDocument();
-    expect(selector).toHaveTextContent('Challenge 1 — published');
+    expect(selector).toHaveTextContent(
+      'Challenge 1 — Multiple choice — published',
+    );
   });
 
-  it('shows an approved card without direct publish or edit controls', async () => {
+  it('shows an approved card with a publish action but no edit control', async () => {
     installAuthorApi({
       cards: [cardFixture({ authoringStatus: 'approved', version: 2 })],
     });
@@ -1838,9 +2075,7 @@ describe('Basic author console', () => {
     expect(
       screen.queryByRole('link', { name: 'Edit card' }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Publish card' }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Publish card' })).toBeEnabled();
   });
 
   it('shows an approved challenge in the expanded status enum', async () => {
@@ -1851,10 +2086,12 @@ describe('Basic author console', () => {
 
     const selector = await screen.findByLabelText('Challenge');
     expect(selector).toHaveValue(challengeId);
-    expect(selector).toHaveTextContent('Challenge 1 — approved');
+    expect(selector).toHaveTextContent(
+      'Challenge 1 — Multiple choice — approved',
+    );
     expect(
-      screen.queryByRole('button', { name: 'Publish challenge' }),
-    ).not.toBeInTheDocument();
+      screen.getByRole('button', { name: 'Publish challenge' }),
+    ).toBeEnabled();
   });
 
   it('reconciles a delayed challenge creation without selecting it in a newer context', async () => {
@@ -1905,10 +2142,12 @@ describe('Basic author console', () => {
     expect(selector).toHaveValue(challengeB.challengeId);
     expect(selector).toHaveFocus();
     expect(
-      screen.queryByText('Draft challenge associated with this event.'),
+      screen.queryByText(/Draft .* challenge associated with this event\./),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole('option', { name: 'Challenge 3 — draft' }),
+      screen.getByRole('option', {
+        name: 'Challenge 3 — Multiple choice — draft',
+      }),
     ).toBeInTheDocument();
 
     await user.selectOptions(selector, createdChallenge.challengeId);
@@ -2102,6 +2341,7 @@ function installAuthorApi(options: ApiOptions = {}) {
 
       if (path === '/auth/me') {
         return jsonResponse({
+          connectionStrategy: 'auth0',
           id: '90000000-0000-4000-8000-000000000001',
           playerName: 'test-player',
           playerNameSetupRequired: false,
@@ -2162,6 +2402,17 @@ function installAuthorApi(options: ApiOptions = {}) {
           requestId: 'request-event-publish',
         });
       }
+      if (path === `/author/events/${eventId}/submit`) {
+        const index = events.findIndex((item) => item.eventId === eventId);
+        const event = {
+          ...(events[index] ?? eventFixture()),
+          authoringStatus: 'in_review' as const,
+          submittedAt: '2026-08-20T10:00:00.000Z',
+          submittedBy: '90000000-0000-4000-8000-000000000001',
+        };
+        events.splice(index, 1, event);
+        return jsonResponse({ event, requestId: 'request-event-submit' });
+      }
       if (path === `/author/events/${eventId}/retire`) {
         const index = events.findIndex((item) => item.eventId === eventId);
         const event = {
@@ -2180,7 +2431,8 @@ function installAuthorApi(options: ApiOptions = {}) {
         path === `/author/events/${eventId}/challenges` &&
         method === 'POST'
       ) {
-        const challenge = challengeFixture();
+        const body = JSON.parse(String(init?.body));
+        const challenge = challengeFixture({ format: body.format });
         challenges.push(challenge);
         return jsonResponse(
           { challenge, requestId: 'request-challenge-create' },
@@ -2198,6 +2450,25 @@ function installAuthorApi(options: ApiOptions = {}) {
         method === 'POST'
       ) {
         const body = JSON.parse(String(init?.body));
+
+        if (body.format === 'ordering') {
+          const baseQuestion = orderingQuestionFixture(1, 'draft');
+          const question = {
+            ...baseQuestion,
+            ...body,
+            items: body.items.map((text: string, index: number) => ({
+              itemId: baseQuestion.items[index]!.itemId,
+              position: index + 1,
+              text,
+            })),
+          };
+          questions.push(question);
+          return jsonResponse(
+            { question, requestId: 'request-question-create' },
+            201,
+          );
+        }
+
         const baseQuestion = questionFixture(1, 'draft');
         const choices = body.choices.map((text: string, index: number) => ({
           choiceId: baseQuestion.choices[index]!.choiceId,
@@ -2233,8 +2504,52 @@ function installAuthorApi(options: ApiOptions = {}) {
           requestId: 'request-challenge-retire',
         });
       }
+      if (
+        path === `/author/challenges/${challengeId}/submit` &&
+        method === 'POST'
+      ) {
+        const index = challenges.findIndex(
+          (item) => item.challengeId === challengeId,
+        );
+        const challenge = {
+          ...(challenges[index] ?? challengeFixture()),
+          status: 'in_review' as const,
+          submittedAt: '2026-08-20T10:00:00.000Z',
+          submittedBy: '90000000-0000-4000-8000-000000000001',
+        };
+        challenges.splice(index, 1, challenge);
+        return jsonResponse({
+          challenge,
+          requestId: 'request-challenge-submit',
+        });
+      }
       if (path.startsWith('/author/questions/') && method === 'PUT') {
         const body = JSON.parse(String(init?.body));
+
+        if (body.format === 'ordering') {
+          const baseQuestion = orderingQuestionFixture(1, 'draft');
+          const question = {
+            ...baseQuestion,
+            ...body,
+            items: body.items.map((text: string, index: number) => ({
+              itemId: baseQuestion.items[index]!.itemId,
+              position: index + 1,
+              text,
+            })),
+          };
+          questions.splice(
+            questions.findIndex(
+              (item) => item.questionId === question.questionId,
+            ),
+            1,
+            question,
+          );
+          return jsonResponse({
+            question,
+            requestId: 'request-question-update',
+          });
+        }
+
         const baseQuestion = questionFixture(1, 'draft');
         const choices = body.choices.map((text: string, index: number) => ({
           choiceId: baseQuestion.choices[index]!.choiceId,
@@ -2271,6 +2586,23 @@ function installAuthorApi(options: ApiOptions = {}) {
           requestId: 'request-question-publish',
         });
       }
+      if (path.startsWith('/author/questions/') && path.endsWith('/submit')) {
+        const submittedQuestionId = path.split('/')[3]!;
+        const index = questions.findIndex(
+          (item) => item.questionId === submittedQuestionId,
+        );
+        const question = {
+          ...(questions[index] ?? questionFixture(1, 'draft')),
+          status: 'in_review' as const,
+          submittedAt: '2026-08-20T10:00:00.000Z',
+          submittedBy: '90000000-0000-4000-8000-000000000001',
+        };
+        questions.splice(index, 1, question);
+        return jsonResponse({
+          question,
+          requestId: 'request-question-submit',
+        });
+      }
       if (path === `/author/cards/${cardFixture().id}` && method === 'PUT') {
         const body = JSON.parse(String(init?.body));
         const card = {
@@ -2300,6 +2632,17 @@ function installAuthorApi(options: ApiOptions = {}) {
           isActive: true,
         };
         return jsonResponse({ card, requestId: 'request-card-publish' });
+      }
+      if (path === `/author/cards/${cardFixture().id}/submit`) {
+        const index = cards.findIndex((item) => item.id === cardFixture().id);
+        const card = {
+          ...(cards[index] ?? cardFixture()),
+          authoringStatus: 'in_review' as const,
+          submittedAt: '2026-08-20T10:00:00.000Z',
+          submittedBy: '90000000-0000-4000-8000-000000000001',
+        };
+        cards.splice(index, 1, card);
+        return jsonResponse({ card, requestId: 'request-card-submit' });
       }
 
       throw new Error(`Unexpected ${method} request: ${path}`);
@@ -2386,7 +2729,7 @@ function questionFixture(
   status:
     'draft' | 'in_review' | 'approved' | 'published' | 'retired' = 'draft',
   parentChallengeId = challengeId,
-): AuthorQuestion {
+): AuthorMultipleChoiceQuestion {
   const questionId = `40000000-0000-4000-8000-${String(position).padStart(12, '0')}`;
   return {
     acceptedChoiceId: `41000000-0000-4000-8000-${String(position * 10 + 2).padStart(12, '0')}`,
@@ -2400,6 +2743,7 @@ function questionFixture(
     createdAt: '2026-08-16T08:00:00.000Z',
     difficulty: 1,
     explanation: 'Author-only explanation.',
+    format: 'multiple_choice',
     prompt: `Question ${position}`,
     questionId,
     status,
@@ -2410,6 +2754,37 @@ function questionFixture(
     reviewedBy: null,
     reviewedAt: null,
     publicationProvenance: null,
+  };
+}
+
+function orderingQuestionFixture(
+  position: number,
+  status:
+    'draft' | 'in_review' | 'approved' | 'published' | 'retired' = 'draft',
+  parentChallengeId = challengeId,
+): AuthorOrderingQuestion {
+  const questionId = `42000000-0000-4000-8000-${String(position).padStart(12, '0')}`;
+  return {
+    challengeId: parentChallengeId,
+    createdAt: '2026-08-16T08:00:00.000Z',
+    difficulty: 1,
+    explanation: 'The eras follow this established chronology.',
+    format: 'ordering',
+    items: [1, 2, 3, 4].map((itemPosition) => ({
+      itemId: `43000000-0000-4000-8000-${String(position * 10 + itemPosition).padStart(12, '0')}`,
+      position: itemPosition,
+      text: `Era ${itemPosition}`,
+    })),
+    prompt: `Ordering question ${position}`,
+    publicationProvenance: null,
+    questionId,
+    reviewedAt: null,
+    reviewedBy: null,
+    status,
+    submittedAt: null,
+    submittedBy: null,
+    updatedAt: '2026-08-16T08:00:00.000Z',
+    version: 0,
   };
 }
 

@@ -78,7 +78,9 @@ required, trimmed `reason` of 1–1,000 characters. Edit bodies also require
 `in_review` summaries. It accepts an optional `entityType` filter and a page size
 up to 100, sorts by submission time and stable identifiers, and includes a
 server-derived `canReview`. Self-submissions remain visible with `canReview:
-false`.
+false`. Every item includes nullable `eventId` and `challengeId` navigation
+context. Challenges include their `eventId`; questions include both parents;
+top-level events, cards, and campaigns return `null` for both fields.
 
 `GET /api/v1/author/content/:entityType/:entityId/history` returns paginated,
 version-ordered audit records. Queue and history responses contain only stable
@@ -101,7 +103,7 @@ The generated OpenAPI document remains the exact schema reference.
 Campaign-specific membership, effective-window, and retirement behavior is
 defined in the [campaign scheduling contract](./campaign-scheduling-api-contract.md).
 
-## Provenance, compatibility, and Web limitation
+## Provenance, compatibility, and Web coverage
 
 Migration `0029_curate_author_content_lifecycle.sql` marks existing published or
 retired rows as `legacy`. Repository-controlled repeatable seeds use
@@ -109,14 +111,26 @@ retired rows as `legacy`. Repository-controlled repeatable seeds use
 `is_published`/`retired_at` and card `is_active` remain constrained compatibility
 fields rather than independent sources of lifecycle truth.
 
-The current Author console understands all five states, versions, and review
-metadata, and allows editing only drafts. Reviewer actions and the review queue UI
-belong to issue `#185`; therefore the console cannot currently submit, approve,
-return, or publish. Active Authors can use the documented API in the interim.
+The Author console exposes submission, independent review, return reasons,
+approval, publication, confirmed retirement, the filtered review queue, and
+lazy review history for events, multiple-choice and ordering
+challenges/questions, cards, and campaigns. Ordering authoring records exactly
+four nonblank items in authoritative correct-sequence order. Queue summaries
+navigate to the authoritative entity detail before review actions are offered.
+Editing remains draft-only; lifecycle conflicts reload authoritative detail,
+while stale campaign edits preserve the local form until the Author confirms
+replacing it with the server version. The browser derives successful lifecycle
+feedback from the returned resource and does not infer a new state from the
+requested action.
+
+Question analytics and flagged-question workflows remain blocked by issue
+`#184` / S3-06 because no current analytics contract is available. The console
+does not invent or mock that data.
 
 ## AI declaration
 
 This contract was generated, edited, and reviewed with the assistance of
 Codex[gpt-5.6-sol] and Codex[GPT-5]. It describes the implemented issue `#182`
-contract; it does not claim that issue `#185` reviewer UI or asynchronous PvP is
-implemented.
+contract, issue `#185` Author-console integration, and issue `#163` ordering
+authoring integration; it does not claim that blocked analytics or asynchronous
+PvP is implemented.

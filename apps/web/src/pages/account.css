@@ -1,0 +1,383 @@
+.main-content:has(.account-page) {
+  padding-top: var(--space-6);
+}
+
+.account-page {
+  display: grid;
+  width: min(100%, 54rem);
+  min-width: 0;
+  gap: var(--space-7);
+  margin-inline: auto;
+}
+
+.account-page__header {
+  display: grid;
+  max-width: 38rem;
+  gap: var(--space-2);
+}
+
+.account-page__header h1 {
+  margin: 0;
+  font-size: clamp(var(--text-3xl), 8vw, var(--text-4xl));
+  line-height: 1.05;
+}
+
+.account-page__header p {
+  margin: 0;
+  color: var(--colour-text-secondary);
+  font-size: var(--text-md);
+}
+
+.account-profile-card,
+.account-action-card,
+.account-result {
+  min-width: 0;
+  border: 1px solid var(--colour-border-subtle);
+  border-radius: var(--radius-md);
+  background: rgb(13 27 49 / 68%);
+}
+
+.account-profile-card {
+  display: grid;
+  gap: var(--space-5);
+  padding: var(--space-5);
+}
+
+.account-profile-card__identity {
+  display: flex;
+  min-width: 0;
+  gap: var(--space-4);
+  align-items: center;
+}
+
+.account-profile-card__avatar {
+  display: grid;
+  width: 3.5rem;
+  height: 3.5rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--colour-border-default);
+  border-radius: var(--radius-md);
+  color: var(--colour-gold-400);
+  background: var(--colour-background-secondary);
+  font-size: var(--text-sm);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.account-profile-card__identity > div {
+  min-width: 0;
+}
+
+.account-profile-card__identity h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--text-xl);
+  line-height: 1.25;
+}
+
+.account-profile-card__identity p {
+  margin: var(--space-1) 0 0;
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.account-profile-card__metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  padding: var(--space-4) 0 0;
+  border-top: 1px solid var(--colour-border-subtle);
+  list-style: none;
+}
+
+.account-profile-card__metadata li {
+  display: inline-flex;
+  min-height: 1.5rem;
+  gap: var(--space-2);
+  align-items: center;
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.account-profile-card__metadata li + li {
+  padding-left: var(--space-4);
+  border-left: 1px solid var(--colour-border-subtle);
+}
+
+.account-profile-card__metadata .account-profile-card__status {
+  color: var(--colour-text-primary);
+}
+
+.account-profile-card__status > span {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--colour-status-success);
+  box-shadow: 0 0 0 0.2rem rgb(57 184 121 / 10%);
+}
+
+.account-page__section {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.account-page__section h2 {
+  margin: 0;
+  font-size: var(--text-xl);
+}
+
+.account-action-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+  padding: var(--space-4);
+}
+
+.account-action-card--danger {
+  border-color: rgb(220 91 101 / 28%);
+}
+
+.account-action-card__icon {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  place-items: center;
+  border: 1px solid var(--colour-border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--colour-gold-400);
+  background: rgb(5 11 22 / 48%);
+}
+
+.account-action-card__icon--danger {
+  border-color: rgb(220 91 101 / 28%);
+  color: var(--colour-status-danger);
+  background: rgb(220 91 101 / 6%);
+}
+
+.account-action-card__icon svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.account-action-card__content {
+  min-width: 0;
+}
+
+.account-action-card__content h3,
+.account-deletion-error h3 {
+  margin: 0 0 var(--space-1);
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  line-height: 1.4;
+}
+
+.account-action-card__content p,
+.account-result > p,
+.account-deletion-error > p {
+  max-width: 40rem;
+  margin: 0;
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+}
+
+.account-action-card > .button {
+  width: 100%;
+  grid-column: 1 / -1;
+}
+
+.account-action-card__message,
+.account-deletion-error {
+  grid-column: 1 / -1;
+}
+
+.button--danger {
+  border-color: rgb(220 91 101 / 68%);
+  color: var(--colour-text-primary);
+  background: rgb(220 91 101 / 10%);
+  box-shadow: none;
+}
+
+.button--danger:hover:not(:disabled) {
+  background: rgb(220 91 101 / 18%);
+  box-shadow: none;
+}
+
+.account-inline-status,
+.account-inline-error,
+.account-support-reference {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-sm);
+}
+
+.account-inline-status {
+  padding-left: var(--space-3);
+  border-left: 0.15rem solid var(--colour-status-info);
+  color: var(--colour-text-secondary);
+}
+
+.account-inline-error {
+  color: var(--colour-text-primary) !important;
+  font-weight: 700;
+}
+
+.account-support-reference {
+  color: var(--colour-text-muted) !important;
+  overflow-wrap: anywhere;
+}
+
+.account-result {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-5);
+}
+
+.account-result .eyebrow,
+.account-result h2,
+.account-result p {
+  margin: 0;
+}
+
+.account-result h2 {
+  font-size: var(--text-2xl);
+}
+
+.account-result > .button {
+  width: fit-content;
+}
+
+.account-result--completed {
+  border-left: 0.2rem solid var(--colour-status-success);
+}
+
+.account-result--pending {
+  border-left: 0.2rem solid var(--colour-status-warning);
+}
+
+.account-deletion-error {
+  padding: var(--space-4);
+  border-left: 0.2rem solid var(--colour-status-danger);
+  border-radius: var(--radius-sm);
+  background: rgb(5 11 22 / 42%);
+}
+
+.account-deletion-error__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.account-dialog-backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  align-items: end;
+  padding: var(--space-3);
+  padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom));
+  background: rgb(2 7 15 / 78%);
+  backdrop-filter: blur(0.35rem);
+}
+
+.account-dialog {
+  display: grid;
+  width: min(100%, 34rem);
+  max-height: calc(100dvh - var(--space-6) - env(safe-area-inset-bottom));
+  justify-self: center;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  overflow-y: auto;
+  border: 1px solid rgb(220 91 101 / 56%);
+  border-radius: var(--radius-lg);
+  color: var(--colour-text-primary);
+  background: var(--colour-navy-900);
+  box-shadow: var(--shadow-floating);
+}
+
+.account-dialog--prepare {
+  width: min(100%, 28rem);
+  padding: var(--space-4);
+  border-color: var(--colour-border-default);
+}
+
+.account-dialog .eyebrow,
+.account-dialog h2,
+.account-dialog p {
+  margin: 0;
+}
+
+.account-dialog h2 {
+  font-size: var(--text-2xl);
+}
+
+.account-dialog__description {
+  display: grid;
+  gap: var(--space-3);
+  color: var(--colour-text-secondary);
+}
+
+.account-dialog__acknowledgement {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+  padding: var(--space-3);
+  border: 1px solid rgb(220 91 101 / 32%);
+  border-radius: var(--radius-sm);
+  color: var(--colour-text-primary);
+  background: rgb(220 91 101 / 7%);
+  cursor: pointer;
+}
+
+.account-dialog__acknowledgement input {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0.15rem 0 0;
+  accent-color: var(--colour-status-danger);
+}
+
+.account-dialog__actions {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--space-2);
+}
+
+@media (min-width: 40rem) {
+  .account-action-card {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    padding: var(--space-4) var(--space-5);
+  }
+
+  .account-action-card > .button {
+    width: fit-content;
+    grid-row: 1;
+    grid-column: 3;
+  }
+
+  .account-action-card__message,
+  .account-deletion-error {
+    grid-column: 2 / -1;
+  }
+
+  .account-dialog-backdrop {
+    align-items: center;
+  }
+
+  .account-dialog__actions {
+    flex-direction: row;
+    justify-content: flex-end;
+  }
+}
+
+@media (min-width: 64rem) {
+  .main-content:has(.account-page) {
+    padding-top: var(--space-7);
+  }
+}

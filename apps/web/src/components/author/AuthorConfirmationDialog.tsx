@@ -13,6 +13,7 @@ interface AuthorConfirmationDialogProps {
   cancelLabel: string;
   confirmLabel: string;
   description: ReactNode;
+  initialFocusRef?: RefObject<HTMLElement | null>;
   onCancel: () => void;
   onConfirm: () => void;
   returnFocusRef?: RefObject<HTMLElement | null>;
@@ -24,6 +25,7 @@ export function AuthorConfirmationDialog({
   cancelLabel,
   confirmLabel,
   description,
+  initialFocusRef,
   onCancel,
   onConfirm,
   returnFocusRef,
@@ -40,12 +42,12 @@ export function AuthorConfirmationDialog({
       document.activeElement instanceof HTMLElement
         ? document.activeElement
         : null;
-    cancelRef.current?.focus();
+    (initialFocusRef?.current ?? cancelRef.current)?.focus();
     return () => {
       const target = returnFocusRef?.current ?? previouslyFocusedRef.current;
       target?.focus();
     };
-  }, [returnFocusRef]);
+  }, [initialFocusRef, returnFocusRef]);
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === 'Escape' && !busy) {

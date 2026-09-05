@@ -80,7 +80,6 @@ export interface CompletedChallengeAttempt {
   totalQuestions: 5;
   scoreCorrect: number;
   reward: {
-    coinsAwarded: number;
     cards: CompletedChallengeCard[];
   };
   review: CompletedChallengeReviewEntry[];
@@ -163,7 +162,6 @@ interface AttemptChoiceRow extends pg.QueryResultRow {
 
 interface CompletionRow extends pg.QueryResultRow {
   completion_id: string;
-  coins_awarded: number;
 }
 
 interface RewardCardRow extends pg.QueryResultRow {
@@ -525,8 +523,7 @@ async function loadCompletedAttempt(
   const completionResult = await database.query<CompletionRow>(
     `
       select
-        completion.id::text as completion_id,
-        completion.coins_awarded
+        completion.id::text as completion_id
       from public.event_completions completion
       where completion.attempt_id = $1::uuid
         and completion.player_id = $2::uuid
@@ -561,7 +558,6 @@ async function loadCompletedAttempt(
   );
 
   const reward = {
-    coinsAwarded: completion.coins_awarded,
     cards: cardResult.rows.map((card) => ({
       ownedCardId: card.owned_card_id,
       cardDefinitionId: card.card_definition_id,

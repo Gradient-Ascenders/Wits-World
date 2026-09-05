@@ -65,6 +65,11 @@ const challenge: AuthorChallenge = {
   publicationProvenance: null,
 };
 
+const orderingChallenge: AuthorChallenge = {
+  ...challenge,
+  format: 'ordering',
+};
+
 const question: AuthorChallengeQuestion = {
   questionId: QUESTION_ID,
   challengeId: CHALLENGE_ID,
@@ -97,6 +102,29 @@ const question: AuthorChallengeQuestion = {
   ],
   acceptedChoiceId: ACCEPTED_CHOICE_ID,
   acceptedChoicePosition: 2,
+  createdAt: '2026-08-15T21:00:00.000Z',
+  updatedAt: '2026-08-15T21:00:00.000Z',
+  version: 0,
+  submittedBy: null,
+  submittedAt: null,
+  reviewedBy: null,
+  reviewedAt: null,
+  publicationProvenance: null,
+};
+
+const orderingQuestion: AuthorChallengeQuestion = {
+  questionId: QUESTION_ID,
+  challengeId: CHALLENGE_ID,
+  format: 'ordering',
+  prompt: 'Order these Wits milestones.',
+  difficulty: 2,
+  explanation: 'The milestones follow this historical sequence.',
+  status: 'draft',
+  items: [1, 2, 3, 4].map((position) => ({
+    itemId: `f6000000-0000-4000-8000-${String(position).padStart(12, '0')}`,
+    position,
+    text: `Milestone ${position}`,
+  })),
   createdAt: '2026-08-15T21:00:00.000Z',
   updatedAt: '2026-08-15T21:00:00.000Z',
   version: 0,
@@ -217,6 +245,27 @@ describe('author challenge API', () => {
     });
   });
 
+  it('creates and returns an ordering challenge', async () => {
+    service.createChallenge.mockResolvedValue(orderingChallenge);
+
+    const response = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/author/events/${EVENT_ID}/challenges`,
+      payload: { format: 'ordering' },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(service.createChallenge).toHaveBeenCalledWith({
+      actorPlayerId: AUTHOR_ID,
+      eventId: EVENT_ID,
+      format: 'ordering',
+    });
+    expect(response.json()).toEqual({
+      challenge: orderingChallenge,
+      requestId: expect.any(String),
+    });
+  });
+
   it('creates a complete draft question without accepting browser choice IDs', async () => {
     service.createQuestion.mockResolvedValue(question);
 
@@ -244,28 +293,6 @@ describe('author challenge API', () => {
   });
 
   it('accepts and returns the protected ordering-question schema', async () => {
-    const orderingQuestion: AuthorChallengeQuestion = {
-      questionId: QUESTION_ID,
-      challengeId: CHALLENGE_ID,
-      format: 'ordering',
-      prompt: 'Order these Wits milestones.',
-      difficulty: 2,
-      explanation: 'The milestones follow this historical sequence.',
-      status: 'draft',
-      items: [1, 2, 3, 4].map((position) => ({
-        itemId: `f6000000-0000-4000-8000-${String(position).padStart(12, '0')}`,
-        position,
-        text: `Milestone ${position}`,
-      })),
-      createdAt: '2026-08-15T21:00:00.000Z',
-      updatedAt: '2026-08-15T21:00:00.000Z',
-      version: 0,
-      submittedBy: null,
-      submittedAt: null,
-      reviewedBy: null,
-      reviewedAt: null,
-      publicationProvenance: null,
-    };
     service.createQuestion.mockResolvedValue(orderingQuestion);
 
     const payload = {
@@ -293,6 +320,46 @@ describe('author challenge API', () => {
       requestId: expect.any(String),
     });
     expect(response.body).not.toContain('acceptedChoice');
+  });
+
+  it('updates and returns an ordering question with its correct sequence', async () => {
+    const updatedQuestion: AuthorChallengeQuestion = {
+      ...orderingQuestion,
+      prompt: 'Order these updated Wits milestones.',
+      explanation: 'The updated milestones remain in historical sequence.',
+      items: orderingQuestion.items.map((item) => ({
+        ...item,
+        text: `Updated ${item.text}`,
+      })),
+      updatedAt: '2026-08-15T21:05:00.000Z',
+      version: 1,
+    };
+    service.updateQuestion.mockResolvedValue(updatedQuestion);
+    const payload = {
+      expectedVersion: 0,
+      format: 'ordering' as const,
+      prompt: updatedQuestion.prompt,
+      difficulty: updatedQuestion.difficulty,
+      explanation: updatedQuestion.explanation,
+      items: updatedQuestion.items.map((item) => item.text),
+    };
+
+    const response = await authenticatedRequest({
+      method: 'PUT',
+      url: `/api/v1/author/questions/${QUESTION_ID}`,
+      payload,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(service.updateQuestion).toHaveBeenCalledWith({
+      actorPlayerId: AUTHOR_ID,
+      questionId: QUESTION_ID,
+      ...payload,
+    });
+    expect(response.json()).toEqual({
+      question: updatedQuestion,
+      requestId: expect.any(String),
+    });
   });
 
   it('rejects mixed ordering and multiple-choice author fields', async () => {

@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildApiConfig } from '../src/config/api.js';
-import { MAX_NODE_TIMER_DELAY_MS } from '../src/events/movement-evidence-cleanup-scheduler.js';
+import {
+  DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
+  MAX_NODE_TIMER_DELAY_MS,
+  MIN_DATABASE_MAINTENANCE_INTERVAL_MS,
+} from '../src/config/timers.js';
 import { MAX_MOVEMENT_EVIDENCE_RETENTION_MS } from '../src/events/movement-evidence.js';
 
 const validEnvironment: NodeJS.ProcessEnv = {
@@ -18,10 +22,11 @@ describe('API configuration', () => {
       host: '127.0.0.1',
       port: 3000,
       logLevel: 'info',
-      accountDeletionRetryIntervalMs: 60000,
+      accountDeletionRetryIntervalMs: DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
       asyncPvpCursorSigningKey: 'test-only-key-with-at-least-32-bytes',
-      asyncPvpDeadlineSweepIntervalMs: 60000,
-      movementEvidenceCleanupIntervalMs: 60000,
+      asyncPvpDeadlineSweepIntervalMs: DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
+      movementEvidenceCleanupIntervalMs:
+        DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
       movementEvidenceRetentionMs: 86400000,
       maxPlausibleJourneySpeedMetresPerSecond: 12.5,
       rateLimitMaxRequests: 120,
@@ -78,11 +83,11 @@ describe('API configuration', () => {
     const config = buildApiConfig({
       env: {
         ...validEnvironment,
-        ACCOUNT_DELETION_RETRY_INTERVAL_MS: '15000',
+        ACCOUNT_DELETION_RETRY_INTERVAL_MS: '1200000',
       },
     });
 
-    expect(config.accountDeletionRetryIntervalMs).toBe(15000);
+    expect(config.accountDeletionRetryIntervalMs).toBe(1_200_000);
   });
 
   it('rejects an invalid account deletion retry interval', () => {
@@ -94,7 +99,7 @@ describe('API configuration', () => {
         },
       }),
     ).toThrow(
-      'ACCOUNT_DELETION_RETRY_INTERVAL_MS must be an integer of at least 1000 milliseconds.',
+      'ACCOUNT_DELETION_RETRY_INTERVAL_MS must be a safe integer between',
     );
   });
 
@@ -115,11 +120,11 @@ describe('API configuration', () => {
     const config = buildApiConfig({
       env: {
         ...validEnvironment,
-        ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS: '15000',
+        ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS: '1200000',
       },
     });
 
-    expect(config.asyncPvpDeadlineSweepIntervalMs).toBe(15_000);
+    expect(config.asyncPvpDeadlineSweepIntervalMs).toBe(1_200_000);
   });
 
   it('rejects a short asynchronous PvP cursor key', () => {
@@ -138,12 +143,12 @@ describe('API configuration', () => {
       env: {
         ...validEnvironment,
         MOVEMENT_EVIDENCE_RETENTION_MS: '3600000',
-        MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS: '30000',
+        MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS: '1200000',
       },
     });
 
     expect(config.movementEvidenceRetentionMs).toBe(3_600_000);
-    expect(config.movementEvidenceCleanupIntervalMs).toBe(30_000);
+    expect(config.movementEvidenceCleanupIntervalMs).toBe(1_200_000);
   });
 
   it.each(['0', '-1', 'Infinity', 'not-a-number'])(
@@ -163,7 +168,11 @@ describe('API configuration', () => {
   );
 
   it.each([
-    ['MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS', '1000', 1_000],
+    [
+      'MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS',
+      String(MIN_DATABASE_MAINTENANCE_INTERVAL_MS),
+      MIN_DATABASE_MAINTENANCE_INTERVAL_MS,
+    ],
     [
       'MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS',
       String(MAX_NODE_TIMER_DELAY_MS),
@@ -191,7 +200,10 @@ describe('API configuration', () => {
   });
 
   it.each([
-    ['MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS', '999'],
+    [
+      'MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS',
+      String(MIN_DATABASE_MAINTENANCE_INTERVAL_MS - 1),
+    ],
     [
       'MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS',
       String(MAX_NODE_TIMER_DELAY_MS + 1),

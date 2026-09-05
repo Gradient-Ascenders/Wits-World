@@ -3,8 +3,11 @@
 ## Status and scope
 
 This document records the Sprint 2 persistence foundation for event quizzes,
-reward issuance, player wallets, and owned card copies. Issue #49 was the design
-input; issue #64 implements the migration layer described here. Challenge and reward routes and finalization services are implemented by their
+reward issuance, and owned card copies. Issue #49 was the original design input;
+issue #64 implements the migration layer described here. Issue #193 supersedes
+the active coin behavior with permanent progression points and card-only
+challenge rewards while retaining the applied legacy schema for history.
+Challenge and reward routes and finalization services are implemented by their
 respective Sprint 2 issues. Issue #182 supersedes issue #77's direct-publish
 authoring model with the five-state reviewed lifecycle documented in the
 [Author curation API contract](../architecture/author-curation-api-contract.md).
@@ -14,8 +17,8 @@ The HTTP behavior is defined by the
 This design extends the existing `events` relation; it does not replace or alter
 the Sprint 1 event columns and eligibility rules.
 
-The catalogue vocabulary, duplicate-ownership policy, coin bands, reward odds,
-and selection behavior used below were confirmed by the team in the
+The catalogue vocabulary, duplicate-ownership policy, reward odds, and
+selection behavior used below were confirmed by the team in the
 [issue #49 product decision record](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/49#issuecomment-2748).
 They are inputs to this persistence proposal rather than rules chosen by the
 schema design.
@@ -44,11 +47,11 @@ from its shared card definition.
 - An attempt stores five distinct questions and their shuffled choice or item
   order.
 - A question can be answered at most once; accepted answers cannot be changed.
-- Completion, coin credit, card awards, and the completion response are one
-  atomic, retry-safe operation.
+- Completion, progression points, card awards, and the completion response are
+  one atomic, retry-safe operation.
 - Each awarded duplicate is a separate owned-card row.
-- Browser input never determines correctness, score, coin value, rarity, or
-  awarded card definition.
+- Browser input never determines correctness, score, progression points,
+  rarity, or awarded card definition.
 - Marking is server-authoritative. While a timed attempt is active, Player
   routes do not expose correct choices or ordering, per-question correctness,
   private answer-key relationships, or explanations.
@@ -91,8 +94,8 @@ erDiagram
   PLAYERS ||--o{ EVENT_COMPLETIONS : earns
   EVENTS ||--o{ EVENT_COMPLETIONS : records
   CHALLENGE_ATTEMPTS ||--|| EVENT_COMPLETIONS : produces
-  PLAYERS ||--|| PLAYER_WALLETS : owns
-  EVENT_COMPLETIONS ||--o| COIN_LEDGER_ENTRIES : credits
+  PLAYERS ||--o| PLAYER_WALLETS : retains_legacy
+  EVENT_COMPLETIONS ||--o| COIN_LEDGER_ENTRIES : retains_legacy
   PLAYERS ||--o{ PLAYER_CARDS : owns
   CARD_DEFINITIONS ||--o{ PLAYER_CARDS : instantiates
   EVENT_COMPLETIONS ||--o{ PLAYER_CARDS : awards
@@ -298,21 +301,26 @@ published transitions rather than retroactively invalidating that legacy row.
 ### `event_completions`
 
 A completion stores `id`, unique `attempt_id`, player, event, score, average
-difficulty, non-negative coins awarded, `reward_policy_version`, and completion
-time. `UNIQUE (player_id, event_id)` independently protects the player/event
-boundary. Finalized completion rows and their matching completed attempts are
-immutable. Policy inputs are snapshots so historical rewards stay explainable
-after balance changes.
+difficulty, `reward_policy_version`, and completion time. The
+`coins_awarded` column remains only for compatibility with applied migrations:
+new completions must store zero, while historical non-zero values remain
+unchanged. `UNIQUE (player_id, event_id)` independently protects the
+player/event boundary. Finalized completion rows and their matching completed
+attempts are immutable. Policy inputs are snapshots so historical rewards stay
+explainable after policy changes.
 
-### Wallet and coin ledger
+### Retired wallet and coin ledger
 
-`player_wallets` uses `player_id` as its primary key and stores a non-negative
-balance and update time. `coin_ledger_entries` is immutable and stores player,
-signed amount, reason, timestamp, and an optional completion reference.
+Migration `0034_retire_coin_rewards.sql` leaves existing `player_wallets` rows
+read-only and makes `coin_ledger_entries` fully immutable. It blocks wallet
+inserts and updates and ledger inserts, updates, and deletes. Historical values
+are neither recalculated nor transferred into points. Account deletion remains
+the only supported wallet deletion path; the legacy ledger and completion
+outcome remain attached to the anonymised player tombstone.
 
-The completion reference is unique for event-reward ledger rows. A positive
-award inserts one entry and increments the locked wallet in one transaction. A
-zero-coin completion inserts no ledger row.
+The active application does not read either relation and never creates a wallet
+or ledger entry. This forward-only treatment preserves migration checksums and
+historical integrity without exposing a spendable balance.
 
 ### `player_cards`
 
@@ -377,25 +385,23 @@ the same deadline and question order.
 
 ## Completion and reward policy
 
-Coins use a deterministic difficulty adjustment within each score band:
+Challenge points use the permanent progression rules. Card rewards use this
+separate score policy:
 
-```text
-coins = min + round(((averageDifficulty - 1) / 2) * (max - min))
-```
+| Correct | Card award                     |
+| ------- | ------------------------------ |
+| `0`     | None                           |
+| `1`     | None                           |
+| `2`     | None                           |
+| `3`     | One Common                     |
+| `4`     | One card: 75% Common, 25% Rare |
+| `5`     | 80% one card, 20% two cards    |
 
-| Correct | Coin band | Card award                     |
-| ------- | --------- | ------------------------------ |
-| `0`     | `0`       | None                           |
-| `1`     | `10-20`   | None                           |
-| `2`     | `20-30`   | None                           |
-| `3`     | `30-40`   | One Common                     |
-| `4`     | `40-50`   | One card: 75% Common, 25% Rare |
-| `5`     | `50-75`   | 80% one card, 20% two cards    |
-
-The implemented completion finalizer persists one or two event-reward card rows
-per completion according to the approved Basic reward policy. The completion and coin-ledger uniqueness
-constraints remain the idempotency boundary, while the ownership query returns
-all cards linked to the persisted completion.
+The implemented completion finalizer persists zero, one, or two event-reward
+card rows per completion according to the approved reward policy. Completion,
+card-outcome, ownership, and point-award uniqueness constraints form the
+idempotency boundary, while the ownership query returns all cards linked to the
+persisted completion.
 
 Each card awarded for five correct answers rolls rarity independently: 45%
 Common, 40% Rare, 14% Epic, and 1% Legendary. After rarity selection, one active
@@ -422,23 +428,23 @@ same transaction:
 2. Load answers and private keys; unanswered questions count as wrong.
 3. Calculate score and rewards from the attempt snapshots.
 4. Insert the event completion.
-5. Insert and apply a positive coin ledger credit.
-6. Insert zero, one, or two retained card-reward outcome rows.
-7. Insert the matching event-reward ownership rows.
-8. Mark the attempt completed with its reason, score, and timestamp.
+5. Insert zero, one, or two retained card-reward outcome rows.
+6. Insert the matching event-reward ownership rows.
+7. Mark the attempt completed with its reason, score, and timestamp.
+8. Record the idempotent progression-point award.
 9. Commit, then return the persisted score/reward result with the review derived
    from the same authoritative attempt state.
 
 Any failure rolls back every effect. Constraints make retries converge on one
-completion instead of issuing additional coins or cards. The expiry worker
+completion instead of issuing additional points or cards. The expiry worker
 claims bounded batches with `FOR UPDATE SKIP LOCKED`, allowing concurrent workers
 without duplicate processing.
 
 For example, a fifth-answer request and the timeout worker can race for the same
 attempt. The first transaction obtains the attempt lock and commits one
 completion. The second then observes the completed state and returns that same
-persisted reward. `UNIQUE (player_id, event_id)` on completions and the unique
-completion reference on event coin credits provide independent backstops.
+persisted reward. `UNIQUE (player_id, event_id)` on completions and unique
+completion/card/progression source constraints provide independent backstops.
 
 ## Completed API representation
 
@@ -448,7 +454,6 @@ The completed attempt gains a server-generated reward result:
 {
   "scoreCorrect": 5,
   "reward": {
-    "coinsAwarded": 63,
     "cards": [
       {
         "ownedCardId": "51000000-0000-4000-8000-000000000001",
@@ -588,6 +593,20 @@ that a second run is a no-op. The
 canonical Basic card roster for all affinities plus the approved Spark
 high-rarity definitions. Card artwork remains separate from this gameplay
 content specification.
+
+Migration `0034_retire_coin_rewards.sql` is deliberately deployed during a
+coordinated API/Web cutover that stops writing and returning coins. Challenge
+traffic remains quiesced until the migration and a post-migration completion
+smoke test succeed. The replacement API requires challenge contract version `2`
+on every challenge-attempt request and rejects absent or stale versions before
+any challenge service runs, so an old Web session cannot mutate or finalise a
+challenge until it hard-refreshes onto the matching build. The migration adds a
+not-valid zero-only constraint so new completion rows cannot award coins without
+scanning or rewriting historical rows, guards the legacy wallet against inserts
+and updates, and guards the legacy ledger against every mutation. Deploying this
+migration before compatible API code would make an older completion finalizer
+fail; rollback is therefore application-first and forward-only rather than a
+down-migration that re-enables coin writes.
 
 ## Card-invariant migration blockers
 
@@ -730,7 +749,7 @@ Issue `#160` implements the transactional retention backend, including deletion
 of individual answers/snapshots and separation of retained card-reward outcomes
 from deleted ownership rows. The exact matrix and retry boundary are documented
 in [Account deletion persistence and retention](./account-deletion-retention.md).
-The player-facing capability remains issue `#161` work.
+Issue `#161` implements the player-facing capability.
 
 This design was planned, generated, edited, and reviewed with the assistance of
 Codex[GPT-5.6 Sol], Codex-CLI[gpt-5.6-sol medium], Codex[GPT-5], and

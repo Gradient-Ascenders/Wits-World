@@ -8,7 +8,7 @@ interface ChallengeResultProps {
 }
 
 export function ChallengeResult({ attempt, headingRef }: ChallengeResultProps) {
-  const { cards, coinsAwarded } = attempt.reward;
+  const { cards } = attempt.reward;
 
   return (
     <section
@@ -39,11 +39,6 @@ export function ChallengeResult({ attempt, headingRef }: ChallengeResultProps) {
       >
         <p className="eyebrow">Saved reward</p>
         <h2 id="challenge-reward-title">Your rewards are recorded</h2>
-        <p>
-          {coinsAwarded === 0
-            ? 'No coins were awarded for this result.'
-            : `${coinsAwarded} ${coinsAwarded === 1 ? 'coin was' : 'coins were'} added to your account.`}
-        </p>
 
         {cards.length === 0 ? (
           <p>No new cards were awarded for this result.</p>
@@ -72,43 +67,99 @@ export function ChallengeResult({ attempt, headingRef }: ChallengeResultProps) {
         <p className="eyebrow">Completed challenge</p>
         <h2 id="challenge-review-title">Review your answers</h2>
         <ol aria-label="Answer review" className="challenge-review">
-          {attempt.review.map((question) => {
-            const answerState =
-              question.selectedChoice === null
-                ? 'Not answered'
-                : question.isCorrect
-                  ? 'Correct'
-                  : 'Incorrect';
-
-            return (
-              <li
-                className={`challenge-review__item challenge-review__item--${
-                  question.selectedChoice === null
-                    ? 'unanswered'
+          {attempt.format === 'ordering'
+            ? attempt.review.map((question) => {
+                const answerState =
+                  question.selectedItems === null
+                    ? 'Not answered'
                     : question.isCorrect
-                      ? 'correct'
-                      : 'incorrect'
-                }`}
-                key={question.attemptQuestionId}
-              >
-                <div className="challenge-review__heading">
-                  <h3>Question {question.position}</h3>
-                  <p className="challenge-review__status">{answerState}</p>
-                </div>
-                <p className="challenge-review__prompt">{question.prompt}</p>
-                <dl className="challenge-review__answers">
-                  <div>
-                    <dt>Your answer</dt>
-                    <dd>{question.selectedChoice?.text ?? 'Not answered'}</dd>
-                  </div>
-                  <div>
-                    <dt>Correct answer</dt>
-                    <dd>{question.correctChoice.text}</dd>
-                  </div>
-                </dl>
-              </li>
-            );
-          })}
+                      ? 'Correct'
+                      : 'Incorrect';
+
+                return (
+                  <li
+                    className={`challenge-review__item challenge-review__item--${
+                      question.selectedItems === null
+                        ? 'unanswered'
+                        : question.isCorrect
+                          ? 'correct'
+                          : 'incorrect'
+                    }`}
+                    key={question.attemptQuestionId}
+                  >
+                    <div className="challenge-review__heading">
+                      <h3>Question {question.position}</h3>
+                      <p className="challenge-review__status">{answerState}</p>
+                    </div>
+                    <p className="challenge-review__prompt">
+                      {question.prompt}
+                    </p>
+                    <dl className="challenge-review__answers">
+                      <div>
+                        <dt>Your order</dt>
+                        <dd>
+                          {question.selectedItems === null ? (
+                            'Not answered'
+                          ) : (
+                            <ReviewOrder items={question.selectedItems} />
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Correct order</dt>
+                        <dd>
+                          <ReviewOrder items={question.correctItems} />
+                        </dd>
+                      </div>
+                    </dl>
+                    <div className="challenge-review__explanation">
+                      <h4>Explanation</h4>
+                      <p>{question.explanation}</p>
+                    </div>
+                  </li>
+                );
+              })
+            : attempt.review.map((question) => {
+                const answerState =
+                  question.selectedChoice === null
+                    ? 'Not answered'
+                    : question.isCorrect
+                      ? 'Correct'
+                      : 'Incorrect';
+
+                return (
+                  <li
+                    className={`challenge-review__item challenge-review__item--${
+                      question.selectedChoice === null
+                        ? 'unanswered'
+                        : question.isCorrect
+                          ? 'correct'
+                          : 'incorrect'
+                    }`}
+                    key={question.attemptQuestionId}
+                  >
+                    <div className="challenge-review__heading">
+                      <h3>Question {question.position}</h3>
+                      <p className="challenge-review__status">{answerState}</p>
+                    </div>
+                    <p className="challenge-review__prompt">
+                      {question.prompt}
+                    </p>
+                    <dl className="challenge-review__answers">
+                      <div>
+                        <dt>Your answer</dt>
+                        <dd>
+                          {question.selectedChoice?.text ?? 'Not answered'}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Correct answer</dt>
+                        <dd>{question.correctChoice.text}</dd>
+                      </div>
+                    </dl>
+                  </li>
+                );
+              })}
         </ol>
       </section>
 
@@ -116,5 +167,19 @@ export function ChallengeResult({ attempt, headingRef }: ChallengeResultProps) {
         Return to explore
       </Link>
     </section>
+  );
+}
+
+function ReviewOrder({
+  items,
+}: {
+  items: readonly { itemId: string; text: string }[];
+}) {
+  return (
+    <ol className="challenge-review__order">
+      {items.map((item) => (
+        <li key={item.itemId}>{item.text}</li>
+      ))}
+    </ol>
   );
 }

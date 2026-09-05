@@ -46,8 +46,8 @@ conflict. Neither case changes either `(iss, sub)` binding or local UUID.
 Under the `BASIC-12` account-deletion workflow, successful deletion clears
 `player_name` together with the Auth0 mapping and role. This releases the local
 unique name only after the external Auth0 account has been deleted successfully.
-The transactional persistence and retention backend is implemented; the
-player-facing account experience remains tracked by issue `#161`. See
+The transactional persistence and retention backend and issue `#161`'s
+player-facing account experience are implemented. See
 [Account deletion persistence and retention](./account-deletion-retention.md)
 for the exact deleted and retained records.
 

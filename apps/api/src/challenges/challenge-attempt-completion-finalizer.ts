@@ -39,7 +39,7 @@ export interface ChallengeAttemptCompletionFinalizerOptions {
   progressionPersistence?: ProgressionPersistence;
 }
 
-const DEFAULT_REWARD_POLICY_VERSION = 'basic-v1';
+const DEFAULT_REWARD_POLICY_VERSION = 'points-cards-v2';
 
 export function createChallengeAttemptCompletionFinalizer(
   options: ChallengeAttemptCompletionFinalizerOptions = {},
@@ -72,7 +72,6 @@ export function createChallengeAttemptCompletionFinalizer(
       const cardDefinitions = await loadActiveCardDefinitions(database);
       const rewardPlan = calculateChallengeRewardPlan(
         input.scoreCorrect,
-        Number(attempt.average_difficulty),
         [...new Set(cardDefinitions.map((card) => card.rarity))],
         randomInteger,
       );
@@ -86,7 +85,6 @@ export function createChallengeAttemptCompletionFinalizer(
       );
 
       const completion = await insertCompletion(database, input, attempt, {
-        coinsAwarded: rewardPlan.coinsAwarded,
         rewardPolicyVersion,
       });
 
@@ -97,29 +95,6 @@ export function createChallengeAttemptCompletionFinalizer(
           completionId,
         );
         return;
-      }
-
-      if (rewardPlan.coinsAwarded > 0) {
-        await database.query(
-          `
-            insert into public.player_wallets (player_id, coin_balance)
-            values ($1::uuid, $2)
-            on conflict (player_id)
-            do update set
-              coin_balance = public.player_wallets.coin_balance + excluded.coin_balance,
-              updated_at = now()
-          `,
-          [input.playerId, rewardPlan.coinsAwarded],
-        );
-
-        await database.query(
-          `
-            insert into public.coin_ledger_entries (
-              player_id, amount, reason, completion_id
-            ) values ($1::uuid, $2, 'event_reward', $3::uuid)
-          `,
-          [input.playerId, rewardPlan.coinsAwarded, completion.completion_id],
-        );
       }
 
       for (const [
@@ -254,7 +229,7 @@ async function insertCompletion(
   database: ChallengeAnswerSubmissionQueryable,
   input: ChallengeAttemptFinalizationInput,
   attempt: ChallengeAttemptRow,
-  reward: { coinsAwarded: number; rewardPolicyVersion: string },
+  reward: { rewardPolicyVersion: string },
 ): Promise<CompletionRow | null> {
   const result = await database.query<CompletionRow>(
     `
@@ -267,7 +242,7 @@ async function insertCompletion(
         coins_awarded,
         reward_policy_version,
         completed_at
-      ) values ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8)
+      ) values ($1::uuid, $2::uuid, $3::uuid, $4, $5, 0, $6, $7)
       on conflict (attempt_id) do nothing
       returning id::text as completion_id
     `,
@@ -277,7 +252,6 @@ async function insertCompletion(
       attempt.event_id,
       input.scoreCorrect,
       Number(attempt.average_difficulty),
-      reward.coinsAwarded,
       reward.rewardPolicyVersion,
       input.completedAt,
     ],

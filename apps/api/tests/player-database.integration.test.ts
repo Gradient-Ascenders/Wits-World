@@ -30,6 +30,7 @@ const runIntegrationTests =
   process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';
 const ORIGINAL_PLAYER_NAME_POLICY_CHECKSUM =
   'f599515f61b897ea3737df05147a3354bcb630b4564e5550220e14cf742090af';
+const TOKEN_ISSUED_AT = new Date('2026-08-30T12:00:00.000Z');
 
 describe.skipIf(!runIntegrationTests)('player database integration', () => {
   let administrationConfig: DatabaseConfig;
@@ -191,6 +192,9 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0031_create_movement_evidence.sql',
           '0032_add_movement_eligibility_decisions.sql',
           '0033_add_async_pvp_invitation_invalidation.sql',
+          '0034_retire_coin_rewards.sql',
+          '0035_deny_deleted_identity_tokens.sql',
+          '0036_remove_duplicate_indexes.sql',
         ],
       });
 
@@ -314,6 +318,9 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0031_create_movement_evidence.sql',
           '0032_add_movement_eligibility_decisions.sql',
           '0033_add_async_pvp_invitation_invalidation.sql',
+          '0034_retire_coin_rewards.sql',
+          '0035_deny_deleted_identity_tokens.sql',
+          '0036_remove_duplicate_indexes.sql',
         ],
       });
 
@@ -398,6 +405,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
         issuer: 'https://auth.example.test/',
         playerName: 'naledi',
         subject: 'auth0|new-player',
+        tokenIssuedAt: TOKEN_ISSUED_AT,
       });
 
       const stored = await client.query<{
@@ -429,6 +437,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
         issuer: 'https://auth.example.test/',
         playerName: null,
         subject: 'google-oauth2|new-player',
+        tokenIssuedAt: TOKEN_ISSUED_AT,
       };
 
       const provisioned = await service.resolve(identity);
@@ -476,23 +485,24 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
         [playerId, issuer, subject],
       );
       await client.query(
-        `insert into public.player_wallets (player_id, coin_balance)
-         values ($1, 17)`,
+        `insert into public.player_starter_grants (id, player_id, affinity)
+         values ('00000000-0000-4000-8000-000000000244', $1, 'wit')`,
         [playerId],
       );
-
       const service = createPlayerIdentityService(client);
       const populated = await service.resolve({
         connectionStrategy: 'auth0',
         issuer,
         playerName: 'professor-nova',
         subject,
+        tokenIssuedAt: TOKEN_ISSUED_AT,
       });
       const synchronized = await service.resolve({
         connectionStrategy: 'auth0',
         issuer,
         playerName: 'professor-nova-2',
         subject,
+        tokenIssuedAt: TOKEN_ISSUED_AT,
       });
 
       const stored = await client.query<{
@@ -520,16 +530,19 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
       expect(populated.id).toBe(playerId);
       expect(synchronized.id).toBe(playerId);
 
-      const wallet = await client.query<{
-        coin_balance: number;
+      const starterGrant = await client.query<{
+        affinity: string;
         player_id: string;
       }>(
-        `select player_id, coin_balance
-           from public.player_wallets
+        `select player_id, affinity
+           from public.player_starter_grants
           where player_id = $1`,
         [playerId],
       );
-      expect(wallet.rows[0]).toEqual({ coin_balance: 17, player_id: playerId });
+      expect(starterGrant.rows[0]).toEqual({
+        affinity: 'wit',
+        player_id: playerId,
+      });
     });
   });
 
@@ -554,6 +567,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           issuer,
           playerName: 'stableplayer',
           subject,
+          tokenIssuedAt: TOKEN_ISSUED_AT,
         }),
       ).resolves.toMatchObject({
         id: playerId,
@@ -659,11 +673,10 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
         [winningPlayerId, losingPlayerId, issuer],
       );
       await client.query(
-        `insert into public.player_wallets (player_id, coin_balance)
-         values ($1, 23)`,
+        `insert into public.player_starter_grants (id, player_id, affinity)
+         values ('00000000-0000-4000-8000-000000000249', $1, 'spark')`,
         [losingPlayerId],
       );
-
       const service = createPlayerIdentityService(client);
       await expect(
         service.resolve({
@@ -671,6 +684,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           issuer,
           playerName: 'reservedplayer',
           subject: 'auth0|sync-loser',
+          tokenIssuedAt: TOKEN_ISSUED_AT,
         }),
       ).rejects.toBeInstanceOf(PlayerNameConflictError);
 
@@ -701,17 +715,17 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
         },
       ]);
 
-      const wallet = await client.query<{
-        coin_balance: number;
+      const starterGrant = await client.query<{
+        affinity: string;
         player_id: string;
       }>(
-        `select player_id, coin_balance
-           from public.player_wallets
+        `select player_id, affinity
+           from public.player_starter_grants
           where player_id = $1`,
         [losingPlayerId],
       );
-      expect(wallet.rows).toEqual([
-        { coin_balance: 23, player_id: losingPlayerId },
+      expect(starterGrant.rows).toEqual([
+        { affinity: 'spark', player_id: losingPlayerId },
       ]);
     });
   });
@@ -727,12 +741,14 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           issuer: 'https://auth.example.test/',
           playerName: 'concurrentplayer',
           subject: 'auth0|concurrent-player-one',
+          tokenIssuedAt: TOKEN_ISSUED_AT,
         },
         {
           connectionStrategy: 'auth0',
           issuer: 'https://auth.example.test/',
           playerName: 'concurrentplayer',
           subject: 'auth0|concurrent-player-two',
+          tokenIssuedAt: TOKEN_ISSUED_AT,
         },
       ] as const;
 
@@ -788,6 +804,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
             issuer: 'https://auth.example.test/',
             playerName: null,
             subject,
+            tokenIssuedAt: TOKEN_ISSUED_AT,
           }),
         ),
       );
@@ -836,6 +853,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
         issuer: 'https://auth.example.test/',
         playerName: null,
         subject: 'google-oauth2|cross-provider-winner',
+        tokenIssuedAt: TOKEN_ISSUED_AT,
       });
       await service.assignInitialPlayerName(
         googlePlayer.id,
@@ -848,6 +866,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           issuer: 'https://auth.example.test/',
           playerName: 'cross-provider-name',
           subject: 'auth0|cross-provider-loser',
+          tokenIssuedAt: TOKEN_ISSUED_AT,
         }),
       ).rejects.toBeInstanceOf(PlayerNameConflictError);
 
@@ -1201,6 +1220,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
             issuer,
             playerName: 'concurrent-player',
             subject,
+            tokenIssuedAt: TOKEN_ISSUED_AT,
           }),
         ),
       );
@@ -1239,6 +1259,24 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
         'id',
         'requested_at',
         'status',
+      ]);
+
+      const denialColumns = await client.query<{ column_name: string }>(
+        `
+          select column_name
+            from information_schema.columns
+           where table_schema = 'private'
+             and table_name = 'deleted_identity_token_denials'
+           order by column_name
+        `,
+      );
+
+      expect(denialColumns.rows.map((row) => row.column_name)).toEqual([
+        'deletion_request_id',
+        'expires_at',
+        'identity_digest',
+        'identity_salt',
+        'tokens_issued_before',
       ]);
     });
   });
@@ -1465,7 +1503,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
     });
   });
 
-  it('purges only completed deletion audits at least twelve months old', async () => {
+  it('purges expired token denials and only twelve-month-old completed audits', async () => {
     await withDatabaseClient(temporaryConfig, async (client) => {
       await client.query(
         `insert into public.account_deletion_requests (
@@ -1473,12 +1511,32 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
         ) values
           ($1, '2025-08-01T00:00:00Z', '2025-08-14T00:00:00Z', 'completed'),
           ($2, '2025-08-01T00:00:00Z', '2025-08-15T00:00:00Z', 'completed'),
-          ($3, '2025-01-01T00:00:00Z', null, 'pending')`,
+          ($3, '2025-01-01T00:00:00Z', null, 'pending'),
+          ($4, '2026-07-01T00:00:00Z', '2026-07-02T00:00:00Z', 'completed')`,
         [
           '00000000-0000-4000-8000-000000000240',
           '00000000-0000-4000-8000-000000000241',
           '00000000-0000-4000-8000-000000000242',
+          '00000000-0000-4000-8000-000000000243',
         ],
+      );
+      await client.query(
+        `
+          insert into private.deleted_identity_token_denials (
+            deletion_request_id,
+            identity_salt,
+            identity_digest,
+            tokens_issued_before,
+            expires_at
+          ) values (
+            $1,
+            decode(repeat('11', 32), 'hex'),
+            decode(repeat('22', 32), 'hex'),
+            '2026-07-02T00:00:00Z',
+            '2026-08-01T00:00:00Z'
+          )
+        `,
+        ['00000000-0000-4000-8000-000000000243'],
       );
 
       const service = createAccountDeletionLifecycle(createPoolFacade(client), {
@@ -1490,19 +1548,29 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
       const remaining = await client.query<{ id: string }>(
         `select id
           from public.account_deletion_requests
-          where id in ($1, $2, $3)
+          where id in ($1, $2, $3, $4)
           order by id`,
         [
           '00000000-0000-4000-8000-000000000240',
           '00000000-0000-4000-8000-000000000241',
           '00000000-0000-4000-8000-000000000242',
+          '00000000-0000-4000-8000-000000000243',
         ],
       );
 
       expect(remaining.rows.map((row) => row.id)).toEqual([
         '00000000-0000-4000-8000-000000000241',
         '00000000-0000-4000-8000-000000000242',
+        '00000000-0000-4000-8000-000000000243',
       ]);
+
+      const denials = await client.query<{ count: string }>(
+        `select count(*)::text as count
+           from private.deleted_identity_token_denials
+          where deletion_request_id = $1`,
+        ['00000000-0000-4000-8000-000000000243'],
+      );
+      expect(denials.rows[0]?.count).toBe('0');
     });
   });
 
