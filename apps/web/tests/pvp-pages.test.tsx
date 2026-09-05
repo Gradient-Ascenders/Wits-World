@@ -408,6 +408,83 @@ describe('asynchronous player battle lobby', () => {
 });
 
 describe('asynchronous PvP battle', () => {
+  it('waits for an opponent replacement without showing local controls', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        pvpMatchResponse(
+          pvpMatch({
+            currentActor: 'opponent',
+            legalActions: [],
+            state: { phase: 'replacement' },
+          }),
+        ),
+      ),
+    );
+    renderPvpMatch();
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Opponent choosing a replacement',
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('heading', {
+        name: 'wits_wanderer is choosing a replacement',
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText('Waiting for wits_wanderer to choose a replacement.'),
+    ).toHaveAttribute('role', 'status');
+    expect(
+      screen.queryByRole('list', { name: 'Your Creature choices' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Use as replacement/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps the viewer replacement turn actionable', async () => {
+    const match = pvpMatch();
+    const defeated = match.state.self.creatures[0]!;
+    const replacement = match.state.self.creatures[1]!;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        pvpMatchResponse(
+          pvpMatch({
+            currentActor: 'self',
+            legalActions: [
+              { creatureId: replacement.id, type: 'select_replacement' },
+            ],
+            state: {
+              phase: 'replacement',
+              self: {
+                ...match.state.self,
+                activeCreatureId: null,
+                creatures: [
+                  { ...defeated, currentHp: 0, defeated: true },
+                  replacement,
+                  match.state.self.creatures[2]!,
+                ],
+              },
+            },
+          }),
+        ),
+      ),
+    );
+    renderPvpMatch();
+
+    expect(
+      await screen.findByRole('heading', { name: 'Choose a replacement' }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('button', {
+        name: /Use as replacement Wit Creature 2/,
+      }),
+    ).toBeEnabled();
+  });
+
   it('renders own turn legal move and Power actions without hidden opponent cards', async () => {
     const user = userEvent.setup();
     vi.stubGlobal(

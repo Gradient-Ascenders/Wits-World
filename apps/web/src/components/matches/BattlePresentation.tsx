@@ -40,8 +40,9 @@ export function BattleActionPanel({
   const [category, setCategory] = useState<'moves' | 'power'>('moves');
   const movesTab = useRef<HTMLButtonElement | null>(null);
   const powerTab = useRef<HTMLButtonElement | null>(null);
+  const opponentReplacement = phase === 'replacement' && !currentActor;
   const selectionPhase =
-    phase === 'initial_selection' || phase === 'replacement';
+    phase === 'initial_selection' || (phase === 'replacement' && currentActor);
   const active = creatures.find((creature) => creature.id === activeCreatureId);
   const isLegal = (intent: BattleActionIntent) =>
     legalActions.some((legal) => sameIntent(legal, intent));
@@ -111,13 +112,15 @@ export function BattleActionPanel({
             {waiting ? 'Battle controls' : 'Your action'}
           </p>
           <h2 id={panelId}>
-            {selectionPhase
-              ? phase === 'replacement'
-                ? 'Choose a replacement'
-                : 'Choose your first Creature'
-              : waiting
-                ? 'Actions paused'
-                : 'Choose one legal action'}
+            {opponentReplacement
+              ? `${opponentLabel} is choosing a replacement`
+              : selectionPhase
+                ? phase === 'replacement'
+                  ? 'Choose a replacement'
+                  : 'Choose your first Creature'
+                : waiting
+                  ? 'Actions paused'
+                  : 'Choose one legal action'}
           </h2>
         </div>
         {busy ? (
@@ -125,7 +128,13 @@ export function BattleActionPanel({
         ) : null}
       </div>
 
-      {selectionPhase ? (
+      {opponentReplacement ? (
+        <div className="battle-action-content">
+          <p className="battle-action-guidance" role="status">
+            Waiting for {opponentLabel} to choose a replacement.
+          </p>
+        </div>
+      ) : selectionPhase ? (
         <ul
           aria-label="Your Creature choices"
           className="battle-action-content creature-choice-list"
