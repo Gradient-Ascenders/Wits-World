@@ -16,6 +16,8 @@ export interface MapPoint {
   longitude: number;
   radiusMetres?: number;
   reachable?: boolean;
+  selectable?: boolean;
+  trailState?: 'completed' | 'current' | 'locked' | 'retired' | 'unavailable';
 }
 
 export interface MapCoordinate {
@@ -680,6 +682,13 @@ export const createMapboxMap: MapFactory = async (
     ended: 'ended',
     upcoming: 'upcoming',
   } as const;
+  const trailStateLabels = {
+    completed: 'completed trail stop',
+    current: 'current trail stop',
+    locked: 'locked trail stop',
+    retired: 'retired trail stop',
+    unavailable: 'unavailable trail stop',
+  } as const;
 
   const renderPoints = (nextPoints: readonly MapPoint[]): void => {
     const pointIds = new Set(nextPoints.map((point) => point.id));
@@ -740,20 +749,26 @@ export const createMapboxMap: MapFactory = async (
 
       const availability = point.availability ?? 'active';
       const selected = markerInteraction.selectedPointId === point.id;
+      const selectable = point.selectable !== false;
       record.button.className = [
         'event-marker',
         `event-marker--${availability}`,
+        point.trailState ? `event-marker--trail-${point.trailState}` : '',
         selected ? 'event-marker--selected' : '',
         point.draggable ? 'event-marker--draggable' : '',
         point.reachable ? 'event-marker--reachable' : '',
       ]
         .filter(Boolean)
         .join(' ');
+      record.button.disabled = !selectable;
+      record.button.dataset.trailState = point.trailState ?? '';
       record.button.setAttribute(
         'aria-label',
         point.draggable
           ? `Focus ${point.label}. Drag the marker to adjust it, or use the coordinate fields for keyboard entry.`
-          : `Select ${point.label}, ${availabilityLabels[availability]}${point.reachable ? ', in range' : ''}`,
+          : point.trailState
+            ? `${selectable ? 'Select ' : ''}${point.label}, ${trailStateLabels[point.trailState]}`
+            : `Select ${point.label}, ${availabilityLabels[availability]}${point.reachable ? ', in range' : ''}`,
       );
       record.button.setAttribute('aria-pressed', String(selected));
       record.button.title = point.label;

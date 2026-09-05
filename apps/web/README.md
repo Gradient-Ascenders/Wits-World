@@ -5,11 +5,11 @@ is the project and primary public brand; Wits Quest is the campus-exploration
 game/topic the project is building.
 
 The current application provides a responsive shell, Auth0 sign-in and sign-out,
-a protected campus map, authenticated published-event discovery, safe API
-access-token retrieval, and a premium editorial home page. The home-page map,
-event status, and collectible cards are explicitly static product previews; the
-live seeded-event experience is available through the protected `/explore`
-route. The protected experience includes foreground browser geolocation,
+a protected campus map, authenticated event, nearby-unvisited, and ordered-trail
+discovery, safe API access-token retrieval, and a premium editorial home page.
+The home-page map, event status, and collectible cards are explicitly static
+product previews; the live seeded-event experience is available through the
+protected `/explore` route. The protected experience includes foreground browser geolocation,
 API-authoritative event eligibility, and the protected timed challenge journey.
 Challenges restore their server-owned attempt, submit answer intent only, and
 display the persisted final score, rewards, and completed answer review. Card
@@ -795,6 +795,41 @@ With `apps/web/.env` configured and the development server running:
 13. Capture the authenticated map at 390×844 and 1280×800 under
     `.pr-screenshots/issue-12/`, along with keyboard and failure-state evidence
     required by the Gitea issue.
+
+#### Authenticated trails and nearby discovery
+
+1. Start the API and web application from the repository root with
+   `npm run dev --workspace @wits-world/api` and
+   `npm run dev --workspace @wits-world/web`, then sign in as a player and open
+   `http://localhost:5173/explore`.
+2. Open the exploration sheet and use its Events, Nearby, and Trails controls.
+   Confirm each is reachable with Tab and Enter, the active view is named in
+   text, and event discovery remains usable without interacting with the map.
+3. In Trails, open an incomplete trail. Confirm completed, current, locked,
+   temporarily unavailable, event-retired, and trail-retired stops use readable
+   labels and icons. For a completed trail, confirm the completion notice appears
+   and no current-event action is offered.
+4. Choose **Open current event**. Confirm the existing event detail opens and
+   continues through the existing reported-location eligibility and challenge
+   start flow; locked and unavailable stops must not expose that action.
+5. In Nearby, grant location permission and confirm the text list and map show
+   the same active unvisited event set, ordered by the API-provided distance.
+   Open one from the list and confirm the matching existing event detail opens.
+6. Repeat Nearby with permission denied, an inaccurate or stale reported
+   location, no results, the API unavailable, and a malformed mocked response.
+   Confirm the safe status and retry copy appears without hiding Events or
+   Trails, exposing coordinates, or claiming verified presence.
+7. Inspect `/explore` at approximately 390×844 and 1280×800. At 360px, also use
+   a trail/event with long title and description text and confirm there is no
+   horizontal overflow. Check the complete flow with Tab, Shift+Tab, Enter,
+   Space, and Escape, and inspect the console for runtime errors.
+
+The deterministic responsive browser scenario uses intercepted API responses
+and does not prove live location or database behaviour:
+
+```bash
+npm run test:e2e:trails --workspace @wits-world/web
+```
 
 #### Authenticated location eligibility
 

@@ -166,7 +166,9 @@ describe('map-first campus exploration', () => {
     render(<CampusExplorer {...explorerProps(mapFactory)} />);
 
     await user.click(screen.getByRole('button', { name: /^Events/ }));
-    const panel = screen.getByRole('complementary', { name: 'Campus events' });
+    const panel = screen.getByRole('complementary', {
+      name: 'Campus discovery',
+    });
     expect(panel).toHaveAttribute('data-sheet-snap', 'medium');
 
     await user.click(

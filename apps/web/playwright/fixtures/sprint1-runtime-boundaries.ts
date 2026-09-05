@@ -210,24 +210,30 @@ export const mapFactory: MapFactory = async (
     points.forEach((point, index) => {
       const button = document.createElement('button');
       const availability = point.availability ?? 'active';
+      const selectable = point.selectable !== false;
       button.type = 'button';
       button.dataset.eventMarkerId = point.id;
       button.dataset.markerDraggable = String(point.draggable === true);
       button.dataset.markerLatitude = String(point.latitude);
       button.dataset.markerLongitude = String(point.longitude);
+      button.dataset.trailState = point.trailState ?? '';
       button.className = [
         'event-marker',
         `event-marker--${availability}`,
+        point.trailState ? `event-marker--trail-${point.trailState}` : '',
         selectedPoint?.id === point.id ? 'event-marker--selected' : '',
         point.reachable ? 'event-marker--reachable' : '',
       ]
         .filter(Boolean)
         .join(' ');
+      button.disabled = !selectable;
       button.setAttribute(
         'aria-label',
         point.draggable
           ? `Focus ${point.label}. Drag the marker to adjust it, or use the coordinate fields for keyboard entry.`
-          : `Select ${point.label}, ${availability === 'active' ? 'available now' : availability}`,
+          : point.trailState
+            ? `${selectable ? 'Select ' : ''}${point.label}, ${point.trailState} trail stop`
+            : `Select ${point.label}, ${availability === 'active' ? 'available now' : availability}`,
       );
       button.setAttribute(
         'aria-pressed',

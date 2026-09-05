@@ -11,6 +11,14 @@ import {
   type EventPresentation,
   type LocationExperienceState,
 } from './EventList';
+import {
+  NearbyList,
+  TrailDetail,
+  TrailList,
+  type NearbyDiscoveryState,
+  type TrailDetailState,
+  type TrailListState,
+} from './TrailDiscovery';
 import type {
   MapConfiguration,
   MapFactory,
@@ -26,18 +34,25 @@ interface CampusExplorerProps {
   locationState: LocationExperienceState;
   mapConfiguration: MapConfiguration;
   mapFactory?: MapFactory;
+  nearbyDiscovery?: NearbyDiscoveryState;
   onEnableLocation: () => void;
   onClearEventSelection: () => void;
+  onLoadNearby?: () => void;
+  onLoadTrails?: () => void;
+  onOpenTrail?: (trailId: string) => void;
   onRetry: () => void;
   onRetryEligibility: (eventId: string) => void;
   onSelectEvent: (eventId: string) => void;
   onStartChallenge?: (eventId: string) => void;
   reportedLocation?: ReportedMapLocation | null;
   selectedEventId: string | null;
+  trailDetail?: TrailDetailState;
+  trailDiscovery?: TrailListState;
 }
 
 type EventPanelMode = 'list' | 'peek' | 'selected';
 type EventAvailabilityFilter = 'active' | 'all' | 'ended' | 'upcoming';
+type DiscoverySection = 'events' | 'nearby' | 'trail-detail' | 'trails';
 
 export function filterEventPresentations(
   events: readonly EventPresentation[],
@@ -61,8 +76,11 @@ export function filterEventPresentations(
   });
 }
 
+type MapEventPresentation = EventPresentation &
+  Pick<MapPoint, 'selectable' | 'trailState'>;
+
 function toMapPoints(
-  events: readonly EventPresentation[],
+  events: readonly MapEventPresentation[],
   eligibility: Readonly<Record<string, EventEligibilityState | undefined>>,
 ): MapPoint[] {
   return events.map((event) => ({
@@ -73,6 +91,8 @@ function toMapPoints(
     longitude: event.longitude,
     radiusMetres: event.radiusMetres,
     reachable: eligibility[event.id]?.status === 'reachable',
+    ...(event.selectable === undefined ? {} : { selectable: event.selectable }),
+    ...(event.trailState === undefined ? {} : { trailState: event.trailState }),
   }));
 }
 
@@ -83,15 +103,23 @@ export function CampusExplorer({
   locationState,
   mapConfiguration,
   mapFactory,
+  nearbyDiscovery = { status: 'idle' },
   onEnableLocation,
   onClearEventSelection,
+  onLoadNearby = () => undefined,
+  onLoadTrails = () => undefined,
+  onOpenTrail = () => undefined,
   onRetry,
   onRetryEligibility,
   onSelectEvent,
   onStartChallenge = () => undefined,
   reportedLocation = null,
   selectedEventId,
+  trailDetail = { status: 'idle' },
+  trailDiscovery = { status: 'idle' },
 }: CampusExplorerProps) {
+  const [discoverySection, setDiscoverySection] =
+    useState<DiscoverySection>('events');
   const [following, setFollowing] = useState(false);
   const [panelMode, setPanelMode] = useState<EventPanelMode>('peek');
   const [sheetSnap, setSheetSnap] = useState<BottomSheetSnap>('peek');
@@ -104,28 +132,115 @@ export function CampusExplorer({
   const panelRef = useRef<HTMLElement>(null);
   const peekButtonRef = useRef<HTMLButtonElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
+  const selectionOriginRef =
+    useRef<Exclude<DiscoverySection, 'trails'>>('events');
   const selectionFromListRef = useRef(false);
   const preserveControlFocusRef = useRef(false);
   const openedSelectedEventIdRef = useRef<string | null>(null);
   const filteredSelectionClearRef = useRef<string | null>(null);
   const events = discovery.status === 'ready' ? discovery.events : [];
+  const nearbyEvents =
+    nearbyDiscovery.status === 'ready'
+      ? nearbyDiscovery.events.map((event) => ({
+          availability: 'active' as const,
+          description: event.description,
+          endsAt: event.endsAt,
+          id: event.eventId,
+          latitude: event.latitude,
+          longitude: event.longitude,
+          radiusMetres: event.radiusMetres,
+          startsAt: event.startsAt,
+          title: event.title,
+        }))
+      : [];
+  const trailEvents =
+    trailDetail.status === 'ready'
+      ? trailDetail.trail.steps.map((step) => ({
+          availability:
+            step.unavailableReason === 'upcoming'
+              ? ('upcoming' as const)
+              : step.unavailableReason === 'ended'
+                ? ('ended' as const)
+                : ('active' as const),
+          description: step.description,
+          endsAt: step.endsAt,
+          id: step.eventId,
+          latitude: step.latitude,
+          longitude: step.longitude,
+          radiusMetres: step.radiusMetres,
+          selectable: step.state === 'current',
+          startsAt: step.startsAt,
+          title: step.title,
+          trailState:
+            step.state === 'unavailable' &&
+            (step.unavailableReason === 'event_retired' ||
+              step.unavailableReason === 'trail_retired')
+              ? ('retired' as const)
+              : step.state,
+        }))
+      : [];
+  const eventCatalog = useMemo(() => {
+    const catalog = new Map<string, EventPresentation>();
+    for (const event of [...events, ...nearbyEvents, ...trailEvents]) {
+      if (!catalog.has(event.id)) catalog.set(event.id, event);
+    }
+    return [...catalog.values()];
+  }, [events, nearbyEvents, trailEvents]);
   const visibleEvents = useMemo(
     () => filterEventPresentations(events, searchQuery, availabilityFilter),
     [availabilityFilter, events, searchQuery],
   );
+  const mapEvents =
+    discoverySection === 'events'
+      ? visibleEvents
+      : discoverySection === 'nearby'
+        ? nearbyDiscovery.status === 'ready'
+          ? nearbyEvents
+          : []
+        : discoverySection === 'trail-detail'
+          ? trailDetail.status === 'ready'
+            ? trailEvents
+            : []
+          : [];
   const points = useMemo(
-    () => toMapPoints(visibleEvents, eligibility),
-    [eligibility, visibleEvents],
+    () => toMapPoints(mapEvents, eligibility),
+    [eligibility, mapEvents],
   );
   const selectedEvent =
-    events.find((event) => event.id === selectedEventId) ?? null;
+    eventCatalog.find((event) => event.id === selectedEventId) ?? null;
   const selectedPoint =
     points.find((point) => point.id === selectedEventId) ?? null;
   const hasActiveFilters =
     searchQuery.trim().length > 0 || availabilityFilter !== 'all';
 
+  const focusDiscoveryReturnTarget = useCallback(
+    (eventId: string | null = selectedEventId): void => {
+      window.setTimeout(() => {
+        const panel = panelRef.current;
+        if (!panel) return;
+
+        const eventControl = [
+          ...panel.querySelectorAll<HTMLElement>('[data-event-id]'),
+        ].find((element) => element.dataset.eventId === eventId);
+        const target =
+          eventControl ??
+          panel.querySelector<HTMLElement>('[aria-pressed="true"]') ??
+          panel.querySelector<HTMLElement>(
+            '.discovery-navigation__item[aria-current="page"]',
+          ) ??
+          panel.querySelector<HTMLElement>('h2');
+        target?.focus();
+      }, 0);
+    },
+    [selectedEventId],
+  );
+
   useEffect(() => {
-    if (discovery.status !== 'ready' || selectedEventId === null) {
+    if (
+      discovery.status !== 'ready' ||
+      selectedEventId === null ||
+      selectionOriginRef.current !== 'events'
+    ) {
       filteredSelectionClearRef.current = null;
       return;
     }
@@ -151,11 +266,7 @@ export function CampusExplorer({
     if (panelMode === 'selected' && selectionFromListRef.current) {
       setPanelMode('list');
       setSheetSnap('medium');
-      window.setTimeout(() => {
-        panelRef.current
-          ?.querySelector<HTMLElement>('[aria-pressed="true"]')
-          ?.focus();
-      }, 0);
+      focusDiscoveryReturnTarget();
       return;
     }
 
@@ -168,7 +279,7 @@ export function CampusExplorer({
         peekButtonRef.current?.focus();
       }
     }, 0);
-  }, [panelMode]);
+  }, [focusDiscoveryReturnTarget, panelMode]);
 
   useEffect(() => {
     if (selectedEventId === null) {
@@ -200,6 +311,25 @@ export function CampusExplorer({
   }, [panelMode, selectedEventId]);
 
   useEffect(() => {
+    if (panelMode !== 'list') return;
+
+    const activeElement = document.activeElement;
+    const focusWasLost =
+      activeElement === document.body ||
+      !(activeElement instanceof HTMLElement) ||
+      !activeElement.isConnected;
+    if (!focusWasLost) return;
+
+    panelRef.current?.querySelector<HTMLElement>('h2')?.focus();
+  }, [
+    discoverySection,
+    nearbyDiscovery.status,
+    panelMode,
+    trailDetail.status,
+    trailDiscovery.status,
+  ]);
+
+  useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape' || panelMode === 'peek') {
         return;
@@ -217,7 +347,12 @@ export function CampusExplorer({
     return () => document.removeEventListener('keydown', closeOnEscape);
   }, [dismissPanel, panelMode, sheetSnap]);
 
-  const selectEvent = (eventId: string): void => {
+  const selectEvent = (
+    eventId: string,
+    origin: Exclude<DiscoverySection, 'trails'> = discoverySection === 'trails'
+      ? 'events'
+      : discoverySection,
+  ): void => {
     returnFocusRef.current =
       document.activeElement instanceof HTMLElement
         ? document.activeElement
@@ -225,9 +360,10 @@ export function CampusExplorer({
     selectionFromListRef.current = Boolean(
       returnFocusRef.current?.closest('.event-panel'),
     );
+    selectionOriginRef.current = origin;
     onSelectEvent(eventId);
     setFocusPointRequest((current) => current + 1);
-    const event = events.find((candidate) => candidate.id === eventId);
+    const event = eventCatalog.find((candidate) => candidate.id === eventId);
     setFocusAnnouncement(
       event === undefined
         ? ''
@@ -256,13 +392,33 @@ export function CampusExplorer({
   };
 
   const showEventList = (): void => {
+    setDiscoverySection(selectionOriginRef.current);
     setPanelMode('list');
-    setSheetSnap('medium');
+    setSheetSnap(
+      selectionOriginRef.current === 'trail-detail' ? 'expanded' : 'medium',
+    );
+    focusDiscoveryReturnTarget();
+  };
+
+  const showDiscoverySection = (
+    section: Exclude<DiscoverySection, 'trail-detail'>,
+  ): void => {
+    setDiscoverySection(section);
+    if (section === 'nearby') onLoadNearby();
+    if (section === 'trails') onLoadTrails();
     window.setTimeout(() => {
-      panelRef.current
-        ?.querySelector<HTMLElement>('[aria-pressed="true"]')
-        ?.focus();
+      panelRef.current?.querySelector<HTMLElement>('h2')?.focus();
     }, 0);
+  };
+
+  const openTrail = (trailId: string): void => {
+    onOpenTrail(trailId);
+    setDiscoverySection('trail-detail');
+    setSheetSnap('expanded');
+  };
+
+  const openTrailEvent = (eventId: string): void => {
+    selectEvent(eventId, 'trail-detail');
   };
 
   const clearFilters = (): void => {
@@ -341,8 +497,12 @@ export function CampusExplorer({
       </div>
 
       <BottomSheetSurface
-        ariaLabel="Campus events"
-        className={`event-panel event-panel--${panelMode}`}
+        ariaLabel="Campus discovery"
+        className={`event-panel event-panel--${panelMode}${
+          discoverySection === 'trail-detail'
+            ? ' event-panel--trail-detail'
+            : ''
+        }`}
         id="explore-event-sheet"
         onSnapChange={changeSheetSnap}
         panelRef={panelRef}
@@ -396,12 +556,19 @@ export function CampusExplorer({
           </button>
         ) : null}
 
-        {panelMode === 'list' ? (
+        {panelMode === 'list' && discoverySection !== 'trail-detail' ? (
           <>
             <div className="event-panel__header">
               <div>
-                <h2 tabIndex={-1}>Campus events</h2>
-                {discovery.status === 'ready' ? (
+                <h2 tabIndex={-1}>
+                  {discoverySection === 'events'
+                    ? 'Campus events'
+                    : discoverySection === 'nearby'
+                      ? 'Nearby to you'
+                      : 'Trails'}
+                </h2>
+                {discoverySection === 'events' &&
+                discovery.status === 'ready' ? (
                   <span className="event-panel__summary">
                     {visibleEvents.length === events.length
                       ? `${events.length} published`
@@ -410,7 +577,13 @@ export function CampusExplorer({
                 ) : null}
               </div>
               <button
-                aria-label="Collapse events"
+                aria-label={
+                  discoverySection === 'events'
+                    ? 'Collapse events'
+                    : discoverySection === 'nearby'
+                      ? 'Collapse nearby discovery'
+                      : 'Collapse trails'
+                }
                 className="event-panel__close"
                 onClick={collapsePanel}
                 type="button"
@@ -419,7 +592,32 @@ export function CampusExplorer({
               </button>
             </div>
             <div className="event-panel__scroll">
-              {discovery.status === 'ready' ? (
+              <nav
+                aria-label="Campus discovery"
+                className="discovery-navigation"
+              >
+                {(
+                  [
+                    ['events', 'Events'],
+                    ['nearby', 'Nearby'],
+                    ['trails', 'Trails'],
+                  ] as const
+                ).map(([section, label]) => (
+                  <button
+                    aria-current={
+                      discoverySection === section ? 'page' : undefined
+                    }
+                    className="discovery-navigation__item"
+                    key={section}
+                    onClick={() => showDiscoverySection(section)}
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </nav>
+
+              {discoverySection === 'events' && discovery.status === 'ready' ? (
                 <div className="event-discovery-controls">
                   <label className="event-search">
                     <span className="sr-only">Search campus events</span>
@@ -451,7 +649,9 @@ export function CampusExplorer({
                 </div>
               ) : null}
 
-              {discovery.status === 'ready' && visibleEvents.length === 0 ? (
+              {discoverySection === 'events' &&
+              discovery.status === 'ready' &&
+              visibleEvents.length === 0 ? (
                 <div aria-live="polite" className="event-list__state">
                   <strong>No events match these filters.</strong>
                   <p>Adjust the search or status to see more campus events.</p>
@@ -464,7 +664,7 @@ export function CampusExplorer({
                     Clear filters
                   </button>
                 </div>
-              ) : (
+              ) : discoverySection === 'events' ? (
                 <EventList
                   discovery={
                     discovery.status === 'ready'
@@ -476,7 +676,58 @@ export function CampusExplorer({
                   onSelect={selectEvent}
                   selectedEventId={selectedEventId}
                 />
+              ) : discoverySection === 'nearby' ? (
+                <NearbyList
+                  locationState={locationState}
+                  onEnableLocation={onEnableLocation}
+                  onOpenEvent={(eventId) => selectEvent(eventId, 'nearby')}
+                  onRetry={onLoadNearby}
+                  state={nearbyDiscovery}
+                />
+              ) : (
+                <TrailList
+                  onOpenTrail={openTrail}
+                  onRetry={onLoadTrails}
+                  state={trailDiscovery}
+                />
               )}
+            </div>
+          </>
+        ) : null}
+
+        {panelMode === 'list' && discoverySection === 'trail-detail' ? (
+          <>
+            <div className="event-panel__toolbar">
+              <button
+                className="event-panel__back"
+                onClick={() => showDiscoverySection('trails')}
+                type="button"
+              >
+                ← Trails
+              </button>
+              <button
+                aria-label="Collapse trail details"
+                className="event-panel__close"
+                onClick={collapsePanel}
+                type="button"
+              >
+                ×
+              </button>
+            </div>
+            <div className="event-panel__scroll">
+              <TrailDetail
+                onOpenEvent={openTrailEvent}
+                onRetry={() => {
+                  if (trailDetail.status !== 'idle') {
+                    onOpenTrail(
+                      trailDetail.status === 'ready'
+                        ? trailDetail.trail.trailId
+                        : trailDetail.trailId,
+                    );
+                  }
+                }}
+                state={trailDetail}
+              />
             </div>
           </>
         ) : null}
@@ -489,7 +740,11 @@ export function CampusExplorer({
                 onClick={showEventList}
                 type="button"
               >
-                All events
+                {selectionOriginRef.current === 'nearby'
+                  ? '← Nearby'
+                  : selectionOriginRef.current === 'trail-detail'
+                    ? '← Trail'
+                    : 'All events'}
               </button>
               <button
                 aria-label="Collapse event details"

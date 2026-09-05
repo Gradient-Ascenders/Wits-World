@@ -112,13 +112,33 @@ Author operations:
 The generated OpenAPI document is authoritative for request and response
 schemas.
 
+## Player discovery experience
+
+The authenticated `/explore` sheet provides map-independent **Events**,
+**Nearby**, and **Trails** views. Trail summaries show authoritative completed
+and total step counts. Trail detail preserves the server-returned order and
+labels every stop as completed, current, locked, unavailable, or retired with
+text and an icon rather than colour alone.
+
+Only a server-returned `current` step exposes **Open current event**. That action
+opens the existing event detail, reported-location eligibility, and challenge
+start journey; it does not create a trail-specific challenge path or infer
+eligibility in React.
+
+Nearby discovery runs only after a player asks for that view and a usable
+reported-location claim is available. The result list and displayed map-marker
+set use the same API response. Empty, permission-denied, inaccurate, malformed,
+retired, and network-failure states retain the full event and trail lists as
+alternatives and expose a safe retry where retry can help.
+
 ## Deferred work
 
 This implementation does not add offline trails, automatic route optimisation,
-advanced event placement, a trail-specific reward, or a browser trail UI.
+advanced event placement, or a trail-specific reward.
 
 ## AI declaration
 
 This rule document was generated, edited, and reviewed with the assistance of
-Codex-CLI[gpt-5.6-sol medium]. It records the decisions approved for issue
-`#176` and was reconciled with the implemented API and migration.
+Codex-CLI[gpt-5.6-sol medium] and Codex-CLI[GPT-5]. It records the decisions
+approved for issues `#176` and `#177` and was reconciled with the implemented
+API, migration, and player discovery UI.

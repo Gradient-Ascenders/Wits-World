@@ -25,6 +25,7 @@ import { createEventEligibilityService } from '../src/events/event-eligibility.j
 import { evaluateReachabilityWithAccuracy } from '../src/events/location-claim.js';
 
 const DEMO_EVENT_ID = '00000000-0000-4000-8000-000000000018';
+const DEMO_TRAIL_ID = '00000000-0000-4000-8000-000000000177';
 const runIntegrationTests =
   process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';
 
@@ -301,7 +302,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
 
       expect(seededEvent.rows).toHaveLength(1);
       expect(seededEvent.rows[0]).toMatchObject({
-        count: '5',
+        count: '8',
         authoring_status: 'published',
         is_published: true,
         latitude: -26.19205,
@@ -377,6 +378,73 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
           eventId: '00000000-0000-4000-8000-000000000020',
           title: 'Basic Demo - Upcoming Campus Event',
         }),
+        expect.objectContaining({
+          availability: 'upcoming',
+          eventId: '00000000-0000-4000-8000-000000000023',
+          title: 'Trail Demo - Great Hall',
+        }),
+        expect.objectContaining({
+          availability: 'upcoming',
+          eventId: '00000000-0000-4000-8000-000000000024',
+          title: 'Trail Demo - Library Lawns',
+        }),
+        expect.objectContaining({
+          availability: 'upcoming',
+          eventId: '00000000-0000-4000-8000-000000000025',
+          title: 'Trail Demo - Senate House',
+        }),
+      ]);
+    });
+  }, 30_000);
+
+  it('seeds an idempotent three-stop trail with playable challenges', async () => {
+    await withDatabaseClient(temporaryConfig, async (client) => {
+      const fixture = await client.query<{
+        answer_key_count: string;
+        challenge_count: string;
+        choice_count: string;
+        event_count: string;
+        published_question_count: string;
+        status: string;
+        title: string;
+      }>(
+        `select
+           trail.title,
+           trail.status,
+           count(distinct step.event_id)::text as event_count,
+           count(distinct challenge.id)::text as challenge_count,
+           count(distinct question.id) filter (
+             where question.status = 'published'
+           )::text as published_question_count,
+           count(distinct choice.id)::text as choice_count,
+           count(distinct answer_key.question_id)::text as answer_key_count
+         from public.trails trail
+         join public.trail_events step
+           on step.trail_id = trail.id
+         join public.event_challenges challenge
+           on challenge.event_id = step.event_id
+          and challenge.status = 'published'
+         join public.challenge_questions question
+           on question.challenge_id = challenge.id
+         join public.challenge_choices choice
+           on choice.question_id = question.id
+         join private.challenge_answer_keys answer_key
+           on answer_key.question_id = question.id
+         where trail.id = $1::uuid
+         group by trail.id, trail.title, trail.status`,
+        [DEMO_TRAIL_ID],
+      );
+
+      expect(fixture.rows).toEqual([
+        {
+          answer_key_count: '15',
+          challenge_count: '3',
+          choice_count: '60',
+          event_count: '3',
+          published_question_count: '15',
+          status: 'published',
+          title: 'Campus Highlights Trail',
+        },
       ]);
     });
   }, 30_000);

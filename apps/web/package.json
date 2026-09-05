@@ -21,6 +21,7 @@
     "test:e2e:sprint1:playwright": "playwright test --config=playwright.sprint1.config.ts",
     "test:e2e:basic:playwright": "playwright test --config=playwright.basic.config.ts",
     "test:e2e:starter": "playwright test --config=playwright.starter.config.ts",
+    "test:e2e:trails": "playwright test --config=playwright/trails.config.ts",
     "test:e2e:battle": "playwright test --config=playwright.battle.config.ts",
     "test:e2e:progression": "playwright test --config=playwright/progression.config.ts",
     "test:e2e:auth": "playwright test --project=auth-setup",

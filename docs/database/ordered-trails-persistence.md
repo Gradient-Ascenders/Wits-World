@@ -168,11 +168,14 @@ that registers trail services. The migration is additive except for extending
 the existing Author audit entity constraint to accept `trail`. It does not
 rewrite events, attempts, completions, or player records.
 
-No trail seed is added by issue `#176`; Authors create trail definitions through
-the protected API.
+Issue `#176` did not add a trail seed. Issue `#177` adds the explicitly enabled,
+non-production `Campus Highlights Trail` to the `basic-demo` seed set for local
+and disposable-database UI verification. Authors create normal trail
+definitions through the protected API.
 
 ## AI declaration
 
 This persistence design was generated, edited, and reviewed with the assistance
-of Codex-CLI[gpt-5.6-sol medium]. Schema, SQL, API, and test claims were checked
-against migration `0027` and the implemented trail modules.
+of Codex-CLI[gpt-5.6-sol medium] and Codex-CLI[GPT-5]. Schema, SQL, API, test,
+and development-fixture claims were checked against migration `0027` and the
+implemented trail modules.
