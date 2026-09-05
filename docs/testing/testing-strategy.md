@@ -216,7 +216,7 @@ rejection, immutable audit, no-match guarantees, stable pagination, and races
 against acceptance, decline, expiry, and invalidation; scheduler tests cover immediate startup,
 non-overlap, safe failure containment, and clean shutdown. The explicit
 database runner uses only `TEST_DATABASE_URL`, provisions isolated temporary
-databases, and must cover migrations `0028`, `0033`, `0037`, and `0038`. Route, client,
+databases, and must cover migrations `0028`, `0033`, `0037`, and `0039`. Route, client,
 component, and Playwright coverage must also verify CORS-safelisted media-type
 negotiation, legacy fallback, overdue-detail finalization, capability gating,
 confirmation/focus behavior, repeated-click protection, and ambiguous-response
@@ -257,7 +257,7 @@ for demonstrating the acceptance criteria and protected invariants.
 ## AI declaration
 
 This testing strategy was generated, edited, and reviewed with the assistance
-of Codex[GPT-5], Codex[gpt-5.6-sol], Codex-CLI[GPT-5], and
+of Codex[GPT-6], Codex[GPT-5], Codex[gpt-5.6-sol], Codex-CLI[GPT-5], and
 Codex-CLI[gpt-5.6-sol medium].
 Repository paths and workflow claims were checked against the current source;
 this declaration is not test evidence.

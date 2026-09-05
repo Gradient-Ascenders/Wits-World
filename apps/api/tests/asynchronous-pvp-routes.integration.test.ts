@@ -219,6 +219,46 @@ describe('asynchronous PvP routes', () => {
     });
   });
 
+  it.each(['accept', 'decline'] as const)(
+    'translates a cancelled %s race for pre-v3 clients',
+    async (operation) => {
+      const method =
+        operation === 'accept'
+          ? service.acceptInvitation
+          : service.declineInvitation;
+      for (const accept of [undefined, PVP_V2_ACCEPT, PVP_ACCEPT]) {
+        method.mockRejectedValueOnce(
+          new AsyncPvpError(
+            'PVP_INVITATION_CANCELLED',
+            'Invitation was cancelled.',
+          ),
+        );
+        const response = await app.inject({
+          method: 'POST',
+          url: `/api/v1/matches/pvp/invitations/${INVITATION_ID}/${operation}`,
+          headers: {
+            authorization: 'Bearer valid-token',
+            ...(accept ? { accept } : {}),
+          },
+          payload: {
+            submissionId: SUBMISSION_ID,
+            expectedVersion: 0,
+            ...(operation === 'accept'
+              ? { deckId: DECK_ID, initialCreatureId: CREATURE_ID }
+              : {}),
+          },
+        });
+        expect(response.statusCode).toBe(409);
+        expect(response.json().code).toBe(
+          accept === PVP_ACCEPT
+            ? 'PVP_INVITATION_CANCELLED'
+            : 'PVP_CLIENT_UPDATE_REQUIRED',
+        );
+      }
+      expect(method).toHaveBeenCalledTimes(3);
+    },
+  );
+
   it('requires authentication before resolving a cancellation challenger', async () => {
     const response = await app.inject({
       method: 'POST',

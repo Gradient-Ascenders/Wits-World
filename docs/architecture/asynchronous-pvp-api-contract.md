@@ -289,6 +289,9 @@ without `canResign` or `canCancel`. A legacy request that would receive a
 voluntary-resignation reason, or a pre-v3 request whose invitation page contains
 `cancelled`, fails safely with `PVP_CLIENT_UPDATE_REQUIRED`. The resign and
 cancel endpoints reject unsupported requests before invoking the service.
+If a pending invitation is cancelled before a pre-v3 client submits Accept or
+Decline, those endpoints return `PVP_CLIENT_UPDATE_REQUIRED` instead of exposing
+`PVP_INVITATION_CANCELLED`. V3 clients retain the cancellation-specific error.
 
 `AsyncPvpStateView` is a closed object with these required fields:
 
@@ -620,7 +623,7 @@ commit increments the version; the second returns the stored receipt when it is
 a replay or rejects the now-stale/terminal intent. A resignation receipt is
 unique per match, and deferred validation requires exactly one such receipt for
 a `voluntary_resignation` result and none for any other completion reason.
-Migration `0038` similarly makes the cancellation receipt unique per invitation
+Migration `0039` similarly makes the cancellation receipt unique per invitation
 and deferred validation requires exactly one challenger-owned cancellation
 receipt for `cancelled`, with no match or recipient snapshot.
 
@@ -813,4 +816,4 @@ Before issue `#178` is closed:
   presented as implemented protections.
 
 This document was planned, generated, edited, and reviewed with the assistance
-of Codex[GPT-5], Codex-CLI[GPT-5], and Codex-CLI[gpt-5.6-sol medium].
+of Codex[GPT-6], Codex[GPT-5], Codex-CLI[GPT-5], and Codex-CLI[gpt-5.6-sol medium].

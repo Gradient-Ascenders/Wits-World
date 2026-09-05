@@ -228,6 +228,10 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
     { height: 844, label: '390', width: 390 },
     { height: 800, label: '1280', width: 1280 },
   ]) {
+    sentInvitation = pvpInvitation({
+      direction: 'outgoing',
+      invitationId: uuid(2102),
+    });
     await page.setViewportSize(viewport);
     await page.goto('/matches/pvp');
     await expect(
@@ -249,21 +253,23 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
       style: '.skip-link, .primary-navigation { display: none !important; }',
     });
 
-    if (viewport.label === '390') {
-      await page
-        .getByRole('button', { name: 'Cancel challenge to wits_wanderer' })
-        .dblclick();
-      await expect(
-        page.getByText('You cancelled this invitation.'),
-      ).toBeVisible();
-      await expect(
-        page.getByRole('button', {
-          name: 'Cancel challenge to wits_wanderer',
-        }),
-      ).toHaveCount(0);
-      expect(cancellationRequests).toBe(1);
-      await expectNoHorizontalOverflow(page);
+    await page
+      .getByRole('button', { name: 'Cancel challenge to wits_wanderer' })
+      .click();
+    await expect(page.getByRole('alertdialog')).toBeVisible();
+    await page.getByRole('button', { name: 'Confirm cancellation' }).dblclick();
+    await expect(
+      page.getByText('You cancelled this invitation.'),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', {
+        name: 'Cancel challenge to wits_wanderer',
+      }),
+    ).toHaveCount(0);
+    expect(cancellationRequests).toBe(viewport.label === '390' ? 1 : 2);
+    await expectNoHorizontalOverflow(page);
 
+    if (viewport.label === '390') {
       await page.getByRole('button', { name: 'Challenge a player' }).click();
       await expect(
         page.getByRole('heading', { name: 'Challenge a player' }),

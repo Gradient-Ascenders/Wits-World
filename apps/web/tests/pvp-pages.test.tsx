@@ -441,7 +441,21 @@ describe('asynchronous player battle lobby', () => {
     const cancel = await screen.findByRole('button', {
       name: 'Cancel challenge to wits_wanderer',
     });
-    await user.dblClick(cancel);
+    await user.click(cancel);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(
+      screen.getByRole('button', { name: 'Keep challenge' }),
+    ).toHaveFocus();
+    await user.keyboard('{Escape}');
+    expect(cancel).toHaveFocus();
+    await user.click(cancel);
+    await user.click(screen.getByRole('button', { name: 'Keep challenge' }));
+    expect(cancel).toHaveFocus();
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    await user.click(cancel);
+    await user.dblClick(
+      screen.getByRole('button', { name: 'Confirm cancellation' }),
+    );
     expect(fetchMock).toHaveBeenCalledTimes(6);
 
     await act(async () => {
@@ -493,6 +507,9 @@ describe('asynchronous player battle lobby', () => {
         name: 'Cancel challenge to wits_wanderer',
       }),
     );
+    await user.click(
+      screen.getByRole('button', { name: 'Confirm cancellation' }),
+    );
     const retry = await screen.findByRole('button', {
       name: 'Cancel challenge to wits_wanderer',
     });
@@ -501,6 +518,9 @@ describe('asynchronous player battle lobby', () => {
 
     const firstBody = JSON.parse(String(fetchMock.mock.calls[5]![1]!.body));
     await user.click(retry);
+    await user.click(
+      screen.getByRole('button', { name: 'Confirm cancellation' }),
+    );
     await screen.findByText('You cancelled this invitation.');
     const retryBody = JSON.parse(String(fetchMock.mock.calls[10]![1]!.body));
     expect(retryBody).toEqual(firstBody);

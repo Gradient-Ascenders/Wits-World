@@ -315,7 +315,7 @@ export const asynchronousPvpRoutes: FastifyPluginAsync<Options> = async (
           requestId: request.id,
         };
       } catch (error) {
-        throw mapError(error);
+        throw mapError(error, request);
       }
     },
   );
@@ -376,7 +376,7 @@ export const asynchronousPvpRoutes: FastifyPluginAsync<Options> = async (
           requestId: request.id,
         });
       } catch (error) {
-        throw mapError(error);
+        throw mapError(error, request);
       }
     },
   );
@@ -445,7 +445,7 @@ export const asynchronousPvpRoutes: FastifyPluginAsync<Options> = async (
           requestId: request.id,
         };
       } catch (error) {
-        throw mapError(error);
+        throw mapError(error, request);
       }
     },
   );
@@ -516,7 +516,7 @@ export const asynchronousPvpRoutes: FastifyPluginAsync<Options> = async (
           requestId: request.id,
         };
       } catch (error) {
-        throw mapError(error);
+        throw mapError(error, request);
       }
     },
   );
@@ -567,7 +567,7 @@ export const asynchronousPvpRoutes: FastifyPluginAsync<Options> = async (
           requestId: request.id,
         };
       } catch (error) {
-        throw mapError(error);
+        throw mapError(error, request);
       }
     },
   );
@@ -621,7 +621,7 @@ export const asynchronousPvpRoutes: FastifyPluginAsync<Options> = async (
           requestId: request.id,
         };
       } catch (error) {
-        throw mapError(error);
+        throw mapError(error, request);
       }
     },
   );
@@ -673,7 +673,7 @@ function registerMatchRoutes(
           requestId: request.id,
         };
       } catch (error) {
-        throw mapError(error);
+        throw mapError(error, request);
       }
     },
   );
@@ -706,7 +706,7 @@ function registerMatchRoutes(
           requestId: request.id,
         };
       } catch (error) {
-        throw mapError(error);
+        throw mapError(error, request);
       }
     },
   );
@@ -743,7 +743,7 @@ function registerMatchRoutes(
         }
         return matchEnvelope(match, request);
       } catch (error) {
-        throw mapError(error);
+        throw mapError(error, request);
       }
     },
   );
@@ -791,7 +791,7 @@ function registerMatchRoutes(
           request,
         );
       } catch (error) {
-        throw mapError(error);
+        throw mapError(error, request);
       }
     },
   );
@@ -842,7 +842,7 @@ function registerMatchRoutes(
           request,
         );
       } catch (error) {
-        throw mapError(error);
+        throw mapError(error, request);
       }
     },
   );
@@ -1001,7 +1001,15 @@ function validationError(): ApiError {
     detail: 'The request contains an invalid Player Name.',
   });
 }
-function mapError(error: unknown): Error {
+function mapError(error: unknown, request?: FastifyRequest): Error {
+  if (
+    error instanceof AsyncPvpError &&
+    error.code === 'PVP_INVITATION_CANCELLED' &&
+    request &&
+    !supportsPvpContract(request, 3)
+  ) {
+    return clientUpdateRequiredError('invitation cancellation');
+  }
   if (error instanceof InvalidCursorError)
     return new ApiError({
       statusCode: 400,

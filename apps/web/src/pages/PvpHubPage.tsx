@@ -27,6 +27,7 @@ import {
   type PvpPage,
 } from '../api/pvp';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
+import { ResignMatchDialog } from '../components/matches/ResignMatchDialog';
 import './matches.css';
 
 interface HubCollections {
@@ -102,6 +103,9 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const acceptAttempts = useRef<Record<string, SubmissionAttempt>>({});
   const declineAttempts = useRef<Record<string, string>>({});
   const cancelAttempts = useRef<Record<string, string>>({});
+  const [cancellationTarget, setCancellationTarget] =
+    useState<PvpInvitation | null>(null);
+  const cancellationTrigger = useRef<HTMLButtonElement | null>(null);
   const resultHeading = useRef<HTMLHeadingElement | null>(null);
   const actionAlert = useRef<HTMLDivElement | null>(null);
 
@@ -448,6 +452,7 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     )
       return;
     operationInFlight.current = true;
+    setCancellationTarget(null);
     resetFeedback();
     const submissionId =
       cancelAttempts.current[invitation.invitationId] ?? crypto.randomUUID();
@@ -550,6 +555,16 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const { data } = state;
   return (
     <div className="matches-page pvp-hub">
+      {cancellationTarget ? (
+        <ResignMatchDialog
+          kind="cancellation"
+          busy={pendingOperation !== null}
+          opponentLabel={cancellationTarget.opponent.playerName}
+          returnFocusRef={cancellationTrigger}
+          onCancel={() => setCancellationTarget(null)}
+          onConfirm={() => void cancelInvitation(cancellationTarget)}
+        />
+      ) : null}
       <header className="matches-page__header pvp-lobby-header">
         <Link
           aria-label="Back to Battles"
@@ -743,7 +758,13 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
             onAccept={() => undefined}
             onChoice={() => undefined}
             onDecline={() => undefined}
-            onCancel={(invitation) => void cancelInvitation(invitation)}
+            onCancel={(invitation) => {
+              cancellationTrigger.current =
+                document.activeElement instanceof HTMLButtonElement
+                  ? document.activeElement
+                  : null;
+              setCancellationTarget(invitation);
+            }}
             hasCancelAttempt={(invitationId) =>
               cancelAttempts.current[invitationId] !== undefined
             }

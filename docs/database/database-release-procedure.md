@@ -169,7 +169,7 @@ existing independently scheduled API/Web deployment jobs, while database, API,
 then Web remains the recommended order.
 
 Once any cancellation is stored, do not roll the API back to a version that
-cannot parse `cancelled`. Retain `0038`, drain incompatible API instances, and
+cannot parse `cancelled`. Retain `0039`, drain incompatible API instances, and
 roll forward. A Web rollback remains safe because pre-v3 lists fail closed on
 pages containing the new state and cannot initiate cancellation.
 
@@ -244,7 +244,7 @@ test command as evidence that production was changed.
    `0028` before deploying the API and compatible Web build. For `0037`, confirm
    the new reason, receipt index, deferred validators, and progression rules,
    then smoke-test resignation from both viewer perspectives without logging
-   player identifiers. For `0038`, confirm the status/receipt constraints,
+   player identifiers. For `0039`, confirm the status/receipt constraints,
    cancellation index, and deferred validators, then smoke-test challenger-only
    cancellation, recipient terminal visibility, replay, and absence of a match
    without logging player UUIDs or private snapshots. For `0034`, confirm
@@ -312,5 +312,5 @@ subject to the selected Neon plan and are not created by this procedure.
 - authenticated deployed-event verification.
 
 This procedure was planned, generated, edited, and verified with the assistance
-of Codex[GPT-5], Codex[GPT-5.6 Sol], Codex[gpt-5.6-sol], and
+of Codex[GPT-6], Codex[GPT-5], Codex[GPT-5.6 Sol], Codex[gpt-5.6-sol], and
 Codex-CLI[gpt-5.6-sol medium].

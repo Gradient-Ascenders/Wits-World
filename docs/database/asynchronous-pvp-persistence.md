@@ -74,7 +74,7 @@ response so issue `#180` can distinguish an identical replay from an ID reused
 with different intent. Match actions additionally enforce unique sequence and
 actor submission identifiers. Migration `0037` adds a per-match unique
 resignation-receipt index so a replay can return the committed response without
-creating a second terminal operation. Migration `0038` adds the corresponding
+creating a second terminal operation. Migration `0039` adds the corresponding
 per-invitation cancellation index and extends deferred receipt validation so a
 `cancelled` record has exactly one matching challenger-owned receipt and no
 competing accept or decline receipt.
@@ -156,7 +156,7 @@ migration `0039_add_async_pvp_invitation_cancellation.sql` before the issue
 `#220` API. It adds `cancelled`, the `invitation_cancel` receipt operation and
 unique index, and replacement cross-row validators. Once a `cancelled` row has
 been stored, do not roll the API back to a build whose invitation status parser
-does not understand it; retain `0038` and roll the API/Web forward.
+does not understand it; retain `0039` and roll the API/Web forward.
 
 The preceding document was generated and edited with the assistance of:
-Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5].
+Codex-CLI[gpt-5.6-sol medium], Codex[GPT-5], and Codex[GPT-6].

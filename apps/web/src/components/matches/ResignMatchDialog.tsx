@@ -8,6 +8,7 @@ import {
 } from 'react';
 
 interface ResignMatchDialogProps {
+  kind?: 'resignation' | 'cancellation';
   busy: boolean;
   onCancel: () => void;
   onConfirm: () => void;
@@ -16,12 +17,14 @@ interface ResignMatchDialogProps {
 }
 
 export function ResignMatchDialog({
+  kind = 'resignation',
   busy,
   onCancel,
   onConfirm,
   opponentLabel,
   returnFocusRef,
 }: ResignMatchDialogProps) {
+  const cancellation = kind === 'cancellation';
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -67,12 +70,17 @@ export function ResignMatchDialog({
         ref={dialogRef}
         role="alertdialog"
       >
-        <p className="eyebrow">Permanent match result</p>
-        <h2 id={titleId}>Resign this match?</h2>
+        <p className="eyebrow">
+          {cancellation ? 'Withdraw invitation' : 'Permanent match result'}
+        </p>
+        <h2 id={titleId}>
+          {cancellation ? 'Cancel this challenge?' : 'Resign this match?'}
+        </h2>
         <div id={descriptionId}>
           <p>
-            Resigning immediately records a loss for you and a win for{' '}
-            {opponentLabel}. This result cannot be undone.
+            {cancellation
+              ? `Cancel your pending challenge to ${opponentLabel}? This cannot be undone. No match result will be recorded.`
+              : `Resigning immediately records a loss for you and a win for ${opponentLabel}. This result cannot be undone.`}
           </p>
         </div>
         <div className="pvp-resign-dialog__actions">
@@ -83,7 +91,7 @@ export function ResignMatchDialog({
             ref={cancelRef}
             type="button"
           >
-            Keep playing
+            {cancellation ? 'Keep challenge' : 'Keep playing'}
           </button>
           <button
             className="button button--danger"
@@ -91,7 +99,13 @@ export function ResignMatchDialog({
             onClick={onConfirm}
             type="button"
           >
-            {busy ? 'Resigning match…' : 'Resign and lose'}
+            {cancellation
+              ? busy
+                ? 'Cancelling…'
+                : 'Confirm cancellation'
+              : busy
+                ? 'Resigning match…'
+                : 'Resign and lose'}
           </button>
         </div>
       </div>
