@@ -63,11 +63,11 @@ test('keeps the Player Battles loading shell compact', async ({ page }) => {
 
   releaseLoad();
   await expect(
-    page.getByRole('heading', { name: 'Asynchronous PvP' }),
+    page.getByRole('button', { name: 'Challenge a player' }),
   ).toBeVisible();
 });
 
-test('renders the additive asynchronous PvP hub and authoritative battle', async ({
+test('renders the tabbed player battle lobby and authoritative battle', async ({
   page,
 }) => {
   const consoleErrors: string[] = [];
@@ -161,19 +161,71 @@ test('renders the additive asynchronous PvP hub and authoritative battle', async
     await page.setViewportSize(viewport);
     await page.goto('/matches/pvp');
     await expect(
-      page.getByRole('heading', { name: 'Asynchronous PvP' }),
+      page.getByRole('heading', { name: 'Player Battles' }),
     ).toBeVisible();
     await expect(page.getByText('wits_wanderer').first()).toBeVisible();
-    await expect(page.getByRole('link', { name: 'CPU battles' })).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: 'Back to Battles' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('tab', { name: 'Invitations 1' }),
+    ).toHaveAttribute('aria-selected', 'true');
+    await expect(
+      page.getByRole('heading', { name: 'Your matches' }),
+    ).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
     await page.locator('.pvp-hub').screenshot({
       path: path.join(screenshotsDirectory, `${viewport.label}-pvp-hub.png`),
       style: '.skip-link, .primary-navigation { display: none !important; }',
     });
+
+    if (viewport.label === '390') {
+      await page.getByRole('button', { name: 'Challenge a player' }).click();
+      await expect(
+        page.getByRole('heading', { name: 'Challenge a player' }),
+      ).toBeVisible();
+      await expect(
+        page.getByText(
+          /account details, location, decks, and activity stay private/i,
+        ),
+      ).toBeVisible();
+      await expectNoHorizontalOverflow(page);
+      await page.locator('.pvp-hub').screenshot({
+        path: path.join(screenshotsDirectory, '390-pvp-challenge.png'),
+        style: '.skip-link, .primary-navigation { display: none !important; }',
+      });
+      await page.getByRole('button', { name: 'Close challenge' }).click();
+    }
+
+    await page.getByRole('tab', { name: 'History 1' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Recent player battles' }),
+    ).toBeVisible();
+    await expect(page.getByText('Won')).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    if (viewport.label === '1280') {
+      await page.locator('.pvp-hub').screenshot({
+        path: path.join(screenshotsDirectory, '1280-pvp-history.png'),
+        style: '.skip-link, .primary-navigation { display: none !important; }',
+      });
+    }
+
+    await page.getByRole('tab', { name: 'Active 1' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Your matches' }),
+    ).toBeVisible();
+    await expect(page.getByText('Your turn')).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    if (viewport.label === '390') {
+      await page.locator('.pvp-hub').screenshot({
+        path: path.join(screenshotsDirectory, '390-pvp-active.png'),
+        style: '.skip-link, .primary-navigation { display: none !important; }',
+      });
+    }
   }
 
   await page.setViewportSize({ height: 844, width: 390 });
-  await page.getByRole('link', { name: 'Take your turn' }).click();
+  await page.getByRole('link', { name: 'Continue' }).click();
   await expect(page).toHaveURL(`/matches/pvp/${match.matchId}`);
   await expect(page.getByRole('heading', { name: 'Your turn' })).toBeVisible();
   const move = page.getByRole('button', { name: /Knowledge Strike 1/ });

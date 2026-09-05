@@ -83,7 +83,7 @@ function hubResponses({
   ];
 }
 
-describe('asynchronous PvP hub', () => {
+describe('asynchronous player battle lobby', () => {
   it('uses the compact Player Battles shell while initial data is loading', () => {
     vi.stubGlobal(
       'fetch',
@@ -116,7 +116,51 @@ describe('asynchronous PvP hub', () => {
     expect(document.querySelector('.match-state-panel')).toBeNull();
   });
 
-  it('renders incoming/outgoing lifecycle states, active turns, and history together', async () => {
+  it('keeps tab and disclosure aria-controls targets mounted and synchronized', async () => {
+    const user = userEvent.setup();
+    const responses = hubResponses();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(() => Promise.resolve(responses.shift()!)),
+    );
+
+    renderRoute('/matches/pvp', <PvpHubPage apiBaseUrl={apiBaseUrl} />);
+
+    const challengeButton = await screen.findByRole('button', {
+      name: 'Challenge a player',
+    });
+    const challengePanelId = challengeButton.getAttribute('aria-controls')!;
+    const challengePanel = document.getElementById(challengePanelId)!;
+    expect(challengePanel).not.toBeNull();
+    expect(challengeButton).toHaveAttribute('aria-expanded', 'false');
+    expect(challengePanel.hidden).toBe(true);
+
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs).toHaveLength(3);
+    for (const tab of tabs) {
+      const panelId = tab.getAttribute('aria-controls')!;
+      const panel = document.getElementById(panelId)!;
+      expect(panel).not.toBeNull();
+      expect(panel).toHaveAttribute('role', 'tabpanel');
+      expect(panel).toHaveAttribute('aria-labelledby', tab.id);
+      expect(panel.hidden).toBe(tab.getAttribute('aria-selected') !== 'true');
+    }
+
+    await user.click(screen.getByRole('tab', { name: 'Active 0' }));
+    expect(document.getElementById('invitations-panel')!.hidden).toBe(true);
+    expect(document.getElementById('active-panel')!.hidden).toBe(false);
+    expect(document.getElementById('history-panel')!.hidden).toBe(true);
+
+    await user.click(challengeButton);
+    expect(challengeButton).toHaveAttribute('aria-expanded', 'true');
+    expect(challengePanel.hidden).toBe(false);
+    await user.click(challengeButton);
+    expect(challengeButton).toHaveAttribute('aria-expanded', 'false');
+    expect(challengePanel.hidden).toBe(true);
+  });
+
+  it('switches between invitations, active matches, and history', async () => {
+    const user = userEvent.setup();
     const incoming = [
       pvpInvitation(),
       pvpInvitation({
@@ -160,22 +204,54 @@ describe('asynchronous PvP hub', () => {
     renderRoute('/matches/pvp', <PvpHubPage apiBaseUrl={apiBaseUrl} />);
 
     expect(
-      await screen.findByRole('heading', { name: 'Asynchronous PvP' }),
+      await screen.findByRole('button', { name: 'Challenge a player' }),
     ).toBeVisible();
-    const incomingList = screen.getByRole('list', {
-      name: 'Incoming PvP invitations',
+    expect(
+      screen.getByRole('heading', { name: 'Player Battles' }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('link', { name: 'Back to Battles' }),
+    ).toHaveAttribute('href', '/matches');
+    expect(document.body).not.toHaveTextContent(/PvP hub|Asynchronous PvP/i);
+    const invitationsTab = screen.getByRole('tab', {
+      name: 'Invitations 1',
     });
-    const sentList = screen.getByRole('list', { name: 'Sent PvP invitations' });
+    expect(invitationsTab).toHaveAttribute('aria-selected', 'true');
+    const incomingList = screen.getByRole('list', {
+      name: 'Incoming player battle invitations',
+    });
+    const sentList = screen.getByRole('list', {
+      name: 'Sent player battle challenges',
+    });
     expect(within(incomingList).getAllByRole('listitem')).toHaveLength(3);
-    expect(within(incomingList).getByText('Pending')).toBeVisible();
+    expect(
+      within(incomingList).getByRole('button', { name: 'Accept' }),
+    ).toBeVisible();
     expect(within(incomingList).getByText('Declined')).toBeVisible();
     expect(within(incomingList).getByText('Expired')).toBeVisible();
     expect(within(sentList).getByText('Unavailable')).toBeVisible();
     expect(within(sentList).getByText('Accepted')).toBeVisible();
+    expect(screen.queryByRole('heading', { name: 'Your matches' })).toBeNull();
+
+    const activeTab = screen.getByRole('tab', { name: 'Active 1' });
+    await user.click(activeTab);
+    expect(screen.getByRole('heading', { name: 'Your matches' })).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Continue' })).toHaveAttribute(
+      'href',
+      `/matches/pvp/${PVP_MATCH_ID}`,
+    );
+    expect(screen.getByText('Your turn')).toBeVisible();
+    expect(screen.queryByRole('heading', { name: 'Invitations' })).toBeNull();
+
+    await user.keyboard('{ArrowRight}');
+    expect(document.activeElement).toBe(
+      screen.getByRole('tab', { name: 'History 1' }),
+    );
     expect(
-      screen.getByRole('link', { name: 'Take your turn' }),
-    ).toHaveAttribute('href', `/matches/pvp/${PVP_MATCH_ID}`);
-    expect(screen.getByRole('heading', { name: 'Victory' })).toBeVisible();
+      screen.getByRole('heading', { name: 'Recent player battles' }),
+    ).toBeVisible();
+    expect(screen.getByText('Won')).toBeVisible();
+    expect(screen.queryByRole('heading', { name: 'Your matches' })).toBeNull();
   });
 
   it('uses exact public Player Name lookup and API-validated deck/Creature challenge intent', async () => {
@@ -193,6 +269,9 @@ describe('asynchronous PvP hub', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderRoute('/matches/pvp', <PvpHubPage apiBaseUrl={apiBaseUrl} />);
+    await user.click(
+      await screen.findByRole('button', { name: 'Challenge a player' }),
+    );
     await screen.findByRole('heading', { name: 'Challenge a player' });
     await user.type(
       screen.getByLabelText('Exact Player Name'),
@@ -246,7 +325,9 @@ describe('asynchronous PvP hub', () => {
     expect(nextPageUrl.searchParams.get('limit')).toBe('50');
     expect(
       within(
-        screen.getByRole('list', { name: 'Incoming PvP invitations' }),
+        screen.getByRole('list', {
+          name: 'Incoming player battle invitations',
+        }),
       ).getAllByRole('listitem'),
     ).toHaveLength(2);
   });
@@ -268,6 +349,7 @@ describe('asynchronous PvP hub', () => {
 
     renderRoute('/matches/pvp', <PvpHubPage apiBaseUrl={apiBaseUrl} />);
     await screen.findByRole('heading', { name: 'Incoming' });
+    await user.click(screen.getByRole('button', { name: 'Accept' }));
     await user.selectOptions(screen.getByLabelText('Battle deck'), deck.deckId);
     await user.click(screen.getByLabelText(new RegExp(deck.cards[0]!.name)));
     const accept = screen.getByRole('button', { name: 'Accept challenge' });
@@ -304,7 +386,9 @@ describe('asynchronous PvP hub', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderRoute('/matches/pvp', <PvpHubPage apiBaseUrl={apiBaseUrl} />);
-    const decline = await screen.findByRole('button', { name: 'Decline' });
+    const decline = await screen.findByRole('button', {
+      name: 'Decline challenge from wits_wanderer',
+    });
     await user.dblClick(decline);
     expect(fetchMock).toHaveBeenCalledTimes(6);
 

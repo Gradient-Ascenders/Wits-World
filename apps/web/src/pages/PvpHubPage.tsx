@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type KeyboardEvent,
 } from 'react';
 import { Link, useLocation } from 'wouter';
 
@@ -43,6 +44,7 @@ interface HubData extends HubCollections {
 }
 
 type HubPage = 'active' | 'history' | 'incoming' | 'outgoing';
+type PlayerBattleSection = 'active' | 'history' | 'invitations';
 
 type HubState =
   | { status: 'loading' }
@@ -59,6 +61,11 @@ interface SubmissionAttempt extends DeckChoice {
 }
 
 const pageLimit = 50;
+const playerBattleSections: PlayerBattleSection[] = [
+  'invitations',
+  'active',
+  'history',
+];
 
 export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const getAccessToken = useApiAccessToken();
@@ -82,6 +89,9 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const [actionError, setActionError] = useState<PvpApiError | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [reauthFailed, setReauthFailed] = useState(false);
+  const [challengeOpen, setChallengeOpen] = useState(false);
+  const [selectedSection, setSelectedSection] =
+    useState<PlayerBattleSection>('invitations');
   const request = useRef<AbortController | null>(null);
   const pollRequest = useRef<AbortController | null>(null);
   const pageRequest = useRef<AbortController | null>(null);
@@ -425,9 +435,9 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     return (
       <div className="matches-page">
         <section className="match-state-panel" role="alert">
-          <p className="eyebrow">Asynchronous PvP</p>
+          <p className="eyebrow">Player Battles</p>
           <h1 ref={resultHeading} tabIndex={-1}>
-            PvP could not load
+            Player Battles could not load
           </h1>
           <p>{errorMessage(state.error.failure)}</p>
           <div className="match-state-actions">
@@ -449,7 +459,7 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
               </button>
             )}
             <Link className="button button--quiet" href="/matches">
-              CPU battles
+              Battles
             </Link>
           </div>
           {reauthFailed ? (
@@ -463,33 +473,44 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const { data } = state;
   return (
     <div className="matches-page pvp-hub">
-      <header className="matches-page__header pvp-hub__header">
-        <div>
-          <p className="eyebrow">Return when it suits you</p>
-          <h1 ref={resultHeading} tabIndex={-1}>
-            Asynchronous PvP
-          </h1>
-          <p className="lead">
-            Challenge another Player Name, respond to invitations, and take each
-            server-timed turn within 24 hours.
-          </p>
-        </div>
-        <Link className="button button--quiet" href="/matches">
-          CPU battles
+      <header className="matches-page__header pvp-lobby-header">
+        <Link
+          aria-label="Back to Battles"
+          className="text-link pvp-lobby-header__back"
+          href="/matches"
+        >
+          ← Battles
         </Link>
+        <div className="pvp-lobby-header__main">
+          <div>
+            <h1 ref={resultHeading} tabIndex={-1}>
+              Player Battles
+            </h1>
+            <p className="lead">
+              Challenge another explorer and take turns within 24 hours.
+            </p>
+          </div>
+          <button
+            aria-controls="challenge-player-panel"
+            aria-expanded={challengeOpen}
+            className="button"
+            onClick={() => setChallengeOpen((open) => !open)}
+            type="button"
+          >
+            {challengeOpen ? 'Close challenge' : 'Challenge a player'}
+          </button>
+        </div>
       </header>
 
-      <nav aria-label="PvP sections" className="pvp-section-nav">
-        <a href="#invitations">
-          Invitations <span>{data.incoming.filter(isPending).length}</span>
-        </a>
-        <a href="#active-matches">
-          Active <span>{data.active.length}</span>
-        </a>
-        <a href="#pvp-history">
-          History <span>{data.history.length}</span>
-        </a>
-      </nav>
+      <PlayerBattleTabs
+        counts={{
+          active: data.active.length,
+          history: data.history.length,
+          invitations: data.incoming.filter(isPending).length,
+        }}
+        onSelect={setSelectedSection}
+        selected={selectedSection}
+      />
 
       {pollWarning ? (
         <div className="pvp-poll-warning" role="status">
@@ -519,7 +540,7 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           role="alert"
           tabIndex={-1}
         >
-          <strong>That PvP request was not completed.</strong>{' '}
+          <strong>That request was not completed.</strong>{' '}
           {errorMessage(actionError.failure)}
           {actionError.options.ambiguous
             ? ' Retry uses the same submission reference so the server cannot apply it twice.'
@@ -530,13 +551,11 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       <section
         aria-labelledby="challenge-player-title"
         className="pvp-challenge-panel"
+        hidden={!challengeOpen}
+        id="challenge-player-panel"
       >
         <div className="pvp-section-heading">
-          <div>
-            <p className="eyebrow">Private exact lookup</p>
-            <h2 id="challenge-player-title">Challenge a player</h2>
-          </div>
-          <span>Player Name only</span>
+          <h2 id="challenge-player-title">Challenge a player</h2>
         </div>
         <form
           className="pvp-search-form"
@@ -566,8 +585,8 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
             </button>
           </div>
           <small>
-            Search is exact and never returns email, account IDs, location,
-            decks, or activity.
+            Search by exact Player Name. Email, account details, location,
+            decks, and activity stay private.
           </small>
         </form>
 
@@ -607,16 +626,14 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       </section>
 
       <section
-        aria-labelledby="invitations-title"
-        className="pvp-hub-section"
-        id="invitations"
+        aria-labelledby="invitations-tab"
+        className="pvp-tab-panel"
+        hidden={selectedSection !== 'invitations'}
+        id="invitations-panel"
+        role="tabpanel"
+        tabIndex={selectedSection === 'invitations' ? 0 : -1}
       >
-        <div className="pvp-section-heading">
-          <div>
-            <p className="eyebrow">Respond or review</p>
-            <h2 id="invitations-title">Invitations</h2>
-          </div>
-        </div>
+        <h2>Invitations</h2>
         <div className="pvp-invitation-columns">
           <InvitationList
             acceptChoices={acceptChoices}
@@ -654,25 +671,20 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       </section>
 
       <section
-        aria-labelledby="active-pvp-title"
-        className="pvp-hub-section"
-        id="active-matches"
+        aria-labelledby="active-tab"
+        className="pvp-tab-panel"
+        hidden={selectedSection !== 'active'}
+        id="active-panel"
+        role="tabpanel"
+        tabIndex={selectedSection === 'active' ? 0 : -1}
       >
-        <div className="pvp-section-heading">
-          <div>
-            <p className="eyebrow">Server-timed turns</p>
-            <h2 id="active-pvp-title">Active matches</h2>
-          </div>
-        </div>
+        <h2>Your matches</h2>
         {data.active.length === 0 ? (
-          <EmptyState title="No active PvP matches">
-            Accept an invitation to begin a persisted match.
+          <EmptyState title="No active player battles">
+            Accept an invitation to begin a match.
           </EmptyState>
         ) : (
-          <ol
-            aria-label="Active asynchronous PvP matches"
-            className="pvp-match-list"
-          >
+          <ol aria-label="Active player battles" className="pvp-match-list">
             {data.active.map((match) => (
               <li key={match.matchId}>
                 <ActivePvpSummary match={match} />
@@ -690,25 +702,20 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       </section>
 
       <section
-        aria-labelledby="pvp-history-title"
-        className="pvp-hub-section"
-        id="pvp-history"
+        aria-labelledby="history-tab"
+        className="pvp-tab-panel"
+        hidden={selectedSection !== 'history'}
+        id="history-panel"
+        role="tabpanel"
+        tabIndex={selectedSection === 'history' ? 0 : -1}
       >
-        <div className="pvp-section-heading">
-          <div>
-            <p className="eyebrow">Persisted outcomes</p>
-            <h2 id="pvp-history-title">History</h2>
-          </div>
-        </div>
+        <h2>Recent player battles</h2>
         {data.history.length === 0 ? (
-          <EmptyState title="No completed PvP matches">
+          <EmptyState title="No completed player battles">
             Completed wins, losses, and forfeits will appear here.
           </EmptyState>
         ) : (
-          <ol
-            aria-label="Completed asynchronous PvP matches"
-            className="pvp-match-list"
-          >
+          <ol aria-label="Completed player battles" className="pvp-match-list">
             {data.history.map((match) => (
               <li key={match.matchId}>
                 <HistoryPvpSummary match={match} />
@@ -731,19 +738,21 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 function PlayerBattlesLoading() {
   return (
     <div className="matches-page pvp-hub">
-      <header className="matches-page__header pvp-hub__header">
-        <div>
-          <Link
-            aria-label="Back to Battles"
-            className="text-link pvp-loading__back"
-            href="/matches"
-          >
-            ← Battles
-          </Link>
-          <h1>Player Battles</h1>
-          <p className="lead">
-            Challenge another explorer and take turns within 24 hours.
-          </p>
+      <header className="matches-page__header pvp-lobby-header">
+        <Link
+          aria-label="Back to Battles"
+          className="text-link pvp-lobby-header__back"
+          href="/matches"
+        >
+          ← Battles
+        </Link>
+        <div className="pvp-lobby-header__main">
+          <div>
+            <h1>Player Battles</h1>
+            <p className="lead">
+              Challenge another explorer and take turns within 24 hours.
+            </p>
+          </div>
         </div>
       </header>
 
@@ -774,6 +783,73 @@ function PlayerBattlesLoading() {
   );
 }
 
+function PlayerBattleTabs({
+  counts,
+  onSelect,
+  selected,
+}: {
+  counts: Record<PlayerBattleSection, number>;
+  onSelect: (section: PlayerBattleSection) => void;
+  selected: PlayerBattleSection;
+}) {
+  const tabs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  function selectFromKeyboard(
+    event: KeyboardEvent<HTMLButtonElement>,
+    index: number,
+  ) {
+    let nextIndex: number | null = null;
+    if (event.key === 'ArrowRight') {
+      nextIndex = (index + 1) % playerBattleSections.length;
+    } else if (event.key === 'ArrowLeft') {
+      nextIndex =
+        (index - 1 + playerBattleSections.length) % playerBattleSections.length;
+    } else if (event.key === 'Home') {
+      nextIndex = 0;
+    } else if (event.key === 'End') {
+      nextIndex = playerBattleSections.length - 1;
+    }
+
+    if (nextIndex === null) return;
+    event.preventDefault();
+    const nextSection = playerBattleSections[nextIndex]!;
+    onSelect(nextSection);
+    tabs.current[nextIndex]?.focus();
+  }
+
+  return (
+    <div
+      aria-label="Player battle sections"
+      className="pvp-section-tabs"
+      role="tablist"
+    >
+      {playerBattleSections.map((section, index) => {
+        const label = titleCase(section);
+        const isSelected = selected === section;
+        return (
+          <button
+            aria-controls={`${section}-panel`}
+            aria-selected={isSelected}
+            className="pvp-section-tabs__tab"
+            id={`${section}-tab`}
+            key={section}
+            onClick={() => onSelect(section)}
+            onKeyDown={(event) => selectFromKeyboard(event, index)}
+            ref={(node) => {
+              tabs.current[index] = node;
+            }}
+            role="tab"
+            tabIndex={isSelected ? 0 : -1}
+            type="button"
+          >
+            {label} <span>{counts[section]}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function InvitationList({
   acceptChoices,
   decks,
@@ -799,7 +875,8 @@ function InvitationList({
   onLoadMore: () => void;
   pendingOperation: string | null;
 }) {
-  const title = direction === 'incoming' ? 'Incoming' : 'Sent';
+  const [respondingTo, setRespondingTo] = useState<string | null>(null);
+  const title = direction === 'incoming' ? 'Incoming' : 'Sent challenges';
   return (
     <section
       aria-labelledby={`${direction}-invitations-title`}
@@ -807,10 +884,18 @@ function InvitationList({
     >
       <h3 id={`${direction}-invitations-title`}>{title}</h3>
       {invitations.length === 0 ? (
-        <p className="pvp-list-empty">No {direction} invitations.</p>
+        <p className="pvp-empty-state">
+          {direction === 'incoming'
+            ? 'No incoming invitations.'
+            : 'No sent challenges.'}
+        </p>
       ) : (
         <ol
-          aria-label={`${title} PvP invitations`}
+          aria-label={
+            direction === 'incoming'
+              ? 'Incoming player battle invitations'
+              : 'Sent player battle challenges'
+          }
           className="pvp-invitation-list"
         >
           {invitations.map((invitation) => {
@@ -824,7 +909,7 @@ function InvitationList({
                 key={invitation.invitationId}
               >
                 <div className="pvp-invitation__heading">
-                  <div>
+                  <div className="pvp-invitation__player">
                     <strong>{invitation.opponent.playerName}</strong>
                     <span>
                       {direction === 'incoming'
@@ -832,9 +917,43 @@ function InvitationList({
                         : 'was challenged'}
                     </span>
                   </div>
-                  <span className="pvp-status-label">
-                    {invitationStatusLabel(invitation.status)}
-                  </span>
+                  {direction === 'incoming' &&
+                  invitation.status === 'pending' ? (
+                    <div className="pvp-invitation__actions">
+                      <button
+                        aria-controls={`response-${invitation.invitationId}`}
+                        aria-expanded={respondingTo === invitation.invitationId}
+                        className="button"
+                        disabled={pendingOperation !== null}
+                        onClick={() =>
+                          setRespondingTo((current) =>
+                            current === invitation.invitationId
+                              ? null
+                              : invitation.invitationId,
+                          )
+                        }
+                        type="button"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        aria-label={`Decline challenge from ${invitation.opponent.playerName}`}
+                        className="button button--quiet"
+                        disabled={pendingOperation !== null}
+                        onClick={() => onDecline(invitation)}
+                        type="button"
+                      >
+                        {declining ? 'Declining…' : 'Decline'}
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="pvp-status-label">
+                      {direction === 'outgoing' &&
+                      invitation.status === 'pending'
+                        ? 'Waiting for response'
+                        : invitationStatusLabel(invitation.status)}
+                    </span>
+                  )}
                 </div>
                 <dl className="pvp-summary-meta">
                   <div>
@@ -852,8 +971,13 @@ function InvitationList({
                     </dd>
                   </div>
                 </dl>
-                {direction === 'incoming' && invitation.status === 'pending' ? (
-                  <div className="pvp-invitation__response">
+                {direction === 'incoming' &&
+                invitation.status === 'pending' &&
+                respondingTo === invitation.invitationId ? (
+                  <div
+                    className="pvp-invitation__response"
+                    id={`response-${invitation.invitationId}`}
+                  >
                     <DeckCreaturePicker
                       choice={
                         acceptChoices[invitation.invitationId] ?? {
@@ -868,28 +992,18 @@ function InvitationList({
                         onChoice(invitation.invitationId, choice)
                       }
                     />
-                    <div className="match-state-actions">
-                      <button
-                        className="button"
-                        disabled={
-                          !isChoiceComplete(
-                            acceptChoices[invitation.invitationId],
-                          ) || pendingOperation !== null
-                        }
-                        onClick={() => onAccept(invitation)}
-                        type="button"
-                      >
-                        {accepting ? 'Accepting…' : 'Accept challenge'}
-                      </button>
-                      <button
-                        className="button button--quiet"
-                        disabled={pendingOperation !== null}
-                        onClick={() => onDecline(invitation)}
-                        type="button"
-                      >
-                        {declining ? 'Declining…' : 'Decline'}
-                      </button>
-                    </div>
+                    <button
+                      className="button"
+                      disabled={
+                        !isChoiceComplete(
+                          acceptChoices[invitation.invitationId],
+                        ) || pendingOperation !== null
+                      }
+                      onClick={() => onAccept(invitation)}
+                      type="button"
+                    >
+                      {accepting ? 'Accepting…' : 'Accept challenge'}
+                    </button>
                   </div>
                 ) : invitation.matchId ? (
                   <Link
@@ -1002,25 +1116,20 @@ function ActivePvpSummary({ match }: { match: PvpMatchSummary }) {
     >
       <div className="pvp-match-summary__heading">
         <div>
-          <p className="eyebrow">Opponent</p>
           <h3>{match.opponent.playerName}</h3>
+          <p>
+            Deadline{' '}
+            <time dateTime={match.turnDeadline}>
+              {formatDate(match.turnDeadline)}
+            </time>
+          </p>
         </div>
         <span className="pvp-status-label">
-          {match.currentActor === 'self' ? 'Your turn' : 'Opponent’s turn'}
+          {match.currentActor === 'self' ? 'Your turn' : 'Waiting for opponent'}
         </span>
       </div>
-      <dl className="pvp-summary-meta">
-        <div>
-          <dt>Deadline</dt>
-          <dd>{formatDate(match.turnDeadline)}</dd>
-        </div>
-        <div>
-          <dt>Server version</dt>
-          <dd>v{match.version}</dd>
-        </div>
-      </dl>
       <Link className="button" href={`/matches/pvp/${match.matchId}`}>
-        {match.currentActor === 'self' ? 'Take your turn' : 'View match'}
+        Continue
       </Link>
     </article>
   );
@@ -1033,28 +1142,19 @@ function HistoryPvpSummary({ match }: { match: PvpHistorySummary }) {
     >
       <div className="pvp-match-summary__heading">
         <div>
-          <p className="eyebrow">Against {match.opponent.playerName}</p>
-          <h3>{match.outcome === 'win' ? 'Victory' : 'Defeat'}</h3>
+          <h3>{match.opponent.playerName}</h3>
+          <p>{completionReasonLabel(match.completionReason, match.outcome)}</p>
         </div>
         <span className="pvp-status-label">
-          {completionReasonLabel(match.completionReason, match.outcome)}
+          {match.outcome === 'win' ? 'Won' : 'Lost'}
         </span>
       </div>
-      <dl className="pvp-summary-meta">
-        <div>
-          <dt>Completed</dt>
-          <dd>{formatDate(match.completedAt)}</dd>
-        </div>
-        <div>
-          <dt>Result</dt>
-          <dd>{match.outcome === 'win' ? 'You won' : 'You lost'}</dd>
-        </div>
-      </dl>
+      <time dateTime={match.completedAt}>{formatDate(match.completedAt)}</time>
       <Link
         className="button button--quiet"
         href={`/matches/pvp/${match.matchId}`}
       >
-        View saved match
+        View battle
       </Link>
     </article>
   );
@@ -1062,7 +1162,7 @@ function HistoryPvpSummary({ match }: { match: PvpHistorySummary }) {
 
 function EmptyState({ children, title }: { children: string; title: string }) {
   return (
-    <div className="pvp-list-empty">
+    <div className="pvp-empty-state">
       <h3>{title}</h3>
       <p>{children}</p>
     </div>
@@ -1180,11 +1280,11 @@ function errorMessage(failure: PvpApiFailure) {
     'illegal-action':
       'That action is no longer legal in the authoritative match state.',
     invalidated: 'The invitation is no longer available.',
-    'not-found': 'This PvP resource is not available to the signed-in player.',
+    'not-found': 'This player battle is not available to the signed-in player.',
     'player-unavailable':
       'That Player Name is unavailable. The server does not reveal why.',
     stale:
-      'The PvP state changed before the request was accepted. The latest server state will be restored.',
+      'The battle changed before the request was accepted. The latest server state will be restored.',
     unavailable:
       'Check your connection and retry. No result is calculated in this browser.',
     validation: 'Check the submitted Player Name and choices, then try again.',
