@@ -264,8 +264,11 @@ describe('asynchronous PvP API client', () => {
       `${apiBaseUrl}/matches/pvp/${PVP_MATCH_ID}/resign`,
     );
     expect(fetchMock.mock.calls[0]![1]!.headers).toMatchObject({
-      'X-Wits-PvP-Contract-Version': '2',
+      Accept: 'application/vnd.wits-world.pvp.v2+json, application/json;q=0.9',
     });
+    expect(fetchMock.mock.calls[0]![1]!.headers).not.toHaveProperty(
+      'X-Wits-PvP-Contract-Version',
+    );
     expect(JSON.parse(String(fetchMock.mock.calls[0]![1]!.body))).toEqual({
       expectedVersion: 3,
       submissionId: uuid(2350),

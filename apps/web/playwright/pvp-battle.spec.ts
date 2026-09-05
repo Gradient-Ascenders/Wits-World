@@ -131,7 +131,10 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
     }
     if (pathname.endsWith(`/matches/pvp/${match.matchId}/resign`)) {
       resignationRequests += 1;
-      expect(request.headers()['x-wits-pvp-contract-version']).toBe('2');
+      expect(request.headers().accept).toContain(
+        'application/vnd.wits-world.pvp.v2+json',
+      );
+      expect(request.headers()['x-wits-pvp-contract-version']).toBeUndefined();
       expect(request.postDataJSON()).toEqual({
         expectedVersion: 4,
         submissionId: expect.any(String),

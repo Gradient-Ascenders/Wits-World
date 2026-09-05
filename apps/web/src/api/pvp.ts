@@ -8,8 +8,8 @@ import {
   type MatchPowerCard,
 } from './matches';
 
-const PVP_CONTRACT_VERSION_HEADER = 'X-Wits-PvP-Contract-Version';
-const RESIGNATION_CONTRACT_VERSION = '2';
+const PVP_ACCEPT =
+  'application/vnd.wits-world.pvp.v2+json, application/json;q=0.9';
 
 export type PvpInvitationStatus =
   'pending' | 'accepted' | 'declined' | 'expired' | 'invalidated';
@@ -375,9 +375,8 @@ async function pvpRequest({
     response = await fetch(`${apiBaseUrl}${path}`, {
       body: body === undefined ? undefined : JSON.stringify(body),
       headers: {
-        Accept: 'application/json',
+        Accept: PVP_ACCEPT,
         Authorization: `Bearer ${accessToken}`,
-        [PVP_CONTRACT_VERSION_HEADER]: RESIGNATION_CONTRACT_VERSION,
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
       },
       method,

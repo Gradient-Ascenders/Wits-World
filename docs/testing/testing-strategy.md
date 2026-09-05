@@ -209,9 +209,10 @@ account-deletion rollback; and scheduler tests for immediate startup,
 non-overlap, safe failure containment, and clean shutdown. The explicit
 database runner uses only `TEST_DATABASE_URL`, provisions isolated temporary
 databases, and must cover migrations `0028`, `0033`, and `0037`. Route, client,
-component, and Playwright coverage must also verify contract-version rollout,
-capability gating, confirmation/focus behavior, repeated-click protection, and
-ambiguous-response recovery. Production or shared
+component, and Playwright coverage must also verify CORS-safelisted media-type
+negotiation, legacy fallback, overdue-detail finalization, capability gating,
+confirmation/focus behavior, repeated-click protection, and ambiguous-response
+recovery. Production or shared
 database targets are not substitutes for this evidence.
 
 ## Performance and reliability evidence

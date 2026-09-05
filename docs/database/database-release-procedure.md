@@ -138,14 +138,19 @@ receipt constraints, adds the unique per-match resignation receipt, replaces
 the deferred validators, and installs 25/0 progression rules. It does not alter
 existing matches. Apply it before the issue `#219` API.
 
-The Web sends `X-Wits-PvP-Contract-Version: 2` on PvP calls. Before the new API
-is live, the old API ignores the header and the Web treats an absent `canResign`
-as unavailable. Before the new Web is live, the new API keeps the legacy match
-shape and rejects resignation; it returns `PVP_CLIENT_UPDATE_REQUIRED` rather
-than exposing a voluntary terminal reason to an old tab. This protects the
-parallel API/Web deployment window. Once any voluntary resignation is stored,
-do not roll the API back to a version that cannot parse that reason; recover by
-rolling forward with the migration retained.
+The Web requests the version-2 PvP representation with
+`Accept: application/vnd.wits-world.pvp.v2+json, application/json;q=0.9`.
+Because `Accept` is CORS-safelisted, it requires no new preflight allow-list
+entry. Before the new API is live, the old API can serve the JSON fallback and
+the Web treats an absent `canResign` as unavailable. Before the new Web is live,
+the new API keeps the legacy match shape and rejects resignation; it returns
+`PVP_CLIENT_UPDATE_REQUIRED` rather than exposing a voluntary terminal reason
+to an old tab. This protects the parallel API/Web deployment window.
+
+Deploy in database, API, then Web order. Once any voluntary resignation is
+stored, do not roll the API back to a version that cannot parse that reason;
+drain incompatible API instances and recover by rolling forward with migration
+`0037` retained.
 
 ## Prerequisites
 

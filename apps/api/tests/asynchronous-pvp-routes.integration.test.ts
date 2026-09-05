@@ -24,6 +24,8 @@ const INVITATION_ID = 'a2000000-0000-4000-8000-000000000001';
 const DECK_ID = 'a3000000-0000-4000-8000-000000000001';
 const CREATURE_ID = 'a4000000-0000-4000-8000-000000000001';
 const SUBMISSION_ID = 'a5000000-0000-4000-8000-000000000001';
+const PVP_ACCEPT =
+  'application/vnd.wits-world.pvp.v2+json, application/json;q=0.9';
 
 let app: FastifyInstance;
 let service: { [K in keyof AsyncPvpService]: ReturnType<typeof vi.fn> };
@@ -188,6 +190,32 @@ describe('asynchronous PvP routes', () => {
     expect(service.resignMatch).toHaveBeenCalledTimes(1);
   });
 
+  it('does not advertise resignation after an overdue detail read is finalized', async () => {
+    service.getMatch.mockResolvedValueOnce(
+      match({
+        status: 'completed',
+        currentActor: null,
+        turnDeadline: null,
+        outcome: 'loss',
+        completionReason: 'turn_forfeit',
+        completedAt: '2026-09-06T10:00:00.000Z',
+        version: 4,
+      }),
+    );
+
+    const response = await request(
+      'GET',
+      `/api/v1/matches/pvp/${INVITATION_ID}`,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      canResign: false,
+      completionReason: 'turn_forfeit',
+      status: 'completed',
+    });
+  });
+
   it('keeps legacy clients safe throughout the resignation rollout', async () => {
     service.getMatch.mockResolvedValueOnce(match()).mockResolvedValueOnce(
       match({
@@ -262,7 +290,7 @@ describe('asynchronous PvP routes', () => {
     const response = await app.inject({
       method: 'POST',
       url: `/api/v1/matches/pvp/${INVITATION_ID}/resign`,
-      headers: { 'x-wits-pvp-contract-version': '2' },
+      headers: { accept: PVP_ACCEPT },
       payload: { submissionId: SUBMISSION_ID, expectedVersion: 3 },
     });
 
@@ -312,7 +340,7 @@ describe('asynchronous PvP routes', () => {
       paths['/api/v1/matches/pvp/{matchId}/resign']?.post;
     expect(resignationOperation).toBeDefined();
     expect(JSON.stringify(resignationOperation)).toContain(
-      'x-wits-pvp-contract-version',
+      'application/vnd.wits-world.pvp.v2+json',
     );
   });
 });
@@ -381,8 +409,8 @@ function request(
     method,
     url,
     headers: {
+      accept: PVP_ACCEPT,
       authorization: 'Bearer valid-token',
-      'x-wits-pvp-contract-version': '2',
     },
     ...(payload ? { payload } : {}),
   });

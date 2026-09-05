@@ -31,15 +31,14 @@ interface PageQuery {
   cursor?: string;
   limit?: number;
 }
-const PVP_CONTRACT_VERSION_HEADER = 'x-wits-pvp-contract-version';
-const RESIGNATION_CONTRACT_VERSION = '2';
+const RESIGNATION_CONTRACT_MEDIA_TYPE =
+  'application/vnd.wits-world.pvp.v2+json';
 const pvpContractHeadersSchema = {
   type: 'object',
   properties: {
-    [PVP_CONTRACT_VERSION_HEADER]: {
+    accept: {
       type: 'string',
-      description:
-        'PvP response-contract version. Version 2 enables voluntary resignation capability and terminal data.',
+      description: `Include ${RESIGNATION_CONTRACT_MEDIA_TYPE} to enable voluntary resignation capability and terminal data without adding a non-safelisted CORS request header.`,
     },
   },
 } as const;
@@ -773,8 +772,13 @@ function matchEnvelope(match: AsyncPvpMatchView, request: FastifyRequest) {
 
 function supportsResignationContract(request: FastifyRequest): boolean {
   return (
-    request.headers[PVP_CONTRACT_VERSION_HEADER] ===
-    RESIGNATION_CONTRACT_VERSION
+    request.headers.accept
+      ?.split(',')
+      .some(
+        (range) =>
+          range.trim().split(';', 1)[0]?.toLowerCase() ===
+          RESIGNATION_CONTRACT_MEDIA_TYPE,
+      ) ?? false
   );
 }
 

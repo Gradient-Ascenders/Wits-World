@@ -256,12 +256,22 @@ The common match response is viewer-relative:
 | `canResign`           | boolean                        | Version 2 | Server-derived capability        |
 | `requestId`           | string                         | Yes       | Safe request correlation         |
 
-The Web client sends `X-Wits-PvP-Contract-Version: 2`. Match responses to that
-contract include `canResign`, which is true only while the authoritative match
-is active. During a mixed API/Web rollout, legacy requests receive the original
-shape without this field. A legacy request that would receive a voluntary
-terminal reason fails safely with `PVP_CLIENT_UPDATE_REQUIRED`, and the resign
-endpoint rejects legacy requests before invoking the service.
+The Web client negotiates version 2 with
+`Accept: application/vnd.wits-world.pvp.v2+json, application/json;q=0.9`.
+`Accept` is CORS-safelisted, so this does not add a request header to the browser
+preflight allow-list. An older API can ignore the preferred media type and serve
+the `application/json` fallback; the Web then treats an absent `canResign` as
+unavailable. Match responses from the version-2 API include `canResign`, which
+is true only while the authoritative match is active. A detail read locks and
+finalizes an elapsed deadline before projecting the response, so an overdue
+match is returned as a `turn_forfeit` with `canResign: false`, even when the
+periodic sweep has not processed it yet. The resign mutation repeats that
+database-time deadline check under the same match lock.
+
+During a mixed API/Web rollout, legacy requests receive the original shape
+without `canResign`. A legacy request that would receive a voluntary terminal
+reason fails safely with `PVP_CLIENT_UPDATE_REQUIRED`, and the resign endpoint
+rejects legacy requests before invoking the service.
 
 `AsyncPvpStateView` is a closed object with these required fields:
 

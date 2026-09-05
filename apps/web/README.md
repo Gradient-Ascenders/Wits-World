@@ -28,6 +28,9 @@ viewer-relative completed history. PvP match detail uses
 `/matches/pvp/:matchId`; it renders only API-returned legal actions and revealed
 opponent information. When the API reports the capability, either participant
 can confirm voluntary resignation as an immediate server-recorded loss.
+The client requests that capability with a CORS-safelisted version-2 `Accept`
+media type and an `application/json` fallback, so an older API can return its
+legacy shape without requiring a new preflight allow-list entry.
 The protected `/account` route presents the local player identity, delegates
 credential recovery to the owning provider, and starts permanent account
 deletion with fresh Auth0 reauthentication.

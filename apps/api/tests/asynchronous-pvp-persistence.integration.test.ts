@@ -699,6 +699,33 @@ describe.skipIf(!runIntegrationTests)(
       ).resolves.toMatchObject({ rows: [{ count: '0' }] });
     });
 
+    it('finalizes an elapsed deadline before returning match detail', async () => {
+      const match = await createAcceptedMatch(pool, cardDefinitions, {
+        acceptedAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
+      });
+      const service = createAsyncPvpService(pool, {
+        cursorCodec: createSignedCursorCodec(
+          'database-test-only-cursor-key-with-32-bytes',
+        ),
+      });
+
+      await expect(
+        service.getMatch(match.challengerPlayerId, match.matchId),
+      ).resolves.toMatchObject({
+        status: 'completed',
+        completionReason: 'turn_forfeit',
+        version: 1,
+      });
+      await expect(
+        pool.query<{ count: string }>(
+          `select count(*)::text
+             from private.async_pvp_submission_receipts
+            where match_id = $1::uuid and operation = 'match_resign'`,
+          [match.matchId],
+        ),
+      ).resolves.toMatchObject({ rows: [{ count: '0' }] });
+    });
+
     it('converges a resignation race with the deadline worker on turn forfeit', async () => {
       const match = await createAcceptedMatch(pool, cardDefinitions, {
         acceptedAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
@@ -786,6 +813,11 @@ describe.skipIf(!runIntegrationTests)(
       expect(
         results.filter((result) => result.status === 'fulfilled'),
       ).toHaveLength(1);
+      const rejected = results.find((result) => result.status === 'rejected');
+      expect(rejected).toMatchObject({
+        status: 'rejected',
+        reason: { code: 'PVP_MATCH_COMPLETED' },
+      });
       const finalMatch = await service.getMatch(
         match.challengerPlayerId,
         match.matchId,
@@ -795,6 +827,19 @@ describe.skipIf(!runIntegrationTests)(
       expect(['defeat', 'voluntary_resignation']).toContain(
         finalMatch.completionReason,
       );
+      if (finalMatch.completionReason === 'defeat') {
+        expect(results[0]?.status).toBe('fulfilled');
+        expect(results[1]).toMatchObject({
+          status: 'rejected',
+          reason: { code: 'PVP_MATCH_COMPLETED' },
+        });
+      } else {
+        expect(results[0]).toMatchObject({
+          status: 'rejected',
+          reason: { code: 'PVP_MATCH_COMPLETED' },
+        });
+        expect(results[1]?.status).toBe('fulfilled');
+      }
       const persisted = await pool.query<{
         action_count: string;
         resignation_count: string;

@@ -100,7 +100,7 @@ describe('browser-to-API CORS policy', () => {
         origin: ALLOWED_ORIGIN,
         'access-control-request-method': 'GET',
         'access-control-request-headers':
-          'authorization,x-wits-challenge-contract-version,x-wits-pvp-contract-version',
+          'authorization,x-wits-challenge-contract-version',
       },
     });
 
@@ -122,10 +122,6 @@ describe('browser-to-API CORS policy', () => {
     expect(response.headers['access-control-allow-headers']).toContain(
       'X-Wits-Challenge-Contract-Version',
     );
-    expect(response.headers['access-control-allow-headers']).toContain(
-      'X-Wits-PvP-Contract-Version',
-    );
-
     expect(verifyAccessToken).not.toHaveBeenCalled();
   });
 
