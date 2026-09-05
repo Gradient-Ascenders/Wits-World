@@ -28,7 +28,7 @@ describe('question performance workspace', () => {
     expect(await screen.findByText('Where is the Great Hall?')).toBeVisible();
     expect(screen.getByText('Problematic')).toBeVisible();
     expect(screen.getByText('7')).toBeVisible();
-    expect(screen.getByText('(70%)')).toBeVisible();
+    expect(screen.getByText('(70.0%)')).toBeVisible();
     expect(screen.getByRole('link', { name: 'Open question' })).toHaveAttribute(
       'href',
       `/author/events/${eventId}/challenges/${challengeId}/questions/${questionId}`,
@@ -111,11 +111,93 @@ describe('question performance workspace', () => {
       await screen.findByText('No completed question outcomes'),
     ).toBeVisible();
   });
+
+  it('recovers to the last valid page when matching results shrink', async () => {
+    const user = userEvent.setup();
+    let filteredPageOneRequests = 0;
+    const fetchMock = installApi([performanceItem()], (url) => {
+      const page = Number(url.searchParams.get('page'));
+      const isFiltered = url.searchParams.get('format') === 'multiple_choice';
+
+      if (!isFiltered) return analyticsPage([performanceItem()]);
+      if (page === 2) {
+        return analyticsPage([], {
+          page: 2,
+          totalItems: 1,
+          totalPages: 1,
+        });
+      }
+
+      filteredPageOneRequests += 1;
+      return analyticsPage([performanceItem()], {
+        totalItems: filteredPageOneRequests === 1 ? 26 : 1,
+        totalPages: filteredPageOneRequests === 1 ? 2 : 1,
+      });
+    });
+    render(
+      <AnalyticsWorkspace
+        apiBaseUrl={apiBaseUrl}
+        getAccessToken={getAccessToken}
+      />,
+    );
+
+    await screen.findByText('Where is the Great Hall?');
+    await user.selectOptions(
+      screen.getByLabelText('Format'),
+      'multiple_choice',
+    );
+    await user.click(screen.getByRole('button', { name: 'Apply filters' }));
+    expect(await screen.findByText('Page 1 of 2')).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
+    expect(await screen.findByText('Page 1 of 1')).toBeVisible();
+    expect(screen.getByText('Where is the Great Hall?')).toBeVisible();
+    expect(
+      screen.queryByText('No completed question outcomes'),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Format')).toHaveValue('multiple_choice');
+
+    const analyticsCalls = fetchMock.mock.calls.filter(([url]) =>
+      String(url).includes('/author/question-performance?'),
+    );
+    expect(
+      analyticsCalls.map(([url]) =>
+        new URL(String(url)).searchParams.get('page'),
+      ),
+    ).toEqual(['1', '1', '2', '1']);
+  });
+
+  it('shows decimal precision on both sides of the flagging boundary', async () => {
+    installApi([
+      performanceItem({
+        answerCount: 200,
+        correctCount: 61,
+        incorrectCount: 139,
+        correctRate: 0.305,
+        incorrectRate: 0.695,
+        timeoutCount: 0,
+        isProblematic: false,
+      }),
+    ]);
+    render(
+      <AnalyticsWorkspace
+        apiBaseUrl={apiBaseUrl}
+        getAccessToken={getAccessToken}
+      />,
+    );
+
+    expect(await screen.findByText('(30.5%)')).toBeVisible();
+    expect(screen.getByText('(69.5%)')).toBeVisible();
+    expect(screen.getByText('Not flagged')).toBeVisible();
+    expect(screen.queryByText('(70.0%)')).not.toBeInTheDocument();
+  });
 });
 
-function installApi(items: object[]) {
+function installApi(items: object[], analyticsResponse?: (url: URL) => object) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-    const path = new URL(String(input)).pathname;
+    const url = new URL(String(input));
+    const path = url.pathname;
     if (path.endsWith('/author/events')) {
       return jsonResponse({ events: [event()], requestId: 'events' });
     }
@@ -126,21 +208,29 @@ function installApi(items: object[]) {
       });
     }
     if (path.endsWith('/author/question-performance')) {
-      return jsonResponse({
-        items,
-        page: 1,
-        pageSize: 25,
-        totalItems: items.length,
-        totalPages: items.length ? 1 : 0,
-        minimumSampleSize: 10,
-        problematicIncorrectRate: 0.7,
-        requestId: 'analytics',
-      });
+      return jsonResponse(analyticsResponse?.(url) ?? analyticsPage(items));
     }
     throw new Error(`Unexpected request: ${String(input)}`);
   });
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
+}
+
+function analyticsPage(
+  items: object[],
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    items,
+    page: 1,
+    pageSize: 25,
+    totalItems: items.length,
+    totalPages: items.length ? 1 : 0,
+    minimumSampleSize: 10,
+    problematicIncorrectRate: 0.7,
+    requestId: 'analytics',
+    ...overrides,
+  };
 }
 
 function event() {

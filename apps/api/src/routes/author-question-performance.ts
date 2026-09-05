@@ -40,7 +40,7 @@ export const authorQuestionPerformanceRoutes: FastifyPluginAsync<
       onRequest: [app.authenticate, app.requireActivePlayer, app.requireAuthor],
       schema: {
         operationId: 'listAuthorQuestionPerformance',
-        summary: 'List privacy-safe question performance aggregates',
+        summary: 'List Author-only question performance aggregates',
         description:
           'Returns Author-only aggregate outcomes. No player identity, selected response, order, or location is projected.',
         tags: ['Authoring'],

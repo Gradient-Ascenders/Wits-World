@@ -6,7 +6,7 @@ title: Testing strategy and policy
 
 ## Question performance analytics
 
-Issue `#184` adds service, route, client, and Author-workspace coverage for the 10-answer sample boundary, exact and just-below 70% incorrect rates, larger samples, MCQ and ordering aggregation, part-way timeout exclusion of unseen snapshots, timeout counts, composed filters, empty and out-of-range pages, malformed filters, Author authorization, page bounds, closed privacy-safe response parsing, keyboard-accessible horizontal results, and edit navigation. Database query-plan evidence and its remaining representative-data gate are documented in [Question performance analytics](../database/question-performance-analytics.md).
+Issue `#184` adds service, route, client, and Author-workspace coverage for the 10-answer flagging boundary, exact and just-below 70% incorrect rates with non-misleading decimal display, larger samples, MCQ and ordering aggregation, part-way timeout exclusion of unseen snapshots, timeout counts, composed filters, genuine empty results, stale-page recovery to the last valid page, malformed filters, Author authorization, page bounds, closed aggregate response parsing, keyboard-accessible horizontal results, and edit navigation. The Author-only response deliberately retains exact small-sample aggregates; its residual narrow-filter inference risk and the remaining database query-plan gate are documented in [Question performance analytics](../database/question-performance-analytics.md).
 
 ## Purpose
 

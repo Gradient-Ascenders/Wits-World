@@ -24,6 +24,8 @@ Consequently, `correctCount + incorrectCount = answerCount` and `timeoutCount <=
 
 A question has a sufficient sample at exactly 10 outcomes. It is problematic only when the sample is sufficient and `incorrectCount / answerCount >= 0.70`. This includes the exact 10-answer and 70% boundary.
 
+This minimum is a flagging threshold, not a disclosure threshold. Issue `#184` requires Authors to distinguish insufficient samples from flagged questions, prohibits player-level fields, and defines 10 answers as the minimum for problem flagging; it does not require suppressing aggregates below 10. The checked-in requirements and architecture decisions likewise establish no small-sample suppression rule. Exact aggregate counts and rates therefore remain available to an authenticated active Author below 10 outcomes, without silently adding noise, bucketing, or other statistical privacy behavior.
+
 Date filters apply to the authoritative attempt `completed_at`: `from` is inclusive and `to` is exclusive. Filters use the difficulty snapshot seen by the player, while stable source question, challenge, and event identifiers lead the Author back to the current immutable published or retired content.
 
 ## Query and indexes
@@ -50,10 +52,12 @@ The first two support high-selectivity event and challenge workflows. The comple
 
 `question-performance-database.integration.test.ts` is the durable query-plan evidence harness. It provisions a disposable fully migrated database with selective event/challenge distributions, runs the real service query, and executes `EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)` for event-filtered, challenge-filtered, and unfiltered date-range requests. Assertions require bounded actual work and verify that the filtered shapes are index-supported without making one exact planner choice an application-correctness requirement. A small empty database is not used because it may legitimately produce an unrepresentative plan.
 
-The local run on 5 September 2026 did not reach database creation, migration, seed, aggregate, or `EXPLAIN`: the ignored `TEST_DATABASE_URL` was present but PostgreSQL rejected its configured credentials. The exact test command therefore failed, and no plan is claimed. Refreshing the disposable test credential and passing this integration test remains an explicit acceptance gate.
+The local run on 5 September 2026 did not reach database creation, migration, seed, aggregate, or `EXPLAIN`: the ignored `TEST_DATABASE_URL` and `DATABASE_URL` were present, valid Neon URLs, and identified separate targets, but PostgreSQL rejected the configured test credential for `neondb_owner`. No local PostgreSQL service, `psql`, or Docker runtime was available as the repository-documented alternative. The exact test command therefore failed, and no migration or plan result is claimed. Refreshing the disposable test credential and passing this integration test remains an explicit acceptance gate.
 
 ## Privacy and limitations
 
-`GET /api/v1/author/question-performance` is protected by the normal active-player and Author guards. Its response schema is closed and contains only aggregate counts/rates, content context, and edit-navigation identifiers. The browser never receives attempt rows.
+`GET /api/v1/author/question-performance` is protected by the normal active-player and Author guards. Its response schema is closed and contains only aggregate counts/rates, content context, and edit-navigation identifiers. The browser never receives attempt rows, player identity, attempt identity, submitted answer/order, or player location.
+
+Because exact aggregates remain visible for samples below 10, sufficiently narrow content and date filters can create a residual inference risk when an Author already knows who completed a particular small set of attempts. Author authorization and removal of row-level identity reduce disclosure but do not eliminate that inference. This behavior is retained explicitly because the 10-outcome rule is documented as the problematic-question threshold, not a suppression requirement; changing that boundary requires an authoritative privacy/product decision.
 
 This is a curation signal, not causal analysis. It does not explain why a question was missed, segment players, retain a separate history, rewrite content, or provide a game-wide dashboard. Because published and retired question definitions are immutable, a source identifier continues to describe the answer key used for its snapshots.

@@ -12,6 +12,8 @@ Each item contains `questionId`, `challengeId`, `eventId`, `eventTitle`, current
 
 The threshold constants are returned with every page: minimum sample size `10` and problematic incorrect rate `0.7`. `answerCount` means submitted answers plus at most one legitimate current-question timeout per timed-out attempt; future unanswered snapshots are excluded. Empty and out-of-range pages retain correct total metadata. See [Question performance analytics](../database/question-performance-analytics.md) for exact timeout, denominator, filtering, and index semantics.
 
+The 10-outcome minimum controls only whether the server may mark a question as problematic; it is not a disclosure threshold. An authenticated active Author can see exact aggregate counts and rates for smaller samples. The closed response omits player and attempt identity, submitted choices/orders, and location, but a highly selective combination of content and date filters can still permit inference about a known small sample. Issue `#184` and the checked-in architecture record do not require small-sample suppression, so the endpoint preserves those curation details rather than introducing an undocumented privacy mechanism.
+
 ## Scope and authority
 
 Events, challenges, questions, cards, and campaigns share the server-authoritative

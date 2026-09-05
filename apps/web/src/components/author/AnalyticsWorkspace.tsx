@@ -97,6 +97,16 @@ export function AnalyticsWorkspace({ apiBaseUrl, getAccessToken }: Props) {
           to: filters.to ? new Date(filters.to).toISOString() : undefined,
         });
         if (!signal.aborted) {
+          if (
+            next.totalItems > 0 &&
+            next.items.length === 0 &&
+            next.totalPages > 0 &&
+            page > next.totalPages
+          ) {
+            setError('');
+            setPage(next.totalPages);
+            return;
+          }
           setResult(next);
           setError('');
           setState('ready');
@@ -268,7 +278,7 @@ export function AnalyticsWorkspace({ apiBaseUrl, getAccessToken }: Props) {
           </button>
         </div>
       ) : null}
-      {state === 'ready' && result?.items.length === 0 ? (
+      {state === 'ready' && result?.totalItems === 0 ? (
         <div className="author-empty-state">
           <h3>No completed question outcomes</h3>
           <p>Try a wider date range or remove a filter.</p>
@@ -391,5 +401,5 @@ export function AnalyticsWorkspace({ apiBaseUrl, getAccessToken }: Props) {
 }
 
 function formatRate(rate: number) {
-  return `${Math.round(rate * 100)}%`;
+  return `${(rate * 100).toFixed(1)}%`;
 }
