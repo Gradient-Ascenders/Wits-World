@@ -280,7 +280,7 @@ completed-match history. It does not use direct attribute comparison.
   is discarded immediately after use, cannot be reused during that battle, and
   may define multiple authored effects.
 - The later live PvP mode uses a `1 minute` turn timer; the CPU match turn timer
-  is `1.5 minutes`. The shared rule remains configurable. The planned
+  is `1.5 minutes`. The shared rule remains configurable. The implemented
   asynchronous PvP mode is separate and uses 24-hour decision windows.
 - For CPU and later live PvP modes, if the timer expires without a selected
   move or action, the turn ends without an action. Asynchronous PvP instead
@@ -302,11 +302,11 @@ card/deck snapshots, returns a new battle state for every legal action, and
 receives randomness through an injected integer source. Match persistence and
 HTTP coordination remain API responsibilities.
 
-## Planned asynchronous PvP
+## Asynchronous PvP
 
-Issue `#178` defines a planned Intermediate asynchronous mode that reuses the
-same server-authoritative move, effect, replacement, deck, and victory rules.
-It is not the one-minute live mode and is not part of the implemented Basic
+Issues `#178` through `#181` implement an Intermediate asynchronous mode that
+reuses the same server-authoritative move, effect, replacement, deck, and
+victory rules. It is not the one-minute live mode and is not part of the Basic
 release.
 
 An invitation expires after 24 hours. Once accepted, each active move or
@@ -317,7 +317,14 @@ continues to submit intent only, opponent cards remain hidden until legally
 revealed, and persisted deck snapshots prevent later catalogue or saved-deck
 changes from altering the match.
 
-The planned endpoint, privacy, idempotency, polling, deadline, history, and
+Issue `#219` adds voluntary resignation as an API-owned terminal rule. Either
+authenticated participant may resign an active match on either player's turn.
+The resigning participant loses, the opponent wins, and the server records the
+distinct `voluntary_resignation` reason. An already elapsed decision deadline
+takes precedence and records `turn_forfeit`; the browser cannot select the
+participant, winner, reason, or progression result.
+
+The endpoint, privacy, idempotency, polling, deadline, history, and
 progression boundaries are defined in the
 [asynchronous PvP API contract](../architecture/asynchronous-pvp-api-contract.md).
 

@@ -74,6 +74,7 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
   const pageErrors: string[] = [];
   const failedRequests: string[] = [];
   let actionRequests = 0;
+  let resignationRequests = 0;
   const deck = buildSavedDeck({ isSelected: true });
   const invitation = pvpInvitation();
   const match = pvpMatch();
@@ -125,6 +126,35 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
       await json(route, {
         ...currentMatch,
         requestId: 'pvp-browser-action',
+      });
+      return;
+    }
+    if (pathname.endsWith(`/matches/pvp/${match.matchId}/resign`)) {
+      resignationRequests += 1;
+      expect(request.headers().accept).toContain(
+        'application/vnd.wits-world.pvp.v2+json',
+      );
+      expect(request.headers()['x-wits-pvp-contract-version']).toBeUndefined();
+      expect(request.postDataJSON()).toEqual({
+        expectedVersion: 4,
+        submissionId: expect.any(String),
+      });
+      currentMatch = {
+        ...currentMatch,
+        canResign: false,
+        completedAt: '2026-09-05T08:40:00.000Z',
+        completionReason: 'voluntary_resignation',
+        currentActor: null,
+        legalActions: [],
+        outcome: 'loss',
+        status: 'completed',
+        turnDeadline: null,
+        updatedAt: '2026-09-05T08:40:00.000Z',
+        version: 5,
+      };
+      await json(route, {
+        ...currentMatch,
+        requestId: 'pvp-browser-resignation',
       });
       return;
     }
@@ -259,6 +289,28 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
     path: path.join(screenshotsDirectory, '1280-pvp-opponent-turn.png'),
     style: '.skip-link, .primary-navigation { display: none !important; }',
   });
+
+  const resign = page.getByRole('button', { name: 'Resign match' });
+  await resign.click();
+  const dialog = page.getByRole('alertdialog', { name: 'Resign this match?' });
+  await expect(dialog).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Keep playing' }),
+  ).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(resign).toBeFocused();
+
+  await resign.click();
+  await page.getByRole('button', { name: 'Resign and lose' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Match complete' }),
+  ).toBeFocused();
+  await expect(page.getByText('You resigned the match.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Resign match' })).toHaveCount(
+    0,
+  );
+  expect(resignationRequests).toBe(1);
 
   expect(consoleErrors.filter((message) => !message.includes('404'))).toEqual(
     [],

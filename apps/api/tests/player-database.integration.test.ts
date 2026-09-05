@@ -195,6 +195,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0034_retire_coin_rewards.sql',
           '0035_deny_deleted_identity_tokens.sql',
           '0036_remove_duplicate_indexes.sql',
+          '0037_add_async_pvp_voluntary_resignation.sql',
         ],
       });
 
@@ -321,6 +322,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0034_retire_coin_rewards.sql',
           '0035_deny_deleted_identity_tokens.sql',
           '0036_remove_duplicate_indexes.sql',
+          '0037_add_async_pvp_voluntary_resignation.sql',
         ],
       });
 

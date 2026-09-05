@@ -39,23 +39,21 @@ The following rules are fixed by issue `#178` and this contract:
 - only participants can inspect invitations, matches, and history;
 - polling is the only planned update mechanism;
 - every client mutation is idempotent and contains intent only; and
+- either authenticated participant may voluntarily resign an active match,
+  regardless of whose turn it is; and
 - match completion exposes a stable exactly-once progression source without
   inventing client-controlled or unapproved award values.
 
-The first delivery deliberately does not add challenge cancellation or a
-voluntary resignation intent. Account deletion invalidates pending invitations.
-For an active match whose turn deadline has not elapsed, the deleting player
-loses by `account_deletion_forfeit`. If the deadline has already elapsed when
-deletion begins, deadline authority takes precedence: the current actor loses by
-`turn_forfeit`, even when the other participant is the player being deleted.
-Completed records retain an anonymous player tombstone under the existing
-retention policy.
-
-The issue `#181` Web experience preserves this boundary: it renders deadline
-and account-deletion forfeits returned by the API but does not manufacture a
-voluntary forfeit control. A future forfeit action requires an approved request
-schema, idempotent service transition, completion reason, persistence and
-progression behavior, OpenAPI update, and API/security review.
+Challenge cancellation remains outside the approved contract. Issue `#219`
+adds voluntary match resignation as a distinct `voluntary_resignation` terminal
+reason. The authenticated caller is always the loser and the other persisted
+participant is always the winner; the browser cannot nominate either identity.
+Account deletion still invalidates pending invitations. For an active match
+whose turn deadline has not elapsed, the deleting player loses by
+`account_deletion_forfeit`. If the deadline has already elapsed when deletion or
+resignation begins, deadline authority takes precedence: the current actor loses
+by `turn_forfeit`. Completed records retain an anonymous player tombstone under
+the existing retention policy.
 
 The following social and privacy decisions are unresolved and require separate
 product authority before a later implementation claims them:
@@ -178,11 +176,12 @@ decline leaves the invitation persisted as expired and returns
 An asynchronous match is either `active` or `completed`. A completed match has
 one immutable completion reason:
 
-| Reason                     | Meaning                                          |
-| -------------------------- | ------------------------------------------------ |
-| `defeat`                   | Shared battle rules produced a winner            |
-| `turn_forfeit`             | The required participant missed a 24-hour window |
-| `account_deletion_forfeit` | An active participant began permanent deletion   |
+| Reason                     | Meaning                                           |
+| -------------------------- | ------------------------------------------------- |
+| `defeat`                   | Shared battle rules produced a winner             |
+| `turn_forfeit`             | The required participant missed a 24-hour window  |
+| `account_deletion_forfeit` | An active participant began permanent deletion    |
+| `voluntary_resignation`    | One participant chose to concede the active match |
 
 The API maps the internal `player` and `cpu` rule-engine sides to viewer-relative
 `self` and `opponent`. CPU-oriented side names and internal player UUIDs do not
@@ -237,24 +236,42 @@ only actions and card information that became legally visible during play.
 
 The common match response is viewer-relative:
 
-| Field                 | Type                           | Required | Notes                            |
-| --------------------- | ------------------------------ | -------- | -------------------------------- |
-| `matchId`             | UUID string                    | Yes      | Opaque match identifier          |
-| `mode`                | `"asynchronous"`               | Yes      | Never aliases live PvP           |
-| `status`              | `"active" \| "completed"`      | Yes      | Authoritative state              |
-| `version`             | non-negative integer           | Yes      | Optimistic-concurrency version   |
-| `opponent.playerName` | string                         | Yes      | Only approved opponent identity  |
-| `currentActor`        | `"self" \| "opponent" \| null` | Yes      | Viewer-relative                  |
-| `turnDeadline`        | RFC 3339 timestamp or null     | Yes      | Null only when completed         |
-| `state`               | `AsyncPvpStateView`            | Yes      | Viewer-safe battle projection    |
-| `legalActions`        | action array                   | Yes      | Empty unless self may act        |
-| `lastAction`          | `PvpActionResultView` or null  | Yes      | Legally visible committed result |
-| `outcome`             | `"win" \| "loss" \| null`      | Yes      | Non-null when completed          |
-| `completionReason`    | terminal reason or null        | Yes      | Non-null when completed          |
-| `startedAt`           | RFC 3339 timestamp             | Yes      | Server timestamp                 |
-| `updatedAt`           | RFC 3339 timestamp             | Yes      | Polling reconciliation field     |
-| `completedAt`         | RFC 3339 timestamp or null     | Yes      | Server timestamp                 |
-| `requestId`           | string                         | Yes      | Safe request correlation         |
+| Field                 | Type                           | Required  | Notes                            |
+| --------------------- | ------------------------------ | --------- | -------------------------------- |
+| `matchId`             | UUID string                    | Yes       | Opaque match identifier          |
+| `mode`                | `"asynchronous"`               | Yes       | Never aliases live PvP           |
+| `status`              | `"active" \| "completed"`      | Yes       | Authoritative state              |
+| `version`             | non-negative integer           | Yes       | Optimistic-concurrency version   |
+| `opponent.playerName` | string                         | Yes       | Only approved opponent identity  |
+| `currentActor`        | `"self" \| "opponent" \| null` | Yes       | Viewer-relative                  |
+| `turnDeadline`        | RFC 3339 timestamp or null     | Yes       | Null only when completed         |
+| `state`               | `AsyncPvpStateView`            | Yes       | Viewer-safe battle projection    |
+| `legalActions`        | action array                   | Yes       | Empty unless self may act        |
+| `lastAction`          | `PvpActionResultView` or null  | Yes       | Legally visible committed result |
+| `outcome`             | `"win" \| "loss" \| null`      | Yes       | Non-null when completed          |
+| `completionReason`    | terminal reason or null        | Yes       | Non-null when completed          |
+| `startedAt`           | RFC 3339 timestamp             | Yes       | Server timestamp                 |
+| `updatedAt`           | RFC 3339 timestamp             | Yes       | Polling reconciliation field     |
+| `completedAt`         | RFC 3339 timestamp or null     | Yes       | Server timestamp                 |
+| `canResign`           | boolean                        | Version 2 | Server-derived capability        |
+| `requestId`           | string                         | Yes       | Safe request correlation         |
+
+The Web client negotiates version 2 with
+`Accept: application/vnd.wits-world.pvp.v2+json, application/json;q=0.9`.
+`Accept` is CORS-safelisted, so this does not add a request header to the browser
+preflight allow-list. An older API can ignore the preferred media type and serve
+the `application/json` fallback; the Web then treats an absent `canResign` as
+unavailable. Match responses from the version-2 API include `canResign`, which
+is true only while the authoritative match is active. A detail read locks and
+finalizes an elapsed deadline before projecting the response, so an overdue
+match is returned as a `turn_forfeit` with `canResign: false`, even when the
+periodic sweep has not processed it yet. The resign mutation repeats that
+database-time deadline check under the same match lock.
+
+During a mixed API/Web rollout, legacy requests receive the original shape
+without `canResign`. A legacy request that would receive a voluntary terminal
+reason fails safely with `PVP_CLIENT_UPDATE_REQUIRED`, and the resign endpoint
+rejects legacy requests before invoking the service.
 
 `AsyncPvpStateView` is a closed object with these required fields:
 
@@ -307,6 +324,7 @@ The complete first-delivery endpoint set is:
 | `GET /api/v1/matches/pvp/history`                            | `200`   | `PvpHistoryResponse`          | List a bounded completed-history page           |
 | `GET /api/v1/matches/pvp/:matchId`                           | `200`   | `AsyncPvpMatchResponse`       | Read one viewer-safe match                      |
 | `POST /api/v1/matches/pvp/:matchId/actions`                  | `200`   | `AsyncPvpMatchResponse`       | Submit one legal battle intent                  |
+| `POST /api/v1/matches/pvp/:matchId/resign`                   | `200`   | `AsyncPvpMatchResponse`       | Concede one active participant match            |
 
 Static `/history` routing must be registered without allowing it to be captured
 as a match identifier.
@@ -494,6 +512,12 @@ The server still validates the requested identifier against the current
 authoritative `legalActions`; returning an action earlier does not reserve it
 or bypass version and deadline checks.
 
+The resignation body is the closed intent
+`{ submissionId: UUID, expectedVersion: integer }`. It contains no participant,
+loser, winner, outcome, reason, points, or battle state. Resignation does not
+depend on `currentActor` or `legalActions`; the server derives permission from
+authenticated participation and the active persisted match.
+
 ## Polling and history
 
 `GET /matches/pvp` and `GET /matches/pvp/:matchId` are the recovery authority
@@ -509,8 +533,10 @@ polling remains the authority while a battle is open.
 
 An ambiguous mutation response is reconciled by reading the affected
 invitation or match and then replaying the same `submissionId` only when
-necessary. The client must not manufacture a new submission identifier merely
-because the first response was lost.
+necessary. For resignation, an unchanged active match with the same version may
+offer an explicit same-reference retry; a newer or terminal match is rendered
+without resubmission. The client must not manufacture a new submission
+identifier merely because the first response was lost.
 
 History is participant-only. List rows contain the opponent Player Name or
 `Deleted player`, viewer-relative outcome, completion reason, and timestamps.
@@ -556,14 +582,16 @@ statement.
 
 Two requests with one expected version cannot both advance a match. The first
 commit increments the version; the second returns the stored receipt when it is
-a replay or `PVP_MATCH_VERSION_CONFLICT` when it is a different intent.
+a replay or rejects the now-stale/terminal intent. A resignation receipt is
+unique per match, and deferred validation requires exactly one such receipt for
+a `voluntary_resignation` result and none for any other completion reason.
 
 ## Deterministic deadline processing
 
 The deadline processor is an at-least-once convergence mechanism, not a source
 of authority. PostgreSQL timestamps and terminal constraints decide outcomes.
 
-The future processor must:
+The implemented processor:
 
 - run one sweep after API startup and repeat on a configurable interval;
 - select bounded overdue batches ordered by deadline and stable identifier;
@@ -600,8 +628,9 @@ a deadline worker retries, or two workers race. Zero-point outcomes must still
 be recordable when the approved progression rules require activity evidence.
 
 Migration `0028` adds the dedicated `asynchronous_pvp` source without
-reclassifying PvP as a CPU match. A defeat, turn forfeit, or account-deletion
-forfeit awards 25 permanent points to the winner and zero to the loser or
+reclassifying PvP as a CPU match. Migration `0037` adds versioned voluntary-
+resignation rules. A defeat, turn forfeit, account-deletion forfeit, or voluntary
+resignation awards 25 permanent points to the winner and zero to the loser or
 forfeiter. Both participant decisions count as activity. No PvP achievement is
 introduced, although the activity may contribute to the existing streak
 achievement.
@@ -610,8 +639,8 @@ The transaction-aware
 `recordAsynchronousPvpCompletion(client, matchId)` operation validates the
 terminal match and records both participant decisions in canonical player-ID
 order. The unique `(matchId, participantId)` source converges under replay and
-worker races. Issue `#180` must call it inside the terminal match transaction;
-otherwise its exactly-once progression criterion remains incomplete. See the
+worker races. Issue `#180` calls it inside the terminal match transaction, so a
+progression failure rolls back the terminal transition. See the
 [progression rules](../requirements/player-progression-rules.md#asynchronous-pvp-progression)
 and [persistence design](../database/asynchronous-pvp-persistence.md#progression).
 
@@ -635,6 +664,7 @@ Errors use the existing problem-style envelope with `type`, `title`, `status`,
 | `409`  | `PVP_MATCH_VERSION_CONFLICT`      | Stale match version                           |
 | `409`  | `PVP_ACTION_ILLEGAL`              | Intent is not currently legal                 |
 | `409`  | `PVP_IDEMPOTENCY_CONFLICT`        | Submission ID reused with another payload     |
+| `409`  | `PVP_CLIENT_UPDATE_REQUIRED`      | Legacy client cannot use/read resignation     |
 | `429`  | `RATE_LIMITED`                    | Existing authenticated per-process limit      |
 
 Authentication continues to use the existing `401` boundary. Object-level
@@ -686,6 +716,11 @@ tests:
 - coherent reads before or after, but never across, a concurrent commit;
 - mandatory replacement followed by a fresh normal-turn deadline;
 - immutable completed state and history;
+- participant-only resignation on either turn, with no client-selected result;
+- resignation replay, payload conflict, stale/completed rejection, and exact
+  deadline precedence;
+- resignation racing a legal action or account deletion with one terminal
+  result, one progression pair, and no duplicate activity;
 - anonymous completed history after account deletion; and
 - active/history page bounds, deduplication after mutable ordering, and
   first-page refresh without automatic cursor draining.
@@ -707,6 +742,8 @@ tests:
 - bounded visible-page polling, recovery after refresh, and lost-response
   reconciliation;
 - repeated-click protection using the same submission ID;
+- confirmed resignation, focus restoration, capability gating, and
+  lost-response/stale-state recovery without automatic resubmission;
 - incoming, outgoing, accepted, declined, expired, active, forfeited, completed,
   loading, empty, forbidden, and retry states;
 - no rendering or storage of unrevealed opponent cards; and

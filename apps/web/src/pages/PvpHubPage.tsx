@@ -1262,6 +1262,8 @@ function completionReasonLabel(
   if (reason === 'defeat') return 'Battle completed';
   if (reason === 'account_deletion_forfeit')
     return outcome === 'win' ? 'Opponent unavailable' : 'Account forfeit';
+  if (reason === 'voluntary_resignation')
+    return outcome === 'win' ? 'Opponent resigned' : 'You resigned';
   return outcome === 'win' ? 'Opponent missed deadline' : 'Deadline expired';
 }
 

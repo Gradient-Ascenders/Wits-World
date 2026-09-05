@@ -122,7 +122,6 @@ describe('browser-to-API CORS policy', () => {
     expect(response.headers['access-control-allow-headers']).toContain(
       'X-Wits-Challenge-Contract-Version',
     );
-
     expect(verifyAccessToken).not.toHaveBeenCalled();
   });
 

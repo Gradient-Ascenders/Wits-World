@@ -4,6 +4,7 @@ import { validatePlayerName } from '@wits-world/account-policy';
 import { ApiError } from '../errors/api-error.js';
 import {
   AsyncPvpError,
+  type AsyncPvpMatchView,
   type AsyncPvpService,
   type PvpAction,
   type PvpInvitationStatus,
@@ -30,6 +31,17 @@ interface PageQuery {
   cursor?: string;
   limit?: number;
 }
+const RESIGNATION_CONTRACT_MEDIA_TYPE =
+  'application/vnd.wits-world.pvp.v2+json';
+const pvpContractHeadersSchema = {
+  type: 'object',
+  properties: {
+    accept: {
+      type: 'string',
+      description: `Include ${RESIGNATION_CONTRACT_MEDIA_TYPE} to enable voluntary resignation capability and terminal data without adding a non-safelisted CORS request header.`,
+    },
+  },
+} as const;
 interface InvitationQuery extends PageQuery {
   direction?: 'incoming' | 'outgoing';
   status?: PvpInvitationStatus;
@@ -200,13 +212,25 @@ const matchSchema = {
     outcome: { anyOf: [{ enum: ['win', 'loss'] }, { type: 'null' }] },
     completionReason: {
       anyOf: [
-        { enum: ['defeat', 'turn_forfeit', 'account_deletion_forfeit'] },
+        {
+          enum: [
+            'defeat',
+            'turn_forfeit',
+            'account_deletion_forfeit',
+            'voluntary_resignation',
+          ],
+        },
         { type: 'null' },
       ],
     },
     startedAt: { type: 'string', format: 'date-time' },
     updatedAt: { type: 'string', format: 'date-time' },
     completedAt: nullableTimestamp,
+    canResign: {
+      type: 'boolean',
+      description:
+        'Server-derived active-match capability returned to PvP contract version 2 clients.',
+    },
     requestId: { type: 'string' },
   },
 } as const;
@@ -412,6 +436,7 @@ export const asynchronousPvpRoutes: FastifyPluginAsync<Options> = async (
         operationId: 'acceptPvpInvitation',
         tags: ['Matches'],
         security: [{ bearerAuth: [] }],
+        headers: pvpContractHeadersSchema,
         params: paramsSchema('invitationId'),
         body: {
           type: 'object',
@@ -457,7 +482,7 @@ export const asynchronousPvpRoutes: FastifyPluginAsync<Options> = async (
         });
         return {
           invitation: result.invitation,
-          match: { ...result.match, requestId: request.id },
+          match: matchEnvelope(result.match, request),
           requestId: request.id,
         };
       } catch (error) {
@@ -529,12 +554,14 @@ function registerMatchRoutes(
         operationId: 'listPvpHistory',
         tags: ['Matches'],
         security: [{ bearerAuth: [] }],
+        headers: pvpContractHeadersSchema,
         querystring: pageQuerySchema,
         response: {
           200: historyEnvelopeSchema(),
           400: apiErrorSchema,
           401: apiErrorSchema,
           403: apiErrorSchema,
+          409: apiErrorSchema,
         },
       },
     },
@@ -544,6 +571,14 @@ function registerMatchRoutes(
           playerId: playerId(request),
           ...request.query,
         });
+        if (
+          !supportsResignationContract(request) &&
+          page.items.some(
+            (match) => match.completionReason === 'voluntary_resignation',
+          )
+        ) {
+          throw clientUpdateRequiredError();
+        }
         return {
           matches: page.items,
           nextCursor: page.nextCursor,
@@ -595,24 +630,30 @@ function registerMatchRoutes(
         operationId: 'getPvpMatch',
         tags: ['Matches'],
         security: [{ bearerAuth: [] }],
+        headers: pvpContractHeadersSchema,
         params: paramsSchema('matchId'),
         response: {
           200: matchSchema,
           401: apiErrorSchema,
           403: apiErrorSchema,
           404: apiErrorSchema,
+          409: apiErrorSchema,
         },
       },
     },
     async (request) => {
       try {
-        return {
-          ...(await service.getMatch(
-            playerId(request),
-            request.params.matchId,
-          )),
-          requestId: request.id,
-        };
+        const match = await service.getMatch(
+          playerId(request),
+          request.params.matchId,
+        );
+        if (
+          !supportsResignationContract(request) &&
+          match.completionReason === 'voluntary_resignation'
+        ) {
+          throw clientUpdateRequiredError();
+        }
+        return matchEnvelope(match, request);
       } catch (error) {
         throw mapError(error);
       }
@@ -629,6 +670,7 @@ function registerMatchRoutes(
         operationId: 'submitPvpAction',
         tags: ['Matches'],
         security: [{ bearerAuth: [] }],
+        headers: pvpContractHeadersSchema,
         params: paramsSchema('matchId'),
         body: {
           type: 'object',
@@ -652,19 +694,101 @@ function registerMatchRoutes(
     },
     async (request) => {
       try {
-        return {
-          ...(await service.submitAction({
+        return matchEnvelope(
+          await service.submitAction({
             playerId: playerId(request),
             matchId: request.params.matchId,
             ...request.body,
-          })),
-          requestId: request.id,
-        };
+          }),
+          request,
+        );
       } catch (error) {
         throw mapError(error);
       }
     },
   );
+
+  app.post<{
+    Params: MatchParams;
+    Body: { submissionId: string; expectedVersion: number };
+  }>(
+    '/matches/pvp/:matchId/resign',
+    {
+      preHandler: secured,
+      schema: {
+        operationId: 'resignPvpMatch',
+        tags: ['Matches'],
+        security: [{ bearerAuth: [] }],
+        headers: pvpContractHeadersSchema,
+        params: paramsSchema('matchId'),
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['submissionId', 'expectedVersion'],
+          properties: {
+            submissionId: uuid,
+            expectedVersion: { type: 'integer', minimum: 0 },
+          },
+        },
+        response: {
+          200: matchSchema,
+          400: apiErrorSchema,
+          401: apiErrorSchema,
+          403: apiErrorSchema,
+          404: apiErrorSchema,
+          409: apiErrorSchema,
+        },
+      },
+    },
+    async (request) => {
+      try {
+        if (!supportsResignationContract(request)) {
+          throw clientUpdateRequiredError();
+        }
+        return matchEnvelope(
+          await service.resignMatch({
+            playerId: playerId(request),
+            matchId: request.params.matchId,
+            ...request.body,
+          }),
+          request,
+        );
+      } catch (error) {
+        throw mapError(error);
+      }
+    },
+  );
+}
+
+function matchEnvelope(match: AsyncPvpMatchView, request: FastifyRequest) {
+  return {
+    ...match,
+    ...(supportsResignationContract(request)
+      ? { canResign: match.status === 'active' }
+      : {}),
+    requestId: request.id,
+  };
+}
+
+function supportsResignationContract(request: FastifyRequest): boolean {
+  return (
+    request.headers.accept
+      ?.split(',')
+      .some(
+        (range) =>
+          range.trim().split(';', 1)[0]?.toLowerCase() ===
+          RESIGNATION_CONTRACT_MEDIA_TYPE,
+      ) ?? false
+  );
+}
+
+function clientUpdateRequiredError(): ApiError {
+  return new ApiError({
+    statusCode: 409,
+    code: 'PVP_CLIENT_UPDATE_REQUIRED',
+    title: 'PvP client update required',
+    detail: 'Reload Wits World before using voluntary match resignation.',
+  });
 }
 
 function invitationEnvelopeSchema() {
@@ -741,7 +865,12 @@ function historyEnvelopeSchema() {
             opponent: opponentSchema,
             outcome: { enum: ['win', 'loss'] },
             completionReason: {
-              enum: ['defeat', 'turn_forfeit', 'account_deletion_forfeit'],
+              enum: [
+                'defeat',
+                'turn_forfeit',
+                'account_deletion_forfeit',
+                'voluntary_resignation',
+              ],
             },
             startedAt: { type: 'string', format: 'date-time' },
             completedAt: { type: 'string', format: 'date-time' },

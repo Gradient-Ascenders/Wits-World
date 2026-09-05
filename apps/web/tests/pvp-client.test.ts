@@ -6,6 +6,7 @@ import {
   findPvpPlayer,
   getPvpMatch,
   listPvpInvitations,
+  resignPvpMatch,
   submitPvpAction,
 } from '../src/api/pvp';
 import {
@@ -230,6 +231,64 @@ describe('asynchronous PvP API client', () => {
         submissionId: uuid(2302),
       }),
     ).rejects.toMatchObject({ failure: 'completed' });
+  });
+
+  it('submits only versioned resignation intent and parses its terminal result', async () => {
+    const resigned = pvpMatch({
+      canResign: false,
+      completedAt: '2026-09-05T10:00:00.000Z',
+      completionReason: 'voluntary_resignation',
+      currentActor: null,
+      legalActions: [],
+      outcome: 'loss',
+      status: 'completed',
+      turnDeadline: null,
+      version: 4,
+    });
+    const fetchMock = vi.fn().mockResolvedValue(pvpMatchResponse(resigned));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      resignPvpMatch({
+        ...options(),
+        expectedVersion: 3,
+        matchId: PVP_MATCH_ID,
+        submissionId: uuid(2350),
+      }),
+    ).resolves.toMatchObject({
+      canResign: false,
+      completionReason: 'voluntary_resignation',
+      outcome: 'loss',
+    });
+    expect(fetchMock.mock.calls[0]![0]).toBe(
+      `${apiBaseUrl}/matches/pvp/${PVP_MATCH_ID}/resign`,
+    );
+    expect(fetchMock.mock.calls[0]![1]!.headers).toMatchObject({
+      Accept: 'application/vnd.wits-world.pvp.v2+json, application/json;q=0.9',
+    });
+    expect(fetchMock.mock.calls[0]![1]!.headers).not.toHaveProperty(
+      'X-Wits-PvP-Contract-Version',
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]![1]!.body))).toEqual({
+      expectedVersion: 3,
+      submissionId: uuid(2350),
+    });
+  });
+
+  it('treats an absent resignation capability as unavailable during rollout', async () => {
+    const legacy = { ...pvpMatch(), requestId: 'legacy-match' } as Record<
+      string,
+      unknown
+    >;
+    delete legacy.canResign;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify(legacy))),
+    );
+
+    await expect(
+      getPvpMatch({ ...options(), matchId: PVP_MATCH_ID }),
+    ).resolves.toMatchObject({ canResign: false });
   });
 
   it('marks interrupted mutation responses ambiguous for same-submission recovery', async () => {

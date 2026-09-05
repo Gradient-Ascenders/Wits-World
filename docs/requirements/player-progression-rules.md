@@ -40,6 +40,7 @@ measure without treating a PvP result as a CPU match:
 | Defeat                   |     25 |                  0 |
 | Turn forfeit             |     25 |                  0 |
 | Account-deletion forfeit |     25 |                  0 |
+| Voluntary resignation    |     25 |                  0 |
 
 Both participants receive an activity completion for every terminal result,
 including the zero-point participant. PvP introduces no achievement and does
@@ -48,9 +49,10 @@ the completion counts as activity, it may contribute to the existing streak
 metric and `three_day_streak` achievement.
 
 Migration `0028` records one version-1 `asynchronous_pvp` source per match and
-participant. These rules are prospective and do not recalculate challenge or
-CPU awards. Issue `#180` must record both decisions atomically with the terminal
-match through the
+participant. Migration `0037` adds version-1 voluntary-resignation win and loss
+rules without recalculating earlier awards. These rules are prospective and do
+not recalculate challenge or CPU awards. The API records both decisions
+atomically with the terminal match through the
 [PvP persistence adapter](../database/asynchronous-pvp-persistence.md#progression).
 
 Rules are versioned configuration. A new active version affects future awards;
@@ -141,9 +143,10 @@ progression stays private against the anonymous tombstone; `Deleted player` is
 reserved for a separate retained-history presentation that actually includes a
 deleted participant.
 
-Issue `#180` must call the asynchronous PvP progression adapter inside each
-defeat or forfeit transaction. Match-result persistence without that atomic call
-does not satisfy its exactly-once progression criterion.
+The asynchronous PvP service calls the progression adapter inside every defeat,
+deadline/account forfeit, and voluntary-resignation transaction. Match-result
+persistence without that atomic call would not satisfy the exactly-once
+progression criterion.
 
 The preceding document was generated and edited with the assistance of:
 Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5].

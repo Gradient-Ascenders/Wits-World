@@ -408,6 +408,147 @@ describe('asynchronous player battle lobby', () => {
 });
 
 describe('asynchronous PvP battle', () => {
+  it('offers a confirmed resignation on either turn and submits it once', async () => {
+    const user = userEvent.setup();
+    const active = pvpMatch({ currentActor: 'opponent', legalActions: [] });
+    const resigned = pvpMatch({
+      canResign: false,
+      completedAt: '2026-09-05T10:00:00.000Z',
+      completionReason: 'voluntary_resignation',
+      currentActor: null,
+      legalActions: [],
+      outcome: 'loss',
+      status: 'completed',
+      turnDeadline: null,
+      version: 4,
+    });
+    let resolveResignation!: (response: Response) => void;
+    const pending = new Promise<Response>((resolve) => {
+      resolveResignation = resolve;
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(pvpMatchResponse(active))
+      .mockReturnValueOnce(pending);
+    vi.stubGlobal('fetch', fetchMock);
+    renderPvpMatch();
+
+    const trigger = await screen.findByRole('button', {
+      name: 'Resign match',
+    });
+    await user.click(trigger);
+    const dialog = screen.getByRole('alertdialog', {
+      name: 'Resign this match?',
+    });
+    expect(dialog).toHaveTextContent(/records a loss for you/i);
+    const cancel = screen.getByRole('button', { name: 'Keep playing' });
+    expect(cancel).toHaveFocus();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+
+    await user.click(trigger);
+    await user.click(screen.getByRole('button', { name: 'Resign and lose' }));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('button', { name: 'Resign match' })).toBeDisabled();
+    expect(JSON.parse(String(fetchMock.mock.calls[1]![1]!.body))).toEqual({
+      expectedVersion: 3,
+      submissionId: expect.any(String),
+    });
+
+    await act(async () => {
+      resolveResignation(pvpMatchResponse(resigned));
+      await pending;
+    });
+    expect(await screen.findByText('You resigned the match.')).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Resign match' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('does not offer resignation without the API capability', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(pvpMatchResponse(pvpMatch({ canResign: false }))),
+    );
+    renderPvpMatch();
+
+    await screen.findByRole('heading', { name: 'Your turn' });
+    expect(
+      screen.queryByRole('button', { name: 'Resign match' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('reconciles an ambiguous resignation and retries the same submission', async () => {
+    const user = userEvent.setup();
+    const active = pvpMatch();
+    const resigned = pvpMatch({
+      canResign: false,
+      completedAt: '2026-09-05T10:00:00.000Z',
+      completionReason: 'voluntary_resignation',
+      currentActor: null,
+      legalActions: [],
+      outcome: 'loss',
+      status: 'completed',
+      turnDeadline: null,
+      version: 4,
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(pvpMatchResponse(active))
+      .mockRejectedValueOnce(new TypeError('connection interrupted'))
+      .mockResolvedValueOnce(pvpMatchResponse(active))
+      .mockResolvedValueOnce(pvpMatchResponse(resigned));
+    vi.stubGlobal('fetch', fetchMock);
+    renderPvpMatch();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Resign match' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Resign and lose' }));
+    const retry = await screen.findByRole('button', {
+      name: 'Retry same resignation safely',
+    });
+    const firstBody = JSON.parse(String(fetchMock.mock.calls[1]![1]!.body));
+    await user.click(retry);
+
+    expect(await screen.findByText('You resigned the match.')).toBeVisible();
+    const retryBody = JSON.parse(String(fetchMock.mock.calls[3]![1]!.body));
+    expect(retryBody.submissionId).toBe(firstBody.submissionId);
+    expect(retryBody.expectedVersion).toBe(firstBody.expectedVersion);
+  });
+
+  it('reconciles stale resignation without automatically resubmitting it', async () => {
+    const user = userEvent.setup();
+    const active = pvpMatch();
+    const advanced = pvpMatch({ version: 4 });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(pvpMatchResponse(active))
+      .mockResolvedValueOnce(
+        pvpProblemResponse('PVP_MATCH_VERSION_CONFLICT', 409),
+      )
+      .mockResolvedValueOnce(pvpMatchResponse(advanced));
+    vi.stubGlobal('fetch', fetchMock);
+    renderPvpMatch();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Resign match' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Resign and lose' }));
+
+    await screen.findByText(/Authoritative state restored/i);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(
+      screen.queryByRole('button', {
+        name: 'Retry same resignation safely',
+      }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Resign match' })).toBeEnabled();
+  });
+
   it('waits for an opponent replacement without showing local controls', async () => {
     vi.stubGlobal(
       'fetch',
@@ -637,6 +778,8 @@ describe('asynchronous PvP battle', () => {
     ['win', 'turn_forfeit', 'Your opponent missed'],
     ['loss', 'turn_forfeit', 'Your 24-hour decision deadline expired'],
     ['win', 'account_deletion_forfeit', 'became unavailable'],
+    ['win', 'voluntary_resignation', 'resigned the match'],
+    ['loss', 'voluntary_resignation', 'You resigned the match'],
     ['loss', 'defeat', 'won the battle'],
   ] as const)(
     'renders terminal %s / %s result',
