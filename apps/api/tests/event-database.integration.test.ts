@@ -185,6 +185,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0035_deny_deleted_identity_tokens.sql',
         '0036_remove_duplicate_indexes.sql',
         '0037_add_async_pvp_voluntary_resignation.sql',
+        '0038_add_question_performance_analytics_indexes.sql',
       ],
       skipped: [],
     });
@@ -229,6 +230,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0035_deny_deleted_identity_tokens.sql',
         '0036_remove_duplicate_indexes.sql',
         '0037_add_async_pvp_voluntary_resignation.sql',
+        '0038_add_question_performance_analytics_indexes.sql',
       ],
     });
     expect(readiness).toMatchObject({
