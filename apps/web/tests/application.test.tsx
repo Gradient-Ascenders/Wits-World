@@ -123,6 +123,8 @@ describe('Wits World public application shell', () => {
     '/decks',
     '/matches',
     '/matches/history',
+    '/matches/pvp',
+    '/matches/pvp/00000000-0000-4000-8000-000000000002',
     '/matches/00000000-0000-4000-8000-000000000001',
     '/profile',
   ])(

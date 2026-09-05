@@ -15,14 +15,13 @@ import {
   type BattleLogEvent,
   type CpuMatch,
   type CpuMatchIntent,
-  type MatchCreature,
 } from '../api/matches';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { MatchErrorState } from '../components/matches/MatchErrorState';
 import {
-  describeActiveModifier,
-  describeEffect,
-} from '../battle/effect-presentation';
+  BattleActionPanel,
+  BattleCombatant,
+} from '../components/matches/BattlePresentation';
 import './matches.css';
 
 interface MatchRouteParams {
@@ -413,7 +412,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
               </strong>
             </div>
             <div className="battle-arena">
-              <Combatant
+              <BattleCombatant
                 creature={activePlayerCreature ?? null}
                 emptyText={
                   match.state.phase === 'replacement'
@@ -422,26 +421,35 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
                 }
                 heading="You"
                 isActing={match.state.currentSide === 'player'}
-                side="player"
+                visualSide="player"
               />
               <div aria-hidden="true" className="battle-versus">
                 VS
               </div>
-              <Combatant
+              <BattleCombatant
                 creature={match.state.cpu.activeCreature}
                 emptyText="The CPU Creature remains hidden until the server reveals it."
                 heading="CPU"
                 isActing={match.state.currentSide === 'cpu'}
-                side="cpu"
+                visualSide="cpu"
               />
             </div>
           </section>
 
-          <ActionPanel
+          <BattleActionPanel
+            activeCreatureId={match.state.player.activeCreatureId}
             busy={busy}
+            creatures={match.state.player.creatures}
+            currentActor={match.state.currentSide === 'player'}
+            idPrefix="cpu"
             key={`${match.state.phase}:${activePlayerCreature?.id ?? 'none'}`}
-            match={match}
+            legalActions={match.state.legalActions}
             onAction={(action) => void submitAction(action)}
+            opponentLabel="the CPU"
+            phase={
+              match.state.phase === 'completed' ? 'active' : match.state.phase
+            }
+            powerCards={match.state.player.powerCards}
           />
 
           <BattleSideRail match={match} />
@@ -660,469 +668,6 @@ function CpuReserveSummary({ match }: { match: CpuMatch }) {
   );
 }
 
-function ActionPanel({
-  busy,
-  match,
-  onAction,
-}: {
-  busy: boolean;
-  match: CpuMatch;
-  onAction: (action: CpuMatchIntent) => void;
-}) {
-  const [category, setCategory] = useState<'moves' | 'power'>('moves');
-  const movesTab = useRef<HTMLButtonElement | null>(null);
-  const powerTab = useRef<HTMLButtonElement | null>(null);
-  const selectionPhase =
-    match.state.phase === 'initial_selection' ||
-    match.state.phase === 'replacement';
-  const active = match.state.player.creatures.find(
-    (creature) => creature.id === match.state.player.activeCreatureId,
-  );
-  const legalMoveCount = active
-    ? active.moves.filter((move) =>
-        isLegalIntent(match, { moveId: move.id, type: 'use_move' }),
-      ).length
-    : 0;
-  const legalPowerCount = match.state.player.powerCards.filter((card) =>
-    isLegalIntent(match, {
-      powerCardId: card.id,
-      type: 'use_power_card',
-    }),
-  ).length;
-  const cpuResolving = !selectionPhase && match.state.currentSide !== 'player';
-  const creatureChoices = selectionPhase
-    ? match.state.player.creatures
-        .map((creature, index) => {
-          const action: CpuMatchIntent = {
-            creatureId: creature.id,
-            type:
-              match.state.phase === 'replacement'
-                ? 'select_replacement'
-                : 'select_initial_creature',
-          };
-          return {
-            action,
-            creature,
-            index,
-            legal: isLegalIntent(match, action),
-          };
-        })
-        .sort((left, right) => Number(right.legal) - Number(left.legal))
-    : [];
-
-  function selectCategory(next: 'moves' | 'power', moveFocus = false) {
-    setCategory(next);
-    if (moveFocus) {
-      queueMicrotask(() =>
-        (next === 'moves' ? movesTab.current : powerTab.current)?.focus(),
-      );
-    }
-  }
-
-  function handleCategoryKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
-      return;
-    }
-    event.preventDefault();
-    let next: 'moves' | 'power';
-    if (event.key === 'Home') {
-      next = 'moves';
-    } else if (event.key === 'End') {
-      next = 'power';
-    } else if (event.key === 'ArrowLeft') {
-      next = category === 'moves' ? 'power' : 'moves';
-    } else {
-      next = category === 'power' ? 'moves' : 'power';
-    }
-    selectCategory(next, true);
-  }
-
-  return (
-    <section
-      aria-busy={busy}
-      aria-labelledby="battle-actions-title"
-      className={`battle-actions${selectionPhase ? ' battle-actions--selection' : ''}`}
-    >
-      <div className="battle-actions__heading">
-        <div>
-          <p className="eyebrow">
-            {cpuResolving ? 'Battle controls' : 'Your action'}
-          </p>
-          <h2 id="battle-actions-title">
-            {selectionPhase
-              ? match.state.phase === 'replacement'
-                ? 'Choose a replacement'
-                : 'Choose your first Creature'
-              : cpuResolving
-                ? 'Actions paused'
-                : 'Choose one legal action'}
-          </h2>
-        </div>
-        {busy ? (
-          <span className="battle-pending">Waiting for server…</span>
-        ) : null}
-      </div>
-
-      {selectionPhase ? (
-        <ul
-          className="battle-action-content creature-choice-list"
-          aria-label="Your Creature choices"
-        >
-          {creatureChoices.map(({ action, creature, index, legal }) => {
-            const label = creatureLabel(creature, index);
-            return (
-              <li key={creature.id}>
-                <button
-                  aria-describedby={
-                    legal ? undefined : `creature-${creature.id}-reason`
-                  }
-                  aria-label={`${match.state.phase === 'replacement' ? 'Use as replacement' : 'Choose Creature'} ${label}. ${titleCase(creature.affinity)} affinity. HP ${creature.currentHp} of ${creature.maxHp}. Power ${creature.remainingPower} of ${creature.maxPower}.`}
-                  className="creature-choice-control"
-                  disabled={busy || !legal}
-                  onClick={() => onAction(action)}
-                  type="button"
-                >
-                  <span className="creature-choice-control__heading">
-                    <strong>{label}</strong>
-                    <span>{titleCase(creature.affinity)}</span>
-                  </span>
-                  <span className="creature-choice-control__vitals">
-                    <span className="creature-choice-control__hp">
-                      <span>
-                        <span>HP</span>
-                        <strong>
-                          {creature.currentHp} / {creature.maxHp}
-                        </strong>
-                      </span>
-                      <progress
-                        aria-label={`${label} HP`}
-                        max={creature.maxHp}
-                        value={creature.currentHp}
-                      />
-                    </span>
-                    <span className="creature-choice-control__power">
-                      <span>Power</span>
-                      <strong>
-                        {creature.remainingPower} / {creature.maxPower}
-                      </strong>
-                    </span>
-                  </span>
-                  {creature.activeModifiers.length > 0 ? (
-                    <span
-                      aria-label={`Active effects on ${label}`}
-                      className="creature-choice-control__effects"
-                      role="list"
-                    >
-                      {creature.activeModifiers.map((modifier, effectIndex) => (
-                        <span key={effectIndex} role="listitem">
-                          {describeActiveModifier(modifier)}
-                        </span>
-                      ))}
-                    </span>
-                  ) : null}
-                  <span
-                    aria-hidden="true"
-                    className="creature-choice-control__cue"
-                  >
-                    {busy ? 'Waiting…' : legal ? 'Select' : 'Unavailable'}
-                    {legal && !busy ? <span>→</span> : null}
-                  </span>
-                </button>
-                {!legal ? (
-                  <small id={`creature-${creature.id}-reason`}>
-                    {creature.defeated
-                      ? 'Unavailable because the server reports this Creature defeated.'
-                      : 'Not included in the current server-provided legal actions.'}
-                  </small>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <div className="battle-action-browser">
-          <div
-            aria-label="Action type"
-            className="battle-action-switch"
-            role="tablist"
-          >
-            <button
-              aria-controls="move-actions-panel"
-              aria-selected={category === 'moves'}
-              id="move-actions-tab"
-              onClick={() => selectCategory('moves')}
-              onKeyDown={handleCategoryKeyDown}
-              ref={movesTab}
-              role="tab"
-              tabIndex={category === 'moves' ? 0 : -1}
-              type="button"
-            >
-              Moves <span>{legalMoveCount}</span>
-            </button>
-            <button
-              aria-controls="power-actions-panel"
-              aria-selected={category === 'power'}
-              id="power-actions-tab"
-              onClick={() => selectCategory('power')}
-              onKeyDown={handleCategoryKeyDown}
-              ref={powerTab}
-              role="tab"
-              tabIndex={category === 'power' ? 0 : -1}
-              type="button"
-            >
-              Power <span>{legalPowerCount}</span>
-            </button>
-          </div>
-
-          <div className="battle-action-content">
-            {cpuResolving ? (
-              <p className="battle-action-guidance" role="status">
-                Actions unlock when the server returns your turn.
-              </p>
-            ) : null}
-
-            <section
-              aria-labelledby="move-actions-tab"
-              hidden={category !== 'moves'}
-              id="move-actions-panel"
-              role="tabpanel"
-            >
-              {active ? (
-                <ul className="battle-action-list">
-                  {active.moves.map((move) => {
-                    const action = {
-                      moveId: move.id,
-                      type: 'use_move' as const,
-                    };
-                    const legal = isLegalIntent(match, action);
-                    return (
-                      <li key={move.id}>
-                        <button
-                          aria-describedby={
-                            legal ? undefined : `move-${move.id}-reason`
-                          }
-                          className="battle-action-control"
-                          disabled={busy || !legal}
-                          onClick={() => onAction(action)}
-                          type="button"
-                        >
-                          <span className="battle-action-control__heading">
-                            <strong>{move.name}</strong>
-                            <span>{titleCase(move.moveType)}</span>
-                          </span>
-                          <span className="battle-action-control__detail">
-                            <span className="battle-effect-list">
-                              {move.effects.length > 0 ? (
-                                move.effects.map((effect, index) => (
-                                  <span key={index}>
-                                    {describeEffect(effect)}
-                                  </span>
-                                ))
-                              ) : (
-                                <span>Effect details unavailable</span>
-                              )}
-                            </span>
-                            <span className="battle-action-control__cost">
-                              {move.powerCost} Power
-                            </span>
-                          </span>
-                        </button>
-                        {!legal ? (
-                          <small id={`move-${move.id}-reason`}>
-                            Not currently legal according to the server.
-                          </small>
-                        ) : null}
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <p className="battle-action-guidance">
-                  No active Creature is available for a move.
-                </p>
-              )}
-            </section>
-
-            <section
-              aria-labelledby="power-actions-tab"
-              hidden={category !== 'power'}
-              id="power-actions-panel"
-              role="tabpanel"
-            >
-              {match.state.player.powerCards.length > 0 ? (
-                <ul className="battle-action-list">
-                  {match.state.player.powerCards.map((card) => {
-                    const action = {
-                      powerCardId: card.id,
-                      type: 'use_power_card' as const,
-                    };
-                    const legal = isLegalIntent(match, action);
-                    return (
-                      <li key={card.id}>
-                        <button
-                          aria-describedby={
-                            legal ? undefined : `power-${card.id}-reason`
-                          }
-                          className="battle-action-control battle-action-control--power"
-                          disabled={busy || !legal}
-                          onClick={() => onAction(action)}
-                          type="button"
-                        >
-                          <span className="battle-action-control__heading">
-                            <strong>{card.name}</strong>
-                            <span>{titleCase(card.affinity)}</span>
-                          </span>
-                          <span className="battle-action-control__detail">
-                            <span className="battle-effect-list">
-                              {card.effects.length > 0 ? (
-                                card.effects.map((effect, effectIndex) => (
-                                  <span key={effectIndex}>
-                                    {describeEffect(effect)}
-                                  </span>
-                                ))
-                              ) : (
-                                <span>Effect details unavailable</span>
-                              )}
-                            </span>
-                            <span className="battle-action-control__availability">
-                              {!card.available
-                                ? 'Already used'
-                                : legal
-                                  ? 'Available · One use'
-                                  : 'Unavailable · One use'}
-                            </span>
-                          </span>
-                        </button>
-                        {!legal ? (
-                          <small id={`power-${card.id}-reason`}>
-                            Not currently legal according to the server.
-                          </small>
-                        ) : null}
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <p className="battle-action-guidance">
-                  No Power cards remain in your match deck.
-                </p>
-              )}
-            </section>
-          </div>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function Combatant({
-  creature,
-  emptyText,
-  heading,
-  isActing,
-  side,
-}: {
-  creature: MatchCreature | null;
-  emptyText: string;
-  heading: string;
-  isActing: boolean;
-  side: 'cpu' | 'player';
-}) {
-  return (
-    <article
-      className={`combatant combatant--${side}${isActing ? ' combatant--acting' : ''}`}
-    >
-      <div aria-hidden="true" className="combatant__presence">
-        <div className="combatant__sigil">
-          <span>
-            {creature
-              ? creatureMonogram(creature.name)
-              : side === 'cpu'
-                ? '?'
-                : '—'}
-          </span>
-          <small>
-            {creature
-              ? titleCase(creature.affinity)
-              : side === 'cpu'
-                ? 'Hidden'
-                : 'Awaiting'}
-          </small>
-        </div>
-        <span className="combatant__platform" />
-      </div>
-
-      <div className="combatant__hud">
-        <div className="combatant__heading">
-          <p className="eyebrow">{heading}</p>
-          {creature ? (
-            <span>{titleCase(creature.affinity)} affinity</span>
-          ) : null}
-        </div>
-        {creature ? (
-          <>
-            <h2>{creature.name}</h2>
-            <div className="combatant__vitals">
-              <div className="combatant__meter">
-                <span>HP</span>
-                <strong>
-                  {creature.currentHp} / {creature.maxHp}
-                </strong>
-                <progress
-                  aria-label={`${creature.name} HP`}
-                  max={creature.maxHp}
-                  value={creature.currentHp}
-                />
-              </div>
-              <div className="combatant__power">
-                <span>Power</span>
-                <strong>
-                  {creature.remainingPower} / {creature.maxPower}
-                </strong>
-              </div>
-            </div>
-            {creature.activeModifiers.length > 0 ? (
-              <ActiveEffects
-                label={creature.name}
-                modifiers={creature.activeModifiers}
-              />
-            ) : null}
-          </>
-        ) : (
-          <div className="hidden-card" role="img" aria-label={emptyText}>
-            <strong>
-              {side === 'cpu' ? 'Creature hidden' : 'No active Creature'}
-            </strong>
-            <p>{emptyText}</p>
-          </div>
-        )}
-      </div>
-    </article>
-  );
-}
-
-function ActiveEffects({
-  label,
-  modifiers,
-}: {
-  label: string;
-  modifiers: MatchCreature['activeModifiers'];
-}) {
-  return (
-    <section
-      aria-label={`Active effects on ${label}`}
-      className="active-effects"
-    >
-      <strong>Active effects</strong>
-      <ul>
-        {modifiers.map((modifier, index) => (
-          <li key={index}>{describeActiveModifier(modifier)}</li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
 function CompletedMatch({ match }: { match: CpuMatch }) {
   return (
     <section
@@ -1224,30 +769,8 @@ function getPhaseDescription(match: CpuMatch) {
   return 'Waiting for the authoritative next action state.';
 }
 
-function creatureLabel(creature: MatchCreature, index: number) {
-  const genericName = `${titleCase(creature.affinity)} Creature`;
-  return creature.name === genericName
-    ? `${genericName} ${index + 1}`
-    : creature.name;
-}
-
-function creatureMonogram(name: string) {
-  const initials = name
-    .trim()
-    .split(/\s+/u)
-    .slice(0, 2)
-    .map((part) => part.charAt(0))
-    .join('')
-    .toUpperCase();
-  return initials || '?';
-}
-
 function sideLabel(side: 'cpu' | 'player') {
   return side === 'player' ? 'Player' : 'CPU';
-}
-
-function titleCase(value: string) {
-  return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
 }
 
 function formatDate(value: string) {

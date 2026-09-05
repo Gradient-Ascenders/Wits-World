@@ -200,7 +200,6 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   return (
     <div className="matches-page">
       <header className="matches-page__header">
-        <p className="eyebrow">Battle dashboard</p>
         <h1
           ref={(node) => {
             stateHeading.current = node;
@@ -209,22 +208,23 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         >
           Battles
         </h1>
-        <p className="lead">
-          Resume an unfinished match, start with your selected deck, or review
-          recent server-saved results.
-        </p>
+        <p className="lead">Choose how you want to play.</p>
       </header>
 
       <div className="match-dashboard">
-        {state.activeMatch ? (
-          <ActiveMatchPanel match={state.activeMatch} />
-        ) : (
+        <div className="battle-mode-grid">
           <StartMatchPanel
+            activeMatch={state.activeMatch}
             deck={state.deck}
             isStarting={isStarting}
             onStart={startMatch}
           />
-        )}
+          <PlayerBattlePanel />
+        </div>
+
+        {state.activeMatch ? (
+          <ActiveMatchPanel match={state.activeMatch} />
+        ) : null}
 
         <RecentResults state={recentResults} />
       </div>
@@ -235,39 +235,21 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 function ActiveMatchPanel({ match }: { match: CpuMatch }) {
   return (
     <section
-      aria-labelledby="active-match-title"
-      className="match-dashboard__primary match-dashboard__primary--active"
+      aria-labelledby="continue-playing-title"
+      className="continue-playing"
+      id="continue-playing"
     >
-      <div className="match-dashboard__primary-heading">
+      <h2 id="continue-playing-title">Continue playing</h2>
+      <div className="continue-playing__row">
         <div>
-          <p className="eyebrow">Battle in progress</p>
-          <h2 id="active-match-title">Resume your CPU battle</h2>
-        </div>
-        <span className="match-dashboard__status">Active</span>
-      </div>
-      <p>
-        Finish this server-saved match before starting another. Your battle
-        state is ready on the detailed match screen.
-      </p>
-      <dl className="match-dashboard__meta">
-        <div>
-          <dt>Phase</dt>
-          <dd>{formatMatchPhase(match)}</dd>
-        </div>
-        <div>
-          <dt>Turn</dt>
-          <dd>{match.state.turnNumber}</dd>
-        </div>
-        <div>
-          <dt>Started</dt>
-          <dd>
+          <h3>Match against CPU</h3>
+          <p>
+            {formatMatchPhase(match)} · Turn {match.state.turnNumber} · Started{' '}
             <time dateTime={match.startedAt}>
               {formatMatchDate(match.startedAt)}
             </time>
-          </dd>
+          </p>
         </div>
-      </dl>
-      <div className="match-dashboard__actions">
         <Link className="button" href={`/matches/${match.matchId}`}>
           Resume battle
         </Link>
@@ -277,44 +259,38 @@ function ActiveMatchPanel({ match }: { match: CpuMatch }) {
 }
 
 function StartMatchPanel({
+  activeMatch,
   deck,
   isStarting,
   onStart,
 }: {
+  activeMatch: CpuMatch | null;
   deck: SavedDeck | null;
   isStarting: boolean;
   onStart: (deck: SavedDeck) => Promise<void>;
 }) {
   return (
-    <section
-      aria-labelledby="match-entry-title"
-      className="match-dashboard__primary"
-    >
-      <p className="eyebrow">Ready for a new match</p>
-      <h2 id="match-entry-title">
-        {deck ? 'Start a CPU battle' : 'Select a deck first'}
-      </h2>
-      {deck ? (
+    <section aria-labelledby="cpu-battle-title" className="battle-mode-card">
+      <div className="battle-mode-card__intro">
+        <h2 id="cpu-battle-title">CPU Battle</h2>
+        <p>Battle the computer with your selected deck.</p>
+      </div>
+
+      {activeMatch ? (
+        <div className="battle-mode-card__state">
+          <strong>Battle in progress</strong>
+          <span>Continue your unfinished match below.</span>
+        </div>
+      ) : deck ? (
         <>
-          <p>
-            <strong>{deck.name}</strong> is selected. The server will revalidate
-            it and snapshot its exact owned cards when the match starts.
-          </p>
-          <dl className="match-dashboard__meta match-dashboard__meta--deck">
-            <div>
-              <dt>Selected deck</dt>
-              <dd>{deck.name}</dd>
-            </div>
-            <div>
-              <dt>Cards</dt>
-              <dd>{deck.cards.length}</dd>
-            </div>
-            <div>
-              <dt>Rarity points</dt>
-              <dd>{deck.totalPoints}</dd>
-            </div>
-          </dl>
-          <div className="match-dashboard__actions">
+          <div className="battle-mode-card__state">
+            <span>Selected deck</span>
+            <strong>{deck.name}</strong>
+            <small>
+              {deck.cards.length} cards · {deck.totalPoints} rarity points
+            </small>
+          </div>
+          <div className="battle-mode-card__actions">
             <button
               className="button"
               disabled={isStarting}
@@ -330,13 +306,13 @@ function StartMatchPanel({
         </>
       ) : (
         <>
-          <p>
-            Choose one saved deck before starting a CPU battle. Deck validation
-            remains server-authoritative.
-          </p>
-          <div className="match-dashboard__actions">
+          <div className="battle-mode-card__state">
+            <strong>No deck selected</strong>
+            <span>Choose a saved deck before starting.</span>
+          </div>
+          <div className="battle-mode-card__actions">
             <Link className="button" href="/decks">
-              Choose a deck
+              Choose deck
             </Link>
           </div>
         </>
@@ -345,16 +321,36 @@ function StartMatchPanel({
   );
 }
 
+function PlayerBattlePanel() {
+  return (
+    <section
+      aria-labelledby="player-battles-title"
+      className="battle-mode-card"
+    >
+      <div className="battle-mode-card__intro">
+        <h2 id="player-battles-title">Player Battles</h2>
+        <p>Challenge another player and take turns when you are ready.</p>
+      </div>
+      <div className="battle-mode-card__state">
+        <strong>Invites and active matches</strong>
+        <span>Manage challenges and continue player battles.</span>
+      </div>
+      <div className="battle-mode-card__actions">
+        <Link className="button" href="/matches/pvp">
+          Open player battles
+        </Link>
+      </div>
+    </section>
+  );
+}
+
 function RecentResults({ state }: { state: RecentResultsState }) {
   return (
     <section aria-labelledby="recent-results-title" className="recent-results">
       <div className="recent-results__heading">
-        <div>
-          <p className="eyebrow">Saved results</p>
-          <h2 id="recent-results-title">Recent battles</h2>
-        </div>
+        <h2 id="recent-results-title">Recent battles</h2>
         <Link className="button button--quiet" href="/matches/history">
-          View full history
+          View history
         </Link>
       </div>
 
