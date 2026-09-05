@@ -147,7 +147,7 @@ describe.skipIf(!runIntegrationTests)(
           where is_active = true
           order by source_kind, outcome_key`,
         );
-        expect(rules.rows).toHaveLength(14);
+        expect(rules.rows).toHaveLength(16);
         expect(rules.rows).toContainEqual({
           source_kind: 'challenge_completion',
           outcome_key: 'score_5',
@@ -162,6 +162,16 @@ describe.skipIf(!runIntegrationTests)(
           source_kind: 'asynchronous_pvp',
           outcome_key: 'turn_forfeit_win',
           points: 25,
+        });
+        expect(rules.rows).toContainEqual({
+          source_kind: 'asynchronous_pvp',
+          outcome_key: 'voluntary_resignation_win',
+          points: 25,
+        });
+        expect(rules.rows).toContainEqual({
+          source_kind: 'asynchronous_pvp',
+          outcome_key: 'voluntary_resignation_loss',
+          points: 0,
         });
 
         const awards = await pool.query<{
