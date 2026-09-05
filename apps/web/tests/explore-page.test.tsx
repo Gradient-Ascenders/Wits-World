@@ -970,6 +970,83 @@ describe('trails and nearby vertical discovery', () => {
       }),
     );
   });
+
+  it('ignores a late one-shot location after the watcher wins the nearby retry', async () => {
+    const user = userEvent.setup();
+    const initialClaim = freshClaim(-3_000);
+    const watcherClaim = freshClaim(-2_000);
+    const lateOneShotClaim = freshClaim(-1_000);
+    const observation = createObservationHarness();
+    let resolveOneShot!: (claim: LocationClaim) => void;
+    const pendingOneShot = new Promise<LocationClaim>((resolve) => {
+      resolveOneShot = resolve;
+    });
+    const locationClaimProvider = vi
+      .fn<LocationClaimProvider>()
+      .mockReturnValue(pendingOneShot);
+    let nearbyCalls = 0;
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/events/nearby-unvisited')) {
+        nearbyCalls += 1;
+        return Promise.resolve(
+          nearbyCalls === 1
+            ? nearbyLocationRetryRequiredResponse()
+            : new Response(
+                JSON.stringify({
+                  events: [],
+                  requestId: 'nearby-watcher-winner',
+                }),
+                {
+                  headers: { 'Content-Type': 'application/json' },
+                  status: 200,
+                },
+              ),
+        );
+      }
+      return Promise.resolve(discoveryResponse());
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderExplore({
+      locationClaimProvider,
+      observation,
+      permission: 'granted',
+    });
+    await waitFor(() => expect(observation.provider).toHaveBeenCalledOnce());
+    act(() => observation.emit(initialClaim));
+
+    await user.click(await screen.findByRole('button', { name: /^Events/ }));
+    await user.click(screen.getByRole('button', { name: 'Nearby' }));
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Get a new reported location',
+      }),
+    );
+    await waitFor(() => expect(locationClaimProvider).toHaveBeenCalledOnce());
+
+    act(() => observation.emit(watcherClaim));
+    expect(
+      await screen.findByText('No nearby unvisited events.'),
+    ).toBeVisible();
+    expect(nearbyCalls).toBe(2);
+
+    await act(async () => {
+      resolveOneShot(lateOneShotClaim);
+      await pendingOneShot;
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(nearbyCalls).toBe(2);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `${apiBaseUrl}/events/nearby-unvisited`,
+      expect.objectContaining({
+        body: JSON.stringify(watcherClaim),
+        method: 'POST',
+      }),
+    );
+    expect(screen.getByText('No nearby unvisited events.')).toBeVisible();
+  });
 });
 
 function freshClaim(offsetMilliseconds = 0): LocationClaim {

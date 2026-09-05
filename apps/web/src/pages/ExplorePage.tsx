@@ -636,13 +636,13 @@ export default function ExplorePage({
       setNearbyDiscovery({ status: 'loading' });
       void acquireNewerReportedLocation(latestClaim)
         .then((claim) => {
-          if (mounted.current) {
+          if (mounted.current && nearbyRequestedRef.current) {
             nearbyRequestedRef.current = false;
             loadNearbyFromClaim(claim);
           }
         })
         .catch((error: unknown) => {
-          if (!mounted.current) return;
+          if (!mounted.current || !nearbyRequestedRef.current) return;
           if (error instanceof BrowserLocationError) {
             setLocationState(
               toLocationExperienceState(error, latestClaim !== null),
