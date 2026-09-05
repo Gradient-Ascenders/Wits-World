@@ -20,7 +20,7 @@ export function MatchResultSummary({
     >
       <div className="match-result-summary__heading">
         <div>
-          <p className="eyebrow">CPU opponent</p>
+          {!compact ? <p className="eyebrow">CPU opponent</p> : null}
           <Heading>{playerWon ? 'Victory' : 'CPU victory'}</Heading>
         </div>
         <span>{playerWon ? 'Won' : 'Lost'}</span>
@@ -46,7 +46,7 @@ export function MatchResultSummary({
         </div>
       </dl>
       <Link className="button button--quiet" href={`/matches/${match.matchId}`}>
-        View saved match
+        {compact ? 'View battle' : 'View saved match'}
       </Link>
     </article>
   );

@@ -28,6 +28,8 @@ const MatchEntryPage = lazy(() => import('./pages/MatchEntryPage'));
 const CpuMatchPage = lazy(() => import('./pages/CpuMatchPage'));
 const MatchHistoryPage = lazy(() => import('./pages/MatchHistoryPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const PvpHubPage = lazy(() => import('./pages/PvpHubPage'));
+const PvpMatchPage = lazy(() => import('./pages/PvpMatchPage'));
 const AccountPage = lazy(() => import('./pages/AccountPage'));
 
 interface AppRoutesProps {
@@ -83,6 +85,16 @@ export function AppRoutes({
             <Route path="/matches/history">
               <ProtectedRoute destination="view your match history">
                 <MatchHistoryPage apiBaseUrl={apiBaseUrl} />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/matches/pvp/:matchId">
+              <ProtectedRoute destination="continue your asynchronous PvP match">
+                <PvpMatchPage apiBaseUrl={apiBaseUrl} />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/matches/pvp">
+              <ProtectedRoute destination="play asynchronous PvP">
+                <PvpHubPage apiBaseUrl={apiBaseUrl} />
               </ProtectedRoute>
             </Route>
             <Route path="/matches/:matchId">
