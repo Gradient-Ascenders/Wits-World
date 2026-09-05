@@ -30,7 +30,7 @@ const INDEX_CLEANUP_MIGRATION_NAME = '0036_remove_duplicate_indexes.sql';
 const RESIGNATION_MIGRATION_NAME =
   '0037_add_async_pvp_voluntary_resignation.sql';
 const CANCELLATION_MIGRATION_NAME =
-  '0038_add_async_pvp_invitation_cancellation.sql';
+  '0039_add_async_pvp_invitation_cancellation.sql';
 const PRE_MIGRATION_PLAYER_ID = '17900000-0000-4000-8000-000000000001';
 const PRE_MIGRATION_MATCH_ID = '17900000-0000-4000-8000-000000000002';
 const runIntegrationTests =

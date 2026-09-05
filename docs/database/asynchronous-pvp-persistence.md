@@ -152,7 +152,7 @@ Apply migrations `0028` and `0033` before deploying issue `#180`. Migration
 deletion. Apply migration `0037` before the issue `#219` API; it adds the
 voluntary terminal reason, receipt invariants, and progression rules. Applying
 the migrations alone does not expose player-facing routes. Apply forward-only
-migration `0038_add_async_pvp_invitation_cancellation.sql` before the issue
+migration `0039_add_async_pvp_invitation_cancellation.sql` before the issue
 `#220` API. It adds `cancelled`, the `invitation_cancel` receipt operation and
 unique index, and replacement cross-row validators. Once a `cancelled` row has
 been stored, do not roll the API back to a build whose invitation status parser

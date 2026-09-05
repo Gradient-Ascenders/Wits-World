@@ -152,7 +152,7 @@ stored, do not roll the API back to a version that cannot parse that reason;
 drain incompatible API instances and recover by rolling forward with migration
 `0037` retained.
 
-Migration `0038_add_async_pvp_invitation_cancellation.sql` is also database-
+Migration `0039_add_async_pvp_invitation_cancellation.sql` is also database-
 first and forward-only. It extends invitation lifecycle and receipt constraints
 with `cancelled` / `invitation_cancel`, adds the unique per-invitation
 cancellation receipt, and replaces the invitation and receipt deferred

@@ -61,7 +61,8 @@ describe('migration file loading', () => {
         name.startsWith('0035_') ||
         name.startsWith('0036_') ||
         name.startsWith('0037_') ||
-        name.startsWith('0038_'),
+        name.startsWith('0038_') ||
+        name.startsWith('0039_'),
     );
 
     expect(
@@ -158,7 +159,11 @@ describe('migration file loading', () => {
       },
       {
         checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
-        name: '0038_add_async_pvp_invitation_cancellation.sql',
+        name: '0038_add_question_performance_analytics_indexes.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0039_add_async_pvp_invitation_cancellation.sql',
       },
     ]);
   });

@@ -22,6 +22,7 @@ import { createChallengeAttemptFetchService } from './challenges/challenge-attem
 import { createDeckService } from './cards/deck-service.js';
 import { createAuthorEventService } from './events/author-event-service.js';
 import { createAuthorChallengeService } from './challenges/author-challenge-service.js';
+import { createQuestionPerformanceService } from './challenges/question-performance-service.js';
 import { createAuthorCardService } from './cards/author-card-service.js';
 import { createAuthorContentReadService } from './authoring/content-read-service.js';
 import { createCpuMatchService } from './matches/cpu-match-service.js';
@@ -91,6 +92,7 @@ async function startServer(): Promise<void> {
   const deckService = createDeckService(database);
   const authorEventService = createAuthorEventService(database);
   const authorChallengeService = createAuthorChallengeService(database);
+  const questionPerformanceService = createQuestionPerformanceService(database);
   const authorCardService = createAuthorCardService(database);
   const authorTrailService = createAuthorTrailService(database);
   const authorCampaignService = createAuthorCampaignService(database);
@@ -151,6 +153,7 @@ async function startServer(): Promise<void> {
       trails: authorTrailService,
       campaigns: authorCampaignService,
       read: authorContentReadService,
+      questionPerformance: questionPerformanceService,
     },
   });
 
