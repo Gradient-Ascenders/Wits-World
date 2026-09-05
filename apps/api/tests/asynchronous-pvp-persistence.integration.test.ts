@@ -666,16 +666,9 @@ describe.skipIf(!runIntegrationTests)(
     });
 
     it('gives an elapsed deadline precedence over resignation', async () => {
-      const match = await createAcceptedMatch(pool, cardDefinitions);
-      await pool.query(
-        `update public.async_pvp_matches
-            set decision_started_at = deadline.now - interval '24 hours',
-                turn_deadline = deadline.now,
-                updated_at = deadline.now
-           from (select clock_timestamp() as now) deadline
-          where id = $1::uuid`,
-        [match.matchId],
-      );
+      const match = await createAcceptedMatch(pool, cardDefinitions, {
+        acceptedAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
+      });
       const service = createAsyncPvpService(pool, {
         cursorCodec: createSignedCursorCodec(
           'database-test-only-cursor-key-with-32-bytes',
@@ -761,8 +754,10 @@ describe.skipIf(!runIntegrationTests)(
     });
 
     it('serializes resignation against a match-completing legal action', async () => {
-      const match = await createAcceptedMatch(pool, cardDefinitions);
-      const moveId = await prepareTerminalMove(pool, match.matchId);
+      const moveId = randomUUID();
+      const match = await createAcceptedMatch(pool, cardDefinitions, {
+        terminalMoveId: moveId,
+      });
       const service = createAsyncPvpService(pool, {
         cursorCodec: createSignedCursorCodec(
           'database-test-only-cursor-key-with-32-bytes',
@@ -1848,7 +1843,7 @@ async function createPendingInvitation(
 async function createAcceptedMatch(
   database: pg.Pool,
   definitions: readonly CardDefinitionFixture[],
-  options?: { acceptedAt?: Date },
+  options?: { acceptedAt?: Date; terminalMoveId?: string },
 ): Promise<AcceptedMatchFixture> {
   const acceptedAt = options?.acceptedAt;
   const invitation = await createPendingInvitation(
@@ -1925,6 +1920,9 @@ async function createAcceptedMatch(
       [[invitation.challengerSnapshotId, recipientSnapshotId]],
     );
     const battleState = createFixtureBattleState(snapshotCards.rows);
+    if (options?.terminalMoveId) {
+      prepareTerminalMove(battleState, options.terminalMoveId);
+    }
     await client.query(
       `insert into private.async_pvp_match_states (
          match_id,
@@ -1970,19 +1968,10 @@ async function createAcceptedMatch(
   }
 }
 
-async function prepareTerminalMove(
-  database: pg.Pool,
-  matchId: string,
-): Promise<string> {
-  const result = await database.query<TerminalMoveStateRow>(
-    `select battle_state
-       from private.async_pvp_match_states
-      where match_id = $1::uuid`,
-    [matchId],
-  );
-  const state = result.rows[0]?.battle_state;
-  if (!state) throw new Error('Expected an asynchronous PvP fixture state.');
-
+function prepareTerminalMove(
+  state: TerminalMoveStateRow['battle_state'],
+  moveId: string,
+): void {
   const player = state.participants.player;
   const opponent = state.participants.cpu;
   const actingCreature = player.creatures.find(
@@ -1995,7 +1984,6 @@ async function prepareTerminalMove(
     throw new Error('Expected active fixture Creatures on both sides.');
   }
 
-  const moveId = randomUUID();
   actingCreature.card.moves = [
     {
       id: moveId,
@@ -2020,14 +2008,6 @@ async function prepareTerminalMove(
       creature.defeated = true;
     }
   }
-
-  await database.query(
-    `update private.async_pvp_match_states
-        set battle_state = $2::jsonb, updated_at = now()
-      where match_id = $1::uuid`,
-    [matchId, JSON.stringify(state)],
-  );
-  return moveId;
 }
 
 function createFixtureBattleState(cards: readonly SnapshotBattleCardFixture[]) {
