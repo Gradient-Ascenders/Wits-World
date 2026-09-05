@@ -317,6 +317,12 @@ continues to submit intent only, opponent cards remain hidden until legally
 revealed, and persisted deck snapshots prevent later catalogue or saved-deck
 changes from altering the match.
 
+Issue `#220` lets only the authenticated challenger cancel their own pending
+invitation before its deadline. The server records the distinct immutable
+`cancelled` state and an idempotency receipt, retains the invitation audit, and
+creates no match or progression. Recipient decline, time expiry, and
+account-lifecycle invalidation remain separate terminal meanings.
+
 Issue `#219` adds voluntary resignation as an API-owned terminal rule. Either
 authenticated participant may resign an active match on either player's turn.
 The resigning participant loses, the opponent wins, and the server records the

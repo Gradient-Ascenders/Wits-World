@@ -7,6 +7,7 @@ import {
   type AsyncPvpMatchView,
   type AsyncPvpService,
   type PvpAction,
+  type PvpInvitationView,
   type PvpInvitationStatus,
 } from '../matches/asynchronous-pvp-service.js';
 import {
@@ -33,12 +34,14 @@ interface PageQuery {
 }
 const RESIGNATION_CONTRACT_MEDIA_TYPE =
   'application/vnd.wits-world.pvp.v2+json';
+const CANCELLATION_CONTRACT_MEDIA_TYPE =
+  'application/vnd.wits-world.pvp.v3+json';
 const pvpContractHeadersSchema = {
   type: 'object',
   properties: {
     accept: {
       type: 'string',
-      description: `Include ${RESIGNATION_CONTRACT_MEDIA_TYPE} to enable voluntary resignation capability and terminal data without adding a non-safelisted CORS request header.`,
+      description: `Include ${CANCELLATION_CONTRACT_MEDIA_TYPE} to enable invitation cancellation, or ${RESIGNATION_CONTRACT_MEDIA_TYPE} for voluntary resignation only, without adding a non-safelisted CORS request header.`,
     },
   },
 } as const;
@@ -75,7 +78,14 @@ const invitationSchema = {
     invitationId: uuid,
     direction: { enum: ['incoming', 'outgoing'] },
     status: {
-      enum: ['pending', 'accepted', 'declined', 'expired', 'invalidated'],
+      enum: [
+        'pending',
+        'accepted',
+        'declined',
+        'cancelled',
+        'expired',
+        'invalidated',
+      ],
     },
     version: { type: 'integer', minimum: 0 },
     opponent: opponentSchema,
@@ -83,6 +93,11 @@ const invitationSchema = {
     expiresAt: { type: 'string', format: 'date-time' },
     respondedAt: nullableTimestamp,
     matchId: { anyOf: [uuid, { type: 'null' }] },
+    canCancel: {
+      type: 'boolean',
+      description:
+        'Server-derived outgoing pending-invitation capability returned to PvP contract version 3 clients.',
+    },
   },
 } as const;
 const actionResultSchema = {
@@ -320,6 +335,7 @@ export const asynchronousPvpRoutes: FastifyPluginAsync<Options> = async (
         operationId: 'createPvpInvitation',
         tags: ['Matches'],
         security: [{ bearerAuth: [] }],
+        headers: pvpContractHeadersSchema,
         body: {
           type: 'object',
           additionalProperties: false,
@@ -355,7 +371,10 @@ export const asynchronousPvpRoutes: FastifyPluginAsync<Options> = async (
           ...request.body,
           opponentPlayerName: validation.playerName,
         });
-        return reply.status(201).send({ invitation, requestId: request.id });
+        return reply.status(201).send({
+          invitation: invitationEnvelope(invitation, request),
+          requestId: request.id,
+        });
       } catch (error) {
         throw mapError(error);
       }
@@ -370,6 +389,7 @@ export const asynchronousPvpRoutes: FastifyPluginAsync<Options> = async (
         operationId: 'listPvpInvitations',
         tags: ['Matches'],
         security: [{ bearerAuth: [] }],
+        headers: pvpContractHeadersSchema,
         querystring: {
           ...pageQuerySchema,
           properties: {
@@ -380,6 +400,7 @@ export const asynchronousPvpRoutes: FastifyPluginAsync<Options> = async (
                 'pending',
                 'accepted',
                 'declined',
+                'cancelled',
                 'expired',
                 'invalidated',
               ],
@@ -400,6 +421,7 @@ export const asynchronousPvpRoutes: FastifyPluginAsync<Options> = async (
           400: apiErrorSchema,
           401: apiErrorSchema,
           403: apiErrorSchema,
+          409: apiErrorSchema,
         },
       },
     },
@@ -409,8 +431,16 @@ export const asynchronousPvpRoutes: FastifyPluginAsync<Options> = async (
           playerId: playerId(request),
           ...request.query,
         });
+        if (
+          !supportsPvpContract(request, 3) &&
+          page.items.some((invitation) => invitation.status === 'cancelled')
+        ) {
+          throw clientUpdateRequiredError('invitation cancellation');
+        }
         return {
-          invitations: page.items,
+          invitations: page.items.map((invitation) =>
+            invitationEnvelope(invitation, request),
+          ),
           nextCursor: page.nextCursor,
           requestId: request.id,
         };
@@ -481,7 +511,7 @@ export const asynchronousPvpRoutes: FastifyPluginAsync<Options> = async (
           ...request.body,
         });
         return {
-          invitation: result.invitation,
+          invitation: invitationEnvelope(result.invitation, request),
           match: matchEnvelope(result.match, request),
           requestId: request.id,
         };
@@ -502,6 +532,7 @@ export const asynchronousPvpRoutes: FastifyPluginAsync<Options> = async (
         operationId: 'declinePvpInvitation',
         tags: ['Matches'],
         security: [{ bearerAuth: [] }],
+        headers: pvpContractHeadersSchema,
         params: paramsSchema('invitationId'),
         body: {
           type: 'object',
@@ -525,11 +556,68 @@ export const asynchronousPvpRoutes: FastifyPluginAsync<Options> = async (
     async (request) => {
       try {
         return {
-          invitation: await service.declineInvitation({
-            playerId: playerId(request),
-            invitationId: request.params.invitationId,
-            ...request.body,
-          }),
+          invitation: invitationEnvelope(
+            await service.declineInvitation({
+              playerId: playerId(request),
+              invitationId: request.params.invitationId,
+              ...request.body,
+            }),
+            request,
+          ),
+          requestId: request.id,
+        };
+      } catch (error) {
+        throw mapError(error);
+      }
+    },
+  );
+
+  app.post<{
+    Params: InvitationParams;
+    Body: { submissionId: string; expectedVersion: number };
+  }>(
+    '/matches/pvp/invitations/:invitationId/cancel',
+    {
+      preHandler: secured,
+      schema: {
+        operationId: 'cancelPvpInvitation',
+        tags: ['Matches'],
+        security: [{ bearerAuth: [] }],
+        headers: pvpContractHeadersSchema,
+        params: paramsSchema('invitationId'),
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['submissionId', 'expectedVersion'],
+          properties: {
+            submissionId: uuid,
+            expectedVersion: { type: 'integer', minimum: 0 },
+          },
+        },
+        response: {
+          200: invitationEnvelopeSchema(),
+          400: apiErrorSchema,
+          401: apiErrorSchema,
+          403: apiErrorSchema,
+          404: apiErrorSchema,
+          409: apiErrorSchema,
+        },
+      },
+    },
+    async (request) => {
+      try {
+        if (!supportsPvpContract(request, 3)) {
+          throw clientUpdateRequiredError('invitation cancellation');
+        }
+        return {
+          invitation: invitationEnvelope(
+            await service.cancelInvitation({
+              playerId: playerId(request),
+              invitationId: request.params.invitationId,
+              ...request.body,
+            }),
+            request,
+          ),
           requestId: request.id,
         };
       } catch (error) {
@@ -572,12 +660,12 @@ function registerMatchRoutes(
           ...request.query,
         });
         if (
-          !supportsResignationContract(request) &&
+          !supportsPvpContract(request, 2) &&
           page.items.some(
             (match) => match.completionReason === 'voluntary_resignation',
           )
         ) {
-          throw clientUpdateRequiredError();
+          throw clientUpdateRequiredError('voluntary match resignation');
         }
         return {
           matches: page.items,
@@ -648,10 +736,10 @@ function registerMatchRoutes(
           request.params.matchId,
         );
         if (
-          !supportsResignationContract(request) &&
+          !supportsPvpContract(request, 2) &&
           match.completionReason === 'voluntary_resignation'
         ) {
-          throw clientUpdateRequiredError();
+          throw clientUpdateRequiredError('voluntary match resignation');
         }
         return matchEnvelope(match, request);
       } catch (error) {
@@ -742,8 +830,8 @@ function registerMatchRoutes(
     },
     async (request) => {
       try {
-        if (!supportsResignationContract(request)) {
-          throw clientUpdateRequiredError();
+        if (!supportsPvpContract(request, 2)) {
+          throw clientUpdateRequiredError('voluntary match resignation');
         }
         return matchEnvelope(
           await service.resignMatch({
@@ -763,31 +851,50 @@ function registerMatchRoutes(
 function matchEnvelope(match: AsyncPvpMatchView, request: FastifyRequest) {
   return {
     ...match,
-    ...(supportsResignationContract(request)
+    ...(supportsPvpContract(request, 2)
       ? { canResign: match.status === 'active' }
       : {}),
     requestId: request.id,
   };
 }
 
-function supportsResignationContract(request: FastifyRequest): boolean {
-  return (
+function invitationEnvelope(
+  invitation: PvpInvitationView,
+  request: FastifyRequest,
+) {
+  return {
+    ...invitation,
+    ...(supportsPvpContract(request, 3)
+      ? {
+          canCancel:
+            invitation.direction === 'outgoing' &&
+            invitation.status === 'pending',
+        }
+      : {}),
+  };
+}
+
+function supportsPvpContract(
+  request: FastifyRequest,
+  minimumVersion: 2 | 3,
+): boolean {
+  const acceptedTypes =
     request.headers.accept
       ?.split(',')
-      .some(
-        (range) =>
-          range.trim().split(';', 1)[0]?.toLowerCase() ===
-          RESIGNATION_CONTRACT_MEDIA_TYPE,
-      ) ?? false
+      .map((range) => range.trim().split(';', 1)[0]?.toLowerCase()) ?? [];
+  return (
+    acceptedTypes.includes(CANCELLATION_CONTRACT_MEDIA_TYPE) ||
+    (minimumVersion === 2 &&
+      acceptedTypes.includes(RESIGNATION_CONTRACT_MEDIA_TYPE))
   );
 }
 
-function clientUpdateRequiredError(): ApiError {
+function clientUpdateRequiredError(capability: string): ApiError {
   return new ApiError({
     statusCode: 409,
     code: 'PVP_CLIENT_UPDATE_REQUIRED',
     title: 'PvP client update required',
-    detail: 'Reload Wits World before using voluntary match resignation.',
+    detail: `Reload Wits World before using ${capability}.`,
   });
 }
 

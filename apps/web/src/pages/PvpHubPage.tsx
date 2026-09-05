@@ -12,6 +12,7 @@ import { Link, useLocation } from 'wouter';
 import { DeckApiError, listSavedDecks, type SavedDeck } from '../api/decks';
 import {
   acceptPvpInvitation,
+  cancelPvpInvitation,
   createPvpInvitation,
   declinePvpInvitation,
   findPvpPlayer,
@@ -100,6 +101,7 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const challengeAttempt = useRef<SubmissionAttempt | null>(null);
   const acceptAttempts = useRef<Record<string, SubmissionAttempt>>({});
   const declineAttempts = useRef<Record<string, string>>({});
+  const cancelAttempts = useRef<Record<string, string>>({});
   const resultHeading = useRef<HTMLHeadingElement | null>(null);
   const actionAlert = useRef<HTMLDivElement | null>(null);
 
@@ -155,31 +157,49 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     return () => controller.abort();
   }, [loadHub, revision]);
 
-  const pollHub = useCallback(async () => {
-    if (polling.current || document.visibilityState !== 'visible') return;
-    polling.current = true;
-    const controller = new AbortController();
-    pollRequest.current = controller;
-    try {
-      const collections = await loadCollections(controller.signal);
-      setState((current) =>
-        current.status === 'ready'
-          ? {
-              data: { ...current.data, ...collections },
-              status: 'ready',
-            }
-          : current,
-      );
-      setPollWarning(false);
-    } catch {
-      if (!controller.signal.aborted) setPollWarning(true);
-    } finally {
-      if (pollRequest.current === controller) {
-        pollRequest.current = null;
-        polling.current = false;
+  const pollHub = useCallback(
+    async (force = false) => {
+      if ((!force && polling.current) || document.visibilityState !== 'visible')
+        return;
+      if (force) pollRequest.current?.abort();
+      polling.current = true;
+      const controller = new AbortController();
+      pollRequest.current = controller;
+      try {
+        const collections = await loadCollections(controller.signal);
+        setState((current) =>
+          current.status === 'ready'
+            ? {
+                data: {
+                  ...current.data,
+                  ...collections,
+                  incoming: mergeById(
+                    collections.incoming,
+                    current.data.incoming,
+                    (invitation) => invitation.invitationId,
+                  ),
+                  outgoing: mergeById(
+                    collections.outgoing,
+                    current.data.outgoing,
+                    (invitation) => invitation.invitationId,
+                  ),
+                },
+                status: 'ready',
+              }
+            : current,
+        );
+        setPollWarning(false);
+      } catch {
+        if (!controller.signal.aborted) setPollWarning(true);
+      } finally {
+        if (pollRequest.current === controller) {
+          pollRequest.current = null;
+          polling.current = false;
+        }
       }
-    }
-  }, [loadCollections]);
+    },
+    [loadCollections],
+  );
 
   useEffect(() => {
     if (state.status !== 'ready') return;
@@ -411,6 +431,63 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         const failure = toPvpError(error);
         setActionError(failure);
         if (isReconciliationFailure(failure.failure)) await pollHub();
+      }
+    } finally {
+      operationInFlight.current = false;
+      if (!controller.signal.aborted) setPendingOperation(null);
+    }
+  }
+
+  async function cancelInvitation(invitation: PvpInvitation) {
+    if (
+      !invitation.canCancel ||
+      invitation.direction !== 'outgoing' ||
+      invitation.status !== 'pending' ||
+      pendingOperation ||
+      operationInFlight.current
+    )
+      return;
+    operationInFlight.current = true;
+    resetFeedback();
+    const submissionId =
+      cancelAttempts.current[invitation.invitationId] ?? crypto.randomUUID();
+    cancelAttempts.current[invitation.invitationId] = submissionId;
+    const controller = new AbortController();
+    request.current = controller;
+    setPendingOperation(`cancel:${invitation.invitationId}`);
+    try {
+      const cancelled = await cancelPvpInvitation({
+        apiBaseUrl,
+        expectedVersion: invitation.version,
+        getAccessToken,
+        invitationId: invitation.invitationId,
+        signal: controller.signal,
+        submissionId,
+      });
+      if (!controller.signal.aborted) {
+        delete cancelAttempts.current[invitation.invitationId];
+        setState((current) =>
+          current.status === 'ready'
+            ? {
+                data: {
+                  ...current.data,
+                  outgoing: replaceInvitation(current.data.outgoing, cancelled),
+                },
+                status: 'ready',
+              }
+            : current,
+        );
+        setNotice(`Challenge to ${cancelled.opponent.playerName} cancelled.`);
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        const failure = toPvpError(error);
+        setActionError(failure);
+        if (
+          failure.options.ambiguous ||
+          isReconciliationFailure(failure.failure)
+        )
+          await pollHub(true);
       }
     } finally {
       operationInFlight.current = false;
@@ -651,6 +728,8 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
               delete acceptAttempts.current[invitationId];
             }}
             onDecline={(invitation) => void declineInvitation(invitation)}
+            onCancel={() => undefined}
+            hasCancelAttempt={() => false}
             onLoadMore={() => void loadMore('incoming')}
             pendingOperation={pendingOperation}
           />
@@ -664,6 +743,10 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
             onAccept={() => undefined}
             onChoice={() => undefined}
             onDecline={() => undefined}
+            onCancel={(invitation) => void cancelInvitation(invitation)}
+            hasCancelAttempt={(invitationId) =>
+              cancelAttempts.current[invitationId] !== undefined
+            }
             onLoadMore={() => void loadMore('outgoing')}
             pendingOperation={pendingOperation}
           />
@@ -858,8 +941,10 @@ function InvitationList({
   invitations,
   loadingMore,
   onAccept,
+  onCancel,
   onChoice,
   onDecline,
+  hasCancelAttempt,
   onLoadMore,
   pendingOperation,
 }: {
@@ -870,8 +955,10 @@ function InvitationList({
   invitations: PvpInvitation[];
   loadingMore: boolean;
   onAccept: (invitation: PvpInvitation) => void;
+  onCancel: (invitation: PvpInvitation) => void;
   onChoice: (invitationId: string, choice: DeckChoice) => void;
   onDecline: (invitation: PvpInvitation) => void;
+  hasCancelAttempt: (invitationId: string) => boolean;
   onLoadMore: () => void;
   pendingOperation: string | null;
 }) {
@@ -903,6 +990,8 @@ function InvitationList({
               pendingOperation === `accept:${invitation.invitationId}`;
             const declining =
               pendingOperation === `decline:${invitation.invitationId}`;
+            const cancelling =
+              pendingOperation === `cancel:${invitation.invitationId}`;
             return (
               <li
                 className={`pvp-invitation pvp-invitation--${invitation.status}`}
@@ -944,6 +1033,27 @@ function InvitationList({
                         type="button"
                       >
                         {declining ? 'Declining…' : 'Decline'}
+                      </button>
+                    </div>
+                  ) : direction === 'outgoing' &&
+                    invitation.status === 'pending' &&
+                    invitation.canCancel ? (
+                    <div className="pvp-invitation__actions">
+                      <span className="pvp-status-label">
+                        Waiting for response
+                      </span>
+                      <button
+                        aria-label={`Cancel challenge to ${invitation.opponent.playerName}`}
+                        className="button button--quiet"
+                        disabled={pendingOperation !== null}
+                        onClick={() => onCancel(invitation)}
+                        type="button"
+                      >
+                        {cancelling
+                          ? 'Cancelling…'
+                          : hasCancelAttempt(invitation.invitationId)
+                            ? 'Retry cancellation safely'
+                            : 'Cancel challenge'}
                       </button>
                     </div>
                   ) : (
@@ -1016,6 +1126,12 @@ function InvitationList({
                   <p className="pvp-invitation__explanation">
                     This invitation became unavailable after an account
                     lifecycle change.
+                  </p>
+                ) : invitation.status === 'cancelled' ? (
+                  <p className="pvp-invitation__explanation">
+                    {direction === 'outgoing'
+                      ? 'You cancelled this invitation.'
+                      : `This invitation was cancelled by ${invitation.opponent.playerName}.`}
                   </p>
                 ) : null}
               </li>
@@ -1237,6 +1353,17 @@ function mergeById<T>(current: T[], next: T[], id: (item: T) => string) {
   return [...current, ...next.filter((item) => !known.has(id(item)))];
 }
 
+function replaceInvitation(
+  invitations: PvpInvitation[],
+  replacement: PvpInvitation,
+) {
+  return invitations.map((invitation) =>
+    invitation.invitationId === replacement.invitationId
+      ? replacement
+      : invitation,
+  );
+}
+
 function isChoiceComplete(
   choice: DeckChoice | undefined,
 ): choice is DeckChoice {
@@ -1248,7 +1375,9 @@ function isPending(invitation: PvpInvitation) {
 }
 
 function isReconciliationFailure(failure: PvpApiFailure) {
-  return ['completed', 'expired', 'invalidated', 'stale'].includes(failure);
+  return ['cancelled', 'completed', 'expired', 'invalidated', 'stale'].includes(
+    failure,
+  );
 }
 
 function invitationStatusLabel(status: PvpInvitation['status']) {
@@ -1274,6 +1403,7 @@ function errorMessage(failure: PvpApiFailure) {
     authorization: 'Your session expired. Sign in again before continuing.',
     completed:
       'The match is already complete. Refresh to view its saved result.',
+    cancelled: 'The invitation was cancelled before this response was applied.',
     conflict:
       'That submission reference was already used for different intent. Refresh before trying again.',
     'deck-invalid':

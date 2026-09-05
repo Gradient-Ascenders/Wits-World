@@ -1075,25 +1075,30 @@ npm run test:e2e:trails --workspace @wits-world/web
    two development players that each have a Player Name and valid saved deck.
 2. Open `http://localhost:5173/matches/pvp`. Search for the second exact Player
    Name, choose a saved deck and opening Creature, and send the invitation.
-3. In the second account, open the same route and accept or decline the incoming
+3. Before responding, confirm the first account sees **Cancel challenge** only
+   on its pending sent invitation. Cancel once and verify both accounts retain a
+   **Cancelled** record with viewer-relative text. Repeat the flow to continue.
+4. In the second account, open the same route and accept or decline the incoming
    invitation. For acceptance, choose that account's own deck and opening
    Creature. Confirm the new match opens at `/matches/pvp/:matchId`.
-4. Submit only an enabled API-returned move or Power action. Confirm the heading
+5. Submit only an enabled API-returned move or Power action. Confirm the heading
    changes between **Your turn** and **Opponent's turn**, the exact deadline and
    display countdown remain visible, and the waiting view refreshes after the
    other account acts. Do not expect unplayed opponent cards to appear.
-5. On either participant's turn, choose **Resign match**. Confirm that Escape and
+6. On either participant's turn, choose **Resign match**. Confirm that Escape and
    **Keep playing** cancel without a request, focus returns to the trigger, and
    **Resign and lose** submits once. Confirm the resigning player sees a loss,
    the opponent sees a win, the action disappears, and refresh preserves the
    result.
-6. Inspect the hub and match at approximately 390px and 1280px, including
+7. Inspect the hub and match at approximately 390px and 1280px, including
    keyboard focus, status announcements, touch targets, overflow, API recovery,
    deadline completion, and saved history. CPU play remains at `/matches`.
 
-Outgoing-invitation cancellation remains unsupported. The Web application
-displays server-generated deadline, account-lifecycle, and voluntary-resignation
-results, and does not invent controls that the API capability omits.
+Outgoing-invitation cancellation is negotiated through the version 3 PvP
+`Accept` media type. The Web application treats an absent `canCancel` as false,
+submits a stable versioned cancellation exactly once, reconciles ambiguous
+delivery through polling, and displays server-generated cancellation, deadline,
+account-lifecycle, and voluntary-resignation results.
 
 The preceding document was generated and edited with the assistance of:
 Codex-CLI[gpt-5.6-sol medium], Codex-CLI[gpt-5.6-sol], Codex-CLI[GPT-5], and Codex[GPT-5].

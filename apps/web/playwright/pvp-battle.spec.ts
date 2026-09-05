@@ -8,6 +8,7 @@ import {
   pvpInvitation,
   pvpMatch,
 } from '../tests/fixtures/pvp';
+import { uuid } from '../tests/fixtures/matches';
 
 const screenshotsDirectory = path.resolve(
   process.cwd(),
@@ -74,9 +75,14 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
   const pageErrors: string[] = [];
   const failedRequests: string[] = [];
   let actionRequests = 0;
+  let cancellationRequests = 0;
   let resignationRequests = 0;
   const deck = buildSavedDeck({ isSelected: true });
   const invitation = pvpInvitation();
+  let sentInvitation = pvpInvitation({
+    direction: 'outgoing',
+    invitationId: uuid(2102),
+  });
   const match = pvpMatch();
   let currentMatch = match;
 
@@ -107,9 +113,39 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
     if (pathname.endsWith('/matches/pvp/invitations')) {
       await json(route, {
         invitations:
-          url.searchParams.get('direction') === 'incoming' ? [invitation] : [],
+          url.searchParams.get('direction') === 'incoming'
+            ? [invitation]
+            : [sentInvitation],
         nextCursor: null,
         requestId: 'pvp-browser-invitations',
+      });
+      return;
+    }
+    if (
+      pathname.endsWith(
+        `/matches/pvp/invitations/${sentInvitation.invitationId}/cancel`,
+      )
+    ) {
+      cancellationRequests += 1;
+      expect(request.headers().accept).toContain(
+        'application/vnd.wits-world.pvp.v3+json',
+      );
+      expect(request.postDataJSON()).toEqual({
+        expectedVersion: 0,
+        submissionId: expect.any(String),
+      });
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      sentInvitation = pvpInvitation({
+        canCancel: false,
+        direction: 'outgoing',
+        invitationId: sentInvitation.invitationId,
+        respondedAt: '2026-09-05T08:20:00.000Z',
+        status: 'cancelled',
+        version: 1,
+      });
+      await json(route, {
+        invitation: sentInvitation,
+        requestId: 'pvp-browser-cancellation',
       });
       return;
     }
@@ -147,6 +183,10 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
         currentActor: null,
         legalActions: [],
         outcome: 'loss',
+        state: {
+          ...currentMatch.state,
+          phase: 'completed',
+        },
         status: 'completed',
         turnDeadline: null,
         updatedAt: '2026-09-05T08:40:00.000Z',
@@ -210,6 +250,20 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
     });
 
     if (viewport.label === '390') {
+      await page
+        .getByRole('button', { name: 'Cancel challenge to wits_wanderer' })
+        .dblclick();
+      await expect(
+        page.getByText('You cancelled this invitation.'),
+      ).toBeVisible();
+      await expect(
+        page.getByRole('button', {
+          name: 'Cancel challenge to wits_wanderer',
+        }),
+      ).toHaveCount(0);
+      expect(cancellationRequests).toBe(1);
+      await expectNoHorizontalOverflow(page);
+
       await page.getByRole('button', { name: 'Challenge a player' }).click();
       await expect(
         page.getByRole('heading', { name: 'Challenge a player' }),
@@ -304,7 +358,7 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
   await resign.click();
   await page.getByRole('button', { name: 'Resign and lose' }).click();
   await expect(
-    page.getByRole('heading', { name: 'Match complete' }),
+    page.getByRole('heading', { name: 'Battle complete' }),
   ).toBeFocused();
   await expect(page.getByText('You resigned the match.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Resign match' })).toHaveCount(

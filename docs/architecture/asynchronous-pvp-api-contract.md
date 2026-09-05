@@ -39,16 +39,20 @@ The following rules are fixed by issue `#178` and this contract:
 - only participants can inspect invitations, matches, and history;
 - polling is the only planned update mechanism;
 - every client mutation is idempotent and contains intent only; and
+- only the authenticated challenger may cancel their own still-pending
+  invitation;
 - either authenticated participant may voluntarily resign an active match,
   regardless of whose turn it is; and
 - match completion exposes a stable exactly-once progression source without
   inventing client-controlled or unapproved award values.
 
-Challenge cancellation remains outside the approved contract. Issue `#219`
-adds voluntary match resignation as a distinct `voluntary_resignation` terminal
-reason. The authenticated caller is always the loser and the other persisted
-participant is always the winner; the browser cannot nominate either identity.
-Account deletion still invalidates pending invitations. For an active match
+Issue `#220` adds outgoing invitation cancellation as the distinct terminal
+`cancelled` state. It does not mean recipient decline, time-based expiry, or
+account-lifecycle invalidation, and it never creates or changes a match. Issue
+`#219` adds voluntary match resignation as a distinct `voluntary_resignation`
+terminal reason. The authenticated caller is always the loser and the other
+persisted participant is always the winner; the browser cannot nominate either
+identity. Account deletion still invalidates pending invitations. For an active match
 whose turn deadline has not elapsed, the deleting player loses by
 `account_deletion_forfeit`. If the deadline has already elapsed when deletion or
 resignation begins, deadline authority takes precedence: the current actor loses
@@ -63,7 +67,7 @@ product authority before a later implementation claims them:
 - notification channels and notification retention;
 - per-player pending-invitation and active-match limits beyond the one-pair
   rule below;
-- retention periods for declined and expired invitations; and
+- retention periods for declined, cancelled, and expired invitations; and
 - whether a reused Player Name should receive additional protection after
   account deletion.
 
@@ -102,14 +106,15 @@ An invitation has one of these states:
 ```text
 pending -> accepted
         -> declined
+        -> cancelled
         -> expired
         -> invalidated
 ```
 
-`accepted`, `declined`, `expired`, and `invalidated` are terminal and immutable.
-`invalidated` means a participant began account deletion before the invitation
-expired; it is not a user cancellation. There is no
-first-delivery cancellation transition.
+`accepted`, `declined`, `cancelled`, `expired`, and `invalidated` are terminal
+and immutable. `cancelled` means the challenger ended the invitation before its
+deadline. `invalidated` means a participant began account deletion before the
+invitation expired; it is not a user cancellation.
 
 ### Creation
 
@@ -160,15 +165,24 @@ partially accepted invitation, an unmatched snapshot, or the opponent's hidden
 initial selection. The first `turnDeadline` is 24 hours after the acceptance
 transaction's server timestamp.
 
-### Decline and expiry
+### Decline, cancellation, and expiry
 
 Only the recipient may decline. Decline records the server timestamp and no
 match or progression source is created.
 
+Only the challenger may cancel. The server locks the invitation through a
+challenger-scoped lookup, checks an exact replay before lifecycle decisions,
+uses database time to give an already elapsed deadline precedence, and commits
+`cancelled`, version `+ 1`, `respondedAt`, and one private
+`invitation_cancel` receipt atomically. A recipient or unrelated caller gets
+the same safe `PVP_INVITATION_NOT_FOUND` response as an absent invitation.
+Cancellation retains the challenger snapshot and invitation audit record, but
+creates no recipient snapshot, match, history result, or progression source.
+
 Invitation expiry is successful when `now >= expiresAt`. It may be finalized by
 the background sweep or by an invitation read or mutation that locks the
-overdue row. Expiry has no winner and no progression effect. A late accept or
-decline leaves the invitation persisted as expired and returns
+overdue row. Expiry has no winner and no progression effect. A late accept,
+decline, or cancellation leaves the invitation persisted as expired and returns
 `PVP_INVITATION_EXPIRED` rather than reviving it.
 
 ## Match lifecycle and deadlines
@@ -236,42 +250,45 @@ only actions and card information that became legally visible during play.
 
 The common match response is viewer-relative:
 
-| Field                 | Type                           | Required  | Notes                            |
-| --------------------- | ------------------------------ | --------- | -------------------------------- |
-| `matchId`             | UUID string                    | Yes       | Opaque match identifier          |
-| `mode`                | `"asynchronous"`               | Yes       | Never aliases live PvP           |
-| `status`              | `"active" \| "completed"`      | Yes       | Authoritative state              |
-| `version`             | non-negative integer           | Yes       | Optimistic-concurrency version   |
-| `opponent.playerName` | string                         | Yes       | Only approved opponent identity  |
-| `currentActor`        | `"self" \| "opponent" \| null` | Yes       | Viewer-relative                  |
-| `turnDeadline`        | RFC 3339 timestamp or null     | Yes       | Null only when completed         |
-| `state`               | `AsyncPvpStateView`            | Yes       | Viewer-safe battle projection    |
-| `legalActions`        | action array                   | Yes       | Empty unless self may act        |
-| `lastAction`          | `PvpActionResultView` or null  | Yes       | Legally visible committed result |
-| `outcome`             | `"win" \| "loss" \| null`      | Yes       | Non-null when completed          |
-| `completionReason`    | terminal reason or null        | Yes       | Non-null when completed          |
-| `startedAt`           | RFC 3339 timestamp             | Yes       | Server timestamp                 |
-| `updatedAt`           | RFC 3339 timestamp             | Yes       | Polling reconciliation field     |
-| `completedAt`         | RFC 3339 timestamp or null     | Yes       | Server timestamp                 |
-| `canResign`           | boolean                        | Version 2 | Server-derived capability        |
-| `requestId`           | string                         | Yes       | Safe request correlation         |
+| Field                 | Type                           | Required   | Notes                            |
+| --------------------- | ------------------------------ | ---------- | -------------------------------- |
+| `matchId`             | UUID string                    | Yes        | Opaque match identifier          |
+| `mode`                | `"asynchronous"`               | Yes        | Never aliases live PvP           |
+| `status`              | `"active" \| "completed"`      | Yes        | Authoritative state              |
+| `version`             | non-negative integer           | Yes        | Optimistic-concurrency version   |
+| `opponent.playerName` | string                         | Yes        | Only approved opponent identity  |
+| `currentActor`        | `"self" \| "opponent" \| null` | Yes        | Viewer-relative                  |
+| `turnDeadline`        | RFC 3339 timestamp or null     | Yes        | Null only when completed         |
+| `state`               | `AsyncPvpStateView`            | Yes        | Viewer-safe battle projection    |
+| `legalActions`        | action array                   | Yes        | Empty unless self may act        |
+| `lastAction`          | `PvpActionResultView` or null  | Yes        | Legally visible committed result |
+| `outcome`             | `"win" \| "loss" \| null`      | Yes        | Non-null when completed          |
+| `completionReason`    | terminal reason or null        | Yes        | Non-null when completed          |
+| `startedAt`           | RFC 3339 timestamp             | Yes        | Server timestamp                 |
+| `updatedAt`           | RFC 3339 timestamp             | Yes        | Polling reconciliation field     |
+| `completedAt`         | RFC 3339 timestamp or null     | Yes        | Server timestamp                 |
+| `canResign`           | boolean                        | Version 2+ | Server-derived capability        |
+| `requestId`           | string                         | Yes        | Safe request correlation         |
 
-The Web client negotiates version 2 with
-`Accept: application/vnd.wits-world.pvp.v2+json, application/json;q=0.9`.
+The Web client negotiates version 3 with
+`Accept: application/vnd.wits-world.pvp.v3+json, application/vnd.wits-world.pvp.v2+json;q=0.9, application/json;q=0.8`.
 `Accept` is CORS-safelisted, so this does not add a request header to the browser
 preflight allow-list. An older API can ignore the preferred media type and serve
 the `application/json` fallback; the Web then treats an absent `canResign` as
-unavailable. Match responses from the version-2 API include `canResign`, which
+unavailable and an absent `canCancel` as false. Version 3 includes all version 2
+resignation behavior and adds invitation cancellation. Match responses from the
+version-2-or-later API include `canResign`, which
 is true only while the authoritative match is active. A detail read locks and
 finalizes an elapsed deadline before projecting the response, so an overdue
 match is returned as a `turn_forfeit` with `canResign: false`, even when the
 periodic sweep has not processed it yet. The resign mutation repeats that
 database-time deadline check under the same match lock.
 
-During a mixed API/Web rollout, legacy requests receive the original shape
-without `canResign`. A legacy request that would receive a voluntary terminal
-reason fails safely with `PVP_CLIENT_UPDATE_REQUIRED`, and the resign endpoint
-rejects legacy requests before invoking the service.
+During a mixed API/Web rollout, legacy requests receive the original shapes
+without `canResign` or `canCancel`. A legacy request that would receive a
+voluntary-resignation reason, or a pre-v3 request whose invitation page contains
+`cancelled`, fails safely with `PVP_CLIENT_UPDATE_REQUIRED`. The resign and
+cancel endpoints reject unsupported requests before invoking the service.
 
 `AsyncPvpStateView` is a closed object with these required fields:
 
@@ -320,6 +337,7 @@ The complete first-delivery endpoint set is:
 | `GET /api/v1/matches/pvp/invitations`                        | `200`   | `PvpInvitationListResponse`   | List a bounded page of the viewer's invitations |
 | `POST /api/v1/matches/pvp/invitations/:invitationId/accept`  | `200`   | `AcceptPvpInvitationResponse` | Accept with a deck and initial Creature         |
 | `POST /api/v1/matches/pvp/invitations/:invitationId/decline` | `200`   | `PvpInvitationResponse`       | Decline a pending invitation                    |
+| `POST /api/v1/matches/pvp/invitations/:invitationId/cancel`  | `200`   | `PvpInvitationResponse`       | Cancel an outgoing pending invitation           |
 | `GET /api/v1/matches/pvp`                                    | `200`   | `PvpMatchListResponse`        | List a bounded active-match page                |
 | `GET /api/v1/matches/pvp/history`                            | `200`   | `PvpHistoryResponse`          | List a bounded completed-history page           |
 | `GET /api/v1/matches/pvp/:matchId`                           | `200`   | `AsyncPvpMatchResponse`       | Read one viewer-safe match                      |
@@ -455,29 +473,44 @@ Decline invitation:
 }
 ```
 
+Cancel invitation uses the same closed versioned body:
+
+```json
+{
+  "submissionId": "88888888-8888-4888-8888-888888888888",
+  "expectedVersion": 0
+}
+```
+
 The accept body requires exactly `deckId`, `initialCreatureId`, `submissionId`,
-and `expectedVersion`. The decline body requires exactly `submissionId` and
-`expectedVersion`. Both version values are non-negative integers, and all shown
-identifiers use UUID format.
+and `expectedVersion`. The decline and cancel bodies require exactly
+`submissionId` and `expectedVersion`. All version values are non-negative
+integers, and all shown identifiers use UUID format.
 
 `PvpInvitationView` is a closed object:
 
-| Field                 | Type                                                                  | Required |
-| --------------------- | --------------------------------------------------------------------- | -------- |
-| `invitationId`        | UUID string                                                           | Yes      |
-| `direction`           | `"incoming" \| "outgoing"`                                            | Yes      |
-| `status`              | `"pending" \| "accepted" \| "declined" \| "expired" \| "invalidated"` | Yes      |
-| `version`             | non-negative integer                                                  | Yes      |
-| `opponent.playerName` | string                                                                | Yes      |
-| `createdAt`           | RFC 3339 timestamp                                                    | Yes      |
-| `expiresAt`           | RFC 3339 timestamp                                                    | Yes      |
-| `respondedAt`         | RFC 3339 timestamp or null                                            | Yes      |
-| `matchId`             | UUID string or null                                                   | Yes      |
+| Field                 | Type                                                                                 | Required  |
+| --------------------- | ------------------------------------------------------------------------------------ | --------- |
+| `invitationId`        | UUID string                                                                          | Yes       |
+| `direction`           | `"incoming" \| "outgoing"`                                                           | Yes       |
+| `status`              | `"pending" \| "accepted" \| "declined" \| "cancelled" \| "expired" \| "invalidated"` | Yes       |
+| `version`             | non-negative integer                                                                 | Yes       |
+| `opponent.playerName` | string                                                                               | Yes       |
+| `createdAt`           | RFC 3339 timestamp                                                                   | Yes       |
+| `expiresAt`           | RFC 3339 timestamp                                                                   | Yes       |
+| `respondedAt`         | RFC 3339 timestamp or null                                                           | Yes       |
+| `matchId`             | UUID string or null                                                                  | Yes       |
+| `canCancel`           | boolean                                                                              | Version 3 |
 
 `respondedAt` is null only while pending. `matchId` is non-null only when the
 invitation was accepted. Both incoming and outgoing views omit deck and initial
 selection data. `direction` and `opponent` are relative to the authenticated
 viewer.
+
+For a version 3 response, `canCancel` is true only for a pending outgoing view.
+It is false for incoming and terminal views. Capability absence is a safe false
+for clients during a mixed rollout; the browser does not infer capability from
+direction or status alone.
 
 ### Match action schema
 
@@ -533,7 +566,9 @@ polling remains the authority while a battle is open.
 
 An ambiguous mutation response is reconciled by reading the affected
 invitation or match and then replaying the same `submissionId` only when
-necessary. For resignation, an unchanged active match with the same version may
+necessary. For cancellation, an unchanged outgoing pending invitation may
+offer an explicit same-reference retry; a terminal invitation is rendered
+without resubmission. For resignation, an unchanged active match with the same version may
 offer an explicit same-reference retry; a newer or terminal match is rendered
 without resubmission. The client must not manufacture a new submission
 identifier merely because the first response was lost.
@@ -585,6 +620,9 @@ commit increments the version; the second returns the stored receipt when it is
 a replay or rejects the now-stale/terminal intent. A resignation receipt is
 unique per match, and deferred validation requires exactly one such receipt for
 a `voluntary_resignation` result and none for any other completion reason.
+Migration `0038` similarly makes the cancellation receipt unique per invitation
+and deferred validation requires exactly one challenger-owned cancellation
+receipt for `cancelled`, with no match or recipient snapshot.
 
 ## Deterministic deadline processing
 
@@ -649,23 +687,24 @@ and [persistence design](../database/asynchronous-pvp-persistence.md#progression
 Errors use the existing problem-style envelope with `type`, `title`, `status`,
 `code`, safe `detail`, and `requestId`. The proposed domain codes are:
 
-| Status | Code                              | Use                                           |
-| ------ | --------------------------------- | --------------------------------------------- |
-| `400`  | `VALIDATION_ERROR`                | Malformed parameter or closed request schema  |
-| `400`  | `PVP_DECK_INVALID`                | Saved deck or initial Creature is unavailable |
-| `404`  | `PVP_PLAYER_UNAVAILABLE`          | Exact target cannot safely be challenged      |
-| `404`  | `PVP_INVITATION_NOT_FOUND`        | Missing invitation or wrong participant       |
-| `404`  | `PVP_MATCH_NOT_FOUND`             | Missing match or non-participant access       |
-| `409`  | `PVP_INVITATION_ALREADY_PENDING`  | One-pair pending constraint                   |
-| `409`  | `PVP_INVITATION_EXPIRED`          | Accept or decline lost to expiry              |
-| `409`  | `PVP_INVITATION_INVALIDATED`      | Participant account deletion ended invitation |
-| `409`  | `PVP_INVITATION_VERSION_CONFLICT` | Stale invitation version                      |
-| `409`  | `PVP_MATCH_COMPLETED`             | New action against a terminal match           |
-| `409`  | `PVP_MATCH_VERSION_CONFLICT`      | Stale match version                           |
-| `409`  | `PVP_ACTION_ILLEGAL`              | Intent is not currently legal                 |
-| `409`  | `PVP_IDEMPOTENCY_CONFLICT`        | Submission ID reused with another payload     |
-| `409`  | `PVP_CLIENT_UPDATE_REQUIRED`      | Legacy client cannot use/read resignation     |
-| `429`  | `RATE_LIMITED`                    | Existing authenticated per-process limit      |
+| Status | Code                              | Use                                                  |
+| ------ | --------------------------------- | ---------------------------------------------------- |
+| `400`  | `VALIDATION_ERROR`                | Malformed parameter or closed request schema         |
+| `400`  | `PVP_DECK_INVALID`                | Saved deck or initial Creature is unavailable        |
+| `404`  | `PVP_PLAYER_UNAVAILABLE`          | Exact target cannot safely be challenged             |
+| `404`  | `PVP_INVITATION_NOT_FOUND`        | Missing invitation or wrong participant              |
+| `404`  | `PVP_MATCH_NOT_FOUND`             | Missing match or non-participant access              |
+| `409`  | `PVP_INVITATION_ALREADY_PENDING`  | One-pair pending constraint                          |
+| `409`  | `PVP_INVITATION_EXPIRED`          | Accept, decline, or cancel lost to expiry            |
+| `409`  | `PVP_INVITATION_INVALIDATED`      | Participant account deletion ended invitation        |
+| `409`  | `PVP_INVITATION_CANCELLED`        | Recipient response lost to challenger cancel         |
+| `409`  | `PVP_INVITATION_VERSION_CONFLICT` | Stale invitation version                             |
+| `409`  | `PVP_MATCH_COMPLETED`             | New action against a terminal match                  |
+| `409`  | `PVP_MATCH_VERSION_CONFLICT`      | Stale match version                                  |
+| `409`  | `PVP_ACTION_ILLEGAL`              | Intent is not currently legal                        |
+| `409`  | `PVP_IDEMPOTENCY_CONFLICT`        | Submission ID reused with another payload            |
+| `409`  | `PVP_CLIENT_UPDATE_REQUIRED`      | Client contract cannot use/read a new terminal state |
+| `429`  | `RATE_LIMITED`                    | Existing authenticated per-process limit             |
 
 Authentication continues to use the existing `401` boundary. Object-level
 authorization uses the same `404` as absence so a caller cannot probe another
@@ -699,6 +738,9 @@ tests:
 - same-direction and reverse-direction concurrent invitations;
 - invalid, unowned, stale, or incomplete challenger and recipient decks;
 - challenger snapshot stability after saved-deck or catalogue edits;
+- cancel versus accept, decline, expiry, and account invalidation;
+- duplicate cancellation replay, stale versions, payload conflict, and
+  participant-scoped authorization;
 - accept versus decline, accept versus expiry, and duplicate accept replay;
 - identical replay versus submission-ID/payload conflict;
 - account deletion during pending invitations; and
@@ -741,7 +783,9 @@ tests:
 
 - bounded visible-page polling, recovery after refresh, and lost-response
   reconciliation;
-- repeated-click protection using the same submission ID;
+- cancellation capability gating, repeated-click protection using the same
+  submission ID, retained terminal sent/incoming presentation, and ambiguous
+  response reconciliation;
 - confirmed resignation, focus restoration, capability gating, and
   lost-response/stale-state recovery without automatic resubmission;
 - incoming, outgoing, accepted, declined, expired, active, forfeited, completed,

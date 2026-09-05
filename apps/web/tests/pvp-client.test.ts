@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   acceptPvpInvitation,
+  cancelPvpInvitation,
   createPvpInvitation,
   findPvpPlayer,
   getPvpMatch,
@@ -69,6 +70,7 @@ describe('asynchronous PvP API client', () => {
   it.each([
     'pending',
     'accepted',
+    'cancelled',
     'declined',
     'expired',
     'invalidated',
@@ -147,6 +149,68 @@ describe('asynchronous PvP API client', () => {
       initialCreatureId,
       submissionId,
     });
+  });
+
+  it('submits only versioned cancellation intent and maps terminal cancellation', async () => {
+    const cancelled = pvpInvitation({
+      canCancel: false,
+      direction: 'outgoing',
+      respondedAt: '2026-09-05T09:00:00.000Z',
+      status: 'cancelled',
+      version: 1,
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(invitationResponse(cancelled))
+      .mockResolvedValueOnce(
+        pvpProblemResponse('PVP_INVITATION_CANCELLED', 409),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const submissionId = uuid(2250);
+
+    await expect(
+      cancelPvpInvitation({
+        ...options(),
+        expectedVersion: 0,
+        invitationId: INVITATION_ID,
+        submissionId,
+      }),
+    ).resolves.toEqual(cancelled);
+    expect(fetchMock.mock.calls[0]![0]).toBe(
+      `${apiBaseUrl}/matches/pvp/invitations/${INVITATION_ID}/cancel`,
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]![1]!.body))).toEqual({
+      expectedVersion: 0,
+      submissionId,
+    });
+    expect(fetchMock.mock.calls[0]![1]!.headers).toMatchObject({
+      Accept:
+        'application/vnd.wits-world.pvp.v3+json, application/vnd.wits-world.pvp.v2+json;q=0.9, application/json;q=0.8',
+    });
+
+    await expect(
+      cancelPvpInvitation({
+        ...options(),
+        expectedVersion: 0,
+        invitationId: INVITATION_ID,
+        submissionId: uuid(2251),
+      }),
+    ).rejects.toMatchObject({ failure: 'cancelled' });
+  });
+
+  it('defaults an absent cancellation capability to unavailable during rollout', async () => {
+    const legacy = pvpInvitation({
+      direction: 'outgoing',
+    }) as unknown as Record<string, unknown>;
+    delete legacy.canCancel;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(invitationListResponse([legacy as never])),
+    );
+
+    await expect(
+      listPvpInvitations({ ...options(), direction: 'outgoing' }),
+    ).resolves.toMatchObject({ items: [{ canCancel: false }] });
   });
 
   it('accepts only viewer-safe match projection and exact API-returned legal actions', async () => {
@@ -264,7 +328,8 @@ describe('asynchronous PvP API client', () => {
       `${apiBaseUrl}/matches/pvp/${PVP_MATCH_ID}/resign`,
     );
     expect(fetchMock.mock.calls[0]![1]!.headers).toMatchObject({
-      Accept: 'application/vnd.wits-world.pvp.v2+json, application/json;q=0.9',
+      Accept:
+        'application/vnd.wits-world.pvp.v3+json, application/vnd.wits-world.pvp.v2+json;q=0.9, application/json;q=0.8',
     });
     expect(fetchMock.mock.calls[0]![1]!.headers).not.toHaveProperty(
       'X-Wits-PvP-Contract-Version',

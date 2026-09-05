@@ -189,6 +189,12 @@ describe('asynchronous player battle lobby', () => {
         respondedAt: '2026-09-05T10:00:00.000Z',
         status: 'accepted',
       }),
+      pvpInvitation({
+        direction: 'outgoing',
+        invitationId: uuid(2506),
+        respondedAt: '2026-09-05T10:30:00.000Z',
+        status: 'cancelled',
+      }),
     ];
     const responses = hubResponses({
       active: [activePvpSummary()],
@@ -231,6 +237,10 @@ describe('asynchronous player battle lobby', () => {
     expect(within(incomingList).getByText('Expired')).toBeVisible();
     expect(within(sentList).getByText('Unavailable')).toBeVisible();
     expect(within(sentList).getByText('Accepted')).toBeVisible();
+    expect(within(sentList).getByText('Cancelled')).toBeVisible();
+    expect(
+      within(sentList).getByText('You cancelled this invitation.'),
+    ).toBeVisible();
     expect(screen.queryByRole('heading', { name: 'Your matches' })).toBeNull();
 
     const activeTab = screen.getByRole('tab', { name: 'Active 1' });
@@ -404,6 +414,96 @@ describe('asynchronous player battle lobby', () => {
       expectedVersion: 0,
       submissionId: expect.any(String),
     });
+  });
+
+  it('cancels a sent pending invitation once and keeps its terminal record', async () => {
+    const user = userEvent.setup();
+    const invitation = pvpInvitation({ direction: 'outgoing' });
+    const cancelled = pvpInvitation({
+      canCancel: false,
+      direction: 'outgoing',
+      respondedAt: '2026-09-05T09:00:00.000Z',
+      status: 'cancelled',
+      version: 1,
+    });
+    let resolveCancellation!: (response: Response) => void;
+    const pending = new Promise<Response>((resolve) => {
+      resolveCancellation = resolve;
+    });
+    const fetchMock = vi.fn();
+    for (const response of hubResponses({ outgoing: [invitation] })) {
+      fetchMock.mockResolvedValueOnce(response);
+    }
+    fetchMock.mockReturnValueOnce(pending);
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderRoute('/matches/pvp', <PvpHubPage apiBaseUrl={apiBaseUrl} />);
+    const cancel = await screen.findByRole('button', {
+      name: 'Cancel challenge to wits_wanderer',
+    });
+    await user.dblClick(cancel);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+
+    await act(async () => {
+      resolveCancellation(invitationResponse(cancelled));
+      await pending;
+    });
+    expect(
+      await screen.findByText('Challenge to wits_wanderer cancelled.'),
+    ).toBeVisible();
+    expect(screen.getByText('You cancelled this invitation.')).toBeVisible();
+    expect(
+      screen.queryByRole('button', {
+        name: 'Cancel challenge to wits_wanderer',
+      }),
+    ).toBeNull();
+    expect(JSON.parse(String(fetchMock.mock.calls[5]![1]!.body))).toEqual({
+      expectedVersion: 0,
+      submissionId: expect.any(String),
+    });
+  });
+
+  it('reconciles an ambiguous cancellation and retries the same submission safely', async () => {
+    const user = userEvent.setup();
+    const invitation = pvpInvitation({ direction: 'outgoing' });
+    const cancelled = pvpInvitation({
+      canCancel: false,
+      direction: 'outgoing',
+      respondedAt: '2026-09-05T09:00:00.000Z',
+      status: 'cancelled',
+      version: 1,
+    });
+    const fetchMock = vi.fn();
+    for (const response of hubResponses({ outgoing: [invitation] })) {
+      fetchMock.mockResolvedValueOnce(response);
+    }
+    fetchMock.mockRejectedValueOnce(new TypeError('response interrupted'));
+    for (const response of hubResponses({ outgoing: [invitation] }).slice(
+      0,
+      4,
+    )) {
+      fetchMock.mockResolvedValueOnce(response);
+    }
+    fetchMock.mockResolvedValueOnce(invitationResponse(cancelled));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderRoute('/matches/pvp', <PvpHubPage apiBaseUrl={apiBaseUrl} />);
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Cancel challenge to wits_wanderer',
+      }),
+    );
+    const retry = await screen.findByRole('button', {
+      name: 'Cancel challenge to wits_wanderer',
+    });
+    expect(retry).toHaveTextContent('Retry cancellation safely');
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(10));
+
+    const firstBody = JSON.parse(String(fetchMock.mock.calls[5]![1]!.body));
+    await user.click(retry);
+    await screen.findByText('You cancelled this invitation.');
+    const retryBody = JSON.parse(String(fetchMock.mock.calls[10]![1]!.body));
+    expect(retryBody).toEqual(firstBody);
   });
 });
 
