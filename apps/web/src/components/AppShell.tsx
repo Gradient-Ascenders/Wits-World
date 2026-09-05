@@ -152,7 +152,9 @@ export function AppShell({ children }: AppShellProps) {
   const isAuthorRoute =
     pathname === '/author' || pathname.startsWith('/author/');
   const isBattleDetail =
-    pathname.startsWith('/matches/') && pathname !== '/matches/history';
+    pathname.startsWith('/matches/') &&
+    pathname !== '/matches/history' &&
+    pathname !== '/matches/pvp';
   const isFooterlessProductRoute =
     isExplore ||
     pathname === '/collection' ||

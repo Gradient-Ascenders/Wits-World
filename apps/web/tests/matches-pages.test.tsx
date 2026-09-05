@@ -72,7 +72,11 @@ describe('CPU match entry and history', () => {
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
 
     expect(
-      await screen.findByRole('heading', { name: 'Resume your CPU battle' }),
+      await screen.findByRole('heading', { name: 'Continue playing' }),
+    ).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'CPU Battle' })).toBeVisible();
+    expect(
+      screen.getByRole('heading', { name: 'Player Battles' }),
     ).toBeVisible();
     expect(window.location.pathname).toBe('/matches');
     expect(
@@ -163,8 +167,13 @@ describe('CPU match entry and history', () => {
 
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
     expect(
-      await screen.findByRole('heading', { name: 'Start a CPU battle' }),
+      await screen.findByRole('heading', { name: 'CPU Battle' }),
     ).toBeVisible();
+    expect(
+      screen.getByRole('link', { name: 'Open player battles' }),
+    ).toHaveAttribute('href', '/matches/pvp');
+    expect(screen.queryByText('Asynchronous PvP')).not.toBeInTheDocument();
+    expect(screen.queryByText('Continue playing')).not.toBeInTheDocument();
     expect(screen.getAllByText(selected.name).length).toBeGreaterThan(0);
     await user.click(screen.getByRole('button', { name: 'Start CPU battle' }));
 
@@ -226,9 +235,10 @@ describe('CPU match entry and history', () => {
 
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
     expect(
-      await screen.findByRole('heading', { name: 'Select a deck first' }),
+      await screen.findByRole('heading', { name: 'CPU Battle' }),
     ).toBeVisible();
-    expect(screen.getByRole('link', { name: 'Choose a deck' })).toHaveAttribute(
+    expect(screen.getByText('No deck selected')).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Choose deck' })).toHaveAttribute(
       'href',
       '/decks',
     );
@@ -266,7 +276,7 @@ describe('CPU match entry and history', () => {
 
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(
-      await screen.findByRole('heading', { name: 'Resume your CPU battle' }),
+      await screen.findByRole('heading', { name: 'Continue playing' }),
     ).toBeVisible();
     expect(window.location.pathname).toBe('/matches');
     expect(fetchMock).toHaveBeenCalledTimes(4);
@@ -340,16 +350,17 @@ describe('CPU match entry and history', () => {
     });
     expect(within(recent).getAllByRole('listitem')).toHaveLength(3);
     const resultLinks = within(recent).getAllByRole('link', {
-      name: 'View saved match',
+      name: 'View battle',
     });
     expect(resultLinks.map((link) => link.getAttribute('href'))).toEqual([
       `/matches/${uuid(1502)}`,
       `/matches/${uuid(1504)}`,
       `/matches/${uuid(1503)}`,
     ]);
-    expect(
-      screen.getByRole('link', { name: 'View full history' }),
-    ).toHaveAttribute('href', '/matches/history');
+    expect(screen.getByRole('link', { name: 'View history' })).toHaveAttribute(
+      'href',
+      '/matches/history',
+    );
   });
 
   it('offers secure reauthentication when private history returns 401', async () => {

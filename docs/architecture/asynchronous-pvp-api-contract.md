@@ -6,11 +6,11 @@ title: Asynchronous PvP API contract
 
 ## Status and purpose
 
-This document is the issue `#178` contract for the planned asynchronous
-player-versus-player mode. Migration `0028` implements its persistence boundary
-for issue `#179`. The routes, viewer projections, background deadline work, and
-screens remain owned by API issue `#180` and player-experience issue `#181`; this
-document does not claim those later layers are implemented or deployed.
+This document is the issue `#178` contract for asynchronous player-versus-player
+mode. Migration `0028` implements its persistence boundary for issue `#179`,
+issue `#180` implements the routes, viewer projections, and background deadline
+work, and issue `#181` adds the Web player journey. Implementation in the
+repository is not a claim that a named commit is deployed.
 
 The contract keeps asynchronous PvP separate from the later one-minute live
 mode. Asynchronous play uses persisted state, polling, and 24-hour response
@@ -50,6 +50,12 @@ deletion begins, deadline authority takes precedence: the current actor loses by
 `turn_forfeit`, even when the other participant is the player being deleted.
 Completed records retain an anonymous player tombstone under the existing
 retention policy.
+
+The issue `#181` Web experience preserves this boundary: it renders deadline
+and account-deletion forfeits returned by the API but does not manufacture a
+voluntary forfeit control. A future forfeit action requires an approved request
+schema, idempotent service transition, completion reason, persistence and
+progression behavior, OpenAPI update, and API/security review.
 
 The following social and privacy decisions are unresolved and require separate
 product authority before a later implementation claims them:
@@ -726,4 +732,4 @@ Before issue `#178` is closed:
   presented as implemented protections.
 
 This document was planned, generated, edited, and reviewed with the assistance
-of Codex[GPT-5] and Codex-CLI[gpt-5.6-sol medium].
+of Codex[GPT-5], Codex-CLI[GPT-5], and Codex-CLI[gpt-5.6-sol medium].

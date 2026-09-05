@@ -805,7 +805,7 @@ test('offers the owned active CPU match for explicit resume', async ({
   await expect(page.locator('.site-footer')).toHaveCount(0);
   await expect(page).toHaveURL('/matches');
   await expect(
-    page.getByRole('heading', { name: 'Resume your CPU battle' }),
+    page.getByRole('heading', { name: 'Continue playing' }),
   ).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Start CPU battle' }),
@@ -1069,10 +1069,8 @@ test('renders recent results and starts from the selected deck dashboard', async
   await expect(
     page.getByRole('heading', { exact: true, name: 'Battles' }),
   ).toBeFocused();
-  await expect(
-    page.getByRole('heading', { name: 'Start a CPU battle' }),
-  ).toBeVisible();
-  await expect(page.getByText('Campus Five', { exact: true })).toHaveCount(2);
+  await expect(page.getByRole('heading', { name: 'CPU Battle' })).toBeVisible();
+  await expect(page.getByText('Campus Five', { exact: true })).toHaveCount(1);
   await expect(
     page
       .getByRole('list', { name: 'Recent CPU match results' })
@@ -1088,15 +1086,18 @@ test('renders recent results and starts from the selected deck dashboard', async
 
   await page.setViewportSize({ height: 800, width: 1280 });
   await expectNoHorizontalOverflow(page);
-  const launchBox = await page
-    .locator('.match-dashboard__primary')
-    .boundingBox();
+  const modeCards = page.locator('.battle-mode-card');
+  const cpuBox = await modeCards.nth(0).boundingBox();
+  const playerBox = await modeCards.nth(1).boundingBox();
   const resultsBox = await page.locator('.recent-results').boundingBox();
-  expect(launchBox).not.toBeNull();
+  expect(cpuBox).not.toBeNull();
+  expect(playerBox).not.toBeNull();
   expect(resultsBox).not.toBeNull();
-  expect(resultsBox!.x).toBeGreaterThan(launchBox!.x);
+  expect(playerBox!.x).toBeGreaterThan(cpuBox!.x);
+  expect(playerBox!.y).toBe(cpuBox!.y);
+  expect(resultsBox!.y).toBeGreaterThan(cpuBox!.y + cpuBox!.height);
 
-  await page.getByRole('link', { name: 'View full history' }).click();
+  await page.getByRole('link', { name: 'View history' }).click();
   await expect(page).toHaveURL('/matches/history');
   await expect(page.locator('.site-footer')).toHaveCount(0);
   await expect(
@@ -1141,12 +1142,11 @@ test('shows deck recovery without exposing a conflicting start action', async ({
 
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto('/matches');
-  await expect(
-    page.getByRole('heading', { name: 'Select a deck first' }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole('link', { name: 'Choose a deck' }),
-  ).toHaveAttribute('href', '/decks');
+  await expect(page.getByRole('heading', { name: 'CPU Battle' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Choose deck' })).toHaveAttribute(
+    'href',
+    '/decks',
+  );
   await expect(
     page.getByRole('button', { name: 'Start CPU battle' }),
   ).toHaveCount(0);

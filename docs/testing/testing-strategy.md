@@ -69,8 +69,15 @@ The asynchronous PvP database suite upgrades retained CPU progression through
 migration `0028`, verifies private-state separation and lifecycle constraints,
 and exercises unordered invitation uniqueness, immutable snapshots and history,
 deadline indexes, all terminal outcomes, concurrent replay, and the
-two-participant 25/0 activity awards. Route, scheduler, and browser behavior
-remain downstream tests for issues `#180` and `#181`.
+two-participant 25/0 activity awards. Route and scheduler tests cover issue
+`#180`. Web client and component tests for issue `#181` cover closed privacy-safe
+parsing, all invitation states, Player Name challenge creation, deck/Creature
+selection with API validation errors, versioned actions, duplicate-click
+protection, bounded cursor navigation, polling, stale recovery,
+deadline/account forfeits, win/loss, hidden opponent information, and API
+retry. Existing CPU match tests remain in the same focused regression run
+because CPU and PvP share presentation without sharing their different
+lifecycle contracts.
 
 Author curation tests cover the five-state transition matrix across the four
 original content types plus campaigns, draft-only edits, latest-submitter self-review denial, required
@@ -235,6 +242,7 @@ for demonstrating the acceptance criteria and protected invariants.
 ## AI declaration
 
 This testing strategy was generated, edited, and reviewed with the assistance
-of Codex[GPT-5], Codex[gpt-5.6-sol], and Codex-CLI[gpt-5.6-sol medium].
+of Codex[GPT-5], Codex[gpt-5.6-sol], Codex-CLI[GPT-5], and
+Codex-CLI[gpt-5.6-sol medium].
 Repository paths and workflow claims were checked against the current source;
 this declaration is not test evidence.

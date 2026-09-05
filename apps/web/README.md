@@ -21,6 +21,12 @@ Server-authoritative CPU battles and private
 completed-match history are available through the protected `/matches` routes.
 The protected `/profile` route presents server-authoritative points, rank,
 streaks, achievement progress, and privacy-safe all-time or monthly standings.
+Asynchronous PvP is
+available alongside CPU play through `/matches/pvp`, with exact Player Name
+lookup, invitations, saved-deck selection, server-timed turns, polling, and
+viewer-relative completed history. PvP match detail uses
+`/matches/pvp/:matchId`; it renders only API-returned legal actions and revealed
+opponent information.
 The protected `/account` route presents the local player identity, delegates
 credential recovery to the owning provider, and starts permanent account
 deletion with fresh Auth0 reauthentication.
@@ -1023,6 +1029,28 @@ With `apps/web/.env` configured and the development server running:
    announced loading/error/page changes, achievement status text independent of
    colour, and focus moving to the standings heading after a filter or page
    change. Check the browser console and page errors throughout.
+
+#### Authenticated asynchronous PvP
+
+1. Start the disposable database, API, and Web application as above. Sign in as
+   two development players that each have a Player Name and valid saved deck.
+2. Open `http://localhost:5173/matches/pvp`. Search for the second exact Player
+   Name, choose a saved deck and opening Creature, and send the invitation.
+3. In the second account, open the same route and accept or decline the incoming
+   invitation. For acceptance, choose that account's own deck and opening
+   Creature. Confirm the new match opens at `/matches/pvp/:matchId`.
+4. Submit only an enabled API-returned move or Power action. Confirm the heading
+   changes between **Your turn** and **Opponent's turn**, the exact deadline and
+   display countdown remain visible, and the waiting view refreshes after the
+   other account acts. Do not expect unplayed opponent cards to appear.
+5. Inspect the hub and match at approximately 390px and 1280px, including
+   keyboard focus, status announcements, touch targets, overflow, API recovery,
+   deadline completion, and saved history. CPU play remains at `/matches`.
+
+S3-02 does not provide voluntary match resignation or outgoing-invitation
+cancellation mutations. The Web application displays server-generated deadline
+and account-lifecycle forfeits and unavailable invitations, but does not invent
+those unsupported controls.
 
 The preceding document was generated and edited with the assistance of:
 Codex-CLI[gpt-5.6-sol medium], Codex-CLI[gpt-5.6-sol], Codex-CLI[GPT-5], and Codex[GPT-5].

@@ -645,8 +645,8 @@ function parsePlayer(value: unknown): CpuMatchState['player'] {
 
   return {
     activeCreatureId: value.activeCreatureId,
-    creatures: value.creatures.map(parseCreature),
-    powerCards: value.powerCards.map(parsePowerCard),
+    creatures: value.creatures.map(parseMatchCreature),
+    powerCards: value.powerCards.map(parseMatchPowerCard),
     usedPowerCardIds: value.usedPowerCardIds,
   };
 }
@@ -674,15 +674,15 @@ function parseCpu(value: unknown): CpuMatchState['cpu'] {
     activeCreature:
       value.activeCreature === null
         ? null
-        : parseCreature(value.activeCreature),
-    defeatedCreatures: value.defeatedCreatures.map(parseCreature),
+        : parseMatchCreature(value.activeCreature),
+    defeatedCreatures: value.defeatedCreatures.map(parseMatchCreature),
     remainingCreatureCount: value.remainingCreatureCount,
     remainingPowerCardCount: value.remainingPowerCardCount,
     usedPowerCardIds: value.usedPowerCardIds,
   };
 }
 
-function parseCreature(value: unknown): MatchCreature {
+export function parseMatchCreature(value: unknown): MatchCreature {
   const currentShape = isRecord(value) && hasExactKeys(value, creatureKeys);
   const legacyShape =
     isRecord(value) && hasExactKeys(value, legacyCreatureKeys);
@@ -756,7 +756,7 @@ function parseMove(value: unknown): MatchMove {
   } as MatchMove;
 }
 
-function parsePowerCard(value: unknown): MatchPowerCard {
+export function parseMatchPowerCard(value: unknown): MatchPowerCard {
   const currentKeys = [
     'affinity',
     'available',
