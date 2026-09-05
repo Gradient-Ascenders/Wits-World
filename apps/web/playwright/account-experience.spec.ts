@@ -13,7 +13,7 @@ test('keeps the database-account deletion journey focused and accessible on mobi
   await page.goto('/account');
 
   await expect(
-    page.getByRole('heading', { level: 1, name: 'Account' }),
+    page.getByRole('heading', { level: 1, name: 'Account settings' }),
   ).toBeVisible();
   await expect(page.getByText('Wits World player')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Security' })).toBeVisible();
@@ -86,13 +86,14 @@ test('uses desktop space without exposing federated credentials', async ({
     desktopNavigation.getByRole('link', { name: 'Author' }),
   ).toBeVisible();
   const accountTrigger = page.getByRole('button', {
-    exact: true,
-    name: 'Account',
+    name: 'browser-player, account menu',
   });
   await expect(accountTrigger).toHaveAttribute('aria-current', 'page');
   await accountTrigger.click();
   await expect(
-    page.getByRole('button', { name: 'Manage account' }),
+    page.getByRole('link', {
+      name: 'Account settings, Security and account',
+    }),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
 

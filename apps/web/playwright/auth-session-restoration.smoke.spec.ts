@@ -17,7 +17,9 @@ test('keeps the same player with E2E local-storage restoration and logout', asyn
       id: expectedPlayerId,
       playerName: expectedPlayerName,
     });
-    await expect(page.getByText(/^Signed in as .+$/)).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: /, account menu$/u }),
+    ).toBeVisible();
 
     const refreshedPlayer = await openAndReadCurrentPlayer(page, () =>
       page.reload(),
@@ -26,9 +28,12 @@ test('keeps the same player with E2E local-storage restoration and logout', asyn
       id: expectedPlayerId,
       playerName: expectedPlayerName,
     });
-    await expect(page.getByText(/^Signed in as .+$/)).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: /, account menu$/u }),
+    ).toBeVisible();
   }
 
+  await page.getByRole('button', { name: /, account menu$/u }).click();
   await Promise.all([
     page.waitForURL('http://localhost:5173/'),
     page.getByRole('button', { name: 'Sign out' }).click(),
@@ -40,7 +45,9 @@ test('keeps the same player with E2E local-storage restoration and logout', asyn
   await expect(
     page.getByRole('button', { name: 'Sign in to explore' }),
   ).toBeVisible();
-  await expect(page.getByText(/^Signed in as .+$/)).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: /, account menu$/u }),
+  ).toHaveCount(0);
 });
 
 async function openAndReadCurrentPlayer(

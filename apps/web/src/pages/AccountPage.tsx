@@ -209,7 +209,7 @@ export default function AccountPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   return (
     <div className="account-page">
       <header className="account-page__header">
-        <h1>Account</h1>
+        <h1>Account settings</h1>
         <p>Manage your account and sign-in settings.</p>
       </header>
 

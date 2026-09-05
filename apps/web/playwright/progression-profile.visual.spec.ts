@@ -29,6 +29,7 @@ test('renders and operates the progression route across mobile and desktop', asy
 
   await page.route(`${API_BASE_URL}/auth/me`, (route) =>
     json(route, {
+      connectionStrategy: 'auth0',
       id: '17300000-0000-4000-8000-000000000001',
       lifecycleStatus: 'active',
       playerName: PLAYER_NAME,
@@ -104,12 +105,22 @@ test('renders and operates the progression route across mobile and desktop', asy
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto('/profile');
 
-  await expect(
-    page.getByRole('heading', { name: 'Your place in Wits Quest' }),
-  ).toBeVisible();
   await expect(page.getByRole('heading', { name: PLAYER_NAME })).toBeVisible();
+  await expect(page.getByText('Your Wits Quest progression')).toBeVisible();
   await expect(page.getByText('Deleted player')).toBeVisible();
-  await expect(page.getByLabel('Your standing')).toContainText('Rank 21');
+  await expect(page.getByLabel('Your standing')).toContainText('#21');
+  await expect(
+    page.getByRole('complementary', { name: 'Your standing' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('list', { name: 'Player standings' }).getByText('You'),
+  ).toHaveCount(0);
+  await expect(page.locator('.standings-section__heading')).toContainText(
+    'You are #21',
+  );
+  await expect(
+    page.getByLabel('Your standing').getByText('You', { exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole('progressbar', { name: '3 of 5' })).toBeVisible();
   await expect(page.getByRole('contentinfo')).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
@@ -123,33 +134,40 @@ test('renders and operates the progression route across mobile and desktop', asy
   await page.keyboard.press('Enter');
   await expect(page.getByText('Page 2 of 2')).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: 'All-time standings' }),
+    page.getByRole('heading', { name: 'Campus standings' }),
   ).toBeFocused();
   await expect(page.locator('.standing--current-player')).toHaveAttribute(
     'aria-current',
     'true',
   );
 
-  await page.getByLabel('Period').selectOption('monthly');
-  await page.getByLabel('Month').fill('2026-08');
-  const applyFilter = page.getByRole('button', { name: 'View standings' });
-  await applyFilter.focus();
+  const monthly = page.getByRole('button', { name: 'This month' });
+  await monthly.focus();
   await page.keyboard.press('Enter');
   await expect(
-    page.getByRole('heading', { name: 'August 2026 standings' }),
+    page.getByRole('heading', { name: 'Campus standings' }),
   ).toBeFocused();
+  await expect(monthly).toHaveAttribute('aria-pressed', 'true');
 
   await page.setViewportSize({ height: 800, width: 1280 });
   await page.reload();
   await expect(
-    page.getByRole('heading', { name: 'All-time standings' }),
+    page.getByRole('heading', { name: 'Campus standings' }),
   ).toBeVisible();
   await expectNoHorizontalOverflow(page);
-  for (const profileLink of await page
-    .getByRole('link', { name: 'Profile' })
-    .all()) {
-    await expect(profileLink).toHaveAttribute('aria-current', 'page');
-  }
+  await expect(
+    page.locator('.primary-navigation').getByRole('link', { name: 'Profile' }),
+  ).toHaveCount(0);
+  const accountTrigger = page.getByRole('button', {
+    name: `${PLAYER_NAME}, account menu`,
+  });
+  await expect(accountTrigger).toHaveAttribute('aria-current', 'page');
+  await accountTrigger.click();
+  await expect(
+    page.getByRole('link', {
+      name: 'Player profile, Progress and achievements',
+    }),
+  ).toHaveAttribute('aria-current', 'page');
   await page.screenshot({
     fullPage: true,
     path: '/tmp/issue-173-profile-desktop.png',

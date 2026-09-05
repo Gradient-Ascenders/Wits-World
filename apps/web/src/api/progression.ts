@@ -204,16 +204,15 @@ export async function listProgressionStandings({
   const responseMonth = payload.month;
   const currentPlayer = parseStandingsEntry(payload.currentPlayer);
   const entries = payload.entries.map(parseStandingsEntry);
+  const currentEntries = entries.filter((entry) => entry.isCurrentPlayer);
 
   if (
     !currentPlayer.isCurrentPlayer ||
     currentPlayer.playerName === null ||
     currentPlayer.rank > pagination.totalPlayers ||
     entries.some((entry) => entry.rank > pagination.totalPlayers) ||
-    entries.filter((entry) => entry.isCurrentPlayer).length > 1 ||
-    entries.some(
-      (entry) => entry.isCurrentPlayer && !sameEntry(entry, currentPlayer),
-    )
+    currentEntries.length > 1 ||
+    currentEntries.some((entry) => !sameEntry(entry, currentPlayer))
   ) {
     throw malformedProgressionError(payload);
   }

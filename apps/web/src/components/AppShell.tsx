@@ -11,7 +11,7 @@ interface AppShellProps {
 }
 
 type NavigationIconName =
-  'author' | 'battles' | 'collection' | 'decks' | 'explore' | 'profile';
+  'author' | 'battles' | 'collection' | 'decks' | 'explore';
 
 interface NavigationItem {
   href: string;
@@ -46,12 +46,6 @@ const PLAYER_NAVIGATION_ITEMS: NavigationItem[] = [
     isActive: (pathname) =>
       pathname === '/matches' || pathname.startsWith('/matches/'),
     label: 'Battles',
-  },
-  {
-    href: '/profile',
-    icon: 'profile',
-    isActive: (pathname) => pathname === '/profile',
-    label: 'Profile',
   },
 ];
 
@@ -109,13 +103,6 @@ function NavigationIcon({ name }: { name: NavigationIconName }) {
         <svg {...sharedProps}>
           <path d="m4 20 4.2-1 10.7-10.7a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z" />
           <path d="m14.5 6.7 2.8 2.8M4 20h6" />
-        </svg>
-      );
-    case 'profile':
-      return (
-        <svg {...sharedProps}>
-          <circle cx="12" cy="8" r="3.25" />
-          <path d="M5.5 20a6.5 6.5 0 0 1 13 0" />
         </svg>
       );
   }

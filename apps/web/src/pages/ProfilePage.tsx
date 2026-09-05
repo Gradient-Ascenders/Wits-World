@@ -1,11 +1,5 @@
 import { useAuth0 } from '@auth0/auth0-react';
-import {
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-  type ReactNode,
-} from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import {
   getCurrentProgressionProfile,
@@ -36,7 +30,6 @@ interface StandingsQuery {
 }
 
 const STANDINGS_PAGE_SIZE = 20;
-const monthPattern = /^(?!0000)\d{4}-(0[1-9]|1[0-2])$/u;
 const numberFormatter = new Intl.NumberFormat('en-ZA');
 const monthFormatter = new Intl.DateTimeFormat('en-ZA', {
   month: 'long',
@@ -59,9 +52,6 @@ export default function ProfilePage({ apiBaseUrl }: ProfilePageProps) {
     ResourceState<ProgressionStandings>
   >({ status: 'loading' });
   const [standingsRevision, setStandingsRevision] = useState(0);
-  const [draftPeriod, setDraftPeriod] = useState<StandingsPeriod>('all_time');
-  const [draftMonth, setDraftMonth] = useState(currentJohannesburgMonth);
-  const [monthError, setMonthError] = useState(false);
   const [reauthFailed, setReauthFailed] = useState(false);
   const profileHeading = useRef<HTMLHeadingElement>(null);
   const shouldFocusProfile = useRef(false);
@@ -144,20 +134,16 @@ export default function ProfilePage({ apiBaseUrl }: ProfilePageProps) {
     }
   }
 
-  function applyStandingsFilter(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (draftPeriod === 'monthly' && !monthPattern.test(draftMonth)) {
-      setMonthError(true);
+  function selectStandingsPeriod(period: StandingsPeriod) {
+    if (period === standingsQuery.period) {
       return;
     }
 
-    setMonthError(false);
     shouldFocusStandings.current = true;
     setStandingsQuery({
-      ...(draftPeriod === 'monthly' ? { month: draftMonth } : {}),
+      ...(period === 'monthly' ? { month: currentJohannesburgMonth() } : {}),
       page: 1,
-      period: draftPeriod,
+      period,
     });
   }
 
@@ -179,22 +165,16 @@ export default function ProfilePage({ apiBaseUrl }: ProfilePageProps) {
   return (
     <div className="profile-page">
       <header className="profile-page__header">
-        <p className="eyebrow">Player progression</p>
-        <h1>Your place in Wits Quest</h1>
-        <p className="lead">
-          See your server-recorded points, streaks, achievements, and standing.
-        </p>
+        <p className="eyebrow">Player profile</p>
+        <h1 id="profile-summary-heading" ref={profileHeading} tabIndex={-1}>
+          {profile.status === 'ready'
+            ? profile.data.playerName
+            : 'Player profile'}
+        </h1>
+        <p className="lead">Your Wits Quest progression</p>
       </header>
 
       <section aria-labelledby="profile-summary-heading">
-        <h2
-          className="sr-only"
-          id="profile-summary-heading"
-          ref={profileHeading}
-          tabIndex={-1}
-        >
-          Current player profile
-        </h2>
         {profile.status === 'loading' ? (
           <ProgressionLoadingState label="Loading your progression profile" />
         ) : profile.status === 'error' ? (
@@ -210,149 +190,115 @@ export default function ProfilePage({ apiBaseUrl }: ProfilePageProps) {
         )}
       </section>
 
-      <div className="progression-detail-layout">
-        <section
-          aria-labelledby="achievements-heading"
-          className="progression-section achievement-section"
-        >
-          <div className="progression-section__heading">
-            <div>
-              <p className="eyebrow">Milestones</p>
-              <h2 id="achievements-heading">Achievements</h2>
-            </div>
-            {profile.status === 'ready' ? (
-              <p>
-                {numberFormatter.format(
-                  profile.data.achievements.filter(
-                    (achievement) => achievement.earned,
-                  ).length,
-                )}{' '}
-                of {numberFormatter.format(profile.data.achievements.length)}{' '}
-                earned
-              </p>
-            ) : null}
+      <section
+        aria-labelledby="achievements-heading"
+        className="progression-section achievement-section"
+      >
+        <div className="progression-section__heading">
+          <div>
+            <h2 id="achievements-heading">Achievements</h2>
+            <p>Keep exploring Wits Quest to unlock more.</p>
           </div>
-
-          {profile.status === 'loading' ? (
-            <ProgressionLoadingState label="Loading achievement progress" />
-          ) : profile.status === 'error' ? (
-            <p className="progression-dependent-state">
-              Achievement progress will appear when your profile is available.
+          {profile.status === 'ready' ? (
+            <p className="progression-section__summary">
+              {numberFormatter.format(
+                profile.data.achievements.filter(
+                  (achievement) => achievement.earned,
+                ).length,
+              )}{' '}
+              of {numberFormatter.format(profile.data.achievements.length)}{' '}
+              earned
             </p>
-          ) : profile.data.achievements.length === 0 ? (
-            <div className="progression-empty-state">
-              <h3>No achievements are available yet</h3>
-              <p>
-                Your points, rank, and streak remain visible while the active
-                achievement catalogue is empty.
-              </p>
-            </div>
-          ) : (
-            <AchievementList achievements={profile.data.achievements} />
-          )}
-        </section>
+          ) : null}
+        </div>
 
-        <section
-          aria-busy={standings.status === 'loading' ? 'true' : undefined}
-          aria-labelledby="standings-heading"
-          className="progression-section standings-section"
-        >
-          <div className="progression-section__heading standings-section__heading">
-            <div>
-              <p className="eyebrow">Campus standings</p>
-              <h2 id="standings-heading" ref={standingsHeading} tabIndex={-1}>
-                {standings.status === 'ready'
-                  ? standingsTitle(standings.data)
-                  : 'Standings'}
-              </h2>
-            </div>
-            {standings.status === 'ready' ? (
-              <p>
-                {numberFormatter.format(standings.data.pagination.totalPlayers)}{' '}
-                {standings.data.pagination.totalPlayers === 1
-                  ? 'player'
-                  : 'players'}
-              </p>
-            ) : null}
+        {profile.status === 'loading' ? (
+          <ProgressionLoadingState label="Loading achievement progress" />
+        ) : profile.status === 'error' ? (
+          <p className="progression-dependent-state">
+            Achievement progress will appear when your profile is available.
+          </p>
+        ) : profile.data.achievements.length === 0 ? (
+          <div className="progression-empty-state">
+            <h3>No achievements are available yet</h3>
+            <p>
+              Your points, rank, and streak remain visible while the active
+              achievement catalogue is empty.
+            </p>
           </div>
+        ) : (
+          <AchievementList achievements={profile.data.achievements} />
+        )}
+      </section>
 
-          <form
-            aria-describedby="standings-filter-hint"
-            className="standings-filter"
-            onSubmit={applyStandingsFilter}
+      <section
+        aria-busy={standings.status === 'loading' ? 'true' : undefined}
+        aria-describedby="standings-context"
+        aria-labelledby="standings-heading"
+        className="progression-section standings-section"
+      >
+        <div className="progression-section__heading standings-section__heading">
+          <h2 id="standings-heading" ref={standingsHeading} tabIndex={-1}>
+            Campus standings
+          </h2>
+          {standings.status === 'ready' ? (
+            <p className="progression-section__summary">
+              You are{' '}
+              <span
+                aria-label={`rank ${numberFormatter.format(standings.data.currentPlayer.rank)}`}
+              >
+                #{numberFormatter.format(standings.data.currentPlayer.rank)}
+              </span>
+            </p>
+          ) : null}
+        </div>
+
+        <p aria-live="polite" className="sr-only" id="standings-context">
+          {standings.status === 'ready'
+            ? standingsTitle(standings.data)
+            : 'Standings period and results'}
+        </p>
+
+        <div
+          aria-label="Standings period"
+          className="standings-period"
+          role="group"
+        >
+          <button
+            aria-pressed={standingsQuery.period === 'all_time'}
+            disabled={standings.status === 'loading'}
+            onClick={() => selectStandingsPeriod('all_time')}
+            type="button"
           >
-            <div className="standings-filter__field">
-              <label htmlFor="standings-period">Period</label>
-              <select
-                id="standings-period"
-                onChange={(event) => {
-                  setDraftPeriod(event.target.value as StandingsPeriod);
-                  setMonthError(false);
-                }}
-                value={draftPeriod}
-              >
-                <option value="all_time">All time</option>
-                <option value="monthly">Monthly</option>
-              </select>
-            </div>
-            {draftPeriod === 'monthly' ? (
-              <div className="standings-filter__field">
-                <label htmlFor="standings-month">Month</label>
-                <input
-                  aria-describedby={
-                    monthError ? 'standings-month-error' : undefined
-                  }
-                  aria-invalid={monthError ? 'true' : undefined}
-                  id="standings-month"
-                  onChange={(event) => {
-                    setDraftMonth(event.target.value);
-                    setMonthError(false);
-                  }}
-                  required
-                  type="month"
-                  value={draftMonth}
-                />
-              </div>
-            ) : null}
-            <button
-              className="button button--quiet standings-filter__submit"
-              disabled={standings.status === 'loading'}
-              type="submit"
-            >
-              View standings
-            </button>
-            <p className="sr-only" id="standings-filter-hint">
-              Choose all-time standings or a Johannesburg calendar month.
-            </p>
-            {monthError ? (
-              <p
-                className="standings-filter__error"
-                id="standings-month-error"
-                role="alert"
-              >
-                Choose a valid month.
-              </p>
-            ) : null}
-          </form>
+            All time
+          </button>
+          <button
+            aria-pressed={standingsQuery.period === 'monthly'}
+            disabled={standings.status === 'loading'}
+            onClick={() => selectStandingsPeriod('monthly')}
+            type="button"
+          >
+            This month
+          </button>
+        </div>
 
-          {standings.status === 'loading' ? (
-            <ProgressionLoadingState label="Loading standings" />
-          ) : standings.status === 'error' ? (
-            <ProgressionErrorState
-              context="standings"
-              error={standings.error}
-              onRetry={retryStandings}
-              onSignIn={startSignIn}
-              reauthFailed={reauthFailed}
-            />
-          ) : (
-            <StandingsResults
-              onPageChange={changePage}
-              standings={standings.data}
-            />
-          )}
-        </section>
-      </div>
+        {standings.status === 'loading' ? (
+          <ProgressionLoadingState label="Loading standings" />
+        ) : standings.status === 'error' ? (
+          <ProgressionErrorState
+            context="standings"
+            error={standings.error}
+            onRetry={retryStandings}
+            onSignIn={startSignIn}
+            reauthFailed={reauthFailed}
+          />
+        ) : (
+          <StandingsResults
+            onPageChange={changePage}
+            standings={standings.data}
+          />
+        )}
+      </section>
     </div>
   );
 }
@@ -360,13 +306,6 @@ export default function ProfilePage({ apiBaseUrl }: ProfilePageProps) {
 function ProfileSummary({ profile }: { profile: CurrentProgressionProfile }) {
   return (
     <div className="progression-profile">
-      <div className="progression-profile__identity">
-        <p className="eyebrow">Current player</p>
-        <h2>{profile.playerName}</h2>
-        <p>
-          Every value below comes from your authenticated progression record.
-        </p>
-      </div>
       <dl className="progression-stats">
         <ProgressionStat label="Points">
           {numberFormatter.format(profile.points)}
@@ -381,7 +320,7 @@ function ProfileSummary({ profile }: { profile: CurrentProgressionProfile }) {
         <ProgressionStat label="Current streak">
           {formatDays(profile.currentStreak)}
         </ProgressionStat>
-        <ProgressionStat label="Longest streak">
+        <ProgressionStat label="Best streak">
           {formatDays(profile.longestStreak)}
         </ProgressionStat>
       </dl>
@@ -415,22 +354,56 @@ function AchievementList({
         const progressLabel = achievement.earned
           ? `Current ${numberFormatter.format(achievement.progress)} · target ${numberFormatter.format(achievement.target)}`
           : `${numberFormatter.format(achievement.progress)} of ${numberFormatter.format(achievement.target)}`;
+        const accessibleProgressLabel = achievement.earned
+          ? `current progress ${numberFormatter.format(achievement.progress)}, target ${numberFormatter.format(achievement.target)}`
+          : progressLabel;
 
         return (
           <li
             className={achievement.earned ? 'achievement--earned' : undefined}
             key={achievement.code}
           >
+            <span aria-hidden="true" className="achievement__badge">
+              <svg
+                fill="none"
+                focusable="false"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="1.6"
+                viewBox="0 0 24 24"
+              >
+                <path d="m12 3 2.3 4.7 5.2.8-3.8 3.7.9 5.3-4.6-2.5L7.4 18l.9-5.3-3.8-3.7 5.2-.8L12 3Z" />
+              </svg>
+            </span>
             <div className="achievement__heading">
               <h3>{achievement.title}</h3>
               <span className="achievement__status">
-                {achievement.earned ? 'Earned' : 'Not yet earned'}
+                {achievement.earned ? (
+                  <>
+                    Earned
+                    <svg
+                      aria-hidden="true"
+                      fill="none"
+                      focusable="false"
+                      stroke="currentColor"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      viewBox="0 0 16 16"
+                    >
+                      <path d="m3 8 3 3 7-7" />
+                    </svg>
+                  </>
+                ) : (
+                  'In progress'
+                )}
               </span>
             </div>
             <p>{achievement.description}</p>
             <div className="achievement__progress">
               <progress
-                aria-label={`${achievement.title}: ${achievement.earned ? 'Earned' : 'Not yet earned'}, ${progressLabel}`}
+                aria-label={`${achievement.title}: ${achievement.earned ? 'Earned' : 'In progress'}, ${accessibleProgressLabel}`}
                 max={achievement.target}
                 value={achievement.progress}
               />
@@ -457,67 +430,43 @@ function StandingsResults({
 
   return (
     <div className="standings-results">
-      {!currentPlayerOnPage ? (
-        <aside
-          aria-label="Your standing"
-          className="current-standing current-standing--outside-page"
-        >
-          <div>
-            <p className="eyebrow">Your standing</p>
-            <strong>{standings.currentPlayer.playerName}</strong>
-            <p className="current-standing__rank">
-              Rank{' '}
-              <strong>
-                {numberFormatter.format(standings.currentPlayer.rank)}
-              </strong>
-            </p>
-          </div>
-          <StandingMetrics entry={standings.currentPlayer} />
-        </aside>
-      ) : null}
-
       {standings.entries.length === 0 ? (
         <div className="progression-empty-state standings-empty-state">
           <h3>No players appear on this page</h3>
           <p>
             Use the available page controls or choose another standings period.
-            Your authoritative standing remains shown above when available.
+            Your standing is shown separately below.
           </p>
         </div>
-      ) : (
+      ) : null}
+
+      <div className="standings-table">
+        <div aria-hidden="true" className="standings-table__header">
+          <span>Rank</span>
+          <span>Player</span>
+          <span>Points</span>
+          <span>Streak</span>
+          <span>Best</span>
+        </div>
         <ul aria-label="Player standings" className="standings-list">
           {standings.entries.map((entry, index) => (
-            <li
-              aria-current={entry.isCurrentPlayer ? 'true' : undefined}
-              className={
-                entry.isCurrentPlayer ? 'standing--current-player' : undefined
-              }
+            <StandingRow
+              entry={entry}
               key={`${entry.rank}-${entry.playerName ?? 'deleted'}-${index}`}
-            >
-              <div className="standing__rank">
-                <span>Rank</span>
-                <strong>{numberFormatter.format(entry.rank)}</strong>
-              </div>
-              <div className="standing__identity">
-                <strong>
-                  {entry.playerName === null ? (
-                    <>
-                      <span>Deleted player</span>
-                      <span className="sr-only">, anonymous tombstone</span>
-                    </>
-                  ) : (
-                    entry.playerName
-                  )}
-                </strong>
-                {entry.isCurrentPlayer ? (
-                  <span className="standing__you">Current player</span>
-                ) : null}
-              </div>
-              <StandingMetrics entry={entry} />
-            </li>
+            />
           ))}
         </ul>
-      )}
+      </div>
+
+      {!currentPlayerOnPage ? (
+        <aside
+          aria-current="true"
+          aria-label="Your standing"
+          className="standing-row standing--current-player standing--outside-page"
+        >
+          <StandingRowContent entry={standings.currentPlayer} />
+        </aside>
+      ) : null}
 
       <nav aria-label="Standings pages" className="standings-pagination">
         <button
@@ -545,22 +494,65 @@ function StandingsResults({
   );
 }
 
-function StandingMetrics({ entry }: { entry: StandingsEntry }) {
+function StandingRow({ entry }: { entry: StandingsEntry }) {
   return (
-    <dl className="standing__metrics">
-      <div>
-        <dt>Points</dt>
-        <dd>{numberFormatter.format(entry.points)}</dd>
+    <li
+      aria-current={entry.isCurrentPlayer ? 'true' : undefined}
+      aria-label={entry.isCurrentPlayer ? 'Your standing' : undefined}
+      className={`standing-row ${entry.isCurrentPlayer ? 'standing--current-player' : ''}`.trim()}
+    >
+      <StandingRowContent entry={entry} />
+    </li>
+  );
+}
+
+function StandingRowContent({ entry }: { entry: StandingsEntry }) {
+  return (
+    <>
+      <div className="standing__rank">
+        <strong aria-label={`Rank ${numberFormatter.format(entry.rank)}`}>
+          <span aria-hidden="true">#{numberFormatter.format(entry.rank)}</span>
+        </strong>
       </div>
-      <div>
-        <dt>Current streak</dt>
-        <dd>{formatDays(entry.currentStreak)}</dd>
+      <div className="standing__identity">
+        <strong>
+          {entry.playerName === null ? (
+            <>
+              <span>Deleted player</span>
+              <span className="sr-only">, anonymous tombstone</span>
+            </>
+          ) : (
+            entry.playerName
+          )}
+        </strong>
+        {entry.isCurrentPlayer ? (
+          <span className="standing__you">You</span>
+        ) : null}
       </div>
-      <div>
-        <dt>Longest streak</dt>
-        <dd>{formatDays(entry.longestStreak)}</dd>
+      <dl className="standing__metrics standing__metrics--desktop">
+        <div>
+          <dt>Points</dt>
+          <dd>{numberFormatter.format(entry.points)}</dd>
+        </div>
+        <div>
+          <dt>Current streak</dt>
+          <dd>{formatDays(entry.currentStreak)}</dd>
+        </div>
+        <div>
+          <dt>Best streak</dt>
+          <dd>{formatDays(entry.longestStreak)}</dd>
+        </div>
+      </dl>
+      <div className="standing__metrics--mobile">
+        <p>{numberFormatter.format(entry.points)} points</p>
+        <p>
+          {numberFormatter.format(entry.currentStreak)} day streak
+          <span aria-hidden="true"> · </span>
+          <span className="sr-only">, </span>Best{' '}
+          {formatDays(entry.longestStreak)}
+        </p>
       </div>
-    </dl>
+    </>
   );
 }
 

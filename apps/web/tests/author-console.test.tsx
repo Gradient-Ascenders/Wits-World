@@ -184,14 +184,7 @@ describe('Basic author console', () => {
         within(playerNavigation)
           .getAllByRole('link')
           .map((link) => link.textContent),
-      ).toEqual([
-        'Explore',
-        'Collection',
-        'Decks',
-        'Battles',
-        'Profile',
-        'Author',
-      ]);
+      ).toEqual(['Explore', 'Collection', 'Decks', 'Battles', 'Author']);
       expect(
         within(playerNavigation).queryByRole('link', { name: 'Home' }),
       ).not.toBeInTheDocument();

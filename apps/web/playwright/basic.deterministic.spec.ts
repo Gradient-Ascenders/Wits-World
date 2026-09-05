@@ -517,7 +517,9 @@ test('keeps the authenticated shared application shell responsive and accessible
 
     for (const route of routes) {
       await page.goto(route.path);
-      await expect(page.getByRole('button', { name: 'Account' })).toBeVisible();
+      await expect(
+        page.getByRole('button', { name: /account menu$/u }),
+      ).toBeVisible();
       await expectNoHorizontalOverflow(page);
 
       const visibleNavigation = page.locator('.primary-navigation:visible');
@@ -527,7 +529,7 @@ test('keeps the authenticated shared application shell responsive and accessible
       ).toHaveAttribute('aria-current', 'page');
       await expect(
         visibleNavigation.locator('.primary-navigation__icon'),
-      ).toHaveCount(5);
+      ).toHaveCount(4);
     }
 
     await page.goto('/explore');
@@ -599,9 +601,11 @@ test('keeps the authenticated shared application shell responsive and accessible
         page.getByRole('link', { name: 'Wits World home' }),
       ).toBeFocused();
       await page.keyboard.press('Tab');
-      await expect(page.getByRole('button', { name: 'Account' })).toBeFocused();
+      await expect(
+        page.getByRole('button', { name: /account menu$/u }),
+      ).toBeFocused();
       const focusOutline = await page
-        .getByRole('button', { name: 'Account' })
+        .getByRole('button', { name: /account menu$/u })
         .evaluate((element) => ({
           style: getComputedStyle(element).outlineStyle,
           width: getComputedStyle(element).outlineWidth,
@@ -615,7 +619,9 @@ test('keeps the authenticated shared application shell responsive and accessible
       expect(layout.desktopMiddle).toBeCloseTo(viewport.width / 2, 0);
     }
 
-    const accountTrigger = page.getByRole('button', { name: 'Account' });
+    const accountTrigger = page.getByRole('button', {
+      name: /account menu$/u,
+    });
     await accountTrigger.click();
     await expect(accountTrigger).toHaveAttribute('aria-expanded', 'true');
     await expect(page.getByLabel('Account options')).toContainText(

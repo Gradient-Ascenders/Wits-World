@@ -1,6 +1,6 @@
 import { useAuth0 } from '@auth0/auth0-react';
 import { useEffect, useId, useRef, useState } from 'react';
-import { useLocation, useRoute } from 'wouter';
+import { Link, useLocation, useRoute } from 'wouter';
 
 import { useCurrentPlayer } from '../../auth/CurrentPlayerProvider';
 import {
@@ -23,6 +23,8 @@ export function AccountControl() {
   const [isProtectedProfileRoute] = useRoute('/profile');
   const [isProtectedAccountRoute] = useRoute('/account');
   const [isProtectedAuthorRoute] = useRoute('/author/*?');
+  const playerName =
+    currentPlayer.status === 'ready' ? currentPlayer.player.playerName : null;
 
   useEffect(() => {
     if (!isDisclosureOpen) {
@@ -129,9 +131,16 @@ export function AccountControl() {
       {isAuthenticated ? (
         <div className="account-disclosure" ref={disclosureRef}>
           <button
-            aria-current={isProtectedAccountRoute ? 'page' : undefined}
+            aria-current={
+              isProtectedProfileRoute || isProtectedAccountRoute
+                ? 'page'
+                : undefined
+            }
             aria-controls={disclosureId}
             aria-expanded={isDisclosureOpen}
+            aria-label={
+              playerName ? `${playerName}, account menu` : 'Account menu'
+            }
             className="button button--quiet account-disclosure__trigger"
             onClick={() => setIsDisclosureOpen((isOpen) => !isOpen)}
             ref={disclosureTriggerRef}
@@ -151,7 +160,9 @@ export function AccountControl() {
               <circle cx="12" cy="8" r="3.25" />
               <path d="M5.5 20a6.5 6.5 0 0 1 13 0" />
             </svg>
-            <span>Account</span>
+            <span className="account-disclosure__name">
+              {playerName ?? 'Account'}
+            </span>
             <svg
               aria-hidden="true"
               className="account-disclosure__chevron"
@@ -173,11 +184,9 @@ export function AccountControl() {
               className="account-disclosure__panel"
               id={disclosureId}
             >
-              {currentPlayer.status === 'ready' &&
-              currentPlayer.player.playerName ? (
+              {playerName ? (
                 <p className="account-control__identity">
-                  Signed in as{' '}
-                  <strong>{currentPlayer.player.playerName}</strong>
+                  Signed in as <strong>{playerName}</strong>
                 </p>
               ) : null}
               {currentPlayer.status === 'ready' &&
@@ -190,18 +199,35 @@ export function AccountControl() {
                   Choose Player Name
                 </button>
               ) : null}
-              <button
-                className="button button--quiet"
-                onClick={() => {
-                  setIsDisclosureOpen(false);
-                  navigate('/account');
-                }}
-                type="button"
+              <Link
+                aria-label="Player profile, Progress and achievements"
+                aria-current={isProtectedProfileRoute ? 'page' : undefined}
+                className="account-disclosure__destination"
+                href="/profile"
+                onClick={() => setIsDisclosureOpen(false)}
               >
-                Manage account
-              </button>
+                <AccountDestinationIcon name="profile" />
+                <span>
+                  <strong>Player profile</strong>
+                  <small>Progress and achievements</small>
+                </span>
+              </Link>
+              <Link
+                aria-label="Account settings, Security and account"
+                aria-current={isProtectedAccountRoute ? 'page' : undefined}
+                className="account-disclosure__destination"
+                href="/account"
+                onClick={() => setIsDisclosureOpen(false)}
+              >
+                <AccountDestinationIcon name="settings" />
+                <span>
+                  <strong>Account settings</strong>
+                  <small>Security and account</small>
+                </span>
+              </Link>
+              <div aria-hidden="true" className="account-disclosure__divider" />
               <button
-                className="button button--quiet"
+                className="button button--quiet account-disclosure__sign-out"
                 onClick={signOut}
                 type="button"
               >
@@ -241,5 +267,33 @@ export function AccountControl() {
         </span>
       ) : null}
     </div>
+  );
+}
+
+function AccountDestinationIcon({ name }: { name: 'profile' | 'settings' }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className="account-disclosure__destination-icon"
+      fill="none"
+      focusable="false"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.7"
+      viewBox="0 0 24 24"
+    >
+      {name === 'profile' ? (
+        <>
+          <circle cx="12" cy="8" r="3.25" />
+          <path d="M5.5 20a6.5 6.5 0 0 1 13 0" />
+        </>
+      ) : (
+        <>
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" />
+        </>
+      )}
+    </svg>
   );
 }

@@ -3,13 +3,7 @@ import {
   initialContext,
   type Auth0ContextInterface,
 } from '@auth0/auth0-react';
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -105,12 +99,16 @@ describe('progression profile and standings page', () => {
     renderProfile();
 
     expect(
-      screen.getByRole('heading', { name: 'Your place in Wits Quest' }),
-    ).toBeVisible();
-    expect(
       await screen.findByRole('heading', { name: longPlayerName }),
     ).toBeVisible();
-    expect(screen.getByLabelText('Rank 4')).toBeVisible();
+    expect(
+      screen.getByText('Player profile', { selector: '.eyebrow' }),
+    ).toBeVisible();
+    expect(
+      within(screen.getByText('All-time rank').closest('div')!).getByLabelText(
+        'Rank 4',
+      ),
+    ).toBeVisible();
     expect(screen.getAllByText(/1\s240/u).length).toBeGreaterThan(0);
     expect(screen.getAllByText('3 days').length).toBeGreaterThan(0);
     expect(screen.getAllByText('7 days').length).toBeGreaterThan(0);
@@ -119,26 +117,37 @@ describe('progression profile and standings page', () => {
       name: 'Achievement progress',
     });
     expect(within(achievements).getByText('Earned')).toBeVisible();
-    expect(within(achievements).getByText('Not yet earned')).toBeVisible();
+    expect(within(achievements).getByText('In progress')).toBeVisible();
     expect(
       within(achievements).getByRole('progressbar', {
-        name: 'Campus Explorer: Not yet earned, 3 of 5',
+        name: 'Campus Explorer: In progress, 3 of 5',
       }),
     ).toHaveAttribute('value', '3');
     expect(
       within(achievements).getByRole('progressbar', {
-        name: 'First Quiz: Earned, Current 3 · target 1',
+        name: 'First Quiz: Earned, current progress 3, target 1',
       }),
     ).toHaveAttribute('value', '3');
+    expect(
+      within(achievements).getByText('Current 3 · target 1'),
+    ).toBeVisible();
 
     const standings = screen.getByRole('list', {
       name: 'Player standings',
     });
-    const currentRow = within(standings)
-      .getByText('Current player')
-      .closest('li');
+    const currentRow = within(standings).getByText('You').closest('li');
+    const standingsSection = screen
+      .getByRole('heading', { name: 'Campus standings' })
+      .closest('section');
+
+    expect(standingsSection).not.toBeNull();
+    expect(within(standingsSection!).getByText(/You are/u)).toHaveTextContent(
+      '#4',
+    );
     expect(currentRow).toHaveAttribute('aria-current', 'true');
     expect(currentRow).toHaveTextContent(longPlayerName);
+    expect(currentRow).toHaveTextContent('#4');
+    expect(within(currentRow!).getByText('You')).toBeVisible();
     expect(
       screen.queryByText(/email|latitude|gameplay history/i),
     ).not.toBeInTheDocument();
@@ -179,7 +188,7 @@ describe('progression profile and standings page', () => {
       isCurrentPlayer: true,
       playerName: 'new-player',
       points: 0,
-      rank: 1,
+      rank: 21,
     });
     vi.stubGlobal(
       'fetch',
@@ -192,8 +201,8 @@ describe('progression profile and standings page', () => {
             pagination: {
               page: 1,
               pageSize: 20,
-              totalPages: 1,
-              totalPlayers: 1,
+              totalPages: 2,
+              totalPlayers: 21,
             },
           }),
       ),
@@ -209,10 +218,18 @@ describe('progression profile and standings page', () => {
     expect(
       screen.getByRole('heading', { name: 'No players appear on this page' }),
     ).toBeVisible();
-    expect(screen.getByLabelText('Your standing')).toHaveTextContent(
-      'new-player',
-    );
-    expect(screen.getByText('Page 1 of 1')).toBeVisible();
+    expect(
+      screen.getByText(/Your standing is shown separately below\./u),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('complementary', { name: 'Your standing' }),
+    ).toHaveTextContent('new-player');
+    expect(
+      within(
+        screen.getByRole('list', { name: 'Player standings' }),
+      ).queryByText('You'),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('Page 1 of 2')).toBeVisible();
   });
 
   it('renders a deleted-player tombstone and a separate current-player rank outside the page', async () => {
@@ -244,9 +261,16 @@ describe('progression profile and standings page', () => {
 
     expect(await screen.findByText('Deleted player')).toBeVisible();
     expect(screen.getByText(/anonymous tombstone/i)).toHaveClass('sr-only');
-    const ownStanding = screen.getByLabelText('Your standing');
+    const ownStanding = screen.getByRole('complementary', {
+      name: 'Your standing',
+    });
     expect(ownStanding).toHaveTextContent('current-player');
     expect(ownStanding).toHaveTextContent('22');
+    expect(
+      within(
+        screen.getByRole('list', { name: 'Player standings' }),
+      ).queryByText('You'),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByText(/auth0|@|latitude|longitude/i),
     ).not.toBeInTheDocument();
@@ -340,16 +364,14 @@ describe('progression profile and standings page', () => {
       }),
     ).toBeVisible();
     expect(
-      screen.getByRole('heading', { name: 'All-time standings' }),
+      screen.getByRole('heading', { name: 'Campus standings' }),
     ).toBeVisible();
 
     await user.click(screen.getAllByRole('button', { name: 'Try again' })[0]!);
     expect(
       await screen.findByRole('heading', { name: 'naledi-star' }),
     ).toBeVisible();
-    expect(
-      screen.getByRole('heading', { name: 'Current player profile' }),
-    ).toHaveFocus();
+    expect(screen.getByRole('heading', { name: 'naledi-star' })).toHaveFocus();
     expect(profileAttempts).toBe(2);
     expect(
       fetchMock.mock.calls.filter(([input]) =>
@@ -381,7 +403,7 @@ describe('progression profile and standings page', () => {
     await user.click(screen.getByRole('button', { name: 'Try again' }));
 
     const standingsHeading = await screen.findByRole('heading', {
-      name: 'All-time standings',
+      name: 'Campus standings',
     });
     expect(standingsHeading).toHaveFocus();
     expect(screen.getByRole('heading', { name: 'naledi-star' })).toBeVisible();
@@ -491,28 +513,33 @@ describe('progression profile and standings page', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderProfile();
-    await screen.findByRole('heading', { name: 'All-time standings' });
+    await screen.findByRole('heading', { name: 'Campus standings' });
 
-    await user.selectOptions(screen.getByLabelText('Period'), 'monthly');
-    fireEvent.change(screen.getByLabelText('Month'), {
-      target: { value: '2026-08' },
-    });
-    const submit = screen.getByRole('button', { name: 'View standings' });
-    submit.focus();
+    expect(
+      await screen.findByRole('complementary', { name: 'Your standing' }),
+    ).toHaveTextContent('#21');
+    expect(
+      within(
+        screen.getByRole('list', { name: 'Player standings' }),
+      ).queryByText('You'),
+    ).not.toBeInTheDocument();
+
+    const monthly = screen.getByRole('button', { name: 'This month' });
+    monthly.focus();
     await user.keyboard('{Enter}');
 
     const monthlyHeading = await screen.findByRole('heading', {
-      name: 'August 2026 standings',
+      name: 'Campus standings',
     });
     expect(monthlyHeading).toHaveFocus();
+    expect(monthly).toHaveAttribute('aria-pressed', 'true');
     expect(
       fetchMock.mock.calls.some(([input]) =>
-        String(input).includes('period=monthly&month=2026-08'),
+        /period=monthly&month=\d{4}-\d{2}/u.test(String(input)),
       ),
     ).toBe(true);
 
-    await user.selectOptions(screen.getByLabelText('Period'), 'all_time');
-    await user.click(screen.getByRole('button', { name: 'View standings' }));
+    await user.click(screen.getByRole('button', { name: 'All time' }));
     const next = await screen.findByRole('button', { name: 'Next' });
     next.focus();
     await user.keyboard('{Enter}');
@@ -525,8 +552,11 @@ describe('progression profile and standings page', () => {
     ).toBe(true);
     expect(
       within(screen.getByRole('list', { name: 'Player standings' }))
-        .getByText('Current player')
+        .getByText('You')
         .closest('li'),
     ).toHaveAttribute('aria-current', 'true');
+    expect(
+      screen.queryByRole('complementary', { name: 'Your standing' }),
+    ).not.toBeInTheDocument();
   });
 });

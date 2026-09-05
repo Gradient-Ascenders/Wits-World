@@ -93,6 +93,49 @@ describe('progression API client', () => {
     );
   });
 
+  it('accepts tied ranks without inferring current-player page membership', async () => {
+    const currentPlayer = buildStandingEntry({
+      isCurrentPlayer: true,
+      playerName: 'naledi-star',
+      points: 0,
+      rank: 3,
+    });
+    const tiedPlayer = buildStandingEntry({
+      playerName: 'codex',
+      points: 0,
+      rank: 3,
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        standingsResponse({
+          currentPlayer,
+          entries: [tiedPlayer],
+          pagination: {
+            page: 1,
+            pageSize: 20,
+            totalPages: 1,
+            totalPlayers: 3,
+          },
+        }),
+      ),
+    );
+
+    await expect(
+      listProgressionStandings({
+        apiBaseUrl,
+        getAccessToken,
+        page: 1,
+        pageSize: 20,
+        period: 'all_time',
+        signal: new AbortController().signal,
+      }),
+    ).resolves.toMatchObject({
+      currentPlayer: { playerName: 'naledi-star', rank: 3 },
+      entries: [{ isCurrentPlayer: false, playerName: 'codex', rank: 3 }],
+    });
+  });
+
   it.each([
     { page: 0, pageSize: 20, period: 'all_time' as const },
     { page: 10_001, pageSize: 20, period: 'all_time' as const },
@@ -209,6 +252,15 @@ describe('progression API client', () => {
             isCurrentPlayer: true,
             playerName: 'different-player',
           }),
+        ],
+      },
+    ],
+    [
+      'more than one current-player row',
+      {
+        entries: [
+          buildStandings().currentPlayer,
+          buildStandings().currentPlayer,
         ],
       },
     ],

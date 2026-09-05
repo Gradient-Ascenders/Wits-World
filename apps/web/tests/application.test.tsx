@@ -86,13 +86,7 @@ describe('Wits World public application shell', () => {
     expect(
       screen.queryByRole('link', { name: 'About' }),
     ).not.toBeInTheDocument();
-    for (const route of [
-      'Explore',
-      'Collection',
-      'Decks',
-      'Battles',
-      'Profile',
-    ]) {
+    for (const route of ['Explore', 'Collection', 'Decks', 'Battles']) {
       expect(
         screen.queryByRole('link', { name: route }),
       ).not.toBeInTheDocument();
