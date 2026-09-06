@@ -62,7 +62,8 @@ describe('migration file loading', () => {
         name.startsWith('0036_') ||
         name.startsWith('0037_') ||
         name.startsWith('0038_') ||
-        name.startsWith('0039_'),
+        name.startsWith('0039_') ||
+        name.startsWith('0040_'),
     );
 
     expect(
@@ -164,6 +165,10 @@ describe('migration file loading', () => {
       {
         checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         name: '0039_add_async_pvp_invitation_cancellation.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0040_add_offline_challenge_attempts.sql',
       },
     ]);
   });

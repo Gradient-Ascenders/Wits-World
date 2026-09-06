@@ -54,6 +54,8 @@ import type { CpuMatchService } from './matches/cpu-match-service.js';
 import { cpuMatchRoutes } from './routes/cpu-matches.js';
 import type { AsyncPvpService } from './matches/asynchronous-pvp-service.js';
 import { asynchronousPvpRoutes } from './routes/asynchronous-pvp.js';
+import { offlineChallengeRoutes } from './routes/offline-challenges.js';
+import type { OfflineChallengeService } from './challenges/offline-challenges.js';
 
 import type { AuthorEventService } from './events/author-event-service.js';
 import { authorEventRoutes } from './routes/author-events.js';
@@ -86,6 +88,7 @@ export interface EventServices {
 }
 
 export interface BuildAppOptions {
+  offlineChallengeService?: OfflineChallengeService;
   authConfig: AuthConfig;
   config?: Pick<ApiConfig, 'logLevel'>;
   logger?: boolean;
@@ -163,6 +166,7 @@ export async function buildApp({
   asyncPvpService,
   progressionReadService,
   rateProtection,
+  offlineChallengeService,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: logger
@@ -188,6 +192,24 @@ export async function buildApp({
               'body.longitude',
               'body.accuracyMetres',
               'body.acquiredAt',
+              'req.body.packToken',
+              'request.body.packToken',
+              'body.packToken',
+              'req.body.startLocation',
+              'request.body.startLocation',
+              'body.startLocation',
+              'req.body.finishLocation',
+              'request.body.finishLocation',
+              'body.finishLocation',
+              'req.body.answers',
+              'request.body.answers',
+              'body.answers',
+              'req.body.startedAt',
+              'request.body.startedAt',
+              'body.startedAt',
+              'req.body.finishedAt',
+              'request.body.finishedAt',
+              'body.finishedAt',
             ],
             censor: '[REDACTED]',
           },
@@ -345,6 +367,7 @@ export async function buildApp({
         'Authorization',
         'Content-Type',
         'X-Wits-Challenge-Contract-Version',
+        'X-Wits-Offline-Contract-Version',
       ],
       credentials: false,
       preflight: true,
@@ -444,6 +467,12 @@ export async function buildApp({
   }
 
   if (challengeAttemptServices) {
+    if (offlineChallengeService) {
+      await app.register(offlineChallengeRoutes, {
+        prefix: '/api/v1',
+        service: offlineChallengeService,
+      });
+    }
     await app.register(challengeAttemptRoutes, {
       prefix: '/api/v1',
       startService: challengeAttemptServices.start,

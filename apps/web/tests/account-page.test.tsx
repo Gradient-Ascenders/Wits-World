@@ -1,3 +1,4 @@
+import 'fake-indexeddb/auto';
 import {
   Auth0Context,
   initialContext,
@@ -192,9 +193,10 @@ describe('player account page', () => {
       );
       await user.click(confirm);
 
-      expect(
-        await screen.findByRole('heading', { name: heading }),
-      ).toHaveFocus();
+      const resultHeading = await screen.findByRole('heading', {
+        name: heading,
+      });
+      await vi.waitFor(() => expect(resultHeading).toHaveFocus());
       expect(
         screen.getByText(`Deletion reference: ${deletionId}`),
       ).toBeVisible();
@@ -211,6 +213,66 @@ describe('player account page', () => {
         reauthenticationToken: 'fresh-id-token-kept-only-in-memory',
       });
       expect(requestBody).not.toHaveProperty('password');
+    },
+  );
+
+  it.each([false, true])(
+    'honours continue=%s after warning about failed cleanup during account deletion',
+    async (proceed) => {
+      const user = userEvent.setup();
+      const fetchMock = mockAccountApi({
+        connectionStrategy: 'auth0',
+        deletionResponses: [
+          {
+            body: {
+              deletionId,
+              status: 'completed',
+              requestId: 'delete-request',
+            },
+            status: 200,
+          },
+        ],
+      });
+      const warning = vi.spyOn(window, 'confirm').mockReturnValue(proceed);
+      renderAccount('/account?action=confirm-deletion', {
+        getIdTokenClaims: vi
+          .fn()
+          .mockResolvedValue({ __raw: 'fresh-id-token' }),
+      });
+      await screen.findByRole('heading', {
+        name: 'Permanently delete account?',
+      });
+      await user.click(
+        screen.getByRole('checkbox', {
+          name: /I understand this cannot be undone/iu,
+        }),
+      );
+      vi.spyOn(IDBObjectStore.prototype, 'clear').mockImplementation(() => {
+        throw new DOMException('Storage unavailable', 'InvalidStateError');
+      });
+      await user.click(
+        screen.getByRole('button', { name: 'Permanently delete account' }),
+      );
+      await vi.waitFor(() =>
+        expect(warning).toHaveBeenCalledWith(
+          expect.stringContaining('Continue to delete your account anyway?'),
+        ),
+      );
+      if (proceed)
+        await screen.findByRole('heading', {
+          name: 'Your Wits World account is deleted',
+        });
+      expect(
+        fetchMock.mock.calls.some(([input]) =>
+          String(input).endsWith('/auth/account-deletion'),
+        ),
+      ).toBe(proceed);
+      if (!proceed)
+        expect(
+          await screen.findByRole('button', {
+            name: 'Permanently delete account',
+          }),
+        ).toBeEnabled();
     },
   );
 

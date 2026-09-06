@@ -1,4 +1,5 @@
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 import { defineConfig } from 'vitest/config';
 
 const sprint1Fixture = (name: string) =>
@@ -7,7 +8,36 @@ const sprint1Fixture = (name: string) =>
   ).replace(/^\/([A-Za-z]:\/)/, '$1');
 
 export default defineConfig(({ mode }) => ({
-  plugins: [react()],
+  plugins: [
+    react(),
+    VitePWA({
+      strategies: 'injectManifest',
+      srcDir: 'worker',
+      filename: 'sw.js',
+      injectRegister: false,
+      registerType: 'prompt',
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+      },
+      manifest: {
+        name: 'Wits World',
+        short_name: 'Wits World',
+        start_url: '/explore',
+        display: 'standalone',
+        background_color: '#edf2ec',
+        theme_color: '#193b32',
+        icons: [
+          {
+            src: '/branding/wits-world-campus-seal-transparent.svg',
+            sizes: 'any',
+            type: 'image/svg+xml',
+            purpose: 'any',
+          },
+        ],
+      },
+    }),
+  ],
   resolve:
     mode === 'sprint1-e2e' || mode === 'basic-e2e'
       ? {

@@ -6,7 +6,7 @@ import {
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route, Router } from 'wouter';
 
 import PvpHubPage from '../src/pages/PvpHubPage';
@@ -29,6 +29,13 @@ import {
 import { uuid } from './fixtures/matches';
 
 const apiBaseUrl = 'https://api.example.test/api/v1';
+
+beforeEach(() => {
+  // Freeze only Date: normal UI timers still run, while fixtures never expire.
+  // The deadline-specific test opts into fake timers and advances them itself.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-09-05T09:00:00.000Z'));
+});
 
 afterEach(() => {
   vi.useRealTimers();

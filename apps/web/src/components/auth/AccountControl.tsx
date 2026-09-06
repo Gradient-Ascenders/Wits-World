@@ -1,4 +1,5 @@
 import { useAuth0 } from '@auth0/auth0-react';
+import { confirmOfflineSignOut } from '../../offline/store';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Link, useLocation, useRoute } from 'wouter';
 
@@ -68,6 +69,7 @@ export function AccountControl() {
   }
 
   async function signOut() {
+    if ((await confirmOfflineSignOut()) === 'cancelled') return;
     setActionFailed(false);
     clearAuthenticatedPlayerBinding();
 
@@ -88,6 +90,8 @@ export function AccountControl() {
   }
 
   async function switchAccount() {
+    if ((await confirmOfflineSignOut('switch accounts')) === 'cancelled')
+      return;
     setActionFailed(false);
     clearAuthenticatedPlayerBinding();
 
