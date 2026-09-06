@@ -260,31 +260,43 @@ export function createCardEvolutionService(
           throw new Error('Card evolution returned no persisted transaction.');
         }
 
-        for (const copy of selected) {
-          await client.query(
-            `
-              insert into public.card_evolution_consumptions (
-                evolution_id,
-                player_id,
-                source_definition_id,
-                owned_card_id,
-                acquired_at,
-                acquisition_kind
-              )
-              values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6)
-            `,
-            [
-              transaction.evolution_id,
-              input.playerId,
-              relationship.source_definition_id,
-              copy.owned_card_id,
-              copy.acquired_at,
-              copy.acquisition_kind,
-            ],
+        const consumedIds = selected.map((copy) => copy.owned_card_id);
+        const consumption = await client.query(
+          `
+            insert into public.card_evolution_consumptions (
+              evolution_id,
+              player_id,
+              source_definition_id,
+              owned_card_id,
+              acquired_at,
+              acquisition_kind
+            )
+            select
+              $1::uuid,
+              owned.player_id,
+              owned.card_definition_id,
+              owned.id,
+              owned.acquired_at,
+              owned.acquisition_kind
+            from public.player_cards owned
+            where owned.player_id = $2::uuid
+              and owned.card_definition_id = $3::uuid
+              and owned.id = any($4::uuid[])
+          `,
+          [
+            transaction.evolution_id,
+            input.playerId,
+            relationship.source_definition_id,
+            consumedIds,
+          ],
+        );
+
+        if (consumption.rowCount !== 3) {
+          throw new Error(
+            'Card evolution did not snapshot exactly three copies.',
           );
         }
 
-        const consumedIds = selected.map((copy) => copy.owned_card_id);
         const deleted = await client.query(
           `
             delete from public.player_cards
