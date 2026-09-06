@@ -1457,7 +1457,8 @@ async function insertEvolutionRewardCopies(
     try {
       await client.query(
         `insert into public.events (
-           id, title, location, radius_metres, starts_at, ends_at, is_published
+           id, title, location, radius_metres, starts_at, ends_at, is_published,
+           authoring_status, publication_provenance
          ) values (
            $1::uuid,
            'Evolution fixture',
@@ -1465,7 +1466,9 @@ async function insertEvolutionRewardCopies(
            75,
            '2026-01-01T00:00:00.000Z',
            '2027-01-01T00:00:00.000Z',
-           true
+           true,
+           'published',
+           'controlled_seed'
          )`,
         [eventId],
       );

@@ -122,6 +122,7 @@ describe.skipIf(!runIntegrationTests)(
           '0039_add_async_pvp_invitation_cancellation.sql',
           '0040_add_offline_challenge_attempts.sql',
           '0041_complete_card_catalogue.sql',
+          '0042_implement_card_evolution.sql',
         ],
         skipped: [],
       });
@@ -171,6 +172,7 @@ describe.skipIf(!runIntegrationTests)(
           '0039_add_async_pvp_invitation_cancellation.sql',
           '0040_add_offline_challenge_attempts.sql',
           '0041_complete_card_catalogue.sql',
+          '0042_implement_card_evolution.sql',
         ],
       });
     }, 30_000);
@@ -384,6 +386,7 @@ describe.skipIf(!runIntegrationTests)(
             '0039_add_async_pvp_invitation_cancellation.sql',
             '0040_add_offline_challenge_attempts.sql',
             '0041_complete_card_catalogue.sql',
+            '0042_implement_card_evolution.sql',
           ],
         });
 
