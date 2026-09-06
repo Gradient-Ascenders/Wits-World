@@ -1,7 +1,9 @@
 import 'fake-indexeddb/auto';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { clearAuthenticatedPlayerBinding } from '../src/auth/player-session-binding';
 import {
   clearOfflineData,
+  confirmOfflineSignOut,
   createLocalAttempt,
   finishLocalAttempt,
   readOfflineState,
@@ -57,7 +59,55 @@ beforeEach(async () => {
   localStorage.setItem('wits-world.authenticated-player-id', 'player');
   await saveOfflineSession('player', 'Player');
 });
+afterEach(() => vi.restoreAllMocks());
 describe('durable offline state', () => {
+  it('does not discard data when only the generic binding is cleared', async () => {
+    await createLocalAttempt(cached, location);
+    clearAuthenticatedPlayerBinding();
+    localStorage.setItem('wits-world.authenticated-player-id', 'player');
+    expect((await readOfflineState()).attempts).toHaveLength(1);
+  });
+  it('keeps unsynced work when discard is cancelled, and awaits confirmed removal', async () => {
+    await createLocalAttempt(cached, location);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    expect(await confirmOfflineSignOut()).toBe(false);
+    expect((await readOfflineState()).attempts).toHaveLength(1);
+    confirm.mockReturnValue(true);
+    expect(await confirmOfflineSignOut()).toBe(true);
+    expect(await readOfflineState()).toEqual({
+      session: undefined,
+      packs: [],
+      attempts: [],
+      receipts: [],
+    });
+  });
+  it.each(['read', 'delete'])(
+    'blocks sign-out and reports an IndexedDB %s failure',
+    async (operation) => {
+      await createLocalAttempt(cached, location);
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const alert = vi
+        .spyOn(window, 'alert')
+        .mockImplementation(() => undefined);
+      const failure = vi
+        .spyOn(
+          IDBObjectStore.prototype,
+          operation === 'read' ? 'getAll' : 'clear',
+        )
+        .mockImplementation(() => {
+          throw new DOMException('Storage unavailable', 'InvalidStateError');
+        });
+      expect(await confirmOfflineSignOut()).toBe(false);
+      expect(alert).toHaveBeenCalledWith(
+        expect.stringContaining('You have not been signed out'),
+      );
+      expect(localStorage.getItem('wits-world.authenticated-player-id')).toBe(
+        'player',
+      );
+      failure.mockRestore();
+      expect((await readOfflineState()).attempts).toHaveLength(1);
+    },
+  );
   it('rejects stale account work and clears only the departing partition', async () => {
     await replacePacks('player', [cached]);
     localStorage.setItem('wits-world.authenticated-player-id', 'other');

@@ -262,14 +262,21 @@ export async function clearOfflineData(playerId?: string) {
   await tx.done;
 }
 export async function confirmOfflineSignOut() {
-  const state = await readOfflineState().catch(() => null);
-  if (
-    state?.attempts.length &&
-    !window.confirm(
-      'Signing out will remove offline attempts that have not synced. Sign out and discard them?',
+  try {
+    const state = await readOfflineState();
+    if (
+      state?.attempts.length &&
+      !window.confirm(
+        'Signing out will remove offline attempts that have not synced. Sign out and discard them?',
+      )
     )
-  )
+      return false;
+    await clearOfflineData();
+    return true;
+  } catch {
+    window.alert(
+      'Offline data could not be checked or removed. You have not been signed out and saved answers or location data may remain on this device. Retry, or clear this site’s data in your browser settings before leaving a shared device.',
+    );
     return false;
-  await clearOfflineData().catch(() => undefined);
-  return true;
+  }
 }

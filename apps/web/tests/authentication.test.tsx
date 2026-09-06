@@ -1,3 +1,4 @@
+import 'fake-indexeddb/auto';
 import {
   Auth0Context,
   initialContext,
@@ -210,10 +211,12 @@ describe('player authentication', () => {
 
     await user.click(screen.getByRole('button', { name: 'Switch account' }));
 
-    expect(loginWithRedirect).toHaveBeenCalledWith({
-      appState: { returnTo: '/explore' },
-      authorizationParams: { prompt: 'login' },
-    });
+    await vi.waitFor(() =>
+      expect(loginWithRedirect).toHaveBeenCalledWith({
+        appState: { returnTo: '/explore' },
+        authorizationParams: { prompt: 'login' },
+      }),
+    );
     expect(bindAuthenticatedPlayer(playerBId)).toBe('matched');
   });
 
@@ -899,6 +902,32 @@ describe('player authentication', () => {
       await screen.findByRole('button', { name: 'Sign in to explore' }),
     ).toBeVisible();
     expect(screen.queryByText('stale-player')).not.toBeInTheDocument();
+  });
+
+  it('does not log out or clear the binding when offline cleanup fails', async () => {
+    const user = userEvent.setup();
+    const logout = vi.fn().mockResolvedValue(undefined);
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+    mockCurrentPlayer();
+    expect(bindAuthenticatedPlayer(playerAId)).toBe('matched');
+    renderRoute(
+      '/explore',
+      createAuthValue({
+        getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
+        isAuthenticated: true,
+        logout,
+      }),
+    );
+    await openAccountDisclosure(user);
+    vi.spyOn(IDBObjectStore.prototype, 'clear').mockImplementation(() => {
+      throw new DOMException('Storage unavailable', 'InvalidStateError');
+    });
+    await user.click(screen.getByRole('button', { name: 'Sign out' }));
+    await vi.waitFor(() => expect(alert).toHaveBeenCalled());
+    expect(logout).not.toHaveBeenCalled();
+    expect(
+      window.localStorage.getItem('wits-world.authenticated-player-id'),
+    ).toBe(playerAId);
   });
 
   it('signs out from Player Name setup without showing profile identity', async () => {

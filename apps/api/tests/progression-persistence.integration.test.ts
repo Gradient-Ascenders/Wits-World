@@ -107,6 +107,7 @@ describe.skipIf(!runIntegrationTests)(
         '0037_add_async_pvp_voluntary_resignation.sql',
         '0038_add_question_performance_analytics_indexes.sql',
         '0039_add_async_pvp_invitation_cancellation.sql',
+        '0040_add_offline_challenge_attempts.sql',
       ]);
 
       pool = createDatabasePool(temporaryConfig);

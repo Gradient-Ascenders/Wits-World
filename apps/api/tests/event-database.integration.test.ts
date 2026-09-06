@@ -187,6 +187,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0037_add_async_pvp_voluntary_resignation.sql',
         '0038_add_question_performance_analytics_indexes.sql',
         '0039_add_async_pvp_invitation_cancellation.sql',
+        '0040_add_offline_challenge_attempts.sql',
       ],
       skipped: [],
     });
@@ -233,6 +234,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0037_add_async_pvp_voluntary_resignation.sql',
         '0038_add_question_performance_analytics_indexes.sql',
         '0039_add_async_pvp_invitation_cancellation.sql',
+        '0040_add_offline_challenge_attempts.sql',
       ],
     });
     expect(readiness).toMatchObject({

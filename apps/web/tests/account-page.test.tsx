@@ -1,3 +1,4 @@
+import 'fake-indexeddb/auto';
 import {
   Auth0Context,
   initialContext,
@@ -192,9 +193,10 @@ describe('player account page', () => {
       );
       await user.click(confirm);
 
-      expect(
-        await screen.findByRole('heading', { name: heading }),
-      ).toHaveFocus();
+      const resultHeading = await screen.findByRole('heading', {
+        name: heading,
+      });
+      await vi.waitFor(() => expect(resultHeading).toHaveFocus());
       expect(
         screen.getByText(`Deletion reference: ${deletionId}`),
       ).toBeVisible();
@@ -213,6 +215,36 @@ describe('player account page', () => {
       expect(requestBody).not.toHaveProperty('password');
     },
   );
+
+  it('blocks account deletion when offline cleanup fails and keeps confirmation retryable', async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockAccountApi({ connectionStrategy: 'auth0' });
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+    renderAccount('/account?action=confirm-deletion', {
+      getIdTokenClaims: vi.fn().mockResolvedValue({ __raw: 'fresh-id-token' }),
+    });
+    await screen.findByRole('heading', { name: 'Permanently delete account?' });
+    await user.click(
+      screen.getByRole('checkbox', {
+        name: /I understand this cannot be undone/iu,
+      }),
+    );
+    vi.spyOn(IDBObjectStore.prototype, 'clear').mockImplementation(() => {
+      throw new DOMException('Storage unavailable', 'InvalidStateError');
+    });
+    await user.click(
+      screen.getByRole('button', { name: 'Permanently delete account' }),
+    );
+    await vi.waitFor(() => expect(alert).toHaveBeenCalled());
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith('/auth/account-deletion'),
+      ),
+    ).toBe(false);
+    expect(
+      await screen.findByRole('button', { name: 'Permanently delete account' }),
+    ).toBeEnabled();
+  });
 
   it('recovers from expired recent-authentication proof without locking the UI', async () => {
     const user = userEvent.setup();

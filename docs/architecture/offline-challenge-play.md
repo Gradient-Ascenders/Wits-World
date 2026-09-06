@@ -78,6 +78,14 @@ while a local challenge remains active. Pending IndexedDB data survives updates.
 
 ## Deployment and team setup
 
+Explicit sign-out and account switching await offline cleanup before redirecting.
+If IndexedDB cannot be read or cleared, a browser alert explains that local
+answers/location may remain and the action stops; retry or clear the site's
+browser data before leaving a shared device. Clearing the identity binding alone
+does not delete IndexedDB data. Account deletion checks and clears local offline
+data before sending the deletion request; confirmed local discards cannot be
+undone if the later server request fails.
+
 Run `npm ci` after pulling the dependency changes. Existing `TEST_DATABASE_URL`
 values continue to target the separate test project; teammates do not need to
 move them again. Run integration tests only with that disposable configuration.

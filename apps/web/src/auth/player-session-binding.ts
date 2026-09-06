@@ -1,4 +1,3 @@
-import { boundOfflinePlayer, clearOfflineData } from '../offline/store';
 const PLAYER_BINDING_KEY = 'wits-world.authenticated-player-id';
 const UUID_PATTERN = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i;
 
@@ -36,9 +35,6 @@ export function bindAuthenticatedPlayer(playerId: string): PlayerBindingResult {
 }
 
 export function clearAuthenticatedPlayerBinding(): void {
-  const previousPlayerId = boundOfflinePlayer();
-  if (previousPlayerId)
-    void clearOfflineData(previousPlayerId).catch(() => undefined);
   try {
     window.localStorage.removeItem(PLAYER_BINDING_KEY);
     window.dispatchEvent(new Event('wits-player-binding-change'));
