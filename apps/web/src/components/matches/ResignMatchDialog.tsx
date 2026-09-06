@@ -71,16 +71,16 @@ export function ResignMatchDialog({
         role="alertdialog"
       >
         <p className="eyebrow">
-          {cancellation ? 'Withdraw invitation' : 'Permanent match result'}
+          {cancellation ? 'Cancel invitation' : 'Permanent battle result'}
         </p>
         <h2 id={titleId}>
-          {cancellation ? 'Cancel this challenge?' : 'Resign this match?'}
+          {cancellation ? 'Cancel this challenge?' : 'Forfeit this battle?'}
         </h2>
         <div id={descriptionId}>
           <p>
             {cancellation
               ? `Cancel your pending challenge to ${opponentLabel}? This cannot be undone. No match result will be recorded.`
-              : `Resigning immediately records a loss for you and a win for ${opponentLabel}. This result cannot be undone.`}
+              : `Forfeiting immediately records a loss for you and a win for ${opponentLabel}. This result cannot be undone.`}
           </p>
         </div>
         <div className="pvp-resign-dialog__actions">
@@ -104,8 +104,8 @@ export function ResignMatchDialog({
                 ? 'Cancelling…'
                 : 'Confirm cancellation'
               : busy
-                ? 'Resigning match…'
-                : 'Resign and lose'}
+                ? 'Forfeiting battle…'
+                : 'Confirm forfeit'}
           </button>
         </div>
       </div>

@@ -330,6 +330,11 @@ distinct `voluntary_resignation` reason. An already elapsed decision deadline
 takes precedence and records `turn_forfeit`; the browser cannot select the
 participant, winner, reason, or progression result.
 
+The player interface calls this action **Forfeit battle** and presents the
+result as “you forfeited” or “opponent forfeited.” The resign endpoint and
+persisted completion-reason values are contract terminology and are not shown
+to players.
+
 The endpoint, privacy, idempotency, polling, deadline, history, and
 progression boundaries are defined in the
 [asynchronous PvP API contract](../architecture/asynchronous-pvp-api-contract.md).

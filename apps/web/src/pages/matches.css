@@ -462,6 +462,15 @@
   font: inherit;
 }
 
+.pvp-deck-picker select option {
+  color: var(--colour-text-primary);
+  background-color: var(--colour-background-secondary);
+}
+
+.pvp-deck-picker select option[value=''] {
+  color: var(--colour-text-secondary);
+}
+
 .pvp-search-form small,
 .pvp-deck-picker small,
 .pvp-invitation__explanation {
@@ -567,15 +576,29 @@
   border-left: 0.2rem solid var(--colour-gold-500);
 }
 
+.pvp-invitation--accepted {
+  border-left: 0.2rem solid var(--colour-status-success);
+}
+
+.pvp-invitation--declined {
+  border-left: 0.2rem solid var(--colour-text-muted);
+}
+
 .pvp-match-summary--opponent {
   border-left: 0.2rem solid var(--colour-blue-500);
 }
 
 .pvp-match-summary--loss,
-.pvp-invitation--cancelled,
-.pvp-invitation--expired,
-.pvp-invitation--invalidated {
+.pvp-invitation--cancelled {
   border-left: 0.2rem solid var(--colour-status-danger);
+}
+
+.pvp-invitation--expired {
+  border-left: 0.2rem solid var(--colour-status-warning);
+}
+
+.pvp-invitation--invalidated {
+  border-left: 0.2rem dashed var(--colour-text-muted);
 }
 
 .pvp-invitation__player {
@@ -659,6 +682,27 @@
   font-size: var(--text-sm);
   letter-spacing: 0;
   text-transform: none;
+}
+
+.pvp-invitation--accepted .pvp-status-label {
+  border-color: rgb(57 184 121 / 52%);
+  color: var(--colour-status-success);
+}
+
+.pvp-invitation--declined .pvp-status-label,
+.pvp-invitation--invalidated .pvp-status-label {
+  border-color: rgb(127 139 157 / 52%);
+  color: var(--colour-text-secondary);
+}
+
+.pvp-invitation--cancelled .pvp-status-label {
+  border-color: rgb(220 91 101 / 58%);
+  color: var(--colour-status-danger);
+}
+
+.pvp-invitation--expired .pvp-status-label {
+  border-color: rgb(225 169 58 / 58%);
+  color: var(--colour-status-warning);
 }
 
 .pvp-empty-state {
@@ -754,14 +798,18 @@
   width: fit-content;
 }
 
-.pvp-battle-page .button--danger {
+.pvp-hub .button--danger,
+.pvp-battle-page .button--danger,
+.pvp-resign-dialog .button--danger {
   border-color: rgb(220 91 101 / 68%);
   color: var(--colour-text-primary);
   background: rgb(220 91 101 / 10%);
   box-shadow: none;
 }
 
-.pvp-battle-page .button--danger:hover:not(:disabled) {
+.pvp-hub .button--danger:hover:not(:disabled),
+.pvp-battle-page .button--danger:hover:not(:disabled),
+.pvp-resign-dialog .button--danger:hover:not(:disabled) {
   background: rgb(220 91 101 / 18%);
   box-shadow: none;
 }

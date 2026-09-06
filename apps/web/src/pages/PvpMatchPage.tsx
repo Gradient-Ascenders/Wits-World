@@ -365,11 +365,13 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         setError(recovery.error);
         setErrorContext('resignation');
         setStatusMessage(
-          'Server state did not advance. You may safely retry the same resignation reference.',
+          'The battle is still active. You may safely retry the same forfeit request.',
         );
       } else {
         setStatusMessage(
-          'Authoritative state restored. Review the current match before resigning.',
+          reconciled.status === 'completed'
+            ? matchStatusMessage(reconciled)
+            : 'The latest battle state was restored. Review it before choosing whether to forfeit.',
         );
       }
     } catch (recoveryError) {
@@ -378,7 +380,7 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       setError(toPvpError(recoveryError));
       setErrorContext('resignation');
       setStatusMessage(
-        'Server state is still uncertain. Check it again before retrying the resignation.',
+        'The latest battle result could not be confirmed. Check again before retrying the forfeit.',
       );
     }
   }
@@ -389,7 +391,7 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     mutation.current = controller;
     setRequestStatus('reconciling');
     setError(null);
-    setStatusMessage('Checking whether the resignation was committed…');
+    setStatusMessage('Checking whether the forfeit was recorded…');
     try {
       await reconcileResignation(recovery, controller);
     } finally {
@@ -420,7 +422,7 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     setRetryAttempt(null);
     setResignationRecovery(null);
     setRequestStatus('submitting');
-    setStatusMessage('Submitting one versioned resignation to the server…');
+    setStatusMessage('Submitting your forfeit to the server…');
     try {
       const response = await resignPvpMatch({
         ...nextAttempt,
@@ -448,14 +450,14 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         setResignationRecovery(parsed.options.ambiguous ? recovery : null);
         setRequestStatus('reconciling');
         setStatusMessage(
-          'The resignation response was stale or uncertain. Restoring authoritative state before another submission is allowed…',
+          'The forfeit result was uncertain. Refreshing the latest battle state before another attempt…',
         );
         await reconcileResignation(recovery, controller);
       } else {
         setError(parsed);
         setErrorContext('resignation');
         setStatusMessage(
-          'The resignation was not applied. The visible state remains unchanged.',
+          'The forfeit was not completed. The last confirmed battle state remains available.',
         );
       }
       setRequestStatus('ready');
@@ -607,7 +609,7 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         >
           <strong>
             {errorContext === 'resignation'
-              ? 'Resignation not confirmed.'
+              ? 'Forfeit not confirmed.'
               : 'Action not applied.'}
           </strong>{' '}
           {errorMessage(error, errorContext)}
@@ -621,7 +623,7 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
                 }
                 type="button"
               >
-                Retry same resignation safely
+                Retry same forfeit safely
               </button>
             ) : resignationRecovery?.stage === 'check' ? (
               <button
@@ -630,7 +632,7 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
                 onClick={() => void checkResignationState(resignationRecovery)}
                 type="button"
               >
-                Check server state
+                Check battle result
               </button>
             ) : retryAttempt ? (
               <button
@@ -726,6 +728,9 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
           <PvpSideRail
             busy={busy}
+            forfeitPending={
+              requestStatus === 'submitting' && errorContext === 'resignation'
+            }
             match={match}
             onResign={() => setConfirmingResignation(true)}
             resignTrigger={resignTrigger}
@@ -747,11 +752,13 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
 function PvpSideRail({
   busy = false,
+  forfeitPending = false,
   match,
   onResign,
   resignTrigger,
 }: {
   busy?: boolean;
+  forfeitPending?: boolean;
   match: AsyncPvpMatch;
   onResign?: () => void;
   resignTrigger?: RefObject<HTMLButtonElement | null>;
@@ -833,9 +840,9 @@ function PvpSideRail({
       {match.canResign && onResign ? (
         <section className="battle-rail-card pvp-resign-card">
           <p className="eyebrow">Permanent match action</p>
-          <h2>Leave this match</h2>
+          <h2>Forfeit battle</h2>
           <p>
-            Resigning records an immediate loss and gives{' '}
+            Forfeiting records an immediate loss and gives{' '}
             {match.opponent.playerName} the win.
           </p>
           <button
@@ -845,7 +852,7 @@ function PvpSideRail({
             ref={resignTrigger}
             type="button"
           >
-            Resign match
+            {forfeitPending ? 'Forfeiting…' : 'Forfeit battle'}
           </button>
         </section>
       ) : null}
@@ -861,11 +868,7 @@ function CompletedPvpMatch({ match }: { match: AsyncPvpMatch }) {
       className={`completed-match completed-match--${match.outcome === 'win' ? 'player' : 'cpu'}`}
     >
       <p className="eyebrow">Persisted final result</p>
-      <h2 id="completed-pvp-title">
-        {match.outcome === 'win'
-          ? 'Victory — match saved'
-          : 'Defeat — match saved'}
-      </h2>
+      <h2 id="completed-pvp-title">{completedResultTitle(match)}</h2>
       <p>{reason}</p>
       <details className="completed-match__context">
         <summary>About this result</summary>
@@ -933,7 +936,7 @@ function phaseTitle(match: AsyncPvpMatch) {
 
 function matchStatusMessage(match: AsyncPvpMatch) {
   if (match.status === 'completed')
-    return `Match completed. ${match.outcome === 'win' ? 'You won.' : 'You lost.'} The result is saved.`;
+    return `Match completed. ${completedReason(match)} The result is saved.`;
   if (match.state.phase === 'replacement')
     return match.currentActor === 'self'
       ? 'Your Creature was defeated. Choose a legal replacement.'
@@ -970,15 +973,33 @@ function completedReason(match: AsyncPvpMatch) {
       : `${match.opponent.playerName} won the battle.`;
   if (match.completionReason === 'account_deletion_forfeit')
     return match.outcome === 'win'
-      ? 'Your opponent became unavailable and forfeited the match.'
-      : 'Your account lifecycle caused this match to be forfeited.';
+      ? 'Your opponent became unavailable, so the battle was forfeited.'
+      : 'Your account became unavailable, so the battle was forfeited.';
   if (match.completionReason === 'voluntary_resignation')
     return match.outcome === 'win'
-      ? `${match.opponent.playerName} resigned the match.`
-      : 'You resigned the match.';
+      ? `${match.opponent.playerName} forfeited the battle.`
+      : 'You forfeited this battle.';
   return match.outcome === 'win'
-    ? 'Your opponent missed the server’s 24-hour decision deadline.'
-    : 'Your 24-hour decision deadline expired, so the server recorded a forfeit.';
+    ? 'Your opponent’s turn deadline expired, so they forfeited the battle.'
+    : 'Your turn deadline expired, so you forfeited the battle.';
+}
+
+function completedResultTitle(match: AsyncPvpMatch) {
+  if (match.completionReason === 'voluntary_resignation')
+    return match.outcome === 'win'
+      ? 'Opponent forfeited — match saved'
+      : 'You forfeited — match saved';
+  if (match.completionReason === 'turn_forfeit')
+    return match.outcome === 'win'
+      ? 'Deadline victory — match saved'
+      : 'Deadline defeat — match saved';
+  if (match.completionReason === 'account_deletion_forfeit')
+    return match.outcome === 'win'
+      ? 'Opponent became unavailable — match saved'
+      : 'Account became unavailable — match saved';
+  return match.outcome === 'win'
+    ? 'Victory — match saved'
+    : 'Defeat — match saved';
 }
 
 function isLegalAction(match: AsyncPvpMatch, action: PvpAction) {
@@ -1009,11 +1030,13 @@ function errorMessage(
   if (error.failure === 'not-found')
     return 'This match is not available to the signed-in player.';
   if (error.failure === 'completed')
-    return `The match completed before that ${context === 'resignation' ? 'resignation' : 'action'} arrived. Reload its saved result.`;
+    return `The match completed before that ${context === 'resignation' ? 'forfeit' : 'action'} arrived. Reload its saved result.`;
   if (error.failure === 'stale' || error.failure === 'illegal-action')
     return 'The match changed before that intent was accepted. Reload the current legal actions.';
   if (error.options.ambiguous)
-    return 'The server response was interrupted. Reconciliation prevents the action from being implied twice.';
+    return context === 'resignation'
+      ? 'The response was interrupted. The latest battle result is checked before the same forfeit can be retried.'
+      : 'The response was interrupted. The latest battle state is checked before the action can be retried.';
   return 'Check your connection, then retry the authoritative state. No battle result is calculated locally.';
 }
 
