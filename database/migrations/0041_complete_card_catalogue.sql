@@ -9,31 +9,11 @@ alter table public.card_definitions
     references public.card_definitions (id) on delete restrict,
   add column evolution_copies_required smallint;
 
--- Existing Power cards predate typeless ordinary cards. Grandfather them as
--- specials until the canonical subset is replaced below.
-update public.card_definitions
-set catalogue_class = 'special'
-where category = 'power';
-
 alter table public.card_definitions
   drop constraint card_definitions_affinity_check,
   alter column affinity drop not null,
   add constraint card_definitions_catalogue_class_check
     check (catalogue_class in ('ordinary', 'special')),
-  add constraint card_definitions_affinity_check
-    check (
-      (category = 'creature'
-        and affinity in ('wit', 'grit', 'spark', 'spirit', 'mystic'))
-      or
-      (category = 'power'
-        and (
-          affinity is null
-          or (
-            catalogue_class = 'special'
-            and affinity in ('wit', 'grit', 'spark', 'spirit', 'mystic')
-          )
-        ))
-    ),
   add constraint card_definitions_image_alt_not_blank
     check (image_alt is null or btrim(image_alt) <> ''),
   add constraint card_definitions_artwork_attribution_not_blank
@@ -79,57 +59,6 @@ alter table public.card_effects
   add column effect_code text,
   add column effect_config jsonb not null default '{}'::jsonb,
   add column rules_text text;
-
-update public.card_effects
-set
-  effect_code = case
-    when effect_type = 'damage' then 'damage'
-    when effect_type = 'heal' then 'heal'
-    when modifier_stat = 'power' then 'power_change'
-    else 'damage_modifier'
-  end,
-  effect_config = jsonb_strip_nulls(jsonb_build_object(
-    'target', case
-      when effect_type in ('damage', 'debuff') then 'opponent'
-      else 'self'
-    end,
-    'affinity', case when effect_type = 'damage' then 'source' end,
-    'durationTurns', modifier_duration_turns
-  )),
-  rules_text = case
-    when effect_type = 'damage' then 'Deal ' || effect_value || ' damage.'
-    when effect_type = 'heal' then 'Heal ' || effect_value || ' HP.'
-    when modifier_stat = 'power' and effect_type = 'buff'
-      then 'Restore ' || effect_value || ' Power.'
-    when modifier_stat = 'power' and effect_type = 'debuff'
-      then 'The opposing Creature loses ' || effect_value || ' Power.'
-    when effect_type = 'buff'
-      then 'Deal ' || effect_value || '% more damage.'
-    else 'The opposing Creature deals ' || effect_value || '% less damage.'
-  end;
-
-alter table public.card_effects
-  alter column effect_code set not null,
-  add constraint card_effects_code_check
-    check (effect_code in (
-      'damage',
-      'heal',
-      'power_change',
-      'damage_modifier',
-      'incoming_damage_modifier',
-      'poison',
-      'stun',
-      'dodge',
-      'reflect',
-      'lifesteal',
-      'restore_power_to_max',
-      'self_damage',
-      'swap_hp_percentages'
-    )),
-  add constraint card_effects_config_object_check
-    check (jsonb_typeof(effect_config) = 'object'),
-  add constraint card_effects_rules_text_not_blank
-    check (rules_text is null or btrim(rules_text) <> '');
 
 create function public.populate_card_effect_execution_metadata()
 returns trigger
@@ -332,6 +261,84 @@ alter table public.card_moves
   disable trigger card_moves_content_immutability;
 alter table public.card_effects
   disable trigger card_effects_content_immutability;
+
+-- Backfill legacy Power effects only while the published-child content guard is
+-- disabled. The execution metadata trigger remains active and receives the
+-- same explicit values, so subsequent inserts keep the normal defaulting path.
+update public.card_effects
+set
+  effect_code = case
+    when effect_type = 'damage' then 'damage'
+    when effect_type = 'heal' then 'heal'
+    when modifier_stat = 'power' then 'power_change'
+    else 'damage_modifier'
+  end,
+  effect_config = jsonb_strip_nulls(jsonb_build_object(
+    'target', case
+      when effect_type in ('damage', 'debuff') then 'opponent'
+      else 'self'
+    end,
+    'affinity', case when effect_type = 'damage' then 'source' end,
+    'durationTurns', modifier_duration_turns
+  )),
+  rules_text = case
+    when effect_type = 'damage' then 'Deal ' || effect_value || ' damage.'
+    when effect_type = 'heal' then 'Heal ' || effect_value || ' HP.'
+    when modifier_stat = 'power' and effect_type = 'buff'
+      then 'Restore ' || effect_value || ' Power.'
+    when modifier_stat = 'power' and effect_type = 'debuff'
+      then 'The opposing Creature loses ' || effect_value || ' Power.'
+    when effect_type = 'buff'
+      then 'Deal ' || effect_value || '% more damage.'
+    else 'The opposing Creature deals ' || effect_value || '% less damage.'
+  end;
+
+alter table public.card_effects
+  alter column effect_code set not null,
+  add constraint card_effects_code_check
+    check (effect_code in (
+      'damage',
+      'heal',
+      'power_change',
+      'damage_modifier',
+      'incoming_damage_modifier',
+      'poison',
+      'stun',
+      'dodge',
+      'reflect',
+      'lifesteal',
+      'restore_power_to_max',
+      'self_damage',
+      'swap_hp_percentages'
+    )),
+  add constraint card_effects_config_object_check
+    check (jsonb_typeof(effect_config) = 'object'),
+  add constraint card_effects_rules_text_not_blank
+    check (rules_text is null or btrim(rules_text) <> '');
+
+-- Existing Power cards predate typeless ordinary cards. Grandfather them as
+-- specials inside the controlled rewrite so published rows do not invoke the
+-- normal authoring lifecycle guards. Add the replacement affinity constraint
+-- only after those legacy rows have been made valid under the new model.
+update public.card_definitions
+set catalogue_class = 'special'
+where category = 'power';
+
+alter table public.card_definitions
+  add constraint card_definitions_affinity_check
+    check (
+      (category = 'creature'
+        and affinity in ('wit', 'grit', 'spark', 'spirit', 'mystic'))
+      or
+      (category = 'power'
+        and (
+          affinity is null
+          or (
+            catalogue_class = 'special'
+            and affinity in ('wit', 'grit', 'spark', 'spirit', 'mystic')
+          )
+        ))
+    );
 
 -- Preserve existing starter ownership row IDs and deck memberships while
 -- converging old affinity-specific starter Power cards on the shared typeless
