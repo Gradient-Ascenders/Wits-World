@@ -4,6 +4,10 @@ title: Testing strategy and policy
 
 # Testing strategy and policy
 
+## Question performance analytics
+
+Issue `#184` adds service, route, client, and Author-workspace coverage for the 10-answer flagging boundary, exact and just-below 70% incorrect rates with non-misleading decimal display, larger samples, MCQ and ordering aggregation, part-way timeout exclusion of unseen snapshots, timeout counts, composed filters, genuine empty results, stale-page recovery to the last valid page, malformed filters, Author authorization, page bounds, closed aggregate response parsing, keyboard-accessible horizontal results, and edit navigation. The Author-only response deliberately retains exact small-sample aggregates; its residual narrow-filter inference risk and the remaining database query-plan gate are documented in [Question performance analytics](../database/question-performance-analytics.md).
+
 ## Purpose
 
 Wits World uses the smallest test boundary that can reliably demonstrate a
@@ -69,8 +73,9 @@ The asynchronous PvP database suite upgrades retained CPU progression through
 migration `0028`, verifies private-state separation and lifecycle constraints,
 and exercises unordered invitation uniqueness, immutable snapshots and history,
 deadline indexes, all terminal outcomes, concurrent replay, and the
-two-participant 25/0 activity awards. Route and scheduler tests cover issue
-`#180`. Web client and component tests for issue `#181` cover closed privacy-safe
+two-participant 25/0 activity awards. Issue `#220` adds cancellation actor,
+receipt, retention, pagination, worker-skip, and accept/decline/expiry/account-
+invalidation race coverage. Route and scheduler tests cover issue `#180`. Web client and component tests for issue `#181` cover closed privacy-safe
 parsing, all invitation states, Player Name challenge creation, deck/Creature
 selection with API validation errors, versioned actions, duplicate-click
 protection, bounded cursor navigation, polling, stale recovery,
@@ -204,10 +209,20 @@ Asynchronous PvP changes require route tests for closed schemas, authentication,
 safe errors, object-relative identity, and forbidden browser result fields;
 service/database tests for real deck snapshots, replay receipts, hidden-state
 projection, versioned actions, terminal progression, invitation invalidation,
-and account-deletion rollback; and scheduler tests for immediate startup,
+voluntary-resignation replay and races, exact deadline precedence, and
+account-deletion rollback. Invitation cancellation additionally requires
+challenger-only authorization, exact replay/payload conflict, stale and terminal
+rejection, immutable audit, no-match guarantees, stable pagination, and races
+against acceptance, decline, expiry, and invalidation; scheduler tests cover immediate startup,
 non-overlap, safe failure containment, and clean shutdown. The explicit
 database runner uses only `TEST_DATABASE_URL`, provisions isolated temporary
-databases, and must cover migrations `0028` and `0033`. Production or shared
+databases, and must cover migrations `0028`, `0033`, `0037`, and `0039`. Route, client,
+component, and Playwright coverage must also verify CORS-safelisted media-type
+negotiation, legacy fallback, overdue-detail finalization, capability gating,
+confirmation/focus behavior, repeated-click protection, and ambiguous-response
+recovery. Cancellation UI tests must also retain later-page items, disable
+duplicate submissions, treat absent `canCancel` as false, and reuse the same
+submission ID after ambiguous delivery. Production or shared
 database targets are not substitutes for this evidence.
 
 ## Performance and reliability evidence
@@ -242,7 +257,7 @@ for demonstrating the acceptance criteria and protected invariants.
 ## AI declaration
 
 This testing strategy was generated, edited, and reviewed with the assistance
-of Codex[GPT-5], Codex[gpt-5.6-sol], Codex-CLI[GPT-5], and
+of Codex[GPT-6], Codex[GPT-5], Codex[gpt-5.6-sol], Codex-CLI[GPT-5], and
 Codex-CLI[gpt-5.6-sol medium].
 Repository paths and workflow claims were checked against the current source;
 this declaration is not test evidence.

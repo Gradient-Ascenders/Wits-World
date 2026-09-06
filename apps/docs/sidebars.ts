@@ -140,6 +140,11 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'architecture/offline-challenge-play',
+              label: 'Offline Challenge Play',
+            },
+            {
+              type: 'doc',
               id: 'architecture/asynchronous-pvp-api-contract',
               label: 'Asynchronous PvP API Contract',
             },

@@ -17,8 +17,12 @@ Bearer-token authentication, protected event discovery, and server-side location
 eligibility are implemented in the API. The current API also implements local
 player provisioning and lifecycle, application roles and Author protection,
 challenge attempts and marking, atomic rewards, card collections, saved decks,
-CPU matches/history, asynchronous PvP invitations and matches, authenticated
-progression/standings, and protected Author content operations.
+CPU matches/history, asynchronous PvP invitations, challenger-owned invitation
+cancellation, matches, and voluntary resignation, authenticated
+progression/standings, and protected Author content operations. The cancellation
+endpoint requires the version 3 PvP media type and derives ownership from the
+validated player identity; it never accepts a player ID or result from the
+browser.
 
 The detailed challenge and persistence contracts are documented in the
 [challenge attempt API contract](../../docs/architecture/challenge-attempt-api-contract.md)

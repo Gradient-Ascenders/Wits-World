@@ -4,6 +4,30 @@ export type AuthoringStatus =
   'draft' | 'in_review' | 'approved' | 'published' | 'retired';
 export type PublicationProvenance = 'legacy' | 'controlled_seed' | 'reviewed';
 export type ChallengeFormat = 'multiple_choice' | 'ordering';
+
+export interface AuthorQuestionPerformanceItem {
+  questionId: string;
+  challengeId: string;
+  eventId: string;
+  eventTitle: string;
+  prompt: string;
+  format: ChallengeFormat;
+  difficulty: 1 | 2 | 3;
+  status: AuthoringStatus;
+  answerCount: number;
+  correctCount: number;
+  incorrectCount: number;
+  timeoutCount: number;
+  correctRate: number;
+  incorrectRate: number;
+  hasSufficientSample: boolean;
+  isProblematic: boolean;
+}
+
+export interface AuthorQuestionPerformancePage extends AuthorPage<AuthorQuestionPerformanceItem> {
+  minimumSampleSize: 10;
+  problematicIncorrectRate: 0.7;
+}
 export type AuthorContentEntityType =
   'event' | 'challenge' | 'question' | 'card' | 'campaign';
 export type AuthorContentAction =
@@ -458,6 +482,61 @@ export async function listAuthorQuestions(
 
   requireRequestId(payload);
   return payload.questions.map(parseAuthorQuestion);
+}
+
+export async function listAuthorQuestionPerformance(
+  options: RequestBase & {
+    eventId?: string;
+    challengeId?: string;
+    format?: ChallengeFormat;
+    difficulty?: 1 | 2 | 3;
+    from?: string;
+    to?: string;
+    page?: number;
+    pageSize?: number;
+  },
+): Promise<AuthorQuestionPerformancePage> {
+  const params = new URLSearchParams({
+    page: String(options.page ?? 1),
+    pageSize: String(options.pageSize ?? 25),
+  });
+  for (const [key, value] of Object.entries({
+    eventId: options.eventId,
+    challengeId: options.challengeId,
+    format: options.format,
+    difficulty: options.difficulty,
+    from: options.from,
+    to: options.to,
+  })) {
+    if (value !== undefined) params.set(key, String(value));
+  }
+  const payload = await authorRequest({
+    ...options,
+    method: 'GET',
+    path: `/author/question-performance?${params.toString()}`,
+  });
+  if (
+    !isRecord(payload) ||
+    !Array.isArray(payload.items) ||
+    !isPositiveInteger(payload.page) ||
+    !isPositiveInteger(payload.pageSize) ||
+    !isNonNegativeInteger(payload.totalItems) ||
+    !isNonNegativeInteger(payload.totalPages) ||
+    payload.minimumSampleSize !== 10 ||
+    payload.problematicIncorrectRate !== 0.7
+  ) {
+    throw unavailableResponse();
+  }
+  requireRequestId(payload);
+  return {
+    items: payload.items.map(parseQuestionPerformanceItem),
+    page: payload.page,
+    pageSize: payload.pageSize,
+    totalItems: payload.totalItems,
+    totalPages: payload.totalPages,
+    minimumSampleSize: 10,
+    problematicIncorrectRate: 0.7,
+  };
 }
 
 export async function createAuthorQuestion(
@@ -1219,6 +1298,35 @@ function parseAuthorContentHistoryItem(
   return value as unknown as AuthorContentHistoryItem;
 }
 
+function parseQuestionPerformanceItem(
+  value: unknown,
+): AuthorQuestionPerformanceItem {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.questionId) ||
+    !isUuid(value.challengeId) ||
+    !isUuid(value.eventId) ||
+    !isNonBlank(value.eventTitle) ||
+    !isNonBlank(value.prompt) ||
+    !isChallengeFormat(value.format) ||
+    !isDifficulty(value.difficulty) ||
+    !isStatus(value.status) ||
+    !isNonNegativeInteger(value.answerCount) ||
+    !isNonNegativeInteger(value.correctCount) ||
+    !isNonNegativeInteger(value.incorrectCount) ||
+    !isNonNegativeInteger(value.timeoutCount) ||
+    !isRate(value.correctRate) ||
+    !isRate(value.incorrectRate) ||
+    typeof value.hasSufficientSample !== 'boolean' ||
+    typeof value.isProblematic !== 'boolean' ||
+    value.correctCount + value.incorrectCount !== value.answerCount ||
+    value.timeoutCount > value.incorrectCount
+  ) {
+    throw unavailableResponse();
+  }
+  return value as unknown as AuthorQuestionPerformanceItem;
+}
+
 function parseCardMove(value: unknown): AuthorCardMove {
   if (
     !isRecord(value) ||
@@ -1315,6 +1423,15 @@ function isPositiveInteger(value: unknown): value is number {
 
 function isNonNegativeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+function isRate(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= 1
+  );
 }
 
 function isNullableNonNegativeInteger(value: unknown): value is number | null {

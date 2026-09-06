@@ -1,4 +1,5 @@
 import { buildApp } from './app.js';
+import { createOfflineChallengeService } from './challenges/offline-challenges.js';
 import { buildApiConfig } from './config/api.js';
 import { buildAuthConfig } from './config/auth.js';
 import { buildDatabaseConfig, loadApiEnvironment } from './config/database.js';
@@ -22,6 +23,7 @@ import { createChallengeAttemptFetchService } from './challenges/challenge-attem
 import { createDeckService } from './cards/deck-service.js';
 import { createAuthorEventService } from './events/author-event-service.js';
 import { createAuthorChallengeService } from './challenges/author-challenge-service.js';
+import { createQuestionPerformanceService } from './challenges/question-performance-service.js';
 import { createAuthorCardService } from './cards/author-card-service.js';
 import { createAuthorContentReadService } from './authoring/content-read-service.js';
 import { createCpuMatchService } from './matches/cpu-match-service.js';
@@ -91,6 +93,7 @@ async function startServer(): Promise<void> {
   const deckService = createDeckService(database);
   const authorEventService = createAuthorEventService(database);
   const authorChallengeService = createAuthorChallengeService(database);
+  const questionPerformanceService = createQuestionPerformanceService(database);
   const authorCardService = createAuthorCardService(database);
   const authorTrailService = createAuthorTrailService(database);
   const authorCampaignService = createAuthorCampaignService(database);
@@ -102,6 +105,16 @@ async function startServer(): Promise<void> {
   const progressionReadService = createProgressionReadService(database);
   const playerIdentityService = createPlayerIdentityService(database);
   const app = await buildApp({
+    offlineChallengeService: process.env.OFFLINE_PACK_SIGNING_KEY
+      ? createOfflineChallengeService(database, {
+          signingKey: process.env.OFFLINE_PACK_SIGNING_KEY,
+          previousSigningKey:
+            process.env.OFFLINE_PACK_PREVIOUS_SIGNING_KEY || undefined,
+          finalizer: challengeAttemptCompletionFinalizer,
+          maxSpeed: config.maxPlausibleJourneySpeedMetresPerSecond,
+          retentionMs: config.movementEvidenceRetentionMs,
+        })
+      : undefined,
     config,
     authConfig,
     corsConfig,
@@ -151,6 +164,7 @@ async function startServer(): Promise<void> {
       trails: authorTrailService,
       campaigns: authorCampaignService,
       read: authorContentReadService,
+      questionPerformance: questionPerformanceService,
     },
   });
 

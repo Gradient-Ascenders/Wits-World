@@ -54,12 +54,16 @@ import type { CpuMatchService } from './matches/cpu-match-service.js';
 import { cpuMatchRoutes } from './routes/cpu-matches.js';
 import type { AsyncPvpService } from './matches/asynchronous-pvp-service.js';
 import { asynchronousPvpRoutes } from './routes/asynchronous-pvp.js';
+import { offlineChallengeRoutes } from './routes/offline-challenges.js';
+import type { OfflineChallengeService } from './challenges/offline-challenges.js';
 
 import type { AuthorEventService } from './events/author-event-service.js';
 import { authorEventRoutes } from './routes/author-events.js';
 
 import type { AuthorChallengeService } from './challenges/author-challenge-service.js';
 import { authorChallengeRoutes } from './routes/author-challenges.js';
+import type { QuestionPerformanceService } from './challenges/question-performance-service.js';
+import { authorQuestionPerformanceRoutes } from './routes/author-question-performance.js';
 
 import type { AuthorCardService } from './cards/author-card-service.js';
 import { authorCardRoutes } from './routes/author-cards.js';
@@ -84,6 +88,7 @@ export interface EventServices {
 }
 
 export interface BuildAppOptions {
+  offlineChallengeService?: OfflineChallengeService;
   authConfig: AuthConfig;
   config?: Pick<ApiConfig, 'logLevel'>;
   logger?: boolean;
@@ -131,6 +136,7 @@ export interface AuthorContentServices {
   trails?: AuthorTrailService;
   campaigns?: AuthorCampaignService;
   read?: AuthorContentReadService;
+  questionPerformance?: QuestionPerformanceService;
 }
 
 export interface TrailServices {
@@ -160,6 +166,7 @@ export async function buildApp({
   asyncPvpService,
   progressionReadService,
   rateProtection,
+  offlineChallengeService,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: logger
@@ -185,6 +192,24 @@ export async function buildApp({
               'body.longitude',
               'body.accuracyMetres',
               'body.acquiredAt',
+              'req.body.packToken',
+              'request.body.packToken',
+              'body.packToken',
+              'req.body.startLocation',
+              'request.body.startLocation',
+              'body.startLocation',
+              'req.body.finishLocation',
+              'request.body.finishLocation',
+              'body.finishLocation',
+              'req.body.answers',
+              'request.body.answers',
+              'body.answers',
+              'req.body.startedAt',
+              'request.body.startedAt',
+              'body.startedAt',
+              'req.body.finishedAt',
+              'request.body.finishedAt',
+              'body.finishedAt',
             ],
             censor: '[REDACTED]',
           },
@@ -342,6 +367,7 @@ export async function buildApp({
         'Authorization',
         'Content-Type',
         'X-Wits-Challenge-Contract-Version',
+        'X-Wits-Offline-Contract-Version',
       ],
       credentials: false,
       preflight: true,
@@ -396,6 +422,13 @@ export async function buildApp({
     });
   }
 
+  if (authorContentServices?.questionPerformance) {
+    await app.register(authorQuestionPerformanceRoutes, {
+      prefix: '/api/v1',
+      service: authorContentServices.questionPerformance,
+    });
+  }
+
   if (authorContentServices?.cards) {
     await app.register(authorCardRoutes, {
       prefix: '/api/v1',
@@ -434,6 +467,12 @@ export async function buildApp({
   }
 
   if (challengeAttemptServices) {
+    if (offlineChallengeService) {
+      await app.register(offlineChallengeRoutes, {
+        prefix: '/api/v1',
+        service: offlineChallengeService,
+      });
+    }
     await app.register(challengeAttemptRoutes, {
       prefix: '/api/v1',
       startService: challengeAttemptServices.start,

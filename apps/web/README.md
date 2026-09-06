@@ -26,7 +26,11 @@ available alongside CPU play through `/matches/pvp`, with exact Player Name
 lookup, invitations, saved-deck selection, server-timed turns, polling, and
 viewer-relative completed history. PvP match detail uses
 `/matches/pvp/:matchId`; it renders only API-returned legal actions and revealed
-opponent information.
+opponent information. When the API reports the capability, either participant
+can confirm voluntary resignation as an immediate server-recorded loss.
+The client requests that capability with a CORS-safelisted version-2 `Accept`
+media type and an `application/json` fallback, so an older API can return its
+legacy shape without requiring a new preflight allow-list entry.
 The protected `/account` route presents the local player identity, delegates
 credential recovery to the owning provider, and starts permanent account
 deletion with fresh Auth0 reauthentication.
@@ -1071,21 +1075,30 @@ npm run test:e2e:trails --workspace @wits-world/web
    two development players that each have a Player Name and valid saved deck.
 2. Open `http://localhost:5173/matches/pvp`. Search for the second exact Player
    Name, choose a saved deck and opening Creature, and send the invitation.
-3. In the second account, open the same route and accept or decline the incoming
+3. Before responding, confirm the first account sees **Cancel challenge** only
+   on its pending sent invitation. Cancel once and verify both accounts retain a
+   **Cancelled** record with viewer-relative text. Repeat the flow to continue.
+4. In the second account, open the same route and accept or decline the incoming
    invitation. For acceptance, choose that account's own deck and opening
    Creature. Confirm the new match opens at `/matches/pvp/:matchId`.
-4. Submit only an enabled API-returned move or Power action. Confirm the heading
+5. Submit only an enabled API-returned move or Power action. Confirm the heading
    changes between **Your turn** and **Opponent's turn**, the exact deadline and
    display countdown remain visible, and the waiting view refreshes after the
    other account acts. Do not expect unplayed opponent cards to appear.
-5. Inspect the hub and match at approximately 390px and 1280px, including
+6. On either participant's turn, choose **Forfeit battle**. Confirm that Escape
+   and **Keep playing** cancel without a request, focus returns to the trigger,
+   and **Confirm forfeit** submits once. Confirm the forfeiting player sees
+   **You forfeited**, the opponent sees **Opponent forfeited**, the action
+   disappears, and refresh preserves the result.
+7. Inspect the hub and match at approximately 390px and 1280px, including
    keyboard focus, status announcements, touch targets, overflow, API recovery,
    deadline completion, and saved history. CPU play remains at `/matches`.
 
-S3-02 does not provide voluntary match resignation or outgoing-invitation
-cancellation mutations. The Web application displays server-generated deadline
-and account-lifecycle forfeits and unavailable invitations, but does not invent
-those unsupported controls.
+Outgoing-invitation cancellation is negotiated through the version 3 PvP
+`Accept` media type. The Web application treats an absent `canCancel` as false,
+submits a stable versioned cancellation exactly once, reconciles ambiguous
+delivery through polling, and displays server-generated cancellation, deadline,
+account-lifecycle, and voluntary-resignation results.
 
 The preceding document was generated and edited with the assistance of:
 Codex-CLI[gpt-5.6-sol medium], Codex-CLI[gpt-5.6-sol], Codex-CLI[GPT-5], and Codex[GPT-5].

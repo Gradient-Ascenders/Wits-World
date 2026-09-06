@@ -9,6 +9,7 @@ import {
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { CardWorkspace } from '../components/author/CardWorkspace';
 import { CampaignWorkspace } from '../components/author/CampaignWorkspace';
+import { AnalyticsWorkspace } from '../components/author/AnalyticsWorkspace';
 import { EventWorkspace } from '../components/author/EventWorkspace';
 import { ReviewWorkspace } from '../components/author/ReviewWorkspace';
 import {
@@ -118,6 +119,13 @@ export default function AuthorConsolePage({
         </div>
         <nav aria-label="Author sections" className="author-sections">
           <Link
+            aria-current={route.section === 'analytics' ? 'page' : undefined}
+            className="author-sections__link"
+            href={authorPaths.analytics}
+          >
+            Analytics
+          </Link>
+          <Link
             aria-current={route.section === 'events' ? 'page' : undefined}
             className="author-sections__link"
             href={authorPaths.events}
@@ -182,6 +190,11 @@ export default function AuthorConsolePage({
             getAccessToken={getAccessToken}
             navigate={navigate}
             route={route}
+          />
+        ) : route.section === 'analytics' ? (
+          <AnalyticsWorkspace
+            apiBaseUrl={apiBaseUrl}
+            getAccessToken={getAccessToken}
           />
         ) : (
           <ReviewWorkspace

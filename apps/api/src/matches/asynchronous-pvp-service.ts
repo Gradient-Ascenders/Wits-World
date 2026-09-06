@@ -36,9 +36,12 @@ const DECISION_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_PAGE_LIMIT = 20;
 
 export type PvpInvitationStatus =
-  'pending' | 'accepted' | 'declined' | 'expired' | 'invalidated';
+  'pending' | 'accepted' | 'declined' | 'cancelled' | 'expired' | 'invalidated';
 export type PvpCompletionReason =
-  'defeat' | 'turn_forfeit' | 'account_deletion_forfeit';
+  | 'defeat'
+  | 'turn_forfeit'
+  | 'account_deletion_forfeit'
+  | 'voluntary_resignation';
 
 export interface AsyncPvpClient {
   query<T extends pg.QueryResultRow>(
@@ -144,6 +147,12 @@ export interface AsyncPvpService {
     submissionId: string;
     expectedVersion: number;
   }): Promise<PvpInvitationView>;
+  cancelInvitation(input: {
+    playerId: string;
+    invitationId: string;
+    submissionId: string;
+    expectedVersion: number;
+  }): Promise<PvpInvitationView>;
   listActiveMatches(input: {
     playerId: string;
     cursor?: string;
@@ -161,6 +170,12 @@ export interface AsyncPvpService {
     submissionId: string;
     expectedVersion: number;
     action: PvpAction;
+  }): Promise<AsyncPvpMatchView>;
+  resignMatch(input: {
+    playerId: string;
+    matchId: string;
+    submissionId: string;
+    expectedVersion: number;
   }): Promise<AsyncPvpMatchView>;
   expireInvitation(
     client: AsyncPvpClient,
@@ -206,6 +221,7 @@ export type AsyncPvpErrorCode =
   | 'PVP_INVITATION_ALREADY_PENDING'
   | 'PVP_INVITATION_EXPIRED'
   | 'PVP_INVITATION_INVALIDATED'
+  | 'PVP_INVITATION_CANCELLED'
   | 'PVP_INVITATION_VERSION_CONFLICT'
   | 'PVP_MATCH_COMPLETED'
   | 'PVP_MATCH_VERSION_CONFLICT'
@@ -745,6 +761,71 @@ export function createAsyncPvpService(
       return result;
     },
 
+    async cancelInvitation(input) {
+      const payloadHash = hashPayload({
+        invitationId: input.invitationId,
+        expectedVersion: input.expectedVersion,
+      });
+      let deadlineExpired = false;
+      const result = await withTransaction(database, async (client) => {
+        const invitation = await lockInvitation(
+          client,
+          input.invitationId,
+          input.playerId,
+          'challenger',
+        );
+        await lockSubmissionKey(
+          client,
+          input.playerId,
+          'invitation_cancel',
+          input.submissionId,
+        );
+        const replay = await loadReceipt<PvpInvitationView>(
+          client,
+          input.playerId,
+          'invitation_cancel',
+          input.submissionId,
+          payloadHash,
+        );
+        if (replay) return replay;
+        const now = await databaseNow(client);
+        if (invitation.status === 'pending' && now >= invitation.expires_at) {
+          await markInvitationExpired(client, invitation.id, now);
+          deadlineExpired = true;
+          return null;
+        }
+        assertPendingInvitation(invitation, input.expectedVersion);
+        await client.query(
+          `
+            update public.async_pvp_invitations
+               set status = 'cancelled', version = version + 1,
+                   responded_at = $2, updated_at = $2
+             where id = $1::uuid
+          `,
+          [invitation.id, now],
+        );
+        const view = await loadInvitationView(
+          client,
+          input.playerId,
+          invitation.id,
+        );
+        await insertReceipt(client, {
+          actorId: input.playerId,
+          operation: 'invitation_cancel',
+          submissionId: input.submissionId,
+          invitationId: invitation.id,
+          payloadHash,
+          response: view,
+          now,
+        });
+        return view;
+      });
+      if (deadlineExpired) throw expiredInvitation();
+      if (!result)
+        throw new Error('PvP invitation cancellation returned no result.');
+      return result;
+    },
+
     async listActiveMatches(input) {
       await finalizeVisibleOverdueMatches(database, service, input.playerId);
       return listMatchSummaries(database, cursorCodec, input, 'active');
@@ -950,6 +1031,88 @@ export function createAsyncPvpService(
         throw new AsyncPvpError(
           'PVP_MATCH_COMPLETED',
           'The match deadline passed before this action was applied.',
+        );
+      }
+      return response;
+    },
+
+    async resignMatch(input) {
+      const payloadHash = hashPayload({
+        matchId: input.matchId,
+        expectedVersion: input.expectedVersion,
+      });
+      let deadlineLost = false;
+      const response = await withTransaction(database, async (client) => {
+        const match = await lockMatch(client, input.playerId, input.matchId);
+        await lockSubmissionKey(
+          client,
+          input.playerId,
+          'match_resign',
+          input.submissionId,
+        );
+        const replay = await loadReceipt<AsyncPvpMatchView>(
+          client,
+          input.playerId,
+          'match_resign',
+          input.submissionId,
+          payloadHash,
+        );
+        if (replay) return replay;
+
+        const now = await databaseNow(client);
+        if (
+          match.status === 'active' &&
+          match.turn_deadline &&
+          now >= match.turn_deadline
+        ) {
+          await completeForfeit(
+            client,
+            match,
+            match.current_player_id!,
+            now,
+            'turn_forfeit',
+            progressionPersistence,
+          );
+          deadlineLost = true;
+          return loadMatchView(client, input.playerId, input.matchId);
+        }
+        if (match.status === 'completed') {
+          throw new AsyncPvpError(
+            'PVP_MATCH_COMPLETED',
+            'Completed PvP matches cannot be resigned.',
+          );
+        }
+        if (match.version !== input.expectedVersion) {
+          throw new AsyncPvpError(
+            'PVP_MATCH_VERSION_CONFLICT',
+            'The match changed before this resignation was applied.',
+          );
+        }
+
+        await completeForfeit(
+          client,
+          match,
+          input.playerId,
+          now,
+          'voluntary_resignation',
+          progressionPersistence,
+        );
+        const view = await loadMatchView(client, input.playerId, match.id);
+        await insertReceipt(client, {
+          actorId: input.playerId,
+          operation: 'match_resign',
+          submissionId: input.submissionId,
+          matchId: match.id,
+          payloadHash,
+          response: view,
+          now,
+        });
+        return view;
+      });
+      if (deadlineLost) {
+        throw new AsyncPvpError(
+          'PVP_MATCH_COMPLETED',
+          'The match deadline passed before this resignation was applied.',
         );
       }
       return response;
@@ -1335,7 +1498,7 @@ async function lockInvitation(
   client: AsyncPvpClient,
   invitationId: string,
   playerId: string,
-  role: 'recipient' | 'participant',
+  role: 'challenger' | 'recipient' | 'participant',
 ): Promise<InvitationRow> {
   const result = await client.query<InvitationRow>(
     `
@@ -1346,11 +1509,13 @@ async function lockInvitation(
         join public.players challenger on challenger.id = invitation.challenger_player_id
         join public.players recipient on recipient.id = invitation.recipient_player_id
        where invitation.id = $1::uuid
-         and ($3 = 'participant'
-              and (invitation.challenger_player_id = $2::uuid
-                   or invitation.recipient_player_id = $2::uuid)
-              or $3 = 'recipient'
-              and invitation.recipient_player_id = $2::uuid)
+         and (($3 = 'participant'
+               and (invitation.challenger_player_id = $2::uuid
+                    or invitation.recipient_player_id = $2::uuid))
+              or ($3 = 'recipient'
+                  and invitation.recipient_player_id = $2::uuid)
+              or ($3 = 'challenger'
+                  and invitation.challenger_player_id = $2::uuid))
        for update of invitation
     `,
     [invitationId, playerId, role],
@@ -1410,6 +1575,12 @@ function assertPendingInvitation(
     throw new AsyncPvpError(
       'PVP_INVITATION_INVALIDATED',
       'The invitation is no longer available.',
+    );
+  }
+  if (invitation.status === 'cancelled') {
+    throw new AsyncPvpError(
+      'PVP_INVITATION_CANCELLED',
+      'The invitation was cancelled by its challenger.',
     );
   }
   if (
@@ -1839,7 +2010,7 @@ async function completeForfeit(
   match: MatchRow,
   losingPlayerId: string,
   completedAt: Date,
-  reason: 'turn_forfeit' | 'account_deletion_forfeit',
+  reason: 'turn_forfeit' | 'account_deletion_forfeit' | 'voluntary_resignation',
   progressionPersistence: ProgressionPersistence,
 ): Promise<void> {
   const winnerPlayerId =

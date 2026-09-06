@@ -38,20 +38,26 @@ identities, card positions, private transition state, or replay responses.
 Database constraints and deferred validators reinforce these boundaries:
 
 - an invitation starts `pending` at version zero and transitions exactly once
-  to `accepted`, `declined`, `expired`, or account-deletion `invalidated`;
+  to `accepted`, recipient-owned `declined`, challenger-owned `cancelled`,
+  time-owned `expired`, or account-deletion `invalidated`;
 - one pending invitation may exist for an unordered player pair, so reverse
   concurrent challenges cannot both commit;
 - every invitation has one challenger snapshot and creation receipt;
 - acceptance atomically adds the recipient snapshot, two participants, one
   private state, the match, and the acceptance receipt;
+- cancellation atomically adds exactly one challenger-owned
+  `invitation_cancel` receipt, retains the challenger snapshot, and adds no
+  recipient snapshot or match;
 - each snapshot contains exactly three Creature and two Power cards, costs at
   most ten rarity points, and selects one Creature from that snapshot;
 - active matches have one current participant and an exact 24-hour deadline;
 - completed matches have one winner, one loser, and one of `defeat`,
-  `turn_forfeit`, or `account_deletion_forfeit`;
+  `turn_forfeit`, `account_deletion_forfeit`, or `voluntary_resignation`;
 - match and private-state versions advance one step together;
 - every public action has one private transition and one matching submission
-  receipt; and
+  receipt;
+- a voluntarily resigned match has exactly one participant-owned
+  `match_resign` receipt, and no other terminal reason may have one; and
 - snapshots, actions, transitions, receipts, terminal invitations, completed
   matches, participant outcomes, and progression awards cannot be rewritten.
 
@@ -66,13 +72,18 @@ Submission receipts are unique by authenticated actor, operation, and UUID
 submission identifier. They retain the canonical payload hash and committed
 response so issue `#180` can distinguish an identical replay from an ID reused
 with different intent. Match actions additionally enforce unique sequence and
-actor submission identifiers.
+actor submission identifiers. Migration `0037` adds a per-match unique
+resignation-receipt index so a replay can return the committed response without
+creating a second terminal operation. Migration `0039` adds the corresponding
+per-invitation cancellation index and extends deferred receipt validation so a
+`cancelled` record has exactly one matching challenger-owned receipt and no
+competing accept or decline receipt.
 
 Indexes support incoming and outgoing invitation pages, one-pair pending
 checks, bounded invitation expiry, participant match lookup, active pages,
 completed history, overdue decisions, action history, and receipt recovery.
-The future deadline worker must still lock bounded due rows and recheck status
-and time after locking; an index is not itself a concurrency policy.
+The deadline worker locks bounded due rows and rechecks status and time after
+locking; an index is not itself a concurrency policy.
 
 ## Progression
 
@@ -85,6 +96,7 @@ decision for each participant:
 | Defeat                   | 25 points |           0 points |
 | Turn forfeit             | 25 points |           0 points |
 | Account-deletion forfeit | 25 points |           0 points |
+| Voluntary resignation    | 25 points |           0 points |
 
 Both decisions count as activity, including the zero-point outcome. No PvP
 achievement is introduced. Existing streak achievements may still unlock when
@@ -97,9 +109,9 @@ order, takes the existing per-player advisory locks, and returns exactly two
 new-or-existing awards. A replay, action race, or deadline-worker retry
 therefore converges on the same `(match, participant)` rows.
 
-Issue `#180` must invoke this operation inside the same transaction that makes
-the match terminal. A progression failure must roll that terminal transition
-back rather than leaving the match and progression out of sync.
+Issue `#180` invokes this operation inside the same transaction that makes the
+match terminal. A progression failure rolls that terminal transition back
+rather than leaving the match and progression out of sync.
 
 ## Retention and deletion boundary
 
@@ -114,8 +126,8 @@ invalidates not-yet-overdue invitations when account deletion begins, and record
 an `account_deletion_forfeit` for active matches whose deadline has not elapsed.
 For an already-overdue match, the current actor instead loses by `turn_forfeit`;
 account deletion cannot reverse that elapsed deadline outcome. No automated
-purge is added for declined or expired invitations because their retention
-period remains an explicitly unresolved product decision.
+purge is added for declined, cancelled, or expired invitations because their
+retention period remains an explicitly unresolved product decision.
 
 ## Verification and release
 
@@ -124,7 +136,10 @@ database at the pre-`0028` schema, records existing CPU progression, applies
 `0028`, and verifies that history survives. It then covers private-state
 separation, indexes, unordered-pair uniqueness, complete snapshots, lifecycle
 and receipt constraints, immutable history, all completion reasons, concurrent
-replay, 25/0 awards, and activity for both participants.
+replay, resignation/action/deletion races, deadline precedence, 25/0 awards,
+activity for both participants, cancellation authorization and replay,
+cancel/accept/decline/expiry/invalidation races, retained cancellation audit,
+pair reuse, pagination, and deadline-worker terminal skipping.
 
 The test is registered in the explicit database runner:
 
@@ -134,7 +149,14 @@ npm run test:database --workspace @wits-world/api
 
 Apply migrations `0028` and `0033` before deploying issue `#180`. Migration
 `0033` adds the terminal `invalidated` invitation status used only by account
-deletion; applying the migrations alone does not expose player-facing routes.
+deletion. Apply migration `0037` before the issue `#219` API; it adds the
+voluntary terminal reason, receipt invariants, and progression rules. Applying
+the migrations alone does not expose player-facing routes. Apply forward-only
+migration `0039_add_async_pvp_invitation_cancellation.sql` before the issue
+`#220` API. It adds `cancelled`, the `invitation_cancel` receipt operation and
+unique index, and replacement cross-row validators. Once a `cancelled` row has
+been stored, do not roll the API back to a build whose invitation status parser
+does not understand it; retain `0039` and roll the API/Web forward.
 
 The preceding document was generated and edited with the assistance of:
-Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5].
+Codex-CLI[gpt-5.6-sol medium], Codex[GPT-5], and Codex[GPT-6].

@@ -1,3 +1,4 @@
+import 'fake-indexeddb/auto';
 import {
   Auth0Context,
   initialContext,
@@ -210,10 +211,12 @@ describe('player authentication', () => {
 
     await user.click(screen.getByRole('button', { name: 'Switch account' }));
 
-    expect(loginWithRedirect).toHaveBeenCalledWith({
-      appState: { returnTo: '/explore' },
-      authorizationParams: { prompt: 'login' },
-    });
+    await vi.waitFor(() =>
+      expect(loginWithRedirect).toHaveBeenCalledWith({
+        appState: { returnTo: '/explore' },
+        authorizationParams: { prompt: 'login' },
+      }),
+    );
     expect(bindAuthenticatedPlayer(playerBId)).toBe('matched');
   });
 
@@ -900,6 +903,40 @@ describe('player authentication', () => {
     ).toBeVisible();
     expect(screen.queryByText('stale-player')).not.toBeInTheDocument();
   });
+
+  it.each([false, true])(
+    'honours continue=%s after warning about failed offline cleanup during sign-out',
+    async (proceed) => {
+      const user = userEvent.setup();
+      const logout = vi.fn().mockResolvedValue(undefined);
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(proceed);
+      mockCurrentPlayer();
+      expect(bindAuthenticatedPlayer(playerAId)).toBe('matched');
+      renderRoute(
+        '/explore',
+        createAuthValue({
+          getAccessTokenSilently: vi.fn().mockResolvedValue('access-token'),
+          isAuthenticated: true,
+          logout,
+        }),
+      );
+      await openAccountDisclosure(user);
+      vi.spyOn(IDBObjectStore.prototype, 'clear').mockImplementation(() => {
+        throw new DOMException('Storage unavailable', 'InvalidStateError');
+      });
+      await user.click(screen.getByRole('button', { name: 'Sign out' }));
+      await vi.waitFor(() =>
+        expect(confirm).toHaveBeenCalledWith(
+          expect.stringContaining('Continue to sign out anyway?'),
+        ),
+      );
+      if (proceed) await vi.waitFor(() => expect(logout).toHaveBeenCalled());
+      else expect(logout).not.toHaveBeenCalled();
+      expect(
+        window.localStorage.getItem('wits-world.authenticated-player-id'),
+      ).toBe(proceed ? null : playerAId);
+    },
+  );
 
   it('signs out from Player Name setup without showing profile identity', async () => {
     const user = userEvent.setup();

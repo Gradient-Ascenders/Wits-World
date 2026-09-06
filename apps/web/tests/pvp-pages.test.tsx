@@ -6,7 +6,7 @@ import {
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route, Router } from 'wouter';
 
 import PvpHubPage from '../src/pages/PvpHubPage';
@@ -29,6 +29,13 @@ import {
 import { uuid } from './fixtures/matches';
 
 const apiBaseUrl = 'https://api.example.test/api/v1';
+
+beforeEach(() => {
+  // Freeze only Date: normal UI timers still run, while fixtures never expire.
+  // The deadline-specific test opts into fake timers and advances them itself.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-09-05T09:00:00.000Z'));
+});
 
 afterEach(() => {
   vi.useRealTimers();
@@ -189,6 +196,18 @@ describe('asynchronous player battle lobby', () => {
         respondedAt: '2026-09-05T10:00:00.000Z',
         status: 'accepted',
       }),
+      pvpInvitation({
+        direction: 'outgoing',
+        invitationId: uuid(2506),
+        respondedAt: '2026-09-05T10:30:00.000Z',
+        status: 'cancelled',
+      }),
+      pvpInvitation({
+        canCancel: false,
+        direction: 'outgoing',
+        invitationId: uuid(2507),
+        opponent: { playerName: 'legacy_player' },
+      }),
     ];
     const responses = hubResponses({
       active: [activePvpSummary()],
@@ -218,7 +237,7 @@ describe('asynchronous player battle lobby', () => {
     });
     expect(invitationsTab).toHaveAttribute('aria-selected', 'true');
     const incomingList = screen.getByRole('list', {
-      name: 'Incoming player battle invitations',
+      name: 'Received player battle challenges',
     });
     const sentList = screen.getByRole('list', {
       name: 'Sent player battle challenges',
@@ -231,6 +250,27 @@ describe('asynchronous player battle lobby', () => {
     expect(within(incomingList).getByText('Expired')).toBeVisible();
     expect(within(sentList).getByText('Unavailable')).toBeVisible();
     expect(within(sentList).getByText('Accepted')).toBeVisible();
+    expect(within(sentList).getByText('Cancelled')).toBeVisible();
+    expect(within(sentList).getAllByText('Pending response')).toHaveLength(2);
+    expect(
+      within(sentList).getByText('You cancelled this invitation.'),
+    ).toBeVisible();
+    expect(
+      within(sentList).getByText(/accepted your challenge/i),
+    ).toBeVisible();
+    expect(
+      within(incomingList).getByText('You declined this challenge.'),
+    ).toBeVisible();
+    expect(
+      within(incomingList).getByText(
+        'This invitation expired before it was accepted.',
+      ),
+    ).toBeVisible();
+    expect(
+      within(sentList).queryByRole('button', {
+        name: 'Cancel challenge to legacy_player',
+      }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Your matches' })).toBeNull();
 
     const activeTab = screen.getByRole('tab', { name: 'Active 1' });
@@ -252,6 +292,60 @@ describe('asynchronous player battle lobby', () => {
     ).toBeVisible();
     expect(screen.getByText('Won')).toBeVisible();
     expect(screen.queryByRole('heading', { name: 'Your matches' })).toBeNull();
+  });
+
+  it('keeps history compact while naming each player-facing completion reason', async () => {
+    const user = userEvent.setup();
+    const history = [
+      pvpHistorySummary(
+        pvpMatch({
+          completionReason: 'defeat',
+          matchId: uuid(2601),
+          outcome: 'win',
+          status: 'completed',
+        }),
+      ),
+      pvpHistorySummary(
+        pvpMatch({
+          completionReason: 'voluntary_resignation',
+          matchId: uuid(2602),
+          outcome: 'loss',
+          status: 'completed',
+        }),
+      ),
+      pvpHistorySummary(
+        pvpMatch({
+          completionReason: 'turn_forfeit',
+          matchId: uuid(2603),
+          outcome: 'win',
+          status: 'completed',
+        }),
+      ),
+      pvpHistorySummary(
+        pvpMatch({
+          completionReason: 'account_deletion_forfeit',
+          matchId: uuid(2604),
+          outcome: 'win',
+          status: 'completed',
+        }),
+      ),
+    ];
+    const responses = hubResponses({ history });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(() => Promise.resolve(responses.shift()!)),
+    );
+
+    renderRoute('/matches/pvp', <PvpHubPage apiBaseUrl={apiBaseUrl} />);
+    await user.click(await screen.findByRole('tab', { name: 'History 4' }));
+
+    expect(screen.getByText('Won in battle')).toBeVisible();
+    expect(screen.getByText('You forfeited')).toBeVisible();
+    expect(screen.getByText('Opponent turn deadline expired')).toBeVisible();
+    expect(screen.getByText('Opponent became unavailable')).toBeVisible();
+    expect(document.body).not.toHaveTextContent(
+      /voluntary_resignation|turn_forfeit|account_deletion_forfeit|account deletion|account deleted/i,
+    );
   });
 
   it('uses exact public Player Name lookup and API-validated deck/Creature challenge intent', async () => {
@@ -314,7 +408,7 @@ describe('asynchronous player battle lobby', () => {
     renderRoute('/matches/pvp', <PvpHubPage apiBaseUrl={apiBaseUrl} />);
     await user.click(
       await screen.findByRole('button', {
-        name: 'Load more incoming invitations',
+        name: 'Load more received challenges',
       }),
     );
 
@@ -326,7 +420,7 @@ describe('asynchronous player battle lobby', () => {
     expect(
       within(
         screen.getByRole('list', {
-          name: 'Incoming player battle invitations',
+          name: 'Received player battle challenges',
         }),
       ).getAllByRole('listitem'),
     ).toHaveLength(2);
@@ -348,7 +442,7 @@ describe('asynchronous player battle lobby', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderRoute('/matches/pvp', <PvpHubPage apiBaseUrl={apiBaseUrl} />);
-    await screen.findByRole('heading', { name: 'Incoming' });
+    await screen.findByRole('heading', { name: 'Received challenges' });
     await user.click(screen.getByRole('button', { name: 'Accept' }));
     await user.selectOptions(screen.getByLabelText('Battle deck'), deck.deckId);
     await user.click(screen.getByLabelText(new RegExp(deck.cards[0]!.name)));
@@ -405,9 +499,373 @@ describe('asynchronous player battle lobby', () => {
       submissionId: expect.any(String),
     });
   });
+
+  it('cancels a sent pending invitation once and keeps its terminal record', async () => {
+    const user = userEvent.setup();
+    const invitation = pvpInvitation({ direction: 'outgoing' });
+    const cancelled = pvpInvitation({
+      canCancel: false,
+      direction: 'outgoing',
+      respondedAt: '2026-09-05T09:00:00.000Z',
+      status: 'cancelled',
+      version: 1,
+    });
+    let resolveCancellation!: (response: Response) => void;
+    const pending = new Promise<Response>((resolve) => {
+      resolveCancellation = resolve;
+    });
+    const fetchMock = vi.fn();
+    for (const response of hubResponses({ outgoing: [invitation] })) {
+      fetchMock.mockResolvedValueOnce(response);
+    }
+    fetchMock.mockReturnValueOnce(pending);
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderRoute('/matches/pvp', <PvpHubPage apiBaseUrl={apiBaseUrl} />);
+    const cancel = await screen.findByRole('button', {
+      name: 'Cancel challenge to wits_wanderer',
+    });
+    await user.click(cancel);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(
+      screen.getByRole('button', { name: 'Keep challenge' }),
+    ).toHaveFocus();
+    await user.keyboard('{Shift>}{Tab}{/Shift}');
+    expect(
+      screen.getByRole('button', { name: 'Confirm cancellation' }),
+    ).toHaveFocus();
+    await user.keyboard('{Tab}');
+    expect(
+      screen.getByRole('button', { name: 'Keep challenge' }),
+    ).toHaveFocus();
+    await user.keyboard('{Escape}');
+    expect(cancel).toHaveFocus();
+    await user.click(cancel);
+    await user.click(screen.getByRole('button', { name: 'Keep challenge' }));
+    expect(cancel).toHaveFocus();
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    await user.click(cancel);
+    await user.dblClick(
+      screen.getByRole('button', { name: 'Confirm cancellation' }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(
+      screen.getByText(/Cancelling your challenge to wits_wanderer/),
+    ).toHaveAttribute('role', 'status');
+
+    await act(async () => {
+      resolveCancellation(invitationResponse(cancelled));
+      await pending;
+    });
+    expect(
+      await screen.findByText('Challenge to wits_wanderer cancelled.'),
+    ).toBeVisible();
+    expect(screen.getByText('You cancelled this invitation.')).toBeVisible();
+    expect(
+      screen.queryByRole('button', {
+        name: 'Cancel challenge to wits_wanderer',
+      }),
+    ).toBeNull();
+    expect(JSON.parse(String(fetchMock.mock.calls[5]![1]!.body))).toEqual({
+      expectedVersion: 0,
+      submissionId: expect.any(String),
+    });
+  });
+
+  it('reconciles an ambiguous cancellation and retries the same submission safely', async () => {
+    const user = userEvent.setup();
+    const invitation = pvpInvitation({ direction: 'outgoing' });
+    const cancelled = pvpInvitation({
+      canCancel: false,
+      direction: 'outgoing',
+      respondedAt: '2026-09-05T09:00:00.000Z',
+      status: 'cancelled',
+      version: 1,
+    });
+    const fetchMock = vi.fn();
+    for (const response of hubResponses({ outgoing: [invitation] })) {
+      fetchMock.mockResolvedValueOnce(response);
+    }
+    fetchMock.mockRejectedValueOnce(new TypeError('response interrupted'));
+    for (const response of hubResponses({ outgoing: [invitation] }).slice(
+      0,
+      4,
+    )) {
+      fetchMock.mockResolvedValueOnce(response);
+    }
+    fetchMock.mockResolvedValueOnce(invitationResponse(cancelled));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderRoute('/matches/pvp', <PvpHubPage apiBaseUrl={apiBaseUrl} />);
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Cancel challenge to wits_wanderer',
+      }),
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Confirm cancellation' }),
+    );
+    const retry = await screen.findByRole('button', {
+      name: 'Cancel challenge to wits_wanderer',
+    });
+    expect(retry).toHaveTextContent('Retry cancellation safely');
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(10));
+
+    const firstBody = JSON.parse(String(fetchMock.mock.calls[5]![1]!.body));
+    await user.click(retry);
+    await user.click(
+      screen.getByRole('button', { name: 'Confirm cancellation' }),
+    );
+    await screen.findByText('You cancelled this invitation.');
+    const retryBody = JSON.parse(String(fetchMock.mock.calls[10]![1]!.body));
+    expect(retryBody).toEqual(firstBody);
+  });
+
+  it('restores an accepted invitation when cancellation loses the race', async () => {
+    const user = userEvent.setup();
+    const invitation = pvpInvitation({ direction: 'outgoing' });
+    const accepted = pvpInvitation({
+      canCancel: false,
+      direction: 'outgoing',
+      matchId: PVP_MATCH_ID,
+      respondedAt: '2026-09-05T09:00:00.000Z',
+      status: 'accepted',
+      version: 1,
+    });
+    const fetchMock = vi.fn();
+    for (const response of hubResponses({ outgoing: [invitation] })) {
+      fetchMock.mockResolvedValueOnce(response);
+    }
+    fetchMock.mockResolvedValueOnce(
+      pvpProblemResponse('PVP_INVITATION_VERSION_CONFLICT', 409),
+    );
+    for (const response of hubResponses({ outgoing: [accepted] }).slice(0, 4)) {
+      fetchMock.mockResolvedValueOnce(response);
+    }
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderRoute('/matches/pvp', <PvpHubPage apiBaseUrl={apiBaseUrl} />);
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Cancel challenge to wits_wanderer',
+      }),
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Confirm cancellation' }),
+    );
+
+    expect(
+      await screen.findByText(/was accepted before cancellation completed/i),
+    ).toHaveAttribute('role', 'status');
+    expect(screen.getByText('Accepted')).toBeVisible();
+    expect(screen.getByText(/accepted your challenge/i)).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Open match' })).toHaveAttribute(
+      'href',
+      `/matches/pvp/${PVP_MATCH_ID}`,
+    );
+    expect(
+      screen.queryByRole('button', {
+        name: 'Cancel challenge to wits_wanderer',
+      }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/declined|expired|unavailable/i)).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(10);
+  });
 });
 
 describe('asynchronous PvP battle', () => {
+  it('offers a confirmed forfeit on either turn and submits it once', async () => {
+    const user = userEvent.setup();
+    const active = pvpMatch({ currentActor: 'opponent', legalActions: [] });
+    const resigned = pvpMatch({
+      canResign: false,
+      completedAt: '2026-09-05T10:00:00.000Z',
+      completionReason: 'voluntary_resignation',
+      currentActor: null,
+      legalActions: [],
+      outcome: 'loss',
+      status: 'completed',
+      turnDeadline: null,
+      version: 4,
+    });
+    let resolveResignation!: (response: Response) => void;
+    const pending = new Promise<Response>((resolve) => {
+      resolveResignation = resolve;
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(pvpMatchResponse(active))
+      .mockReturnValueOnce(pending);
+    vi.stubGlobal('fetch', fetchMock);
+    renderPvpMatch();
+
+    const trigger = await screen.findByRole('button', {
+      name: 'Forfeit battle',
+    });
+    await user.click(trigger);
+    const dialog = screen.getByRole('alertdialog', {
+      name: 'Forfeit this battle?',
+    });
+    expect(dialog).toHaveTextContent(/records a loss for you/i);
+    const cancel = screen.getByRole('button', { name: 'Keep playing' });
+    expect(cancel).toHaveFocus();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+
+    await user.click(trigger);
+    await user.click(screen.getByRole('button', { name: 'Confirm forfeit' }));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('button', { name: 'Forfeiting…' })).toBeDisabled();
+    expect(
+      screen.getByText('Submitting your forfeit to the server…'),
+    ).toHaveAttribute('role', 'status');
+    expect(JSON.parse(String(fetchMock.mock.calls[1]![1]!.body))).toEqual({
+      expectedVersion: 3,
+      submissionId: expect.any(String),
+    });
+
+    await act(async () => {
+      resolveResignation(pvpMatchResponse(resigned));
+      await pending;
+    });
+    expect(await screen.findByText('You forfeited this battle.')).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Forfeit battle' }),
+    ).not.toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(
+      /resign|voluntary_resignation/i,
+    );
+  });
+
+  it('does not offer forfeit without the API capability', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(pvpMatchResponse(pvpMatch({ canResign: false }))),
+    );
+    renderPvpMatch();
+
+    await screen.findByRole('heading', { name: 'Your turn' });
+    expect(
+      screen.queryByRole('button', { name: 'Forfeit battle' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('reconciles an ambiguous forfeit and retries the same submission', async () => {
+    const user = userEvent.setup();
+    const active = pvpMatch();
+    const resigned = pvpMatch({
+      canResign: false,
+      completedAt: '2026-09-05T10:00:00.000Z',
+      completionReason: 'voluntary_resignation',
+      currentActor: null,
+      legalActions: [],
+      outcome: 'loss',
+      status: 'completed',
+      turnDeadline: null,
+      version: 4,
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(pvpMatchResponse(active))
+      .mockRejectedValueOnce(new TypeError('connection interrupted'))
+      .mockResolvedValueOnce(pvpMatchResponse(active))
+      .mockResolvedValueOnce(pvpMatchResponse(resigned));
+    vi.stubGlobal('fetch', fetchMock);
+    renderPvpMatch();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Forfeit battle' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Confirm forfeit' }));
+    const retry = await screen.findByRole('button', {
+      name: 'Retry same forfeit safely',
+    });
+    const firstBody = JSON.parse(String(fetchMock.mock.calls[1]![1]!.body));
+    await user.click(retry);
+
+    expect(await screen.findByText('You forfeited this battle.')).toBeVisible();
+    const retryBody = JSON.parse(String(fetchMock.mock.calls[3]![1]!.body));
+    expect(retryBody.submissionId).toBe(firstBody.submissionId);
+    expect(retryBody.expectedVersion).toBe(firstBody.expectedVersion);
+  });
+
+  it('reconciles a stale forfeit without automatically resubmitting it', async () => {
+    const user = userEvent.setup();
+    const active = pvpMatch();
+    const advanced = pvpMatch({ version: 4 });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(pvpMatchResponse(active))
+      .mockResolvedValueOnce(
+        pvpProblemResponse('PVP_MATCH_VERSION_CONFLICT', 409),
+      )
+      .mockResolvedValueOnce(pvpMatchResponse(advanced));
+    vi.stubGlobal('fetch', fetchMock);
+    renderPvpMatch();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Forfeit battle' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Confirm forfeit' }));
+
+    await screen.findByText(/latest battle state was restored/i);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(
+      screen.queryByRole('button', {
+        name: 'Retry same forfeit safely',
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Forfeit battle' }),
+    ).toBeEnabled();
+  });
+
+  it('shows the deadline result when forfeit loses the completion race', async () => {
+    const user = userEvent.setup();
+    const active = pvpMatch();
+    const completed = pvpMatch({
+      canResign: false,
+      completionReason: 'turn_forfeit',
+      currentActor: null,
+      legalActions: [],
+      outcome: 'loss',
+      status: 'completed',
+      turnDeadline: null,
+      version: 4,
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(pvpMatchResponse(active))
+      .mockResolvedValueOnce(pvpProblemResponse('PVP_MATCH_COMPLETED', 409))
+      .mockResolvedValueOnce(pvpMatchResponse(completed));
+    vi.stubGlobal('fetch', fetchMock);
+    renderPvpMatch();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Forfeit battle' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Confirm forfeit' }));
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Deadline defeat — match saved',
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        'Your turn deadline expired, so you forfeited the battle.',
+      ),
+    ).toBeVisible();
+    expect(screen.queryByText(/voluntary_resignation|turn_forfeit/)).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Retry same forfeit safely' }),
+    ).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it('waits for an opponent replacement without showing local controls', async () => {
     vi.stubGlobal(
       'fetch',
@@ -627,17 +1085,39 @@ describe('asynchronous PvP battle', () => {
       await vi.advanceTimersByTimeAsync(1_100);
     });
 
+    const result = screen.getByRole('region', {
+      name: 'Deadline defeat — match saved',
+    });
     expect(
-      screen.getByText(/Your 24-hour decision deadline expired/i),
+      within(result).getByText(/Your turn deadline expired/i),
     ).toBeVisible();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it.each([
-    ['win', 'turn_forfeit', 'Your opponent missed'],
-    ['loss', 'turn_forfeit', 'Your 24-hour decision deadline expired'],
-    ['win', 'account_deletion_forfeit', 'became unavailable'],
-    ['loss', 'defeat', 'won the battle'],
+    [
+      'win',
+      'turn_forfeit',
+      'Your opponent’s turn deadline expired, so they forfeited the battle.',
+    ],
+    [
+      'loss',
+      'turn_forfeit',
+      'Your turn deadline expired, so you forfeited the battle.',
+    ],
+    [
+      'win',
+      'account_deletion_forfeit',
+      'Your opponent became unavailable, so the battle was forfeited.',
+    ],
+    [
+      'loss',
+      'account_deletion_forfeit',
+      'Your account became unavailable, so the battle was forfeited.',
+    ],
+    ['win', 'voluntary_resignation', 'wits_wanderer forfeited the battle.'],
+    ['loss', 'voluntary_resignation', 'You forfeited this battle.'],
+    ['loss', 'defeat', 'wits_wanderer won the battle.'],
   ] as const)(
     'renders terminal %s / %s result',
     async (outcome, reason, message) => {
@@ -651,8 +1131,14 @@ describe('asynchronous PvP battle', () => {
         vi.fn().mockResolvedValue(pvpMatchResponse(completed)),
       );
       renderPvpMatch();
-      expect(await screen.findByText(new RegExp(message, 'i'))).toBeVisible();
+      const result = await screen.findByRole('region', {
+        name: /match saved/i,
+      });
+      expect(within(result).getByText(message)).toBeVisible();
       expect(screen.getByText(/Persisted final result/)).toBeVisible();
+      expect(document.body).not.toHaveTextContent(
+        /voluntary_resignation|turn_forfeit|account_deletion_forfeit|account deletion|account deleted/i,
+      );
     },
   );
 

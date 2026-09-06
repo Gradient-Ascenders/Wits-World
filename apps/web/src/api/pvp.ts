@@ -8,8 +8,11 @@ import {
   type MatchPowerCard,
 } from './matches';
 
+const PVP_ACCEPT =
+  'application/vnd.wits-world.pvp.v3+json, application/vnd.wits-world.pvp.v2+json;q=0.9, application/json;q=0.8';
+
 export type PvpInvitationStatus =
-  'pending' | 'accepted' | 'declined' | 'expired' | 'invalidated';
+  'pending' | 'accepted' | 'declined' | 'cancelled' | 'expired' | 'invalidated';
 
 export type PvpAction =
   | { creatureId: string; type: 'select_replacement' }
@@ -17,6 +20,7 @@ export type PvpAction =
   | { powerCardId: string; type: 'use_power_card' };
 
 export interface PvpInvitation {
+  canCancel: boolean;
   createdAt: string;
   direction: 'incoming' | 'outgoing';
   expiresAt: string;
@@ -40,7 +44,10 @@ export interface PvpMatchSummary {
 }
 
 export type PvpCompletionReason =
-  'account_deletion_forfeit' | 'defeat' | 'turn_forfeit';
+  | 'account_deletion_forfeit'
+  | 'defeat'
+  | 'turn_forfeit'
+  | 'voluntary_resignation';
 
 export interface PvpHistorySummary {
   completedAt: string;
@@ -73,6 +80,7 @@ export interface PvpActionResult {
 }
 
 export interface AsyncPvpMatch {
+  canResign: boolean;
   completedAt: string | null;
   completionReason: PvpCompletionReason | null;
   currentActor: 'opponent' | 'self' | null;
@@ -117,6 +125,7 @@ export type PvpApiFailure =
   | 'already-pending'
   | 'authorization'
   | 'completed'
+  | 'cancelled'
   | 'conflict'
   | 'deck-invalid'
   | 'expired'
@@ -269,6 +278,25 @@ export async function declinePvpInvitation(
   return parseInvitationEnvelope(payload);
 }
 
+export async function cancelPvpInvitation(
+  options: BaseOptions & {
+    expectedVersion: number;
+    invitationId: string;
+    submissionId: string;
+  },
+): Promise<PvpInvitation> {
+  const payload = await pvpRequest({
+    ...options,
+    body: {
+      expectedVersion: options.expectedVersion,
+      submissionId: options.submissionId,
+    },
+    method: 'POST',
+    path: `/matches/pvp/invitations/${encodeURIComponent(options.invitationId)}/cancel`,
+  });
+  return parseInvitationEnvelope(payload);
+}
+
 export async function listActivePvpMatches(
   options: BaseOptions & { cursor?: string; limit?: number },
 ): Promise<PvpPage<PvpMatchSummary>> {
@@ -327,6 +355,27 @@ export async function submitPvpAction(
   return match;
 }
 
+export async function resignPvpMatch(
+  options: BaseOptions & {
+    expectedVersion: number;
+    matchId: string;
+    submissionId: string;
+  },
+): Promise<AsyncPvpMatch> {
+  const payload = await pvpRequest({
+    ...options,
+    body: {
+      expectedVersion: options.expectedVersion,
+      submissionId: options.submissionId,
+    },
+    method: 'POST',
+    path: `/matches/pvp/${encodeURIComponent(options.matchId)}/resign`,
+  });
+  const match = parsePvpMatch(payload);
+  if (match.matchId !== options.matchId) throw new PvpApiError('unavailable');
+  return match;
+}
+
 async function pvpRequest({
   apiBaseUrl,
   body,
@@ -347,7 +396,7 @@ async function pvpRequest({
     response = await fetch(`${apiBaseUrl}${path}`, {
       body: body === undefined ? undefined : JSON.stringify(body),
       headers: {
-        Accept: 'application/json',
+        Accept: PVP_ACCEPT,
         Authorization: `Bearer ${accessToken}`,
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
       },
@@ -397,6 +446,7 @@ async function parsePvpError(response: Response): Promise<PvpApiError> {
     PVP_DECK_INVALID: 'deck-invalid',
     PVP_IDEMPOTENCY_CONFLICT: 'conflict',
     PVP_INVITATION_ALREADY_PENDING: 'already-pending',
+    PVP_INVITATION_CANCELLED: 'cancelled',
     PVP_INVITATION_EXPIRED: 'expired',
     PVP_INVITATION_INVALIDATED: 'invalidated',
     PVP_INVITATION_NOT_FOUND: 'not-found',
@@ -445,19 +495,22 @@ function parsePage<T>(
 }
 
 function parseInvitation(value: unknown): PvpInvitation {
+  const invitationKeys = [
+    'invitationId',
+    'direction',
+    'status',
+    'version',
+    'opponent',
+    'createdAt',
+    'expiresAt',
+    'respondedAt',
+    'matchId',
+  ] as const;
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, [
-      'invitationId',
-      'direction',
-      'status',
-      'version',
-      'opponent',
-      'createdAt',
-      'expiresAt',
-      'respondedAt',
-      'matchId',
-    ]) ||
+    (!hasExactKeys(value, invitationKeys) &&
+      !hasExactKeys(value, [...invitationKeys, 'canCancel'])) ||
+    (value.canCancel !== undefined && typeof value.canCancel !== 'boolean') ||
     !isUuid(value.invitationId) ||
     (value.direction !== 'incoming' && value.direction !== 'outgoing') ||
     !isInvitationStatus(value.status) ||
@@ -473,11 +526,24 @@ function parseInvitation(value: unknown): PvpInvitation {
   if (
     (value.status === 'pending' && value.respondedAt !== null) ||
     (value.status !== 'pending' && value.respondedAt === null) ||
-    (value.status === 'accepted') !== (value.matchId !== null)
+    (value.status === 'accepted') !== (value.matchId !== null) ||
+    (value.canCancel === true &&
+      (value.direction !== 'outgoing' || value.status !== 'pending'))
   ) {
     throw new PvpApiError('unavailable');
   }
-  return value as unknown as PvpInvitation;
+  return {
+    canCancel: value.canCancel === true,
+    createdAt: value.createdAt,
+    direction: value.direction,
+    expiresAt: value.expiresAt,
+    invitationId: value.invitationId,
+    matchId: value.matchId,
+    opponent: value.opponent,
+    respondedAt: value.respondedAt,
+    status: value.status,
+    version: value.version,
+  };
 }
 
 function parseMatchSummary(value: unknown): PvpMatchSummary {
@@ -535,26 +601,29 @@ function parseHistorySummary(value: unknown): PvpHistorySummary {
 }
 
 function parsePvpMatch(value: unknown): AsyncPvpMatch {
+  const matchKeys = [
+    'matchId',
+    'mode',
+    'status',
+    'version',
+    'opponent',
+    'currentActor',
+    'turnDeadline',
+    'state',
+    'legalActions',
+    'lastAction',
+    'outcome',
+    'completionReason',
+    'startedAt',
+    'updatedAt',
+    'completedAt',
+    'requestId',
+  ] as const;
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, [
-      'matchId',
-      'mode',
-      'status',
-      'version',
-      'opponent',
-      'currentActor',
-      'turnDeadline',
-      'state',
-      'legalActions',
-      'lastAction',
-      'outcome',
-      'completionReason',
-      'startedAt',
-      'updatedAt',
-      'completedAt',
-      'requestId',
-    ]) ||
+    (!hasExactKeys(value, matchKeys) &&
+      !hasExactKeys(value, [...matchKeys, 'canResign'])) ||
+    (value.canResign !== undefined && typeof value.canResign !== 'boolean') ||
     !isUuid(value.matchId) ||
     value.mode !== 'asynchronous' ||
     (value.status !== 'active' && value.status !== 'completed') ||
@@ -594,13 +663,15 @@ function parsePvpMatch(value: unknown): AsyncPvpMatch {
         value.completionReason === null ||
         value.completedAt === null ||
         state.phase !== 'completed' ||
-        legalActions.length !== 0)) ||
+        legalActions.length !== 0 ||
+        value.canResign === true)) ||
     (value.currentActor === 'opponent' && legalActions.length !== 0) ||
     state.opponent.playerName !== value.opponent.playerName
   ) {
     throw new PvpApiError('unavailable');
   }
   return {
+    canResign: value.canResign === true,
     completedAt: value.completedAt,
     completionReason: value.completionReason,
     currentActor: value.currentActor,
@@ -864,15 +935,23 @@ function isNullableRelativeSide(
 }
 
 function isInvitationStatus(value: unknown): value is PvpInvitationStatus {
-  return ['accepted', 'declined', 'expired', 'invalidated', 'pending'].includes(
-    String(value),
-  );
+  return [
+    'accepted',
+    'cancelled',
+    'declined',
+    'expired',
+    'invalidated',
+    'pending',
+  ].includes(String(value));
 }
 
 function isCompletionReason(value: unknown): value is PvpCompletionReason {
-  return ['account_deletion_forfeit', 'defeat', 'turn_forfeit'].includes(
-    String(value),
-  );
+  return [
+    'account_deletion_forfeit',
+    'defeat',
+    'turn_forfeit',
+    'voluntary_resignation',
+  ].includes(String(value));
 }
 
 function isNonNegativeInteger(value: unknown): value is number {

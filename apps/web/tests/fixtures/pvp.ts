@@ -12,15 +12,19 @@ export const INVITATION_ID = uuid(2101);
 export function pvpInvitation(
   overrides: Partial<PvpInvitation> = {},
 ): PvpInvitation {
+  const direction = overrides.direction ?? 'incoming';
+  const status = overrides.status ?? 'pending';
   return {
+    canCancel:
+      overrides.canCancel ?? (direction === 'outgoing' && status === 'pending'),
     createdAt: '2026-09-05T08:00:00.000Z',
-    direction: 'incoming',
+    direction,
     expiresAt: '2026-09-06T08:00:00.000Z',
     invitationId: INVITATION_ID,
     matchId: null,
     opponent: { playerName: 'wits_wanderer' },
     respondedAt: null,
-    status: 'pending',
+    status,
     version: 0,
     ...overrides,
   };
@@ -55,6 +59,7 @@ export function pvpMatch(
     ...overrides.state,
   };
   return {
+    canResign: !completed,
     completedAt: completed ? '2026-09-05T09:30:00.000Z' : null,
     completionReason: completed ? 'defeat' : null,
     currentActor: completed ? null : 'self',

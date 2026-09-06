@@ -110,7 +110,11 @@ the selected page without exposing a player UUID.
 
 The [asynchronous PvP contract](./asynchronous-pvp-api-contract.md) defines the
 implemented exact Player Name lookup, invitations, viewer-safe match reads,
-signed keyset pages, legal-action submissions, and 24-hour deadline behavior.
+signed keyset pages, challenger-only pending-invitation cancellation,
+legal-action submissions, participant-only voluntary resignation, and 24-hour
+deadline behavior. Version 3 invitation clients negotiate cancellation through
+the CORS-safe `Accept` header and receive the server-derived `canCancel`
+capability.
 These routes remain separate from CPU and live PvP; the Web experience is
 tracked independently.
 

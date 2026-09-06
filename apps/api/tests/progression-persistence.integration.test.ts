@@ -104,6 +104,10 @@ describe.skipIf(!runIntegrationTests)(
         '0034_retire_coin_rewards.sql',
         '0035_deny_deleted_identity_tokens.sql',
         '0036_remove_duplicate_indexes.sql',
+        '0037_add_async_pvp_voluntary_resignation.sql',
+        '0038_add_question_performance_analytics_indexes.sql',
+        '0039_add_async_pvp_invitation_cancellation.sql',
+        '0040_add_offline_challenge_attempts.sql',
       ]);
 
       pool = createDatabasePool(temporaryConfig);
@@ -146,7 +150,7 @@ describe.skipIf(!runIntegrationTests)(
           where is_active = true
           order by source_kind, outcome_key`,
         );
-        expect(rules.rows).toHaveLength(14);
+        expect(rules.rows).toHaveLength(16);
         expect(rules.rows).toContainEqual({
           source_kind: 'challenge_completion',
           outcome_key: 'score_5',
@@ -161,6 +165,16 @@ describe.skipIf(!runIntegrationTests)(
           source_kind: 'asynchronous_pvp',
           outcome_key: 'turn_forfeit_win',
           points: 25,
+        });
+        expect(rules.rows).toContainEqual({
+          source_kind: 'asynchronous_pvp',
+          outcome_key: 'voluntary_resignation_win',
+          points: 25,
+        });
+        expect(rules.rows).toContainEqual({
+          source_kind: 'asynchronous_pvp',
+          outcome_key: 'voluntary_resignation_loss',
+          points: 0,
         });
 
         const awards = await pool.query<{

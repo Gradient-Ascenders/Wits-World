@@ -6,8 +6,9 @@ title: Player asynchronous PvP journey
 
 ## Purpose and authority
 
-Issue #181 adds asynchronous player-versus-player play alongside the existing
-CPU journey. The protected `/matches` routes continue to provide CPU play;
+Issues #181, #219, and #220 provide asynchronous player-versus-player play,
+voluntary match forfeiture, and outgoing invitation cancellation alongside the existing CPU journey. The protected
+`/matches` routes continue to provide CPU play;
 `/matches/pvp` provides invitations, active asynchronous matches, and PvP
 history. The [asynchronous PvP API contract](../architecture/asynchronous-pvp-api-contract.md)
 remains the source of truth for privacy, identity, deck snapshots, legal
@@ -40,15 +41,28 @@ is submitted. A rejected or changed deck returns safe recovery guidance.
 
 ## Invitations
 
-Incoming and sent groups render `pending`, `accepted`, `declined`, `expired`,
-and `invalidated` states. The player can accept or decline only a pending
+Received and sent challenge groups render `pending`, `accepted`, `declined`, `cancelled`,
+`expired`, and `invalidated` states. The player can accept or decline only a pending
 incoming invitation. Accept requires a deck and opening Creature and navigates
 to the server-created match. Accepted invitations link to that persisted
 match. `invalidated` is presented as **Unavailable**, because it represents an
 account-lifecycle change rather than a user cancellation.
 
-The current API does not support invitation cancellation. The UI therefore
-does not invent a Cancel action or state transition.
+A pending sent invitation exposes **Cancel challenge** only when the version 3
+API returns `canCancel: true`. The action is never shown for incoming or
+terminal invitations, and an absent capability is treated as false during a
+mixed rollout. Cancellation is single-flight and submits only `submissionId`
+and `expectedVersion`; repeated clicks are disabled. Success replaces the item
+in place, including when it came from a later cursor page, and shows
+**Cancelled** plus “You cancelled this invitation.” The recipient sees the
+retained terminal record and “This invitation was cancelled by the opponent's
+Player Name.”
+
+An ambiguous cancellation response triggers an authoritative first-page poll
+and offers a same-submission retry only if the invitation remains pending and
+cancellable. Stale, expired, invalidated, accepted, declined, or already
+cancelled server state is rendered as terminal without inventing a second
+transition.
 
 ## Match interaction and recovery
 
@@ -73,10 +87,23 @@ The opponent projection shows only the active and defeated Creatures, legally
 played Power cards, and aggregate remaining counts supplied by the API. There
 is no placeholder array or accessibility text for unrevealed cards.
 
-Completed views distinguish battle defeat, missed-deadline forfeit, and
-account-deletion forfeit using viewer-relative win/loss language. Voluntary
-forfeit is not offered because S3-02 has no resignation intent or completion
-reason; adding it requires an approved API contract and API-owned implementation.
+When the API returns `canResign: true`, either participant may open a warning
+dialog and confirm **Forfeit battle**, which records an immediate loss while the
+opponent receives the win. “Forfeit” is the player-facing term; the existing
+resign endpoint and `voluntary_resignation` completion reason remain internal
+contract details and are never rendered. This action
+is available on either player's turn and disappears as soon as the server reports
+the match terminal. The request contains only the current version and one stable
+submission ID. Ambiguous delivery is reconciled with a match read before the UI
+offers a same-ID retry, while stale or completed state is rendered without an
+automatic second forfeit request.
+
+Completed views distinguish battle defeat, missed-deadline forfeit, account
+unavailability, and voluntary forfeit using viewer-relative win/loss language.
+The player-facing copy does not reveal whether an opponent became unavailable
+because of account deletion. The client never infers availability or sends a
+forfeiting participant, winner, outcome, completion reason, or progression
+value.
 
 ## Accessibility and responsive behaviour
 
@@ -96,14 +123,19 @@ or runtime errors.
 ## Automated coverage
 
 `apps/web/tests/pvp-client.test.ts` validates privacy-safe closed contracts,
-invitation states, versioned intent bodies, legal actions, hidden-information
+invitation states and cancellation capability fallback, versioned intent bodies, legal actions, hidden-information
 rejection, error mapping, and ambiguous-response recovery metadata.
 `apps/web/tests/pvp-pages.test.tsx` covers the hub state matrix, Player Name
-challenge flow, accept/decline/expiry handling, duplicate-click protection,
+challenge flow, accept/decline/cancel/expiry handling, duplicate-click protection,
 cursor navigation, own/opponent turns, move and Power controls, polling,
-deadline refresh, stale reconciliation, terminal outcomes, hidden opponent
-presentation, and retry. Existing CPU match client/page tests remain the
-regression boundary for the shared presentation extraction.
+deadline refresh, cancellation terminal presentation and same-reference
+recovery, stale reconciliation, confirmed forfeit, ambiguous
+same-reference retry, capability gating, terminal outcomes, hidden opponent
+presentation, and retry. Playwright also checks single-request cancellation and
+terminal presentation, the forfeit dialog's keyboard focus, responsive
+layout, and terminal match result. Existing CPU match
+client/page tests remain the regression boundary for the shared presentation
+extraction.
 
 This document was generated and reviewed with assistance from
-Codex-CLI[GPT-5].
+Codex-CLI[GPT-5] and Codex[GPT-5].

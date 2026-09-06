@@ -13,6 +13,7 @@ const vitestEntrypoint = path.resolve(
   '../../node_modules/vitest/vitest.mjs',
 );
 const testFiles = [
+  'tests/offline-challenges-database.integration.test.ts',
   'tests/event-database.integration.test.ts',
   'tests/player-database.integration.test.ts',
   'tests/account-deletion-persistence.integration.test.ts',
@@ -36,6 +37,7 @@ const testFiles = [
   'tests/asynchronous-pvp-persistence.integration.test.ts',
   'tests/campaign-persistence.integration.test.ts',
   'tests/movement-evidence-database.integration.test.ts',
+  'tests/question-performance-database.integration.test.ts',
 ];
 
 // Each file provisions and migrates its own isolated test database.
