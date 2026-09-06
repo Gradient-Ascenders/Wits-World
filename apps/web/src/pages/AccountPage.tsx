@@ -157,7 +157,7 @@ export default function AccountPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   async function submitDeletion(reauthenticationToken: string) {
     setDeletion({ status: 'submitting' });
-    if (!(await confirmOfflineSignOut())) {
+    if ((await confirmOfflineSignOut('delete your account')) === 'cancelled') {
       setDeletion(deletion);
       return;
     }
@@ -196,7 +196,7 @@ export default function AccountPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   }
 
   async function finishDeletion() {
-    if (!(await confirmOfflineSignOut())) return;
+    if ((await confirmOfflineSignOut()) === 'cancelled') return;
     setSignOutFailed(false);
     clearAuthenticatedPlayerBinding();
 

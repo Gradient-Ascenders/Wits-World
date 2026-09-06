@@ -79,11 +79,16 @@ while a local challenge remains active. Pending IndexedDB data survives updates.
 ## Deployment and team setup
 
 Explicit sign-out and account switching await offline cleanup before redirecting.
-If IndexedDB cannot be read or cleared, a browser alert explains that local
-answers/location may remain and the action stops; retry or clear the site's
-browser data before leaving a shared device. Clearing the identity binding alone
+If IndexedDB cannot be read or cleared, a confirmation warns that local
+answers/precise location may remain and offers to continue anyway. Only a
+deliberate cancellation stops the action: unavailable browser storage must not
+prevent server-side account deletion or sign-out. Clear the site's browser data
+before leaving a shared device. Cleanup reports `cleared`, `cancelled`, or
+`cleanup_failed`; continuing after failure never claims data was removed.
+Clearing the identity binding alone
 does not delete IndexedDB data. Account deletion checks and clears local offline
-data before sending the deletion request; confirmed local discards cannot be
+data before sending the deletion request, but permits continuing after a cleanup
+warning; confirmed local discards cannot be
 undone if the later server request fails.
 
 Run `npm ci` after pulling the dependency changes. Existing `TEST_DATABASE_URL`

@@ -69,7 +69,7 @@ export function AccountControl() {
   }
 
   async function signOut() {
-    if (!(await confirmOfflineSignOut())) return;
+    if ((await confirmOfflineSignOut()) === 'cancelled') return;
     setActionFailed(false);
     clearAuthenticatedPlayerBinding();
 
@@ -90,7 +90,8 @@ export function AccountControl() {
   }
 
   async function switchAccount() {
-    if (!(await confirmOfflineSignOut())) return;
+    if ((await confirmOfflineSignOut('switch accounts')) === 'cancelled')
+      return;
     setActionFailed(false);
     clearAuthenticatedPlayerBinding();
 

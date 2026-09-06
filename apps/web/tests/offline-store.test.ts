@@ -70,10 +70,10 @@ describe('durable offline state', () => {
   it('keeps unsynced work when discard is cancelled, and awaits confirmed removal', async () => {
     await createLocalAttempt(cached, location);
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
-    expect(await confirmOfflineSignOut()).toBe(false);
+    expect(await confirmOfflineSignOut()).toBe('cancelled');
     expect((await readOfflineState()).attempts).toHaveLength(1);
     confirm.mockReturnValue(true);
-    expect(await confirmOfflineSignOut()).toBe(true);
+    expect(await confirmOfflineSignOut()).toBe('cleared');
     expect(await readOfflineState()).toEqual({
       session: undefined,
       packs: [],
@@ -82,13 +82,10 @@ describe('durable offline state', () => {
     });
   });
   it.each(['read', 'delete'])(
-    'blocks sign-out and reports an IndexedDB %s failure',
+    'allows continuing after an IndexedDB %s failure without claiming cleanup succeeded',
     async (operation) => {
       await createLocalAttempt(cached, location);
-      vi.spyOn(window, 'confirm').mockReturnValue(true);
-      const alert = vi
-        .spyOn(window, 'alert')
-        .mockImplementation(() => undefined);
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
       const failure = vi
         .spyOn(
           IDBObjectStore.prototype,
@@ -97,10 +94,14 @@ describe('durable offline state', () => {
         .mockImplementation(() => {
           throw new DOMException('Storage unavailable', 'InvalidStateError');
         });
-      expect(await confirmOfflineSignOut()).toBe(false);
-      expect(alert).toHaveBeenCalledWith(
-        expect.stringContaining('You have not been signed out'),
+      expect(await confirmOfflineSignOut()).toBe('cleanup_failed');
+      expect(confirm).toHaveBeenLastCalledWith(
+        expect.stringContaining(
+          'Saved answers and precise location data may remain',
+        ),
       );
+      confirm.mockReturnValue(false);
+      expect(await confirmOfflineSignOut()).toBe('cancelled');
       expect(localStorage.getItem('wits-world.authenticated-player-id')).toBe(
         'player',
       );

@@ -44,7 +44,7 @@ export function ProtectedRoute({
   }
 
   async function signOut() {
-    if (!(await confirmOfflineSignOut())) return;
+    if ((await confirmOfflineSignOut()) === 'cancelled') return;
     setActionFailed(false);
     clearAuthenticatedPlayerBinding();
 

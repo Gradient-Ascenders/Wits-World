@@ -261,22 +261,27 @@ export async function clearOfflineData(playerId?: string) {
   }
   await tx.done;
 }
-export async function confirmOfflineSignOut() {
+export type OfflineCleanupResult = 'cleared' | 'cancelled' | 'cleanup_failed';
+
+export async function confirmOfflineSignOut(
+  action = 'sign out',
+): Promise<OfflineCleanupResult> {
   try {
     const state = await readOfflineState();
     if (
       state?.attempts.length &&
       !window.confirm(
-        'Signing out will remove offline attempts that have not synced. Sign out and discard them?',
+        `This will remove offline attempts that have not synced. Continue to ${action} and discard them?`,
       )
     )
-      return false;
+      return 'cancelled';
     await clearOfflineData();
-    return true;
+    return 'cleared';
   } catch {
-    window.alert(
-      'Offline data could not be checked or removed. You have not been signed out and saved answers or location data may remain on this device. Retry, or clear this site’s data in your browser settings before leaving a shared device.',
-    );
-    return false;
+    return window.confirm(
+      `Offline data could not be checked or removed. Saved answers and precise location data may remain on this device even after you ${action}. Clear this site’s data in your browser settings before leaving a shared device. Continue to ${action} anyway?`,
+    )
+      ? 'cleanup_failed'
+      : 'cancelled';
   }
 }
