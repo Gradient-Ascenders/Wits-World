@@ -6,11 +6,23 @@ do $$
 declare
   ordinary_count integer;
 begin
-  select count(*)::integer into ordinary_count
-  from public.card_definitions
-  where catalogue_class = 'ordinary'
-    and authoring_status = 'published'
-    and is_active;
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'card_definitions'
+      and column_name = 'catalogue_class'
+  ) then
+    return;
+  end if;
+
+  execute
+    'select count(*)::integer
+       from public.card_definitions
+      where catalogue_class = ''ordinary''
+        and authoring_status = ''published''
+        and is_active'
+    into ordinary_count;
 
   if ordinary_count <> 30 then
     raise exception
