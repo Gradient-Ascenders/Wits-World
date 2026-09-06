@@ -302,12 +302,39 @@ function formatEffect(
 function formatModifier(
   value: Pick<
     CardEffect,
+    | 'effectType'
     | 'effectValue'
     | 'modifierDurationTurns'
     | 'modifierOperation'
     | 'modifierStat'
   >,
 ) {
+  if (
+    value.modifierStat === 'damage_multiplier' &&
+    value.modifierOperation === 'multiply' &&
+    value.effectValue !== null &&
+    (value.effectType === 'buff' || value.effectType === 'debuff')
+  ) {
+    const subject = value.effectType === 'buff' ? 'This creature' : 'Opponent';
+    const direction = value.effectType === 'buff' ? 'more' : 'less';
+    const duration =
+      value.modifierDurationTurns === null
+        ? 'for the rest of the battle'
+        : `for ${value.modifierDurationTurns} ${value.modifierDurationTurns === 1 ? 'turn' : 'turns'}`;
+
+    return `${subject} deals ${value.effectValue}% ${direction} damage ${duration}`;
+  }
+
+  if (
+    (value.modifierStat === 'hp' || value.modifierStat === 'power') &&
+    value.modifierOperation === 'add' &&
+    value.effectValue !== null
+  ) {
+    return value.effectType === 'buff'
+      ? `Restore ${value.effectValue} ${value.modifierStat.toUpperCase()}`
+      : `Opponent loses ${value.effectValue} ${value.modifierStat.toUpperCase()}`;
+  }
+
   const parts = [
     value.modifierStat?.replace('_', ' '),
     value.modifierOperation,

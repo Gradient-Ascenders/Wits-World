@@ -171,12 +171,68 @@ describe('Basic battle rules', () => {
     });
   });
 
-  it('uses the approved affinity cycle and leaves Basic moves neutral', () => {
-    expect(getTypeMultiplier('basic', 'grit')).toBe(1);
-    expect(getTypeMultiplier('wit', 'grit')).toBe(1.5);
-    expect(getTypeMultiplier('grit', 'wit')).toBe(0.75);
-    expect(getTypeMultiplier('wit', 'spark')).toBe(1);
-    expect(getTypeMultiplier('wit', 'wit')).toBe(1);
+  it('uses all approved directional matchups and leaves Basic neutral', () => {
+    const affinities = ['wit', 'grit', 'spark', 'spirit', 'mystic'] as const;
+    const expected = [
+      [1, 1.5, 0.75, 1, 1],
+      [0.75, 1, 1.5, 0.75, 1.5],
+      [1.5, 0.75, 1, 1.5, 0.75],
+      [1, 1.5, 0.75, 1, 1.5],
+      [1, 0.75, 1.5, 1.5, 1],
+    ];
+    affinities.forEach((attacker, row) => {
+      expect(getTypeMultiplier('basic', attacker)).toBe(1);
+      affinities.forEach((defender, column) => {
+        expect(getTypeMultiplier(attacker, defender)).toBe(
+          expected[row]![column],
+        );
+      });
+    });
+  });
+
+  it.each(['use_move', 'use_power_card'] as const)(
+    'pins affinity rules across serialized states for %s',
+    (type) => {
+      const playerDeck = makeDeck('player', {
+        moves: [makeDamageMove('spark-strike', 20, 'spark')],
+        powerCards: [
+          makePowerCard(
+            'spark-power',
+            [{ id: 'hit', effectType: 'damage', effectValue: 20 }],
+            'spark',
+          ),
+          makePowerCard('spare-power', [
+            { id: 'spare', effectType: 'damage', effectValue: 1 },
+          ]),
+        ],
+      });
+      const initial = startBattle(
+        playerDeck,
+        makeDeck('cpu', { creatureAffinity: 'wit' }),
+      );
+      expect(initial.affinityRulesVersion).toBe(2);
+      const selected: BattleAction =
+        type === 'use_move'
+          ? { type, moveId: 'spark-strike' }
+          : { type, powerCardId: 'spark-power' };
+      const restored = JSON.parse(JSON.stringify(initial)) as BattleState;
+      const current = action(restored, 'player', selected);
+      expect(activeCreature(current, 'cpu').currentHp).toBe(70);
+      expect(current.affinityRulesVersion).toBe(2);
+      const legacy = JSON.parse(JSON.stringify(initial)) as {
+        affinityRulesVersion?: 1 | 2;
+      } & BattleState;
+      delete legacy.affinityRulesVersion;
+      const previous = action(legacy, 'player', selected);
+      expect(activeCreature(previous, 'cpu').currentHp).toBe(80);
+      expect(previous.affinityRulesVersion).toBeUndefined();
+    },
+  );
+
+  it('retains the legacy directional cycle when requested', () => {
+    expect(getTypeMultiplier('spark', 'wit', 1)).toBe(1);
+    expect(getTypeMultiplier('mystic', 'spirit', 1)).toBe(0.75);
+    expect(getTypeMultiplier('mystic', 'wit', 1)).toBe(1.5);
   });
 
   it('reveals both initial Creatures before selecting the first side by coin flip', () => {

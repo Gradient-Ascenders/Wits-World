@@ -124,6 +124,8 @@ export type BattleAction =
   | { type: 'timeout' };
 
 export interface BattleState {
+  // Persisted states without this field retain the original five-affinity cycle.
+  readonly affinityRulesVersion?: 1 | 2;
   readonly phase: BattlePhase;
   readonly turnNumber: number;
   readonly currentSide: BattleSide | null;

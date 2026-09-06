@@ -12,7 +12,7 @@ export default defineConfig({
   reporter: 'line',
   testDir: './playwright',
   testMatch:
-    /(collection-gallery|starter-selection|deck-overview)\.visual\.spec\.ts/,
+    /(collection-gallery|starter-selection|deck-overview|spark-starter-cards|wit-starter-cards)\.visual\.spec\.ts/,
   timeout: 60_000,
   use: {
     ...devices['Desktop Chrome'],

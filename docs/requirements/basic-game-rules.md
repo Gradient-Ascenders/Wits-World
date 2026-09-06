@@ -235,12 +235,38 @@ result instead of rerolling.
   BASIC-09/#74 amendment recorded in [issue #74 comment 4832](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/74#issuecomment-4832).
 - `power` is the resource cost consumed from the Creature's remaining Power.
   A move is legal only when the Creature has enough remaining Power.
-- Only Damage is affected by type advantage or disadvantage. The type cycle is
-  Wit -> Grit -> Spark -> Spirit -> Mystic -> Wit. Advantage is `1.5x`,
-  disadvantage is `0.75x`, and unrelated matchups use `1.0x`.
+- Only Damage is affected by type advantage or disadvantage. The confirmed
+  5 September 2026 matchup table below replaces the original five-type cycle.
+  The starters form Wit -> Grit -> Spark -> Wit. Wit is neutral against Spirit
+  and Mystic. Spirit and Mystic both deal `1.5x` damage to each other; this is
+  an intentional exception to reciprocal advantage/disadvantage.
 - Power cards also have one of the five types. Per-card HP, Power, damage,
   healing, buff, and debuff values are decided during authoring. Catalogue
   validation enforces data types and allowed enum values.
+
+### Damage matchup table
+
+Rows are the attacking move's type (or Power card's affinity); columns are the
+defending Creature's affinity. Basic damage is always neutral.
+
+| Attacker / Defender | Wit   | Grit  | Spark | Spirit | Mystic |
+| ------------------- | ----- | ----- | ----- | ------ | ------ |
+| Wit                 | 1x    | 1.5x  | 0.75x | 1x     | 1x     |
+| Grit                | 0.75x | 1x    | 1.5x  | 0.75x  | 1.5x   |
+| Spark               | 1.5x  | 0.75x | 1x    | 1.5x   | 0.75x  |
+| Spirit              | 1x    | 1.5x  | 0.75x | 1x     | 1.5x   |
+| Mystic              | 1x    | 0.75x | 1.5x  | 1.5x   | 1x     |
+
+New server-created matches store `affinityRulesVersion: 2` in their battle
+state. Existing stored states without a version retain the original five-type
+cycle (version 1). Both Creature moves and Power-card damage use the stored
+version; healing and modifiers are unaffected. Historical results are not
+rewritten. Deploy all battle-serving API instances together: older binaries do
+not understand version 2 and must not process new-version matches. Rollback
+requires a version-aware binary, not an older engine that ignores this field.
+
+This is the agreed matchup design, not a claim of proven balance. Review card
+coverage and Spirit/Mystic first-turn outcomes in playtests before release.
 
 ## Starter grant
 
@@ -331,6 +357,10 @@ is part of Basic content integrity and its unblocked Author-console review and
 campaign controls are implemented under issue `#185`. Question analytics remains
 blocked by issue `#184` / S3-06, and ordering-question authoring remains a
 follow-up to the current multiple-choice-only editor contract.
+
+The future [card evolution rules](./card-evolution-rules.md) record the
+confirmed three-copy conversion rule without making evolution part of Basic or
+issue #164.
 
 This document was planned, generated, and edited with the assistance of
 Codex-CLI[gpt-5.6-sol medium], Codex[GPT-5], and Codex[gpt-5.6-sol].

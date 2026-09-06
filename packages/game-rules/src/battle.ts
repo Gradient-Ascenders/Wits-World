@@ -44,6 +44,7 @@ interface MutableParticipantState {
 }
 
 interface MutableBattleState {
+  affinityRulesVersion?: 1 | 2;
   phase: BattleState['phase'];
   turnNumber: number;
   currentSide: BattleSide | null;
@@ -57,9 +58,14 @@ interface MutableBattleState {
 export function getTypeMultiplier(
   attacker: MoveType,
   defender: CardAffinity,
+  affinityRulesVersion: 1 | 2 = 2,
 ): 0.75 | 1 | 1.5 {
   if (attacker === 'basic' || attacker === defender) {
     return 1;
+  }
+
+  if (affinityRulesVersion === 2) {
+    return affinityMatchups[attacker][defender];
   }
 
   const attackerIndex = cardAffinities.indexOf(attacker);
@@ -78,6 +84,14 @@ export function getTypeMultiplier(
 
   return 1;
 }
+
+const affinityMatchups = {
+  wit: { wit: 1, grit: 1.5, spark: 0.75, spirit: 1, mystic: 1 },
+  grit: { wit: 0.75, grit: 1, spark: 1.5, spirit: 0.75, mystic: 1.5 },
+  spark: { wit: 1.5, grit: 0.75, spark: 1, spirit: 1.5, mystic: 0.75 },
+  spirit: { wit: 1, grit: 1.5, spark: 0.75, spirit: 1, mystic: 1.5 },
+  mystic: { wit: 1, grit: 0.75, spark: 1.5, spirit: 1.5, mystic: 1 },
+} as const satisfies Record<CardAffinity, Record<CardAffinity, 0.75 | 1 | 1.5>>;
 
 export function getEffectDamageMultiplier(
   effectType: 'buff' | 'debuff',
@@ -135,6 +149,7 @@ export function createBattleState(
 
   return {
     phase: 'initial_selection',
+    affinityRulesVersion: 2,
     turnNumber: 0,
     currentSide: null,
     replacementSide: null,
@@ -605,6 +620,7 @@ function applyEffects(
           getTypeMultiplier(
             sourceType === 'basic' ? 'basic' : sourceType,
             targetCreature.card.affinity,
+            draft.affinityRulesVersion ?? 1,
           ) *
           getDamageMultiplier(getActiveCreature(draft.participants[side])),
       );
@@ -910,6 +926,9 @@ function getDamageMultiplier(
 
 function cloneState(state: BattleState): MutableBattleState {
   return {
+    ...(state.affinityRulesVersion === undefined
+      ? {}
+      : { affinityRulesVersion: state.affinityRulesVersion }),
     phase: state.phase,
     turnNumber: state.turnNumber,
     currentSide: state.currentSide,
