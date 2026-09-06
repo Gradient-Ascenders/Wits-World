@@ -77,7 +77,7 @@ The generated OpenAPI groups the current contract into these areas:
 | Authentication and account | Local identity, Player Name setup, and implemented account-lifecycle API boundaries                          |
 | Events                     | Player-safe published-event discovery and server-authoritative location eligibility                          |
 | Challenges                 | Timed attempt start/resume, answer locking, completion, marking, and completed-only review                   |
-| Cards                      | Server-derived starter-package previews and grants, catalogue-safe rewards, and collection                   |
+| Cards                      | Server-derived starter grants, catalogue-safe rewards, collection, and fixed three-copy evolution            |
 | Decks                      | Saved-deck CRUD, ownership validation, and active selection                                                  |
 | Trails                     | Ordered trail progress, step state, and bounded nearby-unvisited guidance                                    |
 | Matches                    | Server-created CPU and asynchronous PvP matches, legal intent, recovery, deadlines, and viewer-safe history  |
@@ -101,6 +101,13 @@ trail semantics and endpoints are documented in the
 scheduling and effective availability are documented in the
 [campaign API contract](./campaign-scheduling-api-contract.md) and
 [campaign persistence design](../database/campaign-scheduling-persistence.md).
+
+Card evolution exposes an authenticated read-only preview and an idempotent
+mutation. The browser supplies only the source definition and a submission UUID;
+the API derives player identity, resolves the fixed target, excludes copies used
+by saved decks, selects three owned copies, and performs consumption plus grant
+in one database transaction. The detailed rules and failure states are recorded
+in [Card evolution rules](../requirements/card-evolution-rules.md).
 
 Progression exposes `GET /api/v1/progression/me` and
 `GET /api/v1/progression/standings`. Both derive the player from bearer

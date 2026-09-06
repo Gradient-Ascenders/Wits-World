@@ -173,6 +173,17 @@ cannot parse `cancelled`. Retain `0039`, drain incompatible API instances, and
 roll forward. A Web rollback remains safe because pre-v3 lists fail closed on
 pages containing the new state and cannot initiate cancellation.
 
+Migration `0042_implement_card_evolution.sql` is database-first and additive.
+It installs immutable evolution receipts and consumption snapshots, then
+extends `player_cards` with evolution provenance. Apply it before deploying the
+API that registers the evolution routes. Existing API instances continue to use
+the prior ownership kinds during the short database-to-API window. Deploy the
+matching Web parser before players can receive evolved cards so collection
+responses remain readable; the separate evolution UI may follow independently.
+No new environment variable, dependency, seed, purge job, or content backfill is
+required. If the API release fails after migration, retain `0042` and roll
+forward; do not remove its provenance column or immutable history tables.
+
 ## Prerequisites
 
 - Use the Node.js and npm versions declared by the repository.

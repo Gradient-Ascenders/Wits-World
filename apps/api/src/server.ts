@@ -19,6 +19,7 @@ import { createStarterGrantService } from './cards/starter-grant.js';
 import { createChallengeAnswerSubmissionService } from './challenges/challenge-answer-submission.js';
 import { createChallengeAttemptCompletionFinalizer } from './challenges/challenge-attempt-completion-finalizer.js';
 import { createCardCollectionService } from './cards/card-collection.js';
+import { createCardEvolutionService } from './cards/card-evolution.js';
 import { createChallengeAttemptFetchService } from './challenges/challenge-attempt-fetch.js';
 import { createDeckService } from './cards/deck-service.js';
 import { createAuthorEventService } from './events/author-event-service.js';
@@ -69,6 +70,7 @@ async function startServer(): Promise<void> {
   );
   const starterGrantService = createStarterGrantService(database);
   const cardCollectionService = createCardCollectionService(database);
+  const cardEvolutionService = createCardEvolutionService(database);
   const progressionPersistence = createProgressionPersistence();
   const asyncPvpService = createAsyncPvpService(database, {
     cursorCodec: createSignedCursorCodec(config.asyncPvpCursorSigningKey),
@@ -134,6 +136,7 @@ async function startServer(): Promise<void> {
     cardServices: {
       starterGrant: starterGrantService,
       collection: cardCollectionService,
+      evolution: cardEvolutionService,
       decks: deckService,
     },
 

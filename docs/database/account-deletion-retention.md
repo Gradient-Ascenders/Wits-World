@@ -45,6 +45,7 @@ already been reached.
 | Completed challenge attempt summary                           | Retained against the anonymised player UUID                                                                                                                  |
 | Event completion, score, legacy coin outcome, and coin ledger | Retained against the anonymised player UUID                                                                                                                  |
 | Awarded-card outcome                                          | Retained in `event_completion_card_rewards`; owned `player_cards` rows are still deleted                                                                     |
+| Card-evolution outcome and consumed-copy snapshots            | Retained against the anonymised player UUID; the evolved owned `player_cards` grant is deleted                                                               |
 | Completed CPU matches, rounds, actions, and card snapshots    | Retained against the anonymised player UUID                                                                                                                  |
 | Completed asynchronous PvP matches and private snapshots      | Retained against anonymous tombstones; opponent displays `Deleted player`                                                                                    |
 | Point awards, activity days, streak totals, and achievements  | Retained privately against the anonymised player UUID; excluded from live standings                                                                          |
@@ -85,6 +86,13 @@ activity but deliberately permits deletion of a retained wallet through this
 cleanup transaction. Historical ledger rows and non-zero completion outcomes
 remain immutable against the anonymised tombstone; they are not recalculated as
 progression points.
+
+Migration `0042_implement_card_evolution.sql` retains immutable evolution
+receipts and the three consumed-copy snapshots as gameplay audit attached to the
+anonymous player tombstone. The cleanup routine still deletes all live owned
+cards, including the evolved grant. The retained rows contain random ownership
+identifiers and card-definition provenance, not Auth0 identity, Player Name, or
+location data, and therefore do not prevent local account cleanup.
 
 ## Transaction and concurrency rules
 

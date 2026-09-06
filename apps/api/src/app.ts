@@ -45,6 +45,7 @@ import type { StarterGrantService } from './cards/starter-grant.js';
 import { cardRoutes } from './routes/cards.js';
 
 import type { CardCollectionService } from './cards/card-collection.js';
+import type { CardEvolutionService } from './cards/card-evolution.js';
 
 import type { ChallengeAttemptFetchService } from './challenges/challenge-attempt-fetch.js';
 
@@ -126,6 +127,7 @@ export interface ChallengeAttemptServices {
 export interface CardServices {
   starterGrant: StarterGrantService;
   collection: CardCollectionService;
+  evolution?: CardEvolutionService;
   decks?: DeckService;
 }
 
@@ -486,6 +488,7 @@ export async function buildApp({
       prefix: '/api/v1',
       starterGrantService: cardServices.starterGrant,
       collectionService: cardServices.collection,
+      evolutionService: cardServices.evolution,
     });
 
     if (cardServices.decks) {

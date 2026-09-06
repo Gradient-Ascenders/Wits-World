@@ -98,6 +98,27 @@ describe('card API client', () => {
     );
   });
 
+  it('accepts cards acquired through evolution', async () => {
+    const evolvedCard = buildCard(3, { acquisitionKind: 'evolution' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          cards: [evolvedCard],
+          requestId: 'collection-request',
+        }),
+      ),
+    );
+
+    await expect(
+      listOwnedCards({
+        apiBaseUrl,
+        getAccessToken,
+        signal: new AbortController().signal,
+      }),
+    ).resolves.toMatchObject([{ acquisitionKind: 'evolution' }]);
+  });
+
   it('accepts canonical UUIDs produced by the deterministic card catalogue seed', async () => {
     const cardDefinitionId = '740b5400-8362-b728-3b76-9d232077732d';
     const moveId = 'eca9b943-9e05-834e-c85c-1175001d897c';

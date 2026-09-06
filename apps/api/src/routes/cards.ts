@@ -1,5 +1,13 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { CardCollectionService } from '../cards/card-collection.js';
+import {
+  EvolutionCopiesDeckLockedError,
+  EvolutionNotAvailableError,
+  EvolutionPlayerUnavailableError,
+  EvolutionReplayConflictError,
+  InsufficientEvolutionCopiesError,
+  type CardEvolutionService,
+} from '../cards/card-evolution.js';
 
 import { ApiError } from '../errors/api-error.js';
 import {
@@ -17,10 +25,20 @@ import {
 interface CardRoutesOptions {
   starterGrantService: StarterGrantService;
   collectionService: CardCollectionService;
+  evolutionService?: CardEvolutionService;
 }
 
 interface StarterBody {
   affinity: CardAffinity;
+}
+
+interface EvolutionPreviewParams {
+  sourceCardDefinitionId: string;
+}
+
+interface EvolutionBody {
+  submissionId: string;
+  sourceCardDefinitionId: string;
 }
 
 const apiErrorSchema = {
@@ -198,7 +216,7 @@ const ownedCardSchema = {
     effects: { type: 'array', items: effectSchema },
     acquisitionKind: {
       type: 'string',
-      enum: ['event_reward', 'starter'],
+      enum: ['event_reward', 'starter', 'evolution'],
     },
     acquiredAt: { type: 'string', format: 'date-time' },
   },
@@ -339,9 +357,145 @@ const collectionResponseSchema = {
   },
 } as const;
 
+const evolutionDefinitionSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'cardDefinitionId',
+    'name',
+    'category',
+    'affinity',
+    'rarity',
+    'hp',
+    'power',
+    'description',
+    'imageUrl',
+    'imageAlt',
+    'isActive',
+    'moves',
+    'effects',
+    'deckPointCost',
+  ],
+  properties: {
+    cardDefinitionId: ownedCardSchema.properties.cardDefinitionId,
+    name: ownedCardSchema.properties.name,
+    category: ownedCardSchema.properties.category,
+    affinity: ownedCardSchema.properties.affinity,
+    rarity: ownedCardSchema.properties.rarity,
+    hp: ownedCardSchema.properties.hp,
+    power: ownedCardSchema.properties.power,
+    description: ownedCardSchema.properties.description,
+    imageUrl: ownedCardSchema.properties.imageUrl,
+    imageAlt: ownedCardSchema.properties.imageAlt,
+    isActive: ownedCardSchema.properties.isActive,
+    moves: ownedCardSchema.properties.moves,
+    effects: ownedCardSchema.properties.effects,
+    deckPointCost: { type: 'integer', minimum: 1, maximum: 4 },
+  },
+} as const;
+
+const evolutionCopySchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'ownedCardId',
+    'acquiredAt',
+    'acquisitionKind',
+    'eligible',
+    'lockReason',
+  ],
+  properties: {
+    ownedCardId: { type: 'string', format: 'uuid' },
+    acquiredAt: { type: 'string', format: 'date-time' },
+    acquisitionKind: ownedCardSchema.properties.acquisitionKind,
+    eligible: { type: 'boolean' },
+    lockReason: {
+      anyOf: [{ type: 'string', const: 'saved_deck' }, { type: 'null' }],
+    },
+  },
+} as const;
+
+const evolutionPreviewResponseSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'source',
+    'target',
+    'copiesRequired',
+    'ownedCopyCount',
+    'eligibleCopyCount',
+    'deckLockedCopyCount',
+    'copies',
+    'canEvolve',
+    'unavailableReason',
+    'requestId',
+  ],
+  properties: {
+    source: evolutionDefinitionSchema,
+    target: evolutionDefinitionSchema,
+    copiesRequired: { type: 'integer', const: 3 },
+    ownedCopyCount: { type: 'integer', minimum: 0 },
+    eligibleCopyCount: { type: 'integer', minimum: 0 },
+    deckLockedCopyCount: { type: 'integer', minimum: 0 },
+    copies: { type: 'array', items: evolutionCopySchema },
+    canEvolve: { type: 'boolean' },
+    unavailableReason: {
+      anyOf: [
+        {
+          type: 'string',
+          enum: ['insufficient_copies', 'saved_deck_lock'],
+        },
+        { type: 'null' },
+      ],
+    },
+    requestId: { type: 'string' },
+  },
+} as const;
+
+const evolvedOwnedCardSchema = {
+  ...ownedCardSchema,
+  properties: {
+    ...ownedCardSchema.properties,
+    acquisitionKind: { type: 'string', const: 'evolution' },
+  },
+} as const;
+
+const evolutionResultResponseSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'evolutionId',
+    'submissionId',
+    'sourceCardDefinitionId',
+    'target',
+    'consumedOwnedCardIds',
+    'newCard',
+    'completedAt',
+    'replayed',
+    'requestId',
+  ],
+  properties: {
+    evolutionId: { type: 'string', format: 'uuid' },
+    submissionId: { type: 'string', format: 'uuid' },
+    sourceCardDefinitionId: { type: 'string', format: 'uuid' },
+    target: evolutionDefinitionSchema,
+    consumedOwnedCardIds: {
+      type: 'array',
+      minItems: 3,
+      maxItems: 3,
+      uniqueItems: true,
+      items: { type: 'string', format: 'uuid' },
+    },
+    newCard: evolvedOwnedCardSchema,
+    completedAt: { type: 'string', format: 'date-time' },
+    replayed: { type: 'boolean' },
+    requestId: { type: 'string' },
+  },
+} as const;
+
 export const cardRoutes: FastifyPluginAsync<CardRoutesOptions> = async (
   app,
-  { starterGrantService, collectionService },
+  { starterGrantService, collectionService, evolutionService },
 ) => {
   app.get(
     '/cards/collection',
@@ -520,4 +674,164 @@ export const cardRoutes: FastifyPluginAsync<CardRoutesOptions> = async (
       }
     },
   );
+
+  if (evolutionService) {
+    app.get<{ Params: EvolutionPreviewParams }>(
+      '/cards/evolutions/:sourceCardDefinitionId/preview',
+      {
+        preHandler: [app.authenticate, app.requireActivePlayer],
+        schema: {
+          operationId: 'previewCardEvolution',
+          summary: 'Preview a fixed card evolution',
+          description:
+            'Returns the server-authored target and the current player copy eligibility without reserving or consuming cards.',
+          tags: ['Cards'],
+          security: [{ bearerAuth: [] }],
+          params: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['sourceCardDefinitionId'],
+            properties: {
+              sourceCardDefinitionId: { type: 'string', format: 'uuid' },
+            },
+          },
+          response: {
+            200: evolutionPreviewResponseSchema,
+            401: apiErrorSchema,
+            403: apiErrorSchema,
+            404: apiErrorSchema,
+          },
+        },
+      },
+      async (request, reply) => {
+        const player = request.player;
+
+        if (!player) {
+          throw new Error(
+            'Active player context was not set by the authorisation pre-handler.',
+          );
+        }
+
+        try {
+          const preview = await evolutionService.previewEvolution(
+            player.id,
+            request.params.sourceCardDefinitionId,
+          );
+
+          return reply.status(200).send({
+            ...preview,
+            requestId: request.id,
+          });
+        } catch (error) {
+          throw mapEvolutionError(error);
+        }
+      },
+    );
+
+    app.post<{ Body: EvolutionBody }>(
+      '/cards/evolutions',
+      {
+        preHandler: [app.authenticate, app.requireActivePlayer],
+        schema: {
+          operationId: 'evolveCards',
+          summary: 'Evolve three eligible duplicate cards',
+          description:
+            'Atomically consumes three server-selected, non-deck copies of one source definition and grants its fixed evolved definition.',
+          tags: ['Cards'],
+          security: [{ bearerAuth: [] }],
+          body: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['submissionId', 'sourceCardDefinitionId'],
+            properties: {
+              submissionId: { type: 'string', format: 'uuid' },
+              sourceCardDefinitionId: { type: 'string', format: 'uuid' },
+            },
+          },
+          response: {
+            200: evolutionResultResponseSchema,
+            201: evolutionResultResponseSchema,
+            400: apiErrorSchema,
+            401: apiErrorSchema,
+            403: apiErrorSchema,
+            404: apiErrorSchema,
+            409: apiErrorSchema,
+          },
+        },
+      },
+      async (request, reply) => {
+        const player = request.player;
+
+        if (!player) {
+          throw new Error(
+            'Active player context was not set by the authorisation pre-handler.',
+          );
+        }
+
+        try {
+          const result = await evolutionService.evolveCards({
+            playerId: player.id,
+            submissionId: request.body.submissionId,
+            sourceCardDefinitionId: request.body.sourceCardDefinitionId,
+          });
+
+          return reply.status(result.replayed ? 200 : 201).send({
+            ...result,
+            requestId: request.id,
+          });
+        } catch (error) {
+          throw mapEvolutionError(error);
+        }
+      },
+    );
+  }
 };
+
+function mapEvolutionError(error: unknown): Error {
+  if (error instanceof EvolutionNotAvailableError) {
+    return new ApiError({
+      statusCode: 404,
+      code: 'EVOLUTION_NOT_AVAILABLE',
+      title: 'Evolution unavailable',
+      detail: 'The selected card does not have an available evolution.',
+    });
+  }
+
+  if (error instanceof InsufficientEvolutionCopiesError) {
+    return new ApiError({
+      statusCode: 409,
+      code: 'EVOLUTION_COPIES_INSUFFICIENT',
+      title: 'Not enough copies',
+      detail: 'Three eligible copies are required for this evolution.',
+    });
+  }
+
+  if (error instanceof EvolutionCopiesDeckLockedError) {
+    return new ApiError({
+      statusCode: 409,
+      code: 'EVOLUTION_COPIES_DECK_LOCKED',
+      title: 'Copies used by saved decks',
+      detail: 'Remove the required copies from saved decks before evolving.',
+    });
+  }
+
+  if (error instanceof EvolutionReplayConflictError) {
+    return new ApiError({
+      statusCode: 409,
+      code: 'EVOLUTION_REPLAY_CONFLICT',
+      title: 'Submission already used',
+      detail: 'Use a new submission identifier for a different evolution.',
+    });
+  }
+
+  if (error instanceof EvolutionPlayerUnavailableError) {
+    return new ApiError({
+      statusCode: 403,
+      code: 'ACCOUNT_UNAVAILABLE',
+      title: 'Account unavailable',
+      detail: 'This account cannot evolve cards.',
+    });
+  }
+
+  return error instanceof Error ? error : new Error('Card evolution failed.');
+}

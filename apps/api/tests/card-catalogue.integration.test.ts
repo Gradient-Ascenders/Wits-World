@@ -25,6 +25,14 @@ import {
 import { starterPackageDefinitions } from '../src/cards/starter-packages.js';
 
 import { createCardCollectionService } from '../src/cards/card-collection.js';
+import {
+  createCardEvolutionService,
+  EvolutionCopiesDeckLockedError,
+  EvolutionNotAvailableError,
+  EvolutionReplayConflictError,
+  InsufficientEvolutionCopiesError,
+} from '../src/cards/card-evolution.js';
+import { createDeckService } from '../src/cards/deck-service.js';
 import type { OwnedCard } from '../src/cards/card-types.js';
 import {
   completeCatalogueCardIds as canonicalCardIds,
@@ -44,6 +52,13 @@ const OPTION_PLAYER_IDS = [
 ] as const;
 const HISTORICAL_SPIRIT_PLAYER_ID = '70000000-0000-4000-8000-000000000010';
 const HISTORICAL_SPIRIT_GRANT_ID = '70000000-0000-4000-8000-000000000011';
+const EVOLUTION_PLAYER_ID = '70000000-0000-4000-8000-000000000012';
+const LOCKED_EVOLUTION_PLAYER_ID = '70000000-0000-4000-8000-000000000013';
+const CONCURRENT_EVOLUTION_PLAYER_ID = '70000000-0000-4000-8000-000000000014';
+const INSUFFICIENT_EVOLUTION_PLAYER_ID = '70000000-0000-4000-8000-000000000015';
+const ROLLBACK_EVOLUTION_PLAYER_ID = '70000000-0000-4000-8000-000000000016';
+const QUILLIP_DEFINITION_ID = '84790040-6ea8-6155-c4b7-dec3a22ac3ab';
+const QUILLUME_DEFINITION_ID = '33546c11-4a85-7d2b-ad67-df2684ae1039';
 
 const runIntegrationTests =
   process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';
@@ -58,6 +73,7 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
   let cataloguePool: ReturnType<typeof createDatabasePool>;
   let starterService: ReturnType<typeof createStarterGrantService>;
   let collectionService: ReturnType<typeof createCardCollectionService>;
+  let evolutionService: ReturnType<typeof createCardEvolutionService>;
 
   beforeAll(async () => {
     loadApiEnvironment();
@@ -82,6 +98,7 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
     cataloguePool = createDatabasePool(temporaryConfig);
     starterService = createStarterGrantService(cataloguePool);
     collectionService = createCardCollectionService(cataloguePool);
+    evolutionService = createCardEvolutionService(cataloguePool);
 
     await withDatabaseClient(temporaryConfig, async (client) => {
       await client.query(
@@ -121,6 +138,9 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
     );
     expect(migrationResult.applied).toContain(
       '0041_complete_card_catalogue.sql',
+    );
+    expect(migrationResult.applied).toContain(
+      '0042_implement_card_evolution.sql',
     );
     expect(
       migrationResult.applied.indexOf(
@@ -907,6 +927,348 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
     expect(powerCard?.effects[0]).toHaveProperty('modifierDurationTurns');
   });
 
+  it('atomically consumes the three newest eligible copies and replays by submission id', async () => {
+    await insertCataloguePlayer(
+      temporaryConfig,
+      EVOLUTION_PLAYER_ID,
+      'evolution-player',
+    );
+    const copies = await insertEvolutionRewardCopies(
+      temporaryConfig,
+      EVOLUTION_PLAYER_ID,
+      'e1000000',
+      4,
+    );
+    const submissionId = 'e1000000-0000-4000-8000-000000000090';
+
+    const preview = await evolutionService.previewEvolution(
+      EVOLUTION_PLAYER_ID,
+      QUILLIP_DEFINITION_ID,
+    );
+
+    expect(preview).toMatchObject({
+      copiesRequired: 3,
+      ownedCopyCount: 4,
+      eligibleCopyCount: 4,
+      deckLockedCopyCount: 0,
+      canEvolve: true,
+      unavailableReason: null,
+      target: {
+        cardDefinitionId: QUILLUME_DEFINITION_ID,
+        rarity: 'epic',
+        deckPointCost: 3,
+      },
+    });
+
+    const result = await evolutionService.evolveCards({
+      playerId: EVOLUTION_PLAYER_ID,
+      submissionId,
+      sourceCardDefinitionId: QUILLIP_DEFINITION_ID,
+    });
+
+    expect(result.replayed).toBe(false);
+    expect(result.consumedOwnedCardIds).toEqual(copies.slice(1).reverse());
+    expect(result.newCard).toMatchObject({
+      cardDefinitionId: QUILLUME_DEFINITION_ID,
+      acquisitionKind: 'evolution',
+    });
+
+    await expect(
+      evolutionService.evolveCards({
+        playerId: EVOLUTION_PLAYER_ID,
+        submissionId,
+        sourceCardDefinitionId: QUILLIP_DEFINITION_ID,
+      }),
+    ).resolves.toMatchObject({
+      evolutionId: result.evolutionId,
+      replayed: true,
+      consumedOwnedCardIds: result.consumedOwnedCardIds,
+      newCard: { ownedCardId: result.newCard.ownedCardId },
+    });
+
+    await expect(
+      evolutionService.evolveCards({
+        playerId: EVOLUTION_PLAYER_ID,
+        submissionId,
+        sourceCardDefinitionId: QUILLUME_DEFINITION_ID,
+      }),
+    ).rejects.toBeInstanceOf(EvolutionReplayConflictError);
+
+    const ownership = await cataloguePool.query<{
+      card_definition_id: string;
+      count: string;
+    }>(
+      `select card_definition_id::text, count(*)::text
+         from public.player_cards
+        where player_id = $1::uuid
+        group by card_definition_id
+        order by card_definition_id`,
+      [EVOLUTION_PLAYER_ID],
+    );
+
+    expect(ownership.rows).toEqual([
+      { card_definition_id: QUILLUME_DEFINITION_ID, count: '1' },
+      { card_definition_id: QUILLIP_DEFINITION_ID, count: '1' },
+    ]);
+
+    const starter = await starterService.selectStarter({
+      playerId: EVOLUTION_PLAYER_ID,
+      affinity: 'wit',
+    });
+    const starterCreatures = starter.grant.cards.filter(
+      (card) => card.category === 'creature',
+    );
+    const starterPowerCards = starter.grant.cards.filter(
+      (card) => card.category === 'power',
+    );
+    const deck = await createDeckService(cataloguePool).createDeck({
+      playerId: EVOLUTION_PLAYER_ID,
+      name: 'Evolved deck',
+      ownedCardIds: [
+        result.newCard.ownedCardId,
+        ...starterCreatures.slice(0, 2).map((card) => card.ownedCardId),
+        ...starterPowerCards.map((card) => card.ownedCardId),
+      ],
+    });
+
+    expect(deck).toMatchObject({ totalPoints: 7 });
+    expect(deck.cards).toContainEqual(
+      expect.objectContaining({
+        ownedCardId: result.newCard.ownedCardId,
+        cardDefinitionId: QUILLUME_DEFINITION_ID,
+        rarity: 'epic',
+      }),
+    );
+  }, 30_000);
+
+  it('rejects a non-source definition and fewer than three owned copies', async () => {
+    await insertCataloguePlayer(
+      temporaryConfig,
+      INSUFFICIENT_EVOLUTION_PLAYER_ID,
+      'insufficient-evolution-player',
+    );
+    await insertEvolutionRewardCopies(
+      temporaryConfig,
+      INSUFFICIENT_EVOLUTION_PLAYER_ID,
+      'e4000000',
+      2,
+    );
+
+    await expect(
+      evolutionService.evolveCards({
+        playerId: INSUFFICIENT_EVOLUTION_PLAYER_ID,
+        submissionId: 'e4000000-0000-4000-8000-000000000090',
+        sourceCardDefinitionId: QUILLUME_DEFINITION_ID,
+      }),
+    ).rejects.toBeInstanceOf(EvolutionNotAvailableError);
+
+    await expect(
+      evolutionService.evolveCards({
+        playerId: INSUFFICIENT_EVOLUTION_PLAYER_ID,
+        submissionId: 'e4000000-0000-4000-8000-000000000091',
+        sourceCardDefinitionId: QUILLIP_DEFINITION_ID,
+      }),
+    ).rejects.toBeInstanceOf(InsufficientEvolutionCopiesError);
+  }, 30_000);
+
+  it('reports deck-locked source copies without consuming any ownership', async () => {
+    await insertCataloguePlayer(
+      temporaryConfig,
+      LOCKED_EVOLUTION_PLAYER_ID,
+      'locked-evolution-player',
+    );
+    const copies = await insertEvolutionRewardCopies(
+      temporaryConfig,
+      LOCKED_EVOLUTION_PLAYER_ID,
+      'e2000000',
+      3,
+    );
+    const deckId = 'e2000000-0000-4000-8000-000000000080';
+
+    await cataloguePool.query(
+      `insert into public.player_decks (id, player_id, name)
+       values ($1::uuid, $2::uuid, 'Protected copies')`,
+      [deckId, LOCKED_EVOLUTION_PLAYER_ID],
+    );
+    await cataloguePool.query(
+      `insert into public.player_deck_cards (
+         deck_id, player_id, owned_card_id, position
+       ) values ($1::uuid, $2::uuid, $3::uuid, 1)`,
+      [deckId, LOCKED_EVOLUTION_PLAYER_ID, copies[0]],
+    );
+
+    await expect(
+      evolutionService.previewEvolution(
+        LOCKED_EVOLUTION_PLAYER_ID,
+        QUILLIP_DEFINITION_ID,
+      ),
+    ).resolves.toMatchObject({
+      ownedCopyCount: 3,
+      eligibleCopyCount: 2,
+      deckLockedCopyCount: 1,
+      canEvolve: false,
+      unavailableReason: 'saved_deck_lock',
+    });
+
+    await expect(
+      evolutionService.evolveCards({
+        playerId: LOCKED_EVOLUTION_PLAYER_ID,
+        submissionId: 'e2000000-0000-4000-8000-000000000090',
+        sourceCardDefinitionId: QUILLIP_DEFINITION_ID,
+      }),
+    ).rejects.toBeInstanceOf(EvolutionCopiesDeckLockedError);
+
+    const remaining = await cataloguePool.query<{ count: string }>(
+      `select count(*)::text as count
+         from public.player_cards
+        where player_id = $1::uuid
+          and card_definition_id = $2::uuid`,
+      [LOCKED_EVOLUTION_PLAYER_ID, QUILLIP_DEFINITION_ID],
+    );
+    expect(remaining.rows[0]?.count).toBe('3');
+  }, 30_000);
+
+  it('serializes concurrent evolutions so three copies produce one target', async () => {
+    await insertCataloguePlayer(
+      temporaryConfig,
+      CONCURRENT_EVOLUTION_PLAYER_ID,
+      'concurrent-evolution-player',
+    );
+    await insertEvolutionRewardCopies(
+      temporaryConfig,
+      CONCURRENT_EVOLUTION_PLAYER_ID,
+      'e3000000',
+      3,
+    );
+
+    const attempts = await Promise.allSettled([
+      evolutionService.evolveCards({
+        playerId: CONCURRENT_EVOLUTION_PLAYER_ID,
+        submissionId: 'e3000000-0000-4000-8000-000000000090',
+        sourceCardDefinitionId: QUILLIP_DEFINITION_ID,
+      }),
+      evolutionService.evolveCards({
+        playerId: CONCURRENT_EVOLUTION_PLAYER_ID,
+        submissionId: 'e3000000-0000-4000-8000-000000000091',
+        sourceCardDefinitionId: QUILLIP_DEFINITION_ID,
+      }),
+    ]);
+
+    expect(
+      attempts.filter((attempt) => attempt.status === 'fulfilled'),
+    ).toHaveLength(1);
+    const rejected = attempts.find((attempt) => attempt.status === 'rejected');
+    expect(rejected).toMatchObject({
+      status: 'rejected',
+      reason: expect.any(InsufficientEvolutionCopiesError),
+    });
+
+    const persisted = await cataloguePool.query<{
+      evolution_count: string;
+      source_count: string;
+      target_count: string;
+    }>(
+      `select
+         (select count(*) from public.card_evolution_transactions
+           where player_id = $1::uuid)::text as evolution_count,
+         (select count(*) from public.player_cards
+           where player_id = $1::uuid
+             and card_definition_id = $2::uuid)::text as source_count,
+         (select count(*) from public.player_cards
+           where player_id = $1::uuid
+             and card_definition_id = $3::uuid)::text as target_count`,
+      [
+        CONCURRENT_EVOLUTION_PLAYER_ID,
+        QUILLIP_DEFINITION_ID,
+        QUILLUME_DEFINITION_ID,
+      ],
+    );
+
+    expect(persisted.rows[0]).toEqual({
+      evolution_count: '1',
+      source_count: '0',
+      target_count: '1',
+    });
+  }, 30_000);
+
+  it('rolls back consumption and history when the evolved grant fails', async () => {
+    await insertCataloguePlayer(
+      temporaryConfig,
+      ROLLBACK_EVOLUTION_PLAYER_ID,
+      'rollback-evolution-player',
+    );
+    await insertEvolutionRewardCopies(
+      temporaryConfig,
+      ROLLBACK_EVOLUTION_PLAYER_ID,
+      'e5000000',
+      3,
+    );
+    await cataloguePool.query(`
+      create function public.reject_test_evolution_grant()
+      returns trigger
+      language plpgsql
+      as $$
+      begin
+        raise exception 'forced evolution grant failure';
+      end;
+      $$;
+
+      create trigger reject_test_evolution_grant
+      before insert on public.player_cards
+      for each row
+      when (new.acquisition_kind = 'evolution')
+      execute function public.reject_test_evolution_grant();
+    `);
+
+    try {
+      await expect(
+        evolutionService.evolveCards({
+          playerId: ROLLBACK_EVOLUTION_PLAYER_ID,
+          submissionId: 'e5000000-0000-4000-8000-000000000090',
+          sourceCardDefinitionId: QUILLIP_DEFINITION_ID,
+        }),
+      ).rejects.toThrow('forced evolution grant failure');
+    } finally {
+      await cataloguePool.query(
+        'drop trigger reject_test_evolution_grant on public.player_cards',
+      );
+      await cataloguePool.query(
+        'drop function public.reject_test_evolution_grant()',
+      );
+    }
+
+    const persisted = await cataloguePool.query<{
+      consumption_count: string;
+      evolution_count: string;
+      source_count: string;
+      target_count: string;
+    }>(
+      `select
+         (select count(*) from public.card_evolution_transactions
+           where player_id = $1::uuid)::text as evolution_count,
+         (select count(*) from public.card_evolution_consumptions
+           where player_id = $1::uuid)::text as consumption_count,
+         (select count(*) from public.player_cards
+           where player_id = $1::uuid
+             and card_definition_id = $2::uuid)::text as source_count,
+         (select count(*) from public.player_cards
+           where player_id = $1::uuid
+             and card_definition_id = $3::uuid)::text as target_count`,
+      [
+        ROLLBACK_EVOLUTION_PLAYER_ID,
+        QUILLIP_DEFINITION_ID,
+        QUILLUME_DEFINITION_ID,
+      ],
+    );
+
+    expect(persisted.rows[0]).toEqual({
+      consumption_count: '0',
+      evolution_count: '0',
+      source_count: '3',
+      target_count: '0',
+    });
+  }, 30_000);
+
   it('keeps seeded active cards published in the authoring lifecycle', async () => {
     await withDatabaseClient(temporaryConfig, async (client) => {
       const result = await client.query<{
@@ -1071,6 +1433,100 @@ async function insertCataloguePlayer(
       [playerId, subject],
     );
   });
+}
+
+async function insertEvolutionRewardCopies(
+  config: DatabaseConfig,
+  playerId: string,
+  namespace: string,
+  copyCount: number,
+): Promise<string[]> {
+  const eventId = `${namespace}-0000-4000-8000-000000000001`;
+  const challengeId = `${namespace}-0000-4000-8000-000000000002`;
+  const attemptId = `${namespace}-0000-4000-8000-000000000003`;
+  const completionId = `${namespace}-0000-4000-8000-000000000004`;
+  const ownedCardIds = Array.from(
+    { length: copyCount },
+    (_, index) =>
+      `${namespace}-0000-4000-8000-${String(10 + index).padStart(12, '0')}`,
+  );
+
+  await withDatabaseClient(config, async (client) => {
+    await client.query('begin');
+
+    try {
+      await client.query(
+        `insert into public.events (
+           id, title, location, radius_metres, starts_at, ends_at, is_published
+         ) values (
+           $1::uuid,
+           'Evolution fixture',
+           st_setsrid(st_makepoint(28.03038, -26.19205), 4326)::geography,
+           75,
+           '2026-01-01T00:00:00.000Z',
+           '2027-01-01T00:00:00.000Z',
+           true
+         )`,
+        [eventId],
+      );
+      await client.query(
+        `insert into public.event_challenges (id, event_id, status)
+         values ($1::uuid, $2::uuid, 'draft')`,
+        [challengeId, eventId],
+      );
+      await client.query(
+        'alter table public.challenge_attempts disable trigger challenge_attempts_snapshot_integrity',
+      );
+      await client.query(
+        `insert into public.challenge_attempts (
+           id, player_id, event_id, challenge_id, status, started_at,
+           deadline, time_limit_seconds, average_difficulty, completed_at,
+           completion_reason, score_correct, created_at, updated_at
+         ) values (
+           $1::uuid, $2::uuid, $3::uuid, $4::uuid, 'completed',
+           '2026-08-15T08:00:00.000Z', '2026-08-15T08:01:30.000Z',
+           90, 1.00, '2026-08-15T08:01:00.000Z', 'answered', 5,
+           '2026-08-15T08:00:00.000Z', '2026-08-15T08:01:00.000Z'
+         )`,
+        [attemptId, playerId, eventId, challengeId],
+      );
+      await client.query(
+        'alter table public.challenge_attempts enable trigger challenge_attempts_snapshot_integrity',
+      );
+      await client.query(
+        `insert into public.event_completions (
+           id, attempt_id, player_id, event_id, score_correct,
+           average_difficulty, coins_awarded, reward_policy_version,
+           completed_at
+         ) values (
+           $1::uuid, $2::uuid, $3::uuid, $4::uuid, 5,
+           1.00, 0, 'evolution-test', '2026-08-15T08:01:00.000Z'
+         )`,
+        [completionId, attemptId, playerId, eventId],
+      );
+
+      for (const [index, ownedCardId] of ownedCardIds.entries()) {
+        await client.query(
+          `insert into public.player_cards (
+             id, player_id, card_definition_id, source_completion_id,
+             acquisition_kind, acquired_at
+           ) values (
+             $1::uuid, $2::uuid, $3::uuid, $4::uuid, 'event_reward',
+             '2026-08-15T08:02:00.000Z'::timestamptz
+               + ($5::int * interval '1 minute')
+           )`,
+          [ownedCardId, playerId, QUILLIP_DEFINITION_ID, completionId, index],
+        );
+      }
+
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    }
+  });
+
+  return ownedCardIds;
 }
 
 async function canonicalCatalogueFingerprint(

@@ -5,12 +5,13 @@ description: Confirmed duplicate-consumption rule and the fixed evolution relati
 
 # Card evolution rules
 
-**Status:** Catalogue relationships implemented; player evolution action deferred
+**Status:** Backend evolution transaction and API implemented; collection UI deferred
 
 **Confirmed:** 6 September 2026
 
-Issue #164 adds the evolved definitions and their source relationships. It does
-not add the collection action that performs an evolution.
+Issue #164 added the evolved definitions and their source relationships. Issue
+#174 adds the authenticated server-side evolution action. The player-facing
+confirmation experience remains separate work under issue #175.
 
 ## Conversion rule
 
@@ -27,6 +28,8 @@ not add the collection action that performs an evolution.
   database transaction.
 - Concurrent or repeated requests must not consume extra copies or grant extra
   evolved cards.
+- The API, not the browser, selects the three consumed copies. It chooses the
+  newest eligible copies by acquisition time and then owned-copy identifier.
 
 ## Fixed relationships
 
@@ -46,12 +49,28 @@ are valid deck cards after ownership is granted, but they are excluded from
 starter, random reward, and fixed CPU pools. Power cards do not have evolution
 relationships in this catalogue.
 
-## Deferred implementation
+## Implemented backend contract
 
-A later issue must implement the authenticated API command, transaction,
-idempotency, ownership provenance, collection confirmation UI, accessibility,
-and concurrency tests. Evolution cannot be inferred merely from holding three
-copies; it must be an explicit confirmed player action.
+`GET /api/v1/cards/evolutions/{sourceCardDefinitionId}/preview` returns the
+fixed source and target definitions, deck point costs, owned-copy counts, and
+saved-deck locks. It does not reserve cards.
+
+`POST /api/v1/cards/evolutions` accepts only a client-generated UUID
+`submissionId` and the source definition UUID. The authenticated player is
+derived from the bearer token; client-selected owned-copy or target identifiers
+are rejected. A new transaction returns `201`, while a retry of the same
+submission and source returns the original result with `200`. Reusing the
+submission for a different source fails with `EVOLUTION_REPLAY_CONFLICT`.
+
+The transaction locks the active player and eligible ownership rows, records an
+immutable receipt and three consumption snapshots, deletes exactly those three
+copies, and grants one `acquisitionKind: evolution` copy. Copies referenced by
+a saved deck are never selected. Evolution is not inferred merely from holding
+three copies; the mutation remains an explicit player action.
+
+The collection confirmation UI, keyboard/focus behavior, and responsive player
+workflow are intentionally deferred to issue #175. Coin selling remains outside
+this contract and is tracked by issue #193.
 
 ## AI declaration
 

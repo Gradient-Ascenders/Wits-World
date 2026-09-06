@@ -16,6 +16,16 @@ import type {
 } from '../src/cards/card-types.js';
 import type { PlayerIdentityService } from '../src/players/player-identity.js';
 import type { CardCollectionService } from '../src/cards/card-collection.js';
+import {
+  EvolutionCopiesDeckLockedError,
+  EvolutionNotAvailableError,
+  EvolutionReplayConflictError,
+  InsufficientEvolutionCopiesError,
+  type CardEvolutionPreview,
+  type CardEvolutionResult,
+  type CardEvolutionService,
+  type EvolutionCardDefinition,
+} from '../src/cards/card-evolution.js';
 
 const authConfig: AuthConfig = {
   domain: 'auth.example.test',
@@ -59,6 +69,10 @@ let listStarterOptions: ReturnType<
 let listOwnedCards: ReturnType<
   typeof vi.fn<CardCollectionService['listOwnedCards']>
 >;
+let previewEvolution: ReturnType<
+  typeof vi.fn<CardEvolutionService['previewEvolution']>
+>;
+let evolveCards: ReturnType<typeof vi.fn<CardEvolutionService['evolveCards']>>;
 
 let resolvePlayer: ReturnType<typeof vi.fn<PlayerIdentityService['resolve']>>;
 
@@ -77,6 +91,12 @@ beforeEach(async () => {
   listOwnedCards = vi
     .fn<CardCollectionService['listOwnedCards']>()
     .mockResolvedValue([]);
+  previewEvolution = vi
+    .fn<CardEvolutionService['previewEvolution']>()
+    .mockResolvedValue(buildEvolutionPreview());
+  evolveCards = vi
+    .fn<CardEvolutionService['evolveCards']>()
+    .mockResolvedValue(buildEvolutionResult());
 
   const accessTokenVerifier: AccessTokenVerifier = {
     verify: vi.fn().mockResolvedValue({
@@ -104,6 +124,11 @@ beforeEach(async () => {
     listOwnedCards,
   };
 
+  const evolutionService: CardEvolutionService = {
+    previewEvolution,
+    evolveCards,
+  };
+
   app = await buildApp({
     authConfig,
     accessTokenVerifier,
@@ -111,6 +136,7 @@ beforeEach(async () => {
     cardServices: {
       starterGrant: starterGrantService,
       collection: collectionService,
+      evolution: evolutionService,
     },
     logger: false,
   });
@@ -312,8 +338,18 @@ describe('card collection API', () => {
       acquisitionKind: 'event_reward',
       acquiredAt: '2026-08-15T12:00:00.000Z',
     };
+    const evolvedCopy: OwnedCard = {
+      ...starterCard,
+      ownedCardId: '00000000-0000-4000-8000-000000000693',
+      acquisitionKind: 'evolution',
+      acquiredAt: '2026-08-15T13:00:00.000Z',
+    };
 
-    listOwnedCards.mockResolvedValueOnce([rewardedCopy, starterCard]);
+    listOwnedCards.mockResolvedValueOnce([
+      evolvedCopy,
+      rewardedCopy,
+      starterCard,
+    ]);
 
     const response = await authenticatedCollectionRequest();
 
@@ -321,22 +357,27 @@ describe('card collection API', () => {
 
     const body = response.json();
 
-    expect(body.cards).toHaveLength(2);
+    expect(body.cards).toHaveLength(3);
 
     expect(
       body.cards.map(
         (card: { cardDefinitionId: string }) => card.cardDefinitionId,
       ),
-    ).toEqual([starterCard.cardDefinitionId, starterCard.cardDefinitionId]);
+    ).toEqual([
+      starterCard.cardDefinitionId,
+      starterCard.cardDefinitionId,
+      starterCard.cardDefinitionId,
+    ]);
 
     expect(
       new Set(
         body.cards.map((card: { ownedCardId: string }) => card.ownedCardId),
       ).size,
-    ).toBe(2);
+    ).toBe(3);
 
-    expect(body.cards[0].acquisitionKind).toBe('event_reward');
-    expect(body.cards[1].acquisitionKind).toBe('starter');
+    expect(body.cards[0].acquisitionKind).toBe('evolution');
+    expect(body.cards[1].acquisitionKind).toBe('event_reward');
+    expect(body.cards[2].acquisitionKind).toBe('starter');
   });
 
   it('does not expose player or source provenance identifiers', async () => {
@@ -432,6 +473,131 @@ describe('card collection API', () => {
   });
 });
 
+describe('card evolution API', () => {
+  const sourceCardDefinitionId = '00000000-0000-4000-8000-000000000710';
+  const submissionId = '00000000-0000-4000-8000-000000000720';
+
+  it('previews server-owned copy eligibility for the authenticated player', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/cards/evolutions/${sourceCardDefinitionId}/preview`,
+      headers: { authorization: 'Bearer test-access-token' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      canEvolve: true,
+      copiesRequired: 3,
+      requestId: expect.any(String),
+    });
+    expect(previewEvolution).toHaveBeenCalledWith(
+      activeLocalPlayer.id,
+      sourceCardDefinitionId,
+    );
+  });
+
+  it('evolves using only the source definition and idempotency key', async () => {
+    const response = await authenticatedEvolutionRequest({
+      submissionId,
+      sourceCardDefinitionId,
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({
+      submissionId,
+      sourceCardDefinitionId,
+      replayed: false,
+      newCard: { acquisitionKind: 'evolution' },
+      requestId: expect.any(String),
+    });
+    expect(evolveCards).toHaveBeenCalledWith({
+      playerId: activeLocalPlayer.id,
+      submissionId,
+      sourceCardDefinitionId,
+    });
+  });
+
+  it('returns 200 for an idempotent evolution replay', async () => {
+    evolveCards.mockResolvedValueOnce({
+      ...buildEvolutionResult(),
+      replayed: true,
+    });
+
+    const response = await authenticatedEvolutionRequest({
+      submissionId,
+      sourceCardDefinitionId,
+    });
+
+    expect(response.statusCode).toBe(200);
+  });
+
+  it('rejects client-selected owned copies', async () => {
+    const response = await authenticatedEvolutionRequest({
+      submissionId,
+      sourceCardDefinitionId,
+      ownedCardIds: [
+        '00000000-0000-4000-8000-000000000731',
+        '00000000-0000-4000-8000-000000000732',
+        '00000000-0000-4000-8000-000000000733',
+      ],
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(evolveCards).not.toHaveBeenCalled();
+  });
+
+  it('requires authentication', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/cards/evolutions',
+      payload: { submissionId, sourceCardDefinitionId },
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(evolveCards).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [new EvolutionNotAvailableError(), 404, 'EVOLUTION_NOT_AVAILABLE'],
+    [
+      new InsufficientEvolutionCopiesError(),
+      409,
+      'EVOLUTION_COPIES_INSUFFICIENT',
+    ],
+    [new EvolutionCopiesDeckLockedError(), 409, 'EVOLUTION_COPIES_DECK_LOCKED'],
+    [new EvolutionReplayConflictError(), 409, 'EVOLUTION_REPLAY_CONFLICT'],
+  ] as const)(
+    'maps evolution failures to safe API errors',
+    async (error, statusCode, code) => {
+      evolveCards.mockRejectedValueOnce(error);
+
+      const response = await authenticatedEvolutionRequest({
+        submissionId,
+        sourceCardDefinitionId,
+      });
+
+      expect(response.statusCode).toBe(statusCode);
+      expect(response.json()).toMatchObject({ code });
+    },
+  );
+
+  it('documents both evolution operations as bearer authenticated', async () => {
+    await app.ready();
+
+    const document = app.swagger();
+    const preview =
+      document.paths?.[
+        '/api/v1/cards/evolutions/{sourceCardDefinitionId}/preview'
+      ]?.get;
+    const evolve = document.paths?.['/api/v1/cards/evolutions']?.post;
+
+    expect(preview?.operationId).toBe('previewCardEvolution');
+    expect(preview?.security).toEqual([{ bearerAuth: [] }]);
+    expect(evolve?.operationId).toBe('evolveCards');
+    expect(evolve?.security).toEqual([{ bearerAuth: [] }]);
+  });
+});
+
 async function authenticatedRequest(payload: Record<string, unknown>) {
   return app.inject({
     method: 'POST',
@@ -514,5 +680,90 @@ async function authenticatedCollectionRequest() {
     headers: {
       authorization: 'Bearer test-access-token',
     },
+  });
+}
+
+function buildEvolutionDefinition(
+  cardDefinitionId: string,
+  rarity: 'rare' | 'epic',
+): EvolutionCardDefinition {
+  return {
+    cardDefinitionId,
+    name: rarity === 'rare' ? 'Source Card' : 'Evolved Card',
+    category: 'creature',
+    affinity: 'wit',
+    rarity,
+    hp: 120,
+    power: 20,
+    description: 'A server-authored evolution test card.',
+    imageUrl: null,
+    imageAlt: null,
+    isActive: true,
+    moves: [],
+    effects: [],
+    deckPointCost: rarity === 'rare' ? 2 : 3,
+  };
+}
+
+function buildEvolutionPreview(): CardEvolutionPreview {
+  const source = buildEvolutionDefinition(
+    '00000000-0000-4000-8000-000000000710',
+    'rare',
+  );
+  const target = buildEvolutionDefinition(
+    '00000000-0000-4000-8000-000000000711',
+    'epic',
+  );
+  const copies = [1, 2, 3].map((index) => ({
+    ownedCardId: `00000000-0000-4000-8000-00000000073${index}`,
+    acquiredAt: `2026-08-15T08:00:0${index}.000Z`,
+    acquisitionKind: 'event_reward' as const,
+    eligible: true,
+    lockReason: null,
+  }));
+
+  return {
+    source,
+    target,
+    copiesRequired: 3,
+    ownedCopyCount: 3,
+    eligibleCopyCount: 3,
+    deckLockedCopyCount: 0,
+    copies,
+    canEvolve: true,
+    unavailableReason: null,
+  };
+}
+
+function buildEvolutionResult(): CardEvolutionResult {
+  const preview = buildEvolutionPreview();
+
+  return {
+    evolutionId: '00000000-0000-4000-8000-000000000740',
+    submissionId: '00000000-0000-4000-8000-000000000720',
+    sourceCardDefinitionId: preview.source.cardDefinitionId,
+    target: preview.target,
+    consumedOwnedCardIds: preview.copies.map((copy) => copy.ownedCardId) as [
+      string,
+      string,
+      string,
+    ],
+    newCard: {
+      ...preview.target,
+      ownedCardId: '00000000-0000-4000-8000-000000000741',
+      acquisitionKind: 'evolution',
+      acquiredAt: '2026-08-15T08:01:00.000Z',
+    },
+    completedAt: '2026-08-15T08:01:00.000Z',
+    replayed: false,
+  };
+}
+
+async function authenticatedEvolutionRequest(payload: Record<string, unknown>) {
+  return app.inject({
+    method: 'POST',
+    url: '/api/v1/cards/evolutions',
+    headers: { authorization: 'Bearer test-access-token' },
+    payload,
   });
 }
