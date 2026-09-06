@@ -311,15 +311,18 @@ export function createCardEvolutionService(
               acquisition_kind,
               acquired_at
             )
-            values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'evolution', $5)
+            select
+              evolution.granted_owned_card_id,
+              evolution.player_id,
+              evolution.target_definition_id,
+              evolution.id,
+              'evolution',
+              evolution.granted_acquired_at
+            from public.card_evolution_transactions evolution
+            where evolution.id = $1::uuid
+              and evolution.player_id = $2::uuid
           `,
-          [
-            transaction.granted_owned_card_id,
-            input.playerId,
-            relationship.target_definition_id,
-            transaction.evolution_id,
-            transaction.granted_acquired_at,
-          ],
+          [transaction.evolution_id, input.playerId],
         );
 
         return loadEvolutionResult(client, transaction, false);
