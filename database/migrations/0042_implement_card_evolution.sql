@@ -14,6 +14,8 @@ create table public.card_evolution_transactions (
   source_definition_id uuid not null
     references public.card_definitions (id) on delete restrict,
   target_definition_id uuid not null,
+  granted_owned_card_id uuid not null default gen_random_uuid(),
+  granted_acquired_at timestamptz not null default now(),
   copies_consumed smallint not null default 3,
   completed_at timestamptz not null default now(),
 
@@ -23,6 +25,8 @@ create table public.card_evolution_transactions (
     unique (id, player_id, source_definition_id),
   constraint card_evolution_transactions_submission_unique
     unique (player_id, submission_id),
+  constraint card_evolution_transactions_granted_copy_unique
+    unique (granted_owned_card_id),
   constraint card_evolution_transactions_copy_count_check
     check (copies_consumed = 3),
   constraint card_evolution_transactions_relationship_fk
@@ -157,6 +161,8 @@ begin
       on evolution.id = owned.source_evolution_id
      and evolution.player_id = owned.player_id
      and evolution.target_definition_id = owned.card_definition_id
+     and evolution.granted_owned_card_id = owned.id
+     and evolution.granted_acquired_at = owned.acquired_at
    where evolution.id = evolution_id_to_validate;
 
   if persisted_grant_count <> 1 then
@@ -199,7 +205,7 @@ before update or delete on public.card_evolution_consumptions
 for each row execute function public.prevent_card_evolution_history_mutation();
 
 comment on table public.card_evolution_transactions is
-  'Immutable, idempotent server-authoritative card evolution outcomes.';
+  'Immutable, idempotent server-authoritative card evolution outcomes, including the granted owned-copy identity and timestamp required for replay.';
 
 comment on table public.card_evolution_consumptions is
   'Immutable snapshots of the three owned copies consumed by an evolution.';

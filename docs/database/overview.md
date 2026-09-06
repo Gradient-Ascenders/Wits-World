@@ -103,9 +103,12 @@ Migration `0042_implement_card_evolution.sql` adds immutable, player-scoped
 `card_evolution_transactions` and `card_evolution_consumptions`, extends owned
 card provenance with `source_evolution_id`, and enforces one evolved grant plus
 exactly three consumption snapshots per transaction. Composite keys bind the
-receipt to the authored source/target relationship and to one player. The API
-uses a player row lock and owned-copy locks to serialize concurrent requests;
-the database rejects incomplete history and duplicate grants.
+receipt to the authored source/target relationship and to one player. Each
+receipt also snapshots its granted owned-copy identifier and acquisition time,
+so idempotent replay does not depend on that copy remaining in current
+ownership. The API uses a player row lock and owned-copy locks to serialize
+concurrent requests; the database rejects incomplete history and duplicate
+grants.
 
 ## Environments and deployment
 

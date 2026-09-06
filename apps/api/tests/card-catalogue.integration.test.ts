@@ -57,8 +57,11 @@ const LOCKED_EVOLUTION_PLAYER_ID = '70000000-0000-4000-8000-000000000013';
 const CONCURRENT_EVOLUTION_PLAYER_ID = '70000000-0000-4000-8000-000000000014';
 const INSUFFICIENT_EVOLUTION_PLAYER_ID = '70000000-0000-4000-8000-000000000015';
 const ROLLBACK_EVOLUTION_PLAYER_ID = '70000000-0000-4000-8000-000000000016';
+const REPLAY_EVOLUTION_PLAYER_ID = '70000000-0000-4000-8000-000000000017';
+const DECK_RACE_EVOLUTION_PLAYER_ID = '70000000-0000-4000-8000-000000000018';
 const QUILLIP_DEFINITION_ID = '84790040-6ea8-6155-c4b7-dec3a22ac3ab';
 const QUILLUME_DEFINITION_ID = '33546c11-4a85-7d2b-ad67-df2684ae1039';
+const REPLAY_TARGET_DEFINITION_ID = 'e6000000-0000-4000-8000-000000000070';
 
 const runIntegrationTests =
   process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';
@@ -1041,6 +1044,100 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
     );
   }, 30_000);
 
+  it('replays the immutable grant after the evolved owned copy is later consumed', async () => {
+    await insertCataloguePlayer(
+      temporaryConfig,
+      REPLAY_EVOLUTION_PLAYER_ID,
+      'replay-evolution-player',
+    );
+    await insertEvolutionRewardCopies(
+      temporaryConfig,
+      REPLAY_EVOLUTION_PLAYER_ID,
+      'e6000000',
+      3,
+    );
+    const submissionId = 'e6000000-0000-4000-8000-000000000090';
+    const original = await evolutionService.evolveCards({
+      playerId: REPLAY_EVOLUTION_PLAYER_ID,
+      submissionId,
+      sourceCardDefinitionId: QUILLIP_DEFINITION_ID,
+    });
+
+    await cataloguePool.query(
+      `insert into public.card_definitions (
+         id, name, category, affinity, rarity, hp, power, description,
+         is_active, authoring_status, publication_provenance, catalogue_class,
+         starter_eligible, reward_eligible, cpu_eligible,
+         evolves_from_definition_id, evolution_copies_required
+       ) values (
+         $1::uuid, 'Replay-only evolution target', 'creature', 'wit',
+         'legendary', 100, 3, 'Test-only second-stage evolution target.',
+         false, 'draft', null, 'ordinary', false, false, false,
+         $2::uuid, 3
+       )`,
+      [REPLAY_TARGET_DEFINITION_ID, QUILLUME_DEFINITION_ID],
+    );
+    await cataloguePool.query(
+      `insert into public.card_moves (
+         id, card_definition_id, position, name, move_type, effect_type,
+         effect_value, modifier_stat, modifier_operation,
+         modifier_duration_turns, power_cost, rules_text
+       )
+       select
+         gen_random_uuid(), $1::uuid, position, name, move_type, effect_type,
+         effect_value, modifier_stat, modifier_operation,
+         modifier_duration_turns, power_cost, rules_text
+       from public.card_moves
+       where card_definition_id = $2::uuid
+       order by position`,
+      [REPLAY_TARGET_DEFINITION_ID, QUILLUME_DEFINITION_ID],
+    );
+    await cataloguePool.query(
+      `update public.card_definitions
+          set authoring_status = 'published',
+              publication_provenance = 'controlled_seed',
+              is_active = true,
+              version = version + 1,
+              updated_at = now()
+        where id = $1::uuid`,
+      [REPLAY_TARGET_DEFINITION_ID],
+    );
+    await cataloguePool.query(
+      `insert into public.player_cards (
+         id, player_id, card_definition_id, source_completion_id,
+         acquisition_kind, acquired_at
+       ) values
+         ('e6000000-0000-4000-8000-000000000020', $1::uuid, $2::uuid,
+          'e6000000-0000-4000-8000-000000000004', 'event_reward',
+          '2026-09-06T08:02:00.000Z'),
+         ('e6000000-0000-4000-8000-000000000021', $1::uuid, $2::uuid,
+          'e6000000-0000-4000-8000-000000000004', 'event_reward',
+          '2026-09-06T08:03:00.000Z')`,
+      [REPLAY_EVOLUTION_PLAYER_ID, QUILLUME_DEFINITION_ID],
+    );
+
+    const laterEvolution = await evolutionService.evolveCards({
+      playerId: REPLAY_EVOLUTION_PLAYER_ID,
+      submissionId: 'e6000000-0000-4000-8000-000000000091',
+      sourceCardDefinitionId: QUILLUME_DEFINITION_ID,
+    });
+
+    expect(laterEvolution.consumedOwnedCardIds).toContain(
+      original.newCard.ownedCardId,
+    );
+
+    await expect(
+      evolutionService.evolveCards({
+        playerId: REPLAY_EVOLUTION_PLAYER_ID,
+        submissionId,
+        sourceCardDefinitionId: QUILLIP_DEFINITION_ID,
+      }),
+    ).resolves.toEqual({
+      ...original,
+      replayed: true,
+    });
+  }, 30_000);
+
   it('rejects a non-source definition and fewer than three owned copies', async () => {
     await insertCataloguePlayer(
       temporaryConfig,
@@ -1126,6 +1223,104 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
       [LOCKED_EVOLUTION_PLAYER_ID, QUILLIP_DEFINITION_ID],
     );
     expect(remaining.rows[0]?.count).toBe('3');
+  }, 30_000);
+
+  it('keeps ownership and saved decks consistent when deck save races evolution', async () => {
+    await insertCataloguePlayer(
+      temporaryConfig,
+      DECK_RACE_EVOLUTION_PLAYER_ID,
+      'deck-race-evolution-player',
+    );
+    const copies = await insertEvolutionRewardCopies(
+      temporaryConfig,
+      DECK_RACE_EVOLUTION_PLAYER_ID,
+      'e7000000',
+      3,
+    );
+    const deckId = 'e7000000-0000-4000-8000-000000000080';
+
+    await cataloguePool.query(
+      `insert into public.player_decks (id, player_id, name)
+       values ($1::uuid, $2::uuid, 'Concurrent protection')`,
+      [deckId, DECK_RACE_EVOLUTION_PLAYER_ID],
+    );
+
+    const [evolutionAttempt, deckSaveAttempt] = await Promise.allSettled([
+      evolutionService.evolveCards({
+        playerId: DECK_RACE_EVOLUTION_PLAYER_ID,
+        submissionId: 'e7000000-0000-4000-8000-000000000090',
+        sourceCardDefinitionId: QUILLIP_DEFINITION_ID,
+      }),
+      cataloguePool.query(
+        `insert into public.player_deck_cards (
+           deck_id, player_id, owned_card_id, position
+         ) values ($1::uuid, $2::uuid, $3::uuid, 1)`,
+        [deckId, DECK_RACE_EVOLUTION_PLAYER_ID, copies[0]],
+      ),
+    ]);
+
+    expect(
+      [evolutionAttempt, deckSaveAttempt].filter(
+        (attempt) => attempt.status === 'fulfilled',
+      ),
+    ).toHaveLength(1);
+
+    if (evolutionAttempt.status === 'fulfilled') {
+      expect(deckSaveAttempt).toMatchObject({
+        status: 'rejected',
+        reason: {
+          code: '23503',
+          constraint: 'player_deck_cards_owned_copy_fk',
+        },
+      });
+    } else {
+      expect(evolutionAttempt.reason).toBeInstanceOf(
+        EvolutionCopiesDeckLockedError,
+      );
+      expect(deckSaveAttempt.status).toBe('fulfilled');
+    }
+
+    const persisted = await cataloguePool.query<{
+      deck_membership_count: string;
+      evolution_count: string;
+      source_count: string;
+      target_count: string;
+    }>(
+      `select
+         (select count(*) from public.card_evolution_transactions
+           where player_id = $1::uuid)::text as evolution_count,
+         (select count(*) from public.player_cards
+           where player_id = $1::uuid
+             and card_definition_id = $2::uuid)::text as source_count,
+         (select count(*) from public.player_cards
+           where player_id = $1::uuid
+             and card_definition_id = $3::uuid)::text as target_count,
+         (select count(*) from public.player_deck_cards
+           where player_id = $1::uuid
+             and owned_card_id = $4::uuid)::text as deck_membership_count`,
+      [
+        DECK_RACE_EVOLUTION_PLAYER_ID,
+        QUILLIP_DEFINITION_ID,
+        QUILLUME_DEFINITION_ID,
+        copies[0],
+      ],
+    );
+
+    expect(persisted.rows[0]).toEqual(
+      evolutionAttempt.status === 'fulfilled'
+        ? {
+            deck_membership_count: '0',
+            evolution_count: '1',
+            source_count: '0',
+            target_count: '1',
+          }
+        : {
+            deck_membership_count: '1',
+            evolution_count: '0',
+            source_count: '3',
+            target_count: '0',
+          },
+    );
   }, 30_000);
 
   it('serializes concurrent evolutions so three copies produce one target', async () => {

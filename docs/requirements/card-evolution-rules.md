@@ -64,9 +64,12 @@ submission for a different source fails with `EVOLUTION_REPLAY_CONFLICT`.
 
 The transaction locks the active player and eligible ownership rows, records an
 immutable receipt and three consumption snapshots, deletes exactly those three
-copies, and grants one `acquisitionKind: evolution` copy. Copies referenced by
-a saved deck are never selected. Evolution is not inferred merely from holding
-three copies; the mutation remains an explicit player action.
+copies, and grants one `acquisitionKind: evolution` copy. The receipt retains
+the granted copy's identifier and acquisition timestamp, so retrying the
+original submission returns the original result even if a later evolution has
+consumed that copy. Copies referenced by a saved deck are never selected.
+Evolution is not inferred merely from holding three copies; the mutation
+remains an explicit player action.
 
 The collection confirmation UI, keyboard/focus behavior, and responsive player
 workflow are intentionally deferred to issue #175. Coin selling remains outside
@@ -74,4 +77,5 @@ this contract and is tracked by issue #193.
 
 ## AI declaration
 
-This document was updated with assistance from Codex-CLI[GPT-5.6 Sol].
+This document was updated with assistance from Codex-CLI[GPT-5.6 Sol] and
+Codex[GPT-5].

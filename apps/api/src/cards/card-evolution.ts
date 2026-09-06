@@ -143,15 +143,11 @@ interface OwnedCopyRow extends pg.QueryResultRow {
 interface EvolutionTransactionRow extends pg.QueryResultRow {
   completed_at: Date;
   evolution_id: string;
+  granted_acquired_at: Date;
+  granted_owned_card_id: string;
   source_definition_id: string;
   submission_id: string;
   target_definition_id: string;
-}
-
-interface OwnedCardRow extends DefinitionRow {
-  acquired_at: Date;
-  acquisition_kind: OwnedCard['acquisitionKind'];
-  owned_card_id: string;
 }
 
 export function createCardEvolutionService(
@@ -247,6 +243,8 @@ export function createCardEvolutionService(
               submission_id::text,
               source_definition_id::text,
               target_definition_id::text,
+              granted_owned_card_id::text,
+              granted_acquired_at,
               completed_at
           `,
           [
@@ -306,17 +304,21 @@ export function createCardEvolutionService(
         await client.query(
           `
             insert into public.player_cards (
+              id,
               player_id,
               card_definition_id,
               source_evolution_id,
-              acquisition_kind
+              acquisition_kind,
+              acquired_at
             )
-            values ($1::uuid, $2::uuid, $3::uuid, 'evolution')
+            values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'evolution', $5)
           `,
           [
+            transaction.granted_owned_card_id,
             input.playerId,
             relationship.target_definition_id,
             transaction.evolution_id,
+            transaction.granted_acquired_at,
           ],
         );
 
@@ -482,6 +484,8 @@ async function loadTransactionBySubmission(
         submission_id::text,
         source_definition_id::text,
         target_definition_id::text,
+        granted_owned_card_id::text,
+        granted_acquired_at,
         completed_at
       from public.card_evolution_transactions
       where player_id = $1::uuid
@@ -514,18 +518,6 @@ async function loadEvolutionResult(
   }
 
   const target = await loadDefinition(client, transaction.target_definition_id);
-  const newCardResult = await client.query<OwnedCardRow>(
-    `
-      ${ownedCardSelectSql()}
-      where owned.source_evolution_id = $1::uuid
-    `,
-    [transaction.evolution_id],
-  );
-  const newCardRow = newCardResult.rows[0];
-
-  if (!newCardRow) {
-    throw new Error('Persisted card evolution has no granted owned card.');
-  }
 
   return {
     evolutionId: transaction.evolution_id,
@@ -533,7 +525,7 @@ async function loadEvolutionResult(
     sourceCardDefinitionId: transaction.source_definition_id,
     target,
     consumedOwnedCardIds: consumedOwnedCardIds as [string, string, string],
-    newCard: mapOwnedCard(newCardRow),
+    newCard: mapEvolutionGrant(target, transaction),
     completedAt: transaction.completed_at.toISOString(),
     replayed,
   };
@@ -612,23 +604,6 @@ function definitionSelectSql(): string {
   `;
 }
 
-function ownedCardSelectSql(): string {
-  return `
-    select
-      owned.id::text as owned_card_id,
-      owned.acquisition_kind,
-      owned.acquired_at,
-      definition_data.*
-    from public.player_cards owned
-    join lateral (
-      ${definitionSelectSql().replace(
-        'from public.card_definitions definition',
-        'from public.card_definitions definition where definition.id = owned.card_definition_id',
-      )}
-    ) definition_data on true
-  `;
-}
-
 function mapDefinition(row: DefinitionRow): EvolutionCardDefinition {
   return {
     ...mapCardDefinition(row),
@@ -656,12 +631,27 @@ function mapCardDefinition(
   };
 }
 
-function mapOwnedCard(row: OwnedCardRow): OwnedCard {
+function mapEvolutionGrant(
+  definition: EvolutionCardDefinition,
+  transaction: EvolutionTransactionRow,
+): OwnedCard {
   return {
-    ...mapCardDefinition(row),
-    ownedCardId: row.owned_card_id,
-    acquisitionKind: row.acquisition_kind,
-    acquiredAt: row.acquired_at.toISOString(),
+    cardDefinitionId: definition.cardDefinitionId,
+    name: definition.name,
+    category: definition.category,
+    affinity: definition.affinity,
+    rarity: definition.rarity,
+    hp: definition.hp,
+    power: definition.power,
+    description: definition.description,
+    imageAlt: definition.imageAlt,
+    imageUrl: definition.imageUrl,
+    isActive: definition.isActive,
+    moves: definition.moves,
+    effects: definition.effects,
+    ownedCardId: transaction.granted_owned_card_id,
+    acquisitionKind: 'evolution',
+    acquiredAt: transaction.granted_acquired_at.toISOString(),
   };
 }
 
