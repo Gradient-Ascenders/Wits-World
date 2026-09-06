@@ -1085,11 +1085,11 @@ npm run test:e2e:trails --workspace @wits-world/web
    changes between **Your turn** and **Opponent's turn**, the exact deadline and
    display countdown remain visible, and the waiting view refreshes after the
    other account acts. Do not expect unplayed opponent cards to appear.
-6. On either participant's turn, choose **Resign match**. Confirm that Escape and
-   **Keep playing** cancel without a request, focus returns to the trigger, and
-   **Resign and lose** submits once. Confirm the resigning player sees a loss,
-   the opponent sees a win, the action disappears, and refresh preserves the
-   result.
+6. On either participant's turn, choose **Forfeit battle**. Confirm that Escape
+   and **Keep playing** cancel without a request, focus returns to the trigger,
+   and **Confirm forfeit** submits once. Confirm the forfeiting player sees
+   **You forfeited**, the opponent sees **Opponent forfeited**, the action
+   disappears, and refresh preserves the result.
 7. Inspect the hub and match at approximately 390px and 1280px, including
    keyboard focus, status announcements, touch targets, overflow, API recovery,
    deadline completion, and saved history. CPU play remains at `/matches`.

@@ -7,7 +7,7 @@ title: Player asynchronous PvP journey
 ## Purpose and authority
 
 Issues #181, #219, and #220 provide asynchronous player-versus-player play,
-voluntary match resignation, and outgoing invitation cancellation alongside the existing CPU journey. The protected
+voluntary match forfeiture, and outgoing invitation cancellation alongside the existing CPU journey. The protected
 `/matches` routes continue to provide CPU play;
 `/matches/pvp` provides invitations, active asynchronous matches, and PvP
 history. The [asynchronous PvP API contract](../architecture/asynchronous-pvp-api-contract.md)
@@ -41,7 +41,7 @@ is submitted. A rejected or changed deck returns safe recovery guidance.
 
 ## Invitations
 
-Incoming and sent groups render `pending`, `accepted`, `declined`, `cancelled`,
+Received and sent challenge groups render `pending`, `accepted`, `declined`, `cancelled`,
 `expired`, and `invalidated` states. The player can accept or decline only a pending
 incoming invitation. Accept requires a deck and opening Creature and navigates
 to the server-created match. Accepted invitations link to that persisted
@@ -88,17 +88,22 @@ played Power cards, and aggregate remaining counts supplied by the API. There
 is no placeholder array or accessibility text for unrevealed cards.
 
 When the API returns `canResign: true`, either participant may open a warning
-dialog and confirm an immediate loss; the opponent receives the win. This action
+dialog and confirm **Forfeit battle**, which records an immediate loss while the
+opponent receives the win. “Forfeit” is the player-facing term; the existing
+resign endpoint and `voluntary_resignation` completion reason remain internal
+contract details and are never rendered. This action
 is available on either player's turn and disappears as soon as the server reports
 the match terminal. The request contains only the current version and one stable
 submission ID. Ambiguous delivery is reconciled with a match read before the UI
 offers a same-ID retry, while stale or completed state is rendered without an
-automatic second resignation.
+automatic second forfeit request.
 
-Completed views distinguish battle defeat, missed-deadline forfeit,
-account-deletion forfeit, and voluntary resignation using viewer-relative
-win/loss language. The client never infers availability or sends a resigning
-participant, winner, outcome, completion reason, or progression value.
+Completed views distinguish battle defeat, missed-deadline forfeit, account
+unavailability, and voluntary forfeit using viewer-relative win/loss language.
+The player-facing copy does not reveal whether an opponent became unavailable
+because of account deletion. The client never infers availability or sends a
+forfeiting participant, winner, outcome, completion reason, or progression
+value.
 
 ## Accessibility and responsive behaviour
 
@@ -124,10 +129,10 @@ rejection, error mapping, and ambiguous-response recovery metadata.
 challenge flow, accept/decline/cancel/expiry handling, duplicate-click protection,
 cursor navigation, own/opponent turns, move and Power controls, polling,
 deadline refresh, cancellation terminal presentation and same-reference
-recovery, stale reconciliation, confirmed resignation, ambiguous
+recovery, stale reconciliation, confirmed forfeit, ambiguous
 same-reference retry, capability gating, terminal outcomes, hidden opponent
 presentation, and retry. Playwright also checks single-request cancellation and
-terminal presentation, the resignation dialog's keyboard focus, responsive
+terminal presentation, the forfeit dialog's keyboard focus, responsive
 layout, and terminal match result. Existing CPU match
 client/page tests remain the regression boundary for the shared presentation
 extraction.

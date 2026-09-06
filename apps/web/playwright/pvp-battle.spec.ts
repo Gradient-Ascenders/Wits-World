@@ -12,7 +12,7 @@ import { uuid } from '../tests/fixtures/matches';
 
 const screenshotsDirectory = path.resolve(
   process.cwd(),
-  '../../.pr-screenshots/issue-181',
+  '../../.pr-screenshots/issue-228',
 );
 
 test('keeps the Player Battles loading shell compact', async ({ page }) => {
@@ -76,7 +76,7 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
   const failedRequests: string[] = [];
   let actionRequests = 0;
   let cancellationRequests = 0;
-  let resignationRequests = 0;
+  let forfeitRequests = 0;
   const deck = buildSavedDeck({ isSelected: true });
   const invitation = pvpInvitation();
   let sentInvitation = pvpInvitation({
@@ -166,7 +166,7 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
       return;
     }
     if (pathname.endsWith(`/matches/pvp/${match.matchId}/resign`)) {
-      resignationRequests += 1;
+      forfeitRequests += 1;
       expect(request.headers().accept).toContain(
         'application/vnd.wits-world.pvp.v2+json',
       );
@@ -175,6 +175,7 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
         expectedVersion: 4,
         submissionId: expect.any(String),
       });
+      await new Promise((resolve) => setTimeout(resolve, 150));
       currentMatch = {
         ...currentMatch,
         canResign: false,
@@ -194,7 +195,7 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
       };
       await json(route, {
         ...currentMatch,
-        requestId: 'pvp-browser-resignation',
+        requestId: 'pvp-browser-forfeit',
       });
       return;
     }
@@ -257,6 +258,12 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
       .getByRole('button', { name: 'Cancel challenge to wits_wanderer' })
       .click();
     await expect(page.getByRole('alertdialog')).toBeVisible();
+    if (viewport.label === '390') {
+      await page.screenshot({
+        path: path.join(screenshotsDirectory, '390-cancel-confirmation.png'),
+        style: '.skip-link, .primary-navigation { display: none !important; }',
+      });
+    }
     await page.getByRole('button', { name: 'Confirm cancellation' }).dblclick();
     await expect(
       page.getByText('You cancelled this invitation.'),
@@ -268,6 +275,12 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
     ).toHaveCount(0);
     expect(cancellationRequests).toBe(viewport.label === '390' ? 1 : 2);
     await expectNoHorizontalOverflow(page);
+    if (viewport.label === '390') {
+      await page.locator('.pvp-hub').screenshot({
+        path: path.join(screenshotsDirectory, '390-cancelled-invitation.png'),
+        style: '.skip-link, .primary-navigation { display: none !important; }',
+      });
+    }
 
     if (viewport.label === '390') {
       await page.getByRole('button', { name: 'Challenge a player' }).click();
@@ -291,7 +304,7 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
     await expect(
       page.getByRole('heading', { name: 'Recent player battles' }),
     ).toBeVisible();
-    await expect(page.getByText('Won')).toBeVisible();
+    await expect(page.getByText('Won', { exact: true })).toBeVisible();
     await expectNoHorizontalOverflow(page);
     if (viewport.label === '1280') {
       await page.locator('.pvp-hub').screenshot({
@@ -350,27 +363,43 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
     style: '.skip-link, .primary-navigation { display: none !important; }',
   });
 
-  const resign = page.getByRole('button', { name: 'Resign match' });
-  await resign.click();
-  const dialog = page.getByRole('alertdialog', { name: 'Resign this match?' });
+  const forfeit = page.getByRole('button', { name: 'Forfeit battle' });
+  await forfeit.click();
+  const dialog = page.getByRole('alertdialog', {
+    name: 'Forfeit this battle?',
+  });
   await expect(dialog).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Keep playing' }),
   ).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
-  await expect(resign).toBeFocused();
+  await expect(forfeit).toBeFocused();
 
-  await resign.click();
-  await page.getByRole('button', { name: 'Resign and lose' }).click();
+  await forfeit.click();
+  await page.screenshot({
+    path: path.join(screenshotsDirectory, '1280-forfeit-confirmation.png'),
+    style: '.skip-link, .primary-navigation { display: none !important; }',
+  });
+  await page.getByRole('button', { name: 'Confirm forfeit' }).click();
+  await expect(
+    page.getByRole('button', { name: 'Forfeiting…' }),
+  ).toBeDisabled();
   await expect(
     page.getByRole('heading', { name: 'Battle complete' }),
   ).toBeFocused();
-  await expect(page.getByText('You resigned the match.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Resign match' })).toHaveCount(
-    0,
-  );
-  expect(resignationRequests).toBe(1);
+  await expect(
+    page.getByText('You forfeited this battle.', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Forfeit battle' }),
+  ).toHaveCount(0);
+  await expect(page.locator('body')).not.toContainText('voluntary_resignation');
+  await page.locator('.battle-page').screenshot({
+    path: path.join(screenshotsDirectory, '1280-own-forfeit-result.png'),
+    style: '.skip-link, .primary-navigation { display: none !important; }',
+  });
+  expect(forfeitRequests).toBe(1);
 
   expect(consoleErrors.filter((message) => !message.includes('404'))).toEqual(
     [],

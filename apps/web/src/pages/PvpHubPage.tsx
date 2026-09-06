@@ -89,6 +89,9 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const [pendingOperation, setPendingOperation] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState<HubPage | null>(null);
   const [actionError, setActionError] = useState<PvpApiError | null>(null);
+  const [actionErrorContext, setActionErrorContext] = useState<
+    'cancellation' | null
+  >(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [reauthFailed, setReauthFailed] = useState(false);
   const [challengeOpen, setChallengeOpen] = useState(false);
@@ -162,9 +165,9 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   }, [loadHub, revision]);
 
   const pollHub = useCallback(
-    async (force = false) => {
+    async (force = false): Promise<HubCollections | null> => {
       if ((!force && polling.current) || document.visibilityState !== 'visible')
-        return;
+        return null;
       if (force) pollRequest.current?.abort();
       polling.current = true;
       const controller = new AbortController();
@@ -193,8 +196,10 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
             : current,
         );
         setPollWarning(false);
+        return collections;
       } catch {
         if (!controller.signal.aborted) setPollWarning(true);
+        return null;
       } finally {
         if (pollRequest.current === controller) {
           pollRequest.current = null;
@@ -280,6 +285,7 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   function resetFeedback() {
     setActionError(null);
+    setActionErrorContext(null);
     setNotice(null);
     setReauthFailed(false);
   }
@@ -460,6 +466,9 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     const controller = new AbortController();
     request.current = controller;
     setPendingOperation(`cancel:${invitation.invitationId}`);
+    setNotice(
+      `Cancelling your challenge to ${invitation.opponent.playerName}…`,
+    );
     try {
       const cancelled = await cancelPvpInvitation({
         apiBaseUrl,
@@ -487,12 +496,24 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     } catch (error) {
       if (!controller.signal.aborted) {
         const failure = toPvpError(error);
+        setNotice(null);
         setActionError(failure);
+        setActionErrorContext('cancellation');
         if (
           failure.options.ambiguous ||
           isReconciliationFailure(failure.failure)
-        )
-          await pollHub(true);
+        ) {
+          const collections = await pollHub(true);
+          const latest = collections?.outgoing.find(
+            (item) => item.invitationId === invitation.invitationId,
+          );
+          if (latest && (latest.status !== 'pending' || !latest.canCancel)) {
+            delete cancelAttempts.current[invitation.invitationId];
+            setActionError(null);
+            setActionErrorContext(null);
+            setNotice(cancellationReconciliationMessage(latest));
+          }
+        }
       }
     } finally {
       operationInFlight.current = false;
@@ -632,10 +653,16 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           role="alert"
           tabIndex={-1}
         >
-          <strong>That request was not completed.</strong>{' '}
-          {errorMessage(actionError.failure)}
+          <strong>
+            {actionErrorContext === 'cancellation'
+              ? 'Cancellation not confirmed.'
+              : 'That request was not completed.'}
+          </strong>{' '}
+          {errorMessage(actionError.failure, actionErrorContext)}
           {actionError.options.ambiguous
-            ? ' Retry uses the same submission reference so the server cannot apply it twice.'
+            ? actionErrorContext === 'cancellation'
+              ? ' If the challenge is still pending, retrying uses the same request so it cannot be cancelled twice.'
+              : ' Retrying uses the same request so the server cannot apply it twice.'
             : ''}
         </div>
       ) : null}
@@ -984,7 +1011,8 @@ function InvitationList({
   pendingOperation: string | null;
 }) {
   const [respondingTo, setRespondingTo] = useState<string | null>(null);
-  const title = direction === 'incoming' ? 'Incoming' : 'Sent challenges';
+  const title =
+    direction === 'incoming' ? 'Received challenges' : 'Sent challenges';
   return (
     <section
       aria-labelledby={`${direction}-invitations-title`}
@@ -994,14 +1022,14 @@ function InvitationList({
       {invitations.length === 0 ? (
         <p className="pvp-empty-state">
           {direction === 'incoming'
-            ? 'No incoming invitations.'
+            ? 'No received challenges.'
             : 'No sent challenges.'}
         </p>
       ) : (
         <ol
           aria-label={
             direction === 'incoming'
-              ? 'Incoming player battle invitations'
+              ? 'Received player battle challenges'
               : 'Sent player battle challenges'
           }
           className="pvp-invitation-list"
@@ -1030,6 +1058,7 @@ function InvitationList({
                   {direction === 'incoming' &&
                   invitation.status === 'pending' ? (
                     <div className="pvp-invitation__actions">
+                      <span className="pvp-status-label">Pending</span>
                       <button
                         aria-controls={`response-${invitation.invitationId}`}
                         aria-expanded={respondingTo === invitation.invitationId}
@@ -1060,12 +1089,10 @@ function InvitationList({
                     invitation.status === 'pending' &&
                     invitation.canCancel ? (
                     <div className="pvp-invitation__actions">
-                      <span className="pvp-status-label">
-                        Waiting for response
-                      </span>
+                      <span className="pvp-status-label">Pending response</span>
                       <button
                         aria-label={`Cancel challenge to ${invitation.opponent.playerName}`}
-                        className="button button--quiet"
+                        className="button button--danger button--quiet"
                         disabled={pendingOperation !== null}
                         onClick={() => onCancel(invitation)}
                         type="button"
@@ -1081,7 +1108,7 @@ function InvitationList({
                     <span className="pvp-status-label">
                       {direction === 'outgoing' &&
                       invitation.status === 'pending'
-                        ? 'Waiting for response'
+                        ? 'Pending response'
                         : invitationStatusLabel(invitation.status)}
                     </span>
                   )}
@@ -1136,24 +1163,19 @@ function InvitationList({
                       {accepting ? 'Accepting…' : 'Accept challenge'}
                     </button>
                   </div>
-                ) : invitation.matchId ? (
+                ) : null}
+                {invitation.status !== 'pending' ? (
+                  <p className="pvp-invitation__explanation">
+                    {invitationStatusExplanation(invitation, direction)}
+                  </p>
+                ) : null}
+                {invitation.matchId ? (
                   <Link
                     className="button button--quiet"
                     href={`/matches/pvp/${invitation.matchId}`}
                   >
                     Open match
                   </Link>
-                ) : invitation.status === 'invalidated' ? (
-                  <p className="pvp-invitation__explanation">
-                    This invitation became unavailable after an account
-                    lifecycle change.
-                  </p>
-                ) : invitation.status === 'cancelled' ? (
-                  <p className="pvp-invitation__explanation">
-                    {direction === 'outgoing'
-                      ? 'You cancelled this invitation.'
-                      : `This invitation was cancelled by ${invitation.opponent.playerName}.`}
-                  </p>
                 ) : null}
               </li>
             );
@@ -1162,7 +1184,9 @@ function InvitationList({
       )}
       {hasMore ? (
         <LoadMoreButton
-          label={`${direction} invitations`}
+          label={
+            direction === 'incoming' ? 'received challenges' : 'sent challenges'
+          }
           loading={loadingMore}
           onClick={onLoadMore}
         />
@@ -1405,19 +1429,77 @@ function invitationStatusLabel(status: PvpInvitation['status']) {
   return status === 'invalidated' ? 'Unavailable' : titleCase(status);
 }
 
+function invitationStatusExplanation(
+  invitation: PvpInvitation,
+  direction: 'incoming' | 'outgoing',
+) {
+  if (invitation.status === 'accepted')
+    return direction === 'incoming'
+      ? 'You accepted this challenge. The battle is ready.'
+      : `${invitation.opponent.playerName} accepted your challenge. The battle is ready.`;
+  if (invitation.status === 'declined')
+    return direction === 'incoming'
+      ? 'You declined this challenge.'
+      : `${invitation.opponent.playerName} declined your challenge.`;
+  if (invitation.status === 'expired')
+    return 'This invitation expired before it was accepted.';
+  if (invitation.status === 'cancelled')
+    return direction === 'outgoing'
+      ? 'You cancelled this invitation.'
+      : `This invitation was cancelled by ${invitation.opponent.playerName}.`;
+  return 'This invitation became unavailable after an account lifecycle change.';
+}
+
+function cancellationReconciliationMessage(invitation: PvpInvitation) {
+  if (invitation.status === 'accepted')
+    return `Your challenge to ${invitation.opponent.playerName} was accepted before cancellation completed. Open the battle to continue.`;
+  if (invitation.status === 'declined')
+    return `${invitation.opponent.playerName} declined the challenge before cancellation completed.`;
+  if (invitation.status === 'expired')
+    return 'The challenge expired before cancellation completed.';
+  if (invitation.status === 'cancelled')
+    return `Challenge to ${invitation.opponent.playerName} cancelled.`;
+  if (invitation.status === 'invalidated')
+    return 'The challenge became unavailable before cancellation completed.';
+  return 'The latest challenge status has been restored.';
+}
+
 function completionReasonLabel(
   reason: PvpHistorySummary['completionReason'],
   outcome: 'loss' | 'win',
 ) {
-  if (reason === 'defeat') return 'Battle completed';
+  if (reason === 'defeat')
+    return outcome === 'win' ? 'Won in battle' : 'Lost in battle';
   if (reason === 'account_deletion_forfeit')
-    return outcome === 'win' ? 'Opponent unavailable' : 'Account forfeit';
+    return outcome === 'win'
+      ? 'Opponent became unavailable'
+      : 'Account became unavailable';
   if (reason === 'voluntary_resignation')
-    return outcome === 'win' ? 'Opponent resigned' : 'You resigned';
-  return outcome === 'win' ? 'Opponent missed deadline' : 'Deadline expired';
+    return outcome === 'win' ? 'Opponent forfeited' : 'You forfeited';
+  return outcome === 'win'
+    ? 'Opponent turn deadline expired'
+    : 'Your turn deadline expired';
 }
 
-function errorMessage(failure: PvpApiFailure) {
+function errorMessage(
+  failure: PvpApiFailure,
+  context: 'cancellation' | null = null,
+) {
+  if (context === 'cancellation') {
+    if (failure === 'authorization')
+      return 'Your session expired. Sign in again before trying to cancel.';
+    if (failure === 'stale')
+      return 'The invitation changed before cancellation completed. Its latest status was refreshed.';
+    if (failure === 'cancelled')
+      return 'The invitation was already cancelled. Its latest status was refreshed.';
+    if (failure === 'expired')
+      return 'The invitation expired before cancellation completed. Its latest status was refreshed.';
+    if (failure === 'invalidated')
+      return 'The invitation became unavailable before cancellation completed. Its latest status was refreshed.';
+    if (failure === 'not-found')
+      return 'This invitation is no longer available. Refresh Player Battles to check its latest status.';
+    return 'Check your connection. The latest server state was requested, and the challenge remains recoverable.';
+  }
   const messages: Record<PvpApiFailure, string> = {
     'already-pending':
       'A pending invitation already exists between these players.',
