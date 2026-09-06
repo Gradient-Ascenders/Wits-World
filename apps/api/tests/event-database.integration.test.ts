@@ -188,6 +188,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0038_add_question_performance_analytics_indexes.sql',
         '0039_add_async_pvp_invitation_cancellation.sql',
         '0040_add_offline_challenge_attempts.sql',
+        '0041_complete_card_catalogue.sql',
       ],
       skipped: [],
     });
@@ -235,6 +236,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0038_add_question_performance_analytics_indexes.sql',
         '0039_add_async_pvp_invitation_cancellation.sql',
         '0040_add_offline_challenge_attempts.sql',
+        '0041_complete_card_catalogue.sql',
       ],
     });
     expect(readiness).toMatchObject({

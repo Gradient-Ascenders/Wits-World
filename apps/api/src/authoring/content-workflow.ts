@@ -332,11 +332,15 @@ async function lockAuthorContentAncestors(
     return;
   }
   if (input.entityType === 'card' && input.action === 'retire') {
-    const target = await client.query<pg.QueryResultRow & { rarity: string }>(
-      `select rarity from public.card_definitions where id = $1::uuid`,
+    const target = await client.query<
+      pg.QueryResultRow & { rarity: string; reward_eligible: boolean }
+    >(
+      `select rarity, reward_eligible
+       from public.card_definitions
+       where id = $1::uuid`,
       [input.entityId],
     );
-    if (target.rows[0]?.rarity === 'common') {
+    if (target.rows[0]?.rarity === 'common' && target.rows[0].reward_eligible) {
       await client.query(
         `select id from public.events
          where authoring_status = 'published'
@@ -344,7 +348,10 @@ async function lockAuthorContentAncestors(
       );
       await client.query(
         `select id from public.card_definitions
-         where rarity = 'common' and authoring_status = 'published' and is_active
+         where rarity = 'common'
+           and reward_eligible
+           and authoring_status = 'published'
+           and is_active
          order by id for update`,
       );
     }
@@ -658,14 +665,19 @@ async function assertContainerState(
         'A configured starter definition cannot be retired until an authoritative replacement is configured.',
       );
     }
-    const target = await client.query<pg.QueryResultRow & { rarity: string }>(
-      `select rarity from public.card_definitions where id = $1::uuid`,
+    const target = await client.query<
+      pg.QueryResultRow & { rarity: string; reward_eligible: boolean }
+    >(
+      `select rarity, reward_eligible
+       from public.card_definitions
+       where id = $1::uuid`,
       [input.entityId],
     );
-    if (target.rows[0]?.rarity === 'common') {
+    if (target.rows[0]?.rarity === 'common' && target.rows[0].reward_eligible) {
       const alternatives = await client.query(
         `select id from public.card_definitions
          where rarity = 'common'
+           and reward_eligible
            and authoring_status = 'published'
            and is_active
            and id <> $1::uuid`,
@@ -781,7 +793,10 @@ async function assertEventReady(client: AuthorContentClient, id: string) {
   );
   const cards = await client.query<pg.QueryResultRow & { id: string }>(
     `select id::text from public.card_definitions
-     where rarity = 'common' and authoring_status = 'published' and is_active
+     where rarity = 'common'
+       and reward_eligible
+       and authoring_status = 'published'
+       and is_active
      order by id for share`,
   );
   if (cards.rows.length < 1) {

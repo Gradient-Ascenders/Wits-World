@@ -448,25 +448,30 @@ describe.skipIf(!runIntegrationTests)(
         AUTHOR_ONE_ID,
       );
 
-      await expect(
-        submitAndApproveEvent(eventService, event.eventId),
-      ).rejects.toMatchObject({
-        message:
-          'At least one active published Common reward card is required.',
-      } satisfies Partial<AuthorContentNotReadyError>);
+      const disabledRewardIds = await disableCommonRewardCards(pool);
+      try {
+        await expect(
+          submitAndApproveEvent(eventService, event.eventId),
+        ).rejects.toMatchObject({
+          message:
+            'At least one active published Common reward card is required.',
+        } satisfies Partial<AuthorContentNotReadyError>);
 
-      const persisted = await pool.query<{
-        is_published: boolean;
-      }>(
-        `
-            select is_published
-            from public.events
-            where id = $1::uuid
-          `,
-        [event.eventId],
-      );
+        const persisted = await pool.query<{
+          is_published: boolean;
+        }>(
+          `
+              select is_published
+              from public.events
+              where id = $1::uuid
+            `,
+          [event.eventId],
+        );
 
-      expect(persisted.rows[0]?.is_published).toBe(false);
+        expect(persisted.rows[0]?.is_published).toBe(false);
+      } finally {
+        await restoreRewardCards(pool, disabledRewardIds);
+      }
     }, 180_000);
 
     it('publishes a complete event, freezes it, and records the publishing Author', async () => {
@@ -552,13 +557,26 @@ describe.skipIf(!runIntegrationTests)(
         },
       ]);
 
-      await expect(
-        cardService.retireCard({
-          actorPlayerId: AUTHOR_ONE_ID,
-          cardId: rewardCardId,
-          expectedVersion: 3,
-        }),
-      ).rejects.toBeInstanceOf(AuthorContentNotReadyError);
+      const disabledRewardIds = await disableCommonRewardCards(
+        pool,
+        rewardCardId,
+      );
+      try {
+        const rewardCard = (await cardService.listCards()).find(
+          (card) => card.id === rewardCardId,
+        );
+        if (!rewardCard) throw new Error('Expected reward card to exist.');
+
+        await expect(
+          cardService.retireCard({
+            actorPlayerId: AUTHOR_ONE_ID,
+            cardId: rewardCardId,
+            expectedVersion: rewardCard.version,
+          }),
+        ).rejects.toBeInstanceOf(AuthorContentNotReadyError);
+      } finally {
+        await restoreRewardCards(pool, disabledRewardIds);
+      }
     }, 180_000);
 
     it('rejects service retirement while the event is live and retains the database guard', async () => {
@@ -836,6 +854,7 @@ async function ensureCommonRewardCard(
 ): Promise<string> {
   const existing = (await service.listCards()).find(
     (card) =>
+      card.name === 'Heavy Impact' &&
       card.rarity === 'common' &&
       card.isActive &&
       card.authoringStatus === 'published',
@@ -849,7 +868,7 @@ async function ensureCommonRewardCard(
     actorPlayerId: AUTHOR_ONE_ID,
     name: `Event Publication Reward ${Date.now()}`,
     category: 'power',
-    affinity: 'wit',
+    affinity: null,
     rarity: 'common',
     hp: null,
     power: null,
@@ -882,6 +901,70 @@ async function ensureCommonRewardCard(
   });
 
   return published.id;
+}
+
+async function disableCommonRewardCards(
+  pool: ReturnType<typeof createDatabasePool>,
+  exceptCardId: string | null = null,
+): Promise<string[]> {
+  await pool.query(
+    `alter table public.card_definitions
+       disable trigger card_definitions_curated_authoring_guard;
+     alter table public.card_definitions
+       disable trigger card_definitions_content_immutability`,
+  );
+
+  try {
+    const result = await pool.query<{ id: string }>(
+      `update public.card_definitions
+          set reward_eligible = false
+        where rarity = 'common'
+          and reward_eligible
+          and authoring_status = 'published'
+          and is_active
+          and ($1::uuid is null or id <> $1::uuid)
+      returning id::text`,
+      [exceptCardId],
+    );
+    return result.rows.map((row) => row.id);
+  } finally {
+    await pool.query(
+      `alter table public.card_definitions
+         enable trigger card_definitions_content_immutability;
+       alter table public.card_definitions
+         enable trigger card_definitions_curated_authoring_guard`,
+    );
+  }
+}
+
+async function restoreRewardCards(
+  pool: ReturnType<typeof createDatabasePool>,
+  cardIds: string[],
+): Promise<void> {
+  if (cardIds.length === 0) return;
+
+  await pool.query(
+    `alter table public.card_definitions
+       disable trigger card_definitions_curated_authoring_guard;
+     alter table public.card_definitions
+       disable trigger card_definitions_content_immutability`,
+  );
+
+  try {
+    await pool.query(
+      `update public.card_definitions
+          set reward_eligible = true
+        where id = any($1::uuid[])`,
+      [cardIds],
+    );
+  } finally {
+    await pool.query(
+      `alter table public.card_definitions
+         enable trigger card_definitions_content_immutability;
+       alter table public.card_definitions
+         enable trigger card_definitions_curated_authoring_guard`,
+    );
+  }
 }
 
 async function submitAndApproveEvent(

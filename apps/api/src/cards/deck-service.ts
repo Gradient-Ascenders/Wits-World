@@ -13,7 +13,7 @@ export interface SavedDeckCard {
   cardDefinitionId: string;
   name: string;
   category: CardCategory;
-  affinity: CardAffinity;
+  affinity: CardAffinity | null;
   rarity: CardRarity;
 }
 
@@ -87,7 +87,7 @@ export class InvalidDeckNameError extends Error {
 }
 
 interface OwnedDeckCardRow extends pg.QueryResultRow {
-  affinity: CardAffinity;
+  affinity: CardAffinity | null;
   card_definition_id: string;
   category: CardCategory;
   name: string;
@@ -509,7 +509,6 @@ function mapSavedDecks(rows: readonly DeckReadRow[]): SavedDeck[] {
       row.card_definition_id === null ||
       row.card_name === null ||
       row.category === null ||
-      row.affinity === null ||
       row.rarity === null
     ) {
       throw new Error(

@@ -753,6 +753,7 @@ begin
     else 'damage_modifier'
   end;
   generated_rules := coalesce(new.rules_text, case
+    when new.effect_value is null then 'Effect value pending.'
     when new.effect_type = 'damage' then 'Deal ' || new.effect_value || ' damage.'
     when new.effect_type = 'heal' then 'Heal ' || new.effect_value || ' HP.'
     when new.modifier_stat = 'power' and new.effect_type = 'buff'

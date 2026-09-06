@@ -791,17 +791,18 @@ describe.skipIf(!runIntegrationTests)(
               $1,
               $2,
               $3,
-              'spark',
-              'common',
               $4,
+              'common',
               $5,
-              $6
+              $6,
+              $7
             )
           `,
           [
             definitionId,
             `Deck test card ${number}`,
             category,
+            category === 'creature' ? 'spark' : null,
             category === 'creature' ? 100 : null,
             category === 'creature' ? 10 : null,
             `Deck persistence fixture ${number}`,
