@@ -58,10 +58,10 @@ export class InvalidCardDefinitionError extends Error {
 export function validateCardDefinition(input: CardDefinitionInput): void {
   assertNonBlank(input.name, 'Card name');
   assertEnum(input.category, cardCategories, 'Card category');
-  assertEnum(input.affinity, cardAffinities, 'Card affinity');
   assertEnum(input.rarity, cardRarities, 'Card rarity');
 
   if (input.category === 'creature') {
+    assertEnum(input.affinity, cardAffinities, 'Creature affinity');
     assertPositiveInteger(input.hp, 'Creature HP');
     assertNonNegativeInteger(input.power, 'Creature Power');
 
@@ -80,6 +80,10 @@ export function validateCardDefinition(input: CardDefinitionInput): void {
 
     validateMoves(moves);
     return;
+  }
+
+  if (input.affinity !== null) {
+    throw new InvalidCardDefinitionError('Power cards must be typeless.');
   }
 
   if (input.hp !== null || input.power !== null) {

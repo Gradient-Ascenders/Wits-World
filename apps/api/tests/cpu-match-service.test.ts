@@ -31,23 +31,23 @@ describe('CPU match service', () => {
   it('defines the approved Basic CPU deck with exactly three Creatures and two Power cards', () => {
     expect(BASIC_CPU_DECK_CONFIGURATION).toEqual([
       {
-        cardDefinitionId: 'c2c81cdc-5c15-84d1-6ba9-0271b1d3fdac',
+        cardDefinitionId: '84790040-6ea8-6155-c4b7-dec3a22ac3ab',
         category: 'creature',
       },
       {
-        cardDefinitionId: 'a230fdda-cec0-c127-b4a2-e4dd20660e3a',
+        cardDefinitionId: 'eca9b943-9e05-834e-c85c-1175001d897c',
         category: 'creature',
       },
       {
-        cardDefinitionId: '0cba869b-d777-11f8-6b8c-c47d4d626558',
+        cardDefinitionId: '27cbcedf-1886-aa81-04b4-089b4c10cd87',
         category: 'creature',
       },
       {
-        cardDefinitionId: '49e45cbb-f419-bf5c-2868-757646cb8dc9',
+        cardDefinitionId: '0d28241f-a4f2-2cf3-52bc-dee1633b3316',
         category: 'power',
       },
       {
-        cardDefinitionId: '76f057c6-efab-38d9-9bcf-298d5c794f1a',
+        cardDefinitionId: 'b7485793-8432-2db9-5f99-974164efa788',
         category: 'power',
       },
     ]);
@@ -880,8 +880,10 @@ describe('CPU match service', () => {
       {
         stat: 'damage_multiplier',
         operation: 'multiply',
+        value: 0,
         percentage: -100,
         remainingTurns: 2,
+        remainingCharges: null,
       },
     ]);
     expect(response.lastAction?.effects[0]?.modifier).toMatchObject({
@@ -1460,7 +1462,7 @@ interface ConfiguredCpuCardFixture {
   card_definition_id: string | null;
   name: string | null;
   category: BasicCpuDeckCardConfiguration['category'] | null;
-  affinity: 'grit' | 'spirit' | 'mystic' | null;
+  affinity: 'grit' | 'spark' | 'wit' | null;
   rarity: 'common' | 'rare' | null;
   hp: number | null;
   power: number | null;
@@ -1469,14 +1471,8 @@ interface ConfiguredCpuCardFixture {
 }
 
 function configuredCpuCardRows(): ConfiguredCpuCardFixture[] {
-  const names = [
-    'Grit Creature 2',
-    'Spirit Creature 1',
-    'Mystic Creature 1',
-    'Grit Power 1',
-    'Mystic Power 1',
-  ];
-  const affinities = ['grit', 'spirit', 'mystic', 'grit', 'mystic'] as const;
+  const names = ['Quillip', 'Voltiki', 'Karrik', 'Field Kit', 'Reserve Focus'];
+  const affinities = ['wit', 'spark', 'grit', null, null] as const;
 
   return BASIC_CPU_DECK_CONFIGURATION.map((configured, index) => ({
     position: index + 1,
@@ -1559,6 +1555,10 @@ function createCpuConfigurationQuery(
       };
     }
 
+    if (statement.includes('from public.card_move_effects')) {
+      return { rows: [] };
+    }
+
     if (statement.includes('from public.card_effects')) {
       const definitionIds = values?.[0] as string[];
       return {
@@ -1595,7 +1595,7 @@ function selectedPlayerDeckRows() {
       card_definition_id: `a8000000-0000-4000-8000-${String(position).padStart(12, '0')}`,
       name: `Player card ${position}`,
       category,
-      affinity: 'wit' as const,
+      affinity: category === 'creature' ? ('wit' as const) : null,
       rarity: 'common' as const,
       hp: category === 'creature' ? 10 : null,
       power: category === 'creature' ? 10 : null,

@@ -486,7 +486,7 @@ function powerCardInput(name: string) {
     actorPlayerId: AUTHOR_ONE_ID,
     name,
     category: 'power' as const,
-    affinity: 'wit' as const,
+    affinity: null,
     rarity: 'common' as const,
     hp: null,
     power: null,
@@ -548,7 +548,7 @@ async function insertDirectDefinition(
   const result = await pool.query<{ id: string }>(
     `insert into public.card_definitions (
        name, category, affinity, rarity, hp, power
-     ) values ($1, 'power', 'wit', 'common', null, null)
+     ) values ($1, 'power', null, 'common', null, null)
      returning id::text`,
     [name],
   );

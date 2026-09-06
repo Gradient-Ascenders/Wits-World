@@ -76,12 +76,13 @@ interface StarterGrantRow extends pg.QueryResultRow {
 
 interface StarterCardRow extends pg.QueryResultRow {
   acquired_at: Date;
-  affinity: CardAffinity;
+  affinity: CardAffinity | null;
   card_definition_id: string;
   category: CardCategory;
   description: string | null;
   effects: CardEffect[];
   hp: number | null;
+  image_alt: string | null;
   image_url: string | null;
   is_active: boolean;
   moves: CardMove[];
@@ -92,7 +93,7 @@ interface StarterCardRow extends pg.QueryResultRow {
 }
 
 interface StarterDefinitionRow extends pg.QueryResultRow {
-  affinity: CardAffinity;
+  affinity: CardAffinity | null;
   authoring_status: string;
   card_definition_id: string;
   category: CardCategory;
@@ -106,7 +107,7 @@ interface StarterDefinitionRow extends pg.QueryResultRow {
 }
 
 interface StarterDefinitionRequirement {
-  affinity: StarterAffinity;
+  affinity: CardAffinity | null;
   category: CardCategory;
   definitionId: string;
 }
@@ -176,7 +177,11 @@ export function createStarterGrantService(
             input.playerId,
             existing,
           );
-          assertCompleteStarterGrant(result, input.affinity);
+          if (isStarterAffinity(existing.affinity)) {
+            assertCompleteStarterGrant(result, input.affinity);
+          } else {
+            assertHistoricalStarterGrant(result, input.affinity);
+          }
           await client.query('commit');
           return { grant: result, created: false };
         }
@@ -318,9 +323,9 @@ async function loadConfiguredDefinitions(
   requirements: readonly StarterDefinitionRequirement[],
   lock: boolean,
 ): Promise<StarterDefinitionRow[]> {
-  const definitionIds = requirements.map(
-    (requirement) => requirement.definitionId,
-  );
+  const definitionIds = [
+    ...new Set(requirements.map((requirement) => requirement.definitionId)),
+  ];
   const result = await client.query<StarterDefinitionRow>(
     `
       select
@@ -345,7 +350,8 @@ async function loadConfiguredDefinitions(
               'modifierStat', move.modifier_stat,
               'modifierOperation', move.modifier_operation,
               'modifierDurationTurns', move.modifier_duration_turns,
-              'powerCost', move.power_cost
+              'powerCost', move.power_cost,
+              'rulesText', move.rules_text
             ) order by move.position
           )
           from public.card_moves move
@@ -360,7 +366,8 @@ async function loadConfiguredDefinitions(
               'effectValue', effect.effect_value,
               'modifierStat', effect.modifier_stat,
               'modifierOperation', effect.modifier_operation,
-              'modifierDurationTurns', effect.modifier_duration_turns
+              'modifierDurationTurns', effect.modifier_duration_turns,
+              'rulesText', effect.rules_text
             ) order by effect.position
           )
           from public.card_effects effect
@@ -404,8 +411,11 @@ async function loadStarterPackages(
 ): Promise<Map<StarterAffinity, StarterPackageRows>> {
   const requirements = affinities.flatMap(buildStarterRequirements);
   const rows = await loadConfiguredDefinitions(client, requirements, lock);
+  const requiredDefinitionIds = new Set(
+    requirements.map((requirement) => requirement.definitionId.toLowerCase()),
+  );
 
-  if (rows.length !== requirements.length) {
+  if (rows.length !== requiredDefinitionIds.size) {
     throw new StarterCatalogueUnavailableError();
   }
 
@@ -448,7 +458,7 @@ function buildStarterRequirements(
       definitionId,
     })),
     ...packageDefinition.powerCardDefinitionIds.map((definitionId) => ({
-      affinity,
+      affinity: null,
       category: 'power' as const,
       definitionId,
     })),
@@ -550,6 +560,7 @@ function mapStarterMove(move: CardMove) {
     modifierOperation: move.modifierOperation,
     modifierDurationTurns: move.modifierDurationTurns,
     powerCost: move.powerCost,
+    rulesText: move.rulesText ?? null,
   };
 }
 
@@ -561,6 +572,7 @@ function mapStarterEffect(effect: CardEffect) {
     modifierStat: effect.modifierStat,
     modifierOperation: effect.modifierOperation,
     modifierDurationTurns: effect.modifierDurationTurns,
+    rulesText: effect.rulesText ?? null,
   };
 }
 
@@ -588,6 +600,7 @@ async function loadStarterGrantResult(
         definition.hp,
         definition.power,
         definition.description,
+        definition.image_alt,
         definition.image_url,
         definition.is_active,
         coalesce((
@@ -602,7 +615,8 @@ async function loadStarterGrantResult(
               'modifierStat', move.modifier_stat,
               'modifierOperation', move.modifier_operation,
               'modifierDurationTurns', move.modifier_duration_turns,
-              'powerCost', move.power_cost
+              'powerCost', move.power_cost,
+              'rulesText', move.rules_text
             ) order by move.position
           )
           from public.card_moves move
@@ -617,7 +631,8 @@ async function loadStarterGrantResult(
               'effectValue', effect.effect_value,
               'modifierStat', effect.modifier_stat,
               'modifierOperation', effect.modifier_operation,
-              'modifierDurationTurns', effect.modifier_duration_turns
+              'modifierDurationTurns', effect.modifier_duration_turns,
+              'rulesText', effect.rules_text
             ) order by effect.position
           )
           from public.card_effects effect
@@ -656,6 +671,7 @@ function mapOwnedCard(row: StarterCardRow): OwnedCard {
     hp: row.hp,
     power: row.power,
     description: row.description,
+    imageAlt: row.image_alt,
     imageUrl: row.image_url,
     isActive: row.is_active,
     moves: row.moves ?? [],
@@ -707,7 +723,11 @@ function assertCompleteStarterGrant(
     creatureCount !== 3 ||
     powerCount !== 2 ||
     grant.cards.some(
-      (card) => card.affinity !== expectedAffinity || card.rarity !== 'common',
+      (card) =>
+        card.rarity !== 'common' ||
+        (card.category === 'creature'
+          ? card.affinity !== expectedAffinity
+          : card.affinity !== null && card.affinity !== expectedAffinity),
     ) ||
     definitionIds.size !== 5 ||
     ownedCardIds.size !== 5
@@ -715,5 +735,33 @@ function assertCompleteStarterGrant(
     throw new Error(
       'Starter grant did not persist the approved five-card composition.',
     );
+  }
+}
+
+function assertHistoricalStarterGrant(
+  grant: StarterGrant,
+  expectedAffinity: CardAffinity,
+): void {
+  const creatureCount = grant.cards.filter(
+    (card) => card.category === 'creature',
+  ).length;
+  const powerCount = grant.cards.filter(
+    (card) => card.category === 'power',
+  ).length;
+
+  if (
+    grant.affinity !== expectedAffinity ||
+    grant.cards.length !== 5 ||
+    creatureCount !== 3 ||
+    powerCount !== 2 ||
+    grant.cards.some((card) =>
+      card.category === 'creature'
+        ? card.affinity !== expectedAffinity
+        : card.affinity !== null && card.affinity !== expectedAffinity,
+    ) ||
+    new Set(grant.cards.map((card) => card.cardDefinitionId)).size !== 5 ||
+    new Set(grant.cards.map((card) => card.ownedCardId)).size !== 5
+  ) {
+    throw new Error('Historical starter grant has an invalid composition.');
   }
 }

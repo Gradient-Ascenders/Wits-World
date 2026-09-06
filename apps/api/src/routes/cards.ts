@@ -81,6 +81,7 @@ const moveSchema = {
       anyOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }],
     },
     powerCost: { type: 'integer', minimum: 0 },
+    rulesText: { anyOf: [{ type: 'string' }, { type: 'null' }] },
   },
 } as const;
 
@@ -119,6 +120,7 @@ const effectSchema = {
     modifierDurationTurns: {
       anyOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }],
     },
+    rulesText: { anyOf: [{ type: 'string' }, { type: 'null' }] },
   },
 } as const;
 
@@ -136,6 +138,7 @@ const starterPreviewMoveSchema = {
     modifierOperation: moveSchema.properties.modifierOperation,
     modifierDurationTurns: moveSchema.properties.modifierDurationTurns,
     powerCost: moveSchema.properties.powerCost,
+    rulesText: moveSchema.properties.rulesText,
   },
 } as const;
 
@@ -150,6 +153,7 @@ const starterPreviewEffectSchema = {
     modifierStat: effectSchema.properties.modifierStat,
     modifierOperation: effectSchema.properties.modifierOperation,
     modifierDurationTurns: effectSchema.properties.modifierDurationTurns,
+    rulesText: effectSchema.properties.rulesText,
   },
 } as const;
 
@@ -181,12 +185,14 @@ const ownedCardSchema = {
     affinity: {
       type: 'string',
       enum: ['wit', 'grit', 'spark', 'spirit', 'mystic'],
+      nullable: true,
     },
     rarity: { type: 'string', enum: ['common', 'rare', 'epic', 'legendary'] },
     hp: { anyOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }] },
     power: { anyOf: [{ type: 'integer', minimum: 0 }, { type: 'null' }] },
     description: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     imageUrl: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    imageAlt: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     isActive: { type: 'boolean' },
     moves: { type: 'array', items: moveSchema },
     effects: { type: 'array', items: effectSchema },

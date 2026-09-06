@@ -16,10 +16,13 @@ import {
   type BattleDeck,
   type BattleEffect,
   type BattleMove,
+  type BattleModifier,
   type BattlePowerCard,
   type BattleState,
   type BattleTransition,
   type RandomInt,
+  type EffectCode,
+  type EffectTarget,
 } from '@wits-world/game-rules';
 
 import { DeckRuleViolationError } from '../cards/deck-rules.js';
@@ -147,15 +150,17 @@ export interface PublicPowerCardView {
 export interface PublicEffectView {
   damageMultiplier: number | null;
   effectType: BattleEffect['effectType'];
-  effectValue: number;
+  effectValue: number | null;
   modifier: NonNullable<BattleEffect['modifier']> | null;
 }
 
 export interface PublicActiveModifierView {
-  stat: 'damage_multiplier';
-  operation: 'multiply';
-  percentage: number;
+  stat: BattleModifier['stat'];
+  operation: BattleModifier['operation'];
+  value: number;
+  percentage: number | null;
   remainingTurns: number | null;
+  remainingCharges: number | null;
 }
 
 export interface PublicAppliedEffectView {
@@ -387,7 +392,7 @@ interface SavedDeckCardRow extends pg.QueryResultRow {
   card_definition_id: string;
   name: string;
   category: CardCategory;
-  affinity: CardAffinity;
+  affinity: CardAffinity | null;
   rarity: CardRarity;
   hp: number | null;
   power: number | null;
@@ -399,7 +404,7 @@ interface CpuCardRow extends pg.QueryResultRow {
   card_definition_id: string;
   name: string;
   category: CardCategory;
-  affinity: CardAffinity;
+  affinity: CardAffinity | null;
   rarity: CardRarity;
   hp: number | null;
   power: number | null;
@@ -444,6 +449,12 @@ interface EffectRow extends pg.QueryResultRow {
   modifier_stat: CardEffect['modifierStat'];
   modifier_operation: CardEffect['modifierOperation'];
   modifier_duration_turns: number | null;
+  effect_code: EffectCode;
+  effect_config: unknown;
+}
+
+interface MoveEffectRow extends EffectRow {
+  card_move_id: string;
 }
 
 interface SnapshotCard {
@@ -453,7 +464,7 @@ interface SnapshotCard {
   cardDefinitionId: string;
   name: string;
   category: CardCategory;
-  affinity: CardAffinity;
+  affinity: CardAffinity | null;
   rarity: CardRarity;
   card: BattleCreatureCard | BattlePowerCard;
 }
@@ -1056,7 +1067,6 @@ async function loadCpuDeckCards(client: CpuMatchClient): Promise<CpuCardRow[]> {
       row.card_definition_id === null ||
       row.name === null ||
       row.category === null ||
-      row.affinity === null ||
       row.rarity === null
     ) {
       throw new CpuMatchSetupError(
@@ -1073,6 +1083,12 @@ async function loadCpuDeckCards(client: CpuMatchClient): Promise<CpuCardRow[]> {
     if (row.category !== configured.category) {
       throw new CpuMatchSetupError(
         `Configured Basic CPU card ${configured.cardDefinitionId} must be a ${configured.category} card.`,
+      );
+    }
+
+    if (row.category === 'creature' && row.affinity === null) {
+      throw new CpuMatchSetupError(
+        `Configured Basic CPU Creature ${configured.cardDefinitionId} requires an affinity.`,
       );
     }
 
@@ -1104,7 +1120,7 @@ async function buildBattleDeck(
   const definitionIds = [
     ...new Set(cards.map((card) => card.card_definition_id)),
   ];
-  const [movesResult, effectsResult] = await Promise.all([
+  const [movesResult, moveEffectsResult, effectsResult] = await Promise.all([
     client.query<MoveRow>(
       `
         select
@@ -1125,6 +1141,33 @@ async function buildBattleDeck(
       `,
       [definitionIds],
     ),
+    client.query<MoveEffectRow>(
+      `
+        select
+          effect.id::text,
+          effect.card_move_id::text,
+          effect.card_definition_id::text,
+          effect.effect_code,
+          effect.effect_value,
+          effect.effect_config,
+          case
+            when effect.effect_code = 'damage' then 'damage'
+            when effect.effect_code = 'heal' then 'heal'
+            when effect.effect_code in ('poison', 'stun') then 'debuff'
+            when effect.effect_code in ('power_change', 'damage_modifier')
+              and effect.effect_config ->> 'target' = 'opponent' then 'debuff'
+            else 'buff'
+          end as effect_type,
+          null::text as modifier_stat,
+          null::text as modifier_operation,
+          null::integer as modifier_duration_turns,
+          0::integer as position
+        from public.card_move_effects effect
+        where effect.card_definition_id = any($1::uuid[])
+        order by effect.card_definition_id, effect.card_move_id, effect.position
+      `,
+      [definitionIds],
+    ),
     client.query<EffectRow>(
       `
         select
@@ -1135,7 +1178,9 @@ async function buildBattleDeck(
           effect_value,
           modifier_stat,
           modifier_operation,
-          modifier_duration_turns
+          modifier_duration_turns,
+          effect_code,
+          effect_config
         from public.card_effects
         where card_definition_id = any($1::uuid[])
         order by card_definition_id, position
@@ -1145,6 +1190,7 @@ async function buildBattleDeck(
   ]);
 
   const movesByDefinition = groupByDefinition(movesResult.rows);
+  const effectsByMove = groupByKey(moveEffectsResult.rows, 'card_move_id');
   const effectsByDefinition = groupByDefinition(effectsResult.rows);
   const creatures: BattleCreatureCard[] = [];
   const powerCards: BattlePowerCard[] = [];
@@ -1156,7 +1202,7 @@ async function buildBattleDeck(
         : card.card_definition_id;
 
     if (card.category === 'creature') {
-      if (card.hp === null || card.power === null) {
+      if (card.affinity === null || card.hp === null || card.power === null) {
         throw new CpuMatchSetupError(
           `Creature ${card.name} has incomplete stats.`,
         );
@@ -1168,7 +1214,7 @@ async function buildBattleDeck(
         maxHp: card.hp,
         maxPower: card.power,
         moves: (movesByDefinition.get(card.card_definition_id) ?? []).map(
-          mapBattleMove,
+          (move) => mapBattleMove(move, effectsByMove.get(move.id) ?? []),
         ),
       });
     } else {
@@ -1199,17 +1245,65 @@ function groupByDefinition<T extends { card_definition_id: string }>(
   return grouped;
 }
 
-function mapBattleMove(row: MoveRow): BattleMove {
+function groupByKey<T extends Record<K, string>, K extends keyof T>(
+  rows: readonly T[],
+  key: K,
+): Map<string, T[]> {
+  const grouped = new Map<string, T[]>();
+  for (const row of rows) {
+    const values = grouped.get(row[key]) ?? [];
+    values.push(row);
+    grouped.set(row[key], values);
+  }
+  return grouped;
+}
+
+function mapBattleMove(
+  row: MoveRow,
+  effects: readonly MoveEffectRow[],
+): BattleMove {
   return {
     id: row.id,
     name: row.name,
     moveType: row.move_type,
     powerCost: row.power_cost,
-    effects: [mapBattleEffect(row)],
+    effects:
+      effects.length > 0
+        ? effects.map(mapBattleEffect)
+        : [mapBattleEffect(row)],
   };
 }
 
 function mapBattleEffect(row: MoveRow | EffectRow): BattleEffect {
+  if ('effect_code' in row) {
+    const config = asEffectConfig(row.effect_config);
+    const target = readEffectTarget(config.target);
+    const durationTurns = readInteger(config.durationTurns);
+    const charges = readInteger(config.charges);
+    const minimumHpExclusive = readInteger(config.minimumHpExclusive);
+    return {
+      id: row.id,
+      effectType: row.effect_type,
+      effectValue: row.effect_value,
+      effectCode: row.effect_code,
+      ...(target ? { target } : {}),
+      ...(durationTurns === undefined ? {} : { durationTurns }),
+      ...(charges === undefined ? {} : { charges }),
+      ...(typeof config.neutral === 'boolean'
+        ? { neutral: config.neutral }
+        : {}),
+      ...(typeof config.bypassDefense === 'boolean'
+        ? { bypassDefense: config.bypassDefense }
+        : {}),
+      ...(minimumHpExclusive === undefined ? {} : { minimumHpExclusive }),
+      ...(typeof config.cannotDefeat === 'boolean'
+        ? { cannotDefeat: config.cannotDefeat }
+        : {}),
+      ...(typeof config.immunityAfterRecovery === 'boolean'
+        ? { immunityAfterRecovery: config.immunityAfterRecovery }
+        : {}),
+    };
+  }
   const modifier =
     row.modifier_stat && row.modifier_operation
       ? {
@@ -1225,6 +1319,22 @@ function mapBattleEffect(row: MoveRow | EffectRow): BattleEffect {
     effectValue: row.effect_value,
     modifier,
   };
+}
+
+function asEffectConfig(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function readInteger(value: unknown): number | undefined {
+  return Number.isInteger(value) ? (value as number) : undefined;
+}
+
+function readEffectTarget(value: unknown): EffectTarget | undefined {
+  return value === 'self' || value === 'opponent' || value === 'both'
+    ? value
+    : undefined;
 }
 
 async function insertSnapshots(
@@ -1900,7 +2010,7 @@ function battlePowerCardName(
     .find((candidate) => candidate.id === powerCardId);
   return (
     cardNames[powerCardId] ??
-    (card ? `${titleCase(card.affinity)} Power card` : 'a Power card')
+    (card?.affinity ? `${titleCase(card.affinity)} Power card` : 'a Power card')
   );
 }
 
@@ -1961,7 +2071,11 @@ function toPublicState(
       creatures: playerCreatures,
       powerCards: player.powerCards.map((card) => ({
         id: card.id,
-        name: cardNames[card.id] ?? `${titleCase(card.affinity)} Power card`,
+        name:
+          cardNames[card.id] ??
+          (card.affinity
+            ? `${titleCase(card.affinity)} Power card`
+            : 'Power card'),
         affinity: card.affinity,
         effects: card.effects.map(toPublicEffect),
         available: !player.usedPowerCardIds.includes(card.id),
@@ -2027,14 +2141,9 @@ function toPublicCreature(
 }
 
 function toPublicEffect(effect: BattleEffect): PublicEffectView {
-  if (effect.effectValue === null) {
-    throw new CpuMatchSetupError(
-      `Effect ${effect.id} is missing an executable value.`,
-    );
-  }
-
   const damageMultiplier =
     effect.modifier?.stat === 'damage_multiplier' &&
+    effect.effectValue !== null &&
     (effect.effectType === 'buff' || effect.effectType === 'debuff')
       ? getEffectDamageMultiplier(effect.effectType, effect.effectValue)
       : null;
@@ -2051,13 +2160,15 @@ function toPublicActiveModifier(
   modifier: BattleState['participants']['player']['creatures'][number]['modifiers'][number],
 ): PublicActiveModifierView {
   if (
-    modifier.stat !== 'damage_multiplier' ||
-    modifier.operation !== 'multiply' ||
     !Number.isFinite(modifier.value) ||
     modifier.value < 0 ||
     (modifier.remainingTurns !== null &&
       (!Number.isInteger(modifier.remainingTurns) ||
-        modifier.remainingTurns <= 0))
+        modifier.remainingTurns <= 0)) ||
+    (modifier.remainingCharges !== null &&
+      modifier.remainingCharges !== undefined &&
+      (!Number.isInteger(modifier.remainingCharges) ||
+        modifier.remainingCharges <= 0))
   ) {
     throw new CpuMatchSetupError(
       'Persisted active modifier state is not player-readable.',
@@ -2067,8 +2178,14 @@ function toPublicActiveModifier(
   return {
     stat: modifier.stat,
     operation: modifier.operation,
-    percentage: Math.round((modifier.value - 1) * 100),
+    value: modifier.value,
+    percentage:
+      modifier.stat === 'damage_multiplier' ||
+      modifier.stat === 'incoming_damage_multiplier'
+        ? Math.round((modifier.value - 1) * 100)
+        : null,
     remainingTurns: modifier.remainingTurns,
+    remainingCharges: modifier.remainingCharges ?? null,
   };
 }
 

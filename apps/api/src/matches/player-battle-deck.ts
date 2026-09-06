@@ -7,6 +7,8 @@ import {
   type BattleEffect,
   type BattleMove,
   type BattlePowerCard,
+  type EffectCode,
+  type EffectTarget,
 } from '@wits-world/game-rules';
 
 import { validateBasicDeck } from '../cards/deck-rules.js';
@@ -31,7 +33,7 @@ export interface PlayerBattleDeckCard extends pg.QueryResultRow {
   cardDefinitionId: string;
   name: string;
   category: CardCategory;
-  affinity: CardAffinity;
+  affinity: CardAffinity | null;
   rarity: CardRarity;
   hp: number | null;
   power: number | null;
@@ -57,7 +59,7 @@ interface SavedCardRow extends pg.QueryResultRow {
   card_definition_id: string;
   name: string;
   category: CardCategory;
-  affinity: CardAffinity;
+  affinity: CardAffinity | null;
   rarity: CardRarity;
   hp: number | null;
   power: number | null;
@@ -86,6 +88,12 @@ interface EffectRow extends pg.QueryResultRow {
   modifier_stat: CardEffect['modifierStat'];
   modifier_operation: CardEffect['modifierOperation'];
   modifier_duration_turns: number | null;
+  effect_code: EffectCode;
+  effect_config: unknown;
+}
+
+interface MoveEffectRow extends EffectRow {
+  card_move_id: string;
 }
 
 export async function loadPlayerBattleDeck(
@@ -163,7 +171,7 @@ export async function loadPlayerBattleDeck(
   }
 
   const definitionIds = [...new Set(rows.map((row) => row.card_definition_id))];
-  const [movesResult, effectsResult] = await Promise.all([
+  const [movesResult, moveEffectsResult, effectsResult] = await Promise.all([
     client.query<MoveRow>(
       `
         select
@@ -183,6 +191,32 @@ export async function loadPlayerBattleDeck(
       `,
       [definitionIds],
     ),
+    client.query<MoveEffectRow>(
+      `
+        select
+          effect.id::text,
+          effect.card_move_id::text,
+          effect.card_definition_id::text,
+          effect.effect_code,
+          effect.effect_value,
+          effect.effect_config,
+          case
+            when effect.effect_code = 'damage' then 'damage'
+            when effect.effect_code = 'heal' then 'heal'
+            when effect.effect_code in ('poison', 'stun') then 'debuff'
+            when effect.effect_code in ('power_change', 'damage_modifier')
+              and effect.effect_config ->> 'target' = 'opponent' then 'debuff'
+            else 'buff'
+          end as effect_type,
+          null::text as modifier_stat,
+          null::text as modifier_operation,
+          null::integer as modifier_duration_turns
+        from public.card_move_effects effect
+        where effect.card_definition_id = any($1::uuid[])
+        order by effect.card_definition_id, effect.card_move_id, effect.position
+      `,
+      [definitionIds],
+    ),
     client.query<EffectRow>(
       `
         select
@@ -192,7 +226,9 @@ export async function loadPlayerBattleDeck(
           effect_value,
           modifier_stat,
           modifier_operation,
-          modifier_duration_turns
+          modifier_duration_turns,
+          effect_code,
+          effect_config
         from public.card_effects
         where card_definition_id = any($1::uuid[])
         order by card_definition_id, position
@@ -202,6 +238,7 @@ export async function loadPlayerBattleDeck(
   ]);
 
   const movesByDefinition = groupByDefinition(movesResult.rows);
+  const effectsByMove = groupRows(moveEffectsResult.rows, 'card_move_id');
   const effectsByDefinition = groupByDefinition(effectsResult.rows);
   const creatures: BattleCreatureCard[] = [];
   const powerCards: BattlePowerCard[] = [];
@@ -210,7 +247,7 @@ export async function loadPlayerBattleDeck(
   for (const row of rows) {
     let battleCard: BattleCreatureCard | BattlePowerCard;
     if (row.category === 'creature') {
-      if (row.hp === null || row.power === null) {
+      if (row.affinity === null || row.hp === null || row.power === null) {
         throw new PlayerBattleDeckError();
       }
 
@@ -220,7 +257,7 @@ export async function loadPlayerBattleDeck(
         maxHp: row.hp,
         maxPower: row.power,
         moves: (movesByDefinition.get(row.card_definition_id) ?? []).map(
-          mapMove,
+          (move) => mapMove(move, effectsByMove.get(move.id) ?? []),
         ),
       };
       creatures.push(battleCard);
@@ -271,17 +308,63 @@ function groupByDefinition<T extends { card_definition_id: string }>(
   return result;
 }
 
-function mapMove(row: MoveRow): BattleMove {
+function groupRows<T extends Record<K, string>, K extends keyof T>(
+  rows: readonly T[],
+  key: K,
+): Map<string, T[]> {
+  const result = new Map<string, T[]>();
+  for (const row of rows) {
+    const values = result.get(row[key]) ?? [];
+    values.push(row);
+    result.set(row[key], values);
+  }
+  return result;
+}
+
+function mapMove(row: MoveRow, effects: readonly MoveEffectRow[]): BattleMove {
   return {
     id: row.id,
     name: row.name,
     moveType: row.move_type,
     powerCost: row.power_cost,
-    effects: [mapEffect(row)],
+    effects: effects.length > 0 ? effects.map(mapEffect) : [mapEffect(row)],
   };
 }
 
 function mapEffect(row: MoveRow | EffectRow): BattleEffect {
+  if ('effect_code' in row) {
+    const config = asEffectConfig(row.effect_config);
+    return {
+      id: row.id,
+      effectType: row.effect_type,
+      effectValue: row.effect_value,
+      effectCode: row.effect_code,
+      ...(readEffectTarget(config.target)
+        ? { target: readEffectTarget(config.target) }
+        : {}),
+      ...(readInteger(config.durationTurns) !== undefined
+        ? { durationTurns: readInteger(config.durationTurns) }
+        : {}),
+      ...(readInteger(config.charges) !== undefined
+        ? { charges: readInteger(config.charges) }
+        : {}),
+      ...(typeof config.neutral === 'boolean'
+        ? { neutral: config.neutral }
+        : {}),
+      ...(typeof config.bypassDefense === 'boolean'
+        ? { bypassDefense: config.bypassDefense }
+        : {}),
+      ...(readInteger(config.minimumHpExclusive) !== undefined
+        ? { minimumHpExclusive: readInteger(config.minimumHpExclusive) }
+        : {}),
+      ...(typeof config.cannotDefeat === 'boolean'
+        ? { cannotDefeat: config.cannotDefeat }
+        : {}),
+      ...(typeof config.immunityAfterRecovery === 'boolean'
+        ? { immunityAfterRecovery: config.immunityAfterRecovery }
+        : {}),
+    };
+  }
   return {
     id: row.id,
     effectType: row.effect_type,
@@ -295,4 +378,20 @@ function mapEffect(row: MoveRow | EffectRow): BattleEffect {
           }
         : undefined,
   };
+}
+
+function asEffectConfig(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function readInteger(value: unknown): number | undefined {
+  return Number.isInteger(value) ? (value as number) : undefined;
+}
+
+function readEffectTarget(value: unknown): EffectTarget | undefined {
+  return value === 'self' || value === 'opponent' || value === 'both'
+    ? value
+    : undefined;
 }

@@ -121,6 +121,7 @@ describe.skipIf(!runIntegrationTests)(
           '0038_add_question_performance_analytics_indexes.sql',
           '0039_add_async_pvp_invitation_cancellation.sql',
           '0040_add_offline_challenge_attempts.sql',
+          '0041_complete_card_catalogue.sql',
         ],
         skipped: [],
       });
@@ -169,6 +170,7 @@ describe.skipIf(!runIntegrationTests)(
           '0038_add_question_performance_analytics_indexes.sql',
           '0039_add_async_pvp_invitation_cancellation.sql',
           '0040_add_offline_challenge_attempts.sql',
+          '0041_complete_card_catalogue.sql',
         ],
       });
     }, 30_000);
@@ -381,6 +383,7 @@ describe.skipIf(!runIntegrationTests)(
             '0038_add_question_performance_analytics_indexes.sql',
             '0039_add_async_pvp_invitation_cancellation.sql',
             '0040_add_offline_challenge_attempts.sql',
+            '0041_complete_card_catalogue.sql',
           ],
         });
 
@@ -706,9 +709,9 @@ describe.skipIf(!runIntegrationTests)(
           `insert into public.card_definitions (
            id, name, category, affinity, rarity, description, is_active, authoring_status
          ) values
-           ($1, 'Persistence Spark', 'power', 'spark', 'common',
+           ($1, 'Persistence Spark', 'power', null, 'common',
             'A card used by the persistence test', false, 'draft'),
-           ($2, 'Persistence Spark Copy', 'power', 'spark', 'common',
+           ($2, 'Persistence Spark Copy', 'power', null, 'common',
             'A second card used by the persistence test', false, 'draft')
          returning id`,
           [CARD_ID, SECOND_CARD_ID],
@@ -945,8 +948,8 @@ describe.skipIf(!runIntegrationTests)(
         const ownedCards = await client.query<{ count: string }>(
           `select count(*)::text as count
            from public.player_cards
-          where player_id = $1 and card_definition_id = $2`,
-          [PLAYER_ID, CARD_ID],
+          where player_id = $1`,
+          [PLAYER_ID],
         );
         expect(ownedCards.rows[0]?.count).toBe('3');
 

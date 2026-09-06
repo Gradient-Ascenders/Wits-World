@@ -6,6 +6,10 @@ import type {
 import type { StarterPreviewEffect } from '../api/cards';
 
 export function describeEffect(effect: MatchEffect): string {
+  if (effect.effectValue === null) {
+    return `${titleCase(effect.effectType)} effect`;
+  }
+
   if (effect.effectType === 'damage') {
     return `${effect.effectValue} base damage`;
   }
@@ -69,10 +73,34 @@ export function describeStarterEffect(effect: StarterPreviewEffect): string {
 }
 
 export function describeActiveModifier(modifier: MatchActiveModifier): string {
-  const direction = modifier.percentage >= 0 ? '+' : '−';
-  return `Damage ${direction}${Math.abs(modifier.percentage)}% · ${describeDuration(
-    modifier.remainingTurns,
-  )}`;
+  const duration = describeModifierLifetime(modifier);
+  if (modifier.percentage !== null) {
+    const direction = modifier.percentage >= 0 ? '+' : '−';
+    const subject =
+      modifier.stat === 'incoming_damage_multiplier'
+        ? 'Incoming damage'
+        : 'Damage';
+    return `${subject} ${direction}${Math.abs(modifier.percentage)}% · ${duration}`;
+  }
+
+  switch (modifier.stat) {
+    case 'poison':
+      return `Poison: ${modifier.value ?? 0} damage · ${duration}`;
+    case 'stun':
+      return `Stunned · ${duration}`;
+    case 'dodge':
+      return `${Math.round(modifier.value ?? 0)}% dodge chance · ${duration}`;
+    case 'reflect':
+      return `Reflect ${Math.round(modifier.value ?? 0)}% damage · ${duration}`;
+    case 'lifesteal':
+      return `Heal ${Math.round(modifier.value ?? 0)}% of damage dealt · ${duration}`;
+    case 'hp':
+      return `HP ${modifier.operation} ${modifier.value ?? 0} · ${duration}`;
+    case 'power':
+      return `Power ${modifier.operation} ${modifier.value ?? 0} · ${duration}`;
+    default:
+      return `Active effect · ${duration}`;
+  }
 }
 
 export function describeAppliedEffect(effect: AppliedMatchEffect): string {
@@ -113,6 +141,16 @@ export function describeAppliedEffect(effect: AppliedMatchEffect): string {
 function describeDuration(remainingTurns: number | null): string {
   if (remainingTurns === null) return 'Rest of battle';
   return `${remainingTurns} ${remainingTurns === 1 ? 'turn' : 'turns'}`;
+}
+
+function describeModifierLifetime(modifier: MatchActiveModifier): string {
+  if (
+    modifier.remainingCharges !== null &&
+    modifier.remainingCharges !== undefined
+  ) {
+    return `${modifier.remainingCharges} ${modifier.remainingCharges === 1 ? 'use' : 'uses'}`;
+  }
+  return describeDuration(modifier.remainingTurns);
 }
 
 function effectiveDamagePercentage(multiplier: number | null): number {

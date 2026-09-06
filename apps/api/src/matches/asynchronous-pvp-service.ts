@@ -1808,7 +1808,11 @@ function projectMatch(
         ),
         powerCards: self.powerCards.map((card) => ({
           id: card.id,
-          name: names[card.id] ?? `${titleCase(card.affinity)} Power card`,
+          name:
+            names[card.id] ??
+            (card.affinity
+              ? `${titleCase(card.affinity)} Power card`
+              : 'Power card'),
           affinity: card.affinity,
           effects: card.effects.map(publicEffect),
           available: !self.usedPowerCardIds.includes(card.id),
@@ -1839,7 +1843,11 @@ function projectMatch(
           .filter((card) => opponent.usedPowerCardIds.includes(card.id))
           .map((card) => ({
             id: card.id,
-            name: names[card.id] ?? `${titleCase(card.affinity)} Power card`,
+            name:
+              names[card.id] ??
+              (card.affinity
+                ? `${titleCase(card.affinity)} Power card`
+                : 'Power card'),
             affinity: card.affinity,
             effects: card.effects.map(publicEffect),
             available: false,
@@ -1886,19 +1894,23 @@ function publicCreature(
     activeModifiers: creature.modifiers.map((modifier) => ({
       stat: modifier.stat,
       operation: modifier.operation,
-      percentage: Math.round((modifier.value - 1) * 100),
+      value: modifier.value,
+      percentage:
+        modifier.stat === 'damage_multiplier' ||
+        modifier.stat === 'incoming_damage_multiplier'
+          ? Math.round((modifier.value - 1) * 100)
+          : null,
       remainingTurns: modifier.remainingTurns,
+      remainingCharges: modifier.remainingCharges ?? null,
     })),
   };
 }
 
 function publicEffect(effect: BattleEffect): unknown {
-  if (effect.effectValue === null) {
-    throw new Error(`Persisted effect ${effect.id} has no value.`);
-  }
   return {
     damageMultiplier:
       effect.modifier?.stat === 'damage_multiplier' &&
+      effect.effectValue !== null &&
       (effect.effectType === 'buff' || effect.effectType === 'debuff')
         ? getEffectDamageMultiplier(effect.effectType, effect.effectValue)
         : null,

@@ -4,6 +4,7 @@ import type { OwnedCard } from '../src/api/cards';
 import type { SavedDeck } from '../src/api/decks';
 import { buildStarterCards, buildUuid } from '../tests/fixtures/cards';
 import { activeMatch } from '../tests/fixtures/matches';
+import { expectSquareArtwork } from './card-artwork-assertions';
 
 const API_BASE_URL = 'http://127.0.0.1:3999/api/v1';
 const PLAYER = {
@@ -267,6 +268,7 @@ test('keeps exact-copy deck editing dense and reachable across viewports', async
     name: 'Owned cards available for this deck',
   });
   await expect(picker.locator(':scope > li')).toHaveCount(5);
+  await expectSquareArtwork(picker);
   await expectNoHorizontalOverflow(page);
   await expect(
     page.getByRole('button', { exact: true, name: 'Create saved deck' }),

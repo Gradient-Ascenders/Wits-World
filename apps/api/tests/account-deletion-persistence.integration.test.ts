@@ -916,6 +916,7 @@ describe.skipIf(!runIntegrationTests)(
             `,
             [upgradePlayerId, ISSUER],
           );
+          await seedLegacyRewardDefinition(client);
           await seedPublishedChallenge(client, {
             challengeId: upgradeChallengeId,
             eventId: upgradeEventId,
@@ -1786,6 +1787,38 @@ async function completeAttempt(
   }
 }
 
+async function seedLegacyRewardDefinition(
+  client: pg.PoolClient,
+): Promise<void> {
+  const definitionId = 'e6000000-0000-4000-8000-000000000001';
+
+  await client.query(
+    `insert into public.card_definitions (
+       id, name, category, affinity, rarity, hp, power, description,
+       is_active, authoring_status
+     ) values (
+       $1, 'Deletion upgrade reward', 'power', 'spark', 'rare', null, null,
+       'Historical reward fixture for the account-deletion migration.',
+       false, 'draft'
+     )`,
+    [definitionId],
+  );
+  await client.query(
+    `insert into public.card_effects (
+       card_definition_id, position, effect_type, effect_value
+     ) values ($1, 1, 'heal', 10)`,
+    [definitionId],
+  );
+  await client.query(
+    `update public.card_definitions
+        set authoring_status = 'published',
+            is_active = true,
+            updated_at = now()
+      where id = $1::uuid`,
+    [definitionId],
+  );
+}
+
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   const promise = new Promise<T>((resolvePromise) => {
@@ -1923,9 +1956,13 @@ async function loadStarterDefinitions(
     `
       select id::text
       from public.card_definitions
-      where affinity = 'wit'
-        and rarity = 'common'
+      where rarity = 'common'
         and is_active = true
+        and starter_eligible = true
+        and (
+          (category = 'creature' and affinity = 'wit')
+          or (category = 'power' and affinity is null)
+        )
       order by category, id
       limit $1
     `,

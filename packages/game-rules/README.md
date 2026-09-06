@@ -16,7 +16,9 @@ The package currently covers:
 - simultaneous initial Creature selection and server-side first-player choice;
 - Creature moves and Power cards;
 - HP, Power, Damage, Heal, Buff, and Debuff effects;
-- affinity type multipliers;
+- versioned affinity type multipliers (new matches use the starter triangle
+  and explicit five-type table; unversioned stored states retain the legacy
+  cycle);
 - mandatory replacement and terminal match state;
 - trusted timeout actions; and
 - deterministic CPU legal-action selection.

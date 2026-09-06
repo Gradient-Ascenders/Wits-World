@@ -11,16 +11,24 @@ import {
   buildStarterOptions,
   buildUuid,
 } from '../tests/fixtures/cards';
+import { expectSquareArtwork } from './card-artwork-assertions';
 
 const API_BASE_URL = 'http://127.0.0.1:3999/api/v1';
 
 test('groups, filters, and reveals card details across collection layouts', async ({
   page,
-}) => {
+}, testInfo) => {
   const consoleErrors: string[] = [];
   const runtimeErrors: string[] = [];
   let collectionState: 'cards' | 'empty' | 'error' = 'cards';
-  const cards = buildLargeCollection();
+  // Use an existing raster asset as a layout fixture, not production card art.
+  const cards = buildLargeCollection().map((card, index) => ({
+    ...card,
+    imageUrl:
+      index === 0 || index === 2
+        ? '/src/assets/home/great-hall-hero.png'
+        : card.imageUrl,
+  }));
 
   page.on('console', (message) => {
     if (message.type() === 'error') consoleErrors.push(message.text());
@@ -69,6 +77,18 @@ test('groups, filters, and reveals card details across collection layouts', asyn
   ).toBeVisible();
   await expectNoHorizontalOverflow(page);
   expect(await columnsOnFirstRow(gallery)).toBe(3);
+  await expectSquareArtwork(gallery);
+  const artworkImage = gallery.locator('img').first();
+  await expect(artworkImage).toHaveCSS('object-fit', 'contain');
+  await expect
+    .poll(() =>
+      artworkImage.evaluate((img: HTMLImageElement) => img.naturalWidth),
+    )
+    .toBeGreaterThan(0);
+  await page.screenshot({
+    path: testInfo.outputPath('square-artwork-mobile.png'),
+    fullPage: true,
+  });
 
   const duplicateTrigger = page.getByRole('button', {
     name: 'View Campus Guardian 1 details, 4 owned copies',
@@ -79,6 +99,10 @@ test('groups, filters, and reveals card details across collection layouts', asyn
     name: 'Campus Guardian 1 card details',
   });
   await expect(dialog).toBeVisible();
+  await expectSquareArtwork(dialog);
+  await page.screenshot({
+    path: testInfo.outputPath('square-artwork-detail.png'),
+  });
   await expect(
     dialog.getByRole('list', { name: /owned copies/u }).locator('li'),
   ).toHaveCount(4);
@@ -105,6 +129,7 @@ test('groups, filters, and reveals card details across collection layouts', asyn
   await page.setViewportSize({ height: 1024, width: 768 });
   await expectNoHorizontalOverflow(page);
   expect(await columnsOnFirstRow(gallery)).toBeGreaterThanOrEqual(4);
+  await expectSquareArtwork(gallery);
   await duplicateTrigger.click();
   const tabletPanel = await dialog.boundingBox();
   expect(tabletPanel).not.toBeNull();
@@ -115,6 +140,11 @@ test('groups, filters, and reveals card details across collection layouts', asyn
   await page.setViewportSize({ height: 800, width: 1280 });
   await expectNoHorizontalOverflow(page);
   expect(await columnsOnFirstRow(gallery)).toBeGreaterThanOrEqual(6);
+  await expectSquareArtwork(gallery);
+  await page.screenshot({
+    path: testInfo.outputPath('square-artwork-desktop.png'),
+    fullPage: true,
+  });
   await page.getByRole('combobox', { name: 'Sort' }).selectOption('rarity');
   await expect(gallery.locator('.card-thumbnail__title').first()).toHaveText(
     /Campus Guardian/u,

@@ -59,7 +59,7 @@ function validInput() {
     actorPlayerId: 'a9000000-0000-4000-8000-000000000001',
     name: 'Focused Name',
     category: 'power' as const,
-    affinity: 'wit' as const,
+    affinity: null,
     rarity: 'common' as const,
     hp: null,
     power: null,

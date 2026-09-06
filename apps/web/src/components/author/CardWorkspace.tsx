@@ -318,7 +318,8 @@ export function CardWorkspace({
                       <StatusBadge status={card.authoringStatus} />
                     </span>
                     <span className="author-record-summary__meta">
-                      {titleCase(card.category)} · {titleCase(card.affinity)} ·{' '}
+                      {titleCase(card.category)} ·{' '}
+                      {card.affinity ? titleCase(card.affinity) : 'Typeless'} ·{' '}
                       {titleCase(card.rarity)}
                     </span>
                     <span
@@ -658,7 +659,8 @@ function CardDetail({
           <p className="eyebrow">Card definition</p>
           <h3 id="card-detail-title">{card.name}</h3>
           <p className="author-card-detail__definition">
-            {titleCase(card.category)} · {titleCase(card.affinity)} ·{' '}
+            {titleCase(card.category)} ·{' '}
+            {card.affinity ? titleCase(card.affinity) : 'Typeless'} ·{' '}
             {titleCase(card.rarity)}
           </p>
         </div>
@@ -843,7 +845,7 @@ interface MoveDraft extends EffectDraft {
 }
 
 interface CardDraft {
-  affinity: CardAffinity;
+  affinity: CardAffinity | null;
   category: CardCategory;
   description: string;
   effects: EffectDraft[];
@@ -964,6 +966,8 @@ function CardForm({
   function changeCategory(category: CardCategory) {
     setDraft((current) => ({
       ...current,
+      affinity:
+        category === 'power' ? null : (current.affinity ?? ('wit' as const)),
       category,
       effects:
         category === 'power'
@@ -1031,7 +1035,7 @@ function CardForm({
           </Field>
           <Field label="Category" name="card-category">
             <select
-              disabled={busy}
+              disabled={busy || draft.category === 'power'}
               id="card-category"
               onChange={(change) =>
                 changeCategory(change.target.value as CardCategory)
@@ -1052,8 +1056,11 @@ function CardForm({
                   affinity: change.target.value as CardAffinity,
                 }))
               }
-              value={draft.affinity}
+              value={draft.affinity ?? ''}
             >
+              {draft.category === 'power' ? (
+                <option value="">Typeless</option>
+              ) : null}
               {['wit', 'grit', 'spark', 'spirit', 'mystic'].map((value) => (
                 <option key={value} value={value}>
                   {titleCase(value)}
@@ -1297,7 +1304,8 @@ function CardForm({
           <p className="eyebrow">Preview</p>
           <strong>{draft.name.trim() || 'Untitled card'}</strong>
           <p>
-            {titleCase(draft.rarity)} {titleCase(draft.affinity)}{' '}
+            {titleCase(draft.rarity)}{' '}
+            {draft.affinity ? titleCase(draft.affinity) : 'Typeless'}{' '}
             {titleCase(draft.category)}
           </p>
           {draft.description.trim() ? <p>{draft.description}</p> : null}

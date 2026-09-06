@@ -73,7 +73,8 @@ export function CollectibleCard({
         <div className="collectible-card__heading">
           <div>
             <p className="collectible-card__kind">
-              {titleCase(card.category)} · {titleCase(card.affinity)}
+              {titleCase(card.category)} ·{' '}
+              {card.affinity ? titleCase(card.affinity) : 'Typeless'}
             </p>
             <Heading id={titleId}>{card.name}</Heading>
           </div>
@@ -187,7 +188,7 @@ export function CardArtwork({
     <span className="collectible-card__artwork">
       {showImage ? (
         <img
-          alt={`${card.name} card artwork`}
+          alt={card.imageAlt ?? `${card.name} card artwork`}
           onError={() => setImageFailed(true)}
           src={card.imageUrl ?? undefined}
         />
@@ -255,6 +256,7 @@ function MoveDetails({ move }: { move: CardMove }) {
   return (
     <div className="card-details__item">
       <p className="card-details__name">{move.name}</p>
+      {move.rulesText ? <p>{move.rulesText}</p> : null}
       <dl>
         <div>
           <dt>Move type</dt>
@@ -282,7 +284,10 @@ function MoveDetails({ move }: { move: CardMove }) {
 function EffectDetails({ effect }: { effect: CardEffect }) {
   return (
     <div className="card-details__item">
-      <p>{formatEffect(effect.effectType, effect.effectValue)}</p>
+      <p>
+        {effect.rulesText ??
+          formatEffect(effect.effectType, effect.effectValue)}
+      </p>
       {effect.modifierStat !== null ? (
         <p className="card-details__modifier">
           Modifier: {formatModifier(effect)}
@@ -302,12 +307,39 @@ function formatEffect(
 function formatModifier(
   value: Pick<
     CardEffect,
+    | 'effectType'
     | 'effectValue'
     | 'modifierDurationTurns'
     | 'modifierOperation'
     | 'modifierStat'
   >,
 ) {
+  if (
+    value.modifierStat === 'damage_multiplier' &&
+    value.modifierOperation === 'multiply' &&
+    value.effectValue !== null &&
+    (value.effectType === 'buff' || value.effectType === 'debuff')
+  ) {
+    const subject = value.effectType === 'buff' ? 'This creature' : 'Opponent';
+    const direction = value.effectType === 'buff' ? 'more' : 'less';
+    const duration =
+      value.modifierDurationTurns === null
+        ? 'for the rest of the battle'
+        : `for ${value.modifierDurationTurns} ${value.modifierDurationTurns === 1 ? 'turn' : 'turns'}`;
+
+    return `${subject} deals ${value.effectValue}% ${direction} damage ${duration}`;
+  }
+
+  if (
+    (value.modifierStat === 'hp' || value.modifierStat === 'power') &&
+    value.modifierOperation === 'add' &&
+    value.effectValue !== null
+  ) {
+    return value.effectType === 'buff'
+      ? `Restore ${value.effectValue} ${value.modifierStat.toUpperCase()}`
+      : `Opponent loses ${value.effectValue} ${value.modifierStat.toUpperCase()}`;
+  }
+
   const parts = [
     value.modifierStat?.replace('_', ' '),
     value.modifierOperation,

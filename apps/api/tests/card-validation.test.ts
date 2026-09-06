@@ -28,7 +28,7 @@ const validCreature = {
 const validPower = {
   name: 'Test Power',
   category: 'power' as const,
-  affinity: 'wit' as const,
+  affinity: null,
   rarity: 'common' as const,
   hp: null,
   power: null,

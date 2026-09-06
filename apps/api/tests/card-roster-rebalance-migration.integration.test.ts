@@ -13,7 +13,10 @@ import { withDatabaseClient } from '../src/database/connection.js';
 import { runMigrations } from '../src/database/migrations.js';
 import { getMigrationsDirectory } from '../src/database/paths.js';
 import { runSeeds } from '../src/database/seeds.js';
-import { canonicalCreatures } from './fixtures/canonical-card-roster.js';
+import {
+  canonicalCreatures,
+  canonicalPowerCards,
+} from './fixtures/canonical-card-roster.js';
 
 const ROSTER_MIGRATION = '0023_rebalance_canonical_card_roster.sql';
 const CANONICAL_ID = 'eca9b943-9e05-834e-c85c-1175001d897c';
@@ -46,6 +49,7 @@ describe.skipIf(!runIntegrationTests)(
       await withPreRosterMigrationDatabase(
         async (databaseConfig, directory) => {
           await runSeeds(databaseConfig);
+          await plantCanonicalRoster(databaseConfig);
           await plantLegacyCatalogueAndHistory(databaseConfig);
 
           const historyBefore = await loadHistoricalRecords(databaseConfig);
@@ -188,6 +192,135 @@ async function withPreRosterMigrationDatabase(
       );
     });
   }
+}
+
+async function plantCanonicalRoster(databaseConfig: DatabaseConfig) {
+  const definitions = [
+    ...canonicalCreatures.map((card) => ({
+      affinity: card.affinity,
+      category: 'creature',
+      description: `${card.name} historical seed fixture.`,
+      hp: card.hp,
+      id: card.id,
+      name: card.name,
+      power: card.power,
+      rarity: card.rarity,
+    })),
+    ...canonicalPowerCards.map((card) => ({
+      affinity: card.affinity,
+      category: 'power',
+      description: `${card.name} historical seed fixture.`,
+      hp: null,
+      id: card.id,
+      name: card.name,
+      power: null,
+      rarity: card.rarity,
+    })),
+  ];
+  const moves = canonicalCreatures.flatMap((card) =>
+    card.moves.map((move, index) => ({
+      card_definition_id: card.id,
+      effect_type: move[2],
+      effect_value: move[3],
+      modifier_duration_turns: move[6],
+      modifier_operation: move[5],
+      modifier_stat: move[4],
+      move_type: move[1],
+      name: move[0],
+      position: index + 1,
+      power_cost: move[7],
+    })),
+  );
+  const effects = canonicalPowerCards.flatMap((card) =>
+    card.effects.map((effect, index) => ({
+      card_definition_id: card.id,
+      effect_type: effect[0],
+      effect_value: effect[1],
+      modifier_duration_turns: effect[4],
+      modifier_operation: effect[3],
+      modifier_stat: effect[2],
+      position: index + 1,
+    })),
+  );
+
+  await withDatabaseClient(databaseConfig, async (client) => {
+    await client.query('begin');
+    try {
+      await client.query(
+        `insert into public.card_definitions (
+           id, name, category, affinity, rarity, hp, power, description,
+           image_url, is_active, authoring_status
+         )
+         select card.id::uuid, card.name, card.category, card.affinity,
+                card.rarity, card.hp, card.power, card.description,
+                null, false, 'draft'
+           from jsonb_to_recordset($1::jsonb) as card(
+             id text,
+             name text,
+             category text,
+             affinity text,
+             rarity text,
+             hp integer,
+             power integer,
+             description text
+           )`,
+        [JSON.stringify(definitions)],
+      );
+      await client.query(
+        `insert into public.card_moves (
+           card_definition_id, position, name, move_type, effect_type,
+           effect_value, modifier_stat, modifier_operation,
+           modifier_duration_turns, power_cost
+         )
+         select move.card_definition_id::uuid, move.position, move.name,
+                move.move_type, move.effect_type, move.effect_value,
+                move.modifier_stat, move.modifier_operation,
+                move.modifier_duration_turns, move.power_cost
+           from jsonb_to_recordset($1::jsonb) as move(
+             card_definition_id text,
+             position smallint,
+             name text,
+             move_type text,
+             effect_type text,
+             effect_value integer,
+             modifier_stat text,
+             modifier_operation text,
+             modifier_duration_turns integer,
+             power_cost integer
+           )`,
+        [JSON.stringify(moves)],
+      );
+      await client.query(
+        `insert into public.card_effects (
+           card_definition_id, position, effect_type, effect_value,
+           modifier_stat, modifier_operation, modifier_duration_turns
+         )
+         select effect.card_definition_id::uuid, effect.position,
+                effect.effect_type, effect.effect_value, effect.modifier_stat,
+                effect.modifier_operation, effect.modifier_duration_turns
+           from jsonb_to_recordset($1::jsonb) as effect(
+             card_definition_id text,
+             position smallint,
+             effect_type text,
+             effect_value integer,
+             modifier_stat text,
+             modifier_operation text,
+             modifier_duration_turns integer
+           )`,
+        [JSON.stringify(effects)],
+      );
+      await client.query(
+        `update public.card_definitions
+            set is_active = true,
+                authoring_status = 'published'
+          where authoring_status = 'draft'`,
+      );
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    }
+  });
 }
 
 async function plantLegacyCatalogueAndHistory(databaseConfig: DatabaseConfig) {

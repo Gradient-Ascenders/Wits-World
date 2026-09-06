@@ -31,6 +31,7 @@ const RESIGNATION_MIGRATION_NAME =
   '0037_add_async_pvp_voluntary_resignation.sql';
 const CANCELLATION_MIGRATION_NAME =
   '0039_add_async_pvp_invitation_cancellation.sql';
+const COMPLETE_CATALOGUE_MIGRATION_NAME = '0041_complete_card_catalogue.sql';
 const PRE_MIGRATION_PLAYER_ID = '17900000-0000-4000-8000-000000000001';
 const PRE_MIGRATION_MATCH_ID = '17900000-0000-4000-8000-000000000002';
 const runIntegrationTests =
@@ -39,7 +40,7 @@ const runIntegrationTests =
 interface CardDefinitionFixture extends pg.QueryResultRow {
   id: string;
   category: 'creature' | 'power';
-  affinity: 'wit' | 'grit' | 'spark' | 'spirit' | 'mystic';
+  affinity: 'wit' | 'grit' | 'spark' | 'spirit' | 'mystic' | null;
   rarity: 'common';
 }
 
@@ -135,6 +136,7 @@ describe.skipIf(!runIntegrationTests)(
         INDEX_CLEANUP_MIGRATION_NAME,
         RESIGNATION_MIGRATION_NAME,
         CANCELLATION_MIGRATION_NAME,
+        COMPLETE_CATALOGUE_MIGRATION_NAME,
       ]);
 
       pool = createDatabasePool(temporaryConfig);
@@ -2065,7 +2067,8 @@ async function copyPrePvpMigrations(): Promise<string> {
           name !== INVALIDATION_MIGRATION_NAME &&
           name !== INDEX_CLEANUP_MIGRATION_NAME &&
           name !== RESIGNATION_MIGRATION_NAME &&
-          name !== CANCELLATION_MIGRATION_NAME,
+          name !== CANCELLATION_MIGRATION_NAME &&
+          name !== COMPLETE_CATALOGUE_MIGRATION_NAME,
       )
       .map((name) =>
         copyFile(join(sourceDirectory, name), join(targetDirectory, name)),

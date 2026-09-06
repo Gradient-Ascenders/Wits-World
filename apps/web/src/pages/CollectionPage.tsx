@@ -1079,7 +1079,7 @@ function filterAndSortCardGroups(
       const matchesSearch =
         query === '' ||
         card.name.toLocaleLowerCase().includes(query) ||
-        card.affinity.toLocaleLowerCase().includes(query);
+        (card.affinity ?? 'typeless').toLocaleLowerCase().includes(query);
       const matchesCategory =
         controls.category === 'all' || card.category === controls.category;
       const matchesRarity =

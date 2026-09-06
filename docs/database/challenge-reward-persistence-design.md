@@ -586,13 +586,20 @@ new ordering answer and snapshot relations without editing migration history.
 
 Subsequent migrations add the bounded `Edge` remediation, normalized name
 uniqueness, Player Name evolution, and the one-through-four move-position
-constraint. The database integration suite discovers and applies the complete
-ordered migration directory to an empty PostgreSQL/PostGIS database and checks
-that a second run is a no-op. The
-`0002_basic_card_catalogue.sql` seed is repeatable and provides the approved
-canonical Basic card roster for all affinities plus the approved Spark
-high-rarity definitions. Card artwork remains separate from this gameplay
-content specification.
+constraint. Migration `0041_complete_card_catalogue.sql` supersedes the
+placeholder roster with exactly 30 active ordinary definitions, ordered
+multi-effect Creature moves and Power effects, eligibility flags, accessible
+artwork metadata, and eight fixed evolution relationships. It preserves stable
+definition IDs where reused, existing owned-card row IDs and deck membership,
+and all historical match snapshots. Superseded definitions remain retired
+`special` records for historical references. The repeatable
+`0002_basic_card_catalogue.sql` seed now checks catalogue readiness rather
+than rewriting versioned production content.
+
+The database integration suite discovers and applies the complete ordered
+migration directory to an empty PostgreSQL/PostGIS database and checks that a
+second run is a no-op. The full roster is documented in the
+[complete card catalogue](../design/basic-card-roster.md).
 
 Migration `0034_retire_coin_rewards.sql` is deliberately deployed during a
 coordinated API/Web cutover that stops writing and returning coins. Challenge
@@ -753,4 +760,5 @@ Issue `#161` implements the player-facing capability.
 
 This design was planned, generated, edited, and reviewed with the assistance of
 Codex[GPT-5.6 Sol], Codex-CLI[gpt-5.6-sol medium], Codex[GPT-5], and
-ChatGPT-Web[GPT-5.6 Sol], and Codex[gpt-5.6-sol].
+ChatGPT-Web[GPT-5.6 Sol], Codex-CLI[GPT-5.6 Sol], and
+Codex[gpt-5.6-sol].

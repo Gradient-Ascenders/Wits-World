@@ -1,6 +1,8 @@
 import { IllegalBattleActionError, InvalidBattleSetupError } from './errors.js';
 import {
   cardAffinities,
+  effectCodes,
+  effectTargets,
   effectTypes,
   modifierOperations,
   modifierStats,
@@ -19,6 +21,7 @@ import {
   type BattleState,
   type BattleTransition,
   type CardAffinity,
+  type EffectCode,
   type MoveType,
   type RandomInt,
 } from './types.js';
@@ -28,12 +31,13 @@ const deckPowerCardCount = 2;
 
 interface MutableCreatureState extends Omit<
   BattleCreatureState,
-  'currentHp' | 'remainingPower' | 'defeated' | 'modifiers'
+  'currentHp' | 'remainingPower' | 'defeated' | 'modifiers' | 'stunImmune'
 > {
   currentHp: number;
   remainingPower: number;
   defeated: boolean;
   modifiers: BattleModifier[];
+  stunImmune: boolean;
 }
 
 interface MutableParticipantState {
@@ -44,10 +48,13 @@ interface MutableParticipantState {
 }
 
 interface MutableBattleState {
+  affinityRulesVersion?: 1 | 2;
   phase: BattleState['phase'];
   turnNumber: number;
   currentSide: BattleSide | null;
   replacementSide: BattleSide | null;
+  replacementQueue?: BattleSide[];
+  resumeSideAfterReplacement?: BattleSide | null;
   firstSide: BattleSide | null;
   selections: { player: string | null; cpu: string | null };
   participants: Record<BattleSide, MutableParticipantState>;
@@ -57,9 +64,14 @@ interface MutableBattleState {
 export function getTypeMultiplier(
   attacker: MoveType,
   defender: CardAffinity,
+  affinityRulesVersion: 1 | 2 = 2,
 ): 0.75 | 1 | 1.5 {
   if (attacker === 'basic' || attacker === defender) {
     return 1;
+  }
+
+  if (affinityRulesVersion === 2) {
+    return affinityMatchups[attacker][defender];
   }
 
   const attackerIndex = cardAffinities.indexOf(attacker);
@@ -78,6 +90,14 @@ export function getTypeMultiplier(
 
   return 1;
 }
+
+const affinityMatchups = {
+  wit: { wit: 1, grit: 1.5, spark: 0.75, spirit: 1, mystic: 1 },
+  grit: { wit: 0.75, grit: 1, spark: 1.5, spirit: 0.75, mystic: 1.5 },
+  spark: { wit: 1.5, grit: 0.75, spark: 1, spirit: 1.5, mystic: 0.75 },
+  spirit: { wit: 1, grit: 1.5, spark: 0.75, spirit: 1, mystic: 1.5 },
+  mystic: { wit: 1, grit: 0.75, spark: 1.5, spirit: 1.5, mystic: 1 },
+} as const satisfies Record<CardAffinity, Record<CardAffinity, 0.75 | 1 | 1.5>>;
 
 export function getEffectDamageMultiplier(
   effectType: 'buff' | 'debuff',
@@ -135,6 +155,7 @@ export function createBattleState(
 
   return {
     phase: 'initial_selection',
+    affinityRulesVersion: 2,
     turnNumber: 0,
     currentSide: null,
     replacementSide: null,
@@ -201,7 +222,11 @@ export function getLegalActions(
   }
 
   const moveActions = activeCreature.card.moves
-    .filter((move) => move.powerCost <= activeCreature.remainingPower)
+    .filter(
+      (move) =>
+        !hasModifier(activeCreature, 'stun') &&
+        isMoveCurrentlyLegal(activeCreature, move),
+    )
     .map((move) => ({
       type: 'use_move' as const,
       moveId: move.id,
@@ -272,7 +297,7 @@ export function applyBattleAction(
   assertActiveTurn(draft, side);
 
   if (action.type === 'use_move') {
-    return applyMove(draft, side, action);
+    return applyMove(draft, side, action, randomInt);
   }
 
   if (action.type === 'use_power_card') {
@@ -323,7 +348,9 @@ function validateCreatureCard(card: BattleCreatureCard): void {
 
 function validatePowerCard(card: BattlePowerCard): void {
   assertNonBlank(card.id, 'Power card ID');
-  assertEnum(card.affinity, cardAffinities, 'Power card affinity');
+  if (card.affinity !== null) {
+    assertEnum(card.affinity, cardAffinities, 'Power card affinity');
+  }
 
   if (card.effects.length === 0) {
     throw new InvalidBattleSetupError(
@@ -350,6 +377,11 @@ function validateEffects(
     effectIds.add(effect.id);
     assertNonBlank(effect.id, 'Effect ID');
     assertEnum(effect.effectType, effectTypes, 'Effect type');
+
+    if (effect.effectCode !== undefined) {
+      validateExecutableEffect(effect);
+      continue;
+    }
 
     if (effect.effectValue === null) {
       throw new InvalidBattleSetupError(
@@ -422,6 +454,42 @@ function validateEffects(
   }
 }
 
+function validateExecutableEffect(effect: BattleEffect): void {
+  assertEnum(effect.effectCode, effectCodes, 'Effect code');
+  if (effect.target !== undefined) {
+    assertEnum(effect.target, effectTargets, 'Effect target');
+  }
+
+  if (
+    effect.effectValue === null &&
+    effect.effectCode !== 'restore_power_to_max' &&
+    effect.effectCode !== 'swap_hp_percentages'
+  ) {
+    throw new InvalidBattleSetupError(
+      `Effect ${effect.id} must define an effect value before battle use.`,
+    );
+  }
+
+  if (effect.effectValue !== null) {
+    assertNonNegativeInteger(effect.effectValue, 'Effect value');
+  }
+  if (effect.durationTurns !== undefined && effect.durationTurns !== null) {
+    assertPositiveInteger(effect.durationTurns, 'Effect duration in turns');
+  }
+  if (effect.charges !== undefined && effect.charges !== null) {
+    assertPositiveInteger(effect.charges, 'Effect charge count');
+  }
+  if (
+    effect.minimumHpExclusive !== undefined &&
+    (!Number.isInteger(effect.minimumHpExclusive) ||
+      effect.minimumHpExclusive < 0)
+  ) {
+    throw new InvalidBattleSetupError(
+      'Effect minimum HP must be a non-negative integer.',
+    );
+  }
+}
+
 function createParticipantState(deck: BattleDeck): MutableParticipantState {
   return {
     creatures: deck.creatureCards.map((card) => ({
@@ -430,6 +498,7 @@ function createParticipantState(deck: BattleDeck): MutableParticipantState {
       remainingPower: card.maxPower,
       defeated: false,
       modifiers: [],
+      stunImmune: false,
     })),
     powerCards: [...deck.powerCards],
     usedPowerCardIds: [],
@@ -498,9 +567,21 @@ function applyReplacement(
     action.creatureId,
   );
   draft.participants[side].activeCreatureId = creature.card.id;
-  draft.replacementSide = null;
-  draft.phase = 'active';
-  draft.currentSide = side;
+
+  const remainingQueue = (draft.replacementQueue ?? []).filter(
+    (candidate) => candidate !== side,
+  );
+  if (remainingQueue.length > 0) {
+    draft.replacementQueue = remainingQueue;
+    draft.replacementSide = remainingQueue[0] ?? null;
+    draft.currentSide = draft.replacementSide;
+  } else {
+    draft.replacementQueue = [];
+    draft.replacementSide = null;
+    draft.phase = 'active';
+    draft.currentSide = draft.resumeSideAfterReplacement ?? side;
+    draft.resumeSideAfterReplacement = null;
+  }
 
   return transition(draft, side, action, [], null, null, false);
 }
@@ -509,6 +590,7 @@ function applyMove(
   draft: MutableBattleState,
   side: BattleSide,
   action: Extract<BattleAction, { type: 'use_move' }>,
+  randomInt: RandomInt,
 ): BattleTransition {
   const participant = draft.participants[side];
   const activeCreature = getActiveCreature(participant);
@@ -523,14 +605,26 @@ function applyMove(
     (candidate) => candidate.id === action.moveId,
   );
 
-  if (!move || move.powerCost > activeCreature.remainingPower) {
+  if (!move || !isMoveCurrentlyLegal(activeCreature, move)) {
     throw new IllegalBattleActionError(
       'The selected move is not legal for the active Creature.',
     );
   }
 
   activeCreature.remainingPower -= move.powerCost;
-  const effects = applyEffects(draft, side, move.effects, move.moveType);
+  const isDamagingMove = move.effects.some(
+    (effect) => resolveEffectCode(effect) === 'damage',
+  );
+
+  const effects = applyEffects(
+    draft,
+    side,
+    move.effects,
+    move.moveType,
+    'creature',
+    randomInt,
+  );
+  applyPostMoveEffects(draft, side, effects, isDamagingMove);
   const defeatedCreatureId = findNewlyDefeatedOpponent(draft, side);
 
   return finishNormalTurn(draft, side, action, effects, defeatedCreatureId);
@@ -564,7 +658,8 @@ function applyPowerCard(
     draft,
     side,
     powerCard.effects,
-    powerCard.affinity,
+    powerCard.affinity ?? 'basic',
+    'power',
   );
   const defeatedCreatureId = findNewlyDefeatedOpponent(draft, side);
 
@@ -576,14 +671,23 @@ function applyEffects(
   side: BattleSide,
   effects: readonly BattleEffect[],
   sourceType: MoveType | CardAffinity,
+  sourceKind: 'creature' | 'power',
+  randomInt?: RandomInt,
 ): AppliedEffect[] {
   const appliedEffects: AppliedEffect[] = [];
 
   for (const effect of effects) {
-    const targetSide =
-      effect.effectType === 'damage' || effect.effectType === 'debuff'
-        ? opponentOf(side)
-        : side;
+    if (isBattleOutcomeDecided(draft)) {
+      break;
+    }
+
+    const effectCode = resolveEffectCode(effect);
+    if (effectCode === 'swap_hp_percentages') {
+      applyHpPercentageSwap(draft, effect, appliedEffects);
+      continue;
+    }
+
+    const targetSide = resolveTargetSide(effect, side);
     const targetParticipant = draft.participants[targetSide];
     const targetCreature = getActiveCreature(targetParticipant);
 
@@ -591,37 +695,63 @@ function applyEffects(
       continue;
     }
 
-    const amount = effect.effectValue;
+    const amount = effect.effectValue ?? 0;
 
-    if (amount === null) {
-      throw new IllegalBattleActionError(
-        `Effect ${effect.id} is missing an executable value.`,
-      );
-    }
+    if (effectCode === 'damage') {
+      const dodge =
+        sourceKind === 'creature' &&
+        targetSide === opponentOf(side) &&
+        randomInt
+          ? consumeDodge(targetCreature, randomInt)
+          : { dodged: false, effectId: null };
 
-    if (effect.effectType === 'damage') {
-      const damage = Math.floor(
-        amount *
-          getTypeMultiplier(
+      if (dodge.dodged) {
+        appliedEffects.push({
+          effectId: dodge.effectId ?? 'dodge',
+          effectType: 'buff',
+          effectCode: 'dodge',
+          targetSide,
+          targetCreatureId: targetCreature.card.id,
+          amount: 1,
+          damageMultiplier: null,
+        });
+        continue;
+      }
+
+      const affinityMultiplier = effect.neutral
+        ? 1
+        : getTypeMultiplier(
             sourceType === 'basic' ? 'basic' : sourceType,
             targetCreature.card.affinity,
-          ) *
-          getDamageMultiplier(getActiveCreature(draft.participants[side])),
+            draft.affinityRulesVersion ?? 1,
+          );
+      const attackerMultiplier =
+        sourceKind === 'creature'
+          ? getDamageMultiplier(getActiveCreature(draft.participants[side]))
+          : 1;
+      const incomingMultiplier =
+        sourceKind === 'creature'
+          ? getIncomingDamageMultiplier(targetCreature)
+          : 1;
+      const damage = Math.floor(
+        amount * affinityMultiplier * attackerMultiplier * incomingMultiplier,
       );
       targetCreature.currentHp = Math.max(0, targetCreature.currentHp - damage);
       markDefeatedIfNecessary(targetCreature);
       appliedEffects.push({
         effectId: effect.id,
         effectType: effect.effectType,
+        effectCode,
         targetSide,
         targetCreatureId: targetCreature.card.id,
         amount: damage,
-        damageMultiplier: null,
+        damageMultiplier:
+          affinityMultiplier * attackerMultiplier * incomingMultiplier,
       });
       continue;
     }
 
-    if (effect.effectType === 'heal') {
+    if (effectCode === 'heal') {
       const healed = Math.min(
         amount,
         targetCreature.card.maxHp - targetCreature.currentHp,
@@ -630,6 +760,7 @@ function applyEffects(
       appliedEffects.push({
         effectId: effect.id,
         effectType: effect.effectType,
+        effectCode,
         targetSide,
         targetCreatureId: targetCreature.card.id,
         amount: healed,
@@ -638,32 +769,17 @@ function applyEffects(
       continue;
     }
 
-    const modifier = effect.modifier;
-
-    if (!modifier) {
-      throw new IllegalBattleActionError(
-        `Effect ${effect.id} is missing its modifier definition.`,
-      );
-    }
-
-    if (modifier.stat === 'hp' || modifier.stat === 'power') {
+    if (effectCode === 'power_change') {
       const signedAmount = effect.effectType === 'buff' ? amount : -amount;
-      if (modifier.stat === 'hp') {
-        targetCreature.currentHp = Math.min(
-          targetCreature.card.maxHp,
-          Math.max(0, targetCreature.currentHp + signedAmount),
-        );
-        markDefeatedIfNecessary(targetCreature);
-      } else {
-        targetCreature.remainingPower = Math.min(
-          targetCreature.card.maxPower,
-          Math.max(0, targetCreature.remainingPower + signedAmount),
-        );
-      }
+      targetCreature.remainingPower = Math.min(
+        targetCreature.card.maxPower,
+        Math.max(0, targetCreature.remainingPower + signedAmount),
+      );
 
       appliedEffects.push({
         effectId: effect.id,
         effectType: effect.effectType,
+        effectCode,
         targetSide,
         targetCreatureId: targetCreature.card.id,
         amount: signedAmount,
@@ -672,26 +788,63 @@ function applyEffects(
       continue;
     }
 
-    const factor = getEffectDamageMultiplier(effect.effectType, amount);
+    if (effectCode === 'restore_power_to_max') {
+      const restored =
+        targetCreature.card.maxPower - targetCreature.remainingPower;
+      targetCreature.remainingPower = targetCreature.card.maxPower;
+      appliedEffects.push(
+        toAppliedEffect(
+          effect,
+          effectCode,
+          targetSide,
+          targetCreature,
+          restored,
+        ),
+      );
+      continue;
+    }
 
-    targetCreature.modifiers = [
-      ...targetCreature.modifiers,
-      {
-        id: effect.id,
-        stat: modifier.stat,
-        operation: modifier.operation,
-        value: factor,
-        remainingTurns: modifier.durationTurns ?? null,
-        createdOnTurn: draft.turnNumber,
-      },
-    ];
+    if (effectCode === 'self_damage') {
+      const previousHp = targetCreature.currentHp;
+      targetCreature.currentHp = Math.max(0, previousHp - amount);
+      markDefeatedIfNecessary(targetCreature);
+      appliedEffects.push(
+        toAppliedEffect(
+          effect,
+          effectCode,
+          targetSide,
+          targetCreature,
+          previousHp - targetCreature.currentHp,
+        ),
+      );
+      continue;
+    }
+
+    if (effectCode === 'stun' && targetCreature.stunImmune) {
+      appliedEffects.push(
+        toAppliedEffect(effect, effectCode, targetSide, targetCreature, 0),
+      );
+      continue;
+    }
+
+    const modifier = createExecutableModifier(
+      effect,
+      effectCode,
+      draft.turnNumber,
+    );
+    addOrRefreshModifier(targetCreature, modifier);
     appliedEffects.push({
       effectId: effect.id,
       effectType: effect.effectType,
+      effectCode,
       targetSide,
       targetCreatureId: targetCreature.card.id,
       amount,
-      damageMultiplier: factor,
+      damageMultiplier:
+        effectCode === 'damage_modifier' ||
+        effectCode === 'incoming_damage_modifier'
+          ? modifier.value
+          : null,
     });
   }
 
@@ -705,13 +858,6 @@ function finishNormalTurn(
   effects: readonly AppliedEffect[],
   defeatedCreatureId: string | null = null,
 ): BattleTransition {
-  const expiredEffects = decrementExpiredModifiers(
-    draft.participants[side],
-    side,
-    draft.turnNumber,
-  );
-  draft.turnNumber += 1;
-
   if (defeatedCreatureId !== null) {
     const opponent = opponentOf(side);
     const opponentParticipant = draft.participants[opponent];
@@ -719,9 +865,9 @@ function finishNormalTurn(
       (creature) => !creature.defeated,
     );
 
-    opponentParticipant.activeCreatureId = null;
-
     if (!hasRemainingCreature) {
+      const expiredEffects: BattleActionResult['expiredEffects'] = [];
+      draft.turnNumber += 1;
       draft.phase = 'completed';
       draft.currentSide = null;
       draft.replacementSide = null;
@@ -737,28 +883,83 @@ function finishNormalTurn(
         expiredEffects,
       );
     }
+  }
 
-    draft.phase = 'replacement';
-    draft.currentSide = opponent;
-    draft.replacementSide = opponent;
+  const resolvedEffects = [...effects];
+  const expiredEffects = decrementExpiredModifiers(
+    draft.participants[side],
+    side,
+    draft.turnNumber,
+    resolvedEffects,
+  );
+  draft.turnNumber += 1;
+
+  const actingActive = getActiveCreature(draft.participants[side]);
+  const poisonedDefeat = actingActive?.defeated ? actingActive.card.id : null;
+  const opponent = opponentOf(side);
+  const defeatedSides = [opponent, side].filter((candidate) => {
+    const active = getActiveCreature(draft.participants[candidate]);
+    return active?.defeated === true;
+  });
+
+  const sideHasCreature = draft.participants[side].creatures.some(
+    (creature) => !creature.defeated,
+  );
+  const opponentHasCreature = draft.participants[opponent].creatures.some(
+    (creature) => !creature.defeated,
+  );
+
+  if (!sideHasCreature || !opponentHasCreature) {
+    const winner = !opponentHasCreature ? side : opponent;
+    draft.phase = 'completed';
+    draft.currentSide = null;
+    draft.replacementSide = null;
+    draft.replacementQueue = [];
+    draft.resumeSideAfterReplacement = null;
+    draft.winner = winner;
     return transition(
       draft,
       side,
       action,
-      effects,
-      defeatedCreatureId,
+      resolvedEffects,
+      defeatedCreatureId ?? poisonedDefeat,
+      winner,
+      true,
+      expiredEffects,
+    );
+  }
+
+  if (defeatedSides.length > 0) {
+    for (const defeatedSide of defeatedSides) {
+      const active = getActiveCreature(draft.participants[defeatedSide]);
+      if (active) {
+        active.modifiers = [];
+      }
+      draft.participants[defeatedSide].activeCreatureId = null;
+    }
+    draft.phase = 'replacement';
+    draft.replacementQueue = defeatedSides;
+    draft.replacementSide = defeatedSides[0] ?? null;
+    draft.currentSide = draft.replacementSide;
+    draft.resumeSideAfterReplacement = opponent;
+    return transition(
+      draft,
+      side,
+      action,
+      resolvedEffects,
+      defeatedCreatureId ?? poisonedDefeat,
       null,
       true,
       expiredEffects,
     );
   }
 
-  draft.currentSide = opponentOf(side);
+  draft.currentSide = opponent;
   return transition(
     draft,
     side,
     action,
-    effects,
+    resolvedEffects,
     null,
     null,
     true,
@@ -845,10 +1046,18 @@ function findNewlyDefeatedOpponent(
   return active?.defeated ? active.card.id : null;
 }
 
+function isBattleOutcomeDecided(draft: MutableBattleState): boolean {
+  return (['player', 'cpu'] as const).some(
+    (side) =>
+      !draft.participants[side].creatures.some(
+        (creature) => !creature.defeated,
+      ),
+  );
+}
+
 function markDefeatedIfNecessary(creature: MutableCreatureState): void {
   if (creature.currentHp === 0) {
     creature.defeated = true;
-    creature.modifiers = [];
   }
 }
 
@@ -856,6 +1065,7 @@ function decrementExpiredModifiers(
   participant: MutableParticipantState,
   side: BattleSide,
   currentTurn: number,
+  appliedEffects: AppliedEffect[],
 ): BattleActionResult['expiredEffects'] {
   const active = getActiveCreature(participant);
 
@@ -874,9 +1084,27 @@ function decrementExpiredModifiers(
       return [modifier];
     }
 
+    if (modifier.stat === 'poison') {
+      const damage = Math.min(active.currentHp, modifier.value);
+      active.currentHp -= damage;
+      appliedEffects.push({
+        effectId: modifier.id,
+        effectType: 'debuff',
+        effectCode: 'poison',
+        targetSide: side,
+        targetCreatureId: active.card.id,
+        amount: damage,
+        damageMultiplier: null,
+      });
+    }
+
     const remainingTurns = modifier.remainingTurns - 1;
     if (remainingTurns > 0) {
       return [{ ...modifier, remainingTurns }];
+    }
+
+    if (modifier.stat === 'stun' && modifier.immunityAfterRecovery) {
+      active.stunImmune = true;
     }
 
     expiredEffects.push({
@@ -889,7 +1117,323 @@ function decrementExpiredModifiers(
     return [];
   });
 
+  markDefeatedIfNecessary(active);
+
   return expiredEffects;
+}
+
+function resolveEffectCode(effect: BattleEffect): EffectCode {
+  if (effect.effectCode !== undefined) {
+    return effect.effectCode;
+  }
+  if (effect.effectType === 'damage' || effect.effectType === 'heal') {
+    return effect.effectType;
+  }
+  if (effect.modifier?.stat === 'power') {
+    return 'power_change';
+  }
+  if (effect.modifier?.stat === 'hp') {
+    return effect.effectType === 'buff' ? 'heal' : 'damage';
+  }
+  return 'damage_modifier';
+}
+
+function resolveTargetSide(
+  effect: BattleEffect,
+  actingSide: BattleSide,
+): BattleSide {
+  if (effect.target === 'self') {
+    return actingSide;
+  }
+  if (effect.target === 'opponent') {
+    return opponentOf(actingSide);
+  }
+  return effect.effectType === 'damage' || effect.effectType === 'debuff'
+    ? opponentOf(actingSide)
+    : actingSide;
+}
+
+function createExecutableModifier(
+  effect: BattleEffect,
+  effectCode: EffectCode,
+  currentTurn: number,
+): BattleModifier {
+  const amount = effect.effectValue ?? 0;
+  const common = {
+    id: effect.id,
+    operation: 'multiply' as const,
+    remainingTurns:
+      effect.durationTurns ?? effect.modifier?.durationTurns ?? null,
+    remainingCharges: effect.charges ?? null,
+    cannotDefeat: effect.cannotDefeat,
+    immunityAfterRecovery: effect.immunityAfterRecovery,
+    createdOnTurn: currentTurn,
+  };
+
+  switch (effectCode) {
+    case 'damage_modifier':
+      return {
+        ...common,
+        stat: 'damage_multiplier',
+        value:
+          effect.effectType === 'debuff'
+            ? Math.max(0, 1 - amount / 100)
+            : 1 + amount / 100,
+      };
+    case 'incoming_damage_modifier':
+      return {
+        ...common,
+        stat: 'incoming_damage_multiplier',
+        value: Math.max(0, 1 - amount / 100),
+      };
+    case 'poison':
+      return { ...common, stat: 'poison', operation: 'add', value: amount };
+    case 'stun':
+      return { ...common, stat: 'stun', operation: 'add', value: 1 };
+    case 'dodge':
+      return { ...common, stat: 'dodge', operation: 'add', value: amount };
+    case 'reflect':
+      return { ...common, stat: 'reflect', operation: 'add', value: amount };
+    case 'lifesteal':
+      return { ...common, stat: 'lifesteal', operation: 'add', value: amount };
+    default:
+      throw new IllegalBattleActionError(
+        `Effect ${effect.id} uses an unsupported modifier code.`,
+      );
+  }
+}
+
+function addOrRefreshModifier(
+  creature: MutableCreatureState,
+  modifier: BattleModifier,
+): void {
+  const exclusiveStatus = ['poison', 'stun', 'dodge', 'reflect', 'lifesteal'];
+  const existingIndex = creature.modifiers.findIndex((candidate) =>
+    exclusiveStatus.includes(modifier.stat)
+      ? candidate.stat === modifier.stat
+      : candidate.id === modifier.id,
+  );
+
+  if (existingIndex < 0) {
+    creature.modifiers.push(modifier);
+    return;
+  }
+  creature.modifiers[existingIndex] = modifier;
+}
+
+function hasModifier(
+  creature: BattleCreatureState | MutableCreatureState,
+  stat: BattleModifier['stat'],
+): boolean {
+  return creature.modifiers.some((modifier) => modifier.stat === stat);
+}
+
+function isMoveCurrentlyLegal(
+  creature: BattleCreatureState | MutableCreatureState,
+  move: BattleCreatureCard['moves'][number],
+): boolean {
+  if (move.powerCost > creature.remainingPower) {
+    return false;
+  }
+  return move.effects.every((effect) => {
+    if (resolveEffectCode(effect) !== 'self_damage') {
+      return true;
+    }
+    const minimum = effect.minimumHpExclusive ?? effect.effectValue ?? 0;
+    return creature.currentHp > minimum;
+  });
+}
+
+function consumeDodge(
+  creature: MutableCreatureState,
+  randomInt: RandomInt,
+): { dodged: boolean; effectId: string | null } {
+  const modifier = creature.modifiers.find(
+    (candidate) => candidate.stat === 'dodge',
+  );
+  if (!modifier) {
+    return { dodged: false, effectId: null };
+  }
+  creature.modifiers = creature.modifiers.filter(
+    (candidate) => candidate !== modifier,
+  );
+  return {
+    dodged: checkedRandomIndex(randomInt, 100) < modifier.value,
+    effectId: modifier.id,
+  };
+}
+
+function consumeOffensiveCharges(
+  creature: MutableCreatureState,
+  damagingMove: boolean,
+  currentTurn: number,
+): void {
+  if (!damagingMove) {
+    return;
+  }
+  consumeModifierCharges(creature, ['damage_multiplier'], currentTurn);
+}
+
+function consumeModifierCharges(
+  creature: MutableCreatureState,
+  stats: readonly BattleModifier['stat'][],
+  createdBeforeTurn?: number,
+): void {
+  creature.modifiers = creature.modifiers.flatMap((modifier) => {
+    if (
+      !stats.includes(modifier.stat) ||
+      (createdBeforeTurn !== undefined &&
+        modifier.createdOnTurn >= createdBeforeTurn) ||
+      modifier.remainingCharges === null ||
+      modifier.remainingCharges === undefined
+    ) {
+      return [modifier];
+    }
+    const remainingCharges = modifier.remainingCharges - 1;
+    return remainingCharges > 0 ? [{ ...modifier, remainingCharges }] : [];
+  });
+}
+
+function applyPostMoveEffects(
+  draft: MutableBattleState,
+  side: BattleSide,
+  effects: AppliedEffect[],
+  damagingMove: boolean,
+): void {
+  if (!damagingMove) {
+    return;
+  }
+  const attacker = getActiveCreature(draft.participants[side]);
+  const defender = getActiveCreature(draft.participants[opponentOf(side)]);
+  if (!attacker || !defender) {
+    return;
+  }
+
+  const damageDealt = effects
+    .filter(
+      (effect) =>
+        effect.effectCode === 'damage' &&
+        effect.targetSide === opponentOf(side),
+    )
+    .reduce((total, effect) => total + effect.amount, 0);
+  consumeOffensiveCharges(attacker, true, draft.turnNumber);
+
+  if (damageDealt === 0) {
+    return;
+  }
+
+  const reflect = defender.modifiers.find(
+    (modifier) => modifier.stat === 'reflect',
+  );
+  const lifesteal = attacker.modifiers.find(
+    (modifier) =>
+      modifier.stat === 'lifesteal' &&
+      modifier.createdOnTurn < draft.turnNumber,
+  );
+
+  if (reflect && damageDealt > 0) {
+    const requested = Math.floor((damageDealt * reflect.value) / 100);
+    const reflected = reflect.cannotDefeat
+      ? Math.min(requested, Math.max(0, attacker.currentHp - 1))
+      : Math.min(requested, attacker.currentHp);
+    attacker.currentHp -= reflected;
+    markDefeatedIfNecessary(attacker);
+    effects.push({
+      effectId: reflect.id,
+      effectType: 'buff',
+      effectCode: 'reflect',
+      targetSide: side,
+      targetCreatureId: attacker.card.id,
+      amount: reflected,
+      damageMultiplier: null,
+    });
+  }
+
+  if (lifesteal && damageDealt > 0 && !attacker.defeated) {
+    const requested = Math.floor((damageDealt * lifesteal.value) / 100);
+    const healed = Math.min(
+      requested,
+      attacker.card.maxHp - attacker.currentHp,
+    );
+    attacker.currentHp += healed;
+    effects.push({
+      effectId: lifesteal.id,
+      effectType: 'buff',
+      effectCode: 'lifesteal',
+      targetSide: side,
+      targetCreatureId: attacker.card.id,
+      amount: healed,
+      damageMultiplier: null,
+    });
+  }
+
+  consumeModifierCharges(defender, ['incoming_damage_multiplier', 'reflect']);
+  consumeModifierCharges(attacker, ['lifesteal'], draft.turnNumber);
+}
+
+function getIncomingDamageMultiplier(
+  creature: BattleCreatureState | MutableCreatureState,
+): number {
+  return creature.modifiers
+    .filter((modifier) => modifier.stat === 'incoming_damage_multiplier')
+    .reduce((total, modifier) => total * modifier.value, 1);
+}
+
+function toAppliedEffect(
+  effect: BattleEffect,
+  effectCode: EffectCode,
+  targetSide: BattleSide,
+  targetCreature: BattleCreatureState | MutableCreatureState,
+  amount: number,
+): AppliedEffect {
+  return {
+    effectId: effect.id,
+    effectType: effect.effectType,
+    effectCode,
+    targetSide,
+    targetCreatureId: targetCreature.card.id,
+    amount,
+    damageMultiplier: null,
+  };
+}
+
+function applyHpPercentageSwap(
+  draft: MutableBattleState,
+  effect: BattleEffect,
+  appliedEffects: AppliedEffect[],
+): void {
+  const player = getActiveCreature(draft.participants.player);
+  const cpu = getActiveCreature(draft.participants.cpu);
+  if (!player || !cpu || player.defeated || cpu.defeated) {
+    throw new IllegalBattleActionError(
+      'Both sides need an active Creature to swap HP percentages.',
+    );
+  }
+
+  const playerPercentage = player.currentHp / player.card.maxHp;
+  const cpuPercentage = cpu.currentHp / cpu.card.maxHp;
+  const nextPlayerHp = Math.max(
+    1,
+    Math.floor(player.card.maxHp * cpuPercentage),
+  );
+  const nextCpuHp = Math.max(1, Math.floor(cpu.card.maxHp * playerPercentage));
+  const changes: Array<[BattleSide, MutableCreatureState, number]> = [
+    ['player', player, nextPlayerHp],
+    ['cpu', cpu, nextCpuHp],
+  ];
+  for (const [targetSide, creature, nextHp] of changes) {
+    const changedBy = nextHp - creature.currentHp;
+    creature.currentHp = nextHp;
+    appliedEffects.push(
+      toAppliedEffect(
+        effect,
+        'swap_hp_percentages',
+        targetSide,
+        creature,
+        changedBy,
+      ),
+    );
+  }
 }
 
 function getDamageMultiplier(
@@ -910,10 +1454,19 @@ function getDamageMultiplier(
 
 function cloneState(state: BattleState): MutableBattleState {
   return {
+    ...(state.affinityRulesVersion === undefined
+      ? {}
+      : { affinityRulesVersion: state.affinityRulesVersion }),
     phase: state.phase,
     turnNumber: state.turnNumber,
     currentSide: state.currentSide,
     replacementSide: state.replacementSide,
+    ...(state.replacementQueue === undefined
+      ? {}
+      : { replacementQueue: [...state.replacementQueue] }),
+    ...(state.resumeSideAfterReplacement === undefined
+      ? {}
+      : { resumeSideAfterReplacement: state.resumeSideAfterReplacement }),
     firstSide: state.firstSide,
     selections: { ...state.selections },
     participants: {
@@ -934,6 +1487,7 @@ function cloneParticipant(
       remainingPower: creature.remainingPower,
       defeated: creature.defeated,
       modifiers: creature.modifiers.map((modifier) => ({ ...modifier })),
+      stunImmune: creature.stunImmune ?? false,
     })),
     powerCards: [...participant.powerCards],
     usedPowerCardIds: [...participant.usedPowerCardIds],

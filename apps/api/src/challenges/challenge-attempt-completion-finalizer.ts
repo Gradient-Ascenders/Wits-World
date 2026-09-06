@@ -217,6 +217,8 @@ async function loadActiveCardDefinitions(
       select id::text as card_definition_id, rarity
       from public.card_definitions
       where is_active = true
+        and authoring_status = 'published'
+        and reward_eligible = true
       order by id
     `,
     [],

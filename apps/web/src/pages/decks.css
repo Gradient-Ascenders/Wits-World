@@ -788,7 +788,6 @@
 }
 
 .deck-picker-card .collectible-card__artwork {
-  aspect-ratio: 4 / 3;
   border-bottom-color: var(--colour-border-subtle);
 }
 

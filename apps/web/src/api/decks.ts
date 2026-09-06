@@ -7,7 +7,7 @@ import {
 } from './cards';
 
 export interface SavedDeckCard {
-  affinity: CardAffinity;
+  affinity: CardAffinity | null;
   cardDefinitionId: string;
   category: CardCategory;
   name: string;
@@ -365,14 +365,16 @@ function parseSavedDeckCard(value: unknown): SavedDeckCard {
     typeof value.name !== 'string' ||
     value.name.trim() === '' ||
     !isCardCategory(value.category) ||
-    !isCardAffinity(value.affinity) ||
+    (value.category === 'creature'
+      ? !isCardAffinity(value.affinity)
+      : value.affinity !== null && !isCardAffinity(value.affinity)) ||
     !isCardRarity(value.rarity)
   ) {
     throw new DeckApiError('unavailable');
   }
 
   return {
-    affinity: value.affinity,
+    affinity: isCardAffinity(value.affinity) ? value.affinity : null,
     cardDefinitionId: value.cardDefinitionId,
     category: value.category,
     name: value.name,

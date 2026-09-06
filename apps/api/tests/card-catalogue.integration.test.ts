@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import type pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -25,10 +27,9 @@ import { starterPackageDefinitions } from '../src/cards/starter-packages.js';
 import { createCardCollectionService } from '../src/cards/card-collection.js';
 import type { OwnedCard } from '../src/cards/card-types.js';
 import {
-  canonicalCardIds,
-  canonicalCreatures,
-  canonicalPowerCards,
-} from './fixtures/canonical-card-roster.js';
+  completeCatalogueCardIds as canonicalCardIds,
+  completeCatalogueCards,
+} from './fixtures/complete-card-catalogue.js';
 
 const PLAYER_ID = '70000000-0000-4000-8000-000000000001';
 const CONCURRENT_PLAYER_ID = '70000000-0000-4000-8000-000000000002';
@@ -46,6 +47,8 @@ const HISTORICAL_SPIRIT_GRANT_ID = '70000000-0000-4000-8000-000000000011';
 
 const runIntegrationTests =
   process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';
+const APPROVED_CATALOGUE_EXECUTION_SHA256 =
+  'd84f604ae30cf8f40a3b725949a5b9094346f8854fa764e35003cdc7802be042';
 
 describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
   let administrationConfig: DatabaseConfig;
@@ -116,6 +119,9 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
     expect(migrationResult.applied).toContain(
       '0023_rebalance_canonical_card_roster.sql',
     );
+    expect(migrationResult.applied).toContain(
+      '0041_complete_card_catalogue.sql',
+    );
     expect(
       migrationResult.applied.indexOf(
         '0017_resolve_edge_card_definition_name.sql',
@@ -127,125 +133,51 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
     );
   });
 
-  it('seeds the exact approved canonical IDs, stats, ordered moves, and ordered Power effects', async () => {
+  it('seeds the exact approved 30-card release with eligibility and evolution metadata', async () => {
     const definitions = await cataloguePool.query<{
-      affinity: string;
+      affinity: string | null;
       category: string;
+      cpu_eligible: boolean;
+      evolves_from_definition_id: string | null;
       hp: number | null;
       id: string;
       name: string;
       power: number | null;
       rarity: string;
+      reward_eligible: boolean;
+      starter_eligible: boolean;
     }>(
-      `select id::text, name, category, affinity, rarity, hp, power
+      `select id::text, name, category, affinity, rarity, hp, power,
+              starter_eligible, reward_eligible, cpu_eligible,
+              evolves_from_definition_id::text
          from public.card_definitions
-        where id = any($1::uuid[])
+        where catalogue_class = 'ordinary'
+          and is_active = true
+          and authoring_status = 'published'
         order by id`,
-      [canonicalCardIds],
-    );
-    const moves = await cataloguePool.query<{
-      card_definition_id: string;
-      effect_type: string;
-      effect_value: number;
-      modifier_duration_turns: number | null;
-      modifier_operation: string | null;
-      modifier_stat: string | null;
-      move_type: string;
-      name: string;
-      position: number;
-      power_cost: number;
-    }>(
-      `select card_definition_id::text, position, name, move_type,
-              effect_type, effect_value, modifier_stat,
-              modifier_operation, modifier_duration_turns, power_cost
-         from public.card_moves
-        where card_definition_id = any($1::uuid[])
-        order by card_definition_id, position`,
-      [canonicalCardIds],
-    );
-    const effects = await cataloguePool.query<{
-      card_definition_id: string;
-      effect_type: string;
-      effect_value: number;
-      modifier_duration_turns: number | null;
-      modifier_operation: string | null;
-      modifier_stat: string | null;
-      position: number;
-    }>(
-      `select card_definition_id::text, position, effect_type, effect_value,
-              modifier_stat, modifier_operation, modifier_duration_turns
-         from public.card_effects
-        where card_definition_id = any($1::uuid[])
-        order by card_definition_id, position`,
-      [canonicalCardIds],
+      [],
     );
 
     expect(definitions.rows).toEqual(
-      [
-        ...canonicalCreatures.map((card) => ({
-          id: card.id,
-          name: card.name,
-          category: 'creature',
+      completeCatalogueCards
+        .map((card) => ({
           affinity: card.affinity,
-          rarity: card.rarity,
+          category: card.category,
+          cpu_eligible: card.cpuEligible,
+          evolves_from_definition_id: card.evolvesFromDefinitionId,
           hp: card.hp,
-          power: card.power,
-        })),
-        ...canonicalPowerCards.map((card) => ({
           id: card.id,
           name: card.name,
-          category: 'power',
-          affinity: card.affinity,
+          power: card.power,
           rarity: card.rarity,
-          hp: null,
-          power: null,
-        })),
-      ].sort((left, right) => left.id.localeCompare(right.id)),
-    );
-    expect(moves.rows).toEqual(
-      canonicalCreatures
-        .flatMap((card) =>
-          card.moves.map((move, index) => ({
-            card_definition_id: card.id,
-            position: index + 1,
-            name: move[0],
-            move_type: move[1],
-            effect_type: move[2],
-            effect_value: move[3],
-            modifier_stat: move[4],
-            modifier_operation: move[5],
-            modifier_duration_turns: move[6],
-            power_cost: move[7],
-          })),
-        )
-        .sort(
-          (left, right) =>
-            left.card_definition_id.localeCompare(right.card_definition_id) ||
-            left.position - right.position,
-        ),
-    );
-    expect(effects.rows).toEqual(
-      canonicalPowerCards
-        .flatMap((card) =>
-          card.effects.map((effect, index) => ({
-            card_definition_id: card.id,
-            position: index + 1,
-            effect_type: effect[0],
-            effect_value: effect[1],
-            modifier_stat: effect[2],
-            modifier_operation: effect[3],
-            modifier_duration_turns: effect[4],
-          })),
-        )
-        .sort(
-          (left, right) =>
-            left.card_definition_id.localeCompare(right.card_definition_id) ||
-            left.position - right.position,
-        ),
+          reward_eligible: card.rewardEligible,
+          starter_eligible: card.starterEligible,
+        }))
+        .sort((left, right) => left.id.localeCompare(right.id)),
     );
   });
 
-  it('keeps all 18 canonical Creatures battle-ready with four ordered, non-null moves', async () => {
+  it('keeps every Creature battle-ready with four moves and ordered executable effects', async () => {
     const result = await cataloguePool.query<{
       creature_count: number;
       invalid_count: number;
@@ -255,14 +187,20 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
          count(*) filter (
            where move_count <> 4
               or positions <> array[1, 2, 3, 4]::smallint[]
-              or null_effect_count <> 0
+              or moves_without_effects <> 0
          )::int as invalid_count
        from (
          select definition.id,
                 count(move.*)::int as move_count,
                 array_agg(move.position order by move.position) as positions,
-                count(*) filter (where move.effect_value is null)::int
-                  as null_effect_count
+                count(*) filter (
+                  where not exists (
+                    select 1
+                      from public.card_move_effects effect
+                     where effect.card_move_id = move.id
+                       and btrim(effect.rules_text) <> ''
+                  )
+                )::int as moves_without_effects
            from public.card_definitions definition
            left join public.card_moves move
              on move.card_definition_id = definition.id
@@ -273,7 +211,80 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
       [canonicalCardIds],
     );
 
-    expect(result.rows).toEqual([{ creature_count: 18, invalid_count: 0 }]);
+    expect(result.rows).toEqual([{ creature_count: 24, invalid_count: 0 }]);
+  });
+
+  it('matches the exact approved move costs and ordered effect metadata', async () => {
+    const result = await cataloguePool.query<{
+      effect_count: number;
+      execution_contract: string;
+    }>(
+      `with execution_effects as (
+         select definition.id::text as card_definition_id,
+                definition.name as card_name,
+                definition.category,
+                move.position as source_position,
+                move.name as source_name,
+                move.move_type as source_type,
+                move.power_cost,
+                move.effect_type as legacy_effect_type,
+                move.effect_value as legacy_effect_value,
+                move.modifier_stat as legacy_modifier_stat,
+                move.modifier_operation as legacy_modifier_operation,
+                move.modifier_duration_turns as legacy_modifier_duration_turns,
+                move.rules_text as source_rules_text,
+                effect.position as effect_position,
+                effect.effect_code,
+                effect.effect_value,
+                effect.effect_config::text as effect_config,
+                effect.rules_text as effect_rules_text
+           from public.card_definitions definition
+           join public.card_moves move
+             on move.card_definition_id = definition.id
+           join public.card_move_effects effect
+             on effect.card_move_id = move.id
+            and effect.card_definition_id = definition.id
+          where definition.id = any($1::uuid[])
+         union all
+         select definition.id::text,
+                definition.name,
+                definition.category,
+                effect.position,
+                null,
+                null,
+                null,
+                effect.effect_type,
+                effect.effect_value,
+                effect.modifier_stat,
+                effect.modifier_operation,
+                effect.modifier_duration_turns,
+                null,
+                effect.position,
+                effect.effect_code,
+                effect.effect_value,
+                effect.effect_config::text,
+                effect.rules_text
+           from public.card_definitions definition
+           join public.card_effects effect
+             on effect.card_definition_id = definition.id
+          where definition.id = any($1::uuid[])
+       )
+       select count(*)::int as effect_count,
+              jsonb_agg(
+                to_jsonb(execution_effects)
+                order by card_definition_id, source_position, effect_position
+              )::text as execution_contract
+         from execution_effects`,
+      [canonicalCardIds],
+    );
+    const contract = result.rows[0];
+
+    expect(contract?.effect_count).toBeGreaterThan(100);
+    expect(
+      createHash('sha256')
+        .update(contract?.execution_contract ?? '')
+        .digest('hex'),
+    ).toBe(APPROVED_CATALOGUE_EXECUTION_SHA256);
   });
 
   it('is repeatable without changing canonical definitions or ordered children', async () => {
@@ -302,42 +313,49 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
     });
   });
 
-  it('seeds 3 Common Creatures and 2 Common Power cards for each affinity', async () => {
+  it('seeds the approved rarity distribution and shared typeless starters', async () => {
     await withDatabaseClient(temporaryConfig, async (client) => {
       const result = await client.query<{
-        affinity: string;
         category: string;
         count: string;
         rarity: string;
       }>(
-        `select affinity, category, rarity, count(*)::text as count
+        `select category, rarity, count(*)::text as count
            from public.card_definitions
           where is_active = true
-          group by affinity, category, rarity
-          order by affinity, category, rarity`,
+            and catalogue_class = 'ordinary'
+          group by category, rarity
+          order by category, rarity`,
       );
 
-      const commonStarterRows = result.rows.filter(
-        (row) => row.rarity === 'common',
-      );
-      expect(commonStarterRows).toHaveLength(10);
+      expect(result.rows).toEqual([
+        { category: 'creature', count: '11', rarity: 'common' },
+        { category: 'creature', count: '5', rarity: 'epic' },
+        { category: 'creature', count: '3', rarity: 'legendary' },
+        { category: 'creature', count: '5', rarity: 'rare' },
+        { category: 'power', count: '3', rarity: 'common' },
+        { category: 'power', count: '1', rarity: 'epic' },
+        { category: 'power', count: '1', rarity: 'legendary' },
+        { category: 'power', count: '1', rarity: 'rare' },
+      ]);
 
-      for (const affinity of ['wit', 'grit', 'spark', 'spirit', 'mystic']) {
-        expect(
-          commonStarterRows.find(
-            (row) => row.affinity === affinity && row.category === 'creature',
-          )?.count,
-        ).toBe('3');
-        expect(
-          commonStarterRows.find(
-            (row) => row.affinity === affinity && row.category === 'power',
-          )?.count,
-        ).toBe('2');
-      }
-
-      expect(result.rows.filter((row) => row.rarity !== 'common')).toHaveLength(
-        6,
+      const starters = await client.query<{
+        affinity: string | null;
+        category: string;
+        count: string;
+      }>(
+        `select affinity, category, count(*)::text as count
+           from public.card_definitions
+          where starter_eligible = true
+          group by affinity, category
+          order by affinity nulls last, category`,
       );
+      expect(starters.rows).toEqual([
+        { affinity: 'grit', category: 'creature', count: '3' },
+        { affinity: 'spark', category: 'creature', count: '3' },
+        { affinity: 'wit', category: 'creature', count: '3' },
+        { affinity: null, category: 'power', count: '2' },
+      ]);
     });
   });
 
@@ -364,10 +382,18 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
     expect(
       first.grant.cards.filter((card) => card.category === 'power'),
     ).toHaveLength(2);
+    expect(first.grant.cards.every((card) => card.rarity === 'common')).toBe(
+      true,
+    );
     expect(
-      first.grant.cards.every(
-        (card) => card.affinity === 'wit' && card.rarity === 'common',
-      ),
+      first.grant.cards
+        .filter((card) => card.category === 'creature')
+        .every((card) => card.affinity === 'wit'),
+    ).toBe(true);
+    expect(
+      first.grant.cards
+        .filter((card) => card.category === 'power')
+        .every((card) => card.affinity === null),
     ).toBe(true);
 
     await expect(
@@ -447,9 +473,15 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
          )
          select $1::uuid, definition.id, $2::uuid, 'starter'
            from public.card_definitions definition
-          where definition.is_active = true
-            and definition.affinity = 'spirit'
-            and definition.rarity = 'common'`,
+          where (
+              definition.category = 'creature'
+              and definition.affinity = 'spirit'
+            )
+             or definition.id in (
+               '0d28241f-a4f2-2cf3-52bc-dee1633b3316'::uuid,
+               'b7485793-8432-2db9-5f99-974164efa788'::uuid
+             )
+          order by definition.category, definition.id`,
         [HISTORICAL_SPIRIT_PLAYER_ID, HISTORICAL_SPIRIT_GRANT_ID],
       );
     });
@@ -469,35 +501,53 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
     });
     expect(retry.grant.cards).toHaveLength(5);
     expect(collection).toHaveLength(5);
-    expect(collection.every((card) => card.affinity === 'spirit')).toBe(true);
+    expect(
+      collection.every((card) =>
+        card.category === 'creature'
+          ? card.affinity === 'spirit'
+          : card.affinity === null,
+      ),
+    ).toBe(true);
   });
 
-  it('seeds modifier metadata for battle-ready Buff effects', async () => {
+  it('stores complete ordered Power-card effects and player-readable rules', async () => {
     await withDatabaseClient(temporaryConfig, async (client) => {
       const result = await client.query<{
+        effect_code: string;
         effect_value: number | null;
-        modifier_duration_turns: number | null;
-        modifier_operation: string | null;
-        modifier_stat: string | null;
+        position: number;
+        rules_text: string;
       }>(
-        `select effect.effect_value,
-                effect.modifier_stat,
-                effect.modifier_operation,
-                effect.modifier_duration_turns
+        `select effect.position,
+                effect.effect_code,
+                effect.effect_value,
+                effect.rules_text
            from public.card_effects effect
            join public.card_definitions definition
              on definition.id = effect.card_definition_id
-          where definition.name = 'Spark Legendary Power'
-            and effect.effect_type = 'buff'
+          where definition.name = 'Grand Strategy'
           order by effect.position`,
       );
 
       expect(result.rows).toEqual([
         {
-          effect_value: 15,
-          modifier_duration_turns: 2,
-          modifier_operation: 'multiply',
-          modifier_stat: 'damage_multiplier',
+          effect_code: 'heal',
+          effect_value: 20,
+          position: 1,
+          rules_text: 'Heal the active Creature by 20 HP.',
+        },
+        {
+          effect_code: 'power_change',
+          effect_value: 3,
+          position: 2,
+          rules_text: 'Restore 3 Power to the active Creature.',
+        },
+        {
+          effect_code: 'damage_modifier',
+          effect_value: 20,
+          position: 3,
+          rules_text:
+            'The active Creature deals 20% more damage during its next 2 turns.',
         },
       ]);
     });
@@ -660,10 +710,18 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
 
     expect(result.created).toBe(true);
     expect(result.grant.cards).toHaveLength(5);
+    expect(result.grant.cards.every((card) => card.rarity === 'common')).toBe(
+      true,
+    );
     expect(
-      result.grant.cards.every(
-        (card) => card.affinity === 'grit' && card.rarity === 'common',
-      ),
+      result.grant.cards
+        .filter((card) => card.category === 'creature')
+        .every((card) => card.affinity === 'grit'),
+    ).toBe(true);
+    expect(
+      result.grant.cards
+        .filter((card) => card.category === 'power')
+        .every((card) => card.affinity === null),
     ).toBe(true);
     expect(
       result.grant.cards.filter((card) => card.category === 'creature'),
@@ -969,6 +1027,7 @@ function toStarterCreaturePreview(card: OwnedCard) {
       modifierOperation: move.modifierOperation,
       modifierDurationTurns: move.modifierDurationTurns,
       powerCost: move.powerCost,
+      rulesText: move.rulesText ?? null,
     })),
   };
 }
@@ -983,6 +1042,7 @@ function toStarterPowerPreview(card: OwnedCard) {
       modifierStat: effect.modifierStat,
       modifierOperation: effect.modifierOperation,
       modifierDurationTurns: effect.modifierDurationTurns,
+      rulesText: effect.rulesText ?? null,
     })),
   };
 }

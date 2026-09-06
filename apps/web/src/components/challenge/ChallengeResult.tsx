@@ -52,7 +52,7 @@ export function ChallengeResult({ attempt, headingRef }: ChallengeResultProps) {
                 <p className="eyebrow">{card.rarity}</p>
                 <h3>{card.name}</h3>
                 <p>
-                  {card.category} · {card.affinity}
+                  {card.category} · {card.affinity ?? 'typeless'}
                 </p>
               </li>
             ))}

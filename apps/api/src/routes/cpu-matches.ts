@@ -254,7 +254,9 @@ const publicEffectSchema = {
       type: 'string',
       enum: ['buff', 'damage', 'debuff', 'heal'],
     },
-    effectValue: { type: 'integer', minimum: 0 },
+    effectValue: {
+      anyOf: [{ type: 'integer', minimum: 0 }, { type: 'null' }],
+    },
     modifier:
       battleActionResultSchema.properties.effects.items.properties.modifier,
   },
@@ -307,12 +309,37 @@ const publicCreatureSchema = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['stat', 'operation', 'percentage', 'remainingTurns'],
+        required: [
+          'stat',
+          'operation',
+          'value',
+          'percentage',
+          'remainingTurns',
+          'remainingCharges',
+        ],
         properties: {
-          stat: { const: 'damage_multiplier' },
-          operation: { const: 'multiply' },
-          percentage: { type: 'integer', minimum: -100 },
+          stat: {
+            enum: [
+              'hp',
+              'power',
+              'damage_multiplier',
+              'incoming_damage_multiplier',
+              'poison',
+              'stun',
+              'dodge',
+              'reflect',
+              'lifesteal',
+            ],
+          },
+          operation: { enum: ['add', 'multiply'] },
+          value: { type: 'number', minimum: 0 },
+          percentage: {
+            anyOf: [{ type: 'integer' }, { type: 'null' }],
+          },
           remainingTurns: {
+            anyOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }],
+          },
+          remainingCharges: {
             anyOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }],
           },
         },
@@ -422,8 +449,13 @@ const matchStateSchema = {
               id: { type: 'string' },
               name: { type: 'string' },
               affinity: {
-                type: 'string',
-                enum: ['wit', 'grit', 'spark', 'spirit', 'mystic'],
+                anyOf: [
+                  {
+                    type: 'string',
+                    enum: ['wit', 'grit', 'spark', 'spirit', 'mystic'],
+                  },
+                  { type: 'null' },
+                ],
               },
               effects: { type: 'array', items: publicEffectSchema },
               available: { type: 'boolean' },
