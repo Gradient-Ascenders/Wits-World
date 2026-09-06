@@ -51,6 +51,7 @@ export interface CardMove {
   modifierOperation: ModifierOperation | null;
   modifierDurationTurns: number | null;
   powerCost: number;
+  rulesText?: string | null;
 }
 
 export interface CardEffect {
@@ -61,18 +62,21 @@ export interface CardEffect {
   modifierStat: ModifierStat | null;
   modifierOperation: ModifierOperation | null;
   modifierDurationTurns: number | null;
+  rulesText?: string | null;
 }
 
 export interface CardDefinition {
   id: string;
   name: string;
   category: CardCategory;
-  affinity: CardAffinity;
+  affinity: CardAffinity | null;
   rarity: CardRarity;
   hp: number | null;
   power: number | null;
   description: string | null;
   imageUrl: string | null;
+  imageAlt?: string | null;
+  artworkAttribution?: string | null;
   isActive: boolean;
   moves: CardMove[];
   effects: CardEffect[];

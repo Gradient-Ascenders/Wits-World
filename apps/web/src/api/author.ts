@@ -221,7 +221,7 @@ export interface AuthorCardEffect extends AuthorCardEffectInput {
 }
 
 export interface AuthorCardInput {
-  affinity: CardAffinity;
+  affinity: CardAffinity | null;
   category: CardCategory;
   description?: string | null;
   effects: AuthorCardEffectInput[];
@@ -234,7 +234,7 @@ export interface AuthorCardInput {
 }
 
 export interface AuthorCard extends AuthorLifecycleMetadata {
-  affinity: CardAffinity;
+  affinity: CardAffinity | null;
   authoringStatus: AuthoringStatus;
   category: CardCategory;
   createdAt: string;
@@ -1142,7 +1142,9 @@ function parseAuthorCard(value: unknown): AuthorCard {
     !isUuid(value.id) ||
     !isNonBlank(value.name) ||
     !isCategory(value.category) ||
-    !isAffinity(value.affinity) ||
+    (value.category === 'creature'
+      ? !isAffinity(value.affinity)
+      : value.affinity !== null && !isAffinity(value.affinity)) ||
     !isRarity(value.rarity) ||
     !isNullableNonNegativeInteger(value.hp) ||
     !isNullableNonNegativeInteger(value.power) ||

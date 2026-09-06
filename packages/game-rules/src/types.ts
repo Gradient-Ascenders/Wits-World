@@ -39,6 +39,28 @@ export const effectTypes = ['damage', 'debuff', 'heal', 'buff'] as const;
 
 export type EffectType = (typeof effectTypes)[number];
 
+export const effectCodes = [
+  'damage',
+  'heal',
+  'power_change',
+  'damage_modifier',
+  'incoming_damage_modifier',
+  'poison',
+  'stun',
+  'dodge',
+  'reflect',
+  'lifesteal',
+  'restore_power_to_max',
+  'self_damage',
+  'swap_hp_percentages',
+] as const;
+
+export type EffectCode = (typeof effectCodes)[number];
+
+export const effectTargets = ['self', 'opponent', 'both'] as const;
+
+export type EffectTarget = (typeof effectTargets)[number];
+
 export const modifierStats = ['hp', 'power', 'damage_multiplier'] as const;
 
 export type ModifierStat = (typeof modifierStats)[number];
@@ -58,6 +80,15 @@ export interface BattleEffect {
   readonly effectType: EffectType;
   readonly effectValue: number | null;
   readonly modifier?: BattleModifierSpec;
+  readonly effectCode?: EffectCode;
+  readonly target?: EffectTarget;
+  readonly durationTurns?: number | null;
+  readonly charges?: number | null;
+  readonly neutral?: boolean;
+  readonly bypassDefense?: boolean;
+  readonly minimumHpExclusive?: number;
+  readonly cannotDefeat?: boolean;
+  readonly immunityAfterRecovery?: boolean;
 }
 
 export interface BattleMove {
@@ -78,7 +109,7 @@ export interface BattleCreatureCard {
 
 export interface BattlePowerCard {
   readonly id: string;
-  readonly affinity: CardAffinity;
+  readonly affinity: CardAffinity | null;
   readonly effects: readonly BattleEffect[];
 }
 
@@ -89,10 +120,20 @@ export interface BattleDeck {
 
 export interface BattleModifier {
   readonly id: string;
-  readonly stat: ModifierStat;
+  readonly stat:
+    | ModifierStat
+    | 'incoming_damage_multiplier'
+    | 'poison'
+    | 'stun'
+    | 'dodge'
+    | 'reflect'
+    | 'lifesteal';
   readonly operation: ModifierOperation;
   readonly value: number;
   readonly remainingTurns: number | null;
+  readonly remainingCharges?: number | null;
+  readonly cannotDefeat?: boolean;
+  readonly immunityAfterRecovery?: boolean;
   readonly createdOnTurn: number;
 }
 
@@ -102,6 +143,7 @@ export interface BattleCreatureState {
   readonly remainingPower: number;
   readonly defeated: boolean;
   readonly modifiers: readonly BattleModifier[];
+  readonly stunImmune?: boolean;
 }
 
 export interface BattleParticipantState {
@@ -130,6 +172,8 @@ export interface BattleState {
   readonly turnNumber: number;
   readonly currentSide: BattleSide | null;
   readonly replacementSide: BattleSide | null;
+  readonly replacementQueue?: readonly BattleSide[];
+  readonly resumeSideAfterReplacement?: BattleSide | null;
   readonly firstSide: BattleSide | null;
   readonly selections: BattleSelections;
   readonly participants: Readonly<Record<BattleSide, BattleParticipantState>>;
@@ -139,6 +183,7 @@ export interface BattleState {
 export interface AppliedEffect {
   readonly effectId: string;
   readonly effectType: EffectType;
+  readonly effectCode?: EffectCode;
   readonly targetSide: BattleSide;
   readonly targetCreatureId: string;
   readonly amount: number;

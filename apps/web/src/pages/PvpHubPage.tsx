@@ -1255,7 +1255,11 @@ function DeckCreaturePicker({
                 />
                 <span>
                   <strong>{card.name}</strong>
-                  <small>{titleCase(card.affinity)} affinity</small>
+                  <small>
+                    {card.affinity
+                      ? `${titleCase(card.affinity)} affinity`
+                      : 'Typeless'}
+                  </small>
                 </span>
               </label>
             ))}

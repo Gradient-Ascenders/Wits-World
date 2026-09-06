@@ -844,8 +844,8 @@ function SavedDeckDetail({
             <span>
               <strong>{card.name}</strong>
               <small>
-                {titleCase(card.affinity)} · {titleCase(card.category)} ·{' '}
-                {titleCase(card.rarity)}
+                {card.affinity ? titleCase(card.affinity) : 'Typeless'} ·{' '}
+                {titleCase(card.category)} · {titleCase(card.rarity)}
               </small>
             </span>
           </li>
@@ -1189,7 +1189,9 @@ function DeckEditor({
                         <div className="deck-picker-card__body">
                           <p className="deck-picker-card__kind">
                             {titleCase(card.category)} ·{' '}
-                            {titleCase(card.affinity)}
+                            {card.affinity
+                              ? titleCase(card.affinity)
+                              : 'Typeless'}
                           </p>
                           <h4 className="card-thumbnail__title" id={titleId}>
                             {card.name}
@@ -1506,8 +1508,8 @@ function summarizeSavedDeck(deck: SavedDeck) {
 
   for (const card of deck.cards) {
     affinityCounts.set(
-      card.affinity,
-      (affinityCounts.get(card.affinity) ?? 0) + 1,
+      card.affinity ?? 'typeless',
+      (affinityCounts.get(card.affinity ?? 'typeless') ?? 0) + 1,
     );
   }
 

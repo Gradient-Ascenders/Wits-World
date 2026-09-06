@@ -26,6 +26,7 @@ export interface CardMove {
   name: string;
   position: number;
   powerCost: number;
+  rulesText?: string | null;
 }
 
 export interface CardEffect {
@@ -36,17 +37,19 @@ export interface CardEffect {
   modifierOperation: 'add' | 'multiply' | null;
   modifierStat: CardModifierStat | null;
   position: number;
+  rulesText?: string | null;
 }
 
 export interface OwnedCard {
   acquiredAt: string;
   acquisitionKind: 'event_reward' | 'starter';
-  affinity: CardAffinity;
+  affinity: CardAffinity | null;
   cardDefinitionId: string;
   category: CardCategory;
   description: string | null;
   effects: CardEffect[];
   hp: number | null;
+  imageAlt?: string | null;
   imageUrl: string | null;
   isActive: boolean;
   moves: CardMove[];
@@ -117,6 +120,7 @@ const ownedCardKeys = [
   'description',
   'effects',
   'hp',
+  'imageAlt',
   'imageUrl',
   'isActive',
   'moves',
@@ -136,6 +140,7 @@ const moveKeys = [
   'name',
   'position',
   'powerCost',
+  'rulesText',
 ] as const;
 const effectKeys = [
   'effectType',
@@ -145,6 +150,7 @@ const effectKeys = [
   'modifierOperation',
   'modifierStat',
   'position',
+  'rulesText',
 ] as const;
 const previewMoveKeys = moveKeys.filter((key) => key !== 'id');
 const previewEffectKeys = effectKeys.filter((key) => key !== 'id');
@@ -364,19 +370,25 @@ async function parseCardError(response: Response): Promise<CardApiError> {
 }
 
 function parseOwnedCard(value: unknown): OwnedCard {
+  const legacyKeys = ownedCardKeys.filter((key) => key !== 'imageAlt');
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, ownedCardKeys) ||
+    (!hasExactKeys(value, ownedCardKeys) && !hasExactKeys(value, legacyKeys)) ||
     !isUuid(value.ownedCardId) ||
     !isUuid(value.cardDefinitionId) ||
     typeof value.name !== 'string' ||
     value.name.trim() === '' ||
     !isCardCategory(value.category) ||
-    !isCardAffinity(value.affinity) ||
+    (value.category === 'creature'
+      ? !isCardAffinity(value.affinity)
+      : value.affinity !== null && !isCardAffinity(value.affinity)) ||
     !isCardRarity(value.rarity) ||
     !isNullablePositiveInteger(value.hp) ||
     !isNullableNonNegativeInteger(value.power) ||
     (value.description !== null && typeof value.description !== 'string') ||
+    (value.imageAlt !== undefined &&
+      value.imageAlt !== null &&
+      typeof value.imageAlt !== 'string') ||
     (value.imageUrl !== null && typeof value.imageUrl !== 'string') ||
     typeof value.isActive !== 'boolean' ||
     !Array.isArray(value.moves) ||
@@ -391,12 +403,15 @@ function parseOwnedCard(value: unknown): OwnedCard {
   return {
     acquiredAt: value.acquiredAt,
     acquisitionKind: value.acquisitionKind,
-    affinity: value.affinity,
+    affinity: isCardAffinity(value.affinity) ? value.affinity : null,
     cardDefinitionId: value.cardDefinitionId,
     category: value.category,
     description: value.description,
     effects: value.effects.map(parseEffect),
     hp: value.hp,
+    ...(value.imageAlt === undefined
+      ? {}
+      : { imageAlt: value.imageAlt as string | null }),
     imageUrl: value.imageUrl,
     isActive: value.isActive,
     moves: value.moves.map(parseMove),
@@ -485,9 +500,10 @@ function parseStarterPowerCard(value: unknown) {
 }
 
 function parseMove(value: unknown): CardMove {
+  const legacyKeys = moveKeys.filter((key) => key !== 'rulesText');
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, moveKeys) ||
+    (!hasExactKeys(value, moveKeys) && !hasExactKeys(value, legacyKeys)) ||
     !isUuid(value.id) ||
     !isPositiveInteger(value.position) ||
     typeof value.name !== 'string' ||
@@ -498,7 +514,10 @@ function parseMove(value: unknown): CardMove {
     !isNullableModifierStat(value.modifierStat) ||
     !isNullableModifierOperation(value.modifierOperation) ||
     !isNullablePositiveInteger(value.modifierDurationTurns) ||
-    !isNonNegativeInteger(value.powerCost)
+    !isNonNegativeInteger(value.powerCost) ||
+    (value.rulesText !== undefined &&
+      value.rulesText !== null &&
+      typeof value.rulesText !== 'string')
   ) {
     throw new CardApiError('unavailable');
   }
@@ -514,20 +533,27 @@ function parseMove(value: unknown): CardMove {
     name: value.name,
     position: value.position,
     powerCost: value.powerCost,
+    ...(value.rulesText === undefined
+      ? {}
+      : { rulesText: value.rulesText as string | null }),
   };
 }
 
 function parseEffect(value: unknown): CardEffect {
+  const legacyKeys = effectKeys.filter((key) => key !== 'rulesText');
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, effectKeys) ||
+    (!hasExactKeys(value, effectKeys) && !hasExactKeys(value, legacyKeys)) ||
     !isUuid(value.id) ||
     !isPositiveInteger(value.position) ||
     !isEffectType(value.effectType) ||
     !isNullableNonNegativeInteger(value.effectValue) ||
     !isNullableModifierStat(value.modifierStat) ||
     !isNullableModifierOperation(value.modifierOperation) ||
-    !isNullablePositiveInteger(value.modifierDurationTurns)
+    !isNullablePositiveInteger(value.modifierDurationTurns) ||
+    (value.rulesText !== undefined &&
+      value.rulesText !== null &&
+      typeof value.rulesText !== 'string')
   ) {
     throw new CardApiError('unavailable');
   }
@@ -540,13 +566,18 @@ function parseEffect(value: unknown): CardEffect {
     modifierOperation: value.modifierOperation,
     modifierStat: value.modifierStat,
     position: value.position,
+    ...(value.rulesText === undefined
+      ? {}
+      : { rulesText: value.rulesText as string | null }),
   };
 }
 
 function parseStarterPreviewMove(value: unknown): StarterPreviewMove {
+  const legacyKeys = previewMoveKeys.filter((key) => key !== 'rulesText');
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, previewMoveKeys) ||
+    (!hasExactKeys(value, previewMoveKeys) &&
+      !hasExactKeys(value, legacyKeys)) ||
     !isPositiveInteger(value.position) ||
     typeof value.name !== 'string' ||
     value.name.trim() === '' ||
@@ -556,7 +587,10 @@ function parseStarterPreviewMove(value: unknown): StarterPreviewMove {
     !isNullableModifierStat(value.modifierStat) ||
     !isNullableModifierOperation(value.modifierOperation) ||
     !isNullablePositiveInteger(value.modifierDurationTurns) ||
-    !isNonNegativeInteger(value.powerCost)
+    !isNonNegativeInteger(value.powerCost) ||
+    (value.rulesText !== undefined &&
+      value.rulesText !== null &&
+      typeof value.rulesText !== 'string')
   ) {
     throw new CardApiError('unavailable');
   }
@@ -571,19 +605,27 @@ function parseStarterPreviewMove(value: unknown): StarterPreviewMove {
     name: value.name,
     position: value.position,
     powerCost: value.powerCost,
+    ...(value.rulesText === undefined
+      ? {}
+      : { rulesText: value.rulesText as string | null }),
   };
 }
 
 function parseStarterPreviewEffect(value: unknown): StarterPreviewEffect {
+  const legacyKeys = previewEffectKeys.filter((key) => key !== 'rulesText');
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, previewEffectKeys) ||
+    (!hasExactKeys(value, previewEffectKeys) &&
+      !hasExactKeys(value, legacyKeys)) ||
     !isPositiveInteger(value.position) ||
     !isEffectType(value.effectType) ||
     !isNullableNonNegativeInteger(value.effectValue) ||
     !isNullableModifierStat(value.modifierStat) ||
     !isNullableModifierOperation(value.modifierOperation) ||
-    !isNullablePositiveInteger(value.modifierDurationTurns)
+    !isNullablePositiveInteger(value.modifierDurationTurns) ||
+    (value.rulesText !== undefined &&
+      value.rulesText !== null &&
+      typeof value.rulesText !== 'string')
   ) {
     throw new CardApiError('unavailable');
   }
@@ -595,6 +637,9 @@ function parseStarterPreviewEffect(value: unknown): StarterPreviewEffect {
     modifierOperation: value.modifierOperation,
     modifierStat: value.modifierStat,
     position: value.position,
+    ...(value.rulesText === undefined
+      ? {}
+      : { rulesText: value.rulesText as string | null }),
   };
 }
 
@@ -617,7 +662,9 @@ function isValidStarterGrant(cards: OwnedCard[], affinity: StarterAffinity) {
     cards.every(
       (card) =>
         card.acquisitionKind === 'starter' &&
-        card.affinity === affinity &&
+        (card.category === 'creature'
+          ? card.affinity === affinity
+          : card.affinity === null || card.affinity === affinity) &&
         card.rarity === 'common',
     ) &&
     definitionIds.size === 5 &&

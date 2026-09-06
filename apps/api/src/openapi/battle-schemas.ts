@@ -19,7 +19,9 @@ export const publicEffectSchema = {
   properties: {
     damageMultiplier: { anyOf: [{ type: 'number' }, { type: 'null' }] },
     effectType: { enum: ['buff', 'damage', 'debuff', 'heal'] },
-    effectValue: { type: 'integer', minimum: 0 },
+    effectValue: {
+      anyOf: [{ type: 'integer', minimum: 0 }, { type: 'null' }],
+    },
     modifier: {
       anyOf: [
         {
@@ -47,7 +49,12 @@ export const publicPowerCardSchema = {
   properties: {
     id: { type: 'string', format: 'uuid' },
     name: { type: 'string' },
-    affinity: { enum: ['wit', 'grit', 'spark', 'spirit', 'mystic'] },
+    affinity: {
+      anyOf: [
+        { enum: ['wit', 'grit', 'spark', 'spirit', 'mystic'] },
+        { type: 'null' },
+      ],
+    },
     effects: { type: 'array', items: publicEffectSchema },
     available: { type: 'boolean' },
   },
@@ -99,12 +106,37 @@ export const publicCreatureSchema = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['stat', 'operation', 'percentage', 'remainingTurns'],
+        required: [
+          'stat',
+          'operation',
+          'value',
+          'percentage',
+          'remainingTurns',
+          'remainingCharges',
+        ],
         properties: {
-          stat: { const: 'damage_multiplier' },
-          operation: { const: 'multiply' },
-          percentage: { type: 'integer' },
+          stat: {
+            enum: [
+              'hp',
+              'power',
+              'damage_multiplier',
+              'incoming_damage_multiplier',
+              'poison',
+              'stun',
+              'dodge',
+              'reflect',
+              'lifesteal',
+            ],
+          },
+          operation: { enum: ['add', 'multiply'] },
+          value: { type: 'number', minimum: 0 },
+          percentage: {
+            anyOf: [{ type: 'integer' }, { type: 'null' }],
+          },
           remainingTurns: {
+            anyOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }],
+          },
+          remainingCharges: {
             anyOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }],
           },
         },

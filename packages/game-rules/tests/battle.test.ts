@@ -742,6 +742,355 @@ describe('Basic battle rules', () => {
     expect(state).toEqual(completed);
   });
 
+  it('executes self-damage before restoring Power and enforces the HP threshold', () => {
+    const overcharge: BattleMove = {
+      id: 'overcharge',
+      name: 'Overcharge',
+      moveType: 'spark',
+      powerCost: 0,
+      effects: [
+        {
+          id: 'overcharge-cost',
+          effectCode: 'self_damage',
+          effectType: 'debuff',
+          effectValue: 25,
+          minimumHpExclusive: 25,
+          target: 'self',
+        },
+        {
+          id: 'overcharge-power',
+          effectCode: 'restore_power_to_max',
+          effectType: 'buff',
+          effectValue: null,
+          target: 'self',
+        },
+      ],
+    };
+    const setup = makeDamageMove('spend-power', 1, 'basic', 5);
+    let state = startBattle(
+      makeDeck('player', { moves: [setup, overcharge] }),
+      makeDeck('cpu'),
+    );
+    state = action(state, 'player', { type: 'use_move', moveId: setup.id });
+    state = action(state, 'cpu', { type: 'timeout' });
+
+    const transition = applyBattleAction(
+      state,
+      'player',
+      { type: 'use_move', moveId: overcharge.id },
+      randomZero,
+    );
+    expect(activeCreature(transition.state, 'player')).toMatchObject({
+      currentHp: 75,
+      remainingPower: 10,
+    });
+    expect(
+      transition.result.effects.map(({ effectCode, amount }) => ({
+        effectCode,
+        amount,
+      })),
+    ).toEqual([
+      { effectCode: 'self_damage', amount: 25 },
+      { effectCode: 'restore_power_to_max', amount: 5 },
+    ]);
+
+    const lowHpState: BattleState = {
+      ...state,
+      participants: {
+        ...state.participants,
+        player: {
+          ...state.participants.player,
+          creatures: state.participants.player.creatures.map((creature) =>
+            creature.card.id === state.participants.player.activeCreatureId
+              ? { ...creature, currentHp: 25 }
+              : creature,
+          ),
+        },
+      },
+    };
+    expect(getLegalActions(lowHpState, 'player')).not.toContainEqual({
+      type: 'use_move',
+      moveId: overcharge.id,
+    });
+  });
+
+  it('ticks Poison only at the end of the affected Creature turns', () => {
+    const poisonMove: BattleMove = {
+      id: 'hexstep',
+      name: 'Hexstep',
+      moveType: 'basic',
+      powerCost: 3,
+      effects: [
+        {
+          id: 'hexstep-hit',
+          effectCode: 'damage',
+          effectType: 'damage',
+          effectValue: 5,
+          target: 'opponent',
+        },
+        {
+          id: 'hexstep-poison',
+          effectCode: 'poison',
+          effectType: 'debuff',
+          effectValue: 8,
+          durationTurns: 3,
+          target: 'opponent',
+        },
+      ],
+    };
+    let state = startBattle(
+      makeDeck('player', { moves: [poisonMove] }),
+      makeDeck('cpu'),
+    );
+    state = action(state, 'player', {
+      type: 'use_move',
+      moveId: poisonMove.id,
+    });
+    expect(activeCreature(state, 'cpu').currentHp).toBe(95);
+
+    for (let tick = 0; tick < 3; tick += 1) {
+      state = action(state, 'cpu', { type: 'timeout' });
+      if (tick < 2) state = action(state, 'player', { type: 'timeout' });
+    }
+
+    expect(activeCreature(state, 'cpu').currentHp).toBe(71);
+    expect(activeCreature(state, 'cpu').modifiers).toEqual([]);
+  });
+
+  it('lets a stunned player use a Power card and grants immunity after recovery', () => {
+    const stunMove: BattleMove = {
+      id: 'soul-chime',
+      name: 'Soul Chime',
+      moveType: 'spirit',
+      powerCost: 4,
+      effects: [
+        {
+          id: 'soul-chime-hit',
+          effectCode: 'damage',
+          effectType: 'damage',
+          effectValue: 10,
+        },
+        {
+          id: 'soul-chime-stun',
+          effectCode: 'stun',
+          effectType: 'debuff',
+          effectValue: 1,
+          durationTurns: 1,
+          immunityAfterRecovery: true,
+          target: 'opponent',
+        },
+      ],
+    };
+    let state = startBattle(
+      makeDeck('player', { moves: [stunMove] }),
+      makeDeck('cpu'),
+    );
+    state = action(state, 'player', {
+      type: 'use_move',
+      moveId: stunMove.id,
+    });
+    expect(
+      getLegalActions(state, 'cpu').some(({ type }) => type === 'use_move'),
+    ).toBe(false);
+    expect(
+      getLegalActions(state, 'cpu').some(
+        ({ type }) => type === 'use_power_card',
+      ),
+    ).toBe(true);
+
+    state = action(state, 'cpu', {
+      type: 'use_power_card',
+      powerCardId: 'cpu-power-1',
+    });
+    expect(activeCreature(state, 'cpu').stunImmune).toBe(true);
+    state = action(state, 'player', {
+      type: 'use_move',
+      moveId: stunMove.id,
+    });
+    expect(activeCreature(state, 'cpu').modifiers).toEqual([]);
+    expect(
+      getLegalActions(state, 'cpu').some(({ type }) => type === 'use_move'),
+    ).toBe(true);
+  });
+
+  it('uses injected server randomness and consumes a one-shot dodge', () => {
+    const dodgeMove: BattleMove = {
+      id: 'foresight-dodge',
+      name: 'Foresight Dodge',
+      moveType: 'wit',
+      powerCost: 3,
+      effects: [
+        {
+          id: 'foresight-hit',
+          effectCode: 'damage',
+          effectType: 'damage',
+          effectValue: 25,
+        },
+        {
+          id: 'foresight-status',
+          effectCode: 'dodge',
+          effectType: 'buff',
+          effectValue: 50,
+          charges: 1,
+          target: 'self',
+        },
+      ],
+    };
+    let state = startBattle(
+      makeDeck('player', { moves: [dodgeMove] }),
+      makeDeck('cpu'),
+    );
+    state = action(state, 'player', {
+      type: 'use_move',
+      moveId: dodgeMove.id,
+    });
+    const transition = applyBattleAction(
+      state,
+      'cpu',
+      {
+        type: 'use_move',
+        moveId: activeCreature(state, 'cpu').card.moves[0]!.id,
+      },
+      () => 49,
+    );
+    expect(activeCreature(transition.state, 'player').currentHp).toBe(100);
+    expect(activeCreature(transition.state, 'player').modifiers).toEqual([]);
+    expect(transition.result.effects[0]).toMatchObject({
+      effectCode: 'dodge',
+      amount: 1,
+    });
+  });
+
+  it('applies reflection and lifesteal to actual damage with finite charges', () => {
+    const lifestealSetup: BattleMove = {
+      id: 'lifesteal-setup',
+      name: 'Lifesteal setup',
+      moveType: 'spirit',
+      powerCost: 0,
+      effects: [
+        {
+          id: 'setup-hit',
+          effectCode: 'damage',
+          effectType: 'damage',
+          effectValue: 10,
+        },
+        {
+          id: 'lifesteal-status',
+          effectCode: 'lifesteal',
+          effectType: 'buff',
+          effectValue: 30,
+          charges: 2,
+          target: 'self',
+        },
+      ],
+    };
+    const reflectedAttack = makeDamageMove('follow-up', 20, 'basic', 0);
+    const reflectSetup: BattleMove = {
+      id: 'reflect-setup',
+      name: 'Reflect setup',
+      moveType: 'grit',
+      powerCost: 0,
+      effects: [
+        {
+          id: 'reflect-status',
+          effectCode: 'reflect',
+          effectType: 'buff',
+          effectValue: 35,
+          charges: 2,
+          cannotDefeat: true,
+          target: 'self',
+        },
+      ],
+    };
+    let state = startBattle(
+      makeDeck('player', { moves: [lifestealSetup, reflectedAttack] }),
+      makeDeck('cpu', {
+        moves: [makeDamageMove('cpu-hit', 1, 'basic', 0), reflectSetup],
+      }),
+    );
+    state = action(state, 'player', { type: 'timeout' });
+    state = action(state, 'cpu', {
+      type: 'use_move',
+      moveId: activeCreature(state, 'cpu').card.moves[1]!.id,
+    });
+    state = action(state, 'player', {
+      type: 'use_move',
+      moveId: lifestealSetup.id,
+    });
+    expect(activeCreature(state, 'player').currentHp).toBe(97);
+    state = action(state, 'cpu', { type: 'use_move', moveId: reflectSetup.id });
+
+    const transition = applyBattleAction(
+      state,
+      'player',
+      { type: 'use_move', moveId: reflectedAttack.id },
+      randomZero,
+    );
+    expect(activeCreature(transition.state, 'player').currentHp).toBe(96);
+    expect(transition.result.effects).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ effectCode: 'reflect', amount: 7 }),
+        expect.objectContaining({ effectCode: 'lifesteal', amount: 6 }),
+      ]),
+    );
+    expect(
+      activeCreature(transition.state, 'player').modifiers.find(
+        ({ stat }) => stat === 'lifesteal',
+      )?.remainingCharges,
+    ).toBe(1);
+  });
+
+  it('swaps active HP percentages using each Creature maximum HP', () => {
+    const fateReversal = makePowerCard(
+      'fate-reversal',
+      [
+        {
+          id: 'fate-reversal-effect',
+          effectCode: 'swap_hp_percentages',
+          effectType: 'buff',
+          effectValue: null,
+          target: 'both',
+        },
+      ],
+      null,
+    );
+    const base = startBattle(
+      makeDeck('player', {
+        powerCards: [
+          fateReversal,
+          makePowerCard('spare', [
+            { id: 'spare-heal', effectType: 'heal', effectValue: 1 },
+          ]),
+        ],
+      }),
+      makeDeck('cpu', { creatureHp: 200 }),
+    );
+    const state: BattleState = {
+      ...base,
+      participants: {
+        player: {
+          ...base.participants.player,
+          creatures: base.participants.player.creatures.map(
+            (creature, index) =>
+              index === 0 ? { ...creature, currentHp: 25 } : creature,
+          ),
+        },
+        cpu: {
+          ...base.participants.cpu,
+          creatures: base.participants.cpu.creatures.map((creature, index) =>
+            index === 0 ? { ...creature, currentHp: 150 } : creature,
+          ),
+        },
+      },
+    };
+    const next = action(state, 'player', {
+      type: 'use_power_card',
+      powerCardId: fateReversal.id,
+    });
+    expect(activeCreature(next, 'player').currentHp).toBe(75);
+    expect(activeCreature(next, 'cpu').currentHp).toBe(50);
+  });
+
   it('selects only legal CPU actions using injected randomness', () => {
     const initial = createBattleState(makeDeck('player'), makeDeck('cpu'));
 

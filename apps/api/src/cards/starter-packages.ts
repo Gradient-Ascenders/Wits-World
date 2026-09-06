@@ -24,8 +24,8 @@ export const starterPackageDefinitions = {
       'fc2c46fb-d960-b1bb-ea9a-93110b79e22d',
     ],
     powerCardDefinitionIds: [
-      '49e45cbb-f419-bf5c-2868-757646cb8dc9',
-      '17150f89-427c-6bd8-5551-fbaf59b99808',
+      '0d28241f-a4f2-2cf3-52bc-dee1633b3316',
+      'b7485793-8432-2db9-5f99-974164efa788',
     ],
   },
   wit: {
@@ -35,8 +35,8 @@ export const starterPackageDefinitions = {
       'cdd5284b-0aaf-5c50-f820-787a7f6b1506',
     ],
     powerCardDefinitionIds: [
-      'a2405856-34a7-f0a8-d1f6-ed0f161ecdab',
-      'b862854d-9bc1-2e2e-31f2-c3b31fefcaed',
+      '0d28241f-a4f2-2cf3-52bc-dee1633b3316',
+      'b7485793-8432-2db9-5f99-974164efa788',
     ],
   },
 } as const satisfies Record<StarterAffinity, StarterPackageDefinitionIds>;

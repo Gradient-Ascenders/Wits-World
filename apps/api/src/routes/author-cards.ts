@@ -41,7 +41,7 @@ interface CardEffectBody {
 interface CardBody {
   name: string;
   category: 'creature' | 'power';
-  affinity: 'wit' | 'grit' | 'spark' | 'spirit' | 'mystic';
+  affinity: 'wit' | 'grit' | 'spark' | 'spirit' | 'mystic' | null;
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
   hp: number | null;
   power: number | null;
@@ -285,6 +285,10 @@ const powerCardBodySchema = {
       type: 'string',
       enum: ['power'],
     },
+    affinity: {
+      type: 'null',
+      description: 'Ordinary Power cards are typeless.',
+    },
     hp: nullIntegerSchema,
     power: nullIntegerSchema,
     moves: {
@@ -434,6 +438,7 @@ const authorCardSchema = {
     affinity: {
       type: 'string',
       enum: ['wit', 'grit', 'spark', 'spirit', 'mystic'],
+      nullable: true,
     },
     rarity: {
       type: 'string',

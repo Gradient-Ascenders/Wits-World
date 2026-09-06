@@ -30,15 +30,26 @@ export interface MatchEffectModifier {
 export interface MatchEffect {
   damageMultiplier: number | null;
   effectType: 'buff' | 'damage' | 'debuff' | 'heal';
-  effectValue: number;
+  effectValue: number | null;
   modifier: MatchEffectModifier | null;
 }
 
 export interface MatchActiveModifier {
-  operation: 'multiply';
-  percentage: number;
+  operation: 'add' | 'multiply';
+  percentage: number | null;
+  remainingCharges?: number | null;
   remainingTurns: number | null;
-  stat: 'damage_multiplier';
+  stat:
+    | 'damage_multiplier'
+    | 'dodge'
+    | 'hp'
+    | 'incoming_damage_multiplier'
+    | 'lifesteal'
+    | 'poison'
+    | 'power'
+    | 'reflect'
+    | 'stun';
+  value?: number;
 }
 
 export interface MatchCreature {
@@ -55,7 +66,7 @@ export interface MatchCreature {
 }
 
 export interface MatchPowerCard {
-  affinity: CardAffinity;
+  affinity: CardAffinity | null;
   available: boolean;
   id: string;
   effects: MatchEffect[];
@@ -770,7 +781,7 @@ export function parseMatchPowerCard(value: unknown): MatchPowerCard {
     !isRecord(value) ||
     (!currentShape && !hasExactKeys(value, legacyKeys)) ||
     !isUuid(value.id) ||
-    !isAffinity(value.affinity) ||
+    (value.affinity !== null && !isAffinity(value.affinity)) ||
     typeof value.available !== 'boolean' ||
     (currentShape &&
       (typeof value.name !== 'string' ||
@@ -788,7 +799,9 @@ export function parseMatchPowerCard(value: unknown): MatchPowerCard {
     id: value.id,
     name: currentShape
       ? String(value.name)
-      : `${titleCase(value.affinity)} Power card`,
+      : value.affinity
+        ? `${titleCase(value.affinity)} Power card`
+        : 'Power card',
   } as MatchPowerCard;
 }
 
@@ -1019,7 +1032,7 @@ function parseBattleEffect(value: unknown): MatchEffect {
       'modifier',
     ]) ||
     !isEffectType(value.effectType) ||
-    !isNonNegativeInteger(value.effectValue) ||
+    !isNullableNonNegativeInteger(value.effectValue) ||
     !isNullableEffectModifier(value.modifier) ||
     (value.damageMultiplier !== null &&
       (!Number.isFinite(value.damageMultiplier) ||
@@ -1027,9 +1040,7 @@ function parseBattleEffect(value: unknown): MatchEffect {
     (value.modifier?.stat === 'damage_multiplier') !==
       (value.damageMultiplier !== null) ||
     ((value.effectType === 'damage' || value.effectType === 'heal') &&
-      value.modifier !== null) ||
-    ((value.effectType === 'buff' || value.effectType === 'debuff') &&
-      value.modifier === null)
+      value.modifier !== null)
   ) {
     throw new MatchApiError('unavailable');
   }
@@ -1038,23 +1049,61 @@ function parseBattleEffect(value: unknown): MatchEffect {
 }
 
 function parseActiveModifier(value: unknown): MatchActiveModifier {
+  const currentKeys = [
+    'operation',
+    'percentage',
+    'remainingCharges',
+    'remainingTurns',
+    'stat',
+    'value',
+  ] as const;
+  const legacyKeys = [
+    'operation',
+    'percentage',
+    'remainingTurns',
+    'stat',
+  ] as const;
+  const currentShape = isRecord(value) && hasExactKeys(value, currentKeys);
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, [
-      'operation',
-      'percentage',
-      'remainingTurns',
-      'stat',
-    ]) ||
-    value.stat !== 'damage_multiplier' ||
-    value.operation !== 'multiply' ||
-    !Number.isInteger(value.percentage) ||
-    Number(value.percentage) < -100 ||
+    (!currentShape && !hasExactKeys(value, legacyKeys)) ||
+    (!currentShape &&
+      (value.stat !== 'damage_multiplier' || value.operation !== 'multiply')) ||
+    ![
+      'damage_multiplier',
+      'dodge',
+      'hp',
+      'incoming_damage_multiplier',
+      'lifesteal',
+      'poison',
+      'power',
+      'reflect',
+      'stun',
+    ].includes(String(value.stat)) ||
+    !['add', 'multiply'].includes(String(value.operation)) ||
+    (value.percentage !== null && !Number.isInteger(value.percentage)) ||
     (value.remainingTurns !== null &&
       (!Number.isInteger(value.remainingTurns) ||
-        Number(value.remainingTurns) <= 0))
+        Number(value.remainingTurns) <= 0)) ||
+    (currentShape &&
+      (!Number.isFinite(value.value) ||
+        Number(value.value) < 0 ||
+        (value.remainingCharges !== null &&
+          (!Number.isInteger(value.remainingCharges) ||
+            Number(value.remainingCharges) <= 0))))
   ) {
     throw new MatchApiError('unavailable');
+  }
+
+  if (!currentShape) {
+    return {
+      operation: 'multiply',
+      percentage: Number(value.percentage),
+      remainingCharges: null,
+      remainingTurns: value.remainingTurns as number | null,
+      stat: 'damage_multiplier',
+      value: 1 + Number(value.percentage) / 100,
+    };
   }
 
   return value as unknown as MatchActiveModifier;
@@ -1233,6 +1282,10 @@ function isAffinity(value: unknown): value is CardAffinity {
 
 function isNonNegativeInteger(value: unknown): value is number {
   return Number.isInteger(value) && Number(value) >= 0;
+}
+
+function isNullableNonNegativeInteger(value: unknown): value is number | null {
+  return value === null || isNonNegativeInteger(value);
 }
 
 function isDateTime(value: unknown): value is string {

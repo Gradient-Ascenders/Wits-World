@@ -339,7 +339,11 @@ export function BattleActionPanel({
                         >
                           <span className="battle-action-control__heading">
                             <strong>{card.name}</strong>
-                            <span>{titleCase(card.affinity)}</span>
+                            <span>
+                              {card.affinity
+                                ? titleCase(card.affinity)
+                                : 'Typeless'}
+                            </span>
                           </span>
                           <span className="battle-action-control__detail">
                             <span className="battle-effect-list">

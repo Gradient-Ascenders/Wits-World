@@ -28,11 +28,6 @@ import {
   type CpuMatchClient,
   type CpuMatchDatabase,
 } from '../src/matches/cpu-match-service.js';
-import {
-  canonicalCreatures,
-  canonicalPowerCards,
-} from './fixtures/canonical-card-roster.js';
-
 const PLAYER_ID = 'b1000000-0000-4000-8000-000000000001';
 const OTHER_PLAYER_ID = 'b1000000-0000-4000-8000-000000000002';
 const VISIBILITY_PLAYER_ID = 'b1000000-0000-4000-8000-000000000003';
@@ -43,51 +38,51 @@ const OWNED_CARD_IDS = [1, 2, 3, 4, 5].map(
 );
 const EXPECTED_CPU_SNAPSHOTS = [
   {
-    affinity: 'grit',
-    battle_card_id: 'c2c81cdc-5c15-84d1-6ba9-0271b1d3fdac',
-    card_definition_id: 'c2c81cdc-5c15-84d1-6ba9-0271b1d3fdac',
+    affinity: 'wit',
+    battle_card_id: '84790040-6ea8-6155-c4b7-dec3a22ac3ab',
+    card_definition_id: '84790040-6ea8-6155-c4b7-dec3a22ac3ab',
     category: 'creature',
-    name: 'Grit Creature 2',
+    name: 'Quillip',
     owned_card_id: null,
     position: 1,
     rarity: 'common',
   },
   {
-    affinity: 'spirit',
-    battle_card_id: 'a230fdda-cec0-c127-b4a2-e4dd20660e3a',
-    card_definition_id: 'a230fdda-cec0-c127-b4a2-e4dd20660e3a',
+    affinity: 'spark',
+    battle_card_id: 'eca9b943-9e05-834e-c85c-1175001d897c',
+    card_definition_id: 'eca9b943-9e05-834e-c85c-1175001d897c',
     category: 'creature',
-    name: 'Spirit Creature 1',
+    name: 'Voltiki',
     owned_card_id: null,
     position: 2,
     rarity: 'common',
   },
   {
-    affinity: 'mystic',
-    battle_card_id: '0cba869b-d777-11f8-6b8c-c47d4d626558',
-    card_definition_id: '0cba869b-d777-11f8-6b8c-c47d4d626558',
+    affinity: 'grit',
+    battle_card_id: '27cbcedf-1886-aa81-04b4-089b4c10cd87',
+    card_definition_id: '27cbcedf-1886-aa81-04b4-089b4c10cd87',
     category: 'creature',
-    name: 'Mystic Creature 1',
+    name: 'Karrik',
     owned_card_id: null,
     position: 3,
     rarity: 'common',
   },
   {
-    affinity: 'grit',
-    battle_card_id: '49e45cbb-f419-bf5c-2868-757646cb8dc9',
-    card_definition_id: '49e45cbb-f419-bf5c-2868-757646cb8dc9',
+    affinity: null,
+    battle_card_id: '0d28241f-a4f2-2cf3-52bc-dee1633b3316',
+    card_definition_id: '0d28241f-a4f2-2cf3-52bc-dee1633b3316',
     category: 'power',
-    name: 'Grit Power 1',
+    name: 'Field Kit',
     owned_card_id: null,
     position: 4,
     rarity: 'common',
   },
   {
-    affinity: 'mystic',
-    battle_card_id: '76f057c6-efab-38d9-9bcf-298d5c794f1a',
-    card_definition_id: '76f057c6-efab-38d9-9bcf-298d5c794f1a',
+    affinity: null,
+    battle_card_id: 'b7485793-8432-2db9-5f99-974164efa788',
+    card_definition_id: 'b7485793-8432-2db9-5f99-974164efa788',
     category: 'power',
-    name: 'Mystic Power 1',
+    name: 'Reserve Focus',
     owned_card_id: null,
     position: 5,
     rarity: 'common',
@@ -155,7 +150,11 @@ describe.skipIf(!runIntegrationTests)(
         from public.card_definitions
         where is_active = true
           and rarity = 'common'
-          and affinity = 'wit'
+          and starter_eligible
+          and (
+            (category = 'creature' and affinity = 'wit')
+            or (category = 'power' and affinity is null)
+          )
         order by category, name, id
       `,
       );
@@ -263,7 +262,7 @@ describe.skipIf(!runIntegrationTests)(
       expect(activeMatchCount.rows[0]?.count).toBe('1');
 
       const cpuSnapshots = await pool.query<{
-        affinity: string;
+        affinity: string | null;
         battle_card_id: string;
         card_definition_id: string;
         category: string;
@@ -290,9 +289,7 @@ describe.skipIf(!runIntegrationTests)(
 
       expect(cpuSnapshots.rows).toEqual(EXPECTED_CPU_SNAPSHOTS);
 
-      const expectedWitCreature = canonicalCreatures.find(
-        (card) => card.name === 'Wit Creature 1',
-      );
+      const expectedWitCreatureId = '84790040-6ea8-6155-c4b7-dec3a22ac3ab';
       const newSnapshot = await pool.query<{
         snapshot: {
           battleCard: {
@@ -313,21 +310,41 @@ describe.skipIf(!runIntegrationTests)(
            from public.cpu_match_cards
           where match_id = $1::uuid
             and card_definition_id = $2::uuid`,
-        [created.matchId, expectedWitCreature?.id],
+        [created.matchId, expectedWitCreatureId],
       );
 
       expect(newSnapshot.rows[0]?.snapshot).toMatchObject({
-        cardDefinitionId: expectedWitCreature?.id,
-        name: expectedWitCreature?.name,
+        cardDefinitionId: expectedWitCreatureId,
+        name: 'Quillip',
         battleCard: {
-          maxHp: expectedWitCreature?.hp,
-          maxPower: expectedWitCreature?.power,
-          moves: expectedWitCreature?.moves.map((move) => ({
-            name: move[0],
-            moveType: move[1],
-            powerCost: move[7],
-            effects: [{ effectValue: move[3] }],
-          })),
+          maxHp: 98,
+          maxPower: 11,
+          moves: [
+            {
+              name: 'Ink Peck',
+              moveType: 'basic',
+              powerCost: 0,
+              effects: [{ effectValue: 10 }],
+            },
+            {
+              name: 'Blind Spot',
+              moveType: 'basic',
+              powerCost: 1,
+              effects: [{ effectValue: 16 }],
+            },
+            {
+              name: 'Quick Study',
+              moveType: 'basic',
+              powerCost: 2,
+              effects: [{ effectValue: 25 }],
+            },
+            {
+              name: 'Eureka',
+              moveType: 'wit',
+              powerCost: 3,
+              effects: [{ effectValue: 25 }],
+            },
+          ],
         },
       });
 
@@ -1220,8 +1237,8 @@ async function insertLegacySnapshotCards(
   matchId: string,
   state: BattleState,
 ) {
-  const creatureDefinitionId = canonicalCreatures[0]!.id;
-  const powerDefinitionId = canonicalPowerCards[0]!.id;
+  const creatureDefinitionId = '84790040-6ea8-6155-c4b7-dec3a22ac3ab';
+  const powerDefinitionId = '0d28241f-a4f2-2cf3-52bc-dee1633b3316';
 
   for (const [side, participant] of Object.entries(state.participants)) {
     const cards = [

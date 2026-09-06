@@ -23,12 +23,13 @@ export interface CardCollectionService {
 interface OwnedCardRow extends pg.QueryResultRow {
   acquired_at: Date;
   acquisition_kind: OwnedCard['acquisitionKind'];
-  affinity: CardAffinity;
+  affinity: CardAffinity | null;
   card_definition_id: string;
   category: CardCategory;
   description: string | null;
   effects: CardEffect[];
   hp: number | null;
+  image_alt: string | null;
   image_url: string | null;
   is_active: boolean;
   moves: CardMove[];
@@ -57,6 +58,7 @@ export function createCardCollectionService(
             definition.hp,
             definition.power,
             definition.description,
+            definition.image_alt,
             definition.image_url,
             definition.is_active,
             coalesce((
@@ -71,7 +73,8 @@ export function createCardCollectionService(
                   'modifierStat', move.modifier_stat,
                   'modifierOperation', move.modifier_operation,
                   'modifierDurationTurns', move.modifier_duration_turns,
-                  'powerCost', move.power_cost
+                  'powerCost', move.power_cost,
+                  'rulesText', move.rules_text
                 ) order by move.position
               )
               from public.card_moves move
@@ -86,7 +89,8 @@ export function createCardCollectionService(
                   'effectValue', effect.effect_value,
                   'modifierStat', effect.modifier_stat,
                   'modifierOperation', effect.modifier_operation,
-                  'modifierDurationTurns', effect.modifier_duration_turns
+                  'modifierDurationTurns', effect.modifier_duration_turns,
+                  'rulesText', effect.rules_text
                 ) order by effect.position
               )
               from public.card_effects effect
@@ -117,6 +121,7 @@ function mapOwnedCard(row: OwnedCardRow): OwnedCard {
     hp: row.hp,
     power: row.power,
     description: row.description,
+    imageAlt: row.image_alt,
     imageUrl: row.image_url,
     isActive: row.is_active,
     moves: row.moves ?? [],

@@ -14,7 +14,7 @@ const GRANT_ID = uuid(2);
 const GRANTED_AT = new Date('2026-08-16T08:00:00.000Z');
 
 describe('starter grant service invariants', () => {
-  it('loads the 15 configured canonical definitions once in package order', async () => {
+  it('loads the 11 unique configured definitions once in package order', async () => {
     const definitionRows = buildConfiguredDefinitionRows([
       'spark',
       'grit',
@@ -316,60 +316,68 @@ function uuid(value: number) {
 }
 
 function buildConfiguredDefinitionRows(affinities: readonly StarterAffinity[]) {
-  return affinities.flatMap((affinity) => {
-    const packageDefinition = starterPackageDefinitions[affinity];
-    const creatures = packageDefinition.creatureDefinitionIds.map(
-      (cardDefinitionId, index) => ({
-        affinity,
-        authoring_status: 'published',
-        card_definition_id: cardDefinitionId,
-        category: 'creature',
-        effects: [],
-        hp: 90 + index,
-        is_active: true,
-        moves: [1, 2, 3, 4].map((position) => ({
-          effectType: 'damage',
-          effectValue: 10 + position,
-          id: uuid(400 + index * 10 + position),
-          modifierDurationTurns: null,
-          modifierOperation: null,
-          modifierStat: null,
-          moveType: position === 1 ? 'basic' : affinity,
-          name: `${affinity} move ${position}`,
-          position,
-          powerCost: position - 1,
-        })),
-        name: `${affinity} creature ${index + 1}`,
-        power: 10 + index,
-        rarity: 'common',
-      }),
-    );
-    const powerCards = packageDefinition.powerCardDefinitionIds.map(
-      (cardDefinitionId, index) => ({
-        affinity,
-        authoring_status: 'published',
-        card_definition_id: cardDefinitionId,
-        category: 'power',
-        effects: [
-          {
+  return affinities
+    .flatMap((affinity) => {
+      const packageDefinition = starterPackageDefinitions[affinity];
+      const creatures = packageDefinition.creatureDefinitionIds.map(
+        (cardDefinitionId, index) => ({
+          affinity,
+          authoring_status: 'published',
+          card_definition_id: cardDefinitionId,
+          category: 'creature',
+          effects: [],
+          hp: 90 + index,
+          is_active: true,
+          moves: [1, 2, 3, 4].map((position) => ({
             effectType: 'damage',
-            effectValue: 12,
-            id: uuid(800 + index),
+            effectValue: 10 + position,
+            id: uuid(400 + index * 10 + position),
             modifierDurationTurns: null,
             modifierOperation: null,
             modifierStat: null,
-            position: 1,
-          },
-        ],
-        hp: null,
-        is_active: true,
-        moves: [],
-        name: `${affinity} power ${index + 1}`,
-        power: null,
-        rarity: 'common',
-      }),
-    );
+            moveType: position === 1 ? 'basic' : affinity,
+            name: `${affinity} move ${position}`,
+            position,
+            powerCost: position - 1,
+          })),
+          name: `${affinity} creature ${index + 1}`,
+          power: 10 + index,
+          rarity: 'common',
+        }),
+      );
+      const powerCards = packageDefinition.powerCardDefinitionIds.map(
+        (cardDefinitionId, index) => ({
+          affinity: null,
+          authoring_status: 'published',
+          card_definition_id: cardDefinitionId,
+          category: 'power',
+          effects: [
+            {
+              effectType: 'damage',
+              effectValue: 12,
+              id: uuid(800 + index),
+              modifierDurationTurns: null,
+              modifierOperation: null,
+              modifierStat: null,
+              position: 1,
+            },
+          ],
+          hp: null,
+          is_active: true,
+          moves: [],
+          name: `shared power ${index + 1}`,
+          power: null,
+          rarity: 'common',
+        }),
+      );
 
-    return [...creatures, ...powerCards];
-  });
+      return [...creatures, ...powerCards];
+    })
+    .filter(
+      (row, index, rows) =>
+        rows.findIndex(
+          (candidate) =>
+            candidate.card_definition_id === row.card_definition_id,
+        ) === index,
+    );
 }

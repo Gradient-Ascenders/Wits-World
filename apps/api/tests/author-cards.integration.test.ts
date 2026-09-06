@@ -775,7 +775,7 @@ function validPowerBody() {
   return {
     name: 'Campus Recovery',
     category: 'power' as const,
-    affinity: 'spirit' as const,
+    affinity: null,
     rarity: 'common' as const,
     hp: null,
     power: null,

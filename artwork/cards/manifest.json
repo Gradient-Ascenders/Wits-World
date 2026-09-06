@@ -1,0 +1,222 @@
+{
+  "schemaVersion": 1,
+  "export": {
+    "format": "webp",
+    "height": 1024,
+    "maxBytes": 307200,
+    "width": 1024
+  },
+  "attribution": "Original project artwork created with ChatGPT-Web[GPT-5.6 Sol] and curated by the Wits World team.",
+  "cards": [
+    {
+      "id": "84790040-6ea8-6155-c4b7-dec3a22ac3ab",
+      "name": "Quillip",
+      "original": "originals/quillip.png",
+      "optimized": "/cards/quillip.webp",
+      "alt": "A small dark-blue owl with bright blue eyes perched beside an open book in a moonlit study."
+    },
+    {
+      "id": "47f04de3-98d9-79ad-2759-7409c499c5ec",
+      "name": "Ciphra",
+      "original": "originals/Ciphra.png",
+      "optimized": "/cards/ciphra.webp",
+      "alt": "A spotted feline Creature with glowing blue markings crouched beside reflective water in a moonlit ruin."
+    },
+    {
+      "id": "cdd5284b-0aaf-5c50-f820-787a7f6b1506",
+      "name": "Prismole",
+      "original": "originals/Prismole.png",
+      "optimized": "/cards/prismole.webp",
+      "alt": "A curious mole-like Creature with luminous crystal claws in an arcane workshop."
+    },
+    {
+      "id": "eca9b943-9e05-834e-c85c-1175001d897c",
+      "name": "Voltiki",
+      "original": "originals/Voltiki.png",
+      "optimized": "/cards/voltiki.webp",
+      "alt": "A nimble golden lizard Creature surrounded by lightning on a rocky ridge."
+    },
+    {
+      "id": "ec9fb511-5dd2-8164-5f56-d9e13820c713",
+      "name": "Cinderhop",
+      "original": "originals/Cinderhop.png",
+      "optimized": "/cards/cinderhop.webp",
+      "alt": "A bright golden rabbit-like Creature leaping from a tree as sparks trace its markings."
+    },
+    {
+      "id": "62d5bb93-78ad-5c44-412c-c7eca5f03250",
+      "name": "Lumiswift",
+      "original": "originals/Lumiswift.png",
+      "optimized": "/cards/lumiswift.webp",
+      "alt": "A radiant golden bird soaring above a mountain valley at sunrise."
+    },
+    {
+      "id": "27cbcedf-1886-aa81-04b4-089b4c10cd87",
+      "name": "Karrik",
+      "original": "originals/Karrik.png",
+      "optimized": "/cards/karrik.webp",
+      "alt": "A sturdy armoured pangolin-like Creature standing among sunlit rocks."
+    },
+    {
+      "id": "c2c81cdc-5c15-84d1-6ba9-0271b1d3fdac",
+      "name": "Rootusk",
+      "original": "originals/Rootusk.png",
+      "optimized": "/cards/rootusk.webp",
+      "alt": "A tusked forest Creature covered in layered bark and moss."
+    },
+    {
+      "id": "fc2c46fb-d960-b1bb-ea9a-93110b79e22d",
+      "name": "Ferrupine",
+      "original": "originals/Ferrupine.png",
+      "optimized": "/cards/ferrupine.webp",
+      "alt": "A watchful porcupine-like Creature with metallic green quills on a grassy ledge."
+    },
+    {
+      "id": "a230fdda-cec0-c127-b4a2-e4dd20660e3a",
+      "name": "Nimbril",
+      "original": "originals/Nimbril.png",
+      "optimized": "/cards/nimbril.webp",
+      "alt": "A pale antelope-like spirit surrounded by flowing white mist beside a forest stream."
+    },
+    {
+      "id": "6e6b2c9f-27b2-2145-3b8a-219a0df622d7",
+      "name": "Sylphane",
+      "original": "originals/Sylphane.png",
+      "optimized": "/cards/sylphane.webp",
+      "alt": "An elegant white crane standing in mist beside a reflective lake."
+    },
+    {
+      "id": "0cba869b-d777-11f8-6b8c-c47d4d626558",
+      "name": "Sigilisk",
+      "original": "originals/Sigilisk.png",
+      "optimized": "/cards/sigilisk.webp",
+      "alt": "A dark lizard Creature with glowing purple spiral markings clinging to an ancient tree."
+    },
+    {
+      "id": "5340e0ee-d31c-93f5-0d59-39d0cd977f15",
+      "name": "Orreryx",
+      "original": "originals/Orreryx.png",
+      "optimized": "/cards/orreryx.webp",
+      "alt": "A horned purple antelope-like Creature beneath a moon and floating arcane structures."
+    },
+    {
+      "id": "33546c11-4a85-7d2b-ad67-df2684ae1039",
+      "name": "Quillume",
+      "original": "originals/Quillume.png",
+      "optimized": "/cards/quillume.webp",
+      "alt": "A large scholarly owl with sweeping cream-and-brown wings overlooking a university city."
+    },
+    {
+      "id": "65f102ad-ff11-876c-a4f7-e2e74167bc4c",
+      "name": "Voltadrake",
+      "original": "originals/Voltadrake.png",
+      "optimized": "/cards/voltadrake.webp",
+      "alt": "A golden lightning drake coiled on a ridge beneath a stormy sky."
+    },
+    {
+      "id": "8197b5ff-c2a1-5ce9-9c86-b124cdc39021",
+      "name": "Karradon",
+      "original": "originals/Karradon.png",
+      "optimized": "/cards/karradon.webp",
+      "alt": "A massive stone-plated pangolin Creature charging through a rocky valley."
+    },
+    {
+      "id": "6f962f85-eaee-fd27-b2d7-c00c8af95098",
+      "name": "Nimbrael",
+      "original": "originals/Nimbrael.png",
+      "optimized": "/cards/nimbrael.webp",
+      "alt": "A luminous white spirit stag with flowing antlers in an overgrown courtyard."
+    },
+    {
+      "id": "a30d8e2e-42bf-574a-aa6f-1ebdf33c86b6",
+      "name": "Sigilith",
+      "original": "originals/Sigilith.png",
+      "optimized": "/cards/sigilith.webp",
+      "alt": "A powerful dark drake covered in glowing violet sigils beside crystal-lit water."
+    },
+    {
+      "id": "1d6416ca-2038-d640-283e-30adc2013d73",
+      "name": "Axiomar",
+      "original": "originals/Axiomar.png",
+      "optimized": "/cards/axiomar.webp",
+      "alt": "A swift black-and-white long-tailed Creature surveying snowy mountain ruins."
+    },
+    {
+      "id": "740b5400-8362-b728-3b76-9d232077732d",
+      "name": "Arcalyx",
+      "original": "originals/Arcalyx.png",
+      "optimized": "/cards/arcalyx.webp",
+      "alt": "A lean golden feline Creature stalking across a storm-lit rocky plateau."
+    },
+    {
+      "id": "841b45f5-bb3c-41d4-342b-d1b8d33eefde",
+      "name": "Basalox",
+      "original": "originals/Basalox.png",
+      "optimized": "/cards/basalox.webp",
+      "alt": "A broad horned stone beast standing firmly in a grey mountain pass."
+    },
+    {
+      "id": "6045725a-8271-f50d-19d7-a62f02bf080b",
+      "name": "Axiomarch",
+      "original": "originals/Axiomarch.png",
+      "optimized": "/cards/axiomarch.webp",
+      "alt": "A commanding black-and-white long-tailed Creature running through luminous geometric ruins."
+    },
+    {
+      "id": "948a71e6-f04b-fcec-75ef-e401066ec8b8",
+      "name": "Arcalyron",
+      "original": "originals/Arcalyron.png",
+      "optimized": "/cards/arcalyron.webp",
+      "alt": "A legendary golden lightning tiger roaring above a storm-lit city."
+    },
+    {
+      "id": "3c1356a9-d601-144e-77f3-1acfdd6aaaf9",
+      "name": "Basalorn",
+      "original": "originals/Basalorn.png",
+      "optimized": "/cards/basalorn.webp",
+      "alt": "A colossal horned mountain guardian plated in dark rock and glowing amber seams."
+    },
+    {
+      "id": "0d28241f-a4f2-2cf3-52bc-dee1633b3316",
+      "name": "Field Kit",
+      "original": "originals/field_kit.png",
+      "optimized": "/cards/field-kit.webp",
+      "alt": "A well-used field backpack with bandages and supplies resting on a campus path."
+    },
+    {
+      "id": "b7485793-8432-2db9-5f99-974164efa788",
+      "name": "Reserve Focus",
+      "original": "originals/reserve_focus.png",
+      "optimized": "/cards/reserve-focus.webp",
+      "alt": "A glowing blue-and-gold restorative flask on a stone pedestal."
+    },
+    {
+      "id": "49e45cbb-f419-bf5c-2868-757646cb8dc9",
+      "name": "Heavy Impact",
+      "original": "originals/heavy_impact.png",
+      "optimized": "/cards/heavy-impact.webp",
+      "alt": "A brilliant impact crater blasting stone fragments outward."
+    },
+    {
+      "id": "25621c1c-0722-303d-928b-4ed6e015dbd0",
+      "name": "Counterplan",
+      "original": "originals/counterplan.png",
+      "optimized": "/cards/counterplan.webp",
+      "alt": "A strategic table covered with glowing blue and purple plans and counters."
+    },
+    {
+      "id": "7f72be51-3370-8dbf-e96c-963ef4b5f29b",
+      "name": "Grand Strategy",
+      "original": "originals/grand_strategy.png",
+      "optimized": "/cards/grand-strategy.webp",
+      "alt": "A large circular strategy table projecting interlocking blue and gold pathways."
+    },
+    {
+      "id": "5f476b3a-7fc9-e5eb-b552-716dd5cbf5dc",
+      "name": "Fate Reversal",
+      "original": "originals/fate_reversal.png",
+      "optimized": "/cards/fate-reversal.webp",
+      "alt": "A mystical balance scale exchanging streams of orange and blue energy."
+    }
+  ]
+}

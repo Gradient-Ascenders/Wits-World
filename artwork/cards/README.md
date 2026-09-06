@@ -1,42 +1,39 @@
-# Card artwork workspace
+# Card artwork
 
-Working assets for issue #164: the complete 30-card catalogue and production
-artwork. This folder setup does not change the approved catalogue or mark any
-artwork as complete.
+Issue #164 supplies original artwork and optimized application assets for all
+30 ordinary cards in the complete catalogue.
 
-## Folders
+## Asset layout
 
-- `originals/`: editable, full-resolution PNG originals, with transparency when
-  needed. Keep these outside the web application's public directory.
-- `references/`: team-owned or permitted visual references and style studies.
-  Record their source and usage permission; do not commit unlicensed reference
-  images or private material.
-- `../../apps/web/public/cards/`: approved, optimized WebP exports served by the
-  application at `/cards/<filename>.webp`.
+- `originals/`: 30 full-resolution square PNG source images.
+- `../../apps/web/public/cards/`: 30 optimized 1024 x 1024 WebP exports used
+  by the web application.
+- `manifest.json`: the stable card ID, source path, optimized path,
+  descriptive alternative text, and attribution for every card.
+- `references/`: optional team-owned or permitted style references. Do not
+  commit unlicensed or private source material.
 
-Use matching, stable filenames for each original and its export. Maintain the
-mapping to the existing card ID when the asset manifest is implemented. Artwork
-filenames must not require changing existing card IDs.
+The illustration contains no card name, statistics, moves, or rules text. The
+application renders changing gameplay information separately. It displays the
+square artwork with `object-fit: contain`, uses the catalogue's descriptive
+alternative text, and retains a fallback when an image cannot load.
 
-Keep names, statistics, moves, and other changing card information out of the
-illustration; the application's card component renders that information.
-Store asset URLs and accessible metadata in the catalogue, not image binaries.
+## Export requirements
 
-Artwork uses a **1:1 square aspect ratio** for both Creatures and Power cards.
-Prepare PNG originals at **1024 x 1024 pixels or larger**, with the subject
-centred and roughly 10-15% breathing room around important details. The shared
-artwork window stays square in collection thumbnails, details, compact cards,
-and deck pickers. Images use `object-fit: contain` so older non-square images
-are displayed in full rather than cropped. The surrounding card remains a
-portrait layout with its information outside the illustration.
+- Use a 1:1 square composition with the subject centered and enough breathing
+  room to remain legible in collection and deck thumbnails.
+- Keep original PNGs at 1024 x 1024 pixels or larger.
+- Export application WebPs at 1024 x 1024 pixels.
+- Keep each optimized WebP at or below 300 KiB.
+- Preserve matching stable filenames between an original and its export.
+- Add or update the manifest entry whenever artwork changes.
 
-Before producing the full set, agree on the visual style, final WebP export
-dimensions, and file-size budget. Test one Creature and one Power illustration
-in the UI first. The later asset manifest must record card IDs,
-artwork paths, accessible descriptions, fallback behavior, and attribution,
-including AI assistance where applicable. No manifest or final art is supplied
-by this folder scaffold.
+The automated asset test verifies the 30-entry manifest, unique IDs, unique
+source and export content, PNG/WebP signatures, export dimensions and size
+budget, descriptive alt text, and attribution.
 
-## AI declaration
+## Attribution
 
-This setup guide was written with assistance from Codex[GPT-5].
+The original artwork was generated with ChatGPT-Web[GPT-5.6 Sol] and curated by
+the Wits World team. Catalogue and manifest integration was implemented with
+assistance from Codex-CLI[GPT-5.6 Sol].
