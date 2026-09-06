@@ -73,6 +73,7 @@ interface JourneyEvidenceRow extends LatestEvidenceRow {
   evidence_id: string;
   expires_at: Date;
   received_at: Date;
+  evidence_origin: 'online' | 'offline';
 }
 
 interface ExistingDecisionRow extends pg.QueryResultRow {
@@ -496,6 +497,7 @@ async function evaluateAndRecordJourney(
                evidence.accuracy_metres,
                evidence.acquired_at,
                evidence.received_at,
+               evidence.evidence_origin,
                evidence.expires_at
           from public.movement_evidence evidence
           join public.movement_eligibility_decisions decision
@@ -509,7 +511,8 @@ async function evaluateAndRecordJourney(
              'same_event',
              'plausible'
            )
-         order by evidence.received_at desc,
+         order by (case when evidence.evidence_origin = 'offline'
+                        then evidence.acquired_at else evidence.received_at end) desc,
                   evidence.acquired_at desc,
                   evidence.id desc
          limit 1
@@ -544,7 +547,10 @@ async function evaluateAndRecordJourney(
         distanceMetres: distance.rows[0]?.distance_metres ?? Number.NaN,
         previousAccuracyMetres: anchor.accuracy_metres,
         currentAccuracyMetres: input.accuracyMetres,
-        previousReceivedAt: anchor.received_at,
+        previousReceivedAt:
+          anchor.evidence_origin === 'offline'
+            ? anchor.acquired_at
+            : anchor.received_at,
         currentReceivedAt: input.receivedAt,
         maxPlausibleSpeedMetresPerSecond:
           options.maxPlausibleSpeedMetresPerSecond,
@@ -572,8 +578,12 @@ async function evaluateAndRecordJourney(
         elapsed_milliseconds,
         required_speed_metres_per_second,
         max_plausible_speed_metres_per_second,
-        created_at
-      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        created_at,
+        time_basis
+      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+        case when exists (select 1 from public.movement_evidence
+          where id = $3 and evidence_origin = 'offline')
+          then 'validated_offline_claim' else 'server_receipt' end)
     `,
     [
       options.createDecisionId(),

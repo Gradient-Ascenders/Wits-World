@@ -1,4 +1,5 @@
 import { buildApp } from './app.js';
+import { createOfflineChallengeService } from './challenges/offline-challenges.js';
 import { buildApiConfig } from './config/api.js';
 import { buildAuthConfig } from './config/auth.js';
 import { buildDatabaseConfig, loadApiEnvironment } from './config/database.js';
@@ -104,6 +105,16 @@ async function startServer(): Promise<void> {
   const progressionReadService = createProgressionReadService(database);
   const playerIdentityService = createPlayerIdentityService(database);
   const app = await buildApp({
+    offlineChallengeService: process.env.OFFLINE_PACK_SIGNING_KEY
+      ? createOfflineChallengeService(database, {
+          signingKey: process.env.OFFLINE_PACK_SIGNING_KEY,
+          previousSigningKey:
+            process.env.OFFLINE_PACK_PREVIOUS_SIGNING_KEY || undefined,
+          finalizer: challengeAttemptCompletionFinalizer,
+          maxSpeed: config.maxPlausibleJourneySpeedMetresPerSecond,
+          retentionMs: config.movementEvidenceRetentionMs,
+        })
+      : undefined,
     config,
     authConfig,
     corsConfig,

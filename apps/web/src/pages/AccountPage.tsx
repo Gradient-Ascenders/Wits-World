@@ -8,6 +8,7 @@ import {
 } from '../api/account';
 import { useCurrentPlayer } from '../auth/CurrentPlayerProvider';
 import { clearAuthenticatedPlayerBinding } from '../auth/player-session-binding';
+import { confirmOfflineSignOut } from '../offline/store';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { AccountDeletionDialog } from '../components/account/AccountDeletionDialog';
 import './account.css';
@@ -155,10 +156,14 @@ export default function AccountPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   }
 
   async function submitDeletion(reauthenticationToken: string) {
+    setDeletion({ status: 'submitting' });
+    if ((await confirmOfflineSignOut('delete your account')) === 'cancelled') {
+      setDeletion(deletion);
+      return;
+    }
     const controller = new AbortController();
     deletionRequest.current?.abort();
     deletionRequest.current = controller;
-    setDeletion({ status: 'submitting' });
 
     try {
       const result = await deleteCurrentAccount({
@@ -191,6 +196,7 @@ export default function AccountPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   }
 
   async function finishDeletion() {
+    if ((await confirmOfflineSignOut()) === 'cancelled') return;
     setSignOutFailed(false);
     clearAuthenticatedPlayerBinding();
 

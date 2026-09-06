@@ -27,6 +27,7 @@ export function bindAuthenticatedPlayer(playerId: string): PlayerBindingResult {
     }
 
     window.localStorage.setItem(PLAYER_BINDING_KEY, playerId);
+    window.dispatchEvent(new Event('wits-player-binding-change'));
     return 'matched';
   } catch {
     return 'unavailable';
@@ -36,6 +37,7 @@ export function bindAuthenticatedPlayer(playerId: string): PlayerBindingResult {
 export function clearAuthenticatedPlayerBinding(): void {
   try {
     window.localStorage.removeItem(PLAYER_BINDING_KEY);
+    window.dispatchEvent(new Event('wits-player-binding-change'));
   } catch {
     // Storage can be unavailable under restrictive browser policies. The Auth0
     // SDK logout still clears its own session cache.
