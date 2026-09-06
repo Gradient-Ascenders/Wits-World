@@ -42,7 +42,7 @@ export interface CardEffect {
 
 export interface OwnedCard {
   acquiredAt: string;
-  acquisitionKind: 'event_reward' | 'starter';
+  acquisitionKind: 'event_reward' | 'evolution' | 'starter';
   affinity: CardAffinity | null;
   cardDefinitionId: string;
   category: CardCategory;
@@ -394,7 +394,8 @@ function parseOwnedCard(value: unknown): OwnedCard {
     !Array.isArray(value.moves) ||
     !Array.isArray(value.effects) ||
     (value.acquisitionKind !== 'starter' &&
-      value.acquisitionKind !== 'event_reward') ||
+      value.acquisitionKind !== 'event_reward' &&
+      value.acquisitionKind !== 'evolution') ||
     !isDateTime(value.acquiredAt)
   ) {
     throw new CardApiError('unavailable');

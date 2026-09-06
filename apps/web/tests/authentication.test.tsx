@@ -953,9 +953,11 @@ describe('player authentication', () => {
 
     await openAccountDisclosure(user);
     await user.click(screen.getByRole('button', { name: 'Sign out' }));
-    expect(logout).toHaveBeenCalledWith({
-      logoutParams: { returnTo: window.location.origin },
-    });
+    await vi.waitFor(() =>
+      expect(logout).toHaveBeenCalledWith({
+        logoutParams: { returnTo: window.location.origin },
+      }),
+    );
   });
 
   it('signs out through Auth0 and returns to the public origin', async () => {
@@ -976,9 +978,11 @@ describe('player authentication', () => {
 
     await openAccountDisclosure(user);
     await user.click(screen.getByRole('button', { name: 'Sign out' }));
-    expect(logout).toHaveBeenCalledWith({
-      logoutParams: { returnTo: window.location.origin },
-    });
+    await vi.waitFor(() =>
+      expect(logout).toHaveBeenCalledWith({
+        logoutParams: { returnTo: window.location.origin },
+      }),
+    );
     expect(window.localStorage.length).toBe(0);
   });
 

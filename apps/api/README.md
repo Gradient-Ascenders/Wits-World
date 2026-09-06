@@ -815,6 +815,28 @@ live database.
 The existing PostGIS integration tests separately verify authoritative distance,
 radius, publication, and availability behaviour against PostgreSQL/PostGIS.
 
+## Card evolution API
+
+The authenticated card boundary exposes:
+
+```http
+GET  /api/v1/cards/evolutions/{sourceCardDefinitionId}/preview
+POST /api/v1/cards/evolutions
+```
+
+Preview returns the authored source/target pair, rarity-derived deck point
+costs, and the current player's eligible and saved-deck-locked copies. The
+mutation accepts `{ "submissionId": "<uuid>", "sourceCardDefinitionId":
+"<uuid>" }`; it does not accept a player, target, or owned-copy selection. The
+server atomically consumes the three newest eligible copies and grants the
+fixed evolved definition. A matching idempotent replay returns `200`; a new
+evolution returns `201`. Expected failures use the
+`EVOLUTION_NOT_AVAILABLE`, `EVOLUTION_COPIES_INSUFFICIENT`,
+`EVOLUTION_COPIES_DECK_LOCKED`, and `EVOLUTION_REPLAY_CONFLICT` codes.
+
+See [Card evolution rules](../../docs/requirements/card-evolution-rules.md) for
+the fixed relationships, trust boundary, and deferred player UI.
+
 ## Challenge API
 
 The multiple-choice and ordering start, resume, answer-locking, timeout, and

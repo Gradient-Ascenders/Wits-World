@@ -52,6 +52,16 @@ The browser is tested for submitting player intent and rendering authoritative
 responses, not for independently deciding eligibility, marking, rewards, deck
 legality, trail progress, unlock state, or match outcomes.
 
+Card-evolution route tests cover bearer authentication, closed request schemas,
+server-derived player ownership, new-versus-replayed status codes, safe domain
+errors, and generated OpenAPI. The collection-client test accepts evolution
+provenance without implementing the separate player UI. The disposable card
+catalogue database suite covers migration `0042`, fixed target resolution,
+newest eligible server selection, exact three-copy consumption, evolved-card
+provenance and saved-deck point cost, invalid definitions, insufficient copies,
+idempotent replay, saved-deck protection, forced-failure rollback, and
+concurrent mutation serialization.
+
 Ordering-challenge web coverage validates the discriminated author and Player
 API contracts, exact four-item authoring, pointer reordering, keyboard-operable
 Move Up / Move Down controls and announcements, ordered submission intent,
@@ -165,12 +175,14 @@ Coverage reports for the Web and API are retained as a workflow artifact, and a
 successful main run updates the coverage badge. The repository does not
 currently configure a minimum percentage threshold as a CI gate.
 
-The CI test job does **not** directly run the `account-policy` or `game-rules`
-package test scripts, the PostgreSQL/PostGIS database runner, or either
-Playwright E2E runner. Package code receives indirect coverage through current
-application tests, but that is not equivalent to executing the package suites.
-Database and E2E evidence must therefore be run and recorded separately when
-the change or release requires it. See [Continuous integration](./continuous-integration.md)
+The ordinary CI test job does **not** directly run the `account-policy` or
+`game-rules` package test scripts or either Playwright E2E runner. Package code
+receives indirect coverage through current application tests, but that is not
+equivalent to executing the package suites. Pull-request validation has a
+separate PostgreSQL/PostGIS job that runs the complete database runner against
+an isolated PostGIS service. Database evidence therefore comes from that named
+PR job; E2E evidence must still be run and recorded separately when the change
+or release requires it. See [Continuous integration](./continuous-integration.md)
 for the exact workflow and deployment triggers.
 
 ## Accessibility policy
