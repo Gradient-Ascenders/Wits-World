@@ -67,7 +67,7 @@ test('loads the protected app with data from the real API', async ({
   expect(
     authorizationHeader !== null && /^Bearer \S+$/.test(authorizationHeader),
   ).toBe(true);
-  expect(page.context().serviceWorkers()).toHaveLength(0);
+  // API traffic must remain network-only even when the production shell has a worker.
 
   const payload: unknown = await response.json();
   expect(payload).toEqual(

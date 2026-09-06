@@ -109,7 +109,9 @@ describe('timed player challenge', () => {
     expect(
       await screen.findByRole('heading', { name: 'Question 3' }),
     ).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Question 3' })).toHaveFocus();
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Question 3' })).toHaveFocus(),
+    );
     expect(screen.getByRole('status')).toHaveTextContent(
       'Challenge ready. Question 3 of 5.',
     );
@@ -157,6 +159,10 @@ describe('timed player challenge', () => {
     renderChallenge();
     await screen.findByRole('heading', { name: 'Question 1' });
 
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Question 1' })).toHaveFocus(),
+    );
+
     await user.tab();
     expect(screen.getByRole('radio', { name: 'Choice 1.1' })).toHaveFocus();
     await user.keyboard('{ArrowDown}');
@@ -174,6 +180,11 @@ describe('timed player challenge', () => {
 
     renderChallenge();
     const order = await screen.findByRole('list', { name: 'Current order' });
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { name: 'Ordering question 1' }),
+      ).toHaveFocus(),
+    );
     const moveDown = within(order).getByRole('button', {
       name: 'Move Item 1.3 down from position 1',
     });

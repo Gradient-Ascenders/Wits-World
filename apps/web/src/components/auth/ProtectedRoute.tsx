@@ -1,4 +1,5 @@
 import { useAuth0 } from '@auth0/auth0-react';
+import { confirmOfflineSignOut } from '../../offline/store';
 import { useCallback, useState, type ReactNode } from 'react';
 
 import { useCurrentPlayer } from '../../auth/CurrentPlayerProvider';
@@ -43,6 +44,7 @@ export function ProtectedRoute({
   }
 
   async function signOut() {
+    if (!(await confirmOfflineSignOut())) return;
     setActionFailed(false);
     clearAuthenticatedPlayerBinding();
 

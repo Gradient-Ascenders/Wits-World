@@ -240,6 +240,8 @@ jobs:
           mkdir -p "$CANDIDATE_ROOT"
 
           test -f apps/web/dist/index.html
+          test -f apps/web/dist/sw.js
+          test -f apps/web/dist/manifest.webmanifest
           test -d apps/web/dist/assets
 
           (

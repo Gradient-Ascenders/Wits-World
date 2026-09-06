@@ -323,7 +323,7 @@ const completedReviewEntrySchema = {
   },
 } as const;
 
-const completedAttemptResponseSchema = {
+export const completedAttemptResponseSchema = {
   type: 'object',
   additionalProperties: false,
   required: [
@@ -519,7 +519,7 @@ const completedOrderingReviewEntrySchema = {
   },
 } as const;
 
-const completedOrderingAttemptResponseSchema = {
+export const completedOrderingAttemptResponseSchema = {
   type: 'object',
   additionalProperties: false,
   required: [
