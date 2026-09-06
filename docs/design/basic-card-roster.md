@@ -153,8 +153,9 @@ card is discarded after use.
   turns when reapplied, and remains after its source is defeated.
 - Stun prevents a Creature move but still permits a Power card. It does not
   stack, and a Creature becomes immune to another stun after recovery.
-- Dodge uses server-provided randomness and is consumed by the next incoming
-  Creature move whether it succeeds or fails.
+- Dodge uses server-provided randomness and is consumed by the next
+  opponent-directed damage effect from an incoming Creature move whether it
+  succeeds or fails. Ordered self-effects and costs still resolve.
 - Reflect uses actual HP damage received, rounds down, does not reduce incoming
   damage, and cannot reduce the attacker below 1 HP.
 - Lifesteal uses actual HP damage dealt, rounds down, and does not apply to the

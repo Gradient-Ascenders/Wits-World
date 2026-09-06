@@ -913,7 +913,70 @@ describe('Basic battle rules', () => {
     ).toBe(true);
   });
 
-  it('uses injected server randomness and consumes a one-shot dodge', () => {
+  it('stops ordered effects when lethal damage decides the match', () => {
+    const lethalSequence: BattleMove = {
+      id: 'lethal-sequence',
+      name: 'Lethal sequence',
+      moveType: 'basic',
+      powerCost: 0,
+      effects: [
+        {
+          id: 'lethal-damage',
+          effectCode: 'damage',
+          effectType: 'damage',
+          effectValue: 20,
+          target: 'opponent',
+        },
+        {
+          id: 'post-match-heal',
+          effectCode: 'heal',
+          effectType: 'heal',
+          effectValue: 50,
+          target: 'self',
+        },
+      ],
+    };
+    const base = startBattle(
+      makeDeck('player', { moves: [lethalSequence] }),
+      makeDeck('cpu', { creatureHp: 10 }),
+    );
+    const state: BattleState = {
+      ...base,
+      participants: {
+        player: {
+          ...base.participants.player,
+          creatures: base.participants.player.creatures.map(
+            (creature, index) =>
+              index === 0 ? { ...creature, currentHp: 50 } : creature,
+          ),
+        },
+        cpu: {
+          ...base.participants.cpu,
+          creatures: base.participants.cpu.creatures.map((creature, index) =>
+            index === 0
+              ? creature
+              : { ...creature, currentHp: 0, defeated: true },
+          ),
+        },
+      },
+    };
+
+    const transition = applyBattleAction(
+      state,
+      'player',
+      { type: 'use_move', moveId: lethalSequence.id },
+      randomZero,
+    );
+
+    expect(transition.state.phase).toBe('completed');
+    expect(transition.state.winner).toBe('player');
+    expect(activeCreature(transition.state, 'player').currentHp).toBe(50);
+    expect(transition.result.effects.map((effect) => effect.effectId)).toEqual([
+      'lethal-damage',
+    ]);
+  });
+
+  it('dodges opponent damage without skipping ordered self-costs', () => {
     const dodgeMove: BattleMove = {
       id: 'foresight-dodge',
       name: 'Foresight Dodge',
@@ -936,29 +999,60 @@ describe('Basic battle rules', () => {
         },
       ],
     };
+    const staticDemolition: BattleMove = {
+      id: 'static-demolition',
+      name: 'Static Demolition',
+      moveType: 'spark',
+      powerCost: 0,
+      effects: [
+        {
+          id: 'demolition-self-damage',
+          effectCode: 'self_damage',
+          effectType: 'debuff',
+          effectValue: 20,
+          target: 'self',
+        },
+        {
+          id: 'demolition-damage',
+          effectCode: 'damage',
+          effectType: 'damage',
+          effectValue: 80,
+          target: 'opponent',
+        },
+      ],
+    };
     let state = startBattle(
       makeDeck('player', { moves: [dodgeMove] }),
-      makeDeck('cpu'),
+      makeDeck('cpu', { moves: [staticDemolition] }),
     );
     state = action(state, 'player', {
       type: 'use_move',
       moveId: dodgeMove.id,
     });
+    const cpuHpBeforeMove = activeCreature(state, 'cpu').currentHp;
     const transition = applyBattleAction(
       state,
       'cpu',
       {
         type: 'use_move',
-        moveId: activeCreature(state, 'cpu').card.moves[0]!.id,
+        moveId: staticDemolition.id,
       },
       () => 49,
     );
     expect(activeCreature(transition.state, 'player').currentHp).toBe(100);
+    expect(activeCreature(transition.state, 'cpu').currentHp).toBe(
+      cpuHpBeforeMove - 20,
+    );
     expect(activeCreature(transition.state, 'player').modifiers).toEqual([]);
-    expect(transition.result.effects[0]).toMatchObject({
-      effectCode: 'dodge',
-      amount: 1,
-    });
+    expect(
+      transition.result.effects.map(({ effectCode, amount }) => ({
+        effectCode,
+        amount,
+      })),
+    ).toEqual([
+      { effectCode: 'self_damage', amount: 20 },
+      { effectCode: 'dodge', amount: 1 },
+    ]);
   });
 
   it('applies reflection and lifesteal to actual damage with finite charges', () => {

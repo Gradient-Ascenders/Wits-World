@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import type pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -45,6 +47,8 @@ const HISTORICAL_SPIRIT_GRANT_ID = '70000000-0000-4000-8000-000000000011';
 
 const runIntegrationTests =
   process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';
+const APPROVED_CATALOGUE_EXECUTION_SHA256 =
+  'd84f604ae30cf8f40a3b725949a5b9094346f8854fa764e35003cdc7802be042';
 
 describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
   let administrationConfig: DatabaseConfig;
@@ -208,6 +212,79 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
     );
 
     expect(result.rows).toEqual([{ creature_count: 24, invalid_count: 0 }]);
+  });
+
+  it('matches the exact approved move costs and ordered effect metadata', async () => {
+    const result = await cataloguePool.query<{
+      effect_count: number;
+      execution_contract: string;
+    }>(
+      `with execution_effects as (
+         select definition.id::text as card_definition_id,
+                definition.name as card_name,
+                definition.category,
+                move.position as source_position,
+                move.name as source_name,
+                move.move_type as source_type,
+                move.power_cost,
+                move.effect_type as legacy_effect_type,
+                move.effect_value as legacy_effect_value,
+                move.modifier_stat as legacy_modifier_stat,
+                move.modifier_operation as legacy_modifier_operation,
+                move.modifier_duration_turns as legacy_modifier_duration_turns,
+                move.rules_text as source_rules_text,
+                effect.position as effect_position,
+                effect.effect_code,
+                effect.effect_value,
+                effect.effect_config::text as effect_config,
+                effect.rules_text as effect_rules_text
+           from public.card_definitions definition
+           join public.card_moves move
+             on move.card_definition_id = definition.id
+           join public.card_move_effects effect
+             on effect.card_move_id = move.id
+            and effect.card_definition_id = definition.id
+          where definition.id = any($1::uuid[])
+         union all
+         select definition.id::text,
+                definition.name,
+                definition.category,
+                effect.position,
+                null,
+                null,
+                null,
+                effect.effect_type,
+                effect.effect_value,
+                effect.modifier_stat,
+                effect.modifier_operation,
+                effect.modifier_duration_turns,
+                null,
+                effect.position,
+                effect.effect_code,
+                effect.effect_value,
+                effect.effect_config::text,
+                effect.rules_text
+           from public.card_definitions definition
+           join public.card_effects effect
+             on effect.card_definition_id = definition.id
+          where definition.id = any($1::uuid[])
+       )
+       select count(*)::int as effect_count,
+              jsonb_agg(
+                to_jsonb(execution_effects)
+                order by card_definition_id, source_position, effect_position
+              )::text as execution_contract
+         from execution_effects`,
+      [canonicalCardIds],
+    );
+    const contract = result.rows[0];
+
+    expect(contract?.effect_count).toBeGreaterThan(100);
+    expect(
+      createHash('sha256')
+        .update(contract?.execution_contract ?? '')
+        .digest('hex'),
+    ).toBe(APPROVED_CATALOGUE_EXECUTION_SHA256);
   });
 
   it('is repeatable without changing canonical definitions or ordered children', async () => {

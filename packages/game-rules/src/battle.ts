@@ -612,29 +612,9 @@ function applyMove(
   }
 
   activeCreature.remainingPower -= move.powerCost;
-  const defender = getActiveCreature(draft.participants[opponentOf(side)]);
   const isDamagingMove = move.effects.some(
     (effect) => resolveEffectCode(effect) === 'damage',
   );
-  const dodge =
-    isDamagingMove && defender
-      ? consumeDodge(defender, randomInt)
-      : { dodged: false, effectId: null };
-
-  if (dodge.dodged && defender) {
-    consumeOffensiveCharges(activeCreature, true, draft.turnNumber);
-    return finishNormalTurn(draft, side, action, [
-      {
-        effectId: dodge.effectId ?? 'dodge',
-        effectType: 'buff',
-        effectCode: 'dodge',
-        targetSide: opponentOf(side),
-        targetCreatureId: defender.card.id,
-        amount: 1,
-        damageMultiplier: null,
-      },
-    ]);
-  }
 
   const effects = applyEffects(
     draft,
@@ -642,6 +622,7 @@ function applyMove(
     move.effects,
     move.moveType,
     'creature',
+    randomInt,
   );
   applyPostMoveEffects(draft, side, effects, isDamagingMove);
   const defeatedCreatureId = findNewlyDefeatedOpponent(draft, side);
@@ -691,10 +672,15 @@ function applyEffects(
   effects: readonly BattleEffect[],
   sourceType: MoveType | CardAffinity,
   sourceKind: 'creature' | 'power',
+  randomInt?: RandomInt,
 ): AppliedEffect[] {
   const appliedEffects: AppliedEffect[] = [];
 
   for (const effect of effects) {
+    if (isBattleOutcomeDecided(draft)) {
+      break;
+    }
+
     const effectCode = resolveEffectCode(effect);
     if (effectCode === 'swap_hp_percentages') {
       applyHpPercentageSwap(draft, effect, appliedEffects);
@@ -712,6 +698,26 @@ function applyEffects(
     const amount = effect.effectValue ?? 0;
 
     if (effectCode === 'damage') {
+      const dodge =
+        sourceKind === 'creature' &&
+        targetSide === opponentOf(side) &&
+        randomInt
+          ? consumeDodge(targetCreature, randomInt)
+          : { dodged: false, effectId: null };
+
+      if (dodge.dodged) {
+        appliedEffects.push({
+          effectId: dodge.effectId ?? 'dodge',
+          effectType: 'buff',
+          effectCode: 'dodge',
+          targetSide,
+          targetCreatureId: targetCreature.card.id,
+          amount: 1,
+          damageMultiplier: null,
+        });
+        continue;
+      }
+
       const affinityMultiplier = effect.neutral
         ? 1
         : getTypeMultiplier(
@@ -1040,6 +1046,15 @@ function findNewlyDefeatedOpponent(
   return active?.defeated ? active.card.id : null;
 }
 
+function isBattleOutcomeDecided(draft: MutableBattleState): boolean {
+  return (['player', 'cpu'] as const).some(
+    (side) =>
+      !draft.participants[side].creatures.some(
+        (creature) => !creature.defeated,
+      ),
+  );
+}
+
 function markDefeatedIfNecessary(creature: MutableCreatureState): void {
   if (creature.currentHp === 0) {
     creature.defeated = true;
@@ -1301,6 +1316,12 @@ function applyPostMoveEffects(
         effect.targetSide === opponentOf(side),
     )
     .reduce((total, effect) => total + effect.amount, 0);
+  consumeOffensiveCharges(attacker, true, draft.turnNumber);
+
+  if (damageDealt === 0) {
+    return;
+  }
+
   const reflect = defender.modifiers.find(
     (modifier) => modifier.stat === 'reflect',
   );
@@ -1346,7 +1367,6 @@ function applyPostMoveEffects(
     });
   }
 
-  consumeOffensiveCharges(attacker, true, draft.turnNumber);
   consumeModifierCharges(defender, ['incoming_damage_multiplier', 'reflect']);
   consumeModifierCharges(attacker, ['lifesteal'], draft.turnNumber);
 }
