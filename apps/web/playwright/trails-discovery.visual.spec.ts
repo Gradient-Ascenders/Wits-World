@@ -163,6 +163,9 @@ async function installRoutes(page: Page) {
       role: 'player',
     }),
   );
+  await page.route(`${API_BASE_URL}/offline-challenge-packs`, (route) =>
+    json(route, { packs: [] }),
+  );
   await page.route(`${API_BASE_URL}/events`, (route) =>
     json(route, {
       events: eventIds.map((eventId, index) => ({
