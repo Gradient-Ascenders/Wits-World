@@ -1,4 +1,10 @@
 import { useAuth0 } from '@auth0/auth0-react';
+import {
+  CheckIcon,
+  CrownIcon,
+  MedalIcon,
+  UserIcon,
+} from '@phosphor-icons/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import {
@@ -164,30 +170,50 @@ export default function ProfilePage({ apiBaseUrl }: ProfilePageProps) {
 
   return (
     <div className="profile-page">
-      <header className="profile-page__header">
-        <p className="eyebrow">Player profile</p>
-        <h1 id="profile-summary-heading" ref={profileHeading} tabIndex={-1}>
-          {profile.status === 'ready'
-            ? profile.data.playerName
-            : 'Player profile'}
-        </h1>
-        <p className="lead">Your Wits Quest progression</p>
-      </header>
+      <section
+        className="profile-overview"
+        aria-labelledby="profile-summary-heading"
+      >
+        <header className="profile-page__header">
+          <span className="profile-avatar" aria-hidden="true">
+            {profile.status === 'ready' ? (
+              profile.data.playerName
+                .split(/[^\p{L}\p{N}]+/u)
+                .filter(Boolean)
+                .slice(0, 2)
+                .map((part) => Array.from(part)[0])
+                .join('')
+                .toLocaleUpperCase()
+            ) : (
+              <UserIcon size={24} />
+            )}
+          </span>
+          <div>
+            <p className="eyebrow">Player profile</p>
+            <h1 id="profile-summary-heading" ref={profileHeading} tabIndex={-1}>
+              {profile.status === 'ready'
+                ? profile.data.playerName
+                : 'Player profile'}
+            </h1>
+            <p className="lead">Your Wits Quest progression</p>
+          </div>
+        </header>
 
-      <section aria-labelledby="profile-summary-heading">
-        {profile.status === 'loading' ? (
-          <ProgressionLoadingState label="Loading your progression profile" />
-        ) : profile.status === 'error' ? (
-          <ProgressionErrorState
-            context="profile"
-            error={profile.error}
-            onRetry={retryProfile}
-            onSignIn={startSignIn}
-            reauthFailed={reauthFailed}
-          />
-        ) : (
-          <ProfileSummary profile={profile.data} />
-        )}
+        <div>
+          {profile.status === 'loading' ? (
+            <ProgressionLoadingState label="Loading your progression profile" />
+          ) : profile.status === 'error' ? (
+            <ProgressionErrorState
+              context="profile"
+              error={profile.error}
+              onRetry={retryProfile}
+              onSignIn={startSignIn}
+              reauthFailed={reauthFailed}
+            />
+          ) : (
+            <ProfileSummary profile={profile.data} />
+          )}
+        </div>
       </section>
 
       <section
@@ -222,8 +248,8 @@ export default function ProfilePage({ apiBaseUrl }: ProfilePageProps) {
           <div className="progression-empty-state">
             <h3>No achievements are available yet</h3>
             <p>
-              Your points, rank, and streak remain visible while the active
-              achievement catalogue is empty.
+              Your progress is saved here. Explore campus to find your next
+              challenge.
             </p>
           </div>
         ) : (
@@ -364,17 +390,7 @@ function AchievementList({
             key={achievement.code}
           >
             <span aria-hidden="true" className="achievement__badge">
-              <svg
-                fill="none"
-                focusable="false"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="1.6"
-                viewBox="0 0 24 24"
-              >
-                <path d="m12 3 2.3 4.7 5.2.8-3.8 3.7.9 5.3-4.6-2.5L7.4 18l.9-5.3-3.8-3.7 5.2-.8L12 3Z" />
-              </svg>
+              <MedalIcon size={24} />
             </span>
             <div className="achievement__heading">
               <h3>{achievement.title}</h3>
@@ -382,18 +398,7 @@ function AchievementList({
                 {achievement.earned ? (
                   <>
                     Earned
-                    <svg
-                      aria-hidden="true"
-                      fill="none"
-                      focusable="false"
-                      stroke="currentColor"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      viewBox="0 0 16 16"
-                    >
-                      <path d="m3 8 3 3 7-7" />
-                    </svg>
+                    <CheckIcon aria-hidden="true" size={16} />
                   </>
                 ) : (
                   'In progress'
@@ -463,6 +468,7 @@ function StandingsResults({
           aria-current="true"
           aria-label="Your standing"
           className="standing-row standing--current-player standing--outside-page"
+          data-rank={standings.currentPlayer.rank}
         >
           <StandingRowContent entry={standings.currentPlayer} />
         </aside>
@@ -500,6 +506,7 @@ function StandingRow({ entry }: { entry: StandingsEntry }) {
       aria-current={entry.isCurrentPlayer ? 'true' : undefined}
       aria-label={entry.isCurrentPlayer ? 'Your standing' : undefined}
       className={`standing-row ${entry.isCurrentPlayer ? 'standing--current-player' : ''}`.trim()}
+      data-rank={entry.rank}
     >
       <StandingRowContent entry={entry} />
     </li>
@@ -509,7 +516,14 @@ function StandingRow({ entry }: { entry: StandingsEntry }) {
 function StandingRowContent({ entry }: { entry: StandingsEntry }) {
   return (
     <>
-      <div className="standing__rank">
+      <div className="standing__rank" data-rank={entry.rank}>
+        {entry.rank <= 3 ? (
+          entry.rank === 1 ? (
+            <CrownIcon aria-hidden="true" size={20} weight="duotone" />
+          ) : (
+            <MedalIcon aria-hidden="true" size={20} weight="duotone" />
+          )
+        ) : null}
         <strong aria-label={`Rank ${numberFormatter.format(entry.rank)}`}>
           <span aria-hidden="true">#{numberFormatter.format(entry.rank)}</span>
         </strong>

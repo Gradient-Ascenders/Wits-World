@@ -7,8 +7,36 @@
 }
 
 .profile-page__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
   min-width: 0;
-  max-width: 48rem;
+  margin-bottom: var(--space-5);
+}
+
+.profile-page__header > div {
+  min-width: 0;
+}
+
+.profile-overview {
+  min-width: 0;
+  padding: var(--space-5) var(--space-4);
+  border: 1px solid var(--colour-border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--colour-surface-default);
+}
+
+.profile-avatar {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--radius-md);
+  background: var(--colour-surface-elevated);
+  color: var(--colour-text-primary);
+  font-size: var(--text-lg);
+  font-weight: 700;
 }
 
 .profile-page__header .eyebrow {
@@ -19,12 +47,17 @@
   max-width: 24ch;
   margin-bottom: var(--space-2);
   overflow-wrap: anywhere;
-  font-size: clamp(2rem, 7vw, 3.25rem);
-  line-height: 1.05;
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  line-height: 1.25;
 }
 
 .profile-page__header .lead {
   margin-bottom: 0;
+  font-size: var(--text-sm);
+}
+
+.profile-page__header .eyebrow {
+  color: var(--colour-text-secondary);
 }
 
 .progression-profile {
@@ -35,19 +68,16 @@
   display: grid;
   min-width: 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-3);
+  gap: var(--space-5) var(--space-4);
   margin: 0;
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--colour-border-subtle);
 }
 
 .progression-stats > div {
   display: grid;
   min-width: 0;
-  min-height: 7.5rem;
-  align-content: space-between;
-  padding: var(--space-4);
-  border: 0.1rem solid var(--colour-border-default);
-  border-radius: var(--radius-md);
-  background: rgb(13 27 49 / 76%);
+  align-content: start;
 }
 
 .progression-stats dt,
@@ -63,7 +93,8 @@
   margin: var(--space-3) 0 0;
   overflow-wrap: anywhere;
   color: var(--colour-text-primary);
-  font-family: var(--font-heading);
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
   font-size: clamp(var(--text-xl), 5vw, var(--text-2xl));
   font-weight: 700;
   line-height: 1;
@@ -81,6 +112,7 @@
   align-items: start;
   justify-content: space-between;
   gap: var(--space-3);
+  flex-wrap: wrap;
   margin-bottom: var(--space-5);
 }
 
@@ -111,7 +143,7 @@
 }
 
 .progression-section__summary span {
-  color: var(--colour-gold-400);
+  color: var(--colour-text-primary);
 }
 
 .achievement-list,
@@ -124,7 +156,7 @@
 .achievement-list {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-3);
+  gap: 0;
 }
 
 .achievement-list > li {
@@ -133,14 +165,17 @@
   grid-template-columns: auto minmax(0, 1fr);
   grid-template-rows: auto 1fr auto;
   gap: var(--space-3);
-  padding: var(--space-4);
-  border: 0.1rem solid var(--colour-border-default);
-  border-radius: var(--radius-md);
-  background: rgb(13 27 49 / 58%);
+  padding: var(--space-5) 0;
+  border-bottom: 1px solid var(--colour-border-subtle);
 }
 
-.achievement-list > li.achievement--earned {
-  border-top-color: var(--colour-gold-500);
+.achievement-list > li:first-child {
+  padding-top: 0;
+}
+
+.achievement-list > li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
 }
 
 .achievement__badge {
@@ -180,7 +215,7 @@
   margin: 0;
   overflow-wrap: anywhere;
   color: var(--colour-text-primary);
-  font-family: var(--font-heading);
+  font-family: var(--font-body);
   font-size: var(--text-lg);
 }
 
@@ -197,11 +232,7 @@
 }
 
 .achievement__status {
-  padding: 0.2rem 0.55rem;
-  border: 1px solid rgb(179 189 204 / 24%);
-  border-radius: var(--radius-pill);
-  background: rgb(5 11 22 / 46%);
-  color: var(--colour-text-muted);
+  color: var(--colour-text-secondary);
   white-space: nowrap;
 }
 
@@ -211,15 +242,13 @@
 }
 
 .achievement--earned .achievement__status {
-  border-color: rgb(212 175 55 / 42%);
-  background: rgb(212 175 55 / 8%);
   color: var(--colour-gold-400);
 }
 
 .achievement-list > li > p {
   margin: 0;
   color: var(--colour-text-secondary);
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
 }
 
 .achievement__progress {
@@ -304,8 +333,12 @@
 }
 
 .standings-period button[aria-pressed='true'] {
-  color: var(--colour-text-inverse);
-  background: var(--colour-gold-400);
+  color: var(--colour-text-primary);
+  background: var(--colour-interactive);
+}
+
+.standings-period button:hover:not(:disabled):not([aria-pressed='true']) {
+  background: var(--colour-surface-elevated);
 }
 
 .standings-period button:focus-visible {
@@ -376,9 +409,59 @@
 }
 
 .standing__rank strong {
-  color: var(--colour-gold-400);
+  color: var(--colour-text-primary);
   font-family: var(--font-heading);
   font-size: var(--text-lg);
+}
+
+.standing-row[data-rank='1'] {
+  --standing-metal: var(--colour-rank-gold);
+}
+
+.standing-row[data-rank='2'] {
+  --standing-metal: var(--colour-rank-silver);
+}
+
+.standing-row[data-rank='3'] {
+  --standing-metal: var(--colour-rank-bronze);
+}
+
+.standing-row:is([data-rank='1'], [data-rank='2'], [data-rank='3']) {
+  background-image: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--standing-metal) 10%, transparent),
+    transparent 65%
+  );
+  align-items: center;
+}
+
+.standing-row:is([data-rank='1'], [data-rank='2'], [data-rank='3'])
+  .standing__rank {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  width: 3rem;
+  min-height: 3.5rem;
+  padding: var(--space-2) var(--space-1);
+  border: 1px solid color-mix(in srgb, var(--standing-metal) 45%, transparent);
+  border-radius: var(--radius-md);
+  color: var(--standing-metal);
+  background: color-mix(
+    in srgb,
+    var(--standing-metal) 8%,
+    var(--colour-background-app)
+  );
+}
+
+.standing-row:is([data-rank='1'], [data-rank='2'], [data-rank='3'])
+  .standing__rank
+  strong,
+.standing-row:is([data-rank='1'], [data-rank='2'], [data-rank='3'])
+  .standing__identity
+  > strong {
+  color: var(--standing-metal);
 }
 
 .standing__identity {
@@ -520,21 +603,16 @@
   font-size: var(--text-sm);
 }
 
-@media (min-width: 40rem) {
-  .achievement-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+@media (min-width: 48rem) {
+  .progression-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .profile-overview {
+    padding: var(--space-5);
   }
 }
 
 @media (min-width: 64rem) {
-  .progression-stats {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  .achievement-list {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
   .standings-table__header {
     display: grid;
     grid-template-columns: 4.5rem minmax(0, 1fr) 7rem 8rem 8rem;
