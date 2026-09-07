@@ -15,7 +15,9 @@ test('keeps the database-account deletion journey focused and accessible on mobi
   await expect(
     page.getByRole('heading', { level: 1, name: 'Account settings' }),
   ).toBeVisible();
-  await expect(page.getByText('Wits World player')).toBeVisible();
+  await expect(
+    page.getByText('Your account information is read-only here.'),
+  ).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Security' })).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Reset password' }),
@@ -39,7 +41,9 @@ test('keeps the database-account deletion journey focused and accessible on mobi
   await expect(
     page.getByRole('heading', { name: 'Delete account?' }),
   ).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  await expect(
+    page.getByRole('button', { name: 'Cancel deletion' }),
+  ).toBeFocused();
   await captureAccountScreenshot(page, testInfo, '390-reauth-dialog.png');
   await page.keyboard.press('Escape');
   await expect(deletionTrigger).toBeFocused();
@@ -75,7 +79,7 @@ test('uses desktop space without exposing federated credentials', async ({
 }, testInfo) => {
   const errors = monitorRuntimeErrors(page);
   await mockAccountApi(page, 'google-oauth2', 'completed', 'author');
-  await page.setViewportSize({ height: 800, width: 1280 });
+  await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto('/account');
 
   const desktopNavigation = page.locator('.primary-navigation--desktop');
@@ -105,14 +109,22 @@ test('uses desktop space without exposing federated credentials', async ({
   await expect(page.locator('input[type="password"]')).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
 
+  await page.setViewportSize({ height: 900, width: 768 });
+  await expectNoHorizontalOverflow(page);
+  await page.setViewportSize({ height: 900, width: 1440 });
+
   await page.keyboard.press('Escape');
   await expect(accountTrigger).toBeFocused();
   await page.getByRole('button', { name: 'Delete account' }).click();
   await expect(
     page.getByRole('heading', { name: 'Delete account?' }),
   ).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Cancel' })).toBeFocused();
-  await expect(page.getByRole('button', { name: 'Continue' })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Cancel deletion' }),
+  ).toBeFocused();
+  await expect(
+    page.getByRole('button', { name: 'Sign in again' }),
+  ).toBeVisible();
   await captureAccountScreenshot(page, testInfo, '1280-reauth-dialog.png');
 
   expect(errors).toEqual([]);

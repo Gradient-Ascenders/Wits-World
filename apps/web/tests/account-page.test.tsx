@@ -36,10 +36,10 @@ describe('player account page', () => {
         name: 'Account settings',
       }),
     ).toBeVisible();
+    expect(screen.getByText('test-player', { selector: 'dd' })).toBeVisible();
     expect(
-      screen.getByRole('heading', { level: 2, name: 'test-player' }),
+      screen.getByText('Your account information is read-only here.'),
     ).toBeVisible();
-    expect(screen.getByText('Wits World player')).toBeVisible();
     expect(screen.getByText('Auth0')).toBeVisible();
     expect(
       screen.queryByRole('textbox', { name: /password/iu }),
@@ -129,15 +129,23 @@ describe('player account page', () => {
     expect(
       screen.getByText(/you’ll need to sign in again with Auth0/iu),
     ).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    expect(
+      screen.getByRole('button', { name: 'Cancel deletion' }),
+    ).toHaveFocus();
+    expect(
+      document.querySelector('.site-frame')?.closest('body > div'),
+    ).toHaveProperty('inert', true);
     await user.keyboard('{Escape}');
     expect(
       screen.queryByRole('heading', { name: 'Delete account?' }),
     ).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
+    expect(
+      document.querySelector('.site-frame')?.closest('body > div'),
+    ).toHaveProperty('inert', false);
 
     await user.click(trigger);
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: 'Sign in again' }));
 
     expect(loginWithRedirect).toHaveBeenCalledWith({
       appState: { returnTo: '/account?action=confirm-deletion' },
