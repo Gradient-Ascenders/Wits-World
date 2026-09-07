@@ -378,9 +378,9 @@
 .event-panel {
   position: absolute;
   z-index: 6;
-  right: var(--space-2);
+  right: 0;
   bottom: var(--explore-bottom-clearance);
-  left: var(--space-2);
+  left: 0;
   height: min(
     42rem,
     calc(100% - var(--explore-bottom-clearance) - var(--sheet-map-clearance))
@@ -560,8 +560,12 @@
   overflow: auto;
   overscroll-behavior: contain;
   scroll-behavior: smooth;
-  scrollbar-gutter: stable;
+  scrollbar-width: none;
   touch-action: pan-y;
+}
+
+.event-panel__scroll::-webkit-scrollbar {
+  display: none;
 }
 
 .discovery-navigation {
