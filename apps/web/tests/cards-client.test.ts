@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  evolveCards,
   listOwnedCards,
   listStarterOptions,
+  previewCardEvolution,
   selectStarter,
 } from '../src/api/cards';
 import {
@@ -117,6 +119,74 @@ describe('card API client', () => {
         signal: new AbortController().signal,
       }),
     ).resolves.toMatchObject([{ acquisitionKind: 'evolution' }]);
+  });
+
+  it('loads the server evolution recipe and exact copy eligibility', async () => {
+    const preview = buildEvolutionPreview();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(preview));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      previewCardEvolution({
+        apiBaseUrl,
+        getAccessToken,
+        signal: new AbortController().signal,
+        sourceCardDefinitionId: preview.source.cardDefinitionId,
+      }),
+    ).resolves.toEqual(preview);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${apiBaseUrl}/cards/evolutions/${preview.source.cardDefinitionId}/preview`,
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
+  it('rejects inconsistent or leaked evolution eligibility fields', async () => {
+    const preview = buildEvolutionPreview();
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse({ ...preview, eligibleCopyCount: 4, saleValue: 100 }),
+        ),
+    );
+
+    await expect(
+      previewCardEvolution({
+        apiBaseUrl,
+        getAccessToken,
+        signal: new AbortController().signal,
+        sourceCardDefinitionId: preview.source.cardDefinitionId,
+      }),
+    ).rejects.toMatchObject({ failure: 'unavailable' });
+  });
+
+  it('submits only evolution intent and returns the authoritative result', async () => {
+    const preview = buildEvolutionPreview();
+    const submissionId = buildUuid(1250);
+    const result = buildEvolutionResult(preview, submissionId);
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(result, 201));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      evolveCards({
+        apiBaseUrl,
+        getAccessToken,
+        signal: new AbortController().signal,
+        sourceCardDefinitionId: preview.source.cardDefinitionId,
+        submissionId,
+      }),
+    ).resolves.toEqual(result);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${apiBaseUrl}/cards/evolutions`,
+      expect.objectContaining({
+        body: JSON.stringify({
+          submissionId,
+          sourceCardDefinitionId: preview.source.cardDefinitionId,
+        }),
+        method: 'POST',
+      }),
+    );
   });
 
   it('accepts canonical UUIDs produced by the deterministic card catalogue seed', async () => {
@@ -341,6 +411,44 @@ describe('card API client', () => {
     ).rejects.toMatchObject({ failure });
   });
 
+  it.each([
+    [404, 'EVOLUTION_NOT_AVAILABLE', 'evolution-not-available'],
+    [409, 'EVOLUTION_COPIES_INSUFFICIENT', 'evolution-insufficient-copies'],
+    [409, 'EVOLUTION_COPIES_DECK_LOCKED', 'evolution-deck-locked'],
+    [409, 'EVOLUTION_REPLAY_CONFLICT', 'evolution-replay-conflict'],
+    [403, 'ACCOUNT_UNAVAILABLE', 'account-unavailable'],
+  ] as const)(
+    'maps a %s %s evolution response to %s',
+    async (status, code, failure) => {
+      const preview = buildEvolutionPreview();
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          jsonResponse(
+            {
+              code,
+              detail: 'Safe evolution detail',
+              requestId: 'evolution-error-request',
+              status,
+              title: 'Evolution failed',
+              type: 'about:blank',
+            },
+            status,
+          ),
+        ),
+      );
+
+      await expect(
+        previewCardEvolution({
+          apiBaseUrl,
+          getAccessToken,
+          signal: new AbortController().signal,
+          sourceCardDefinitionId: preview.source.cardDefinitionId,
+        }),
+      ).rejects.toMatchObject({ failure });
+    },
+  );
+
   it('rejects malformed collection data instead of inventing card fields', async () => {
     vi.stubGlobal(
       'fetch',
@@ -384,4 +492,79 @@ async function expectStarterResponseRejected(payload: object) {
       signal: new AbortController().signal,
     }),
   ).rejects.toMatchObject({ failure: 'unavailable' });
+}
+
+function buildEvolutionDefinition(
+  cardDefinitionId: string,
+  name: string,
+  overrides: Record<string, unknown> = {},
+) {
+  const { acquiredAt, acquisitionKind, ownedCardId, ...card } = buildCard(1, {
+    cardDefinitionId,
+    name,
+  });
+  void acquiredAt;
+  void acquisitionKind;
+  void ownedCardId;
+
+  return {
+    ...card,
+    deckPointCost: 2,
+    imageAlt: `${name} illustrated card artwork`,
+    ...overrides,
+  };
+}
+
+function buildEvolutionPreview() {
+  const source = buildEvolutionDefinition(buildUuid(1200), 'Quillip');
+  const target = buildEvolutionDefinition(buildUuid(1201), 'Quillume', {
+    deckPointCost: 3,
+    rarity: 'epic',
+  });
+  const copies = [1, 2, 3, 4].map((index) => ({
+    acquiredAt: `2026-09-0${index}T08:00:00.000Z`,
+    acquisitionKind: index === 1 ? 'starter' : 'event_reward',
+    eligible: index !== 4,
+    lockReason: index === 4 ? 'saved_deck' : null,
+    ownedCardId: buildUuid(1210 + index),
+  }));
+
+  return {
+    canEvolve: true,
+    copies,
+    copiesRequired: 3,
+    deckLockedCopyCount: 1,
+    eligibleCopyCount: 3,
+    ownedCopyCount: 4,
+    requestId: 'evolution-preview-request',
+    source,
+    target,
+    unavailableReason: null,
+  };
+}
+
+function buildEvolutionResult(
+  preview: ReturnType<typeof buildEvolutionPreview>,
+  submissionId: string,
+) {
+  return {
+    completedAt: '2026-09-07T12:00:00.000Z',
+    consumedOwnedCardIds: preview.copies
+      .filter((copy) => copy.eligible)
+      .map((copy) => copy.ownedCardId),
+    evolutionId: buildUuid(1260),
+    newCard: buildCard(9, {
+      acquisitionKind: 'evolution',
+      cardDefinitionId: preview.target.cardDefinitionId,
+      imageAlt: preview.target.imageAlt,
+      name: preview.target.name,
+      ownedCardId: buildUuid(1261),
+      rarity: preview.target.rarity,
+    }),
+    replayed: false,
+    requestId: 'evolution-result-request',
+    sourceCardDefinitionId: preview.source.cardDefinitionId,
+    submissionId,
+    target: preview.target,
+  };
 }

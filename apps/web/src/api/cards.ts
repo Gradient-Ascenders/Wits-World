@@ -40,9 +40,7 @@ export interface CardEffect {
   rulesText?: string | null;
 }
 
-export interface OwnedCard {
-  acquiredAt: string;
-  acquisitionKind: 'event_reward' | 'evolution' | 'starter';
+export interface CardPresentation {
   affinity: CardAffinity | null;
   cardDefinitionId: string;
   category: CardCategory;
@@ -54,9 +52,51 @@ export interface OwnedCard {
   isActive: boolean;
   moves: CardMove[];
   name: string;
-  ownedCardId: string;
   power: number | null;
   rarity: CardRarity;
+}
+
+export interface OwnedCard extends CardPresentation {
+  acquiredAt: string;
+  acquisitionKind: 'event_reward' | 'evolution' | 'starter';
+  ownedCardId: string;
+}
+
+export interface EvolutionCardDefinition extends CardPresentation {
+  deckPointCost: number;
+}
+
+export interface EvolutionOwnedCopy {
+  acquiredAt: string;
+  acquisitionKind: OwnedCard['acquisitionKind'];
+  eligible: boolean;
+  lockReason: 'saved_deck' | null;
+  ownedCardId: string;
+}
+
+export interface CardEvolutionPreview {
+  canEvolve: boolean;
+  copies: EvolutionOwnedCopy[];
+  copiesRequired: 3;
+  deckLockedCopyCount: number;
+  eligibleCopyCount: number;
+  ownedCopyCount: number;
+  requestId: string;
+  source: EvolutionCardDefinition;
+  target: EvolutionCardDefinition;
+  unavailableReason: 'insufficient_copies' | 'saved_deck_lock' | null;
+}
+
+export interface CardEvolutionResult {
+  completedAt: string;
+  consumedOwnedCardIds: [string, string, string];
+  evolutionId: string;
+  newCard: OwnedCard;
+  replayed: boolean;
+  requestId: string;
+  sourceCardDefinitionId: string;
+  submissionId: string;
+  target: EvolutionCardDefinition;
 }
 
 export interface StarterGrant {
@@ -99,6 +139,52 @@ const starterResponseKeys = [
   'starterGrantId',
 ] as const;
 const starterOptionsResponseKeys = ['options', 'requestId'] as const;
+const evolutionPreviewResponseKeys = [
+  'canEvolve',
+  'copies',
+  'copiesRequired',
+  'deckLockedCopyCount',
+  'eligibleCopyCount',
+  'ownedCopyCount',
+  'requestId',
+  'source',
+  'target',
+  'unavailableReason',
+] as const;
+const evolutionResultResponseKeys = [
+  'completedAt',
+  'consumedOwnedCardIds',
+  'evolutionId',
+  'newCard',
+  'replayed',
+  'requestId',
+  'sourceCardDefinitionId',
+  'submissionId',
+  'target',
+] as const;
+const evolutionDefinitionKeys = [
+  'affinity',
+  'cardDefinitionId',
+  'category',
+  'deckPointCost',
+  'description',
+  'effects',
+  'hp',
+  'imageAlt',
+  'imageUrl',
+  'isActive',
+  'moves',
+  'name',
+  'power',
+  'rarity',
+] as const;
+const evolutionCopyKeys = [
+  'acquiredAt',
+  'acquisitionKind',
+  'eligible',
+  'lockReason',
+  'ownedCardId',
+] as const;
 const starterOptionKeys = [
   'affinity',
   'composition',
@@ -159,7 +245,12 @@ const dateTimePattern =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/u;
 
 export type CardApiFailure =
+  | 'account-unavailable'
   | 'authorization'
+  | 'evolution-deck-locked'
+  | 'evolution-insufficient-copies'
+  | 'evolution-not-available'
+  | 'evolution-replay-conflict'
   | 'starter-already-claimed'
   | 'starter-unavailable'
   | 'unavailable';
@@ -182,6 +273,14 @@ interface CardRequestOptions {
 
 interface SelectStarterOptions extends CardRequestOptions {
   affinity: StarterAffinity;
+}
+
+interface PreviewEvolutionOptions extends CardRequestOptions {
+  sourceCardDefinitionId: string;
+}
+
+interface EvolveCardsOptions extends PreviewEvolutionOptions {
+  submissionId: string;
 }
 
 export async function listOwnedCards({
@@ -283,6 +382,138 @@ export async function selectStarter({
   };
 }
 
+export async function previewCardEvolution({
+  apiBaseUrl,
+  getAccessToken,
+  signal,
+  sourceCardDefinitionId,
+}: PreviewEvolutionOptions): Promise<CardEvolutionPreview> {
+  const payload = await cardRequest({
+    apiBaseUrl,
+    getAccessToken,
+    method: 'GET',
+    path: `/cards/evolutions/${encodeURIComponent(sourceCardDefinitionId)}/preview`,
+    signal,
+  });
+
+  if (
+    !isRecord(payload) ||
+    !hasExactKeys(payload, evolutionPreviewResponseKeys) ||
+    typeof payload.requestId !== 'string' ||
+    payload.copiesRequired !== 3 ||
+    !isNonNegativeInteger(payload.ownedCopyCount) ||
+    !isNonNegativeInteger(payload.eligibleCopyCount) ||
+    !isNonNegativeInteger(payload.deckLockedCopyCount) ||
+    !Array.isArray(payload.copies) ||
+    typeof payload.canEvolve !== 'boolean' ||
+    (payload.unavailableReason !== null &&
+      payload.unavailableReason !== 'insufficient_copies' &&
+      payload.unavailableReason !== 'saved_deck_lock')
+  ) {
+    throw new CardApiError('unavailable');
+  }
+
+  const source = parseEvolutionDefinition(payload.source);
+  const target = parseEvolutionDefinition(payload.target);
+  const copies = payload.copies.map(parseEvolutionCopy);
+  const eligibleCopyCount = copies.filter((copy) => copy.eligible).length;
+  const deckLockedCopyCount = copies.filter(
+    (copy) => copy.lockReason === 'saved_deck',
+  ).length;
+  const expectedReason =
+    eligibleCopyCount >= 3
+      ? null
+      : copies.length >= 3 && deckLockedCopyCount > 0
+        ? 'saved_deck_lock'
+        : 'insufficient_copies';
+
+  if (
+    source.cardDefinitionId !== sourceCardDefinitionId ||
+    source.cardDefinitionId === target.cardDefinitionId ||
+    new Set(copies.map((copy) => copy.ownedCardId)).size !== copies.length ||
+    payload.ownedCopyCount !== copies.length ||
+    payload.eligibleCopyCount !== eligibleCopyCount ||
+    payload.deckLockedCopyCount !== deckLockedCopyCount ||
+    payload.canEvolve !== eligibleCopyCount >= 3 ||
+    payload.unavailableReason !== expectedReason
+  ) {
+    throw new CardApiError('unavailable');
+  }
+
+  return {
+    canEvolve: payload.canEvolve,
+    copies,
+    copiesRequired: 3,
+    deckLockedCopyCount,
+    eligibleCopyCount,
+    ownedCopyCount: copies.length,
+    requestId: payload.requestId,
+    source,
+    target,
+    unavailableReason: payload.unavailableReason,
+  };
+}
+
+export async function evolveCards({
+  apiBaseUrl,
+  getAccessToken,
+  signal,
+  sourceCardDefinitionId,
+  submissionId,
+}: EvolveCardsOptions): Promise<CardEvolutionResult> {
+  const payload = await cardRequest({
+    apiBaseUrl,
+    body: { submissionId, sourceCardDefinitionId },
+    getAccessToken,
+    method: 'POST',
+    path: '/cards/evolutions',
+    signal,
+  });
+
+  if (
+    !isRecord(payload) ||
+    !hasExactKeys(payload, evolutionResultResponseKeys) ||
+    !isUuid(payload.evolutionId) ||
+    payload.submissionId !== submissionId ||
+    payload.sourceCardDefinitionId !== sourceCardDefinitionId ||
+    !Array.isArray(payload.consumedOwnedCardIds) ||
+    payload.consumedOwnedCardIds.length !== 3 ||
+    !payload.consumedOwnedCardIds.every(isUuid) ||
+    new Set(payload.consumedOwnedCardIds).size !== 3 ||
+    !isDateTime(payload.completedAt) ||
+    typeof payload.replayed !== 'boolean' ||
+    typeof payload.requestId !== 'string'
+  ) {
+    throw new CardApiError('unavailable');
+  }
+
+  const target = parseEvolutionDefinition(payload.target);
+  const newCard = parseOwnedCard(payload.newCard);
+
+  if (
+    newCard.acquisitionKind !== 'evolution' ||
+    newCard.cardDefinitionId !== target.cardDefinitionId
+  ) {
+    throw new CardApiError('unavailable');
+  }
+
+  return {
+    completedAt: payload.completedAt,
+    consumedOwnedCardIds: payload.consumedOwnedCardIds as [
+      string,
+      string,
+      string,
+    ],
+    evolutionId: payload.evolutionId,
+    newCard,
+    replayed: payload.replayed,
+    requestId: payload.requestId,
+    sourceCardDefinitionId,
+    submissionId,
+    target,
+  };
+}
+
 interface RequestOptions extends CardRequestOptions {
   body?: object;
   method: 'GET' | 'POST';
@@ -358,6 +589,18 @@ async function parseCardError(response: Response): Promise<CardApiError> {
     return new CardApiError('authorization', requestId);
   }
 
+  const evolutionFailures: Record<string, CardApiFailure> = {
+    ACCOUNT_UNAVAILABLE: 'account-unavailable',
+    EVOLUTION_COPIES_DECK_LOCKED: 'evolution-deck-locked',
+    EVOLUTION_COPIES_INSUFFICIENT: 'evolution-insufficient-copies',
+    EVOLUTION_NOT_AVAILABLE: 'evolution-not-available',
+    EVOLUTION_REPLAY_CONFLICT: 'evolution-replay-conflict',
+  };
+
+  if (typeof code === 'string' && evolutionFailures[code]) {
+    return new CardApiError(evolutionFailures[code], requestId);
+  }
+
   if (response.status === 409 && code === 'STARTER_ALREADY_CLAIMED') {
     return new CardApiError('starter-already-claimed', requestId);
   }
@@ -420,6 +663,76 @@ function parseOwnedCard(value: unknown): OwnedCard {
     ownedCardId: value.ownedCardId,
     power: value.power,
     rarity: value.rarity,
+  };
+}
+
+function parseEvolutionDefinition(value: unknown): EvolutionCardDefinition {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, evolutionDefinitionKeys) ||
+    !isUuid(value.cardDefinitionId) ||
+    typeof value.name !== 'string' ||
+    value.name.trim() === '' ||
+    !isCardCategory(value.category) ||
+    (value.category === 'creature'
+      ? !isCardAffinity(value.affinity)
+      : value.affinity !== null && !isCardAffinity(value.affinity)) ||
+    !isCardRarity(value.rarity) ||
+    !isNullablePositiveInteger(value.hp) ||
+    !isNullableNonNegativeInteger(value.power) ||
+    (value.description !== null && typeof value.description !== 'string') ||
+    (value.imageAlt !== null && typeof value.imageAlt !== 'string') ||
+    (value.imageUrl !== null && typeof value.imageUrl !== 'string') ||
+    typeof value.isActive !== 'boolean' ||
+    !Array.isArray(value.moves) ||
+    !Array.isArray(value.effects) ||
+    !Number.isInteger(value.deckPointCost) ||
+    Number(value.deckPointCost) < 1 ||
+    Number(value.deckPointCost) > 4
+  ) {
+    throw new CardApiError('unavailable');
+  }
+
+  return {
+    affinity: isCardAffinity(value.affinity) ? value.affinity : null,
+    cardDefinitionId: value.cardDefinitionId,
+    category: value.category,
+    deckPointCost: value.deckPointCost as number,
+    description: value.description,
+    effects: value.effects.map(parseEffect),
+    hp: value.hp,
+    imageAlt: value.imageAlt,
+    imageUrl: value.imageUrl,
+    isActive: value.isActive,
+    moves: value.moves.map(parseMove),
+    name: value.name,
+    power: value.power,
+    rarity: value.rarity,
+  };
+}
+
+function parseEvolutionCopy(value: unknown): EvolutionOwnedCopy {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, evolutionCopyKeys) ||
+    !isUuid(value.ownedCardId) ||
+    !isDateTime(value.acquiredAt) ||
+    (value.acquisitionKind !== 'starter' &&
+      value.acquisitionKind !== 'event_reward' &&
+      value.acquisitionKind !== 'evolution') ||
+    typeof value.eligible !== 'boolean' ||
+    (value.lockReason !== null && value.lockReason !== 'saved_deck') ||
+    value.eligible !== (value.lockReason === null)
+  ) {
+    throw new CardApiError('unavailable');
+  }
+
+  return {
+    acquiredAt: value.acquiredAt,
+    acquisitionKind: value.acquisitionKind,
+    eligible: value.eligible,
+    lockReason: value.lockReason,
+    ownedCardId: value.ownedCardId,
   };
 }
 

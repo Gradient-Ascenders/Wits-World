@@ -8,9 +8,11 @@ import {
 export function CardSheetHandle({
   panelRef,
   onClose,
+  disabled = false,
 }: {
   panelRef: RefObject<HTMLElement | null>;
   onClose: () => void;
+  disabled?: boolean;
 }) {
   const [snap, setSnap] = useState<BottomSheetSnap>('expanded');
   const drag = useRef<{
@@ -34,6 +36,7 @@ export function CardSheetHandle({
   return (
     <button
       type="button"
+      disabled={disabled}
       className="card-sheet-handle"
       aria-label={
         snap === 'expanded' ? 'Lower card sheet' : 'Expand card sheet'

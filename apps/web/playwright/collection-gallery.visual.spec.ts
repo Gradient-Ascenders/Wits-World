@@ -33,7 +33,12 @@ test('groups, filters, and reveals card details across collection layouts', asyn
   }));
 
   page.on('console', (message) => {
-    if (message.type() === 'error') consoleErrors.push(message.text());
+    // The fixture explicitly returns 404 for cards without an evolution.
+    const expectedUnavailable =
+      message.text().includes('404') &&
+      message.location().url.includes('/cards/evolutions/');
+    if (message.type() === 'error' && !expectedUnavailable)
+      consoleErrors.push(message.text());
   });
   page.on('pageerror', (error) => runtimeErrors.push(error.message));
 
@@ -63,6 +68,20 @@ test('groups, filters, and reveals card details across collection layouts', asyn
       options: buildStarterOptions(),
       requestId: 'collection-browser-starters',
     }),
+  );
+  await page.route(`${API_BASE_URL}/cards/evolutions/*/preview`, (route) =>
+    json(
+      route,
+      {
+        code: 'EVOLUTION_NOT_AVAILABLE',
+        detail: 'The selected card does not have an available evolution.',
+        requestId: 'collection-browser-evolution-unavailable',
+        status: 404,
+        title: 'Evolution unavailable',
+        type: 'about:blank',
+      },
+      404,
+    ),
   );
 
   await page.setViewportSize({ height: 844, width: 390 });
@@ -111,11 +130,16 @@ test('groups, filters, and reveals card details across collection layouts', asyn
     path: testInfo.outputPath('square-artwork-detail.png'),
   });
   await expect(
+    dialog.getByRole('button', { name: 'Close card details' }),
+  ).toBeFocused();
+  await expect(dialog.getByText('Copy history')).toBeVisible();
+  await dialog.getByText('Copy history').click();
+  await expect(
     dialog.getByRole('list', { name: /owned copies/u }).locator('li'),
   ).toHaveCount(4);
   await expect(
     dialog.getByRole('button', { name: 'Close card details' }),
-  ).toBeFocused();
+  ).toBeVisible();
   const mobilePanel = await dialog.boundingBox();
   expect(mobilePanel).not.toBeNull();
   expect(Math.round(mobilePanel!.y + mobilePanel!.height)).toBe(844);

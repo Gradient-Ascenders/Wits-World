@@ -62,6 +62,25 @@ provenance and saved-deck point cost, invalid definitions, insufficient copies,
 idempotent replay, saved-deck protection, forced-failure rollback, and
 concurrent mutation serialization.
 
+Collection component tests cover progressive evolution discovery, authoritative
+owned/eligible/deck-locked quantities, preview and cancellation, explicit
+confirmation, single-result reconciliation plus collection refetch, insufficient
+and deck-locked states, stale conflict recovery, and recoverable API failures.
+Card-client tests reject inconsistent counts and unexpected fields rather than
+silently trusting or extending the server contract. Selling tests are not
+present because issue #193 retired and deferred the selling-for-currency model;
+there is no active selling API for the browser to exercise.
+
+`apps/web/playwright/collection.config.ts` runs deterministic collection gallery
+and evolution browser checks using the existing authenticated fixture mode.
+Evolution coverage includes 390px, 768px, and 1440px layouts, reachable confirmation
+controls, focus trapping/return, cancellation, preview failure, confirmation
+failure, stale-copy recovery, saved-deck locks, and success with exact consumption.
+Component regressions distinguish pending refresh from completed refresh, retry a
+failed refresh without another mutation, and keep the sheet handle disabled during
+submission. Browser screenshots are temporary evidence under
+`/tmp/wits-world-collection-evidence`, not committed assets or live-backend proof.
+
 Ordering-challenge web coverage validates the discriminated author and Player
 API contracts, exact four-item authoring, pointer reordering, keyboard-operable
 Move Up / Move Down controls and announcements, ordered submission intent,
@@ -270,6 +289,6 @@ for demonstrating the acceptance criteria and protected invariants.
 
 This testing strategy was generated, edited, and reviewed with the assistance
 of Codex[GPT-6], Codex[GPT-5], Codex[gpt-5.6-sol], Codex-CLI[GPT-5], and
-Codex-CLI[gpt-5.6-sol medium].
+Codex-CLI[gpt-5.6-sol medium], and Codex-CLI[GPT-6].
 Repository paths and workflow claims were checked against the current source;
 this declaration is not test evidence.

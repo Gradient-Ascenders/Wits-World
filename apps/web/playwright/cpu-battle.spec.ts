@@ -1418,7 +1418,7 @@ test('keeps the desktop battlefield stable when bench and details expand', async
       path: path.join(screenshotsDirectory, `${width}-history.png`),
     });
     await history.locator('summary').click();
-    const pictures = page.locator('.battle-creature-artwork');
+    const pictures = page.locator('.battle-creature-artwork img');
     await expect(pictures).toHaveCount(4);
     await expect
       .poll(() =>

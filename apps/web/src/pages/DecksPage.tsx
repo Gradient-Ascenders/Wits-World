@@ -1323,6 +1323,11 @@ function DeckEditor({
                         <CardArtwork
                           badge={used > 0 ? `×${used}` : undefined}
                           card={card}
+                          nameplate={
+                            <span id={titleId} role="heading" aria-level={4}>
+                              {card.name}
+                            </span>
+                          }
                         />
                         <div className="deck-picker-card__body">
                           <p className="deck-picker-card__kind">
@@ -1331,9 +1336,6 @@ function DeckEditor({
                               ? titleCase(card.affinity)
                               : 'Typeless'}
                           </p>
-                          <h4 className="card-thumbnail__title" id={titleId}>
-                            {card.name}
-                          </h4>
                           <p className="deck-picker-card__quantity">
                             Owned {group.length} · Selected {used}
                           </p>

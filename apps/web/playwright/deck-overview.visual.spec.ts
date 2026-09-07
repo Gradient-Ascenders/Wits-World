@@ -289,7 +289,7 @@ test('keeps exact-copy deck editing dense and reachable across viewports', async
   await addDuplicate.click();
   await expect(duplicateCard.getByText('Owned 2 · Selected 2')).toBeVisible();
   await expect(duplicateCard.getByText('All copies selected')).toHaveCount(0);
-  const quantityBadge = duplicateCard.locator('.card-thumbnail__duplicate');
+  const quantityBadge = duplicateCard.locator('.card-frame__quantity');
   await expect(quantityBadge).toHaveText('×2');
   expect(
     await quantityBadge.evaluate((badge) => {
@@ -300,8 +300,8 @@ test('keeps exact-copy deck editing dense and reachable across viewports', async
       };
     }),
   ).toEqual({
-    backgroundColor: 'rgb(212, 175, 55)',
-    color: 'rgb(8, 20, 38)',
+    backgroundColor: 'rgb(8, 16, 29)',
+    color: 'rgb(247, 243, 231)',
   });
   await expect(addDuplicate).toBeDisabled();
   await duplicateCard

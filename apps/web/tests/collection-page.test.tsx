@@ -73,6 +73,103 @@ function starterOptionsResponse() {
   });
 }
 
+function evolutionDefinition(
+  card: ReturnType<typeof buildCard>,
+  overrides: Record<string, unknown> = {},
+) {
+  const { acquiredAt, acquisitionKind, ownedCardId, ...definition } = card;
+  void acquiredAt;
+  void acquisitionKind;
+  void ownedCardId;
+
+  return {
+    ...definition,
+    deckPointCost: card.rarity === 'common' ? 1 : 3,
+    imageAlt: null,
+    ...overrides,
+  };
+}
+
+function evolutionPreview(
+  cards: ReturnType<typeof buildCard>[],
+  eligibleCopyCount = cards.length,
+) {
+  const source = evolutionDefinition(cards[0]!);
+  const targetCard = buildCard(1900, {
+    affinity: source.affinity,
+    cardDefinitionId: buildUuid(1900),
+    imageAlt: 'Evolution complete card artwork',
+    name: 'Quillume',
+    rarity: 'epic',
+  });
+  const copies = cards.map((card, index) => ({
+    acquiredAt: card.acquiredAt,
+    acquisitionKind: card.acquisitionKind,
+    eligible: index < eligibleCopyCount,
+    lockReason: index < eligibleCopyCount ? null : 'saved_deck',
+    ownedCardId: card.ownedCardId,
+  }));
+  const deckLockedCopyCount = cards.length - eligibleCopyCount;
+
+  return {
+    canEvolve: eligibleCopyCount >= 3,
+    copies,
+    copiesRequired: 3,
+    deckLockedCopyCount,
+    eligibleCopyCount,
+    ownedCopyCount: cards.length,
+    requestId: 'evolution-preview-request',
+    source,
+    target: evolutionDefinition(targetCard, { deckPointCost: 3 }),
+    unavailableReason:
+      eligibleCopyCount >= 3
+        ? null
+        : cards.length >= 3 && deckLockedCopyCount > 0
+          ? 'saved_deck_lock'
+          : 'insufficient_copies',
+  };
+}
+
+function evolutionResult(
+  preview: ReturnType<typeof evolutionPreview>,
+  submissionId: string,
+) {
+  return {
+    completedAt: '2026-09-07T12:00:00.000Z',
+    consumedOwnedCardIds: preview.copies
+      .filter((copy) => copy.eligible)
+      .slice(0, 3)
+      .map((copy) => copy.ownedCardId),
+    evolutionId: buildUuid(1910),
+    newCard: buildCard(1911, {
+      acquisitionKind: 'evolution',
+      cardDefinitionId: preview.target.cardDefinitionId,
+      imageAlt: preview.target.imageAlt,
+      name: preview.target.name,
+      ownedCardId: buildUuid(1911),
+      rarity: preview.target.rarity,
+    }),
+    replayed: false,
+    requestId: 'evolution-result-request',
+    sourceCardDefinitionId: preview.source.cardDefinitionId,
+    submissionId,
+    target: preview.target,
+  };
+}
+
+function duplicateCards(count: number) {
+  const cardDefinitionId = buildUuid(1800);
+  return Array.from({ length: count }, (_, index) =>
+    buildCard(1800 + index, {
+      acquiredAt: `2026-09-0${index + 1}T08:00:00.000Z`,
+      acquisitionKind: index === 0 ? 'starter' : 'event_reward',
+      cardDefinitionId,
+      name: 'Quillip',
+      ownedCardId: buildUuid(1810 + index),
+    }),
+  );
+}
+
 describe('card collection page', () => {
   it('loads and renders the server-provided starter comparison without redundant empty messaging', async () => {
     const user = userEvent.setup();
@@ -366,12 +463,371 @@ describe('card collection page', () => {
       name: `${first.name} card details`,
     });
     expect(within(dialog).getByText('×2 owned')).toBeVisible();
+    await user.click(within(dialog).getByText('Copy history'));
     const copies = within(dialog).getByRole('list', {
       name: `${first.name} owned copies`,
     });
     expect(copies.children).toHaveLength(2);
     expect(within(copies).getByText('Starter card')).toBeVisible();
     expect(within(copies).getByText('Event reward')).toBeVisible();
+  });
+
+  it('shows authoritative owned, available, and deck-locked quantities', async () => {
+    const user = userEvent.setup();
+    const cards = duplicateCards(4);
+    const preview = evolutionPreview(cards, 2);
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(collectionResponse(cards))
+        .mockResolvedValueOnce(jsonResponse(preview)),
+    );
+
+    renderCollection();
+    const trigger = await screen.findByRole('button', {
+      name: 'View Quillip details, 4 owned copies',
+    });
+    expect(within(trigger).getByText('×4')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Evolutions' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
+    );
+
+    const availability = await screen.findByRole('heading', {
+      name: 'Evolve into Quillume',
+    });
+    const section = availability.closest('section');
+    expect(section).not.toBeNull();
+    expect(within(section!).getByText('Owned')).toBeVisible();
+    expect(
+      within(section!).getByText('Available').parentElement,
+    ).toHaveTextContent('2');
+    expect(within(section!).getByText('In decks')).toBeVisible();
+    expect(
+      within(section!).getByText('In decks').parentElement,
+    ).toHaveTextContent('2');
+    expect(section).toHaveTextContent('You need 1 more available copy');
+    expect(
+      within(section!).getByRole('button', { name: 'Review evolution' }),
+    ).toBeDisabled();
+    expect(section).toHaveTextContent(
+      'Remove locked copies from saved decks first',
+    );
+  });
+
+  it('previews the fixed result before confirmation and supports cancellation', async () => {
+    const user = userEvent.setup();
+    const cards = duplicateCards(4);
+    const preview = evolutionPreview(cards, 3);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(collectionResponse(cards))
+      .mockResolvedValueOnce(jsonResponse(preview));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderCollection();
+    await user.click(await screen.findByRole('button', { name: 'Evolutions' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
+    );
+    const review = await screen.findByRole('button', {
+      name: 'Review evolution',
+    });
+    await user.click(review);
+
+    const heading = screen.getByRole('heading', {
+      name: 'Combine 3 copies of Quillip into Quillume?',
+    });
+    expect(heading).toHaveFocus();
+    expect(screen.getByText('3 available copies')).toBeVisible();
+    expect(screen.getByText('1 copy')).toBeVisible();
+    expect(screen.getByRole('article', { name: 'Quillume' })).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(
+      screen.queryByRole('heading', {
+        name: 'Combine 3 copies of Quillip into Quillume?',
+      }),
+    ).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Review evolution' }),
+      ).toHaveFocus(),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('confirms once, presents the evolved card, and refetches the collection', async () => {
+    const user = userEvent.setup();
+    const cards = duplicateCards(3);
+    const preview = evolutionPreview(cards, 3);
+    const result = evolutionResult(preview, buildUuid(1920));
+    const starterAnchor = buildCard(1950, { name: 'Starter Anchor' });
+    const authoritativeCards = [result.newCard, starterAnchor];
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(collectionResponse(cards))
+      .mockResolvedValueOnce(jsonResponse(preview))
+      .mockImplementationOnce(async (_url, options: RequestInit) => {
+        const body = JSON.parse(String(options.body)) as {
+          submissionId: string;
+        };
+        return jsonResponse(evolutionResult(preview, body.submissionId), 201);
+      })
+      .mockResolvedValueOnce(collectionResponse(authoritativeCards));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderCollection();
+    await user.click(await screen.findByRole('button', { name: 'Evolutions' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
+    );
+    await user.click(
+      await screen.findByRole('button', { name: 'Review evolution' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Evolve card' }));
+
+    const resultHeading = await screen.findByRole('heading', {
+      name: 'Evolution complete',
+    });
+    expect(resultHeading).toHaveFocus();
+    expect(screen.getByTestId('evolution-reveal')).toBeInTheDocument();
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Your collection is up to date.',
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+
+    const mutationCall = fetchMock.mock.calls[2]!;
+    expect(mutationCall[0]).toBe(`${apiBaseUrl}/cards/evolutions`);
+    expect(JSON.parse(String((mutationCall[1] as RequestInit).body))).toEqual({
+      sourceCardDefinitionId: preview.source.cardDefinitionId,
+      submissionId: expect.any(String),
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Close evolution' }));
+    await user.click(screen.getByRole('button', { name: 'Cards' }));
+    expect(
+      screen.getByRole('button', { name: 'View Quillume details' }),
+    ).toBeVisible();
+  });
+
+  it('recovers a stale-copy conflict with refreshed eligibility and collection state', async () => {
+    const user = userEvent.setup();
+    const cards = duplicateCards(3);
+    const initialPreview = evolutionPreview(cards, 3);
+    const currentCards = cards.slice(0, 2);
+    const refreshedPreview = evolutionPreview(currentCards, 2);
+    const staleError = jsonResponse(
+      {
+        code: 'EVOLUTION_COPIES_INSUFFICIENT',
+        detail: 'Three eligible copies are required for this evolution.',
+        requestId: 'stale-evolution-request',
+        status: 409,
+        title: 'Not enough copies',
+        type: 'about:blank',
+      },
+      409,
+    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(collectionResponse(cards))
+      .mockResolvedValueOnce(jsonResponse(initialPreview))
+      .mockResolvedValueOnce(staleError)
+      .mockResolvedValueOnce(jsonResponse(refreshedPreview))
+      .mockResolvedValueOnce(collectionResponse(currentCards));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderCollection();
+    await user.click(await screen.findByRole('button', { name: 'Evolutions' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
+    );
+    await user.click(
+      await screen.findByRole('button', { name: 'Review evolution' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Evolve card' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('collection changed before confirmation');
+    expect(alert).toHaveFocus();
+    expect(
+      screen.getByRole('button', { name: 'Review evolution' }),
+    ).toBeDisabled();
+    expect(screen.getByText(/You currently have 2/u)).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+  });
+
+  it('keeps an API failure recoverable without implying evolution succeeded', async () => {
+    const user = userEvent.setup();
+    const cards = duplicateCards(3);
+    const preview = evolutionPreview(cards, 3);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(collectionResponse(cards))
+      .mockResolvedValueOnce(jsonResponse(preview))
+      .mockResolvedValueOnce(new Response(null, { status: 503 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderCollection();
+    await user.click(await screen.findByRole('button', { name: 'Evolutions' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
+    );
+    await user.click(
+      await screen.findByRole('button', { name: 'Review evolution' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Evolve card' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('could not be completed');
+    expect(alert).toHaveFocus();
+    expect(
+      screen.queryByRole('heading', { name: /Evolution complete/u }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Evolve card' })).toBeEnabled();
+  });
+
+  it('keeps the sheet open during submission and announces refresh only after it finishes', async () => {
+    const user = userEvent.setup();
+    const cards = duplicateCards(3);
+    const preview = evolutionPreview(cards);
+    let finishEvolution!: (response: Response) => void;
+    let finishRefresh!: (response: Response) => void;
+    let submittedId = '';
+    const anchor = buildCard(1950);
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(collectionResponse(cards))
+        .mockResolvedValueOnce(jsonResponse(preview))
+        .mockImplementationOnce((_url, options: RequestInit) => {
+          submittedId = JSON.parse(String(options.body)).submissionId;
+          return new Promise<Response>((resolve) => {
+            finishEvolution = resolve;
+          });
+        })
+        .mockImplementationOnce(
+          () =>
+            new Promise<Response>((resolve) => {
+              finishRefresh = resolve;
+            }),
+        ),
+    );
+    renderCollection();
+    await user.click(await screen.findByRole('button', { name: 'Evolutions' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
+    );
+    await user.click(
+      await screen.findByRole('button', { name: 'Review evolution' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Evolve card' }));
+    expect(
+      screen.queryByRole('button', { name: 'Lower card sheet' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Close evolution' }),
+    ).toBeDisabled();
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    const result = evolutionResult(preview, submittedId);
+    expect(screen.queryByTestId('evolution-reveal')).not.toBeInTheDocument();
+    finishEvolution(jsonResponse(result, 201));
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Refreshing your collection',
+      ),
+    );
+    expect(screen.getByTestId('evolution-reveal')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Your collection is up to date.'),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/3 × Quillip consumed/u)).toBeVisible();
+    finishRefresh(collectionResponse([result.newCard, anchor]));
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Your collection is up to date.',
+      ),
+    );
+  });
+
+  it('retries a failed collection refresh without submitting another evolution', async () => {
+    const user = userEvent.setup();
+    const cards = duplicateCards(3);
+    const preview = evolutionPreview(cards);
+    const result = evolutionResult(preview, buildUuid(1920));
+    const anchor = buildCard(1950);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(collectionResponse([...cards, anchor]))
+      .mockResolvedValueOnce(jsonResponse(preview))
+      .mockResolvedValueOnce(
+        jsonResponse({ code: 'EVOLUTION_NOT_AVAILABLE' }, 404),
+      )
+      .mockImplementationOnce((_url, options: RequestInit) =>
+        jsonResponse(
+          evolutionResult(
+            preview,
+            JSON.parse(String(options.body)).submissionId,
+          ),
+          201,
+        ),
+      )
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce(collectionResponse([result.newCard, anchor]));
+    vi.stubGlobal('fetch', fetchMock);
+    renderCollection();
+    await user.click(await screen.findByRole('button', { name: 'Evolutions' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
+    );
+    await user.click(
+      await screen.findByRole('button', { name: 'Review evolution' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Evolve card' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Evolution is complete, but your collection could not be refreshed',
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Refresh collection' }),
+    );
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Your collection is up to date.',
+    );
+    expect(
+      fetchMock.mock.calls.filter(
+        ([, options]) => (options as RequestInit)?.method === 'POST',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('recovers preview failure into an explanatory insufficient-copy state', async () => {
+    const user = userEvent.setup();
+    const cards = duplicateCards(2);
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(collectionResponse(cards))
+        .mockResolvedValueOnce(new Response(null, { status: 503 }))
+        .mockResolvedValueOnce(jsonResponse(evolutionPreview(cards))),
+    );
+    renderCollection();
+    await user.click(await screen.findByRole('button', { name: 'Evolutions' }));
+    expect(await screen.findByText('Availability unknown')).toBeVisible();
+    await user.click(
+      screen.getByRole('button', { name: 'Retry availability' }),
+    );
+    await user.click(
+      await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
+    );
+    expect(
+      await screen.findByRole('button', { name: 'Review evolution' }),
+    ).toBeDisabled();
+    expect(screen.getByText(/Collect 1 more to evolve/u)).toBeVisible();
   });
 
   it('opens complete creature details and restores focus after Escape', async () => {

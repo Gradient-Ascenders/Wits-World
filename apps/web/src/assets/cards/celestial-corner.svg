@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <title>Wits World celestial corner engraving</title>
+  <path d="M3 61V19A16 16 0 0 1 19 3h42M8 56V20A12 12 0 0 1 20 8h36M58 8A50 50 0 0 1 8 58" stroke="white" stroke-width="1.5"/>
+  <circle cx="25" cy="25" r="17" stroke="white" stroke-width="1"/>
+  <path d="M25 9v32M9 25h32M13 13l24 24M37 13L13 37" stroke="white" stroke-width=".65" opacity=".65"/>
+  <path d="m25 10 3.5 11.5L40 25l-11.5 3.5L25 40l-3.5-11.5L10 25l11.5-3.5Z" fill="white"/>
+  <circle cx="49" cy="18" r="1.6" fill="white"/><circle cx="18" cy="49" r="1.6" fill="white"/>
+</svg>

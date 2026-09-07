@@ -514,6 +514,38 @@ and actions.
   bottom navigation. On desktop, anchor feedback to its content region and bound
   prose width. Preserve focus and reduced-motion behaviour.
 
+### Collectible card frames
+
+`CardFrame` and `card-frame.css` own a layered collectible bezel, recessed
+square artwork window, and integrated lower plate. The reference images under
+`docs/design/references/card-frames` guide material and ornament; they are never
+loaded by the application. Preserve the supplied artwork with `object-fit: contain`.
+
+Use one shared geometry with progressively richer material and celestial engraving:
+
+- Common: ivory/silver, restrained compass corners and an open diamond.
+- Rare: deep blue enamel, warm metallic engraving and a star crest.
+- Epic: deep violet, double-line details and an orbital medallion.
+- Legendary: layered gold, a dark inset plate and a raised luminous crest.
+
+The shared SVG masks under `src/assets/cards` supply compass corners, an orbital
+plate engraving and a crest. Keep them decorative and separate from artwork.
+At compact sizes, omit side engravings and reduce background detail; larger
+frames reveal finer linework. No looping shimmer, glow or tilt.
+
+Collection and deck-picker names sit inside the frame's lower plate. Detail
+headings and gameplay metadata retain their existing surrounding structure.
+Quantity is neutral; selection and keyboard focus belong to the external control,
+independent of rarity. Retired cards keep readable artwork and a text label.
+
+Collection, deck picking, details, evolution and author previews share this
+frame. Revealed battle artwork uses the full shared bezel, engraving and lower
+plate in a neutral metal finish because battle identities do not supply rarity.
+The neutral plate has decoration but no rarity label. Do not infer rarity from
+names or artwork. Preserve
+existing page layouts and server-authoritative state. Hover elevation respects
+reduced motion.
+
 ### Deck editing
 
 Keep the viewed deck distinct from the deck active for matches. On mobile and
@@ -1038,3 +1070,5 @@ parts of this document.
 The battle guidance was added with assistance from Codex-CLI[GPT-6].
 
 The shared feedback guidance was added with assistance from Codex-CLI[GPT-6].
+
+The collectible-frame guidance was added with assistance from Codex-CLI[GPT-6].
