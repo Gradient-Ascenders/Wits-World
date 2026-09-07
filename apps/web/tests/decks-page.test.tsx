@@ -1,3 +1,5 @@
+import { AppToaster } from '../src/components/AppToaster';
+import { toast } from 'sonner';
 import {
   Auth0Context,
   initialContext,
@@ -33,6 +35,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  toast.dismiss();
   vi.unstubAllGlobals();
 });
 
@@ -55,6 +58,7 @@ function renderDecks(
 ) {
   return render(
     <Auth0Context.Provider value={authValue}>
+      <AppToaster />
       <DecksPage apiBaseUrl={apiBaseUrl} onStartMatch={onStartMatch} />
     </Auth0Context.Provider>,
   );

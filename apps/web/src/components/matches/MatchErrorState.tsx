@@ -1,3 +1,4 @@
+import { StateIcon } from '../StatusMessage';
 import { forwardRef } from 'react';
 import { Link } from 'wouter';
 
@@ -21,7 +22,13 @@ export const MatchErrorState = forwardRef<
   const deckInvalid = error.failure === 'deck-invalid';
 
   return (
-    <section className="match-state-panel" ref={ref} role="alert" tabIndex={-1}>
+    <section
+      className="match-state-panel state-message state-message--error"
+      ref={ref}
+      role="alert"
+      tabIndex={-1}
+    >
+      <StateIcon tone="error" />
       <p className="eyebrow">Battle connection</p>
       <h1>
         {title ??

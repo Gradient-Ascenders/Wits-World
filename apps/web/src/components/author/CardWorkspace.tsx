@@ -1,3 +1,5 @@
+import { StateIcon } from '../StatusMessage';
+import { LoadingState } from '../LoadingState';
 import {
   ArrowLeftIcon,
   CaretRightIcon,
@@ -245,18 +247,20 @@ export function CardWorkspace({
       </header>
 
       {state !== 'ready' ? (
-        <p className="sr-only" id="card-create-unavailable">
+        <p className="author-create-guidance" id="card-create-unavailable">
           Load the card catalogue before creating a card.
         </p>
       ) : null}
 
       {state === 'loading' ? (
-        <p className="author-state" role="status">
-          Loading card definitions…
-        </p>
+        <LoadingState label="Loading card definitions…" />
       ) : null}
       {state === 'error' ? (
-        <div className="author-state author-state--error" role="alert">
+        <div
+          className="author-state author-state--error state-message state-message--error"
+          role="alert"
+        >
+          <StateIcon tone="error" />
           <strong>Cards are unavailable.</strong>
           <p>{errorMessage}</p>
           <button
@@ -297,13 +301,15 @@ export function CardWorkspace({
               {cards.length === 1 ? 'card' : 'cards'}
             </p>
             {cards.length === 0 ? (
-              <div className="author-empty author-empty--compact">
+              <div className="author-empty author-empty--compact state-message state-message--empty">
+                <StateIcon tone="empty" />
                 <strong>No card definitions yet</strong>
                 <p>Create a draft to begin the catalogue.</p>
               </div>
             ) : null}
             {cards.length > 0 && visibleCards.length === 0 ? (
-              <div className="author-empty author-empty--compact">
+              <div className="author-empty author-empty--compact state-message state-message--empty">
+                <StateIcon tone="empty" />
                 <strong>No cards match</strong>
                 <p>Adjust the catalogue filters.</p>
               </div>
@@ -557,7 +563,11 @@ function CatalogueWelcome({
 
 function MissingRecord({ backPath, kind }: { backPath: string; kind: string }) {
   return (
-    <section className="author-state author-state--error" role="alert">
+    <section
+      className="author-state author-state--error state-message state-message--error"
+      role="alert"
+    >
+      <StateIcon tone="error" />
       <strong>This {kind} is not in the loaded catalogue.</strong>
       <p>It may have been removed or the address may be incorrect.</p>
       <Link className="button button--quiet" href={backPath}>

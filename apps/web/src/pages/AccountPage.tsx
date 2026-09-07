@@ -422,7 +422,7 @@ function DatabaseRecovery({
       ) : null}
       {state === 'unavailable' ? (
         <p
-          className="account-action-card__message account-inline-error"
+          className="account-action-card__message account-inline-error state-message state-message--error"
           role="alert"
         >
           Auth0 password recovery could not open. Check your connection and try

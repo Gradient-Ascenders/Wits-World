@@ -1,10 +1,7 @@
+import { StateIcon } from '../components/StatusMessage';
+import { Skeleton } from '../components/LoadingState';
 import { useAuth0 } from '@auth0/auth0-react';
-import {
-  MagnifyingGlass,
-  SlidersHorizontal,
-  X,
-  WarningCircle,
-} from '@phosphor-icons/react';
+import { MagnifyingGlass, SlidersHorizontal, X } from '@phosphor-icons/react';
 import { createPortal } from 'react-dom';
 import {
   useCallback,
@@ -319,15 +316,15 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
       </header>
 
       {collection.status === 'loading' ? (
-        <section aria-live="polite" className="collection-state" role="status">
+        <section
+          aria-live="polite"
+          className="collection-state state-message state-loading"
+          role="status"
+        >
           <p className="eyebrow">Collection</p>
           <h2>Loading your cards</h2>
           <p>Your collection will appear here shortly.</p>
-          <div aria-hidden="true" className="collection-loading-grid">
-            {Array.from({ length: 6 }, (_, index) => (
-              <span key={index} />
-            ))}
-          </div>
+          <Skeleton layout="cards" />
         </section>
       ) : null}
 
@@ -413,10 +410,15 @@ function StarterSelector({
       </p>
 
       {optionsState.status === 'idle' || optionsState.status === 'loading' ? (
-        <div aria-live="polite" className="starter-options-state" role="status">
+        <div
+          aria-live="polite"
+          className="starter-options-state state-message state-loading"
+          role="status"
+        >
           <p className="eyebrow">Starter packages</p>
           <h2>Loading your choices</h2>
           <p>Reading the current starter packages from Wits World…</p>
+          <Skeleton />
         </div>
       ) : null}
 
@@ -624,7 +626,11 @@ function StarterOptionsError({
   const isAuthorization = error.failure === 'authorization';
 
   return (
-    <div className="starter-options-state" role="alert">
+    <div
+      className="starter-options-state state-message state-message--error"
+      role="alert"
+    >
+      <StateIcon tone="error" />
       <p className="eyebrow">Starter packages unavailable</p>
       <h2>
         {isAuthorization
@@ -659,7 +665,11 @@ function StarterError({
 > & { error: CardApiError }) {
   if (error.failure === 'starter-already-claimed') {
     return (
-      <div className="starter-selector__error" role="alert">
+      <div
+        className="starter-selector__error state-message state-message--error"
+        role="alert"
+      >
+        <StateIcon tone="error" />
         <p>
           <strong>Your starter was already chosen.</strong> Your original choice
           remains authoritative, so no second set was created.
@@ -677,7 +687,11 @@ function StarterError({
 
   if (error.failure === 'authorization') {
     return (
-      <div className="starter-selector__error" role="alert">
+      <div
+        className="starter-selector__error state-message state-message--error"
+        role="alert"
+      >
+        <StateIcon tone="error" />
         <p>
           <strong>Your session expired before the choice was saved.</strong>{' '}
           Sign in again, then return here to choose your starter.
@@ -695,7 +709,11 @@ function StarterError({
   }
 
   return (
-    <div className="starter-selector__error" role="alert">
+    <div
+      className="starter-selector__error state-message state-message--error"
+      role="alert"
+    >
+      <StateIcon tone="error" />
       <p>
         <strong>
           {error.failure === 'starter-unavailable'
@@ -918,8 +936,8 @@ function CollectionGrid({
       </div>
 
       {visibleGroups.length === 0 ? (
-        <div className="collection-gallery__empty">
-          <MagnifyingGlass size={32} aria-hidden="true" />
+        <div className="collection-gallery__empty state-message state-message--empty">
+          <StateIcon tone="empty" />
           <h3>No cards match these filters</h3>
           <p>Adjust the search, category, or rarity to see more cards.</p>
           <button
@@ -1165,8 +1183,11 @@ function CollectionErrorState({
   const isAuthorization = error.failure === 'authorization';
 
   return (
-    <section className="collection-state" role="alert">
-      <WarningCircle size={32} aria-hidden="true" />
+    <section
+      className="collection-state state-message state-message--error"
+      role="alert"
+    >
+      <StateIcon tone="error" />
       <p className="eyebrow">Collection unavailable</p>
       <h2>
         {isAuthorization

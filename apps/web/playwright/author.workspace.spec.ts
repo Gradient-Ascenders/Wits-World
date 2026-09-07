@@ -1223,12 +1223,22 @@ test('author save controls follow Active times in the form', async ({
 
 test('author save state remains visible through edits, saving, failure and recovery', async ({
   page,
-}) => {
+}, info) => {
   await installAuthorApi(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/author/events/${EVENT_A}/edit`);
   const saveBar = page.locator('.author-save-bar');
   await expect(saveBar).toContainText('No unsaved changes');
+  await page.getByLabel('Event title').fill('');
+  await page.getByRole('button', { name: 'Save event' }).click();
+  await expect(page.getByLabel('Event title')).toHaveAttribute(
+    'aria-invalid',
+    'true',
+  );
+  await page.screenshot({
+    path: info.outputPath('validation.png'),
+    fullPage: true,
+  });
   await page.getByLabel('Event title').fill('Updated campus event');
   await expect(saveBar).toContainText('Unsaved changes');
   const endpoint = `**/author/events/${EVENT_A}`;
@@ -1248,9 +1258,17 @@ test('author save state remains visible through edits, saving, failure and recov
   await expect(page.getByLabel('Event title')).toHaveValue(
     'Updated campus event',
   );
+  await page.screenshot({
+    path: info.outputPath('save-failure.png'),
+    fullPage: true,
+  });
   await page.unroute(endpoint);
   await page.getByRole('button', { name: 'Save event' }).click();
   await expect(page.getByText('Event changes saved.')).toBeFocused();
+  await page.screenshot({
+    path: info.outputPath('save-success.png'),
+    fullPage: true,
+  });
   await expectNoHorizontalOverflow(page);
 });
 

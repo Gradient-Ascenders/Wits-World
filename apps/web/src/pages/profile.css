@@ -544,11 +544,6 @@
 
 .profile-page > section > .progression-inline-state {
   max-width: 44rem;
-  border-style: solid;
-  background:
-    linear-gradient(145deg, rgb(17 36 64 / 88%), rgb(8 20 38 / 96%)),
-    var(--colour-surface-default);
-  box-shadow: var(--shadow-panel);
 }
 
 .progression-inline-state h3,

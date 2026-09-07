@@ -1,3 +1,4 @@
+import { authorErrorDetail } from '../components/author/author-error-copy';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 
@@ -81,7 +82,7 @@ export default function AuthorConsolePage({
       if (!controller.signal.aborted) {
         setCardsError(
           error instanceof AuthorApiError
-            ? error.detail
+            ? authorErrorDetail(error)
             : 'The card catalogue could not be loaded.',
         );
         setCardsState('error');

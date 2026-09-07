@@ -1,6 +1,11 @@
+import { LoadingState } from '../components/LoadingState';
+import { StatusMessage } from '../components/StatusMessage';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useParams } from 'wouter';
-import { requestBrowserLocation } from '../browser-location';
+import {
+  BrowserLocationError,
+  requestBrowserLocation,
+} from '../browser-location';
 import { ChallengeQuestion } from '../components/challenge/ChallengeQuestion';
 import { OrderingChallengeQuestion } from '../components/challenge/OrderingChallengeQuestion';
 import { formatChallengeTime } from '../challenge-deadline';
@@ -71,7 +76,11 @@ export function OfflineExplorePage() {
       navigate(`/offline-attempts/${attempt.clientAttemptId}`);
     } catch (failure) {
       setMessage(
-        failure instanceof Error ? failure.message : 'Location is unavailable.',
+        failure instanceof BrowserLocationError
+          ? offlineLocationMessage(failure)
+          : failure instanceof Error && !(failure instanceof DOMException)
+            ? failure.message
+            : 'This saved event could not open. Try again or reconnect to play online.',
       );
     } finally {
       setBusy(false);
@@ -84,9 +93,13 @@ export function OfflineExplorePage() {
         Answers stay on this device until the server can check them. Reconnect
         within 12 hours of completing a challenge.
       </p>
-      {(error || message) && <p role="alert">{error || message}</p>}
+      {(error || message) && (
+        <StatusMessage tone="error">{error || message}</StatusMessage>
+      )}
       {!state ? (
-        <p role="status">Loading saved events…</p>
+        error ? null : (
+          <LoadingState label="Loading saved events…" />
+        )
       ) : !state.session ? (
         <p>
           Sign in while connected to prepare offline events on this device.{' '}
@@ -287,7 +300,7 @@ export function OfflineAttemptPage() {
       refresh();
     } catch (failure) {
       setMessage(
-        failure instanceof Error
+        failure instanceof Error && !(failure instanceof DOMException)
           ? failure.message
           : 'Could not save this answer.',
       );
@@ -295,7 +308,7 @@ export function OfflineAttemptPage() {
       setBusy(false);
     }
   }
-  if (!state && !error) return <p role="status">Loading saved attempt…</p>;
+  if (!state && !error) return <LoadingState label="Loading saved attempt…" />;
   if (!attempt)
     return (
       <section className="challenge-page">
@@ -415,4 +428,19 @@ function rejectionMessage(code: string) {
   )
     return 'The server could not verify your location or movement. No reward was issued.';
   return 'The server could not validate this saved attempt. No reward was issued.';
+}
+
+function offlineLocationMessage(error: BrowserLocationError): string {
+  switch (error.failure) {
+    case 'denied':
+      return 'Location access is denied. Allow location access in your browser settings to start a saved event.';
+    case 'timeout':
+      return 'Your reported location took too long. Move to an open area and try again.';
+    case 'unsupported':
+      return 'This browser cannot provide location. Use a browser with location support to start a saved event.';
+    case 'blocked':
+      return 'Location is blocked in this browser. Check the site permissions before trying again.';
+    case 'unavailable':
+      return 'Your reported location is unavailable. Check that location services are on and try again.';
+  }
 }

@@ -1,3 +1,5 @@
+import { StateIcon } from '../StatusMessage';
+import { LoadingState } from '../LoadingState';
 import {
   Archive,
   ArrowCircleRight,
@@ -51,11 +53,7 @@ interface TrailListProps {
 
 export function TrailList({ onOpenTrail, onRetry, state }: TrailListProps) {
   if (state.status === 'idle' || state.status === 'loading') {
-    return (
-      <p aria-live="polite" className="event-list__state" role="status">
-        Loading trails and progress…
-      </p>
-    );
+    return <LoadingState label="Loading trails and progress…" />;
   }
 
   if (state.status === 'error') {
@@ -136,9 +134,7 @@ export function TrailDetail({ onOpenEvent, onRetry, state }: TrailDetailProps) {
     return (
       <article className="trail-detail trail-detail--state">
         <h2 tabIndex={-1}>Trail details</h2>
-        <p aria-live="polite" className="event-list__state" role="status">
-          Loading ordered trail…
-        </p>
+        <LoadingState label="Loading ordered trail…" />
       </article>
     );
   }
@@ -491,7 +487,11 @@ function DiscoveryError({
   title: string;
 }) {
   return (
-    <div className="event-list__state" role="alert">
+    <div
+      className="event-list__state state-message state-message--error"
+      role="alert"
+    >
+      <StateIcon tone="error" />
       <strong>{title}</strong>
       <p>{detail}</p>
       <button className="button" onClick={onRetry} type="button">

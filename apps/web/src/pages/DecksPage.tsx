@@ -1,3 +1,6 @@
+import { StateIcon } from '../components/StatusMessage';
+import { confirmAction } from '../components/AppToaster';
+import { Skeleton } from '../components/LoadingState';
 import { useAuth0 } from '@auth0/auth0-react';
 import {
   CaretDown,
@@ -261,7 +264,7 @@ export default function DecksPage({
             : current,
         );
         setDraft((current) => (current === draft ? null : current));
-        setNotice(
+        confirmAction(
           draft.mode === 'create'
             ? `${saved.name} was created.`
             : `${saved.name} was saved.`,
@@ -312,7 +315,7 @@ export default function DecksPage({
               }
             : current,
         );
-        setNotice(`${selected.name} is now your active deck.`);
+        confirmAction(`${selected.name} is now your active deck.`);
         queueMicrotask(() => selectedDeckHeading.current?.focus());
       }
     } catch (error) {
@@ -360,7 +363,7 @@ export default function DecksPage({
           current?.deckId === deck.deckId ? null : current,
         );
         setDeleteConfirmation(null);
-        setNotice(
+        confirmAction(
           `${deck.name} was deleted. Your owned cards were not removed.`,
         );
         queueMicrotask(() => deckListHeading.current?.focus());
@@ -426,10 +429,15 @@ export default function DecksPage({
     return (
       <div className="decks-page">
         <PageHeader />
-        <section aria-live="polite" className="deck-state" role="status">
+        <section
+          aria-live="polite"
+          className="deck-state state-message state-loading"
+          role="status"
+        >
           <p className="eyebrow">Saved decks</p>
           <h2>Loading your decks and collection</h2>
-          <p>Checking your server-saved decks and owned card copies…</p>
+          <p>Loading your saved decks and cards…</p>
+          <Skeleton layout="cards" />
         </section>
       </div>
     );
@@ -441,7 +449,11 @@ export default function DecksPage({
     return (
       <div className="decks-page">
         <PageHeader />
-        <section className="deck-state" role="alert">
+        <section
+          className="deck-state state-message state-message--error"
+          role="alert"
+        >
+          <StateIcon tone="error" />
           <p className="eyebrow">Decks unavailable</p>
           <h2>
             {isAuthorization
@@ -451,7 +463,7 @@ export default function DecksPage({
           <p>
             {isAuthorization
               ? 'Sign in again to securely load your saved decks and owned cards.'
-              : 'Check your connection, then reload the authoritative deck and collection state.'}
+              : 'Check your connection, then try loading your saved decks and cards again.'}
           </p>
           <button
             className="button"
@@ -541,7 +553,8 @@ export default function DecksPage({
         </div>
 
         {state.decks.length === 0 ? (
-          <div className="deck-empty">
+          <div className="deck-empty state-message state-message--empty">
+            <StateIcon tone="empty" />
             <h3>No saved decks yet</h3>
             <p>
               Build your first deck from the card copies in your collection.
@@ -1184,7 +1197,7 @@ function DeckEditor({
                           <small>
                             {card || fallback
                               ? `${titleCase((card ?? fallback)!.category)} · ${titleCase((card ?? fallback)!.rarity)}`
-                              : 'No longer returned by the collection API'}
+                              : 'This card is no longer available in your collection'}
                           </small>
                         </span>
                         <button
@@ -1264,12 +1277,14 @@ function DeckEditor({
             </div>
 
             {groupedCards.length === 0 ? (
-              <div className="deck-empty">
+              <div className="deck-empty state-message state-message--empty">
+                <StateIcon tone="empty" />
                 <h4>Your collection is empty</h4>
                 <p>Claim or earn cards before building a saved deck.</p>
               </div>
             ) : filteredCards.length === 0 ? (
-              <div className="deck-empty">
+              <div className="deck-empty state-message state-message--empty">
+                <StateIcon tone="empty" />
                 <h4>No matching cards</h4>
                 <p>Try another name or clear your filters.</p>
                 <button
@@ -1614,7 +1629,13 @@ const DeckActionError = forwardRef<
   };
 
   return (
-    <div className="deck-action-error" ref={ref} role="alert" tabIndex={-1}>
+    <div
+      className="deck-action-error state-message state-message--error"
+      ref={ref}
+      role="alert"
+      tabIndex={-1}
+    >
+      <StateIcon tone="error" />
       <strong>Deck change not saved.</strong> {messages[error.failure]}
       {error.options.requestId ? (
         <small> Support reference: {error.options.requestId}</small>
@@ -1654,7 +1675,13 @@ const MatchStartError = forwardRef<
         : 'The match could not be opened after a bounded active-match check. Check your connection and try again; Wits World will reconcile before creating anything.';
 
   return (
-    <div className="deck-action-error" ref={ref} role="alert" tabIndex={-1}>
+    <div
+      className="deck-action-error state-message state-message--error"
+      ref={ref}
+      role="alert"
+      tabIndex={-1}
+    >
+      <StateIcon tone="error" />
       <strong>CPU match not opened.</strong> {message}
       {error.options.requestId ? (
         <small> Support reference: {error.options.requestId}</small>

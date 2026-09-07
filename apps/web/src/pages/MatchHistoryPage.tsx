@@ -1,3 +1,5 @@
+import { StateIcon } from '../components/StatusMessage';
+import { Skeleton } from '../components/LoadingState';
 import { useAuth0 } from '@auth0/auth0-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
@@ -72,10 +74,15 @@ export default function MatchHistoryPage({
   if (state.status === 'loading') {
     return (
       <div className="matches-page">
-        <section aria-live="polite" className="match-state-panel" role="status">
+        <section
+          aria-live="polite"
+          className="match-state-panel state-message state-loading"
+          role="status"
+        >
           <p className="eyebrow">Match history</p>
           <h1>Loading your completed matches</h1>
           <p>Loading your saved CPU battles…</p>
+          <Skeleton layout="rows" />
         </section>
       </div>
     );
@@ -123,7 +130,11 @@ export default function MatchHistoryPage({
       </div>
 
       {state.matches.length === 0 ? (
-        <section className="match-empty" aria-labelledby="empty-history-title">
+        <section
+          className="match-empty state-message state-message--empty"
+          aria-labelledby="empty-history-title"
+        >
+          <StateIcon tone="empty" />
           <h2 id="empty-history-title">No completed matches yet</h2>
           <p>Finish a CPU battle to see your result here.</p>
         </section>

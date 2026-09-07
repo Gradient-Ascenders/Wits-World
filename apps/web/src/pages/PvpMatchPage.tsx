@@ -1,3 +1,5 @@
+import { StateIcon } from '../components/StatusMessage';
+import { Skeleton } from '../components/LoadingState';
 import { ArrowLeft } from '@phosphor-icons/react';
 import { useAuth0 } from '@auth0/auth0-react';
 import {
@@ -482,13 +484,18 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   if (requestStatus === 'loading' && !match) {
     return (
       <div className="matches-page">
-        <section aria-live="polite" className="match-state-panel" role="status">
+        <section
+          aria-live="polite"
+          className="match-state-panel state-message state-loading"
+          role="status"
+        >
           <p className="eyebrow">Asynchronous PvP</p>
           <h1>Loading saved PvP state</h1>
           <p>
             Retrieving the current actor, deadline, revealed cards, and legal
             actions…
           </p>
+          <Skeleton layout="battle" />
         </section>
       </div>
     );
@@ -497,7 +504,11 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   if (!match && error) {
     return (
       <div className="matches-page">
-        <section className="match-state-panel" role="alert">
+        <section
+          className="match-state-panel state-message state-message--error"
+          role="alert"
+        >
+          <StateIcon tone="error" />
           <p className="eyebrow">PvP connection</p>
           <h1 ref={phaseHeading} tabIndex={-1}>
             PvP match could not load
@@ -594,21 +605,26 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           </span>
           <button
             className="button button--quiet"
+            disabled={requestStatus === 'reconciling'}
+            aria-busy={requestStatus === 'reconciling'}
             onClick={() => void refreshMatch({ announce: true })}
             type="button"
           >
-            Retry now
+            {requestStatus === 'reconciling'
+              ? 'Checking updates…'
+              : 'Retry now'}
           </button>
         </div>
       ) : null}
 
       {error ? (
         <div
-          className="match-inline-alert"
+          className="match-inline-alert state-message state-message--error"
           ref={alert}
           role="alert"
           tabIndex={-1}
         >
+          <StateIcon tone="error" />
           <strong>
             {errorContext === 'resignation'
               ? 'Forfeit not confirmed.'

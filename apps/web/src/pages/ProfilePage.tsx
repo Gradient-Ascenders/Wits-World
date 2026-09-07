@@ -1,3 +1,5 @@
+import { StateIcon } from '../components/StatusMessage';
+import { LoadingState } from '../components/LoadingState';
 import { useAuth0 } from '@auth0/auth0-react';
 import {
   CheckIcon,
@@ -241,11 +243,12 @@ export default function ProfilePage({ apiBaseUrl }: ProfilePageProps) {
         {profile.status === 'loading' ? (
           <ProgressionLoadingState label="Loading achievement progress" />
         ) : profile.status === 'error' ? (
-          <p className="progression-dependent-state">
+          <p className="progression-dependent-state state-message state-message--empty">
             Achievement progress will appear when your profile is available.
           </p>
         ) : profile.data.achievements.length === 0 ? (
-          <div className="progression-empty-state">
+          <div className="progression-empty-state state-message state-message--empty">
+            <StateIcon tone="empty" />
             <h3>No achievements are available yet</h3>
             <p>
               Your progress is saved here. Explore campus to find your next
@@ -436,7 +439,8 @@ function StandingsResults({
   return (
     <div className="standings-results">
       {standings.entries.length === 0 ? (
-        <div className="progression-empty-state standings-empty-state">
+        <div className="progression-empty-state standings-empty-state state-message state-message--empty">
+          <StateIcon tone="empty" />
           <h3>No players appear on this page</h3>
           <p>
             Use the available page controls or choose another standings period.
@@ -571,16 +575,7 @@ function StandingRowContent({ entry }: { entry: StandingsEntry }) {
 }
 
 function ProgressionLoadingState({ label }: { label: string }) {
-  return (
-    <div
-      aria-live="polite"
-      className="progression-inline-state progression-inline-state--loading"
-      role="status"
-    >
-      <span aria-hidden="true" className="progression-loading-mark" />
-      <p>{label}…</p>
-    </div>
-  );
+  return <LoadingState label={`${label}…`} />;
 }
 
 function ProgressionErrorState({
@@ -615,13 +610,17 @@ function ProgressionErrorState({
       ? 'The server did not return an active player profile. Deleted and pending-deletion accounts remain private.'
       : 'Only active players receive a live rank. Deleted and pending-deletion accounts do not appear in standings.'
     : authorization
-      ? 'Sign in again to securely reload your server-recorded progression.'
+      ? 'Sign in again to load your progression.'
       : malformed
-        ? 'The server response did not match the privacy-safe progression contract, so Wits Quest did not show partial or guessed values.'
+        ? 'Your progression could not be displayed. Try loading it again.'
         : 'Check your connection and try again. Your points, rank, streaks, and achievements remain unchanged on the server.';
 
   return (
-    <div className="progression-inline-state" role="alert">
+    <div
+      className="progression-inline-state state-message state-message--error"
+      role="alert"
+    >
+      <StateIcon tone="error" />
       <h3>{title}</h3>
       <p>{detail}</p>
       {error.requestId ? (

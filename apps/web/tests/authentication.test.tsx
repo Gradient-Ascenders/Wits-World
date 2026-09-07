@@ -424,9 +424,10 @@ describe('player authentication', () => {
         );
       }
     }
-    expect(
-      screen.getAllByRole('link', { name: 'Explore' })[0],
-    ).toHaveAttribute('href', '/explore');
+    expect(screen.getAllByRole('link', { name: 'Explore' })[0]).toHaveAttribute(
+      'href',
+      '/explore',
+    );
   });
 
   it('closes the account disclosure with Escape and restores trigger focus', async () => {
@@ -1124,7 +1125,9 @@ describe('player authentication', () => {
     );
 
     expect(
-      await screen.findByText(/keep the API terminal running/i),
+      await screen.findByText(
+        'We could not load your player account. Check your connection and try again.',
+      ),
     ).toBeVisible();
     expect(fetchMock).toHaveBeenCalledOnce();
 

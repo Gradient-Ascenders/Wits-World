@@ -1,3 +1,6 @@
+import { authorErrorDetail } from './author-error-copy';
+import { StateIcon } from '../StatusMessage';
+import { LoadingState } from '../LoadingState';
 import { ArrowLeftIcon, CaretRightIcon } from '@phosphor-icons/react';
 import { AuthorSaveBar } from './AuthorSaveBar';
 import {
@@ -129,7 +132,7 @@ export function EventWorkspace({
       if (controller.signal.aborted) return;
       setLoadError(
         error instanceof AuthorApiError
-          ? error.detail
+          ? authorErrorDetail(error)
           : 'Events could not be loaded.',
       );
       setState('error');
@@ -292,7 +295,7 @@ export function EventWorkspace({
       </header>
 
       {state !== 'ready' ? (
-        <p className="sr-only" id="event-create-unavailable">
+        <p className="author-create-guidance" id="event-create-unavailable">
           Load the event catalogue before creating an event.
         </p>
       ) : null}
@@ -300,13 +303,15 @@ export function EventWorkspace({
       <AuthorFeedback message={message} refObject={feedbackRef} />
 
       {state === 'loading' ? (
-        <p className="author-state" role="status">
-          Loading authored events…
-        </p>
+        <LoadingState label="Loading authored events…" />
       ) : null}
 
       {state === 'error' ? (
-        <div className="author-state author-state--error" role="alert">
+        <div
+          className="author-state author-state--error state-message state-message--error"
+          role="alert"
+        >
+          <StateIcon tone="error" />
           <strong>Events are unavailable.</strong>
           <p>{loadError}</p>
           <button
@@ -344,13 +349,15 @@ export function EventWorkspace({
               {events.length === 1 ? 'event' : 'events'}
             </p>
             {events.length === 0 ? (
-              <div className="author-empty author-empty--compact">
+              <div className="author-empty author-empty--compact state-message state-message--empty">
+                <StateIcon tone="empty" />
                 <strong>No authored events yet</strong>
                 <p>Create a draft to begin the publication workflow.</p>
               </div>
             ) : null}
             {events.length > 0 && visibleEvents.length === 0 ? (
-              <div className="author-empty author-empty--compact">
+              <div className="author-empty author-empty--compact state-message state-message--empty">
+                <StateIcon tone="empty" />
                 <strong>No events match</strong>
                 <p>Adjust the event filters.</p>
               </div>
@@ -550,7 +557,11 @@ function EventCatalogueWelcome({ count }: { count: number }) {
 
 function MissingEvent() {
   return (
-    <section className="author-state author-state--error" role="alert">
+    <section
+      className="author-state author-state--error state-message state-message--error"
+      role="alert"
+    >
+      <StateIcon tone="error" />
       <strong>This event is not in the loaded catalogue.</strong>
       <p>It may have been removed or the address may be incorrect.</p>
       <Link className="button button--quiet" href={authorPaths.events}>
@@ -1871,12 +1882,14 @@ function ChallengeWorkspace({
           </div>
 
           {state === 'loading' ? (
-            <p className="author-state" role="status">
-              Loading event challenges…
-            </p>
+            <LoadingState label="Loading event challenges…" />
           ) : null}
           {state === 'error' ? (
-            <div className="author-state author-state--error" role="alert">
+            <div
+              className="author-state author-state--error state-message state-message--error"
+              role="alert"
+            >
+              <StateIcon tone="error" />
               <strong>Challenges are unavailable.</strong>
               <button
                 className="button button--quiet"
@@ -2054,9 +2067,7 @@ function ChallengeWorkspace({
             </div>
           ) : null}
           {state === 'loading' || questionsState === 'loading' ? (
-            <p className="author-state" role="status">
-              Loading challenge questions…
-            </p>
+            <LoadingState label="Loading challenge questions…" />
           ) : null}
           {state === 'ready' && !selected ? (
             <div className="author-state">
@@ -2071,9 +2082,13 @@ function ChallengeWorkspace({
             </div>
           ) : null}
           {questionsState === 'error' ? (
-            <div className="author-state author-state--error" role="alert">
+            <div
+              className="author-state author-state--error state-message state-message--error"
+              role="alert"
+            >
+              <StateIcon tone="error" />
               <strong>Questions are unavailable.</strong>
-              <p>{questionsError?.detail}</p>
+              <p>{questionsError ? authorErrorDetail(questionsError) : null}</p>
               <button
                 className="button button--quiet"
                 onClick={() => void loadQuestions()}
@@ -2276,7 +2291,8 @@ function QuestionWorkspace({
           )}
         </div>
         {questions.length === 0 ? (
-          <div className="author-empty author-empty--compact">
+          <div className="author-empty author-empty--compact state-message state-message--empty">
+            <StateIcon tone="empty" />
             <strong>No questions yet</strong>
             <p>
               A published challenge needs at least five published questions.
@@ -2393,7 +2409,11 @@ function QuestionWorkspace({
             />
           )
         ) : (
-          <section className="author-state author-state--error" role="alert">
+          <section
+            className="author-state author-state--error state-message state-message--error"
+            role="alert"
+          >
+            <StateIcon tone="error" />
             <strong>This question is not in the loaded challenge.</strong>
             <Link
               className="button button--quiet"

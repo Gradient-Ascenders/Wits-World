@@ -1,3 +1,5 @@
+import { StateIcon } from '../components/StatusMessage';
+import { Skeleton } from '../components/LoadingState';
 import {
   ArrowLeft,
   ArrowRight,
@@ -295,13 +297,15 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   if (requestStatus === 'loading' && match === null) {
     return (
       <div className="matches-page">
-        <section aria-live="polite" className="match-state-panel" role="status">
+        <section
+          aria-live="polite"
+          className="match-state-panel state-message state-loading"
+          role="status"
+        >
           <p className="eyebrow">CPU battle</p>
           <h1>Loading saved match state</h1>
-          <p>
-            Retrieving the authoritative version, legal actions, and revealed
-            cards…
-          </p>
+          <p>Restoring your cards and current turn…</p>
+          <Skeleton layout="battle" />
         </section>
       </div>
     );
@@ -371,11 +375,12 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
       {error ? (
         <section
-          className="match-inline-alert"
+          className="match-inline-alert state-message state-message--error"
           ref={alert}
           role="alert"
           tabIndex={-1}
         >
+          <StateIcon tone="error" />
           <strong>Action not applied.</strong>{' '}
           {error.failure === 'authorization'
             ? 'Your session expired. Sign in again before continuing.'

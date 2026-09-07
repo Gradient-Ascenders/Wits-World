@@ -1,3 +1,6 @@
+import { authorErrorDetail } from './author-error-copy';
+import { StateIcon } from '../StatusMessage';
+import { LoadingState } from '../LoadingState';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { Link } from 'wouter';
 
@@ -115,7 +118,7 @@ export function AnalyticsWorkspace({ apiBaseUrl, getAccessToken }: Props) {
         if (!signal.aborted) {
           setError(
             caught instanceof AuthorApiError
-              ? caught.detail
+              ? authorErrorDetail(caught)
               : 'Question performance could not be loaded.',
           );
           setState('error');
@@ -264,10 +267,13 @@ export function AnalyticsWorkspace({ apiBaseUrl, getAccessToken }: Props) {
       </form>
 
       {state === 'loading' ? (
-        <p role="status">Loading question performance…</p>
+        <LoadingState label="Loading question performance…" />
       ) : null}
       {state === 'error' ? (
-        <div className="author-feedback author-feedback--error" role="alert">
+        <div
+          className="author-feedback state-message state-message--error"
+          role="alert"
+        >
           <p>{error}</p>
           <button
             className="button button--quiet"
@@ -279,7 +285,8 @@ export function AnalyticsWorkspace({ apiBaseUrl, getAccessToken }: Props) {
         </div>
       ) : null}
       {state === 'ready' && result?.totalItems === 0 ? (
-        <div className="author-empty-state">
+        <div className="author-empty-state state-message state-message--empty">
+          <StateIcon tone="empty" />
           <h3>No completed question outcomes</h3>
           <p>Try a wider date range or remove a filter.</p>
         </div>

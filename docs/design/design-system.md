@@ -488,6 +488,32 @@ unavailable, and permission-required states where relevant.
 
 Preserve layout during state changes where practical.
 
+### Feedback and recovery
+
+Use the shared `LoadingState`, `Skeleton`, `StatusMessage`, and `StateIcon`
+primitives in `apps/web/src/components`, with `styles/states.css` owning their
+visual treatment. Existing route-specific recovery regions may use the same
+`state-message` semantic classes while retaining their headings, focus targets,
+and actions.
+
+- Use static row, card, or battle skeletons for substantial initial loading;
+  use compact labelled loading for local actions. Skeletons are decorative and
+  hidden from assistive technology. Only the compact spinner rotates, with a
+  reduced-motion alternative.
+- Keep empty and filtered-out results neutral. Distinguish permission requirements
+  from failures using text and a small semantic icon. Keep unavailable actions'
+  useful explanations visible.
+- Use a restrained danger edge for errors, readable bounded copy, and the existing
+  real retry action. Keep useful confirmed content visible during local failures.
+- Keep validation and unsuccessful saves beside the affected form. Preserve typed
+  domain guidance; hide infrastructure diagnostics from normal users.
+- Use the shared Sonner `AppToaster` for brief routine confirmations. Replace the
+  previous confirmation rather than stacking; never duplicate inline feedback or
+  move decisions and recovery information into disappearing notifications.
+- On phones, use compact padding and keep toast dismissal touch-sized and above
+  bottom navigation. On desktop, anchor feedback to its content region and bound
+  prose width. Preserve focus and reduced-motion behaviour.
+
 ### Deck editing
 
 Keep the viewed deck distinct from the deck active for matches. On mobile and
@@ -1010,3 +1036,5 @@ Update this declaration when other AI tools materially review, edit, or generate
 parts of this document.
 
 The battle guidance was added with assistance from Codex-CLI[GPT-6].
+
+The shared feedback guidance was added with assistance from Codex-CLI[GPT-6].

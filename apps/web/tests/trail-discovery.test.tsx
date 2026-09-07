@@ -228,9 +228,8 @@ describe('trail discovery presentation', () => {
         state={{ status: 'loading' }}
       />,
     );
-    expect(screen.getByText('Loading trails and progress…')).toHaveAttribute(
-      'role',
-      'status',
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Loading trails and progress…',
     );
 
     view.rerender(

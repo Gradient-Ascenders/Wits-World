@@ -1,3 +1,5 @@
+import { StateIcon } from '../components/StatusMessage';
+import { Skeleton } from '../components/LoadingState';
 import { useAuth0 } from '@auth0/auth0-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'wouter';
@@ -173,10 +175,15 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   if (state.status === 'loading') {
     return (
       <div className="matches-page">
-        <section aria-live="polite" className="match-state-panel" role="status">
+        <section
+          aria-live="polite"
+          className="match-state-panel state-message state-loading"
+          role="status"
+        >
           <p className="eyebrow">CPU battle</p>
           <h1>Checking for an active match</h1>
           <p>Loading your current battle and selected deck…</p>
+          <Skeleton layout="rows" />
         </section>
       </div>
     );
@@ -354,19 +361,29 @@ function RecentResults({ state }: { state: RecentResultsState }) {
       </div>
 
       {state.status === 'loading' ? (
-        <div aria-live="polite" className="recent-results__empty" role="status">
+        <div
+          aria-live="polite"
+          className="recent-results__empty state-message state-loading"
+          role="status"
+        >
           <h3>Loading recent results</h3>
           <p>Loading your recent CPU battles…</p>
+          <Skeleton />
         </div>
       ) : state.status === 'unavailable' ? (
-        <div className="recent-results__empty" role="status">
+        <div
+          className="recent-results__empty state-message state-message--info"
+          role="status"
+        >
+          <StateIcon tone="info" />
           <h3>Recent results unavailable</h3>
           <p>
             The full archive can be retried without interrupting this match.
           </p>
         </div>
       ) : state.matches.length === 0 ? (
-        <div className="recent-results__empty">
+        <div className="recent-results__empty state-message state-message--empty">
+          <StateIcon tone="empty" />
           <h3>No completed battles yet</h3>
           <p>Finish a CPU battle to see your result here.</p>
         </div>

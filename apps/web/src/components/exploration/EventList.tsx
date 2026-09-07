@@ -1,3 +1,5 @@
+import { StatusMessage } from '../StatusMessage';
+import { LoadingState } from '../LoadingState';
 import type { PlayerEventAvailability } from '../../api/events';
 
 export interface EventPresentation {
@@ -70,31 +72,27 @@ export function EventList({
   selectedEventId,
 }: EventListProps) {
   if (discovery.status === 'loading') {
-    return (
-      <p aria-live="polite" className="event-list__state" role="status">
-        Loading published events…
-      </p>
-    );
+    return <LoadingState label="Loading published events…" />;
   }
 
   if (discovery.status === 'error') {
     return (
-      <div className="event-list__state" role="alert">
+      <StatusMessage tone="error" className="event-list__state">
         <strong>Events are unavailable right now.</strong>
         <p>{discovery.message}</p>
         <button className="button" onClick={onRetry} type="button">
           Try loading events again
         </button>
-      </div>
+      </StatusMessage>
     );
   }
 
   if (discovery.status === 'empty' || discovery.events.length === 0) {
     return (
-      <div className="event-list__state">
+      <StatusMessage tone="empty" className="event-list__state">
         <strong>No published events are available.</strong>
         <p>Check again later.</p>
-      </div>
+      </StatusMessage>
     );
   }
 

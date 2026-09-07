@@ -1011,7 +1011,11 @@ describe('Basic author console', () => {
     renderAuthorRoute(authorPaths.events);
 
     expect(await screen.findByText('Events are unavailable.')).toBeVisible();
-    expect(screen.getByText('Try again later.')).toBeVisible();
+    expect(
+      screen.getByText(
+        'The service could not complete this request. Check your connection and try again. No content change was confirmed.',
+      ),
+    ).toBeVisible();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
   });
 
@@ -1092,7 +1096,11 @@ describe('Basic author console', () => {
       await pending.promise;
     });
 
-    expect(await screen.findByText('Event B failed to load.')).toBeVisible();
+    expect(
+      await screen.findByText(
+        'The service could not complete this request. Check your connection and try again. No content change was confirmed.',
+      ),
+    ).toBeVisible();
     expect(
       screen.queryByRole('link', { name: /Question 1/ }),
     ).not.toBeInTheDocument();
@@ -1180,7 +1188,11 @@ describe('Basic author console', () => {
     });
 
     expect(await screen.findByText('Questions are unavailable.')).toBeVisible();
-    expect(screen.getByText('Challenge B failed to load.')).toBeVisible();
+    expect(
+      screen.getByText(
+        'The service could not complete this request. Check your connection and try again. No content change was confirmed.',
+      ),
+    ).toBeVisible();
     expect(
       screen.queryByRole('link', { name: /Question 1/ }),
     ).not.toBeInTheDocument();
@@ -2169,7 +2181,8 @@ describe('Basic author console', () => {
     });
 
     const feedback = await screen.findByRole('alert');
-    expect(feedback).toHaveTextContent('Challenge creation failed.');
+    expect(feedback).toHaveTextContent('No content change was confirmed.');
+    expect(feedback).not.toHaveTextContent('Challenge creation failed.');
     expect(feedback).toHaveFocus();
   });
 

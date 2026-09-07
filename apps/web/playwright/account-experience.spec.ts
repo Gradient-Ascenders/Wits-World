@@ -156,6 +156,13 @@ async function mockAccountApi(
       return;
     }
 
+    if (url.pathname.endsWith('/events')) {
+      await route.fulfill({
+        json: { events: [], requestId: 'browser-offline-discovery' },
+      });
+      return;
+    }
+
     if (url.pathname.endsWith('/auth/account-deletion')) {
       await route.fulfill({
         contentType: 'application/json',

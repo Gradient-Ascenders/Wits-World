@@ -1,3 +1,4 @@
+import { StateIcon } from '../StatusMessage';
 import { useCallback, type ReactNode } from 'react';
 
 import { useCurrentPlayer } from '../../auth/CurrentPlayerProvider';
@@ -14,7 +15,11 @@ export function AuthorRoute({ children }: AuthorRouteProps) {
 
   if (state.status === 'anonymous' || state.status === 'loading') {
     return (
-      <section aria-live="polite" className="auth-state" role="status">
+      <section
+        aria-live="polite"
+        className="auth-state state-message state-loading"
+        role="status"
+      >
         <p className="eyebrow">Author access</p>
         <h1>Checking author access</h1>
         <p>
@@ -26,7 +31,11 @@ export function AuthorRoute({ children }: AuthorRouteProps) {
 
   if (state.status === 'error') {
     return (
-      <section className="auth-state" role="alert">
+      <section
+        className="auth-state state-message state-message--error"
+        role="alert"
+      >
+        <StateIcon tone="error" />
         <p className="eyebrow">Author access</p>
         <h1 ref={focusHeading} tabIndex={-1}>
           Author access could not be checked
@@ -34,7 +43,7 @@ export function AuthorRoute({ children }: AuthorRouteProps) {
         <p>
           {state.failure === 'authorization'
             ? 'Your session could not be confirmed. Sign out and sign in again if retrying does not help.'
-            : 'The API is unavailable right now. Your content has not been changed.'}
+            : 'Author access is unavailable right now. Your content has not been changed.'}
         </p>
         <button className="button" onClick={reload} type="button">
           Check access again
@@ -45,15 +54,18 @@ export function AuthorRoute({ children }: AuthorRouteProps) {
 
   if (state.player.role !== 'author') {
     return (
-      <section className="auth-state" role="alert">
+      <section
+        className="auth-state state-message state-message--permission"
+        role="status"
+      >
+        <StateIcon tone="permission" />
         <p className="eyebrow">Author access</p>
         <h1 ref={focusHeading} tabIndex={-1}>
           Author permission is required
         </h1>
         <p>
-          This account is signed in as a Player. Author roles are assigned
-          outside the browser, and the API independently protects every author
-          operation.
+          This account has player access. An author role is needed to manage
+          campus content. You can still explore and play.
         </p>
         <a className="button button--link" href="/explore">
           Return to player exploration

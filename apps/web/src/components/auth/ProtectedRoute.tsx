@@ -1,3 +1,4 @@
+import { StateIcon } from '../StatusMessage';
 import { useAuth0 } from '@auth0/auth0-react';
 import { confirmOfflineSignOut } from '../../offline/store';
 import { useCallback, useState, type ReactNode } from 'react';
@@ -59,7 +60,11 @@ export function ProtectedRoute({
 
   if (isLoading) {
     return (
-      <section aria-live="polite" className="auth-state" role="status">
+      <section
+        aria-live="polite"
+        className="auth-state state-message state-loading"
+        role="status"
+      >
         <p className="eyebrow">Player access</p>
         <h1>Checking your sign-in status</h1>
         <p>Please wait while Wits World restores your session.</p>
@@ -69,7 +74,11 @@ export function ProtectedRoute({
 
   if (error || actionFailed) {
     return (
-      <section className="auth-state" role="alert">
+      <section
+        className="auth-state state-message state-message--error"
+        role="alert"
+      >
+        <StateIcon tone="error" />
         <p className="eyebrow">Player access</p>
         <h1>We could not complete sign-in</h1>
         <p>
@@ -103,7 +112,11 @@ export function ProtectedRoute({
 
   if (currentPlayer.status === 'loading') {
     return (
-      <section aria-live="polite" className="auth-state" role="status">
+      <section
+        aria-live="polite"
+        className="auth-state state-message state-loading"
+        role="status"
+      >
         <p className="eyebrow">Player access</p>
         <h1>Confirming your Wits World player</h1>
         <p>Protected player data remains hidden until this check completes.</p>
@@ -113,7 +126,11 @@ export function ProtectedRoute({
 
   if (currentPlayer.status !== 'ready') {
     return (
-      <section className="auth-state" role="alert">
+      <section
+        className="auth-state state-message state-message--error"
+        role="alert"
+      >
+        <StateIcon tone="error" />
         <p className="eyebrow">Player access</p>
         <h1 ref={focusHeading} tabIndex={-1}>
           Your player session could not be restored
@@ -128,7 +145,7 @@ export function ProtectedRoute({
               : currentPlayer.status === 'error' &&
                   currentPlayer.failure === 'identity_conflict'
                 ? 'This sign-in resolves to a Player Name that is already linked to another Wits World identity. Sign out, then sign in through the Auth0 domain configured for this environment.'
-                : 'The Wits World API could not be reached or did not return a valid player. When testing locally, keep the API terminal running and then retry.'}
+                : 'We could not load your player account. Check your connection and try again.'}
         </p>
         <button className="button" onClick={reload} type="button">
           Check session again

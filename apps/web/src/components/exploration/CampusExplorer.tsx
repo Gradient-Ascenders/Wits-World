@@ -1,3 +1,4 @@
+import { StateIcon } from '../StatusMessage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
@@ -683,7 +684,11 @@ export function CampusExplorer({
               discovery.status === 'ready' &&
               visibleEvents.length === 0 &&
               hasActiveFilters ? (
-                <div aria-live="polite" className="event-list__state">
+                <div
+                  aria-live="polite"
+                  className="event-list__state state-message state-message--empty"
+                >
+                  <StateIcon tone="empty" />
                   <strong>No events match these filters.</strong>
                   <p>Adjust the search or status to see more campus events.</p>
                   <button

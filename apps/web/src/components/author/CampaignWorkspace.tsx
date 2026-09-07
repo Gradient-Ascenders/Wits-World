@@ -1,3 +1,6 @@
+import { authorErrorDetail } from './author-error-copy';
+import { StateIcon } from '../StatusMessage';
+import { LoadingState } from '../LoadingState';
 import { ArrowLeftIcon } from '@phosphor-icons/react';
 import { AuthorSaveBar } from './AuthorSaveBar';
 import {
@@ -148,20 +151,20 @@ export function CampaignWorkspace({
   }
 
   if (state === 'loading') {
-    return (
-      <p className="author-state" role="status">
-        Loading campaigns and available members…
-      </p>
-    );
+    return <LoadingState label="Loading campaigns and available members…" />;
   }
 
   if (state === 'error') {
     return (
-      <section className="author-state author-state--error" role="alert">
+      <section
+        className="author-state author-state--error state-message state-message--error"
+        role="alert"
+      >
+        <StateIcon tone="error" />
         <strong>
           {loadErrorTitle(apiError, 'Campaigns are unavailable.')}
         </strong>
-        <p>{apiError?.detail}</p>
+        <p>{apiError ? authorErrorDetail(apiError) : null}</p>
         <button
           className="button button--quiet"
           onClick={() => void load()}
@@ -222,7 +225,8 @@ export function CampaignWorkspace({
           </label>
         </div>
         {filteredCampaigns.length === 0 ? (
-          <div className="author-state author-state--empty">
+          <div className="author-state author-state--empty state-message state-message--empty">
+            <StateIcon tone="empty" />
             <strong>
               {campaigns.length === 0
                 ? 'No campaigns have been created.'
@@ -308,7 +312,11 @@ export function CampaignWorkspace({
             }}
           />
         ) : 'campaignId' in route ? (
-          <section className="author-state author-state--error" role="alert">
+          <section
+            className="author-state author-state--error state-message state-message--error"
+            role="alert"
+          >
+            <StateIcon tone="error" />
             <strong>This campaign is not in the loaded catalogue.</strong>
             <Link className="button button--quiet" href={authorPaths.campaigns}>
               Back to campaigns
