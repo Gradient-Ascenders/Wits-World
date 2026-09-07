@@ -1,4 +1,10 @@
 import {
+  ArrowLeftIcon,
+  CaretRightIcon,
+  CaretDownIcon,
+} from '@phosphor-icons/react';
+import { AuthorSaveBar } from './AuthorSaveBar';
+import {
   useEffect,
   useMemo,
   useRef,
@@ -322,12 +328,11 @@ export function CardWorkspace({
                       {card.affinity ? titleCase(card.affinity) : 'Typeless'} ·{' '}
                       {titleCase(card.rarity)}
                     </span>
-                    <span
+                    <CaretRightIcon
+                      size={16}
                       aria-hidden="true"
                       className="author-record-summary__chevron"
-                    >
-                      ›
-                    </span>
+                    />
                   </Link>
                 </li>
               ))}
@@ -470,6 +475,7 @@ function CardCatalogueControls({
         </label>
         <details className="author-filter-menu">
           <summary>
+            <CaretDownIcon size={16} aria-hidden="true" />
             Filters
             {secondaryFilterCount > 0 ? (
               <span aria-label={`${secondaryFilterCount} active filters`}>
@@ -652,7 +658,7 @@ function CardDetail({
   return (
     <article aria-labelledby="card-detail-title" className="author-detail">
       <Link className="author-back-link" href={authorPaths.cards}>
-        <span aria-hidden="true">←</span> Card catalogue
+        <ArrowLeftIcon size={16} aria-hidden="true" /> Card catalogue
       </Link>
       <header className="author-card-detail__header">
         <div className="author-card-detail__identity">
@@ -995,7 +1001,7 @@ function CardForm({
         className="author-back-link"
         href={card ? authorPaths.card(card.id) : authorPaths.cards}
       >
-        <span aria-hidden="true">←</span>{' '}
+        <ArrowLeftIcon size={16} aria-hidden="true" />{' '}
         {card ? 'Card detail' : 'Card catalogue'}
       </Link>
       <header className="author-panel__heading">
@@ -1311,7 +1317,12 @@ function CardForm({
           {draft.description.trim() ? <p>{draft.description}</p> : null}
         </div>
 
-        <div className="author-actions">
+        <AuthorSaveBar
+          busy={busy}
+          dirty={dirty}
+          failed={Boolean(apiError) || Object.values(errors).some(Boolean)}
+          isNew={!card}
+        >
           <button className="button" disabled={busy} type="submit">
             {busy ? 'Saving…' : card ? 'Save card' : 'Create draft card'}
           </button>
@@ -1323,12 +1334,7 @@ function CardForm({
           >
             Cancel
           </button>
-        </div>
-        {dirty ? (
-          <p className="author-dirty-state" role="status">
-            Unsaved changes
-          </p>
-        ) : null}
+        </AuthorSaveBar>
       </form>
     </section>
   );

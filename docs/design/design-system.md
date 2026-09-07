@@ -364,6 +364,20 @@ On narrow screens, sidebars become drawers or compact navigation, forms remain
 vertically readable, and tables become cards or controlled horizontal regions
 where appropriate.
 
+Author routes use their own section navigation focused on content management.
+Retain the shared desktop top navigation so authors can move between the player
+application and author console.
+On smaller screens, retain the shared bottom navigation with sufficient page
+padding for the device safe area. Author save state and actions follow the final
+form section in normal document flow, without pinning or scroll-based collapsing.
+Keep desktop catalogue rows compact and aligned to the top. On mobile and tablet,
+use an expandable navigation region and focused list/detail routes.
+Editors share a persistent save bar showing unchanged, unsaved, saving, and
+failed-save feedback; successful saves retain the existing record confirmation.
+Save controls remain separate from publication and retirement. Use neutral
+section labels and blue interaction states; reserve gold for the brand and
+collectible previews. Preserve server lifecycle names and transition rules.
+
 ---
 
 ## 7. Core component rules

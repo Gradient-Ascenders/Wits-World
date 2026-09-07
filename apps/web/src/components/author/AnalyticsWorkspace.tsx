@@ -250,7 +250,7 @@ export function AnalyticsWorkspace({ apiBaseUrl, getAccessToken }: Props) {
             Apply filters
           </button>
           <button
-            className="button button--secondary"
+            className="button button--quiet"
             type="button"
             onClick={() => {
               setDraft(emptyFilters);
@@ -270,7 +270,7 @@ export function AnalyticsWorkspace({ apiBaseUrl, getAccessToken }: Props) {
         <div className="author-feedback author-feedback--error" role="alert">
           <p>{error}</p>
           <button
-            className="button button--secondary"
+            className="button button--quiet"
             type="button"
             onClick={() => void load(new AbortController().signal)}
           >
@@ -355,7 +355,7 @@ export function AnalyticsWorkspace({ apiBaseUrl, getAccessToken }: Props) {
                     </td>
                     <td>
                       <Link
-                        className="button button--secondary"
+                        className="button button--quiet"
                         href={authorPaths.question(
                           item.eventId,
                           item.challengeId,
@@ -375,7 +375,7 @@ export function AnalyticsWorkspace({ apiBaseUrl, getAccessToken }: Props) {
             aria-label="Question performance pages"
           >
             <button
-              className="button button--secondary"
+              className="button button--quiet"
               disabled={page <= 1}
               onClick={() => setPage((value) => value - 1)}
               type="button"
@@ -386,7 +386,7 @@ export function AnalyticsWorkspace({ apiBaseUrl, getAccessToken }: Props) {
               Page {result.page} of {Math.max(result.totalPages, 1)}
             </span>
             <button
-              className="button button--secondary"
+              className="button button--quiet"
               disabled={page >= result.totalPages}
               onClick={() => setPage((value) => value + 1)}
               type="button"

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useLocation } from 'wouter';
+import { useLocation } from 'wouter';
 
 import {
   AuthorApiError,
@@ -22,6 +22,7 @@ import {
   reconcileAuthorMutationResults,
   useAuthorMutationRevision,
 } from '../components/author/author-mutation-coordinator';
+import { AuthorSidebar } from '../components/author/AuthorSidebar';
 import '../components/author/author.css';
 
 interface AuthorConsolePageProps {
@@ -114,48 +115,12 @@ export default function AuthorConsolePage({
     <section aria-labelledby="author-console-title" className="author-console">
       <header className="author-console__header">
         <div>
-          <p className="eyebrow">Protected content workspace</p>
+          <p className="eyebrow">University content management</p>
           <h1 id="author-console-title">Author console</h1>
         </div>
-        <nav aria-label="Author sections" className="author-sections">
-          <Link
-            aria-current={route.section === 'analytics' ? 'page' : undefined}
-            className="author-sections__link"
-            href={authorPaths.analytics}
-          >
-            Analytics
-          </Link>
-          <Link
-            aria-current={route.section === 'events' ? 'page' : undefined}
-            className="author-sections__link"
-            href={authorPaths.events}
-          >
-            Events
-          </Link>
-          <Link
-            aria-current={route.section === 'cards' ? 'page' : undefined}
-            className="author-sections__link"
-            href={authorPaths.cards}
-          >
-            Cards
-          </Link>
-          <Link
-            aria-current={route.section === 'campaigns' ? 'page' : undefined}
-            className="author-sections__link"
-            href={authorPaths.campaigns}
-          >
-            Campaigns
-          </Link>
-          <Link
-            aria-current={route.section === 'review' ? 'page' : undefined}
-            className="author-sections__link"
-            href={authorPaths.review}
-          >
-            Review
-          </Link>
-        </nav>
       </header>
 
+      <AuthorSidebar pathname={pathname} route={route} />
       <div className="author-console__workspace">
         {route.section === 'events' ? (
           <EventWorkspace

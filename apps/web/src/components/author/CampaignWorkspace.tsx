@@ -1,3 +1,5 @@
+import { ArrowLeftIcon } from '@phosphor-icons/react';
+import { AuthorSaveBar } from './AuthorSaveBar';
 import {
   useCallback,
   useEffect,
@@ -391,7 +393,7 @@ function CampaignDetail({
   return (
     <article aria-labelledby="campaign-detail-title" className="author-detail">
       <Link className="author-back-link" href={authorPaths.campaigns}>
-        <span aria-hidden="true">←</span> Campaigns
+        <ArrowLeftIcon size={16} aria-hidden="true" /> Campaigns
       </Link>
       <header className="author-detail__heading">
         <div>
@@ -501,7 +503,7 @@ function CampaignEditUnavailable({ campaign }: { campaign: AuthorCampaign }) {
         className="author-back-link"
         href={authorPaths.campaign(campaign.campaignId)}
       >
-        <span aria-hidden="true">←</span> Campaign detail
+        <ArrowLeftIcon size={16} aria-hidden="true" /> Campaign detail
       </Link>
       <header className="author-detail__heading">
         <div>
@@ -656,7 +658,7 @@ function CampaignForm({
             : authorPaths.campaigns
         }
       >
-        <span aria-hidden="true">←</span>{' '}
+        <ArrowLeftIcon size={16} aria-hidden="true" />{' '}
         {campaign ? 'Campaign detail' : 'Campaigns'}
       </Link>
       <header className="author-detail__heading">
@@ -791,7 +793,12 @@ function CampaignForm({
         least one published member, and the server checks schedule conflicts.
       </p>
 
-      <div className="author-actions author-actions--detail">
+      <AuthorSaveBar
+        busy={busy}
+        dirty={dirty}
+        failed={Boolean(apiError) || Object.values(validation).some(Boolean)}
+        isNew={!campaign}
+      >
         <button className="button" disabled={busy || staleEdit} type="submit">
           {busy ? 'Saving…' : campaign ? 'Save campaign' : 'Create campaign'}
         </button>
@@ -809,7 +816,7 @@ function CampaignForm({
         >
           Cancel
         </button>
-      </div>
+      </AuthorSaveBar>
       {reloadDialogOpen && onReloadServer ? (
         <AuthorConfirmationDialog
           cancelLabel="Keep local draft"

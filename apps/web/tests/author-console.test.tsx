@@ -173,22 +173,22 @@ describe('Basic author console', () => {
         { timeout: 8_000 },
       ),
     ).toBeVisible();
-    for (const authorLink of screen.getAllByRole('link', { name: 'Author' })) {
-      expect(authorLink).toHaveAttribute('aria-current', 'page');
-    }
-    const playerNavigations = screen.getAllByRole('navigation', {
+    for (const playerNavigation of screen.getAllByRole('navigation', {
       name: 'Player',
-    });
-    for (const playerNavigation of playerNavigations) {
+    })) {
       expect(
-        within(playerNavigation)
-          .getAllByRole('link')
-          .map((link) => link.textContent),
-      ).toEqual(['Explore', 'Collection', 'Decks', 'Battles', 'Author']);
-      expect(
-        within(playerNavigation).queryByRole('link', { name: 'Home' }),
-      ).not.toBeInTheDocument();
+        within(playerNavigation).getByRole('link', { name: 'Author' }),
+      ).toHaveAttribute('aria-current', 'page');
     }
+    const navigation = screen.getByRole('navigation', {
+      name: 'Author sections',
+    });
+    expect(
+      within(navigation).getByRole('link', { name: 'Events' }),
+    ).toHaveAttribute('aria-current', 'page');
+    expect(
+      within(navigation).queryByRole('link', { name: 'Player application' }),
+    ).not.toBeInTheDocument();
     expect(
       await screen.findByRole('link', { name: /Great Hall history/ }),
     ).toBeVisible();
@@ -1933,7 +1933,7 @@ describe('Basic author console', () => {
     });
     renderAuthorRoute(authorPaths.event(eventId));
 
-    expect((await screen.findAllByText('in_review'))[0]).toBeVisible();
+    expect((await screen.findAllByText('in review'))[0]).toBeVisible();
     expect(screen.queryByLabelText('Event title')).not.toBeInTheDocument();
     expect(
       screen.queryByRole('link', { name: 'Edit event' }),

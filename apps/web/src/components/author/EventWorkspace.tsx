@@ -1,3 +1,5 @@
+import { ArrowLeftIcon, CaretRightIcon } from '@phosphor-icons/react';
+import { AuthorSaveBar } from './AuthorSaveBar';
 import {
   useCallback,
   useEffect,
@@ -215,6 +217,9 @@ export function EventWorkspace({
 
   useEffect(() => {
     setMessage('');
+  }, [route.mode, selectedId]);
+
+  useEffect(() => {
     if (
       selectedId &&
       route.mode !== 'edit' &&
@@ -367,12 +372,11 @@ export function EventWorkspace({
                     <span className="author-record-summary__meta">
                       {eventScheduleLabel(event)}
                     </span>
-                    <span
+                    <CaretRightIcon
+                      size={16}
                       aria-hidden="true"
                       className="author-record-summary__chevron"
-                    >
-                      ›
-                    </span>
+                    />
                   </Link>
                 </li>
               ))}
@@ -473,7 +477,10 @@ function EventCatalogueControls({
   sort: 'name' | 'schedule' | 'updated';
 }) {
   return (
-    <div aria-label="Filter and sort events" className="author-filters">
+    <div
+      aria-label="Filter and sort events"
+      className="author-filters author-filters--events"
+    >
       <label className="author-filter author-filter--search">
         <span>Search</span>
         <input
@@ -563,7 +570,7 @@ function EventContextHeader({
   return (
     <>
       <Link className="author-back-link" href={authorPaths.events}>
-        <span aria-hidden="true">←</span> Events
+        <ArrowLeftIcon size={16} aria-hidden="true" /> Events
       </Link>
       <header className="author-detail__heading">
         <div>
@@ -936,7 +943,8 @@ function EventForm({
         className="author-back-link"
         href={event ? authorPaths.event(event.eventId) : authorPaths.events}
       >
-        <span aria-hidden="true">←</span> {event ? 'Event overview' : 'Events'}
+        <ArrowLeftIcon size={16} aria-hidden="true" />{' '}
+        {event ? 'Event overview' : 'Events'}
       </Link>
       <header className="author-panel__heading">
         <div>
@@ -1153,7 +1161,12 @@ function EventForm({
           </div>
         </fieldset>
 
-        <div className="author-actions">
+        <AuthorSaveBar
+          busy={busy}
+          dirty={dirty}
+          failed={Boolean(apiError) || Object.values(errors).some(Boolean)}
+          isNew={!event}
+        >
           <button className="button" disabled={busy} type="submit">
             {busy ? 'Saving…' : event ? 'Save event' : 'Create draft event'}
           </button>
@@ -1165,12 +1178,7 @@ function EventForm({
           >
             Cancel
           </button>
-        </div>
-        {dirty ? (
-          <p className="author-dirty-state" role="status">
-            Unsaved changes
-          </p>
-        ) : null}
+        </AuthorSaveBar>
       </form>
     </section>
   );
@@ -2296,12 +2304,11 @@ function QuestionWorkspace({
                     Difficulty {question.difficulty} ·{' '}
                     <StatusBadge status={question.status} />
                   </span>
-                  <span
+                  <CaretRightIcon
+                    size={16}
                     aria-hidden="true"
                     className="question-summary__chevron"
-                  >
-                    ›
-                  </span>
+                  />
                 </Link>
               </li>
             ))}
@@ -2486,7 +2493,7 @@ function QuestionDetail({
         className="author-back-link"
         href={authorPaths.questions(event.eventId, challenge.challengeId)}
       >
-        <span aria-hidden="true">←</span> Questions
+        <ArrowLeftIcon size={16} aria-hidden="true" /> Questions
       </Link>
       <header className="author-detail__heading">
         <div>
@@ -2740,7 +2747,7 @@ function QuestionForm({
             : authorPaths.questions(event.eventId, challenge.challengeId)
         }
       >
-        <span aria-hidden="true">←</span>{' '}
+        <ArrowLeftIcon size={16} aria-hidden="true" />{' '}
         {question ? 'Question detail' : 'Questions'}
       </Link>
       <div className="author-panel__heading">
@@ -2924,7 +2931,12 @@ function QuestionForm({
             : 'Required for publication and excluded from player responses.'}
         </span>
       </FormField>
-      <div className="author-actions">
+      <AuthorSaveBar
+        busy={busy}
+        dirty={dirty}
+        failed={Boolean(apiError) || Object.values(errors).some(Boolean)}
+        isNew={!question}
+      >
         <button className="button" disabled={busy} type="submit">
           {busy
             ? 'Saving…'
@@ -2950,12 +2962,7 @@ function QuestionForm({
         >
           Cancel
         </button>
-      </div>
-      {dirty ? (
-        <p className="author-dirty-state" role="status">
-          Unsaved changes
-        </p>
-      ) : null}
+      </AuthorSaveBar>
     </form>
   );
 }
@@ -2967,7 +2974,7 @@ function StatusBadge({
 }) {
   return (
     <span className={`status-badge status-badge--author-${status}`}>
-      {status}
+      {status.replaceAll('_', ' ')}
     </span>
   );
 }
