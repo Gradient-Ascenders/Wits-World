@@ -1652,6 +1652,7 @@ function normalizeStoredResponse(
         ? null
         : {
             ...response.lastAction,
+            effects: response.lastAction.effects.map(toPublicAppliedEffect),
             expiredEffects: response.lastAction.expiredEffects ?? [],
           },
   };
@@ -2195,10 +2196,29 @@ function toPublicActionResult(
 ): PublicBattleActionResult {
   return {
     ...result,
-    effects: result.effects.map((effect) => ({
-      ...effect,
-      modifier: findEffect(state, effect.effectId)?.modifier ?? null,
-    })),
+    effects: result.effects.map((effect) =>
+      toPublicAppliedEffect({
+        ...effect,
+        modifier: findEffect(state, effect.effectId)?.modifier ?? null,
+      }),
+    ),
+  };
+}
+
+// Engine and stored effects can contain internal metadata such as effectCode.
+// Project the existing public contract before strict response serialization,
+// including when replaying a receipt saved by an older server version.
+function toPublicAppliedEffect(
+  effect: PublicAppliedEffectView,
+): PublicAppliedEffectView {
+  return {
+    effectId: effect.effectId,
+    effectType: effect.effectType,
+    targetSide: effect.targetSide,
+    targetCreatureId: effect.targetCreatureId,
+    amount: effect.amount,
+    damageMultiplier: effect.damageMultiplier,
+    modifier: effect.modifier,
   };
 }
 

@@ -1,3 +1,6 @@
+import { authorErrorDetail } from './author-error-copy';
+import { StateIcon } from '../StatusMessage';
+import { LoadingState } from '../LoadingState';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
 
@@ -96,16 +99,18 @@ export function ReviewWorkspace({
       </header>
 
       {state === 'loading' ? (
-        <p className="author-state" role="status">
-          Loading review queue…
-        </p>
+        <LoadingState label="Loading review queue…" />
       ) : null}
       {state === 'error' ? (
-        <section className="author-state author-state--error" role="alert">
+        <section
+          className="author-state author-state--error state-message state-message--error"
+          role="alert"
+        >
+          <StateIcon tone="error" />
           <strong>
             {loadErrorTitle(apiError, 'The review queue is unavailable.')}
           </strong>
-          <p>{apiError?.detail}</p>
+          <p>{apiError ? authorErrorDetail(apiError) : null}</p>
           <button
             className="button button--quiet"
             onClick={() => void load()}
@@ -116,7 +121,8 @@ export function ReviewWorkspace({
         </section>
       ) : null}
       {state === 'ready' && result?.items.length === 0 ? (
-        <section className="author-state author-state--empty">
+        <section className="author-state author-state--empty state-message state-message--empty">
+          <StateIcon tone="empty" />
           <strong>No submissions are waiting.</strong>
           <p>
             {filter === 'all'

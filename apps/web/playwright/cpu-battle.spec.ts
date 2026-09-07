@@ -26,6 +26,186 @@ const screenshotsDirectory = path.resolve(
 );
 const CURRENT_PLAYER_ID = '00000000-0000-4000-8000-000000009001';
 
+test('hands mobile Creature sheet gestures between scrolling and dragging', async ({
+  page,
+}) => {
+  await routeCurrentPlayer(page);
+  const match = activeMatch(1);
+  const creature = match.state.player.creatures[0]!;
+  creature.name = 'Quillip';
+  const move = creature.moves[0]!;
+  creature.moves = Array.from({ length: 12 }, (_, i) => ({
+    ...move,
+    id: uuid(800 + i),
+  }));
+  await page.route('**/api/v1/matches/**', (route) =>
+    json(route, response(match)),
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/matches/${MATCH_ID}`);
+  const trigger = page.getByRole('button', {
+    name: 'View Quillip details',
+    exact: true,
+  });
+  await trigger.click();
+  const sheet = page.getByRole('dialog', { name: 'Quillip', exact: true });
+  const settle = async () => {
+    await sheet.evaluate(async (node) => {
+      await Promise.all(node.getAnimations().map((a) => a.finished));
+    });
+  };
+  await settle();
+  expect((await sheet.boundingBox())!.height).toBeCloseTo(844 * 0.85, 0);
+  const cdp = await page.context().newCDPSession(page);
+  const drag = async (
+    x: number,
+    y: number,
+    distance: number,
+    steps = 12,
+    pause = 20,
+  ) => {
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x, y }],
+    });
+    for (let i = 1; i <= steps; i++) {
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x, y: y + (distance * i) / steps }],
+      });
+      if (pause) await page.waitForTimeout(pause);
+    }
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchEnd',
+      touchPoints: [],
+    });
+  };
+  const header = sheet.locator('header');
+  let headerBox = (await header.boundingBox())!;
+  await drag(160, headerBox.y + 25, -90);
+  await settle();
+  expect((await sheet.boundingBox())!.height).toBeCloseTo(844 * 0.98, 0);
+  headerBox = (await header.boundingBox())!;
+  await drag(160, headerBox.y + 25, 25);
+  await settle();
+  await expect(sheet).toBeVisible();
+  const body = sheet.locator('.battle-creature-dialog__body');
+  await drag(190, 620, -180);
+  expect(await body.evaluate((node) => node.scrollTop)).toBeGreaterThan(100);
+  await body.evaluate((node) => {
+    node.scrollTop = 400;
+  });
+  await drag(190, 380, 80);
+  await expect(sheet).toBeVisible();
+  expect(await body.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+  // One continuous pull first consumes scroll, then moves the sheet.
+  await body.evaluate((node) => {
+    node.scrollTop = 45;
+  });
+  await drag(190, 350, 130);
+  await settle();
+  await expect(sheet).toBeVisible();
+  expect(await body.evaluate((node) => node.scrollTop)).toBe(0);
+  expect((await sheet.boundingBox())!.height).toBeCloseTo(844 * 0.85, 0);
+  await page.screenshot({
+    path: path.join(screenshotsDirectory, '390-gesture-sheet.png'),
+  });
+  headerBox = (await header.boundingBox())!;
+  await drag(160, headerBox.y + 25, 310);
+  await expect(sheet).not.toBeVisible();
+  await expect(trigger).toBeFocused();
+  await trigger.click();
+  await settle();
+  headerBox = (await header.boundingBox())!;
+  await drag(160, headerBox.y + 25, 120, 3, 0);
+  await expect(sheet).not.toBeVisible();
+  await trigger.click();
+  await settle();
+  await page.mouse.click(15, 20);
+  await expect(sheet).not.toBeVisible();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await trigger.click();
+  await expect(sheet).toBeVisible();
+  expect(await sheet.evaluate((node) => node.getAnimations().length)).toBe(0);
+  await page.keyboard.press('Escape');
+  await expect(sheet).not.toBeVisible();
+});
+
+test('opens Creature details from active and bench pictures', async ({
+  page,
+}) => {
+  await routeCurrentPlayer(page);
+  const match = activeMatch(1);
+  match.state.player.creatures[0]!.currentHp = 15;
+  match.state.player.creatures[0]!.remainingPower = 0;
+  match.state.player.creatures.forEach((creature, index) => {
+    creature.name = ['Quillip', 'Ciphra', 'Prismole'][index]!;
+  });
+  await page.route('**/api/v1/matches/**', (route) =>
+    json(route, response(match)),
+  );
+  await page.goto(`/matches/${MATCH_ID}`);
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    const picture = page.getByRole('button', {
+      name: 'View Quillip details',
+      exact: true,
+    });
+    await picture.click();
+    const dialog = page.getByRole('dialog', { name: 'Quillip', exact: true });
+    await expect(dialog).toBeVisible();
+    await expect(
+      dialog.locator('.battle-creature-dialog__stats dd'),
+    ).toHaveText(['100', '10']);
+    await dialog.evaluate(async (node) => {
+      await Promise.all(
+        node.getAnimations().map((animation) => animation.finished),
+      );
+    });
+    const box = await dialog.boundingBox();
+    expect(box).not.toBeNull();
+    if (width === 390) expect(box!.y + box!.height).toBeCloseTo(900, 0);
+    else expect(box!.y + box!.height / 2).toBeCloseTo(450, 0);
+    await expect(
+      dialog.getByRole('heading', { name: 'Moves', exact: true }),
+    ).toBeVisible();
+    await dialog.screenshot({
+      path: path.join(screenshotsDirectory, `${width}-creature-details.png`),
+    });
+    if (width === 390) {
+      await page.setViewportSize({ width, height: 260 });
+      const header = dialog.locator('header');
+      const before = await header.boundingBox();
+      const body = dialog.locator('.battle-creature-dialog__body');
+      await body.evaluate((node) => {
+        node.scrollTop = node.scrollHeight;
+      });
+      expect(await body.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+      expect(await header.boundingBox()).toEqual(before);
+      await expect(
+        dialog.getByRole('button', { name: 'Close Creature details' }),
+      ).toBeInViewport();
+      await page.setViewportSize({ width, height: 900 });
+    }
+    await page.keyboard.press('Escape');
+    await expect(dialog).not.toBeVisible();
+    await expect(picture).toBeFocused();
+    await page.locator('.battle-bench').evaluate((node) => {
+      (node as HTMLDetailsElement).open = true;
+    });
+    await page
+      .getByRole('button', { name: 'View Ciphra details', exact: true })
+      .click();
+    await expect(
+      page.getByRole('dialog', { name: 'Ciphra', exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole('button', { name: 'Close Creature details', exact: true })
+      .click();
+    await expectNoHorizontalOverflow(page);
+  }
+});
+
 test('completes a mocked authoritative CPU match through the production UI', async ({
   baseURL,
   browser,
@@ -463,10 +643,8 @@ test('completes a mocked authoritative CPU match through the production UI', asy
 
     for (const viewport of [
       { columns: 1, height: 844, label: '390', width: 390 },
-      { columns: 1, height: 932, label: '430', width: 430 },
       { columns: 2, height: 1024, label: 'tablet-768', width: 768 },
-      { columns: 3, height: 800, label: 'desktop-1280', width: 1280 },
-      { columns: 3, height: 1000, label: 'wide-1600', width: 1600 },
+      { columns: 3, height: 800, label: 'desktop-1440', width: 1440 },
     ]) {
       await page.setViewportSize(viewport);
       await expectNoHorizontalOverflow(page);
@@ -489,8 +667,8 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     }
 
     await page.setViewportSize({ height: 844, width: 390 });
-    await expectBattleViewportBound(page);
-    await expectActionContentScrollsWithinTray(page);
+    await expectPrimaryActionWithinViewport(page);
+    await expectActionContentFits(page);
 
     const openingChoice = page.getByRole('button', {
       name: /Choose Creature\s*Wit Creature 1/,
@@ -501,7 +679,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     await expect(
       page.getByRole('heading', { name: 'Your turn' }),
     ).toBeFocused();
-    await expectBattleViewportBound(page);
+    await expectPrimaryActionWithinViewport(page);
     const battleLogSummary = page.locator('.battle-log > summary');
     await expect(battleLogSummary).toContainText('CPU revealed Braam Sentinel');
     await battleLogSummary.tap();
@@ -509,7 +687,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
       name: 'Complete authoritative battle log',
     });
     await expect(completeLog).toBeVisible();
-    await expect(completeLog).toContainText('Player selected Campus Scholar.');
+    await expect(completeLog).toContainText('You selected Campus Scholar.');
     await expect(completeLog).toContainText(
       'Turn 1 began. Player has the first action.',
     );
@@ -525,11 +703,6 @@ test('completes a mocked authoritative CPU match through the production UI', asy
         name: /Brace.*Opponent damage −15%.*3 turns.*11 Power/i,
       }),
     ).toBeDisabled();
-    const history = page.getByRole('link', { name: 'Match history' });
-    const actions = page.locator('.battle-actions');
-    const historyBeforeTabChange = await history.boundingBox();
-    const actionHeightBeforeTabChange = (await actions.boundingBox())?.height;
-
     await page.getByRole('tab', { name: /^Power/ }).click();
     await expect(
       page.getByRole('button', {
@@ -539,11 +712,11 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     await expect(page.getByText('Damage +10% · 2 turns')).toBeVisible();
     await expect(page.getByText('Damage +10% · Rest of battle')).toBeVisible();
     await expect(page.getByText('Damage −100% · 2 turns')).toBeVisible();
+    await expectActionContentFits(page);
     for (const viewport of [
       { height: 844, label: '390', width: 390 },
       { height: 1024, label: 'tablet-768', width: 768 },
-      { height: 800, label: 'desktop-1280', width: 1280 },
-      { height: 1000, label: 'wide-1600', width: 1600 },
+      { height: 800, label: 'desktop-1440', width: 1440 },
     ]) {
       await page.setViewportSize(viewport);
       await expectNoHorizontalOverflow(page);
@@ -560,16 +733,6 @@ test('completes a mocked authoritative CPU match through the production UI', asy
       });
     }
     await page.setViewportSize({ height: 844, width: 390 });
-    const historyAfterTabChange = await history.boundingBox();
-    const actionHeightAfterTabChange = (await actions.boundingBox())?.height;
-    expect(historyBeforeTabChange).not.toBeNull();
-    expect(historyAfterTabChange).not.toBeNull();
-    expect(historyAfterTabChange!.x).toBeCloseTo(historyBeforeTabChange!.x, 0);
-    expect(historyAfterTabChange!.y).toBeCloseTo(historyBeforeTabChange!.y, 0);
-    expect(actionHeightAfterTabChange).toBeCloseTo(
-      actionHeightBeforeTabChange ?? 0,
-      0,
-    );
 
     const powerTab = page.getByRole('tab', { name: /^Power/ });
     await powerTab.focus();
@@ -583,6 +746,13 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     await expect(page.getByRole('tab', { name: /^Power/ })).toBeFocused();
     await page.keyboard.press('ArrowRight');
     await expect(page.getByRole('tab', { name: /^Moves/ })).toBeFocused();
+    await expectActionContentFits(page);
+    const moveBoxes = await page
+      .locator('.battle-action-control:visible')
+      .evaluateAll((elements) =>
+        elements.map((element) => element.getBoundingClientRect().x),
+      );
+    expect(new Set(moveBoxes).size).toBe(2);
     await zeroCostMove.focus();
     await expect(zeroCostMove).toBeFocused();
     expect(
@@ -593,10 +763,8 @@ test('completes a mocked authoritative CPU match through the production UI', asy
 
     for (const viewport of [
       { height: 844, label: '390', width: 390 },
-      { height: 932, label: '430', width: 430 },
       { height: 1024, label: 'tablet-768', width: 768 },
-      { height: 800, label: 'desktop-1280', width: 1280 },
-      { height: 1000, label: 'wide-1600', width: 1600 },
+      { height: 800, label: 'desktop-1440', width: 1440 },
     ]) {
       await page.setViewportSize({
         height: viewport.height,
@@ -625,7 +793,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     await page.getByRole('tab', { name: /^Power/ }).tap();
     await page.getByRole('button', { name: /Tactical Surge/ }).tap();
     await expect(page.locator('.battle-log > summary')).toContainText(
-      'Player used Tactical Surge',
+      'You used Tactical Surge',
     );
 
     await page.getByRole('tab', { name: /^Moves/ }).tap();
@@ -639,8 +807,8 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     ).toBeFocused();
     await expect(page.locator('.battle-turn-indicator')).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
-    await expectBattleViewportBound(page);
-    await expectActionContentScrollsWithinTray(page);
+    await expectPrimaryActionWithinViewport(page);
+    await expectActionContentFits(page);
     await expectVerticallySeparated(
       page.locator('.battle-actions'),
       page.locator('.battle-side-rail'),
@@ -648,8 +816,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     for (const viewport of [
       { columns: 1, height: 844, label: '390', width: 390 },
       { columns: 2, height: 1024, label: 'tablet-768', width: 768 },
-      { columns: 3, height: 800, label: 'desktop-1280', width: 1280 },
-      { columns: 3, height: 1000, label: 'wide-1600', width: 1600 },
+      { columns: 3, height: 800, label: 'desktop-1440', width: 1440 },
     ]) {
       await page.setViewportSize(viewport);
       await expectNoHorizontalOverflow(page);
@@ -688,8 +855,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     for (const viewport of [
       { height: 844, label: '390', width: 390 },
       { height: 1024, label: 'tablet-768', width: 768 },
-      { height: 800, label: 'desktop-1280', width: 1280 },
-      { height: 1000, label: 'wide-1600', width: 1600 },
+      { height: 800, label: 'desktop-1440', width: 1440 },
     ]) {
       await page.setViewportSize(viewport);
       await expectNoHorizontalOverflow(page);
@@ -708,13 +874,13 @@ test('completes a mocked authoritative CPU match through the production UI', asy
 
     const completedLogSummary = page.locator('.battle-log > summary');
     await expect(completedLogSummary).toContainText(
-      "Player's Wit Creature 2 used Knowledge Strike 2",
+      'Your Wit Creature 2 used Knowledge Strike 2',
     );
     await completedLogSummary.tap();
     const completedLog = page.getByRole('log', {
       name: 'Complete authoritative battle log',
     });
-    await expect(completedLog).toContainText('Player won the match.');
+    await expect(completedLog).toContainText('You won the battle.');
     await expect
       .poll(() =>
         completedLog.evaluate(
@@ -747,10 +913,10 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     await page.locator('.battle-log > summary').tap();
     await expect(
       page.getByRole('log', { name: 'Complete authoritative battle log' }),
-    ).toContainText('Player selected Campus Scholar.');
+    ).toContainText('You selected Campus Scholar.');
     await expect(
       page.getByRole('log', { name: 'Complete authoritative battle log' }),
-    ).toContainText('Player won the match.');
+    ).toContainText('You won the battle.');
     await page.reload();
     await expect(
       page.getByRole('heading', { name: 'Victory — match saved' }),
@@ -758,10 +924,10 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     await page.locator('.battle-log > summary').tap();
     await expect(
       page.getByRole('log', { name: 'Complete authoritative battle log' }),
-    ).toContainText('Player selected Campus Scholar.');
+    ).toContainText('You selected Campus Scholar.');
     await expect(
       page.getByRole('log', { name: 'Complete authoritative battle log' }),
-    ).toContainText('Player won the match.');
+    ).toContainText('You won the battle.');
 
     expect(submittedBodies).toHaveLength(6);
     expect(submittedBodies).toEqual(
@@ -814,7 +980,7 @@ test('offers the owned active CPU match for explicit resume', async ({
   for (const viewport of [
     { height: 844, width: 390 },
     { height: 1024, width: 768 },
-    { height: 800, width: 1280 },
+    { height: 800, width: 1440 },
   ]) {
     await page.setViewportSize(viewport);
     await expectNoHorizontalOverflow(page);
@@ -905,7 +1071,7 @@ test('keeps processing, timeout, and error states focused with long actions', as
   await expect(page.locator('.site-footer')).toHaveCount(0);
   await expect(page.locator('.site-header')).toBeHidden();
   await expect(page.locator('.battle-log > summary')).toContainText(
-    "CPU's turn timed out",
+    'The CPU’s turn timed out',
   );
   await expectNoHorizontalOverflow(page);
   await expectControlsContainTheirContent(page);
@@ -961,7 +1127,7 @@ test('keeps processing, timeout, and error states focused with long actions', as
   await expect(page.getByText('CPU acting', { exact: true })).toBeVisible();
   await expect(page.locator('.battle-action-control').first()).toBeDisabled();
   await expectNoHorizontalOverflow(page);
-  await expectBattleViewportBound(page);
+  await expectPrimaryActionWithinViewport(page);
   await expectVerticallySeparated(
     page.locator('.battle-actions'),
     page.locator('.battle-side-rail'),
@@ -973,8 +1139,7 @@ test('keeps processing, timeout, and error states focused with long actions', as
 
   for (const viewport of [
     { height: 1024, label: 'tablet-768', width: 768 },
-    { height: 800, label: 'desktop-1280', width: 1280 },
-    { height: 1000, label: 'wide-1600', width: 1600 },
+    { height: 800, label: 'desktop-1440', width: 1440 },
   ]) {
     await page.setViewportSize(viewport);
     await expectNoHorizontalOverflow(page);
@@ -1069,7 +1234,9 @@ test('renders recent results and starts from the selected deck dashboard', async
   await expect(
     page.getByRole('heading', { exact: true, name: 'Battles' }),
   ).toBeFocused();
-  await expect(page.getByRole('heading', { name: 'CPU Battle' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'CPU Battle', exact: true }),
+  ).toBeVisible();
   await expect(page.getByText('Campus Five', { exact: true })).toHaveCount(1);
   await expect(
     page
@@ -1084,7 +1251,7 @@ test('renders recent results and starts from the selected deck dashboard', async
     page.getByRole('button', { name: 'Start CPU battle' }),
   ).toBeVisible();
 
-  await page.setViewportSize({ height: 800, width: 1280 });
+  await page.setViewportSize({ height: 800, width: 1440 });
   await expectNoHorizontalOverflow(page);
   const modeCards = page.locator('.battle-mode-card');
   const cpuBox = await modeCards.nth(0).boundingBox();
@@ -1097,6 +1264,13 @@ test('renders recent results and starts from the selected deck dashboard', async
   expect(playerBox!.y).toBe(cpuBox!.y);
   expect(resultsBox!.y).toBeGreaterThan(cpuBox!.y + cpuBox!.height);
 
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 1024 });
+    await page.locator('.matches-page').screenshot({
+      path: path.join(screenshotsDirectory, `${width}-match-hub.png`),
+    });
+  }
+
   await page.getByRole('link', { name: 'View history' }).click();
   await expect(page).toHaveURL('/matches/history');
   await expect(page.locator('.site-footer')).toHaveCount(0);
@@ -1108,6 +1282,14 @@ test('renders recent results and starts from the selected deck dashboard', async
       .getByRole('list', { name: 'Completed CPU matches' })
       .getByRole('listitem'),
   ).toHaveCount(results.length);
+
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 1024 });
+    await expectNoHorizontalOverflow(page);
+    await page.locator('.matches-page').screenshot({
+      path: path.join(screenshotsDirectory, `${width}-match-history.png`),
+    });
+  }
 
   await page.getByRole('link', { name: 'Continue or start a battle' }).click();
   await expect(page).toHaveURL('/matches');
@@ -1142,7 +1324,9 @@ test('shows deck recovery without exposing a conflicting start action', async ({
 
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto('/matches');
-  await expect(page.getByRole('heading', { name: 'CPU Battle' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'CPU Battle', exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole('link', { name: 'Choose deck' })).toHaveAttribute(
     'href',
     '/decks',
@@ -1151,6 +1335,105 @@ test('shows deck recovery without exposing a conflicting start action', async ({
     page.getByRole('button', { name: 'Start CPU battle' }),
   ).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
+});
+
+test('keeps the desktop battlefield stable when bench and details expand', async ({
+  page,
+}) => {
+  await routeCurrentPlayer(page);
+  const match = activeMatch(1);
+  match.state.player.creatures.forEach((creature, index) => {
+    creature.name = ['Quillip', 'Ciphra', 'Prismole'][index]!;
+  });
+  match.state.cpu.activeCreature!.name = 'Quillip';
+  match.battleLog = Array.from({ length: 14 }, (_, index) => ({
+    id: `turn-${index + 1}`,
+    label: `Turn ${index + 1}`,
+    turnNumber: index + 1,
+    events: [
+      {
+        id: `action-${index + 1}`,
+        sequence: index + 1,
+        side: 'cpu',
+        kind: 'action',
+        message: "CPU's Quillip used Ink Peck.",
+      },
+      {
+        id: `damage-${index + 1}`,
+        sequence: index + 1,
+        side: 'player',
+        kind: 'effect',
+        message: "Player's Quillip took 10 damage.",
+      },
+      {
+        id: `event-${index + 1}`,
+        sequence: index + 1,
+        side: 'cpu',
+        kind: 'turn',
+        message: `Turn ${index + 1} ended. Player is next.`,
+      },
+    ],
+  }));
+  await page.route('**/api/v1/matches/**', (route) =>
+    json(route, response(match)),
+  );
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/matches/${MATCH_ID}`);
+  await expect(
+    page.getByRole('heading', { name: 'Your turn', exact: true }),
+  ).toBeVisible();
+  const measure = () =>
+    page.locator('.battle-stage, .battle-actions').evaluateAll((elements) =>
+      elements.map((element) => {
+        const box = element.getBoundingClientRect();
+        return { y: box.y + window.scrollY, height: box.height };
+      }),
+    );
+  const before = await measure();
+  await page.locator('.battle-bench > summary').click();
+  await page.locator('.battle-details > summary').click();
+  expect(await measure()).toEqual(before);
+  const rail = page.locator('.battle-side-rail');
+  expect(
+    await rail.evaluate(
+      (element) => element.scrollHeight > element.clientHeight,
+    ),
+  ).toBe(true);
+  await rail.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect(
+    page.getByText('Match version', { exact: true }),
+  ).toBeInViewport();
+  await expectNoHorizontalOverflow(page);
+  await page.locator('.battle-page').screenshot({
+    path: path.join(screenshotsDirectory, '1440-expanded-sidebar.png'),
+  });
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const history = page.locator('.battle-log');
+    await history.locator('summary').click();
+    await history.screenshot({
+      path: path.join(screenshotsDirectory, `${width}-history.png`),
+    });
+    await history.locator('summary').click();
+    const pictures = page.locator('.battle-creature-artwork');
+    await expect(pictures).toHaveCount(4);
+    await expect
+      .poll(() =>
+        pictures.evaluateAll((elements) =>
+          elements.every(
+            (element) => (element as HTMLImageElement).naturalWidth > 0,
+          ),
+        ),
+      )
+      .toBe(true);
+    await expectNoHorizontalOverflow(page);
+    await page.locator('.battle-page').screenshot({
+      path: path.join(screenshotsDirectory, `${width}-creature-artwork.png`),
+    });
+  }
 });
 
 function response(match: CpuMatch) {
@@ -1298,22 +1581,22 @@ async function expectCompletedSideRailLayout(page: Page) {
   expect(result!.width).toBeGreaterThan(rail!.width * 2);
 }
 
-async function expectBattleViewportBound(page: Page) {
-  const sizes = await page.evaluate(() => ({
-    documentHeight: document.documentElement.scrollHeight,
-    viewportHeight: window.innerHeight,
-  }));
-  expect(sizes.documentHeight).toBeLessThanOrEqual(sizes.viewportHeight + 1);
+async function expectPrimaryActionWithinViewport(page: Page) {
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const actions = await page.locator('.battle-actions').boundingBox();
+  expect(actions).not.toBeNull();
+  expect(actions!.y + 120).toBeLessThan(page.viewportSize()!.height);
+  await expectNoHorizontalOverflow(page);
 }
 
-async function expectActionContentScrollsWithinTray(page: Page) {
+async function expectActionContentFits(page: Page) {
   const sizes = await page
     .locator('.battle-action-content')
     .evaluate((node) => ({
       clientHeight: node.clientHeight,
       scrollHeight: node.scrollHeight,
     }));
-  expect(sizes.scrollHeight).toBeGreaterThan(sizes.clientHeight);
+  expect(sizes.scrollHeight).toBeLessThanOrEqual(sizes.clientHeight + 1);
 }
 
 async function expectVerticallySeparated(upper: Locator, lower: Locator) {
@@ -1345,3 +1628,49 @@ async function routeCurrentPlayer(page: Page) {
     }),
   );
 }
+
+test('shows existing artwork when choosing a replacement', async ({ page }) => {
+  await routeCurrentPlayer(page);
+  const match = activeMatch(1);
+  match.state.phase = 'replacement';
+  match.state.player.creatures.forEach((creature, index) => {
+    creature.name = ['Quillip', 'Ciphra', 'Prismole'][index]!;
+    creature.defeated = index === 0;
+    if (index === 0) creature.currentHp = 0;
+  });
+  match.state.legalActions = match.state.player.creatures
+    .slice(1)
+    .map((creature) => ({
+      type: 'select_replacement',
+      creatureId: creature.id,
+    }));
+  await page.route('**/api/v1/matches/**', (route) =>
+    json(route, response(match)),
+  );
+  await page.goto(`/matches/${MATCH_ID}`);
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    const choices = page.locator('.creature-choice-list');
+    await expect(choices.locator('img')).toHaveCount(3);
+    await expect
+      .poll(() =>
+        choices
+          .locator('img')
+          .evaluateAll((images) =>
+            images.every(
+              (img) =>
+                (img as HTMLImageElement).complete &&
+                (img as HTMLImageElement).naturalWidth > 0,
+            ),
+          ),
+      )
+      .toBe(true);
+    await expect(
+      choices.getByRole('button', { name: /Use as replacement Quillip/ }),
+    ).toBeDisabled();
+    await expectNoHorizontalOverflow(page);
+    await choices.screenshot({
+      path: path.join(screenshotsDirectory, `${width}-replacement-artwork.png`),
+    });
+  }
+});

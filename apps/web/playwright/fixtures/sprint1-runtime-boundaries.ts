@@ -305,7 +305,11 @@ export const mapFactory: MapFactory = async (
       return true;
     },
     onError: () => undefined,
-    onLoad: (listener) => queueMicrotask(listener),
+    onLoad: (listener) => {
+      if (!new URLSearchParams(window.location.search).has('map-loading')) {
+        queueMicrotask(listener);
+      }
+    },
     recenterReportedLocation: () => {
       if (!hasLocation) return false;
       following = true;

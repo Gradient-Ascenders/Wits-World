@@ -319,7 +319,7 @@ describe('CPU match entry and history', () => {
     expect(
       await screen.findByRole('heading', { name: 'Victory' }),
     ).toBeVisible();
-    expect(screen.getByText('Player won')).toBeVisible();
+    expect(screen.getByText('Won')).toBeVisible();
     expect(
       screen.getByRole('link', { name: 'View saved match' }),
     ).toHaveAttribute('href', `/matches/${MATCH_ID}`);
@@ -607,9 +607,9 @@ describe('authoritative CPU battle page', () => {
     expect(screen.getByText('Damage −100% · 2 turns')).toBeVisible();
     expect(screen.getAllByLabelText(/Active effects on/)).toHaveLength(2);
     expect(
-      screen.getByText('Latest outcome').closest('summary'),
+      screen.getByText('Battle history').closest('summary'),
     ).toHaveTextContent(
-      "Player used Tactical Surge. CPU's Braam Sentinel lost 2 Power.",
+      'You used Tactical Surge. The CPU’s Braam Sentinel lost 2 Power.',
     );
   });
 
@@ -705,9 +705,9 @@ describe('authoritative CPU battle page', () => {
 
     renderMatchPage();
 
-    const summary = await screen.findByText('Latest outcome');
+    const summary = await screen.findByText('Battle history');
     expect(summary.closest('summary')).toHaveTextContent(
-      "CPU's Mystic Creature 1 used Quiet Counter. Player's Grit Creature 3 was defeated.",
+      'The CPU’s Mystic Creature 1 used Quiet Counter. Your Grit Creature 3 was defeated.',
     );
     await userEvent.setup().click(summary.closest('summary')!);
     const log = screen.getByRole('log', {
@@ -715,19 +715,21 @@ describe('authoritative CPU battle page', () => {
     });
     expect(log).toHaveAttribute('tabindex', '0');
     expect(
-      Array.from(log.querySelectorAll('.battle-log__event')).map((event) =>
-        event.textContent?.trim(),
-      ),
+      Array.from(log.querySelectorAll('.battle-log__event')).map((event) => {
+        const copy = event.cloneNode(true) as HTMLElement;
+        copy
+          .querySelectorAll('[aria-hidden="true"]')
+          .forEach((node) => node.remove());
+        return copy.textContent?.trim();
+      }),
     ).toEqual([
-      'Player selected Grit Creature 3.',
+      'You selected Grit Creature 3.',
       'CPU revealed Mystic Creature 1.',
       'Turn 1 began. Player has the first action.',
-      'Player used Grit Power 2.',
-      "CPU's Mystic Creature 1 took 14 damage.",
-      "Player's Grit Creature 3 restored 6 HP.",
-      "Player's Grit Creature 3 no longer has Damage +10%.",
-      "CPU's Mystic Creature 1 used Quiet Counter.",
-      "Player's Grit Creature 3 was defeated.",
+      'You used Grit Power 2.The CPU’s Mystic Creature 1 took 14 damage.Your Grit Creature 3 restored 6 HP.',
+      'Your Grit Creature 3 no longer has Damage +10%.',
+      'The CPU’s Mystic Creature 1 used Quiet Counter.',
+      'Your Grit Creature 3 was defeated.',
     ]);
   });
 
@@ -895,12 +897,12 @@ describe('authoritative CPU battle page', () => {
       screen.queryByRole('button', { name: /Knowledge Strike/ }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Match history' })).toBeVisible();
-    const finalAction = screen.getByText('Latest outcome').closest('summary');
+    const finalAction = screen.getByText('Battle history').closest('summary');
     expect(finalAction).toHaveTextContent(
-      "Player's Wit Creature used Knowledge Strike 1. CPU's Grit Creature was defeated.",
+      'Your Wit Creature used Knowledge Strike 1. The CPU’s Grit Creature was defeated.',
     );
     await user.click(finalAction!);
-    expect(screen.getByRole('log')).toHaveTextContent('Player won the match.');
+    expect(screen.getByRole('log')).toHaveTextContent('You won the battle.');
   });
 
   it('loads persisted completed detail and offers reauthentication after API 401', async () => {

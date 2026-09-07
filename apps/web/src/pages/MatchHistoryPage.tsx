@@ -1,3 +1,5 @@
+import { StateIcon } from '../components/StatusMessage';
+import { Skeleton } from '../components/LoadingState';
 import { useAuth0 } from '@auth0/auth0-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
@@ -72,10 +74,15 @@ export default function MatchHistoryPage({
   if (state.status === 'loading') {
     return (
       <div className="matches-page">
-        <section aria-live="polite" className="match-state-panel" role="status">
+        <section
+          aria-live="polite"
+          className="match-state-panel state-message state-loading"
+          role="status"
+        >
           <p className="eyebrow">Match history</p>
           <h1>Loading your completed matches</h1>
-          <p>Retrieving private, persisted CPU results…</p>
+          <p>Loading your saved CPU battles…</p>
+          <Skeleton layout="rows" />
         </section>
       </div>
     );
@@ -109,8 +116,7 @@ export default function MatchHistoryPage({
           Completed CPU matches
         </h1>
         <p className="lead">
-          These results are stored by the server and available only through your
-          authenticated player account.
+          Revisit your completed battles and see how each match ended.
         </p>
       </header>
 
@@ -118,12 +124,19 @@ export default function MatchHistoryPage({
         <Link className="button" href="/matches">
           Continue or start a battle
         </Link>
+        <Link className="button button--quiet" href="/matches/pvp">
+          Player battle history
+        </Link>
       </div>
 
       {state.matches.length === 0 ? (
-        <section className="match-empty" aria-labelledby="empty-history-title">
+        <section
+          className="match-empty state-message state-message--empty"
+          aria-labelledby="empty-history-title"
+        >
+          <StateIcon tone="empty" />
           <h2 id="empty-history-title">No completed matches yet</h2>
-          <p>Finish a CPU battle and its persisted result will appear here.</p>
+          <p>Finish a CPU battle to see your result here.</p>
         </section>
       ) : (
         <ol aria-label="Completed CPU matches" className="match-history-list">

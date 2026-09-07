@@ -1,3 +1,5 @@
+import { StatusMessage } from '../StatusMessage';
+import { LoadingState } from '../LoadingState';
 import type { PlayerEventAvailability } from '../../api/events';
 
 export interface EventPresentation {
@@ -70,31 +72,27 @@ export function EventList({
   selectedEventId,
 }: EventListProps) {
   if (discovery.status === 'loading') {
-    return (
-      <p aria-live="polite" className="event-list__state" role="status">
-        Loading published events…
-      </p>
-    );
+    return <LoadingState label="Loading published events…" />;
   }
 
   if (discovery.status === 'error') {
     return (
-      <div className="event-list__state" role="alert">
+      <StatusMessage tone="error" className="event-list__state">
         <strong>Events are unavailable right now.</strong>
         <p>{discovery.message}</p>
         <button className="button" onClick={onRetry} type="button">
           Try loading events again
         </button>
-      </div>
+      </StatusMessage>
     );
   }
 
-  if (discovery.status === 'empty') {
+  if (discovery.status === 'empty' || discovery.events.length === 0) {
     return (
-      <div className="event-list__state">
+      <StatusMessage tone="empty" className="event-list__state">
         <strong>No published events are available.</strong>
         <p>Check again later.</p>
-      </div>
+      </StatusMessage>
     );
   }
 
@@ -159,25 +157,6 @@ export function SelectedEventDetails({
         <h2 tabIndex={-1}>{event.title}</h2>
       </div>
 
-      {event.description ? (
-        <p className="selected-event__description">{event.description}</p>
-      ) : null}
-
-      <dl className="selected-event__facts">
-        <div>
-          <dt>Event interaction area</dt>
-          <dd>{formatRadius(event.radiusMetres)} radius</dd>
-        </div>
-        <div>
-          <dt>{event.availability === 'upcoming' ? 'Starts' : 'Ends'}</dt>
-          <dd>
-            {formatEventTime(
-              event.availability === 'upcoming' ? event.startsAt : event.endsAt,
-            )}
-          </dd>
-        </div>
-      </dl>
-
       <EligibilityStatus
         eligibilityBusy={eligibilityBusy}
         event={event}
@@ -186,6 +165,28 @@ export function SelectedEventDetails({
         onStart={onStart}
         state={state}
       />
+      <details className="selected-event__more">
+        <summary>About this event</summary>
+        {event.description ? (
+          <p className="selected-event__description">{event.description}</p>
+        ) : null}
+        <dl className="selected-event__facts">
+          <div>
+            <dt>Event interaction area</dt>
+            <dd>{formatRadius(event.radiusMetres)} radius</dd>
+          </div>
+          <div>
+            <dt>{event.availability === 'upcoming' ? 'Starts' : 'Ends'}</dt>
+            <dd>
+              {formatEventTime(
+                event.availability === 'upcoming'
+                  ? event.startsAt
+                  : event.endsAt,
+              )}
+            </dd>
+          </div>
+        </dl>
+      </details>
     </div>
   );
 }
@@ -196,7 +197,11 @@ function KnownEligibility({ state }: { state: EventEligibilityState }) {
   }
 
   if (state.status === 'unreachable') {
-    return <span className="event-summary__eligibility">Out of range</span>;
+    return (
+      <span className="event-summary__eligibility event-summary__eligibility--unreachable">
+        Out of range
+      </span>
+    );
   }
 
   return null;
@@ -231,7 +236,7 @@ function EligibilityStatus({
         <span>Confirmed by Wits World for this reported location.</span>
         <button
           aria-label={`Start challenge for ${event.title}`}
-          className="button"
+          className="button selected-event__start"
           disabled={eligibilityBusy}
           onClick={() => onStart(event.id)}
           type="button"

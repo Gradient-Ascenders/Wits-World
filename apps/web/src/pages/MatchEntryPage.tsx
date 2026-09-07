@@ -1,3 +1,5 @@
+import { StateIcon } from '../components/StatusMessage';
+import { Skeleton } from '../components/LoadingState';
 import { useAuth0 } from '@auth0/auth0-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'wouter';
@@ -173,10 +175,15 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   if (state.status === 'loading') {
     return (
       <div className="matches-page">
-        <section aria-live="polite" className="match-state-panel" role="status">
+        <section
+          aria-live="polite"
+          className="match-state-panel state-message state-loading"
+          role="status"
+        >
           <p className="eyebrow">CPU battle</p>
           <h1>Checking for an active match</h1>
-          <p>Loading the server’s current battle and selected deck…</p>
+          <p>Loading your current battle and selected deck…</p>
+          <Skeleton layout="rows" />
         </section>
       </div>
     );
@@ -212,6 +219,9 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       </header>
 
       <div className="match-dashboard">
+        {state.activeMatch ? (
+          <ActiveMatchPanel match={state.activeMatch} />
+        ) : null}
         <div className="battle-mode-grid">
           <StartMatchPanel
             activeMatch={state.activeMatch}
@@ -221,10 +231,6 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           />
           <PlayerBattlePanel />
         </div>
-
-        {state.activeMatch ? (
-          <ActiveMatchPanel match={state.activeMatch} />
-        ) : null}
 
         <RecentResults state={recentResults} />
       </div>
@@ -279,7 +285,7 @@ function StartMatchPanel({
       {activeMatch ? (
         <div className="battle-mode-card__state">
           <strong>Battle in progress</strong>
-          <span>Continue your unfinished match below.</span>
+          <span>Your unfinished battle is ready to resume.</span>
         </div>
       ) : deck ? (
         <>
@@ -297,7 +303,7 @@ function StartMatchPanel({
               onClick={() => void onStart(deck)}
               type="button"
             >
-              {isStarting ? 'Reconciling and starting…' : 'Start CPU battle'}
+              {isStarting ? 'Preparing battle…' : 'Start CPU battle'}
             </button>
             <Link className="button button--quiet" href="/decks">
               Review selected deck
@@ -348,28 +354,38 @@ function RecentResults({ state }: { state: RecentResultsState }) {
   return (
     <section aria-labelledby="recent-results-title" className="recent-results">
       <div className="recent-results__heading">
-        <h2 id="recent-results-title">Recent battles</h2>
+        <h2 id="recent-results-title">Recent CPU battles</h2>
         <Link className="button button--quiet" href="/matches/history">
           View history
         </Link>
       </div>
 
       {state.status === 'loading' ? (
-        <div aria-live="polite" className="recent-results__empty" role="status">
+        <div
+          aria-live="polite"
+          className="recent-results__empty state-message state-loading"
+          role="status"
+        >
           <h3>Loading recent results</h3>
-          <p>Retrieving your newest server-saved battles…</p>
+          <p>Loading your recent CPU battles…</p>
+          <Skeleton />
         </div>
       ) : state.status === 'unavailable' ? (
-        <div className="recent-results__empty" role="status">
+        <div
+          className="recent-results__empty state-message state-message--info"
+          role="status"
+        >
+          <StateIcon tone="info" />
           <h3>Recent results unavailable</h3>
           <p>
             The full archive can be retried without interrupting this match.
           </p>
         </div>
       ) : state.matches.length === 0 ? (
-        <div className="recent-results__empty">
+        <div className="recent-results__empty state-message state-message--empty">
+          <StateIcon tone="empty" />
           <h3>No completed battles yet</h3>
-          <p>Your newest server-saved results will appear here.</p>
+          <p>Finish a CPU battle to see your result here.</p>
         </div>
       ) : (
         <ol aria-label="Recent CPU match results" className="recent-match-list">

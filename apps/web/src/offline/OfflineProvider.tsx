@@ -306,14 +306,11 @@ function parsePacks(body: unknown, playerId: string): CachedPack[] {
 export function OfflineStatus() {
   const { online, message } = useOffline();
   const { state } = useCurrentPlayer();
+  if (online) return null;
   if (state.status !== 'ready' && !boundOfflinePlayer()) return null;
   return (
     <aside aria-label="Offline play" className="offline-status">
-      <Link href="/offline">
-        {online
-          ? 'Offline events and saved attempts'
-          : 'You are offline — open saved events'}
-      </Link>
+      <Link href="/offline">You are offline — open saved events</Link>
       {message && <p role="status">{message}</p>}
     </aside>
   );

@@ -334,7 +334,9 @@ describe('progression profile and standings page', () => {
     });
     expect(malformedHeadings).toHaveLength(2);
     expect(
-      screen.getAllByText(/did not show partial or guessed values/),
+      screen.getAllByText(
+        'Your progression could not be displayed. Try loading it again.',
+      ),
     ).toHaveLength(2);
     expect(screen.queryByText('private@example.test')).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(

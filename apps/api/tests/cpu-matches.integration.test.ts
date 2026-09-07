@@ -6,6 +6,8 @@ import { buildApp } from '../src/app.js';
 import type { AuthConfig } from '../src/config/auth.js';
 import {
   CpuMatchNotFoundError,
+  createCpuMatchService,
+  type CpuMatchDatabase,
   type CpuMatchHistory,
   type CpuMatchResponse,
   type CpuMatchService,
@@ -78,6 +80,107 @@ afterEach(async () => {
 });
 
 describe('CPU match API', () => {
+  it('serializes stored engine effects on action responses and subsequent match loads', async () => {
+    const effect = {
+      effectId: 'effect-1',
+      effectCode: 'damage' as const,
+      effectType: 'damage' as const,
+      targetSide: 'player' as const,
+      targetCreatureId: 'creature-1',
+      amount: 12,
+      damageMultiplier: null,
+    };
+    const result = {
+      side: 'cpu' as const,
+      action: { type: 'use_move' as const, moveId: 'move-1' },
+      effects: [effect],
+      expiredEffects: [],
+      defeatedCreatureId: null,
+      winner: null,
+      turnEnded: true,
+    };
+    const participant = {
+      creatures: [],
+      powerCards: [],
+      usedPowerCardIds: [],
+      activeCreatureId: null,
+    };
+    const state = {
+      phase: 'active',
+      turnNumber: 2,
+      currentSide: 'player',
+      replacementSide: null,
+      firstSide: 'player',
+      selections: { player: null, cpu: null },
+      winner: null,
+      participants: { player: participant, cpu: participant },
+    };
+    const client = {
+      query: vi.fn().mockResolvedValue({
+        rows: [
+          {
+            id: MATCH_ID,
+            player_id: PLAYER_ID,
+            status: 'active',
+            version: 1,
+            winner: null,
+            started_at: new Date('2026-08-16T00:00:00Z'),
+            completed_at: null,
+            turn_deadline: null,
+            state,
+            card_names: {},
+            log_actions: [
+              {
+                result,
+                roundNumber: 1,
+                roundStateBefore: state,
+                roundStateAfter: state,
+                sequence: 1,
+              },
+            ],
+          },
+        ],
+      }),
+    };
+    const database: CpuMatchDatabase = {
+      connect: vi.fn().mockResolvedValue({ ...client, release: vi.fn() }),
+    };
+    const persisted = await createCpuMatchService(database).getMatch(
+      PLAYER_ID,
+      MATCH_ID,
+    );
+    service.submitAction.mockResolvedValue(persisted);
+    service.getMatch.mockResolvedValue(persisted);
+    service.getActiveMatch.mockResolvedValue(persisted);
+    for (const request of [
+      {
+        method: 'POST' as const,
+        url: `/api/v1/matches/${MATCH_ID}/actions`,
+        payload: {
+          submissionId: 'a5000000-0000-4000-8000-000000000001',
+          expectedVersion: 0,
+          action: { type: 'select_initial_creature', creatureId: DECK_ID },
+        },
+      },
+      { method: 'GET' as const, url: `/api/v1/matches/${MATCH_ID}` },
+      { method: 'GET' as const, url: '/api/v1/matches/cpu' },
+    ]) {
+      const response = await authenticatedRequest(request);
+      expect(response.statusCode).toBe(200);
+      expect(response.json().lastAction.effects).toEqual([
+        {
+          effectId: effect.effectId,
+          effectType: effect.effectType,
+          targetSide: effect.targetSide,
+          targetCreatureId: effect.targetCreatureId,
+          amount: 12,
+          damageMultiplier: null,
+          modifier: null,
+        },
+      ]);
+    }
+  });
+
   it('requires authentication before creating a match', async () => {
     const response = await app.inject({
       method: 'POST',

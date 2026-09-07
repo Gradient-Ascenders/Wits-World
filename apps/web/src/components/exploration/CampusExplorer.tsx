@@ -1,4 +1,14 @@
+import { StateIcon } from '../StatusMessage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ArrowLeft,
+  CaretDown,
+  CaretLeft,
+  CaretRight,
+  CaretUp,
+  Crosshair,
+  MagnifyingGlass,
+} from '@phosphor-icons/react';
 
 import { BottomSheetSurface, type BottomSheetSnap } from './BottomSheetSurface';
 import { CampusMap } from './CampusMap';
@@ -121,7 +131,9 @@ export function CampusExplorer({
   const [discoverySection, setDiscoverySection] =
     useState<DiscoverySection>('events');
   const [following, setFollowing] = useState(false);
-  const [panelMode, setPanelMode] = useState<EventPanelMode>('peek');
+  const [panelMode, setPanelMode] = useState<EventPanelMode>(() =>
+    window.matchMedia?.('(min-width: 64rem)').matches ? 'list' : 'peek',
+  );
   const [sheetSnap, setSheetSnap] = useState<BottomSheetSnap>('peek');
   const [recenterRequest, setRecenterRequest] = useState(0);
   const [focusPointRequest, setFocusPointRequest] = useState(0);
@@ -210,6 +222,10 @@ export function CampusExplorer({
     eventCatalog.find((event) => event.id === selectedEventId) ?? null;
   const selectedPoint =
     points.find((point) => point.id === selectedEventId) ?? null;
+  const selectablePoints = points.filter((point) => point.selectable !== false);
+  const selectedIndex = selectablePoints.findIndex(
+    (point) => point.id === selectedEventId,
+  );
   const hasActiveFilters =
     searchQuery.trim().length > 0 || availabilityFilter !== 'all';
 
@@ -388,15 +404,13 @@ export function CampusExplorer({
   const openSheet = (): void => {
     returnFocusRef.current = document.activeElement as HTMLElement;
     setPanelMode(selectedEvent === null ? 'list' : 'selected');
-    setSheetSnap('medium');
+    setSheetSnap(selectedEvent === null ? 'expanded' : 'medium');
   };
 
   const showEventList = (): void => {
     setDiscoverySection(selectionOriginRef.current);
     setPanelMode('list');
-    setSheetSnap(
-      selectionOriginRef.current === 'trail-detail' ? 'expanded' : 'medium',
-    );
+    setSheetSnap('expanded');
     focusDiscoveryReturnTarget();
   };
 
@@ -454,6 +468,7 @@ export function CampusExplorer({
       aria-labelledby="campus-map-title"
       className={`exploration-view exploration-view--panel-${panelMode}`}
       data-sheet-snap={sheetSnap}
+      data-location-state={locationState}
     >
       <h1 className="sr-only" id="campus-map-title">
         Explore the campus map
@@ -481,16 +496,34 @@ export function CampusExplorer({
           aria-pressed={locationControl.active || undefined}
           className={`location-control${locationControl.active ? ' location-control--active' : ''}`}
           disabled={locationControl.disabled}
+          title={locationControl.guidance}
           onClick={locationAction}
           type="button"
         >
-          <span aria-hidden="true" className="location-control__icon" />
+          <Crosshair aria-hidden="true" size={24} />
           <span className="location-control__label">
-            {locationControl.label}
+            {locationState === 'tracking'
+              ? following
+                ? 'Following'
+                : 'Recenter'
+              : locationControl.label}
+            {locationState === 'tracking' && reportedLocation !== null ? (
+              <span className="location-control__accuracy">
+                {' '}
+                · ±{Math.max(0, Math.round(reportedLocation.accuracyMetres))} m
+              </span>
+            ) : null}
           </span>
         </button>
         {locationControl.guidance ? (
-          <p aria-live="polite" className="location-control__guidance">
+          <p
+            aria-live="polite"
+            className={
+              locationState === 'tracking'
+                ? 'sr-only'
+                : 'location-control__guidance'
+            }
+          >
             {locationControl.guidance}
           </p>
         ) : null}
@@ -536,23 +569,17 @@ export function CampusExplorer({
                     ? `${activeEventCount} available now`
                     : discovery.status === 'loading'
                       ? 'Loading published events…'
-                      : 'Open event discovery'
+                      : discovery.status === 'error'
+                        ? 'Events could not load · Open to retry'
+                        : 'No published events · Check back soon'
                   : `${availabilityLabels[selectedEvent.availability]} · View details`}
               </span>
             </span>
-            <svg
+            <CaretUp
               aria-hidden="true"
               className="event-panel__peek-chevron"
-              fill="none"
-              focusable="false"
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="1.8"
-              viewBox="0 0 16 16"
-            >
-              <path d="m4 10 4-4 4 4" />
-            </svg>
+              size={20}
+            />
           </button>
         ) : null}
 
@@ -588,7 +615,7 @@ export function CampusExplorer({
                 onClick={collapsePanel}
                 type="button"
               >
-                ×
+                <CaretDown aria-hidden="true" size={20} />
               </button>
             </div>
             <div className="event-panel__scroll">
@@ -621,7 +648,11 @@ export function CampusExplorer({
                 <div className="event-discovery-controls">
                   <label className="event-search">
                     <span className="sr-only">Search campus events</span>
-                    <span aria-hidden="true" className="event-search__icon" />
+                    <MagnifyingGlass
+                      aria-hidden="true"
+                      className="event-search__icon"
+                      size={20}
+                    />
                     <input
                       onChange={(event) => setSearchQuery(event.target.value)}
                       placeholder="Search"
@@ -651,8 +682,13 @@ export function CampusExplorer({
 
               {discoverySection === 'events' &&
               discovery.status === 'ready' &&
-              visibleEvents.length === 0 ? (
-                <div aria-live="polite" className="event-list__state">
+              visibleEvents.length === 0 &&
+              hasActiveFilters ? (
+                <div
+                  aria-live="polite"
+                  className="event-list__state state-message state-message--empty"
+                >
+                  <StateIcon tone="empty" />
                   <strong>No events match these filters.</strong>
                   <p>Adjust the search or status to see more campus events.</p>
                   <button
@@ -703,7 +739,7 @@ export function CampusExplorer({
                 onClick={() => showDiscoverySection('trails')}
                 type="button"
               >
-                ← Trails
+                <ArrowLeft aria-hidden="true" size={20} /> Trails
               </button>
               <button
                 aria-label="Collapse trail details"
@@ -711,7 +747,7 @@ export function CampusExplorer({
                 onClick={collapsePanel}
                 type="button"
               >
-                ×
+                <CaretDown aria-hidden="true" size={20} />
               </button>
             </div>
             <div className="event-panel__scroll">
@@ -740,19 +776,59 @@ export function CampusExplorer({
                 onClick={showEventList}
                 type="button"
               >
+                <ArrowLeft aria-hidden="true" size={20} />
                 {selectionOriginRef.current === 'nearby'
-                  ? '← Nearby'
+                  ? 'Nearby'
                   : selectionOriginRef.current === 'trail-detail'
-                    ? '← Trail'
+                    ? 'Trail'
                     : 'All events'}
               </button>
+              {selectablePoints.length > 1 && selectedIndex >= 0 ? (
+                <div
+                  className="event-panel__switcher"
+                  aria-label="Switch selected event"
+                  role="group"
+                >
+                  <button
+                    className="event-panel__close"
+                    aria-label="Previous event"
+                    disabled={selectedIndex === 0}
+                    onClick={() =>
+                      selectEvent(
+                        selectablePoints[selectedIndex - 1]!.id,
+                        selectionOriginRef.current,
+                      )
+                    }
+                    type="button"
+                  >
+                    <CaretLeft aria-hidden="true" size={20} />
+                  </button>
+                  <span>
+                    {selectedIndex + 1} / {selectablePoints.length}
+                  </span>
+                  <button
+                    className="event-panel__close"
+                    aria-label="Next event"
+                    disabled={selectedIndex === selectablePoints.length - 1}
+                    onClick={() =>
+                      selectEvent(
+                        selectablePoints[selectedIndex + 1]!.id,
+                        selectionOriginRef.current,
+                      )
+                    }
+                    type="button"
+                  >
+                    <CaretRight aria-hidden="true" size={20} />
+                  </button>
+                </div>
+              ) : null}
               <button
                 aria-label="Collapse event details"
                 className="event-panel__close"
                 onClick={collapsePanel}
                 type="button"
               >
-                ×
+                <CaretDown aria-hidden="true" size={20} />
               </button>
             </div>
             <div className="event-panel__scroll">

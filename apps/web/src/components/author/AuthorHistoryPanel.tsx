@@ -1,3 +1,6 @@
+import { authorErrorDetail } from './author-error-copy';
+import { StateIcon } from '../StatusMessage';
+import { LoadingState } from '../LoadingState';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
@@ -58,7 +61,7 @@ export function AuthorHistoryPanel({
       if (!controller.signal.aborted) {
         setError(
           caught instanceof AuthorApiError
-            ? caught.detail
+            ? authorErrorDetail(caught)
             : 'Review history could not be loaded.',
         );
         setState('error');
@@ -84,12 +87,14 @@ export function AuthorHistoryPanel({
       <summary>Review history</summary>
       <div className="author-history__body">
         {state === 'loading' ? (
-          <p className="author-state" role="status">
-            Loading review history…
-          </p>
+          <LoadingState label="Loading review history…" />
         ) : null}
         {state === 'error' ? (
-          <div className="author-state author-state--error" role="alert">
+          <div
+            className="author-state author-state--error state-message state-message--error"
+            role="alert"
+          >
+            <StateIcon tone="error" />
             <strong>Review history is unavailable.</strong>
             <p>{error}</p>
             <button

@@ -1,3 +1,5 @@
+import { authorErrorDetail } from './author-error-copy';
+import { StatusMessage } from '../StatusMessage';
 import type { RefObject } from 'react';
 
 import type { AuthorApiError } from '../../api/author';
@@ -15,30 +17,32 @@ export function AuthorFeedback({
 }: AuthorFeedbackProps) {
   if (error) {
     return (
-      <div
-        className="author-feedback author-feedback--error"
+      <StatusMessage
+        tone="error"
+        className="author-feedback"
         ref={refObject}
         role="alert"
         tabIndex={-1}
       >
         <strong>{errorTitle(error)}</strong>
-        <p>{error.detail}</p>
+        <p>{authorErrorDetail(error)}</p>
         {error.requestId ? <p>Request reference: {error.requestId}</p> : null}
-      </div>
+      </StatusMessage>
     );
   }
 
   if (message) {
     return (
-      <div
+      <StatusMessage
         aria-live="polite"
-        className="author-feedback author-feedback--success"
+        tone="success"
+        className="author-feedback"
         ref={refObject}
         role="status"
         tabIndex={-1}
       >
         {message}
-      </div>
+      </StatusMessage>
     );
   }
 
@@ -50,9 +54,9 @@ function errorTitle(error: AuthorApiError): string {
   const { failure } = error;
   if (failure === 'conflict') return 'This content changed state';
   if (failure === 'not-ready') return 'Publication requirements are not met';
-  if (failure === 'forbidden') return 'Author permission was refused';
+  if (failure === 'forbidden') return 'Author permission is required';
   if (failure === 'authorization') return 'Your session needs attention';
-  if (failure === 'validation') return 'Some content is invalid';
+  if (failure === 'validation') return 'Review the highlighted fields';
   if (failure === 'not-found') return 'This content no longer exists';
   return 'The request could not be completed';
 }

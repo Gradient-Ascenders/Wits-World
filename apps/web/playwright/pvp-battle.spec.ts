@@ -56,7 +56,7 @@ test('keeps the Player Battles loading shell compact', async ({ page }) => {
   await expect(page.getByText(/PvP hub|Loading your PvP/i)).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
 
-  await page.setViewportSize({ height: 800, width: 1280 });
+  await page.setViewportSize({ height: 800, width: 1440 });
   await expectNoHorizontalOverflow(page);
   const loadingBox = await page.locator('.pvp-loading').boundingBox();
   expect(loadingBox).not.toBeNull();
@@ -227,7 +227,7 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
 
   for (const viewport of [
     { height: 844, label: '390', width: 390 },
-    { height: 800, label: '1280', width: 1280 },
+    { height: 800, label: '1440', width: 1440 },
   ]) {
     sentInvitation = pvpInvitation({
       direction: 'outgoing',
@@ -306,9 +306,9 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
     ).toBeVisible();
     await expect(page.getByText('Won', { exact: true })).toBeVisible();
     await expectNoHorizontalOverflow(page);
-    if (viewport.label === '1280') {
+    if (viewport.label === '1440') {
       await page.locator('.pvp-hub').screenshot({
-        path: path.join(screenshotsDirectory, '1280-pvp-history.png'),
+        path: path.join(screenshotsDirectory, '1440-pvp-history.png'),
         style: '.skip-link, .primary-navigation { display: none !important; }',
       });
     }
@@ -356,13 +356,14 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
   ).toBeFocused();
   expect(actionRequests).toBe(1);
 
-  await page.setViewportSize({ height: 800, width: 1280 });
+  await page.setViewportSize({ height: 800, width: 1440 });
   await expectNoHorizontalOverflow(page);
   await page.locator('.battle-page').screenshot({
-    path: path.join(screenshotsDirectory, '1280-pvp-opponent-turn.png'),
+    path: path.join(screenshotsDirectory, '1440-pvp-opponent-turn.png'),
     style: '.skip-link, .primary-navigation { display: none !important; }',
   });
 
+  await page.getByText('Leave this battle', { exact: true }).click();
   const forfeit = page.getByRole('button', { name: 'Forfeit battle' });
   await forfeit.click();
   const dialog = page.getByRole('alertdialog', {
@@ -378,7 +379,7 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
 
   await forfeit.click();
   await page.screenshot({
-    path: path.join(screenshotsDirectory, '1280-forfeit-confirmation.png'),
+    path: path.join(screenshotsDirectory, '1440-forfeit-confirmation.png'),
     style: '.skip-link, .primary-navigation { display: none !important; }',
   });
   await page.getByRole('button', { name: 'Confirm forfeit' }).click();
@@ -396,7 +397,7 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
   ).toHaveCount(0);
   await expect(page.locator('body')).not.toContainText('voluntary_resignation');
   await page.locator('.battle-page').screenshot({
-    path: path.join(screenshotsDirectory, '1280-own-forfeit-result.png'),
+    path: path.join(screenshotsDirectory, '1440-own-forfeit-result.png'),
     style: '.skip-link, .primary-navigation { display: none !important; }',
   });
   expect(forfeitRequests).toBe(1);
@@ -406,6 +407,94 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
   );
   expect(pageErrors).toEqual([]);
   expect(failedRequests).toEqual([]);
+});
+
+test('keeps bench, forced replacement and results readable across battle layouts', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await routeCurrentPlayer(page);
+  let current = pvpMatch({
+    turnDeadline: new Date(Date.now() + 23 * 60 * 60 * 1000).toISOString(),
+  });
+  let submissions = 0;
+  await page.route('**/api/v1/matches/pvp/**', async (route) => {
+    if (route.request().method() === 'POST') {
+      submissions += 1;
+      const body = route.request().postDataJSON();
+      expect(body.action).toEqual(current.legalActions[0]);
+      const next = pvpMatch({
+        turnDeadline: new Date(Date.now() + 23 * 60 * 60 * 1000).toISOString(),
+        version: 4,
+      });
+      next.state.self.activeCreatureId = current.state.self.creatures[1]!.id;
+      current = next;
+    }
+    await json(route, { ...current, requestId: 'battle-layout' });
+  });
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 1024 });
+    current = pvpMatch({
+      turnDeadline: new Date(Date.now() + 23 * 60 * 60 * 1000).toISOString(),
+    });
+    await page.goto(`/matches/pvp/${current.matchId}`);
+    await expect(
+      page.getByRole('heading', { name: 'Your turn', exact: true }),
+    ).toBeVisible();
+    const bench = page.locator('.battle-bench');
+    await bench.locator('summary').click();
+    await expect(bench.getByRole('listitem')).toHaveCount(2);
+    await expect(bench).toContainText('HP 100 / 100');
+    await expect(bench.getByRole('button')).toHaveCount(0);
+    await expectNoHorizontalOverflow(page);
+    await page.locator('.battle-page').screenshot({
+      path: path.join(screenshotsDirectory, `${width}-bench.png`),
+    });
+    await bench.locator('summary').click();
+
+    current.state.phase = 'replacement';
+    current.state.self.creatures[0]!.currentHp = 0;
+    current.state.self.creatures[0]!.defeated = true;
+    current.legalActions = [
+      {
+        type: 'select_replacement',
+        creatureId: current.state.self.creatures[1]!.id,
+      },
+    ];
+    await page.reload();
+    await expect(
+      page.getByRole('heading', { name: 'Replacement required', exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole('tab')).toHaveCount(0);
+    await expect(page.locator('.creature-choice-control:enabled')).toHaveCount(
+      1,
+    );
+    await expectNoHorizontalOverflow(page);
+    await page.locator('.battle-page').screenshot({
+      path: path.join(screenshotsDirectory, `${width}-pvp-replacement.png`),
+    });
+    await page.locator('.creature-choice-control:enabled').focus();
+    await page.keyboard.press('Enter');
+    await expect(
+      page.getByRole('heading', { name: 'Your turn', exact: true }),
+    ).toBeFocused();
+
+    for (const outcome of ['win', 'loss'] as const) {
+      current = pvpMatch({ status: 'completed', outcome });
+      await page.reload();
+      await expect(page.locator('.completed-match')).toBeVisible();
+      await expect(
+        page.getByRole('button', { name: 'Forfeit battle' }),
+      ).toHaveCount(0);
+      await expectNoHorizontalOverflow(page);
+      await page.locator('.battle-page').screenshot({
+        path: path.join(screenshotsDirectory, `${width}-pvp-${outcome}.png`),
+      });
+    }
+  }
+  expect(submissions).toBe(3);
+  expect(errors).toEqual([]);
 });
 
 async function routeCurrentPlayer(page: Page) {

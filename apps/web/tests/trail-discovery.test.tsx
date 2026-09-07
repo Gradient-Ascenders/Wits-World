@@ -228,9 +228,8 @@ describe('trail discovery presentation', () => {
         state={{ status: 'loading' }}
       />,
     );
-    expect(screen.getByText('Loading trails and progress…')).toHaveAttribute(
-      'role',
-      'status',
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Loading trails and progress…',
     );
 
     view.rerender(
@@ -602,7 +601,7 @@ describe('exploration integration', () => {
         selectedEventId={nearbyEvent.eventId}
       />,
     );
-    await user.click(screen.getByRole('button', { name: '← Nearby' }));
+    await user.click(screen.getByRole('button', { name: 'Nearby' }));
 
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Nearby' })).toHaveFocus(),

@@ -1,3 +1,5 @@
+import { StateIcon } from '../components/StatusMessage';
+import { ArrowLeft } from '@phosphor-icons/react';
 import { useAuth0 } from '@auth0/auth0-react';
 import {
   useCallback,
@@ -102,6 +104,7 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const pageRequest = useRef<AbortController | null>(null);
   const operationInFlight = useRef(false);
   const polling = useRef(false);
+  const [refreshing, setRefreshing] = useState(false);
   const challengeAttempt = useRef<SubmissionAttempt | null>(null);
   const acceptAttempts = useRef<Record<string, SubmissionAttempt>>({});
   const declineAttempts = useRef<Record<string, string>>({});
@@ -170,6 +173,7 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         return null;
       if (force) pollRequest.current?.abort();
       polling.current = true;
+      setRefreshing(true);
       const controller = new AbortController();
       pollRequest.current = controller;
       try {
@@ -204,6 +208,7 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         if (pollRequest.current === controller) {
           pollRequest.current = null;
           polling.current = false;
+          setRefreshing(false);
         }
       }
     },
@@ -537,7 +542,11 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   if (state.status === 'error') {
     return (
       <div className="matches-page">
-        <section className="match-state-panel" role="alert">
+        <section
+          className="match-state-panel state-message state-message--error"
+          role="alert"
+        >
+          <StateIcon tone="error" />
           <p className="eyebrow">Player Battles</p>
           <h1 ref={resultHeading} tabIndex={-1}>
             Player Battles could not load
@@ -592,7 +601,7 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           className="text-link pvp-lobby-header__back"
           href="/matches"
         >
-          ← Battles
+          <ArrowLeft size={20} aria-hidden="true" /> Battles
         </Link>
         <div className="pvp-lobby-header__main">
           <div>
@@ -633,10 +642,12 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           </span>
           <button
             className="button button--quiet"
+            disabled={refreshing}
+            aria-busy={refreshing}
             onClick={() => void pollHub()}
             type="button"
           >
-            Retry refresh
+            {refreshing ? 'Refreshing…' : 'Retry refresh'}
           </button>
         </div>
       ) : null}
@@ -648,11 +659,12 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       ) : null}
       {actionError ? (
         <div
-          className="match-inline-alert"
+          className="match-inline-alert state-message state-message--error"
           ref={actionAlert}
           role="alert"
           tabIndex={-1}
         >
+          <StateIcon tone="error" />
           <strong>
             {actionErrorContext === 'cancellation'
               ? 'Cancellation not confirmed.'
@@ -875,7 +887,7 @@ function PlayerBattlesLoading() {
           className="text-link pvp-lobby-header__back"
           href="/matches"
         >
-          ← Battles
+          <ArrowLeft size={20} aria-hidden="true" /> Battles
         </Link>
         <div className="pvp-lobby-header__main">
           <div>
@@ -1020,7 +1032,7 @@ function InvitationList({
     >
       <h3 id={`${direction}-invitations-title`}>{title}</h3>
       {invitations.length === 0 ? (
-        <p className="pvp-empty-state">
+        <p className="pvp-empty-state state-message state-message--empty">
           {direction === 'incoming'
             ? 'No received challenges.'
             : 'No sent challenges.'}
@@ -1327,7 +1339,8 @@ function HistoryPvpSummary({ match }: { match: PvpHistorySummary }) {
 
 function EmptyState({ children, title }: { children: string; title: string }) {
   return (
-    <div className="pvp-empty-state">
+    <div className="pvp-empty-state state-message state-message--empty">
+      <StateIcon tone="empty" />
       <h3>{title}</h3>
       <p>{children}</p>
     </div>

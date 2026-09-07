@@ -1,3 +1,4 @@
+import { AppToaster } from './components/AppToaster';
 import { lazy, Suspense, type ReactNode } from 'react';
 import { Redirect, Route, Switch, useLocation } from 'wouter';
 
@@ -60,6 +61,7 @@ export function AppRoutes({
     <CurrentPlayerProvider apiBaseUrl={apiBaseUrl}>
       <OfflineProvider apiBaseUrl={apiBaseUrl}>
         <AppShell>
+          <AppToaster />
           <OfflineStatus />
           <ServiceWorkerUpdate />
           <Suspense fallback={<LoadingState />}>

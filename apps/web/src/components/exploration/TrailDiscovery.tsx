@@ -1,3 +1,13 @@
+import { StateIcon } from '../StatusMessage';
+import { LoadingState } from '../LoadingState';
+import {
+  Archive,
+  ArrowCircleRight,
+  CheckCircle,
+  Lock,
+  MapPin,
+  WarningCircle,
+} from '@phosphor-icons/react';
 import type {
   NearbyUnvisitedEvent,
   PlayerTrail,
@@ -43,11 +53,7 @@ interface TrailListProps {
 
 export function TrailList({ onOpenTrail, onRetry, state }: TrailListProps) {
   if (state.status === 'idle' || state.status === 'loading') {
-    return (
-      <p aria-live="polite" className="event-list__state" role="status">
-        Loading trails and progress…
-      </p>
-    );
+    return <LoadingState label="Loading trails and progress…" />;
   }
 
   if (state.status === 'error') {
@@ -128,9 +134,7 @@ export function TrailDetail({ onOpenEvent, onRetry, state }: TrailDetailProps) {
     return (
       <article className="trail-detail trail-detail--state">
         <h2 tabIndex={-1}>Trail details</h2>
-        <p aria-live="polite" className="event-list__state" role="status">
-          Loading ordered trail…
-        </p>
+        <LoadingState label="Loading ordered trail…" />
       </article>
     );
   }
@@ -483,7 +487,11 @@ function DiscoveryError({
   title: string;
 }) {
   return (
-    <div className="event-list__state" role="alert">
+    <div
+      className="event-list__state state-message state-message--error"
+      role="alert"
+    >
+      <StateIcon tone="error" />
       <strong>{title}</strong>
       <p>{detail}</p>
       <button className="button" onClick={onRetry} type="button">
@@ -605,61 +613,15 @@ function TrailStatusIcon({
   className?: string;
   name: TrailStatusIconName;
 }) {
-  const sharedProps = {
-    'aria-hidden': true,
-    className,
-    fill: 'none',
-    focusable: 'false' as const,
-    stroke: 'currentColor',
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-    strokeWidth: 1.8,
-    viewBox: '0 0 24 24',
-  };
-
-  switch (name) {
-    case 'completed':
-      return (
-        <svg {...sharedProps}>
-          <circle cx="12" cy="12" r="9" />
-          <path d="m8 12 2.7 2.7L16.5 9" />
-        </svg>
-      );
-    case 'current':
-      return (
-        <svg {...sharedProps}>
-          <path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z" />
-          <circle cx="12" cy="10" r="2.5" />
-        </svg>
-      );
-    case 'locked':
-      return (
-        <svg {...sharedProps}>
-          <rect height="10" rx="2" width="14" x="5" y="10" />
-          <path d="M8 10V7a4 4 0 0 1 8 0v3" />
-        </svg>
-      );
-    case 'open':
-      return (
-        <svg {...sharedProps}>
-          <circle cx="12" cy="12" r="9" />
-          <path d="m10 8 4 4-4 4M8 12h6" />
-        </svg>
-      );
-    case 'retired':
-      return (
-        <svg {...sharedProps}>
-          <path d="M5 8v11h14V8M4 4h16v4H4zM10 12h4" />
-        </svg>
-      );
-    case 'unavailable':
-      return (
-        <svg {...sharedProps}>
-          <circle cx="12" cy="12" r="9" />
-          <path d="M12 7v6M12 17h.01" />
-        </svg>
-      );
-  }
+  const Icon = {
+    completed: CheckCircle,
+    current: MapPin,
+    locked: Lock,
+    open: ArrowCircleRight,
+    retired: Archive,
+    unavailable: WarningCircle,
+  }[name];
+  return <Icon aria-hidden="true" className={className} size={20} />;
 }
 
 function formatDistance(distanceMetres: number): string {

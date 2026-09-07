@@ -406,7 +406,7 @@ describe('card collection page', () => {
     ).toBeVisible();
     expect(within(article).getByText('Knowledge Surge')).toBeVisible();
     expect(within(article).getByText('Damage 20')).toBeVisible();
-    expect(within(article).getByText('3')).toBeVisible();
+    expect(within(article).getByText('3 Power')).toBeVisible();
     await waitFor(() =>
       expect(
         within(dialog).getByRole('button', { name: 'Close card details' }),

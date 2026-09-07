@@ -8,6 +8,7 @@ import { ConfigurationError, loadWebConfig } from './config/environment';
 import { locationClaimProvider, mapFactory } from './runtime-boundaries';
 import './styles/tokens.css';
 import './styles/global.css';
+import './styles/states.css';
 
 const rootElement = document.getElementById('root');
 

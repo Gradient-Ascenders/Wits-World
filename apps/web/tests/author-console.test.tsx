@@ -173,22 +173,22 @@ describe('Basic author console', () => {
         { timeout: 8_000 },
       ),
     ).toBeVisible();
-    for (const authorLink of screen.getAllByRole('link', { name: 'Author' })) {
-      expect(authorLink).toHaveAttribute('aria-current', 'page');
-    }
-    const playerNavigations = screen.getAllByRole('navigation', {
+    for (const playerNavigation of screen.getAllByRole('navigation', {
       name: 'Player',
-    });
-    for (const playerNavigation of playerNavigations) {
+    })) {
       expect(
-        within(playerNavigation)
-          .getAllByRole('link')
-          .map((link) => link.textContent),
-      ).toEqual(['Explore', 'Collection', 'Decks', 'Battles', 'Author']);
-      expect(
-        within(playerNavigation).queryByRole('link', { name: 'Home' }),
-      ).not.toBeInTheDocument();
+        within(playerNavigation).getByRole('link', { name: 'Author' }),
+      ).toHaveAttribute('aria-current', 'page');
     }
+    const navigation = screen.getByRole('navigation', {
+      name: 'Author sections',
+    });
+    expect(
+      within(navigation).getByRole('link', { name: 'Events' }),
+    ).toHaveAttribute('aria-current', 'page');
+    expect(
+      within(navigation).queryByRole('link', { name: 'Player application' }),
+    ).not.toBeInTheDocument();
     expect(
       await screen.findByRole('link', { name: /Great Hall history/ }),
     ).toBeVisible();
@@ -1011,7 +1011,11 @@ describe('Basic author console', () => {
     renderAuthorRoute(authorPaths.events);
 
     expect(await screen.findByText('Events are unavailable.')).toBeVisible();
-    expect(screen.getByText('Try again later.')).toBeVisible();
+    expect(
+      screen.getByText(
+        'The service could not complete this request. Check your connection and try again. No content change was confirmed.',
+      ),
+    ).toBeVisible();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
   });
 
@@ -1092,7 +1096,11 @@ describe('Basic author console', () => {
       await pending.promise;
     });
 
-    expect(await screen.findByText('Event B failed to load.')).toBeVisible();
+    expect(
+      await screen.findByText(
+        'The service could not complete this request. Check your connection and try again. No content change was confirmed.',
+      ),
+    ).toBeVisible();
     expect(
       screen.queryByRole('link', { name: /Question 1/ }),
     ).not.toBeInTheDocument();
@@ -1180,7 +1188,11 @@ describe('Basic author console', () => {
     });
 
     expect(await screen.findByText('Questions are unavailable.')).toBeVisible();
-    expect(screen.getByText('Challenge B failed to load.')).toBeVisible();
+    expect(
+      screen.getByText(
+        'The service could not complete this request. Check your connection and try again. No content change was confirmed.',
+      ),
+    ).toBeVisible();
     expect(
       screen.queryByRole('link', { name: /Question 1/ }),
     ).not.toBeInTheDocument();
@@ -1933,7 +1945,7 @@ describe('Basic author console', () => {
     });
     renderAuthorRoute(authorPaths.event(eventId));
 
-    expect((await screen.findAllByText('in_review'))[0]).toBeVisible();
+    expect((await screen.findAllByText('in review'))[0]).toBeVisible();
     expect(screen.queryByLabelText('Event title')).not.toBeInTheDocument();
     expect(
       screen.queryByRole('link', { name: 'Edit event' }),
@@ -2169,7 +2181,8 @@ describe('Basic author console', () => {
     });
 
     const feedback = await screen.findByRole('alert');
-    expect(feedback).toHaveTextContent('Challenge creation failed.');
+    expect(feedback).toHaveTextContent('No content change was confirmed.');
+    expect(feedback).not.toHaveTextContent('Challenge creation failed.');
     expect(feedback).toHaveFocus();
   });
 

@@ -26,12 +26,6 @@ export function MatchResultSummary({
         <span>{playerWon ? 'Won' : 'Lost'}</span>
       </div>
       <dl>
-        {!compact ? (
-          <div>
-            <dt>Result</dt>
-            <dd>{playerWon ? 'Player won' : 'CPU won'}</dd>
-          </div>
-        ) : null}
         <div>
           <dt>Completed</dt>
           <dd>
@@ -41,7 +35,7 @@ export function MatchResultSummary({
           </dd>
         </div>
         <div>
-          <dt>Submitted rounds</dt>
+          <dt>Recorded rounds</dt>
           <dd>{match.rounds.length}</dd>
         </div>
       </dl>

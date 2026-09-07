@@ -1,3 +1,4 @@
+import { MapPinIcon } from '@phosphor-icons/react';
 import { useMemo, useState } from 'react';
 
 import { CampusMap } from '../exploration/CampusMap';
@@ -82,7 +83,7 @@ export function AuthorLocationMap({
     <div className="author-location-map">
       <div aria-live="polite" className="author-location-map__summary">
         <span aria-hidden="true" className="author-location-map__pin">
-          ✦
+          <MapPinIcon size={20} />
         </span>
         <span className="author-location-map__summary-copy">
           <strong>
@@ -98,7 +99,7 @@ export function AuthorLocationMap({
         </span>
         {selectedPoint !== null ? (
           <button
-            className="button button--secondary author-location-map__focus"
+            className="button button--quiet author-location-map__focus"
             disabled={disabled}
             onClick={() => setFocusPointRequest((current) => current + 1)}
             type="button"
