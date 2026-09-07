@@ -14,11 +14,12 @@ workflow passed rather than treating an available merge action as evidence.
 The workflows are separated by event so pull requests have no dependency on
 the deployment runner:
 
-| Workflow                              | Trigger                                 | Responsibility                                                                                                      |
-| ------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `/.gitea/workflows/pr-validation.yml` | Pull requests targeting `main`          | Runs repository and application validation only. It contains no Azure jobs.                                         |
-| `/.gitea/workflows/ci.yml`            | Pushes to `main`                        | Runs validation, publishes coverage, creates production artifacts when required, and deploys affected applications. |
-| `/.gitea/workflows/docs-deploy.yml`   | Documentation-relevant pushes to `main` | Builds and deploys the documentation site to Cloudflare Pages.                                                      |
+| Workflow                                       | Trigger                                 | Responsibility                                                                                                                   |
+| ---------------------------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `/.gitea/workflows/pr-validation.yml`          | Pull requests targeting `main`          | Runs repository/application/shared-package validation plus serialized migration and database integration; no Azure or Basic E2E. |
+| `/.gitea/workflows/automated-verification.yml` | Daily schedule or manual dispatch       | Runs shared packages, serialized test-database verification, and Basic E2E as nightly evidence or an exact-SHA release gate.     |
+| `/.gitea/workflows/ci.yml`                     | Pushes to `main`                        | Runs validation, publishes coverage, creates production artifacts when required, and deploys affected applications.              |
+| `/.gitea/workflows/docs-deploy.yml`            | Documentation-relevant pushes to `main` | Builds and deploys the documentation site to Cloudflare Pages.                                                                   |
 
 The resulting flow is:
 
@@ -26,6 +27,8 @@ The resulting flow is:
 Pull request
     ↓
 C220 PR validation
+    ├── static analysis, applications, packages, builds
+    └── serialized dedicated test-database verification
     ↓
 done — no Azure jobs
 
@@ -74,15 +77,11 @@ construct production packages.
 
 ## Parallel validation
 
-Both validation workflows contain the same five independent C220 jobs:
-
-```text
-format ─────┐
-lint ───────┤
-type-check ─┼── Repository and application validation
-test ───────┤
-build ──────┘
-```
+PR validation has four independent C220 jobs: bundled static analysis,
+application coverage plus explicit shared-package tests, serialized database
+verification, and builds. The final PR gate needs all four. Main validation
+keeps bundled static analysis, application/package tests, and builds separate
+before its validation and deployment jobs.
 
 Each job checks out the repository and performs a clean, lockfile-controlled
 installation:
@@ -92,14 +91,16 @@ npm ci --prefer-offline --no-audit --fund=false
 ```
 
 The jobs run the existing formatting, linting, type-checking, coverage, tests,
-and validation-build commands. The final validation job needs all five jobs;
-main deployment cannot begin unless every category succeeds.
+and validation-build commands. Main deployment cannot begin unless every main
+validation category succeeds.
 
 The duplicated clean installations increase aggregate Gitea job-minutes, but
-the five jobs execute concurrently on the C220. Aggregate job-minutes measure
-total runner work and must not be interpreted as sequential workflow wall-clock
-latency. Consolidating these five jobs remains deliberately deferred pending
-new contention measurements.
+independent jobs execute concurrently on the C220. Aggregate job-minutes
+measure total runner work and must not be interpreted as sequential workflow
+wall-clock latency. The PR database job uses the conservative one-worker
+isolated-database runner and can queue on the cross-workflow advisory lock; see
+[automated verification](./automated-verification.md) for the matrix and cost
+boundary.
 
 ## npm cache status
 

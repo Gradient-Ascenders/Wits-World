@@ -1,4 +1,4 @@
-const defaultDatabaseTestWorkers = 2;
+const defaultDatabaseTestWorkers = 1;
 
 export function resolveDatabaseTestWorkers(value) {
   const configuredValue = value?.trim();

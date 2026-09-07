@@ -91,7 +91,7 @@ describe.skipIf(!runIntegrationTests)(
       });
 
       pool = createDatabasePool(temporaryConfig);
-    }, 45_000);
+    }, 60_000);
 
     afterAll(async () => {
       if (pool) {

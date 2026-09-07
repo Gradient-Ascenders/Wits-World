@@ -81,6 +81,12 @@ jobs:
       - name: Install dependencies
         run: time npm ci --prefer-offline --no-audit --fund=false
 
+      - name: Test shared account policy package
+        run: time npm test --workspace @wits-world/account-policy
+
+      - name: Test shared game rules package
+        run: time npm test --workspace @wits-world/game-rules
+
       - name: Test web application with coverage
         run: time npm run test:coverage --workspace @wits-world/web
 
@@ -104,29 +110,19 @@ jobs:
           retention-days: 14
 
   database-validation:
-    name: Validate database and migrations
+    name: Serialize and validate the dedicated test database
     runs-on: wits-world-ci
-
-    services:
-      postgres:
-        image: docker.io/postgis/postgis:17-3.5
-        env:
-          POSTGRES_DB: wits_world_test
-          POSTGRES_USER: wits_world_ci
-          POSTGRES_PASSWORD: wits_world_ci
-        options: >-
-          --health-cmd "pg_isready -U wits_world_ci -d wits_world_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
+    timeout-minutes: 120
 
     env:
-      # The service name is a network alias in the isolated job network.
-      TEST_DATABASE_URL: postgresql://wits_world_ci:wits_world_ci@postgres:5432/wits_world_test
-      # Keep the ordinary database target deliberately unusable so an
-      # accidental non-test connection fails rather than touching real data.
+      TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+      TEST_DATABASE_HOST: ${{ secrets.TEST_DATABASE_HOST }}
+      TEST_DATABASE_NAME: ${{ secrets.TEST_DATABASE_NAME }}
+      # Keep the ordinary target unusable. The verification runner also
+      # confirms the test URL's exact host and database before connecting.
       DATABASE_URL: postgresql://ci-guard:ci-guard@127.0.0.1:1/wits_world_ci_guard
-      DATABASE_TEST_WORKERS: '4'
+      DATABASE_TEST_WORKERS: '1'
+      VERIFICATION_SANITIZE_OUTPUT: 'true'
 
     steps:
       - name: Check out repository
@@ -140,20 +136,18 @@ jobs:
       - name: Install dependencies
         run: time npm ci --prefer-offline --no-audit --fund=false
 
-      - name: Prepare shared API dependencies
-        run: time npm run prepare:api
+      - name: Run serialized migration and database integration verification
+        run: time npm run verify:automated -- --profile pr --skip-package-tests
 
-      - name: Verify local test database readiness
-        run: |
-          set -euo pipefail
-
-          time npm run db:check:test --workspace @wits-world/api
-
-      - name: Run database integration and migration tests
-        run: |
-          set -euo pipefail
-
-          time npm run test:database --workspace @wits-world/api
+      - name: Upload sanitized database verification summary
+        if: ${{ always() }}
+        # Keep the known-working v3 protocol until v4 is verified on this Gitea instance.
+        uses: https://github.com/actions/upload-artifact@v3
+        with:
+          name: pr-database-verification-${{ gitea.sha }}
+          path: .playwright-artifacts/verification/summary.json
+          if-no-files-found: error
+          retention-days: 14
 
   build:
     name: Build applications
@@ -194,6 +188,6 @@ jobs:
         run: |
           echo "All pull-request validation jobs passed."
           echo "Static analysis: passed"
-          echo "Application tests and coverage: passed"
-          echo "Database and migration validation: passed"
+          echo "Application and explicit shared-package tests: passed"
+          echo "Serialized dedicated database and migration validation: passed"
           echo "Application builds: passed"
