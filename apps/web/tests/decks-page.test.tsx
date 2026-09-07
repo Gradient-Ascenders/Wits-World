@@ -5,7 +5,7 @@ import {
 } from '@auth0/auth0-react';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { OwnedCard } from '../src/api/cards';
 import type { SavedDeck } from '../src/api/decks';
@@ -19,6 +19,18 @@ import {
 } from './fixtures/decks';
 
 const apiBaseUrl = 'https://api.example.test/api/v1';
+
+beforeEach(() => {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn().mockImplementation((media: string) => ({
+      media,
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  );
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -72,6 +84,47 @@ function stubInitialState(decks: SavedDeck[], cards: object[]) {
 }
 
 describe('saved deck management page', () => {
+  it('preserves selected copies through filters and confirms discarding edits', async () => {
+    const user = userEvent.setup();
+    const cards = buildStarterCards('wit');
+    stubInitialState([buildSavedDeck()], cards);
+    renderDecks();
+    await user.click(
+      await screen.findByRole('button', { name: 'Edit or rename' }),
+    );
+    expect(screen.getByText('No unsaved changes')).toBeVisible();
+    await user.click(
+      screen.getByRole('button', {
+        name: `Remove a copy of ${cards[0]!.name}`,
+      }),
+    );
+    expect(screen.getByText('Unsaved changes')).toBeVisible();
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Search cards' }),
+      'no such card',
+    );
+    expect(
+      screen.getByRole('heading', { name: 'No matching cards' }),
+    ).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+    await user.selectOptions(screen.getByLabelText('Type'), 'power');
+    expect(
+      within(
+        screen.getByRole('list', {
+          name: 'Owned cards available for this deck',
+        }),
+      ).getAllByRole('article'),
+    ).toHaveLength(2);
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    await user.click(screen.getByRole('button', { name: 'Keep editing' }));
+    expect(screen.getByText('Unsaved changes')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    await user.click(screen.getByRole('button', { name: 'Discard changes' }));
+    expect(screen.getByRole('heading', { name: 'Campus Five' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Edit or rename' }));
+    expect(screen.getByText('No unsaved changes')).toBeVisible();
+  });
+
   it('announces loading before showing empty saved-deck and collection states', async () => {
     const requests: Array<(response: Response) => void> = [];
     vi.stubGlobal(
@@ -102,7 +155,7 @@ describe('saved deck management page', () => {
     expect(
       screen.getByRole('heading', { name: 'Your collection is empty' }),
     ).toBeVisible();
-    expect(screen.getByText(/No copies chosen yet\./)).toBeVisible();
+    expect(screen.getByText(/Your lineup starts here\./)).toBeVisible();
   });
 
   it('creates, renames, edits, selects, hands off, and deletes a deck', async () => {
@@ -478,7 +531,7 @@ describe('saved deck management page', () => {
     expect(screen.getByText('Ready to submit')).toBeVisible();
     expect(finalAdd).toHaveFocus();
     expect(
-      screen.getByRole('heading', { name: 'Draft preflight' }),
+      screen.getByRole('heading', { name: 'Deck status' }),
     ).not.toHaveFocus();
   });
 
@@ -507,7 +560,9 @@ describe('saved deck management page', () => {
 
     expect(screen.getByText('14 / 10')).toBeVisible();
     expect(
-      screen.getByText('Reduce rarity points to 10 or fewer.'),
+      within(screen.getByRole('region', { name: 'Deck status' })).getByText(
+        'Reduce rarity points to 10 or fewer.',
+      ),
     ).toBeVisible();
     expect(
       screen.getByRole('button', { name: 'Create saved deck' }),

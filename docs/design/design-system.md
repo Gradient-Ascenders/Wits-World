@@ -474,6 +474,24 @@ unavailable, and permission-required states where relevant.
 
 Preserve layout during state changes where practical.
 
+### Deck editing
+
+Keep the viewed deck distinct from the deck active for matches. On mobile and
+tablet, use a compact deck switcher and focused deck/collection views while
+editing. On desktop, show the draft beside its collection. Keep card count,
+readiness, unsaved state, and saving together. On mobile, keep the action area
+fixed above player navigation; on desktop, place it below the cards in normal
+page flow. Explain blocked saves and full-copy selections in text.
+Search and filters must preserve selected copies. Use blue for selection and
+label add/remove actions; keep collectible artwork and frames independent of
+editor controls.
+
+The mobile save area may minimise after deliberate downward scrolling and expand
+on upward scrolling or at the top. Keep it minimised at the bottom and stable while scrolling pauses
+or jitters. Its compact form must retain status, a touch-sized Save action, and a
+keyboard-accessible way to expand. Keep focused controls and pending decisions
+stable; expand for saving or save errors, and respect reduced motion.
+
 ### Map discovery
 
 Keep mobile discovery collapsed until requested. Opening the event list should
@@ -943,6 +961,8 @@ This revision was materially rewritten with the assistance of
 ChatGPT[GPT-5.6 Sol].
 
 The map-discovery guidance was added with assistance from Codex.
+
+The deck-editing guidance was added with assistance from Codex.
 
 Update this declaration when other AI tools materially review, edit, or generate
 parts of this document.

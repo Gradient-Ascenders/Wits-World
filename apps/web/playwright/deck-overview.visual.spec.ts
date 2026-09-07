@@ -70,7 +70,7 @@ test('keeps multiple deck summaries compact and reveals one detail surface', asy
 
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto('/decks');
-  const savedDecks = page.getByRole('list', { name: 'Saved decks' });
+  const savedDecks = page.locator('.saved-deck-list');
   const selectedDetail = page.getByRole('article');
 
   await expect(savedDecks.locator(':scope > li')).toHaveCount(3);
@@ -86,7 +86,7 @@ test('keeps multiple deck summaries compact and reveals one detail surface', asy
 
   for (const viewport of [
     { height: 1024, width: 768 },
-    { height: 800, width: 1280 },
+    { height: 900, width: 1440 },
   ]) {
     await page.setViewportSize(viewport);
     await expectNoHorizontalOverflow(page);
@@ -102,11 +102,7 @@ test('keeps multiple deck summaries compact and reveals one detail surface', asy
   expect(Math.abs(desktopDetailBox!.y - desktopListBox!.y)).toBeLessThan(80);
 
   await page.setViewportSize({ height: 844, width: 390 });
-  const campusSummary = page.getByRole('button', {
-    name: 'View details for Campus Five',
-  });
-  await campusSummary.focus();
-  await page.keyboard.press('Enter');
+  await page.getByLabel('Viewing deck').selectOption(buildUuid(900));
   await expect(
     page.getByRole('heading', { name: 'Campus Five' }),
   ).toBeFocused();
@@ -124,24 +120,22 @@ test('keeps multiple deck summaries compact and reveals one detail surface', asy
     page.getByRole('button', { name: 'Start CPU match' }),
   ).toBeVisible();
 
-  await page
-    .getByRole('button', { name: 'View details for Great Hall Guard' })
-    .click();
+  await page.getByLabel('Viewing deck').selectOption(buildUuid(902));
   await page.getByRole('button', { name: 'Delete' }).click();
   await expect(page.getByRole('button', { name: 'Delete deck' })).toBeFocused();
   await page.getByRole('button', { name: 'Delete deck' }).click();
   await expect(savedDecks.locator(':scope > li')).toHaveCount(2);
 
-  await page
-    .getByRole('button', {
-      name: 'View details for Campus Five, active deck',
-    })
-    .click();
+  await page.getByLabel('Viewing deck').selectOption(buildUuid(900));
   await page.getByRole('button', { name: 'Delete' }).click();
   await page.getByRole('button', { name: 'Delete deck' }).click();
   await expect(savedDecks.locator(':scope > li')).toHaveCount(1);
-  await expect(page.getByText('1 saved deck')).toBeVisible();
-  await expect(page.getByText('No active deck')).toBeVisible();
+  await expect(page.locator('.deck-master__summary')).toContainText(
+    '1 saved deck',
+  );
+  await expect(page.locator('.deck-master__summary')).toContainText(
+    'No active deck',
+  );
   await expect(page.getByRole('button', { name: 'Make active' })).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
@@ -263,6 +257,13 @@ test('keeps exact-copy deck editing dense and reachable across viewports', async
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto('/decks');
   await page.getByRole('button', { name: 'Create a deck' }).click();
+  await page
+    .getByRole('textbox', { name: 'Deck name' })
+    .fill('Campus Compact Five');
+  await page
+    .getByRole('group', { name: 'Editor view' })
+    .getByRole('button', { name: 'Add cards' })
+    .click();
 
   const picker = page.getByRole('list', {
     name: 'Owned cards available for this deck',
@@ -314,18 +315,13 @@ test('keeps exact-copy deck editing dense and reachable across viewports', async
       .getByRole('button', { name: `Add a copy of ${card.name}` })
       .click();
   }
-  await page
-    .getByRole('textbox', { name: 'Deck name' })
-    .fill('Campus Compact Five');
-  await expect(page.getByText('Ready to submit')).toBeVisible();
-  await expect(
-    page.getByText(new RegExp(`^${validSelection.length} / \\d+ selected$`)),
-  ).toBeVisible();
-
-  const mobileSave = page.getByRole('button', {
-    name: 'Create saved deck from current draft',
-  });
+  await expect(page.locator('.deck-save-summary')).toContainText(
+    'Ready to save',
+  );
   await picker.locator(':scope > li').last().scrollIntoViewIfNeeded();
+  const mobileSave = page.getByRole('button', {
+    name: /^(Save|Create saved deck)$/,
+  });
   await expect(mobileSave).toBeInViewport();
   await mobileSave.click();
   await expect(
@@ -335,27 +331,28 @@ test('keeps exact-copy deck editing dense and reachable across viewports', async
 
   await page.setViewportSize({ height: 1024, width: 768 });
   await page.getByRole('button', { name: 'Edit or rename' }).click();
-  await expect(
-    page.getByText(new RegExp(`^${validSelection.length} / \\d+ selected$`)),
-  ).toBeVisible();
+  await page
+    .getByRole('group', { name: 'Editor view' })
+    .getByRole('button', { name: 'Add cards' })
+    .click();
+  await expect(page.locator('.deck-save-summary')).toBeVisible();
   await page
     .getByRole('button', { name: `Remove a copy of ${longName}` })
     .click();
+  await expect(page.locator('.deck-save-summary')).toContainText(
+    `${validSelection.length - 1} / 5 cards`,
+  );
   await expect(
-    page.getByText(
-      new RegExp(`^${validSelection.length - 1} / \\d+ selected$`),
-    ),
-  ).toBeVisible();
-  await expect(
-    page.getByRole('button', { exact: true, name: 'Save deck changes' }),
+    page.getByRole('button', { name: /^(Save|Save deck changes)$/ }),
   ).toBeDisabled();
   await page.getByRole('button', { name: `Add a copy of ${longName}` }).click();
+  await page.getByRole('button', { name: /Your deck \(/ }).click();
   await page
     .getByRole('textbox', { name: 'Deck name' })
     .fill('The Exceptionally Long-Named Compact Campus Deck');
   await expectNoHorizontalOverflow(page);
 
-  await page.setViewportSize({ height: 800, width: 1280 });
+  await page.setViewportSize({ height: 900, width: 1440 });
   const draftBox = await page.locator('.deck-editor__draft').boundingBox();
   const pickerBox = await page.locator('.card-picker').boundingBox();
   expect(draftBox).not.toBeNull();
@@ -372,9 +369,13 @@ test('keeps exact-copy deck editing dense and reachable across viewports', async
   expect(selectedListMetrics.scrollHeight).toBeLessThanOrEqual(
     selectedListMetrics.clientHeight,
   );
-  await expect(
-    page.getByRole('button', { exact: true, name: 'Save deck changes' }),
-  ).toBeInViewport();
+  const desktopSaveBox = await page
+    .locator('.deck-editor__actions')
+    .boundingBox();
+  const cardListBox = await picker.boundingBox();
+  expect(desktopSaveBox!.y).toBeGreaterThanOrEqual(
+    cardListBox!.y + cardListBox!.height,
+  );
   await expectNoHorizontalOverflow(page);
   await page
     .getByRole('button', { exact: true, name: 'Save deck changes' })
@@ -387,6 +388,187 @@ test('keeps exact-copy deck editing dense and reachable across viewports', async
 
   expect(consoleErrors).toEqual([]);
   expect(runtimeErrors).toEqual([]);
+});
+
+test('keeps a filtered mobile draft through saving and a recoverable failure', async ({
+  page,
+}) => {
+  const cards = buildStarterCards('wit') as OwnedCard[];
+  let saveAttempt = 0;
+  let finishSave: (() => void) | undefined;
+  await page.route(`${API_BASE_URL}/auth/me`, (route) => json(route, PLAYER));
+  await page.route(`${API_BASE_URL}/cards/collection`, (route) =>
+    json(route, { cards, requestId: 'fixture' }),
+  );
+  await page.route(`${API_BASE_URL}/decks`, async (route) => {
+    if (route.request().method() === 'GET') {
+      await json(route, { decks: [], requestId: 'fixture' });
+      return;
+    }
+    saveAttempt += 1;
+    if (saveAttempt === 1) {
+      await new Promise<void>((resolve) => {
+        finishSave = resolve;
+      });
+      await json(
+        route,
+        {
+          code: 'INTERNAL_ERROR',
+          detail: 'Try again.',
+          requestId: 'fixture',
+          status: 503,
+          title: 'Unavailable',
+          type: 'about:blank',
+        },
+        503,
+      );
+      return;
+    }
+    const body = route.request().postDataJSON() as {
+      name: string;
+      ownedCardIds: string[];
+    };
+    await json(
+      route,
+      {
+        ...buildDeckFromSelection(body.name, body.ownedCardIds, cards),
+        requestId: 'fixture',
+      },
+      201,
+    );
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/decks');
+  await expect(page.getByText('No saved decks yet')).toBeVisible();
+  await page.getByRole('button', { name: 'Create a deck' }).click();
+  await expect(
+    page.getByText('Incomplete deck', { exact: true }),
+  ).toBeVisible();
+  await page.getByRole('textbox', { name: 'Deck name' }).fill('Retry Five');
+  await page
+    .getByRole('group', { name: 'Editor view' })
+    .getByRole('button', { name: 'Add cards' })
+    .click();
+  await page.getByRole('searchbox', { name: 'Search cards' }).fill('No match');
+  await expect(
+    page.getByRole('heading', { name: 'No matching cards' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Clear filters' }).click();
+  for (const card of cards)
+    await page
+      .getByRole('button', { name: `Add a copy of ${card.name}` })
+      .click();
+  await expect(page.locator('.deck-save-summary')).toContainText(
+    'Ready to save',
+  );
+  await page
+    .getByRole('button', { name: /^(Save|Create saved deck)$/ })
+    .click();
+  await expect(
+    page.getByRole('button', { name: 'Saving with the server…' }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole('button', { name: 'Cancel', exact: true }),
+  ).toBeDisabled();
+  finishSave!();
+  await expect(page.getByRole('alert')).toContainText('Deck change not saved.');
+  await expect(page.locator('.deck-save-summary')).toContainText(
+    'Unsaved changes',
+  );
+  await page
+    .getByRole('button', { name: 'Create saved deck', exact: true })
+    .click();
+  await expect(page.getByRole('heading', { name: 'Retry Five' })).toBeVisible();
+  await expect(page.getByRole('status')).toContainText(
+    'Retry Five was created.',
+  );
+  expect(saveAttempt).toBe(2);
+  await expectNoHorizontalOverflow(page);
+});
+
+test('minimises the mobile save bar deliberately and preserves keyboard access', async ({
+  page,
+}) => {
+  const cards = buildStarterCards('wit');
+  const deck = buildDeck('Campus Five', 'wit', false, 900);
+  await page.route(`${API_BASE_URL}/auth/me`, (route) => json(route, PLAYER));
+  await page.route(`${API_BASE_URL}/cards/collection`, (route) =>
+    json(route, { cards, requestId: 'fixture' }),
+  );
+  await page.route(`${API_BASE_URL}/decks`, (route) =>
+    json(route, { decks: [deck], requestId: 'fixture' }),
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/decks');
+  await page.getByRole('button', { name: 'Edit or rename' }).click();
+  await page
+    .getByRole('group', { name: 'Editor view' })
+    .getByRole('button', { name: 'Add cards' })
+    .click();
+  const bar = page.locator('.deck-editor__actions');
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(bar).toHaveAttribute('data-collapsed', 'false');
+  const expandedHeight = (await bar.boundingBox())!.height;
+  await page.mouse.move(190, 400);
+  await page.mouse.wheel(0, 420);
+  await expect(bar).toHaveAttribute('data-collapsed', 'true');
+  await expect
+    .poll(async () => (await bar.boundingBox())!.height)
+    .toBeLessThan(expandedHeight * 0.7);
+  const save = page.getByRole('button', { name: 'Save', exact: true });
+  expect((await save.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  expect((await bar.boundingBox())!.y + (await bar.boundingBox())!.height).toBe(
+    772,
+  );
+  // Pausing and small opposite movements must not expand the bar.
+  await page.waitForTimeout(250);
+  await page.mouse.wheel(0, -4);
+  await page.waitForTimeout(250);
+  await expect(bar).toHaveAttribute('data-collapsed', 'true');
+  await page.mouse.wheel(0, -80);
+  await expect(bar).toHaveAttribute('data-collapsed', 'false');
+  await page.mouse.wheel(0, 140);
+  await expect(bar).toHaveAttribute('data-collapsed', 'true');
+  const details = page.getByRole('button', { name: 'Expand deck save panel' });
+  await details.click();
+  await expect(bar).toHaveAttribute('data-collapsed', 'false');
+  await page.mouse.move(190, 400);
+  await page.mouse.wheel(0, 80);
+  await expect(bar).toHaveAttribute('data-collapsed', 'true');
+  await details.focus();
+  await page.keyboard.press('Enter');
+  await expect(
+    page.getByRole('button', { name: 'Save deck changes', exact: true }),
+  ).toBeFocused();
+  await page.mouse.wheel(0, 100);
+  await expect(bar).toHaveAttribute('data-collapsed', 'false');
+  await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
+  await page.mouse.wheel(0, 100);
+  await expect(bar).toHaveAttribute('data-collapsed', 'true');
+  await page.evaluate(() =>
+    window.scrollTo(0, document.documentElement.scrollHeight),
+  );
+  await expect(bar).toHaveAttribute('data-collapsed', 'true');
+  await page.mouse.wheel(0, -4);
+  await page.waitForTimeout(250);
+  await expect(bar).toHaveAttribute('data-collapsed', 'true');
+  await page.mouse.wheel(0, -80);
+  await expect(bar).toHaveAttribute('data-collapsed', 'false');
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(bar).toHaveAttribute('data-collapsed', 'false');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  expect(
+    await page
+      .locator('.deck-save-full')
+      .evaluate((el) => parseFloat(getComputedStyle(el).transitionDuration)),
+  ).toBeLessThanOrEqual(0.001);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.mouse.wheel(0, 400);
+  await expect(bar).toHaveAttribute('data-collapsed', 'false');
+  await expect(
+    page.getByRole('button', { name: 'Save deck changes', exact: true }),
+  ).toBeVisible();
+  await expectNoHorizontalOverflow(page);
 });
 
 function buildDeck(
