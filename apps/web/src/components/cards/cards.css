@@ -561,7 +561,6 @@
   padding: 0;
   overflow: hidden;
   border: 1px solid var(--colour-border-subtle);
-  border-top-color: var(--card-accent, var(--colour-text-secondary));
   border-radius: var(--radius-md);
   color: var(--colour-text-primary);
   background: rgb(8 20 38 / 94%);
@@ -570,7 +569,7 @@
 }
 
 .card-thumbnail__button:hover {
-  border-color: var(--card-accent, var(--colour-border-default));
+  border-color: var(--colour-border-strong);
   background: var(--colour-navy-800);
 }
 
@@ -609,26 +608,8 @@
   -webkit-line-clamp: 2;
 }
 
-.card-thumbnail__duplicate {
-  position: absolute;
-  top: var(--space-2);
-  right: var(--space-2);
-  display: grid;
-  min-width: 2rem;
-  min-height: 2rem;
-  padding-inline: var(--space-2);
-  place-items: center;
-  border: 1px solid rgb(255 255 255 / 18%);
-  border-radius: var(--radius-pill);
-  color: var(--colour-navy-950);
-  background: var(--colour-gold-300);
-  font-size: var(--text-sm);
-  font-weight: 900;
-  box-shadow: 0 0.15rem 0.5rem rgb(0 0 0 / 28%);
-}
-
 .card-thumbnail--inactive {
-  opacity: 0.72;
+  border-style: dashed;
 }
 
 .collection-gallery__empty {
@@ -710,6 +691,11 @@
 .card-detail-modal__close:focus-visible {
   outline: 0.1875rem solid var(--colour-focus);
   outline-offset: 0.125rem;
+}
+
+.card-detail-modal__close:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .card-detail-modal__scroll {
@@ -800,26 +786,9 @@
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--colour-border-subtle);
-  border-top-color: var(--card-accent, var(--colour-text-secondary));
   border-radius: var(--radius-lg);
   background: linear-gradient(165deg, rgb(17 36 64 / 94%), rgb(5 11 22 / 98%));
   box-shadow: var(--shadow-panel);
-}
-
-.collectible-card--common {
-  --card-accent: var(--colour-text-secondary);
-}
-
-.collectible-card--rare {
-  --card-accent: var(--colour-blue-300);
-}
-
-.collectible-card--epic {
-  --card-accent: #b98cff;
-}
-
-.collectible-card--legendary {
-  --card-accent: var(--colour-gold-400);
 }
 
 .collectible-card__artwork {
@@ -863,28 +832,13 @@
   width: 4.5rem;
   aspect-ratio: 1;
   place-items: center;
-  border: 1px solid var(--card-accent);
+  border: 1px solid var(--colour-text-secondary);
   border-radius: 50%;
-  color: var(--card-accent);
+  color: var(--colour-text-secondary);
   background: rgb(5 11 22 / 82%);
   font-family: var(--font-heading);
   font-size: var(--text-3xl);
   box-shadow: 0 0 2rem rgb(42 107 255 / 18%);
-}
-
-.collectible-card__rarity {
-  position: absolute;
-  top: var(--space-3);
-  right: var(--space-3);
-  padding: var(--space-1) var(--space-3);
-  border: 1px solid currentcolor;
-  border-radius: var(--radius-pill);
-  color: var(--card-accent);
-  background: rgb(5 11 22 / 90%);
-  font-size: var(--text-xs);
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .collectible-card__body {
@@ -905,7 +859,7 @@
 
 .collectible-card__kind {
   margin-bottom: var(--space-1);
-  color: var(--colour-gold-400);
+  color: var(--colour-text-secondary);
   font-size: var(--text-xs);
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -1133,6 +1087,327 @@
   font-size: var(--text-sm);
 }
 
+.evolution-availability {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.evolution-availability__heading,
+.evolution-target__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.evolution-availability__heading .eyebrow,
+.evolution-target__heading .eyebrow {
+  margin-bottom: var(--space-1);
+}
+
+.evolution-availability__heading h3 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: var(--text-xl);
+}
+
+.evolution-availability__rarity {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--colour-border-subtle);
+  border-radius: var(--radius-pill);
+  color: var(--colour-text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.evolution-quantity-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--colour-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--colour-border-subtle);
+}
+
+.evolution-quantity-summary > div {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  background: var(--colour-navy-900);
+}
+
+.evolution-quantity-summary dt {
+  color: var(--colour-text-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.evolution-quantity-summary dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--colour-text-primary);
+  font-size: var(--text-md);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.evolution-availability__guidance,
+.evolution-availability__error p,
+.evolution-confirmation > p,
+.evolution-result > p {
+  margin: 0;
+  color: var(--colour-text-secondary);
+}
+
+.evolution-availability__error {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.evolution-confirmation,
+.evolution-result {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.evolution-confirmation h2,
+.evolution-result h2 {
+  margin: 0;
+  font-size: clamp(var(--text-2xl), 7vw, var(--text-3xl));
+}
+
+.evolution-recipe {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: stretch;
+}
+
+.evolution-recipe__source,
+.evolution-recipe__target {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-content: end;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  overflow: hidden;
+  border: 1px solid var(--colour-border-subtle);
+  border-radius: var(--radius-md);
+  background: rgb(17 36 64 / 72%);
+}
+
+.evolution-recipe__target {
+  border-color: var(--colour-border-default);
+  background: var(--colour-surface-default);
+}
+
+.evolution-recipe strong {
+  grid-column: 1;
+  grid-row: 1;
+  overflow-wrap: anywhere;
+}
+
+.evolution-recipe__source > span:last-child,
+.evolution-recipe__target > span:last-child {
+  grid-column: 1;
+  color: var(--colour-text-muted);
+  font-size: var(--text-xs);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.evolution-recipe__quantity {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  color: var(--colour-text-primary);
+  font-family: var(--font-heading);
+  font-size: var(--text-xl);
+  font-weight: 800;
+}
+
+.evolution-recipe__arrow {
+  align-self: center;
+  justify-self: center;
+  transform: rotate(90deg);
+  color: var(--colour-blue-300);
+  font-size: var(--text-xl);
+}
+
+.evolution-target {
+  display: grid;
+  gap: var(--space-2);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--colour-border-subtle);
+}
+
+.evolution-target__heading p:last-child {
+  margin: 0;
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.card-detail-modal .evolution-target .collectible-card,
+.card-detail-modal .evolution-result .collectible-card {
+  overflow: hidden;
+  border: 1px solid var(--colour-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--colour-navy-900);
+  box-shadow: var(--shadow-panel);
+}
+
+.card-detail-modal .evolution-target .collectible-card__artwork,
+.card-detail-modal .evolution-result .collectible-card__artwork {
+  border: 0;
+  border-bottom: 1px solid var(--colour-border-subtle);
+  border-radius: 0;
+}
+
+.card-detail-modal .evolution-target .collectible-card__body,
+.card-detail-modal .evolution-result .collectible-card__body {
+  padding: var(--space-4);
+}
+
+.evolution-error {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border-left: 0.2rem solid var(--colour-status-danger);
+  border-radius: var(--radius-sm);
+  color: var(--colour-text-primary);
+  background: rgb(220 91 101 / 9%);
+}
+
+.evolution-error small {
+  color: var(--colour-text-muted);
+}
+
+.evolution-confirmation__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+.evolution-confirmation__confirm {
+  border-color: var(--colour-status-danger);
+  color: var(--colour-text-inverse);
+  background: var(--colour-status-danger);
+  box-shadow: none;
+}
+
+.evolution-confirmation__confirm:hover {
+  background: #ef6b75;
+  box-shadow: none;
+}
+
+.card-detail-modal__footer {
+  flex: 0 0 auto;
+}
+
+.card-detail-modal__footer:empty {
+  display: none;
+}
+
+.evolution-action-bar {
+  padding: var(--space-3) var(--space-4);
+  padding-bottom: max(var(--space-3), env(safe-area-inset-bottom));
+  border-top: 1px solid var(--colour-border-subtle);
+  background: var(--colour-background-app);
+}
+
+.evolution-action-bar > p {
+  margin: 0 0 var(--space-2);
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.evolution-confirmation__actions .button {
+  min-height: var(--touch-target-min);
+  padding-inline: var(--space-3);
+  white-space: normal;
+}
+
+.evolution-lock-note {
+  display: flex;
+  align-items: start;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.evolution-lock-note svg {
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+
+.owned-copy-details > summary {
+  display: list-item;
+  min-height: var(--touch-target-min);
+  align-content: center;
+  color: var(--colour-text-secondary);
+  cursor: pointer;
+}
+
+.evolution-error__support > summary {
+  min-height: var(--touch-target-min);
+  align-content: center;
+  cursor: pointer;
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.evolution-availability > .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+@media (max-width: 39.999rem) {
+  .evolution-confirmation .evolution-quantity-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .evolution-confirmation .evolution-quantity-summary > div {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+    padding-block: var(--space-2);
+  }
+}
+
+.owned-copy-details > summary:focus-visible {
+  outline: 3px solid var(--colour-focus);
+  outline-offset: 2px;
+}
+
+.card-sheet-handle:disabled {
+  cursor: wait;
+}
+
+@media (min-width: 64rem) {
+  .evolution-recipe {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  }
+
+  .evolution-recipe__arrow {
+    transform: none;
+  }
+
+  .evolution-action-bar {
+    padding-inline: var(--space-5);
+  }
+}
+
 .collectible-card--compact .collectible-card__body {
   padding: var(--space-4);
 }
@@ -1179,6 +1454,10 @@
 
   .owned-card-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .evolution-confirmation__actions {
+    grid-template-columns: 1fr 1fr;
   }
 }
 
@@ -1235,6 +1514,19 @@
   .collectible-card__copy {
     white-space: normal;
   }
+
+  .evolution-quantity-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .evolution-recipe {
+    grid-template-columns: 1fr;
+  }
+
+  .evolution-recipe__arrow {
+    justify-self: center;
+    transform: rotate(90deg);
+  }
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -1266,7 +1558,7 @@
 }
 
 .collection-page .card-thumbnail__button:hover {
-  border-color: var(--colour-focus);
+  border-color: var(--colour-border-strong);
 }
 
 .collection-page .card-thumbnail__button:active {
@@ -1316,4 +1608,55 @@
     min-width: 0;
     padding-top: 0;
   }
+}
+
+/* Card controls remain outside the material frame. */
+.card-thumbnail__button {
+  align-content: start;
+  grid-template-rows: auto 1fr;
+  padding: 3px;
+}
+
+.card-thumbnail__caption {
+  padding-inline: var(--space-2);
+}
+
+.card-thumbnail__button:active {
+  box-shadow: inset 0 0 0 1px var(--colour-text-secondary);
+}
+
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .card-thumbnail__button {
+    transition:
+      transform 150ms ease,
+      box-shadow 150ms ease;
+  }
+  .card-thumbnail__button:hover {
+    transform: translateY(-2px);
+  }
+  .card-thumbnail__button:active {
+    transform: translateY(0);
+  }
+}
+
+.card-thumbnail__status {
+  color: var(--colour-text-secondary);
+  font-size: var(--text-xs);
+}
+
+/* The collectible plate owns its title; the button supplies only interaction. */
+.collection-page .card-thumbnail__button,
+.card-thumbnail__button {
+  padding: 0;
+  grid-template-rows: 1fr;
+  border: 0;
+  border-radius: 15px;
+  background: transparent;
+  overflow: visible;
+}
+.card-thumbnail__button > .card-frame {
+  height: 100%;
+}
+.card-thumbnail__status {
+  padding: var(--space-2);
 }

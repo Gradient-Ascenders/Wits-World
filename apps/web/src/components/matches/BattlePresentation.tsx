@@ -1,3 +1,4 @@
+import { CardFrame } from '../cards/CardFrame';
 import { battleArtwork } from '../../battle/card-artwork';
 import { useCreatureSheet } from './useCreatureSheet';
 import {
@@ -653,17 +654,16 @@ function CreatureDetailsPicture({ creature }: { creature: MatchCreature }) {
 function BattleCreatureArtwork({ name }: { name: string }) {
   const src = battleArtwork(name);
   const [failedUrl, setFailedUrl] = useState<string>();
-  return src && src !== failedUrl ? (
-    <img
-      className="battle-creature-artwork"
-      src={src}
-      alt=""
-      onError={() => setFailedUrl(src)}
-    />
-  ) : (
-    <span className="combatant__sigil" aria-hidden="true">
-      <span>{creatureMonogram(name)}</span>
-    </span>
+  return (
+    <CardFrame className="battle-creature-artwork">
+      {src && src !== failedUrl ? (
+        <img src={src} alt="" onError={() => setFailedUrl(src)} />
+      ) : (
+        <span className="combatant__sigil" aria-hidden="true">
+          <span>{creatureMonogram(name)}</span>
+        </span>
+      )}
+    </CardFrame>
   );
 }
 

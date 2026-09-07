@@ -913,6 +913,63 @@ npm run test:e2e:trails --workspace @wits-world/web
    the repository's ignored `.pr-screenshots/issue-70/` convention) and do not
    include account details, tokens, or other private data.
 
+#### Duplicate evolution in the collection
+
+1. Start the database, API, and web application using the commands above. Sign
+   in as a development player with at least three copies of one evolvable card,
+   then open `http://localhost:5173/collection`.
+2. At approximately 390px wide, confirm the gallery shows one design tile with
+   its total-copy badge. Open it and confirm the details distinguish Owned,
+   Available, and In decks using the server preview. A non-evolvable card should
+   keep the ordinary detail view without an unavailable action.
+3. For fewer than three available copies, confirm Review evolution is disabled
+   and the explanation distinguishes insufficient ownership from copies used by
+   saved decks. Remove a protected copy from its saved deck, reopen the card,
+   and confirm the refreshed server preview changes the action state.
+4. Activate Review evolution. Confirm focus moves to the confirmation heading,
+   the fixed three-copy recipe and remaining-copy count are clear, and the
+   evolved card is rendered with its server-provided definition. Activate
+   Cancel and confirm focus returns to Review evolution without a mutation.
+5. Review again and activate Confirm evolution. Confirm the action and modal
+   close controls remain disabled while pending. The success heading should
+   receive focus, exactly one evolved card should appear, and closing the modal
+   should reveal the refetched collection without the three consumed copies.
+6. Reproduce a concurrent copy or deck change before confirmation. Confirm the
+   safe conflict is announced and the latest preview disables or updates the
+   action. Stop the API for a general error and confirm retrying the same open
+   confirmation remains possible without showing a fictional success.
+7. Repeat at approximately 768px and 1440px and use Tab, Shift+Tab, Enter, and Escape.
+   Confirm focus remains trapped in the modal, Escape restores the originating
+   card tile when safe, controls meet touch-target sizing, text does not clip,
+   and no runtime error or ownership identifier appears in the console.
+
+For deterministic browser inspection without a real sign-in or database, run from
+the repository root:
+
+```bash
+npx playwright test --config apps/web/playwright/collection.config.ts collection-evolution.visual.spec.ts --headed --debug
+```
+
+This starts the web app in the existing `basic-e2e` fixture mode at
+`http://127.0.0.1:5178/collection`. Step through the Playwright inspector to review
+eligible copies, locked copies, confirmation/cancellation, stale previews, preview
+and confirmation failures, and success. The test supplies authenticated API
+fixtures; opening the URL alone does not install those fixtures. Screenshots go
+to `/tmp/wits-world-collection-evidence`. Omit `--headed --debug` to run the checks
+automatically; omit the spec filename to also run the gallery regression.
+
+Inspect the fixed confirmation footer while scrolling the result, the vertical
+mobile/tablet recipe and horizontal desktop recipe, and expandable Copy history.
+After success, the message distinguishes copies consumed from the new card and
+does not claim refresh completion while a refresh is still pending.
+
+This refinement and its inspection instructions were prepared with assistance
+from Codex-CLI[GPT-6].
+
+Selling is intentionally absent. The active product contract has no currency,
+wallet, sale preview, or selling mutation after issue #193 retired and deferred
+that model; the browser does not invent a replacement value.
+
 #### Protected Basic authoring
 
 1. Prepare and seed the local database with `npm run db`, start the API with

@@ -5,7 +5,7 @@ description: Confirmed duplicate-consumption rule and the fixed evolution relati
 
 # Card evolution rules
 
-**Status:** Backend evolution transaction and API implemented; collection UI deferred
+**Status:** Backend transaction, API, and player collection UI implemented
 
 **Confirmed:** 6 September 2026
 
@@ -71,11 +71,42 @@ consumed that copy. Copies referenced by a saved deck are never selected.
 Evolution is not inferred merely from holding three copies; the mutation
 remains an explicit player action.
 
-The collection confirmation UI, keyboard/focus behavior, and responsive player
-workflow are intentionally deferred to issue #175. Coin selling remains outside
-this contract and is tracked by issue #193.
+## Player collection experience
+
+The collection groups separately owned copies by definition and keeps the normal
+gallery visually quiet. Opening an evolvable card loads a fresh server preview
+and distinguishes total owned copies, copies currently eligible for evolution,
+and copies protected by saved decks. Cards without an authored evolution do not
+show an unavailable action.
+
+Eligibility is summarized by quantity; acquisition records remain available under
+Copy history. The existing collection sheet and desktop detail layout are retained.
+Confirmation controls stay below the scrolling preview, with safe-area spacing.
+The recipe stacks vertically on mobile and tablet and compares horizontally on
+desktop. Card frames are unchanged.
+
+The confirmation view presents the server-authored source and target, the fixed
+three-copy recipe, the number of copies remaining, any saved-deck protection,
+and the target through the normal card presentation. The browser submits only
+the source definition and a client-generated idempotency UUID. It never selects
+the consumed copies or derives the evolved definition.
+
+After a successful mutation, the UI immediately applies the authoritative
+consumed identifiers and granted card from the result, then refetches the whole
+collection. Insufficient-copy and saved-deck conflicts refresh both the preview
+and collection before another action is offered. Confirmation is single-flight,
+Escape and close are disabled while it is in flight, and focus moves to the
+confirmation, recoverable error, or success heading as appropriate.
+The sheet handle also stays disabled during submission. A confirmed evolution is
+distinguished from the subsequent collection refresh; a failed refresh offers a
+local retry without repeating the evolution. Stale previews explicitly state that
+no evolution completed and offer refreshed availability for another review.
+
+Coin selling remains outside this contract. Issue #193 retired the active coin
+and wallet model and explicitly deferred selling for currency; the collection
+therefore exposes no speculative selling action or client-calculated value.
 
 ## AI declaration
 
 This document was updated with assistance from Codex-CLI[GPT-5.6 Sol] and
-Codex[GPT-5].
+Codex[GPT-5], and Codex-CLI[GPT-6].

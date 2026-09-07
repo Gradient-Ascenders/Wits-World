@@ -18,6 +18,7 @@ import {
   listOwnedCards,
   listStarterOptions,
   selectStarter,
+  type CardEvolutionResult,
   type OwnedCard,
   type StarterAffinity,
   type StarterGrant,
@@ -29,6 +30,7 @@ import {
   CardThumbnail,
   CollectibleCard,
 } from '../components/cards/CollectibleCard';
+import { CardEvolutionFlow } from '../components/cards/CardEvolutionFlow';
 import '../components/cards/cards.css';
 import { CardSheetHandle } from '../components/cards/CardSheetHandle';
 
@@ -65,6 +67,7 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
   const [isSubmittingStarter, setIsSubmittingStarter] = useState(false);
   const [reauthFailed, setReauthFailed] = useState(false);
   const starterRequest = useRef<AbortController | null>(null);
+  const collectionRefreshRequest = useRef<AbortController | null>(null);
   const starterSubmissionLocked = useRef(false);
   const resultHeading = useRef<HTMLHeadingElement | null>(null);
   const confirmationHeading = useRef<HTMLHeadingElement | null>(null);
@@ -142,7 +145,10 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
   ]);
 
   useEffect(() => {
-    return () => starterRequest.current?.abort();
+    return () => {
+      starterRequest.current?.abort();
+      collectionRefreshRequest.current?.abort();
+    };
   }, []);
 
   useEffect(() => {
@@ -182,6 +188,44 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
     setStarterOptions({ status: 'loading' });
     setStarterOptionsRevision((revision) => revision + 1);
   }, []);
+
+  const applyEvolutionResult = useCallback((result: CardEvolutionResult) => {
+    const consumedIds = new Set(result.consumedOwnedCardIds);
+    setCollection((current) =>
+      current.status === 'ready'
+        ? {
+            cards: [
+              result.newCard,
+              ...current.cards.filter(
+                (card) => !consumedIds.has(card.ownedCardId),
+              ),
+            ],
+            status: 'ready',
+          }
+        : current,
+    );
+  }, []);
+
+  const refreshCollection = useCallback(async () => {
+    collectionRefreshRequest.current?.abort();
+    const controller = new AbortController();
+    collectionRefreshRequest.current = controller;
+
+    try {
+      const cards = await listOwnedCards({
+        apiBaseUrl,
+        getAccessToken,
+        signal: controller.signal,
+      });
+      if (!controller.signal.aborted) {
+        setCollection({ cards, status: 'ready' });
+      }
+    } finally {
+      if (collectionRefreshRequest.current === controller) {
+        collectionRefreshRequest.current = null;
+      }
+    }
+  }, [apiBaseUrl, getAccessToken]);
 
   async function startSignIn() {
     setReauthFailed(false);
@@ -342,7 +386,14 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
         : null}
 
       {collection.status === 'ready' && cards.length > 0 ? (
-        <CollectionGrid cards={cards} headingRef={collectionHeading} />
+        <CollectionGrid
+          apiBaseUrl={apiBaseUrl}
+          cards={cards}
+          getAccessToken={getAccessToken}
+          headingRef={collectionHeading}
+          onApplyEvolutionResult={applyEvolutionResult}
+          onRefreshCollection={refreshCollection}
+        />
       ) : null}
     </div>
   );
@@ -770,11 +821,19 @@ function StarterResult({
 }
 
 function CollectionGrid({
+  apiBaseUrl,
   cards,
+  getAccessToken,
   headingRef,
+  onApplyEvolutionResult,
+  onRefreshCollection,
 }: {
+  apiBaseUrl: string;
   cards: OwnedCard[];
+  getAccessToken: ReturnType<typeof useApiAccessToken>;
   headingRef: RefObject<HTMLHeadingElement | null>;
+  onApplyEvolutionResult: (result: CardEvolutionResult) => void;
+  onRefreshCollection: () => Promise<void>;
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -783,9 +842,9 @@ function CollectionGrid({
   const [rarityFilter, setRarityFilter] =
     useState<CollectionRarityFilter>('all');
   const [sortOrder, setSortOrder] = useState<CollectionSortOrder>('name');
-  const [selectedDefinitionId, setSelectedDefinitionId] = useState<
-    string | null
-  >(null);
+  const [selectedGroup, setSelectedGroup] = useState<OwnedCardGroup | null>(
+    null,
+  );
   const detailTriggerRef = useRef<HTMLButtonElement | null>(null);
   const groups = useMemo(() => groupOwnedCards(cards), [cards]);
   const visibleGroups = useMemo(
@@ -798,10 +857,6 @@ function CollectionGrid({
       }),
     [categoryFilter, groups, rarityFilter, searchQuery, sortOrder],
   );
-  const selectedGroup =
-    groups.find(
-      (group) => group.card.cardDefinitionId === selectedDefinitionId,
-    ) ?? null;
   const hasActiveControls =
     searchQuery !== '' ||
     categoryFilter !== 'all' ||
@@ -809,9 +864,24 @@ function CollectionGrid({
     sortOrder !== 'name';
 
   const closeDetails = useCallback(() => {
-    setSelectedDefinitionId(null);
-    window.setTimeout(() => detailTriggerRef.current?.focus(), 0);
-  }, []);
+    setSelectedGroup(null);
+    window.setTimeout(() => {
+      const trigger = detailTriggerRef.current;
+      (trigger?.isConnected ? trigger : headingRef.current)?.focus();
+    }, 0);
+  }, [headingRef]);
+
+  useEffect(() => {
+    setSelectedGroup((selected) => {
+      if (!selected) return null;
+      return (
+        groups.find(
+          (group) =>
+            group.card.cardDefinitionId === selected.card.cardDefinitionId,
+        ) ?? selected
+      );
+    });
+  }, [groups]);
 
   const clearControls = () => {
     setSearchQuery('');
@@ -962,7 +1032,7 @@ function CollectionGrid({
                 card={group.card}
                 onClick={(event) => {
                   detailTriggerRef.current = event.currentTarget;
-                  setSelectedDefinitionId(group.card.cardDefinitionId);
+                  setSelectedGroup(group);
                 }}
               />
             </li>
@@ -971,20 +1041,49 @@ function CollectionGrid({
       )}
 
       {selectedGroup ? (
-        <CardDetailModal group={selectedGroup} onClose={closeDetails} />
+        <CardDetailModal
+          apiBaseUrl={apiBaseUrl}
+          getAccessToken={getAccessToken}
+          group={selectedGroup}
+          onApplyEvolutionResult={onApplyEvolutionResult}
+          onClose={closeDetails}
+          onRefreshCollection={onRefreshCollection}
+        />
       ) : null}
     </section>
   );
 }
 
 function CardDetailModal({
+  apiBaseUrl,
+  getAccessToken,
   group,
+  onApplyEvolutionResult,
   onClose,
+  onRefreshCollection,
 }: {
+  apiBaseUrl: string;
+  getAccessToken: ReturnType<typeof useApiAccessToken>;
   group: OwnedCardGroup;
+  onApplyEvolutionResult: (result: CardEvolutionResult) => void;
   onClose: () => void;
+  onRefreshCollection: () => Promise<void>;
 }) {
   const dialogRef = useRef<HTMLElement | null>(null);
+  const busyRef = useRef(false);
+  const [isBusy, setIsBusy] = useState(false);
+  const [actionContainer, setActionContainer] = useState<HTMLDivElement | null>(
+    null,
+  );
+
+  const handleBusyChange = useCallback((busy: boolean) => {
+    busyRef.current = busy;
+    setIsBusy(busy);
+  }, []);
+
+  const requestClose = useCallback(() => {
+    if (!busyRef.current) onClose();
+  }, [onClose]);
 
   useEffect(() => {
     const applicationRoot = document.getElementById('root');
@@ -995,20 +1094,22 @@ function CardDetailModal({
     if (applicationRoot) applicationRoot.inert = true;
     document.documentElement.style.overflow = 'hidden';
     window.requestAnimationFrame(() => {
-      dialog?.querySelector<HTMLElement>('[data-card-detail-focus]')?.focus();
+      if (dialog && !dialog.contains(document.activeElement)) {
+        dialog.querySelector<HTMLElement>('[data-card-detail-focus]')?.focus();
+      }
     });
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        onClose();
+        requestClose();
         return;
       }
 
       if (event.key !== 'Tab' || !dialog) return;
       const focusable = Array.from(
         dialog.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          'button:not([disabled]), summary, a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
         ),
       ).filter(
         (element) => window.getComputedStyle(element).display !== 'none',
@@ -1035,13 +1136,13 @@ function CardDetailModal({
       if (applicationRoot) applicationRoot.inert = previousInert;
       document.documentElement.style.overflow = previousOverflow;
     };
-  }, [group.card.cardDefinitionId, onClose]);
+  }, [group.card.cardDefinitionId, requestClose]);
 
   return createPortal(
     <div
       className="card-detail-backdrop"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget) requestClose();
       }}
     >
       <section
@@ -1051,26 +1152,37 @@ function CardDetailModal({
         ref={dialogRef}
         role="dialog"
       >
-        <CardSheetHandle panelRef={dialogRef} onClose={onClose} />
+        <CardSheetHandle
+          panelRef={dialogRef}
+          onClose={requestClose}
+          disabled={isBusy}
+        />
         <header className="card-detail-modal__header">
           <p className="eyebrow">Card details</p>
           <button
             aria-label="Close card details"
             className="card-detail-modal__close"
             data-card-detail-focus
-            onClick={onClose}
+            disabled={isBusy}
+            onClick={requestClose}
             type="button"
           >
             <X size={24} aria-hidden="true" />
           </button>
         </header>
         <div className="card-detail-modal__scroll" id="card-detail-content">
-          <CollectibleCard
+          <CardEvolutionFlow
+            actionContainer={actionContainer}
+            apiBaseUrl={apiBaseUrl}
             card={group.card}
-            headingLevel={2}
-            ownedCopies={group.copies}
+            copies={group.copies}
+            getAccessToken={getAccessToken}
+            onApplyResult={onApplyEvolutionResult}
+            onBusyChange={handleBusyChange}
+            onRefreshCollection={onRefreshCollection}
           />
         </div>
+        <div className="card-detail-modal__footer" ref={setActionContainer} />
       </section>
     </div>,
     document.body,

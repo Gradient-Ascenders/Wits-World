@@ -1,0 +1,500 @@
+/* Celestial academic metalwork. All rarities share geometry and a recessed
+   square art window; material and engraving density establish the tier. */
+.card-frame {
+  --frame-ink: #292d34;
+  --frame-metal: #e8dfca;
+  --frame-light: #fff9e8;
+  --frame-edge: #79796f;
+  --frame-shadow: #343c43;
+  --frame-surface: #c8c6be;
+  --frame-plate: #e1ddd2;
+  --frame-wash: #efebe1;
+  --frame-corner-opacity: 0.7;
+  --frame-orbit-opacity: 0.16;
+  --frame-rim: linear-gradient(
+    125deg,
+    #fff7e3,
+    #7b8283 23%,
+    #e7e4d9 44%,
+    #626c74 70%,
+    #e2ddce
+  );
+  position: relative;
+  display: block;
+  min-width: 0;
+  padding: clamp(8px, 4.5%, 18px);
+  padding-top: clamp(15px, 7%, 28px);
+  border: 3px solid transparent;
+  border-radius: 15px;
+  color: var(--frame-ink);
+  background:
+    linear-gradient(
+        115deg,
+        var(--frame-wash),
+        var(--frame-surface) 30%,
+        var(--frame-shadow) 75%,
+        var(--frame-surface)
+      )
+      padding-box,
+    var(--frame-rim) border-box;
+  box-shadow:
+    0 0 0 1px #020710,
+    inset 0 0 0 1px var(--frame-shadow),
+    inset 0 0 0 3px var(--frame-light),
+    inset 0 0 0 4px var(--frame-edge),
+    0 5px 12px rgb(0 0 0 / 35%);
+  isolation: isolate;
+  container: collectible-frame / inline-size;
+}
+
+.card-frame--rare {
+  --frame-ink: #f4ead2;
+  --frame-metal: #cdb981;
+  --frame-light: #acd7f3;
+  --frame-edge: #718ba7;
+  --frame-shadow: #041326;
+  --frame-surface: #103767;
+  --frame-plate: #091f3e;
+  --frame-wash: #31577c;
+  --frame-corner-opacity: 0.85;
+  --frame-rim: linear-gradient(
+    125deg,
+    #c3ecff,
+    #346993 22%,
+    #91cfff 45%,
+    #153969 68%,
+    #9bc2df
+  );
+}
+
+.card-frame--epic {
+  --frame-ink: #f1e4ff;
+  --frame-metal: #c3a0e0;
+  --frame-light: #e3c8f9;
+  --frame-edge: #9174a8;
+  --frame-shadow: #140e22;
+  --frame-surface: #38204f;
+  --frame-plate: #23132f;
+  --frame-wash: #6c4d84;
+  --frame-corner-opacity: 0.95;
+  --frame-orbit-opacity: 0.26;
+  --frame-rim: linear-gradient(
+    125deg,
+    #f4e3ff,
+    #86639c 22%,
+    #d1a7ee 45%,
+    #422b5d 68%,
+    #caa2e6
+  );
+}
+
+.card-frame--legendary {
+  --frame-ink: #fff0c9;
+  --frame-metal: #edc664;
+  --frame-light: #fff1b5;
+  --frame-edge: #bc8c37;
+  --frame-shadow: #36230b;
+  --frame-surface: #97702c;
+  --frame-plate: #261d12;
+  --frame-wash: #e8bd5b;
+  --frame-corner-opacity: 1;
+  --frame-orbit-opacity: 0.25;
+  --frame-rim: linear-gradient(
+    125deg,
+    #fff5bf,
+    #b77d22 19%,
+    #ffe69a 38%,
+    #d19d37 53%,
+    #745019 76%,
+    #f7d376
+  );
+  box-shadow:
+    0 0 0 1px #4d3210,
+    inset 0 0 0 1px #795418,
+    inset 0 0 0 3px var(--frame-light),
+    inset 0 0 0 5px var(--frame-edge),
+    0 5px 15px rgb(0 0 0 / 42%),
+    0 0 12px rgb(211 172 65 / 9%);
+}
+
+.card-frame::before {
+  position: absolute;
+  z-index: -1;
+  inset: 7px;
+  border: 1px solid var(--frame-metal);
+  border-radius: 8px;
+  box-shadow:
+    0 1px 1px var(--frame-shadow),
+    inset 0 1px 1px var(--frame-shadow);
+  pointer-events: none;
+  content: '';
+}
+
+.card-frame__window {
+  position: relative;
+  display: block;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid var(--frame-metal);
+  border-radius: 9px 9px 4px 4px;
+  background: #08101d;
+  box-shadow:
+    0 0 0 2px var(--frame-shadow),
+    0 0 0 3px var(--frame-edge),
+    0 3px 4px rgb(0 0 0 / 65%);
+}
+
+.card-frame__window::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 2px 7px rgb(0 0 0 / 55%),
+    inset 0 0 0 1px rgb(255 255 255 / 9%);
+  pointer-events: none;
+  content: '';
+}
+
+.card-frame .collectible-card__artwork.collectible-card__artwork,
+.card-frame__window > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  object-fit: contain;
+  background: #08101d;
+}
+
+.card-frame__engraving {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  pointer-events: none;
+  color: var(--frame-metal);
+}
+
+.card-frame__corner {
+  position: absolute;
+  top: 4px;
+  width: clamp(24px, 14cqw, 48px);
+  aspect-ratio: 1;
+  background: linear-gradient(135deg, var(--frame-shadow), var(--frame-plate));
+  mask: none;
+  filter: drop-shadow(0 1px 0 var(--frame-shadow));
+  opacity: 1;
+  border-right: 1px solid var(--frame-metal);
+  border-bottom: 1px solid var(--frame-metal);
+  border-radius: 8px 0 100% 0;
+  box-shadow:
+    1px 1px 0 var(--frame-shadow),
+    2px 2px 0 var(--frame-edge);
+}
+
+.card-frame__corner--left {
+  left: 4px;
+}
+.card-frame__corner--right {
+  right: 4px;
+  transform: scaleX(-1);
+}
+
+.card-frame__crest {
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--frame-metal);
+  background: var(--frame-shadow);
+  transform: translateX(-50%) rotate(45deg);
+  box-shadow: inset 0 0 0 2px var(--frame-surface);
+}
+
+.card-frame--rare .card-frame__crest,
+.card-frame--epic .card-frame__crest,
+.card-frame--legendary .card-frame__crest {
+  top: 0;
+  width: clamp(17px, 8cqw, 28px);
+  height: auto;
+  aspect-ratio: 1;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  transform: translateX(-50%);
+  box-shadow: none;
+}
+
+.card-frame--legendary .card-frame__crest {
+  width: clamp(24px, 11cqw, 40px);
+  border: 1px solid var(--frame-light);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 25%, #6f5125, #21190f 75%);
+  box-shadow:
+    0 0 0 2px var(--frame-edge),
+    0 2px 4px #21190f;
+}
+
+.card-frame__spine {
+  position: absolute;
+  top: 28%;
+  bottom: 32%;
+  width: 1px;
+  background: linear-gradient(transparent, currentcolor 25% 75%, transparent);
+  opacity: 0.7;
+}
+.card-frame__spine--left {
+  left: 6px;
+}
+.card-frame__spine--right {
+  right: 6px;
+}
+.card-frame__spine::after {
+  position: absolute;
+  top: 50%;
+  left: -2px;
+  width: 5px;
+  height: 5px;
+  border: 1px solid currentcolor;
+  background: var(--frame-surface);
+  transform: rotate(45deg);
+  content: '';
+}
+.card-frame--common .card-frame__spine {
+  display: none;
+}
+.card-frame--epic .card-frame__spine::after {
+  box-shadow:
+    0 0 0 2px var(--frame-shadow),
+    0 0 0 3px var(--frame-edge);
+}
+.card-frame--legendary .card-frame__spine::after {
+  background: var(--frame-metal);
+}
+
+.card-frame__rail {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 6px;
+  padding: 9px 8px;
+  overflow: hidden;
+  border: 1px solid var(--frame-metal);
+  border-radius: 3px 3px 7px 7px;
+  color: var(--frame-ink);
+  background: linear-gradient(
+    115deg,
+    var(--frame-plate),
+    color-mix(in srgb, var(--frame-plate), var(--frame-surface) 25%)
+  );
+  box-shadow:
+    0 0 0 1px var(--frame-shadow),
+    inset 0 1px 0 color-mix(in srgb, var(--frame-light), transparent 65%),
+    inset 0 -2px 3px rgb(0 0 0 / 15%);
+}
+
+.card-frame__rail::after {
+  position: absolute;
+  right: -12px;
+  bottom: -12px;
+  width: 120px;
+  height: 80px;
+  background: var(--frame-metal);
+  opacity: var(--frame-orbit-opacity);
+  mask: url('../../assets/cards/celestial-orbit.svg') center / contain no-repeat;
+  pointer-events: none;
+  content: '';
+}
+
+.card-frame__name {
+  grid-column: 1 / -1;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  font-family: var(--font-heading);
+  font-size: clamp(0.875rem, 5.5cqw, 1.375rem);
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.card-frame__name .card-thumbnail__title,
+.card-frame__name > [role='heading'] {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  min-height: 2.6em;
+}
+
+.card-frame__rarity {
+  grid-column: 1;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--text-xs);
+  font-weight: 650;
+  line-height: 1.4;
+  letter-spacing: 0.025em;
+}
+
+.card-frame__insignia {
+  display: block;
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border: 1px solid currentcolor;
+  transform: rotate(45deg);
+}
+.card-frame--rare .card-frame__insignia {
+  box-shadow: inset 0 0 0 2px var(--frame-plate);
+  background: var(--frame-metal);
+}
+.card-frame--epic .card-frame__insignia,
+.card-frame--legendary .card-frame__insignia {
+  border: 3px double currentcolor;
+  width: 10px;
+  height: 10px;
+}
+.card-frame--legendary .card-frame__insignia {
+  background: var(--frame-metal);
+  box-shadow:
+    0 0 0 1px var(--frame-plate),
+    0 0 0 2px var(--frame-metal);
+}
+.card-frame__quantity {
+  grid-column: 2;
+  z-index: 1;
+  margin-left: auto;
+  padding-inline: 4px;
+  border: 1px solid #8590a0;
+  border-radius: 3px;
+  color: #f7f3e7;
+  background: #08101d;
+  font-size: var(--text-xs);
+  font-weight: 750;
+}
+
+/* Small cards retain material and medallion silhouettes, not tiny engravings. */
+@container collectible-frame (max-width: 190px) {
+  .card-frame__corner {
+    opacity: 0.8;
+    width: 24px;
+  }
+  .card-frame__spine {
+    display: none;
+  }
+  .card-frame__rail {
+    padding: 7px 6px;
+  }
+  .card-frame__rail::after {
+    opacity: 0.12;
+  }
+}
+@container collectible-frame (min-width: 280px) {
+  .card-frame__rail {
+    min-height: 3.5rem;
+    padding: 12px 14px;
+  }
+  .card-frame__rarity {
+    font-family: var(--font-heading);
+    font-size: var(--text-md);
+  }
+  .card-frame__rail::after {
+    width: 160px;
+    height: 100px;
+  }
+}
+
+.card-frame .collectible-card__artwork-fallback {
+  background: radial-gradient(ellipse at 50% 30%, #1e2c3f, #08101d 75%);
+}
+.card-frame .collectible-card__artwork-fallback span {
+  border-color: var(--colour-border-strong);
+  border-radius: var(--radius-md);
+  color: var(--colour-text-secondary);
+  background: transparent;
+  box-shadow: none;
+}
+.card-frame__window > .combatant__sigil {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+}
+
+/* Battle contracts carry no rarity: preserve their compact, neutral art slot. */
+.card-frame--neutral {
+  padding: 4px;
+  border-width: 2px;
+  border-radius: var(--radius-md);
+  --frame-surface: #253244;
+  --frame-wash: #4c5968;
+  --frame-light: #bcc5cf;
+}
+.card-frame--neutral::before {
+  display: none;
+}
+.card-frame--neutral .card-frame__window {
+  border-radius: 5px;
+  box-shadow: none;
+}
+
+/* Medallion seats give the compass engraving a material backing. */
+.card-frame__engraving::before {
+  position: absolute;
+  z-index: -1;
+  top: 5px;
+  right: 7px;
+  left: 7px;
+  height: clamp(10px, 4cqw, 19px);
+  border-block: 1px solid var(--frame-metal);
+  border-radius: 6px 6px 0 0;
+  background: var(--frame-plate);
+  box-shadow: 0 1px 2px var(--frame-shadow);
+  content: '';
+}
+
+.card-frame__corner::after {
+  position: absolute;
+  inset: 0;
+  background: var(--frame-metal);
+  mask: url('../../assets/cards/celestial-corner.svg') center / contain
+    no-repeat;
+  opacity: var(--frame-corner-opacity);
+  content: '';
+}
+
+.card-frame--rare .card-frame__crest::after,
+.card-frame--epic .card-frame__crest::after,
+.card-frame--legendary .card-frame__crest::after {
+  position: absolute;
+  inset: 0;
+  background: var(--frame-metal);
+  mask: url('../../assets/cards/celestial-crest.svg') center / contain no-repeat;
+  content: '';
+}
+
+.card-frame--legendary .card-frame__crest::after {
+  background: var(--frame-light);
+}
+
+.card-frame--rare .card-frame__crest {
+  box-shadow: none;
+}
+.card-frame--epic .card-frame__crest {
+  width: clamp(21px, 9cqw, 32px);
+  border: 3px double var(--frame-metal);
+  border-radius: 50%;
+  background: var(--frame-plate);
+  box-shadow: 0 1px 2px var(--frame-shadow);
+}
