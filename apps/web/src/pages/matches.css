@@ -3565,3 +3565,210 @@
 .battle-details .battle-meta > div[data-tone='timing'] {
   background: rgb(225 169 58 / 8%);
 }
+.battle-picture-button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.battle-picture-button:focus-visible {
+  outline: 3px solid var(--colour-focus);
+  outline-offset: 3px;
+}
+.battle-creature-dialog {
+  width: min(28rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid var(--colour-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--colour-surface-default);
+  color: var(--colour-text-primary);
+}
+.battle-creature-dialog::backdrop {
+  background: var(--colour-overlay);
+}
+.battle-creature-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+.battle-creature-dialog header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex: 0 0 auto;
+  padding: var(--space-3) var(--space-4);
+  background: var(--colour-background-secondary);
+}
+.battle-creature-dialog__handle {
+  display: none;
+}
+.battle-creature-dialog__subtitle {
+  margin: var(--space-1) 0 0;
+  color: var(--colour-text-secondary);
+  font-size: var(--text-xs);
+}
+.battle-creature-dialog__body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-3) var(--space-4);
+}
+.battle-creature-dialog__body h3 {
+  margin: var(--space-3) 0 var(--space-2);
+  font-size: var(--text-sm);
+}
+.battle-creature-dialog h2 {
+  margin: 0;
+}
+.battle-creature-dialog__overview {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-4);
+}
+.battle-creature-dialog__overview .battle-creature-artwork {
+  width: 100%;
+}
+.battle-creature-dialog__stats {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+}
+.battle-creature-dialog__stat-label {
+  margin: 0 0 var(--space-2);
+  color: var(--colour-text-muted);
+  font-size: var(--text-xs);
+}
+.battle-creature-dialog__stats > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.battle-creature-dialog__stats dt {
+  color: var(--colour-text-secondary);
+  font-size: var(--text-xs);
+}
+.battle-creature-dialog__stats dd {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.battle-creature-dialog__empty {
+  margin: var(--space-3) 0;
+  color: var(--colour-text-muted);
+  font-size: var(--text-xs);
+}
+.battle-creature-dialog__effects ul {
+  margin: 0;
+  padding-left: var(--space-4);
+  font-size: var(--text-sm);
+}
+.battle-creature-dialog__moves {
+  display: grid;
+  gap: 0;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.battle-creature-dialog__moves li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-2) 0;
+  font-size: var(--text-sm);
+}
+.battle-creature-dialog__moves li + li {
+  border-top: 1px solid var(--colour-border-subtle);
+}
+.battle-creature-dialog__moves li > span {
+  display: block;
+  color: var(--colour-status-info);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.battle-creature-dialog__moves p {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--colour-text-secondary);
+}
+@media (max-width: 47.99rem) {
+  .battle-creature-dialog {
+    width: 100%;
+    inset: auto 0 0;
+    max-height: calc(100dvh - max(0.75rem, env(safe-area-inset-top)));
+    max-width: none;
+    margin: auto 0 0;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    transition:
+      height 180ms ease-out,
+      transform 180ms ease-out;
+  }
+  .battle-creature-dialog[data-dragging] {
+    transition: none;
+    animation: none;
+  }
+  .battle-creature-dialog header {
+    touch-action: none;
+    cursor: grab;
+    padding-top: var(--space-5);
+  }
+  .battle-creature-dialog[data-dragging],
+  .battle-creature-dialog[data-dragging] header {
+    cursor: grabbing;
+  }
+  .battle-creature-dialog__body {
+    touch-action: pan-x pinch-zoom;
+  }
+  .battle-creature-dialog__handle {
+    display: block;
+    position: absolute;
+    top: 8px;
+    left: calc(50% - 18px);
+    width: 36px;
+    height: 4px;
+    border-radius: 4px;
+    background: var(--colour-border-strong);
+  }
+  .battle-creature-dialog[open] {
+    animation: creature-sheet-enter 160ms ease-out;
+  }
+  .battle-creature-dialog header {
+    padding: var(--space-5) var(--space-4) var(--space-3);
+  }
+  .battle-creature-dialog__body {
+    padding: var(--space-3) var(--space-4);
+    padding-bottom: max(var(--space-4), env(safe-area-inset-bottom));
+  }
+  .battle-creature-dialog__overview {
+    grid-template-columns: 8.5rem minmax(0, 1fr);
+    gap: var(--space-3);
+  }
+  .battle-creature-dialog h2 {
+    font-size: var(--text-xl);
+  }
+}
+@keyframes creature-sheet-enter {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .battle-creature-dialog[open] {
+    animation: none;
+    transition: none;
+  }
+}

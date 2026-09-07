@@ -26,6 +26,186 @@ const screenshotsDirectory = path.resolve(
 );
 const CURRENT_PLAYER_ID = '00000000-0000-4000-8000-000000009001';
 
+test('hands mobile Creature sheet gestures between scrolling and dragging', async ({
+  page,
+}) => {
+  await routeCurrentPlayer(page);
+  const match = activeMatch(1);
+  const creature = match.state.player.creatures[0]!;
+  creature.name = 'Quillip';
+  const move = creature.moves[0]!;
+  creature.moves = Array.from({ length: 12 }, (_, i) => ({
+    ...move,
+    id: uuid(800 + i),
+  }));
+  await page.route('**/api/v1/matches/**', (route) =>
+    json(route, response(match)),
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/matches/${MATCH_ID}`);
+  const trigger = page.getByRole('button', {
+    name: 'View Quillip details',
+    exact: true,
+  });
+  await trigger.click();
+  const sheet = page.getByRole('dialog', { name: 'Quillip', exact: true });
+  const settle = async () => {
+    await sheet.evaluate(async (node) => {
+      await Promise.all(node.getAnimations().map((a) => a.finished));
+    });
+  };
+  await settle();
+  expect((await sheet.boundingBox())!.height).toBeCloseTo(844 * 0.85, 0);
+  const cdp = await page.context().newCDPSession(page);
+  const drag = async (
+    x: number,
+    y: number,
+    distance: number,
+    steps = 12,
+    pause = 20,
+  ) => {
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x, y }],
+    });
+    for (let i = 1; i <= steps; i++) {
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x, y: y + (distance * i) / steps }],
+      });
+      if (pause) await page.waitForTimeout(pause);
+    }
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchEnd',
+      touchPoints: [],
+    });
+  };
+  const header = sheet.locator('header');
+  let headerBox = (await header.boundingBox())!;
+  await drag(160, headerBox.y + 25, -90);
+  await settle();
+  expect((await sheet.boundingBox())!.height).toBeCloseTo(844 * 0.98, 0);
+  headerBox = (await header.boundingBox())!;
+  await drag(160, headerBox.y + 25, 25);
+  await settle();
+  await expect(sheet).toBeVisible();
+  const body = sheet.locator('.battle-creature-dialog__body');
+  await drag(190, 620, -180);
+  expect(await body.evaluate((node) => node.scrollTop)).toBeGreaterThan(100);
+  await body.evaluate((node) => {
+    node.scrollTop = 400;
+  });
+  await drag(190, 380, 80);
+  await expect(sheet).toBeVisible();
+  expect(await body.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+  // One continuous pull first consumes scroll, then moves the sheet.
+  await body.evaluate((node) => {
+    node.scrollTop = 45;
+  });
+  await drag(190, 350, 130);
+  await settle();
+  await expect(sheet).toBeVisible();
+  expect(await body.evaluate((node) => node.scrollTop)).toBe(0);
+  expect((await sheet.boundingBox())!.height).toBeCloseTo(844 * 0.85, 0);
+  await page.screenshot({
+    path: path.join(screenshotsDirectory, '390-gesture-sheet.png'),
+  });
+  headerBox = (await header.boundingBox())!;
+  await drag(160, headerBox.y + 25, 310);
+  await expect(sheet).not.toBeVisible();
+  await expect(trigger).toBeFocused();
+  await trigger.click();
+  await settle();
+  headerBox = (await header.boundingBox())!;
+  await drag(160, headerBox.y + 25, 120, 3, 0);
+  await expect(sheet).not.toBeVisible();
+  await trigger.click();
+  await settle();
+  await page.mouse.click(15, 20);
+  await expect(sheet).not.toBeVisible();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await trigger.click();
+  await expect(sheet).toBeVisible();
+  expect(await sheet.evaluate((node) => node.getAnimations().length)).toBe(0);
+  await page.keyboard.press('Escape');
+  await expect(sheet).not.toBeVisible();
+});
+
+test('opens Creature details from active and bench pictures', async ({
+  page,
+}) => {
+  await routeCurrentPlayer(page);
+  const match = activeMatch(1);
+  match.state.player.creatures[0]!.currentHp = 15;
+  match.state.player.creatures[0]!.remainingPower = 0;
+  match.state.player.creatures.forEach((creature, index) => {
+    creature.name = ['Quillip', 'Ciphra', 'Prismole'][index]!;
+  });
+  await page.route('**/api/v1/matches/**', (route) =>
+    json(route, response(match)),
+  );
+  await page.goto(`/matches/${MATCH_ID}`);
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    const picture = page.getByRole('button', {
+      name: 'View Quillip details',
+      exact: true,
+    });
+    await picture.click();
+    const dialog = page.getByRole('dialog', { name: 'Quillip', exact: true });
+    await expect(dialog).toBeVisible();
+    await expect(
+      dialog.locator('.battle-creature-dialog__stats dd'),
+    ).toHaveText(['100', '10']);
+    await dialog.evaluate(async (node) => {
+      await Promise.all(
+        node.getAnimations().map((animation) => animation.finished),
+      );
+    });
+    const box = await dialog.boundingBox();
+    expect(box).not.toBeNull();
+    if (width === 390) expect(box!.y + box!.height).toBeCloseTo(900, 0);
+    else expect(box!.y + box!.height / 2).toBeCloseTo(450, 0);
+    await expect(
+      dialog.getByRole('heading', { name: 'Moves', exact: true }),
+    ).toBeVisible();
+    await dialog.screenshot({
+      path: path.join(screenshotsDirectory, `${width}-creature-details.png`),
+    });
+    if (width === 390) {
+      await page.setViewportSize({ width, height: 260 });
+      const header = dialog.locator('header');
+      const before = await header.boundingBox();
+      const body = dialog.locator('.battle-creature-dialog__body');
+      await body.evaluate((node) => {
+        node.scrollTop = node.scrollHeight;
+      });
+      expect(await body.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+      expect(await header.boundingBox()).toEqual(before);
+      await expect(
+        dialog.getByRole('button', { name: 'Close Creature details' }),
+      ).toBeInViewport();
+      await page.setViewportSize({ width, height: 900 });
+    }
+    await page.keyboard.press('Escape');
+    await expect(dialog).not.toBeVisible();
+    await expect(picture).toBeFocused();
+    await page.locator('.battle-bench').evaluate((node) => {
+      (node as HTMLDetailsElement).open = true;
+    });
+    await page
+      .getByRole('button', { name: 'View Ciphra details', exact: true })
+      .click();
+    await expect(
+      page.getByRole('dialog', { name: 'Ciphra', exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole('button', { name: 'Close Creature details', exact: true })
+      .click();
+    await expectNoHorizontalOverflow(page);
+  }
+});
+
 test('completes a mocked authoritative CPU match through the production UI', async ({
   baseURL,
   browser,

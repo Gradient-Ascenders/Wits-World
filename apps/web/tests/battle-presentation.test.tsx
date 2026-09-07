@@ -71,7 +71,9 @@ describe('shared battle presentation', () => {
     expect(within(bench).getByText('Wit Creature 2')).toBeVisible();
     expect(within(bench).getByText('Wit Creature 3')).toBeVisible();
     expect(within(bench).getByText('Defeated')).toBeVisible();
-    expect(within(bench).queryByRole('button')).toBeNull();
+    expect(
+      within(bench).getAllByRole('button', { name: /View .* details/ }),
+    ).toHaveLength(2);
     expect(within(bench).queryByText('Wit Creature 1')).toBeNull();
   });
 

@@ -1,6 +1,14 @@
 import { battleArtwork } from '../../battle/card-artwork';
-import { ArrowRight, CaretDown, Lightning, Sword } from '@phosphor-icons/react';
-import { useRef, useState, type KeyboardEvent } from 'react';
+import { useCreatureSheet } from './useCreatureSheet';
+import {
+  ArrowRight,
+  CaretDown,
+  Lightning,
+  Sword,
+  X,
+} from '@phosphor-icons/react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { createPortal } from 'react-dom';
 
 import type {
   CpuMatchIntent,
@@ -426,11 +434,11 @@ export function BattleCombatant({
     <article
       className={`combatant combatant--${visualSide}${isActing ? ' combatant--acting' : ''}${creature?.defeated ? ' combatant--defeated' : ''}`}
     >
-      <div aria-hidden="true" className="combatant__presence">
+      <div className="combatant__presence">
         {creature ? (
-          <BattleCreatureArtwork name={creature.name} />
+          <CreatureDetailsPicture creature={creature} />
         ) : (
-          <div className="combatant__sigil">
+          <div className="combatant__sigil" aria-hidden="true">
             <span>{visualSide === 'cpu' ? '?' : '—'}</span>
           </div>
         )}
@@ -515,7 +523,7 @@ export function BattleBench({
       <ul aria-label="Your bench Creatures">
         {bench.map((creature) => (
           <li key={creature.id}>
-            <BattleCreatureArtwork name={creature.name} />
+            <CreatureDetailsPicture creature={creature} />
             <div className="battle-bench__creature">
               <strong>
                 {creatureLabel(creature, creatures.indexOf(creature))}
@@ -537,6 +545,108 @@ export function BattleBench({
         ))}
       </ul>
     </details>
+  );
+}
+
+function CreatureDetailsPicture({ creature }: { creature: MatchCreature }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [open, setOpen] = useState(false);
+  const titleId = useId();
+  useEffect(() => {
+    if (open) dialog.current?.showModal();
+  }, [open]);
+  useCreatureSheet(dialog, open);
+  return (
+    <>
+      <button
+        className="battle-picture-button"
+        type="button"
+        aria-label={`View ${creature.name} details`}
+        aria-haspopup="dialog"
+        onClick={() => setOpen(true)}
+      >
+        <BattleCreatureArtwork name={creature.name} />
+      </button>
+      {open &&
+        createPortal(
+          <dialog
+            className="battle-creature-dialog"
+            ref={dialog}
+            aria-labelledby={titleId}
+            onClose={() => setOpen(false)}
+          >
+            <header>
+              <span
+                className="battle-creature-dialog__handle"
+                aria-hidden="true"
+              />
+              <div>
+                <h2 id={titleId}>{creature.name}</h2>
+                <p className="battle-creature-dialog__subtitle">
+                  Creature · {titleCase(creature.affinity)}
+                </p>
+              </div>
+              <button
+                className="button button--quiet"
+                type="button"
+                aria-label="Close Creature details"
+              >
+                <X size={22} aria-hidden="true" />
+              </button>
+            </header>
+            <div className="battle-creature-dialog__body">
+              <div className="battle-creature-dialog__overview">
+                <BattleCreatureArtwork name={creature.name} />
+                <div>
+                  {creature.defeated && <strong>Defeated</strong>}
+                  <p className="battle-creature-dialog__stat-label">
+                    Base stats
+                  </p>
+                  <dl className="battle-creature-dialog__stats">
+                    <div>
+                      <dt>HP</dt>
+                      <dd>{creature.maxHp}</dd>
+                    </div>
+                    <div>
+                      <dt>Power</dt>
+                      <dd>{creature.maxPower}</dd>
+                    </div>
+                  </dl>
+                </div>
+              </div>
+              {creature.activeModifiers.length ? (
+                <section className="battle-creature-dialog__effects">
+                  <h3>Active effects</h3>
+                  <ul>
+                    {creature.activeModifiers.map((modifier, index) => (
+                      <li key={index}>{describeActiveModifier(modifier)}</li>
+                    ))}
+                  </ul>
+                </section>
+              ) : (
+                <p className="battle-creature-dialog__empty">
+                  No active effects.
+                </p>
+              )}
+              <h3>Moves</h3>
+              <ul className="battle-creature-dialog__moves">
+                {creature.moves.map((move) => (
+                  <li key={move.id}>
+                    <strong>{move.name}</strong>
+                    <span>{move.powerCost} Power</span>
+                    <p>
+                      {move.effects.length
+                        ? move.effects.map(describeEffect).join(' · ')
+                        : 'Effect details unavailable.'}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </dialog>,
+          document.body,
+        )}
+    </>
   );
 }
 
