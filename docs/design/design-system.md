@@ -1,271 +1,195 @@
 # Wits World Design System
 
-**Status:** Maintained design reference
+**Status:** Maintained design reference  
+**Applies to:** `apps/web`  
+**Last updated:** 2026-09-07
 
-**Applies to:** `apps/web`
+This document is the visual and interaction source of truth for Wits World.
 
-**Last updated:** 2026-08-25
+It defines the design language, tokens, responsive behaviour, component rules,
+iconography, motion, accessibility, and approved frontend UI toolkit.
 
-This document is the visual and interaction source of truth for the Wits World
-player application and author console for the Wits Quest game/topic.
+Product rules, game mechanics, permissions, server-authoritative behaviour, and
+feature-specific business logic belong in the relevant requirements and
+technical documentation.
 
-It describes the intended design philosophy, tokens, reusable components,
-responsive behaviour, accessibility requirements and screen-specific patterns.
-
-The visual reference images communicate art direction rather than exact layouts.
-
-## Reference images
-
-Store the approved reference images in:
-
-```text
-docs/design/references/
-├── desktop-dashboard.png
-├── player-journey.png
-└── author-console.png
-```
-
-Before implementing significant frontend work, inspect the relevant reference
-images together with this document.
+Reference images communicate art direction, not exact layouts.
 
 ---
 
-## 1. Requirement labels
+## 1. Design principles
 
-The following labels are used throughout this document:
+### Calm by default
 
-- **Brief requirement** — explicitly required by the project brief, rubric or
-  confirmed stakeholder instruction.
-- **Recommendation** — the current proposed design direction.
-- **Confirm** — an unresolved choice that requires team, client or lecturer
-  approval.
-- **Deferred** — deliberately excluded from the current Basic delivery scope.
+Wits World should feel like a modern university product: refined, exploratory,
+technologically confident, and premium without becoming theatrical.
 
----
+Routine screens should be clear and composed.
 
-## 2. Product context
+Reserve stronger visual effects for meaningful moments such as:
 
-Wits World is the project, application and primary public brand. Wits Quest is
-the location-based campus exploration game/topic being built by Wits World. UI
-chrome, browser metadata and general application states should therefore lead
-with Wits World; use Wits Quest when copy specifically discusses the game.
+- location discovery;
+- challenge completion;
+- reward reveals;
+- battle outcomes;
+- important state changes.
 
-**Brief requirement:** Wits Quest is a mobile-friendly, location-based campus
-exploration game.
+### One clear purpose
 
-The main player journey is:
+Every screen should have:
 
-1. Sign in.
-2. Explore the campus map.
-3. Find a nearby event.
-4. Submit a location claim.
-5. Open an eligible challenge.
-6. Answer a university-related question.
-7. Receive a neutral answer-saved confirmation, then the final result.
-8. Receive server-determined rewards when the challenge is complete.
-9. View the card collection.
-10. Create or select a deck.
-11. Complete a turn-based match against the CPU.
-12. Review the stored result.
+- one obvious primary task;
+- one dominant content region;
+- one visually dominant primary action;
+- quieter secondary actions.
 
-The author experience must support management of:
+Use progressive disclosure for secondary detail.
 
-- events;
-- event locations and radii;
-- event availability periods;
-- challenges and questions;
-- accepted answers;
-- cards;
-- card categories, rarity and attributes;
-- the shared card catalogue used by server-authoritative rewards;
-- publication status.
+### Mobile first, not mobile only
 
-The frontend must therefore not become only a map, card gallery or generic
-dashboard. It must support the complete journey.
+The player application is mobile-first.
 
----
+Design narrow layouts first, then use additional desktop width for useful
+context, comparison, and efficiency.
 
-## 3. Design philosophy
+Mobile must not feel like a desktop dashboard compressed onto a phone.
 
-### 3.1 Core identity
+Desktop must not feel like a mobile layout stretched across a monitor.
 
-**Recommendation:** The Wits World experience for Wits Quest should feel like a
-premium futuristic academic product combining:
+### Structure before decoration
 
-- university heritage;
-- scientific precision;
-- campus exploration;
-- collectible-card discovery;
-- restrained science-fiction aesthetics;
-- high-performance computing interfaces.
+Establish hierarchy using:
 
-The interface should feel:
+1. layout;
+2. spacing;
+3. typography;
+4. grouping;
+5. colour;
+6. decoration.
 
-- prestigious;
-- authoritative;
-- intelligent;
-- exploratory;
-- cinematic;
-- refined;
-- technologically advanced.
+Do not add extra cards, borders, gradients, or glows to solve problems that
+spacing or hierarchy can solve.
 
-### 3.2 Visual balance
+### Distinctive, not noisy
 
-Traditional academic identity should be expressed through:
-
-- elegant serif headings;
-- editorial spacing;
-- restrained metallic-gold details;
-- thin dividers;
-- formal alignment;
-- landmark photography;
-- considered use of university-inspired symbolism.
-
-The futuristic identity should be expressed through:
+Wits World may use:
 
 - deep navy surfaces;
-- restrained electric-blue signals;
-- fine network lines;
-- map paths;
-- technical diagrams;
-- subtle particles;
-- controlled gradients;
-- polished data visualisation;
-- limited glass-like panels.
+- restrained blue interaction signals;
+- selective metallic-gold prestige details;
+- serif display typography;
+- campus imagery;
+- subtle scientific, map, network, and geometric motifs.
 
-### 3.3 Anti-goals
-
-The product must not resemble:
+It must not resemble:
 
 - a generic SaaS dashboard;
 - a cyberpunk nightclub;
 - a children's mobile game;
 - an overloaded gaming HUD;
-- a screen covered in neon;
-- a collection of unrelated floating cards;
-- a desktop dashboard compressed onto a phone.
+- a wall of unrelated floating cards.
+
+### Consistency over novelty
+
+Prefer shared tokens, components, and interaction patterns over one-off styling.
 
 ---
 
-## 4. Anti-clutter rules
+## 2. Anti-clutter rules
 
-These rules apply to every screen:
-
-1. Each screen must have one obvious primary purpose.
-2. Each panel should normally have only one primary action.
+1. Each screen has one primary purpose.
+2. Each panel normally has at most one primary action.
 3. Secondary actions must be visually quieter.
-4. Do not place every piece of information above the fold.
-5. Use spacing and dividers before adding another container.
-6. Avoid cards nested inside multiple other cards.
-7. Use no more than three visible elevation levels.
-8. Use no more than two strong accent colours in one view.
-9. Do not place gold borders around every component.
-10. Do not place glow effects behind normal body text.
-11. Decorative particles must never reduce readability.
-12. Avoid displaying the same information in multiple panels.
-13. Use progressive disclosure for secondary controls.
-14. Mobile screens must use focused flows rather than dense dashboards.
-15. Empty space is intentional and must not be filled without purpose.
+4. Use spacing and dividers before adding another container.
+5. Avoid cards nested inside cards.
+6. Use no more than three visible elevation levels in one view.
+7. Do not use gold borders on routine components.
+8. Do not place glow effects behind normal text.
+9. Do not duplicate information without a clear UX reason.
+10. Use progressive disclosure for secondary controls.
+11. Empty space is allowed.
+12. Mobile should favour focused flows over dense dashboards.
+13. Desktop should use extra width for useful context, not more decoration.
 
 ---
 
-## 5. Colour system
+## 3. Colour
 
-### 5.1 Core tokens
+### Semantic roles
 
-**Recommendation:** Begin with the following colour tokens.
+**Blue = interaction**
+
+Use blue for primary actions, links, active navigation, selection, focus,
+progress, map interaction, and technical information.
+
+**Gold = prestige**
+
+Use gold for legendary rarity, important rewards, significant achievements,
+rare celebratory details, and selective brand ornament.
+
+Gold is **not** the normal primary-button colour and **not** the normal border
+colour.
+
+**Green, amber, and red = semantic feedback**
+
+Reserve them for success, warning, and danger.
+
+Never rely on colour alone to communicate meaning.
+
+### Tokens
 
 ```css
 :root {
-  /* Backgrounds */
   --colour-bg-primary: #050b16;
   --colour-bg-secondary: #081426;
   --colour-bg-tertiary: #0b1930;
 
-  /* Surfaces */
   --colour-surface-primary: #0d1b31;
   --colour-surface-elevated: #112440;
+  --colour-surface-strong: #173052;
   --colour-surface-glass: rgba(12, 27, 50, 0.82);
 
-  /* Text */
   --colour-text-primary: #f7f3e7;
-  --colour-text-secondary: #b3bdcc;
-  --colour-text-muted: #7f8b9d;
+  --colour-text-secondary: #b9c3d2;
+  --colour-text-muted: #8795a8;
   --colour-text-inverse: #08101d;
 
-  /* Gold */
-  --colour-gold-primary: #d4af37;
-  --colour-gold-soft: #e0c46c;
-  --colour-gold-muted: #9d8130;
+  --colour-border-subtle: rgba(247, 243, 231, 0.10);
+  --colour-border-default: rgba(247, 243, 231, 0.16);
+  --colour-border-strong: rgba(247, 243, 231, 0.28);
 
-  /* Blue */
-  --colour-blue-primary: #2a6bff;
-  --colour-blue-bright: #54a8ff;
-  --colour-blue-muted: #174a99;
+  --colour-interactive: #2a6bff;
+  --colour-interactive-hover: #4a83ff;
+  --colour-interactive-strong: #174a99;
+  --colour-focus: #54a8ff;
 
-  /* Borders */
-  --colour-border-subtle: rgba(212, 175, 55, 0.2);
-  --colour-border-default: rgba(212, 175, 55, 0.42);
-  --colour-border-strong: rgba(224, 196, 108, 0.72);
+  --colour-prestige: #d4af37;
+  --colour-prestige-soft: #e0c46c;
+  --colour-prestige-muted: #9d8130;
 
-  /* Semantic */
   --colour-success: #39b879;
   --colour-warning: #e1a93a;
   --colour-danger: #dc5b65;
   --colour-info: #54a8ff;
 
-  /* Overlay */
   --colour-overlay: rgba(2, 7, 15, 0.72);
 }
 ```
 
-These values may be adjusted during implementation to meet contrast
-requirements.
+### Rarity
 
-### 5.2 Colour responsibilities
+| Rarity | Treatment |
+| --- | --- |
+| Common | Neutral silver / ivory |
+| Rare | Blue |
+| Epic | Restrained violet |
+| Legendary | Gold |
 
-Gold communicates:
-
-- prestige;
-- high-rarity rewards;
-- important selected states;
-- primary calls to action;
-- significant achievements.
-
-Gold must not be used on every heading, border or icon.
-
-Electric blue communicates:
-
-- current position;
-- active navigation;
-- technical data;
-- progress;
-- interactive map paths;
-- focus or energy states.
-
-Green, amber and red are reserved for semantic feedback.
-
-### 5.3 Rarity colours
-
-**Recommendation:**
-
-| Rarity    | Main treatment          |
-| --------- | ----------------------- |
-| Common    | Neutral silver or ivory |
-| Rare      | Electric blue           |
-| Epic      | Restrained violet       |
-| Legendary | Metallic gold           |
-
-Rarity must also be communicated through text, icons, border patterns or
-ornamentation. Do not rely on colour alone.
+Also communicate rarity using text, iconography, pattern, or ornament.
 
 ---
 
-## 6. Typography
-
-### 6.1 Font families
-
-**Recommendation:**
+## 4. Typography
 
 ```css
 :root {
@@ -273,32 +197,7 @@ ornamentation. Do not rely on colour alone.
   --font-body:
     'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
     sans-serif;
-}
-```
 
-Use the serif family for:
-
-- page titles;
-- landmark names;
-- reward reveals;
-- battle conclusions;
-- important editorial headings.
-
-Use the sans-serif family for:
-
-- body text;
-- navigation;
-- forms;
-- buttons;
-- labels;
-- tables;
-- metadata;
-- statistics.
-
-### 6.2 Type scale
-
-```css
-:root {
   --text-xs: 0.75rem;
   --text-sm: 0.875rem;
   --text-md: 1rem;
@@ -307,25 +206,32 @@ Use the sans-serif family for:
   --text-2xl: 1.75rem;
   --text-3xl: 2.25rem;
   --text-4xl: 3rem;
+
+  --leading-tight: 1.15;
+  --leading-heading: 1.25;
+  --leading-body: 1.55;
 }
 ```
 
-### 6.3 Typography rules
+Use the serif family selectively for page titles, landmark names, reward
+reveals, battle conclusions, and important editorial headings.
 
-- Use sentence case for most headings and labels.
-- Reserve uppercase for small eyebrow labels and metadata.
-- Uppercase labels should have increased letter spacing.
-- Body text should normally remain between 16 and 18 pixels.
-- Avoid excessively thin font weights.
-- Avoid long centred paragraphs.
-- Keep normal text lines at a readable maximum width.
-- Typography should establish hierarchy before decoration is added.
+Use the sans-serif family for normal application UI.
+
+Rules:
+
+- sentence case for most headings and labels;
+- uppercase only for short metadata or eyebrow text;
+- body copy should normally remain at least `1rem`;
+- do not shrink text to force dense layouts to fit;
+- avoid long centred paragraphs;
+- establish hierarchy through typography before decoration.
 
 ---
 
-## 7. Spacing, shape and elevation
+## 5. Spacing, sizing, and shape
 
-### 7.1 Spacing tokens
+### Spacing
 
 ```css
 :root {
@@ -340,7 +246,28 @@ Use the sans-serif family for:
 }
 ```
 
-### 7.2 Radius tokens
+Prefer tokens over arbitrary values.
+
+### Controls
+
+```css
+:root {
+  --control-height-sm: 2.25rem;
+  --control-height-md: 2.75rem;
+  --control-height-lg: 3rem;
+
+  --touch-target-min: 2.75rem;
+
+  --icon-sm: 1rem;
+  --icon-md: 1.25rem;
+  --icon-lg: 1.5rem;
+}
+```
+
+Player-facing mobile controls should normally provide at least a `44 × 44px`
+usable touch target.
+
+### Radius
 
 ```css
 :root {
@@ -352,111 +279,98 @@ Use the sans-serif family for:
 }
 ```
 
-Use moderate rounding. The product should feel engineered and refined rather
-than soft and toy-like.
+Default guidance:
 
-### 7.3 Shadows and glows
+- buttons and fields: `--radius-md`;
+- panels: `--radius-lg`;
+- prominent media and bottom sheets: up to `--radius-xl`;
+- badges: `--radius-pill`.
+
+Avoid overly soft, bubbly component styling.
+
+### Elevation
 
 ```css
 :root {
   --shadow-panel: 0 12px 32px rgba(0, 0, 0, 0.28);
   --shadow-floating: 0 18px 48px rgba(0, 0, 0, 0.38);
-  --glow-blue: 0 0 24px rgba(42, 107, 255, 0.22);
-  --glow-gold: 0 0 20px rgba(212, 175, 55, 0.16);
+
+  --glow-blue: 0 0 24px rgba(42, 107, 255, 0.20);
+  --glow-gold: 0 0 20px rgba(212, 175, 55, 0.14);
 }
 ```
 
-Glows should be used for meaningful moments, not for all components.
+Routine panels should not glow.
 
 ---
 
-## 8. Layout principles
+## 6. Responsive layout
 
-### 8.1 Player application
+### Reference ranges
 
-The player application is mobile-first.
+```text
+Narrow mobile:  320px–374px
+Mobile:         375px–767px
+Tablet:         768px–1023px
+Desktop:        1024px–1439px
+Wide desktop:   1440px+
+```
 
-Use:
+Routine visual QA should normally use:
 
-- one-column focused screens;
-- a persistent bottom navigation where appropriate;
-- bottom sheets for map event details;
-- full-width primary actions;
-- large touch targets;
-- concise information;
-- minimal typing;
-- short, readable challenge flows.
+```text
+390px   mobile
+768px   tablet
+1440px  desktop
+```
 
-The map should dominate the exploration screen, but it must not be the only way
-to find events.
+Use extra widths only when a specific breakpoint needs investigation.
 
-Provide an accessible event list or sheet containing the same essential event
-information.
+### Page gutters
 
-### 8.2 Author console
+```css
+:root {
+  --page-gutter-mobile: 1rem;
+  --page-gutter-tablet: 1.5rem;
+  --page-gutter-desktop: 2rem;
 
-The author console may use greater information density.
+  --content-reading: 45rem;
+  --content-standard: 70rem;
+  --content-wide: 90rem;
+}
+```
 
-Use:
+Use wide layouts only for maps, large grids, tables, editors, and useful
+comparisons.
 
-- a stable desktop sidebar;
-- clear breadcrumbs and page titles;
-- tables for repeated structured data;
-- filters and search;
-- split editor-and-preview layouts;
-- explicit publication status;
-- clear save, review, publish, retire and destructive actions.
+Do not stretch normal text across wide monitors.
 
-The author console should feel like a professional university content-management
-system, not a gaming HUD.
+### Player application
 
-### 8.3 Content width
+On mobile, prefer focused single-column flows, bottom navigation where
+appropriate, bottom sheets for contextual map detail, full-width or near
+full-width primary actions, concise information, and minimal typing.
 
-- Use maximum content widths for readable pages.
-- Do not stretch text across wide monitors.
-- Use wide layouts only for maps, tables, editors and meaningful comparisons.
-- Preserve generous outer margins on desktop.
+On desktop, preserve the same task hierarchy, add useful context where space
+allows, allow grids to gain columns naturally, and use split views only when
+both regions remain useful.
 
----
+### Author console
 
-## 9. Navigation
+Desktop may use stable sidebar navigation, tables, filters/search, split
+editor/preview layouts, and higher information density.
 
-### Player navigation
-
-Recommended primary destinations:
-
-- Map;
-- Collection;
-- Deck;
-- Battle;
-- Profile or account.
-
-Do not add a primary navigation item unless it represents a frequent player
-task.
-
-### Author navigation
-
-Recommended sections:
-
-- Overview;
-- Events;
-- Challenges;
-- Cards;
-- Map placement;
-- Publication;
-- Users and roles, subject to authorisation scope;
-- Settings.
-
-Stretch features such as analytics should not dominate the Basic console.
+On narrow screens, sidebars become drawers or compact navigation, forms remain
+vertically readable, and tables become cards or controlled horizontal regions
+where appropriate.
 
 ---
 
-## 10. Core components
+## 7. Core component rules
 
-Frontend styling should be constructed from reusable components rather than
-screen-specific CSS.
+Build recurring UI from shared components and semantic variants.
 
-Recommended foundations:
+Recommended foundations include:
 
 - `AppShell`
 - `PlayerBottomNavigation`
@@ -470,16 +384,12 @@ Recommended foundations:
 - `StatusBadge`
 - `RarityBadge`
 - `Panel`
-- `StatBlock`
 - `ProgressIndicator`
-- `EventMarker`
 - `EventSummary`
 - `CollectibleCard`
-- `CardThumbnail`
 - `EmptyState`
 - `LoadingState`
 - `ErrorState`
-- `PermissionState`
 - `Modal`
 - `Drawer`
 - `BottomSheet`
@@ -487,7 +397,170 @@ Recommended foundations:
 - `DataTable`
 - `FilterBar`
 
-Each interactive component must account for:
+### Buttons
+
+**Primary**
+- blue background;
+- high-contrast text;
+- normal dominant action;
+- usually `--control-height-md`;
+- clear hover, pressed, focus, loading, and disabled states.
+
+**Secondary**
+- quieter surface or transparent treatment;
+- neutral border;
+- must not compete with Primary.
+
+**Ghost**
+- low-emphasis action;
+- transparent by default;
+- visible hover and focus treatment.
+
+**Destructive**
+- danger semantics;
+- explicit wording;
+- confirmation where appropriate.
+
+### Panels
+
+Use a panel only when content genuinely belongs together.
+
+Default:
+
+- one surface;
+- subtle neutral border when needed;
+- no glow;
+- no gold border;
+- `--radius-lg`;
+- `--space-4` to `--space-5` padding.
+
+Avoid panel-inside-panel layouts.
+
+### Forms
+
+Use persistent labels, useful validation/help text, neutral borders, blue focus
+treatment, and comfortable vertical spacing.
+
+Do not use placeholder text as the only label.
+
+### Modals, drawers, and sheets
+
+Use:
+
+- **Modal** for short blocking decisions;
+- **Drawer** for navigation or secondary controls;
+- **BottomSheet** for contextual mobile detail, especially map flows.
+
+They must remain within the viewport, manage focus correctly, expose obvious
+close/cancel behaviour, and support scrolling when required.
+
+### Tables
+
+Use tables only when column comparison is useful.
+
+On mobile, convert to structured cards when that improves comprehension;
+otherwise use controlled horizontal scrolling.
+
+Never shrink text merely to make a table fit.
+
+### Application states
+
+Substantial features should deliberately support loading, empty, error,
+unavailable, and permission-required states where relevant.
+
+Preserve layout during state changes where practical.
+
+---
+
+## 8. Iconography
+
+The approved general-purpose UI icon library is:
+
+```text
+@phosphor-icons/react
+```
+
+Use Phosphor for generic application concepts such as navigation, search,
+filtering, location, account, settings, edit, delete, status, date/time, and
+common card actions.
+
+### Selection
+
+Choose icons by the concept they communicate in context.
+
+Prefer familiar symbols for familiar actions.
+
+Do not preserve an existing icon merely because it already exists. Replace weak,
+ambiguous, inconsistent, or visually mismatched symbols during UI/UX work.
+
+### Size
+
+```text
+16px  compact metadata
+20px  normal controls
+24px  primary navigation / prominent controls
+```
+
+The visible icon size is separate from its interactive target.
+
+### Weight
+
+Prefer:
+
+- **Regular** for normal UI;
+- **Bold** selectively for stronger or active states;
+- **Fill** only where it improves selected-state recognition;
+- **Duotone** only for deliberate illustrative treatments.
+
+Do not mix weights arbitrarily within the same control group.
+
+### Colour
+
+- neutral icons inherit text colour;
+- active/interactive icons use blue;
+- semantic icons use semantic colours;
+- gold is reserved for genuine prestige or legendary/reward meaning.
+
+### Icon buttons
+
+Every icon-only control must:
+
+- provide an accessible name;
+- have visible focus;
+- provide hover/pressed states where applicable;
+- maintain at least a 44px mobile touch target;
+- use the shared `IconButton` where practical.
+
+Important or ambiguous actions should include a text label.
+
+### Custom Wits World symbols
+
+Use custom SVGs only for concepts specific to Wits World, such as game
+mechanics, bespoke affinities/categories, custom rarity emblems, branding, and
+Quest markers.
+
+Custom symbols should share consistent geometry, stroke behaviour, optical
+weight, view boxes, and alignment.
+
+Default rule:
+
+> Generic application concept → Phosphor  
+> Wits World-specific concept → approved custom symbol
+
+### Do not
+
+- use emoji as permanent UI icons;
+- substitute Unicode symbols such as `★`, `→`, `✓`, `⚙`, or `✕` for proper icons;
+- draw arbitrary inline SVGs for generic UI;
+- mix multiple general-purpose icon libraries;
+- use different icons for the same action without a semantic reason;
+- add decorative icons merely to fill space.
+
+---
+
+## 9. Interaction states
+
+Every interactive component should support the states relevant to it:
 
 - default;
 - hover;
@@ -499,344 +572,198 @@ Each interactive component must account for:
 - error;
 - success.
 
----
+Keyboard focus must always remain clearly visible.
 
-## 11. Event status language
+Disabled controls should remain legible and should not replace useful
+explanations when the reason for unavailability matters.
 
-The interface must communicate event states through text, icons and colour.
-
-| State               | Meaning                                | Suggested presentation                 |
-| ------------------- | -------------------------------------- | -------------------------------------- |
-| Reachable           | Server accepted the latest claim       | Green status with location icon        |
-| Too far             | Outside the accepted area              | Muted status with distance             |
-| Location uncertain  | Accuracy is insufficient               | Amber warning and retry action         |
-| Permission required | Browser location unavailable           | Explanation and enable-location action |
-| Upcoming            | Event is not active yet                | Date or countdown                      |
-| Expired             | Availability period has ended          | Muted expired label                    |
-| Completed           | Saved challenge result already present | Check icon and completed text          |
-| Unavailable         | Event cannot currently be attempted    | Explanation where safe                 |
-| Loading             | Status is still being checked          | Skeleton or progress indicator         |
-
-Do not accuse a player of cheating when their location is merely inaccurate or
-ambiguous.
+Loading states should prevent duplicate actions without unnecessarily blocking
+the rest of the screen.
 
 ---
 
-## 12. Screen-specific guidance
+## 10. Motion
 
-### 12.1 Campus map
+Motion should communicate state change, causality, or spatial movement.
 
-The map is the dominant visual region.
+Good uses:
 
-Display:
-
-- latest reported-location marker;
-- event markers;
-- selected event;
-- clear event status;
-- recenter control;
-- accessible event-list alternative;
-- loading and permission states.
-
-Do not display excessive statistics over the map.
-
-### 12.2 Event details
-
-Prioritise:
-
-- event name;
-- landmark image where available;
-- distance;
-- availability;
-- eligibility status;
-- challenge type;
-- possible reward;
-- one primary action.
-
-### 12.3 Challenge
-
-Prioritise:
-
-- progress;
-- question;
-- answer controls;
-- submit action;
-- clear selected state;
-- neutral answer-saved confirmation; and
-- final score and persisted rewards after completion.
-
-Marking is server-authoritative. While the timed attempt is active, challenge UI
-must not reveal correctness or answer keys; saved-answer feedback remains neutral.
-After authoritative completion, it presents the five-question review with the
-player's answer, the correct answer, and server-derived correctness. Ordering
-questions use a four-item ordered list with pointer reordering and visible Move
-Up / Move Down controls; changes announce both the new position and current
-order. Ordering explanations are rendered only from the completed Player
-response, while multiple-choice explanations remain private. This follows
-`BASIC-03` in the Basic-tier decision register. The browser never calculates the
-review itself.
-
-### 12.4 Reward reveal
-
-Reward reveals may use stronger visual effects than routine screens.
-
-Use:
-
-- the persisted zero-to-two-card result without inventing an award;
-- prominent treatment for each awarded card;
-- rarity;
-- card name;
-- short description;
-- concise success message;
-- one clear next action.
-
-Avoid lengthy animations that delay the user.
-
-### 12.5 Collection
-
-Use a clean card grid with:
-
-- filtering;
-- sorting;
-- rarity indication;
-- category indication;
-- locked or missing state where relevant;
-- progressive card detail.
-
-Do not display every attribute on small thumbnails.
-
-### 12.6 Deck builder
-
-Clearly show:
-
-- selected deck;
-- current card count;
-- constraints;
-- invalid conditions;
-- remove and add actions;
-- save state.
-
-Deck rules must come from server-authoritative data rather than being invented by
-the frontend.
-
-### 12.7 CPU battle
-
-The battle interface must make the following immediately clear:
-
-- whose turn it is;
-- each side's active Creature and the CPU's intentionally hidden information;
-- the server-advertised legal Creature moves and Power cards;
-- Power costs, current HP/Power, and active effects;
-- required replacement selection after a Creature is defeated;
-- persisted action/round history and current match phase;
-- the next required action.
-
-Normal decision-making should remain visually calm. Stronger effects may be used
-for card reveals, round outcomes and match completion.
-
-### 12.8 Author console
-
-Forms must favour clarity over decoration.
-
-Always show:
-
-- save state;
-- validation messages;
-- publication state;
-- destructive-action confirmation;
-- preview where useful;
-- who may perform the action.
-
-Do not place accepted answers, private location evidence or other sensitive data
-in unnecessary UI logs.
-
----
-
-## 13. Responsive behaviour
-
-Suggested layout targets:
-
-```text
-Narrow mobile:  320px–374px
-Mobile:         375px–767px
-Tablet:         768px–1023px
-Desktop:        1024px–1439px
-Wide desktop:   1440px and above
-```
-
-These are implementation guidelines rather than strict device categories.
-
-At mobile widths:
-
-- sidebars become drawers or bottom navigation;
-- multi-column views become focused single-column flows;
-- map details use bottom sheets;
-- important actions remain reachable;
-- tables become cards or controlled horizontal regions only when necessary;
-- dialogs remain within the viewport;
-- text does not shrink to fit dense layouts.
-
-At desktop widths:
-
-- use additional width for context and comparison;
-- retain maximum text widths;
-- use split views only where they improve the task;
-- avoid filling every available area with panels.
-
----
-
-## 14. Accessibility
-
-**Brief requirement:** The product must be responsive and accessible.
-
-Every relevant interface must provide:
-
-- semantic HTML;
-- logical heading order;
-- keyboard navigation;
-- visible focus indicators;
-- accessible labels for icon-only buttons;
-- adequate text and UI contrast;
-- suitable touch-target sizes;
-- labelled forms;
-- useful validation messages;
-- screen-reader status updates;
-- alternatives to colour-only information;
-- reduced-motion support;
-- text alternatives for informative imagery;
-- map-independent event discovery;
-- usable loading, empty and error states.
-
-Do not use placeholder text as the only form label.
-
-Decorative network lines, particles and orbital graphics should be hidden from
-assistive technologies.
-
----
-
-## 15. Motion
-
-Motion should reinforce state change rather than provide constant decoration.
-
-Recommended uses:
-
-- panel transitions;
-- selected marker emphasis;
-- card reveal;
+- modal/sheet transitions;
+- selected navigation indicators;
+- layout changes;
+- card selection;
 - progress changes;
-- answer-saved confirmation;
-- battle outcome;
-- modal and bottom-sheet movement.
+- map marker emphasis;
+- answer confirmation;
+- reward reveals;
+- battle outcomes.
 
 Avoid:
 
 - continuously moving backgrounds;
 - decorative motion behind text;
+- excessive hover movement;
 - long blocking animations;
-- excessive parallax;
-- animation required to understand information.
+- motion required to understand information.
 
-Respect:
+Respect `prefers-reduced-motion`.
 
-```css
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    scroll-behavior: auto !important;
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-}
+---
+
+## 11. Frontend UI toolkit
+
+The following libraries are approved for experimentation.
+
+They support the Wits World design system; they do **not** define its visual
+identity.
+
+They are available, not mandatory.
+
+### Phosphor Icons
+
+```text
+@phosphor-icons/react
 ```
 
+Use for generic application iconography.
+
+Do not introduce another general-purpose icon set.
+
+### Motion for React
+
+```text
+motion
+```
+
+Use for meaningful transitions, layout animation, selection feedback, sheets and
+dialogs, card interaction, and reward/battle moments.
+
+Do not add motion simply because the library is available.
+
+### Radix UI Primitives
+
+Approved starting packages:
+
+```text
+@radix-ui/react-dialog
+@radix-ui/react-tooltip
+@radix-ui/react-dropdown-menu
+```
+
+Additional Radix primitives may be introduced when genuinely required.
+
+Use Radix for accessible interaction behaviour, then style it entirely through
+Wits World tokens and components.
+
+Radix must not introduce a second visual language.
+
+### Sonner
+
+```text
+sonner
+```
+
+Use for brief, non-blocking feedback such as save confirmation, successful
+actions, and recoverable errors.
+
+Do not use a toast for information that must remain visible, requires a
+decision, or belongs naturally inside the affected component.
+
+### Embla Carousel
+
+```text
+embla-carousel-react
+```
+
+Use only where horizontal browsing genuinely improves the experience, such as a
+deliberate card or reward presentation.
+
+Do not convert normal grids, lists, or navigation into carousels merely because
+Embla is installed.
+
+### Prefer the platform first
+
+Prefer modern browser and CSS capabilities where they solve the problem cleanly:
+
+- CSS Grid;
+- Flexbox;
+- container queries;
+- CSS custom properties;
+- responsive media queries;
+- native scrolling;
+- semantic HTML.
+
+A dependency is justified when it materially improves accessibility,
+interaction quality, consistency, maintainability, or implementation
+reliability.
+
+Remove experimental dependencies that do not provide meaningful value.
+
 ---
 
-## 16. Imagery and decoration
+## 12. Accessibility
 
-Use imagery that supports:
+Accessibility is part of every component contract.
 
-- Wits landmarks;
-- history;
-- alumni;
-- science;
-- technology;
-- campus exploration;
-- collectible cards.
+Relevant interfaces must provide:
 
-Use restrained decorative motifs such as:
+- semantic HTML;
+- logical heading order;
+- keyboard navigation;
+- visible focus;
+- accessible names for icon-only controls;
+- adequate text and UI contrast;
+- suitable touch targets;
+- labelled forms;
+- useful validation;
+- screen-reader status updates;
+- alternatives to colour-only information;
+- reduced-motion support;
+- text alternatives for informative images;
+- map-independent event discovery;
+- usable loading, empty, error, and unavailable states.
 
-- orbital curves;
-- scientific diagrams;
-- network lines;
-- topographic patterns;
-- map paths;
-- star-like particles;
-- geometric grids.
-
-Do not allow decorative elements to compete with interface controls.
-
-The supplied Wits World Campus Seal is approved project branding for the public
-application as recorded below. This approval does not extend to the official
-Wits University crest, logos, photography or other university branding, whose
-rights and approval must still be confirmed before use.
-
-Generated mockups are references only and must not be treated as approved
-university branding.
-
-### 16.1 Wits World Campus Seal
-
-**Approved project asset:** The Wits World Campus Seal supplied on 12 August
-2026 is the selected project logo. Treat both canonical SVG variants as final
-artwork:
-
-- `apps/web/src/assets/branding/wits-world-campus-seal-transparent.svg` is for
-  headers and other dark application surfaces;
-- `apps/web/src/assets/branding/wits-world-campus-seal.svg` includes its own
-  dark backing and is for contexts where the surrounding background cannot be
-  controlled;
-- `apps/web/src/assets/branding/wits-world-favicon.svg` is the selected
-  simplified, code-native W/star mark used in browser tabs.
-
-Preserve the SVG vector data, gradients, colours, geometry, embedded provenance
-metadata and `321:347` aspect ratio. Render the asset through an ordinary image
-element rather than copying its paths into JSX. Use a width with `height: auto`
-and do not crop, stretch, recolour, animate or add strong effects.
-
-For normal application surfaces, keep the seal at least `2.75rem` wide. The
-application header uses it at `5.5rem` to `6.5rem` beside a Wits World wordmark
-and the short “Explore · Discover · Achieve” line. At favicon size, use the
-simplified W/star mark rather than shrinking the detailed seal. Supply meaningful
-alternative text when the seal is the only branding label. Use empty alternative
-text and `aria-hidden="true"` when it duplicates an already labelled brand
-link.
-
-The canonical files retain embedded C2PA provenance metadata identifying
-Recraft AI as the asset-generation source. Do not strip or rewrite that metadata
-without a demonstrated technical reason and explicit approval.
-
-### 16.2 Wits World Quest Marker
-
-The supplied Quest Marker variants are external branding artwork for this
-release. Preserve their SVG vector data, geometry,
-colours and `242:326` aspect ratio. The source files remain in
-`docs/design/references/`; the web deployment exposes byte-identical copies at
-`/branding/wits-world-quest-marker.svg` and
-`/branding/wits-world-quest-marker-transparent.svg`.
+Decorative imagery and technical motifs should be hidden from assistive
+technology when they add no meaning.
 
 ---
 
-## 17. Content style
+## 13. Imagery and decoration
 
-Interface copy should be:
+Imagery may support Wits landmarks, history, science, technology, campus
+exploration, and collectible cards.
 
-- concise;
-- confident;
-- helpful;
-- educational;
-- non-accusatory;
-- suitable for students and campus visitors.
+Restrained motifs may include orbital curves, scientific diagrams, network
+lines, topographic patterns, map paths, and geometric grids.
+
+Decoration must never compete with controls, content, or readability.
+
+Do not add decorative elements merely to fill empty regions.
+
+---
+
+## 14. Branding
+
+The approved Wits World Campus Seal and Quest Marker assets should be treated as
+final artwork.
+
+Preserve their SVG vector data, geometry, colours, aspect ratio, and embedded
+provenance metadata where present.
+
+Render branding through image assets rather than copying SVG paths into JSX.
+
+Do not crop, stretch, recolour, animate, or apply strong visual effects to
+approved branding.
+
+Official Wits University marks are not automatically approved by the existence
+of Wits World project branding.
+
+---
+
+## 15. Content style
+
+Interface copy should be concise, confident, helpful, non-accusatory, and
+understandable to students and campus visitors.
 
 Prefer:
 
@@ -846,15 +773,7 @@ Avoid:
 
 > Suspicious location detected.
 
-Prefer:
-
-> This event ended at 16:00.
-
-Avoid:
-
-> Access denied.
-
-Use short labels for routine actions:
+Prefer short, concrete action labels such as:
 
 - View event
 - Start challenge
@@ -866,27 +785,27 @@ Use short labels for routine actions:
 
 ---
 
-## 18. Implementation conventions
+## 16. Implementation rules
 
 - Centralise visual tokens.
-- Do not duplicate large styling blocks between screens.
-- Prefer semantic component variants over arbitrary one-off styling.
+- Prefer shared components over repeated screen-specific styling.
+- Prefer semantic variants over arbitrary one-off classes.
 - Use CSS variables for theme values.
 - Keep decorative layers separate from content.
-- Avoid unnecessary UI dependencies.
-- Use icons consistently from one approved icon library.
-- Do not use emoji as permanent interface icons.
-- Do not invent backend states or game rules in frontend code.
-- Do not trust client-calculated eligibility, rewards or battle outcomes.
-- Include loading, empty, error and unavailable states from the beginning.
-- Add component tests for important interactions.
-- Inspect work at mobile and desktop viewport sizes.
+- Use the approved icon system consistently.
+- Do not invent backend states, permissions, rewards, eligibility, or game rules.
+- Include loading, empty, error, and unavailable states from the beginning.
+- Prefer fixing a shared primitive over patching multiple screens independently.
+- Use container queries where component-local responsiveness is more appropriate
+  than viewport breakpoints.
+- Do not introduce a new dependency merely for visual novelty.
+- When a recurring pattern changes materially, update this design system.
 
 ---
 
-## 19. Visual review checklist
+## 17. Visual review checklist
 
-Before completing significant frontend work, verify:
+Before completing significant frontend work, inspect the rendered application.
 
 ### Hierarchy
 
@@ -900,78 +819,107 @@ Before completing significant frontend work, verify:
 - Can any panel be removed?
 - Is information duplicated?
 - Could secondary detail be disclosed later?
-- Does the mobile version feel focused?
+- Does mobile feel focused?
+- Does desktop avoid unnecessary dashboard density?
 
-### Consistency
+### Visual system
 
-- Are tokens being used?
-- Are component states consistent?
+- Are shared tokens being used?
 - Are spacing and alignment systematic?
-- Are gold and blue being used for the intended purposes?
+- Are routine borders neutral?
+- Is blue used for normal interaction?
+- Is gold reserved for prestige?
+- Are icons coherent and appropriate?
+- Is decoration subordinate to content?
+
+### Interaction
+
+- Are touch targets large enough?
+- Are focus, hover, pressed, loading, and disabled states clear?
+- Is motion useful rather than decorative?
+- Are important actions labelled clearly?
 
 ### Accessibility
 
-- Can the feature be completed using a keyboard?
+- Can the flow be completed with a keyboard?
 - Is focus visible?
 - Is status understandable without colour?
-- Is text readable against its background?
-- Is a non-map alternative available?
+- Are icon-only controls labelled?
+- Is text readable?
 - Is reduced motion respected?
 
 ### Responsiveness
 
-- Does it work at narrow mobile width?
-- Is there accidental horizontal scrolling?
-- Are touch targets large enough?
-- Are dialogs and sheets usable within the viewport?
-- Does desktop use space meaningfully without becoming cluttered?
+Check approximately:
+
+```text
+390px
+768px
+1440px
+```
+
+Verify:
+
+- no accidental horizontal scrolling;
+- dialogs and sheets remain usable;
+- text does not shrink to fit;
+- mobile remains focused;
+- desktop uses extra space meaningfully.
+
+Final test:
+
+> If the decorative styling were removed, would the interface still be easy to
+> understand and use?
+
+If not, fix the structure first.
 
 ---
 
-## 20. Product-decision status
+## 18. AI-assisted UI/UX work
 
-The [Basic-tier decision register](../requirements/basic-tier-decision-register.md)
-is authoritative for the status, owner, date, and evidence of Basic product
-decisions. In summary:
+Treat this design system as the default design contract.
 
-- the original Wits World Campus Seal and implemented typography/colour baseline
-  are the approved Basic presentation; official university marks are not used;
-- current artwork must retain its recorded provenance and production art without
-  confirmed rights remains excluded;
-- card categories, affinities, rarity names, reward distribution, starter
-  composition, deck composition, and duplicate ownership are confirmed;
-- per-card stats, move/effect vocabulary, affinity modifiers, move-based CPU
-  battle rules, the two-role Player/Author model, and account-retention behavior
-  are confirmed;
-- the 18 audited two-move published Creature definitions still require approved
-  content and balance remediation before strict database publication
-  enforcement; and
-- achievements, leaderboards, broader social profiles, and a formal
-  review-and-publish workflow are outside Basic unless a later approved issue
-  changes the scope; a minimal player profile/account page is planned for
-  Sprint 2 to support the mandatory password-reset and account-deletion
-  capabilities.
+An implementation agent may refine a local treatment where a clear UX problem
+requires it, but should:
 
-Blocked implementations must remain adjustable and must not fill missing values
-with UI or code defaults.
+1. preserve confirmed product and branding requirements;
+2. preserve semantic colour roles;
+3. preserve accessibility requirements;
+4. prefer shared component improvements over one-off patches;
+5. inspect the running application visually;
+6. validate mobile, tablet, and desktop layouts;
+7. review iconography and interaction states;
+8. use approved libraries only where they materially improve the result;
+9. avoid redesigning for novelty.
 
----
+Expected workflow:
 
-## 21. Current implementation baseline
+```text
+inspect
+→ identify the highest-impact problems
+→ implement
+→ render
+→ visually review
+→ iterate
+```
 
-The application shell, responsive navigation, Mapbox campus exploration,
-active-page reported-location watcher, event list, timed challenge and result,
-collection, saved decks, CPU battle/history, and Author console are implemented.
-Future visual changes must preserve the shared tokens and component foundations
-across those journeys rather than introducing separate visual systems.
+For routine responsive UI/UX passes, use approximately:
+
+```text
+390px mobile
+768px tablet
+1440px desktop
+```
+
+The goal is one coherent Wits World experience across mobile and desktop.
 
 ---
 
 ## AI declaration
 
-The preceding document was generated with the assistance of:
-ChatGPT-Web[GPT-5.6 Thinking], and reviewed and edited with the assistance of:
-Codex-CLI[GPT-5], Codex[GPT-5].
+This revision was materially rewritten with the assistance of
+ChatGPT[GPT-5.6 Sol].
 
-Update this declaration when other AI tools materially review, edit or generate
+Update this declaration when other AI tools materially review, edit, or generate
 parts of this document.
+
