@@ -255,7 +255,15 @@ function formatAcquiredDate(value: string) {
 function MoveDetails({ move }: { move: CardMove }) {
   return (
     <div className="card-details__item">
-      <p className="card-details__name">{move.name}</p>
+      <div className="card-move__heading">
+        <p className="card-details__name">{move.name}</p>
+        <span
+          className="card-move__cost"
+          aria-label={`Power cost: ${move.powerCost}`}
+        >
+          {move.powerCost} Power
+        </span>
+      </div>
       {move.rulesText ? <p>{move.rulesText}</p> : null}
       <dl>
         <div>
@@ -265,10 +273,6 @@ function MoveDetails({ move }: { move: CardMove }) {
         <div>
           <dt>Effect</dt>
           <dd>{formatEffect(move.effectType, move.effectValue)}</dd>
-        </div>
-        <div>
-          <dt>Power cost</dt>
-          <dd>{move.powerCost}</dd>
         </div>
         {move.modifierStat !== null ? (
           <div>
