@@ -1,3 +1,10 @@
+import {
+  CompassIcon,
+  CardsIcon,
+  StackIcon,
+  SwordIcon,
+  PencilSimpleIcon,
+} from '@phosphor-icons/react';
 import { useAuth0 } from '@auth0/auth0-react';
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'wouter';
@@ -58,54 +65,16 @@ const AUTHOR_NAVIGATION_ITEM: NavigationItem = {
 };
 
 function NavigationIcon({ name }: { name: NavigationIconName }) {
-  const sharedProps = {
-    'aria-hidden': true,
-    className: 'primary-navigation__icon',
-    fill: 'none',
-    focusable: 'false' as const,
-    stroke: 'currentColor',
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-    strokeWidth: 1.7,
-    viewBox: '0 0 24 24',
-  };
-
-  switch (name) {
-    case 'explore':
-      return (
-        <svg {...sharedProps}>
-          <path d="M12 21s6-5.4 6-11a6 6 0 1 0-12 0c0 5.6 6 11 6 11Z" />
-          <circle cx="12" cy="10" r="2.2" />
-        </svg>
-      );
-    case 'collection':
-      return (
-        <svg {...sharedProps}>
-          <rect height="13" rx="1.8" width="10" x="7" y="4" />
-          <path d="m7 7-2 .5a2 2 0 0 0-1.4 2.4l2.3 8.7A2 2 0 0 0 8.3 20l6.8-1.8" />
-        </svg>
-      );
-    case 'decks':
-      return (
-        <svg {...sharedProps}>
-          <path d="m4 8 8-4 8 4-8 4-8-4Z" />
-          <path d="m4 12 8 4 8-4M4 16l8 4 8-4" />
-        </svg>
-      );
-    case 'battles':
-      return (
-        <svg {...sharedProps}>
-          <path d="m5 4 6.5 6.5M3.5 2.5 5 7l2-2 6.5 6.5M19 4l-6.5 6.5M20.5 2.5 19 7l-2-2-6.5 6.5M7.5 13.5 4 17l3 3 3.5-3.5M16.5 13.5 20 17l-3 3-3.5-3.5" />
-        </svg>
-      );
-    case 'author':
-      return (
-        <svg {...sharedProps}>
-          <path d="m4 20 4.2-1 10.7-10.7a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z" />
-          <path d="m14.5 6.7 2.8 2.8M4 20h6" />
-        </svg>
-      );
-  }
+  const Icon = {
+    explore: CompassIcon,
+    collection: CardsIcon,
+    decks: StackIcon,
+    battles: SwordIcon,
+    author: PencilSimpleIcon,
+  }[name];
+  return (
+    <Icon aria-hidden="true" className="primary-navigation__icon" size={24} />
+  );
 }
 
 function PlayerNavigation({

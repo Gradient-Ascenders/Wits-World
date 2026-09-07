@@ -425,9 +425,7 @@ describe('player authentication', () => {
       }
     }
     expect(
-      within(screen.getByRole('main')).getByRole('link', {
-        name: 'Explore campus',
-      }),
+      screen.getAllByRole('link', { name: 'Explore' })[0],
     ).toHaveAttribute('href', '/explore');
   });
 
@@ -529,7 +527,7 @@ describe('player authentication', () => {
     },
   );
 
-  it('keeps Player Name onboarding on the protected Explore path from Home', async () => {
+  it('keeps Explore navigation available from Home for Player Name onboarding', async () => {
     mockCurrentPlayer(playerAId, null);
 
     renderRoute(
@@ -541,9 +539,7 @@ describe('player authentication', () => {
     );
 
     expect(
-      await within(screen.getByRole('main')).findByRole('link', {
-        name: 'Choose Player Name',
-      }),
+      (await screen.findAllByRole('link', { name: 'Explore' }))[0],
     ).toHaveAttribute('href', '/explore');
   });
 

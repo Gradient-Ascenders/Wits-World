@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@auth0/auth0-react": "2.23.0",
+    "@phosphor-icons/react": "^2.1.10",
     "@wits-world/account-policy": "0.0.0",
     "idb": "8.0.3",
     "mapbox-gl": "3.28.1",
