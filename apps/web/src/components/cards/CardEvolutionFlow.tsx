@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowRight, ArrowsMerge, LockKey, Stack } from '@phosphor-icons/react';
+import { motion, useReducedMotion } from 'motion/react';
 
 import {
   CardApiError,
@@ -11,7 +12,7 @@ import {
   type OwnedCard,
 } from '../../api/cards';
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
-import { CollectibleCard } from './CollectibleCard';
+import { CardArtwork, CollectibleCard } from './CollectibleCard';
 import { StateIcon, StatusMessage } from '../StatusMessage';
 
 type PreviewState =
@@ -29,20 +30,26 @@ interface CardEvolutionFlowProps {
   onApplyResult: (result: CardEvolutionResult) => void;
   onBusyChange: (busy: boolean) => void;
   onRefreshCollection: () => Promise<void>;
+  initialPreview: CardEvolutionPreview;
+  collectionCards: OwnedCard[];
+  onClose: () => void;
 }
 
 export function CardEvolutionFlow({
   actionContainer,
   apiBaseUrl,
   card,
-  copies,
   getAccessToken,
   onApplyResult,
   onBusyChange,
   onRefreshCollection,
+  initialPreview,
+  collectionCards,
+  onClose,
 }: CardEvolutionFlowProps) {
   const [previewState, setPreviewState] = useState<PreviewState>({
-    status: 'loading',
+    status: 'ready',
+    preview: initialPreview,
   });
   const [stage, setStage] = useState<'details' | 'confirm' | 'success'>(
     'details',
@@ -59,6 +66,7 @@ export function CardEvolutionFlow({
   const resultHeading = useRef<HTMLHeadingElement | null>(null);
   const reviewButton = useRef<HTMLButtonElement | null>(null);
   const errorNotice = useRef<HTMLDivElement | null>(null);
+  const submissionLocked = useRef(false);
 
   async function refreshResultCollection() {
     setIsRefreshing(true);
@@ -105,7 +113,6 @@ export function CardEvolutionFlow({
   }, [apiBaseUrl, card.cardDefinitionId, getAccessToken]);
 
   useEffect(() => {
-    void loadPreview();
     return () => {
       previewRequest.current?.abort();
       mutationRequest.current?.abort();
@@ -127,8 +134,14 @@ export function CardEvolutionFlow({
   }, [mutationError, previewState.status, stage]);
 
   async function confirmEvolution() {
-    if (isSubmitting || previewState.status !== 'ready') return;
+    if (
+      submissionLocked.current ||
+      previewState.status !== 'ready' ||
+      !previewState.preview.canEvolve
+    )
+      return;
 
+    submissionLocked.current = true;
     setMutationError(null);
     setIsSubmitting(true);
     const controller = new AbortController();
@@ -148,6 +161,7 @@ export function CardEvolutionFlow({
       onApplyResult(evolutionResult);
       setResult(evolutionResult);
       setStage('success');
+      setIsSubmitting(false);
       await refreshResultCollection();
     } catch (error) {
       if (controller.signal.aborted) return;
@@ -155,7 +169,7 @@ export function CardEvolutionFlow({
       setMutationError(cardError);
 
       if (isStaleEvolutionError(cardError)) {
-        await Promise.allSettled([loadPreview(), onRefreshCollection()]);
+        await Promise.allSettled([loadPreview(), refreshResultCollection()]);
         if (!controller.signal.aborted) {
           setStage('details');
         }
@@ -163,6 +177,7 @@ export function CardEvolutionFlow({
     } finally {
       if (mutationRequest.current === controller) {
         mutationRequest.current = null;
+        submissionLocked.current = false;
         if (!controller.signal.aborted) setIsSubmitting(false);
       }
     }
@@ -174,16 +189,24 @@ export function CardEvolutionFlow({
         aria-labelledby="evolution-result-title"
         className="evolution-result"
       >
-        <p className="eyebrow">Evolution complete</p>
+        <p className="eyebrow">Your evolved card</p>
         <h2 id="evolution-result-title" ref={resultHeading} tabIndex={-1}>
-          {result.newCard.name} joined your collection
+          Evolution complete
         </h2>
         <p>
-          {result.consumedOwnedCardIds.length} {card.name} copies were consumed
-          to create 1 {result.newCard.name}. The consumed copies are no longer
-          in your collection.
+          {result.consumedOwnedCardIds.length} × {card.name} consumed. 1 ×{' '}
+          {result.newCard.name} created.
         </p>
-        <CollectibleCard card={result.newCard} headingLevel={3} />
+        <EvolutionReveal source={initialPreview.source} result={result} />
+        <p>
+          {
+            collectionCards.filter(
+              (copy) =>
+                copy.cardDefinitionId === result.newCard.cardDefinitionId,
+            ).length
+          }{' '}
+          × {result.newCard.name} now in your collection
+        </p>
         <StatusMessage tone={refreshFailed ? 'error' : 'success'}>
           <p>
             {isRefreshing
@@ -202,6 +225,16 @@ export function CardEvolutionFlow({
             </button>
           ) : null}
         </StatusMessage>
+        {actionContainer
+          ? createPortal(
+              <div className="evolution-action-bar">
+                <button className="button" type="button" onClick={onClose}>
+                  Back to evolutions
+                </button>
+              </div>,
+              actionContainer,
+            )
+          : null}
       </section>
     );
   }
@@ -225,7 +258,8 @@ export function CardEvolutionFlow({
           ref={confirmationHeading}
           tabIndex={-1}
         >
-          Evolve {card.name}?
+          Combine {preview.copiesRequired} copies of {preview.source.name} into{' '}
+          {preview.target.name}?
         </h2>
         <p>
           Exchange {preview.copiesRequired} available copies for 1 evolved card.
@@ -234,6 +268,7 @@ export function CardEvolutionFlow({
 
         <div className="evolution-recipe" aria-label="Evolution recipe">
           <div className="evolution-recipe__source">
+            <SourceCopies preview={preview} />
             <span className="evolution-recipe__quantity">
               ×{preview.copiesRequired}
             </span>
@@ -244,9 +279,16 @@ export function CardEvolutionFlow({
             <ArrowRight size={24} />
           </span>
           <div className="evolution-recipe__target">
+            <CollectibleCard
+              card={preview.target}
+              headingLevel={3}
+              showOwnership={false}
+              showDetails={false}
+            />
             <span className="evolution-recipe__quantity">×1</span>
             <strong>{preview.target.name}</strong>
             <span>You receive</span>
+            <span>{preview.target.deckPointCost} deck points</span>
           </div>
         </div>
 
@@ -274,24 +316,6 @@ export function CardEvolutionFlow({
           in saved decks. Copies in decks will not be consumed.
         </p>
 
-        <section
-          aria-labelledby="evolution-target-title"
-          className="evolution-target"
-        >
-          <div className="evolution-target__heading">
-            <p className="eyebrow">You receive</p>
-            <p>{preview.target.deckPointCost} deck points</p>
-          </div>
-          <h3 className="sr-only" id="evolution-target-title">
-            Evolved card preview
-          </h3>
-          <CollectibleCard
-            card={preview.target}
-            headingLevel={3}
-            showOwnership={false}
-          />
-        </section>
-
         {mutationError ? (
           <EvolutionError error={mutationError} noticeRef={errorNotice} />
         ) : null}
@@ -302,6 +326,9 @@ export function CardEvolutionFlow({
                 <p>
                   Uses {preview.copiesRequired} copies · creates 1 evolved card
                 </p>
+                {isSubmitting ? (
+                  <p role="status">Waiting for your evolution to complete…</p>
+                ) : null}
                 <div className="evolution-confirmation__actions">
                   <button
                     className="button button--quiet"
@@ -318,12 +345,12 @@ export function CardEvolutionFlow({
                     Cancel
                   </button>
                   <button
-                    className="button evolution-confirmation__confirm"
+                    className="button"
                     disabled={isSubmitting || retryBlocked}
                     onClick={() => void confirmEvolution()}
                     type="button"
                   >
-                    {isSubmitting ? 'Evolving…' : 'Confirm evolution'}
+                    {isSubmitting ? 'Evolving…' : 'Evolve card'}
                   </button>
                 </div>
               </div>,
@@ -336,30 +363,52 @@ export function CardEvolutionFlow({
 
   return (
     <>
-      <CollectibleCard
-        actions={
-          previewState.status === 'loading' ? (
-            <p aria-live="polite" role="status">
-              Checking evolution availability…
-            </p>
-          ) : previewState.status === 'error' ? (
-            <StatusMessage
-              tone="error"
-              className="evolution-availability__error"
+      <div className="evolution-preview">
+        <p className="eyebrow">Three copies. One new form.</p>
+        {previewState.status === 'loading' ? (
+          <p aria-live="polite" role="status">
+            Checking evolution availability…
+          </p>
+        ) : previewState.status === 'error' ? (
+          <StatusMessage tone="error" className="evolution-availability__error">
+            {mutationError ? (
+              <p>{evolutionErrorMessage(mutationError)}</p>
+            ) : null}
+            <p>Evolution availability could not be loaded.</p>
+            <button
+              className="button button--quiet"
+              onClick={() => void loadPreview()}
+              type="button"
             >
-              {mutationError ? (
-                <p>{evolutionErrorMessage(mutationError)}</p>
-              ) : null}
-              <p>Evolution availability could not be loaded.</p>
-              <button
-                className="button button--quiet"
-                onClick={() => void loadPreview()}
-                type="button"
-              >
-                Try again
-              </button>
-            </StatusMessage>
-          ) : previewState.status === 'ready' ? (
+              Try again
+            </button>
+          </StatusMessage>
+        ) : previewState.status === 'ready' ? (
+          <>
+            <div className="evolution-preview__composition">
+              <div className="evolution-preview__sources">
+                <SourceCopies preview={previewState.preview} />
+                <h2>{previewState.preview.source.name}</h2>
+                <p>
+                  {previewState.preview.copiesRequired} eligible copies will be
+                  consumed
+                </p>
+              </div>
+              <ArrowRight
+                className="evolution-preview__arrow"
+                size={28}
+                aria-hidden="true"
+              />
+              <div className="evolution-preview__target">
+                <p className="eyebrow">Evolved result</p>
+                <CollectibleCard
+                  card={previewState.preview.target}
+                  showOwnership={false}
+                  showDetails={false}
+                  headingLevel={3}
+                />
+              </div>
+            </div>
             <EvolutionAvailability
               mutationError={mutationError}
               noticeRef={errorNotice}
@@ -373,15 +422,122 @@ export function CardEvolutionFlow({
               preview={previewState.preview}
               reviewButton={reviewButton}
             />
-          ) : mutationError ? (
-            <EvolutionError error={mutationError} noticeRef={errorNotice} />
-          ) : undefined
-        }
-        card={card}
-        headingLevel={2}
-        ownedCopies={copies}
-      />
+          </>
+        ) : mutationError ? (
+          <EvolutionError error={mutationError} noticeRef={errorNotice} />
+        ) : (
+          <p>This evolution is no longer available.</p>
+        )}
+        {refreshFailed ? (
+          <StatusMessage tone="error">
+            <p>Your collection could not be refreshed.</p>
+            <button
+              className="button button--quiet"
+              type="button"
+              onClick={() => void refreshResultCollection()}
+            >
+              Refresh collection
+            </button>
+          </StatusMessage>
+        ) : null}
+      </div>
     </>
+  );
+}
+
+function SourceCopies({ preview }: { preview: CardEvolutionPreview }) {
+  return (
+    <div
+      className="evolution-source-copies"
+      aria-label={`${preview.copiesRequired} source copies required`}
+    >
+      {Array.from({ length: preview.copiesRequired }, (_, index) => (
+        <div
+          key={index}
+          className={`evolution-source-copy${index >= preview.eligibleCopyCount ? ' evolution-source-copy--missing' : ''}`}
+        >
+          <CardArtwork
+            card={preview.source}
+            showRarity
+            nameplate={<span>{index + 1}</span>}
+          />
+          {index >= preview.eligibleCopyCount ? <span>Needed</span> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EvolutionReveal({
+  source,
+  result,
+}: {
+  source: CardEvolutionPreview['source'];
+  result: CardEvolutionResult;
+}) {
+  const reducedMotion = useReducedMotion();
+  return (
+    <div
+      className="evolution-reveal"
+      data-testid="evolution-reveal"
+      data-reduced-motion={Boolean(reducedMotion)}
+    >
+      {!reducedMotion ? (
+        <div className="evolution-reveal__merge" aria-hidden="true">
+          {result.consumedOwnedCardIds.map((id, index) => (
+            <motion.div
+              key={id}
+              className="evolution-reveal__source"
+              initial={{
+                x: (index - 1) * 76,
+                rotate: (index - 1) * 9,
+                opacity: 1,
+              }}
+              animate={{
+                x: [(index - 1) * 76, (index - 1) * 76, 0, 0],
+                rotate: [(index - 1) * 9, 0, 0, 0],
+                scale: [1, 1, 0.8, 0.65],
+                opacity: [1, 1, 1, 0],
+              }}
+              transition={{
+                duration: 0.85,
+                times: [0, 0.2, 0.75, 1],
+                ease: 'easeInOut',
+              }}
+            >
+              <CardArtwork card={source} nameplate={<span>{index + 1}</span>} />
+            </motion.div>
+          ))}
+          <motion.div
+            className="evolution-reveal__light"
+            initial={{ opacity: 0, scale: 0.5 }}
+            animate={{ opacity: [0, 0.45, 0], scale: [0.5, 1.1, 1.25] }}
+            transition={{ duration: 0.8, delay: 0.35 }}
+          />
+        </div>
+      ) : null}
+      <motion.div
+        className="evolution-reveal__card"
+        initial={
+          reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.88, y: 16 }
+        }
+        animate={
+          reducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }
+        }
+        transition={{
+          duration: reducedMotion ? 0.18 : 0.65,
+          delay: reducedMotion ? 0 : 0.8,
+          ease: 'easeOut',
+        }}
+      >
+        <CollectibleCard
+          card={result.newCard}
+          headingLevel={3}
+          showOwnership={false}
+          showDetails={false}
+        />
+      </motion.div>
+    </div>
   );
 }
 
@@ -407,7 +563,7 @@ function EvolutionAvailability({
     >
       <div className="evolution-availability__heading">
         <div>
-          <p className="eyebrow">Duplicate evolution</p>
+          <p className="eyebrow">Copy availability</p>
           <h3 id="evolution-availability-title">
             Evolve into {preview.target.name}
           </h3>
@@ -491,7 +647,7 @@ function EvolutionError({
       <StateIcon tone="error" />
       <strong>
         {isStaleEvolutionError(error)
-          ? 'Preview no longer valid'
+          ? 'Your collection changed'
           : 'Evolution needs attention'}
       </strong>
       <p>{evolutionErrorMessage(error)}</p>

@@ -3391,9 +3391,7 @@
 .battle-creature-artwork {
   display: block;
   width: min(100%, 12rem);
-  aspect-ratio: 1;
   object-fit: contain;
-  border-radius: var(--radius-md);
 }
 .battle-bench li {
   grid-template-columns: 3.5rem minmax(0, 1fr);

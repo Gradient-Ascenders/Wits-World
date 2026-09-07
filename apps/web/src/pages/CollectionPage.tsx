@@ -2,7 +2,6 @@ import { StateIcon } from '../components/StatusMessage';
 import { Skeleton } from '../components/LoadingState';
 import { useAuth0 } from '@auth0/auth0-react';
 import { MagnifyingGlass, SlidersHorizontal, X } from '@phosphor-icons/react';
-import { createPortal } from 'react-dom';
 import {
   useCallback,
   useEffect,
@@ -30,9 +29,10 @@ import {
   CardThumbnail,
   CollectibleCard,
 } from '../components/cards/CollectibleCard';
-import { CardEvolutionFlow } from '../components/cards/CardEvolutionFlow';
+import { CardDetailModal } from '../components/cards/CardDetailModal';
+import { CollectionEvolutions } from '../components/cards/CollectionEvolutions';
+import '../components/cards/evolutions.css';
 import '../components/cards/cards.css';
-import { CardSheetHandle } from '../components/cards/CardSheetHandle';
 
 interface CollectionPageProps {
   apiBaseUrl: string;
@@ -55,6 +55,7 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
     status: 'loading',
   });
   const [collectionRevision, setCollectionRevision] = useState(0);
+  const [section, setSection] = useState<'cards' | 'evolutions'>('cards');
   const [starterOptions, setStarterOptions] = useState<StarterOptionsState>({
     status: 'idle',
   });
@@ -197,7 +198,9 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
             cards: [
               result.newCard,
               ...current.cards.filter(
-                (card) => !consumedIds.has(card.ownedCardId),
+                (card) =>
+                  !consumedIds.has(card.ownedCardId) &&
+                  card.ownedCardId !== result.newCard.ownedCardId,
               ),
             ],
             status: 'ready',
@@ -343,9 +346,11 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
     <div className="collection-page">
       <header className="collection-page__header">
         <p className="eyebrow">Your collection</p>
-        <h1>Cards you own</h1>
+        <h1>{section === 'cards' ? 'Cards you own' : 'Evolutions'}</h1>
         <p className="lead">
-          Every card, part of your journey. Open one to explore its details.
+          {section === 'cards'
+            ? 'Every card, part of your journey. Open one to explore its details.'
+            : 'Combine three eligible copies into one evolved card.'}
         </p>
         {collection.status === 'ready' ? (
           <p aria-live="polite" className="collection-summary">
@@ -386,6 +391,45 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
         : null}
 
       {collection.status === 'ready' && cards.length > 0 ? (
+        <div
+          className="collection-section-switch"
+          role="group"
+          aria-label="Collection section"
+        >
+          <button
+            className="button button--quiet"
+            aria-pressed={section === 'cards'}
+            onClick={() => setSection('cards')}
+            type="button"
+          >
+            Cards
+          </button>
+          <button
+            className="button button--quiet"
+            aria-pressed={section === 'evolutions'}
+            onClick={() => setSection('evolutions')}
+            type="button"
+          >
+            Evolutions
+          </button>
+        </div>
+      ) : null}
+
+      {collection.status === 'ready' &&
+      cards.length > 0 &&
+      section === 'evolutions' ? (
+        <CollectionEvolutions
+          apiBaseUrl={apiBaseUrl}
+          cards={cards}
+          getAccessToken={getAccessToken}
+          onApplyResult={applyEvolutionResult}
+          onRefreshCollection={refreshCollection}
+        />
+      ) : null}
+
+      {collection.status === 'ready' &&
+      cards.length > 0 &&
+      section === 'cards' ? (
         <CollectionGrid
           apiBaseUrl={apiBaseUrl}
           cards={cards}
@@ -1051,141 +1095,6 @@ function CollectionGrid({
         />
       ) : null}
     </section>
-  );
-}
-
-function CardDetailModal({
-  apiBaseUrl,
-  getAccessToken,
-  group,
-  onApplyEvolutionResult,
-  onClose,
-  onRefreshCollection,
-}: {
-  apiBaseUrl: string;
-  getAccessToken: ReturnType<typeof useApiAccessToken>;
-  group: OwnedCardGroup;
-  onApplyEvolutionResult: (result: CardEvolutionResult) => void;
-  onClose: () => void;
-  onRefreshCollection: () => Promise<void>;
-}) {
-  const dialogRef = useRef<HTMLElement | null>(null);
-  const busyRef = useRef(false);
-  const [isBusy, setIsBusy] = useState(false);
-  const [actionContainer, setActionContainer] = useState<HTMLDivElement | null>(
-    null,
-  );
-
-  const handleBusyChange = useCallback((busy: boolean) => {
-    busyRef.current = busy;
-    setIsBusy(busy);
-  }, []);
-
-  const requestClose = useCallback(() => {
-    if (!busyRef.current) onClose();
-  }, [onClose]);
-
-  useEffect(() => {
-    const applicationRoot = document.getElementById('root');
-    const previousInert = applicationRoot?.inert ?? false;
-    const previousOverflow = document.documentElement.style.overflow;
-    const dialog = dialogRef.current;
-
-    if (applicationRoot) applicationRoot.inert = true;
-    document.documentElement.style.overflow = 'hidden';
-    window.requestAnimationFrame(() => {
-      if (dialog && !dialog.contains(document.activeElement)) {
-        dialog.querySelector<HTMLElement>('[data-card-detail-focus]')?.focus();
-      }
-    });
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        requestClose();
-        return;
-      }
-
-      if (event.key !== 'Tab' || !dialog) return;
-      const focusable = Array.from(
-        dialog.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), summary, a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ),
-      ).filter(
-        (element) => window.getComputedStyle(element).display !== 'none',
-      );
-      if (focusable.length === 0) return;
-
-      const first = focusable[0]!;
-      const last = focusable.at(-1)!;
-      if (!focusable.includes(document.activeElement as HTMLElement)) {
-        event.preventDefault();
-        (event.shiftKey ? last : first).focus();
-      } else if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      if (applicationRoot) applicationRoot.inert = previousInert;
-      document.documentElement.style.overflow = previousOverflow;
-    };
-  }, [group.card.cardDefinitionId, requestClose]);
-
-  return createPortal(
-    <div
-      className="card-detail-backdrop"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) requestClose();
-      }}
-    >
-      <section
-        aria-label={`${group.card.name} card details`}
-        aria-modal="true"
-        className="card-detail-modal"
-        ref={dialogRef}
-        role="dialog"
-      >
-        <CardSheetHandle
-          panelRef={dialogRef}
-          onClose={requestClose}
-          disabled={isBusy}
-        />
-        <header className="card-detail-modal__header">
-          <p className="eyebrow">Card details</p>
-          <button
-            aria-label="Close card details"
-            className="card-detail-modal__close"
-            data-card-detail-focus
-            disabled={isBusy}
-            onClick={requestClose}
-            type="button"
-          >
-            <X size={24} aria-hidden="true" />
-          </button>
-        </header>
-        <div className="card-detail-modal__scroll" id="card-detail-content">
-          <CardEvolutionFlow
-            actionContainer={actionContainer}
-            apiBaseUrl={apiBaseUrl}
-            card={group.card}
-            copies={group.copies}
-            getAccessToken={getAccessToken}
-            onApplyResult={onApplyEvolutionResult}
-            onBusyChange={handleBusyChange}
-            onRefreshCollection={onRefreshCollection}
-          />
-        </div>
-        <div className="card-detail-modal__footer" ref={setActionContainer} />
-      </section>
-    </div>,
-    document.body,
   );
 }
 

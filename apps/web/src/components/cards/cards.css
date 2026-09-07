@@ -1297,18 +1297,6 @@
   gap: var(--space-2);
 }
 
-.evolution-confirmation__confirm {
-  border-color: var(--colour-status-danger);
-  color: var(--colour-text-inverse);
-  background: var(--colour-status-danger);
-  box-shadow: none;
-}
-
-.evolution-confirmation__confirm:hover {
-  background: #ef6b75;
-  box-shadow: none;
-}
-
 .card-detail-modal__footer {
   flex: 0 0 auto;
 }

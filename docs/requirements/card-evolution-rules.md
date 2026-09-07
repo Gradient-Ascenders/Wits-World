@@ -73,17 +73,22 @@ remains an explicit player action.
 
 ## Player collection experience
 
-The collection groups separately owned copies by definition and keeps the normal
-gallery visually quiet. Opening an evolvable card loads a fresh server preview
-and distinguishes total owned copies, copies currently eligible for evolution,
-and copies protected by saved decks. Cards without an authored evolution do not
-show an unavailable action.
+The collection switches between Cards and Evolutions within `/collection`.
+Normal card details retain their copy history and no longer include evolution.
+The Evolutions section checks the existing preview endpoint for each distinct
+owned definition, with at most four requests in flight. It lists available
+relationships with server-returned eligibility, total ownership, and deck locks,
+placing ready evolutions first. Failed checks remain visible with a retry.
+Definitions without an available relationship are omitted unless an owned copy
+was acquired through evolution. Those entries say that no further evolution is
+currently available; the contract does not explicitly identify final stages.
 
-Eligibility is summarized by quantity; acquisition records remain available under
-Copy history. The existing collection sheet and desktop detail layout are retained.
-Confirmation controls stay below the scrolling preview, with safe-area spacing.
-The recipe stacks vertically on mobile and tablet and compares horizontally on
-desktop. Card frames are unchanged.
+Selecting a candidate opens a focused preview with three compact source cards
+and a prominent evolved result. The mobile surface fills the screen and scrolls;
+desktop uses a wider comparison. Both reuse the normal card frame and dialog
+focus management. Confirmation controls stay below the scrolling preview, with
+safe-area spacing. The primary action is labelled "Evolve card" and explicitly
+confirms the consumption of all three source copies.
 
 The confirmation view presents the server-authored source and target, the fixed
 three-copy recipe, the number of copies remaining, any saved-deck protection,
@@ -93,11 +98,16 @@ the consumed copies or derives the evolved definition.
 
 After a successful mutation, the UI immediately applies the authoritative
 consumed identifiers and granted card from the result, then refetches the whole
-collection. Insufficient-copy and saved-deck conflicts refresh both the preview
+collection. Only after server success does Motion converge the three source
+cards and reveal the result, over approximately 1.45 seconds. Reduced motion
+uses a 180 ms fade. The result reports the resulting owned quantity, including
+when that evolved definition was already owned, and offers Back to evolutions.
+Insufficient-copy and saved-deck conflicts refresh both the preview
 and collection before another action is offered. Confirmation is single-flight,
 Escape and close are disabled while it is in flight, and focus moves to the
 confirmation, recoverable error, or success heading as appropriate.
-The sheet handle also stays disabled during submission. A confirmed evolution is
+Normal card details retain their sheet handle; the focused mobile evolution
+surface uses its explicit close control. A confirmed evolution is
 distinguished from the subsequent collection refresh; a failed refresh offers a
 local retry without repeating the evolution. Stale previews explicitly state that
 no evolution completed and offer refreshed availability for another review.

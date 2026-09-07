@@ -539,8 +539,10 @@ Quantity is neutral; selection and keyboard focus belong to the external control
 independent of rarity. Retired cards keep readable artwork and a text label.
 
 Collection, deck picking, details, evolution and author previews share this
-frame. Revealed battle artwork uses the compact neutral variant because battle
-identities do not supply rarity. Do not infer it from names or artwork. Preserve
+frame. Revealed battle artwork uses the full shared bezel, engraving and lower
+plate in a neutral metal finish because battle identities do not supply rarity.
+The neutral plate has decoration but no rarity label. Do not infer rarity from
+names or artwork. Preserve
 existing page layouts and server-authoritative state. Hover elevation respects
 reduced motion.
 

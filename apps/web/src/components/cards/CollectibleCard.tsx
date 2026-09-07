@@ -23,6 +23,7 @@ interface CollectibleCardProps {
   headingLevel?: 2 | 3 | 4;
   ownedCopies?: readonly OwnedCard[];
   showOwnership?: boolean;
+  showDetails?: boolean;
 }
 
 interface CardThumbnailProps {
@@ -66,6 +67,7 @@ export function CollectibleCard({
   headingLevel = 3,
   ownedCopies,
   showOwnership = true,
+  showDetails = true,
 }: CollectibleCardProps) {
   const titleId = `card-${'ownedCardId' in card ? card.ownedCardId : card.cardDefinitionId}-title`;
   const Heading: 'h2' | 'h3' | 'h4' =
@@ -98,7 +100,7 @@ export function CollectibleCard({
           ) : null}
         </div>
 
-        {!compact && card.description ? (
+        {!compact && showDetails && card.description ? (
           <p className="collectible-card__description">{card.description}</p>
         ) : null}
 
@@ -124,7 +126,7 @@ export function CollectibleCard({
           </dl>
         ) : null}
 
-        {!compact && card.moves.length > 0 ? (
+        {!compact && showDetails && card.moves.length > 0 ? (
           <section aria-label={`${card.name} moves`} className="card-details">
             <h4>Moves</h4>
             <ol className="card-details__list">
@@ -137,7 +139,7 @@ export function CollectibleCard({
           </section>
         ) : null}
 
-        {!compact && card.effects.length > 0 ? (
+        {!compact && showDetails && card.effects.length > 0 ? (
           <section aria-label={`${card.name} effects`} className="card-details">
             <h4>Effects</h4>
             <ol className="card-details__list">

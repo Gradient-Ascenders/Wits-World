@@ -20,28 +20,28 @@ export function CardFrame({
     <span
       className={`card-frame card-frame--${rarity ?? 'neutral'} ${className}`}
     >
-      {rarity ? (
-        <span className="card-frame__engraving" aria-hidden="true">
-          <span className="card-frame__corner card-frame__corner--left" />
-          <span className="card-frame__corner card-frame__corner--right" />
-          <span className="card-frame__crest" />
-          <span className="card-frame__spine card-frame__spine--left" />
-          <span className="card-frame__spine card-frame__spine--right" />
-        </span>
-      ) : null}
+      <span className="card-frame__engraving" aria-hidden="true">
+        <span className="card-frame__corner card-frame__corner--left" />
+        <span className="card-frame__corner card-frame__corner--right" />
+        <span className="card-frame__crest" />
+        <span className="card-frame__spine card-frame__spine--left" />
+        <span className="card-frame__spine card-frame__spine--right" />
+      </span>
       <span className="card-frame__window">{children}</span>
-      {rarity ? (
-        <span className="card-frame__rail">
-          {nameplate ? (
-            <span className="card-frame__name">{nameplate}</span>
-          ) : null}
+      <span className="card-frame__rail">
+        {nameplate ? (
+          <span className="card-frame__name">{nameplate}</span>
+        ) : null}
+        {rarity ? (
           <span className="card-frame__rarity">
             <span className="card-frame__insignia" aria-hidden="true" />
             {rarity.charAt(0).toUpperCase() + rarity.slice(1)}
           </span>
-          {badge ? <span className="card-frame__quantity">{badge}</span> : null}
-        </span>
-      ) : null}
+        ) : (
+          <span className="card-frame__insignia" aria-hidden="true" />
+        )}
+        {badge ? <span className="card-frame__quantity">{badge}</span> : null}
+      </span>
     </span>
   );
 }

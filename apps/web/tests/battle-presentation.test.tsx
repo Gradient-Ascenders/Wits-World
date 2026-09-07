@@ -26,6 +26,10 @@ describe('shared battle presentation', () => {
     );
     const picture = container.querySelector('img')!;
     expect(picture).toHaveAttribute('src', '/cards/quillip.webp');
+    const frame = picture.closest('.card-frame--neutral');
+    expect(frame?.querySelector('.card-frame__engraving')).toBeInTheDocument();
+    expect(frame?.querySelector('.card-frame__rail')).toBeInTheDocument();
+    expect(frame?.querySelector('.card-frame__rarity')).toBeNull();
     fireEvent.error(picture);
     expect(container.querySelector('img')).toBeNull();
     expect(container.querySelector('.combatant__sigil')).toHaveTextContent('Q');

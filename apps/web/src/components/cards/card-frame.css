@@ -432,21 +432,18 @@
   border-radius: 0;
 }
 
-/* Battle contracts carry no rarity: preserve their compact, neutral art slot. */
+/* Battle identities have no rarity. Keep the shared geometry and engraving
+   with a neutral metal finish, without assigning a collectible tier. */
 .card-frame--neutral {
-  padding: 4px;
-  border-width: 2px;
-  border-radius: var(--radius-md);
   --frame-surface: #253244;
   --frame-wash: #4c5968;
   --frame-light: #bcc5cf;
+  --frame-metal: #bcc5cf;
+  --frame-plate: #152235;
+  --frame-ink: #f7f3e7;
 }
-.card-frame--neutral::before {
-  display: none;
-}
-.card-frame--neutral .card-frame__window {
-  border-radius: 5px;
-  box-shadow: none;
+.card-frame--neutral .card-frame__rail {
+  min-height: 1.25rem;
 }
 
 /* Medallion seats give the compass engraving a material backing. */
