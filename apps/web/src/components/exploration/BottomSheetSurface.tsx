@@ -53,10 +53,10 @@ export function getBottomSheetSnapPoints(
   panelHeight: number,
 ): BottomSheetSnapPoints {
   const expanded = Math.max(1, panelHeight);
-  const peek = Math.min(expanded, 76);
+  const peek = Math.min(expanded, 100);
   const medium = Math.min(
     expanded,
-    Math.max(peek, Math.round(expanded * 0.52)),
+    Math.max(peek, 280, Math.round(expanded * 0.52)),
   );
 
   return { expanded, medium, peek };

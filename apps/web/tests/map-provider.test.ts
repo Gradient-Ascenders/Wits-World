@@ -31,6 +31,8 @@ const mapboxState = vi.hoisted(() => ({
   once: vi.fn(),
   project: vi.fn(() => ({ x: 120, y: 80 })),
   remove: vi.fn(),
+  resize: vi.fn(),
+  setPadding: vi.fn(),
   sources: new Map<string, unknown>(),
   layers: new Set<string>(),
 }));
@@ -103,6 +105,8 @@ vi.mock('mapbox-gl/esm', () => ({
     public project = mapboxState.project;
 
     public remove = mapboxState.remove;
+    public resize = mapboxState.resize;
+    public setPadding = mapboxState.setPadding;
   },
   Marker: class {
     private readonly element?: HTMLElement;
@@ -111,6 +115,11 @@ vi.mock('mapbox-gl/esm', () => ({
       this.element = options?.element;
       mapboxState.markerConstructor(options);
       if (options?.element) {
+        options.element.setAttribute('role', 'img');
+        options.element.classList.add(
+          'mapboxgl-marker',
+          'mapboxgl-marker-anchor-center',
+        );
         mapboxState.markerElements.push(options.element);
       }
     }
@@ -315,6 +324,11 @@ describe('Mapbox Standard provider', () => {
     });
 
     const marker = mapboxState.markerElements[0] as HTMLButtonElement;
+    expect(marker).toHaveAttribute('role', 'button');
+    expect(marker).toHaveClass(
+      'mapboxgl-marker',
+      'mapboxgl-marker-anchor-center',
+    );
     expect(marker.tagName).toBe('BUTTON');
     expect(marker).toHaveAttribute('aria-pressed', 'true');
     expect(marker).toHaveAttribute(

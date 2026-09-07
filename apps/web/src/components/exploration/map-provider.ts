@@ -1,4 +1,7 @@
 import type { Feature, FeatureCollection, Geometry, Polygon } from 'geojson';
+import { ArrowCounterClockwise } from '@phosphor-icons/react';
+import { createElement } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
 import type {
   IControl,
   Map as MapboxMap,
@@ -99,6 +102,12 @@ export interface MapController {
   onFatalError?: (listener: () => void) => void;
   onLoad: (listener: () => void) => void;
   remove: () => void;
+  resize?: (padding?: {
+    top: number;
+    right: number;
+    bottom: number;
+    left: number;
+  }) => void;
   recenterReportedLocation?: () => boolean;
   setReportedLocation: (coordinate: ReportedMapLocation | null) => void;
   setCoordinateSelectionListener?: (
@@ -205,6 +214,7 @@ function escapeAttributionText(value: string): string {
 }
 
 class ResetViewControl implements IControl {
+  private iconRoot: Root | undefined;
   private button: HTMLButtonElement | undefined;
   private container: HTMLDivElement | undefined;
   private map: MapboxMap | undefined;
@@ -222,7 +232,10 @@ class ResetViewControl implements IControl {
     this.button.type = 'button';
     this.button.setAttribute('aria-label', 'Reset map bearing and pitch');
     this.button.title = 'Reset map bearing and pitch';
-    this.button.textContent = '↺';
+    this.iconRoot = createRoot(this.button);
+    this.iconRoot.render(
+      createElement(ArrowCounterClockwise, { size: 20, 'aria-hidden': true }),
+    );
     this.button.addEventListener('click', this.resetCamera);
     this.container.append(this.button);
 
@@ -230,6 +243,9 @@ class ResetViewControl implements IControl {
   }
 
   public onRemove(): void {
+    const iconRoot = this.iconRoot;
+    queueMicrotask(() => iconRoot?.unmount());
+    this.iconRoot = undefined;
     this.button?.removeEventListener('click', this.resetCamera);
     this.container?.remove();
     this.button = undefined;
@@ -521,6 +537,10 @@ function createController(
 
   return {
     focusPoint,
+    resize(padding) {
+      map.resize();
+      if (padding) map.setPadding(padding);
+    },
     onError(listener) {
       map.on('error', listener);
     },
@@ -713,7 +733,6 @@ export const createMapboxMap: MapFactory = async (
         markerBody.setAttribute('aria-hidden', 'true');
         const markerGlyph = document.createElement('span');
         markerGlyph.className = 'event-marker__glyph';
-        markerGlyph.textContent = '✦';
         markerBody.append(markerGlyph);
         const markerLabel = document.createElement('span');
         markerLabel.className = 'event-marker__label';
@@ -751,6 +770,9 @@ export const createMapboxMap: MapFactory = async (
       const selected = markerInteraction.selectedPointId === point.id;
       const selectable = point.selectable !== false;
       record.button.className = [
+        ...Array.from(record.button.classList).filter((name) =>
+          name.startsWith('mapboxgl-'),
+        ),
         'event-marker',
         `event-marker--${availability}`,
         point.trailState ? `event-marker--trail-${point.trailState}` : '',
@@ -761,6 +783,9 @@ export const createMapboxMap: MapFactory = async (
         .filter(Boolean)
         .join(' ');
       record.button.disabled = !selectable;
+      // Mapbox gives custom marker elements role="img" when constructing them.
+      // These markers are interactive controls, including for keyboard users.
+      record.button.setAttribute('role', 'button');
       record.button.dataset.trailState = point.trailState ?? '';
       record.button.setAttribute(
         'aria-label',
@@ -827,7 +852,7 @@ export const createMapboxMap: MapFactory = async (
       map.addLayer({
         id: EVENT_RADIUS_LINE_LAYER_ID,
         paint: {
-          'line-color': '#d4af37',
+          'line-color': '#54a8ff',
           'line-emissive-strength': 0.75,
           'line-opacity': 0.9,
           'line-width': 2.5,

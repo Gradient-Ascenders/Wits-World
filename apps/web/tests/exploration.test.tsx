@@ -140,6 +140,7 @@ describe('map-first campus exploration', () => {
       screen.getByRole('heading', { name: 'Campus events' }),
     ).toHaveFocus();
     await user.keyboard('{Escape}');
+    await user.keyboard('{Escape}');
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /^Events/ })).toHaveFocus(),
     );
@@ -169,6 +170,8 @@ describe('map-first campus exploration', () => {
     const panel = screen.getByRole('complementary', {
       name: 'Campus discovery',
     });
+    expect(panel).toHaveAttribute('data-sheet-snap', 'expanded');
+    await user.click(screen.getByRole('button', { name: 'Lower event sheet' }));
     expect(panel).toHaveAttribute('data-sheet-snap', 'medium');
 
     await user.click(
@@ -266,6 +269,8 @@ describe('map-first campus exploration', () => {
     expect(
       await screen.findByRole('heading', { name: event.title }),
     ).toBeVisible();
+    expect(screen.getByText('Event interaction area')).not.toBeVisible();
+    await userEvent.setup().click(screen.getByText('About this event'));
     expect(screen.getByText('Event interaction area')).toBeVisible();
     expect(screen.getByText('75 m radius')).toBeVisible();
     await waitFor(() =>
@@ -366,6 +371,33 @@ describe('map-first campus exploration', () => {
     expect(screen.getByText(event.title)).toBeVisible();
   });
 
+  it('retries a failed map without discarding the selected event', async () => {
+    const controller = createController();
+    const mapFactory = vi
+      .fn<MapFactory>()
+      .mockRejectedValueOnce(new Error('Expected map failure'))
+      .mockResolvedValue(controller);
+    render(
+      <CampusExplorer
+        {...explorerProps(mapFactory)}
+        selectedEventId={event.id}
+      />,
+    );
+    await screen.findByText('The map could not load.');
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'Retry map' }));
+    await waitFor(() =>
+      expect(controller.setSelectedPoint).toHaveBeenCalledWith(
+        expect.objectContaining({ id: event.id }),
+      ),
+    );
+    expect(
+      screen.queryByText('The map could not load.'),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: event.title })).toBeVisible();
+  });
+
   it('keeps a loaded map visible after a recoverable provider error', async () => {
     let reportError: () => void = () => undefined;
     let reportLoad: () => void = () => undefined;
@@ -398,7 +430,7 @@ describe('mobile Explore sheet snapping', () => {
   const points = getBottomSheetSnapPoints(500);
 
   it('derives proportional snap points from the measured sheet height', () => {
-    expect(points).toEqual({ expanded: 500, medium: 260, peek: 76 });
+    expect(points).toEqual({ expanded: 500, medium: 280, peek: 100 });
   });
 
   it('settles slow drags at the nearest snap point', () => {

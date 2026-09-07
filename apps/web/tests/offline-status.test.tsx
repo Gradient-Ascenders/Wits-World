@@ -31,23 +31,26 @@ function renderStatus(path: string, online: boolean) {
   );
 }
 
-describe('home connectivity feedback', () => {
-  it('does not put a routine online notice above the home page', () => {
-    renderStatus('/', true);
-    expect(
-      screen.queryByRole('complementary', { name: 'Offline play' }),
-    ).not.toBeInTheDocument();
-  });
+describe('connectivity feedback', () => {
+  it.each(['/', '/explore', '/collection', '/decks', '/profile'])(
+    'does not show a routine online notice on %s',
+    (path) => {
+      renderStatus(path, true);
+      expect(
+        screen.queryByRole('complementary', { name: 'Offline play' }),
+      ).not.toBeInTheDocument();
+    },
+  );
   it('retains saved-event access on the home page when offline', () => {
     renderStatus('/', false);
     expect(
       screen.getByRole('link', { name: /You are offline/ }),
     ).toHaveAttribute('href', '/offline');
   });
-  it('retains online saved-event access on product routes', () => {
-    renderStatus('/explore', true);
+  it('retains saved-event access on product routes when offline', () => {
+    renderStatus('/explore', false);
     expect(
-      screen.getByRole('link', { name: 'Offline events and saved attempts' }),
+      screen.getByRole('link', { name: /You are offline/ }),
     ).toHaveAttribute('href', '/offline');
   });
 });

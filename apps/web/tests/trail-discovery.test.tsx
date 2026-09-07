@@ -602,7 +602,7 @@ describe('exploration integration', () => {
         selectedEventId={nearbyEvent.eventId}
       />,
     );
-    await user.click(screen.getByRole('button', { name: '← Nearby' }));
+    await user.click(screen.getByRole('button', { name: 'Nearby' }));
 
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Nearby' })).toHaveFocus(),

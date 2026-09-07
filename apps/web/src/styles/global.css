@@ -518,6 +518,8 @@ a:hover {
 }
 
 .main-content--explore {
+  display: flex;
+  flex-direction: column;
   width: 100%;
   min-height: 0;
   flex: 1 1 auto;
@@ -527,6 +529,20 @@ a:hover {
 
 .site-frame--product-navigation .main-content.main-content--explore {
   padding: 0;
+}
+
+.main-content--explore > .offline-status {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--colour-border-subtle);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+
+.main-content--explore > .offline-status p {
+  margin: var(--space-1) 0 0;
+  color: var(--colour-text-secondary);
 }
 
 .site-frame--product-navigation .main-content--battle-focus {

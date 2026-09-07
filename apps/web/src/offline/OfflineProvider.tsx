@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { Link, useLocation } from 'wouter';
+import { Link } from 'wouter';
 import { useCurrentPlayer } from '../auth/CurrentPlayerProvider';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { listPlayerEvents } from '../api/events';
@@ -306,16 +306,11 @@ function parsePacks(body: unknown, playerId: string): CachedPack[] {
 export function OfflineStatus() {
   const { online, message } = useOffline();
   const { state } = useCurrentPlayer();
-  const [pathname] = useLocation();
-  if (pathname === '/' && online) return null;
+  if (online) return null;
   if (state.status !== 'ready' && !boundOfflinePlayer()) return null;
   return (
     <aside aria-label="Offline play" className="offline-status">
-      <Link href="/offline">
-        {online
-          ? 'Offline events and saved attempts'
-          : 'You are offline — open saved events'}
-      </Link>
+      <Link href="/offline">You are offline — open saved events</Link>
       {message && <p role="status">{message}</p>}
     </aside>
   );

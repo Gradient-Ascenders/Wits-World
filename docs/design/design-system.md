@@ -154,7 +154,7 @@ Never rely on colour alone to communicate meaning.
   --colour-text-muted: #8795a8;
   --colour-text-inverse: #08101d;
 
-  --colour-border-subtle: rgba(247, 243, 231, 0.10);
+  --colour-border-subtle: rgba(247, 243, 231, 0.1);
   --colour-border-default: rgba(247, 243, 231, 0.16);
   --colour-border-strong: rgba(247, 243, 231, 0.28);
 
@@ -178,12 +178,12 @@ Never rely on colour alone to communicate meaning.
 
 ### Rarity
 
-| Rarity | Treatment |
-| --- | --- |
-| Common | Neutral silver / ivory |
-| Rare | Blue |
-| Epic | Restrained violet |
-| Legendary | Gold |
+| Rarity    | Treatment              |
+| --------- | ---------------------- |
+| Common    | Neutral silver / ivory |
+| Rare      | Blue                   |
+| Epic      | Restrained violet      |
+| Legendary | Gold                   |
 
 Also communicate rarity using text, iconography, pattern, or ornament.
 
@@ -295,7 +295,7 @@ Avoid overly soft, bubbly component styling.
   --shadow-panel: 0 12px 32px rgba(0, 0, 0, 0.28);
   --shadow-floating: 0 18px 48px rgba(0, 0, 0, 0.38);
 
-  --glow-blue: 0 0 24px rgba(42, 107, 255, 0.20);
+  --glow-blue: 0 0 24px rgba(42, 107, 255, 0.2);
   --glow-gold: 0 0 20px rgba(212, 175, 55, 0.14);
 }
 ```
@@ -400,6 +400,7 @@ Recommended foundations include:
 ### Buttons
 
 **Primary**
+
 - blue background;
 - high-contrast text;
 - normal dominant action;
@@ -407,16 +408,19 @@ Recommended foundations include:
 - clear hover, pressed, focus, loading, and disabled states.
 
 **Secondary**
+
 - quieter surface or transparent treatment;
 - neutral border;
 - must not compete with Primary.
 
 **Ghost**
+
 - low-emphasis action;
 - transparent by default;
 - visible hover and focus treatment.
 
 **Destructive**
+
 - danger semantics;
 - explicit wording;
 - confirmation where appropriate.
@@ -469,6 +473,24 @@ Substantial features should deliberately support loading, empty, error,
 unavailable, and permission-required states where relevant.
 
 Preserve layout during state changes where practical.
+
+### Map discovery
+
+Keep mobile discovery collapsed until requested. Opening the event list should
+show usable results, not only its search and navigation controls. Selecting an
+event returns to a partial sheet with its name, availability, and primary action
+first; descriptions and schedule details can be disclosed separately. Keep the
+sheet handle and its keyboard alternative at least 44px high.
+
+Use a bounded sheet on tablet and a stable side region beside the map on desktop.
+Account for sheets, notices, navigation, and safe areas when sizing the map and
+framing its camera. A selected marker must remain in the unobstructed map region.
+Retain map-independent event discovery through permission and map failures.
+
+Use neutral event markers with blue selection, restrained status indicators, and
+no routine glow. Location controls should distinguish following from recentering
+and identify accuracy as reported. Preserve the map provider's marker positioning
+classes while exposing interactive markers as buttons.
 
 ---
 
@@ -920,6 +942,7 @@ The goal is one coherent Wits World experience across mobile and desktop.
 This revision was materially rewritten with the assistance of
 ChatGPT[GPT-5.6 Sol].
 
+The map-discovery guidance was added with assistance from Codex.
+
 Update this declaration when other AI tools materially review, edit, or generate
 parts of this document.
-
