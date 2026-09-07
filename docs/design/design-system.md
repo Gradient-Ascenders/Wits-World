@@ -492,6 +492,34 @@ or jitters. Its compact form must retain status, a touch-sized Save action, and 
 keyboard-accessible way to expand. Keep focused controls and pending decisions
 stable; expand for saving or save errors, and respect reduced motion.
 
+### Battles
+
+CPU and player battles share combatant, action-selection, and owned-bench
+presentation. Keep current turn and required action above the battlefield. On
+phones, stack opponent and player with readable HP, Power, and active effects;
+keep action categories and their touch-sized controls directly below. Allow
+page scrolling for long names, effects, errors, and expanded context rather
+than clipping the battle to a fixed viewport. On phones, show moves in a
+two-column grid with names, effects and costs visible together. Let the action
+region grow with its content; do not put move selection inside a scrolling tray.
+Keep Power cards full-width for their longer descriptions.
+
+On desktop, show both combatants together and put history and secondary details
+beside the battlefield. Expanded desktop sidebar content must scroll within
+the height established by the battlefield and actions; it must not stretch
+those regions. Disclose the owned bench and opponent reserve separately;
+never infer unplayed opponent identities. Use blue for the acting side and
+selection, with explicit turn labels. Forced replacement presents only
+replacement actions. Explain unavailable actions from supplied state while
+keeping the legal-action list authoritative. Keep forfeit behind a secondary
+“Leave this battle” disclosure and a confirmation dialog. Results should offer
+a clear route back to play. Preserve collectible artwork and frames independently
+of battle controls. Use approved roster artwork for revealed active Creatures and owned bench
+thumbnails. Match exact revealed names against the artwork manifest; unknown
+names and failed images retain a neutral fallback. Never request art for an
+unrevealed opponent Creature. CPU history and asynchronous PvP activity may differ when
+their supplied records differ.
+
 ### Map discovery
 
 Keep mobile discovery collapsed until requested. Opening the event list should
@@ -966,3 +994,5 @@ The deck-editing guidance was added with assistance from Codex.
 
 Update this declaration when other AI tools materially review, edit, or generate
 parts of this document.
+
+The battle guidance was added with assistance from Codex-CLI[GPT-6].

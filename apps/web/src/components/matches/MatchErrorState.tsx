@@ -38,7 +38,7 @@ export const MatchErrorState = forwardRef<
             ? 'The match was not found for this signed-in player. Return to Battles to recover an active match or view your history.'
             : deckInvalid
               ? 'The server rejected the selected deck. Review and select a valid saved deck before starting another match.'
-              : 'Check your connection, then retry the authoritative server state. No battle action will be replayed.'}
+              : 'Check your connection, then reload the battle. Your previous action will not be repeated.'}
       </p>
       {error.options.requestId ? (
         <p className="match-support-reference">

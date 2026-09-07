@@ -699,6 +699,7 @@ describe('asynchronous PvP battle', () => {
     vi.stubGlobal('fetch', fetchMock);
     renderPvpMatch();
 
+    await user.click(await screen.findByText('Leave this battle'));
     const trigger = await screen.findByRole('button', {
       name: 'Forfeit battle',
     });
@@ -776,6 +777,7 @@ describe('asynchronous PvP battle', () => {
     vi.stubGlobal('fetch', fetchMock);
     renderPvpMatch();
 
+    await user.click(await screen.findByText('Leave this battle'));
     await user.click(
       await screen.findByRole('button', { name: 'Forfeit battle' }),
     );
@@ -806,6 +808,7 @@ describe('asynchronous PvP battle', () => {
     vi.stubGlobal('fetch', fetchMock);
     renderPvpMatch();
 
+    await user.click(await screen.findByText('Leave this battle'));
     await user.click(
       await screen.findByRole('button', { name: 'Forfeit battle' }),
     );
@@ -844,6 +847,7 @@ describe('asynchronous PvP battle', () => {
     vi.stubGlobal('fetch', fetchMock);
     renderPvpMatch();
 
+    await user.click(await screen.findByText('Leave this battle'));
     await user.click(
       await screen.findByRole('button', { name: 'Forfeit battle' }),
     );
@@ -962,7 +966,9 @@ describe('asynchronous PvP battle', () => {
       screen.getByRole('button', { name: /Campus Renewal 1/ }),
     ).toBeEnabled();
     await user.click(screen.getByText('Opponent reserve'));
-    expect(screen.getByText(/Only aggregate counts/)).toBeVisible();
+    expect(
+      screen.getByText(/Unplayed opponent cards stay hidden/),
+    ).toBeVisible();
     expect(screen.queryByText(/opponent secret/i)).not.toBeInTheDocument();
   });
 
@@ -1135,7 +1141,7 @@ describe('asynchronous PvP battle', () => {
         name: /match saved/i,
       });
       expect(within(result).getByText(message)).toBeVisible();
-      expect(screen.getByText(/Persisted final result/)).toBeVisible();
+      expect(screen.getByText(/^Match complete$/)).toBeVisible();
       expect(document.body).not.toHaveTextContent(
         /voluntary_resignation|turn_forfeit|account_deletion_forfeit|account deletion|account deleted/i,
       );

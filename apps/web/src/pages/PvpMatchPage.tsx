@@ -1,3 +1,4 @@
+import { ArrowLeft } from '@phosphor-icons/react';
 import { useAuth0 } from '@auth0/auth0-react';
 import {
   useCallback,
@@ -19,6 +20,7 @@ import {
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import {
   BattleActionPanel,
+  BattleBench,
   BattleCombatant,
   type BattleActionIntent,
 } from '../components/matches/BattlePresentation';
@@ -57,7 +59,7 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const [pollWarning, setPollWarning] = useState(false);
   const [requestStatus, setRequestStatus] = useState<RequestStatus>('loading');
   const [statusMessage, setStatusMessage] = useState(
-    'Loading the authoritative PvP match.',
+    'Loading your player battle.',
   );
   const [revision, setRevision] = useState(0);
   const [reauthFailed, setReauthFailed] = useState(false);
@@ -140,7 +142,7 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       const responseGeneration = ++generation.current;
       if (options.announce) {
         setRequestStatus('reconciling');
-        setStatusMessage('Refreshing the authoritative PvP state…');
+        setStatusMessage('Checking for battle updates…');
       }
       try {
         const next = await getPvpMatch({
@@ -276,7 +278,7 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     setErrorContext('action');
     setRetryAttempt(null);
     setRequestStatus('submitting');
-    setStatusMessage('Submitting one versioned intent to the server…');
+    setStatusMessage('Applying your action…');
     try {
       const response = await submitPvpAction({
         ...nextAttempt,
@@ -548,7 +550,7 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       </p>
       <header className="battle-header pvp-battle-header">
         <Link className="battle-back-link" href="/matches/pvp">
-          <span aria-hidden="true">←</span> PvP
+          <ArrowLeft size={20} aria-hidden="true" /> PvP
         </Link>
         <div className="battle-header__phase">
           <div className="battle-header__context">
@@ -689,7 +691,7 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
             <div className="battle-arena">
               <BattleCombatant
                 creature={selfCreature}
-                emptyText="Your defeated Creature was removed. Choose a server-returned replacement."
+                emptyText="Choose a replacement for your defeated Creature."
                 heading="You"
                 isActing={match.currentActor === 'self'}
                 visualSide="player"
@@ -699,7 +701,7 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
               </div>
               <BattleCombatant
                 creature={match.state.opponent.activeCreature}
-                emptyText="The opponent Creature remains hidden until the server reveals it."
+                emptyText="Your opponent’s Creature has not been revealed yet."
                 heading={match.opponent.playerName}
                 isActing={match.currentActor === 'opponent'}
                 visualSide="cpu"
@@ -769,7 +771,7 @@ function PvpSideRail({
       className="battle-side-rail"
     >
       <section className="battle-rail-card pvp-activity">
-        <p className="eyebrow">Latest committed activity</p>
+        <p className="eyebrow">Latest activity</p>
         <h2>Match activity</h2>
         {match.lastAction ? (
           <p aria-live="polite">{lastActionLabel(match)}</p>
@@ -777,12 +779,14 @@ function PvpSideRail({
           <p>No battle action has been revealed yet.</p>
         )}
       </section>
+      <BattleBench
+        creatures={match.state.self.creatures}
+        activeCreatureId={match.state.self.activeCreatureId}
+      />
       <details className="battle-details battle-rail-card">
         <summary>
           <span>Match details</span>
-          <strong>
-            Turn {match.state.turnNumber} · v{match.version}
-          </strong>
+          <strong>Turn {match.state.turnNumber}</strong>
         </summary>
         <div className="battle-details__panel">
           <dl className="battle-meta">
@@ -825,10 +829,7 @@ function PvpSideRail({
               : 's'} · {match.state.opponent.remainingPowerCardCount} Power
           </strong>
         </summary>
-        <p>
-          Only aggregate counts and cards legally revealed by the server are
-          shown. Unplayed opponent identities never enter this view.
-        </p>
+        <p>Unplayed opponent cards stay hidden. Revealed cards appear here.</p>
         {match.state.opponent.playedPowerCards.length > 0 ? (
           <ul className="pvp-played-cards">
             {match.state.opponent.playedPowerCards.map((card) => (
@@ -838,7 +839,8 @@ function PvpSideRail({
         ) : null}
       </details>
       {match.canResign && onResign ? (
-        <section className="battle-rail-card pvp-resign-card">
+        <details className="battle-rail-card pvp-resign-card">
+          <summary>Leave this battle</summary>
           <p className="eyebrow">Permanent match action</p>
           <h2>Forfeit battle</h2>
           <p>
@@ -854,7 +856,7 @@ function PvpSideRail({
           >
             {forfeitPending ? 'Forfeiting…' : 'Forfeit battle'}
           </button>
-        </section>
+        </details>
       ) : null}
     </aside>
   );
@@ -867,7 +869,7 @@ function CompletedPvpMatch({ match }: { match: AsyncPvpMatch }) {
       aria-labelledby="completed-pvp-title"
       className={`completed-match completed-match--${match.outcome === 'win' ? 'player' : 'cpu'}`}
     >
-      <p className="eyebrow">Persisted final result</p>
+      <p className="eyebrow">Match complete</p>
       <h2 id="completed-pvp-title">{completedResultTitle(match)}</h2>
       <p>{reason}</p>
       <details className="completed-match__context">
@@ -1037,7 +1039,7 @@ function errorMessage(
     return context === 'resignation'
       ? 'The response was interrupted. The latest battle result is checked before the same forfeit can be retried.'
       : 'The response was interrupted. The latest battle state is checked before the action can be retried.';
-  return 'Check your connection, then retry the authoritative state. No battle result is calculated locally.';
+  return 'Check your connection, then reload the battle to continue.';
 }
 
 function toPvpError(error: unknown) {

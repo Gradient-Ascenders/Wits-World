@@ -463,7 +463,18 @@ describe('CPU match service', () => {
       completedAt: null,
       lastAction: {
         ...cpuResult,
-        effects: [],
+        effects: [
+          {
+            effectId: 'stored-effect',
+            effectCode: 'damage',
+            effectType: 'damage',
+            targetSide: 'player',
+            targetCreatureId: playerCreature.card.id,
+            amount: 12,
+            damageMultiplier: null,
+            modifier: null,
+          },
+        ],
         expiredEffects: undefined,
       },
       matchId: MATCH_ID,
@@ -530,6 +541,17 @@ describe('CPU match service', () => {
       submissionId: 'a5000000-0000-4000-8000-000000000005',
     });
 
+    expect(response.lastAction?.effects).toEqual([
+      {
+        effectId: 'stored-effect',
+        effectType: 'damage',
+        targetSide: 'player',
+        targetCreatureId: playerCreature.card.id,
+        amount: 12,
+        damageMultiplier: null,
+        modifier: null,
+      },
+    ]);
     expect(query).toHaveBeenCalledTimes(4);
     expect(response.lastAction).toMatchObject({
       action: cpuResult.action,

@@ -75,7 +75,7 @@ export default function MatchHistoryPage({
         <section aria-live="polite" className="match-state-panel" role="status">
           <p className="eyebrow">Match history</p>
           <h1>Loading your completed matches</h1>
-          <p>Retrieving private, persisted CPU results…</p>
+          <p>Loading your saved CPU battles…</p>
         </section>
       </div>
     );
@@ -109,8 +109,7 @@ export default function MatchHistoryPage({
           Completed CPU matches
         </h1>
         <p className="lead">
-          These results are stored by the server and available only through your
-          authenticated player account.
+          Revisit your completed battles and see how each match ended.
         </p>
       </header>
 
@@ -118,12 +117,15 @@ export default function MatchHistoryPage({
         <Link className="button" href="/matches">
           Continue or start a battle
         </Link>
+        <Link className="button button--quiet" href="/matches/pvp">
+          Player battle history
+        </Link>
       </div>
 
       {state.matches.length === 0 ? (
         <section className="match-empty" aria-labelledby="empty-history-title">
           <h2 id="empty-history-title">No completed matches yet</h2>
-          <p>Finish a CPU battle and its persisted result will appear here.</p>
+          <p>Finish a CPU battle to see your result here.</p>
         </section>
       ) : (
         <ol aria-label="Completed CPU matches" className="match-history-list">

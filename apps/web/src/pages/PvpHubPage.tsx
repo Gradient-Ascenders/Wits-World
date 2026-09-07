@@ -1,3 +1,4 @@
+import { ArrowLeft } from '@phosphor-icons/react';
 import { useAuth0 } from '@auth0/auth0-react';
 import {
   useCallback,
@@ -592,7 +593,7 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           className="text-link pvp-lobby-header__back"
           href="/matches"
         >
-          ← Battles
+          <ArrowLeft size={20} aria-hidden="true" /> Battles
         </Link>
         <div className="pvp-lobby-header__main">
           <div>
@@ -875,7 +876,7 @@ function PlayerBattlesLoading() {
           className="text-link pvp-lobby-header__back"
           href="/matches"
         >
-          ← Battles
+          <ArrowLeft size={20} aria-hidden="true" /> Battles
         </Link>
         <div className="pvp-lobby-header__main">
           <div>

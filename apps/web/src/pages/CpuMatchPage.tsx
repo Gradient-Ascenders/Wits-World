@@ -1,3 +1,12 @@
+import {
+  ArrowLeft,
+  ArrowRight,
+  ArrowDown,
+  ArrowUp,
+  Lightning,
+  Heart,
+  CaretDown,
+} from '@phosphor-icons/react';
 import { useAuth0 } from '@auth0/auth0-react';
 import {
   useCallback,
@@ -20,8 +29,14 @@ import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { MatchErrorState } from '../components/matches/MatchErrorState';
 import {
   BattleActionPanel,
+  BattleBench,
   BattleCombatant,
 } from '../components/matches/BattlePresentation';
+import {
+  battleLogMessage,
+  battleLogRows,
+  battleLogStat,
+} from '../battle/log-presentation';
 import './matches.css';
 
 interface MatchRouteParams {
@@ -38,9 +53,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const [match, setMatch] = useState<CpuMatch | null>(null);
   const [error, setError] = useState<MatchApiError | null>(null);
   const [requestStatus, setRequestStatus] = useState<RequestStatus>('loading');
-  const [statusMessage, setStatusMessage] = useState(
-    'Loading the authoritative match.',
-  );
+  const [statusMessage, setStatusMessage] = useState('Loading your battle.');
   const [revision, setRevision] = useState(0);
   const [reauthFailed, setReauthFailed] = useState(false);
   const mounted = useRef(true);
@@ -133,7 +146,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       const stateRevisionAtStart = appliedRevision.current;
       if (announceLoading) {
         setRequestStatus('loading');
-        setStatusMessage('Loading the authoritative match.');
+        setStatusMessage('Loading your battle.');
       }
 
       try {
@@ -199,7 +212,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     const stateRevisionAtStart = appliedRevision.current;
     setError(null);
     setRequestStatus('submitting');
-    setStatusMessage('Submitting your intent. Waiting for the server outcome…');
+    setStatusMessage('Applying your action…');
 
     try {
       const response = await submitCpuMatchAction({
@@ -334,7 +347,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
       <header className="battle-header">
         <Link className="battle-back-link" href="/matches">
-          <span aria-hidden="true">←</span> Battles
+          <ArrowLeft size={20} aria-hidden="true" /> Battles
         </Link>
 
         <div className="battle-header__phase">
@@ -428,7 +441,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
               </div>
               <BattleCombatant
                 creature={match.state.cpu.activeCreature}
-                emptyText="The CPU Creature remains hidden until the server reveals it."
+                emptyText="The CPU Creature has not been revealed yet."
                 heading="CPU"
                 isActing={match.state.currentSide === 'cpu'}
                 visualSide="cpu"
@@ -467,11 +480,11 @@ function getMatchStatusMessage(match: CpuMatch) {
     return 'Your Creature was defeated. Choose a legal replacement.';
   }
   if (match.state.phase === 'initial_selection') {
-    return 'Choose one of the server-provided initial Creatures.';
+    return 'Choose your first Creature.';
   }
   return match.state.currentSide === 'player'
     ? `Your turn. Match version ${match.version}.`
-    : 'The server is resolving the CPU turn.';
+    : 'The CPU is taking its turn.';
 }
 
 function BattleSideRail({ match }: { match: CpuMatch }) {
@@ -479,7 +492,7 @@ function BattleSideRail({ match }: { match: CpuMatch }) {
     <aside aria-label="Battle history and details" className="battle-side-rail">
       <header className="battle-side-rail__heading">
         <div>
-          <p className="eyebrow">Authoritative record</p>
+          <p className="eyebrow">Battle activity</p>
           <h2>Battle log</h2>
         </div>
         <Link
@@ -487,12 +500,19 @@ function BattleSideRail({ match }: { match: CpuMatch }) {
           className="battle-side-rail__history"
           href="/matches/history"
         >
-          Full history <span aria-hidden="true">→</span>
+          Full history <ArrowRight size={20} aria-hidden="true" />
         </Link>
       </header>
 
       <BattleLog groups={match.battleLog} />
 
+      {match.state.phase !== 'initial_selection' &&
+      match.state.phase !== 'replacement' ? (
+        <BattleBench
+          creatures={match.state.player.creatures}
+          activeCreatureId={match.state.player.activeCreatureId}
+        />
+      ) : null}
       <BattleDetails match={match} />
       <CpuReserveSummary match={match} />
     </aside>
@@ -539,16 +559,21 @@ function BattleLog({ groups }: { groups: CpuMatch['battleLog'] }) {
     >
       <summary>
         <span className="battle-log__summary-label">
-          Latest outcome
+          Battle history
           <strong>
             {events.length} {events.length === 1 ? 'event' : 'events'}
           </strong>
         </span>
         <span className="battle-log__preview">
           {latest.length > 0
-            ? latest.map(({ message }) => message).join(' ')
+            ? latest.map(({ message }) => battleLogMessage(message)).join(' ')
             : 'No actions recorded yet.'}
         </span>
+        <CaretDown
+          className="battle-log__toggle"
+          aria-hidden="true"
+          size={16}
+        />
       </summary>
 
       <div
@@ -563,9 +588,7 @@ function BattleLog({ groups }: { groups: CpuMatch['battleLog'] }) {
         {groups.length === 0 ? (
           <div className="battle-log-empty">
             <strong>No actions recorded yet</strong>
-            <span>
-              Server outcomes will appear here after the first choice.
-            </span>
+            <span>Your battle history begins with the first choice.</span>
           </div>
         ) : (
           <ol className="battle-log__groups">
@@ -573,12 +596,22 @@ function BattleLog({ groups }: { groups: CpuMatch['battleLog'] }) {
               <li className="battle-log__group" key={group.id}>
                 <h3>{group.label}</h3>
                 <ol>
-                  {group.events.map((event) => (
+                  {battleLogRows(group.events).map((event) => (
                     <li
                       className={`battle-log__event battle-log__event--${event.kind} battle-log__event--${event.side ?? 'neutral'}`}
                       key={event.id}
                     >
-                      {event.message}
+                      {battleLogMessage(event.message)}
+                      {event.effects.length > 0 && (
+                        <span className="battle-log__effects">
+                          {event.effects.map((effect) => (
+                            <BattleLogEffect
+                              key={effect.id}
+                              message={effect.message}
+                            />
+                          ))}
+                        </span>
+                      )}
                     </li>
                   ))}
                 </ol>
@@ -613,9 +646,7 @@ function BattleDetails({ match }: { match: CpuMatch }) {
     >
       <summary>
         <span>Battle details</span>
-        <strong>
-          Turn {match.state.turnNumber} · v{match.version}
-        </strong>
+        <strong>Turn {match.state.turnNumber}</strong>
       </summary>
       <div className="battle-details__panel">
         <dl className="battle-meta">
@@ -623,7 +654,7 @@ function BattleDetails({ match }: { match: CpuMatch }) {
             <dt>Match version</dt>
             <dd>{match.version}</dd>
           </div>
-          <div>
+          <div data-tone={match.status === 'completed' ? 'complete' : 'active'}>
             <dt>Status</dt>
             <dd>
               {match.status === 'completed' ? 'Completed' : 'In progress'}
@@ -633,7 +664,7 @@ function BattleDetails({ match }: { match: CpuMatch }) {
             <dt>Started</dt>
             <dd>{formatDate(match.startedAt)}</dd>
           </div>
-          <div>
+          <div data-tone={match.state.turnDeadline ? 'timing' : undefined}>
             <dt>Server deadline</dt>
             <dd>
               {match.state.turnDeadline
@@ -660,10 +691,7 @@ function CpuReserveSummary({ match }: { match: CpuMatch }) {
           {creatures} Creature{creatures === 1 ? '' : 's'} · {powerCards} Power
         </strong>
       </summary>
-      <p>
-        Unplayed CPU identities and card details remain intentionally hidden by
-        the server.
-      </p>
+      <p>Unplayed CPU cards stay hidden until they are revealed in battle.</p>
     </details>
   );
 }
@@ -674,7 +702,7 @@ function CompletedMatch({ match }: { match: CpuMatch }) {
       className={`completed-match completed-match--${match.winner}`}
       aria-labelledby="completed-match-title"
     >
-      <p className="eyebrow">Persisted final result</p>
+      <p className="eyebrow">Match complete</p>
       <h2 id="completed-match-title">
         {match.winner === 'player'
           ? 'Victory — match saved'
@@ -683,9 +711,7 @@ function CompletedMatch({ match }: { match: CpuMatch }) {
       <details className="completed-match__context">
         <summary>About this result</summary>
         <p>
-          This is the server-returned final result. Refreshing this route will
-          load the same completed match; no score or statistics are
-          reconstructed in the browser.
+          This result is saved. You can return to it from your match history.
         </p>
       </details>
       <dl>
@@ -704,6 +730,9 @@ function CompletedMatch({ match }: { match: CpuMatch }) {
           </dd>
         </div>
       </dl>
+      <Link className="button" href="/matches">
+        Play again
+      </Link>
     </section>
   );
 }
@@ -752,21 +781,21 @@ function getPhasePrompt(match: CpuMatch) {
     return 'Your active Creature was defeated. Choose a legal replacement.';
   }
   if (match.status !== 'completed' && match.state.currentSide === 'cpu') {
-    return 'Your controls remain locked until the server returns your turn.';
+    return 'Your actions will be available after the CPU acts.';
   }
   return null;
 }
 
 function getPhaseDescription(match: CpuMatch) {
   if (match.status === 'completed')
-    return 'The authoritative result is saved in your private match history.';
+    return 'This result is saved in your match history.';
   if (match.state.phase === 'initial_selection')
-    return 'Select only from the initial choices returned in legalActions.';
+    return 'Choose an available Creature to begin.';
   if (match.state.phase === 'replacement')
     return 'The server reports a defeat. Choose one currently legal replacement; replacement does not consume the resumed normal turn.';
   if (match.state.turnDeadline)
     return `The server deadline for this turn is ${formatDate(match.state.turnDeadline)}. A late intent may be stored as a timeout by the API.`;
-  return 'Waiting for the authoritative next action state.';
+  return 'Waiting for the next battle update.';
 }
 
 function sideLabel(side: 'cpu' | 'player') {
@@ -791,4 +820,24 @@ function toMatchError(error: unknown) {
   return error instanceof MatchApiError
     ? error
     : new MatchApiError('unavailable');
+}
+
+function BattleLogEffect({ message }: { message: string }) {
+  const stat = battleLogStat(message);
+  if (!stat) return <span>{battleLogMessage(message)}</span>;
+  const Direction = stat.direction === 'up' ? ArrowUp : ArrowDown;
+  const Resource = stat.resource === 'HP' ? Heart : Lightning;
+  return (
+    <span className={`battle-log__stat battle-log__stat--${stat.direction}`}>
+      <span className="sr-only">{battleLogMessage(message)}</span>
+      <span aria-hidden="true" className="battle-log__stat-visual">
+        <span>{stat.creature}</span>
+        <span className="battle-log__stat-value">
+          <Resource size={15} weight="fill" />
+          <Direction size={14} weight="bold" />
+          {stat.value} {stat.resource}
+        </span>
+      </span>
+    </span>
+  );
 }
