@@ -48,9 +48,9 @@ import { selectReportedLocation } from '../reported-location-selection';
 
 const CAMPUS_MAP_CONFIGURATION: MapConfiguration = {
   accessToken: '',
-  bearing: 20,
+  bearing: 0,
   center: [28.03038, -26.19205],
-  pitch: 52,
+  pitch: 0,
   standardConfig: {
     lightPreset: 'dusk',
     show3dBuildings: true,
