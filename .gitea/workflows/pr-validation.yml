@@ -116,8 +116,9 @@ jobs:
 
     env:
       TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
-      TEST_DATABASE_HOST: ${{ secrets.TEST_DATABASE_HOST }}
-      TEST_DATABASE_NAME: ${{ secrets.TEST_DATABASE_NAME }}
+      # Non-secret fingerprint of host:port/database for the approved direct
+      # Neon test target. Changing the URL alone cannot redirect this gate.
+      TEST_DATABASE_IDENTITY_SHA256: 6e7d642299a01f407cd7ce88eaa9948dfe3799828124b83890b97bdb89f44e79
       # Keep the ordinary target unusable. The verification runner also
       # confirms the test URL's exact host and database before connecting.
       DATABASE_URL: postgresql://ci-guard:ci-guard@127.0.0.1:1/wits_world_ci_guard

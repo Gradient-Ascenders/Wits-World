@@ -10,6 +10,7 @@ import pg from 'pg';
 import { config as loadDotenv } from 'dotenv';
 
 import {
+  confirmAdvisoryUnlock,
   resolveVerificationProfile,
   validateReleaseCommit,
   validateTestDatabaseEnvironment,
@@ -230,7 +231,11 @@ async function releaseVerificationLock(client) {
   let failed = false;
 
   try {
-    await client.query('select pg_advisory_unlock($1)', [verificationLockKey]);
+    const result = await client.query(
+      'select pg_advisory_unlock($1) as unlocked',
+      [verificationLockKey],
+    );
+    confirmAdvisoryUnlock(result);
   } catch {
     failed = true;
   }

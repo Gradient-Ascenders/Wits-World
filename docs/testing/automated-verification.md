@@ -32,19 +32,30 @@ queued test-database lock to delay production deployment.
 
 ## Database isolation and serialization
 
-The Gitea secrets must identify the existing dedicated, non-production test
-database. Before opening a connection, the runner requires and validates all
-of these values:
+The Gitea configuration must identify the existing dedicated, non-production
+test database. Before opening a connection, the runner requires and validates:
 
 - `TEST_DATABASE_URL`: credentialed PostgreSQL URL for the dedicated test
-  target;
-- `TEST_DATABASE_HOST`: exact expected hostname for that URL; and
-- `TEST_DATABASE_NAME`: exact expected database name for that URL.
+  target, stored as a Gitea repository secret; and
+- `TEST_DATABASE_IDENTITY_SHA256`: lowercase SHA-256 of the normalized
+  `hostname:port/database` identity, pinned as a non-secret workflow value.
+
+The hostname and database name are derived from `TEST_DATABASE_URL`; duplicating
+them as secrets does not provide independent confirmation. The pinned digest
+does: changing the URL alone cannot redirect verification to another target,
+while the digest reveals no username, password, or connection string. The
+approved digest appears in both workflow files and must only be changed after
+an operator independently confirms a replacement dedicated test target.
+
+The verification runner rejects Neon's pooled `-pooler` hostname before opening
+a connection. The lock, migrations, and integration tests require the direct
+endpoint because the serialization lock is session-scoped. The normal
+application may continue using its pooled URL independently.
 
 The workflow supplies an intentionally unreachable `DATABASE_URL` guard.
 Existing application configuration independently requires the test and
-ordinary database identities to differ. Missing, malformed, or mismatched
-values stop the job before migration or test execution. There is no fallback
+ordinary database identities to differ. Missing, malformed, pooled, or
+mismatched values stop the job before migration or test execution. There is no fallback
 URL, default database, production secret, or production runner in either
 verification workflow.
 

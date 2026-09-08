@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  confirmAdvisoryUnlock,
+  databaseTargetIdentitySha256,
   resolveVerificationProfile,
   validateReleaseCommit,
   validateTestDatabaseEnvironment,
@@ -8,8 +10,9 @@ import {
 
 const environment = {
   DATABASE_URL: 'postgresql://guard:guard@127.0.0.1:1/ci_guard',
-  TEST_DATABASE_HOST: 'test-db.example.invalid',
-  TEST_DATABASE_NAME: 'wits_world_test',
+  TEST_DATABASE_IDENTITY_SHA256: databaseTargetIdentitySha256(
+    'postgresql://test-db.example.invalid/wits_world_test',
+  ),
   TEST_DATABASE_URL:
     'postgresql://runner:secret@test-db.example.invalid/wits_world_test?sslmode=require',
 };
@@ -38,15 +41,14 @@ describe('CI verification target', () => {
   it.each([
     ['TEST_DATABASE_URL', undefined],
     ['DATABASE_URL', undefined],
-    ['TEST_DATABASE_HOST', undefined],
-    ['TEST_DATABASE_NAME', undefined],
+    ['TEST_DATABASE_IDENTITY_SHA256', undefined],
   ])('fails closed when %s is missing', (name, value) => {
     expect(() =>
       validateTestDatabaseEnvironment({ ...environment, [name]: value }),
     ).toThrow();
   });
 
-  it('rejects the ordinary database target and exact-confirmation mismatches', () => {
+  it('rejects the ordinary database target and approved-target mismatches', () => {
     expect(() =>
       validateTestDatabaseEnvironment({
         ...environment,
@@ -56,19 +58,44 @@ describe('CI verification target', () => {
     expect(() =>
       validateTestDatabaseEnvironment({
         ...environment,
-        TEST_DATABASE_HOST: 'production.example.invalid',
+        TEST_DATABASE_URL:
+          'postgresql://runner:secret@production.example.invalid/production?sslmode=require',
       }),
     ).toThrow(
-      'TEST_DATABASE_URL does not match the configured test database host.',
+      'TEST_DATABASE_URL does not match the repository-approved dedicated test target.',
     );
+  });
+
+  it('rejects pooled Neon endpoints before any database connection', () => {
+    const pooledUrl =
+      'postgresql://runner:secret@ep-example-pooler.eu-central-1.aws.neon.tech/wits_world_test?sslmode=require';
     expect(() =>
       validateTestDatabaseEnvironment({
         ...environment,
-        TEST_DATABASE_NAME: 'production',
+        TEST_DATABASE_IDENTITY_SHA256: databaseTargetIdentitySha256(pooledUrl),
+        TEST_DATABASE_URL: pooledUrl,
+      }),
+    ).toThrow('TEST_DATABASE_URL must use a direct Neon endpoint');
+  });
+
+  it('rejects malformed target fingerprints', () => {
+    expect(() =>
+      validateTestDatabaseEnvironment({
+        ...environment,
+        TEST_DATABASE_IDENTITY_SHA256: 'not-a-digest',
       }),
     ).toThrow(
-      'TEST_DATABASE_URL does not match the configured test database name.',
+      'TEST_DATABASE_IDENTITY_SHA256 must be a lowercase SHA-256 digest.',
     );
+  });
+
+  it('confirms advisory unlock only when this session held the lock', () => {
+    expect(() =>
+      confirmAdvisoryUnlock({ rowCount: 1, rows: [{ unlocked: true }] }),
+    ).not.toThrow();
+    expect(() =>
+      confirmAdvisoryUnlock({ rowCount: 1, rows: [{ unlocked: false }] }),
+    ).toThrow('The verification advisory lock was not held by this session.');
   });
 
   it('requires the release gate to verify the exact checked-out commit', () => {

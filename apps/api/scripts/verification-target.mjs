@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { URL } from 'node:url';
 
 const supportedProfiles = new Set(['pr', 'nightly', 'release']);
@@ -22,14 +23,22 @@ export function validateTestDatabaseEnvironment(env) {
     'TEST_DATABASE_URL',
   );
   const guardUrl = requirePostgresUrl(env.DATABASE_URL, 'DATABASE_URL');
-  const expectedHost = requireValue(
-    env.TEST_DATABASE_HOST,
-    'TEST_DATABASE_HOST is required to confirm the dedicated test target.',
-  ).toLowerCase();
-  const expectedDatabase = requireValue(
-    env.TEST_DATABASE_NAME,
-    'TEST_DATABASE_NAME is required to confirm the dedicated test target.',
+  const expectedIdentity = requireValue(
+    env.TEST_DATABASE_IDENTITY_SHA256,
+    'TEST_DATABASE_IDENTITY_SHA256 is required to confirm the dedicated test target.',
   );
+
+  if (!/^[0-9a-f]{64}$/u.test(expectedIdentity)) {
+    throw new Error(
+      'TEST_DATABASE_IDENTITY_SHA256 must be a lowercase SHA-256 digest.',
+    );
+  }
+
+  if (isNeonPooledEndpoint(testUrl)) {
+    throw new Error(
+      'TEST_DATABASE_URL must use a direct Neon endpoint; pooled endpoints cannot hold the verification session lock.',
+    );
+  }
 
   if (sameDatabaseIdentity(testUrl, guardUrl)) {
     throw new Error(
@@ -37,16 +46,10 @@ export function validateTestDatabaseEnvironment(env) {
     );
   }
 
-  if (testUrl.hostname.toLowerCase() !== expectedHost) {
-    throw new Error(
-      'TEST_DATABASE_URL does not match the configured test database host.',
-    );
-  }
-
   const databaseName = decodeDatabaseName(testUrl);
-  if (databaseName !== expectedDatabase) {
+  if (databaseTargetIdentitySha256(testUrl) !== expectedIdentity) {
     throw new Error(
-      'TEST_DATABASE_URL does not match the configured test database name.',
+      'TEST_DATABASE_URL does not match the repository-approved dedicated test target.',
     );
   }
 
@@ -55,6 +58,15 @@ export function validateTestDatabaseEnvironment(env) {
     databaseName,
     hostname: testUrl.hostname.toLowerCase(),
   };
+}
+
+export function databaseTargetIdentitySha256(urlOrString) {
+  const url =
+    urlOrString instanceof URL
+      ? urlOrString
+      : requirePostgresUrl(urlOrString, 'PostgreSQL URL');
+  const identity = `${url.hostname.toLowerCase()}:${url.port || '5432'}/${decodeDatabaseName(url)}`;
+  return createHash('sha256').update(identity).digest('hex');
 }
 
 export function validateReleaseCommit(profile, env, headCommit) {
@@ -115,4 +127,16 @@ function sameDatabaseIdentity(left, right) {
     (left.port || '5432') === (right.port || '5432') &&
     decodeDatabaseName(left) === decodeDatabaseName(right)
   );
+}
+
+export function confirmAdvisoryUnlock(result) {
+  if (result.rowCount !== 1 || result.rows[0]?.unlocked !== true) {
+    throw new Error(
+      'The verification advisory lock was not held by this session.',
+    );
+  }
+}
+
+function isNeonPooledEndpoint(url) {
+  return url.hostname.split('.')[0]?.endsWith('-pooler') === true;
 }
