@@ -50,8 +50,7 @@ Copy the API environment example:
 Copy-Item apps\api\.env.example apps\api\.env
 ```
 
-The local `.env` file is ignored by Git and must not contain values intended for
-commit.
+The local `.env` file is ignored by Git and must not contain values intended for commit.
 
 ### API variables
 
