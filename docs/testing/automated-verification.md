@@ -61,8 +61,19 @@ The hostname and database name are derived from `TEST_DATABASE_URL`; duplicating
 them as secrets does not provide independent confirmation. The pinned digest
 does: changing the URL alone cannot redirect verification to another target,
 while the digest reveals no username, password, or connection string. The
-approved digest appears in both workflow files and must only be changed after
-an operator independently confirms a replacement dedicated test target.
+approved digest appears in the nightly/release workflow and must only be
+changed after an operator independently confirms a replacement dedicated test
+target.
+
+Connection-target query overrides are rejected before any connection. The
+blocked parameter names are `host`, `hostaddr`, `port`, `database`, `dbname`,
+`db`, and `service`, matched case-insensitively. This prevents node-postgres,
+its connection-string parser, a native client, or a future dependency change
+from connecting somewhere other than the URL authority/path that was
+fingerprinted. After validation, the runner replaces `TEST_DATABASE_URL` in its
+child-process environment with the canonical URL it validated, so the advisory
+lock, readiness check, migrations, database suites, and Basic E2E all receive
+that same connection target.
 
 The verification runner rejects Neon's pooled `-pooler` hostname before opening
 a connection. The lock, migrations, and integration tests require the direct

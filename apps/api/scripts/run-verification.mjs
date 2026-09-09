@@ -77,6 +77,7 @@ async function runVerification() {
     }
 
     const target = validateTestDatabaseEnvironment(process.env);
+    process.env.TEST_DATABASE_URL = target.connectionString;
     lockClient = await acquireVerificationLock(target.connectionString);
 
     runNpmStep('prepare shared API dependencies', ['run', 'prepare:api']);

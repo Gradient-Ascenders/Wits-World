@@ -1,3 +1,5 @@
+import { URL } from 'node:url';
+
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -76,6 +78,47 @@ describe('CI verification target', () => {
         TEST_DATABASE_URL: pooledUrl,
       }),
     ).toThrow('TEST_DATABASE_URL must use a direct Neon endpoint');
+  });
+
+  it('rejects host and port query overrides of an approved URL authority', () => {
+    expect(() =>
+      validateTestDatabaseEnvironment({
+        ...environment,
+        TEST_DATABASE_URL:
+          'postgresql://user:pass@test-db.example.invalid:5432/wits_world_test?host=redirected.example&port=6543',
+      }),
+    ).toThrow(
+      'TEST_DATABASE_URL must not contain the connection-target override parameter host.',
+    );
+  });
+
+  it.each(['host', 'hostaddr', 'port', 'database', 'dbname', 'db', 'service'])(
+    'rejects the %s connection-target override parameter',
+    (parameter) => {
+      const url = new URL(environment.TEST_DATABASE_URL);
+      url.searchParams.set(parameter, 'redirected-target');
+      expect(() =>
+        validateTestDatabaseEnvironment({
+          ...environment,
+          TEST_DATABASE_URL: url.toString(),
+        }),
+      ).toThrow(
+        `TEST_DATABASE_URL must not contain the connection-target override parameter ${parameter}.`,
+      );
+    },
+  );
+
+  it('rejects target override parameter names case-insensitively', () => {
+    const url = new URL(environment.TEST_DATABASE_URL);
+    url.searchParams.set('HOST', 'redirected.example');
+    expect(() =>
+      validateTestDatabaseEnvironment({
+        ...environment,
+        TEST_DATABASE_URL: url.toString(),
+      }),
+    ).toThrow(
+      'TEST_DATABASE_URL must not contain the connection-target override parameter HOST.',
+    );
   });
 
   it('rejects malformed target fingerprints', () => {

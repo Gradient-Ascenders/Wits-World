@@ -2,6 +2,15 @@ import { createHash } from 'node:crypto';
 import { URL } from 'node:url';
 
 const supportedProfiles = new Set(['nightly', 'release']);
+const connectionTargetOverrideParameters = new Set([
+  'database',
+  'db',
+  'dbname',
+  'host',
+  'hostaddr',
+  'port',
+  'service',
+]);
 
 export function resolveVerificationProfile(arguments_) {
   const profileIndex = arguments_.indexOf('--profile');
@@ -34,6 +43,8 @@ export function validateTestDatabaseEnvironment(env) {
     );
   }
 
+  rejectConnectionTargetOverrides(testUrl);
+
   if (isNeonPooledEndpoint(testUrl)) {
     throw new Error(
       'TEST_DATABASE_URL must use a direct Neon endpoint; pooled endpoints cannot hold the verification session lock.',
@@ -58,6 +69,16 @@ export function validateTestDatabaseEnvironment(env) {
     databaseName,
     hostname: testUrl.hostname.toLowerCase(),
   };
+}
+
+function rejectConnectionTargetOverrides(url) {
+  for (const [parameter] of url.searchParams) {
+    if (connectionTargetOverrideParameters.has(parameter.toLowerCase())) {
+      throw new Error(
+        `TEST_DATABASE_URL must not contain the connection-target override parameter ${parameter}.`,
+      );
+    }
+  }
 }
 
 export function databaseTargetIdentitySha256(urlOrString) {
