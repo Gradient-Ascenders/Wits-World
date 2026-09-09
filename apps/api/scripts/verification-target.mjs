@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { URL } from 'node:url';
 
-const supportedProfiles = new Set(['pr', 'nightly', 'release']);
+const supportedProfiles = new Set(['nightly', 'release']);
 
 export function resolveVerificationProfile(arguments_) {
   const profileIndex = arguments_.indexOf('--profile');
@@ -10,7 +10,7 @@ export function resolveVerificationProfile(arguments_) {
 
   if (!profile || !supportedProfiles.has(profile)) {
     throw new Error(
-      'A verification profile of pr, nightly, or release is required.',
+      'A verification profile of nightly or release is required.',
     );
   }
 

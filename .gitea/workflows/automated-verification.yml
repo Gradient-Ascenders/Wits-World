@@ -2,7 +2,8 @@ name: Database, Package, and Basic E2E Verification
 
 on:
   schedule:
-    - cron: '0 0 * * *'
+    # Gitea cron is UTC: 03:00 UTC is 05:00 South African Standard Time.
+    - cron: '0 3 * * *'
   workflow_dispatch:
     inputs:
       profile:

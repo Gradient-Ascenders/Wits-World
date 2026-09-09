@@ -14,12 +14,12 @@ workflow passed rather than treating an available merge action as evidence.
 The workflows are separated by event so pull requests have no dependency on
 the deployment runner:
 
-| Workflow                                       | Trigger                                 | Responsibility                                                                                                                   |
-| ---------------------------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `/.gitea/workflows/pr-validation.yml`          | Pull requests targeting `main`          | Runs repository/application/shared-package validation plus serialized migration and database integration; no Azure or Basic E2E. |
-| `/.gitea/workflows/automated-verification.yml` | Daily schedule or manual dispatch       | Runs shared packages, serialized test-database verification, and Basic E2E as nightly evidence or an exact-SHA release gate.     |
-| `/.gitea/workflows/ci.yml`                     | Pushes to `main`                        | Runs validation, publishes coverage, creates production artifacts when required, and deploys affected applications.              |
-| `/.gitea/workflows/docs-deploy.yml`            | Documentation-relevant pushes to `main` | Builds and deploys the documentation site to Cloudflare Pages.                                                                   |
+| Workflow                                       | Trigger                                             | Responsibility                                                                                                                                            |
+| ---------------------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/.gitea/workflows/pr-validation.yml`          | Pull requests targeting `main`                      | Runs repository/application/shared-package validation plus migration and database integration against an isolated PostGIS service; no Azure or Basic E2E. |
+| `/.gitea/workflows/automated-verification.yml` | Daily at 03:00 UTC (05:00 SAST), or manual dispatch | Runs shared packages, serialized remote test-database verification, and Basic E2E as nightly evidence or an exact-SHA release gate.                       |
+| `/.gitea/workflows/ci.yml`                     | Pushes to `main`                                    | Runs validation, publishes coverage, creates production artifacts when required, and deploys affected applications.                                       |
+| `/.gitea/workflows/docs-deploy.yml`            | Documentation-relevant pushes to `main`             | Builds and deploys the documentation site to Cloudflare Pages.                                                                                            |
 
 The resulting flow is:
 
@@ -28,7 +28,7 @@ Pull request
     ↓
 C220 PR validation
     ├── static analysis, applications, packages, builds
-    └── serialized dedicated test-database verification
+    └── four-worker ephemeral PostGIS verification
     ↓
 done — no Azure jobs
 
@@ -78,7 +78,7 @@ construct production packages.
 ## Parallel validation
 
 PR validation has four independent C220 jobs: bundled static analysis,
-application coverage plus explicit shared-package tests, serialized database
+application coverage plus explicit shared-package tests, isolated database
 verification, and builds. The final PR gate needs all four. Main validation
 keeps bundled static analysis, application/package tests, and builds separate
 before its validation and deployment jobs.
@@ -97,8 +97,9 @@ validation category succeeds.
 The duplicated clean installations increase aggregate Gitea job-minutes, but
 independent jobs execute concurrently on the C220. Aggregate job-minutes
 measure total runner work and must not be interpreted as sequential workflow
-wall-clock latency. The PR database job uses the conservative one-worker
-isolated-database runner and can queue on the cross-workflow advisory lock; see
+wall-clock latency. Each PR database job owns a separate PostGIS service and
+uses four database-test workers, so it neither queues on nor contends for the
+nightly/release remote-database advisory lock. See
 [automated verification](./automated-verification.md) for the matrix and cost
 boundary.
 

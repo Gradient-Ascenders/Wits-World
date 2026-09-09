@@ -4,33 +4,50 @@ title: Automated database, package, and Basic E2E verification
 
 # Automated database, package, and Basic E2E verification
 
-Issue `#166` adds one fail-closed verification path for the shared packages,
-PostgreSQL/PostGIS migrations and integration suites, and the deterministic
-Basic Playwright journey. It uses existing npm targets and the existing
-`TEST_DATABASE_URL`; it does not introduce or permit a production fallback.
+Issue `#166` adds distinct pull-request and real-environment verification paths
+for the shared packages, PostgreSQL/PostGIS migrations and integration suites,
+and the deterministic Basic Playwright journey. Both use existing npm targets;
+only nightly/release use `TEST_DATABASE_URL`, and neither path introduces or
+permits a production fallback.
 
 ## Verification matrix
 
-| Behaviour                                                         | Pull request                                          | Nightly                                               | Release gate                                                         |
-| ----------------------------------------------------------------- | ----------------------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------- |
-| Trigger                                                           | Every pull request targeting `main`                   | `00:00` UTC (`02:00` SAST) each day                   | Manual dispatch from the exact candidate ref, with profile `release` |
-| Formatting, lint, types, application coverage, docs tests, builds | Required in `pr-validation.yml`                       | Relies on the latest PR/main result; not duplicated   | Relies on the candidate's required PR/main result; not duplicated    |
-| `account-policy` package test script                              | Explicitly required                                   | Explicitly required                                   | Explicitly required                                                  |
-| `game-rules` package test script                                  | Explicitly required                                   | Explicitly required                                   | Explicitly required                                                  |
-| Dedicated PostgreSQL/PostGIS readiness and migrations             | Required and serialized                               | Required and serialized                               | Required and serialized                                              |
-| Database integration suite                                        | Required with one serialized isolated-database worker | Required with one serialized isolated-database worker | Required with one serialized isolated-database worker                |
-| Deterministic Basic Playwright E2E                                | Omitted to keep normal PR feedback bounded            | Required                                              | Required                                                             |
-| Candidate identity guard                                          | Pull-request checkout                                 | Scheduled default-branch checkout                     | Full lowercase `RELEASE_COMMIT_SHA` must equal checked-out `HEAD`    |
-| Sanitized summary artifact                                        | Always, including failure                             | Always, including failure                             | Always, including failure                                            |
+| Behaviour                                                         | Pull request                                       | Nightly                                             | Release gate                                                         |
+| ----------------------------------------------------------------- | -------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------- |
+| Trigger                                                           | Every pull request targeting `main`                | `03:00` UTC (`05:00` SAST) each day                 | Manual dispatch from the exact candidate ref, with profile `release` |
+| Formatting, lint, types, application coverage, docs tests, builds | Required in `pr-validation.yml`                    | Relies on the latest PR/main result; not duplicated | Relies on the candidate's required PR/main result; not duplicated    |
+| `account-policy` package test script                              | Explicitly required                                | Explicitly required                                 | Explicitly required                                                  |
+| `game-rules` package test script                                  | Explicitly required                                | Explicitly required                                 | Explicitly required                                                  |
+| PostgreSQL/PostGIS target                                         | Per-job ephemeral `postgis/postgis:17-3.5` service | Dedicated direct Neon test target                   | Dedicated direct Neon test target                                    |
+| Database readiness, migrations, and integration suite             | Required with four workers                         | Required, serialized, with one worker               | Required, serialized, with one worker                                |
+| Deterministic Basic Playwright E2E                                | Omitted to keep normal PR feedback bounded         | Required                                            | Required                                                             |
+| Candidate identity guard                                          | Pull-request checkout                              | Scheduled default-branch checkout                   | Full lowercase `RELEASE_COMMIT_SHA` must equal checked-out `HEAD`    |
+| Sanitized verification summary artifact                           | Not applicable to the ephemeral database job       | Always, including failure                           | Always, including failure                                            |
 
 Pushes to `main` continue to run the normal validation, artifact, deployment,
 and health-check pipeline. Its application-test job now executes both shared
 package suites explicitly. The shared mutable test database and Basic E2E are
-not added to that deployment path: PR database verification and the full
-nightly/release workflow provide those distinct gates without allowing a
-queued test-database lock to delay production deployment.
+not added to that deployment path. Pull requests use their own ephemeral
+PostGIS service, while the full nightly/release workflow supplies strict
+remote-environment evidence without allowing a queued test-database lock to
+delay PR feedback or production deployment.
 
-## Database isolation and serialization
+## Pull-request database isolation
+
+Each `database-validation` PR job starts `postgis/postgis:17-3.5` inside that
+job's isolated service network. It uses fixed, non-production container
+credentials, an unreachable `DATABASE_URL` guard, and
+`DATABASE_TEST_WORKERS=4`. The job prepares the shared API dependencies, checks
+the ephemeral PostGIS target, and runs the complete database integration and
+migration-test runner. It does not receive `TEST_DATABASE_URL`, the target
+fingerprint, or the remote advisory lock.
+
+Concurrent pull requests cannot race because every job gets a separate PostGIS
+container and network namespace. Parallel workers only share the disposable
+service within their own job, and the existing database runner provisions a
+different temporary child database for each suite.
+
+## Nightly and release database serialization
 
 The Gitea configuration must identify the existing dedicated, non-production
 test database. Before opening a connection, the runner requires and validates:
@@ -80,8 +97,8 @@ npm run test:database --workspace @wits-world/api
 npm run test:e2e:basic
 ```
 
-The PR profile stops before the final E2E command. Nightly and release profiles
-run all five commands.
+Only nightly and release profiles use this remote command path and run all five
+commands. Ordinary PR validation uses the isolated service described above.
 
 ## Release operation
 
@@ -123,28 +140,25 @@ real release gate and must never be described as a passing verification run.
 ## Runner duration and cost implications
 
 The normal PR/main C220 validation baseline was previously about 2 minutes 20
-seconds wall-clock. The PR database job now adds one clean dependency install
-and a one-worker database suite in parallel with the existing jobs. Before the
-latest main added the catalogue-upgrade migration suite, a local run against
-the dedicated remote test service completed 255 tests across 25 files in about
-52 minutes 32 seconds. The current 26-file gate can take longer, and actual
-Gitea runner and provider times can vary. It can therefore become the PR
-critical path, and concurrent PR, nightly, or release runs can wait up to 45
-minutes for the advisory lock. The serialized worker is intentionally slower
-than the previous two-worker setting, which proved unreliable under overlapping
-database migration workloads.
+seconds wall-clock. The PR database job adds one clean dependency install and
+the four-worker suite against a local ephemeral service, in parallel with the
+other PR jobs. This restores the pre-#166 architecture and should return PR
+database feedback to its earlier few-minute range; actual Gitea duration must
+be measured after this change rather than inferred from local timings.
 
 Nightly and release each consume one additional clean install plus the two
 package suites, one-worker migration/database suite, and Basic E2E. The full
-Basic gate completed locally in about 4 minutes 42 seconds. The automated job
-has a 135-minute ceiling and the PR database job has a 120-minute ceiling so a
-run can survive the measured work plus the bounded lock wait; these are safety
-ceilings, not expected durations. On the self-hosted C220 runner, the cost is
-runner capacity, CPU/storage/network use, and test-database compute rather than
-a claimed per-minute Gitea fee. One scheduled full run per day is the
-intentional recurring cost. Record actual Gitea job duration and database
-provider usage after rollout before changing cadence, worker count, or runner
-capacity.
+Basic gate completed locally in about 4 minutes 42 seconds. Before the latest
+main added the catalogue-upgrade migration suite, the one-worker remote
+database portion completed 255 tests across 25 files in about 52 minutes 32
+seconds; the current 26-file gate can take longer. Concurrent nightly/release
+runs can wait up to 45 minutes for the advisory lock, and the automated job has
+a 135-minute ceiling. These are safety ceilings, not expected durations. On the
+self-hosted C220 runner, the cost is runner capacity, CPU/storage/network use,
+and test-database compute rather than a claimed per-minute Gitea fee. One
+scheduled full run at 05:00 SAST each day is the intentional recurring cost.
+Record actual Gitea job duration and database-provider usage after rollout
+before changing cadence, worker count, or runner capacity.
 
 ## AI declaration
 

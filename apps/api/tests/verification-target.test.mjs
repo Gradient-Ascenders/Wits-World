@@ -18,17 +18,17 @@ const environment = {
 };
 
 describe('CI verification target', () => {
-  it.each(['pr', 'nightly', 'release'])('accepts the %s profile', (profile) => {
+  it.each(['nightly', 'release'])('accepts the %s profile', (profile) => {
     expect(resolveVerificationProfile(['--profile', profile])).toBe(profile);
   });
 
   it('rejects a missing or unknown profile', () => {
     expect(() => resolveVerificationProfile([])).toThrow(
-      'A verification profile of pr, nightly, or release is required.',
+      'A verification profile of nightly or release is required.',
     );
-    expect(() =>
-      resolveVerificationProfile(['--profile', 'production']),
-    ).toThrow('A verification profile of pr, nightly, or release is required.');
+    expect(() => resolveVerificationProfile(['--profile', 'pr'])).toThrow(
+      'A verification profile of nightly or release is required.',
+    );
   });
 
   it('accepts an exactly confirmed dedicated test target', () => {

@@ -144,9 +144,10 @@ derivation, asynchronous PvP persistence, bounded nearby discovery, and
 recovery. The deterministic Basic E2E
 also crosses the real test database boundary.
 
-Pull requests invoke the migration and database suites through the serialized
-dedicated-test-target runner. Nightly and manual release-gate runs add the
-deterministic Basic E2E while holding the same database advisory lock. See
+Pull requests invoke the migration and database suites with four workers
+against a per-job ephemeral PostGIS service. Nightly and manual release-gate
+runs use the dedicated direct Neon test target with one worker and add the
+deterministic Basic E2E while holding the remote database advisory lock. See
 [automated verification](../testing/automated-verification.md). A CI or local
 test-database pass is still not proof that production migrations, backups,
 restore, retention, monitoring, or provider recovery were exercised.
