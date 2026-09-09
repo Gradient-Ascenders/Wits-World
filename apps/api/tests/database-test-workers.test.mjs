@@ -6,7 +6,7 @@ describe('database integration test workers', () => {
   it.each([undefined, '', '  '])(
     'uses the conservative default when configured as %s',
     (value) => {
-      expect(resolveDatabaseTestWorkers(value)).toBe(2);
+      expect(resolveDatabaseTestWorkers(value)).toBe(1);
     },
   );
 

@@ -592,12 +592,17 @@ a:hover {
 
 .main-content--explore {
   display: flex;
-  flex-direction: column;
   width: 100%;
   min-height: 0;
-  flex: 1 1 auto;
+  flex: 1 1 0;
+  flex-direction: column;
   padding: 0;
   overflow: hidden;
+}
+
+.main-content--explore > .exploration-view {
+  height: auto;
+  flex: 1 1 0;
 }
 
 .site-frame--product-navigation .main-content.main-content--explore {

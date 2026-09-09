@@ -26,6 +26,8 @@ import { createMovementEvidenceService } from '../src/events/movement-evidence.j
 import { SPRINT1_E2E_ACCESS_TOKEN } from './sprint1-auth.js';
 
 export const BASIC_E2E_NOW = new Date('2026-08-18T10:00:00.000Z');
+export const BASIC_E2E_REVIEWER_ACCESS_TOKEN =
+  'wits-world-basic-e2e-reviewer-obvious-local-test-token';
 
 const authConfig: AuthConfig = {
   audience: 'https://basic-e2e.invalid/api',
@@ -49,6 +51,8 @@ async function startServer(): Promise<void> {
   const database = createDatabasePool(databaseConfig);
   const subject = `basic-e2e-${runId}`;
   const playerName = `e2e_${runId.replaceAll('-', '').slice(0, 16)}`;
+  const reviewerSubject = `basic-e2e-reviewer-${runId}`;
+  const reviewerName = `review_${runId.replaceAll('-', '').slice(0, 13)}`;
   const clock = () => new Date(BASIC_E2E_NOW);
   const movementEvidenceService = createMovementEvidenceService(database, {
     // Test-only permissive value; production has no default.
@@ -60,14 +64,24 @@ async function startServer(): Promise<void> {
       insert into public.players (
         id, auth_issuer, auth_subject, player_name, role, lifecycle_status
       )
-      values ($1::uuid, $2, $3, $4, 'author', 'active')
+      values
+        ($1::uuid, $2, $3, $4, 'author', 'active'),
+        ($5::uuid, $2, $6, $7, 'author', 'active')
       on conflict (auth_issuer, auth_subject)
       do update set
         player_name = excluded.player_name,
         role = 'author',
         lifecycle_status = 'active'
     `,
-    [randomUUID(), authConfig.issuer, subject, playerName],
+    [
+      randomUUID(),
+      authConfig.issuer,
+      subject,
+      playerName,
+      randomUUID(),
+      reviewerSubject,
+      reviewerName,
+    ],
   );
 
   const finalizer = createChallengeAttemptCompletionFinalizer({
@@ -78,15 +92,20 @@ async function startServer(): Promise<void> {
   const app = await buildApp({
     accessTokenVerifier: {
       async verify(token) {
-        if (token !== SPRINT1_E2E_ACCESS_TOKEN) {
+        const principal =
+          token === SPRINT1_E2E_ACCESS_TOKEN
+            ? { playerName, subject }
+            : token === BASIC_E2E_REVIEWER_ACCESS_TOKEN
+              ? { playerName: reviewerName, subject: reviewerSubject }
+              : null;
+        if (principal === null) {
           throw new Error('The Basic E2E bearer token was rejected.');
         }
 
         return {
           connectionStrategy: 'auth0',
           issuer: authConfig.issuer,
-          playerName,
-          subject,
+          ...principal,
           tokenIssuedAt: new Date(),
         };
       },

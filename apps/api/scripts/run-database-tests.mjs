@@ -21,6 +21,7 @@ const testFiles = [
   'tests/coin-retirement-migration.integration.test.ts',
   'tests/challenge-attempt-database.integration.test.ts',
   'tests/card-catalogue.integration.test.ts',
+  'tests/card-catalogue-upgrade-migration.integration.test.ts',
   'tests/deck-persistence.integration.test.ts',
   'tests/cpu-match-database.integration.test.ts',
   'tests/author-content-persistence.integration.test.ts',
