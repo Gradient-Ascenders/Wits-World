@@ -33,7 +33,7 @@ env:
 
 jobs:
   verify:
-    name: Run ${{ gitea.event_name }} verification gate
+    name: Nightly or release verification gate
     runs-on: wits-world-ci
     timeout-minutes: 135
     env:

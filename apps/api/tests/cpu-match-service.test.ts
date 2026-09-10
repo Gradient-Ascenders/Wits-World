@@ -573,6 +573,101 @@ describe('CPU match service', () => {
     ).toEqual(expect.arrayContaining(['5:0', '6:0']));
   });
 
+  it('projects stored engine effect metadata out of completed match history', async () => {
+    const state = createBattleState(deck('player'), deck('cpu'));
+    const playerCreature = state.participants.player.creatures[0]!;
+    const cpuCreature = state.participants.cpu.creatures[0]!;
+    const storedResult = {
+      ...createLogResult('player', {
+        moveId: playerCreature.card.moves[0]!.id,
+        type: 'use_move',
+      }),
+      effects: [
+        {
+          amount: 1,
+          damageMultiplier: null,
+          effectCode: 'damage' as const,
+          effectId: playerCreature.card.moves[0]!.effects[0]!.id,
+          effectType: 'damage' as const,
+          modifier: null,
+          targetCreatureId: cpuCreature.card.id,
+          targetSide: 'cpu' as const,
+        },
+      ],
+    };
+    const createdAt = new Date('2026-08-16T00:00:00.000Z');
+    const completedAt = new Date('2026-08-16T00:01:00.000Z');
+    const query = vi.fn(async (statement: string) => {
+      if (statement.includes('from public.cpu_matches')) {
+        return {
+          rows: [
+            {
+              completed_at: completedAt,
+              id: MATCH_ID,
+              player_id: PLAYER_ID,
+              started_at: createdAt,
+              state,
+              status: 'completed',
+              turn_deadline: null,
+              turn_started_at: null,
+              version: 3,
+              winner: 'player',
+            },
+          ],
+        };
+      }
+      if (statement.includes('from public.cpu_match_rounds')) {
+        return {
+          rows: [
+            {
+              created_at: createdAt,
+              id: 'a3000000-0000-4000-8000-000000000001',
+              result: [storedResult],
+              round_number: 1,
+              state_after: state,
+              state_before: state,
+            },
+          ],
+        };
+      }
+      if (statement.includes('from public.cpu_match_actions')) {
+        return {
+          rows: [
+            {
+              action: storedResult.action,
+              created_at: createdAt,
+              result: storedResult,
+              sequence: 1,
+              side: 'player',
+              submission_id: null,
+            },
+          ],
+        };
+      }
+
+      throw new Error(`Unexpected SQL: ${statement}`);
+    });
+    const service = createCpuMatchService(fakeDatabase(query));
+
+    const history = await service.listHistory(PLAYER_ID);
+    const expectedPublicEffect = {
+      amount: 1,
+      damageMultiplier: null,
+      effectId: playerCreature.card.moves[0]!.effects[0]!.id,
+      effectType: 'damage',
+      modifier: null,
+      targetCreatureId: cpuCreature.card.id,
+      targetSide: 'cpu',
+    };
+
+    expect(history[0]?.rounds[0]?.result[0]?.effects).toEqual([
+      expectedPublicEffect,
+    ]);
+    expect(history[0]?.rounds[0]?.actions[0]?.result.effects).toEqual([
+      expectedPublicEffect,
+    ]);
+  });
+
   it('rolls back when combined persistence invariants are not satisfied', async () => {
     const state = createBattleState(deck('player'), deck('cpu'));
     const query = vi.fn(async (statement: string) => {
