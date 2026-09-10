@@ -35,3 +35,9 @@ export function getBasicDemoSeedsDirectory(
 ) {
   return resolve(repositoryRoot, 'database/seeds/basic-demo');
 }
+
+export function getVerifiedEventsSeedsDirectory(
+  repositoryRoot = findRepositoryRoot(),
+) {
+  return resolve(repositoryRoot, 'database/seeds/verified-events');
+}

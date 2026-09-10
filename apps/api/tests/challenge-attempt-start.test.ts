@@ -228,12 +228,14 @@ describe('challenge attempt start service', () => {
       expect(question.items).toHaveLength(4);
       expect(question).not.toHaveProperty('explanation');
       expect(question).not.toHaveProperty('correctItems');
+      expect(question).not.toHaveProperty('sourceUrls');
     }
 
     const sql = executedSql(fixture.query);
     expect(sql).toContain('from public.challenge_ordering_items item');
     expect(sql).not.toContain('challenge_ordering_answer_keys');
     expect(sql).not.toContain('correct_position');
+    expect(sql).not.toContain('source_urls');
     expect(sql).not.toContain('private.');
   });
 

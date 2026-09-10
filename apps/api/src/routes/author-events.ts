@@ -94,6 +94,7 @@ const authorEventSchema = {
     'latitude',
     'longitude',
     'radiusMetres',
+    'sourceUrls',
     'startsAt',
     'endsAt',
     'isPublished',
@@ -133,6 +134,10 @@ const authorEventSchema = {
     radiusMetres: {
       type: 'integer',
       minimum: 1,
+    },
+    sourceUrls: {
+      type: 'array',
+      items: { type: 'string', format: 'uri' },
     },
     startsAt: {
       type: 'string',

@@ -17,6 +17,7 @@ export interface AuthorEvent {
   latitude: number;
   longitude: number;
   radiusMetres: number;
+  sourceUrls: string[];
   startsAt: string;
   endsAt: string;
   isPublished: boolean;
@@ -90,6 +91,7 @@ interface AuthorEventRow extends pg.QueryResultRow {
   latitude: number;
   longitude: number;
   radius_metres: number;
+  source_urls: string[];
   starts_at: Date;
   ends_at: Date;
   is_published: boolean;
@@ -155,6 +157,7 @@ export function createAuthorEventService(
               st_y(event.location::geometry) as latitude,
               st_x(event.location::geometry) as longitude,
               event.radius_metres,
+              event.source_urls,
               event.starts_at,
               event.ends_at,
               event.is_published,
@@ -214,6 +217,7 @@ export function createAuthorEventService(
               st_y(location::geometry) as latitude,
               st_x(location::geometry) as longitude,
               radius_metres,
+              source_urls,
               starts_at,
               ends_at,
               is_published,
@@ -293,6 +297,7 @@ export function createAuthorEventService(
               st_y(location::geometry) as latitude,
               st_x(location::geometry) as longitude,
               radius_metres,
+              source_urls,
               starts_at,
               ends_at,
               is_published,
@@ -375,7 +380,7 @@ async function loadEvent(
        id::text as event_id, title, description,
        st_y(location::geometry) as latitude,
        st_x(location::geometry) as longitude,
-       radius_metres, starts_at, ends_at, is_published, authoring_status,
+       radius_metres, source_urls, starts_at, ends_at, is_published, authoring_status,
        retired_at, version, submitted_by_player_id::text, submitted_at,
        reviewed_by_player_id::text, reviewed_at, publication_provenance,
        created_at, updated_at
@@ -494,6 +499,7 @@ function mapAuthorEvent(row: AuthorEventRow): AuthorEvent {
     latitude: row.latitude,
     longitude: row.longitude,
     radiusMetres: row.radius_metres,
+    sourceUrls: row.source_urls ?? [],
     startsAt: row.starts_at.toISOString(),
     endsAt: row.ends_at.toISOString(),
     isPublished: row.is_published,

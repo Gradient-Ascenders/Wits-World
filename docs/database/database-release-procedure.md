@@ -31,14 +31,19 @@ The guarded command:
    `--confirm-database`;
 5. applies ordered, checksummed migrations under an advisory lock;
 6. confirms the installed PostGIS version;
-7. applies the reusable catalogue and Basic demo seed only with
-   `--seed-basic-demo`; and
-8. verifies the migration count and, when seeded, the published Basic event and
-   challenge fixtures.
+7. applies the reusable catalogue plus exactly one explicitly selected content
+   pack (`--seed-basic-demo` or `--seed-verified-events`); and
+8. verifies the migration count and the selected content pack counts.
 
 Each migration runs in its own transaction. Each seed group runs in its own
 transaction. A failed stage exits nonzero and prevents later stages from
 running.
+
+The verified issue `#165` pack requires a separate production-content decision
+and cannot be combined with the Basic demo flag. Its guarded verification
+requires exactly ten events and one hundred questions. See
+[Verified Wits event content](./verified-event-content.md) for source coverage,
+repeatability, and the outstanding manual-review gate.
 
 Migration `0025_add_ordering_challenges.sql` is additive: it broadens the
 challenge-format constraint and adds ordering definitions, private order keys,

@@ -123,6 +123,7 @@ describe.skipIf(!runIntegrationTests)(
           '0040_add_offline_challenge_attempts.sql',
           '0041_complete_card_catalogue.sql',
           '0042_implement_card_evolution.sql',
+          '0043_add_content_source_evidence.sql',
         ],
         skipped: [],
       });
@@ -173,6 +174,7 @@ describe.skipIf(!runIntegrationTests)(
           '0040_add_offline_challenge_attempts.sql',
           '0041_complete_card_catalogue.sql',
           '0042_implement_card_evolution.sql',
+          '0043_add_content_source_evidence.sql',
         ],
       });
     }, 30_000);
@@ -387,6 +389,7 @@ describe.skipIf(!runIntegrationTests)(
             '0040_add_offline_challenge_attempts.sql',
             '0041_complete_card_catalogue.sql',
             '0042_implement_card_evolution.sql',
+            '0043_add_content_source_evidence.sql',
           ],
         });
 

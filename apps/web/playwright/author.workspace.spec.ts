@@ -1883,6 +1883,7 @@ function eventFixture(
     latitude: -26.19205,
     longitude: 28.03038,
     radiusMetres: 75,
+    sourceUrls: [],
     retiredAt:
       authoringStatus === 'retired' ? '2026-08-20T10:00:00.000Z' : null,
     startsAt: '2026-08-01T06:00:00.000Z',
@@ -1941,6 +1942,7 @@ function questionFixture(
     createdAt: '2026-08-01T08:00:00.000Z',
     difficulty: position > 3 ? 2 : 1,
     explanation: 'Author-only fixture explanation.',
+    sourceUrls: [],
     format: 'multiple_choice',
     prompt,
     questionId,
@@ -1961,6 +1963,7 @@ function materializeQuestion(
       createdAt: '2026-08-29T08:00:00.000Z',
       difficulty: input.difficulty,
       explanation: input.explanation,
+      sourceUrls: [],
       format: 'ordering',
       items: input.items.map((text, index) => ({
         itemId: uuid('7', 100 + index),
@@ -1988,6 +1991,7 @@ function materializeQuestion(
     createdAt: '2026-08-29T08:00:00.000Z',
     difficulty: input.difficulty,
     explanation: input.explanation,
+    sourceUrls: [],
     format: 'multiple_choice',
     prompt: input.prompt,
     questionId,
