@@ -213,7 +213,7 @@ export interface CpuMatchResponse {
 export interface CpuMatchHistoryRound {
   roundNumber: number;
   actions: readonly CpuMatchHistoryAction[];
-  result: readonly BattleActionResult[];
+  result: readonly PublicBattleActionResult[];
   createdAt: string;
 }
 
@@ -222,7 +222,7 @@ export interface CpuMatchHistoryAction {
   side: 'player' | 'cpu';
   submissionId: string | null;
   action: BattleAction;
-  result: BattleActionResult;
+  result: PublicBattleActionResult;
   createdAt: string;
 }
 
@@ -1580,10 +1580,18 @@ async function loadHistoryRounds(
         side: action.side,
         submissionId: action.submission_id,
         action: action.action,
-        result: normalizeStoredActionResult(action.result),
+        result: toPublicActionResult(
+          normalizeStoredActionResult(action.result),
+          round.state_after,
+        ),
         createdAt: action.created_at.toISOString(),
       })),
-      result: round.result.map(normalizeStoredActionResult),
+      result: round.result.map((result) =>
+        toPublicActionResult(
+          normalizeStoredActionResult(result),
+          round.state_after,
+        ),
+      ),
       createdAt: round.created_at.toISOString(),
     });
   }
