@@ -71,16 +71,22 @@ describe('Basic author console', () => {
     });
 
     const eventView = renderAuthorRoute(authorPaths.event(eventId));
+    const eventReview = await screen.findByRole('article', {
+      name: 'Great Hall history overview',
+    });
     expect(
-      await screen.findByRole('link', { name: 'Source 1' }),
+      within(eventReview).getByRole('link', { name: 'Source 1' }),
     ).toHaveAttribute('href', sourceUrl);
 
     eventView.unmount();
     renderAuthorRoute(
       authorPaths.question(eventId, challengeId, question.questionId),
     );
+    const questionReview = await screen.findByRole('article', {
+      name: question.prompt,
+    });
     expect(
-      await screen.findByRole('link', { name: 'Source 1' }),
+      within(questionReview).getByRole('link', { name: 'Source 1' }),
     ).toHaveAttribute('href', sourceUrl);
   });
 
