@@ -11,6 +11,7 @@ async function main() {
     confirmDatabase: options.confirmDatabase,
     databaseConfig,
     includeBasicDemoSeed: options.includeBasicDemoSeed,
+    includeVerifiedEventsSeed: options.includeVerifiedEventsSeed,
     onInspection(inspection) {
       console.log(`Release target: ${options.target}`);
       console.log(`Connected database: ${inspection.database}`);
@@ -33,6 +34,13 @@ async function main() {
   if (result.verification.basicDemoChallengeCount !== undefined) {
     console.log(
       `Published Basic demo challenges: ${result.verification.basicDemoChallengeCount}`,
+    );
+  }
+
+  if (result.verification.verifiedEventCount !== undefined) {
+    console.log(`Verified events: ${result.verification.verifiedEventCount}`);
+    console.log(
+      `Verified questions: ${result.verification.verifiedQuestionCount}`,
     );
   }
 

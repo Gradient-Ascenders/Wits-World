@@ -158,6 +158,7 @@ describe('event discovery API', () => {
       acceptedAnswer: 'private answer',
       internalAuthorNote: 'private author note',
       isPublished: true,
+      sourceUrls: ['https://review-only.example.test/source'],
     };
 
     discoveryList.mockResolvedValue([eventWithPrivateFields]);
@@ -181,6 +182,7 @@ describe('event discovery API', () => {
     expect(body.events[0]).not.toHaveProperty('acceptedAnswer');
     expect(body.events[0]).not.toHaveProperty('internalAuthorNote');
     expect(body.events[0]).not.toHaveProperty('isPublished');
+    expect(body.events[0]).not.toHaveProperty('sourceUrls');
 
     expect(discoveryList).toHaveBeenCalledOnce();
   });

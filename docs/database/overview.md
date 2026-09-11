@@ -74,10 +74,12 @@ an edit to an applied file or the migration-history table. Filenames are the
 identity, so the two historical `0019_...` files remain distinct and ordered by
 their complete names.
 
-Repeatable catalogue and Basic demonstration seeds live in `database/seeds`.
-They are development/test fixtures unless a separate production seeding
-decision is approved. The Great Hall coordinates, radius, and dates are
-provisional integration data rather than accepted event content.
+Repeatable catalogue, Basic demonstration, and verified event seeds live in
+`database/seeds`. The Basic fixtures remain development/test content unless a
+separate production decision is approved. The issue `#165` event pack is an
+explicit, separately guarded seed with stored source evidence and an outstanding
+independent factual/presentation review; see
+[Verified Wits event content](./verified-event-content.md).
 
 Migration `0027_create_ordered_trails.sql` follows progression migration `0026`.
 Migration `0029_curate_author_content_lifecycle.sql` then preserves the trail
@@ -109,6 +111,11 @@ so idempotent replay does not depend on that copy remaining in current
 ownership. The API uses a player row lock and owned-copy locks to serialize
 concurrent requests; the database rejects incomplete history and duplicate
 grants.
+
+Migration `0043_add_content_source_evidence.sql` adds constrained HTTPS source
+arrays to event and question definitions. Protected Author reads expose these
+review links. Player discovery and challenge-attempt contracts remain unchanged
+and never serialize the source arrays or private answer keys.
 
 ## Environments and deployment
 

@@ -727,6 +727,9 @@ function EventOverview({
               <dd>Configured · {event.radiusMetres} m radius</dd>
             </div>
           </dl>
+          {event.sourceUrls.length > 0 ? (
+            <SourceEvidenceList sourceUrls={event.sourceUrls} />
+          ) : null}
         </section>
 
         <section className="author-summary-block author-summary-block--next">
@@ -2576,6 +2579,9 @@ function QuestionDetail({
           <p>{question.explanation}</p>
         </section>
       ) : null}
+      {question.sourceUrls.length > 0 ? (
+        <SourceEvidenceList sourceUrls={question.sourceUrls} />
+      ) : null}
       <AuthorFeedback error={apiError} refObject={feedbackRef} />
       {challenge.status !== 'retired' ? (
         <AuthorLifecycleControls
@@ -3131,6 +3137,23 @@ function validateEventDraft(draft: EventDraft): {
       title: draft.title.trim(),
     },
   };
+}
+
+function SourceEvidenceList({ sourceUrls }: { sourceUrls: readonly string[] }) {
+  return (
+    <section className="author-summary-block author-summary-block--plain">
+      <h6>Source evidence</h6>
+      <ul>
+        {sourceUrls.map((sourceUrl, index) => (
+          <li key={sourceUrl}>
+            <a href={sourceUrl} rel="noreferrer" target="_blank">
+              Source {index + 1}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
 
 function questionDraft(

@@ -32,6 +32,7 @@ erDiagram
     timestamptz retired_at
     timestamptz created_at
     timestamptz updated_at
+    text_array source_urls
   }
 ```
 
@@ -57,6 +58,7 @@ erDiagram
 | `retired_at`             | `timestamptz`            | Set only for permanently retired content                                      |
 | `created_at`             | `timestamptz`            | Required; defaults to the insertion time                                      |
 | `updated_at`             | `timestamptz`            | Required; cannot be earlier than `created_at`                                 |
+| `source_urls`            | `text[]`                 | HTTPS factual/location evidence; empty for legacy content                     |
 
 PostGIS point constructors receive coordinates as longitude then latitude. All
 distance values are metres because `location` uses the PostGIS `geography`

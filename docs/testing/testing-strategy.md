@@ -89,6 +89,15 @@ and API-supplied completed feedback. Server route, service, and database tests
 remain the evidence for shuffling, answer locking, exact-sequence marking,
 deadlines, score, completion, and explanation privacy.
 
+The issue `#165` verified-content integration test provisions an isolated
+database, applies the full migration history, and runs the content seed twice.
+It checks the exact 10-event/100-question shape, five challenges of each format,
+four public choices/items per question, private answer keys, source evidence,
+availability states, all difficulty/time-limit categories, non-repeating
+five-question selection, and compatibility with the canonical reward catalogue.
+Factual wording, point/radius placement, and presentation still require the
+documented independent manual review.
+
 Progression route tests verify authentication, Player Name setup, privacy
 allowlists, month and pagination validation, current rank outside the selected
 page, and closed OpenAPI schemas. Database tests verify points and achievement

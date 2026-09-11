@@ -61,6 +61,35 @@ vi.mock(
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Basic author console', () => {
+  it('shows seeded source evidence on event and question review screens', async () => {
+    const sourceUrl = 'https://wits100.wits.ac.za/';
+    const question = questionFixture(1, 'draft');
+    installAuthorApi({
+      challenges: [challengeFixture()],
+      events: [eventFixture({ sourceUrls: [sourceUrl] })],
+      questions: [{ ...question, sourceUrls: [sourceUrl] }],
+    });
+
+    const eventView = renderAuthorRoute(authorPaths.event(eventId));
+    const eventReview = await screen.findByRole('article', {
+      name: 'Great Hall history overview',
+    });
+    expect(
+      within(eventReview).getByRole('link', { name: 'Source 1' }),
+    ).toHaveAttribute('href', sourceUrl);
+
+    eventView.unmount();
+    renderAuthorRoute(
+      authorPaths.question(eventId, challengeId, question.questionId),
+    );
+    const questionReview = await screen.findByRole('article', {
+      name: question.prompt,
+    });
+    expect(
+      within(questionReview).getByRole('link', { name: 'Source 1' }),
+    ).toHaveAttribute('href', sourceUrl);
+  });
+
   it('keeps accessible coordinate editing guidance when the author map fails', async () => {
     render(
       <AuthorLocationMap
@@ -2696,6 +2725,7 @@ function eventFixture(overrides: Partial<AuthorEvent> = {}): AuthorEvent {
     latitude: -26.19205,
     longitude: 28.03038,
     radiusMetres: 75,
+    sourceUrls: [],
     retiredAt: null,
     startsAt: '2026-09-01T08:00:00.000Z',
     title: 'Great Hall history',
@@ -2749,6 +2779,7 @@ function questionFixture(
     createdAt: '2026-08-16T08:00:00.000Z',
     difficulty: 1,
     explanation: 'Author-only explanation.',
+    sourceUrls: [],
     format: 'multiple_choice',
     prompt: `Question ${position}`,
     questionId,
@@ -2775,6 +2806,7 @@ function orderingQuestionFixture(
     createdAt: '2026-08-16T08:00:00.000Z',
     difficulty: 1,
     explanation: 'The eras follow this established chronology.',
+    sourceUrls: [],
     format: 'ordering',
     items: [1, 2, 3, 4].map((itemPosition) => ({
       itemId: `43000000-0000-4000-8000-${String(position * 10 + itemPosition).padStart(12, '0')}`,
