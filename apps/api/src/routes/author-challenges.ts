@@ -260,6 +260,7 @@ const questionSchema = {
     'prompt',
     'difficulty',
     'explanation',
+    'sourceUrls',
     'status',
     'choices',
     'acceptedChoiceId',
@@ -298,6 +299,10 @@ const questionSchema = {
           type: 'null',
         },
       ],
+    },
+    sourceUrls: {
+      type: 'array',
+      items: { type: 'string', format: 'uri' },
     },
     status: {
       type: 'string',
@@ -363,6 +368,7 @@ const orderingQuestionSchema = {
     'prompt',
     'difficulty',
     'explanation',
+    'sourceUrls',
     'status',
     'items',
     'createdAt',
@@ -377,6 +383,10 @@ const orderingQuestionSchema = {
     difficulty: { type: 'integer', minimum: 1, maximum: 3 },
     explanation: {
       anyOf: [{ type: 'string' }, { type: 'null' }],
+    },
+    sourceUrls: {
+      type: 'array',
+      items: { type: 'string', format: 'uri' },
     },
     status: {
       type: 'string',

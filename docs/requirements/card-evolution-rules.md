@@ -5,7 +5,7 @@ description: Confirmed duplicate-consumption rule and the fixed evolution relati
 
 # Card evolution rules
 
-**Status:** Backend evolution transaction and API implemented; collection UI deferred
+**Status:** Backend transaction, API, and player collection UI implemented
 
 **Confirmed:** 6 September 2026
 
@@ -71,11 +71,52 @@ consumed that copy. Copies referenced by a saved deck are never selected.
 Evolution is not inferred merely from holding three copies; the mutation
 remains an explicit player action.
 
-The collection confirmation UI, keyboard/focus behavior, and responsive player
-workflow are intentionally deferred to issue #175. Coin selling remains outside
-this contract and is tracked by issue #193.
+## Player collection experience
+
+The collection switches between Cards and Evolutions within `/collection`.
+Normal card details retain their copy history and no longer include evolution.
+The Evolutions section checks the existing preview endpoint for each distinct
+owned definition, with at most four requests in flight. It lists available
+relationships with server-returned eligibility, total ownership, and deck locks,
+placing ready evolutions first. Failed checks remain visible with a retry.
+Definitions without an available relationship are omitted unless an owned copy
+was acquired through evolution. Those entries say that no further evolution is
+currently available; the contract does not explicitly identify final stages.
+
+Selecting a candidate opens a focused preview with three compact source cards
+and a prominent evolved result. The mobile surface fills the screen and scrolls;
+desktop uses a wider comparison. Both reuse the normal card frame and dialog
+focus management. Confirmation controls stay below the scrolling preview, with
+safe-area spacing. The primary action is labelled "Evolve card" and explicitly
+confirms the consumption of all three source copies.
+
+The confirmation view presents the server-authored source and target, the fixed
+three-copy recipe, the number of copies remaining, any saved-deck protection,
+and the target through the normal card presentation. The browser submits only
+the source definition and a client-generated idempotency UUID. It never selects
+the consumed copies or derives the evolved definition.
+
+After a successful mutation, the UI immediately applies the authoritative
+consumed identifiers and granted card from the result, then refetches the whole
+collection. Only after server success does Motion converge the three source
+cards and reveal the result, over approximately 1.45 seconds. Reduced motion
+uses a 180 ms fade. The result reports the resulting owned quantity, including
+when that evolved definition was already owned, and offers Back to evolutions.
+Insufficient-copy and saved-deck conflicts refresh both the preview
+and collection before another action is offered. Confirmation is single-flight,
+Escape and close are disabled while it is in flight, and focus moves to the
+confirmation, recoverable error, or success heading as appropriate.
+Normal card details retain their sheet handle; the focused mobile evolution
+surface uses its explicit close control. A confirmed evolution is
+distinguished from the subsequent collection refresh; a failed refresh offers a
+local retry without repeating the evolution. Stale previews explicitly state that
+no evolution completed and offer refreshed availability for another review.
+
+Coin selling remains outside this contract. Issue #193 retired the active coin
+and wallet model and explicitly deferred selling for currency; the collection
+therefore exposes no speculative selling action or client-calculated value.
 
 ## AI declaration
 
 This document was updated with assistance from Codex-CLI[GPT-5.6 Sol] and
-Codex[GPT-5].
+Codex[GPT-5], and Codex-CLI[GPT-6].

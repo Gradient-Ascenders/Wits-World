@@ -213,7 +213,7 @@ export interface CpuMatchResponse {
 export interface CpuMatchHistoryRound {
   roundNumber: number;
   actions: readonly CpuMatchHistoryAction[];
-  result: readonly BattleActionResult[];
+  result: readonly PublicBattleActionResult[];
   createdAt: string;
 }
 
@@ -222,7 +222,7 @@ export interface CpuMatchHistoryAction {
   side: 'player' | 'cpu';
   submissionId: string | null;
   action: BattleAction;
-  result: BattleActionResult;
+  result: PublicBattleActionResult;
   createdAt: string;
 }
 
@@ -1553,7 +1553,7 @@ async function loadHistoryRounds(
   const history = new Map<string, CpuMatchHistoryRound[]>();
   if (matchIds.length === 0) return history;
   const rounds = await client.query<RoundRow>(
-    `select id, match_id, round_number, result, created_at
+    `select id, match_id, round_number, result, state_after, created_at
      from public.cpu_match_rounds
      where match_id = any($1::uuid[])
      order by match_id, round_number`,
@@ -1582,10 +1582,18 @@ async function loadHistoryRounds(
         side: action.side,
         submissionId: action.submission_id,
         action: action.action,
-        result: normalizeStoredActionResult(action.result),
+        result: toPublicActionResult(
+          normalizeStoredActionResult(action.result),
+          round.state_after,
+        ),
         createdAt: action.created_at.toISOString(),
       })),
-      result: round.result.map(normalizeStoredActionResult),
+      result: round.result.map((result) =>
+        toPublicActionResult(
+          normalizeStoredActionResult(result),
+          round.state_after,
+        ),
+      ),
       createdAt: round.created_at.toISOString(),
     });
     history.set(round.match_id, group);
@@ -1654,6 +1662,7 @@ function normalizeStoredResponse(
         ? null
         : {
             ...response.lastAction,
+            effects: response.lastAction.effects.map(toPublicAppliedEffect),
             expiredEffects: response.lastAction.expiredEffects ?? [],
           },
   };
@@ -2197,10 +2206,29 @@ function toPublicActionResult(
 ): PublicBattleActionResult {
   return {
     ...result,
-    effects: result.effects.map((effect) => ({
-      ...effect,
-      modifier: findEffect(state, effect.effectId)?.modifier ?? null,
-    })),
+    effects: result.effects.map((effect) =>
+      toPublicAppliedEffect({
+        ...effect,
+        modifier: findEffect(state, effect.effectId)?.modifier ?? null,
+      }),
+    ),
+  };
+}
+
+// Engine and stored effects can contain internal metadata such as effectCode.
+// Project the existing public contract before strict response serialization,
+// including when replaying a receipt saved by an older server version.
+function toPublicAppliedEffect(
+  effect: PublicAppliedEffectView,
+): PublicAppliedEffectView {
+  return {
+    effectId: effect.effectId,
+    effectType: effect.effectType,
+    targetSide: effect.targetSide,
+    targetCreatureId: effect.targetCreatureId,
+    amount: effect.amount,
+    damageMultiplier: effect.damageMultiplier,
+    modifier: effect.modifier ?? null,
   };
 }
 

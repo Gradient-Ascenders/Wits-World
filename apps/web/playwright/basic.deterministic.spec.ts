@@ -5,7 +5,10 @@ import { buildStarterCards, buildUuid } from '../tests/fixtures/cards';
 const EVENT_TITLE = 'Sprint 1 Demo - Wits Great Hall';
 const EVENT_ID = '00000000-0000-4000-8000-000000000018';
 const API_BASE_URL = 'http://127.0.0.1:3002/api/v1';
+const WEB_ORIGIN = 'http://127.0.0.1:5175';
 const ACCESS_TOKEN = 'wits-world-sprint1-e2e-obvious-local-test-token';
+const REVIEWER_ACCESS_TOKEN =
+  'wits-world-basic-e2e-reviewer-obvious-local-test-token';
 const EXPLORE_EVENTS = [
   {
     availability: 'active',
@@ -105,7 +108,7 @@ test('completes the canonical 21-step Basic journey against the real API and tes
   });
 
   await context.grantPermissions(['geolocation'], {
-    origin: 'http://127.0.0.1:5175',
+    origin: WEB_ORIGIN,
   });
   await context.setGeolocation({ latitude: -26.19205, longitude: 28.03038 });
   await page.clock.setFixedTime(new Date('2026-08-18T10:00:00.000Z'));
@@ -130,7 +133,9 @@ test('completes the canonical 21-step Basic journey against the real API and tes
 
   await test.step('02 discover the known published demo event from the real database', async () => {
     await page.getByRole('button', { name: /^Events/u }).click();
-    await expect(page.getByText(EVENT_TITLE)).toBeVisible();
+    await expect(
+      page.getByRole('listitem').filter({ hasText: EVENT_TITLE }),
+    ).toBeVisible();
   });
 
   await test.step('03 retain map-independent text discovery on mobile', async () => {
@@ -259,17 +264,25 @@ test('completes the canonical 21-step Basic journey against the real API and tes
     await page
       .getByRole('textbox', { name: 'Deck name' })
       .fill('Basic E2E Five');
+    await page
+      .getByRole('group', { name: 'Editor view' })
+      .getByRole('button', { name: 'Add cards', exact: true })
+      .click();
     for (const card of starterCards) {
       await page
         .getByRole('button', { name: `Add a copy of ${card.name}` })
         .click();
     }
+    await page
+      .getByRole('group', { name: 'Editor view' })
+      .getByRole('button', { name: /^Your deck \(5\/5\)$/u })
+      .click();
     await expect(page.getByText('Ready to submit')).toBeVisible();
   });
 
   await test.step('14 persist only the server-validated owned deck copies', async () => {
     const response = page.waitForResponse(`${API_BASE_URL}/decks`);
-    await page.getByRole('button', { name: 'Create saved deck' }).click();
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
     expect((await response).status()).toBe(201);
     await expect(
       page.getByRole('heading', { name: 'Basic E2E Five' }),
@@ -305,7 +318,7 @@ test('completes the canonical 21-step Basic journey against the real API and tes
       actionCount += 1
     ) {
       const action = page
-        .locator('.battle-actions button:not([disabled])')
+        .locator('.battle-action-content button:not([disabled])')
         .first();
       await expect(action).toBeVisible();
       const responsePromise = page.waitForResponse(
@@ -383,22 +396,66 @@ test('completes the canonical 21-step Basic journey against the real API and tes
       );
       await browserApi(
         page,
+        `/author/questions/${question.question.questionId}/submit`,
+        'POST',
+        { expectedVersion: 0 },
+      );
+      await browserApi(
+        page,
+        `/author/questions/${question.question.questionId}/approve`,
+        'POST',
+        { expectedVersion: 1 },
+        REVIEWER_ACCESS_TOKEN,
+      );
+      await browserApi(
+        page,
         `/author/questions/${question.question.questionId}/publish`,
         'POST',
-        {},
+        { expectedVersion: 2 },
+        REVIEWER_ACCESS_TOKEN,
       );
     }
 
     await browserApi(
       page,
+      `/author/challenges/${challenge.challenge.challengeId}/submit`,
+      'POST',
+      { expectedVersion: 0 },
+    );
+    await browserApi(
+      page,
+      `/author/challenges/${challenge.challenge.challengeId}/approve`,
+      'POST',
+      { expectedVersion: 1 },
+      REVIEWER_ACCESS_TOKEN,
+    );
+    await browserApi(
+      page,
       `/author/challenges/${challenge.challenge.challengeId}/publish`,
       'POST',
-      {},
+      { expectedVersion: 2 },
+      REVIEWER_ACCESS_TOKEN,
     );
-    await browserApi(page, `/author/events/${eventId}/publish`, 'POST', {});
+    await browserApi(page, `/author/events/${eventId}/submit`, 'POST', {
+      expectedVersion: 0,
+    });
+    await browserApi(
+      page,
+      `/author/events/${eventId}/approve`,
+      'POST',
+      { expectedVersion: 1 },
+      REVIEWER_ACCESS_TOKEN,
+    );
+    await browserApi(
+      page,
+      `/author/events/${eventId}/publish`,
+      'POST',
+      { expectedVersion: 2 },
+      REVIEWER_ACCESS_TOKEN,
+    );
     await page.reload();
     await expect(
-      page.getByRole('button', { name: new RegExp(title, 'u') }),
+      page.getByRole('link', { name: new RegExp(title, 'u') }),
     ).toBeVisible();
   });
 
@@ -410,13 +467,16 @@ test('completes the canonical 21-step Basic journey against the real API and tes
       await page.setViewportSize(viewport);
       await expectNoHorizontalOverflow(page);
     }
-    const cardsTab = page.getByRole('button', {
+    const cardsTab = page.getByRole('link', {
       exact: true,
-      name: 'Card catalogue',
+      name: 'Cards',
     });
     await cardsTab.focus();
     await page.keyboard.press('Enter');
-    await expect(cardsTab).toHaveAttribute('aria-current', 'page');
+    await expect(page).toHaveURL(/\/author\/cards$/u);
+    await expect(
+      page.getByRole('heading', { name: 'Card catalogue' }),
+    ).toBeVisible();
     expect(forbiddenRequests).toEqual([]);
     expect(expectedRecoveryMisses).toHaveLength(1);
     expect(
@@ -527,9 +587,18 @@ test('keeps the authenticated shared application shell responsive and accessible
       await expect(
         visibleNavigation.getByRole('link', { name: route.activeLabel }),
       ).toHaveAttribute('aria-current', 'page');
-      await expect(
-        visibleNavigation.locator('.primary-navigation__icon'),
-      ).toHaveCount(4);
+      await expect(visibleNavigation.getByRole('link')).toHaveCount(5);
+      for (const label of [
+        'Explore',
+        'Collection',
+        'Decks',
+        'Battles',
+        'Author',
+      ]) {
+        await expect(
+          visibleNavigation.getByRole('link', { name: label }),
+        ).toBeVisible();
+      }
     }
 
     await page.goto('/explore');
@@ -582,8 +651,21 @@ test('keeps the authenticated shared application shell responsive and accessible
 
     expect(layout.brandLeft).toBeLessThanOrEqual(24);
     expect(layout.accountRight).toBeGreaterThanOrEqual(viewport.width - 24);
-    expect(layout.mainTop).toBeCloseTo(layout.headerHeight, 0);
+    expect(layout.mainTop).toBeCloseTo(
+      viewport.width < 768 ? 0 : layout.headerHeight,
+      0,
+    );
     expect(layout.mainBottom).toBeCloseTo(viewport.height, 0);
+
+    if (viewport.width < 768) {
+      await expect(
+        page.getByRole('button', { name: 'Hide header for more map space' }),
+      ).toHaveAttribute('aria-expanded', 'true');
+    } else {
+      await expect(
+        page.getByRole('button', { name: 'Hide header for more map space' }),
+      ).toBeHidden();
+    }
 
     if (viewport.width < 1200) {
       expect(layout.headerHeight).toBeLessThanOrEqual(70);
@@ -652,7 +734,7 @@ test('focuses and filters Explore events without breaking map following', async 
   });
   await mockExploreApi(page);
   await context.grantPermissions(['geolocation'], {
-    origin: 'http://127.0.0.1:5178',
+    origin: WEB_ORIGIN,
   });
   await context.setGeolocation({ latitude: -26.1922, longitude: 28.0301 });
 
@@ -720,6 +802,10 @@ test('focuses and filters Explore events without breaking map following', async 
       await expect(map).toHaveAttribute('data-map-following', 'true');
       await map.dispatchEvent('pointerdown');
       await expect(map).toHaveAttribute('data-map-following', 'false');
+      await page
+        .getByRole('button', { name: 'Collapse event details' })
+        .click();
+      await page.getByRole('button', { name: 'Collapse events' }).click();
 
       await page
         .getByRole('button', {
@@ -772,7 +858,9 @@ test('focuses and filters Explore events without breaking map following', async 
       await expect(
         page.locator('[data-deterministic-markers] .event-marker'),
       ).toHaveCount(0);
-      await page.getByRole('button', { name: 'Clear filters' }).click();
+      const clearFilters = page.getByRole('button', { name: 'Clear filters' });
+      await clearFilters.focus();
+      await page.keyboard.press('Enter');
       await expect(page.locator('.event-list__items > li')).toHaveCount(3);
 
       await expectNoHorizontalOverflow(page);
@@ -826,14 +914,14 @@ test('supports draggable mobile Explore sheet discovery and detail states', asyn
   });
   await mockExploreApi(page, EXPLORE_SHEET_EVENTS);
   await context.grantPermissions(['geolocation'], {
-    origin: 'http://127.0.0.1:5178',
+    origin: WEB_ORIGIN,
   });
   await context.setGeolocation({ latitude: -26.1922, longitude: 28.0301 });
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto('/explore');
 
   const map = page.locator('[data-map-provider^="deterministic-"]');
-  const sheet = page.getByRole('complementary', { name: 'Campus events' });
+  const sheet = page.getByRole('complementary', { name: 'Campus discovery' });
   await expect(map).toHaveAttribute('data-map-following', 'true');
   await expect(sheet).toHaveAttribute('data-sheet-snap', 'peek');
   await expect(sheet).toHaveAttribute('data-sheet-view', 'peek');
@@ -937,6 +1025,7 @@ test('supports draggable mobile Explore sheet discovery and detail states', asyn
         controls.getBoundingClientRect(),
         location.getBoundingClientRect(),
       ),
+      controlsDisplay: getComputedStyle(controls).display,
       controlsOpacity: Number.parseFloat(getComputedStyle(controls).opacity),
       controlsPointerEvents: getComputedStyle(controls).pointerEvents,
       locationClearsSheet:
@@ -955,23 +1044,14 @@ test('supports draggable mobile Explore sheet discovery and detail states', asyn
   });
   expect(expandedLayout.attributionOverlapsLocation).toBe(false);
   expect(expandedLayout.attributionOpacity).toBe(1);
-  expect(expandedLayout.controlsOverlapLocation).toBe(true);
+  expect(expandedLayout.controlsOverlapLocation).toBe(false);
+  expect(expandedLayout.controlsDisplay).toBe('none');
   expect(expandedLayout.controlsOpacity).toBe(0);
   expect(expandedLayout.controlsPointerEvents).toBe('none');
   expect(expandedLayout.locationClearsSheet).toBe(true);
   expect(expandedLayout.locationOpacity).toBe(1);
   expect(expandedLayout.locationRight).toBe(8);
   expect(expandedLayout.navigationClearance).toBeLessThanOrEqual(1);
-
-  await page.getByRole('button', { name: 'Zoom in' }).focus();
-  await expect
-    .poll(() =>
-      page.locator('.mapboxgl-ctrl-top-right').evaluate((element) => ({
-        opacity: Number.parseFloat(getComputedStyle(element).opacity),
-        pointerEvents: getComputedStyle(element).pointerEvents,
-      })),
-    )
-    .toEqual({ opacity: 1, pointerEvents: 'auto' });
 
   await page
     .getByRole('button', { name: 'Following reported location' })
@@ -1013,11 +1093,16 @@ test('supports draggable mobile Explore sheet discovery and detail states', asyn
   await expect(sheet).toHaveAttribute('data-sheet-snap', 'peek');
 
   await page.getByRole('button', { name: /^Events/u }).click();
-  await page
+  await eventScroll.evaluate((element) => element.scrollTo({ top: 0 }));
+  await expect
+    .poll(() => eventScroll.evaluate((element) => element.scrollTop))
+    .toBe(0);
+  const greatHallAction = page
     .locator('.event-list__items > li')
     .filter({ hasText: EXPLORE_EVENTS[0].title })
-    .getByRole('button', { name: /View on map/u })
-    .click();
+    .getByRole('button', { name: /View on map/u });
+  await greatHallAction.focus();
+  await page.keyboard.press('Enter');
   await expect(sheet).toHaveAttribute('data-sheet-view', 'selected');
   await expect(sheet).toHaveAttribute('data-sheet-snap', 'medium');
   await expect(map).toHaveAttribute(
@@ -1084,7 +1169,7 @@ test('keeps the Explore sheet responsive and preserves the desktop sidebar', asy
 }) => {
   await mockExploreApi(page, EXPLORE_SHEET_EVENTS);
   await context.grantPermissions(['geolocation'], {
-    origin: 'http://127.0.0.1:5178',
+    origin: WEB_ORIGIN,
   });
   await context.setGeolocation({ latitude: -26.1922, longitude: 28.0301 });
 
@@ -1095,12 +1180,8 @@ test('keeps the Explore sheet responsive and preserves the desktop sidebar', asy
   ]) {
     await page.setViewportSize(viewport);
     await page.goto('/explore');
-    const sheet = page.getByRole('complementary', { name: 'Campus events' });
+    const sheet = page.getByRole('complementary', { name: 'Campus discovery' });
     await page.getByRole('button', { name: /^Events/u }).click();
-    await expect(sheet).toHaveAttribute('data-sheet-snap', 'medium');
-    await page
-      .getByRole('button', { name: 'Expand event sheet fully' })
-      .click();
     await expect(sheet).toHaveAttribute('data-sheet-snap', 'expanded');
     await expect(page.locator('.event-panel__scroll')).toBeVisible();
     await expect(page.locator('.primary-navigation--mobile')).toBeVisible();
@@ -1127,60 +1208,34 @@ test('keeps the Explore sheet responsive and preserves the desktop sidebar', asy
   await page.setViewportSize({ height: 800, width: 1280 });
   await page.goto('/explore');
   const desktopSheet = page.getByRole('complementary', {
-    name: 'Campus events',
+    name: 'Campus discovery',
   });
   await expect(
     page.getByRole('button', { name: 'Expand event sheet' }),
   ).toBeHidden();
-  const desktopPeekLayout = await desktopSheet.evaluate((element) => {
-    const panel = element.getBoundingClientRect();
-    const copy = element.querySelector<HTMLElement>('.event-panel__peek-copy');
-    const title = copy?.querySelector<HTMLElement>('strong');
-    const summary = copy?.querySelector<HTMLElement>('span');
-    const chevron = element.querySelector<SVGElement>(
-      '.event-panel__peek-chevron',
-    );
-    if (!copy || !title || !summary || !chevron) {
-      throw new Error('Expected the desktop event summary.');
-    }
-    return {
-      copyDisplay: getComputedStyle(copy).display,
-      height: panel.height,
-      summaryFontSize: getComputedStyle(summary).fontSize,
-      summaryFontWeight: getComputedStyle(summary).fontWeight,
-      titleFontFamily: getComputedStyle(title).fontFamily,
-      titleFontSize: getComputedStyle(title).fontSize,
-      titleFontWeight: getComputedStyle(title).fontWeight,
-      width: panel.width,
-    };
-  });
-  expect(desktopPeekLayout).toEqual({
-    copyDisplay: 'flex',
-    height: 56,
-    summaryFontSize: '14px',
-    summaryFontWeight: '500',
-    titleFontFamily:
-      'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    titleFontSize: '18px',
-    titleFontWeight: '700',
-    width: 336,
-  });
+  await expect(
+    desktopSheet.getByRole('heading', { name: 'Campus events' }),
+  ).toBeVisible();
   await page.getByRole('button', { name: /^Events/u }).click();
   const desktopLayout = await desktopSheet.evaluate((element) => {
     const box = element.getBoundingClientRect();
     const exploration = element.parentElement?.getBoundingClientRect();
-    if (!exploration) throw new Error('Expected the Explore surface.');
+    const map =
+      element.parentElement?.querySelector<HTMLElement>('.campus-map');
+    if (!exploration || !map) throw new Error('Expected the Explore surface.');
     return {
       left: box.left,
+      mapClearsSidebar: map.getBoundingClientRect().left >= box.right,
       top: box.top - exploration.top,
       transform: getComputedStyle(element).transform,
       width: box.width,
     };
   });
-  expect(desktopLayout.left).toBe(16);
-  expect(desktopLayout.top).toBe(16);
+  expect(desktopLayout.left).toBe(0);
+  expect(desktopLayout.mapClearsSidebar).toBe(true);
+  expect(desktopLayout.top).toBe(0);
   expect(desktopLayout.transform).toBe('none');
-  expect(desktopLayout.width).toBe(336);
+  expect(desktopLayout.width).toBe(384);
   await expect(page.locator('.primary-navigation--mobile')).toBeHidden();
   await expectNoHorizontalOverflow(page);
 });
@@ -1206,8 +1261,8 @@ test('keeps no-event discovery usable when location and map are unavailable', as
     page.getByText('No published events are available.'),
   ).toBeVisible();
   await expect(
-    page.getByRole('complementary', { name: 'Campus events' }),
-  ).toHaveAttribute('data-sheet-snap', 'medium');
+    page.getByRole('complementary', { name: 'Campus discovery' }),
+  ).toHaveAttribute('data-sheet-snap', 'expanded');
   await expectNoHorizontalOverflow(page);
 });
 
@@ -1258,6 +1313,7 @@ async function browserApi<T = unknown>(
   path: string,
   method: 'GET' | 'POST' | 'PUT',
   body?: object,
+  token = ACCESS_TOKEN,
 ): Promise<T> {
   const result = await page.evaluate(
     async ({ body, method, path, token }) => {
@@ -1276,7 +1332,7 @@ async function browserApi<T = unknown>(
       const payload = (await response.json()) as unknown;
       return { payload, status: response.status };
     },
-    { body, method, path: `${API_BASE_URL}${path}`, token: ACCESS_TOKEN },
+    { body, method, path: `${API_BASE_URL}${path}`, token },
   );
 
   expect(result.status, JSON.stringify(result.payload)).toBeGreaterThanOrEqual(
@@ -1317,8 +1373,31 @@ async function dragExploreSheet(
   const steps = options.steps ?? 8;
   const startX = box.x + box.width / 2;
   const startY = box.y + box.height / 2;
+  const pointerTarget = await handle.evaluate(
+    (element, point) => {
+      const target = document.elementFromPoint(point.x, point.y);
+      return {
+        exploration: element
+          .closest('.exploration-view')
+          ?.getBoundingClientRect()
+          .toJSON(),
+        handle: element.getBoundingClientRect().toJSON(),
+        matches: target === element || element.contains(target),
+        target:
+          target instanceof HTMLElement
+            ? `${target.tagName}.${target.className}`
+            : 'unknown',
+      };
+    },
+    { x: startX, y: startY },
+  );
+  expect(pointerTarget.matches, JSON.stringify(pointerTarget)).toBe(true);
   await page.mouse.move(startX, startY);
   await page.mouse.down();
+  await expect(page.locator('.exploration-view')).toHaveAttribute(
+    'data-sheet-dragging',
+    'true',
+  );
   for (let step = 1; step <= steps; step += 1) {
     await page.mouse.move(startX, startY + (movementY * step) / steps);
     if (options.delayMs) {
@@ -1366,6 +1445,17 @@ async function mockExploreApi(
       await json(route, {
         events,
         requestId: 'explore-browser-events',
+      });
+      return;
+    }
+    if (pathname.endsWith('/offline-challenge-packs')) {
+      await json(route, { packs: [] });
+      return;
+    }
+    if (pathname.endsWith('/cards/collection')) {
+      await json(route, {
+        cards: buildStarterCards('wit'),
+        requestId: 'explore-browser-collection',
       });
       return;
     }

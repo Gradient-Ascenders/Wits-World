@@ -21,6 +21,8 @@ test('groups, filters, and reveals card details across collection layouts', asyn
   const consoleErrors: string[] = [];
   const runtimeErrors: string[] = [];
   let collectionState: 'cards' | 'empty' | 'error' = 'cards';
+  let releaseCollection: (() => void) | undefined;
+  let collectionDelay: Promise<void> | undefined;
   // Use an existing raster asset as a layout fixture, not production card art.
   const cards = buildLargeCollection().map((card, index) => ({
     ...card,
@@ -31,7 +33,12 @@ test('groups, filters, and reveals card details across collection layouts', asyn
   }));
 
   page.on('console', (message) => {
-    if (message.type() === 'error') consoleErrors.push(message.text());
+    // The fixture explicitly returns 404 for cards without an evolution.
+    const expectedUnavailable =
+      message.text().includes('404') &&
+      message.location().url.includes('/cards/evolutions/');
+    if (message.type() === 'error' && !expectedUnavailable)
+      consoleErrors.push(message.text());
   });
   page.on('pageerror', (error) => runtimeErrors.push(error.message));
 
@@ -46,7 +53,8 @@ test('groups, filters, and reveals card details across collection layouts', asyn
       role: 'player',
     }),
   );
-  await page.route(`${API_BASE_URL}/cards/collection`, (route) => {
+  await page.route(`${API_BASE_URL}/cards/collection`, async (route) => {
+    await collectionDelay;
     if (collectionState === 'error') {
       return json(route, { invalid: true });
     }
@@ -60,6 +68,20 @@ test('groups, filters, and reveals card details across collection layouts', asyn
       options: buildStarterOptions(),
       requestId: 'collection-browser-starters',
     }),
+  );
+  await page.route(`${API_BASE_URL}/cards/evolutions/*/preview`, (route) =>
+    json(
+      route,
+      {
+        code: 'EVOLUTION_NOT_AVAILABLE',
+        detail: 'The selected card does not have an available evolution.',
+        requestId: 'collection-browser-evolution-unavailable',
+        status: 404,
+        title: 'Evolution unavailable',
+        type: 'about:blank',
+      },
+      404,
+    ),
   );
 
   await page.setViewportSize({ height: 844, width: 390 });
@@ -76,7 +98,8 @@ test('groups, filters, and reveals card details across collection layouts', asyn
     page.getByRole('img', { name: 'Campus Guardian 2 artwork unavailable' }),
   ).toBeVisible();
   await expectNoHorizontalOverflow(page);
-  expect(await columnsOnFirstRow(gallery)).toBe(3);
+  expect(await columnsOnFirstRow(gallery)).toBe(2);
+  await expect(page.getByRole('combobox', { name: 'Category' })).toBeHidden();
   await expectSquareArtwork(gallery);
   const artworkImage = gallery.locator('img').first();
   await expect(artworkImage).toHaveCSS('object-fit', 'contain');
@@ -99,20 +122,59 @@ test('groups, filters, and reveals card details across collection layouts', asyn
     name: 'Campus Guardian 1 card details',
   });
   await expect(dialog).toBeVisible();
+  await dialog.evaluate((element) =>
+    Promise.all(element.getAnimations().map((animation) => animation.finished)),
+  );
   await expectSquareArtwork(dialog);
   await page.screenshot({
     path: testInfo.outputPath('square-artwork-detail.png'),
   });
   await expect(
+    dialog.getByRole('button', { name: 'Close card details' }),
+  ).toBeFocused();
+  await expect(dialog.getByText('Copy history')).toBeVisible();
+  await dialog.getByText('Copy history').click();
+  await expect(
     dialog.getByRole('list', { name: /owned copies/u }).locator('li'),
   ).toHaveCount(4);
   await expect(
     dialog.getByRole('button', { name: 'Close card details' }),
-  ).toBeFocused();
+  ).toBeVisible();
   const mobilePanel = await dialog.boundingBox();
   expect(mobilePanel).not.toBeNull();
   expect(Math.round(mobilePanel!.y + mobilePanel!.height)).toBe(844);
   await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(duplicateTrigger).toBeFocused();
+
+  await duplicateTrigger.click();
+  await page.getByRole('button', { name: 'Lower card sheet' }).click();
+  await expect(dialog).toHaveAttribute('data-card-snap', 'medium');
+  await page.getByRole('button', { name: 'Expand card sheet' }).click();
+  await dialog.evaluate((element) =>
+    Promise.all(element.getAnimations().map((animation) => animation.finished)),
+  );
+  await dialog.getByText('Knowledge Surge').scrollIntoViewIfNeeded();
+  await expect(dialog.locator('.card-detail-modal__scroll')).toHaveCSS(
+    'scrollbar-width',
+    'none',
+  );
+  await page.screenshot({ path: testInfo.outputPath('moves-mobile.png') });
+  const handle = await page
+    .getByRole('button', { name: 'Lower card sheet' })
+    .boundingBox();
+  expect(handle).not.toBeNull();
+  await page.mouse.move(
+    handle!.x + handle!.width / 2,
+    handle!.y + handle!.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    handle!.x + handle!.width / 2,
+    handle!.y + handle!.height / 2 + 550,
+    { steps: 15 },
+  );
+  await page.mouse.up();
   await expect(dialog).toBeHidden();
   await expect(duplicateTrigger).toBeFocused();
 
@@ -122,24 +184,41 @@ test('groups, filters, and reveals card details across collection layouts', asyn
     gallery.getByText('The Exceptionally Long-Named Guardian of Senate House'),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Clear' }).click();
+  await page.getByRole('button', { name: 'Filters & sort' }).click();
   await page.getByRole('combobox', { name: 'Category' }).selectOption('power');
   await expect(gallery.locator(':scope > li')).toHaveCount(8);
-  await page.getByRole('button', { name: 'Clear' }).click();
+  await page.getByRole('combobox', { name: 'Rarity' }).selectOption('epic');
+  await page.getByRole('button', { name: 'Filters & sort · Active' }).click();
+  await expect(page.getByRole('combobox', { name: 'Rarity' })).toBeHidden();
+  await expect(page.getByText(/Power cards · Epic/u)).toBeVisible();
+  await page
+    .getByRole('searchbox', { name: 'Search' })
+    .fill('no such guardian');
+  await expect(
+    page.getByRole('heading', { name: 'No cards match these filters' }),
+  ).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('no-results-mobile.png') });
+  await page
+    .getByRole('button', { name: 'Clear filters', exact: true })
+    .click();
 
   await page.setViewportSize({ height: 1024, width: 768 });
   await expectNoHorizontalOverflow(page);
   expect(await columnsOnFirstRow(gallery)).toBeGreaterThanOrEqual(4);
   await expectSquareArtwork(gallery);
   await duplicateTrigger.click();
+  await dialog.evaluate((element) =>
+    Promise.all(element.getAnimations().map((animation) => animation.finished)),
+  );
   const tabletPanel = await dialog.boundingBox();
   expect(tabletPanel).not.toBeNull();
   expect(tabletPanel!.width).toBeLessThan(500);
   expect(tabletPanel!.x).toBeGreaterThan(200);
   await dialog.getByRole('button', { name: 'Close card details' }).click();
 
-  await page.setViewportSize({ height: 800, width: 1280 });
+  await page.setViewportSize({ height: 900, width: 1440 });
   await expectNoHorizontalOverflow(page);
-  expect(await columnsOnFirstRow(gallery)).toBeGreaterThanOrEqual(6);
+  expect(await columnsOnFirstRow(gallery)).toBeGreaterThanOrEqual(5);
   await expectSquareArtwork(gallery);
   await page.screenshot({
     path: testInfo.outputPath('square-artwork-desktop.png'),
@@ -150,11 +229,22 @@ test('groups, filters, and reveals card details across collection layouts', asyn
     /Campus Guardian/u,
   );
 
+  collectionDelay = new Promise<void>((resolve) => {
+    releaseCollection = resolve;
+  });
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(
+    page.getByRole('heading', { name: 'Loading your cards' }),
+  ).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('loading-mobile.png') });
   collectionState = 'error';
-  await page.reload();
+  releaseCollection?.();
+  collectionDelay = undefined;
   await expect(
     page.getByRole('heading', { name: 'Your cards could not load' }),
   ).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('error-mobile.png') });
 
   collectionState = 'empty';
   await page.reload();
@@ -163,6 +253,10 @@ test('groups, filters, and reveals card details across collection layouts', asyn
   ).toBeVisible();
   await expect(page.getByRole('radio')).toHaveCount(3);
   await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    path: testInfo.outputPath('empty-mobile.png'),
+    fullPage: true,
+  });
 
   expect(consoleErrors).toEqual([]);
   expect(runtimeErrors).toEqual([]);

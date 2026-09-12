@@ -424,11 +424,10 @@ describe('player authentication', () => {
         );
       }
     }
-    expect(
-      within(screen.getByRole('main')).getByRole('link', {
-        name: 'Explore campus',
-      }),
-    ).toHaveAttribute('href', '/explore');
+    expect(screen.getAllByRole('link', { name: 'Explore' })[0]).toHaveAttribute(
+      'href',
+      '/explore',
+    );
   });
 
   it('closes the account disclosure with Escape and restores trigger focus', async () => {
@@ -447,11 +446,18 @@ describe('player authentication', () => {
     expect(screen.getByLabelText('Account options')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeVisible();
 
+    let escapeWasHandled = false;
+    const observeEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') escapeWasHandled = event.defaultPrevented;
+    };
+    document.addEventListener('keydown', observeEscape);
     await user.keyboard('{Escape}');
+    document.removeEventListener('keydown', observeEscape);
 
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByLabelText('Account options')).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
+    expect(escapeWasHandled).toBe(true);
   });
 
   it('opens profile and account destinations from the disclosure without adding them to primary navigation', async () => {
@@ -529,7 +535,7 @@ describe('player authentication', () => {
     },
   );
 
-  it('keeps Player Name onboarding on the protected Explore path from Home', async () => {
+  it('keeps Explore navigation available from Home for Player Name onboarding', async () => {
     mockCurrentPlayer(playerAId, null);
 
     renderRoute(
@@ -541,9 +547,7 @@ describe('player authentication', () => {
     );
 
     expect(
-      await within(screen.getByRole('main')).findByRole('link', {
-        name: 'Choose Player Name',
-      }),
+      (await screen.findAllByRole('link', { name: 'Explore' }))[0],
     ).toHaveAttribute('href', '/explore');
   });
 
@@ -1128,7 +1132,9 @@ describe('player authentication', () => {
     );
 
     expect(
-      await screen.findByText(/keep the API terminal running/i),
+      await screen.findByText(
+        'We could not load your player account. Check your connection and try again.',
+      ),
     ).toBeVisible();
     expect(fetchMock).toHaveBeenCalledOnce();
 

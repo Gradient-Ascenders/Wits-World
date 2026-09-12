@@ -475,6 +475,7 @@ describe('challenge answer submission API', () => {
     expect(response.body).not.toContain('correctItems');
     expect(response.body).not.toContain('explanation');
     expect(response.body).not.toContain('correctPosition');
+    expect(response.body).not.toContain('sourceUrls');
   });
 
   it.each([

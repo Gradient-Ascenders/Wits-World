@@ -78,6 +78,12 @@ jobs:
         env:
           NPM_CONFIG_CACHE: /opt/wits-world/npm-cache
 
+      - name: Test shared account policy package
+        run: time npm test --workspace @wits-world/account-policy
+
+      - name: Test shared game rules package
+        run: time npm test --workspace @wits-world/game-rules
+
       - name: Test web application with coverage
         run: time npm run test:coverage --workspace @wits-world/web
 

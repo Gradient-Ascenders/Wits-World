@@ -1,3 +1,8 @@
+import { authorErrorDetail } from './author-error-copy';
+import { StateIcon } from '../StatusMessage';
+import { LoadingState } from '../LoadingState';
+import { ArrowLeftIcon, CaretRightIcon } from '@phosphor-icons/react';
+import { AuthorSaveBar } from './AuthorSaveBar';
 import {
   useCallback,
   useEffect,
@@ -127,7 +132,7 @@ export function EventWorkspace({
       if (controller.signal.aborted) return;
       setLoadError(
         error instanceof AuthorApiError
-          ? error.detail
+          ? authorErrorDetail(error)
           : 'Events could not be loaded.',
       );
       setState('error');
@@ -215,6 +220,9 @@ export function EventWorkspace({
 
   useEffect(() => {
     setMessage('');
+  }, [route.mode, selectedId]);
+
+  useEffect(() => {
     if (
       selectedId &&
       route.mode !== 'edit' &&
@@ -287,7 +295,7 @@ export function EventWorkspace({
       </header>
 
       {state !== 'ready' ? (
-        <p className="sr-only" id="event-create-unavailable">
+        <p className="author-create-guidance" id="event-create-unavailable">
           Load the event catalogue before creating an event.
         </p>
       ) : null}
@@ -295,13 +303,15 @@ export function EventWorkspace({
       <AuthorFeedback message={message} refObject={feedbackRef} />
 
       {state === 'loading' ? (
-        <p className="author-state" role="status">
-          Loading authored events…
-        </p>
+        <LoadingState label="Loading authored events…" />
       ) : null}
 
       {state === 'error' ? (
-        <div className="author-state author-state--error" role="alert">
+        <div
+          className="author-state author-state--error state-message state-message--error"
+          role="alert"
+        >
+          <StateIcon tone="error" />
           <strong>Events are unavailable.</strong>
           <p>{loadError}</p>
           <button
@@ -339,13 +349,15 @@ export function EventWorkspace({
               {events.length === 1 ? 'event' : 'events'}
             </p>
             {events.length === 0 ? (
-              <div className="author-empty author-empty--compact">
+              <div className="author-empty author-empty--compact state-message state-message--empty">
+                <StateIcon tone="empty" />
                 <strong>No authored events yet</strong>
                 <p>Create a draft to begin the publication workflow.</p>
               </div>
             ) : null}
             {events.length > 0 && visibleEvents.length === 0 ? (
-              <div className="author-empty author-empty--compact">
+              <div className="author-empty author-empty--compact state-message state-message--empty">
+                <StateIcon tone="empty" />
                 <strong>No events match</strong>
                 <p>Adjust the event filters.</p>
               </div>
@@ -367,12 +379,11 @@ export function EventWorkspace({
                     <span className="author-record-summary__meta">
                       {eventScheduleLabel(event)}
                     </span>
-                    <span
+                    <CaretRightIcon
+                      size={16}
                       aria-hidden="true"
                       className="author-record-summary__chevron"
-                    >
-                      ›
-                    </span>
+                    />
                   </Link>
                 </li>
               ))}
@@ -473,7 +484,10 @@ function EventCatalogueControls({
   sort: 'name' | 'schedule' | 'updated';
 }) {
   return (
-    <div aria-label="Filter and sort events" className="author-filters">
+    <div
+      aria-label="Filter and sort events"
+      className="author-filters author-filters--events"
+    >
       <label className="author-filter author-filter--search">
         <span>Search</span>
         <input
@@ -543,7 +557,11 @@ function EventCatalogueWelcome({ count }: { count: number }) {
 
 function MissingEvent() {
   return (
-    <section className="author-state author-state--error" role="alert">
+    <section
+      className="author-state author-state--error state-message state-message--error"
+      role="alert"
+    >
+      <StateIcon tone="error" />
       <strong>This event is not in the loaded catalogue.</strong>
       <p>It may have been removed or the address may be incorrect.</p>
       <Link className="button button--quiet" href={authorPaths.events}>
@@ -563,7 +581,7 @@ function EventContextHeader({
   return (
     <>
       <Link className="author-back-link" href={authorPaths.events}>
-        <span aria-hidden="true">←</span> Events
+        <ArrowLeftIcon size={16} aria-hidden="true" /> Events
       </Link>
       <header className="author-detail__heading">
         <div>
@@ -709,6 +727,9 @@ function EventOverview({
               <dd>Configured · {event.radiusMetres} m radius</dd>
             </div>
           </dl>
+          {event.sourceUrls.length > 0 ? (
+            <SourceEvidenceList sourceUrls={event.sourceUrls} />
+          ) : null}
         </section>
 
         <section className="author-summary-block author-summary-block--next">
@@ -936,7 +957,8 @@ function EventForm({
         className="author-back-link"
         href={event ? authorPaths.event(event.eventId) : authorPaths.events}
       >
-        <span aria-hidden="true">←</span> {event ? 'Event overview' : 'Events'}
+        <ArrowLeftIcon size={16} aria-hidden="true" />{' '}
+        {event ? 'Event overview' : 'Events'}
       </Link>
       <header className="author-panel__heading">
         <div>
@@ -1153,7 +1175,12 @@ function EventForm({
           </div>
         </fieldset>
 
-        <div className="author-actions">
+        <AuthorSaveBar
+          busy={busy}
+          dirty={dirty}
+          failed={Boolean(apiError) || Object.values(errors).some(Boolean)}
+          isNew={!event}
+        >
           <button className="button" disabled={busy} type="submit">
             {busy ? 'Saving…' : event ? 'Save event' : 'Create draft event'}
           </button>
@@ -1165,12 +1192,7 @@ function EventForm({
           >
             Cancel
           </button>
-        </div>
-        {dirty ? (
-          <p className="author-dirty-state" role="status">
-            Unsaved changes
-          </p>
-        ) : null}
+        </AuthorSaveBar>
       </form>
     </section>
   );
@@ -1863,12 +1885,14 @@ function ChallengeWorkspace({
           </div>
 
           {state === 'loading' ? (
-            <p className="author-state" role="status">
-              Loading event challenges…
-            </p>
+            <LoadingState label="Loading event challenges…" />
           ) : null}
           {state === 'error' ? (
-            <div className="author-state author-state--error" role="alert">
+            <div
+              className="author-state author-state--error state-message state-message--error"
+              role="alert"
+            >
+              <StateIcon tone="error" />
               <strong>Challenges are unavailable.</strong>
               <button
                 className="button button--quiet"
@@ -2046,9 +2070,7 @@ function ChallengeWorkspace({
             </div>
           ) : null}
           {state === 'loading' || questionsState === 'loading' ? (
-            <p className="author-state" role="status">
-              Loading challenge questions…
-            </p>
+            <LoadingState label="Loading challenge questions…" />
           ) : null}
           {state === 'ready' && !selected ? (
             <div className="author-state">
@@ -2063,9 +2085,13 @@ function ChallengeWorkspace({
             </div>
           ) : null}
           {questionsState === 'error' ? (
-            <div className="author-state author-state--error" role="alert">
+            <div
+              className="author-state author-state--error state-message state-message--error"
+              role="alert"
+            >
+              <StateIcon tone="error" />
               <strong>Questions are unavailable.</strong>
-              <p>{questionsError?.detail}</p>
+              <p>{questionsError ? authorErrorDetail(questionsError) : null}</p>
               <button
                 className="button button--quiet"
                 onClick={() => void loadQuestions()}
@@ -2268,7 +2294,8 @@ function QuestionWorkspace({
           )}
         </div>
         {questions.length === 0 ? (
-          <div className="author-empty author-empty--compact">
+          <div className="author-empty author-empty--compact state-message state-message--empty">
+            <StateIcon tone="empty" />
             <strong>No questions yet</strong>
             <p>
               A published challenge needs at least five published questions.
@@ -2296,12 +2323,11 @@ function QuestionWorkspace({
                     Difficulty {question.difficulty} ·{' '}
                     <StatusBadge status={question.status} />
                   </span>
-                  <span
+                  <CaretRightIcon
+                    size={16}
                     aria-hidden="true"
                     className="question-summary__chevron"
-                  >
-                    ›
-                  </span>
+                  />
                 </Link>
               </li>
             ))}
@@ -2386,7 +2412,11 @@ function QuestionWorkspace({
             />
           )
         ) : (
-          <section className="author-state author-state--error" role="alert">
+          <section
+            className="author-state author-state--error state-message state-message--error"
+            role="alert"
+          >
+            <StateIcon tone="error" />
             <strong>This question is not in the loaded challenge.</strong>
             <Link
               className="button button--quiet"
@@ -2486,7 +2516,7 @@ function QuestionDetail({
         className="author-back-link"
         href={authorPaths.questions(event.eventId, challenge.challengeId)}
       >
-        <span aria-hidden="true">←</span> Questions
+        <ArrowLeftIcon size={16} aria-hidden="true" /> Questions
       </Link>
       <header className="author-detail__heading">
         <div>
@@ -2548,6 +2578,9 @@ function QuestionDetail({
           <h6>Author explanation</h6>
           <p>{question.explanation}</p>
         </section>
+      ) : null}
+      {question.sourceUrls.length > 0 ? (
+        <SourceEvidenceList sourceUrls={question.sourceUrls} />
       ) : null}
       <AuthorFeedback error={apiError} refObject={feedbackRef} />
       {challenge.status !== 'retired' ? (
@@ -2740,7 +2773,7 @@ function QuestionForm({
             : authorPaths.questions(event.eventId, challenge.challengeId)
         }
       >
-        <span aria-hidden="true">←</span>{' '}
+        <ArrowLeftIcon size={16} aria-hidden="true" />{' '}
         {question ? 'Question detail' : 'Questions'}
       </Link>
       <div className="author-panel__heading">
@@ -2924,7 +2957,12 @@ function QuestionForm({
             : 'Required for publication and excluded from player responses.'}
         </span>
       </FormField>
-      <div className="author-actions">
+      <AuthorSaveBar
+        busy={busy}
+        dirty={dirty}
+        failed={Boolean(apiError) || Object.values(errors).some(Boolean)}
+        isNew={!question}
+      >
         <button className="button" disabled={busy} type="submit">
           {busy
             ? 'Saving…'
@@ -2950,12 +2988,7 @@ function QuestionForm({
         >
           Cancel
         </button>
-      </div>
-      {dirty ? (
-        <p className="author-dirty-state" role="status">
-          Unsaved changes
-        </p>
-      ) : null}
+      </AuthorSaveBar>
     </form>
   );
 }
@@ -2967,7 +3000,7 @@ function StatusBadge({
 }) {
   return (
     <span className={`status-badge status-badge--author-${status}`}>
-      {status}
+      {status.replaceAll('_', ' ')}
     </span>
   );
 }
@@ -3104,6 +3137,23 @@ function validateEventDraft(draft: EventDraft): {
       title: draft.title.trim(),
     },
   };
+}
+
+function SourceEvidenceList({ sourceUrls }: { sourceUrls: readonly string[] }) {
+  return (
+    <section className="author-summary-block author-summary-block--plain">
+      <h6>Source evidence</h6>
+      <ul>
+        {sourceUrls.map((sourceUrl, index) => (
+          <li key={sourceUrl}>
+            <a href={sourceUrl} rel="noreferrer" target="_blank">
+              Source {index + 1}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
 
 function questionDraft(

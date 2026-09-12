@@ -5,9 +5,14 @@ import { App } from './App';
 import { PlayerAuthProvider } from './auth/AuthProvider';
 import { ConfigurationErrorScreen } from './components/ConfigurationErrorScreen';
 import { ConfigurationError, loadWebConfig } from './config/environment';
-import { locationClaimProvider, mapFactory } from './runtime-boundaries';
+import {
+  locationClaimProvider,
+  locationObservationProvider,
+  mapFactory,
+} from './runtime-boundaries';
 import './styles/tokens.css';
 import './styles/global.css';
+import './styles/states.css';
 
 const rootElement = document.getElementById('root');
 
@@ -25,6 +30,7 @@ try {
         <App
           apiBaseUrl={config.apiBaseUrl}
           locationClaimProvider={locationClaimProvider}
+          locationObservationProvider={locationObservationProvider}
           mapFactory={mapFactory}
           mapboxAccessToken={config.mapboxAccessToken}
         />

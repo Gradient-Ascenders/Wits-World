@@ -1,4 +1,5 @@
 import { useAuth0 } from '@auth0/auth0-react';
+import { ArrowSquareOut, Key, Trash } from '@phosphor-icons/react';
 import { useEffect, useRef, useState } from 'react';
 
 import {
@@ -233,29 +234,24 @@ export default function AccountPage({ apiBaseUrl }: { apiBaseUrl: string }) {
             aria-labelledby="account-profile-title"
             className="account-profile-card"
           >
-            <div className="account-profile-card__identity">
-              <span aria-hidden="true" className="account-profile-card__avatar">
-                {playerInitials(player.playerName)}
-              </span>
-              <div>
-                <h2 id="account-profile-title">
-                  {player.playerName ?? 'Not chosen yet'}
-                </h2>
-                <p>Wits World player</p>
-              </div>
+            <div className="account-section-heading">
+              <h2 id="account-profile-title">Account details</h2>
+              <p>Your account information is read-only here.</p>
             </div>
-
-            <ul
-              aria-label="Account summary"
-              className="account-profile-card__metadata"
-            >
-              <li className="account-profile-card__status">
-                <span aria-hidden="true" />
-                Active
-              </li>
-              <li>{providerName(provider)}</li>
-              <li>{player.role === 'author' ? 'Author' : 'Player'}</li>
-            </ul>
+            <dl className="account-details">
+              <div className="account-details__name">
+                <dt>Player name</dt>
+                <dd>{player.playerName ?? 'Not chosen yet'}</dd>
+              </div>
+              <div>
+                <dt>Sign-in provider</dt>
+                <dd>{providerName(provider)}</dd>
+              </div>
+              <div>
+                <dt>Account role</dt>
+                <dd>{player.role === 'author' ? 'Author' : 'Player'}</dd>
+              </div>
+            </dl>
           </section>
 
           <section
@@ -281,7 +277,7 @@ export default function AccountPage({ apiBaseUrl }: { apiBaseUrl: string }) {
             aria-labelledby="account-deletion-title"
             className="account-page__section"
           >
-            <h2 id="account-deletion-title">Danger zone</h2>
+            <h2 id="account-deletion-title">Account deletion</h2>
 
             <div className="account-action-card account-action-card--danger">
               <AccountActionIcon name="danger" />
@@ -322,7 +318,7 @@ export default function AccountPage({ apiBaseUrl }: { apiBaseUrl: string }) {
                 />
               ) : (
                 <button
-                  className="button button--danger"
+                  className="button button--danger account-delete-trigger"
                   disabled={deletion.status === 'reauthenticating'}
                   onClick={() => setDeletion({ status: 'prepare' })}
                   ref={deletionTrigger}
@@ -376,27 +372,7 @@ function AccountActionIcon({ name }: { name: 'danger' | 'recovery' }) {
       aria-hidden="true"
       className={`account-action-card__icon account-action-card__icon--${name}`}
     >
-      <svg
-        fill="none"
-        focusable="false"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.7"
-        viewBox="0 0 24 24"
-      >
-        {name === 'recovery' ? (
-          <>
-            <circle cx="8" cy="15" r="4" />
-            <path d="m11 12 8-8M16 4h3v3M5 18l-2 2M8 19v2" />
-          </>
-        ) : (
-          <>
-            <path d="M10.3 4.2 2.7 17.4A2 2 0 0 0 4.4 20h15.2a2 2 0 0 0 1.7-2.6L13.7 4.2a2 2 0 0 0-3.4 0Z" />
-            <path d="M12 9v4M12 17h.01" />
-          </>
-        )}
-      </svg>
+      {name === 'recovery' ? <Key size={20} /> : <Trash size={20} />}
     </span>
   );
 }
@@ -418,13 +394,22 @@ function DatabaseRecovery({
         </p>
       </div>
       <button
-        className="button button--quiet"
+        className="button"
         disabled={state === 'redirecting'}
         onClick={() => void onStart()}
         type="button"
       >
         {state === 'redirecting' ? 'Opening Auth0…' : 'Reset password'}
       </button>
+      {state === 'redirecting' ? (
+        <p
+          className="account-action-card__message account-inline-status"
+          role="status"
+        >
+          Opening secure sign-in. Choose “Forgot password?” on the Auth0 page to
+          request a reset.
+        </p>
+      ) : null}
       {state === 'returned' ? (
         <p
           className="account-action-card__message account-inline-status"
@@ -437,7 +422,7 @@ function DatabaseRecovery({
       ) : null}
       {state === 'unavailable' ? (
         <p
-          className="account-action-card__message account-inline-error"
+          className="account-action-card__message account-inline-error state-message state-message--error"
           role="alert"
         >
           Auth0 password recovery could not open. Check your connection and try
@@ -465,6 +450,7 @@ function FederatedRecovery() {
         target="_blank"
       >
         Open Google recovery
+        <ArrowSquareOut aria-hidden="true" size={20} />
         <span className="sr-only"> (opens in a new tab)</span>
       </a>
     </>
@@ -555,7 +541,7 @@ function DeletionErrorState({
           ? 'Cleanup may already be underway after an earlier request. No protected game operation is available. Sign out to finish safely.'
           : recentAuthentication
             ? 'Return to Auth0 for a new identity check before confirming permanent deletion again.'
-            : 'The browser did not receive a usable server response. Retry once with the same confirmation; the server operation is idempotent and will not duplicate cleanup.'}
+            : 'We could not confirm whether your deletion request completed. Try again to check and finish the same request safely.'}
       </p>
       {deletion.error.options.requestId ? (
         <p className="account-support-reference">
@@ -596,28 +582,4 @@ function providerName(provider: 'auth0' | 'google-oauth2'): string {
     case 'google-oauth2':
       return 'Google';
   }
-}
-
-function playerInitials(playerName: string | null): string {
-  if (!playerName) {
-    return 'WW';
-  }
-
-  const nameParts = playerName
-    .trim()
-    .split(/[\s_-]+/u)
-    .filter(Boolean);
-
-  if (nameParts.length === 0) {
-    return 'WW';
-  }
-
-  if (nameParts.length === 1) {
-    return Array.from(nameParts[0] ?? '')
-      .slice(0, 2)
-      .join('')
-      .toLocaleUpperCase();
-  }
-
-  return `${Array.from(nameParts[0] ?? '')[0] ?? ''}${Array.from(nameParts.at(-1) ?? '')[0] ?? ''}`.toLocaleUpperCase();
 }

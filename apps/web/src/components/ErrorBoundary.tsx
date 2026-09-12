@@ -1,3 +1,4 @@
+import { StateIcon } from './StatusMessage';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 
 interface ErrorBoundaryProps {
@@ -38,9 +39,12 @@ export class ErrorBoundary extends Component<
           className="standalone-state"
           role="alert"
         >
-          <div className="standalone-state__panel">
+          <div className="standalone-state__panel state-message state-message--error">
+            <StateIcon tone="error" />
             <p className="eyebrow">Unexpected error</p>
-            <h1 id="unexpected-error-title">Something went wrong</h1>
+            <h1 id="unexpected-error-title">
+              This page could not be displayed
+            </h1>
             <p>
               Wits World could not display this page. Reload the application and
               try again.

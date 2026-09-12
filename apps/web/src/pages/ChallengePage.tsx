@@ -1,3 +1,5 @@
+import { StateIcon } from '../components/StatusMessage';
+import { Skeleton } from '../components/LoadingState';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'wouter';
 
@@ -547,6 +549,7 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
         <p className="eyebrow">Challenge</p>
         <h1>Loading your challenge</h1>
         <p>Wits World is restoring your saved attempt.</p>
+        <Skeleton layout="rows" />
       </section>
     );
   }
@@ -664,7 +667,11 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
         </div>
 
         {error !== null ? (
-          <div className="challenge-panel--alert" role="alert">
+          <div
+            className="challenge-panel--alert state-message state-message--error"
+            role="alert"
+          >
+            <StateIcon tone="error" />
             <p>{messageForChallengeError(error)}</p>
             <button
               className="button button--quiet"
@@ -693,7 +700,7 @@ function ChallengeError({
 
   return (
     <section
-      className="challenge-panel challenge-panel--alert challenge-page"
+      className="challenge-panel challenge-panel--alert challenge-page state-message state-message--error"
       role="alert"
     >
       <p className="eyebrow">Challenge unavailable</p>

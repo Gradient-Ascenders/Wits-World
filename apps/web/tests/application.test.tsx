@@ -112,11 +112,6 @@ describe('Wits World public application shell', () => {
 
     await user.tab();
     expect(screen.getByRole('button', { name: 'Sign in' })).toHaveFocus();
-
-    await user.tab();
-    expect(
-      screen.getByRole('button', { name: 'Sign in to play' }),
-    ).toHaveFocus();
   });
 
   it.each([
@@ -155,7 +150,7 @@ describe('Wits World public application shell', () => {
     expect(heroImage?.src).toContain('great-hall-hero.webp');
   });
 
-  it('keeps gameplay explanation and the primary CTA below the hero', async () => {
+  it('keeps gameplay explanation in the hero without action buttons', async () => {
     renderRoute('/');
 
     const hero = await screen.findByRole('region', { name: 'Wits World' });
@@ -167,7 +162,7 @@ describe('Wits World public application shell', () => {
       within(hero).queryByRole('heading', {
         name: 'Explore campus. Take on the quest.',
       }),
-    ).not.toBeInTheDocument();
+    ).toBeVisible();
     expect(
       within(hero).queryByRole('button', { name: 'Sign in to play' }),
     ).not.toBeInTheDocument();
@@ -181,10 +176,8 @@ describe('Wits World public application shell', () => {
       within(gameIntroduction).getByText(/Find events around Wits/),
     ).toBeVisible();
     expect(
-      within(gameIntroduction).getByRole('button', {
-        name: 'Sign in to play',
-      }),
-    ).toBeVisible();
+      within(gameIntroduction).queryByRole('link', { name: 'How it works' }),
+    ).not.toBeInTheDocument();
   });
 
   it('renders the connected game journey and compact project context', async () => {
@@ -200,12 +193,7 @@ describe('Wits World public application shell', () => {
         within(main).getByRole('heading', { level: 3, name: step }),
       ).toBeVisible();
     }
-    expect(
-      within(main).getByRole('heading', {
-        level: 2,
-        name: 'Earn cards. Build a deck. Battle.',
-      }),
-    ).toBeVisible();
+    expect(within(main).getAllByRole('listitem')).toHaveLength(4);
     expect(
       within(main).getByRole('heading', {
         level: 2,
@@ -223,12 +211,12 @@ describe('Wits World public application shell', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('starts Auth0 sign-in from the single signed-out Home CTA', async () => {
+  it('starts Auth0 sign-in from the Home header', async () => {
     const user = userEvent.setup();
     const { loginWithRedirect } = renderRoute('/');
 
     const gameIntroductionSignIn = await screen.findByRole('button', {
-      name: 'Sign in to play',
+      name: 'Sign in',
     });
     await user.click(gameIntroductionSignIn);
 

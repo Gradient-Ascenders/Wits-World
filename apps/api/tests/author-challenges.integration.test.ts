@@ -77,6 +77,7 @@ const question: AuthorChallengeQuestion = {
   prompt: 'Where is the Great Hall?',
   difficulty: 2,
   explanation: 'The Great Hall is on East Campus.',
+  sourceUrls: [],
   status: 'draft',
   choices: [
     {
@@ -119,6 +120,7 @@ const orderingQuestion: AuthorChallengeQuestion = {
   prompt: 'Order these Wits milestones.',
   difficulty: 2,
   explanation: 'The milestones follow this historical sequence.',
+  sourceUrls: [],
   status: 'draft',
   items: [1, 2, 3, 4].map((position) => ({
     itemId: `f6000000-0000-4000-8000-${String(position).padStart(12, '0')}`,

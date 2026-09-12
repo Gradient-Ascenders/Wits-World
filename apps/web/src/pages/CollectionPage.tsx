@@ -1,5 +1,7 @@
+import { StateIcon } from '../components/StatusMessage';
+import { Skeleton } from '../components/LoadingState';
 import { useAuth0 } from '@auth0/auth0-react';
-import { createPortal } from 'react-dom';
+import { MagnifyingGlass, SlidersHorizontal, X } from '@phosphor-icons/react';
 import {
   useCallback,
   useEffect,
@@ -15,6 +17,7 @@ import {
   listOwnedCards,
   listStarterOptions,
   selectStarter,
+  type CardEvolutionResult,
   type OwnedCard,
   type StarterAffinity,
   type StarterGrant,
@@ -26,6 +29,9 @@ import {
   CardThumbnail,
   CollectibleCard,
 } from '../components/cards/CollectibleCard';
+import { CardDetailModal } from '../components/cards/CardDetailModal';
+import { CollectionEvolutions } from '../components/cards/CollectionEvolutions';
+import '../components/cards/evolutions.css';
 import '../components/cards/cards.css';
 
 interface CollectionPageProps {
@@ -49,6 +55,7 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
     status: 'loading',
   });
   const [collectionRevision, setCollectionRevision] = useState(0);
+  const [section, setSection] = useState<'cards' | 'evolutions'>('cards');
   const [starterOptions, setStarterOptions] = useState<StarterOptionsState>({
     status: 'idle',
   });
@@ -61,6 +68,7 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
   const [isSubmittingStarter, setIsSubmittingStarter] = useState(false);
   const [reauthFailed, setReauthFailed] = useState(false);
   const starterRequest = useRef<AbortController | null>(null);
+  const collectionRefreshRequest = useRef<AbortController | null>(null);
   const starterSubmissionLocked = useRef(false);
   const resultHeading = useRef<HTMLHeadingElement | null>(null);
   const confirmationHeading = useRef<HTMLHeadingElement | null>(null);
@@ -138,7 +146,10 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
   ]);
 
   useEffect(() => {
-    return () => starterRequest.current?.abort();
+    return () => {
+      starterRequest.current?.abort();
+      collectionRefreshRequest.current?.abort();
+    };
   }, []);
 
   useEffect(() => {
@@ -178,6 +189,46 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
     setStarterOptions({ status: 'loading' });
     setStarterOptionsRevision((revision) => revision + 1);
   }, []);
+
+  const applyEvolutionResult = useCallback((result: CardEvolutionResult) => {
+    const consumedIds = new Set(result.consumedOwnedCardIds);
+    setCollection((current) =>
+      current.status === 'ready'
+        ? {
+            cards: [
+              result.newCard,
+              ...current.cards.filter(
+                (card) =>
+                  !consumedIds.has(card.ownedCardId) &&
+                  card.ownedCardId !== result.newCard.ownedCardId,
+              ),
+            ],
+            status: 'ready',
+          }
+        : current,
+    );
+  }, []);
+
+  const refreshCollection = useCallback(async () => {
+    collectionRefreshRequest.current?.abort();
+    const controller = new AbortController();
+    collectionRefreshRequest.current = controller;
+
+    try {
+      const cards = await listOwnedCards({
+        apiBaseUrl,
+        getAccessToken,
+        signal: controller.signal,
+      });
+      if (!controller.signal.aborted) {
+        setCollection({ cards, status: 'ready' });
+      }
+    } finally {
+      if (collectionRefreshRequest.current === controller) {
+        collectionRefreshRequest.current = null;
+      }
+    }
+  }, [apiBaseUrl, getAccessToken]);
 
   async function startSignIn() {
     setReauthFailed(false);
@@ -294,10 +345,12 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
   return (
     <div className="collection-page">
       <header className="collection-page__header">
-        <p className="eyebrow">Player collection</p>
-        <h1>Cards you own</h1>
+        <p className="eyebrow">Your collection</p>
+        <h1>{section === 'cards' ? 'Cards you own' : 'Evolutions'}</h1>
         <p className="lead">
-          Browse card designs. Open one for gameplay and ownership details.
+          {section === 'cards'
+            ? 'Every card, part of your journey. Open one to explore its details.'
+            : 'Combine three eligible copies into one evolved card.'}
         </p>
         {collection.status === 'ready' ? (
           <p aria-live="polite" className="collection-summary">
@@ -312,10 +365,15 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
       </header>
 
       {collection.status === 'loading' ? (
-        <section aria-live="polite" className="collection-state" role="status">
+        <section
+          aria-live="polite"
+          className="collection-state state-message state-loading"
+          role="status"
+        >
           <p className="eyebrow">Collection</p>
           <h2>Loading your cards</h2>
-          <p>Checking the card copies saved to your player account…</p>
+          <p>Your collection will appear here shortly.</p>
+          <Skeleton layout="cards" />
         </section>
       ) : null}
 
@@ -333,7 +391,53 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
         : null}
 
       {collection.status === 'ready' && cards.length > 0 ? (
-        <CollectionGrid cards={cards} headingRef={collectionHeading} />
+        <div
+          className="collection-section-switch"
+          role="group"
+          aria-label="Collection section"
+        >
+          <button
+            className="button button--quiet"
+            aria-pressed={section === 'cards'}
+            onClick={() => setSection('cards')}
+            type="button"
+          >
+            Cards
+          </button>
+          <button
+            className="button button--quiet"
+            aria-pressed={section === 'evolutions'}
+            onClick={() => setSection('evolutions')}
+            type="button"
+          >
+            Evolutions
+          </button>
+        </div>
+      ) : null}
+
+      {collection.status === 'ready' &&
+      cards.length > 0 &&
+      section === 'evolutions' ? (
+        <CollectionEvolutions
+          apiBaseUrl={apiBaseUrl}
+          cards={cards}
+          getAccessToken={getAccessToken}
+          onApplyResult={applyEvolutionResult}
+          onRefreshCollection={refreshCollection}
+        />
+      ) : null}
+
+      {collection.status === 'ready' &&
+      cards.length > 0 &&
+      section === 'cards' ? (
+        <CollectionGrid
+          apiBaseUrl={apiBaseUrl}
+          cards={cards}
+          getAccessToken={getAccessToken}
+          headingRef={collectionHeading}
+          onApplyEvolutionResult={applyEvolutionResult}
+          onRefreshCollection={refreshCollection}
+        />
       ) : null}
     </div>
   );
@@ -392,8 +496,8 @@ function StarterSelector({
         Choose your starter affinity
       </Heading>
       <p className="starter-selector__intro">
-        Compare three server-selected packages. This is a one-time choice, and
-        Wits World will securely record the five cards you confirm.
+        Choose the play style that suits you. Each package contains five cards.
+        This is a one-time choice; you can review it before confirming.
       </p>
       <p className="starter-selector__progression">
         Spirit, Mystic, and other cards can still be earned later through
@@ -401,10 +505,15 @@ function StarterSelector({
       </p>
 
       {optionsState.status === 'idle' || optionsState.status === 'loading' ? (
-        <div aria-live="polite" className="starter-options-state" role="status">
+        <div
+          aria-live="polite"
+          className="starter-options-state state-message state-loading"
+          role="status"
+        >
           <p className="eyebrow">Starter packages</p>
           <h2>Loading your choices</h2>
           <p>Reading the current starter packages from Wits World…</p>
+          <Skeleton />
         </div>
       ) : null}
 
@@ -612,7 +721,11 @@ function StarterOptionsError({
   const isAuthorization = error.failure === 'authorization';
 
   return (
-    <div className="starter-options-state" role="alert">
+    <div
+      className="starter-options-state state-message state-message--error"
+      role="alert"
+    >
+      <StateIcon tone="error" />
       <p className="eyebrow">Starter packages unavailable</p>
       <h2>
         {isAuthorization
@@ -647,7 +760,11 @@ function StarterError({
 > & { error: CardApiError }) {
   if (error.failure === 'starter-already-claimed') {
     return (
-      <div className="starter-selector__error" role="alert">
+      <div
+        className="starter-selector__error state-message state-message--error"
+        role="alert"
+      >
+        <StateIcon tone="error" />
         <p>
           <strong>Your starter was already chosen.</strong> Your original choice
           remains authoritative, so no second set was created.
@@ -665,7 +782,11 @@ function StarterError({
 
   if (error.failure === 'authorization') {
     return (
-      <div className="starter-selector__error" role="alert">
+      <div
+        className="starter-selector__error state-message state-message--error"
+        role="alert"
+      >
+        <StateIcon tone="error" />
         <p>
           <strong>Your session expired before the choice was saved.</strong>{' '}
           Sign in again, then return here to choose your starter.
@@ -683,7 +804,11 @@ function StarterError({
   }
 
   return (
-    <div className="starter-selector__error" role="alert">
+    <div
+      className="starter-selector__error state-message state-message--error"
+      role="alert"
+    >
+      <StateIcon tone="error" />
       <p>
         <strong>
           {error.failure === 'starter-unavailable'
@@ -740,21 +865,30 @@ function StarterResult({
 }
 
 function CollectionGrid({
+  apiBaseUrl,
   cards,
+  getAccessToken,
   headingRef,
+  onApplyEvolutionResult,
+  onRefreshCollection,
 }: {
+  apiBaseUrl: string;
   cards: OwnedCard[];
+  getAccessToken: ReturnType<typeof useApiAccessToken>;
   headingRef: RefObject<HTMLHeadingElement | null>;
+  onApplyEvolutionResult: (result: CardEvolutionResult) => void;
+  onRefreshCollection: () => Promise<void>;
 }) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [categoryFilter, setCategoryFilter] =
     useState<CollectionCategoryFilter>('all');
   const [rarityFilter, setRarityFilter] =
     useState<CollectionRarityFilter>('all');
   const [sortOrder, setSortOrder] = useState<CollectionSortOrder>('name');
-  const [selectedDefinitionId, setSelectedDefinitionId] = useState<
-    string | null
-  >(null);
+  const [selectedGroup, setSelectedGroup] = useState<OwnedCardGroup | null>(
+    null,
+  );
   const detailTriggerRef = useRef<HTMLButtonElement | null>(null);
   const groups = useMemo(() => groupOwnedCards(cards), [cards]);
   const visibleGroups = useMemo(
@@ -767,10 +901,6 @@ function CollectionGrid({
       }),
     [categoryFilter, groups, rarityFilter, searchQuery, sortOrder],
   );
-  const selectedGroup =
-    groups.find(
-      (group) => group.card.cardDefinitionId === selectedDefinitionId,
-    ) ?? null;
   const hasActiveControls =
     searchQuery !== '' ||
     categoryFilter !== 'all' ||
@@ -778,9 +908,24 @@ function CollectionGrid({
     sortOrder !== 'name';
 
   const closeDetails = useCallback(() => {
-    setSelectedDefinitionId(null);
-    window.setTimeout(() => detailTriggerRef.current?.focus(), 0);
-  }, []);
+    setSelectedGroup(null);
+    window.setTimeout(() => {
+      const trigger = detailTriggerRef.current;
+      (trigger?.isConnected ? trigger : headingRef.current)?.focus();
+    }, 0);
+  }, [headingRef]);
+
+  useEffect(() => {
+    setSelectedGroup((selected) => {
+      if (!selected) return null;
+      return (
+        groups.find(
+          (group) =>
+            group.card.cardDefinitionId === selected.card.cardDefinitionId,
+        ) ?? selected
+      );
+    });
+  }, [groups]);
 
   const clearControls = () => {
     setSearchQuery('');
@@ -794,18 +939,14 @@ function CollectionGrid({
       aria-labelledby="collection-grid-title"
       className="collection-gallery"
     >
-      <div className="collection-gallery__heading">
-        <div>
-          <p className="eyebrow">Visual index</p>
-          <h2 id="collection-grid-title" ref={headingRef} tabIndex={-1}>
-            Card gallery
-          </h2>
-        </div>
-        <p className="collection-gallery__count">
-          {groups.length} {groups.length === 1 ? 'design' : 'designs'} ·{' '}
-          {cards.length} {cards.length === 1 ? 'copy' : 'copies'}
-        </p>
-      </div>
+      <h2
+        className="collection-gallery__accessible-heading"
+        id="collection-grid-title"
+        ref={headingRef}
+        tabIndex={-1}
+      >
+        Card gallery
+      </h2>
 
       <div
         aria-label="Filter and sort collection"
@@ -813,72 +954,104 @@ function CollectionGrid({
       >
         <label className="collection-control collection-control--search">
           <span>Search</span>
-          <input
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Name or affinity"
-            type="search"
-            value={searchQuery}
-          />
+          <span className="collection-search-field">
+            <MagnifyingGlass size={20} aria-hidden="true" />
+            <input
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Name or affinity"
+              type="search"
+              value={searchQuery}
+            />
+          </span>
         </label>
-        <label className="collection-control">
-          <span>Category</span>
-          <select
-            onChange={(event) =>
-              setCategoryFilter(event.target.value as CollectionCategoryFilter)
-            }
-            value={categoryFilter}
-          >
-            <option value="all">All</option>
-            <option value="creature">Creatures</option>
-            <option value="power">Power cards</option>
-          </select>
-        </label>
-        <label className="collection-control">
-          <span>Rarity</span>
-          <select
-            onChange={(event) =>
-              setRarityFilter(event.target.value as CollectionRarityFilter)
-            }
-            value={rarityFilter}
-          >
-            <option value="all">All</option>
-            <option value="common">Common</option>
-            <option value="rare">Rare</option>
-            <option value="epic">Epic</option>
-            <option value="legendary">Legendary</option>
-          </select>
-        </label>
-        <label className="collection-control">
-          <span>Sort</span>
-          <select
-            onChange={(event) =>
-              setSortOrder(event.target.value as CollectionSortOrder)
-            }
-            value={sortOrder}
-          >
-            <option value="name">A–Z</option>
-            <option value="newest">Newest acquired</option>
-            <option value="rarity">Rarity</option>
-          </select>
-        </label>
+        <button
+          className="button button--quiet collection-controls__toggle"
+          type="button"
+          aria-expanded={filtersOpen}
+          aria-controls="collection-filters"
+          onClick={() => setFiltersOpen(!filtersOpen)}
+        >
+          <SlidersHorizontal size={20} aria-hidden="true" />
+          Filters & sort
+          {categoryFilter !== 'all' ||
+          rarityFilter !== 'all' ||
+          sortOrder !== 'name'
+            ? ' · Active'
+            : ''}
+        </button>
+        <div
+          id="collection-filters"
+          className={`collection-controls__filters${filtersOpen ? ' collection-controls__filters--open' : ''}`}
+        >
+          <label className="collection-control">
+            <span>Category</span>
+            <select
+              onChange={(event) =>
+                setCategoryFilter(
+                  event.target.value as CollectionCategoryFilter,
+                )
+              }
+              value={categoryFilter}
+            >
+              <option value="all">All</option>
+              <option value="creature">Creatures</option>
+              <option value="power">Power cards</option>
+            </select>
+          </label>
+          <label className="collection-control">
+            <span>Rarity</span>
+            <select
+              onChange={(event) =>
+                setRarityFilter(event.target.value as CollectionRarityFilter)
+              }
+              value={rarityFilter}
+            >
+              <option value="all">All</option>
+              <option value="common">Common</option>
+              <option value="rare">Rare</option>
+              <option value="epic">Epic</option>
+              <option value="legendary">Legendary</option>
+            </select>
+          </label>
+          <label className="collection-control">
+            <span>Sort</span>
+            <select
+              onChange={(event) =>
+                setSortOrder(event.target.value as CollectionSortOrder)
+              }
+              value={sortOrder}
+            >
+              <option value="name">A–Z</option>
+              <option value="newest">Newest acquired</option>
+              <option value="rarity">Rarity</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div className="collection-gallery__status">
+        <p aria-live="polite" className="collection-gallery__results">
+          Showing {visibleGroups.length} of {groups.length}{' '}
+          {groups.length === 1 ? 'card design' : 'card designs'}
+          {categoryFilter !== 'all'
+            ? ` · ${categoryFilter === 'power' ? 'Power cards' : 'Creatures'}`
+            : ''}
+          {rarityFilter !== 'all' ? ` · ${titleCase(rarityFilter)}` : ''}
+        </p>
         {hasActiveControls ? (
           <button
             className="button button--quiet collection-controls__clear"
             onClick={clearControls}
             type="button"
           >
-            Clear
+            <X size={16} aria-hidden="true" /> Clear
           </button>
         ) : null}
       </div>
 
-      <p aria-live="polite" className="collection-gallery__results">
-        Showing {visibleGroups.length} of {groups.length}{' '}
-        {groups.length === 1 ? 'card design' : 'card designs'}
-      </p>
-
       {visibleGroups.length === 0 ? (
-        <div className="collection-gallery__empty">
+        <div className="collection-gallery__empty state-message state-message--empty">
+          <StateIcon tone="empty" />
           <h3>No cards match these filters</h3>
           <p>Adjust the search, category, or rarity to see more cards.</p>
           <button
@@ -903,7 +1076,7 @@ function CollectionGrid({
                 card={group.card}
                 onClick={(event) => {
                   detailTriggerRef.current = event.currentTarget;
-                  setSelectedDefinitionId(group.card.cardDefinitionId);
+                  setSelectedGroup(group);
                 }}
               />
             </li>
@@ -912,106 +1085,16 @@ function CollectionGrid({
       )}
 
       {selectedGroup ? (
-        <CardDetailModal group={selectedGroup} onClose={closeDetails} />
+        <CardDetailModal
+          apiBaseUrl={apiBaseUrl}
+          getAccessToken={getAccessToken}
+          group={selectedGroup}
+          onApplyEvolutionResult={onApplyEvolutionResult}
+          onClose={closeDetails}
+          onRefreshCollection={onRefreshCollection}
+        />
       ) : null}
     </section>
-  );
-}
-
-function CardDetailModal({
-  group,
-  onClose,
-}: {
-  group: OwnedCardGroup;
-  onClose: () => void;
-}) {
-  const dialogRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    const applicationRoot = document.getElementById('root');
-    const previousInert = applicationRoot?.inert ?? false;
-    const previousOverflow = document.documentElement.style.overflow;
-    const dialog = dialogRef.current;
-
-    if (applicationRoot) applicationRoot.inert = true;
-    document.documentElement.style.overflow = 'hidden';
-    window.requestAnimationFrame(() => {
-      dialog?.querySelector<HTMLElement>('[data-card-detail-focus]')?.focus();
-    });
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onClose();
-        return;
-      }
-
-      if (event.key !== 'Tab' || !dialog) return;
-      const focusable = Array.from(
-        dialog.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ),
-      );
-      if (focusable.length === 0) return;
-
-      const first = focusable[0]!;
-      const last = focusable.at(-1)!;
-      if (!focusable.includes(document.activeElement as HTMLElement)) {
-        event.preventDefault();
-        (event.shiftKey ? last : first).focus();
-      } else if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      if (applicationRoot) applicationRoot.inert = previousInert;
-      document.documentElement.style.overflow = previousOverflow;
-    };
-  }, [group.card.cardDefinitionId, onClose]);
-
-  return createPortal(
-    <div
-      className="card-detail-backdrop"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <section
-        aria-label={`${group.card.name} card details`}
-        aria-modal="true"
-        className="card-detail-modal"
-        ref={dialogRef}
-        role="dialog"
-      >
-        <header className="card-detail-modal__header">
-          <p className="eyebrow">Card details</p>
-          <button
-            aria-label="Close card details"
-            className="card-detail-modal__close"
-            data-card-detail-focus
-            onClick={onClose}
-            type="button"
-          >
-            <span aria-hidden="true">×</span>
-          </button>
-        </header>
-        <div className="card-detail-modal__scroll">
-          <CollectibleCard
-            card={group.card}
-            headingLevel={2}
-            ownedCopies={group.copies}
-          />
-        </div>
-      </section>
-    </div>,
-    document.body,
   );
 }
 
@@ -1121,7 +1204,11 @@ function CollectionErrorState({
   const isAuthorization = error.failure === 'authorization';
 
   return (
-    <section className="collection-state" role="alert">
+    <section
+      className="collection-state state-message state-message--error"
+      role="alert"
+    >
+      <StateIcon tone="error" />
       <p className="eyebrow">Collection unavailable</p>
       <h2>
         {isAuthorization

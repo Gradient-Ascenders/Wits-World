@@ -3,6 +3,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import {
   BrowserLocationError,
   type LocationClaimProvider,
+  type LocationObservationProvider,
 } from '../../src/browser-location';
 import type {
   MapController,
@@ -34,6 +35,32 @@ export const locationClaimProvider: LocationClaimProvider = () =>
       { enableHighAccuracy: true, maximumAge: 0, timeout: 10_000 },
     );
   });
+
+export const locationObservationProvider: LocationObservationProvider = ({
+  onError,
+  onLocation,
+}) => {
+  const watchId = navigator.geolocation.watchPosition(
+    (position) => {
+      onLocation({
+        accuracyMetres: position.coords.accuracy,
+        acquiredAt: E2E_ACQUIRED_AT,
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      });
+    },
+    (error) => {
+      onError(
+        new BrowserLocationError(
+          error.code === error.PERMISSION_DENIED ? 'denied' : 'unavailable',
+        ),
+      );
+    },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 10_000 },
+  );
+
+  return () => navigator.geolocation.clearWatch(watchId);
+};
 
 export const mapFactory: MapFactory = async (
   container,
@@ -305,7 +332,11 @@ export const mapFactory: MapFactory = async (
       return true;
     },
     onError: () => undefined,
-    onLoad: (listener) => queueMicrotask(listener),
+    onLoad: (listener) => {
+      if (!new URLSearchParams(window.location.search).has('map-loading')) {
+        queueMicrotask(listener);
+      }
+    },
     recenterReportedLocation: () => {
       if (!hasLocation) return false;
       following = true;

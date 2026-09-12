@@ -92,6 +92,7 @@ export interface AuthorEvent extends AuthorLifecycleMetadata {
   latitude: number;
   longitude: number;
   radiusMetres: number;
+  sourceUrls: string[];
   retiredAt: string | null;
   startsAt: string;
   title: string;
@@ -128,6 +129,7 @@ interface AuthorQuestionBase extends AuthorLifecycleMetadata {
   createdAt: string;
   difficulty: 1 | 2 | 3;
   explanation: string | null;
+  sourceUrls: string[];
   prompt: string;
   questionId: string;
   status: AuthoringStatus;
@@ -999,6 +1001,8 @@ function parsePage<T>(
 }
 
 function parseAuthorEvent(value: unknown): AuthorEvent {
+  const sourceUrls =
+    isRecord(value) && value.sourceUrls !== undefined ? value.sourceUrls : [];
   if (
     !isRecord(value) ||
     !isUuid(value.eventId) ||
@@ -1007,6 +1011,7 @@ function parseAuthorEvent(value: unknown): AuthorEvent {
     !isCoordinate(value.latitude, -90, 90) ||
     !isCoordinate(value.longitude, -180, 180) ||
     !isPositiveInteger(value.radiusMetres) ||
+    !isSourceUrls(sourceUrls) ||
     !isDateTime(value.startsAt) ||
     !isDateTime(value.endsAt) ||
     typeof value.isPublished !== 'boolean' ||
@@ -1019,7 +1024,7 @@ function parseAuthorEvent(value: unknown): AuthorEvent {
     throw unavailableResponse();
   }
 
-  return value as unknown as AuthorEvent;
+  return { ...(value as unknown as AuthorEvent), sourceUrls };
 }
 
 function parseAuthorChallenge(value: unknown): AuthorChallenge {
@@ -1040,6 +1045,8 @@ function parseAuthorChallenge(value: unknown): AuthorChallenge {
 }
 
 function parseAuthorQuestion(value: unknown): AuthorQuestion {
+  const sourceUrls =
+    isRecord(value) && value.sourceUrls !== undefined ? value.sourceUrls : [];
   if (
     !isRecord(value) ||
     !isUuid(value.questionId) ||
@@ -1048,6 +1055,7 @@ function parseAuthorQuestion(value: unknown): AuthorQuestion {
     !isNonBlank(value.prompt) ||
     !isDifficulty(value.difficulty) ||
     !isNullableString(value.explanation) ||
+    !isSourceUrls(sourceUrls) ||
     !isStatus(value.status) ||
     !isDateTime(value.createdAt) ||
     !isDateTime(value.updatedAt) ||
@@ -1076,6 +1084,7 @@ function parseAuthorQuestion(value: unknown): AuthorQuestion {
       ...(value as unknown as AuthorOrderingQuestion),
       format: 'ordering',
       items,
+      sourceUrls,
     };
   }
 
@@ -1107,7 +1116,18 @@ function parseAuthorQuestion(value: unknown): AuthorQuestion {
     ...(value as unknown as AuthorMultipleChoiceQuestion),
     format: 'multiple_choice',
     choices,
+    sourceUrls,
   };
+}
+
+function isSourceUrls(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (sourceUrl) =>
+        typeof sourceUrl === 'string' && /^https:\/\/\S+$/.test(sourceUrl),
+    )
+  );
 }
 
 function parseQuestionChoice(value: unknown): AuthorQuestionChoice {

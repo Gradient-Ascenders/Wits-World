@@ -133,6 +133,13 @@ replacing it with the server version. The browser derives successful lifecycle
 feedback from the returned resource and does not infer a new state from the
 requested action.
 
+Event and question reads include `sourceUrls`, a list of constrained HTTPS
+review references introduced for the issue `#165` verified content pack. The
+Author console renders these links on detail views. They are review metadata,
+not accepted-answer data, and are not included in player event or challenge
+payloads. Ordinary Author-created legacy-compatible content returns an empty
+list until source editing is added through a separately reviewed contract.
+
 Question analytics and flagged-question workflows remain blocked by issue
 `#184` / S3-06 because no current analytics contract is available. The console
 does not invent or mock that data.

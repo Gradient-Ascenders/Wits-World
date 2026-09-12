@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ArrowClockwise, MapTrifold } from '@phosphor-icons/react';
 
 import {
   createMapboxMap,
@@ -32,7 +33,7 @@ const MAP_LOAD_TIMEOUT_MS = 15_000;
 export function CampusMap({
   accessibleLabel = 'Interactive campus map using Mapbox Standard 3D. Event information is also available in the nearby events list.',
   configuration,
-  errorDescription = 'Use the nearby events list to continue exploring.',
+  errorDescription = 'Open Campus events to keep exploring.',
   focusPointRequest = 0,
   mapFactory = createMapboxMap,
   onCoordinateSelect,
@@ -55,6 +56,7 @@ export function CampusMap({
   );
   const selectedPointRef = useRef<MapPoint | null>(selectedPoint);
   const [status, setStatus] = useState<MapStatus>('loading');
+  const [attempt, setAttempt] = useState(0);
 
   pointsRef.current = points;
   focusPointRequestRef.current = focusPointRequest;
@@ -110,10 +112,64 @@ export function CampusMap({
     let active = true;
     let controller: MapController | undefined;
     let loaded = false;
+    const resizeMap = (): void => {
+      if (!container) return;
+      const exploration = container.closest<HTMLElement>('.exploration-view');
+      if (!exploration) {
+        controllerRef.current?.resize?.();
+        return;
+      }
+      const sheetHeight =
+        parseFloat(
+          exploration.style.getPropertyValue('--event-panel-height'),
+        ) || 100;
+      const panel = exploration.querySelector('.event-panel');
+      const clearance = panel
+        ? parseFloat(getComputedStyle(panel).bottom) || 0
+        : 0;
+      const desktop = window.matchMedia?.('(min-width: 64rem)').matches;
+      const tablet = window.matchMedia?.('(min-width: 48rem)').matches;
+      controllerRef.current?.resize?.({
+        top: 16,
+        right: 16,
+        bottom: !tablet
+          ? Math.max(
+              0,
+              Math.min(
+                container.clientHeight - 100,
+                sheetHeight + clearance + 64,
+              ),
+            )
+          : !desktop
+            ? clearance + 16
+            : 16,
+        left:
+          tablet && !desktop && exploration.dataset.sheetSnap !== 'peek'
+            ? (panel?.getBoundingClientRect().right ?? 432) -
+              exploration.getBoundingClientRect().left +
+              16
+            : 16,
+      });
+    };
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(resizeMap);
+    const layoutObserver =
+      typeof MutationObserver === 'undefined'
+        ? null
+        : new MutationObserver(resizeMap);
 
     if (!container) {
       return;
     }
+    resizeObserver?.observe(container);
+    const exploration = container.closest('.exploration-view');
+    if (exploration)
+      layoutObserver?.observe(exploration, {
+        attributes: true,
+        attributeFilter: ['style', 'data-sheet-snap'],
+      });
 
     const loadTimeout = window.setTimeout(() => {
       if (active) {
@@ -137,6 +193,7 @@ export function CampusMap({
 
         controller = map;
         controllerRef.current = map;
+        resizeMap();
         map.setPoints(pointsRef.current);
         map.setReportedLocation(reportedLocationRef.current);
         map.setSelectedPoint?.(selectedPointRef.current);
@@ -180,6 +237,8 @@ export function CampusMap({
 
     return () => {
       active = false;
+      resizeObserver?.disconnect();
+      layoutObserver?.disconnect();
       abortController.abort();
       window.clearTimeout(loadTimeout);
       if (controllerRef.current === controller) {
@@ -187,7 +246,7 @@ export function CampusMap({
       }
       controller?.remove();
     };
-  }, [configuration, mapFactory]);
+  }, [attempt, configuration, mapFactory]);
 
   return (
     <div className="campus-map">
@@ -207,8 +266,16 @@ export function CampusMap({
 
       {status === 'error' ? (
         <div className="map-state map-state--error" role="alert">
+          <MapTrifold aria-hidden="true" size={24} />
           <strong>The map could not load.</strong>
           <span>{errorDescription}</span>
+          <button
+            className="button button--quiet"
+            onClick={() => setAttempt((current) => current + 1)}
+            type="button"
+          >
+            <ArrowClockwise aria-hidden="true" size={20} /> Retry map
+          </button>
         </div>
       ) : null}
     </div>

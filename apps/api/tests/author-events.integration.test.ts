@@ -51,6 +51,7 @@ const authoredEvent: AuthorEvent = {
   latitude: -26.19205,
   longitude: 28.03038,
   radiusMetres: 75,
+  sourceUrls: [],
   startsAt: '2026-09-01T08:00:00.000Z',
   endsAt: '2026-09-01T12:00:00.000Z',
   isPublished: false,

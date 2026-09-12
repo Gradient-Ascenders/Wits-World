@@ -146,6 +146,9 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
     expect(migrationResult.applied).toContain(
       '0042_implement_card_evolution.sql',
     );
+    expect(migrationResult.applied).toContain(
+      '0043_add_content_source_evidence.sql',
+    );
     expect(
       migrationResult.applied.indexOf(
         '0017_resolve_edge_card_definition_name.sql',

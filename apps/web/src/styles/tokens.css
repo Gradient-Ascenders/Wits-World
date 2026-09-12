@@ -13,6 +13,9 @@
   --colour-gold-400: #e0c46c;
   --colour-gold-500: #d4af37;
   --colour-gold-700: #9d8130;
+  --colour-rank-gold: var(--colour-gold-400);
+  --colour-rank-silver: #c5cfdf;
+  --colour-rank-bronze: #d9a476;
   --colour-blue-300: #54a8ff;
   --colour-blue-500: #2a6bff;
   --colour-blue-700: #174a99;
@@ -34,9 +37,11 @@
   --colour-action-primary-hover: var(--colour-gold-400);
   --colour-action-active: var(--colour-blue-500);
   --colour-focus: var(--colour-blue-300);
-  --colour-border-subtle: rgb(212 175 55 / 20%);
-  --colour-border-default: rgb(212 175 55 / 42%);
-  --colour-border-strong: rgb(224 196 108 / 72%);
+  --colour-border-subtle: rgb(247 243 231 / 10%);
+  --colour-border-default: rgb(247 243 231 / 16%);
+  --colour-border-strong: rgb(247 243 231 / 28%);
+  --colour-interactive: var(--colour-blue-500);
+  --colour-interactive-hover: #2460ed;
   --colour-status-success: var(--colour-green-500);
   --colour-status-warning: var(--colour-amber-500);
   --colour-status-danger: var(--colour-red-500);

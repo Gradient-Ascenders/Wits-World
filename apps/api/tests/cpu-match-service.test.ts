@@ -484,7 +484,18 @@ describe('CPU match service', () => {
       completedAt: null,
       lastAction: {
         ...cpuResult,
-        effects: [],
+        effects: [
+          {
+            effectId: 'cpu-effect-1-1',
+            effectType: 'debuff',
+            effectCode: 'power_change',
+            targetSide: 'player',
+            targetCreatureId: playerCreature.card.id,
+            amount: -1000,
+            damageMultiplier: null,
+            modifier: null,
+          },
+        ],
         expiredEffects: undefined,
       },
       matchId: MATCH_ID,
@@ -551,7 +562,20 @@ describe('CPU match service', () => {
       submissionId: 'a5000000-0000-4000-8000-000000000005',
     });
 
+    expect(response.lastAction?.effects).toEqual([
+      {
+        effectId: 'cpu-effect-1-1',
+        effectType: 'debuff',
+        targetSide: 'player',
+        targetCreatureId: playerCreature.card.id,
+        amount: -1000,
+        damageMultiplier: null,
+        modifier: null,
+      },
+    ]);
     expect(query).toHaveBeenCalledTimes(4);
+    expect(response.lastAction?.effects[0]).not.toHaveProperty('effectCode');
+    expect(response.lastAction?.effects[0]?.amount).toBe(-1000);
     expect(response.lastAction).toMatchObject({
       action: cpuResult.action,
       expiredEffects: [],
@@ -570,6 +594,104 @@ describe('CPU match service', () => {
     expect(
       response.battleLog.flatMap(({ events }) => events.map(({ id }) => id)),
     ).toEqual(expect.arrayContaining(['5:0', '6:0']));
+  });
+
+  it('projects stored engine effect metadata out of completed match history', async () => {
+    const state = createBattleState(deck('player'), deck('cpu'));
+    const playerCreature = state.participants.player.creatures[0]!;
+    const cpuCreature = state.participants.cpu.creatures[0]!;
+    const storedResult = {
+      ...createLogResult('player', {
+        moveId: playerCreature.card.moves[0]!.id,
+        type: 'use_move',
+      }),
+      effects: [
+        {
+          amount: 1,
+          damageMultiplier: null,
+          effectCode: 'damage' as const,
+          effectId: playerCreature.card.moves[0]!.effects[0]!.id,
+          effectType: 'damage' as const,
+          modifier: null,
+          targetCreatureId: cpuCreature.card.id,
+          targetSide: 'cpu' as const,
+        },
+      ],
+    };
+    const createdAt = new Date('2026-08-16T00:00:00.000Z');
+    const completedAt = new Date('2026-08-16T00:01:00.000Z');
+    const query = vi.fn(async (statement: string) => {
+      if (statement.includes('from public.cpu_matches')) {
+        return {
+          rows: [
+            {
+              completed_at: completedAt,
+              id: MATCH_ID,
+              player_id: PLAYER_ID,
+              started_at: createdAt,
+              state,
+              status: 'completed',
+              turn_deadline: null,
+              turn_started_at: null,
+              version: 3,
+              winner: 'player',
+            },
+          ],
+        };
+      }
+      if (statement.includes('from public.cpu_match_rounds')) {
+        expect(statement).toContain('state_after');
+        return {
+          rows: [
+            {
+              created_at: createdAt,
+              id: 'a3000000-0000-4000-8000-000000000001',
+              match_id: MATCH_ID,
+              result: [storedResult],
+              round_number: 1,
+              state_after: state,
+              state_before: state,
+            },
+          ],
+        };
+      }
+      if (statement.includes('from public.cpu_match_actions')) {
+        return {
+          rows: [
+            {
+              action: storedResult.action,
+              round_id: 'a3000000-0000-4000-8000-000000000001',
+              created_at: createdAt,
+              result: storedResult,
+              sequence: 1,
+              side: 'player',
+              submission_id: null,
+            },
+          ],
+        };
+      }
+
+      throw new Error(`Unexpected SQL: ${statement}`);
+    });
+    const service = createCpuMatchService(fakeDatabase(query));
+
+    const history = await service.listHistory(PLAYER_ID);
+    const expectedPublicEffect = {
+      amount: 1,
+      damageMultiplier: null,
+      effectId: playerCreature.card.moves[0]!.effects[0]!.id,
+      effectType: 'damage',
+      modifier: null,
+      targetCreatureId: cpuCreature.card.id,
+      targetSide: 'cpu',
+    };
+
+    expect(history[0]?.rounds[0]?.result[0]?.effects).toEqual([
+      expectedPublicEffect,
+    ]);
+    expect(history[0]?.rounds[0]?.actions[0]?.result.effects).toEqual([
+      expectedPublicEffect,
+    ]);
   });
 
   it('rolls back when combined persistence invariants are not satisfied', async () => {
@@ -815,6 +937,7 @@ describe('CPU match service', () => {
       effects: [
         {
           effectId: 'player-power-effect-3',
+          effectCode: 'power_change' as const,
           effectType: 'buff' as const,
           targetSide: 'player' as const,
           targetCreatureId: firstCreature.card.id,
@@ -911,6 +1034,7 @@ describe('CPU match service', () => {
       stat: 'power',
       operation: 'add',
     });
+    expect(response.lastAction?.effects[0]).not.toHaveProperty('effectCode');
   });
 
   it('reconstructs one deterministic chronological log from persisted player and CPU actions', async () => {

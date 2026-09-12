@@ -1,3 +1,11 @@
+import { StateIcon } from '../StatusMessage';
+import { LoadingState } from '../LoadingState';
+import {
+  ArrowLeftIcon,
+  CaretRightIcon,
+  CaretDownIcon,
+} from '@phosphor-icons/react';
+import { AuthorSaveBar } from './AuthorSaveBar';
 import {
   useEffect,
   useMemo,
@@ -239,18 +247,20 @@ export function CardWorkspace({
       </header>
 
       {state !== 'ready' ? (
-        <p className="sr-only" id="card-create-unavailable">
+        <p className="author-create-guidance" id="card-create-unavailable">
           Load the card catalogue before creating a card.
         </p>
       ) : null}
 
       {state === 'loading' ? (
-        <p className="author-state" role="status">
-          Loading card definitions…
-        </p>
+        <LoadingState label="Loading card definitions…" />
       ) : null}
       {state === 'error' ? (
-        <div className="author-state author-state--error" role="alert">
+        <div
+          className="author-state author-state--error state-message state-message--error"
+          role="alert"
+        >
+          <StateIcon tone="error" />
           <strong>Cards are unavailable.</strong>
           <p>{errorMessage}</p>
           <button
@@ -291,13 +301,15 @@ export function CardWorkspace({
               {cards.length === 1 ? 'card' : 'cards'}
             </p>
             {cards.length === 0 ? (
-              <div className="author-empty author-empty--compact">
+              <div className="author-empty author-empty--compact state-message state-message--empty">
+                <StateIcon tone="empty" />
                 <strong>No card definitions yet</strong>
                 <p>Create a draft to begin the catalogue.</p>
               </div>
             ) : null}
             {cards.length > 0 && visibleCards.length === 0 ? (
-              <div className="author-empty author-empty--compact">
+              <div className="author-empty author-empty--compact state-message state-message--empty">
+                <StateIcon tone="empty" />
                 <strong>No cards match</strong>
                 <p>Adjust the catalogue filters.</p>
               </div>
@@ -322,12 +334,11 @@ export function CardWorkspace({
                       {card.affinity ? titleCase(card.affinity) : 'Typeless'} ·{' '}
                       {titleCase(card.rarity)}
                     </span>
-                    <span
+                    <CaretRightIcon
+                      size={16}
                       aria-hidden="true"
                       className="author-record-summary__chevron"
-                    >
-                      ›
-                    </span>
+                    />
                   </Link>
                 </li>
               ))}
@@ -470,6 +481,7 @@ function CardCatalogueControls({
         </label>
         <details className="author-filter-menu">
           <summary>
+            <CaretDownIcon size={16} aria-hidden="true" />
             Filters
             {secondaryFilterCount > 0 ? (
               <span aria-label={`${secondaryFilterCount} active filters`}>
@@ -551,7 +563,11 @@ function CatalogueWelcome({
 
 function MissingRecord({ backPath, kind }: { backPath: string; kind: string }) {
   return (
-    <section className="author-state author-state--error" role="alert">
+    <section
+      className="author-state author-state--error state-message state-message--error"
+      role="alert"
+    >
+      <StateIcon tone="error" />
       <strong>This {kind} is not in the loaded catalogue.</strong>
       <p>It may have been removed or the address may be incorrect.</p>
       <Link className="button button--quiet" href={backPath}>
@@ -652,7 +668,7 @@ function CardDetail({
   return (
     <article aria-labelledby="card-detail-title" className="author-detail">
       <Link className="author-back-link" href={authorPaths.cards}>
-        <span aria-hidden="true">←</span> Card catalogue
+        <ArrowLeftIcon size={16} aria-hidden="true" /> Card catalogue
       </Link>
       <header className="author-card-detail__header">
         <div className="author-card-detail__identity">
@@ -995,7 +1011,7 @@ function CardForm({
         className="author-back-link"
         href={card ? authorPaths.card(card.id) : authorPaths.cards}
       >
-        <span aria-hidden="true">←</span>{' '}
+        <ArrowLeftIcon size={16} aria-hidden="true" />{' '}
         {card ? 'Card detail' : 'Card catalogue'}
       </Link>
       <header className="author-panel__heading">
@@ -1300,7 +1316,12 @@ function CardForm({
           {draft.description.trim() ? <p>{draft.description}</p> : null}
         </div>
 
-        <div className="author-actions">
+        <AuthorSaveBar
+          busy={busy}
+          dirty={dirty}
+          failed={Boolean(apiError) || Object.values(errors).some(Boolean)}
+          isNew={!card}
+        >
           <button className="button" disabled={busy} type="submit">
             {busy ? 'Saving…' : card ? 'Save card' : 'Create draft card'}
           </button>
@@ -1312,12 +1333,7 @@ function CardForm({
           >
             Cancel
           </button>
-        </div>
-        {dirty ? (
-          <p className="author-dirty-state" role="status">
-            Unsaved changes
-          </p>
-        ) : null}
+        </AuthorSaveBar>
       </form>
     </section>
   );

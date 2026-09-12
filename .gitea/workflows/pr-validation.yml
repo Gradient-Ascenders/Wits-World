@@ -81,6 +81,12 @@ jobs:
       - name: Install dependencies
         run: time npm ci --prefer-offline --no-audit --fund=false
 
+      - name: Test shared account policy package
+        run: time npm test --workspace @wits-world/account-policy
+
+      - name: Test shared game rules package
+        run: time npm test --workspace @wits-world/game-rules
+
       - name: Test web application with coverage
         run: time npm run test:coverage --workspace @wits-world/web
 
@@ -121,10 +127,10 @@ jobs:
           --health-retries 12
 
     env:
-      # The service name is a network alias in the isolated job network.
+      # The service name is a network alias in this job's isolated network.
       TEST_DATABASE_URL: postgresql://wits_world_ci:wits_world_ci@postgres:5432/wits_world_test
-      # Keep the ordinary database target deliberately unusable so an
-      # accidental non-test connection fails rather than touching real data.
+      # Keep the ordinary target deliberately unusable so an accidental
+      # non-test connection fails rather than touching real data.
       DATABASE_URL: postgresql://ci-guard:ci-guard@127.0.0.1:1/wits_world_ci_guard
       DATABASE_TEST_WORKERS: '4'
 
@@ -143,7 +149,7 @@ jobs:
       - name: Prepare shared API dependencies
         run: time npm run prepare:api
 
-      - name: Verify local test database readiness
+      - name: Verify isolated test database readiness
         run: |
           set -euo pipefail
 
@@ -194,6 +200,6 @@ jobs:
         run: |
           echo "All pull-request validation jobs passed."
           echo "Static analysis: passed"
-          echo "Application tests and coverage: passed"
-          echo "Database and migration validation: passed"
+          echo "Application and explicit shared-package tests: passed"
+          echo "Isolated database and migration validation: passed"
           echo "Application builds: passed"

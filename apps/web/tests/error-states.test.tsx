@@ -28,7 +28,10 @@ describe('application status states', () => {
 
     expect(screen.getByRole('alert')).toBeVisible();
     expect(
-      screen.getByRole('heading', { level: 1, name: 'Something went wrong' }),
+      screen.getByRole('heading', {
+        level: 1,
+        name: 'This page could not be displayed',
+      }),
     ).toBeVisible();
     expect(
       screen.getByRole('button', { name: 'Reload Wits World' }),

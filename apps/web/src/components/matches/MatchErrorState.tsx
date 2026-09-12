@@ -1,3 +1,4 @@
+import { StateIcon } from '../StatusMessage';
 import { forwardRef } from 'react';
 import { Link } from 'wouter';
 
@@ -21,7 +22,13 @@ export const MatchErrorState = forwardRef<
   const deckInvalid = error.failure === 'deck-invalid';
 
   return (
-    <section className="match-state-panel" ref={ref} role="alert" tabIndex={-1}>
+    <section
+      className="match-state-panel state-message state-message--error"
+      ref={ref}
+      role="alert"
+      tabIndex={-1}
+    >
+      <StateIcon tone="error" />
       <p className="eyebrow">Battle connection</p>
       <h1>
         {title ??
@@ -38,7 +45,7 @@ export const MatchErrorState = forwardRef<
             ? 'The match was not found for this signed-in player. Return to Battles to recover an active match or view your history.'
             : deckInvalid
               ? 'The server rejected the selected deck. Review and select a valid saved deck before starting another match.'
-              : 'Check your connection, then retry the authoritative server state. No battle action will be replayed.'}
+              : 'Check your connection, then reload the battle. Your previous action will not be repeated.'}
       </p>
       {error.options.requestId ? (
         <p className="match-support-reference">

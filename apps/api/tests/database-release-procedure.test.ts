@@ -62,6 +62,7 @@ describe('database release procedure', () => {
           confirmDatabase: 'wits_quest_test',
           databaseConfig,
           includeBasicDemoSeed: true,
+          includeVerifiedEventsSeed: false,
           onInspection,
         },
         {
@@ -198,6 +199,43 @@ describe('database release procedure', () => {
       verifyBasicDemo: false,
     });
   });
+
+  it('runs and verifies the verified event seed through its separate option', async () => {
+    const runVerifiedEventSeedFiles = vi.fn().mockResolvedValue({
+      applied: ['0001_verified_wits_events.sql'],
+    });
+    const verifyRelease = vi.fn().mockResolvedValue({
+      migrationCount: 2,
+      verifiedEventCount: 10,
+      verifiedQuestionCount: 100,
+    });
+
+    await runDatabaseRelease(
+      {
+        confirmDatabase: 'wits_quest_test',
+        databaseConfig,
+        includeBasicDemoSeed: false,
+        includeVerifiedEventsSeed: true,
+      },
+      {
+        checkReadiness: vi.fn().mockResolvedValue(readiness),
+        inspectTarget: vi.fn().mockResolvedValue(inspection),
+        runMigrationFiles: vi.fn().mockResolvedValue({
+          applied: [],
+          skipped: ['0001.sql', '0002.sql'],
+        }),
+        runVerifiedEventSeedFiles,
+        verifyRelease,
+      },
+    );
+
+    expect(runVerifiedEventSeedFiles).toHaveBeenCalledOnce();
+    expect(verifyRelease).toHaveBeenCalledWith(databaseConfig, {
+      expectedMigrationCount: 2,
+      verifyBasicDemo: false,
+      verifyVerifiedEvents: true,
+    });
+  });
 });
 
 describe('database release inspection and verification', () => {
@@ -236,6 +274,30 @@ describe('database release inspection and verification', () => {
       basicDemoEventCount: 4,
       basicDemoChallengeCount: 1,
       migrationCount: 2,
+    });
+  });
+
+  it('verifies the complete verified event content pack', async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [{ count: '2' }] })
+      .mockResolvedValueOnce({ rows: [{ count: '10' }] })
+      .mockResolvedValueOnce({ rows: [{ count: '100' }] });
+
+    await expect(
+      verifyDatabaseRelease(
+        databaseConfig,
+        {
+          expectedMigrationCount: 2,
+          verifyBasicDemo: false,
+          verifyVerifiedEvents: true,
+        },
+        createClientRunner(query),
+      ),
+    ).resolves.toEqual({
+      migrationCount: 2,
+      verifiedEventCount: 10,
+      verifiedQuestionCount: 100,
     });
   });
 });

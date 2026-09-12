@@ -63,6 +63,7 @@ test('keeps trail and nearby discovery usable without the map at mobile and desk
   ).toBeDisabled();
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
+    animations: 'disabled',
     fullPage: true,
     path: testInfo.outputPath('trail-detail-mobile.png'),
   });
@@ -74,15 +75,16 @@ test('keeps trail and nearby discovery usable without the map at mobile and desk
   await currentEventAction.focus();
   await expect(currentEventAction).toBeFocused();
   await page.screenshot({
+    animations: 'disabled',
     fullPage: true,
     path: testInfo.outputPath('trail-current-mobile.png'),
   });
   await page.keyboard.press('Enter');
   await expect(page.getByRole('heading', { name: longTitle })).toBeFocused();
   await expect(page.getByText('Out of range', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '← Trail' }).click();
+  await page.getByRole('button', { name: 'Trail', exact: true }).click();
   await expect(currentEventAction).toBeFocused();
-  await page.getByRole('button', { name: '← Trails' }).click();
+  await page.getByRole('button', { name: 'Trails', exact: true }).click();
   await page.getByRole('button', { name: 'Nearby' }).click();
 
   await expect(
@@ -94,6 +96,7 @@ test('keeps trail and nearby discovery usable without the map at mobile and desk
   ).toHaveCount(1);
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
+    animations: 'disabled',
     fullPage: true,
     path: testInfo.outputPath('nearby-mobile.png'),
   });
@@ -106,24 +109,25 @@ test('keeps trail and nearby discovery usable without the map at mobile and desk
   await expectNoHorizontalOverflow(page);
   const desktopPanel = page.locator('.event-panel--trail-detail');
   const panelBounds = await desktopPanel.boundingBox();
-  expect(panelBounds?.width).toBeGreaterThanOrEqual(650);
-  expect(panelBounds?.width).toBeLessThanOrEqual(800);
-  const desktopScroll = await desktopPanel
-    .locator('.event-panel__scroll')
-    .evaluate((element) => ({
-      clientHeight: element.clientHeight,
-      scrollHeight: element.scrollHeight,
-    }));
-  expect(desktopScroll.scrollHeight).toBeLessThanOrEqual(
-    desktopScroll.clientHeight + 1,
+  expect(panelBounds?.width).toBe(384);
+  const mapBounds = await page.locator('.campus-map').boundingBox();
+  expect(mapBounds!.x).toBeGreaterThanOrEqual(
+    panelBounds!.x + panelBounds!.width,
   );
+  await desktopPanel
+    .getByText('Complete the previous stop to unlock.')
+    .scrollIntoViewIfNeeded();
+  await expect(
+    desktopPanel.getByText('Complete the previous stop to unlock.'),
+  ).toBeVisible();
   await page.screenshot({
+    animations: 'disabled',
     fullPage: true,
     path: testInfo.outputPath('trail-detail-desktop.png'),
   });
 
   routeState.showRetiredStop();
-  await page.getByRole('button', { name: '← Trails' }).click();
+  await page.getByRole('button', { name: 'Trails', exact: true }).click();
   await page
     .getByRole('button', { name: /View trail.*Campus History Trail/ })
     .click();
@@ -137,6 +141,7 @@ test('keeps trail and nearby discovery usable without the map at mobile and desk
     'Origins Centre, retired trail stop',
   );
   await page.screenshot({
+    animations: 'disabled',
     fullPage: true,
     path: testInfo.outputPath('trail-retired-desktop.png'),
   });
@@ -157,6 +162,9 @@ async function installRoutes(page: Page) {
       requestId: 'trail-browser-player',
       role: 'player',
     }),
+  );
+  await page.route(`${API_BASE_URL}/offline-challenge-packs`, (route) =>
+    json(route, { packs: [] }),
   );
   await page.route(`${API_BASE_URL}/events`, (route) =>
     json(route, {

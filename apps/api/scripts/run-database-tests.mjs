@@ -21,6 +21,7 @@ const testFiles = [
   'tests/coin-retirement-migration.integration.test.ts',
   'tests/challenge-attempt-database.integration.test.ts',
   'tests/card-catalogue.integration.test.ts',
+  'tests/card-catalogue-upgrade-migration.integration.test.ts',
   'tests/deck-persistence.integration.test.ts',
   'tests/cpu-match-database.integration.test.ts',
   'tests/author-content-persistence.integration.test.ts',
@@ -38,6 +39,7 @@ const testFiles = [
   'tests/campaign-persistence.integration.test.ts',
   'tests/movement-evidence-database.integration.test.ts',
   'tests/question-performance-database.integration.test.ts',
+  'tests/verified-events-content.integration.test.ts',
 ];
 
 // Each file provisions and migrates its own isolated test database.

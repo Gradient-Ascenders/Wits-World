@@ -198,18 +198,13 @@ test('mobile Event and Question routes use list to detail to editor views', asyn
     name: 'Authored events',
   });
   const recordView = page.locator('.author-record-view');
-  const mobileNavigation = page
-    .getByRole('navigation', { name: 'Player' })
-    .last();
   await expect(catalogue).toBeVisible();
   await expect(recordView).toBeHidden();
   await expect(page.getByRole('main')).toHaveCount(1);
-  await expect(mobileNavigation).toBeVisible();
-  const navigationBox = await mobileNavigation.boundingBox();
-  expect(navigationBox).not.toBeNull();
-  expect(
-    (navigationBox?.y ?? 0) + (navigationBox?.height ?? 0),
-  ).toBeLessThanOrEqual(845);
+  await expect(page.getByRole('navigation', { name: 'Player' })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: /Navigation/ }),
+  ).toHaveAttribute('aria-expanded', 'false');
   const listHeight = await documentHeight(page);
 
   await page.getByRole('link', { name: /Great Hall Discovery/u }).click();
@@ -287,6 +282,8 @@ test('mobile Event and Question routes use list to detail to editor views', asyn
   await page.getByLabel('Question prompt').fill('Unsaved question draft');
   const questionEditorHeight = await documentHeight(page);
   await expectNoHorizontalOverflow(page);
+
+  await openAuthorNavigation(page);
 
   await page
     .getByRole('navigation', { name: 'Author sections' })
@@ -496,6 +493,7 @@ test('Review and campaign workspaces preserve lifecycle, keyboard and responsive
   await expect(page.getByText('Approve: in review to approved')).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
+  await openAuthorNavigation(page);
   await page.getByRole('link', { name: 'Campaigns' }).click();
   await expect(page.getByRole('heading', { name: 'Campaigns' })).toBeVisible();
   await expect(
@@ -549,7 +547,23 @@ for (const viewport of [
     const detail = page.getByRole('region', {
       name: 'Question workspace detail',
     });
+    const events = page.getByRole('complementary', { name: 'Authored events' });
+    await expect(events).toBeVisible();
     await expect(catalogue).toBeVisible();
+    if (viewport.width === 1280) {
+      await expect(detail).toBeHidden();
+      await page
+        .getByRole('link', { name: /Where is the Great Hall/u })
+        .click();
+      await expect(events).toBeVisible();
+      await expect(catalogue).toBeHidden();
+      await expect(detail).toBeVisible();
+      await expectNoHorizontalOverflow(page);
+      await events.getByRole('link', { name: /MSL Open Day/u }).click();
+      await expect(page).toHaveURL(`/author/events/${EVENT_B}`);
+      expect(consoleErrors).toEqual([]);
+      return;
+    }
     await expect(detail).toBeVisible();
     await expect(
       detail.getByRole('heading', { name: 'Select a question' }),
@@ -663,6 +677,7 @@ test('Event location authoring is map-first and synchronized at responsive width
     await expect(map.locator('[data-event-marker-id]')).toHaveCount(0);
 
     if (viewport.width === 390) {
+      await openAuthorNavigation(page);
       await page
         .getByRole('navigation', { name: 'Author sections' })
         .getByRole('link', { name: 'Events' })
@@ -733,6 +748,8 @@ test('Event location authoring is map-first and synchronized at responsive width
     );
     await expectNoHorizontalOverflow(page);
 
+    await openAuthorNavigation(page);
+
     await page
       .getByRole('navigation', { name: 'Author sections' })
       .getByRole('link', { name: 'Events' })
@@ -743,6 +760,7 @@ test('Event location authoring is map-first and synchronized at responsive width
     await expect(dirtyDialog).toContainText('unsaved event draft changes');
     await dirtyDialog.getByRole('button', { name: 'Keep editing' }).click();
     await expect(latitude).toHaveValue('-26.191111');
+    await openAuthorNavigation(page);
     await page
       .getByRole('navigation', { name: 'Author sections' })
       .getByRole('link', { name: 'Events' })
@@ -1179,6 +1197,81 @@ test('tablet and wide workspaces preserve loading, error, empty and deep-link st
   expect(consoleErrors).toEqual([]);
 });
 
+test('author save controls follow Active times in the form', async ({
+  page,
+}) => {
+  await installAuthorApi(page);
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto('/author/events/new');
+    const bar = page.locator('.author-save-bar');
+    await expect(bar).toContainText('New draft · not saved');
+    await expect(bar).toHaveCSS('position', 'static');
+    await bar.scrollIntoViewIfNeeded();
+    const section = (await page
+      .getByRole('group', { name: 'Active times' })
+      .boundingBox())!;
+    const controls = (await bar.boundingBox())!;
+    expect(controls.y - section.y - section.height).toBeGreaterThanOrEqual(0);
+    expect(controls.y - section.y - section.height).toBeLessThanOrEqual(32);
+    await expect(
+      bar.getByRole('button', { name: 'Create draft event' }),
+    ).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  }
+});
+
+test('author save state remains visible through edits, saving, failure and recovery', async ({
+  page,
+}, info) => {
+  await installAuthorApi(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/author/events/${EVENT_A}/edit`);
+  const saveBar = page.locator('.author-save-bar');
+  await expect(saveBar).toContainText('No unsaved changes');
+  await page.getByLabel('Event title').fill('');
+  await page.getByRole('button', { name: 'Save event' }).click();
+  await expect(page.getByLabel('Event title')).toHaveAttribute(
+    'aria-invalid',
+    'true',
+  );
+  await page.screenshot({
+    path: info.outputPath('validation.png'),
+    fullPage: true,
+  });
+  await page.getByLabel('Event title').fill('Updated campus event');
+  await expect(saveBar).toContainText('Unsaved changes');
+  const endpoint = `**/author/events/${EVENT_A}`;
+  let releaseSave: () => void = () => {};
+  const pendingSave = new Promise<void>((resolve) => {
+    releaseSave = resolve;
+  });
+  await page.route(endpoint, async (route) => {
+    await pendingSave;
+    await problem(route, 500, 'INTERNAL_ERROR', 'Please retry this save.');
+  });
+  await page.getByRole('button', { name: 'Save event' }).click();
+  await expect(saveBar).toContainText('Saving changes…');
+  await expect(saveBar.getByRole('button', { name: 'Saving…' })).toBeDisabled();
+  releaseSave();
+  await expect(saveBar).toContainText('Not saved. Review the errors above.');
+  await expect(page.getByLabel('Event title')).toHaveValue(
+    'Updated campus event',
+  );
+  await page.screenshot({
+    path: info.outputPath('save-failure.png'),
+    fullPage: true,
+  });
+  await page.unroute(endpoint);
+  await page.getByRole('button', { name: 'Save event' }).click();
+  await expect(page.getByText('Event changes saved.')).toBeFocused();
+  await page.screenshot({
+    path: info.outputPath('save-success.png'),
+    fullPage: true,
+  });
+  await expectNoHorizontalOverflow(page);
+});
+
 interface AuthorApiState {
   campaigns: AuthorCampaign[];
   cards: AuthorCard[];
@@ -1212,6 +1305,11 @@ async function installAuthorApi(page: Page): Promise<AuthorApiState> {
     const request = route.request();
     const method = request.method();
     const path = new URL(request.url()).pathname.replace('/api/v1', '');
+
+    if (path === '/events' && method === 'GET') {
+      await json(route, { events: [], requestId: 'request-player-events' });
+      return;
+    }
 
     if (path === '/auth/me') {
       await json(route, {
@@ -1785,6 +1883,7 @@ function eventFixture(
     latitude: -26.19205,
     longitude: 28.03038,
     radiusMetres: 75,
+    sourceUrls: [],
     retiredAt:
       authoringStatus === 'retired' ? '2026-08-20T10:00:00.000Z' : null,
     startsAt: '2026-08-01T06:00:00.000Z',
@@ -1843,6 +1942,7 @@ function questionFixture(
     createdAt: '2026-08-01T08:00:00.000Z',
     difficulty: position > 3 ? 2 : 1,
     explanation: 'Author-only fixture explanation.',
+    sourceUrls: [],
     format: 'multiple_choice',
     prompt,
     questionId,
@@ -1863,6 +1963,7 @@ function materializeQuestion(
       createdAt: '2026-08-29T08:00:00.000Z',
       difficulty: input.difficulty,
       explanation: input.explanation,
+      sourceUrls: [],
       format: 'ordering',
       items: input.items.map((text, index) => ({
         itemId: uuid('7', 100 + index),
@@ -1890,6 +1991,7 @@ function materializeQuestion(
     createdAt: '2026-08-29T08:00:00.000Z',
     difficulty: input.difficulty,
     explanation: input.explanation,
+    sourceUrls: [],
     format: 'multiple_choice',
     prompt: input.prompt,
     questionId,
@@ -2109,7 +2211,7 @@ async function questionWorkspaceMetrics(
     return {
       catalogueWidth: width('.question-catalogue'),
       detailWidth: width('.question-record-view'),
-      mainContentWidth: contentWidth('.main-content--author'),
+      mainContentWidth: contentWidth('.author-console__workspace'),
       managementWidth: width('.author-management-view--questions'),
       questionWorkspaceWidth: width('.question-workspace'),
       recordContentWidth: contentWidth(
@@ -2153,4 +2255,13 @@ async function expectNoHorizontalOverflow(page: Page) {
   expect(dimensions.scrollWidth).toBeLessThanOrEqual(
     dimensions.clientWidth + 1,
   );
+}
+
+async function openAuthorNavigation(page: Page) {
+  const toggle = page.getByRole('button', { name: /Navigation/ });
+  if (
+    (await toggle.isVisible()) &&
+    (await toggle.getAttribute('aria-expanded')) === 'false'
+  )
+    await toggle.click();
 }

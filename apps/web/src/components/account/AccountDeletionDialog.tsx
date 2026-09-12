@@ -32,10 +32,30 @@ export function AccountDeletionDialog({
   const isFinalConfirmation = phase === 'confirm';
 
   useEffect(() => {
+    const background = Array.from(document.body.children).filter(
+      (element): element is HTMLElement =>
+        element instanceof HTMLElement && !element.contains(dialogRef.current),
+    );
+    const previousInert = background.map((element) => element.inert);
+    const previousOverflow = document.body.style.overflow;
+    background.forEach((element) => {
+      element.inert = true;
+    });
+    document.body.style.overflow = 'hidden';
     cancelRef.current?.focus();
 
-    return () => returnFocusRef.current?.focus();
+    return () => {
+      background.forEach((element, index) => {
+        element.inert = previousInert[index] ?? false;
+      });
+      document.body.style.overflow = previousOverflow;
+      returnFocusRef.current?.focus();
+    };
   }, [returnFocusRef]);
+
+  useEffect(() => {
+    if (busy) dialogRef.current?.focus();
+  }, [busy]);
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === 'Escape' && !busy) {
@@ -53,6 +73,7 @@ export function AccountDeletionDialog({
     );
 
     if (!controls || controls.length === 0) {
+      event.preventDefault();
       return;
     }
 
@@ -79,6 +100,7 @@ export function AccountDeletionDialog({
         onKeyDown={handleKeyDown}
         ref={dialogRef}
         role="alertdialog"
+        tabIndex={-1}
       >
         {isFinalConfirmation ? (
           <p className="eyebrow">Permanent account deletion</p>
@@ -132,7 +154,7 @@ export function AccountDeletionDialog({
             ref={cancelRef}
             type="button"
           >
-            {isFinalConfirmation ? 'Keep my account' : 'Cancel'}
+            Cancel deletion
           </button>
           <button
             className={isFinalConfirmation ? 'button button--danger' : 'button'}
@@ -144,7 +166,7 @@ export function AccountDeletionDialog({
               ? 'Deleting account…'
               : isFinalConfirmation
                 ? 'Permanently delete account'
-                : 'Continue'}
+                : 'Sign in again'}
           </button>
         </div>
       </div>

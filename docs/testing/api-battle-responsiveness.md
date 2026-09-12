@@ -115,4 +115,50 @@ entrypoints directly. Installed Node 24.19.0 is supported; the working npm 11.17
 is below the repository's 11.18.0 minimum and was not changed. No installation or
 lockfile regeneration was performed.
 
+## CPU response serialization follow-up (13 September 2026)
+
+The reported action failure and subsequent reload failure shared one cause:
+an engine `effectCode` field leaked through the public `lastAction` projection.
+Fastify's strict response schema rejected it after the action had committed.
+The affected saved action was a CPU `power_change` debuff; its signed amount
+remains unchanged. This was a serialization failure, not a connection failure.
+
+The service now explicitly selects the existing public effect fields for fresh
+responses and saved idempotency receipts. Internal metadata remains in the
+engine and database. No schema relaxation, database repair, extra query, or
+battle-state change is required.
+
+Three regression checks fail against the previous implementation (including
+HTTP 500 at the route boundary) and pass with the fix. Coverage includes saved
+action projection, legacy receipt replay, and action/reload/resume serialization.
+A read-only check of the actual affected match returned HTTP 200 for reload
+and resume with version 4 unchanged. Local injected requests took 1,220 ms and
+629 ms respectively; authentication was stubbed for this diagnostic, so these
+are recovery evidence, not an end-to-end latency comparison. The original logs
+showed failed reload/resume requests around 915–933 ms.
+
+Follow-up validation: all 971 non-database API tests passed (264 database tests
+skipped); API lint, type-check and build, changed-file formatting, and
+`git diff --check` passed. No deployed browser session or database-writing
+checks were run for this follow-up.
+
+## Integration with updated main
+
+The follow-up was reconciled with main at `87bb998`, retaining the updated
+battle visuals and main's action/history serialization fix. The batched history
+query now also selects `state_after`, which the public effect projection needs
+to recover modifier details. It still uses three queries; earlier latency
+measurements above predate this additional column. Main's responsive battle
+layout supersedes the earlier mobile CSS override described above.
+
+Post-merge verification: 39 targeted API tests and 65 battle web tests passed;
+API/web type-checks and lint/formatting of the resolved files passed. All 12
+battle browser scenarios passed across the initial run and targeted reruns.
+The history scenario needed a warm rerun after a page-loading timeout; the
+three-viewport PvP scenario passed with a local 120-second overall timeout
+instead of 60 seconds, with every assertion retained. Its bench assertion now
+checks that the new detail buttons open a dialog without submitting an action.
+Dependencies were installed from the incoming lockfile with `npm ci`; no
+database-writing checks were run.
+
 AI assistance: Codex[GPT-6] investigated, implemented and documented this pass.

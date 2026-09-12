@@ -3,7 +3,11 @@ import { basename, resolve } from 'node:path';
 
 import type { DatabaseConfig } from '../config/database.js';
 import { type DatabaseClientRunner, withDatabaseClient } from './connection.js';
-import { getBasicDemoSeedsDirectory, getSeedsDirectory } from './paths.js';
+import {
+  getBasicDemoSeedsDirectory,
+  getSeedsDirectory,
+  getVerifiedEventsSeedsDirectory,
+} from './paths.js';
 
 const SEED_LOCK_KEY = 9_160_002;
 
@@ -64,6 +68,28 @@ export async function runBasicDemoSeeds(
 
   return {
     applied: [...baseResult.applied, ...demoResult.applied],
+  };
+}
+
+export async function runVerifiedEventSeeds(
+  databaseConfig: DatabaseConfig,
+  seedsDirectory = getSeedsDirectory(),
+  verifiedEventsSeedsDirectory = getVerifiedEventsSeedsDirectory(),
+  runWithClient: DatabaseClientRunner = withDatabaseClient,
+): Promise<SeedResult> {
+  const baseResult = await runSeeds(
+    databaseConfig,
+    seedsDirectory,
+    runWithClient,
+  );
+  const contentResult = await runSeeds(
+    databaseConfig,
+    verifiedEventsSeedsDirectory,
+    runWithClient,
+  );
+
+  return {
+    applied: [...baseResult.applied, ...contentResult.applied],
   };
 }
 

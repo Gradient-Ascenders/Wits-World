@@ -201,6 +201,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0040_add_offline_challenge_attempts.sql',
           '0041_complete_card_catalogue.sql',
           '0042_implement_card_evolution.sql',
+          '0043_add_content_source_evidence.sql',
         ],
       });
 
@@ -333,6 +334,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0040_add_offline_challenge_attempts.sql',
           '0041_complete_card_catalogue.sql',
           '0042_implement_card_evolution.sql',
+          '0043_add_content_source_evidence.sql',
         ],
       });
 

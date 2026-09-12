@@ -46,6 +46,7 @@ interface AuthorChallengeQuestionBase {
   prompt: string;
   difficulty: 1 | 2 | 3;
   explanation: string | null;
+  sourceUrls: string[];
   status: AuthorQuestionStatus;
   createdAt: string;
   updatedAt: string;
@@ -217,6 +218,7 @@ interface QuestionRow extends pg.QueryResultRow {
   prompt: string;
   difficulty: 1 | 2 | 3;
   explanation: string | null;
+  source_urls: string[];
   status: AuthorQuestionStatus;
   created_at: Date;
   updated_at: Date;
@@ -851,6 +853,7 @@ async function loadQuestions(
         question.prompt,
         question.difficulty,
         question.explanation,
+        question.source_urls,
         question.status,
         question.version,
         question.submitted_by_player_id::text,
@@ -904,6 +907,7 @@ async function requireLoadedQuestion(
         question.prompt,
         question.difficulty,
         question.explanation,
+        question.source_urls,
         question.status,
         question.version,
         question.submitted_by_player_id::text,
@@ -963,6 +967,7 @@ function mapQuestionRows(
         prompt: row.prompt,
         difficulty: row.difficulty,
         explanation: row.explanation,
+        sourceUrls: row.source_urls ?? [],
         status: row.status,
         version: row.version,
         submittedBy: row.submitted_by_player_id,
