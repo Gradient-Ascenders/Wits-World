@@ -94,11 +94,15 @@ jobs:
 
       - name: Upload sanitized verification summary
         if: ${{ always() }}
-        # Do not upload Playwright output, traces, screenshots, logs, environment
-        # dumps, database rows, or auth state from this privacy-sensitive journey.
+        # Upload only the fixed summary and, when Playwright failed, its
+        # allowlisted diagnostics. Do not upload the raw Playwright report,
+        # traces, screenshots, logs, environment dumps, database rows, or auth
+        # state from this privacy-sensitive journey.
         uses: https://github.com/actions/upload-artifact@v3
         with:
           name: automated-verification-${{ gitea.sha }}
-          path: .playwright-artifacts/verification/summary.json
+          path: |
+            .playwright-artifacts/verification/summary.json
+            .playwright-artifacts/verification/playwright-diagnostics.json
           if-no-files-found: error
           retention-days: 14

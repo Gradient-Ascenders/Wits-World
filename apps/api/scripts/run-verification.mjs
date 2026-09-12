@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import console from 'node:console';
 import { existsSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, URL } from 'node:url';
@@ -15,6 +15,7 @@ import {
   validateReleaseCommit,
   validateTestDatabaseEnvironment,
 } from './verification-target.mjs';
+import { buildSanitizedPlaywrightDiagnostics } from './playwright-diagnostics.mjs';
 
 const repositoryRoot = path.resolve(
   fileURLToPath(new URL('../../..', import.meta.url)),
@@ -24,6 +25,14 @@ const artifactDirectory = path.resolve(
     path.join(repositoryRoot, '.playwright-artifacts/verification'),
 );
 const summaryPath = path.join(artifactDirectory, 'summary.json');
+const rawPlaywrightReportPath = path.join(
+  artifactDirectory,
+  'playwright-report.raw.json',
+);
+const sanitizedPlaywrightDiagnosticsPath = path.join(
+  artifactDirectory,
+  'playwright-diagnostics.json',
+);
 const verificationLockKey = 9_160_166;
 const npmCliPath = process.env.npm_execpath;
 const steps = [];
@@ -31,6 +40,8 @@ let profile = 'configuration';
 let headCommit = 'unavailable';
 
 loadVerificationEnvironment();
+await rm(rawPlaywrightReportPath, { force: true });
+await rm(sanitizedPlaywrightDiagnosticsPath, { force: true });
 
 if (!npmCliPath) {
   await failConfiguration(
@@ -101,10 +112,7 @@ async function runVerification() {
     ]);
 
     if (profile === 'nightly' || profile === 'release') {
-      runNpmStep('deterministic Basic Playwright E2E', [
-        'run',
-        'test:e2e:basic',
-      ]);
+      await runBasicE2eStep();
     }
   } catch (error) {
     failureMessage =
@@ -130,6 +138,62 @@ async function runVerification() {
     await writeSummary('passed');
     console.log(`Verification profile ${profile} passed.`);
   }
+}
+
+async function runBasicE2eStep() {
+  await rm(rawPlaywrightReportPath, { force: true });
+  await rm(sanitizedPlaywrightDiagnosticsPath, { force: true });
+  const previousReportPath = process.env.BASIC_E2E_JSON_REPORT_PATH;
+  process.env.BASIC_E2E_JSON_REPORT_PATH = rawPlaywrightReportPath;
+
+  try {
+    runNpmStep('deterministic Basic Playwright E2E', ['run', 'test:e2e:basic']);
+  } catch (error) {
+    await writeSanitizedPlaywrightDiagnostics();
+    throw error;
+  } finally {
+    if (previousReportPath === undefined) {
+      delete process.env.BASIC_E2E_JSON_REPORT_PATH;
+    } else {
+      process.env.BASIC_E2E_JSON_REPORT_PATH = previousReportPath;
+    }
+    await rm(rawPlaywrightReportPath, { force: true });
+  }
+}
+
+async function writeSanitizedPlaywrightDiagnostics() {
+  let diagnostics;
+
+  try {
+    const report = JSON.parse(await readFile(rawPlaywrightReportPath, 'utf8'));
+    diagnostics = buildSanitizedPlaywrightDiagnostics(report);
+  } catch {
+    diagnostics = {
+      failures: [
+        {
+          attachments: [],
+          durationSeconds: 0,
+          failureCategory: 'diagnostic-collection-failure',
+          failureReason:
+            'The Playwright diagnostic report was unavailable or invalid.',
+          failingStep: null,
+          file: null,
+          line: null,
+          projectName: null,
+          testTitle: 'Playwright diagnostic collection',
+        },
+      ],
+      schemaVersion: 2,
+      status: 'failed',
+    };
+  }
+
+  await mkdir(artifactDirectory, { recursive: true });
+  await writeFile(
+    sanitizedPlaywrightDiagnosticsPath,
+    `${JSON.stringify(diagnostics, null, 2)}\n`,
+    'utf8',
+  );
 }
 
 function loadVerificationEnvironment() {
@@ -275,6 +339,9 @@ async function writeSummary(status) {
         schemaVersion: 1,
         status,
         steps,
+        ...(existsSync(sanitizedPlaywrightDiagnosticsPath)
+          ? { playwrightDiagnostics: 'playwright-diagnostics.json' }
+          : {}),
       },
       null,
       2,

@@ -127,15 +127,38 @@ campus field result, or stakeholder acceptance record.
 
 ## Failure evidence and artifact privacy
 
-The uploaded `summary.json` contains only a schema version, profile, commit
-SHA, overall status, fixed check names, fixed statuses, and integer durations.
-Raw logs, environment dumps, connection strings, database rows, accepted
-answers, exact player locations, browser authentication state, screenshots,
-video, and traces are deliberately excluded. In Gitea, raw child-process output
-is suppressed and replaced with the fixed check name and status. Playwright
-remains configured with screenshots, video, and tracing off for this
-deterministic journey. Operators reproduce a failed named check locally against
-the dedicated test target when detailed diagnosis is required.
+The uploaded `summary.json` contains a schema version, profile, commit SHA,
+overall status, fixed check names, fixed statuses, integer durations, and—only
+when Playwright diagnostics were written—the fixed relative filename
+`playwright-diagnostics.json`. Raw logs, environment dumps, connection strings,
+database rows, accepted answers, exact player locations, browser authentication
+state, screenshots, video, and traces are deliberately excluded. In Gitea, raw
+child-process output remains suppressed and is replaced with the fixed check
+name and status.
+
+For nightly/release Basic E2E, the wrapper asks Playwright's machine-readable
+JSON reporter to write a temporary local report. On failure the wrapper creates
+`playwright-diagnostics.json` from an explicit allowlist and deletes the raw
+report before artifact upload. Each verification run also removes stale
+diagnostics before any checks begin, and the workflow uploads the sanitized file
+alongside `summary.json` only when it exists. The sanitized file contains failed test and
+`test.step` titles, a fixed failure category and reason, integer duration, a
+shortened repository source location, project name, and attachment
+basenames/content types when Playwright supplied them. Failure categories are
+limited to assertion failure, timeout, interruption, other test failure,
+runner/setup failure, and diagnostic-collection failure. Their descriptions are
+fixed strings; the Playwright error message, stack, snippet, actual/expected
+values, DOM or accessibility snapshot, request/response content, stdout, stderr,
+attachment bodies, and absolute attachment paths are never copied. The retained
+structured labels and filenames are bounded and still pass through defensive
+credential, token and precise-location redaction. If the JSON report is missing
+or malformed, the artifact records only the fixed collection-failure category
+and reason.
+
+Playwright remains configured with screenshots, video, and tracing off for this
+deterministic journey, so attachment metadata is normally empty. Operators can
+use the sanitized test, step, category and source fields to reproduce a failure
+locally without exposing the unrestricted child report.
 
 For a controlled proof that workflow failure is enforced, manually dispatch
 with `prove_failure_gate` enabled or run:
