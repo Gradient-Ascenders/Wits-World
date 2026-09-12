@@ -39,19 +39,10 @@ export function AccountControl() {
       }
     }
 
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setIsDisclosureOpen(false);
-        disclosureTriggerRef.current?.focus();
-      }
-    }
-
     document.addEventListener('pointerdown', closeOnOutsidePointer);
-    document.addEventListener('keydown', closeOnEscape);
 
     return () => {
       document.removeEventListener('pointerdown', closeOnOutsidePointer);
-      document.removeEventListener('keydown', closeOnEscape);
     };
   }, [isDisclosureOpen]);
 
@@ -88,6 +79,14 @@ export function AccountControl() {
   function choosePlayerName() {
     setIsDisclosureOpen(false);
     navigate('/explore');
+  }
+
+  function closeDisclosureOnEscape(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== 'Escape') return;
+
+    event.preventDefault();
+    setIsDisclosureOpen(false);
+    disclosureTriggerRef.current?.focus();
   }
 
   async function switchAccount() {
@@ -134,7 +133,11 @@ export function AccountControl() {
   return (
     <div className="account-control">
       {isAuthenticated ? (
-        <div className="account-disclosure" ref={disclosureRef}>
+        <div
+          className="account-disclosure"
+          onKeyDown={closeDisclosureOnEscape}
+          ref={disclosureRef}
+        >
           <button
             aria-current={
               isProtectedProfileRoute || isProtectedAccountRoute

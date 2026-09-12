@@ -347,7 +347,11 @@ export function CampusExplorer({
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape' || panelMode === 'peek') {
+      if (
+        event.defaultPrevented ||
+        event.key !== 'Escape' ||
+        panelMode === 'peek'
+      ) {
         return;
       }
 

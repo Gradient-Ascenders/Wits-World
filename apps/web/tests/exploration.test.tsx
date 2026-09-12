@@ -191,6 +191,30 @@ describe('map-first campus exploration', () => {
     expect(panel).toHaveAttribute('data-sheet-snap', 'peek');
   });
 
+  it('leaves the discovery panel unchanged when another control handles Escape', async () => {
+    const user = userEvent.setup();
+    const controller = createController();
+    const mapFactory: MapFactory = vi.fn(async () => controller);
+
+    render(<CampusExplorer {...explorerProps(mapFactory)} />);
+
+    await user.click(screen.getByRole('button', { name: /^Events/ }));
+    const panel = screen.getByRole('complementary', {
+      name: 'Campus discovery',
+    });
+    expect(panel).toHaveAttribute('data-sheet-snap', 'expanded');
+
+    const handledEscape = new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      key: 'Escape',
+    });
+    handledEscape.preventDefault();
+    act(() => document.dispatchEvent(handledEscape));
+
+    expect(panel).toHaveAttribute('data-sheet-snap', 'expanded');
+  });
+
   it('keeps search and status filters synchronized with visible markers', async () => {
     const user = userEvent.setup();
     const controller = createController();

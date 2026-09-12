@@ -446,11 +446,18 @@ describe('player authentication', () => {
     expect(screen.getByLabelText('Account options')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeVisible();
 
+    let escapeWasHandled = false;
+    const observeEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') escapeWasHandled = event.defaultPrevented;
+    };
+    document.addEventListener('keydown', observeEscape);
     await user.keyboard('{Escape}');
+    document.removeEventListener('keydown', observeEscape);
 
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByLabelText('Account options')).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
+    expect(escapeWasHandled).toBe(true);
   });
 
   it('opens profile and account destinations from the disclosure without adding them to primary navigation', async () => {
