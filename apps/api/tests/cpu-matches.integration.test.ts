@@ -6,6 +6,7 @@ import { buildApp } from '../src/app.js';
 import type { AuthConfig } from '../src/config/auth.js';
 import {
   CpuMatchNotFoundError,
+  CpuMatchActionError,
   type CpuMatchHistory,
   type CpuMatchResponse,
   type CpuMatchService,
@@ -78,6 +79,27 @@ afterEach(async () => {
 });
 
 describe('CPU match API', () => {
+  it('returns an API rejection when the service rejects an out-of-turn action', async () => {
+    service.submitAction.mockRejectedValueOnce(
+      new CpuMatchActionError(
+        'The side cannot act during the current battle phase.',
+      ),
+    );
+    const response = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/matches/${MATCH_ID}/actions`,
+      payload: {
+        expectedVersion: 1,
+        submissionId: 'a4000000-0000-4000-8000-000000000001',
+        action: {
+          type: 'use_move',
+          moveId: 'a5000000-0000-4000-8000-000000000001',
+        },
+      },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: 'ILLEGAL_CPU_MATCH_ACTION' });
+  });
   it('requires authentication before creating a match', async () => {
     const response = await app.inject({
       method: 'POST',

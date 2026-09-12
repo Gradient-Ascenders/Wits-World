@@ -15,6 +15,11 @@ const screenshotsDirectory = path.resolve(
   '../../.pr-screenshots/issue-228',
 );
 
+test.beforeEach(async ({ page }) => {
+  // Keep the authoritative fixture deadline in the future without pausing UI timers.
+  await page.clock.setFixedTime(new Date('2026-09-05T09:00:00.000Z'));
+});
+
 test('keeps the Player Battles loading shell compact', async ({ page }) => {
   let releaseLoad!: () => void;
   const loadGate = new Promise<void>((resolve) => {
@@ -49,7 +54,9 @@ test('keeps the Player Battles loading shell compact', async ({ page }) => {
   await expect(
     page.getByRole('heading', { name: 'Player Battles' }),
   ).toBeVisible();
-  await expect(page.getByRole('status')).toHaveText('Loading player battles…');
+  await expect(page.locator('.pvp-loading')).toHaveText(
+    'Loading player battles…',
+  );
   await expect(
     page.getByRole('navigation', { name: 'Player battle sections' }),
   ).toContainText('InvitationsActiveHistory');

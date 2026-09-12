@@ -18,6 +18,63 @@ const trustedPrincipal = {
 };
 
 describe('local player identity', () => {
+  it('reads unchanged identity once without a transaction or cached authorization', async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [
+        {
+          id: 'player',
+          player_name: 'naledi',
+          role: 'player',
+          lifecycle_status: 'active',
+          identity_denied: false,
+        },
+      ],
+    });
+    const connect = vi.fn();
+    const service = createPlayerIdentityService({
+      query,
+      connect,
+    } as unknown as Pick<pg.Pool, 'query' | 'connect'>);
+    expect(await service.resolve(trustedPrincipal)).toMatchObject({
+      id: 'player',
+      role: 'player',
+    });
+    query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'player',
+          player_name: 'naledi',
+          role: 'author',
+          lifecycle_status: 'active',
+          identity_denied: false,
+        },
+      ],
+    });
+    expect(await service.resolve(trustedPrincipal)).toMatchObject({
+      role: 'author',
+      lifecycleStatus: 'active',
+    });
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(connect).not.toHaveBeenCalled();
+    expect(query.mock.calls[0]?.[0]).toContain(
+      'deleted_identity_token_denials',
+    );
+  });
+
+  it('rejects a denied token even when the unchanged player exists', async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValue({ rows: [{ id: 'player', identity_denied: true }] });
+    const connect = vi.fn();
+    const service = createPlayerIdentityService({
+      query,
+      connect,
+    } as unknown as Pick<pg.Pool, 'query' | 'connect'>);
+    await expect(service.resolve(trustedPrincipal)).rejects.toBeInstanceOf(
+      DeletedIdentityTokenError,
+    );
+    expect(connect).not.toHaveBeenCalled();
+  });
   it('provisions a Google player without fabricating a Player Name', async () => {
     const query = vi.fn().mockResolvedValue({
       rows: [
@@ -404,7 +461,10 @@ function createDatabaseQueryTarget(query: ReturnType<typeof vi.fn>) {
   };
 
   return {
-    query,
+    query: (statement: string, parameters?: unknown[]) =>
+      statement.includes('from public.players p')
+        ? Promise.resolve({ rows: [] })
+        : client.query(statement, parameters),
     connect: vi.fn(async () => client),
   } as unknown as Pick<pg.Pool, 'query' | 'connect'>;
 }

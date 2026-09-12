@@ -1016,9 +1016,10 @@ function CardForm({
               disabled={busy}
               id="card-name"
               onChange={(change) => {
+                const name = change.currentTarget.value;
                 setDraft((current) => ({
                   ...current,
-                  name: change.target.value,
+                  name,
                 }));
                 setErrors((current) => {
                   const remaining = { ...current };
@@ -1050,12 +1051,10 @@ function CardForm({
             <select
               disabled={busy}
               id="card-affinity"
-              onChange={(change) =>
-                setDraft((current) => ({
-                  ...current,
-                  affinity: change.target.value as CardAffinity,
-                }))
-              }
+              onChange={(change) => {
+                const value = change.currentTarget.value as CardAffinity;
+                setDraft((current) => ({ ...current, affinity: value }));
+              }}
               value={draft.affinity ?? ''}
             >
               {draft.category === 'power' ? (
@@ -1072,12 +1071,10 @@ function CardForm({
             <select
               disabled={busy}
               id="card-rarity"
-              onChange={(change) =>
-                setDraft((current) => ({
-                  ...current,
-                  rarity: change.target.value as CardRarity,
-                }))
-              }
+              onChange={(change) => {
+                const value = change.currentTarget.value as CardRarity;
+                setDraft((current) => ({ ...current, rarity: value }));
+              }}
               value={draft.rarity}
             >
               {['common', 'rare', 'epic', 'legendary'].map((value) => (
@@ -1097,12 +1094,10 @@ function CardForm({
                   id="card-hp"
                   inputMode="numeric"
                   min="1"
-                  onChange={(change) =>
-                    setDraft((current) => ({
-                      ...current,
-                      hp: change.target.value,
-                    }))
-                  }
+                  onChange={(change) => {
+                    const value = change.currentTarget.value;
+                    setDraft((current) => ({ ...current, hp: value }));
+                  }}
                   required
                   step="1"
                   type="number"
@@ -1123,12 +1118,10 @@ function CardForm({
                   id="card-power"
                   inputMode="numeric"
                   min="0"
-                  onChange={(change) =>
-                    setDraft((current) => ({
-                      ...current,
-                      power: change.target.value,
-                    }))
-                  }
+                  onChange={(change) => {
+                    const value = change.currentTarget.value;
+                    setDraft((current) => ({ ...current, power: value }));
+                  }}
                   required
                   step="1"
                   type="number"
@@ -1151,12 +1144,10 @@ function CardForm({
             aria-invalid={Boolean(errors.description)}
             disabled={busy}
             id="card-description"
-            onChange={(change) =>
-              setDraft((current) => ({
-                ...current,
-                description: change.target.value,
-              }))
-            }
+            onChange={(change) => {
+              const value = change.currentTarget.value;
+              setDraft((current) => ({ ...current, description: value }));
+            }}
             rows={3}
             value={draft.description}
           />
@@ -1171,12 +1162,10 @@ function CardForm({
             aria-invalid={Boolean(errors.imageUrl)}
             disabled={busy}
             id="card-image-url"
-            onChange={(change) =>
-              setDraft((current) => ({
-                ...current,
-                imageUrl: change.target.value,
-              }))
-            }
+            onChange={(change) => {
+              const value = change.currentTarget.value;
+              setDraft((current) => ({ ...current, imageUrl: value }));
+            }}
             type="url"
             value={draft.imageUrl}
           />

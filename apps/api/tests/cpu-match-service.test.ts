@@ -17,6 +17,7 @@ import {
 import {
   createCpuMatchService,
   CpuMatchDeckError,
+  CpuMatchActionError,
   CpuMatchVersionConflictError,
   type CpuMatchClient,
   type CpuMatchDatabase,
@@ -28,6 +29,26 @@ const MATCH_ID = 'a2000000-0000-4000-8000-000000000001';
 const DECK_ID = 'a6000000-0000-4000-8000-000000000001';
 
 describe('CPU match service', () => {
+  it('rejects an out-of-turn player action without persisting a transition', async () => {
+    const state = { ...terminalReadyState(), currentSide: 'cpu' as const };
+    const query = terminalActionQuery(state);
+    const service = createCpuMatchService(fakeDatabase(query), {
+      clock: { now: () => new Date('2026-08-16T00:04:00Z') },
+    });
+    await expect(
+      service.submitAction({
+        playerId: PLAYER_ID,
+        matchId: MATCH_ID,
+        expectedVersion: 0,
+        submissionId: 'a5000000-0000-4000-8000-000000000011',
+        action: { type: 'use_move', moveId: 'player-move-1-1' },
+      }),
+    ).rejects.toThrow(CpuMatchActionError);
+    expect(query).toHaveBeenCalledWith('rollback');
+    expect(
+      query.mock.calls.some(([sql]) => sql.includes('with sequence_base')),
+    ).toBe(false);
+  });
   it('defines the approved Basic CPU deck with exactly three Creatures and two Power cards', () => {
     expect(BASIC_CPU_DECK_CONFIGURATION).toEqual([
       {

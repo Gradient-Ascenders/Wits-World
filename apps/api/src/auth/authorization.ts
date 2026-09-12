@@ -1,3 +1,4 @@
+import { timeRequestStage } from '../request-timing.js';
 import type { FastifyInstance } from 'fastify';
 
 import { ApiError } from '../errors/api-error.js';
@@ -40,7 +41,9 @@ export function registerAuthorization(
     let player;
 
     try {
-      player = await playerIdentityService.resolve(identity);
+      player = await timeRequestStage(request, 'identity', () =>
+        playerIdentityService.resolve(identity),
+      );
     } catch (error) {
       if (error instanceof DeletedIdentityTokenError) {
         throw new ApiError({

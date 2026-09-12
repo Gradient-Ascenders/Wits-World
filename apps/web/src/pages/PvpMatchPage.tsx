@@ -134,7 +134,7 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   const refreshMatch = useCallback(
     async (options: { announce?: boolean; poll?: boolean } = {}) => {
-      if (refreshRequest.current) return;
+      if (refreshRequest.current || mutation.current) return;
       const controller = new AbortController();
       refreshRequest.current = controller;
       const responseGeneration = ++generation.current;
@@ -176,6 +176,8 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   useEffect(() => {
     const controller = new AbortController();
+    mutation.current?.abort();
+    mutation.current = null;
     refreshRequest.current?.abort();
     refreshRequest.current = null;
     matchRef.current = null;
@@ -261,6 +263,10 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       current.status !== 'active' ||
       current.currentActor !== 'self' ||
       mutation.current ||
+      requestStatus !== 'ready' ||
+      (!attempt && error !== null) ||
+      (current.turnDeadline !== null &&
+        Date.parse(current.turnDeadline) <= Date.now()) ||
       !isLegalAction(current, action)
     )
       return;
@@ -270,6 +276,8 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       submissionId: crypto.randomUUID(),
     };
     const controller = new AbortController();
+    refreshRequest.current?.abort();
+    refreshRequest.current = null;
     mutation.current = controller;
     const responseGeneration = ++generation.current;
     setError(null);
@@ -388,6 +396,8 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   async function checkResignationState(recovery: ResignationRecovery) {
     if (mutation.current) return;
     const controller = new AbortController();
+    refreshRequest.current?.abort();
+    refreshRequest.current = null;
     mutation.current = controller;
     setRequestStatus('reconciling');
     setError(null);
@@ -414,6 +424,8 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       submissionId: crypto.randomUUID(),
     };
     const controller = new AbortController();
+    refreshRequest.current?.abort();
+    refreshRequest.current = null;
     mutation.current = controller;
     const responseGeneration = ++generation.current;
     setConfirmingResignation(false);
@@ -559,14 +571,17 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
             <h1 ref={phaseHeading} tabIndex={-1}>
               {phaseTitle(match)}
             </h1>
-            <span className="battle-turn-indicator">
+            <span aria-live="polite" className="battle-turn-indicator">
               {busy
-                ? 'Waiting for server'
-                : match.status === 'completed'
-                  ? 'Completed'
-                  : match.currentActor === 'self'
-                    ? 'Action ready'
-                    : 'Waiting for opponent'}
+                ? 'PROCESSING…'
+                : error || (countdown.expired && match.status === 'active')
+                  ? 'SYNC REQUIRED'
+                  : match.status === 'completed'
+                    ? 'Completed'
+                    : match.currentActor === 'self' &&
+                        match.legalActions.length > 0
+                      ? 'YOUR TURN'
+                      : "OPPONENT'S TURN"}
             </span>
           </div>
           {match.status === 'active' ? (
@@ -710,6 +725,9 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           <BattleActionPanel
             activeCreatureId={match.state.self.activeCreatureId}
             busy={busy}
+            inputBlocked={
+              requestStatus !== 'ready' || error !== null || countdown.expired
+            }
             creatures={match.state.self.creatures}
             currentActor={match.currentActor === 'self'}
             idPrefix="pvp"

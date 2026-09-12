@@ -1078,7 +1078,7 @@
 .battle-turn-indicator {
   flex: 0 0 auto;
   display: inline-flex;
-  min-height: 1.75rem;
+  min-height: 2.25rem;
   align-items: center;
   padding: 0 var(--space-3);
   border: 1px solid var(--colour-border-default);
@@ -2882,6 +2882,25 @@
 }
 
 @media (max-width: 37.49rem) {
+  /* Allocate the viewport once, including offline/update notices above battle. */
+  .main-content--battle-focus:has(> .battle-page--live:not(.pvp-battle-page)) {
+    display: flex;
+    height: 100dvh;
+    min-height: 0;
+    flex: 0 0 auto;
+    flex-direction: column;
+  }
+
+  .main-content--battle-focus > .offline-status {
+    flex: 0 0 auto;
+  }
+
+  .main-content--battle-focus > .battle-page--live:not(.pvp-battle-page) {
+    height: auto;
+    min-height: 0;
+    flex: 1 1 0;
+  }
+
   .battle-page--live {
     display: flex;
     height: calc(
