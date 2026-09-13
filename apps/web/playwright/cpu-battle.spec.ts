@@ -639,7 +639,9 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     await expect(
       page.getByRole('heading', { name: 'Choose your opening Creature' }),
     ).toBeVisible();
-    await expect(page.locator('.battle-turn-indicator')).toHaveCount(0);
+    await expect(page.locator('.battle-turn-indicator')).toHaveText(
+      'YOUR TURN',
+    );
 
     for (const viewport of [
       { columns: 1, height: 844, label: '390', width: 390 },
@@ -805,7 +807,9 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     await expect(
       page.getByRole('heading', { name: 'Replacement required' }),
     ).toBeFocused();
-    await expect(page.locator('.battle-turn-indicator')).toHaveCount(0);
+    await expect(page.locator('.battle-turn-indicator')).toHaveText(
+      'YOUR TURN',
+    );
     await expectNoHorizontalOverflow(page);
     await expectPrimaryActionWithinViewport(page);
     await expectActionContentFits(page);
@@ -1108,7 +1112,7 @@ test('keeps processing, timeout, and error states focused with long actions', as
   });
   await longMove.click();
   await expect(
-    page.getByText('Waiting for server', { exact: true }),
+    page.getByText('PROCESSING YOUR ACTION…', { exact: true }),
   ).toBeVisible();
   await expect(longMove).toBeDisabled();
   await expect(
@@ -1116,7 +1120,7 @@ test('keeps processing, timeout, and error states focused with long actions', as
   ).toHaveText(hpBefore ?? '');
 
   releaseAction?.();
-  await expect(page.getByRole('alert')).toContainText('Action not applied');
+  await expect(page.getByRole('alert')).toContainText('Action not confirmed');
   await expect(page.getByRole('alert')).toBeFocused();
 
   current = cpuTurn;
@@ -1124,7 +1128,9 @@ test('keeps processing, timeout, and error states focused with long actions', as
   await expect(
     page.getByRole('heading', { level: 1, name: 'CPU turn resolving' }),
   ).toBeVisible();
-  await expect(page.getByText('CPU acting', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("OPPONENT'S TURN", { exact: true }),
+  ).toBeVisible();
   await expect(page.locator('.battle-action-control').first()).toBeDisabled();
   await expectNoHorizontalOverflow(page);
   await expectPrimaryActionWithinViewport(page);

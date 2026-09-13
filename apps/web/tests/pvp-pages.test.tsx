@@ -989,7 +989,9 @@ describe('asynchronous PvP battle', () => {
     const move = await screen.findByRole('button', {
       name: /Knowledge Strike 1/,
     });
+    expect(screen.getByText('YOUR TURN')).toBeVisible();
     await user.dblClick(move);
+    expect(screen.getByText('PROCESSING…')).toBeVisible();
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(move).toBeDisabled();
 
@@ -1007,6 +1009,31 @@ describe('asynchronous PvP battle', () => {
     expect(
       await screen.findByRole('heading', { name: 'Opponent’s turn' }),
     ).toBeVisible();
+  });
+
+  it('does not start a deadline refresh while a move submission is pending', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-05T09:00:00.000Z'));
+    const pending = new Promise<Response>(() => {});
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        pvpMatchResponse(
+          pvpMatch({ turnDeadline: '2026-09-05T09:00:01.000Z' }),
+        ),
+      )
+      .mockReturnValueOnce(pending);
+    vi.stubGlobal('fetch', fetchMock);
+    renderPvpMatch();
+    await act(async () => Promise.resolve());
+    const move = screen.getByRole('button', { name: /Knowledge Strike 1/ });
+    act(() => move.click());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_100);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(move).toBeDisabled();
+    expect(screen.getByText('PROCESSING…')).toBeVisible();
   });
 
   it('polls while waiting and reconciles to a new own turn', async () => {
@@ -1028,10 +1055,18 @@ describe('asynchronous PvP battle', () => {
     expect(
       screen.getByRole('heading', { name: 'Opponent’s turn' }),
     ).toBeVisible();
+    expect(screen.getByText("OPPONENT'S TURN")).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: /Knowledge Strike 1/ }),
+    ).toBeDisabled();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5_000);
     });
     expect(screen.getByRole('heading', { name: 'Your turn' })).toBeVisible();
+    expect(screen.getByText('YOUR TURN')).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: /Knowledge Strike 1/ }),
+    ).toBeEnabled();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 

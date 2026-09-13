@@ -1,3 +1,4 @@
+import { timeRequestStage } from '../request-timing.js';
 import type { FastifyInstance } from 'fastify';
 
 import { ApiError } from '../errors/api-error.js';
@@ -18,7 +19,9 @@ export function registerAuthentication(
     }
 
     try {
-      request.auth = await accessTokenVerifier.verify(token);
+      request.auth = await timeRequestStage(request, 'auth', () =>
+        accessTokenVerifier.verify(token),
+      );
     } catch {
       request.log.warn(
         {

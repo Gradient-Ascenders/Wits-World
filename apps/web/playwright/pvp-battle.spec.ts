@@ -15,6 +15,11 @@ const screenshotsDirectory = path.resolve(
   '../../.pr-screenshots/issue-228',
 );
 
+test.beforeEach(async ({ page }) => {
+  // Keep the authoritative fixture deadline in the future without pausing UI timers.
+  await page.clock.setFixedTime(new Date('2026-09-05T09:00:00.000Z'));
+});
+
 test('keeps the Player Battles loading shell compact', async ({ page }) => {
   let releaseLoad!: () => void;
   const loadGate = new Promise<void>((resolve) => {
@@ -49,7 +54,9 @@ test('keeps the Player Battles loading shell compact', async ({ page }) => {
   await expect(
     page.getByRole('heading', { name: 'Player Battles' }),
   ).toBeVisible();
-  await expect(page.getByRole('status')).toHaveText('Loading player battles…');
+  await expect(page.locator('.pvp-loading')).toHaveText(
+    'Loading player battles…',
+  );
   await expect(
     page.getByRole('navigation', { name: 'Player battle sections' }),
   ).toContainText('InvitationsActiveHistory');
@@ -446,7 +453,15 @@ test('keeps bench, forced replacement and results readable across battle layouts
     await bench.locator('summary').click();
     await expect(bench.getByRole('listitem')).toHaveCount(2);
     await expect(bench).toContainText('HP 100 / 100');
-    await expect(bench.getByRole('button')).toHaveCount(0);
+    const detailsButtons = bench.getByRole('button', {
+      name: /^View .* details$/,
+    });
+    await expect(detailsButtons).toHaveCount(2);
+    const submissionsBeforeInspection = submissions;
+    await detailsButtons.first().click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.getByRole('button', { name: 'Close Creature details' }).click();
+    expect(submissions).toBe(submissionsBeforeInspection);
     await expectNoHorizontalOverflow(page);
     await page.locator('.battle-page').screenshot({
       path: path.join(screenshotsDirectory, `${width}-bench.png`),

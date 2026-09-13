@@ -1,3 +1,4 @@
+import { registerRequestTiming } from './request-timing.js';
 import { randomUUID } from 'node:crypto';
 
 import swagger from '@fastify/swagger';
@@ -277,6 +278,7 @@ export async function buildApp({
     throw new Error('Progression services require a player identity service.');
   }
 
+  registerRequestTiming(app);
   registerErrorHandlers(app);
 
   await app.register(swagger, {

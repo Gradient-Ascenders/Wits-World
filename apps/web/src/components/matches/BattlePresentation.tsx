@@ -29,6 +29,7 @@ interface BattleActionPanelProps {
   creatures: MatchCreature[];
   currentActor: boolean;
   idPrefix: string;
+  inputBlocked?: boolean;
   legalActions: readonly BattleActionIntent[];
   onAction: (action: BattleActionIntent) => void;
   opponentLabel: string;
@@ -42,6 +43,7 @@ export function BattleActionPanel({
   creatures,
   currentActor,
   idPrefix,
+  inputBlocked = false,
   legalActions,
   onAction,
   opponentLabel,
@@ -65,7 +67,7 @@ export function BattleActionPanel({
   const legalPowerCount = powerCards.filter((card) =>
     isLegal({ powerCardId: card.id, type: 'use_power_card' }),
   ).length;
-  const waiting = !selectionPhase && !currentActor;
+  const waiting = !currentActor;
   const creatureChoices = selectionPhase
     ? creatures
         .map((creature, index) => {
@@ -163,7 +165,7 @@ export function BattleActionPanel({
                   aria-describedby={legal ? undefined : reasonId}
                   aria-label={`${phase === 'replacement' ? 'Use as replacement' : 'Choose Creature'} ${label}. ${titleCase(creature.affinity)} affinity. HP ${creature.currentHp} of ${creature.maxHp}. Power ${creature.remainingPower} of ${creature.maxPower}.`}
                   className="creature-choice-control"
-                  disabled={busy || !legal}
+                  disabled={busy || inputBlocked || !currentActor || !legal}
                   onClick={() => onAction(action)}
                   type="button"
                 >
@@ -296,7 +298,9 @@ export function BattleActionPanel({
                         <button
                           aria-describedby={legal ? undefined : reasonId}
                           className="battle-action-control"
-                          disabled={busy || !legal}
+                          disabled={
+                            busy || inputBlocked || !currentActor || !legal
+                          }
                           onClick={() => onAction(action)}
                           type="button"
                         >
@@ -361,7 +365,9 @@ export function BattleActionPanel({
                         <button
                           aria-describedby={legal ? undefined : reasonId}
                           className="battle-action-control battle-action-control--power"
-                          disabled={busy || !legal}
+                          disabled={
+                            busy || inputBlocked || !currentActor || !legal
+                          }
                           onClick={() => onAction(action)}
                           type="button"
                         >
@@ -446,7 +452,10 @@ export function BattleCombatant({
       </div>
       <div className="combatant__hud">
         <div className="combatant__heading">
-          <p className="eyebrow">{heading}</p>
+          <p className="eyebrow">
+            {heading}
+            {isActing ? ' · Active turn' : ''}
+          </p>
           {creature ? (
             <span>{titleCase(creature.affinity)} affinity</span>
           ) : null}

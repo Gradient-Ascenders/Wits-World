@@ -200,8 +200,12 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     if (
       !current ||
       current.status === 'completed' ||
-      requestStatus === 'submitting' ||
-      requestStatus === 'reconciling' ||
+      requestStatus !== 'ready' ||
+      error !== null ||
+      !(
+        current.state.phase === 'initial_selection' ||
+        current.state.currentSide === 'player'
+      ) ||
       actionRequest.current !== null ||
       !isLegalIntent(current, action)
     ) {
@@ -272,7 +276,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         setError(matchError);
         setRequestStatus('ready');
         setStatusMessage(
-          'The action was not applied. The visible match state is unchanged.',
+          'The action outcome could not be confirmed. Reload server state before continuing.',
         );
         queueMicrotask(() => alert.current?.focus());
       }
@@ -333,7 +337,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     requestStatus === 'submitting' || requestStatus === 'reconciling';
   const phaseTitle = getPhaseTitle(match);
   const phasePrompt = getPhasePrompt(match);
-  const turnIndicator = getTurnIndicator(match, busy);
+  const turnIndicator = error ? 'SYNC REQUIRED' : getTurnIndicator(match, busy);
   const selectionPhase =
     match.state.phase === 'initial_selection' ||
     match.state.phase === 'replacement';
@@ -364,7 +368,9 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
               {phaseTitle}
             </h1>
             {turnIndicator ? (
-              <span className="battle-turn-indicator">{turnIndicator}</span>
+              <span aria-live="polite" className="battle-turn-indicator">
+                {turnIndicator}
+              </span>
             ) : null}
           </div>
           {phasePrompt ? (
@@ -381,10 +387,10 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           tabIndex={-1}
         >
           <StateIcon tone="error" />
-          <strong>Action not applied.</strong>{' '}
+          <strong>Action not confirmed.</strong>{' '}
           {error.failure === 'authorization'
             ? 'Your session expired. Sign in again before continuing.'
-            : 'The server state shown below was not changed. Reload it before trying another intent.'}
+            : 'The last confirmed state is shown below. Reload it before trying another intent.'}
           <div className="match-state-actions">
             {error.failure === 'authorization' ? (
               <button
@@ -457,8 +463,12 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           <BattleActionPanel
             activeCreatureId={match.state.player.activeCreatureId}
             busy={busy}
+            inputBlocked={requestStatus !== 'ready' || error !== null}
             creatures={match.state.player.creatures}
-            currentActor={match.state.currentSide === 'player'}
+            currentActor={
+              match.state.phase === 'initial_selection' ||
+              match.state.currentSide === 'player'
+            }
             idPrefix="cpu"
             key={`${match.state.phase}:${activePlayerCreature?.id ?? 'none'}`}
             legalActions={match.state.legalActions}
@@ -770,14 +780,19 @@ function getPhaseTitle(match: CpuMatch) {
 
 function getTurnIndicator(match: CpuMatch, busy: boolean) {
   if (match.status === 'completed') return 'Completed';
-  if (busy) return 'Waiting for server';
+  if (busy) return 'PROCESSING YOUR ACTION…';
   if (
     match.state.phase === 'initial_selection' ||
     match.state.phase === 'replacement'
   ) {
-    return null;
+    return match.state.legalActions.length > 0
+      ? 'YOUR TURN'
+      : "OPPONENT'S TURN";
   }
-  return match.state.currentSide === 'player' ? 'Action ready' : 'CPU acting';
+  return match.state.currentSide === 'player' &&
+    match.state.legalActions.length > 0
+    ? 'YOUR TURN'
+    : "OPPONENT'S TURN";
 }
 
 function getPhasePrompt(match: CpuMatch) {

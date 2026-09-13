@@ -17,6 +17,7 @@ import {
 import {
   createCpuMatchService,
   CpuMatchDeckError,
+  CpuMatchActionError,
   CpuMatchVersionConflictError,
   type CpuMatchClient,
   type CpuMatchDatabase,
@@ -28,6 +29,26 @@ const MATCH_ID = 'a2000000-0000-4000-8000-000000000001';
 const DECK_ID = 'a6000000-0000-4000-8000-000000000001';
 
 describe('CPU match service', () => {
+  it('rejects an out-of-turn player action without persisting a transition', async () => {
+    const state = { ...terminalReadyState(), currentSide: 'cpu' as const };
+    const query = terminalActionQuery(state);
+    const service = createCpuMatchService(fakeDatabase(query), {
+      clock: { now: () => new Date('2026-08-16T00:04:00Z') },
+    });
+    await expect(
+      service.submitAction({
+        playerId: PLAYER_ID,
+        matchId: MATCH_ID,
+        expectedVersion: 0,
+        submissionId: 'a5000000-0000-4000-8000-000000000011',
+        action: { type: 'use_move', moveId: 'player-move-1-1' },
+      }),
+    ).rejects.toThrow(CpuMatchActionError);
+    expect(query).toHaveBeenCalledWith('rollback');
+    expect(
+      query.mock.calls.some(([sql]) => sql.includes('with sequence_base')),
+    ).toBe(false);
+  });
   it('defines the approved Basic CPU deck with exactly three Creatures and two Power cards', () => {
     expect(BASIC_CPU_DECK_CONFIGURATION).toEqual([
       {
@@ -465,12 +486,12 @@ describe('CPU match service', () => {
         ...cpuResult,
         effects: [
           {
-            effectId: 'stored-effect',
-            effectCode: 'damage',
-            effectType: 'damage',
+            effectId: 'cpu-effect-1-1',
+            effectType: 'debuff',
+            effectCode: 'power_change',
             targetSide: 'player',
             targetCreatureId: playerCreature.card.id,
-            amount: 12,
+            amount: -1000,
             damageMultiplier: null,
             modifier: null,
           },
@@ -543,16 +564,18 @@ describe('CPU match service', () => {
 
     expect(response.lastAction?.effects).toEqual([
       {
-        effectId: 'stored-effect',
-        effectType: 'damage',
+        effectId: 'cpu-effect-1-1',
+        effectType: 'debuff',
         targetSide: 'player',
         targetCreatureId: playerCreature.card.id,
-        amount: 12,
+        amount: -1000,
         damageMultiplier: null,
         modifier: null,
       },
     ]);
     expect(query).toHaveBeenCalledTimes(4);
+    expect(response.lastAction?.effects[0]).not.toHaveProperty('effectCode');
+    expect(response.lastAction?.effects[0]?.amount).toBe(-1000);
     expect(response.lastAction).toMatchObject({
       action: cpuResult.action,
       expiredEffects: [],
@@ -617,11 +640,13 @@ describe('CPU match service', () => {
         };
       }
       if (statement.includes('from public.cpu_match_rounds')) {
+        expect(statement).toContain('state_after');
         return {
           rows: [
             {
               created_at: createdAt,
               id: 'a3000000-0000-4000-8000-000000000001',
+              match_id: MATCH_ID,
               result: [storedResult],
               round_number: 1,
               state_after: state,
@@ -635,6 +660,7 @@ describe('CPU match service', () => {
           rows: [
             {
               action: storedResult.action,
+              round_id: 'a3000000-0000-4000-8000-000000000001',
               created_at: createdAt,
               result: storedResult,
               sequence: 1,
@@ -911,6 +937,7 @@ describe('CPU match service', () => {
       effects: [
         {
           effectId: 'player-power-effect-3',
+          effectCode: 'power_change' as const,
           effectType: 'buff' as const,
           targetSide: 'player' as const,
           targetCreatureId: firstCreature.card.id,
@@ -1007,6 +1034,7 @@ describe('CPU match service', () => {
       stat: 'power',
       operation: 'add',
     });
+    expect(response.lastAction?.effects[0]).not.toHaveProperty('effectCode');
   });
 
   it('reconstructs one deterministic chronological log from persisted player and CPU actions', async () => {

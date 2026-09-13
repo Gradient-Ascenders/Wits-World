@@ -369,6 +369,7 @@ interface TransitionPersistenceRow extends pg.QueryResultRow {
 }
 
 interface RoundRow extends pg.QueryResultRow {
+  match_id: string;
   id: string;
   round_number: number;
   state_before: BattleState;
@@ -378,6 +379,7 @@ interface RoundRow extends pg.QueryResultRow {
 }
 
 interface ActionRow extends pg.QueryResultRow {
+  round_id: string;
   sequence: number;
   side: 'player' | 'cpu';
   submission_id: string | null;
@@ -931,12 +933,6 @@ export function createCpuMatchService(
           `
             select
               id::text,
-              player_id::text,
-              status,
-              state,
-              version,
-              turn_started_at,
-              turn_deadline,
               winner,
               started_at,
               completed_at
@@ -949,13 +945,17 @@ export function createCpuMatchService(
         );
 
         const history: CpuMatchHistory[] = [];
+        const roundsByMatch = await loadHistoryRounds(
+          client,
+          matches.rows.map((match) => match.id),
+        );
 
         for (const match of matches.rows) {
           if (!match.completed_at || !match.winner) {
             continue;
           }
 
-          const rounds = await loadHistoryRounds(client, match.id);
+          const rounds = roundsByMatch.get(match.id) ?? [];
           history.push({
             matchId: match.id,
             status: 'completed',
@@ -1548,34 +1548,36 @@ async function loadMatchView(
 
 async function loadHistoryRounds(
   client: CpuMatchClient,
-  matchId: string,
-): Promise<CpuMatchHistoryRound[]> {
+  matchIds: string[],
+): Promise<Map<string, CpuMatchHistoryRound[]>> {
+  const history = new Map<string, CpuMatchHistoryRound[]>();
+  if (matchIds.length === 0) return history;
   const rounds = await client.query<RoundRow>(
-    `
-      select id, round_number, state_before, state_after, result, created_at
-      from public.cpu_match_rounds
-      where match_id = $1::uuid
-      order by round_number
-    `,
-    [matchId],
+    `select id, match_id, round_number, result, state_after, created_at
+     from public.cpu_match_rounds
+     where match_id = any($1::uuid[])
+     order by match_id, round_number`,
+    [matchIds],
   );
-
-  const history: CpuMatchHistoryRound[] = [];
-
+  if (rounds.rows.length === 0) return history;
+  const actions = await client.query<ActionRow>(
+    `select round_id, sequence, side, submission_id, action, result, created_at
+     from public.cpu_match_actions
+     where match_id = any($1::uuid[])
+     order by sequence`,
+    [matchIds],
+  );
+  const actionsByRound = new Map<string, ActionRow[]>();
+  for (const action of actions.rows) {
+    const group = actionsByRound.get(action.round_id) ?? [];
+    group.push(action);
+    actionsByRound.set(action.round_id, group);
+  }
   for (const round of rounds.rows) {
-    const actions = await client.query<ActionRow>(
-      `
-        select sequence, side, submission_id, action, result, created_at
-        from public.cpu_match_actions
-        where round_id = $1::uuid
-        order by sequence
-      `,
-      [round.id],
-    );
-
-    history.push({
+    const group = history.get(round.match_id) ?? [];
+    group.push({
       roundNumber: round.round_number,
-      actions: actions.rows.map((action) => ({
+      actions: (actionsByRound.get(round.id) ?? []).map((action) => ({
         sequence: action.sequence,
         side: action.side,
         submissionId: action.submission_id,
@@ -1594,8 +1596,8 @@ async function loadHistoryRounds(
       ),
       createdAt: round.created_at.toISOString(),
     });
+    history.set(round.match_id, group);
   }
-
   return history;
 }
 
@@ -2226,7 +2228,7 @@ function toPublicAppliedEffect(
     targetCreatureId: effect.targetCreatureId,
     amount: effect.amount,
     damageMultiplier: effect.damageMultiplier,
-    modifier: effect.modifier,
+    modifier: effect.modifier ?? null,
   };
 }
 

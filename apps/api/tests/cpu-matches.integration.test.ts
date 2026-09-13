@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import type { BattleState } from '@wits-world/game-rules';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AccessTokenVerifier } from '../src/auth/access-token-verifier.js';
@@ -6,8 +7,10 @@ import { buildApp } from '../src/app.js';
 import type { AuthConfig } from '../src/config/auth.js';
 import {
   CpuMatchNotFoundError,
+  CpuMatchActionError,
   createCpuMatchService,
   type CpuMatchDatabase,
+  type CpuMatchClient,
   type CpuMatchHistory,
   type CpuMatchResponse,
   type CpuMatchService,
@@ -80,6 +83,125 @@ afterEach(async () => {
 });
 
 describe('CPU match API', () => {
+  it('serializes an engine power-change result for action, reload and resume responses', async () => {
+    const participant = {
+      creatures: [],
+      powerCards: [],
+      usedPowerCardIds: [],
+      activeCreatureId: null,
+    };
+    const state: BattleState = {
+      phase: 'completed',
+      turnNumber: 7,
+      currentSide: null,
+      replacementSide: null,
+      firstSide: 'player',
+      selections: { player: null, cpu: null },
+      winner: 'cpu',
+      participants: { player: participant, cpu: participant },
+    };
+    const result = {
+      side: 'cpu',
+      action: { type: 'use_move', moveId: DECK_ID },
+      winner: 'cpu',
+      defeatedCreatureId: null,
+      turnEnded: true,
+      expiredEffects: [],
+      effects: [
+        {
+          effectId: DECK_ID,
+          effectType: 'debuff',
+          effectCode: 'power_change',
+          targetSide: 'player',
+          targetCreatureId: PLAYER_ID,
+          amount: -1000,
+          damageMultiplier: null,
+        },
+      ],
+    };
+    const query = vi.fn().mockResolvedValue({
+      rows: [
+        {
+          id: MATCH_ID,
+          player_id: PLAYER_ID,
+          state,
+          status: 'completed',
+          version: 7,
+          winner: 'cpu',
+          started_at: new Date('2026-08-16T00:00:00Z'),
+          completed_at: new Date('2026-08-16T00:01:00Z'),
+          turn_deadline: null,
+          log_actions: [
+            {
+              result,
+              roundNumber: 4,
+              sequence: 7,
+              roundStateBefore: state,
+              roundStateAfter: state,
+            },
+          ],
+        },
+      ],
+    });
+    const realService = createCpuMatchService({
+      connect: async () => ({
+        query: query as CpuMatchClient['query'],
+        release: vi.fn(),
+      }),
+    });
+    const projected = await realService.getMatch(PLAYER_ID, MATCH_ID);
+    service.getMatch.mockResolvedValue(projected);
+    service.getActiveMatch.mockResolvedValue(projected);
+    service.submitAction.mockResolvedValue(projected);
+    for (const request of [
+      { method: 'GET' as const, url: `/api/v1/matches/${MATCH_ID}` },
+      { method: 'GET' as const, url: '/api/v1/matches/cpu' },
+      {
+        method: 'POST' as const,
+        url: `/api/v1/matches/${MATCH_ID}/actions`,
+        payload: {
+          expectedVersion: 6,
+          submissionId: PLAYER_ID,
+          action: { type: 'use_move', moveId: DECK_ID },
+        },
+      },
+    ]) {
+      const response = await authenticatedRequest(request);
+      expect(response.statusCode).toBe(200);
+      expect(response.json().lastAction.effects).toEqual([
+        {
+          effectId: DECK_ID,
+          effectType: 'debuff',
+          targetSide: 'player',
+          targetCreatureId: PLAYER_ID,
+          amount: -1000,
+          damageMultiplier: null,
+          modifier: null,
+        },
+      ]);
+    }
+  });
+  it('returns an API rejection when the service rejects an out-of-turn action', async () => {
+    service.submitAction.mockRejectedValueOnce(
+      new CpuMatchActionError(
+        'The side cannot act during the current battle phase.',
+      ),
+    );
+    const response = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/matches/${MATCH_ID}/actions`,
+      payload: {
+        expectedVersion: 1,
+        submissionId: 'a4000000-0000-4000-8000-000000000001',
+        action: {
+          type: 'use_move',
+          moveId: 'a5000000-0000-4000-8000-000000000001',
+        },
+      },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: 'ILLEGAL_CPU_MATCH_ACTION' });
+  });
   it('serializes stored engine effects on action responses and subsequent match loads', async () => {
     const effect = {
       effectId: 'effect-1',

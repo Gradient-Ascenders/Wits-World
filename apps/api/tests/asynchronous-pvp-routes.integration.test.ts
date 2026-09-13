@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { buildApp } from '../src/app.js';
@@ -6,11 +7,14 @@ import type { AccessTokenVerifier } from '../src/auth/access-token-verifier.js';
 import type { AuthConfig } from '../src/config/auth.js';
 import {
   AsyncPvpError,
+  createAsyncPvpService,
+  type AsyncPvpClient,
   type AsyncPvpMatchView,
   type AsyncPvpService,
   type PvpInvitationView,
 } from '../src/matches/asynchronous-pvp-service.js';
 import type { PlayerIdentityService } from '../src/players/player-identity.js';
+import { createSignedCursorCodec } from '../src/security/signed-cursor.js';
 
 const authConfig: AuthConfig = {
   domain: 'auth.example.test',
@@ -76,6 +80,157 @@ beforeEach(async () => {
 afterEach(async () => app.close());
 
 describe('asynchronous PvP routes', () => {
+  it.each(['player', 'cpu'] as const)(
+    'serializes engine results and old receipts for the %s viewer',
+    async (viewerSide) => {
+      const participant = {
+        creatures: [],
+        powerCards: [],
+        usedPowerCardIds: [],
+        activeCreatureId: null,
+      };
+      const state = {
+        phase: 'completed',
+        turnNumber: 2,
+        currentSide: null,
+        replacementSide: null,
+        firstSide: 'player',
+        selections: { player: null, cpu: null },
+        winner: 'player',
+        participants: { player: participant, cpu: participant },
+      };
+      const action = { type: 'use_move', moveId: DECK_ID };
+      const engineResult = {
+        action,
+        side: 'player',
+        winner: 'player',
+        defeatedCreatureId: null,
+        turnEnded: true,
+        expiredEffects: [
+          {
+            effectId: DECK_ID,
+            targetSide: 'cpu',
+            targetCreatureId: CREATURE_ID,
+            damageMultiplier: null,
+          },
+        ],
+        effects: [
+          {
+            effectId: DECK_ID,
+            effectType: 'debuff',
+            effectCode: 'power_change',
+            targetSide: 'cpu',
+            targetCreatureId: CREATURE_ID,
+            amount: -1000,
+            damageMultiplier: null,
+          },
+        ],
+      };
+      let receipt: unknown = null;
+      const query = vi.fn(async (sql: string) => {
+        if (sql.includes('from public.async_pvp_matches match'))
+          return {
+            rows: [
+              {
+                id: INVITATION_ID,
+                status: 'completed',
+                version: 3,
+                current_player_id: null,
+                viewer_player_id: PLAYER_ID,
+                viewer_side: viewerSide,
+                viewer_name: 'self_player',
+                opponent_player_id: CREATURE_ID,
+                opponent_side: viewerSide === 'player' ? 'cpu' : 'player',
+                opponent_name: 'opponent_player',
+                viewer_outcome: viewerSide === 'player' ? 'win' : 'loss',
+                completion_reason: 'defeat',
+                battle_state: state,
+                latest_result: engineResult,
+                turn_deadline: null,
+                started_at: new Date('2026-09-05T08:00:00Z'),
+                updated_at: new Date('2026-09-05T09:00:00Z'),
+                completed_at: new Date('2026-09-05T09:00:00Z'),
+              },
+            ],
+          };
+        if (sql.includes('from private.async_pvp_submission_receipts'))
+          return {
+            rows: [
+              {
+                committed_response: receipt,
+                payload_hash: createHash('sha256')
+                  .update(
+                    JSON.stringify({
+                      action: { moveId: DECK_ID, type: 'use_move' },
+                      expectedVersion: 2,
+                      matchId: INVITATION_ID,
+                    }),
+                  )
+                  .digest('hex'),
+              },
+            ],
+          };
+        if (sql.includes('update ') || sql.includes('insert into '))
+          throw new Error('Replay must not write another action');
+        return { rows: [] };
+      });
+      const realService = createAsyncPvpService(
+        {
+          connect: async () => ({
+            query: query as AsyncPvpClient['query'],
+            release: vi.fn(),
+          }),
+        },
+        { cursorCodec: createSignedCursorCodec('test-key-'.repeat(8)) },
+      );
+      service.getMatch.mockImplementation(realService.getMatch);
+      const expected = {
+        action,
+        side: viewerSide === 'player' ? 'self' : 'opponent',
+        winner: viewerSide === 'player' ? 'self' : 'opponent',
+        defeatedCreatureId: null,
+        turnEnded: true,
+        effects: [
+          {
+            effectId: DECK_ID,
+            effectType: 'debuff',
+            targetSide: viewerSide === 'cpu' ? 'self' : 'opponent',
+            targetCreatureId: CREATURE_ID,
+            amount: -1000,
+            damageMultiplier: null,
+            modifier: null,
+          },
+        ],
+      };
+      const response = await request(
+        'GET',
+        `/api/v1/matches/pvp/${INVITATION_ID}`,
+      );
+      expect(response.statusCode).toBe(200);
+      expect(response.json().lastAction).toEqual(expected);
+      const view = await realService.getMatch(PLAYER_ID, INVITATION_ID);
+      receipt = {
+        ...view,
+        lastAction: {
+          ...expected,
+          expiredEffects: engineResult.expiredEffects,
+          effects: expected.effects.map((effect) => ({
+            ...effect,
+            effectCode: 'power_change',
+          })),
+        },
+      };
+      service.submitAction.mockImplementation(realService.submitAction);
+      const replay = await request(
+        'POST',
+        `/api/v1/matches/pvp/${INVITATION_ID}/actions`,
+        { submissionId: SUBMISSION_ID, expectedVersion: 2, action },
+      );
+      expect(replay.statusCode).toBe(200);
+      expect(replay.json().lastAction).toEqual(expected);
+      expect(replay.json().version).toBe(3);
+    },
+  );
   it('performs exact lookup without exposing an internal player ID', async () => {
     const response = await request(
       'GET',

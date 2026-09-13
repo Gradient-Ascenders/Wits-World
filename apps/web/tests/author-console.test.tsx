@@ -626,7 +626,9 @@ describe('Basic author console', () => {
     await screen.findByLabelText('Card name');
     const description = screen.getByLabelText('Display description (optional)');
     await user.clear(description);
+    expect(description).toHaveValue('');
     await user.type(description, 'Updated scholarly creature.');
+    expect(description).toHaveValue('Updated scholarly creature.');
     await user.click(screen.getByRole('button', { name: 'Save card' }));
 
     expect(await screen.findByText('Card changes saved.')).toHaveFocus();
