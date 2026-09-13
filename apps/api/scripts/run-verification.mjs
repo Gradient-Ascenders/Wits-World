@@ -173,17 +173,23 @@ async function writeSanitizedPlaywrightDiagnostics() {
         {
           attachments: [],
           durationSeconds: 0,
+          errorColumn: null,
+          errorFile: null,
+          errorLine: null,
+          exceptionCategory: 'uncategorized-exception',
           failureCategory: 'diagnostic-collection-failure',
           failureReason:
             'The Playwright diagnostic report was unavailable or invalid.',
           failingStep: null,
+          failurePhase: 'runner/web-server-setup',
           file: null,
+          hookOrFixtureTitle: null,
           line: null,
           projectName: null,
           testTitle: 'Playwright diagnostic collection',
         },
       ],
-      schemaVersion: 2,
+      schemaVersion: 3,
       status: 'failed',
     };
   }

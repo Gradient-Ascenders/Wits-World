@@ -136,24 +136,34 @@ state, screenshots, video, and traces are deliberately excluded. In Gitea, raw
 child-process output remains suppressed and is replaced with the fixed check
 name and status.
 
-For nightly/release Basic E2E, the wrapper asks Playwright's machine-readable
-JSON reporter to write a temporary local report. On failure the wrapper creates
-`playwright-diagnostics.json` from an explicit allowlist and deletes the raw
-report before artifact upload. Each verification run also removes stale
-diagnostics before any checks begin, and the workflow uploads the sanitized file
-alongside `summary.json` only when it exists. The sanitized file contains failed test and
-`test.step` titles, a fixed failure category and reason, integer duration, a
-shortened repository source location, project name, and attachment
-basenames/content types when Playwright supplied them. Failure categories are
-limited to assertion failure, timeout, interruption, other test failure,
-runner/setup failure, and diagnostic-collection failure. Their descriptions are
-fixed strings; the Playwright error message, stack, snippet, actual/expected
-values, DOM or accessibility snapshot, request/response content, stdout, stderr,
-attachment bodies, and absolute attachment paths are never copied. The retained
-structured labels and filenames are bounded and still pass through defensive
-credential, token and precise-location redaction. If the JSON report is missing
-or malformed, the artifact records only the fixed collection-failure category
-and reason.
+For nightly/release Basic E2E, the wrapper asks a repository-owned Playwright
+reporter to write a temporary machine-readable structural report. On failure
+the wrapper creates `playwright-diagnostics.json` from an explicit allowlist and
+deletes the temporary report before artifact upload. Each verification run also
+removes stale diagnostics before any checks begin, and the workflow uploads the
+sanitized file alongside `summary.json` only when it exists.
+
+The sanitized file contains failed test and `test.step` titles, a fixed failure
+category and reason, integer duration, project name, shortened test-declaration
+location, and safe attachment basenames/content types. Schema version 3 also
+records a structural failure phase, a fixed known hook/fixture title when one is
+available, a fixed exception category, and the error-source file basename with
+line and column. Failure phases distinguish `beforeAll`, `beforeEach`,
+fixture/setup, test body, `afterEach`, `afterAll`, runner/web-server setup, and an
+explicit unknown phase. Known exception categories distinguish missing browser
+executables, browser launch/closure, refused connections, network timeouts, and
+assertion errors without copying their messages. Unknown values collapse to
+fixed generic categories rather than being retained.
+
+The Playwright error message, stack, snippet, actual/expected values, DOM or
+accessibility snapshot, request/response content, stdout, stderr, attachment
+bodies, and absolute paths are never copied into the sanitized artifact. The
+transient reporter uses error text or stack only to derive a fixed exception
+category and source coordinates; neither input is written to its structural
+report. Retained structured labels and filenames are bounded and still pass
+through defensive credential, token and precise-location redaction. If the
+structural report is missing or malformed, the artifact records only the fixed
+collection-failure category and reason.
 
 Playwright remains configured with screenshots, video, and tracing off for this
 deterministic journey, so attachment metadata is normally empty. Operators can
