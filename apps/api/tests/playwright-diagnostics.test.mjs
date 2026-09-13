@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildSanitizedPlaywrightDiagnostics } from '../scripts/playwright-diagnostics.mjs';
+import {
+  classifyExceptionCategory,
+  createStructuralFailure,
+} from '../../web/playwright/diagnostic-reporter.mjs';
 
 describe('sanitized Playwright diagnostics', () => {
   it('retains the failed test, journey step, duration, and safe attachment basenames', () => {
@@ -58,16 +62,22 @@ describe('sanitized Playwright diagnostics', () => {
             },
           ],
           durationSeconds: 36,
+          errorColumn: null,
+          errorFile: null,
+          errorLine: null,
+          exceptionCategory: 'uncategorized-exception',
           failureCategory: 'assertion-failure',
           failureReason: 'A Playwright assertion failed.',
+          failurePhase: 'test-body',
           failingStep: '02 discover the known published demo event',
           file: 'web/playwright/basic.deterministic.spec.ts',
+          hookOrFixtureTitle: null,
           line: 90,
           projectName: 'chromium',
           testTitle: 'completes the canonical Basic journey',
         },
       ],
-      schemaVersion: 2,
+      schemaVersion: 3,
       status: 'failed',
     });
   });
@@ -171,6 +181,159 @@ describe('sanitized Playwright diagnostics', () => {
     expect(diagnostics.failures[0].testTitle).toContain('[REDACTED_LOCATION]');
   });
 
+  it('retains structural fixture phase, fixed exception category, and error source', () => {
+    const diagnostics = buildSanitizedPlaywrightDiagnostics({
+      failures: [
+        {
+          attachments: [],
+          duration: 701,
+          errorSource: {
+            column: 14,
+            file: '/runner/private/node_modules/playwright/browserType.js',
+            line: 117,
+          },
+          exceptionCategory: 'browser-executable-missing',
+          failedStep: {
+            category: 'pw:api',
+            title: 'Launch browser',
+            titlePath: ['Before Hooks', 'Fixture "browser"', 'Launch browser'],
+          },
+          projectName: 'chromium',
+          status: 'failed',
+          testLocation: {
+            column: 1,
+            file: '/checkout/apps/web/playwright/basic.deterministic.spec.ts',
+            line: 90,
+          },
+          testTitlePath: [
+            'basic.deterministic.spec.ts',
+            'canonical Basic journey',
+          ],
+        },
+      ],
+      format: 'wits-playwright-structural-v1',
+      globalErrors: [],
+    });
+
+    expect(diagnostics.failures[0]).toMatchObject({
+      errorColumn: 14,
+      errorFile: 'browserType.js',
+      errorLine: 117,
+      exceptionCategory: 'browser-executable-missing',
+      failureCategory: 'test-failure',
+      failurePhase: 'fixture/setup',
+      file: 'web/playwright/basic.deterministic.spec.ts',
+      hookOrFixtureTitle: 'browser',
+      line: 90,
+      projectName: 'chromium',
+      testTitle: 'basic.deterministic.spec.ts › canonical Basic journey',
+    });
+    expect(diagnostics.schemaVersion).toBe(3);
+    expect(JSON.stringify(diagnostics)).not.toContain('/runner/private');
+  });
+
+  it('builds a raw structural failure without copying exception text or output', () => {
+    const sensitive = [
+      'accepted-answer-like-string',
+      'player@example.test',
+      'Naledi Private Player',
+      'DOM text containing private challenge content',
+      'lat=-26.19&lng=28.03',
+      '[-26.19, 28.03]',
+      'Authorization: Bearer private-auth-value',
+      'cookie=private-session-cookie',
+      'token=wits-world-private-test-token',
+      'postgresql://owner:password@db.example/private',
+    ].join('\n');
+    const failure = createStructuralFailure(
+      {
+        location: {
+          column: 1,
+          file: 'C:/repo/basic.deterministic.spec.ts',
+          line: 90,
+        },
+        parent: { project: () => ({ name: 'chromium' }) },
+        titlePath: () => ['basic.deterministic.spec.ts', 'canonical journey'],
+      },
+      {
+        attachments: [
+          {
+            body: sensitive,
+            contentType: 'text/markdown',
+            name: 'error-context',
+            path: 'C:/private/error-context.md',
+          },
+        ],
+        duration: 500,
+        error: {
+          message: `browserType.launch: Executable doesn't exist at ${sensitive}`,
+          stack: `Error: ${sensitive}\n    at C:/repo/browserType.js:117:14`,
+        },
+        status: 'failed',
+        stderr: [sensitive],
+        stdout: [sensitive],
+        steps: [],
+      },
+    );
+
+    expect(failure).toMatchObject({
+      exceptionCategory: 'browser-executable-missing',
+      projectName: 'chromium',
+    });
+    expect(JSON.stringify(failure)).not.toContain(sensitive);
+    expect(JSON.stringify(failure)).not.toContain('body');
+    expect(JSON.stringify(failure)).not.toContain('stdout');
+    expect(JSON.stringify(failure)).not.toContain('stderr');
+  });
+
+  it.each([
+    [['Before Hooks', 'beforeAll hook'], 'beforeAll'],
+    [['Before Hooks', 'beforeEach hook'], 'beforeEach'],
+    [['Before Hooks', 'Fixture "page"'], 'fixture/setup'],
+    [['test.step: deterministic action'], 'test-body'],
+    [['After Hooks', 'afterEach hook'], 'afterEach'],
+    [['After Hooks', 'afterAll hook'], 'afterAll'],
+  ])(
+    'derives the structural lifecycle phase from %j',
+    (titlePath, expected) => {
+      const diagnostics = buildSanitizedPlaywrightDiagnostics({
+        failures: [
+          {
+            attachments: [],
+            duration: 1,
+            exceptionCategory: 'uncategorized-exception',
+            failedStep: {
+              category: titlePath[0].startsWith('test.step')
+                ? 'test.step'
+                : 'hook',
+              title: titlePath.at(-1),
+              titlePath,
+            },
+            status: 'failed',
+            testTitlePath: ['safe test'],
+          },
+        ],
+        format: 'wits-playwright-structural-v1',
+        globalErrors: [],
+      });
+
+      expect(diagnostics.failures[0].failurePhase).toBe(expected);
+    },
+  );
+
+  it.each([
+    [
+      "Executable doesn't exist at /cache/chromium",
+      'browser-executable-missing',
+    ],
+    ['browserType.launch failed', 'browser-launch-failure'],
+    ['connect ECONNREFUSED 127.0.0.1', 'connection-refused'],
+    ['request ETIMEDOUT', 'network-timeout'],
+    ['Target page, context or browser has been closed', 'browser-closed'],
+  ])('maps known framework errors to %s', (message, expected) => {
+    expect(classifyExceptionCategory({ message })).toBe(expected);
+  });
+
   it.each([
     ['timedOut', 'timeout', 'The Playwright test timed out.'],
     ['interrupted', 'interrupted', 'The Playwright test was interrupted.'],
@@ -229,10 +392,16 @@ describe('sanitized Playwright diagnostics', () => {
       {
         attachments: [],
         durationSeconds: 0,
+        errorColumn: null,
+        errorFile: null,
+        errorLine: null,
+        exceptionCategory: 'uncategorized-exception',
         failureCategory: 'runner-setup-failure',
         failureReason: 'Playwright setup or the test runner failed.',
+        failurePhase: 'runner/web-server-setup',
         failingStep: null,
         file: null,
+        hookOrFixtureTitle: null,
         line: null,
         projectName: null,
         testTitle: 'Playwright setup or runner',

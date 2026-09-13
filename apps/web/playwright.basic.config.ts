@@ -10,7 +10,12 @@ export default defineConfig({
   globalTeardown: './playwright/basic-global-teardown.ts',
   outputDir: 'playwright/test-results-basic',
   reporter: diagnosticsReportPath
-    ? [['json', { outputFile: diagnosticsReportPath }]]
+    ? [
+        [
+          './playwright/diagnostic-reporter.mjs',
+          { outputFile: diagnosticsReportPath },
+        ],
+      ]
     : 'line',
   retries: 0,
   testDir: './playwright',
