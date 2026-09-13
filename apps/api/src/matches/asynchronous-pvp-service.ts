@@ -877,7 +877,7 @@ export function createAsyncPvpService(
           input.submissionId,
           payloadHash,
         );
-        if (replay) return replay;
+        if (replay) return normalizeMatchReceipt(replay);
         const now = await databaseNow(client);
         if (
           match.status === 'active' &&
@@ -1057,7 +1057,7 @@ export function createAsyncPvpService(
           input.submissionId,
           payloadHash,
         );
-        if (replay) return replay;
+        if (replay) return normalizeMatchReceipt(replay);
 
         const now = await databaseNow(client);
         if (
@@ -1934,18 +1934,50 @@ function relativeActionResult(
   result: BattleActionResult,
   viewerSide: BattleSide,
   state: BattleState,
-): unknown {
+) {
   const relativeSide = (side: BattleSide): 'self' | 'opponent' =>
     side === viewerSide ? 'self' : 'opponent';
   return {
-    ...result,
+    action: result.action,
+    defeatedCreatureId: result.defeatedCreatureId,
+    turnEnded: result.turnEnded,
     side: relativeSide(result.side),
     winner: result.winner === null ? null : relativeSide(result.winner),
     effects: result.effects.map((effect) => ({
-      ...effect,
+      effectId: effect.effectId,
+      effectType: effect.effectType,
+      targetCreatureId: effect.targetCreatureId,
+      amount: effect.amount,
+      damageMultiplier: effect.damageMultiplier,
       targetSide: relativeSide(effect.targetSide),
       modifier: findEffect(state, effect.effectId)?.modifier ?? null,
     })),
+  };
+}
+
+// Older receipts may contain engine metadata. Preserve their confirmed version
+// and outcome while selecting only the existing public action contract.
+function normalizeMatchReceipt(view: AsyncPvpMatchView): AsyncPvpMatchView {
+  if (view.lastAction === null) return view;
+  const result = view.lastAction as ReturnType<typeof relativeActionResult>;
+  return {
+    ...view,
+    lastAction: {
+      action: result.action,
+      side: result.side,
+      defeatedCreatureId: result.defeatedCreatureId,
+      winner: result.winner,
+      turnEnded: result.turnEnded,
+      effects: result.effects.map((effect) => ({
+        effectId: effect.effectId,
+        effectType: effect.effectType,
+        targetCreatureId: effect.targetCreatureId,
+        targetSide: effect.targetSide,
+        amount: effect.amount,
+        damageMultiplier: effect.damageMultiplier,
+        modifier: effect.modifier ?? null,
+      })),
+    },
   };
 }
 

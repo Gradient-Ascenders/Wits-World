@@ -643,7 +643,7 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           <strong>
             {errorContext === 'resignation'
               ? 'Forfeit not confirmed.'
-              : 'Action not applied.'}
+              : 'Action not confirmed.'}
           </strong>{' '}
           {errorMessage(error, errorContext)}
           <div className="match-state-actions">

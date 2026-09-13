@@ -161,4 +161,31 @@ checks that the new detail buttons open a dialog without submitting an action.
 Dependencies were installed from the incoming lockfile with `npm ci`; no
 database-writing checks were run.
 
+## PvP response recovery follow-up
+
+Both supplied PvP logs showed `lastAction` response serialization failures.
+PvP used a separate projection that spread engine results into its public
+contract, leaking `expiredEffects` and per-effect `effectCode`. The action could
+already be committed before serialization failed, and subsequent reads failed
+on the same saved result. PvP now explicitly selects its existing public action
+fields while retaining viewer-relative sides. Saved action and resignation
+receipts are also projected without changing their version or applying a new
+move. Internal engine data remains persisted; no schema or database repair is
+required. The UI now says “Action not confirmed” instead of claiming an action
+was not applied.
+
+Both viewer regression cases reproduced HTTP 500 on the previous code and
+passed with the fix, including old receipt replay without a new action write.
+Read-only local API injection against both affected saved matches returned
+HTTP 200 for all four player views, at saved version 1. Authentication was
+stubbed for this diagnostic, and row locks were omitted inside a read-only
+transaction; no match was advanced or repaired.
+
+Validation: all 16 PvP route tests and 32 PvP page tests passed. The full API
+run passed 1,005 tests and skipped 275 database tests, with two unrelated
+five-second timeouts. Both affected files passed on a single-worker rerun
+(22 tests) without increasing timeouts. API/web type-check, API build, and
+changed-file lint and formatting passed. No browser layout changes or database-writing tests
+were needed for this correction.
+
 AI assistance: Codex[GPT-6] investigated, implemented and documented this pass.
