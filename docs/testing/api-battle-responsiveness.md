@@ -188,4 +188,23 @@ five-second timeouts. Both affected files passed on a single-worker rerun
 changed-file lint and formatting passed. No browser layout changes or database-writing tests
 were needed for this correction.
 
+## Review: serialize identity reads with account deletion
+
+The active-identity fast path now uses `FOR KEY SHARE OF p`. A plain MVCC
+read could authorize the old active row while deletion held `FOR UPDATE`
+and finalized dependent gameplay. The key-share lock waits for that transaction;
+after deletion commits, the active-row predicate no longer matches and the
+existing lifecycle path returns deletion-pending, which authorization rejects.
+Unchanged active identities still use one statement, and concurrent key-share
+readers remain compatible. The earlier identity timings predate this lock;
+no updated latency claim is made here.
+
+A focused disposable-database regression pauses real deletion during cleanup,
+observes the competing identity query blocked using `pg_blocking_pids`, then
+verifies HTTP 403 `ACCOUNT_UNAVAILABLE` and that the gameplay handler never ran.
+Without the row lock, the regression failed because the request completed
+before deletion; with the lock, it passed. So did 62 identity/authentication/authorization unit and
+HTTP tests, API type-check and changed-file lint. No development or production
+database was modified.
+
 AI assistance: Codex[GPT-6] investigated, implemented and documented this pass.

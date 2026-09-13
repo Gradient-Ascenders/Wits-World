@@ -56,6 +56,7 @@ describe('local player identity', () => {
     });
     expect(query).toHaveBeenCalledTimes(2);
     expect(connect).not.toHaveBeenCalled();
+    expect(query.mock.calls[0]?.[0]).toContain('for key share of p');
     expect(query.mock.calls[0]?.[0]).toContain(
       'deleted_identity_token_denials',
     );

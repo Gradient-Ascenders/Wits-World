@@ -1,6 +1,8 @@
 import { copyFile, mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import Fastify from 'fastify';
+import { registerAuthorization } from '../src/auth/authorization.js';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -1351,6 +1353,91 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
       });
     });
   });
+
+  it('waits for deletion cleanup before rejecting a concurrent gameplay identity', async () => {
+    const pool = createDatabasePool(temporaryConfig);
+    const resolverClient = await pool.connect();
+    const principal = {
+      connectionStrategy: 'auth0' as const,
+      issuer: 'https://auth.example.test/',
+      subject: 'auth0|delete-fast-read-race',
+      playerName: 'deletion_race',
+      tokenIssuedAt: TOKEN_ISSUED_AT,
+    };
+    const app = Fastify();
+    let handlerCalled = false;
+    app.addHook('onRequest', async (request) => {
+      request.auth = principal;
+    });
+    registerAuthorization(app, createPlayerIdentityService(resolverClient));
+    app.get('/gameplay', { preHandler: app.requireActivePlayer }, async () => {
+      handlerCalled = true;
+      return { ok: true };
+    });
+    let releaseCleanup!: () => void;
+    const cleanupGate = new Promise<void>((resolve) => {
+      releaseCleanup = resolve;
+    });
+    let cleanupEntered!: () => void;
+    const cleanupStarted = new Promise<void>((resolve) => {
+      cleanupEntered = resolve;
+    });
+    let deletion: Promise<unknown> | undefined;
+    let gameplay: Promise<unknown> | undefined;
+    try {
+      await createPlayerIdentityService(pool).resolve(principal);
+      const pid = (
+        await resolverClient.query<{ pid: number }>(
+          'select pg_backend_pid() as pid',
+        )
+      ).rows[0]!.pid;
+      const lifecycle = createAccountDeletionLifecycle(pool, {
+        finalizeDependentGameplay: async () => {
+          cleanupEntered();
+          await cleanupGate;
+        },
+      });
+      deletion = lifecycle.request(principal);
+      await cleanupStarted;
+      let settled = false;
+      const response = app
+        .inject({ method: 'GET', url: '/gameplay' })
+        .then((value) => {
+          settled = true;
+          return value;
+        });
+      gameplay = response;
+      await expect
+        .poll(
+          async () => {
+            const locks = await pool.query<{ blocked: boolean }>(
+              'select cardinality(pg_blocking_pids($1)) > 0 as blocked',
+              [pid],
+            );
+            return settled
+              ? 'completed before deletion'
+              : locks.rows[0]?.blocked
+                ? 'blocked'
+                : 'starting';
+          },
+          { timeout: 5_000 },
+        )
+        .toBe('blocked');
+      expect(handlerCalled).toBe(false);
+      releaseCleanup();
+      await deletion;
+      const rejected = await response;
+      expect(rejected.statusCode).toBe(403);
+      expect(rejected.json()).toMatchObject({ code: 'ACCOUNT_UNAVAILABLE' });
+      expect(handlerCalled).toBe(false);
+    } finally {
+      releaseCleanup();
+      await Promise.allSettled([deletion, gameplay]);
+      await app.close();
+      resolverClient.release();
+      await pool.end();
+    }
+  }, 20_000);
 
   it('returns the existing deletion request when deletion is already pending', async () => {
     await withDatabaseClient(temporaryConfig, async (client) => {
