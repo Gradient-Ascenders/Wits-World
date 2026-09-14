@@ -114,6 +114,7 @@ The public [Wits World documentation](https://wits-world-docs.pages.dev/) is the
 detailed source of truth. Start with:
 
 - [Developer Guide](docs/development/getting-started.md)
+- [Maintaining the documentation site](docs/development/documentation-site.md)
 - [API Overview](docs/architecture/api-overview.md)
   and the repository's [API Guide](apps/api/README.md)
 - [Architecture Overview](docs/architecture/overview.md)

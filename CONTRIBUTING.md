@@ -97,6 +97,32 @@ Do not copy the example attribution when a different tool or model performed the
 work. Submission-facing documents created, planned, reviewed, or edited with AI
 must also include an accurate declaration in the document.
 
+## Maintain documentation
+
+Documentation is part of the change when behaviour, API contracts, schema,
+setup, deployment, tests or confirmed product decisions change. Before editing,
+read the affected canonical document and the
+[documentation-site maintenance guide](docs/development/documentation-site.md).
+
+1. Update the existing reference first. Create a new page only for a distinct
+   reader need; do not create a page for every component, migration or PR.
+2. Search related summaries, requirements and runbooks for claims made stale by
+   the change. Reconcile those current claims with the implementation and
+   approved decisions; keep historical records dated rather than rewriting them.
+3. Place public pages under `docs/` and add each new Markdown/MDX document once
+   to the reader-focused navigation in `apps/docs/sidebars.ts`. Update references
+   when removing or renaming a page and preserve established public URLs.
+4. Record evidence with its date, revision, environment, result and source.
+   Separate planned work, implemented behaviour, executed checks and acceptance.
+   Issue closure, a template, or a successful deployment is not a participant retest.
+5. Add accurate AI attribution, run the guide's proportionate checks, and report
+   what remains unverified. Do not weaken the navigation coverage test to hide
+   missing pages.
+6. State whether the update is local, committed, pushed, merged or deployed.
+   The public site updates through the docs workflow after relevant changes
+   reach `main`; a local build does not publish anything. Commit, push and merge
+   only within the user's authorisation.
+
 ## Prepare the pull request
 
 Complete the repository pull-request template. Link the issue, explain the
@@ -107,3 +133,5 @@ is complete.
 
 The preceding document was generated and edited with the assistance of:
 Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5].
+
+Documentation workflow added with assistance from Codex-CLI[GPT-6].
