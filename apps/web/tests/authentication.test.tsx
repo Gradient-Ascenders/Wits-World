@@ -1112,8 +1112,14 @@ describe('player authentication', () => {
     );
 
     expect(
-      await screen.findByText(/Player Name that is already linked/),
+      await screen.findByText(/Player Name is already linked/),
     ).toBeVisible();
+    expect(
+      document.querySelector('.main-content--explore'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Hide header for more map space' }),
+    ).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Sign out' }));
     await vi.waitFor(() =>
       expect(logout).toHaveBeenCalledWith({

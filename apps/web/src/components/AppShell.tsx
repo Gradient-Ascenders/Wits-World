@@ -117,7 +117,7 @@ export function AppShell({ children }: AppShellProps) {
   const { isAuthenticated, isLoading } = useAuth0();
   const { state: currentPlayer } = useCurrentPlayer();
   const [pathname] = useLocation();
-  const isExplore = pathname === '/explore';
+  const isExplore = pathname === '/explore' && currentPlayer.status !== 'error';
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
   const [headerDragOffset, setHeaderDragOffset] = useState<number | null>(null);
   const headerDrawerRef = useRef<HTMLDivElement>(null);

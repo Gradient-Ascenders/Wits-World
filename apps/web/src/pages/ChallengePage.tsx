@@ -530,11 +530,15 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
 
   if (attempt?.status === 'completed') {
     return (
-      <div className="challenge-page">
+      <div className="challenge-page challenge-page--result">
         <div aria-live="polite" className="sr-only" role="status">
           {statusMessage}
         </div>
-        <ChallengeResult attempt={attempt} headingRef={resultHeading} />
+        <ChallengeResult
+          attempt={attempt}
+          headingRef={resultHeading}
+          apiBaseUrl={apiBaseUrl}
+        />
       </div>
     );
   }

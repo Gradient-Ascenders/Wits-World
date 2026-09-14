@@ -220,3 +220,30 @@
     );
   }
 }
+
+/* Standalone page states need their own inset even on full-bleed map routes. */
+.main-content > :is(.auth-state, .state-message) {
+  width: min(36rem, calc(100% - 2 * var(--space-4)));
+  flex: 0 0 auto;
+  align-self: center;
+  margin: clamp(var(--space-5), 6vh, var(--space-8)) auto;
+  padding: clamp(var(--space-5), 4vw, var(--space-7));
+}
+
+.main-content:has(> .auth-state, > .state-message) {
+  overflow-y: auto;
+}
+
+.state-message__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+@media (max-width: 30rem) {
+  .state-message__actions > .button {
+    flex: 1 1 100%;
+  }
+}
