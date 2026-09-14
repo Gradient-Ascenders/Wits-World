@@ -479,9 +479,9 @@ test('keeps a filtered mobile draft through saving and a recoverable failure', a
     .getByRole('button', { name: 'Create saved deck', exact: true })
     .click();
   await expect(page.getByRole('heading', { name: 'Retry Five' })).toBeVisible();
-  await expect(page.getByRole('status')).toContainText(
-    'Retry Five was created.',
-  );
+  const confirmation = page.locator('[data-sonner-toast]');
+  await expect(confirmation).toHaveCount(1);
+  await expect(confirmation).toContainText('Retry Five was created.');
   expect(saveAttempt).toBe(2);
   await expectNoHorizontalOverflow(page);
 });
@@ -517,9 +517,13 @@ test('minimises the mobile save bar deliberately and preserves keyboard access',
     .toBeLessThan(expandedHeight * 0.7);
   const save = page.getByRole('button', { name: 'Save', exact: true });
   expect((await save.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-  expect((await bar.boundingBox())!.y + (await bar.boundingBox())!.height).toBe(
-    772,
-  );
+  // Wait for the collapse transition and allow subpixel layout rounding.
+  await expect
+    .poll(async () => {
+      const bounds = (await bar.boundingBox())!;
+      return Math.abs(bounds.y + bounds.height - 772);
+    })
+    .toBeLessThanOrEqual(1);
   // Pausing and small opposite movements must not expand the bar.
   await page.waitForTimeout(250);
   await page.mouse.wheel(0, -4);

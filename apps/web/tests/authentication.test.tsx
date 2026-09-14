@@ -1050,9 +1050,11 @@ describe('player authentication', () => {
     expect(signOut).toBeVisible();
 
     await user.click(signOut);
-    expect(logout).toHaveBeenCalledWith({
-      logoutParams: { returnTo: window.location.origin },
-    });
+    await vi.waitFor(() =>
+      expect(logout).toHaveBeenCalledWith({
+        logoutParams: { returnTo: window.location.origin },
+      }),
+    );
     expect(window.localStorage.length).toBe(0);
   });
 
@@ -1113,9 +1115,11 @@ describe('player authentication', () => {
       await screen.findByText(/Player Name that is already linked/),
     ).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Sign out' }));
-    expect(logout).toHaveBeenCalledWith({
-      logoutParams: { returnTo: window.location.origin },
-    });
+    await vi.waitFor(() =>
+      expect(logout).toHaveBeenCalledWith({
+        logoutParams: { returnTo: window.location.origin },
+      }),
+    );
   });
 
   it('does not repeat a failed restore when Auth0 callback identities change', async () => {
@@ -1176,9 +1180,11 @@ describe('player authentication', () => {
     expect(screen.queryByText('Signed in as')).not.toBeInTheDocument();
     await openAccountDisclosure(user);
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeVisible();
-    expect(logout).toHaveBeenCalledWith({
-      logoutParams: { returnTo: window.location.origin },
-    });
+    await vi.waitFor(() =>
+      expect(logout).toHaveBeenCalledWith({
+        logoutParams: { returnTo: window.location.origin },
+      }),
+    );
   });
 
   it('exposes access-token retrieval without rendering or storing the token', async () => {
