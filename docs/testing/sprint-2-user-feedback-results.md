@@ -6,8 +6,7 @@ title: Sprint 2 user-feedback results
 
 ## Evidence status
 
-This report records the sanitised results of the formal Sprint 2 user-feedback
-questionnaire completed on **13 September 2026**. Ten responses were collected.
+This report records the sanitised results of the formal Sprint 2 user-feedback questionnaire. Ten responses were collected.
 The supplied CSV contains timestamps and questionnaire answers, but no name or
 email columns. The raw response export remains outside the public repository.
 
@@ -151,13 +150,13 @@ current journey and reopen or create focused follow-up work where necessary.
 
 ## Traceability summary
 
-| Finding  | Primary concern                         | Decision | Gitea issue | Implementation evidence | Retest status |
-| -------- | --------------------------------------- | -------- | ----------- | ----------------------- | ------------- |
-| UT-S2-01 | Possible out-of-turn CPU action         | Accepted | #240        | PR #245                 | Not recorded  |
-| UT-S2-02 | CPU battle latency and pacing           | Accepted | #241        | PR #245                 | Not recorded  |
-| UT-S2-03 | Battle turns, effects, and outcomes     | Accepted | #242        | PR #245, partial scope  | Not recorded  |
-| UT-S2-04 | Deck requirements and validation errors | Accepted | #243        | No linked change        | Not recorded  |
-| UT-S2-05 | Event, quiz, and reward guidance        | Accepted | #244        | No linked change        | Not recorded  |
+| Finding  | Primary concern                         | Decision | Gitea issue | Implementation evidence |
+| -------- | --------------------------------------- | -------- | ----------- | ----------------------- |
+| UT-S2-01 | Possible out-of-turn CPU action         | Accepted | #240        | PR #245                 |
+| UT-S2-02 | CPU battle latency and pacing           | Accepted | #241        | PR #245                 |
+| UT-S2-03 | Battle turns, effects, and outcomes     | Accepted | #242        | PR #245, partial scope  |
+| UT-S2-04 | Deck requirements and validation errors | Accepted | #243        | No linked change        |
+| UT-S2-05 | Event, quiz, and reward guidance        | Accepted | #244        | No linked change        |
 
 Issue closure is not treated as implementation or retest evidence on its own.
 The complete Basic release, stakeholder, participant, accessibility, field, and
