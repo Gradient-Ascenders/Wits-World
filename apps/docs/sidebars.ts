@@ -435,6 +435,31 @@ const sidebars: SidebarsConfig = {
           items: [
             {
               type: 'doc',
+              id: 'testing/basic-release-validation-167',
+              label: 'Issue 167 Evidence Record',
+            },
+            {
+              type: 'doc',
+              id: 'testing/basic-release-player-session',
+              label: 'Player Validation Script',
+            },
+            {
+              type: 'doc',
+              id: 'testing/basic-release-accessibility-matrix',
+              label: 'Accessibility & Device Matrix',
+            },
+            {
+              type: 'doc',
+              id: 'testing/basic-release-stakeholder-review',
+              label: 'Stakeholder Review Record',
+            },
+            {
+              type: 'doc',
+              id: 'testing/basic-release-findings',
+              label: 'Finding & Retest Register',
+            },
+            {
+              type: 'doc',
               id: 'testing/basic-tier-deterministic-e2e',
               label: 'Basic-Tier Deterministic E2E',
             },
