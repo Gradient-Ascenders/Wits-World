@@ -1,19 +1,15 @@
 name: Database, Package, and Basic E2E Verification
 
 on:
-  schedule:
-    # Gitea cron is UTC: 03:00 UTC is 05:00 South African Standard Time.
-    - cron: '0 3 * * *'
   workflow_dispatch:
     inputs:
       profile:
-        description: Run the nightly profile or the pre-release gate.
+        description: Run the manual pre-release gate.
         required: true
         type: choice
         default: release
         options:
           - release
-          - nightly
       release_commit_sha:
         description: Full lowercase commit SHA; required for the release profile.
         required: false
@@ -33,7 +29,7 @@ env:
 
 jobs:
   verify:
-    name: Nightly or release verification gate
+    name: Manual release verification gate
     runs-on: wits-world-ci
     timeout-minutes: 135
     env:
@@ -65,14 +61,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ "${{ gitea.event_name }}" = "schedule" ]; then
-            PROFILE=nightly
-          else
-            PROFILE="$REQUESTED_PROFILE"
-          fi
+          PROFILE="$REQUESTED_PROFILE"
 
           case "$PROFILE" in
-            nightly|release) ;;
+            release) ;;
             *)
               echo "Unsupported verification profile."
               exit 1
