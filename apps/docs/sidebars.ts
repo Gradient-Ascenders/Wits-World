@@ -638,6 +638,52 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'category',
+          label: 'Sprint 2 Scrum records',
+          items: [
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-2/initial-planning',
+              label: 'Sprint planning',
+            },
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-2/daily-scrum-01',
+              label: 'Daily Scrum 1 — Foundations',
+            },
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-2/daily-scrum-02',
+              label: 'Daily Scrum 2 — Backend integration',
+            },
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-2/backlog-refinement',
+              label: 'Backlog refinement and scope changes',
+            },
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-2/daily-scrum-03',
+              label: 'Daily Scrum 3 — Player experience',
+            },
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-2/daily-scrum-04',
+              label: 'Daily Scrum 4 — Testing and feedback',
+            },
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-2/sprint-review',
+              label: 'Sprint review',
+            },
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-2/sprint-retrospective',
+              label: 'Sprint retrospective',
+            },
+          ],
+        },
+        {
+          type: 'category',
           label: 'Sprint 1 records (historical)',
           items: [
             {
