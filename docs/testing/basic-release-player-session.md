@@ -10,6 +10,11 @@ participant. Explain voluntary participation, note-taking and any recording,
 allow the participant to skip or stop, and obtain consent outside this public
 repository. Do not coach until the participant is blocked; record any help.
 
+The [existing questionnaire results](sprint-2-user-feedback-results.md) identify
+five accepted findings for follow-up. They do not supply the observed task,
+device and release metadata required by this script. Use those finding IDs when
+retesting; do not reconstruct participant sessions from aggregate answers.
+
 ## Session metadata
 
 | Field                         | Value                                                                        |
@@ -118,3 +123,5 @@ without overwriting the original session observation.
 This pre-session script and empty record were generated and edited with the
 assistance of Codex[GPT-5]. It contains no fabricated participant, quotation,
 device, session, observation, or outcome.
+
+Sprint 2 feedback cross-reference added with assistance from Codex-CLI[GPT-6].

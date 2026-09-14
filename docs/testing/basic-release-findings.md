@@ -4,7 +4,13 @@ title: Basic release finding and disposition register
 
 # Basic release finding and disposition register
 
-This register starts empty. Add a row only for a genuine observation from a
+This register is for additional #167 validation and retest observations. The
+[Sprint 2 user-feedback report](sprint-2-user-feedback-results.md) already records
+UT-S2-01 through UT-S2-05 and issues #240–#244. Keep those original findings and
+dispositions there; reference their IDs when recording a follow-up here. Do not
+count the same observation twice.
+
+Add a row only for a genuine observation from a
 participant (`P__`), accessibility/device run (`A11Y-__`), field run (`GEO-__`),
 stakeholder review (`SH-__`), automated run (`AUTO-__`), or deployed smoke
 (`DEPLOY-__`). Preserve the original observation even after a fix.
@@ -28,8 +34,9 @@ and only when it genuinely exists.
 
 ## Finding register
 
-No findings are recorded yet. An empty register is not evidence that no defects
-exist.
+No additional follow-up findings or retest results are recorded in this table.
+Existing questionnaire findings remain in the linked report. An empty table is
+not evidence that no defects exist.
 
 | Finding ID | Source/session | Description and observable evidence | Affected journey | Severity | Reproducibility | Accessibility/security/data impact | Disposition and reason | Gitea issue | Fix reference | Retest release/run and result |
 | ---------- | -------------- | ----------------------------------- | ---------------- | -------- | --------------- | ---------------------------------- | ---------------------- | ----------- | ------------- | ----------------------------- |
@@ -48,11 +55,11 @@ run`, plus limitations and evidence.
 5. Review all Critical/High findings before any statement that no severe defect
    blocks the Basic journey.
 
-## Release disposition summary
+## Follow-up disposition summary
 
 | Measure                                   | Result                                |
 | ----------------------------------------- | ------------------------------------- |
-| Total genuine findings                    | **Pending manual/automated evidence** |
+| Additional follow-up findings             | **Pending manual/automated evidence** |
 | Critical open / accepted but not retested | **Pending evidence**                  |
 | High open / accepted but not retested     | **Pending evidence**                  |
 | Medium and Low unresolved                 | **Pending evidence**                  |
@@ -64,3 +71,5 @@ run`, plus limitations and evidence.
 This empty register and retest protocol were generated and edited with the
 assistance of Codex[GPT-5]. The placeholder row is not a finding, and no issue,
 fix, retest, or disposition was fabricated.
+
+Existing feedback cross-references added with assistance from Codex-CLI[GPT-6].

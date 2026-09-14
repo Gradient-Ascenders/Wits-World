@@ -38,6 +38,30 @@ queries do not expose correct answers, explanations, correctness, score, or
 rewards. Completed review data is reconstructed only after authoritative
 finalisation from persisted snapshots and locked answers.
 
+## Reading the schema and relationships
+
+Start with the domain table above, then follow the diagrams and detailed field
+references below. These documents describe the application schema; the ordered
+[migration source](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/database/migrations)
+is authoritative for exact SQL types, constraints, indexes and later alterations
+through `0043_add_content_source_evidence.sql` at the Sprint 2 audit.
+
+| Schema question                                                                   | Canonical reference                                                                                                                                                                                                                                                               |
+| --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Which event fields and spatial constraints determine availability?                | [Event fields and ER diagram](event-schema.md), [eligibility](event-eligibility.md)                                                                                                                                                                                               |
+| How do identity, Player Names and lifecycle retention relate?                     | [Player schema](player-schema.md), [deletion and retention](account-deletion-retention.md)                                                                                                                                                                                        |
+| How do challenges, questions, snapshots, answers, rewards and owned cards relate? | [Challenge/reward fields and ER diagram](challenge-reward-persistence-design.md)                                                                                                                                                                                                  |
+| How do saved decks refer to individual owned copies?                              | [Saved-deck fields, ownership keys and ER diagram](saved-deck-persistence-design.md)                                                                                                                                                                                              |
+| How are authoritative CPU and two-player matches recorded?                        | [CPU match schema](cpu-match-persistence-design.md), [asynchronous PvP schema](asynchronous-pvp-persistence.md)                                                                                                                                                                   |
+| How are points, achievements and trails persisted?                                | [Progression schema](player-progression-persistence.md), [ordered trails](ordered-trails-persistence.md)                                                                                                                                                                          |
+| How do later systems extend the schema?                                           | [Campaigns](campaign-scheduling-persistence.md), [movement evidence](movement-evidence.md), [question analytics](question-performance-analytics.md), [offline contract](../architecture/offline-challenge-play.md), [evolution receipts](../requirements/card-evolution-rules.md) |
+| How is schema deployed safely?                                                    | [Neon/PostGIS setup](neon-postgis-setup.md), [migration and release procedure](database-release-procedure.md), [seed policy](basic-demo-seed.md)                                                                                                                                  |
+
+The [September database review](architecture-review-2026-09.md) records a dated
+inspection, relationship rationale and index findings. Its table counts describe
+that inspection, not the latest production schema. This documentation audit
+neither inspected production rows nor applied migrations.
+
 ## Integrity and authority
 
 The database reinforces, but does not replace, API rules:
@@ -181,3 +205,5 @@ This database overview was generated, edited, and reviewed with the assistance
 of Codex[GPT-5], Codex-CLI[gpt-5.6-sol medium],
 Codex-CLI[GPT-5.6 Sol], and Codex[gpt-5.6-sol]. It was reconciled with the
 current migrations, runner, tests, and existing schema and release documents.
+
+Sprint 2 schema navigation updated with assistance from Codex-CLI[GPT-6].

@@ -73,9 +73,10 @@ published Creatures each have four executable moves while historical match
 snapshots remain intact.
 See the [Author curation API contract](architecture/author-curation-api-contract.md)
 for endpoints, stable errors, provenance, audit privacy, and rollout order.
-Question-performance analytics is an Author-only later capability, not part of
-the Basic player release boundary. Ordering-question authoring and player
-delivery are implemented alongside multiple-choice questions.
+Issue `#184` implements Author-only question-performance analytics, outside the
+Basic player release boundary. Issue `#163` implements ordering-question
+authoring and player delivery alongside multiple-choice questions; see the
+Author contract for the current validation and access boundaries.
 
 ## Testing and release evidence
 
@@ -112,3 +113,5 @@ This release reference was generated, edited, and reviewed with the assistance
 of Codex[GPT-5], Codex[gpt-5.6-sol], ChatGPT-Web[GPT-5.6 Sol], and
 Codex-CLI[gpt-5.6-sol medium]. Evidence statements must still be supported by
 executed checks or named operator confirmation.
+
+Sprint 2 status reconciliation assisted by Codex-CLI[GPT-6].

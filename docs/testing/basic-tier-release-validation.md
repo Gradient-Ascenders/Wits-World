@@ -154,3 +154,5 @@ This validation record and its deterministic journey were generated, edited,
 and reviewed with the assistance of Codex[GPT-5], ChatGPT-Web[GPT-5.6 Sol], and
 Codex-CLI[gpt-5.6-sol medium]. The declaration is not evidence of a pass; only
 recorded command output or named human/operator evidence is treated as one.
+
+Sprint 2 status reconciliation assisted by Codex-CLI[GPT-6].

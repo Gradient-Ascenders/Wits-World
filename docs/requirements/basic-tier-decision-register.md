@@ -111,3 +111,5 @@ validation.
 This register was planned, generated, and edited with the assistance of
 Codex-CLI[GPT-5], Codex-CLI[gpt-5.6-sol medium],
 Codex-CLI[GPT-5.6 Sol], and Codex[GPT-5].
+
+Sprint 2 status reconciliation assisted by Codex-CLI[GPT-6].

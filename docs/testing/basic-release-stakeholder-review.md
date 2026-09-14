@@ -1,12 +1,19 @@
 ---
-title: Basic release stakeholder review record
+title: Basic release stakeholder review template
 ---
 
-# Basic release stakeholder review record
+# Basic release stakeholder review template
 
 Use this agenda for a real review of the target release. Record attendance and
 consent outside the public repository when identities should not be published.
 No blank row is a decision, and silence is not approval.
+
+This is the next release-review template, not the full stakeholder history.
+Existing records are available for [4 September](../planning/stakeholder-interactions/2026-09-04-database-usage-review.md),
+[8 September](../planning/stakeholder-interactions/2026-09-08-trails-and-card-art-review.md)
+and [11 September](../planning/stakeholder-interactions/2026-09-11-frontend-ui-review.md).
+Use their outstanding questions and the [formal feedback findings](sprint-2-user-feedback-results.md)
+to prepare follow-up topics. Their recorded decisions do not fill these future-review rows.
 
 ## Review metadata
 
@@ -24,7 +31,7 @@ No blank row is a decision, and silence is not approval.
 - Account registration, sign-in, recovery, profile, logout, deletion boundary,
   and current Auth0 email policy.
 - Event discovery, map/list relationship, availability/reachability language,
-  one-shot reported location, reward-once behaviour, and current field gaps.
+  watched reported location and fresh-reading retry, reward-once behaviour, and current field gaps.
 - Multiple-choice and ordering challenge rules, timing, answer locking,
   correctness/explanation feedback, and failure states.
 - Reward, collection, thirty-card catalogue, starter grant, owned-copy and
@@ -75,3 +82,5 @@ exists; never reserve or invent an issue number.
 This empty agenda and decision record were generated and edited with the
 assistance of Codex[GPT-5]. It contains no fabricated stakeholder, comment,
 decision, meeting, approval, or acceptance.
+
+Sprint 2 review cross-references updated with assistance from Codex-CLI[GPT-6].

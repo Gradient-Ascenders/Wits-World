@@ -76,19 +76,19 @@ const config: Config = {
               to: '/docs/',
             },
             {
-              label: 'Product & Requirements',
+              label: 'Product & player experience',
               to: '/docs/product-requirements',
             },
             {
-              label: 'Architecture',
-              to: '/docs/architecture',
+              label: 'Technical reference',
+              to: '/docs/technical-reference',
             },
             {
-              label: 'Development & Operations',
+              label: 'Development & operations',
               to: '/docs/development-operations',
             },
             {
-              label: 'Testing & Quality',
+              label: 'Testing & evidence',
               to: '/docs/testing-quality',
             },
           ],
@@ -97,7 +97,7 @@ const config: Config = {
           title: 'Project',
           items: [
             {
-              label: 'Project Management',
+              label: 'Project & history',
               to: '/docs/project-management',
             },
             {

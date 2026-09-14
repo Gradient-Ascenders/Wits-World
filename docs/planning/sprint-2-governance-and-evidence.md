@@ -16,7 +16,26 @@ state.
 The dated tracker observations below are an audit snapshot, not a second
 backlog. Recheck Gitea before using them to make a current-status decision.
 
-## Administrative starting point
+## Meeting audit — 14 September 2026
+
+The [Milestone 2 overview](../sprint-2-overview.md) maps the original rubric to
+current documentation, and the [test/release snapshot](../testing/sprint-2-validation-status.md)
+records inspected CI/deployment and public reachability evidence for main
+revision `9a2f941`. Read-only Gitea inspection now shows #159 closed and release
+validation #167 still open. The August counts and tracker-hygiene observations
+below are historical; this audit did not recheck board columns or native dependencies.
+
+The formal feedback report records ten questionnaire responses, five accepted
+findings and their implementation/retest limits. It does not establish that all
+release acceptance or stakeholder follow-up has been completed.
+
+The teammate's [#167 release evidence pack](../testing/basic-release-validation-167.md)
+now supplies the 13 September local execution record and templates for remaining
+observed sessions, accessibility/device checks, stakeholder acceptance and retests.
+Its preparation snapshot predates the newer feedback documentation; both are
+linked without treating blank templates as completed evidence.
+
+## Historical administrative starting point
 
 Read-only Gitea inspection on 28 August 2026 found:
 
@@ -223,3 +242,5 @@ and triaged immediately; other findings are reviewed at the weekly boundary.
 This Sprint 2 governance and evidence structure was generated, edited, and
 reviewed with assistance from Codex[GPT-5]. Tracker facts are from read-only
 Gitea inspection on 28 August 2026; no remote resource was changed.
+
+September meeting audit added with assistance from Codex-CLI[GPT-6].

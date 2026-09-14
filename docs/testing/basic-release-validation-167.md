@@ -28,7 +28,35 @@ with the exact deployed release identifier before recording deployed results.
 | Deployed authenticated journey       | **Pending manual evidence** unless a dated deployed run is added below                                                                                             |
 | Findings and retests                 | Empty until observations are genuinely recorded; do not infer “none” from an empty register                                                                        |
 
-## Acceptance-criteria gap analysis
+## Integration with the Sprint 2 meeting evidence
+
+The execution table below is the teammate-recorded **13 September** evidence for
+`06db4a7a...`, imported from commit `0e911d6`. It has not been rerun as part of
+the documentation integration. Preserve its dates, skipped-test counts and
+inconclusive database outcomes. In particular, its statement that the docs had
+no tests describes that revision; this branch now includes sidebar coverage tests.
+
+For **14 September main** CI/deployment and public reachability observations,
+read the [Sprint 2 test and release snapshot](sprint-2-validation-status.md).
+Do not transfer a local result from one revision into the other revision's CI record.
+
+The package-creation rows above and gap analysis below describe the original
+preparation snapshot. Subsequent repository evidence includes:
+
+- [Ten questionnaire responses and five accepted findings](sprint-2-user-feedback-results.md),
+  with issue/change traceability and outstanding participant retests. These are
+  questionnaire responses, not five documented observed sessions using this script.
+- Dated stakeholder records for [4 September](../planning/stakeholder-interactions/2026-09-04-database-usage-review.md),
+  [8 September](../planning/stakeholder-interactions/2026-09-08-trails-and-card-art-review.md)
+  and [11 September](../planning/stakeholder-interactions/2026-09-11-frontend-ui-review.md).
+  They are existing review evidence, not completed rows in the new release-review template.
+
+The [follow-up finding register](basic-release-findings.md), player-session,
+accessibility and stakeholder templates support the remaining #167 work. Empty
+rows mean those specific follow-ups have not been recorded; they do not erase
+existing feedback or mean the product has no known findings.
+
+## Package-creation acceptance-criteria gap analysis
 
 | #167 criterion                                                   | Existing evidence                                                                                                                           | Can be generated in the current checkout                            | Manual or external evidence still required                                                                                | Known product blocker                                   |
 | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
@@ -121,7 +149,9 @@ journey.
 
 ## Release conclusion
 
-Current conclusion: **not yet validated for release**. The package and local
+Release conclusion: **not yet validated for release**. Existing questionnaire
+and stakeholder records must be considered alongside the package, while the
+unrecorded observed sessions and acceptance checks remain open. The package and local
 automation can reduce uncertainty, but #167 remains open until the required
 participant, accessibility, campus, stakeholder, deployed journey, finding,
 retest, CI, and reviewer evidence genuinely supports its acceptance criteria.
@@ -136,3 +166,5 @@ This evidence structure and gap analysis were generated and edited with the
 assistance of Codex[GPT-5]. The AI did not participate in player sessions,
 campus testing, stakeholder review, deployment, or CI and supplied no manual
 test result.
+
+Sprint 2 evidence integration assisted by Codex-CLI[GPT-6]; original run results preserved.
