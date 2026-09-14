@@ -87,23 +87,20 @@ export function evaluateReachabilityWithAccuracy(
     );
   }
 
-  if (distanceMetres + accuracyMetres <= radiusMetres) {
+  if (accuracyMetres > maximumEventLocationAccuracy(radiusMetres)) {
     return {
-      status: 'reachable',
-      reachable: true,
+      status: 'retry',
+      reachable: null,
+      reason: 'location_accuracy',
     };
   }
 
-  if (distanceMetres - accuracyMetres > radiusMetres) {
-    return {
-      status: 'unreachable',
-      reachable: false,
-    };
-  }
+  const reachable = distanceMetres <= radiusMetres;
+  return reachable
+    ? { status: 'reachable', reachable: true }
+    : { status: 'unreachable', reachable: false };
+}
 
-  return {
-    status: 'retry',
-    reachable: null,
-    reason: 'location_accuracy',
-  };
+export function maximumEventLocationAccuracy(radiusMetres: number): number {
+  return Math.min(150, 2 * radiusMetres);
 }

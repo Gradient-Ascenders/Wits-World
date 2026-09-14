@@ -5,6 +5,7 @@ import { createEventDiscoveryService } from '../events/event-discovery.js';
 import {
   evaluateLocationTiming,
   evaluateReachabilityWithAccuracy,
+  maximumEventLocationAccuracy,
 } from '../events/location-claim.js';
 import { evaluateJourney } from '../events/journey-evaluation.js';
 import { calculateChallengeTiming } from './challenge-timing.js';
@@ -372,7 +373,10 @@ async function validateMovement(
         : 'OFFLINE_LOCATION_UNVERIFIABLE',
     );
   // An extremely imprecise finish sample cannot corroborate movement.
-  if (finish.accuracyMetres > pack.event.radiusMetres)
+  if (
+    finish.accuracyMetres >
+    maximumEventLocationAccuracy(pack.event.radiusMetres)
+  )
     throw new OfflineRejection('OFFLINE_LOCATION_UNVERIFIABLE');
   const within = evaluateJourney({
     distanceMetres: await distance(client, start, finish),

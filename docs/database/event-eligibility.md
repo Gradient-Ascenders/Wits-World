@@ -32,15 +32,31 @@ the stored `radius_metres`; a claim exactly on the radius is eligible.
 
 The service does not return the stored event coordinates.
 
+## Reported accuracy policy
+
+A reported point qualifies for the location check when its distance is at most
+the event radius and its real reported accuracy is at most
+`min(150 metres, 2 × event radius)`. Both boundaries are inclusive. Accuracy above
+that bound returns the existing `location_accuracy` retry result; with acceptable
+accuracy, a point outside the radius is unreachable. Accuracy is never clamped
+or replaced, and the uncertainty circle no longer has to fit inside the event.
+
+Online event eligibility, challenge start, and offline start use the same
+server policy. Offline finish uses the same accuracy bound for its existing
+movement corroboration; it does not introduce a new finish-inside-radius rule.
+Freshness, chronology, movement plausibility, and all non-location eligibility
+checks remain unchanged. Offline submissions above the bound use the existing
+`OFFLINE_LOCATION_UNVERIFIABLE` response. No secondary-verification flow is
+implemented. This policy tolerates uncertainty and does not prove presence.
+
 ## Sprint 1 assumptions
 
 The seeded Great Hall demonstration event uses a provisional radius of `75`
 metres. This is an integration value, not an approved production threshold.
 
 Reported device accuracy and location-acquisition freshness are validated at the
-API request boundary introduced by the event-endpoint work. Acceptable accuracy
-and freshness thresholds remain provisional until device and field testing are
-complete.
+API request boundary introduced by the event-endpoint work. The current accuracy policy is described above; real-device field testing
+remains necessary to assess access and false acceptance.
 
 The distance service itself does not perform movement analysis, spoofing
 detection, continuous tracking, or challenge-session creation. A failed or
@@ -77,4 +93,4 @@ outside claim, unavailable events, and a missing event. Test output and issue
 evidence must not include database credentials or precise player location data.
 
 The preceding document was generated and edited with the assistance of:
-Codex[GPT-5].
+Codex[GPT-5] and Codex-CLI[GPT-6].

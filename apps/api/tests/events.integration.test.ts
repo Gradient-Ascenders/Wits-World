@@ -241,7 +241,7 @@ describe('event eligibility API', () => {
     expect(eligibilityEvaluate).not.toHaveBeenCalled();
   });
 
-  it('returns reachable when the accuracy envelope is clearly inside the radius', async () => {
+  it('returns reachable for an inside point at the accuracy limit', async () => {
     eligibilityEvaluate.mockResolvedValue({
       outcome: 'evaluated',
       eventId: EVENT_ID,
@@ -251,7 +251,7 @@ describe('event eligibility API', () => {
     } satisfies EventEligibilityResult);
 
     const response = await authenticatedEligibilityRequest({
-      accuracyMetres: 10,
+      accuracyMetres: 150,
     });
 
     expect(response.statusCode).toBe(200);
@@ -273,7 +273,7 @@ describe('event eligibility API', () => {
         eventId: EVENT_ID,
         latitude: -26.19205,
         longitude: 28.03038,
-        accuracyMetres: 10,
+        accuracyMetres: 150,
         acquiredAt: new Date('2026-08-10T11:59:30.000Z'),
         receivedAt,
       },
@@ -281,7 +281,7 @@ describe('event eligibility API', () => {
     );
   });
 
-  it('returns unreachable when the accuracy envelope is clearly outside the radius', async () => {
+  it('returns unreachable when the reported point is outside the radius', async () => {
     eligibilityEvaluate.mockResolvedValue({
       outcome: 'evaluated',
       eventId: EVENT_ID,
@@ -303,7 +303,7 @@ describe('event eligibility API', () => {
     });
   });
 
-  it('returns retry when reported accuracy makes the boundary ambiguous', async () => {
+  it('returns retry when reported accuracy exceeds the event limit', async () => {
     eligibilityEvaluate.mockResolvedValue({
       outcome: 'evaluated',
       eventId: EVENT_ID,
@@ -313,7 +313,7 @@ describe('event eligibility API', () => {
     } satisfies EventEligibilityResult);
 
     const response = await authenticatedEligibilityRequest({
-      accuracyMetres: 10,
+      accuracyMetres: 150.01,
     });
 
     expect(response.statusCode).toBe(200);
