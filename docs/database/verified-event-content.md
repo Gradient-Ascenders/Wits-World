@@ -1,4 +1,8 @@
-# Verified Wits Event Content
+---
+title: 'Campus events, questions and sources'
+---
+
+# Campus events, questions and sources
 
 Issue `#165` supplies a production-shaped, independently reviewable Wits Quest
 content pack. It contains exactly ten campus events and one hundred questions:
@@ -169,3 +173,5 @@ satisfy verified-event readiness.
 
 The preceding document and content pack were researched, generated, and edited
 with the assistance of Codex[GPT-5].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

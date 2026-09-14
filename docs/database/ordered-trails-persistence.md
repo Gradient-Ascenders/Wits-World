@@ -1,8 +1,8 @@
 ---
-title: Ordered trail persistence and API design
+title: 'Trail storage and API'
 ---
 
-# Ordered trail persistence and API design
+# Trail storage and API
 
 ## Scope
 
@@ -179,3 +179,5 @@ This persistence design was generated, edited, and reviewed with the assistance
 of Codex-CLI[gpt-5.6-sol medium] and Codex-CLI[GPT-5]. Schema, SQL, API, test,
 and development-fixture claims were checked against migration `0027` and the
 implemented trail modules.
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

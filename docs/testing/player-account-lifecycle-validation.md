@@ -1,4 +1,8 @@
-# Player account lifecycle validation
+---
+title: 'Account recovery and deletion checks'
+---
+
+# Account recovery and deletion checks
 
 Issue `#161` implements the protected `/account` journey on top of issue
 `#160`'s server-authoritative deletion lifecycle.
@@ -90,3 +94,5 @@ contents, or Auth0 browser storage in screenshots or logs.
 
 The preceding document was generated and edited with the assistance of:
 Codex[GPT-5], Codex-CLI[GPT-5].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

@@ -1,8 +1,12 @@
 ---
-title: Database usage and environment review - 4 September 2026
+title: 'Meeting 2 — Calvin Rea'
 ---
 
-# Database usage and environment review - 4 September 2026
+# Meeting 2 — Calvin Rea
+
+**4 September 2026 · Database & hosting**
+
+[All stakeholder meetings](index.md)
 
 :::note[Retrospective stakeholder record]
 
@@ -21,8 +25,15 @@ private database values.
 | Date              | 4 September 2026                                                           |
 | Stakeholder       | Calvin Rea                                                                 |
 | Team participants | Uzair Mahomed, Kevin Ebrahim, Tyron Van Tonder, and Caleb Perumalsamy      |
-| Format            | Stakeholder review; meeting location or communication medium not recorded  |
+| Format            | Online stakeholder review via Google Meet (shown in the meeting photo)     |
 | Scope             | Neon compute usage, database storage design, and database delivery/testing |
+
+## Meeting photo
+
+![Screenshot of the team’s Google Meet call with Calvin Rea](./meeting%20picture.png)
+
+_Meeting 2. Kevin confirmed that this existing repository photo belongs to this
+meeting. The image records the call; the feedback and decisions are documented below._
 
 ## Feedback and evaluation
 
@@ -119,3 +130,7 @@ This retrospective record was generated, edited, and reviewed with the
 assistance of Codex[gpt-5.6-sol]. Dates, participants, discussion topics, and
 the operational project separation were supplied by the team; repository links
 were checked against the current implementation.
+
+Meeting naming and navigation updated with assistance from Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

@@ -1,4 +1,8 @@
-# Mapbox operations and deployment notes
+---
+title: 'Configure and operate Mapbox'
+---
+
+# Configure and operate Mapbox
 
 This note applies to the `/explore` Mapbox GL JS integration in issue [#92](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/92). Mapbox is a confirmed team-selected technology within the project's implementation discretion; this does not claim a named client/lecturer approval. The note records the current public-browser configuration and operational work still required for production readiness.
 
@@ -118,3 +122,5 @@ This document was planned and edited with assistance from:
 Codex-CLI[GPT-5]
 Codex[GPT-5]
 ```
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

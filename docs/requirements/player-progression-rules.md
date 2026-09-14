@@ -1,8 +1,8 @@
 ---
-title: Player progression rules
+title: 'Points, achievements and rankings'
 ---
 
-# Player progression rules
+# Points, achievements and rankings
 
 Issue `#171` defines the first Intermediate-tier progression rules. Progression
 points are the only active player progression measure. They are permanent and
@@ -150,3 +150,5 @@ progression criterion.
 
 The preceding document was generated and edited with the assistance of:
 Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

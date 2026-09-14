@@ -1,4 +1,8 @@
-# Basic-tier Decision Register
+---
+title: 'Confirmed game decisions'
+---
+
+# Confirmed game decisions
 
 ## Status and authority
 
@@ -72,7 +76,7 @@ immutable, and new completion rows store zero in the compatibility column.
 
 `BASIC-09` through `BASIC-12` are now confirmed in the cited issue comments.
 
-`BASIC-17` through `BASIC-19` are also confirmed. `BASIC-17` requires an Auth0 tenant configuration change, not an application-authorisation change. `BASIC-18` is now enforced by migrations `0017` and `0018`. `BASIC-19` still requires reviewed content remediation before strict published-row enforcement can be completed.
+`BASIC-17` through `BASIC-19` are also confirmed. `BASIC-17` requires an Auth0 tenant configuration change, not an application-authorisation change. `BASIC-18` is enforced by migrations `0017` and `0018`. Issue #164 and migration `0041` completed the reviewed release-catalogue remediation for `BASIC-19`; future Author-created content remains subject to the same exactly-four publication validation.
 
 Implementation update (2026-08-22): Mapbox GL JS with Mapbox Standard has
 replaced the register's stale OpenFreeMap implementation note for `BASIC-13`.
@@ -83,8 +87,8 @@ cost/usage ownership, token/CSP/privacy, deployed behaviour, and campus-data
 evidence still remain. For `BASIC-19`, drafts now accept zero through four
 moves, the API rejects a fifth, and publication requires exactly four. Migration
 `0019_limit_creature_move_positions.sql` constrains stored move positions to one
-through four; strict published-row enforcement remains
-blocked by the 18 audited two-move definitions and must not fabricate content.
+through four, and migration `0041` supplies the approved complete release
+catalogue without rewriting historical match snapshots.
 
 Issue #62 is closed. `BASIC-13` no longer has an unresolved product-selection
 gate. Kevin still needs to record the Mapbox licensing/terms and cost/usage
@@ -111,3 +115,7 @@ validation.
 This register was planned, generated, and edited with the assistance of
 Codex-CLI[GPT-5], Codex-CLI[gpt-5.6-sol medium],
 Codex-CLI[GPT-5.6 Sol], and Codex[GPT-5].
+
+Sprint 2 status reconciliation assisted by Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

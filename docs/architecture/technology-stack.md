@@ -1,4 +1,8 @@
-# Technology Stack
+---
+title: 'Technology stack'
+---
+
+# Technology stack
 
 ## Purpose
 
@@ -244,3 +248,5 @@ ChatGPT-Web[GPT-5.6 Thinking], updated with Codex-CLI[GPT-5], and reviewed and
 edited for Sprint 1 release validation with assistance from
 ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5], and
 Codex-CLI[gpt-5.6-sol medium].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

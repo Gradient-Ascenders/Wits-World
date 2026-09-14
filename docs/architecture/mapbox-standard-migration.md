@@ -1,4 +1,8 @@
-# Mapbox Standard 3D migration boundary
+---
+title: 'Mapbox 3D map integration'
+---
+
+# Mapbox 3D map integration
 
 ## Status
 
@@ -142,3 +146,5 @@ This document was planned and edited with assistance from:
 Codex-CLI[GPT-5]
 Codex[GPT-5]
 ```
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

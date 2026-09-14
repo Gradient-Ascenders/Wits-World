@@ -1,8 +1,8 @@
 ---
-title: Author curation API contract
+title: 'Content authoring API'
 ---
 
-# Author curation API contract
+# Content authoring API
 
 ## Question performance projection
 
@@ -151,3 +151,5 @@ Codex[gpt-5.6-sol] and Codex[GPT-5]. It describes the implemented issue `#182`
 contract, issue `#185` Author-console integration, and issue `#163` ordering
 authoring integration; it does not claim that blocked analytics or asynchronous
 PvP is implemented.
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

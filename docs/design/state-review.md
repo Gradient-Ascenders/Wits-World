@@ -1,4 +1,8 @@
-# Application feedback review
+---
+title: 'Loading, error and feedback states'
+---
+
+# Loading, error and feedback states
 
 The design system remains the default contract. This pass changes presentation
 and feedback only; backend contracts, eligibility, lifecycle rules, legal battle
@@ -91,3 +95,5 @@ These fixtures do not add production states or change backend behaviour.
   was not manually reproduced; existing typed error mappings were retained.
 
 AI declaration: Written and reviewed with assistance from Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

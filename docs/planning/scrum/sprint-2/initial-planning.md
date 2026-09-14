@@ -1,9 +1,9 @@
 ---
-title: Sprint 2 initial planning
+title: Sprint 2 planning
 sidebar_position: 1
 ---
 
-# Sprint 2 initial planning
+# Sprint 2 planning
 
 | Field            | Record                                                                                                                    |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------- |
@@ -115,3 +115,6 @@ assumed from merges.
 
 This planning record was generated with assistance from
 Codex-CLI[gpt-5.6-sol medium] using repository and Gitea evidence.
+
+Navigation titles and documentation integration updated with assistance from
+Codex-CLI[GPT-6].

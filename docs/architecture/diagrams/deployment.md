@@ -1,44 +1,38 @@
-# Current Deployment Diagram
+---
+title: 'Hosting and deployment diagram'
+---
+
+# Hosting and deployment diagram
 
 This diagram records the currently implemented deployment architecture. The
 services are selected and deployed, while release-specific verification and
 some operational acceptance decisions remain separate gates.
 
+<div className="diagram-scroll" role="region" aria-label="Hosting and deployment diagram — diagram 1" tabIndex={0}>
+
 ```mermaid
-flowchart LR
-    Developer["Team Member Workstation"]
-    Gitea["Wits SDP Gitea<br/>Repository and Actions"]
-    CI["Repository-Scoped Gitea Runner"]
-
-    WebHost["Azure App Service<br/>Wits World Web"]
-    APIHost["Azure App Service<br/>Wits World API"]
-    DocsHost["Cloudflare Pages<br/>Docusaurus Documentation"]
-    DBHost[("Neon PostgreSQL/PostGIS<br/>Authoritative Data")]
-
-    Auth["Auth0<br/>Authentication Provider"]
-    Map["Mapbox GL JS / Mapbox Standard<br/>Presentation Provider"]
-
-    Browser["Player or Author Browser"]
-
-    Developer -->|"Push branch and open pull request"| Gitea
-    Gitea -->|"Triggers automated checks"| CI
-
-    CI -->|"Build and deploy apps/web"| WebHost
-    CI -->|"Build and deploy apps/api"| APIHost
-    CI -->|"Build and deploy apps/docs"| DocsHost
-
-    Browser -->|"HTTPS"| WebHost
-    Browser -->|"HTTPS API requests"| APIHost
-    Browser -->|"Public documentation"| DocsHost
-
-    Browser -->|"Authentication flow"| Auth
-    APIHost -->|"Token verification metadata or keys"| Auth
-
-    Browser -->|"Tiles and styles"| Map
-    APIHost -->|"Encrypted database connection"| DBHost
-
-    Gitea -.->|"Platform-managed secrets"| CI
+flowchart TB
+    accTitle: From pull request to production
+    accDescr: Pull requests run checks before review and merge. Main CI deploys the web and API independently, releasing the guarded database before the API. A separate path-filtered workflow publishes documentation.
+    PR["Branch and pull request"] --> Checks["PR validation<br/>Static checks, tests, isolated DB and builds"]
+    Checks --> Review["Team review and merge to main"]
+    Review --> Main["Main CI checks and release artifacts"]
+    Review --> DocsBuild["Docs workflow<br/>Relevant path changes only"]
+    Main --> Web["Azure App Service<br/>Web deployment and smoke check"]
+    Main --> Guard["API change and current-main guards"]
+    Guard --> Release["Production DB release<br/>Confirmed host and database; migrations"]
+    Release --> DB[("Neon PostgreSQL / PostGIS")]
+    Release --> API["Azure App Service<br/>API deployment and smoke check"]
+    API -->|"Encrypted connection"| DB
+    DocsBuild --> Docs["Cloudflare Pages<br/>Docusaurus documentation"]
 ```
+
+</div>
+
+This is a workflow map, not a claim that the latest run passed. Use the
+[dated release status](../../testing/sprint-2-validation-status.md) for evidence.
+The separate [automated verification gate](../../testing/automated-verification.md)
+is still present on this branch; it is not shown as a prerequisite of every deploy.
 
 ## Deployment requirements
 
@@ -59,19 +53,22 @@ flowchart LR
 
 ## Expected CI/CD flow
 
-1. A team member pushes a short-lived branch.
-2. A pull request is opened in Gitea.
-3. CI installs dependencies.
-4. CI checks formatting.
-5. CI runs linting.
-6. CI runs TypeScript type checking.
-7. CI runs automated tests.
-8. CI builds the web, API, and documentation applications.
-9. The pull request is reviewed.
-10. The branch is merged into the target branch.
-11. The approved applications are deployed through the documented process.
-12. Smoke tests verify the deployed services.
-13. The merged branch is deleted.
+1. A team member opens a pull request targeting `main`.
+2. `pr-validation.yml` runs static checks, application/package tests, isolated
+   database tests, and builds. The team reviews the change before merge.
+3. `ci.yml` runs on `main`, prepares release artifacts, and deploys eligible Web
+   and API changes through separate jobs. API deployment rejects stale commits
+   and runs the guarded production database release before deploying the API.
+4. `docs-deploy.yml` independently builds and publishes documentation when its
+   configured paths change on `main`. A Web/API deployment is not proof that
+   the documentation deployment succeeded.
+5. Deployment jobs perform their configured smoke checks. Authenticated player
+   journeys and operational recovery require their own evidence.
+
+Sources: [main CI workflow](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/.gitea/workflows/ci.yml),
+[PR validation](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/.gitea/workflows/pr-validation.yml),
+[docs deployment](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/.gitea/workflows/docs-deploy.yml),
+and [database release procedure](../../database/database-release-procedure.md).
 
 ## Remaining deployment and operational decisions
 
@@ -95,3 +92,6 @@ The preceding document was planned and generated with the assistance of
 ChatGPT-Web[GPT-5.6 Thinking], updated with Codex-CLI[GPT-5], and reviewed and
 edited for Sprint 1 release validation with assistance from
 ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].
+
+Page title and diagram updated against the current repository with assistance
+from Codex-CLI[GPT-6].

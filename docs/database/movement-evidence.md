@@ -1,8 +1,8 @@
 ---
-title: Privacy-limited movement evidence
+title: 'Movement checks and privacy'
 ---
 
-# Privacy-limited movement evidence
+# Movement checks and privacy
 
 Issues `#168` and `#169` add the minimum precise evidence and derived journey
 decisions needed for impossible-journey checks without creating a general
@@ -195,3 +195,5 @@ cleanup is running.
 
 The preceding document was generated and edited with the assistance of:
 Codex[GPT-5].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

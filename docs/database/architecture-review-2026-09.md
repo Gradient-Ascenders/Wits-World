@@ -1,8 +1,8 @@
 ---
-title: September database architecture review
+title: 'Database review — September 2026'
 ---
 
-# September database architecture review
+# Database review — September 2026
 
 ## Scope and conclusion
 
@@ -157,3 +157,5 @@ intact. No seed changes or API/frontend deployment changes are required.
 Prepared with assistance from Codex[GPT-5]. Measurements came from read-only database
 metadata; recommendations were checked against repository persistence code and
 PostgreSQL documentation.
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

@@ -1,9 +1,9 @@
 ---
-title: Developer guide
+title: 'Set up the project locally'
 description: Set up, understand, run, and verify the Wits World monorepo.
 ---
 
-# Developer guide
+# Set up the project locally
 
 This page is the public starting point for developing Wits World. It gives the
 shortest safe path through the repository and links to the detailed README or
@@ -189,3 +189,5 @@ before starting an issue branch or pull request.
 ---
 
 This developer guide was created and edited with assistance from Codex[GPT-5].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

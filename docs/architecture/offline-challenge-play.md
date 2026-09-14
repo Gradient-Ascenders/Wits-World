@@ -1,4 +1,8 @@
-# Offline challenge play
+---
+title: 'Offline play and synchronisation'
+---
+
+# Offline play and synchronisation
 
 Wits Quest supports prepared offline event challenges in both multiple-choice
 and ordering formats. A player must first sign in, allow location access and
@@ -154,3 +158,5 @@ required stakeholder and permission decisions are confirmed. Issue #186 must not
 remaining requirements and field evidence are satisfied.
 
 This document was generated with assistance from Codex[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

@@ -1,8 +1,8 @@
 ---
-title: External integration boundaries
+title: 'External services and data sharing'
 ---
 
-# External integration boundaries
+# External services and data sharing
 
 ## Purpose
 
@@ -86,3 +86,5 @@ Those remain evidence needs, not implicit passes.
 This integration overview was generated, edited, and reviewed with the
 assistance of Codex[GPT-5]. It distinguishes repository-controlled evidence
 from provider, operator, and stakeholder evidence that has not been recorded.
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

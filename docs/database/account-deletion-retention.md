@@ -1,4 +1,8 @@
-# Account deletion persistence and retention
+---
+title: 'Account deletion and retained data'
+---
+
+# Account deletion and retained data
 
 Issue `#160` completes the database and API lifecycle behind permanent account
 deletion. Issue `#161` adds the player-facing profile, provider-owned password
@@ -161,3 +165,5 @@ audit shape and twelve-month purge.
 
 The preceding document was generated and edited with the assistance of:
 Codex-CLI[gpt-5.6-sol medium], Codex-CLI[GPT-5], and Codex[GPT-5].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

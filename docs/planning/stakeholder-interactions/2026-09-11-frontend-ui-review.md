@@ -1,8 +1,12 @@
 ---
-title: Frontend UI review - 11 September 2026
+title: 'Meeting 4 — Calvin Rea'
 ---
 
-# Frontend UI review - 11 September 2026
+# Meeting 4 — Calvin Rea
+
+**11 September 2026 · Frontend UI**
+
+[All stakeholder meetings](index.md)
 
 :::note[Retrospective stakeholder record]
 
@@ -86,3 +90,7 @@ This retrospective record was generated, edited, and reviewed with the
 assistance of Codex[gpt-5.6-sol]. Dates, participants, and the broad UI feedback
 were supplied by the team; PR #234 scope and CI evidence were checked against
 the current repository and Gitea record.
+
+Meeting naming and navigation updated with assistance from Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

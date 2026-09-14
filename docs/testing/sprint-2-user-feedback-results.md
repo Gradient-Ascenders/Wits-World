@@ -1,8 +1,8 @@
 ---
-title: Sprint 2 user-feedback results
+title: 'Sprint 2 feedback and resulting changes'
 ---
 
-# Sprint 2 user-feedback results
+# Sprint 2 feedback and resulting changes
 
 ## Evidence status
 
@@ -180,3 +180,5 @@ deployment validation remains tracked by
 This sanitised report was generated, edited, and reviewed with the assistance
 of Codex[gpt-5.6-sol]. Aggregate counts were derived from the supplied response
 export; no participants, responses, fixes, or retest outcomes were fabricated.
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

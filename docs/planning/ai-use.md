@@ -1,8 +1,8 @@
 ---
-title: AI use
+title: 'AI tools and contribution disclosure'
 ---
 
-# AI use
+# AI tools and contribution disclosure
 
 Wits World permits disclosed, human-accountable AI assistance under the course
 policy. AI output is an input to engineering work, not evidence that a result is
@@ -17,6 +17,18 @@ ChatGPT-Web[GPT-5.6 Thinking], Codex-CLI[gpt-5.6-sol medium], Codex-CLI[GPT-5],
 Codex[GPT-5], Codex[GPT-5.6 Sol], and ChatGPT-Web[GPT-5.6 Sol]. A contributor
 must name the tool and model actually used; this list is not a prompt to copy
 every name into an attribution.
+
+## Sprint 2 documentation update — 14 September 2026
+
+Codex-CLI[GPT-6] assisted with documentation navigation, coverage-test code,
+inline edits, source/rubric comparison, Gitea evidence inspection and review of
+this update. The source was the team-supplied course brief, repository files,
+read-only issue/CI metadata and public endpoint checks. No participant results,
+stakeholder approvals or test passes were invented.
+
+Kevin also supplied a ChatGPT-generated prioritisation checklist. Its model was
+not supplied, so this record does not guess it. The rubric mapping was checked
+against the original brief rather than accepting the checklist as authority.
 
 ## Verification and responsibility
 
@@ -48,3 +60,7 @@ not transfer responsibility or prove correctness.
 
 The preceding document was generated, edited, and reviewed with the assistance
 of Codex[GPT-5] and ChatGPT-Web[GPT-5.6 Sol].
+
+This Sprint 2 update was assisted by Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

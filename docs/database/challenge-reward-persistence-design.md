@@ -1,4 +1,8 @@
-# Challenge, Reward, and Card Persistence Design
+---
+title: 'Challenge, reward and card storage'
+---
+
+# Challenge, reward and card storage
 
 ## Status and scope
 
@@ -23,7 +27,8 @@ selection behavior used below were confirmed by the team in the
 They are inputs to this persistence proposal rather than rules chosen by the
 schema design.
 
-Selling and evolution remain deferred. CPU match persistence is implemented by
+Selling remains deferred. Card evolution is implemented by migration `0042`;
+see the [evolution rules](../requirements/card-evolution-rules.md). CPU match persistence is implemented by
 migration `0012` and documented separately. The Basic starter grant is
 implemented by migrations `0009` and `0010` and the protected
 `POST /api/v1/cards/starter` endpoint.
@@ -77,29 +82,43 @@ from its shared card definition.
 
 ## Relationship view
 
+For a shorter presentation view, start with the
+[database diagrams](../architecture/diagrams/database-relationships.md).
+Format-specific rows are optional in this combined diagram: a published question
+uses either multiple-choice or ordering records, not both. An event may retain
+several challenge versions but has at most one published challenge. An attempt
+has no completion until it is finalised. Legacy wallet/coin tables below remain
+for migration history; current rewards use cards and progression points.
+
+<div className="diagram-scroll" role="region" aria-label="Challenge, reward and card storage — diagram 1" tabIndex={0}>
+
 ```mermaid
 erDiagram
+    accTitle: Challenge, reward and card storage
+    accDescr: Selected schema relationships. The surrounding document explains fields, constraints and server authority.
   PLAYERS ||--o{ CHALLENGE_ATTEMPTS : starts
-  EVENTS ||--o| EVENT_CHALLENGES : offers
+  EVENTS ||--o{ EVENT_CHALLENGES : offers
   EVENT_CHALLENGES ||--o{ CHALLENGE_QUESTIONS : contains
-  CHALLENGE_QUESTIONS ||--|{ CHALLENGE_CHOICES : offers
-  CHALLENGE_QUESTIONS ||--|| CHALLENGE_ANSWER_KEYS : marks
-  CHALLENGE_QUESTIONS ||--|{ CHALLENGE_ORDERING_ITEMS : offers
-  CHALLENGE_QUESTIONS ||--|{ CHALLENGE_ORDERING_ANSWER_KEYS : orders
+  CHALLENGE_QUESTIONS ||--o{ CHALLENGE_CHOICES : offers
+  CHALLENGE_QUESTIONS ||--o| CHALLENGE_ANSWER_KEYS : marks
+  CHALLENGE_QUESTIONS ||--o{ CHALLENGE_ORDERING_ITEMS : offers
+  CHALLENGE_QUESTIONS ||--o{ CHALLENGE_ORDERING_ANSWER_KEYS : orders
   CHALLENGE_ATTEMPTS ||--|{ ATTEMPT_QUESTIONS : snapshots
-  ATTEMPT_QUESTIONS ||--|{ ATTEMPT_QUESTION_CHOICES : orders
+  ATTEMPT_QUESTIONS ||--o{ ATTEMPT_QUESTION_CHOICES : orders
   ATTEMPT_QUESTIONS ||--o| ATTEMPT_ANSWERS : receives
-  ATTEMPT_QUESTIONS ||--|{ ATTEMPT_QUESTION_ORDERING_ITEMS : orders
+  ATTEMPT_QUESTIONS ||--o{ ATTEMPT_QUESTION_ORDERING_ITEMS : orders
   ATTEMPT_QUESTIONS ||--o| ATTEMPT_ORDERING_ANSWERS : receives
   PLAYERS ||--o{ EVENT_COMPLETIONS : earns
   EVENTS ||--o{ EVENT_COMPLETIONS : records
-  CHALLENGE_ATTEMPTS ||--|| EVENT_COMPLETIONS : produces
+  CHALLENGE_ATTEMPTS ||--o| EVENT_COMPLETIONS : produces
   PLAYERS ||--o| PLAYER_WALLETS : retains_legacy
   EVENT_COMPLETIONS ||--o| COIN_LEDGER_ENTRIES : retains_legacy
   PLAYERS ||--o{ PLAYER_CARDS : owns
   CARD_DEFINITIONS ||--o{ PLAYER_CARDS : instantiates
   EVENT_COMPLETIONS ||--o{ PLAYER_CARDS : awards
 ```
+
+</div>
 
 ## Implemented relations and design constraints
 
@@ -762,3 +781,6 @@ This design was planned, generated, edited, and reviewed with the assistance of
 Codex[GPT-5.6 Sol], Codex-CLI[gpt-5.6-sol medium], Codex[GPT-5], and
 ChatGPT-Web[GPT-5.6 Sol], Codex-CLI[GPT-5.6 Sol], and
 Codex[gpt-5.6-sol].
+
+Page title, relationship cardinalities, and evolution status updated with
+assistance from Codex-CLI[GPT-6].

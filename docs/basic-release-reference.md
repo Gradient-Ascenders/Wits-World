@@ -1,9 +1,9 @@
 ---
 sidebar_position: 2
-title: Basic release reference
+title: 'Basic game overview'
 ---
 
-# Basic release reference
+# Basic game overview
 
 This is the public starting point for the implemented core Wits Quest Basic
 gameplay. It describes what is implemented, where authority lives, and how the
@@ -67,13 +67,16 @@ versioned and audited. Questions must be complete before approval/publication,
 challenges need at least five valid published
 questions, events need a published challenge and viable Common reward pool, and
 Creature publication requires exactly four ordered moves. Draft Creatures may
-have zero through four moves. The unresolved legacy two-move catalogue data must
-be reviewed by the Cards/Game owner; automation must not invent moves.
+have zero through four moves. Migration `0041` replaces the superseded
+incomplete ordinary roster with the approved thirty-card catalogue; its 24
+published Creatures each have four executable moves while historical match
+snapshots remain intact.
 See the [Author curation API contract](architecture/author-curation-api-contract.md)
 for endpoints, stable errors, provenance, audit privacy, and rollout order.
-Question analytics and flagged-question curation remain blocked by issue `#184`
-/ S3-06. Ordering-question authoring is also not claimed because the current
-Author editor/API contract supports multiple-choice questions only.
+Issue `#184` implements Author-only question-performance analytics, outside the
+Basic player release boundary. Issue `#163` implements ordering-question
+authoring and player delivery alongside multiple-choice questions; see the
+Author contract for the current validation and access boundaries.
 
 ## Testing and release evidence
 
@@ -110,3 +113,7 @@ This release reference was generated, edited, and reviewed with the assistance
 of Codex[GPT-5], Codex[gpt-5.6-sol], ChatGPT-Web[GPT-5.6 Sol], and
 Codex-CLI[gpt-5.6-sol medium]. Evidence statements must still be supported by
 executed checks or named operator confirmation.
+
+Sprint 2 status reconciliation assisted by Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

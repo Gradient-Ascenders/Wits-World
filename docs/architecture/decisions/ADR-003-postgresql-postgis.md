@@ -1,4 +1,8 @@
-# ADR-003: Use PostgreSQL and PostGIS for Authoritative Event Data
+---
+title: 'ADR-003 — PostgreSQL and PostGIS'
+---
+
+# ADR-003 — PostgreSQL and PostGIS
 
 ## Status
 
@@ -138,3 +142,5 @@ integration to influence protected game logic.
 
 The preceding document was planned and generated with the assistance of:
 ChatGPT-Web[GPT-5.6 Thinking].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

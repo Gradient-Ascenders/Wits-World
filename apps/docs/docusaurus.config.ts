@@ -20,6 +20,9 @@ const config: Config = {
 
   onBrokenLinks: 'throw',
 
+  markdown: { mermaid: true },
+  themes: ['@docusaurus/theme-mermaid'],
+
   i18n: {
     defaultLocale: 'en',
     locales: ['en'],
@@ -43,6 +46,15 @@ const config: Config = {
   ],
 
   themeConfig: {
+    mermaid: {
+      theme: { light: 'neutral', dark: 'dark' },
+      options: {
+        flowchart: { useMaxWidth: false },
+        sequence: { useMaxWidth: false, wrap: true },
+        er: { useMaxWidth: false },
+        state: { useMaxWidth: false },
+      },
+    },
     colorMode: {
       respectPrefersColorScheme: true,
     },
@@ -72,23 +84,23 @@ const config: Config = {
           title: 'Documentation',
           items: [
             {
-              label: 'Overview',
+              label: 'Start here',
               to: '/docs/',
             },
             {
-              label: 'Product & Requirements',
+              label: 'Game rules & player experience',
               to: '/docs/product-requirements',
             },
             {
-              label: 'Architecture',
-              to: '/docs/architecture',
+              label: 'Technical guides',
+              to: '/docs/technical-reference',
             },
             {
-              label: 'Development & Operations',
+              label: 'Development & deployment',
               to: '/docs/development-operations',
             },
             {
-              label: 'Testing & Quality',
+              label: 'Testing & feedback',
               to: '/docs/testing-quality',
             },
           ],
@@ -97,7 +109,7 @@ const config: Config = {
           title: 'Project',
           items: [
             {
-              label: 'Project Management',
+              label: 'Project & sprint records',
               to: '/docs/project-management',
             },
             {

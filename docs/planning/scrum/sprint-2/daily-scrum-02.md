@@ -1,9 +1,9 @@
 ---
-title: Daily Scrum 02 - authoritative services
+title: Sprint 2 Daily Scrum 2 — Backend integration
 sidebar_position: 3
 ---
 
-# Daily Scrum 02 - authoritative services
+# Sprint 2 Daily Scrum 2 — Backend integration
 
 | Field            | Record                                                                             |
 | ---------------- | ---------------------------------------------------------------------------------- |
@@ -12,6 +12,16 @@ sidebar_position: 3
 | Participants     | Kevin Ebrahim, Tyron Van Tonder, Uzair Mahomed, Caleb Perumalsamy                  |
 | Sprint focus     | Persist and enforce the Intermediate domain rules behind server-authoritative APIs |
 | Evidence         | Merged PRs #197-#205, #210, and #212; issues #168, #169, #176, and #179-#183       |
+
+## Meeting photo
+
+![Four team members in a video call, supplied for Sprint 2 Daily Scrum 2](/img/scrum/sprint-2/daily-scrum-02.png)
+
+_Sprint 2 Daily Scrum 2 — checkpoint recorded as 30 August 2026. Photo supplied by
+Kevin and assigned to this record using the confirmed image order. The image
+itself does not establish the call date or the discussion recorded below._
+
+See the [photo provenance and mapping](../index.md#sprint-2-meeting-photos).
 
 ## Progress since the previous checkpoint
 
@@ -67,3 +77,6 @@ sidebar_position: 3
 
 This Daily Scrum summary was generated with assistance from
 Codex-CLI[gpt-5.6-sol medium] using repository and Gitea history.
+
+Navigation titles, supplied-photo placement, and documentation integration updated with assistance from
+Codex-CLI[GPT-6].

@@ -1,8 +1,8 @@
 ---
-title: Asynchronous PvP API contract
+title: 'Asynchronous player battle API'
 ---
 
-# Asynchronous PvP API contract
+# Asynchronous player battle API
 
 ## Status and purpose
 
@@ -817,3 +817,5 @@ Before issue `#178` is closed:
 
 This document was planned, generated, edited, and reviewed with the assistance
 of Codex[GPT-6], Codex[GPT-5], Codex-CLI[GPT-5], and Codex-CLI[gpt-5.6-sol medium].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

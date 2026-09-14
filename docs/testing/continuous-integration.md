@@ -1,4 +1,8 @@
-# Continuous Integration
+---
+title: 'CI checks and deployment workflows'
+---
+
+# CI checks and deployment workflows
 
 Wits World uses Gitea Actions for pull-request validation, main-branch
 validation and deployment, and documentation deployment.
@@ -263,3 +267,5 @@ This document was reviewed and edited with assistance from:
 ```text
 Codex-CLI[GPT-5], Codex[GPT-5], and ChatGPT-Web[GPT-5.6 Sol]
 ```
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

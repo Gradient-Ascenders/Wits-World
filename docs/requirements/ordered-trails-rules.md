@@ -1,8 +1,8 @@
 ---
-title: Ordered trail rules
+title: 'Trail rules and progress'
 ---
 
-# Ordered trail rules
+# Trail rules and progress
 
 ## Purpose
 
@@ -142,3 +142,5 @@ This rule document was generated, edited, and reviewed with the assistance of
 Codex-CLI[gpt-5.6-sol medium] and Codex-CLI[GPT-5]. It records the decisions
 approved for issues `#176` and `#177` and was reconciled with the implemented
 API, migration, and player discovery UI.
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

@@ -1,4 +1,8 @@
-# ADR-004: Keep Map Integration Presentation-Only
+---
+title: 'ADR-004 — Map display and server rules'
+---
+
+# ADR-004 — Map display and server rules
 
 ## Status
 
@@ -138,3 +142,5 @@ The preceding document was planned and generated with the assistance of:
 ChatGPT-Web[GPT-5.6 Thinking] and updated with:
 Codex-CLI[GPT-5]. The current Mapbox decision-status clarification was generated,
 edited, and reviewed with the assistance of Codex[GPT-5].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

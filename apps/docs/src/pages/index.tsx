@@ -13,11 +13,11 @@ const readerPaths = [
       'See what Wits Quest currently delivers, how its rules are defined, and how players move through the game.',
     links: [
       {
-        label: 'Current Basic release',
-        href: '/docs/basic-release-reference',
+        label: 'Sprint 2 overview',
+        href: '/docs/sprint-2-overview',
       },
       {
-        label: 'Product & Requirements',
+        label: 'Game rules & player experience',
         href: '/docs/product-requirements',
       },
     ],
@@ -28,7 +28,7 @@ const readerPaths = [
       'Find local-service guidance, delivery workflows, deployment procedures, and database operations.',
     links: [
       {
-        label: 'Development & Operations',
+        label: 'Development & deployment',
         href: '/docs/development-operations',
       },
     ],
@@ -39,15 +39,15 @@ const readerPaths = [
       'Review the system architecture, data model, design decisions, and accessible interface standards.',
     links: [
       {
-        label: 'Architecture',
-        href: '/docs/architecture',
+        label: 'Technical guides',
+        href: '/docs/technical-reference',
       },
       {
-        label: 'Data & Database',
+        label: 'Database guides',
         href: '/docs/data-database',
       },
       {
-        label: 'Design & Accessibility',
+        label: 'Design and accessibility standards',
         href: '/docs/design/design-system',
       },
     ],
@@ -55,14 +55,14 @@ const readerPaths = [
   {
     title: 'Review quality and project evidence',
     description:
-      'Inspect current verification, Sprint evidence, delivery plans, governance, and Scrum records.',
+      'Inspect Sprint 2 user-feedback results, stakeholder reviews, verification gaps, governance, and preserved Planning and Scrum meetings.',
     links: [
       {
-        label: 'Testing & Quality',
+        label: 'Testing & feedback',
         href: '/docs/testing-quality',
       },
       {
-        label: 'Project Management',
+        label: 'Project & sprint records',
         href: '/docs/project-management',
       },
     ],
@@ -70,20 +70,18 @@ const readerPaths = [
 ];
 
 const documentationSections = [
-  { label: 'Overview', href: '/docs/' },
-  { label: 'Product & Requirements', href: '/docs/product-requirements' },
-  { label: 'Architecture', href: '/docs/architecture' },
-  { label: 'Data & Database', href: '/docs/data-database' },
+  { label: 'Start here', href: '/docs/' },
   {
-    label: 'Design & Accessibility',
-    href: '/docs/design/design-system',
+    label: 'Game rules & player experience',
+    href: '/docs/product-requirements',
   },
+  { label: 'Technical guides', href: '/docs/technical-reference' },
   {
-    label: 'Development & Operations',
+    label: 'Development & deployment',
     href: '/docs/development-operations',
   },
-  { label: 'Testing & Quality', href: '/docs/testing-quality' },
-  { label: 'Project Management', href: '/docs/project-management' },
+  { label: 'Testing & feedback', href: '/docs/testing-quality' },
+  { label: 'Project & sprint records', href: '/docs/project-management' },
 ];
 
 function HomepageHeader(): ReactNode {
@@ -116,9 +114,9 @@ function HomepageHeader(): ReactNode {
 
           <Link
             className={clsx('button button--lg', styles.secondaryButton)}
-            to="/docs/basic-release-reference"
+            to="/docs/sprint-2-overview"
           >
-            View current Basic release
+            Explore Sprint 2
           </Link>
         </div>
       </div>

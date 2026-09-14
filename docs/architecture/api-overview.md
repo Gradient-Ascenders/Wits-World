@@ -1,8 +1,8 @@
 ---
-title: API overview
+title: 'API overview and endpoint reference'
 ---
 
-# API overview
+# API overview and endpoint reference
 
 ## Purpose and authority
 
@@ -86,8 +86,9 @@ The generated OpenAPI groups the current contract into these areas:
 
 The [Author curation contract](./author-curation-api-contract.md) explains the
 five-state review workflow, optimistic concurrency, safe review queue and audit
-history, and the Author-console integration. Question analytics remains blocked
-by issue `#184` / S3-06 and is not represented by a provisional browser contract.
+history, and the Author-console integration. Issue `#184` implements the
+Author-only question-performance aggregate endpoint; the same contract records
+its bounded filters and privacy rules.
 
 The OpenAPI document is the endpoint-level reference for parameters, bodies,
 status codes, and response shapes. Narrative documents explain domain contracts
@@ -194,3 +195,7 @@ protected operation.
 This API overview was generated, edited, and reviewed with the assistance of
 Codex[GPT-5] and Codex[gpt-5.6-sol]. It summarises current repository schemas and recorded deployment
 evidence rather than replacing the generated OpenAPI contract.
+
+Sprint 2 status reconciliation assisted by Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

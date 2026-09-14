@@ -1,4 +1,8 @@
-# Basic Database Release Procedure
+---
+title: 'Apply database migrations safely'
+---
+
+# Apply database migrations safely
 
 This procedure prepares the PostgreSQL/PostGIS database used by the Wits Quest
 API. It remains operator-run for rehearsals and manual releases. For a validated
@@ -330,3 +334,5 @@ subject to the selected Neon plan and are not created by this procedure.
 This procedure was planned, generated, edited, and verified with the assistance
 of Codex[GPT-6], Codex[GPT-5], Codex[GPT-5.6 Sol], Codex[gpt-5.6-sol], and
 Codex-CLI[gpt-5.6-sol medium].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

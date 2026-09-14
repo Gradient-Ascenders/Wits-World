@@ -1,8 +1,8 @@
 ---
-title: Project and Git methodology
+title: 'How we plan, build and review work'
 ---
 
-# Project and Git methodology
+# How we plan, build and review work
 
 Wits World uses a lightweight, issue-driven process for Wits Quest. The aim is
 to keep delivery visible and reviewable without adding ceremony that does not
@@ -96,3 +96,5 @@ remains explicit rather than being converted into a pass.
 
 The preceding document was generated, edited, and reviewed with the assistance
 of Codex[GPT-5] and ChatGPT-Web[GPT-5.6 Sol].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

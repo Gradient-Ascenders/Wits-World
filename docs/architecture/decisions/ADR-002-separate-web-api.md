@@ -1,4 +1,8 @@
-# ADR-002: Keep the Web Application and API Separate
+---
+title: 'ADR-002 — Separate frontend and API'
+---
+
+# ADR-002 — Separate frontend and API
 
 ## Status
 
@@ -139,3 +143,5 @@ continue to validate Auth0 bearer access tokens independently.
 
 The preceding document was planned and generated with the assistance of:
 ChatGPT-Web[GPT-5.6 Thinking].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

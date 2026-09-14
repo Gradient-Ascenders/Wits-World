@@ -1,9 +1,9 @@
 ---
-title: Daily Scrum 01 - foundations and contracts
+title: Sprint 2 Daily Scrum 1 — Foundations
 sidebar_position: 2
 ---
 
-# Daily Scrum 01 - foundations and contracts
+# Sprint 2 Daily Scrum 1 — Foundations
 
 | Field            | Record                                                                            |
 | ---------------- | --------------------------------------------------------------------------------- |
@@ -12,6 +12,16 @@ sidebar_position: 2
 | Participants     | Kevin Ebrahim, Tyron Van Tonder, Uzair Mahomed, Caleb Perumalsamy                 |
 | Sprint focus     | Establish the contracts and persistence needed for parallel Intermediate delivery |
 | Evidence         | Issues #159-#186 and merged PRs #187-#196                                         |
+
+## Meeting photo
+
+![Four team members in a video call, supplied for Sprint 2 Daily Scrum 1](/img/scrum/sprint-2/daily-scrum-01.png)
+
+_Sprint 2 Daily Scrum 1 — checkpoint recorded as 28 August 2026. Photo supplied by
+Kevin and assigned to this record using the confirmed image order. The image
+itself does not establish the call date or the discussion recorded below._
+
+See the [photo provenance and mapping](../index.md#sprint-2-meeting-photos).
 
 ## Progress since planning
 
@@ -64,3 +74,6 @@ sidebar_position: 2
 
 This Daily Scrum summary was generated with assistance from
 Codex-CLI[gpt-5.6-sol medium] using repository and Gitea history.
+
+Navigation titles, supplied-photo placement, and documentation integration updated with assistance from
+Codex-CLI[GPT-6].

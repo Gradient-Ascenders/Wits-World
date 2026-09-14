@@ -1,5 +1,5 @@
 ---
-title: Card evolution rules
+title: 'Card evolution rules'
 description: Confirmed duplicate-consumption rule and the fixed evolution relationships in the complete card catalogue.
 ---
 
@@ -11,7 +11,7 @@ description: Confirmed duplicate-consumption rule and the fixed evolution relati
 
 Issue #164 added the evolved definitions and their source relationships. Issue
 #174 adds the authenticated server-side evolution action. The player-facing
-confirmation experience remains separate work under issue #175.
+confirmation experience is implemented separately under issue #175.
 
 ## Conversion rule
 
@@ -120,3 +120,7 @@ therefore exposes no speculative selling action or client-calculated value.
 
 This document was updated with assistance from Codex-CLI[GPT-5.6 Sol] and
 Codex[GPT-5], and Codex-CLI[GPT-6].
+
+Sprint 2 status reconciliation assisted by Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

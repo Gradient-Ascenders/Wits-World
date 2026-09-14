@@ -1,4 +1,8 @@
-# Player saved-deck journey
+---
+title: 'Building a deck'
+---
+
+# Building a deck
 
 ## Scope and authority
 
@@ -152,3 +156,5 @@ aborted requests do not replace current UI state.
 ## AI declaration
 
 This document was generated and edited with assistance from Codex[GPT-5].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

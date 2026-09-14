@@ -1,4 +1,8 @@
-# Basic Demo Seed
+---
+title: 'Load demo events and challenges'
+---
+
+# Load demo events and challenges
 
 The Basic demo seed is deliberately separate from the reusable card catalogue.
 It creates the non-production event, challenge, event-state, and ordered-trail
@@ -128,3 +132,5 @@ identity data in evidence.
 The preceding document was planned, generated, and edited with the assistance
 of Codex[GPT-5.6 Sol] and Codex-CLI[GPT-5]. The trail fixture was added for issue
 `#177`.
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

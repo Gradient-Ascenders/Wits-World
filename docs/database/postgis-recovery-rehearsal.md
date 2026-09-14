@@ -1,4 +1,8 @@
-# PostGIS Recovery Rehearsal
+---
+title: 'Test database recovery'
+---
+
+# Test database recovery
 
 This procedure demonstrates that the Sprint 1 database can be recreated,
 queried, failed safely, and recovered without using production. It complements
@@ -112,3 +116,5 @@ No production verification is part of this rehearsal.
 
 This procedure was planned, generated, edited, and verified with the assistance
 of Codex[GPT-5.6 Sol].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

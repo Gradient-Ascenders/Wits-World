@@ -1,9 +1,9 @@
 ---
-title: Daily Scrum 03 - integrated experiences
+title: Sprint 2 Daily Scrum 3 — Player experience
 sidebar_position: 5
 ---
 
-# Daily Scrum 03 - integrated experiences
+# Sprint 2 Daily Scrum 3 — Player experience
 
 | Field            | Record                                                                                                |
 | ---------------- | ----------------------------------------------------------------------------------------------------- |
@@ -12,6 +12,16 @@ sidebar_position: 5
 | Participants     | Kevin Ebrahim, Tyron Van Tonder, Uzair Mahomed, Caleb Perumalsamy                                     |
 | Sprint focus     | Expose the new account, challenge, progression, trail, PvP, and Author capabilities through usable UI |
 | Evidence         | Merged PRs #209, #211, #214, #218, and #221-#226; 4 September stakeholder review                      |
+
+## Meeting photo
+
+![Four team members in a video call, supplied for Sprint 2 Daily Scrum 3](/img/scrum/sprint-2/daily-scrum-03.png)
+
+_Sprint 2 Daily Scrum 3 — checkpoint recorded as 5 September 2026. Photo supplied by
+Kevin and assigned to this record using the confirmed image order. The image
+itself does not establish the call date or the discussion recorded below._
+
+See the [photo provenance and mapping](../index.md#sprint-2-meeting-photos).
 
 ## Progress since the previous checkpoint
 
@@ -73,3 +83,6 @@ than being presented as implemented.
 
 This Daily Scrum summary was generated with assistance from
 Codex-CLI[gpt-5.6-sol medium] using repository, Gitea, and stakeholder evidence.
+
+Navigation titles, supplied-photo placement, and documentation integration updated with assistance from
+Codex-CLI[GPT-6].

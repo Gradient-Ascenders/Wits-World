@@ -1,4 +1,8 @@
-# ADR-005: Use Auth0 for authentication
+---
+title: 'ADR-005 — Auth0 authentication'
+---
+
+# ADR-005 — Auth0 authentication
 
 - **Status:** Accepted
 - **Date:** 7 August 2026
@@ -563,3 +567,5 @@ The team must still confirm:
 The preceding document was planned and generated with the assistance of:
 ChatGPT-Web[GPT-5.6 Thinking], ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5],
 Codex-CLI[gpt-5.6-sol medium], and Codex-CLI[GPT-5].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

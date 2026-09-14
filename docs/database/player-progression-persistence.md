@@ -1,8 +1,8 @@
 ---
-title: Player progression persistence
+title: 'Points and achievement storage'
 ---
 
-# Player progression persistence
+# Points and achievement storage
 
 Migration `0026_create_player_progression.sql` adds the authoritative data
 foundation for points, achievements, Johannesburg activity days, streaks, and
@@ -145,3 +145,5 @@ awards, activity, immutable source validation, replay, and concurrent calls.
 
 The preceding document was generated and edited with the assistance of:
 Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

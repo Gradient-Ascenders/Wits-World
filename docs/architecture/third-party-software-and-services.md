@@ -1,8 +1,8 @@
 ---
-title: Third-party software and services
+title: 'Third-party tools and why we use them'
 ---
 
-# Third-party software and services
+# Third-party tools and why we use them
 
 ## Scope
 
@@ -39,6 +39,12 @@ The repository also contains two first-party workspace packages:
 not third-party dependencies, but separating them prevents duplicate policy
 implementations across applications.
 
+The docs also use `@docusaurus/theme-mermaid` (matching Docusaurus 3.10.2),
+which renders version-controlled Mermaid source as SVG diagrams. This keeps
+database and architecture visuals reviewable alongside their contracts, supports
+light/dark themes, and avoids a separately maintained drawing file. Mermaid is
+loaded by the docs application, not by the player game.
+
 ## Engineering and quality tooling
 
 | Tool                                                         | Current purpose                                                                              | Motivation                                                                                                                    |
@@ -66,6 +72,40 @@ the [testing strategy](../testing/testing-strategy.md).
 | Cloudflare Pages           | Public static hosting for Docusaurus                                                                                              | Supports the separately deployed, account-free documentation site through a path-filtered workflow.                                                                                            |
 | Wits SDP Gitea and Actions | Git hosting, backlog/issues, pull requests, reviews, CI artifacts, and delivery automation                                        | Keeps project-methodology evidence and code review connected to Git while providing repository and host runner labels for validation and deployment.                                           |
 
+## Supporting dependencies and manifest coverage
+
+Reviewed against the root, Web, API, docs and shared-package manifests on
+14 September 2026. The main tables above cover the significant runtime and
+service decisions. The following groups complete the directly declared support
+packages; they should not be confused with individually selected transitive
+packages in the lockfile.
+
+| Packages                                                                                                              | Purpose and motivation / current boundary                                                                                                                                                                                         |
+| --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@phosphor-icons/react`, `sonner`                                                                                     | Shared icon vocabulary and transient toast feedback. They keep status presentation consistent; persistent errors still need contextual recovery.                                                                                  |
+| `motion`                                                                                                              | Card-evolution transitions with reduced-motion support; it presents authoritative results and does not decide them.                                                                                                               |
+| `idb`, `vite-plugin-pwa`                                                                                              | IndexedDB transactions and service-worker/build integration for offline play. Local persistence supports recovery; rewards still require server reconciliation.                                                                   |
+| `fake-indexeddb`                                                                                                      | Controlled IndexedDB implementation for deterministic offline-storage tests.                                                                                                                                                      |
+| `dotenv`, `tsx`                                                                                                       | Environment loading and TypeScript development execution for API/tooling. Keep local secrets outside Git; neither replaces production validation.                                                                                 |
+| `@vitejs/plugin-react`                                                                                                | React transformation/development integration in Vite.                                                                                                                                                                             |
+| `@docusaurus/core`, `@docusaurus/preset-classic`, `@mdx-js/react`                                                     | Documentation runtime, standard docs/theme features and Markdown/React rendering, avoiding a bespoke documentation platform.                                                                                                      |
+| `clsx`, `prism-react-renderer`                                                                                        | Conditional CSS classes and code highlighting in the docs application.                                                                                                                                                            |
+| `@docusaurus/types`, `@docusaurus/tsconfig`, `@docusaurus/module-type-aliases`                                        | Framework-aligned configuration typing and module resolution.                                                                                                                                                                     |
+| `@types/node`, `@types/react`, `@types/react-dom`, `@types/pg`, `@types/geojson`                                      | Compile-time declarations for runtime and geographic boundaries. They do not add runtime validation.                                                                                                                              |
+| `@testing-library/dom`, `@testing-library/react`, `@testing-library/jest-dom`, `@testing-library/user-event`, `jsdom` | DOM simulation, accessible queries, interaction and assertions supporting the component-testing approach above.                                                                                                                   |
+| `@playwright/test`, `@vitest/coverage-v8`, `@eslint/js`                                                               | Browser runner, coverage provider and baseline lint configuration supporting the documented testing/static-analysis tools.                                                                                                        |
+| `@radix-ui/react-dialog`, `@radix-ui/react-dropdown-menu`, `@radix-ui/react-tooltip`, `embla-carousel-react`          | Declared root UI-toolkit dependencies, but this audit found no application imports. Their presence is not evidence of shipped dialogs, menus or carousels; continued retention needs an explicit use or later dependency cleanup. |
+| `@docusaurus/faster`                                                                                                  | Declared docs build-optimisation package, but not enabled in the inspected configuration. Do not attribute measured build improvements to it.                                                                                     |
+
+The [root manifest](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/package.json),
+[Web manifest](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/apps/web/package.json),
+[API manifest](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/apps/api/package.json),
+[docs manifest](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/apps/docs/package.json),
+and [lockfile](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/package-lock.json)
+are the version and transitive-dependency inventory. Upstream licence files and
+service terms remain authoritative. This motivation inventory is not a completed
+licence audit or a claim that every declared dependency is actively used.
+
 ## Selection and review rule
 
 A significant new dependency or service should have a concrete repository need,
@@ -85,3 +125,9 @@ runbooks so this page does not duplicate volatile configuration.
 This curated third-party record was generated, edited, and reviewed with the
 assistance of Codex[GPT-5]. Package and service claims were checked against the
 current manifests, workflows, source, and existing operational documentation.
+
+Direct-dependency coverage and motivations updated with assistance from Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].
+
+Mermaid integration and motivation documented with assistance from Codex-CLI[GPT-6].

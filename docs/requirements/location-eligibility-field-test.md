@@ -1,4 +1,8 @@
-# Sprint 1 Location Eligibility Field-Test Protocol
+---
+title: 'On-campus location testing guide'
+---
+
+# On-campus location testing guide
 
 :::note[Historical Sprint 1 evidence]
 
@@ -123,7 +127,33 @@ Issue #43 remains incomplete until real-device evidence covers at least two
 materially different outcomes, the resulting threshold statuses are updated,
 any defects are recorded, and Uzair has reviewed the geospatial interpretation.
 
+## Milestone 2 and issue #167 reuse
+
+Issue #167 reuses this protocol for real-campus evidence; it does not create a
+second eligibility rule or treat browser geolocation as proof of physical
+presence. ADR-006 remains Proposed and deferred pending stakeholder/group
+confirmation. Do not test or claim a QR fallback as part of this protocol.
+
+Use anonymised run IDs such as `GEO-01`. In addition to F1–F6, deliberately
+classify these safe conditions when they can genuinely be observed: fresh
+accurate fix, stale fix (normally automated/API evidence only), poor/inaccurate
+fix, clearly inside radius, clearly outside radius, ambiguous accuracy envelope
+near the boundary, retry, map unavailable with the text list usable, and
+one-time reward replay where the chosen test account/data can be reset safely.
+
+| Run ID | Date                        | Release | Event/location (non-precise) | Device/browser category | Permission | Reported accuracy where safe | Condition | Expected application state | Observed application state | Limitation | Evidence/finding |
+| ------ | --------------------------- | ------- | ---------------------------- | ----------------------- | ---------- | ---------------------------- | --------- | -------------------------- | -------------------------- | ---------- | ---------------- |
+| GEO-__ | **Pending manual evidence** |         |                              |                         |            |                              |           |                            |                            |            |                  |
+
+Never manufacture a stale or inaccurate browser reading, publish coordinates,
+or move into an unsafe/restricted location. If a condition cannot be induced
+through normal safe browser behaviour, mark it `Not run` and retain the named
+automated contract evidence separately. Record whether the player-facing state
+matches the API result without storing raw requests, tokens, or coordinates.
+
 ---
 
 The preceding document was planned, generated, and edited with the assistance
 of: Codex-CLI[GPT-5].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

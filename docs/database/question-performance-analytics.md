@@ -1,8 +1,8 @@
 ---
-title: Question performance analytics
+title: 'Question performance reports'
 ---
 
-# Question performance analytics
+# Question performance reports
 
 Issue `#184` uses an indexed aggregate query rather than a maintained summary. The source tables remain the server-authoritative challenge attempt, immutable question snapshot, submitted-answer, and private answer-key tables. No analytics copy of a player, answer selection, submitted order, or location is created.
 
@@ -72,3 +72,5 @@ The unfiltered sequential scan is appropriate because that shape consumes the fu
 Because exact aggregates remain visible for samples below 10, sufficiently narrow content and date filters can create a residual inference risk when an Author already knows who completed a particular small set of attempts. Author authorization and removal of row-level identity reduce disclosure but do not eliminate that inference. This behavior is retained explicitly because the 10-outcome rule is documented as the problematic-question threshold, not a suppression requirement; changing that boundary requires an authoritative privacy/product decision.
 
 This is a curation signal, not causal analysis. It does not explain why a question was missed, segment players, retain a separate history, rewrite content, or provide a game-wide dashboard. Because published and retired question definitions are immutable, a source identifier continues to describe the answer key used for its snapshots.
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

@@ -1,4 +1,8 @@
-# Wits Quest Basic Game Rules
+---
+title: 'Basic game rules'
+---
+
+# Basic game rules
 
 ## Purpose
 
@@ -370,15 +374,20 @@ trading, selling, evolution, rarity upgrades, offline play, movement tracking,
 anti-cheat trust scoring, territory control, seasons, advanced analytics, or an
 advanced administration console. The implemented curated Author review workflow
 is part of Basic content integrity and its unblocked Author-console review and
-campaign controls are implemented under issue `#185`. Question analytics remains
-blocked by issue `#184` / S3-06, and ordering-question authoring remains a
-follow-up to the current multiple-choice-only editor contract.
+campaign controls are implemented under issue `#185`. Additional Author question
+analytics is implemented under `#184`, and ordering-question authoring under
+`#163`; these extensions do not change the Basic multiple-choice rules.
 
 The [card evolution rules](./card-evolution-rules.md) record the confirmed
 three-copy conversion rule and the evolved definitions supplied by issue #164.
-The player-facing evolution action remains outside Basic and is not implemented
-by the catalogue migration.
+The player-facing evolution action remains outside Basic. Its backend and
+collection UI are implemented separately under #174/#175, not by the catalogue
+migration alone.
 
 This document was planned, generated, and edited with the assistance of
 Codex-CLI[gpt-5.6-sol medium], Codex-CLI[GPT-5.6 Sol], Codex[GPT-5], and
 Codex[gpt-5.6-sol].
+
+Sprint 2 status reconciliation assisted by Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

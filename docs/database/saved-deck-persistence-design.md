@@ -1,4 +1,8 @@
-# Saved Deck Persistence and API Design
+---
+title: 'Deck storage and API'
+---
+
+# Deck storage and API
 
 ## Status and scope
 
@@ -43,8 +47,12 @@ identity.
 
 ## Relationship view
 
+<div className="diagram-scroll" role="region" aria-label="Deck storage and API — diagram 1" tabIndex={0}>
+
 ```mermaid
 erDiagram
+    accTitle: Deck storage and API
+    accDescr: Selected schema relationships. The surrounding document explains fields, constraints and server authority.
   PLAYERS ||--o{ PLAYER_CARDS : owns
   CARD_DEFINITIONS ||--o{ PLAYER_CARDS : instantiates
 
@@ -55,6 +63,8 @@ erDiagram
   PLAYERS ||--o| PLAYER_DECK_SELECTIONS : selects
   PLAYER_DECKS ||--o| PLAYER_DECK_SELECTIONS : active_as
 ```
+
+</div>
 
 ## `player_decks`
 
@@ -312,3 +322,6 @@ protected deck operation succeeds.
 
 This document was planned and generated with assistance from
 ChatGPT-Web[GPT-5.6 Sol].
+
+Page title and accessible diagram presentation updated with assistance from
+Codex-CLI[GPT-6].

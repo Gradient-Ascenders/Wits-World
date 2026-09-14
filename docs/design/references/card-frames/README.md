@@ -1,4 +1,8 @@
-# Collectible frame references
+---
+title: 'Card frame examples'
+---
+
+# Card frame examples
 
 User-supplied Common, Rare, Epic and Legendary images guide frame material,
 layered depth, celestial engraving, corner medallions and the lower plate.
@@ -28,3 +32,5 @@ not to assert live roster rules.
 It checks 390, 768 and 1440px layouts and captures an equal-width comparison
 ordered Common, Rare, Epic, Legendary. Look under `/tmp/wits-world-card-frames`
 for `rarity-comparison.png`. Opening the app URL alone does not install fixtures.
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

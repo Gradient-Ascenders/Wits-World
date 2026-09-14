@@ -1,8 +1,12 @@
 ---
-title: Initial client meeting — Calvin Rea
+title: 'Meeting 1 — Calvin Rea'
 ---
 
-# Initial client meeting — Calvin Rea
+# Meeting 1 — Calvin Rea
+
+**18 August 2026 · Project introduction**
+
+[All stakeholder meetings](index.md)
 
 :::note[Retrospective stakeholder record]
 
@@ -80,3 +84,7 @@ therefore preserves only the facts and cautious reconstruction supported today.
 This stakeholder-interaction record was generated, edited, and reviewed with
 the assistance of Codex[GPT-5] from team-confirmed facts and repository
 evidence. The AI did not participate in the meeting.
+
+Meeting naming and navigation updated with assistance from Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

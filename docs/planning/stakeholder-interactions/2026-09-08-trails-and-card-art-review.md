@@ -1,8 +1,12 @@
 ---
-title: Trails and card artwork review - 8 September 2026
+title: 'Meeting 3 — Calvin Rea'
 ---
 
-# Trails and card artwork review - 8 September 2026
+# Meeting 3 — Calvin Rea
+
+**8 September 2026 · Trails & card artwork**
+
+[All stakeholder meetings](index.md)
 
 :::note[Retrospective stakeholder record]
 
@@ -97,3 +101,7 @@ This retrospective record was generated, edited, and reviewed with the
 assistance of Codex[gpt-5.6-sol]. Dates, participants, and review topics were
 supplied by the team; issue, pull-request, asset-format, and verification claims
 were checked against the repository.
+
+Meeting naming and navigation updated with assistance from Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

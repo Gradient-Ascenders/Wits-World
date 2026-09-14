@@ -1,4 +1,8 @@
-# Architecture Decision Records
+---
+title: 'Architecture decisions explained'
+---
+
+# Architecture decisions explained
 
 ## Purpose
 
@@ -96,3 +100,5 @@ validation with assistance from ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].
 
 The potential-record list was reconciled with the confirmed Basic role decision
 with assistance from Codex[GPT-5].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].
