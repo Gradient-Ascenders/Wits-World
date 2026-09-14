@@ -95,7 +95,7 @@ them in the 21-step success journey.
 | BASIC-14–16 | Responsive/accessibility foundations and explicit exclusions are documented and tested where automatable.                                                       | Manual keyboard, screen-reader, contrast, touch, and representative-device evidence is required.                                                                                           |
 | BASIC-17    | Application deliberately ignores `email_verified` for ordinary authorization.                                                                                   | Operator must confirm production Auth0 verification email disabled and recovery email retained.                                                                                            |
 | BASIC-18    | Normalized global card-definition uniqueness enforced by migrations `0017`/`0018` and tests.                                                                    | None identified in repository scope.                                                                                                                                                       |
-| BASIC-19    | Draft 0–4, API fifth-move rejection, exactly-four publication, and stored positions 1–4 are enforced.                                                           | Eighteen audited published two-move definitions need approved content remediation; strict database publication enforcement and gameplay/balance sign-off remain blocked.                   |
+| BASIC-19    | Draft 0–4, API fifth-move rejection, exactly-four publication, stored positions 1–4, and the migration `0041` complete release catalogue are enforced.          | Retain catalogue migration, gameplay/balance review, and deployed content evidence; the earlier 18-definition remediation is complete.                                                     |
 
 ## BASIC-19 deployment preflight
 
@@ -117,9 +117,11 @@ fails transactionally when such rows exist, and the database integration test
 records that safety behavior. No production result is claimed here because this
 task did not query an external database.
 
-This preflight is separate from the known 18 published Creature definitions
-with only two approved moves. A zero-row position preflight neither supplies
-their missing content nor clears that release blocker.
+This preflight was separate from the 18 incomplete definitions recorded by the
+August audit. Migration `0041` later replaced that superseded ordinary roster
+with the approved complete catalogue while preserving historical match
+snapshots. A zero-row `0019` preflight remains migration-safety evidence, not
+proof that `0041` is deployed or that gameplay/balance review passed.
 
 ## Required commands and evidence
 

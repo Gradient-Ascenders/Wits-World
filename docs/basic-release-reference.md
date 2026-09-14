@@ -67,13 +67,15 @@ versioned and audited. Questions must be complete before approval/publication,
 challenges need at least five valid published
 questions, events need a published challenge and viable Common reward pool, and
 Creature publication requires exactly four ordered moves. Draft Creatures may
-have zero through four moves. The unresolved legacy two-move catalogue data must
-be reviewed by the Cards/Game owner; automation must not invent moves.
+have zero through four moves. Migration `0041` replaces the superseded
+incomplete ordinary roster with the approved thirty-card catalogue; its 24
+published Creatures each have four executable moves while historical match
+snapshots remain intact.
 See the [Author curation API contract](architecture/author-curation-api-contract.md)
 for endpoints, stable errors, provenance, audit privacy, and rollout order.
-Question analytics and flagged-question curation remain blocked by issue `#184`
-/ S3-06. Ordering-question authoring is also not claimed because the current
-Author editor/API contract supports multiple-choice questions only.
+Question-performance analytics is an Author-only later capability, not part of
+the Basic player release boundary. Ordering-question authoring and player
+delivery are implemented alongside multiple-choice questions.
 
 ## Testing and release evidence
 
