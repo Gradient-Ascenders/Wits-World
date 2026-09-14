@@ -1,4 +1,8 @@
-# Player CPU battle and match-history journey
+---
+title: 'CPU battles and match history'
+---
+
+# CPU battles and match history
 
 ## Purpose and sources of truth
 
@@ -174,3 +178,5 @@ end.
 
 This document was generated and edited with assistance from
 Codex-CLI[gpt-5.6-sol], Codex-CLI[GPT-5], and Codex[GPT-5].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

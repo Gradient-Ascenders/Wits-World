@@ -1,10 +1,12 @@
 ---
-title: Wits World documentation
+title: 'Documentation home'
 description: Project, product, technical, operational, quality, and delivery documentation for Wits World and Wits Quest.
 slug: /
 ---
 
-# Wits World documentation
+# Documentation home
+
+For a presentation walkthrough, open the [Visual guide and diagrams](architecture/diagrams/index.md).
 
 **Wits World** is the project repository and development workspace. **Wits
 Quest** is the mobile-friendly, location-based campus exploration game being
@@ -26,19 +28,19 @@ provides the underlying product and operational reference.
 ## Choose a path
 
 - **Understand the product:** begin with
-  [Product & player experience](/docs/product-requirements) for current rules,
+  [Game rules & player experience](/docs/product-requirements) for current rules,
   confirmed decisions, and player journeys.
 - **Develop or run the system:** use
   the [Developer Guide](development/getting-started.md) for a new checkout, then
-  [Development & operations](/docs/development-operations) for local data,
+  [Development & deployment](/docs/development-operations) for local data,
   CI/CD, deployment, and database runbooks.
-- **Review the technical design:** use [Technical reference](/docs/technical-reference)
-  for architecture, API contracts, data models, and decisions.
+- **Review the technical design:** use [Technical guides](/docs/technical-reference)
+  for architecture, API guides, data models, and decisions.
 - **Review quality and project evidence:** use
-  [Testing & evidence](/docs/testing-quality) for current verification, user feedback, and
-  stakeholder reviews, and [Project & history](/docs/project-management) for
+  [Testing & feedback](/docs/testing-quality) for current verification, user feedback, and
+  stakeholder reviews, and [Project & sprint records](/docs/project-management) for
   methodology, [Gitea work and bug tracking](planning/work-tracking-and-issue-management.md),
-  plans, historical release evidence, and Scrum records.
+  plans, historical release evidence, and Planning and Scrum meetings.
 - **Design the player experience:** consult the
   [Wits World design system](design/design-system.md) for visual, interaction,
   accessibility, and content guidance.
@@ -51,3 +53,5 @@ current source when the repository provides one.
 
 This documentation landing page was created and reviewed with assistance from
 Codex-CLI[GPT-5], Codex[GPT-5], and Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

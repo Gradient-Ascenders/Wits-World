@@ -1,4 +1,8 @@
-# Event Schema
+---
+title: 'Event fields and relationships'
+---
+
+# Event fields and relationships
 
 The Sprint 1 event schema introduced the authoritative event data required for
 server-side discovery and location eligibility. Issue #182 preserves those
@@ -11,30 +15,49 @@ the existing `is_published` visibility boundary.
 
 ## Entity relationship view
 
+<div className="diagram-scroll" role="region" aria-label="Event fields and relationships — diagram 1" tabIndex={0}>
+
 ```mermaid
 erDiagram
-  EVENTS {
-    uuid id PK
-    text title
-    text description
-    geography location
-    integer radius_metres
-    timestamptz starts_at
-    timestamptz ends_at
-    text authoring_status
-    integer version
-    uuid submitted_by
-    timestamptz submitted_at
-    uuid reviewed_by
-    timestamptz reviewed_at
-    text publication_provenance
-    boolean is_published
-    timestamptz retired_at
-    timestamptz created_at
-    timestamptz updated_at
-    text_array source_urls
-  }
+    accTitle: Events, challenges and ordered trails
+    accDescr: Events have challenge versions and may belong to trails through ordered trail-event membership. Selected fields are shown; the table below documents every event column.
+    EVENTS ||--o{ EVENT_CHALLENGES : has_versions
+    EVENTS ||--o{ TRAIL_EVENTS : included_in
+    TRAILS ||--o{ TRAIL_EVENTS : orders
+    EVENTS {
+        uuid id PK
+        text title
+        geography location
+        integer radius_metres
+    }
+    EVENT_CHALLENGES {
+        uuid id PK
+        uuid event_id FK
+        text format
+        text status
+    }
+    TRAILS {
+        uuid id PK
+        text title
+    }
+    TRAIL_EVENTS {
+        uuid trail_id PK, FK
+        uuid event_id PK, FK
+        smallint position
+    }
 ```
+
+</div>
+
+The view shows selected fields and actual foreign-key relationships. `||` means
+one and `o{` means zero or many. Events may have challenge history, with at most
+one published challenge. `trail_events` joins an event to a trail at a unique
+position within that trail; it does not store player progress.
+
+See [trail storage](ordered-trails-persistence.md) for membership constraints
+and [database relationships](../architecture/diagrams/database-relationships.md)
+for player attempts, completions and rewards. The complete event field reference
+follows below.
 
 ## Column contract
 
@@ -181,3 +204,6 @@ Do not paste database URLs, passwords, or other secrets into issue evidence.
 The preceding document was generated and edited with the assistance of:
 Codex-CLI[GPT-5], Codex[GPT-5], Codex[GPT-5.6 Sol], and
 Codex[gpt-5.6-sol].
+
+Page title and accessible diagram presentation updated with assistance from
+Codex-CLI[GPT-6].

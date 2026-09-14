@@ -1,4 +1,8 @@
-# Neon PostgreSQL and PostGIS Setup
+---
+title: 'Set up Neon and PostGIS'
+---
+
+# Set up Neon and PostGIS
 
 This guide covers the managed database setup for Wits Quest.
 
@@ -192,3 +196,5 @@ Use the production target only with explicit release authority. Never substitute
 The preceding document was generated and edited with the assistance of:
 Codex-CLI[GPT-5], Codex[GPT-5], Codex[GPT-5.6 Sol], and
 Codex[gpt-5.6-sol].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

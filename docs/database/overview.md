@@ -1,8 +1,10 @@
 ---
-title: Database overview
+title: 'Database structure and relationships'
 ---
 
-# Database overview
+# Database structure and relationships
+
+For a presentation walkthrough, open the [Database relationship diagrams](../architecture/diagrams/database-relationships.md).
 
 ## Purpose and motivation
 
@@ -207,3 +209,5 @@ Codex-CLI[GPT-5.6 Sol], and Codex[gpt-5.6-sol]. It was reconciled with the
 current migrations, runner, tests, and existing schema and release documents.
 
 Sprint 2 schema navigation updated with assistance from Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

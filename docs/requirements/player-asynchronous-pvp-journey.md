@@ -1,8 +1,8 @@
 ---
-title: Player asynchronous PvP journey
+title: 'Player battles and invitations'
 ---
 
-# Player asynchronous PvP journey
+# Player battles and invitations
 
 ## Purpose and authority
 
@@ -139,3 +139,5 @@ extraction.
 
 This document was generated and reviewed with assistance from
 Codex-CLI[GPT-5] and Codex[GPT-5].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

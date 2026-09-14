@@ -1,9 +1,9 @@
 ---
-title: Daily Scrum 04 - verification and feedback
+title: Sprint 2 Daily Scrum 4 — Testing and feedback
 sidebar_position: 6
 ---
 
-# Daily Scrum 04 - verification and feedback
+# Sprint 2 Daily Scrum 4 — Testing and feedback
 
 | Field            | Record                                                                                                |
 | ---------------- | ----------------------------------------------------------------------------------------------------- |
@@ -12,6 +12,16 @@ sidebar_position: 6
 | Participants     | Kevin Ebrahim, Tyron Van Tonder, Uzair Mahomed, Caleb Perumalsamy                                     |
 | Sprint focus     | Finish production content, harden automated verification, and integrate stakeholder and user feedback |
 | Evidence         | Merged PRs #229-#246; stakeholder records dated 8 and 11 September; ten user-testing responses        |
+
+## Meeting photo
+
+![Four team members in a video call, supplied for Sprint 2 Daily Scrum 4](/img/scrum/sprint-2/daily-scrum-04.png)
+
+_Sprint 2 Daily Scrum 4 — checkpoint recorded as 13 September 2026. Photo supplied by
+Kevin and assigned to this record using the confirmed image order. The image
+itself does not establish the call date or the discussion recorded below._
+
+See the [photo provenance and mapping](../index.md#sprint-2-meeting-photos).
 
 ## Progress since the previous checkpoint
 
@@ -79,3 +89,6 @@ identified five prioritised findings:
 
 This Daily Scrum summary was generated with assistance from
 Codex-CLI[gpt-5.6-sol medium] using repository, Gitea, stakeholder, and user-testing evidence.
+
+Navigation titles, supplied-photo placement, and documentation integration updated with assistance from
+Codex-CLI[GPT-6].

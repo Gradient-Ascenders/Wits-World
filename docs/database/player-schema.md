@@ -1,4 +1,8 @@
-# Player identity and Player Names
+---
+title: 'Player accounts and names'
+---
+
+# Player accounts and names
 
 The `public.players` table is Wits World's local player record. Authentication
 continues to resolve this record through the exact trusted Auth0
@@ -72,3 +76,5 @@ account deletion.
 
 The preceding document was generated and edited with the assistance of:
 Codex-CLI[GPT-5], Codex[GPT-5], and Codex-CLI[gpt-5.6-sol medium].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

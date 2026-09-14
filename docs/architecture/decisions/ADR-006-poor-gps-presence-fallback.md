@@ -1,4 +1,8 @@
-# ADR-006: Poor-GPS presence fallback
+---
+title: 'ADR-006 — Poor-GPS options (proposed)'
+---
+
+# ADR-006 — Poor-GPS options (proposed)
 
 - **Status:** Proposed
 - **Date:** 2026-09-11
@@ -167,3 +171,5 @@ The follow-up must not claim that a QR scan is tamper-proof presence evidence.
 This proposed decision record was researched, drafted and reviewed with the
 assistance of Codex[GPT-5]. The AI did not participate in a stakeholder meeting
 and did not confirm the recommendation on behalf of the project group or Wits.
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

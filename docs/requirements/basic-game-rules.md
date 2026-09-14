@@ -1,4 +1,8 @@
-# Wits Quest Basic Game Rules
+---
+title: 'Basic game rules'
+---
+
+# Basic game rules
 
 ## Purpose
 
@@ -385,3 +389,5 @@ Codex-CLI[gpt-5.6-sol medium], Codex-CLI[GPT-5.6 Sol], Codex[GPT-5], and
 Codex[gpt-5.6-sol].
 
 Sprint 2 status reconciliation assisted by Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

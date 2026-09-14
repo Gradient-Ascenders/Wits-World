@@ -1,4 +1,8 @@
-# Authentication Provider Comparison
+---
+title: 'Authentication options compared'
+---
+
+# Authentication options compared
 
 :::info[Decision input]
 
@@ -430,3 +434,5 @@ ChatGPT-Web[GPT-5.6 Thinking] and Codex[GPT-5].
 
 The decision-status notice was added with assistance from Codex-CLI[GPT-5] and
 Codex-CLI[gpt-5.6-sol medium].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

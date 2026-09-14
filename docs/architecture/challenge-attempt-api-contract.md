@@ -1,4 +1,8 @@
-# Challenge and Attempt API Contract
+---
+title: 'Challenges and answers API'
+---
+
+# Challenges and answers API
 
 ## Status and scope
 
@@ -583,3 +587,5 @@ boundary are specified in the
 
 This contract was planned, generated, edited, and reviewed with the assistance
 of Codex[GPT-5.6 Sol], Codex[GPT-5], and ChatGPT-Web[GPT-5.6 Sol].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

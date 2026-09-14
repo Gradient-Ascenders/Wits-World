@@ -1,9 +1,9 @@
 ---
-title: Work tracking and issue management
+title: 'Track tasks, bugs and fixes'
 description: How Wits World plans work, tracks bugs, and moves Gitea issues through branches, pull requests, review, CI, and merge.
 ---
 
-# Work tracking and issue management
+# Track tasks, bugs and fixes
 
 [Wits-World Gitea Issues](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues)
 are the operational tracker for planned work, defects, research, documentation,
@@ -211,3 +211,5 @@ reconcile its issue and PR before it is treated as Done.
 
 This work-tracking guide was created and edited with assistance from
 Codex[GPT-5].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

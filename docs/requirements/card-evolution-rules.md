@@ -1,5 +1,5 @@
 ---
-title: Card evolution rules
+title: 'Card evolution rules'
 description: Confirmed duplicate-consumption rule and the fixed evolution relationships in the complete card catalogue.
 ---
 
@@ -122,3 +122,5 @@ This document was updated with assistance from Codex-CLI[GPT-5.6 Sol] and
 Codex[GPT-5], and Codex-CLI[GPT-6].
 
 Sprint 2 status reconciliation assisted by Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

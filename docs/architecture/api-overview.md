@@ -1,8 +1,8 @@
 ---
-title: API overview
+title: 'API overview and endpoint reference'
 ---
 
-# API overview
+# API overview and endpoint reference
 
 ## Purpose and authority
 
@@ -197,3 +197,5 @@ Codex[GPT-5] and Codex[gpt-5.6-sol]. It summarises current repository schemas an
 evidence rather than replacing the generated OpenAPI contract.
 
 Sprint 2 status reconciliation assisted by Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

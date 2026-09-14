@@ -1,4 +1,8 @@
-# CPU match persistence
+---
+title: 'CPU battle storage'
+---
+
+# CPU battle storage
 
 ## Scope
 
@@ -185,3 +189,5 @@ coverage.
 
 This document was generated and edited with assistance from
 ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5], and Codex-CLI[gpt-5.6-sol].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

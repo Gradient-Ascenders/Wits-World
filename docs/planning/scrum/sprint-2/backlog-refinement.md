@@ -114,3 +114,6 @@ while #167 and #186 preserved the outstanding release-validation boundary.
 
 This refinement record was generated with assistance from
 Codex-CLI[gpt-5.6-sol medium] using repository, Gitea, stakeholder, and user-testing evidence.
+
+Navigation titles and documentation integration updated with assistance from
+Codex-CLI[GPT-6].

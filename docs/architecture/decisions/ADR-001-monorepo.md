@@ -1,4 +1,8 @@
-# ADR-001: Use a Monorepo with Independently Buildable Applications
+---
+title: 'ADR-001 — One repository'
+---
+
+# ADR-001 — One repository
 
 ## Status
 
@@ -122,3 +126,5 @@ dependencies, commands, or deployment units.
 
 The preceding document was planned and generated with the assistance of:
 ChatGPT-Web[GPT-5.6 Thinking].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

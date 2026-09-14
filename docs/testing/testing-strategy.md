@@ -1,8 +1,8 @@
 ---
-title: Testing strategy and policy
+title: 'Test strategy, commands and policy'
 ---
 
-# Testing strategy and policy
+# Test strategy, commands and policy
 
 ## Question performance analytics
 
@@ -304,3 +304,5 @@ of Codex[GPT-6], Codex[GPT-5], Codex[gpt-5.6-sol], Codex-CLI[GPT-5], and
 Codex-CLI[gpt-5.6-sol medium], and Codex-CLI[GPT-6].
 Repository paths and workflow claims were checked against the current source;
 this declaration is not test evidence.
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

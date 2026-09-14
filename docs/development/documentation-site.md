@@ -1,8 +1,8 @@
 ---
-title: Maintaining the documentation site
+title: 'Update and publish documentation'
 ---
 
-# Maintaining the documentation site
+# Update and publish documentation
 
 The Docusaurus app lives in `apps/docs`. Its configuration reads Markdown and
 MDX from the repository's `docs/` directory and publishes routes under `/docs/`.
@@ -31,14 +31,19 @@ Do not broaden that audit into unrelated documentation cleanup.
 
 ## Choose the reader's section
 
-| Section                     | Reader need                                                     |
-| --------------------------- | --------------------------------------------------------------- |
-| Start here                  | Understand the product and current milestone evidence           |
-| Product & player experience | Learn rules, journeys and design/accessibility standards        |
-| Technical reference         | Understand architecture, API contracts, schema and decisions    |
-| Development & operations    | Set up, test through CI, deploy, migrate or recover services    |
-| Testing & evidence          | Find procedures, actual results, feedback and release follow-up |
-| Project & history           | Understand methodology, governance and historical records       |
+| Section                        | Reader need                                                     |
+| ------------------------------ | --------------------------------------------------------------- |
+| Start here                     | Understand the product and current milestone evidence           |
+| Game rules & player experience | Learn rules, journeys and design/accessibility standards        |
+| Technical guides               | Understand architecture, API guides, schema and decisions       |
+| Development & deployment       | Set up, test through CI, deploy, migrate or recover services    |
+| Testing & feedback             | Find procedures, actual results, feedback and release follow-up |
+| Project & sprint records       | Understand methodology, governance and historical records       |
+
+Use sentence case and short, specific names that explain what the reader will
+find or do. Prefer “CPU battle storage” to “CPU Match Persistence”; retain
+useful identifiers such as API, Auth0 and ADR numbers. Label templates and
+historical records explicitly.
 
 Keep categories shallow and labels readable. Reference a page from other pages
 when it serves several needs; do not duplicate its sidebar entry.
@@ -63,8 +68,8 @@ than listing the same document in several sections. Existing document paths and
 public category URLs are preserved even when their navigation grouping changes.
 Custom document IDs require updating the path-based coverage check.
 
-The six main sections are Start here, Product & player experience, Technical
-reference, Development & operations, Testing & evidence, and Project & history.
+The six main sections are Start here, Game rules & player experience, Technical
+guides, Development & deployment, Testing & feedback, and Project & sprint records.
 Use the Sprint 2 overview as the meeting entry point; keep dated results linked
 to their source revision rather than rewriting historical evidence as current.
 
@@ -116,6 +121,31 @@ Ordinary prose edits do not require browser automation. The docs preview needs
 no API or sign-in; port 3000 is also the API default, so choose a free port if
 running both services.
 
+## Maintain diagrams
+
+The [visual guide](../architecture/diagrams/index.md) links the presentation
+views. Mermaid rendering is enabled in `apps/docs/docusaurus.config.ts` through
+`@docusaurus/theme-mermaid`; keep its version aligned with Docusaurus. Edit the
+Markdown source, not a generated image or a file under `apps/docs/build`.
+
+When schema, protected flows, services, or deployment change, update the relevant
+diagram in the same change. Use real table names and relationships from the
+migrations. Label simplified views and keep authoritative rules in their linked
+contracts; a diagram must not invent an API, reward, or completion guarantee.
+
+Keep each diagram focused, include a nearby text explanation and source links,
+and give it Mermaid `accTitle` and `accDescr` text. Wrap the fenced block in the
+existing `diagram-scroll` region with a descriptive `aria-label` and
+`tabIndex={0}` so wide diagrams remain keyboard-scrollable on mobile. The visual
+guide introduces horizontal scrolling to readers.
+
+Run the documentation checks and inspect changed diagrams in a browser: the
+production build checks links, but Mermaid syntax is rendered in the browser.
+Check for error messages, clipped labels, readable light/dark colours, and page
+overflow at the relevant mobile and desktop widths. Historical Sprint 1 evidence
+and meeting attachments remain historical evidence; update the current diagram
+without rewriting those records.
+
 ## Publication
 
 `.gitea/workflows/docs-deploy.yml` deploys to
@@ -136,3 +166,5 @@ Do not infer deployment success from a local build or a successful web/API job.
 ## AI declaration
 
 Prepared with assistance from Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

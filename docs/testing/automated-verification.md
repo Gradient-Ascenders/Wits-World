@@ -1,8 +1,8 @@
 ---
-title: Automated database, package, and Basic E2E verification
+title: 'Database and end-to-end test gates'
 ---
 
-# Automated database, package, and Basic E2E verification
+# Database and end-to-end test gates
 
 Issue `#166` adds distinct pull-request and real-environment verification paths
 for the shared packages, PostgreSQL/PostGIS migrations and integration suites,
@@ -209,3 +209,5 @@ before changing cadence, worker count, or runner capacity.
 This issue implementation and operational guide were generated and reviewed
 with the assistance of Codex[GPT-5]. The declaration is not verification
 evidence.
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

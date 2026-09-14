@@ -1,4 +1,8 @@
-# API and battle responsiveness investigation
+---
+title: 'API speed and battle response results'
+---
+
+# API speed and battle response results
 
 ## Findings and measurements
 
@@ -208,3 +212,5 @@ HTTP tests, API type-check and changed-file lint. No development or production
 database was modified.
 
 AI assistance: Codex[GPT-6] investigated, implemented and documented this pass.
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

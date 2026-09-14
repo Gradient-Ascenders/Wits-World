@@ -1,8 +1,8 @@
 ---
-title: Third-party software and services
+title: 'Third-party tools and why we use them'
 ---
 
-# Third-party software and services
+# Third-party tools and why we use them
 
 ## Scope
 
@@ -38,6 +38,12 @@ The repository also contains two first-party workspace packages:
 `@wits-world/game-rules` for pure battle transitions. They are project code,
 not third-party dependencies, but separating them prevents duplicate policy
 implementations across applications.
+
+The docs also use `@docusaurus/theme-mermaid` (matching Docusaurus 3.10.2),
+which renders version-controlled Mermaid source as SVG diagrams. This keeps
+database and architecture visuals reviewable alongside their contracts, supports
+light/dark themes, and avoids a separately maintained drawing file. Mermaid is
+loaded by the docs application, not by the player game.
 
 ## Engineering and quality tooling
 
@@ -121,3 +127,7 @@ assistance of Codex[GPT-5]. Package and service claims were checked against the
 current manifests, workflows, source, and existing operational documentation.
 
 Direct-dependency coverage and motivations updated with assistance from Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].
+
+Mermaid integration and motivation documented with assistance from Codex-CLI[GPT-6].

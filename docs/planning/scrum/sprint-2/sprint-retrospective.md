@@ -1,9 +1,9 @@
 ---
-title: Sprint 2 Retrospective
+title: Sprint 2 retrospective
 sidebar_position: 8
 ---
 
-# Sprint 2 Retrospective
+# Sprint 2 retrospective
 
 This Retrospective turns the Sprint 2 delivery evidence into concrete process
 improvements and records team-level themes and actions.
@@ -92,3 +92,6 @@ the whole planned sprint.
 
 This Sprint 2 Retrospective record was generated with assistance from
 Codex-CLI[gpt-5.6-sol medium] using repository, Gitea, stakeholder, and user-testing evidence.
+
+Navigation titles and documentation integration updated with assistance from
+Codex-CLI[GPT-6].

@@ -1,4 +1,8 @@
-# Player Challenge Journey
+---
+title: 'Playing a challenge'
+---
+
+# Playing a challenge
 
 ## Status and authority
 
@@ -96,3 +100,5 @@ minimum-width question. Do not capture access tokens, precise location values,
 answer keys, or other players' data.
 
 This document was planned and edited with assistance from Codex[GPT-5].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

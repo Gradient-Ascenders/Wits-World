@@ -1,8 +1,8 @@
 ---
-title: Basic-tier release validation
+title: 'Basic release acceptance checklist'
 ---
 
-# Basic-tier release validation
+# Basic release acceptance checklist
 
 ## Scope and evidence rule
 
@@ -156,3 +156,5 @@ Codex-CLI[gpt-5.6-sol medium]. The declaration is not evidence of a pass; only
 recorded command output or named human/operator evidence is treated as one.
 
 Sprint 2 status reconciliation assisted by Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

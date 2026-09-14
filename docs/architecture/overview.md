@@ -1,4 +1,8 @@
-# Initial Architecture Overview
+---
+title: 'System architecture'
+---
+
+# System architecture
 
 :::note[Evolving architecture document]
 
@@ -273,3 +277,5 @@ ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].
 
 The architecture-status notice was added with assistance from Codex-CLI[GPT-5]
 and Codex-CLI[gpt-5.6-sol medium].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

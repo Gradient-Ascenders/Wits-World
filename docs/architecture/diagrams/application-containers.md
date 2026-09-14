@@ -1,10 +1,18 @@
-# Application Container Diagram
+---
+title: 'Frontend, API and database diagram'
+---
+
+# Frontend, API and database diagram
 
 This diagram shows the major deployable applications, external services, and
 data store.
 
+<div className="diagram-scroll" role="region" aria-label="Frontend, API and database diagram — diagram 1" tabIndex={0}>
+
 ```mermaid
 flowchart TB
+    accTitle: Frontend, API and database responsibilities
+    accDescr: The browser sends authenticated requests to Fastify. Only the API accesses PostgreSQL and PostGIS. Authentication, maps and documentation are separate integrations.
     subgraph Device["Player or Author Device"]
         Browser["Web Browser"]
         Geo["Browser Geolocation API"]
@@ -37,6 +45,8 @@ flowchart TB
     Browser -->|"Public access"| Docs
 ```
 
+</div>
+
 ## Container responsibilities
 
 ### `apps/web`
@@ -44,7 +54,7 @@ flowchart TB
 The web application:
 
 - renders the mobile-first player and author interface;
-- obtains browser geolocation after a clear user action;
+- obtains reported location through browser permission and the live watcher;
 - submits untrusted location claims to the API;
 - displays API decisions;
 - integrates map presentation;
@@ -84,13 +94,14 @@ The authentication provider:
 
 - supports registration;
 - supports sign-in;
-- provides a password-reset capability for the planned Wits World account UI;
+- provides password-reset email for supported database accounts;
 - issues tokens; and
-- provides external account-lifecycle APIs for the planned deletion workflow.
+- provides the Management API used by the account-deletion workflow.
 
-The Wits World password-reset and account-deletion features are not currently
-implemented. They are planned for Sprint 2 after, or together with, a proper
-player profile/account page.
+Password reset and account deletion are implemented. The API coordinates local
+account cleanup with external Auth0 deletion and retry handling. Live provider
+configuration and delivery still need the evidence described in
+[account lifecycle validation](../../testing/player-account-lifecycle-validation.md).
 
 Auth0 is the selected provider under ADR-005. The API validates its access
 tokens and derives the local player identity and role from validated claims.
@@ -127,3 +138,6 @@ The preceding document was planned and generated with the assistance of
 ChatGPT-Web[GPT-5.6 Thinking], updated with Codex-CLI[GPT-5], and reviewed and
 edited for Sprint 1 release validation with assistance from
 ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].
+
+Page title and diagram updated against the current repository with assistance
+from Codex-CLI[GPT-6].

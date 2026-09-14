@@ -1,8 +1,8 @@
 ---
-title: Basic release stakeholder review template
+title: 'Next stakeholder review template'
 ---
 
-# Basic release stakeholder review template
+# Next stakeholder review template
 
 Use this agenda for a real review of the target release. Record attendance and
 consent outside the public repository when identities should not be published.
@@ -84,3 +84,5 @@ assistance of Codex[GPT-5]. It contains no fabricated stakeholder, comment,
 decision, meeting, approval, or acceptance.
 
 Sprint 2 review cross-references updated with assistance from Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

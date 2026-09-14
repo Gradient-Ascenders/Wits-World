@@ -1,4 +1,8 @@
-# Sprint 1 Location Eligibility Field-Test Protocol
+---
+title: 'On-campus location testing guide'
+---
+
+# On-campus location testing guide
 
 :::note[Historical Sprint 1 evidence]
 
@@ -151,3 +155,5 @@ matches the API result without storing raw requests, tokens, or coordinates.
 
 The preceding document was planned, generated, and edited with the assistance
 of: Codex-CLI[GPT-5].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

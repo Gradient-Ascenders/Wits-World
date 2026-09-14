@@ -1,8 +1,8 @@
 ---
-title: Sprint 2 requirements and feature evidence
+title: 'Sprint 2 features and progress'
 ---
 
-# Sprint 2 requirements and feature evidence
+# Sprint 2 features and progress
 
 **Snapshot:** 14 September 2026, against main revision `9a2f941`.
 
@@ -61,3 +61,5 @@ automated checks and participant acceptance are distinct evidence.
 
 Prepared and reviewed with assistance from Codex-CLI[GPT-6], using the supplied
 course brief, repository source/documents and read-only Gitea evidence.
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

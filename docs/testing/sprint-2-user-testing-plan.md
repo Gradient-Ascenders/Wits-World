@@ -1,5 +1,5 @@
 ---
-title: Sprint 2 user-testing plan
+title: 'Sprint 2 user-testing plan'
 ---
 
 # Sprint 2 user-testing plan
@@ -221,3 +221,5 @@ the resulting change.
 This planned Sprint 2 user-testing process was generated, edited, and reviewed
 with the assistance of Codex[GPT-5]. It contains no fabricated participants,
 sessions, observations, quotations, or results.
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

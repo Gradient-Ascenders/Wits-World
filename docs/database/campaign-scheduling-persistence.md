@@ -1,8 +1,8 @@
 ---
-title: Campaign scheduling persistence
+title: 'Campaign schedule storage'
 ---
 
-# Campaign scheduling persistence
+# Campaign schedule storage
 
 ## Schema
 
@@ -105,3 +105,5 @@ No campaign seed content or scheduler process is introduced.
 This persistence document was generated, edited, and reviewed with the
 assistance of Codex-CLI[gpt-5.6-sol medium]. Claims were checked against
 migration `0030`, the implemented services, and focused integration tests.
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

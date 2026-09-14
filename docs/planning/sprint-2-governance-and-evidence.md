@@ -1,9 +1,9 @@
 ---
-title: Sprint 2 governance and evidence
+title: 'Sprint 2 process and evidence'
 description: The Sprint 2 tracker workflow, rubric evidence map, ceremonies, feedback handling, and current governance gaps.
 ---
 
-# Sprint 2 governance and evidence
+# Sprint 2 process and evidence
 
 This page defines how Wits World records Sprint 2 work and evidence while the
 work happens. The
@@ -34,6 +34,18 @@ now supplies the 13 September local execution record and templates for remaining
 observed sessions, accessibility/device checks, stakeholder acceptance and retests.
 Its preparation snapshot predates the newer feedback documentation; both are
 linked without treating blank templates as completed evidence.
+
+## Scrum record integration — 15 September 2026
+
+[PR #248](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/pulls/248) adds
+Sprint 2 planning, four Daily Scrums, backlog refinement, Review and Retrospective.
+They are linked from the [sprint meeting overview](scrum/index.md#sprint-2-record).
+The four supplied meeting photos are attached in Kevin's confirmed order, with
+[their provenance recorded separately](scrum/index.md#sprint-2-meeting-photos).
+
+This supplements the 14 September documentation snapshot; it does not rerun or
+replace its test results or establish a new release acceptance. Sprint 1
+records, attachments, evidence limits and attribution are preserved.
 
 ## Historical administrative starting point
 
@@ -244,3 +256,5 @@ reviewed with assistance from Codex[GPT-5]. Tracker facts are from read-only
 Gitea inspection on 28 August 2026; no remote resource was changed.
 
 September meeting audit added with assistance from Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

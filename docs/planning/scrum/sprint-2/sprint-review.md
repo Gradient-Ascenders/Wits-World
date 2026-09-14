@@ -1,9 +1,9 @@
 ---
-title: Sprint 2 Review
+title: Sprint 2 review
 sidebar_position: 7
 ---
 
-# Sprint 2 Review
+# Sprint 2 review
 
 This Review record compares the Sprint 2 goal with the integrated increment and
 the evidence available on 15 September 2026. Detailed implementation and review
@@ -121,3 +121,6 @@ validated until the two open release gates and retest boundaries are resolved.
 
 This Sprint 2 Review record was generated with assistance from Codex-CLI[gpt-5.6-sol medium]
 using repository, Gitea, stakeholder, and user-testing evidence.
+
+Navigation titles and documentation integration updated with assistance from
+Codex-CLI[GPT-6].

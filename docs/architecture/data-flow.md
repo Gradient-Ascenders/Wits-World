@@ -1,4 +1,8 @@
-# High-Level Data Flow
+---
+title: 'How data moves through the system'
+---
+
+# How data moves through the system
 
 ## Scope
 
@@ -402,3 +406,5 @@ history are defined in the
 The preceding document was planned and generated with the assistance of:
 ChatGPT-Web[GPT-5.6 Thinking] and ChatGPT-Web[GPT-5.6 Sol], and reviewed and
 edited with assistance from Codex[GPT-5] and Codex[gpt-5.6-sol].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

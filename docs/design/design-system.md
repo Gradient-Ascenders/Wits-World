@@ -1,4 +1,8 @@
-# Wits World Design System
+---
+title: 'Design and accessibility standards'
+---
+
+# Design and accessibility standards
 
 **Status:** Maintained design reference  
 **Applies to:** `apps/web`  
@@ -1072,3 +1076,5 @@ The battle guidance was added with assistance from Codex-CLI[GPT-6].
 The shared feedback guidance was added with assistance from Codex-CLI[GPT-6].
 
 The collectible-frame guidance was added with assistance from Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

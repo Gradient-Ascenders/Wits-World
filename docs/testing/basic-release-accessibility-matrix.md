@@ -1,8 +1,8 @@
 ---
-title: Basic release accessibility and device matrix
+title: 'Accessibility and device checklist'
 ---
 
-# Basic release accessibility and device matrix
+# Accessibility and device checklist
 
 Automated semantic/component tests are supporting evidence, not a substitute
 for manual keyboard, screen-reader, contrast, reduced-motion, zoom, touch, or
@@ -51,3 +51,5 @@ finding ID. A `Not run` row is **Pending manual evidence**, not a pass.
 This empty validation matrix was generated and edited with the assistance of
 Codex[GPT-5]. The AI did not operate a real device or screen reader and did not
 perform a manual accessibility assessment.
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

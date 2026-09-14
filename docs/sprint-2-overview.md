@@ -1,9 +1,11 @@
 ---
-title: Sprint 2 / Milestone 2 overview
+title: 'Sprint 2 overview'
 description: A reading guide to Sprint 2 capabilities, verification, user feedback, stakeholder reviews, and remaining evidence gaps.
 ---
 
-# Sprint 2 / Milestone 2 overview
+# Sprint 2 overview
+
+For a presentation walkthrough, open the [Visual guide and diagrams](architecture/diagrams/index.md).
 
 Start here to review Sprint 2. This page connects the repository's current
 reference and dated evidence; it does not replace the Gitea tracker or certify
@@ -39,21 +41,35 @@ Source: _COMS3011A Project Brief_, section 3.2, printed pages 9–10, supplied b
 Kevin for this audit. The weights below match the original Milestone 2 rubric.
 This is an evidence guide, not a predicted grade or claim that every band is met.
 
-| Criterion                      | Weight | Open during the meeting                                                                                                                                                                                                                                                                                | Evidence boundary                                                                                                          |
-| ------------------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| Core features                  | 25%    | [Feature matrix](requirements/sprint-2-feature-matrix.md), [Basic reference](basic-release-reference.md)                                                                                                                                                                                               | Demonstrate deployed behaviour; implementation alone does not establish the permitted bug count                            |
-| Automated testing              | 10%    | [Dated results](testing/sprint-2-validation-status.md), [testing strategy](testing/testing-strategy.md)                                                                                                                                                                                                | UI/API coverage and specific results; outstanding nightly and manual gates remain visible                                  |
-| Stakeholder reviews            | 10%    | [4 September database review](planning/stakeholder-interactions/2026-09-04-database-usage-review.md), [8 September trails/card art](planning/stakeholder-interactions/2026-09-08-trails-and-card-art-review.md), [11 September UI](planning/stakeholder-interactions/2026-09-11-frontend-ui-review.md) | Records distinguish feedback, evaluation, changes and missing follow-up                                                    |
-| API                            | 15%    | [API overview/OpenAPI](architecture/api-overview.md), [external integrations](architecture/external-integrations.md)                                                                                                                                                                                   | Public API docs and implemented integrations; HTTP reachability is not an authenticated end-to-end pass                    |
-| User feedback                  | 10%    | [Formal process](testing/sprint-2-user-testing-plan.md), [actual results and issue/change trail](testing/sprint-2-user-feedback-results.md)                                                                                                                                                            | Ten responses, five accepted findings; incomplete change/retest evidence is identified                                     |
-| Project methodology            | 10%    | [Project/Git methodology](planning/project-and-git-methodology.md), [Sprint 2 governance](planning/sprint-2-governance-and-evidence.md)                                                                                                                                                                | Show actual issues/PRs and recorded meetings; process documentation alone is insufficient                                  |
-| Bug tracker                    | 5%     | [Work/bug tracking](planning/work-tracking-and-issue-management.md), [Gitea issues](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues)                                                                                                                                                       | Tracker is authoritative; old planning checkboxes are not live status                                                      |
-| Database documentation         | 5%     | [Schema and relationship guide](database/overview.md), [deployment](database/neon-postgis-setup.md), [migrations](database/database-release-procedure.md), [selection rationale](architecture/decisions/ADR-003-postgresql-postgis.md)                                                                 | Distinguish schema reference from proof of production migration/recovery                                                   |
-| Third-party code documentation | 5%     | [Software/services and motivations](architecture/third-party-software-and-services.md)                                                                                                                                                                                                                 | Direct dependencies, supporting tooling and unused declarations are distinguished; transitive inventory is in the lockfile |
-| Testing documentation          | 5%     | [Policy and procedures](testing/testing-strategy.md), [CI](testing/continuous-integration.md), [formal user-testing process](testing/sprint-2-user-testing-plan.md)                                                                                                                                    | Procedures and completed results are separate pages                                                                        |
+| Criterion                      | Weight | Open during the meeting                                                                                                                                                                                                                                                                                                 | Evidence boundary                                                                                                          |
+| ------------------------------ | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Core features                  | 25%    | [Feature matrix](requirements/sprint-2-feature-matrix.md), [Basic reference](basic-release-reference.md)                                                                                                                                                                                                                | Demonstrate deployed behaviour; implementation alone does not establish the permitted bug count                            |
+| Automated testing              | 10%    | [Dated results](testing/sprint-2-validation-status.md), [testing strategy](testing/testing-strategy.md)                                                                                                                                                                                                                 | UI/API coverage and specific results; outstanding nightly and manual gates remain visible                                  |
+| Stakeholder reviews            | 10%    | [Meeting 2 — Database & hosting](planning/stakeholder-interactions/2026-09-04-database-usage-review.md), [Meeting 3 — Trails & card artwork](planning/stakeholder-interactions/2026-09-08-trails-and-card-art-review.md), [Meeting 4 — Frontend UI](planning/stakeholder-interactions/2026-09-11-frontend-ui-review.md) | Records distinguish feedback, evaluation, changes and missing follow-up                                                    |
+| API                            | 15%    | [API overview/OpenAPI](architecture/api-overview.md), [external integrations](architecture/external-integrations.md)                                                                                                                                                                                                    | Public API docs and implemented integrations; HTTP reachability is not an authenticated end-to-end pass                    |
+| User feedback                  | 10%    | [Formal process](testing/sprint-2-user-testing-plan.md), [actual results and issue/change trail](testing/sprint-2-user-feedback-results.md)                                                                                                                                                                             | Ten responses, five accepted findings; incomplete change/retest evidence is identified                                     |
+| Project methodology            | 10%    | [Project/Git methodology](planning/project-and-git-methodology.md), [Sprint 2 governance](planning/sprint-2-governance-and-evidence.md)                                                                                                                                                                                 | Show actual issues/PRs and recorded meetings; process documentation alone is insufficient                                  |
+| Bug tracker                    | 5%     | [Work/bug tracking](planning/work-tracking-and-issue-management.md), [Gitea issues](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues)                                                                                                                                                                        | Tracker is authoritative; old planning checkboxes are not live status                                                      |
+| Database documentation         | 5%     | [Schema and relationship guide](database/overview.md), [deployment](database/neon-postgis-setup.md), [migrations](database/database-release-procedure.md), [selection rationale](architecture/decisions/ADR-003-postgresql-postgis.md)                                                                                  | Distinguish schema reference from proof of production migration/recovery                                                   |
+| Third-party code documentation | 5%     | [Software/services and motivations](architecture/third-party-software-and-services.md)                                                                                                                                                                                                                                  | Direct dependencies, supporting tooling and unused declarations are distinguished; transitive inventory is in the lockfile |
+| Testing documentation          | 5%     | [Policy and procedures](testing/testing-strategy.md), [CI](testing/continuous-integration.md), [formal user-testing process](testing/sprint-2-user-testing-plan.md)                                                                                                                                                     | Procedures and completed results are separate pages                                                                        |
 
 Also keep [AI-use declarations](planning/ai-use.md) and
 [deployment/setup](deployment/azure-deployment-setup.md) available.
+
+## Sprint meetings and process evidence
+
+The [sprint meeting overview](planning/scrum/index.md) now includes Sprint 2
+planning, four Daily Scrum records with the supplied meeting photos, backlog
+refinement, the review and the retrospective. These records arrived through
+[PR #248](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/pulls/248).
+
+Start with [Daily Scrum 1 and its photo](planning/scrum/sprint-2/daily-scrum-01.md#meeting-photo),
+the [Sprint 2 review](planning/scrum/sprint-2/sprint-review.md), and the
+[retrospective](planning/scrum/sprint-2/sprint-retrospective.md).
+The overview also retains the original Sprint 1 meetings and their photos.
+Record dates and reporting windows remain separate from image provenance and
+from the dated test/deployment evidence below.
 
 ## Product and player journeys
 
@@ -86,11 +102,13 @@ Read the [testing plan](testing/sprint-2-user-testing-plan.md) alongside the
 results. The plan describes the intended process; the results describe the
 collected evidence.
 
-Dated stakeholder records:
+Browse [all meetings with Calvin Rea](planning/stakeholder-interactions/index.md).
 
-- [4 September: database usage review](planning/stakeholder-interactions/2026-09-04-database-usage-review.md).
-- [8 September: trails and card art review](planning/stakeholder-interactions/2026-09-08-trails-and-card-art-review.md).
-- [11 September: frontend UI review](planning/stakeholder-interactions/2026-09-11-frontend-ui-review.md).
+Sprint 2 stakeholder records:
+
+- [Meeting 2 — Calvin Rea: Database & hosting (4 September), with photo](planning/stakeholder-interactions/2026-09-04-database-usage-review.md).
+- [Meeting 3 — Calvin Rea: Trails & card artwork (8 September)](planning/stakeholder-interactions/2026-09-08-trails-and-card-art-review.md).
+- [Meeting 4 — Calvin Rea: Frontend UI (11 September)](planning/stakeholder-interactions/2026-09-11-frontend-ui-review.md).
 
 ## Verification and remaining gaps
 
@@ -121,3 +139,5 @@ planning record; Gitea remains authoritative for live scope and status.
 
 This reading guide was prepared with assistance from Codex-CLI[GPT-6] using
 existing repository records. It adds navigation, not new acceptance evidence.
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

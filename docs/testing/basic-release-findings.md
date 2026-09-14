@@ -1,8 +1,8 @@
 ---
-title: Basic release finding and disposition register
+title: 'Record findings and retests'
 ---
 
-# Basic release finding and disposition register
+# Record findings and retests
 
 This register is for additional #167 validation and retest observations. The
 [Sprint 2 user-feedback report](sprint-2-user-feedback-results.md) already records
@@ -73,3 +73,5 @@ assistance of Codex[GPT-5]. The placeholder row is not a finding, and no issue,
 fix, retest, or disposition was fabricated.
 
 Existing feedback cross-references added with assistance from Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

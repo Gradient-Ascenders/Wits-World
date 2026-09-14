@@ -1,8 +1,8 @@
 ---
-title: Basic-tier deterministic E2E
+title: 'Basic game end-to-end tests'
 ---
 
-# Basic-tier deterministic E2E
+# Basic game end-to-end tests
 
 `npm run test:e2e:basic` is the repeatable release journey for the Basic tier.
 It requires `TEST_DATABASE_URL` to identify a disposable PostgreSQL/PostGIS test
@@ -35,3 +35,5 @@ acceptance, gameplay-balance approval, or production smoke evidence.
 
 The preceding document was generated, edited, and reviewed with the assistance
 of Codex[GPT-5] and ChatGPT-Web[GPT-5.6 Sol].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

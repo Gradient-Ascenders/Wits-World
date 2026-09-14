@@ -1,4 +1,8 @@
-# Deployed authentication, CORS, and location privacy review
+---
+title: 'Live authentication and privacy checks'
+---
+
+# Live authentication and privacy checks
 
 This report records the focused release-boundary review required by
 [Gitea issue #45](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/45).
@@ -179,3 +183,5 @@ permanent policy decision.
 
 This review was performed and documented with assistance from
 Codex-CLI[GPT-5.6 Sol].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

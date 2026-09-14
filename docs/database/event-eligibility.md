@@ -1,4 +1,8 @@
-# Event Eligibility Calculation
+---
+title: 'How event access is calculated'
+---
+
+# How event access is calculated
 
 The API event-eligibility service decides whether a submitted location claim is
 inside the authoritative radius stored for an event. The browser and map display
@@ -78,3 +82,5 @@ evidence must not include database credentials or precise player location data.
 
 The preceding document was generated and edited with the assistance of:
 Codex[GPT-5].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

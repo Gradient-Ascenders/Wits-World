@@ -1,4 +1,8 @@
-# Initial Risk Register
+---
+title: 'Project risks and mitigations'
+---
+
+# Project risks and mitigations
 
 :::note[Initial planning record]
 
@@ -184,3 +188,5 @@ dated risk review was added with assistance from Codex[GPT-5] and
 Codex-CLI[gpt-5.6-sol medium].
 
 Teammate evidence integration reviewed with assistance from Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

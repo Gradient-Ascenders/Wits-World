@@ -1,8 +1,8 @@
 ---
-title: Issue 167 Basic release evidence record
+title: 'Basic release test results (#167)'
 ---
 
-# Issue 167 Basic release evidence record
+# Basic release test results (#167)
 
 ## Evidence status
 
@@ -168,3 +168,5 @@ campus testing, stakeholder review, deployment, or CI and supplied no manual
 test result.
 
 Sprint 2 evidence integration assisted by Codex-CLI[GPT-6]; original run results preserved.
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

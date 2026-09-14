@@ -1,9 +1,9 @@
 ---
-title: Scrum records
+title: Sprint meeting records
 sidebar_position: 1
 ---
 
-# Scrum records
+# Sprint meeting records
 
 :::note[Scrum evidence]
 
@@ -41,6 +41,11 @@ the sprint. The reliable sources are:
    user-feedback report; and
 6. team-confirmed recollection, explicitly labelled where it is used.
 
+The Sprint 1 summaries remain retrospective reconstructions, not verbatim
+meeting transcripts. Their source limits, labelled inferences, and missing exact
+meeting times remain part of the historical record. The new Sprint 2 records
+and supplied images do not change those Sprint 1 claims.
+
 ## Sprint 2 record
 
 | Ceremony or record                                           | Evidence date or window     | Purpose                                                                                              |
@@ -67,6 +72,26 @@ the sprint. The reliable sources are:
 | [Sprint 1 Review](./sprint-1/sprint-review.md)               | Exact date not retained | Reconstruct the delivered increment, review topics, assessment, limitations, and carry-over work |
 | [Sprint 1 Retrospective](./sprint-1/sprint-retrospective.md) | Exact date not retained | Preserve team-confirmed improvement themes and concrete Sprint 2 process actions                 |
 
+## Sprint 2 meeting photos
+
+Kevin supplied four images and confirmed their order for the four Daily Scrum
+records. The images were found in `apps/web/` and moved without modification
+into the documentation site's Sprint 2 image folder.
+
+| Original filename | Meeting record                                                                   | Documentation image                     |
+| ----------------- | -------------------------------------------------------------------------------- | --------------------------------------- |
+| `content.png`     | [Daily Scrum 1 — Foundations](sprint-2/daily-scrum-01.md#meeting-photo)          | `img/scrum/sprint-2/daily-scrum-01.png` |
+| `content2.png`    | [Daily Scrum 2 — Backend integration](sprint-2/daily-scrum-02.md#meeting-photo)  | `img/scrum/sprint-2/daily-scrum-02.png` |
+| `content3.png`    | [Daily Scrum 3 — Player experience](sprint-2/daily-scrum-03.md#meeting-photo)    | `img/scrum/sprint-2/daily-scrum-03.png` |
+| `content4.png`    | [Daily Scrum 4 — Testing and feedback](sprint-2/daily-scrum-04.md#meeting-photo) | `img/scrum/sprint-2/daily-scrum-04.png` |
+
+The mapping follows the supplied order, not inferred image timestamps. Checkpoint
+dates and reporting windows come from the written records; the images do not
+independently establish dates, identities, attendance or what was discussed.
+Planning, refinement, Review and Retrospective do not receive reused Daily Scrum
+photos. The separate [Calvin Rea stakeholder meetings](../stakeholder-interactions/index.md)
+retain their own records and attachments.
+
 ## Sprint 1 image provenance
 
 The images were supplied under the filenames `sprint plan.png` and
@@ -79,8 +104,9 @@ from the images.
 The four Sprint 1 Daily Scrum pages are representative check-in records spread across
 the delivery period. Each summarises repository activity since the preceding
 record; the dates do not imply these were the team's only coordination points.
-The Review and Retrospective have no associated supplied image. Sprint 2 uses
-its repository, tracker, stakeholder, and user-testing evidence.
+The Sprint 1 Review and Retrospective have no associated supplied image. Their
+source limits and historical evidence are unchanged. Sprint 2 adds its own
+repository, tracker, stakeholder, user-testing and supplied-photo evidence.
 
 ## AI declaration
 
@@ -88,3 +114,8 @@ This evidence structure and its narrative summaries were created with
 assistance from Codex-CLI[gpt-5.6-sol medium]. The underlying issues, commits, pull requests,
 project documents, testing results, feedback records, and supplied Sprint 1
 images remain the evidence sources.
+
+Earlier Sprint 1 summaries were prepared with assistance from Codex[GPT-5],
+with the historical-status notice added using Codex-CLI[GPT-5]. These original
+attributions remain part of the record. Sprint 2 navigation, image provenance,
+and integration were updated with assistance from Codex-CLI[GPT-6].

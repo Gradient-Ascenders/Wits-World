@@ -1,8 +1,8 @@
 ---
-title: Basic release player validation script
+title: 'Player test session guide'
 ---
 
-# Basic release player validation script
+# Player test session guide
 
 Use this script before and during each of the at least five real, anonymised
 sessions required by issue #167. Wits Quest is being evaluated, not the
@@ -125,3 +125,5 @@ assistance of Codex[GPT-5]. It contains no fabricated participant, quotation,
 device, session, observation, or outcome.
 
 Sprint 2 feedback cross-reference added with assistance from Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

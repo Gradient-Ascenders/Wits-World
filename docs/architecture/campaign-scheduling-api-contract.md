@@ -1,8 +1,8 @@
 ---
-title: Campaign scheduling API contract
+title: 'Campaign scheduling API'
 ---
 
-# Campaign scheduling API contract
+# Campaign scheduling API
 
 ## Purpose and authority
 
@@ -110,3 +110,5 @@ Question analytics remains blocked separately by issue `#184` / S3-06.
 This contract was generated, edited, and reviewed with the assistance of
 Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5]. It records the implemented issue
 `#183` behavior and the unblocked issue `#185` Author interface.
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

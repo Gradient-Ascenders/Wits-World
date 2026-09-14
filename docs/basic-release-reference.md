@@ -1,9 +1,9 @@
 ---
 sidebar_position: 2
-title: Basic release reference
+title: 'Basic game overview'
 ---
 
-# Basic release reference
+# Basic game overview
 
 This is the public starting point for the implemented core Wits Quest Basic
 gameplay. It describes what is implemented, where authority lives, and how the
@@ -115,3 +115,5 @@ Codex-CLI[gpt-5.6-sol medium]. Evidence statements must still be supported by
 executed checks or named operator confirmation.
 
 Sprint 2 status reconciliation assisted by Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

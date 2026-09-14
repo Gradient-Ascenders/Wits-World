@@ -1,8 +1,8 @@
 ---
-title: AI use
+title: 'AI tools and contribution disclosure'
 ---
 
-# AI use
+# AI tools and contribution disclosure
 
 Wits World permits disclosed, human-accountable AI assistance under the course
 policy. AI output is an input to engineering work, not evidence that a result is
@@ -62,3 +62,5 @@ The preceding document was generated, edited, and reviewed with the assistance
 of Codex[GPT-5] and ChatGPT-Web[GPT-5.6 Sol].
 
 This Sprint 2 update was assisted by Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

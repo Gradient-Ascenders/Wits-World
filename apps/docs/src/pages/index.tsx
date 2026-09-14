@@ -13,11 +13,11 @@ const readerPaths = [
       'See what Wits Quest currently delivers, how its rules are defined, and how players move through the game.',
     links: [
       {
-        label: 'Sprint 2 overview & evidence',
+        label: 'Sprint 2 overview',
         href: '/docs/sprint-2-overview',
       },
       {
-        label: 'Product & player experience',
+        label: 'Game rules & player experience',
         href: '/docs/product-requirements',
       },
     ],
@@ -28,7 +28,7 @@ const readerPaths = [
       'Find local-service guidance, delivery workflows, deployment procedures, and database operations.',
     links: [
       {
-        label: 'Development & operations',
+        label: 'Development & deployment',
         href: '/docs/development-operations',
       },
     ],
@@ -39,15 +39,15 @@ const readerPaths = [
       'Review the system architecture, data model, design decisions, and accessible interface standards.',
     links: [
       {
-        label: 'Technical reference',
+        label: 'Technical guides',
         href: '/docs/technical-reference',
       },
       {
-        label: 'Data & Database',
+        label: 'Database guides',
         href: '/docs/data-database',
       },
       {
-        label: 'Design & Accessibility',
+        label: 'Design and accessibility standards',
         href: '/docs/design/design-system',
       },
     ],
@@ -55,14 +55,14 @@ const readerPaths = [
   {
     title: 'Review quality and project evidence',
     description:
-      'Inspect Sprint 2 user-feedback results, stakeholder reviews, verification gaps, governance, and preserved Scrum records.',
+      'Inspect Sprint 2 user-feedback results, stakeholder reviews, verification gaps, governance, and preserved Planning and Scrum meetings.',
     links: [
       {
-        label: 'Testing & evidence',
+        label: 'Testing & feedback',
         href: '/docs/testing-quality',
       },
       {
-        label: 'Project & history',
+        label: 'Project & sprint records',
         href: '/docs/project-management',
       },
     ],
@@ -71,14 +71,17 @@ const readerPaths = [
 
 const documentationSections = [
   { label: 'Start here', href: '/docs/' },
-  { label: 'Product & player experience', href: '/docs/product-requirements' },
-  { label: 'Technical reference', href: '/docs/technical-reference' },
   {
-    label: 'Development & operations',
+    label: 'Game rules & player experience',
+    href: '/docs/product-requirements',
+  },
+  { label: 'Technical guides', href: '/docs/technical-reference' },
+  {
+    label: 'Development & deployment',
     href: '/docs/development-operations',
   },
-  { label: 'Testing & evidence', href: '/docs/testing-quality' },
-  { label: 'Project & history', href: '/docs/project-management' },
+  { label: 'Testing & feedback', href: '/docs/testing-quality' },
+  { label: 'Project & sprint records', href: '/docs/project-management' },
 ];
 
 function HomepageHeader(): ReactNode {

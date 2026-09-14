@@ -1,4 +1,8 @@
-# Azure Deployment Setup
+---
+title: 'Deploy the app and API to Azure'
+---
+
+# Deploy the app and API to Azure
 
 > **Project:** Wits World  
 > **Game/topic:** Wits Quest  
@@ -1703,3 +1707,5 @@ Codex[GPT-5]
 ```
 
 Review the document against the current repository and Azure configuration before committing it. Keep the declaration if required by the project's AI attribution policy.
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

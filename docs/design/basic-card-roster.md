@@ -1,9 +1,9 @@
 ---
-title: Wits Quest Complete Card Catalogue
+title: 'Complete card catalogue'
 description: Approved 30-card catalogue, eligibility, evolution relationships, moves, effects, and artwork contract.
 ---
 
-# Wits Quest complete card catalogue
+# Complete card catalogue
 
 **Status:** Implemented release specification
 
@@ -194,3 +194,5 @@ uses the catalogue alt text and retains its existing image fallback.
 This catalogue specification and its original artwork were created with
 assistance from Codex-CLI[GPT-5.6 Sol] and ChatGPT-Web[GPT-5.6 Sol], then
 reviewed and curated by the Wits World team.
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

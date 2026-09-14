@@ -1,8 +1,8 @@
 ---
-title: Asynchronous PvP persistence
+title: 'Player battle storage'
 ---
 
-# Asynchronous PvP persistence
+# Player battle storage
 
 Migration `0028_create_asynchronous_pvp_persistence.sql` provides the durable
 data boundary for the asynchronous player-versus-player contract. It is an
@@ -160,3 +160,5 @@ does not understand it; retain `0039` and roll the API/Web forward.
 
 The preceding document was generated and edited with the assistance of:
 Codex-CLI[gpt-5.6-sol medium], Codex[GPT-5], and Codex[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

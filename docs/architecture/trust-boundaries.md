@@ -1,4 +1,8 @@
-# Trust Boundaries
+---
+title: 'Security and server authority'
+---
+
+# Security and server authority
 
 ## Purpose
 
@@ -349,3 +353,5 @@ This document was originally planned and generated with assistance from
 ChatGPT-Web[GPT-5.6 Thinking], and was reviewed and edited for Sprint 1 release
 validation with assistance from ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5], and
 Codex[gpt-5.6-sol], and Codex-CLI[gpt-5.6-sol medium].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].

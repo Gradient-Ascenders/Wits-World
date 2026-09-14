@@ -1,11 +1,19 @@
-# System Context Diagram
+---
+title: 'System and external services diagram'
+---
+
+# System and external services diagram
 
 This diagram shows Wits Quest, its users, and its principal external systems.
 
+<div className="diagram-scroll" role="region" aria-label="System and external services diagram — diagram 1" tabIndex={0}>
+
 ```mermaid
-flowchart LR
+flowchart TB
+    accTitle: Wits World and its external services
+    accDescr: Players and authors use the web app. The API owns protected decisions and database access; Auth0 authenticates, Mapbox presents maps, and Docusaurus publishes documentation.
     Player["Player"]
-    Author["Author or Administrator"]
+    Author["Author"]
 
     Web["Wits Quest Web Application<br/>React, Vite and TypeScript<br/>Azure App Service"]
     API["Wits Quest Hand-Written API<br/>Fastify and TypeScript<br/>Azure App Service"]
@@ -35,6 +43,8 @@ flowchart LR
 
     API -->|"Authoritative eligibility and protected rules"| Web
 ```
+
+</div>
 
 ## Interpretation
 
@@ -68,3 +78,6 @@ The preceding document was planned and generated with the assistance of
 ChatGPT-Web[GPT-5.6 Thinking], updated with Codex-CLI[GPT-5], and reviewed and
 edited for Sprint 1 release validation with assistance from
 ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].
+
+Page title and diagram updated against the current repository with assistance
+from Codex-CLI[GPT-6].

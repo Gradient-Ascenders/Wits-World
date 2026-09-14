@@ -1,4 +1,8 @@
-# Basic-tier Decision Register
+---
+title: 'Confirmed game decisions'
+---
+
+# Confirmed game decisions
 
 ## Status and authority
 
@@ -113,3 +117,5 @@ Codex-CLI[GPT-5], Codex-CLI[gpt-5.6-sol medium],
 Codex-CLI[GPT-5.6 Sol], and Codex[GPT-5].
 
 Sprint 2 status reconciliation assisted by Codex-CLI[GPT-6].
+
+Page title clarified with assistance from Codex-CLI[GPT-6].
