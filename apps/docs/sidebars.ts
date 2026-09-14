@@ -559,6 +559,52 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'category',
+          label: 'Sprint 2 Scrum Evidence',
+          items: [
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-2/initial-planning',
+              label: 'Sprint 2 Initial Planning',
+            },
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-2/daily-scrum-01',
+              label: 'Daily Scrum 01 - Foundations and Contracts',
+            },
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-2/daily-scrum-02',
+              label: 'Daily Scrum 02 - Authoritative Services',
+            },
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-2/backlog-refinement',
+              label: 'Sprint 2 Backlog Refinement',
+            },
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-2/daily-scrum-03',
+              label: 'Daily Scrum 03 - Integrated Experiences',
+            },
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-2/daily-scrum-04',
+              label: 'Daily Scrum 04 - Verification and Feedback',
+            },
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-2/sprint-review',
+              label: 'Sprint 2 Review',
+            },
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-2/sprint-retrospective',
+              label: 'Sprint 2 Retrospective',
+            },
+          ],
+        },
+        {
+          type: 'category',
           label: 'Sprint 1 Scrum Evidence',
           items: [
             {
