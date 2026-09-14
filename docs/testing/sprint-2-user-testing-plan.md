@@ -4,29 +4,30 @@ title: Sprint 2 user-testing plan
 
 # Sprint 2 user-testing plan
 
-:::info[Planned formal evaluation]
+:::info[Formal feedback collected; follow-up validation open]
 
-This is the planned Sprint 2 formal user-testing process. The application has
-already been shared informally, but no meaningful structured critique or formal
-user-testing results have been collected. This page is a plan, not a result or
-claim of participant acceptance.
+This page defines the Sprint 2 formal user-testing process. Ten structured
+questionnaire responses were collected on 13 September 2026. The sanitised
+[Sprint 2 user-feedback results](./sprint-2-user-feedback-results.md) record the
+aggregate evidence, five prioritised findings, resulting issues, implementation
+evidence, and outstanding retest boundary.
 
 The current release-validation work is tracked by
 [#167 (`S2-09`)](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/issues/167),
-which plans at least five anonymised player sessions after its prerequisites
-clear. That target is not a claim that participants have been recruited or
-sessions have occurred.
+which remains open for participant retests and the wider accessibility, field,
+stakeholder, deployment, and release evidence. The collected questionnaire is
+not a claim of representative acceptance or completed follow-up validation.
 
 :::
 
 ## Evidence status
 
-| Evidence class              | Current status                                                                                                                                  |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Contemporaneous evidence    | No formal Sprint 2 user-test session record exists yet                                                                                          |
-| Team-confirmed recollection | The application has been shared informally with other people, without meaningful structured critique                                            |
-| Repository evidence         | Implemented player journeys, automated tests, current release validation, and known evidence gaps inform the tasks below                        |
-| Future planned evidence     | Sanitised session records, observations, participant feedback, prioritised findings, linked issues/decisions, changes, and follow-up evaluation |
+| Evidence class              | Current status                                                                                                                                                               |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Contemporaneous evidence    | Ten questionnaire responses collected on 13 September 2026; raw consent-controlled export remains outside the repository                                                     |
+| Sanitised repository record | [Aggregate results and finding traceability](./sprint-2-user-feedback-results.md), issues #240-#244, and PR #245                                                             |
+| Evidence boundary           | The export does not establish participant demographics, device/browser context, facilitator observations, a representative sample, or completed retests                      |
+| Future planned evidence     | Focused retests, remaining issue integration, accessibility and device observations, stakeholder review, deployment checks, and a final #167 outcome against a named release |
 
 ## Purpose
 
