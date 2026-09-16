@@ -1115,9 +1115,16 @@ test('supports draggable mobile Explore sheet discovery and detail states', asyn
   );
   await expect(map).toHaveAttribute('data-map-following', 'false');
 
-  await dragExploreSheet(page, -36, { steps: 2 });
+  const selectedSnapDistance = snapPoints.expanded - snapPoints.medium + 4;
+  await dragExploreSheet(page, -selectedSnapDistance, {
+    delayMs: 110,
+    steps: 8,
+  });
   await expect(sheet).toHaveAttribute('data-sheet-snap', 'expanded');
-  await dragExploreSheet(page, 36, { steps: 2 });
+  await dragExploreSheet(page, selectedSnapDistance, {
+    delayMs: 110,
+    steps: 8,
+  });
   await expect(sheet).toHaveAttribute('data-sheet-snap', 'medium');
 
   await page.getByRole('button', { name: 'Collapse event details' }).click();
