@@ -73,6 +73,18 @@ applies shared battle rules, signs viewer-bound cursors, hides unrevealed cards,
 enforces versions and 24-hour deadlines, and records terminal progression in
 the same transaction. The Web experience remains a separate issue.
 
+The planned live PvP boundary preserves the same authority while adding a
+realtime transport. An authenticated HTTPS request may mint a short-lived,
+single-use connection ticket bound to one local player, match, and participant
+or spectator role. Long-lived bearer tokens do not enter WebSocket URLs.
+Opening, losing, or replacing a connection cannot pause a deadline or mutate a
+match; reconnect loads the persisted server snapshot. Participant messages
+contain only an idempotency identifier, expected version, and legal intent.
+Spectators receive only revealed battle state and aggregate hidden-card counts
+and can never submit match actions. The complete planned boundary is defined in
+the [live PvP contract](./live-pvp-api-contract.md); it is not yet an
+implemented or deployed capability.
+
 ### Authentication provider
 
 The authentication provider authenticates users and issues tokens.

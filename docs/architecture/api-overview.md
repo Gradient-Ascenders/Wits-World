@@ -126,6 +126,14 @@ capability.
 These routes remain separate from CPU and live PvP; the Web experience is
 tracked independently.
 
+The planned [live PvP contract](./live-pvp-api-contract.md) defines the future
+one-minute server-owned match boundary, short-lived connection tickets,
+versioned realtime messages, persisted reconnect recovery, abandonment rules,
+and spectator-safe projections. It is a design contract for issue `#252`, not a
+claim that live routes or WebSocket infrastructure are present in the generated
+OpenAPI document. Those operations must be registered only when their runtime
+validation, authorization, persistence, and tests are implemented together.
+
 ## Validation and errors
 
 Fastify route schemas validate untrusted parameters, query values, and request
@@ -185,6 +193,7 @@ protected operation.
 - [Trust boundaries](./trust-boundaries.md)
 - [Author curation API contract](./author-curation-api-contract.md)
 - [Asynchronous PvP API contract](./asynchronous-pvp-api-contract.md)
+- [Live PvP API contract](./live-pvp-api-contract.md)
 - [High-level data flow](./data-flow.md)
 - [External integrations](./external-integrations.md)
 - [API application guide](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/apps/api/README.md)

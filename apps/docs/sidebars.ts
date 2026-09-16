@@ -257,6 +257,11 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'architecture/live-pvp-api-contract',
+              label: 'Live player battle API',
+            },
+            {
+              type: 'doc',
               id: 'architecture/campaign-scheduling-api-contract',
               label: 'Campaign scheduling API',
             },

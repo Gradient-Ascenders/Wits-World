@@ -202,6 +202,23 @@ Client certificate mode:      Ignore
 Session affinity:             Disabled
 ```
 
+### 5.1 Planned live PvP WebSocket requirements
+
+Issue `#252` defines a future realtime gateway; the current deployment does not
+claim that it is enabled. Before live PvP is released, operators must verify
+WebSocket upgrades against the deployed API hostname, keep `Always On` enabled,
+and configure platform and proxy idle timeouts above the contract's heartbeat
+interval. Session affinity must remain unnecessary because PostgreSQL stores
+authoritative match state and each gateway recovers by committed version.
+
+The gateway must redact the short-lived `ticket` query parameter and must not
+log bearer tokens, complete realtime payloads, hidden cards, or private match
+snapshots. A release smoke test must cover ticket redemption, participant
+reconnect, spectator projection, deadline progression, API restart recovery,
+and multi-instance fan-out before the capability is marked deployed. See the
+[live PvP API contract](../architecture/live-pvp-api-contract.md) for the
+protocol and recovery rules.
+
 A final read-only review confirmed the API is running and attached to `ASP-witsworld`.
 
 ---
