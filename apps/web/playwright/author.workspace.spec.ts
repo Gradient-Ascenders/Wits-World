@@ -446,7 +446,6 @@ test('ordering authoring and player reordering work at desktop and mobile widths
   ]);
 
   state.orderingCompleted = true;
-  await page.setViewportSize({ height: 800, width: 1280 });
   await page.reload();
   await expect(
     page.getByRole('heading', { name: 'Your challenge result' }),
@@ -456,6 +455,16 @@ test('ordering authoring and player reordering work at desktop and mobile widths
   await page.keyboard.press('Enter');
   await expect(page.getByText('Ordering explanation 1.')).toBeVisible();
   await expect(page.getByText('Correct order').first()).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await testInfo.attach('ordering-result-mobile.png', {
+    body: await page.screenshot({ fullPage: true }),
+    contentType: 'image/png',
+  });
+
+  await page.setViewportSize({ height: 800, width: 1280 });
+  await expect(
+    page.getByRole('heading', { name: 'Your challenge result' }),
+  ).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await testInfo.attach('ordering-result-desktop.png', {
     body: await page.screenshot({ fullPage: true }),
