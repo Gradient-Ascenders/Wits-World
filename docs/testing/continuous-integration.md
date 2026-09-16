@@ -18,12 +18,11 @@ workflow passed rather than treating an available merge action as evidence.
 The workflows are separated by event so pull requests have no dependency on
 the deployment runner:
 
-| Workflow                                       | Trigger                                 | Responsibility                                                                                                                                                                                             |
-| ---------------------------------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/.gitea/workflows/pr-validation.yml`          | Pull requests targeting `main`          | Runs repository/application/shared-package validation plus migration and database integration against an isolated PostGIS service; plus Basic Playwright E2E in a separate isolated PostGIS job; no Azure. |
-| `/.gitea/workflows/automated-verification.yml` | Manual dispatch only                    | Runs shared packages, serialized remote test-database verification, and Basic E2E as an exact-SHA release gate.                                                                                            |
-| `/.gitea/workflows/ci.yml`                     | Pushes to `main`                        | Runs validation, publishes coverage, creates production artifacts when required, and deploys affected applications.                                                                                        |
-| `/.gitea/workflows/docs-deploy.yml`            | Documentation-relevant pushes to `main` | Builds and deploys the documentation site to Cloudflare Pages.                                                                                                                                             |
+| Workflow                              | Trigger                                 | Responsibility                                                                                                                                                                                             |
+| ------------------------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/.gitea/workflows/pr-validation.yml` | Pull requests targeting `main`          | Runs repository/application/shared-package validation plus migration and database integration against an isolated PostGIS service; plus Basic Playwright E2E in a separate isolated PostGIS job; no Azure. |
+| `/.gitea/workflows/ci.yml`            | Pushes to `main`                        | Runs validation, publishes coverage, creates production artifacts when required, and deploys affected applications.                                                                                        |
+| `/.gitea/workflows/docs-deploy.yml`   | Documentation-relevant pushes to `main` | Builds and deploys the documentation site to Cloudflare Pages.                                                                                                                                             |
 
 The resulting flow is:
 
@@ -103,8 +102,7 @@ The duplicated clean installations increase aggregate Gitea job-minutes, but
 independent jobs execute concurrently on the C220. Aggregate job-minutes
 measure total runner work and must not be interpreted as sequential workflow
 wall-clock latency. Each PR database job owns a separate PostGIS service and
-uses four database-test workers, so it neither queues on nor contends for the
-manual release remote-database advisory lock. See
+uses four database-test workers, so concurrent PRs do not share database state. See
 [automated verification](./automated-verification.md) for the matrix and cost
 boundary.
 
