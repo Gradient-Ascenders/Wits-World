@@ -11,7 +11,6 @@ import type {
   MapPoint,
 } from '../../src/components/exploration/map-provider';
 
-const E2E_ACQUIRED_AT = '2026-08-18T10:00:00.000Z';
 let mapInstance = 0;
 
 export const locationClaimProvider: LocationClaimProvider = () =>
@@ -20,7 +19,8 @@ export const locationClaimProvider: LocationClaimProvider = () =>
       (position) => {
         resolve({
           accuracyMetres: position.coords.accuracy,
-          acquiredAt: E2E_ACQUIRED_AT,
+          // Follow the page clock, including suites that freeze it explicitly.
+          acquiredAt: new Date().toISOString(),
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
         });
@@ -44,7 +44,7 @@ export const locationObservationProvider: LocationObservationProvider = ({
     (position) => {
       onLocation({
         accuracyMetres: position.coords.accuracy,
-        acquiredAt: E2E_ACQUIRED_AT,
+        acquiredAt: new Date().toISOString(),
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
       });

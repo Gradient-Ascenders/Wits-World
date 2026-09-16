@@ -144,13 +144,13 @@ describe.skipIf(process.env.RUN_DATABASE_INTEGRATION_TESTS !== 'true')(
           startLocation: {
             latitude: -26,
             longitude: 28,
-            accuracyMetres: 10,
+            accuracyMetres: 150,
             acquiredAt: '2026-09-06T10:01:00Z',
           },
           finishLocation: {
             latitude: -26,
             longitude: 28,
-            accuracyMetres: 10,
+            accuracyMetres: 150,
             acquiredAt: '2026-09-06T10:02:00Z',
           },
           answers: pack.questions.map((question, index) => ({
@@ -167,6 +167,16 @@ describe.skipIf(process.env.RUN_DATABASE_INTEGRATION_TESTS !== 'true')(
           })),
         };
         now = new Date('2026-09-06T12:00:00Z');
+        for (const sample of ['startLocation', 'finishLocation'] as const) {
+          await expect(
+            service.submit(playerId, {
+              ...input,
+              clientAttemptId: randomUUID(),
+              [sample]: { ...input[sample], accuracyMetres: 150.01 },
+            }),
+          ).rejects.toMatchObject({ code: 'OFFLINE_LOCATION_UNVERIFIABLE' });
+        }
+
         // Rejected GPS observations on either side of the offline start must
         // not become trusted movement anchors.
         for (const acquiredAt of [

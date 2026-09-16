@@ -72,7 +72,10 @@ async function runVerification() {
     headCommit = readHeadCommit();
     validateReleaseCommit(profile, process.env, headCommit);
 
-    if (!process.argv.includes('--skip-package-tests')) {
+    if (
+      profile !== 'pr-e2e' &&
+      !process.argv.includes('--skip-package-tests')
+    ) {
       runNpmStep('account-policy package tests', [
         'run',
         'test',
@@ -89,7 +92,9 @@ async function runVerification() {
 
     const target = validateTestDatabaseEnvironment(process.env);
     process.env.TEST_DATABASE_URL = target.connectionString;
-    lockClient = await acquireVerificationLock(target.connectionString);
+    if (profile !== 'pr-e2e') {
+      lockClient = await acquireVerificationLock(target.connectionString);
+    }
 
     runNpmStep('prepare shared API dependencies', ['run', 'prepare:api']);
     runNpmStep('test database readiness', [
@@ -98,22 +103,22 @@ async function runVerification() {
       '--workspace',
       '@wits-world/api',
     ]);
-    runNpmStep('test database migrations', [
-      'run',
-      'db:migrate:test',
-      '--workspace',
-      '@wits-world/api',
-    ]);
-    runNpmStep('database integration tests', [
-      'run',
-      'test:database',
-      '--workspace',
-      '@wits-world/api',
-    ]);
-
-    if (profile === 'nightly' || profile === 'release') {
-      await runBasicE2eStep();
+    if (profile !== 'pr-e2e') {
+      runNpmStep('test database migrations', [
+        'run',
+        'db:migrate:test',
+        '--workspace',
+        '@wits-world/api',
+      ]);
+      runNpmStep('database integration tests', [
+        'run',
+        'test:database',
+        '--workspace',
+        '@wits-world/api',
+      ]);
     }
+
+    await runBasicE2eStep();
   } catch (error) {
     failureMessage =
       error instanceof Error ? error.message : 'Unknown verification failure.';

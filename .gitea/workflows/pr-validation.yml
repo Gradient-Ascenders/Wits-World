@@ -161,6 +161,65 @@ jobs:
 
           time npm run test:database --workspace @wits-world/api
 
+  basic-e2e:
+    name: Run Basic Playwright E2E
+    runs-on: wits-world-ci
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: docker.io/postgis/postgis:17-3.5
+        env:
+          POSTGRES_DB: wits_world_test
+          POSTGRES_USER: wits_world_ci
+          POSTGRES_PASSWORD: wits_world_ci
+        options: >-
+          --health-cmd "pg_isready -U wits_world_ci -d wits_world_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      # The service name is a network alias in this job's isolated network.
+      TEST_DATABASE_URL: postgresql://wits_world_ci:wits_world_ci@postgres:5432/wits_world_test
+      # Keep the ordinary target deliberately unusable so an accidental
+      # non-test connection fails rather than touching real data.
+      DATABASE_URL: postgresql://ci-guard:ci-guard@127.0.0.1:1/wits_world_ci_guard
+      # Fingerprint of the isolated service, not the remote test database.
+      TEST_DATABASE_IDENTITY_SHA256: 4a6736eba1415ce3781722f0e84c7d32956e568531c2149ce6c0f17cbcc95de2
+      VERIFICATION_SANITIZE_OUTPUT: 'true'
+      CI: 'true'
+
+    steps:
+      - name: Check out repository
+        uses: https://github.com/actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: https://github.com/actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install dependencies
+        run: time npm ci --prefer-offline --no-audit --fund=false
+
+      - name: Install Chromium and browser dependencies
+        run: npx --no-install playwright install --with-deps chromium
+
+      - name: Run isolated Basic E2E verification
+        run: time npm run verify:automated -- --profile pr-e2e
+
+      - name: Upload sanitized E2E verification summary
+        if: ${{ always() }}
+        # Never upload raw reports, traces, screenshots, logs, or auth state.
+        uses: https://github.com/actions/upload-artifact@v3
+        with:
+          name: basic-e2e-verification-${{ gitea.sha }}
+          path: |
+            .playwright-artifacts/verification/summary.json
+            .playwright-artifacts/verification/playwright-diagnostics.json
+          if-no-files-found: error
+          retention-days: 14
+
   build:
     name: Build applications
     runs-on: wits-world-ci
@@ -192,6 +251,7 @@ jobs:
       - static-analysis
       - test
       - database-validation
+      - basic-e2e
       - build
     runs-on: wits-world-ci
 
@@ -202,4 +262,5 @@ jobs:
           echo "Static analysis: passed"
           echo "Application and explicit shared-package tests: passed"
           echo "Isolated database and migration validation: passed"
+          echo "Basic Playwright E2E: passed"
           echo "Application builds: passed"

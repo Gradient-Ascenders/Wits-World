@@ -1050,9 +1050,11 @@ describe('player authentication', () => {
     expect(signOut).toBeVisible();
 
     await user.click(signOut);
-    expect(logout).toHaveBeenCalledWith({
-      logoutParams: { returnTo: window.location.origin },
-    });
+    await vi.waitFor(() =>
+      expect(logout).toHaveBeenCalledWith({
+        logoutParams: { returnTo: window.location.origin },
+      }),
+    );
     expect(window.localStorage.length).toBe(0);
   });
 
@@ -1110,12 +1112,20 @@ describe('player authentication', () => {
     );
 
     expect(
-      await screen.findByText(/Player Name that is already linked/),
+      await screen.findByText(/Player Name is already linked/),
     ).toBeVisible();
+    expect(
+      document.querySelector('.main-content--explore'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Hide header for more map space' }),
+    ).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Sign out' }));
-    expect(logout).toHaveBeenCalledWith({
-      logoutParams: { returnTo: window.location.origin },
-    });
+    await vi.waitFor(() =>
+      expect(logout).toHaveBeenCalledWith({
+        logoutParams: { returnTo: window.location.origin },
+      }),
+    );
   });
 
   it('does not repeat a failed restore when Auth0 callback identities change', async () => {
@@ -1176,9 +1186,11 @@ describe('player authentication', () => {
     expect(screen.queryByText('Signed in as')).not.toBeInTheDocument();
     await openAccountDisclosure(user);
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeVisible();
-    expect(logout).toHaveBeenCalledWith({
-      logoutParams: { returnTo: window.location.origin },
-    });
+    await vi.waitFor(() =>
+      expect(logout).toHaveBeenCalledWith({
+        logoutParams: { returnTo: window.location.origin },
+      }),
+    );
   });
 
   it('exposes access-token retrieval without rendering or storing the token', async () => {

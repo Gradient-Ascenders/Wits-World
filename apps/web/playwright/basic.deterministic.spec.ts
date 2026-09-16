@@ -203,7 +203,11 @@ test('completes the canonical 21-step Basic journey against the real API and tes
       status: 'completed',
       scoreCorrect: 5,
     });
-    await expect(page.getByText('5 out of 5 correct')).toBeVisible();
+    const score = page.locator('.challenge-result__score');
+    await expect(score.getByText('5', { exact: true })).toBeVisible();
+    await expect(
+      score.getByText('out of 5 correct', { exact: true }),
+    ).toBeVisible();
   });
 
   await test.step('09 display the persisted completed-answer review', async () => {
@@ -1111,9 +1115,16 @@ test('supports draggable mobile Explore sheet discovery and detail states', asyn
   );
   await expect(map).toHaveAttribute('data-map-following', 'false');
 
-  await dragExploreSheet(page, -36, { steps: 2 });
+  const selectedSnapDistance = snapPoints.expanded - snapPoints.medium + 4;
+  await dragExploreSheet(page, -selectedSnapDistance, {
+    delayMs: 110,
+    steps: 8,
+  });
   await expect(sheet).toHaveAttribute('data-sheet-snap', 'expanded');
-  await dragExploreSheet(page, 36, { steps: 2 });
+  await dragExploreSheet(page, selectedSnapDistance, {
+    delayMs: 110,
+    steps: 8,
+  });
   await expect(sheet).toHaveAttribute('data-sheet-snap', 'medium');
 
   await page.getByRole('button', { name: 'Collapse event details' }).click();

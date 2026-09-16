@@ -184,15 +184,21 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
                 data: {
                   ...current.data,
                   ...collections,
-                  incoming: mergeById(
-                    collections.incoming,
-                    current.data.incoming,
-                    (invitation) => invitation.invitationId,
+                  incoming: withoutCompletedMatches(
+                    mergeById(
+                      collections.incoming,
+                      current.data.incoming,
+                      (invitation) => invitation.invitationId,
+                    ),
+                    [...current.data.history, ...collections.history],
                   ),
-                  outgoing: mergeById(
-                    collections.outgoing,
-                    current.data.outgoing,
-                    (invitation) => invitation.invitationId,
+                  outgoing: withoutCompletedMatches(
+                    mergeById(
+                      collections.outgoing,
+                      current.data.outgoing,
+                      (invitation) => invitation.invitationId,
+                    ),
+                    [...current.data.history, ...collections.history],
                   ),
                 },
                 status: 'ready',
@@ -770,7 +776,7 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
             acceptChoices={acceptChoices}
             decks={data.decks}
             direction="incoming"
-            invitations={data.incoming}
+            invitations={withoutCompletedMatches(data.incoming, data.history)}
             hasMore={data.incomingNextCursor !== null}
             loadingMore={loadingMore === 'incoming'}
             onAccept={(invitation) => void acceptInvitation(invitation)}
@@ -791,7 +797,7 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
             acceptChoices={acceptChoices}
             decks={data.decks}
             direction="outgoing"
-            invitations={data.outgoing}
+            invitations={withoutCompletedMatches(data.outgoing, data.history)}
             hasMore={data.outgoingNextCursor !== null}
             loadingMore={loadingMore === 'outgoing'}
             onAccept={() => undefined}
@@ -1430,6 +1436,18 @@ function isChoiceComplete(
   choice: DeckChoice | undefined,
 ): choice is DeckChoice {
   return Boolean(choice?.deckId && choice.initialCreatureId);
+}
+
+// Invitations remain accepted after completion; use authoritative match history.
+function withoutCompletedMatches(
+  invitations: PvpInvitation[],
+  history: PvpHistorySummary[],
+) {
+  const completedMatchIds = new Set(history.map((match) => match.matchId));
+  return invitations.filter(
+    (invitation) =>
+      !invitation.matchId || !completedMatchIds.has(invitation.matchId),
+  );
 }
 
 function isPending(invitation: PvpInvitation) {

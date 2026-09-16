@@ -144,22 +144,24 @@ export function ProtectedRoute({
               ? 'The API rejected the restored sign-in. Sign out and sign in again before retrying.'
               : currentPlayer.status === 'error' &&
                   currentPlayer.failure === 'identity_conflict'
-                ? 'This sign-in resolves to a Player Name that is already linked to another Wits World identity. Sign out, then sign in through the Auth0 domain configured for this environment.'
+                ? 'This Player Name is already linked to another account. Sign out and use the same sign-in method you originally used. If this keeps happening, contact the Wits World team to check your account link.'
                 : 'We could not load your player account. Check your connection and try again.'}
         </p>
-        <button className="button" onClick={reload} type="button">
-          Check session again
-        </button>
-        {currentPlayer.status === 'error' &&
-        currentPlayer.failure === 'identity_conflict' ? (
-          <button
-            className="button button--quiet"
-            onClick={signOut}
-            type="button"
-          >
-            Sign out
+        <div className="state-message__actions">
+          <button className="button" onClick={reload} type="button">
+            Check session again
           </button>
-        ) : null}
+          {currentPlayer.status === 'error' &&
+          currentPlayer.failure === 'identity_conflict' ? (
+            <button
+              className="button button--quiet"
+              onClick={signOut}
+              type="button"
+            >
+              Sign out
+            </button>
+          ) : null}
+        </div>
       </section>
     );
   }

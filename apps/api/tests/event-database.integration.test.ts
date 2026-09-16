@@ -708,9 +708,8 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
           10,
         ),
       ).toEqual({
-        status: 'retry',
-        reachable: null,
-        reason: 'location_accuracy',
+        status: 'reachable',
+        reachable: true,
       });
 
       await expect(

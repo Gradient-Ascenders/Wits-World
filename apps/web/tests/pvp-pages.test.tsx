@@ -211,7 +211,11 @@ describe('asynchronous player battle lobby', () => {
     ];
     const responses = hubResponses({
       active: [activePvpSummary()],
-      history: [pvpHistorySummary()],
+      history: [
+        pvpHistorySummary(
+          pvpMatch({ matchId: uuid(2599), status: 'completed' }),
+        ),
+      ],
       incoming,
       outgoing,
     });
@@ -292,6 +296,52 @@ describe('asynchronous player battle lobby', () => {
     ).toBeVisible();
     expect(screen.getByText('Won')).toBeVisible();
     expect(screen.queryByRole('heading', { name: 'Your matches' })).toBeNull();
+  });
+
+  it('removes accepted invitations when a refresh reports the match in history', async () => {
+    const user = userEvent.setup();
+    const accepted = pvpInvitation({
+      status: 'accepted',
+      matchId: PVP_MATCH_ID,
+      respondedAt: '2026-09-05T08:30:00.000Z',
+    });
+    const responses = [
+      ...hubResponses({
+        incoming: [accepted],
+        outgoing: [{ ...accepted, direction: 'outgoing' }],
+        active: [activePvpSummary()],
+      }),
+      ...hubResponses({
+        history: [
+          pvpHistorySummary(
+            pvpMatch({
+              status: 'completed',
+              completionReason: 'turn_forfeit',
+              outcome: 'loss',
+            }),
+          ),
+        ],
+      }).slice(0, 4),
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(() => Promise.resolve(responses.shift()!)),
+    );
+
+    renderRoute('/matches/pvp', <PvpHubPage apiBaseUrl={apiBaseUrl} />);
+    expect(
+      await screen.findAllByRole('link', { name: 'Open match' }),
+    ).toHaveLength(2);
+
+    act(() => document.dispatchEvent(new Event('visibilitychange')));
+    await waitFor(() =>
+      expect(screen.queryByRole('link', { name: 'Open match' })).toBeNull(),
+    );
+    expect(screen.getByText('No received challenges.')).toBeVisible();
+    expect(screen.getByText('No sent challenges.')).toBeVisible();
+
+    await user.click(screen.getByRole('tab', { name: 'History 1' }));
+    expect(screen.getByText('Your turn deadline expired')).toBeVisible();
   });
 
   it('keeps history compact while naming each player-facing completion reason', async () => {

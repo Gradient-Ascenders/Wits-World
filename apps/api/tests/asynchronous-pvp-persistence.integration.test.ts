@@ -1590,6 +1590,14 @@ describe.skipIf(!runIntegrationTests)(
           },
         ],
       });
+      for (const [playerId, direction] of [
+        [overdueMatch.challengerPlayerId, 'outgoing'],
+        [overdueMatch.recipientPlayerId, 'incoming'],
+      ] as const) {
+        await expect(
+          service.listInvitations({ playerId, direction, limit: 1 }),
+        ).resolves.toEqual({ items: [], nextCursor: null });
+      }
       const unrelatedPlayerId = await insertPlayer(pool, 'history_unrelated');
       await expect(
         service.listHistory({ playerId: unrelatedPlayerId, limit: 10 }),
