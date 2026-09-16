@@ -203,7 +203,11 @@ test('completes the canonical 21-step Basic journey against the real API and tes
       status: 'completed',
       scoreCorrect: 5,
     });
-    await expect(page.getByText('5 out of 5 correct')).toBeVisible();
+    const score = page.locator('.challenge-result__score');
+    await expect(score.getByText('5', { exact: true })).toBeVisible();
+    await expect(
+      score.getByText('out of 5 correct', { exact: true }),
+    ).toBeVisible();
   });
 
   await test.step('09 display the persisted completed-answer review', async () => {

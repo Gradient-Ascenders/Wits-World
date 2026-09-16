@@ -450,6 +450,11 @@ test('ordering authoring and player reordering work at desktop and mobile widths
   await expect(
     page.getByRole('heading', { name: 'Your challenge result' }),
   ).toBeFocused();
+  const resultScore = page.locator('.challenge-result__score');
+  await expect(resultScore.getByText('3', { exact: true })).toBeVisible();
+  await expect(
+    resultScore.getByText('out of 5 correct', { exact: true }),
+  ).toBeVisible();
   const firstAnswerReview = page.locator('.challenge-review__heading').first();
   await firstAnswerReview.focus();
   await page.keyboard.press('Enter');
