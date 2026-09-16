@@ -1,13 +1,19 @@
 import type { CompletedChallengeAttempt } from '../../api/challenges';
 import type { Ref } from 'react';
+import { ChallengeRewards } from './ChallengeRewards';
 import { Link } from 'wouter';
 
 interface ChallengeResultProps {
   attempt: CompletedChallengeAttempt;
+  apiBaseUrl: string;
   headingRef?: Ref<HTMLHeadingElement>;
 }
 
-export function ChallengeResult({ attempt, headingRef }: ChallengeResultProps) {
+export function ChallengeResult({
+  attempt,
+  headingRef,
+  apiBaseUrl,
+}: ChallengeResultProps) {
   const { cards } = attempt.reward;
 
   return (
@@ -15,57 +21,54 @@ export function ChallengeResult({ attempt, headingRef }: ChallengeResultProps) {
       aria-labelledby="challenge-result-title"
       className="challenge-result"
     >
-      <p className="eyebrow">
-        {attempt.completionReason === 'timeout'
-          ? 'Time ended'
-          : 'Challenge complete'}
-      </p>
-      <h1 id="challenge-result-title" ref={headingRef} tabIndex={-1}>
-        Your challenge result
-      </h1>
-      <p className="challenge-result__score">
-        <strong>{attempt.scoreCorrect}</strong> out of {attempt.totalQuestions}{' '}
-        correct
-      </p>
-      <p>
-        {attempt.completionReason === 'timeout'
-          ? 'Time ran out, so unanswered questions were recorded as incomplete.'
-          : 'All five answers were saved by Wits World.'}
-      </p>
-
-      <section
-        aria-labelledby="challenge-reward-title"
-        className="challenge-result__rewards"
+      <header className="challenge-result__hero">
+        <div>
+          <p className="eyebrow">
+            {attempt.completionReason === 'timeout'
+              ? 'Time ended'
+              : 'Challenge complete'}
+          </p>
+          <h1 id="challenge-result-title" ref={headingRef} tabIndex={-1}>
+            Your challenge result
+          </h1>
+          <p className="challenge-result__summary">
+            {attempt.completionReason === 'timeout'
+              ? 'Time ran out. Your saved answers count towards this result.'
+              : 'Your answers are saved. See what you earned below.'}
+          </p>
+        </div>
+        <p className="challenge-result__score">
+          <strong>{attempt.scoreCorrect}</strong>
+          <span>out of {attempt.totalQuestions} correct</span>
+        </p>
+      </header>
+      <ChallengeRewards cards={cards} apiBaseUrl={apiBaseUrl} />
+      <nav
+        className="challenge-result__actions"
+        aria-label="Continue after challenge"
       >
-        <p className="eyebrow">Saved reward</p>
-        <h2 id="challenge-reward-title">Your rewards are recorded</h2>
-
-        {cards.length === 0 ? (
-          <p>No new cards were awarded for this result.</p>
-        ) : (
-          <ul aria-label="Earned cards" className="challenge-result__cards">
-            {cards.map((card) => (
-              <li
-                className={`challenge-card challenge-card--${card.rarity}`}
-                key={card.ownedCardId}
-              >
-                <p className="eyebrow">{card.rarity}</p>
-                <h3>{card.name}</h3>
-                <p>
-                  {card.category} · {card.affinity ?? 'typeless'}
-                </p>
-              </li>
-            ))}
-          </ul>
+        {cards.length > 0 && (
+          <Link className="button" href="/collection">
+            View collection
+          </Link>
         )}
-      </section>
+        <Link
+          className={`button ${cards.length > 0 ? 'button--quiet' : ''}`}
+          href="/explore"
+        >
+          Return to explore
+        </Link>
+      </nav>
 
       <section
         aria-labelledby="challenge-review-title"
         className="challenge-result__review"
       >
-        <p className="eyebrow">Completed challenge</p>
+        <p className="eyebrow">Answer breakdown</p>
         <h2 id="challenge-review-title">Review your answers</h2>
+        <p className="challenge-result__review-hint">
+          Open a question to see your answer and the correct response.
+        </p>
         <ol aria-label="Answer review" className="challenge-review">
           {attempt.format === 'ordering'
             ? attempt.review.map((question) => {
@@ -87,35 +90,41 @@ export function ChallengeResult({ attempt, headingRef }: ChallengeResultProps) {
                     }`}
                     key={question.attemptQuestionId}
                   >
-                    <div className="challenge-review__heading">
-                      <h3>Question {question.position}</h3>
-                      <p className="challenge-review__status">{answerState}</p>
-                    </div>
-                    <p className="challenge-review__prompt">
-                      {question.prompt}
-                    </p>
-                    <dl className="challenge-review__answers">
-                      <div>
-                        <dt>Your order</dt>
-                        <dd>
-                          {question.selectedItems === null ? (
-                            'Not answered'
-                          ) : (
-                            <ReviewOrder items={question.selectedItems} />
-                          )}
-                        </dd>
+                    <details>
+                      <summary className="challenge-review__heading">
+                        <h3>Question {question.position}</h3>
+                        <p className="challenge-review__status">
+                          {answerState}
+                        </p>
+                      </summary>
+                      <div className="challenge-review__body">
+                        <p className="challenge-review__prompt">
+                          {question.prompt}
+                        </p>
+                        <dl className="challenge-review__answers">
+                          <div>
+                            <dt>Your order</dt>
+                            <dd>
+                              {question.selectedItems === null ? (
+                                'Not answered'
+                              ) : (
+                                <ReviewOrder items={question.selectedItems} />
+                              )}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>Correct order</dt>
+                            <dd>
+                              <ReviewOrder items={question.correctItems} />
+                            </dd>
+                          </div>
+                        </dl>
+                        <div className="challenge-review__explanation">
+                          <h4>Explanation</h4>
+                          <p>{question.explanation}</p>
+                        </div>
                       </div>
-                      <div>
-                        <dt>Correct order</dt>
-                        <dd>
-                          <ReviewOrder items={question.correctItems} />
-                        </dd>
-                      </div>
-                    </dl>
-                    <div className="challenge-review__explanation">
-                      <h4>Explanation</h4>
-                      <p>{question.explanation}</p>
-                    </div>
+                    </details>
                   </li>
                 );
               })
@@ -138,34 +147,36 @@ export function ChallengeResult({ attempt, headingRef }: ChallengeResultProps) {
                     }`}
                     key={question.attemptQuestionId}
                   >
-                    <div className="challenge-review__heading">
-                      <h3>Question {question.position}</h3>
-                      <p className="challenge-review__status">{answerState}</p>
-                    </div>
-                    <p className="challenge-review__prompt">
-                      {question.prompt}
-                    </p>
-                    <dl className="challenge-review__answers">
-                      <div>
-                        <dt>Your answer</dt>
-                        <dd>
-                          {question.selectedChoice?.text ?? 'Not answered'}
-                        </dd>
+                    <details>
+                      <summary className="challenge-review__heading">
+                        <h3>Question {question.position}</h3>
+                        <p className="challenge-review__status">
+                          {answerState}
+                        </p>
+                      </summary>
+                      <div className="challenge-review__body">
+                        <p className="challenge-review__prompt">
+                          {question.prompt}
+                        </p>
+                        <dl className="challenge-review__answers">
+                          <div>
+                            <dt>Your answer</dt>
+                            <dd>
+                              {question.selectedChoice?.text ?? 'Not answered'}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>Correct answer</dt>
+                            <dd>{question.correctChoice.text}</dd>
+                          </div>
+                        </dl>
                       </div>
-                      <div>
-                        <dt>Correct answer</dt>
-                        <dd>{question.correctChoice.text}</dd>
-                      </div>
-                    </dl>
+                    </details>
                   </li>
                 );
               })}
         </ol>
       </section>
-
-      <Link className="button button--link" href="/explore">
-        Return to explore
-      </Link>
     </section>
   );
 }

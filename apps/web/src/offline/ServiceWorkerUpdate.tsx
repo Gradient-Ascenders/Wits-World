@@ -1,61 +1,91 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { readOfflineState } from './store';
 
 export function ServiceWorkerUpdate() {
-  const [waiting, setWaiting] = useState<ServiceWorker | null>(null);
-  const [message, setMessage] = useState('');
   useEffect(() => {
     if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
-    let active = true;
-    void navigator.serviceWorker
-      .register('/sw.js', { updateViaCache: 'none' })
-      .then((registration) => {
-        const inspect = () => {
-          if (active && registration.waiting) setWaiting(registration.waiting);
-        };
-        inspect();
-        const observe = () => {
-          const installing = registration.installing;
-          installing?.addEventListener('statechange', () => {
-            inspect();
-            if (active && installing.state === 'redundant')
-              setMessage(
-                'Offline application download failed. Reconnect and reload to try again.',
-              );
-          });
-        };
-        observe();
-        registration.addEventListener('updatefound', observe);
+    return registerAutomaticUpdates();
+  }, []);
+  return null;
+}
+
+export function registerAutomaticUpdates(
+  reload = () => window.location.reload(),
+) {
+  let active = true;
+  let checking = false;
+  let activating = false;
+  let retry: ReturnType<typeof setTimeout> | undefined;
+  let registration: ServiceWorkerRegistration | undefined;
+  const observed = new Set<ServiceWorker>();
+
+  const controllerChanged = () => {
+    if (active && activating) {
+      activating = false;
+      reload();
+    }
+  };
+
+  const inspect = () => {
+    if (!active || checking || activating || !registration?.waiting) return;
+    if (retry) clearTimeout(retry);
+    checking = true;
+    void readOfflineState()
+      .then((state) => {
+        if (
+          !active ||
+          !registration?.waiting ||
+          state.attempts.some((attempt) => attempt.status === 'active')
+        )
+          return;
+        activating = true;
+        registration.waiting.postMessage('ACTIVATE_UPDATE');
       })
       .catch(() => {
-        if (active)
-          setMessage('Offline reopening is unavailable in this browser.');
+        // Retry quietly if storage cannot confirm that a reload is safe.
+        activating = false;
+      })
+      .finally(() => {
+        checking = false;
+        if (active && !activating && registration?.waiting)
+          retry = setTimeout(inspect, 10_000);
       });
-    return () => {
-      active = false;
-    };
-  }, []);
-  async function update() {
-    const state = await readOfflineState().catch(() => null);
-    if (state?.attempts.some((attempt) => attempt.status === 'active')) {
-      setMessage('Finish the active challenge before updating.');
-      return;
+  };
+
+  const observe = () => {
+    const installing = registration?.installing;
+    if (installing && !observed.has(installing)) {
+      observed.add(installing);
+      installing.addEventListener('statechange', inspect);
     }
-    navigator.serviceWorker.addEventListener(
+    inspect();
+  };
+
+  navigator.serviceWorker.addEventListener(
+    'controllerchange',
+    controllerChanged,
+  );
+  void navigator.serviceWorker
+    .register('/sw.js', { updateViaCache: 'none' })
+    .then((result) => {
+      if (!active) return;
+      registration = result;
+      registration.addEventListener('updatefound', observe);
+      observe();
+    })
+    .catch(() => {
+      // Online use remains available when service workers are unsupported or blocked.
+    });
+
+  return () => {
+    active = false;
+    if (retry) clearTimeout(retry);
+    registration?.removeEventListener('updatefound', observe);
+    for (const worker of observed)
+      worker.removeEventListener('statechange', inspect);
+    navigator.serviceWorker.removeEventListener(
       'controllerchange',
-      () => window.location.reload(),
-      { once: true },
+      controllerChanged,
     );
-    waiting?.postMessage('ACTIVATE_UPDATE');
-  }
-  return waiting || message ? (
-    <aside className="offline-status" role="status">
-      {message || 'An update is ready. Saved attempts will be retained.'}
-      {waiting && (
-        <button type="button" onClick={() => void update()}>
-          Update Wits World
-        </button>
-      )}
-    </aside>
-  ) : null;
+  };
 }

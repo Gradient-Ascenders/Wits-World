@@ -451,6 +451,9 @@ test('ordering authoring and player reordering work at desktop and mobile widths
   await expect(
     page.getByRole('heading', { name: 'Your challenge result' }),
   ).toBeFocused();
+  const firstAnswerReview = page.locator('.challenge-review__heading').first();
+  await firstAnswerReview.focus();
+  await page.keyboard.press('Enter');
   await expect(page.getByText('Ordering explanation 1.')).toBeVisible();
   await expect(page.getByText('Correct order').first()).toBeVisible();
   await expectNoHorizontalOverflow(page);

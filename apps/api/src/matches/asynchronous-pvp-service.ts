@@ -502,6 +502,12 @@ export function createAsyncPvpService(
                and ($1::text is not null
                     or invitation.challenger_player_id = $2::uuid
                     or invitation.recipient_player_id = $2::uuid)
+               and not exists (
+                 select 1
+                   from public.async_pvp_matches match
+                  where match.id = invitation.match_id
+                    and match.status = 'completed'
+               )
                and ($3::text is null or invitation.status = $3)
                and ($4::timestamptz is null
                     or (invitation.created_at, invitation.id) < ($4::timestamptz, $5::uuid))

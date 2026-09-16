@@ -43,27 +43,31 @@ describe('location claim timing', () => {
 });
 
 describe('accuracy-aware reachability', () => {
-  it('is reachable when the whole accuracy envelope fits inside the radius', () => {
-    expect(evaluateReachabilityWithAccuracy(20, 75, 10)).toEqual({
-      status: 'reachable',
-      reachable: true,
-    });
-  });
-
-  it('is unreachable when the whole accuracy envelope is outside the radius', () => {
-    expect(evaluateReachabilityWithAccuracy(110, 75, 10)).toEqual({
-      status: 'unreachable',
-      reachable: false,
-    });
-  });
-
-  it('returns retry when the accuracy envelope crosses the event boundary', () => {
-    expect(evaluateReachabilityWithAccuracy(70, 75, 10)).toEqual({
-      status: 'retry',
-      reachable: null,
-      reason: 'location_accuracy',
-    });
-  });
+  it.each([
+    [20, 75, 10, 'reachable'],
+    [70, 75, 150, 'reachable'],
+    [75, 75, 150, 'reachable'],
+    [75.01, 75, 150, 'unreachable'],
+    [110, 75, 10, 'unreachable'],
+    [0, 75, 150.01, 'retry'],
+    [110, 75, 150.01, 'retry'],
+    [25, 25, 50, 'reachable'],
+    [25, 25, 50.01, 'retry'],
+    [100, 100, 150, 'reachable'],
+    [100, 100, 150.01, 'retry'],
+    [75, 75, 0, 'reachable'],
+  ] as const)(
+    'classifies distance %s, radius %s, accuracy %s as %s',
+    (distance, radius, accuracy, status) => {
+      expect(
+        evaluateReachabilityWithAccuracy(distance, radius, accuracy),
+      ).toEqual(
+        status === 'retry'
+          ? { status, reachable: null, reason: 'location_accuracy' }
+          : { status, reachable: status === 'reachable' },
+      );
+    },
+  );
 
   it.each([-1, Number.NaN, Number.POSITIVE_INFINITY])(
     'rejects invalid reported accuracy %s',

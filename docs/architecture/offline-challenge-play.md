@@ -34,7 +34,9 @@ late. A partial attempt finishes as a timeout; missing answers receive no credit
 The server accepts delayed delivery for 12 hours after the derived completion
 time, including delivery after the event ends. It checks historical publication
 and campaign availability, signature, source versions, answer membership,
-location accuracy/radius and movement plausibility. Coordinates and times remain
+the [shared reported-point and accuracy policy](../database/event-eligibility.md#reported-accuracy-policy)
+and movement plausibility. Offline start must be inside the event radius, and
+both start and finish accuracy must be at most `min(150m, 2 × event radius)`. Coordinates and times remain
 device claims. A signature authenticates the downloaded content, not when a
 person read it, answered it or physically visited a location. Cached questions
 can be inspected in browser storage; this is an accepted limitation of this
@@ -160,3 +162,5 @@ remaining requirements and field evidence are satisfied.
 This document was generated with assistance from Codex[GPT-6].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+This policy update was edited with assistance from Codex-CLI[GPT-6].

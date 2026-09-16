@@ -15,6 +15,11 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Route, Router } from 'wouter';
 
+vi.mock('../src/api/cards', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/api/cards')>()),
+  listOwnedCards: vi.fn().mockResolvedValue([]),
+}));
+
 import ChallengePage from '../src/pages/ChallengePage';
 
 const apiBaseUrl = 'https://api.example.test/api/v1';
@@ -352,6 +357,7 @@ describe('timed player challenge', () => {
     expect(within(questions[0]!).getByText('Correct')).toBeVisible();
     expect(within(questions[0]!).getAllByText('Choice 1.2')).toHaveLength(2);
     expect(within(questions[3]!).getByText('Incorrect')).toBeVisible();
+    fireEvent.click(questions[3]!.querySelector('summary')!);
     expect(within(questions[3]!).getByText('Choice 4.1')).toBeVisible();
     expect(within(questions[3]!).getByText('Choice 4.2')).toBeVisible();
   });
@@ -368,6 +374,8 @@ describe('timed player challenge', () => {
     const review = screen.getByRole('list', { name: 'Answer review' });
     const firstQuestion = review.children[0] as HTMLElement;
     expect(within(firstQuestion).getByText('Correct')).toBeVisible();
+    expect(within(firstQuestion).getByText('Your order')).not.toBeVisible();
+    fireEvent.click(firstQuestion.querySelector('summary')!);
     expect(within(firstQuestion).getByText('Your order')).toBeVisible();
     expect(within(firstQuestion).getByText('Correct order')).toBeVisible();
     expect(
@@ -390,6 +398,7 @@ describe('timed player challenge', () => {
     const review = screen.getByRole('list', { name: 'Answer review' });
     const directQuestions = Array.from(review.children);
     const unanswered = directQuestions[3] as HTMLElement;
+    fireEvent.click(unanswered.querySelector('summary')!);
     expect(within(unanswered).getAllByText('Not answered')).toHaveLength(2);
     expect(within(unanswered).getByText('Item 4.1')).toBeVisible();
     expect(
@@ -447,6 +456,7 @@ describe('timed player challenge', () => {
     expect(
       within(unansweredQuestion).getAllByText('Not answered'),
     ).toHaveLength(2);
+    fireEvent.click(unansweredQuestion.querySelector('summary')!);
     expect(within(unansweredQuestion).getByText('Choice 4.2')).toBeVisible();
     expect(fetchMock).toHaveBeenLastCalledWith(
       `${apiBaseUrl}/challenge-attempts/${attemptId}`,
@@ -575,7 +585,7 @@ describe('timed player challenge', () => {
     });
 
     expect(
-      screen.getByText('All five answers were saved by Wits World.'),
+      screen.getByText('Your answers are saved. See what you earned below.'),
     ).toBeVisible();
     expect(screen.queryByText(/Time ran out/)).not.toBeInTheDocument();
   });

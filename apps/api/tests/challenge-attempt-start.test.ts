@@ -23,6 +23,34 @@ const acceptingMovementEvidenceService = {
 };
 
 describe('challenge attempt start service', () => {
+  it('starts at the event boundary with the maximum tolerated accuracy', async () => {
+    const fixture = createDatabaseFixture({ distanceMetres: 75 });
+    const service = createChallengeAttemptStartService(fixture.database, {
+      clock: () => startedAt,
+      movementEvidenceService: acceptingMovementEvidenceService,
+      randomIndex: () => 0,
+    });
+    await service.startOrResume({ ...validInput(), accuracyMetres: 150 });
+    expect(executedSql(fixture.query)).toContain(
+      'insert into public.challenge_attempts',
+    );
+  });
+
+  it('requires retry above the accuracy bound before loading challenge content', async () => {
+    const fixture = createDatabaseFixture();
+    const service = createChallengeAttemptStartService(fixture.database, {
+      clock: () => startedAt,
+      movementEvidenceService: acceptingMovementEvidenceService,
+      randomIndex: () => 0,
+    });
+    await expect(
+      service.startOrResume({ ...validInput(), accuracyMetres: 150.01 }),
+    ).rejects.toMatchObject({ reason: 'location_accuracy' });
+    expect(executedSql(fixture.query)).not.toContain(
+      'insert into public.challenge_attempts',
+    );
+  });
+
   it('resumes an existing attempt without re-evaluating location or rerolling content', async () => {
     const fixture = createDatabaseFixture({
       existingAttempt: true,

@@ -185,7 +185,7 @@ export function CardArtwork({
 }: {
   badge?: string;
   nameplate?: ReactNode;
-  card: CardPresentation;
+  card: Pick<CardPresentation, 'name' | 'rarity' | 'imageUrl' | 'imageAlt'>;
   showRarity?: boolean;
 }) {
   const [imageFailed, setImageFailed] = useState(false);
