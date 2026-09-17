@@ -19,7 +19,10 @@ import { runMigrations } from '../src/database/migrations.js';
 import { getMigrationsDirectory } from '../src/database/paths.js';
 import { runSeeds } from '../src/database/seeds.js';
 import { createAccountDeletionLifecycle } from '../src/players/account-deletion-lifecycle.js';
-import { createLivePvpService } from '../src/matches/live-pvp-service.js';
+import {
+  createLivePvpService,
+  type LivePvpDatabase,
+} from '../src/matches/live-pvp-service.js';
 
 const MIGRATION_NAME = '0044_create_live_pvp_persistence.sql';
 const PRE_MIGRATION_PLAYER_ID = '25100000-0000-4000-8000-000000000001';
@@ -552,6 +555,74 @@ describe.skipIf(!runIntegrationTests)(
       expect(resignation.replayed).toBe(false);
     }, 30_000);
 
+    it('pins spectator history to the already-loaded authoritative match version', async () => {
+      const fixture = await createLiveMatch(pool, cardDefinitions);
+      const spectator = await insertPlayer(
+        pool,
+        'projection_version_spectator',
+      );
+      const participantTicket = await insertConnectionTicket(
+        pool,
+        fixture.matchId,
+        fixture.playerOne.id,
+        'participant',
+      );
+      const [participantAccess] = await redeemTicket(pool, participantTicket);
+      const participantGeneration = Number(
+        participantAccess!.participant_generation,
+      );
+      let advancedBetweenReads = false;
+
+      const racingDatabase = {
+        async connect() {
+          const client = await pool.connect();
+          return {
+            async query(statement: string, values?: unknown[]) {
+              if (
+                !advancedBetweenReads &&
+                statement.includes('from public.live_pvp_match_actions') &&
+                statement.includes('order by sequence')
+              ) {
+                advancedBetweenReads = true;
+                await commitParticipantTransition(pool, {
+                  matchId: fixture.matchId,
+                  actorPlayerId: fixture.playerOne.id,
+                  expectedVersion: 0,
+                  connectionGeneration: participantGeneration,
+                });
+              }
+              return client.query(statement, values as never[] | undefined);
+            },
+            release() {
+              client.release();
+            },
+          };
+        },
+        query(statement: string, values?: unknown[]) {
+          return pool.query(statement, values as never[] | undefined);
+        },
+      } as unknown as LivePvpDatabase;
+
+      const service = createLivePvpService(racingDatabase);
+      const projection = await service.getProjection({
+        matchId: fixture.matchId,
+        playerId: spectator.id,
+      });
+
+      expect(advancedBetweenReads).toBe(true);
+      expect(projection).toMatchObject({
+        role: 'spectator',
+        version: 0,
+        history: [],
+      });
+
+      const persisted = await pool.query<{ version: number }>(
+        `select version from public.live_pvp_matches where id = $1::uuid`,
+        [fixture.matchId],
+      );
+      expect(persisted.rows[0]?.version).toBe(1);
+    }, 30_000);
+
     it('rejects nonparticipant mutation storage and rolls the attempted transition back', async () => {
       const fixture = await createLiveMatch(pool, cardDefinitions);
       const nonParticipant = await insertPlayer(pool, 'mutation_viewer');
@@ -903,6 +974,95 @@ describe.skipIf(!runIntegrationTests)(
       ]);
     }, 30_000);
 
+    it('revokes open spectator authorization on account deletion while preserving the final completed projection path', async () => {
+      const active = await createLiveMatch(pool, cardDefinitions);
+      const completed = await createLiveMatch(pool, cardDefinitions);
+      const spectator = await insertPlayer(pool, 'deletion_spectator');
+      const service = createLivePvpService(pool);
+
+      const activeTicket = await service.mintConnectionTicket({
+        matchId: active.matchId,
+        playerId: spectator.id,
+        requestedRole: 'spectator',
+      });
+      const activeConnection = await service.redeemConnectionTicket(
+        activeTicket.ticket,
+      );
+      await expect(
+        service.getProjectionForConnection(activeConnection),
+      ).resolves.toMatchObject({ role: 'spectator', status: 'active' });
+
+      const completedTicket = await service.mintConnectionTicket({
+        matchId: completed.matchId,
+        playerId: spectator.id,
+        requestedRole: 'spectator',
+      });
+      const completedConnection = await service.redeemConnectionTicket(
+        completedTicket.ticket,
+      );
+      await completeMatchBySystemForfeit(
+        pool,
+        completed,
+        completed.playerOne.id,
+      );
+      await expect(
+        service.getProjectionForConnection(completedConnection),
+      ).resolves.toMatchObject({ role: 'spectator', status: 'completed' });
+
+      const listener = await pool.connect();
+      try {
+        await listener.query('listen live_pvp_presence_changed');
+        const presenceNotification = new Promise<pg.Notification>(
+          (resolve, reject) => {
+            const timeout = setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    'Timed out waiting for live PvP presence notification.',
+                  ),
+                ),
+              5_000,
+            );
+            const onNotification = (notification: pg.Notification) => {
+              if (notification.channel !== 'live_pvp_presence_changed') return;
+              const payload = notification.payload
+                ? (JSON.parse(notification.payload) as { matchId?: string })
+                : {};
+              if (payload.matchId !== active.matchId) return;
+              clearTimeout(timeout);
+              listener.off('notification', onNotification);
+              resolve(notification);
+            };
+            listener.on('notification', onNotification);
+          },
+        );
+
+        const lifecycle = createAccountDeletionLifecycle(pool, {
+          finalizeDependentGameplay: async (client, playerId, requestedAt) => {
+            await service.finalizeAccountDeletion(
+              client,
+              playerId,
+              requestedAt,
+            );
+          },
+        });
+        await lifecycle.request({
+          issuer: spectator.issuer,
+          subject: spectator.subject,
+        });
+
+        await expect(presenceNotification).resolves.toMatchObject({
+          channel: 'live_pvp_presence_changed',
+        });
+        await expect(
+          service.getProjectionForConnection(activeConnection),
+        ).rejects.toMatchObject({ code: 'LIVE_AUTHENTICATION_REQUIRED' });
+      } finally {
+        await listener.query('unlisten live_pvp_presence_changed');
+        listener.release();
+      }
+    }, 30_000);
+
     it('purges closed access and expired ticket digests only after the 24-hour retention boundary', async () => {
       await pool.query(`delete from private.live_pvp_connection_access`);
       await pool.query(`delete from private.live_pvp_connection_tickets`);
@@ -1186,7 +1346,7 @@ async function createLiveMatch(
        ) values ($1::uuid, 0, $2::jsonb, $3::timestamptz)`,
       [
         matchId,
-        JSON.stringify({ phase: 'initial_selection', selections: {} }),
+        JSON.stringify(createProjectionReadyBattleState()),
         decisionStartedAt,
       ],
     );
@@ -1247,6 +1407,46 @@ async function insertDeckSnapshot(
       ],
     );
   }
+}
+
+function createProjectionReadyBattleState() {
+  const participantState = () => ({
+    creatures: [0, 1, 2].map(() => ({
+      card: {
+        id: randomUUID(),
+        affinity: 'wit',
+        maxHp: 10,
+        maxPower: 10,
+        moves: [],
+      },
+      currentHp: 10,
+      remainingPower: 10,
+      defeated: false,
+      modifiers: [],
+    })),
+    powerCards: [0, 1].map(() => ({
+      id: randomUUID(),
+      affinity: null,
+      effects: [],
+    })),
+    usedPowerCardIds: [],
+    activeCreatureId: null,
+  });
+
+  return {
+    phase: 'initial_selection',
+    affinityRulesVersion: 2,
+    turnNumber: 0,
+    currentSide: null,
+    replacementSide: null,
+    firstSide: null,
+    selections: { player: null, cpu: null },
+    participants: {
+      player: participantState(),
+      cpu: participantState(),
+    },
+    winner: null,
+  };
 }
 
 async function insertConnectionTicket(

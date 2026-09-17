@@ -274,6 +274,42 @@ describe('live PvP WebSocket gateway', () => {
     );
   });
 
+  it('closes a spectator when persisted access is revoked on another instance', async () => {
+    const service = createService();
+    service.redeemConnectionTicket.mockResolvedValue({
+      accessId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      matchId: MATCH_ID,
+      playerId: PLAYER_ID,
+      role: 'spectator',
+      participantGeneration: null,
+    });
+    service.getProjectionForConnection
+      .mockResolvedValueOnce(spectatorProjection)
+      .mockResolvedValueOnce(spectatorProjection)
+      .mockRejectedValueOnce(
+        new LivePvpError(
+          'LIVE_AUTHENTICATION_REQUIRED',
+          'The realtime connection is no longer authorized.',
+        ),
+      );
+
+    const { gateway, connect } = await registerGateway(service);
+    openGateways.push(gateway);
+    const socket = new FakeSocket();
+    connect(socket, ticketRequest());
+    await flushAsyncWork();
+
+    await gateway.broadcastPresence(MATCH_ID);
+
+    expect(messages(socket)).toContainEqual(
+      expect.objectContaining({
+        type: 'error',
+        code: 'LIVE_AUTHENTICATION_REQUIRED',
+      }),
+    );
+    expect(socket.closeCode).toBe(4401);
+  });
+
   it('closes a remote stale participant when persisted generation validation reports supersession', async () => {
     const service = createService();
     service.redeemConnectionTicket.mockResolvedValue({

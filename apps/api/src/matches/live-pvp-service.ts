@@ -258,6 +258,15 @@ interface RedeemedRow extends pg.QueryResultRow {
   participant_generation: string | number | null;
 }
 
+interface ConnectionAccessRow extends pg.QueryResultRow {
+  match_id: string;
+  player_id: string;
+  role: LiveConnectionRole;
+  participant_generation: string | number | null;
+  closed_at: Date | null;
+  close_reason: string | null;
+}
+
 interface PublicActionRow extends pg.QueryResultRow {
   public_result: unknown;
 }
@@ -378,13 +387,17 @@ export function createLivePvpService(
           return projectParticipant(
             context,
             participant,
-            await loadLatestPublicResult(client, input.matchId),
+            await loadLatestPublicResult(
+              client,
+              input.matchId,
+              context.match.version,
+            ),
           );
         }
         if (context.match.status !== 'active') throw matchNotFound();
         return projectSpectator(
           context,
-          await loadPublicHistory(client, input.matchId),
+          await loadPublicHistory(client, input.matchId, context.match.version),
           await loadPresence(client, input.matchId),
         );
       } finally {
@@ -395,12 +408,14 @@ export function createLivePvpService(
     async getProjectionForConnection(connection) {
       const client = await database.connect();
       try {
+        const access = await loadPersistedConnectionAccess(client, connection);
         const context = await loadMatchContext(
           client,
           connection.matchId,
           false,
         );
         if (!context) throw matchNotFound();
+        validateConnectionAccessLifecycle(access, context.match.status);
         if (connection.role === 'participant') {
           const participant = context.participants.find(
             (candidate) => candidate.player_id === connection.playerId,
@@ -411,20 +426,25 @@ export function createLivePvpService(
             Number(participant.connection_generation) !==
               connection.participantGeneration
           ) {
-            throw new LivePvpError(
-              'LIVE_CONNECTION_SUPERSEDED',
-              'A newer participant connection is authoritative for this match.',
-            );
+            throw connectionSuperseded();
           }
           return projectParticipant(
             context,
             participant,
-            await loadLatestPublicResult(client, connection.matchId),
+            await loadLatestPublicResult(
+              client,
+              connection.matchId,
+              context.match.version,
+            ),
           );
         }
         return projectSpectator(
           context,
-          await loadPublicHistory(client, connection.matchId),
+          await loadPublicHistory(
+            client,
+            connection.matchId,
+            context.match.version,
+          ),
           await loadPresence(client, connection.matchId),
         );
       } finally {
@@ -714,6 +734,14 @@ export function createLivePvpService(
     },
 
     async finalizeAccountDeletion(client, playerId) {
+      const connectionMatches = await client.query<{ match_id: string }>(
+        `select distinct match_id::text
+           from private.live_pvp_connection_access
+          where player_id = $1::uuid
+            and closed_at is null
+          order by match_id`,
+        [playerId],
+      );
       const matches = await client.query<{ id: string }>(
         `select match.id::text
            from public.live_pvp_matches match
@@ -788,6 +816,14 @@ export function createLivePvpService(
           completionReason: 'account_deletion_forfeit',
         });
       }
+
+      // Account deletion removes the deleting player's transient access rows
+      // later in this same transaction. Presence notifications are delivered
+      // only after commit, so every gateway instance revalidates any local
+      // sockets against the post-deletion database state before fan-out.
+      for (const { match_id: matchId } of connectionMatches.rows) {
+        await notifyCurrentMatchVersion(client, matchId);
+      }
     },
   };
 
@@ -827,10 +863,7 @@ async function mutateParticipant(
     );
     if (!actor) throw forbiddenAction();
     if (Number(actor.connection_generation) !== input.connectionGeneration) {
-      throw new LivePvpError(
-        'LIVE_CONNECTION_SUPERSEDED',
-        'A newer participant connection is authoritative for this match.',
-      );
+      throw connectionSuperseded();
     }
 
     const receipt = await loadReceipt(client, input, operation);
@@ -1268,6 +1301,62 @@ async function loadReceipt(
   return result.rows[0] ?? null;
 }
 
+async function loadPersistedConnectionAccess(
+  client: LivePvpDatabaseClient,
+  connection: RedeemedLivePvpConnection,
+): Promise<ConnectionAccessRow> {
+  const result = await client.query<ConnectionAccessRow>(
+    `select match_id::text,
+            player_id::text,
+            role,
+            participant_generation,
+            closed_at,
+            close_reason
+       from private.live_pvp_connection_access
+      where id = $1::uuid`,
+    [connection.accessId],
+  );
+  const access = result.rows[0];
+  if (
+    !access ||
+    access.match_id !== connection.matchId ||
+    access.player_id !== connection.playerId ||
+    access.role !== connection.role
+  ) {
+    throw connectionAuthorizationRequired();
+  }
+
+  const expectedGeneration = connection.participantGeneration;
+  const persistedGeneration =
+    access.participant_generation === null
+      ? null
+      : Number(access.participant_generation);
+  if (persistedGeneration !== expectedGeneration) {
+    throw connectionSuperseded();
+  }
+  if (access.closed_at !== null && access.close_reason === 'superseded') {
+    throw connectionSuperseded();
+  }
+  if (access.closed_at !== null && access.close_reason !== 'match_completed') {
+    throw connectionAuthorizationRequired();
+  }
+  return access;
+}
+
+function validateConnectionAccessLifecycle(
+  access: ConnectionAccessRow,
+  matchStatus: MatchRow['status'],
+): void {
+  if (access.closed_at === null) return;
+  if (
+    matchStatus === 'completed' &&
+    access.close_reason === 'match_completed'
+  ) {
+    return;
+  }
+  throw connectionAuthorizationRequired();
+}
+
 async function loadPresence(
   database: Pick<LivePvpDatabase, 'query'> | LivePvpDatabaseClient,
   matchId: string,
@@ -1318,14 +1407,16 @@ async function loadPresence(
 async function loadLatestPublicResult(
   client: LivePvpDatabaseClient,
   matchId: string,
+  throughVersion: number,
 ): Promise<unknown | null> {
   const result = await client.query<PublicActionRow>(
     `select public_result
        from public.live_pvp_match_actions
       where match_id = $1::uuid
+        and committed_version <= $2
       order by sequence desc
       limit 1`,
-    [matchId],
+    [matchId, throughVersion],
   );
   return result.rows[0]?.public_result ?? null;
 }
@@ -1333,13 +1424,15 @@ async function loadLatestPublicResult(
 async function loadPublicHistory(
   client: LivePvpDatabaseClient,
   matchId: string,
+  throughVersion: number,
 ): Promise<readonly unknown[]> {
   const result = await client.query<PublicActionRow>(
     `select public_result
        from public.live_pvp_match_actions
       where match_id = $1::uuid
+        and committed_version <= $2
       order by sequence`,
-    [matchId],
+    [matchId, throughVersion],
   );
   return result.rows.map((row) => row.public_result);
 }
@@ -1792,6 +1885,20 @@ function otherEngineSide(side: BattleSide): BattleSide {
 
 function titleCase(value: string): string {
   return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
+}
+
+function connectionAuthorizationRequired(): LivePvpError {
+  return new LivePvpError(
+    'LIVE_AUTHENTICATION_REQUIRED',
+    'The realtime connection is no longer authorized.',
+  );
+}
+
+function connectionSuperseded(): LivePvpError {
+  return new LivePvpError(
+    'LIVE_CONNECTION_SUPERSEDED',
+    'A newer participant connection is authoritative for this match.',
+  );
 }
 
 function matchNotFound(): LivePvpError {

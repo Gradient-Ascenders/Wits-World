@@ -345,8 +345,8 @@ export function createLivePvpGateway(
     } catch (error) {
       const liveError = normalizeLiveError(error);
       sendError(connection.socket, liveError, message.messageId);
-      if (liveError.code === 'LIVE_CONNECTION_SUPERSEDED') {
-        safeClose(connection.socket, 4409, 'connection superseded');
+      if (isConnectionAuthorizationError(liveError)) {
+        safeCloseForError(connection.socket, liveError, 'connection revoked');
       } else if (liveError.code === 'LIVE_VERSION_CONFLICT') {
         await sendSnapshot(connection);
       }
@@ -369,8 +369,8 @@ export function createLivePvpGateway(
     } catch (error) {
       const liveError = normalizeLiveError(error);
       sendError(connection.socket, liveError);
-      if (liveError.code === 'LIVE_CONNECTION_SUPERSEDED') {
-        safeClose(connection.socket, 4409, 'connection superseded');
+      if (isConnectionAuthorizationError(liveError)) {
+        safeCloseForError(connection.socket, liveError, 'connection revoked');
       }
     }
   }
@@ -453,9 +453,13 @@ export function createLivePvpGateway(
             }
           } catch (error) {
             const liveError = normalizeLiveError(error);
-            if (liveError.code === 'LIVE_CONNECTION_SUPERSEDED') {
+            if (isConnectionAuthorizationError(liveError)) {
               sendError(connection.socket, liveError);
-              safeClose(connection.socket, 4409, 'connection superseded');
+              safeCloseForError(
+                connection.socket,
+                liveError,
+                'connection revoked',
+              );
               return;
             }
             logger.warn(
@@ -495,9 +499,13 @@ export function createLivePvpGateway(
               });
             } catch (error) {
               const liveError = normalizeLiveError(error);
-              if (liveError.code === 'LIVE_CONNECTION_SUPERSEDED') {
+              if (isConnectionAuthorizationError(liveError)) {
                 sendError(connection.socket, liveError);
-                safeClose(connection.socket, 4409, 'connection superseded');
+                safeCloseForError(
+                  connection.socket,
+                  liveError,
+                  'connection revoked',
+                );
               }
               // Presence is advisory. Any other projection failure is repaired
               // by the next authoritative snapshot/transition or reconnect.
@@ -712,6 +720,13 @@ function safeTerminate(socket: WebSocket): void {
   } catch {
     // Nothing else can be done for a failed transport.
   }
+}
+
+function isConnectionAuthorizationError(error: LivePvpError): boolean {
+  return (
+    error.code === 'LIVE_CONNECTION_SUPERSEDED' ||
+    error.code === 'LIVE_AUTHENTICATION_REQUIRED'
+  );
 }
 
 function safeCloseForError(

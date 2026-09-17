@@ -110,6 +110,9 @@ spectator sockets receive the committed final projection and then close.
 The response is the recovery authority after refresh, reconnect, an observed
 version gap, or an ambiguous realtime response. Local storage, an old socket
 message, countdown state, and client-simulated actions are never authoritative.
+A projection is internally version-consistent: public action/history reads are
+bounded to the already-loaded authoritative match version so a concurrent
+transition cannot be mixed into an older state snapshot.
 
 ### Connection-ticket request
 
@@ -187,6 +190,14 @@ Transport-level WebSocket ping/pong detects dead connections. It is not a game
 action and cannot refresh a turn deadline. Implementations should send a ping
 at least every 20 seconds and treat a connection as unavailable after two
 unanswered intervals, while retaining persisted match authority.
+
+Persisted connection-access rows are revalidated before participant or
+spectator fan-out. Account deletion removes the deleting player's transient
+access rows in the same transaction and emits an advisory presence wake-up for
+any affected matches; because PostgreSQL notifications are delivered only after
+commit, every gateway instance then revalidates and closes revoked sockets. A
+`match_completed` access closure is the sole exception: it may be used once to
+load and deliver the committed final projection before the socket closes.
 
 Every text message is one UTF-8 JSON object with:
 
@@ -534,6 +545,8 @@ Later implementation issues must cover at least:
 - valid, expired, reused, wrong-player, wrong-match, and wrong-role tickets;
 - participant versus spectator projections and mutation permissions;
 - account deletion or suspension after ticket creation but before redemption;
+- account deletion after spectator redemption, including cross-instance
+  revocation of the already-open socket;
 - bearer tokens and tickets absent from URLs or logs beyond the explicitly
   redacted short-lived ticket query; and
 - participants prevented from downgrading themselves to spectator projection.
