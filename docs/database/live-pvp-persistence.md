@@ -82,11 +82,14 @@ expires exactly 60 seconds after creation and can be redeemed once.
 Ticket minting and redemption serialize against player and match lifecycle
 changes. Both paths lock the player row before the authoritative match row;
 redemption then locks the ticket and, for participants, the participant row.
-Production redemption samples PostgreSQL `clock_timestamp()` only after those
-locks are acquired, so time spent waiting for deletion, completion, another
-redemption, or a participant update counts against the 60-second ticket
-lifetime. An expired ticket therefore cannot become valid merely because its
-redemption request arrived before a lock wait.
+Minting samples PostgreSQL `clock_timestamp()` only after the player/match
+lifecycle locks are acquired and derives `created_at`, the exact 60-second
+`expires_at`, and the retention boundary from that post-lock timestamp.
+Production redemption likewise samples `clock_timestamp()` only after all of
+its required locks are acquired, so time spent waiting during redemption counts
+against the already-started ticket lifetime. A mint request therefore does not
+lose TTL while blocked on lifecycle serialization, while an already-minted
+ticket that expires during a redemption lock wait is rejected.
 
 Participant redemption increments its persisted `connection_generation` by
 one, closes an older open participant access as `superseded`, and records the
@@ -133,12 +136,12 @@ The live persistence layer stores no IP address, raw connection ticket, bearer
 token, Auth0 subject, email address, or precise location in its operational
 records.
 
-Migration `0044` uses a **provisional 24-hour transient-retention policy** for
+Migration `0044` uses a **confirmed 24-hour transient-retention policy** for
 expired ticket digests and closed/replaced connection-access rows. Issue `#252`
-does not prescribe this duration, so the issue `#251` reviewer must confirm or
-change it before merge. This is a persistence policy, not the 60-second protocol
-validity period. `purge_after` indexes support
-bounded cleanup and `private.purge_live_pvp_transient_access(...)` is retry-safe:
+does not prescribe this duration; it was confirmed during issue `#251` review.
+This is a persistence policy, not the 60-second protocol validity period.
+`purge_after` indexes support bounded cleanup and
+`private.purge_live_pvp_transient_access(...)` is retry-safe:
 it removes due closed access first and then removes a due ticket only when no
 access row still references it. Match state, snapshots, transition history,
 idempotency receipts, terminal results, and completion sources are not removed
@@ -176,9 +179,9 @@ treat the migration as immutable and correct defects with a later migration;
 do not edit or remove applied migration history.
 
 The migration adds no dependency, seed, environment variable, WebSocket
-setting, or point-award rule. The provisional 24-hour transient-retention value
-is recorded here for explicit issue `#251` review; after the migration is
-applied, any change requires a later migration rather than editing history.
+setting, or point-award rule. The confirmed 24-hour transient-retention value
+is recorded here as the issue `#251` policy; after the migration is applied,
+any change requires a later migration rather than editing history.
 
 ## Verification
 

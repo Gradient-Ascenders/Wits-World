@@ -137,10 +137,13 @@ before returning:
 ```
 
 The ticket is opaque, cryptographically random, bound to one match, local
-player, role, and protocol version, and expires 60 seconds after creation. Only
-a hash of the ticket is persisted. Redemption is atomic and single-use. A
-failed, expired, replayed, wrong-match, or wrong-role redemption cannot open a
-connection.
+player, role, and protocol version, and expires 60 seconds after creation. Ticket
+minting locks the local player row and then the authoritative match row before
+sampling PostgreSQL `clock_timestamp()`; `created_at` and the 60-second expiry
+are derived from that post-lock time, so waiting for lifecycle serialization
+does not consume the ticket TTL. Only a hash of the ticket is persisted.
+Redemption is atomic and single-use. A failed, expired, replayed, wrong-match,
+or wrong-role redemption cannot open a connection.
 
 The Auth0 bearer token is sent only to the HTTPS ticket endpoint. It is never
 placed in a WebSocket URL, query string, close reason, application message, or

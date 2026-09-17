@@ -333,11 +333,20 @@ describe.skipIf(!runIntegrationTests)(
         fixture.matchId,
         fixture.playerTwo.id,
         'participant',
-        new Date(Date.now() - 120_000),
       );
-      await expect(redeemTicket(pool, expiredTicket)).rejects.toThrow(
-        'connection ticket has expired',
+      const expiredTicketLifetime = await pool.query<{ expires_at: Date }>(
+        `select expires_at
+           from private.live_pvp_connection_tickets
+          where ticket_digest = $1::bytea`,
+        [expiredTicket],
       );
+      await expect(
+        redeemTicket(
+          pool,
+          expiredTicket,
+          new Date(expiredTicketLifetime.rows[0]!.expires_at.getTime() + 1),
+        ),
+      ).rejects.toThrow('connection ticket has expired');
 
       const nonParticipant = await insertPlayer(pool, 'ticket_viewer');
       await expect(
@@ -352,19 +361,19 @@ describe.skipIf(!runIntegrationTests)(
 
     it('samples ticket expiry only after player and match lifecycle locks are acquired', async () => {
       const fixture = await createLiveMatch(pool, cardDefinitions);
-      const databaseClock = await pool.query<{ database_now: Date }>(
-        `select clock_timestamp() as database_now`,
-      );
-      const createdAt = new Date(
-        databaseClock.rows[0]!.database_now.getTime() - 50_000,
-      );
       const ticket = await insertConnectionTicket(
         pool,
         fixture.matchId,
         fixture.playerTwo.id,
         'participant',
-        createdAt,
       );
+      const lifetime = await pool.query<{ expires_at: Date }>(
+        `select expires_at
+           from private.live_pvp_connection_tickets
+          where ticket_digest = $1::bytea`,
+        [ticket],
+      );
+      const expiredAt = new Date(lifetime.rows[0]!.expires_at.getTime() + 1);
       const blocker = await pool.connect();
 
       try {
@@ -377,12 +386,17 @@ describe.skipIf(!runIntegrationTests)(
           [fixture.matchId],
         );
 
-        const redemption = redeemTicket(pool, ticket).then(
+        let settled = false;
+        const redemption = redeemTicket(pool, ticket, expiredAt).then(
           (rows) => ({ ok: true as const, rows }),
           (error: unknown) => ({ ok: false as const, error }),
         );
+        void redemption.finally(() => {
+          settled = true;
+        });
 
-        await new Promise((resolve) => setTimeout(resolve, 11_000));
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        expect(settled).toBe(false);
         await blocker.query('commit');
 
         const outcome = await redemption;
@@ -424,6 +438,69 @@ describe.skipIf(!runIntegrationTests)(
           redeemed_at: null,
         },
       ]);
+    }, 30_000);
+
+    it('starts ticket lifetime only after mint lifecycle locks are acquired', async () => {
+      const fixture = await createLiveMatch(pool, cardDefinitions);
+      const blocker = await pool.connect();
+
+      try {
+        await blocker.query('begin');
+        await blocker.query(
+          `select id
+             from public.live_pvp_matches
+            where id = $1::uuid
+            for update`,
+          [fixture.matchId],
+        );
+
+        let settled = false;
+        const mint = insertConnectionTicket(
+          pool,
+          fixture.matchId,
+          fixture.playerTwo.id,
+          'participant',
+        );
+        void mint.finally(() => {
+          settled = true;
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        expect(settled).toBe(false);
+
+        const releaseClock = await blocker.query<{ released_after: Date }>(
+          `select clock_timestamp() as released_after`,
+        );
+        await blocker.query('commit');
+
+        const ticket = await mint;
+        const lifetime = await pool.query<{
+          created_at: Date;
+          expires_at: Date;
+          purge_after: Date;
+        }>(
+          `select created_at, expires_at, purge_after
+             from private.live_pvp_connection_tickets
+            where ticket_digest = $1::bytea`,
+          [ticket],
+        );
+        const row = lifetime.rows[0]!;
+
+        expect(row.created_at.getTime()).toBeGreaterThanOrEqual(
+          releaseClock.rows[0]!.released_after.getTime(),
+        );
+        expect(row.expires_at.getTime() - row.created_at.getTime()).toBe(
+          60_000,
+        );
+        expect(row.purge_after.getTime() - row.expires_at.getTime()).toBe(
+          24 * 60 * 60 * 1000,
+        );
+      } catch (error) {
+        await blocker.query('rollback');
+        throw error;
+      } finally {
+        blocker.release();
+      }
     }, 30_000);
 
     it('rejects nonparticipant mutation storage and rolls the attempted transition back', async () => {
@@ -778,54 +855,66 @@ describe.skipIf(!runIntegrationTests)(
     }, 30_000);
 
     it('purges closed access and expired ticket digests only after the 24-hour retention boundary', async () => {
+      await pool.query(`delete from private.live_pvp_connection_access`);
+      await pool.query(`delete from private.live_pvp_connection_tickets`);
+
       const fixture = await createLiveMatch(pool, cardDefinitions);
       const spectator = await insertPlayer(pool, 'retention_spectator');
-      const createdAt = new Date('2026-09-17T10:00:00.000Z');
       const ticket = await insertConnectionTicket(
         pool,
         fixture.matchId,
         spectator.id,
         'spectator',
-        createdAt,
       );
-      const redeemed = await redeemTicket(
-        pool,
-        ticket,
-        new Date('2026-09-17T10:00:30.000Z'),
-      );
+      const redeemed = await redeemTicket(pool, ticket);
       const accessId = redeemed[0]!.access_id;
 
       await pool.query(
         `select private.close_live_pvp_connection_access(
          $1::uuid,
-         'transport_closed',
-         $2::timestamptz
+         'transport_closed'
        )`,
-        [accessId, new Date('2026-09-17T10:00:40.000Z')],
+        [accessId],
+      );
+
+      const retention = await pool.query<{
+        access_purge_after: Date;
+        ticket_purge_after: Date;
+      }>(
+        `select access.purge_after as access_purge_after,
+                ticket.purge_after as ticket_purge_after
+           from private.live_pvp_connection_access access
+           join private.live_pvp_connection_tickets ticket
+             on ticket.id = access.ticket_id
+          where access.id = $1::uuid`,
+        [accessId],
+      );
+      const accessPurgeAfter = retention.rows[0]!.access_purge_after;
+      const ticketPurgeAfter = retention.rows[0]!.ticket_purge_after;
+      expect(accessPurgeAfter.getTime()).toBeLessThan(
+        ticketPurgeAfter.getTime(),
       );
 
       const before = await purgeTransientAccess(
         pool,
-        new Date('2026-09-18T10:00:39.999Z'),
+        new Date(accessPurgeAfter.getTime() - 1),
       );
       expect(before).toEqual({ accessRowsDeleted: 0, ticketRowsDeleted: 0 });
 
-      const accessDue = await purgeTransientAccess(
-        pool,
-        new Date('2026-09-18T10:00:40.000Z'),
-      );
+      // PostgreSQL timestamps have microsecond precision while node-postgres maps
+      // timestamptz values to millisecond-precision Date objects. Step one
+      // millisecond beyond the returned boundary so the test cannot land just
+      // before the stored purge_after value after precision truncation.
+      const accessDueAt = new Date(accessPurgeAfter.getTime() + 1);
+      const ticketDueAt = new Date(ticketPurgeAfter.getTime() + 1);
+
+      const accessDue = await purgeTransientAccess(pool, accessDueAt);
       expect(accessDue).toEqual({ accessRowsDeleted: 1, ticketRowsDeleted: 0 });
 
-      const ticketDue = await purgeTransientAccess(
-        pool,
-        new Date('2026-09-18T10:01:00.000Z'),
-      );
+      const ticketDue = await purgeTransientAccess(pool, ticketDueAt);
       expect(ticketDue).toEqual({ accessRowsDeleted: 0, ticketRowsDeleted: 1 });
 
-      const retry = await purgeTransientAccess(
-        pool,
-        new Date('2026-09-18T10:01:00.000Z'),
-      );
+      const retry = await purgeTransientAccess(pool, ticketDueAt);
       expect(retry).toEqual({ accessRowsDeleted: 0, ticketRowsDeleted: 0 });
     }, 30_000);
 
@@ -1116,33 +1205,17 @@ async function insertConnectionTicket(
   matchId: string,
   playerId: string,
   role: 'participant' | 'spectator',
-  createdAt?: Date,
 ): Promise<Buffer> {
   const digest = createHash('sha256')
     .update(`${randomUUID()}-${matchId}-${playerId}`)
     .digest();
 
-  if (createdAt) {
-    const expiresAt = new Date(createdAt.getTime() + 60_000);
-    const purgeAfter = new Date(expiresAt.getTime() + 24 * 60 * 60 * 1000);
-    await database.query(
-      `insert into private.live_pvp_connection_tickets (
-         ticket_digest, match_id, player_id, role,
-         created_at, expires_at, purge_after
-       ) values (
-         $1::bytea, $2::uuid, $3::uuid, $4,
-         $5::timestamptz, $6::timestamptz, $7::timestamptz
-       )`,
-      [digest, matchId, playerId, role, createdAt, expiresAt, purgeAfter],
-    );
-  } else {
-    await database.query(
-      `insert into private.live_pvp_connection_tickets (
-         ticket_digest, match_id, player_id, role
-       ) values ($1::bytea, $2::uuid, $3::uuid, $4)`,
-      [digest, matchId, playerId, role],
-    );
-  }
+  await database.query(
+    `insert into private.live_pvp_connection_tickets (
+       ticket_digest, match_id, player_id, role
+     ) values ($1::bytea, $2::uuid, $3::uuid, $4)`,
+    [digest, matchId, playerId, role],
+  );
 
   return digest;
 }

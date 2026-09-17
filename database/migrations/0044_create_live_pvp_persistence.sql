@@ -331,10 +331,10 @@ create table private.live_pvp_connection_tickets (
     references public.players (id) on delete restrict,
   role text not null,
   protocol_version smallint not null default 1,
-  created_at timestamptz not null default now(),
-  expires_at timestamptz not null default (now() + interval '60 seconds'),
+  created_at timestamptz not null,
+  expires_at timestamptz not null,
   redeemed_at timestamptz,
-  purge_after timestamptz not null default (now() + interval '24 hours 60 seconds'),
+  purge_after timestamptz not null,
 
   constraint live_pvp_connection_tickets_digest_check
     check (octet_length(ticket_digest) = 32),
@@ -796,6 +796,7 @@ declare
   player_status text;
   match_status text;
   participant_exists boolean;
+  authoritative_created_at timestamptz;
 begin
   if new.redeemed_at is not null then
     raise exception
@@ -845,6 +846,14 @@ begin
       'A live PvP participant cannot mint a spectator ticket for the same match'
       using errcode = '23514';
   end if;
+
+  -- Ticket lifetime begins only after every lifecycle lock that minting may
+  -- wait for has been acquired. Do not use now(): it is fixed at transaction
+  -- start and could consume the ticket TTL while blocked on a lifecycle lock.
+  authoritative_created_at := clock_timestamp();
+  new.created_at := authoritative_created_at;
+  new.expires_at := authoritative_created_at + interval '60 seconds';
+  new.purge_after := new.expires_at + interval '24 hours';
 
   return new;
 end;

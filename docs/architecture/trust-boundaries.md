@@ -80,8 +80,10 @@ state, one-minute deadlines, participant connection generations, hashed
 single-use ticket records, idempotency receipts, spectator-safe public history,
 and terminal results survive process loss. An authenticated HTTPS request may
 mint a short-lived, single-use connection ticket bound to one local player,
-match, and participant or spectator role; raw tickets and long-lived bearer
-tokens are not persisted or placed in WebSocket URLs. Opening, losing, or
+match, and participant or spectator role; raw tickets are never persisted, and
+long-lived bearer tokens are never placed in WebSocket URLs. The short-lived
+connection ticket itself is supplied in the WebSocket `ticket` query parameter
+and must be redacted from proxy and application logs. Opening, losing, or
 replacing a connection cannot pause a deadline or mutate gameplay state;
 reconnect loads the persisted server snapshot. Participant messages contain
 only an idempotency identifier, expected version, and legal intent. Spectators
