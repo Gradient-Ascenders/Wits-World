@@ -279,12 +279,19 @@ same-version write races, idempotency receipts, terminal completion sources,
 account-deletion guards, transient cleanup boundaries, and recovery through a
 fresh database pool.
 
-The persistence suite does not claim that the issue `#253` realtime gateway,
-WebSocket transport, deadline worker, spectator projection, or production
-cleanup scheduler exists. Those runtime features require their own
-authentication, authorization, closed-schema, post-lock database-clock,
-idempotency replay, multi-instance, reconnect, and deadline/action-race tests
-when implemented.
+Issue `#253` adds focused route, protocol, WebSocket-gateway,
+deadline-processor, scheduler, and PostgreSQL-notification tests around the
+realtime runtime. Gateway coverage includes synchronous handler attachment with
+bounded queuing while asynchronous ticket redemption completes, spectator
+mutation rejection, persisted-generation supersession, and participant intent
+forwarding without client-owned outcomes. The existing live persistence suite
+additionally exercises the runtime ticket service against the real database so
+a newer redemption supersedes an older participant generation. Together these
+cover closed client intent schemas, authenticated ticket routes, post-lock
+persisted generations, deadline convergence, cleanup scheduling, and
+multi-instance notification fan-out. Deployed WebSocket/proxy and two-instance
+infrastructure verification remain deployment evidence rather than something a
+unit test can claim.
 
 For normal development, the focused live-PvP database file may be run against
 `TEST_DATABASE_URL` before opening a draft pull request. The complete disposable

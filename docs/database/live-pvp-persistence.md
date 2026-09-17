@@ -13,11 +13,12 @@ state needed for live play, reconnect, one-minute deadlines, participant
 connection supersession, idempotent mutations, spectator-safe history, and
 terminal results across API or gateway restarts.
 
-This migration is intentionally persistence-only. It does **not** register the
-planned HTTPS ticket route, start a WebSocket gateway, expose a player UI,
-process deadline workers, or create matchmaking, ratings, seasons, or territory
-rules. Those runtime operations remain follow-up work and must use the stored
-invariants rather than treating connection memory as authoritative.
+Migration `0044` remains intentionally persistence-only, but issue `#253` now
+uses it through bearer-protected ticket routes, the WebSocket gateway, the
+server-owned deadline worker, reconnect handling, and PostgreSQL notification
+fan-out. The player UI, matchmaking, ratings, seasons, and territory rules
+remain separate work. Runtime connection memory is transport state only and
+never replaces these persisted invariants.
 
 ## Public and private data
 
@@ -108,19 +109,17 @@ post-commit publication.
 
 Connection-access rows are durable authorization and audit records, not an exact
 record of currently open sockets. A gateway process can disappear without
-closing a row, especially for spectators. The future gateway must therefore
-keep presence advisory as required by the live contract and must not derive an
-authoritative spectator count solely from rows whose `closed_at` is null. It
-needs runtime reconciliation or lease/heartbeat semantics if an exact current
-connection count is required. Battle correctness must never depend on that
-presence projection.
+closing a row, especially for spectators. The issue `#253` gateway therefore keeps presence advisory as required by the
+live contract. It closes access rows on observed transport shutdown and uses
+ping/pong for local liveness, but a process can still disappear before cleanup;
+therefore battle correctness never depends on the presence projection.
 
 ## Idempotency and immutable history
 
 `private.live_pvp_submission_receipts` stores one logical participant message
 for `(match, actor, operation, message_id)`. It records the canonical payload
 hash, expected gameplay version, accepted connection generation, committed
-public event, and canonical acknowledgement. The future API/gateway can return
+public event, and canonical acknowledgement. The issue `#253` API/gateway returns
 the stored acknowledgement for an identical replay and reject reuse of the
 message ID with a different canonical payload.
 
@@ -163,7 +162,7 @@ rejects the lifecycle transition while the player still belongs to an active
 live match. This prevents account deletion from silently erasing or bypassing
 an authoritative live result.
 
-The future live runtime must integrate with the existing
+The issue `#253` live runtime integrates with the existing
 `finalizeDependentGameplay` account-deletion hook. Under the approved match-lock
 and database-clock rules, an already-elapsed decision is resolved first;
 otherwise the deleting participant is terminally resolved with

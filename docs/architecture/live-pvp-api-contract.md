@@ -6,12 +6,12 @@ title: 'Live player battle API'
 
 ## Status and purpose
 
-This document is the issue `#252` contract for one-minute live
+This document began as the issue `#252` contract for one-minute live
 player-versus-player matches. Migration `0044_create_live_pvp_persistence.sql`
-implements the issue `#251` persistence boundary; later issues implement the
-realtime gateway and player experience. The described HTTP routes, WebSocket
-messages, gateway behavior, and deployment settings remain contracts until
-those runtime issues are delivered.
+implements the issue `#251` persistence boundary, and issue `#253` implements
+the backend HTTP ticket routes, WebSocket gateway, deadline worker, reconnect
+handling, and PostgreSQL multi-instance fan-out described here. Frontend
+presentation and deployed multi-instance verification remain later work.
 
 Live PvP reuses the shared battle rules, card snapshots, legal action shapes,
 and hidden-card rules used by CPU and asynchronous PvP. Its distinct concerns
@@ -82,7 +82,7 @@ first participant to reach three consecutive required-decision misses loses.
 
 ## HTTP connection and recovery contract
 
-The future Fastify implementation exposes the following bearer-protected
+The Fastify implementation exposes the following bearer-protected
 operations beneath the existing `/api/v1` boundary:
 
 | Method | Path                                        | Success | Purpose                                         |
@@ -153,7 +153,7 @@ redact that parameter.
 
 ## Realtime transport
 
-The future gateway upgrades:
+The Fastify realtime gateway upgrades:
 
 ```text
 GET /api/v1/realtime/live?ticket=<short-lived-ticket>
@@ -348,6 +348,14 @@ network arrival order, produces one deterministic transition. The worker
 provides at-least-once convergence for matches receiving no traffic, while
 persisted deadlines and row locks remain authoritative.
 
+When a process resumes after more than one persisted decision window has
+elapsed, catch-up does not reset the clock to process-recovery time. Each
+automatic transition derives the next decision window from the prior persisted
+deadline, so already-elapsed decisions remain due and are processed in order
+until the match reaches a future deadline or a terminal result. The runtime
+caps one catch-up pass defensively, but the three-strike abandonment rule makes
+the documented live match converge within that bound.
+
 For a missed decision:
 
 1. increment the required participant's consecutive timeout count;
@@ -364,6 +372,11 @@ timeout count to zero. Acting, reconnecting, reading, receiving ping/pong, or
 opening another socket does not alter the other participant's count. A
 replacement auto-selection still preserves the shared rule that replacement
 does not consume the following normal turn.
+
+Account-deletion finalization uses the same rule. While holding the match lock
+it catches up every decision that is already due at the sampled database time;
+only an active match whose next deadline is still in the future is then ended
+with `account_deletion_forfeit` for the deleting participant.
 
 Reconnect requires a fresh HTTPS ticket. After redemption, the gateway loads
 the latest committed match and first processes an elapsed deadline under the
@@ -455,13 +468,44 @@ PostgreSQL remains the source of truth across API restarts and multiple gateway
 instances. The persistence layer stores the match state, transition history,
 participant connection generation, ticket digests, and idempotency receipts;
 it does not itself start a gateway or deadline worker. PostgreSQL
-`LISTEN/NOTIFY` may wake gateways after a commit, but it is not a durable queue
-and must carry only an opaque match identifier and committed version. The
-receiving gateway reloads its role-specific projection. Missed notifications
+`LISTEN/NOTIFY` may wake gateways after a commit, but it is not a durable queue.
+Both live channels carry only an opaque match identifier and committed version:
+`live_pvp_match_changed` denotes a committed gameplay transition, while
+`live_pvp_presence_changed` denotes connection-generation or advisory presence
+change. The receiving gateway reloads persisted state before delivery. Missed notifications
 converge through reconnect, explicit snapshot reads, and version-gap recovery.
 Correctness must not depend on Azure session affinity. See
 [live PvP persistence](../database/live-pvp-persistence.md) for the implemented
 storage and retention boundary.
+
+Ticket redemption and persisted connection closure also emit a current-version
+wake-up. Those notifications do not claim that a gameplay transition occurred;
+they cause other gateway instances to reload persisted generation/presence
+state. A receiving instance may therefore emit a complete snapshot rather than
+a new transition, and an older participant socket is closed when its persisted
+generation no longer matches.
+
+### Implemented runtime settings
+
+Issue `#253` uses protocol version `1`, a 16 KiB WebSocket message limit, and a
+20-second transport ping interval. `LIVE_PVP_WEBSOCKET_URL` controls the public
+`ws://`/`wss://` endpoint returned by ticket minting;
+`LIVE_PVP_DEADLINE_SWEEP_INTERVAL_MS` controls the database-backed deadline
+worker and defaults to one second; and
+`LIVE_PVP_TRANSIENT_CLEANUP_INTERVAL_MS` schedules the idempotent 24-hour
+transient-data purge without changing the retention policy itself. The gateway
+redacts the `ticket` query value from application logs and production edge logs
+must apply the same rule.
+
+Each API instance maintains only local socket references. PostgreSQL state,
+participant connection generations, receipts, and versions remain authority.
+A dedicated PostgreSQL listener receives `live_pvp_match_changed` and
+`live_pvp_presence_changed` notifications. Gameplay notifications reload the
+role-specific persisted projection before delivery; presence notifications
+reload persisted connection generations and advisory presence without replaying
+an already-delivered gameplay transition. If a gameplay notification names an
+older version than the current persisted state, the gateway sends a complete
+snapshot instead of fabricating an intermediate transition.
 
 ## Deployment and operational constraints
 
@@ -522,7 +566,7 @@ Later implementation issues must cover at least:
 
 ## Delivery gates
 
-Before issue `#252` is closed:
+Before issue `#253` is merged:
 
 - the API/security reviewer must approve ticket handling, participant and
   spectator authorization, hidden-state projections, idempotency, and safe
@@ -532,7 +576,7 @@ Before issue `#252` is closed:
 - HTTP shapes must be checked against existing Fastify/OpenAPI conventions;
 - realtime examples must be checked as closed versioned schemas;
 - formatting and the documentation build must pass; and
-- the pull request must link issue `#252` and record any deferred decision as
+- the pull request must link issue `#253` and record any deferred decision as
   follow-up work rather than silently implementing it.
 
 ## AI declaration

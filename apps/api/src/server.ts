@@ -40,6 +40,11 @@ import { createSignedCursorCodec } from './security/signed-cursor.js';
 import { createAsyncPvpService } from './matches/asynchronous-pvp-service.js';
 import { createAsyncPvpDeadlineProcessor } from './matches/asynchronous-pvp-deadline-processor.js';
 import { createAsyncPvpDeadlineScheduler } from './matches/asynchronous-pvp-deadline-scheduler.js';
+import { createLivePvpService } from './matches/live-pvp-service.js';
+import { createLivePvpGateway } from './matches/live-pvp-gateway.js';
+import { createLivePvpDeadlineProcessor } from './matches/live-pvp-deadline-processor.js';
+import { createLivePvpRuntimeScheduler } from './matches/live-pvp-runtime-scheduler.js';
+import { createLivePvpNotificationListener } from './matches/live-pvp-notifications.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
@@ -76,9 +81,20 @@ async function startServer(): Promise<void> {
     cursorCodec: createSignedCursorCodec(config.asyncPvpCursorSigningKey),
     progressionPersistence,
   });
+  const livePvpService = createLivePvpService(database);
   const accountDeletionLifecycle = createAccountDeletionLifecycle(database, {
-    finalizeDependentGameplay: (client, playerId, requestedAt) =>
-      asyncPvpService.finalizeAccountDeletion(client, playerId, requestedAt),
+    finalizeDependentGameplay: async (client, playerId, requestedAt) => {
+      await asyncPvpService.finalizeAccountDeletion(
+        client,
+        playerId,
+        requestedAt,
+      );
+      await livePvpService.finalizeAccountDeletion(
+        client,
+        playerId,
+        requestedAt,
+      );
+    },
   });
   const challengeAttemptCompletionFinalizer =
     createChallengeAttemptCompletionFinalizer({ progressionPersistence });
@@ -106,6 +122,7 @@ async function startServer(): Promise<void> {
   });
   const progressionReadService = createProgressionReadService(database);
   const playerIdentityService = createPlayerIdentityService(database);
+  const livePvpGateway = createLivePvpGateway(livePvpService);
   const app = await buildApp({
     offlineChallengeService: process.env.OFFLINE_PACK_SIGNING_KEY
       ? createOfflineChallengeService(database, {
@@ -142,6 +159,11 @@ async function startServer(): Promise<void> {
 
     cpuMatchService,
     asyncPvpService,
+    livePvp: {
+      service: livePvpService,
+      gateway: livePvpGateway,
+      webSocketUrl: config.livePvpWebSocketUrl,
+    },
     progressionReadService,
 
     accountDeletionServices: {
@@ -200,8 +222,29 @@ async function startServer(): Promise<void> {
     app.log,
     config.asyncPvpDeadlineSweepIntervalMs,
   );
+  const livePvpDeadlineProcessor = createLivePvpDeadlineProcessor(
+    livePvpService,
+    app.log,
+  );
+  const livePvpRuntimeScheduler = createLivePvpRuntimeScheduler(
+    livePvpDeadlineProcessor,
+    livePvpService,
+    app.log,
+    {
+      deadlineSweepIntervalMs: config.livePvpDeadlineSweepIntervalMs,
+      transientCleanupIntervalMs: config.livePvpTransientCleanupIntervalMs,
+    },
+  );
+  const livePvpNotificationListener = createLivePvpNotificationListener(
+    database,
+    livePvpGateway,
+    app.log,
+  );
 
   app.addHook('onClose', async () => {
+    await livePvpNotificationListener.stop();
+    await livePvpRuntimeScheduler.stop();
+    await livePvpGateway.closeAll();
     await accountDeletionRetryScheduler.stop();
     await movementEvidenceCleanupScheduler.stop();
     await asyncPvpDeadlineScheduler.stop();
@@ -214,6 +257,8 @@ async function startServer(): Promise<void> {
       port: config.port,
     });
 
+    await livePvpNotificationListener.start();
+    livePvpRuntimeScheduler.start();
     accountDeletionRetryScheduler.start();
     movementEvidenceCleanupScheduler.start();
     asyncPvpDeadlineScheduler.start();

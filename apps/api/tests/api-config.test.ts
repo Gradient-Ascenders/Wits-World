@@ -25,6 +25,10 @@ describe('API configuration', () => {
       accountDeletionRetryIntervalMs: DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
       asyncPvpCursorSigningKey: 'test-only-key-with-at-least-32-bytes',
       asyncPvpDeadlineSweepIntervalMs: DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
+      livePvpWebSocketUrl: 'ws://127.0.0.1:3000/api/v1/realtime/live',
+      livePvpDeadlineSweepIntervalMs: 1000,
+      livePvpTransientCleanupIntervalMs:
+        DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
       movementEvidenceCleanupIntervalMs:
         DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
       movementEvidenceRetentionMs: 86400000,
@@ -126,6 +130,67 @@ describe('API configuration', () => {
 
     expect(config.asyncPvpDeadlineSweepIntervalMs).toBe(1_200_000);
   });
+
+  it('reads and validates live PvP runtime configuration', () => {
+    const config = buildApiConfig({
+      env: {
+        ...validEnvironment,
+        LIVE_PVP_WEBSOCKET_URL: 'wss://api.example.test/api/v1/realtime/live',
+        LIVE_PVP_DEADLINE_SWEEP_INTERVAL_MS: '750',
+        LIVE_PVP_TRANSIENT_CLEANUP_INTERVAL_MS: '1200000',
+      },
+    });
+
+    expect(config.livePvpWebSocketUrl).toBe(
+      'wss://api.example.test/api/v1/realtime/live',
+    );
+    expect(config.livePvpDeadlineSweepIntervalMs).toBe(750);
+    expect(config.livePvpTransientCleanupIntervalMs).toBe(1_200_000);
+  });
+
+  it.each([
+    'https://api.example.test/api/v1/realtime/live',
+    'wss://user:pass@api.example.test/api/v1/realtime/live',
+    'wss://api.example.test/api/v1/realtime/live?ticket=secret',
+    'not-a-url',
+  ])('rejects the unsafe live PvP WebSocket URL %s', (value) => {
+    expect(() =>
+      buildApiConfig({
+        env: {
+          ...validEnvironment,
+          LIVE_PVP_WEBSOCKET_URL: value,
+        },
+      }),
+    ).toThrow('LIVE_PVP_WEBSOCKET_URL');
+  });
+
+  it.each(['249', '5001', '1.5', 'not-a-number'])(
+    'rejects the invalid live PvP deadline sweep interval %s',
+    (value) => {
+      expect(() =>
+        buildApiConfig({
+          env: {
+            ...validEnvironment,
+            LIVE_PVP_DEADLINE_SWEEP_INTERVAL_MS: value,
+          },
+        }),
+      ).toThrow('LIVE_PVP_DEADLINE_SWEEP_INTERVAL_MS');
+    },
+  );
+
+  it.each(['59999', String(MAX_NODE_TIMER_DELAY_MS + 1), '1.5'])(
+    'rejects the invalid live PvP cleanup interval %s',
+    (value) => {
+      expect(() =>
+        buildApiConfig({
+          env: {
+            ...validEnvironment,
+            LIVE_PVP_TRANSIENT_CLEANUP_INTERVAL_MS: value,
+          },
+        }),
+      ).toThrow('LIVE_PVP_TRANSIENT_CLEANUP_INTERVAL_MS');
+    },
+  );
 
   it('rejects a short asynchronous PvP cursor key', () => {
     expect(() =>

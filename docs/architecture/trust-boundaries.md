@@ -90,9 +90,10 @@ only an idempotency identifier, expected version, and legal intent. Spectators
 receive only revealed battle state and aggregate hidden-card counts and can
 never submit match actions. The [live PvP contract](./live-pvp-api-contract.md)
 and [persistence design](../database/live-pvp-persistence.md) define the
-implemented storage boundary. The HTTPS ticket route, WebSocket gateway,
-deadline worker, and player experience remain follow-up runtime work and are not
-yet deployed capabilities.
+implemented boundary. Issue `#253` adds the HTTPS ticket route, WebSocket
+gateway, server-owned deadline worker, reconnect handling, heartbeat, and
+PostgreSQL multi-instance fan-out. The player-facing live battle/spectator UI
+and deployed multi-instance verification remain follow-up work.
 
 ### Authentication provider
 

@@ -19,6 +19,7 @@ import { runMigrations } from '../src/database/migrations.js';
 import { getMigrationsDirectory } from '../src/database/paths.js';
 import { runSeeds } from '../src/database/seeds.js';
 import { createAccountDeletionLifecycle } from '../src/players/account-deletion-lifecycle.js';
+import { createLivePvpService } from '../src/matches/live-pvp-service.js';
 
 const MIGRATION_NAME = '0044_create_live_pvp_persistence.sql';
 const PRE_MIGRATION_PLAYER_ID = '25100000-0000-4000-8000-000000000001';
@@ -501,6 +502,54 @@ describe.skipIf(!runIntegrationTests)(
       } finally {
         blocker.release();
       }
+    }, 30_000);
+
+    it('uses persisted generations to supersede an older runtime connection', async () => {
+      const fixture = await createLiveMatch(pool, cardDefinitions);
+      const service = createLivePvpService(pool);
+      const firstTicket = await service.mintConnectionTicket({
+        matchId: fixture.matchId,
+        playerId: fixture.playerOne.id,
+        requestedRole: 'participant',
+      });
+      const firstConnection = await service.redeemConnectionTicket(
+        firstTicket.ticket,
+      );
+      const secondTicket = await service.mintConnectionTicket({
+        matchId: fixture.matchId,
+        playerId: fixture.playerOne.id,
+        requestedRole: 'participant',
+      });
+      const secondConnection = await service.redeemConnectionTicket(
+        secondTicket.ticket,
+      );
+
+      expect(secondConnection.participantGeneration).toBe(
+        (firstConnection.participantGeneration ?? 0) + 1,
+      );
+      await expect(
+        service.submitAction({
+          matchId: fixture.matchId,
+          playerId: fixture.playerOne.id,
+          connectionGeneration: firstConnection.participantGeneration!,
+          messageId: randomUUID(),
+          expectedVersion: 0,
+          action: {
+            type: 'select_initial_creature',
+            creatureId: randomUUID(),
+          },
+        }),
+      ).rejects.toMatchObject({ code: 'LIVE_CONNECTION_SUPERSEDED' });
+
+      const resignation = await service.resign({
+        matchId: fixture.matchId,
+        playerId: fixture.playerOne.id,
+        connectionGeneration: secondConnection.participantGeneration!,
+        messageId: randomUUID(),
+        expectedVersion: 0,
+      });
+      expect(resignation.acknowledgement.version).toBe(1);
+      expect(resignation.replayed).toBe(false);
     }, 30_000);
 
     it('rejects nonparticipant mutation storage and rolls the attempted transition back', async () => {
