@@ -70,6 +70,11 @@ const sidebars: SidebarsConfig = {
               id: 'requirements/card-evolution-rules',
               label: 'Card evolution rules',
             },
+            {
+              type: 'doc',
+              id: 'requirements/longitudinal-trust-policy',
+              label: 'Trust scoring and enforcement policy',
+            },
           ],
         },
         {

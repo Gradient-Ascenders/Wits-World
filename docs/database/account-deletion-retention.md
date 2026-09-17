@@ -46,6 +46,8 @@ already been reached.
 | Pending asynchronous PvP invitations                          | Expired when overdue; otherwise terminally invalidated as deletion begins                                                                                    |
 | Active asynchronous PvP matches                               | Retained as completed; deleting player loses by `account_deletion_forfeit` unless an elapsed deadline already makes the current actor lose by `turn_forfeit` |
 | Precise movement evidence and journey-decision audit          | Deleted transactionally when the account enters `deletion_pending`; never retained                                                                           |
+| Active trust signals, open cases, restrictions, and appeals   | Deleted transactionally; no old score or restriction may affect later re-registration                                                                        |
+| Closed trust cases and reviewer-decision audit                | Retained anonymously for at most 12 months after final resolution, without Player Name, provider identity, precise location, or raw source payload           |
 | Completed challenge attempt summary                           | Retained against the anonymised player UUID                                                                                                                  |
 | Event completion, score, legacy coin outcome, and coin ledger | Retained against the anonymised player UUID                                                                                                                  |
 | Awarded-card outcome                                          | Retained in `event_completion_card_rewards`; owned `player_cards` rows are still deleted                                                                     |
@@ -76,6 +78,17 @@ immutable journey audit to its current evidence with `ON DELETE CASCADE`, so
 the same operation also removes derived distance, elapsed-time, and speed data.
 No path, coordinate, or journey decision remains attached to the anonymous
 tombstone.
+
+The Advanced longitudinal-trust policy does not extend precise movement
+retention. Its non-precise signals expire after 90 days. Account deletion
+removes active signals, open cases, restrictions, and unresolved appeals.
+Closed case and reviewer-decision records may remain against an anonymous
+governance tombstone for no more than 12 months after final resolution; they
+retain only policy version, derived evidence summaries, decision scope,
+timestamps, and reviewer accountability. A completed deletion clears every
+active trust outcome so a later clean re-registration cannot inherit a score,
+case, or restriction. See the
+[longitudinal trust policy](../requirements/longitudinal-trust-policy.md).
 
 Migration `0033_add_async_pvp_invitation_invalidation.sql` adds the distinct
 terminal `invalidated` invitation state. Deletion-request creation locks and
