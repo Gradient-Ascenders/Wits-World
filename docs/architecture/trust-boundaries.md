@@ -337,6 +337,17 @@ cleanup and account-deletion removal are documented in
 [privacy-limited movement evidence](../database/movement-evidence.md). No public
 history API or longer-lived derived path is created.
 
+The Advanced-tier [longitudinal trust policy](../requirements/longitudinal-trust-policy.md)
+permits a separate non-precise signal derived from an authoritative
+`too_fast` decision before that short-lived evidence expires. The signal stores
+only a severity band, policy points, time, and opaque source reference; it does
+not retain coordinates, exact speed, distance, accuracy, events, or a path.
+Submission conflicts and reciprocal opponent patterns may contribute separate
+derived signals. A versioned score only prioritises Author review and never
+restricts gameplay automatically. Any short restriction requires an
+append-only human decision, server-side scope enforcement, safe notice, and an
+appeal resolved by a different Author.
+
 ## Open security decisions
 
 The following decisions or operational evidence still require review:
