@@ -156,9 +156,7 @@ describe('map-first campus exploration', () => {
       expect.any(AbortSignal),
     );
 
-    const toggle = screen.getByRole('button', {
-      name: 'Enable detailed 3D map',
-    });
+    const toggle = screen.getByRole('button', { name: 'Detailed 3D map' });
     expect(toggle).toHaveAttribute('aria-pressed', 'false');
     await user.click(toggle);
 
@@ -170,7 +168,7 @@ describe('map-first campus exploration', () => {
       expect.any(AbortSignal),
     );
     expect(
-      screen.getByRole('button', { name: 'Use lightweight 2D map' }),
+      screen.getByRole('button', { name: 'Detailed 3D map' }),
     ).toHaveAttribute('aria-pressed', 'true');
   });
 

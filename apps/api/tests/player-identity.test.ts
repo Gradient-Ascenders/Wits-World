@@ -62,8 +62,8 @@ describe('local player identity', () => {
     );
   });
 
-  it('shares only concurrent resolution for the same validated identity', async () => {
-    const result = {
+  it('shares only the stable identity result and rechecks concurrent authorization', async () => {
+    const initialResult = {
       rows: [
         {
           id: 'player',
@@ -74,16 +74,24 @@ describe('local player identity', () => {
         },
       ],
     };
-    let releaseQuery!: (value: typeof result) => void;
+    const updatedResult = {
+      rows: [
+        {
+          ...initialResult.rows[0],
+          role: 'author' as const,
+        },
+      ],
+    };
+    let releaseQuery!: (value: typeof initialResult) => void;
     const query = vi
       .fn()
       .mockImplementationOnce(
         () =>
-          new Promise<typeof result>((resolve) => {
+          new Promise<typeof initialResult>((resolve) => {
             releaseQuery = resolve;
           }),
       )
-      .mockResolvedValue(result);
+      .mockResolvedValue(updatedResult);
     const service = createPlayerIdentityService({
       query,
       connect: vi.fn(),
@@ -93,13 +101,25 @@ describe('local player identity', () => {
     const concurrent = service.resolve(trustedPrincipal);
 
     expect(query).toHaveBeenCalledOnce();
-    releaseQuery(result);
-    await expect(Promise.all([first, concurrent])).resolves.toHaveLength(2);
+    releaseQuery(initialResult);
+    await expect(Promise.all([first, concurrent])).resolves.toEqual([
+      expect.objectContaining({ id: 'player', role: 'player' }),
+      expect.objectContaining({ id: 'player', role: 'author' }),
+    ]);
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(query.mock.calls[1]?.[1]).toEqual([
+      trustedPrincipal.issuer,
+      trustedPrincipal.subject,
+      trustedPrincipal.tokenIssuedAt,
+      trustedPrincipal.playerName,
+      true,
+      'player',
+    ]);
 
     await expect(service.resolve(trustedPrincipal)).resolves.toMatchObject({
       id: 'player',
     });
-    expect(query).toHaveBeenCalledTimes(2);
+    expect(query).toHaveBeenCalledTimes(3);
   });
 
   it('rejects a denied token even when the unchanged player exists', async () => {

@@ -76,21 +76,26 @@ type PlayerIdentityDatabase =
 export function createPlayerIdentityService(
   database: PlayerIdentityDatabase,
 ): PlayerIdentityService & PlayerNameSetupService {
-  const service = {
-    async resolve(identity) {
-      const playerName =
-        identity.connectionStrategy === AUTH0_DATABASE_CONNECTION_STRATEGY
-          ? identity.playerName
-          : null;
-      const synchronizePlayerName =
-        identity.connectionStrategy === AUTH0_DATABASE_CONNECTION_STRATEGY;
-      // Existing unchanged identities need a fresh authorization read, not a
-      // provisioning write and identity lock on every gameplay request. A
-      // key-share row lock waits for deletion's FOR UPDATE before deciding
-      // whether the player is still active. Pending deletion then takes the
-      // identity lock below so completion and token denial remain serialized.
-      const existing = await database.query<ResolvedPlayerRow>(
-        `select p.id, p.player_name, p.role, p.lifecycle_status,
+  async function resolveIdentity(
+    identity: InteractivePlayerPrincipal,
+    knownPlayerId?: string,
+  ): Promise<LocalPlayer> {
+    const playerName =
+      identity.connectionStrategy === AUTH0_DATABASE_CONNECTION_STRATEGY
+        ? identity.playerName
+        : null;
+    const synchronizePlayerName =
+      identity.connectionStrategy === AUTH0_DATABASE_CONNECTION_STRATEGY;
+    // Existing unchanged identities need a fresh authorization read, not a
+    // provisioning write and identity lock on every gameplay request. A
+    // key-share row lock waits for deletion's FOR UPDATE before deciding
+    // whether the player is still active. Pending deletion then takes the
+    // identity lock below so completion and token denial remain serialized.
+    // A player ID learned from another in-flight request narrows only the
+    // stable identity lookup. Mutable authorization fields are still read
+    // afresh for this request.
+    const existing = await database.query<ResolvedPlayerRow>(
+      `select p.id, p.player_name, p.role, p.lifecycle_status,
           exists (
             select 1 from private.deleted_identity_token_denials denial
             where denial.expires_at > now()
@@ -103,34 +108,36 @@ export function createPlayerIdentityService(
           ) as identity_denied
           from public.players p
           where p.auth_issuer = $1 and p.auth_subject = $2
+            and ($6::uuid is null or p.id = $6)
             and p.lifecycle_status = 'active'
             and (not $5::boolean or p.player_name is not distinct from $4::text)
           for key share of p`,
-        [
-          identity.issuer,
-          identity.subject,
-          identity.tokenIssuedAt,
-          playerName,
-          synchronizePlayerName,
-        ],
-      );
-      const unchanged = existing.rows[0];
-      if (unchanged?.identity_denied) throw new DeletedIdentityTokenError();
-      if (unchanged?.id && unchanged.role && unchanged.lifecycle_status) {
-        return {
-          id: unchanged.id,
-          playerName: unchanged.player_name,
-          role: unchanged.role,
-          lifecycleStatus: unchanged.lifecycle_status,
-        };
-      }
+      [
+        identity.issuer,
+        identity.subject,
+        identity.tokenIssuedAt,
+        playerName,
+        synchronizePlayerName,
+        knownPlayerId ?? null,
+      ],
+    );
+    const unchanged = existing.rows[0];
+    if (unchanged?.identity_denied) throw new DeletedIdentityTokenError();
+    if (unchanged?.id && unchanged.role && unchanged.lifecycle_status) {
+      return {
+        id: unchanged.id,
+        playerName: unchanged.player_name,
+        role: unchanged.role,
+        lifecycleStatus: unchanged.lifecycle_status,
+      };
+    }
 
-      const result = await withTransaction(database, async (client) => {
-        await lockPlayerIdentity(client, identity);
+    const result = await withTransaction(database, async (client) => {
+      await lockPlayerIdentity(client, identity);
 
-        return client
-          .query<ResolvedPlayerRow>(
-            `
+      return client
+        .query<ResolvedPlayerRow>(
+          `
           with identity_decision as (
             select exists (
               select 1
@@ -178,41 +185,44 @@ export function createPlayerIdentityService(
           from identity_decision decision
           left join resolved_player resolved on true
         `,
-            [
-              randomUUID(),
-              identity.issuer,
-              identity.subject,
-              playerName,
-              synchronizePlayerName,
-              identity.tokenIssuedAt,
-            ],
-          )
-          .catch((error: unknown) => {
-            if (!isPlayerNameUniqueViolation(error)) {
-              throw error;
-            }
+          [
+            randomUUID(),
+            identity.issuer,
+            identity.subject,
+            playerName,
+            synchronizePlayerName,
+            identity.tokenIssuedAt,
+          ],
+        )
+        .catch((error: unknown) => {
+          if (!isPlayerNameUniqueViolation(error)) {
+            throw error;
+          }
 
-            throw new PlayerNameConflictError();
-          });
-      });
+          throw new PlayerNameConflictError();
+        });
+    });
 
-      const player = result.rows[0];
+    const player = result.rows[0];
 
-      if (player?.identity_denied) {
-        throw new DeletedIdentityTokenError();
-      }
+    if (player?.identity_denied) {
+      throw new DeletedIdentityTokenError();
+    }
 
-      if (!player || !player.id || !player.role || !player.lifecycle_status) {
-        throw new Error('Local player resolution returned no player.');
-      }
+    if (!player || !player.id || !player.role || !player.lifecycle_status) {
+      throw new Error('Local player resolution returned no player.');
+    }
 
-      return {
-        id: player.id,
-        playerName: player.player_name,
-        role: player.role,
-        lifecycleStatus: player.lifecycle_status,
-      };
-    },
+    return {
+      id: player.id,
+      playerName: player.player_name,
+      role: player.role,
+      lifecycleStatus: player.lifecycle_status,
+    };
+  }
+
+  const service = {
+    resolve: resolveIdentity,
 
     async assignInitialPlayerName(playerId, value) {
       const validation = validatePlayerName(value);
@@ -256,27 +266,29 @@ export function createPlayerIdentityService(
       };
     },
   } satisfies PlayerIdentityService & PlayerNameSetupService;
-  const inFlightResolutions = new Map<string, Promise<LocalPlayer>>();
+  const inFlightIdentityLookups = new Map<string, Promise<string | null>>();
 
   return {
     ...service,
-    resolve(identity) {
-      const key = JSON.stringify([
-        identity.issuer,
-        identity.subject,
-        identity.tokenIssuedAt.toISOString(),
-        identity.connectionStrategy,
-        identity.playerName,
-      ]);
-      const activeResolution = inFlightResolutions.get(key);
-      if (activeResolution) return activeResolution;
+    async resolve(identity) {
+      const key = JSON.stringify([identity.issuer, identity.subject]);
+      const activeLookup = inFlightIdentityLookups.get(key);
+      if (activeLookup) {
+        const knownPlayerId = await activeLookup;
+        return resolveIdentity(identity, knownPlayerId ?? undefined);
+      }
 
-      const resolution = service.resolve(identity).finally(() => {
-        if (inFlightResolutions.get(key) === resolution) {
-          inFlightResolutions.delete(key);
+      const resolution = resolveIdentity(identity);
+      const identityLookup = resolution.then(
+        (player) => player.id,
+        () => null,
+      );
+      const trackedLookup = identityLookup.finally(() => {
+        if (inFlightIdentityLookups.get(key) === trackedLookup) {
+          inFlightIdentityLookups.delete(key);
         }
       });
-      inFlightResolutions.set(key, resolution);
+      inFlightIdentityLookups.set(key, trackedLookup);
       return resolution;
     },
   };

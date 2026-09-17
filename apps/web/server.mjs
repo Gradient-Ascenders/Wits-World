@@ -116,13 +116,16 @@ async function resolveRequest(root, encodedPathname) {
     return undefined;
   }
 
-  if (pathname.includes('\0') || pathname === '/server.mjs') {
+  if (pathname.includes('\0')) {
     return undefined;
   }
 
   const candidate = resolve(root, `.${pathname}`);
 
-  if (!isWithinRoot(root, candidate)) {
+  if (
+    !isWithinRoot(root, candidate) ||
+    candidate === resolve(root, 'server.mjs')
+  ) {
     return undefined;
   }
 

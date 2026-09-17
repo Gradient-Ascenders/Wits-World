@@ -24,6 +24,10 @@ before(async () => {
     join(rootDirectory, 'assets', 'main-12345678.js'),
     `console.log('compressed asset');\n${'const value = 1;\n'.repeat(200)}`,
   );
+  await writeFile(
+    join(rootDirectory, 'server.mjs'),
+    'throw new Error("runtime source must not be public");',
+  );
 
   server = createStaticServer({ rootDirectory });
   await new Promise((resolveListen) => {
@@ -71,6 +75,7 @@ test('serves uncached SPA navigation fallbacks', async () => {
 test('does not turn missing assets or runtime source into SPA responses', async () => {
   assert.equal((await get('/assets/missing.js')).statusCode, 404);
   assert.equal((await get('/server.mjs')).statusCode, 404);
+  assert.equal((await get('/%2Fserver.mjs')).statusCode, 404);
 });
 
 function get(pathname, headers = {}) {

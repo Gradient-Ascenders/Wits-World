@@ -338,11 +338,11 @@ Application roles and object-level permissions are separate from
 authentication. A valid Auth0 token does not automatically grant author or
 administrator privileges.
 
-Concurrent requests carrying the same validated identity and token issue time
-share only an identity resolution that is already in flight. The result is
-removed as soon as that database read settles, so a later request still checks
-the current role, lifecycle status, and deleted-token denial state. This avoids
-duplicate pool work during parallel page loads without creating stale
+Concurrent requests for the same validated external identity may reuse only the
+stable local player ID learned by an identity resolution already in flight.
+Every request still performs its own database read of role, lifecycle status,
+and deleted-token denial state before it is authorized. The in-flight player-ID
+entry is removed as soon as the original resolution settles, avoiding stale
 authorization decisions.
 
 ### Authentication test route

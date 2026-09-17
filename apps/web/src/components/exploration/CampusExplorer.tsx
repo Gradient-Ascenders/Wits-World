@@ -538,11 +538,7 @@ export function CampusExplorer({
 
       {isMobileMapViewport ? (
         <button
-          aria-label={
-            mobile3dEnabled
-              ? 'Use lightweight 2D map'
-              : 'Enable detailed 3D map'
-          }
+          aria-label="Detailed 3D map"
           aria-pressed={mobile3dEnabled}
           className={`map-detail-toggle${
             mobile3dEnabled ? ' map-detail-toggle--active' : ''
