@@ -18,6 +18,7 @@ import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { AuthorRoute } from './components/auth/AuthorRoute';
 import { GuardedRouter } from './components/author/AuthorNavigationGuard';
 import { CurrentPlayerProvider } from './auth/CurrentPlayerProvider';
+import HomePage from './pages/HomePage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import type {
   LocationClaimProvider,
@@ -26,7 +27,6 @@ import type {
 } from './browser-location';
 import type { MapFactory } from './components/exploration/map-provider';
 
-const HomePage = lazy(() => import('./pages/HomePage'));
 const ExplorePage = lazy(() => import('./pages/ExplorePage'));
 const ChallengePage = lazy(() => import('./pages/ChallengePage'));
 const CollectionPage = lazy(() => import('./pages/CollectionPage'));

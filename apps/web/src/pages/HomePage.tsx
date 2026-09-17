@@ -6,6 +6,8 @@ import {
   SwordIcon,
 } from '@phosphor-icons/react';
 
+import greatHallHero640Webp from '../assets/home/great-hall-hero-640.webp';
+import greatHallHero960Webp from '../assets/home/great-hall-hero-960.webp';
 import greatHallHeroWebp from '../assets/home/great-hall-hero.webp';
 import { CampusSeal } from '../components/branding/CampusSeal';
 import '../styles/home.css';
@@ -67,7 +69,9 @@ export default function HomePage() {
             fetchPriority="high"
             height="941"
             loading="eager"
+            sizes="100vw"
             src={greatHallHeroWebp}
+            srcSet={`${greatHallHero640Webp} 640w, ${greatHallHero960Webp} 960w, ${greatHallHeroWebp} 1672w`}
             width="1672"
           />
         </div>

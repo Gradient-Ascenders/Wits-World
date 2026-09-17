@@ -76,7 +76,7 @@ type PlayerIdentityDatabase =
 export function createPlayerIdentityService(
   database: PlayerIdentityDatabase,
 ): PlayerIdentityService & PlayerNameSetupService {
-  return {
+  const service = {
     async resolve(identity) {
       const playerName =
         identity.connectionStrategy === AUTH0_DATABASE_CONNECTION_STRATEGY
@@ -254,6 +254,30 @@ export function createPlayerIdentityService(
         role: player.role,
         lifecycleStatus: player.lifecycle_status,
       };
+    },
+  } satisfies PlayerIdentityService & PlayerNameSetupService;
+  const inFlightResolutions = new Map<string, Promise<LocalPlayer>>();
+
+  return {
+    ...service,
+    resolve(identity) {
+      const key = JSON.stringify([
+        identity.issuer,
+        identity.subject,
+        identity.tokenIssuedAt.toISOString(),
+        identity.connectionStrategy,
+        identity.playerName,
+      ]);
+      const activeResolution = inFlightResolutions.get(key);
+      if (activeResolution) return activeResolution;
+
+      const resolution = service.resolve(identity).finally(() => {
+        if (inFlightResolutions.get(key) === resolution) {
+          inFlightResolutions.delete(key);
+        }
+      });
+      inFlightResolutions.set(key, resolution);
+      return resolution;
     },
   };
 }

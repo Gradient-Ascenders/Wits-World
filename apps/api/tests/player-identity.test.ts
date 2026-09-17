@@ -62,6 +62,46 @@ describe('local player identity', () => {
     );
   });
 
+  it('shares only concurrent resolution for the same validated identity', async () => {
+    const result = {
+      rows: [
+        {
+          id: 'player',
+          player_name: 'naledi',
+          role: 'player' as const,
+          lifecycle_status: 'active' as const,
+          identity_denied: false as const,
+        },
+      ],
+    };
+    let releaseQuery!: (value: typeof result) => void;
+    const query = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<typeof result>((resolve) => {
+            releaseQuery = resolve;
+          }),
+      )
+      .mockResolvedValue(result);
+    const service = createPlayerIdentityService({
+      query,
+      connect: vi.fn(),
+    } as unknown as Pick<pg.Pool, 'query' | 'connect'>);
+
+    const first = service.resolve(trustedPrincipal);
+    const concurrent = service.resolve(trustedPrincipal);
+
+    expect(query).toHaveBeenCalledOnce();
+    releaseQuery(result);
+    await expect(Promise.all([first, concurrent])).resolves.toHaveLength(2);
+
+    await expect(service.resolve(trustedPrincipal)).resolves.toMatchObject({
+      id: 'player',
+    });
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
   it('rejects a denied token even when the unchanged player exists', async () => {
     const query = vi
       .fn()

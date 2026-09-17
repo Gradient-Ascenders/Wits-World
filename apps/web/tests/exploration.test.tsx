@@ -107,7 +107,10 @@ function explorerProps(mapFactory: MapFactory) {
   };
 }
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe('map-first campus exploration', () => {
   it('keeps the map host absolute and reserves event-panel clearance', () => {
@@ -116,6 +119,59 @@ describe('map-first campus exploration', () => {
     );
     expect(explorationStyles).toContain('--explore-bottom-clearance');
     expect(explorationStyles).toContain('.mapboxgl-ctrl-bottom-right');
+  });
+
+  it('starts mobile maps in lightweight mode and enables 3D on request', async () => {
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query) =>
+        ({
+          addEventListener: vi.fn(),
+          addListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+          matches: query === '(max-width: 47.999rem)',
+          media: query,
+          onchange: null,
+          removeEventListener: vi.fn(),
+          removeListener: vi.fn(),
+        }) as MediaQueryList,
+    );
+    const user = userEvent.setup();
+    const mapFactory: MapFactory = vi.fn(async () => createController());
+
+    render(<CampusExplorer {...explorerProps(mapFactory)} />);
+
+    await waitFor(() => expect(mapFactory).toHaveBeenCalledOnce());
+    expect(mapFactory).toHaveBeenLastCalledWith(
+      expect.any(HTMLElement),
+      expect.objectContaining({
+        pitch: 0,
+        standardConfig: expect.objectContaining({
+          show3dBuildings: false,
+          show3dLandmarks: false,
+          show3dObjects: false,
+          show3dTrees: false,
+        }),
+      }),
+      expect.any(Array),
+      expect.any(AbortSignal),
+    );
+
+    const toggle = screen.getByRole('button', {
+      name: 'Enable detailed 3D map',
+    });
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await user.click(toggle);
+
+    await waitFor(() => expect(mapFactory).toHaveBeenCalledTimes(2));
+    expect(mapFactory).toHaveBeenLastCalledWith(
+      expect.any(HTMLElement),
+      configuration,
+      expect.any(Array),
+      expect.any(AbortSignal),
+    );
+    expect(
+      screen.getByRole('button', { name: 'Use lightweight 2D map' }),
+    ).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('provides map-independent event discovery and synchronized selection', async () => {
