@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { preload } from 'react-dom';
 import {
   CardsIcon,
   CheckCircleIcon,
@@ -6,9 +7,13 @@ import {
   SwordIcon,
 } from '@phosphor-icons/react';
 
+import greatHallHero640Webp from '../assets/home/great-hall-hero-640.webp';
+import greatHallHero960Webp from '../assets/home/great-hall-hero-960.webp';
 import greatHallHeroWebp from '../assets/home/great-hall-hero.webp';
 import { CampusSeal } from '../components/branding/CampusSeal';
 import '../styles/home.css';
+
+const greatHallHeroSrcSet = `${greatHallHero640Webp} 640w, ${greatHallHero960Webp} 960w, ${greatHallHeroWebp} 1672w`;
 
 const gameplaySteps = [
   {
@@ -34,6 +39,13 @@ const gameplaySteps = [
 ] as const;
 
 export default function HomePage() {
+  preload(greatHallHeroWebp, {
+    as: 'image',
+    fetchPriority: 'high',
+    imageSizes: '100vw',
+    imageSrcSet: greatHallHeroSrcSet,
+  });
+
   useEffect(() => {
     if (window.location.hash !== '#project-context') {
       return;
@@ -67,7 +79,9 @@ export default function HomePage() {
             fetchPriority="high"
             height="941"
             loading="eager"
+            sizes="100vw"
             src={greatHallHeroWebp}
+            srcSet={greatHallHeroSrcSet}
             width="1672"
           />
         </div>

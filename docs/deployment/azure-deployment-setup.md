@@ -255,12 +255,17 @@ The frontend is a prebuilt React/Vite single-page application.
 The production startup command is:
 
 ```bash
-pm2 serve /home/site/wwwroot --no-daemon --spa
+node /home/site/wwwroot/server.mjs
 ```
 
-This serves the prebuilt Vite output from `/home/site/wwwroot`.
+This serves the prebuilt Vite output from `/home/site/wwwroot` with Brotli or
+gzip compression, immutable one-year caching for content-hashed assets, and
+revalidation for the application shell and service worker.
 
-The `--spa` flag provides client-side route fallback to `index.html`, allowing routes such as `/about` and `/explore` to survive direct navigation and browser refreshes.
+The committed server provides client-side route fallback to `index.html`,
+allowing routes such as `/about` and `/explore` to survive direct navigation
+and browser refreshes. Missing asset files remain real `404` responses rather
+than being replaced with HTML.
 
 Important App Service configuration:
 
@@ -599,7 +604,9 @@ Site startup probe succeeded
 
 ### 11.2 Frontend startup diagnostics
 
-The frontend is a static SPA served by PM2. Filesystem logging and startup logs are retained mainly to diagnose App Service or PM2 startup failures.
+The frontend is a static SPA served by the committed Node static server.
+Filesystem logging and startup logs are retained mainly to diagnose App
+Service or static-server startup failures.
 
 The FTP/FTPS URLs displayed on the App Service logs page do not indicate that FTP publishing is enabled; FTP and basic publishing authentication remain disabled.
 
@@ -1202,14 +1209,17 @@ The frontend package is created from the **contents** of `apps/web/dist`, so Azu
 ```text
 /home/site/wwwroot/index.html
 /home/site/wwwroot/assets/...
+/home/site/wwwroot/server.mjs
 ```
 
 rather than a nested `dist` directory.
 
 After validation, Azure downloads the SHA-named artifact, verifies its commit
-metadata, checksum, ZIP integrity, `index.html`, and assets, authenticates with
-managed identity, deploys, and verifies `/` and `/about`. Azure performs no Web
-`npm ci`, TypeScript build, Vite build, ZIP construction, or Docker build.
+metadata, checksum, ZIP integrity, `index.html`, assets, and `server.mjs`, then
+authenticates with managed identity and deploys. The workflow reapplies the
+committed Node startup command and verifies `/`, `/about`, response compression,
+and immutable asset caching. Azure performs no Web `npm ci`, TypeScript build,
+Vite build, ZIP construction, or Docker build.
 
 Stage 1 proved every generated C220 file was byte-for-byte identical to the
 former Azure-built output. Stage 2 made that artifact authoritative. Measured

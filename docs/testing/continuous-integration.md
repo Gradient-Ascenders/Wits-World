@@ -147,8 +147,8 @@ web-deploy-${{ gitea.sha }}
 └── witsworld-web-deploy.zip.sha256
 ```
 
-The ZIP contains the contents of `apps/web/dist`, with `index.html` and
-`assets/` at its root.
+The ZIP contains the contents of `apps/web/dist`, with `index.html`, `assets/`,
+and the committed `server.mjs` production static server at its root.
 
 The API validation build has already compiled `apps/api/dist`. After the other
 build work is complete, the job uses an isolated npm 11.18.0 CLI to materialize

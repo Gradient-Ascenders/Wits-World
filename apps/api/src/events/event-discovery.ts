@@ -29,6 +29,11 @@ interface CreateEventDiscoveryServiceOptions {
   clock?: () => Date;
 }
 
+interface CreateCachedEventDiscoveryServiceOptions {
+  clock?: () => Date;
+  maxAgeMs?: number;
+}
+
 interface PlayerEventRow extends pg.QueryResultRow {
   event_id: string;
   title: string;
@@ -65,6 +70,80 @@ export function createEventDiscoveryService(
       }));
     },
   };
+}
+
+const DEFAULT_EVENT_DISCOVERY_CACHE_MAX_AGE_MS = 5_000;
+
+export function createCachedEventDiscoveryService(
+  source: EventDiscoveryService,
+  {
+    clock = () => new Date(),
+    maxAgeMs = DEFAULT_EVENT_DISCOVERY_CACHE_MAX_AGE_MS,
+  }: CreateCachedEventDiscoveryServiceOptions = {},
+): EventDiscoveryService {
+  let cached:
+    { events: PlayerEvent[]; expiresAtMilliseconds: number } | undefined;
+  let inFlight: Promise<PlayerEvent[]> | undefined;
+
+  return {
+    async list() {
+      const nowMilliseconds = clock().getTime();
+
+      if (cached && nowMilliseconds < cached.expiresAtMilliseconds) {
+        return cloneEvents(cached.events);
+      }
+
+      if (!inFlight) {
+        inFlight = source
+          .list()
+          .then((events) => {
+            const loadedAtMilliseconds = clock().getTime();
+            cached = {
+              events: cloneEvents(events),
+              expiresAtMilliseconds: calculateCacheExpiry(
+                events,
+                loadedAtMilliseconds,
+                maxAgeMs,
+              ),
+            };
+
+            return cached.events;
+          })
+          .finally(() => {
+            inFlight = undefined;
+          });
+      }
+
+      return cloneEvents(await inFlight);
+    },
+  };
+}
+
+function calculateCacheExpiry(
+  events: PlayerEvent[],
+  loadedAtMilliseconds: number,
+  maxAgeMs: number,
+): number {
+  let expiresAtMilliseconds = loadedAtMilliseconds + Math.max(0, maxAgeMs);
+
+  for (const event of events) {
+    for (const transition of [event.startsAt, event.endsAt]) {
+      const transitionMilliseconds = Date.parse(transition);
+
+      if (
+        transitionMilliseconds > loadedAtMilliseconds &&
+        transitionMilliseconds < expiresAtMilliseconds
+      ) {
+        expiresAtMilliseconds = transitionMilliseconds;
+      }
+    }
+  }
+
+  return expiresAtMilliseconds;
+}
+
+function cloneEvents(events: PlayerEvent[]): PlayerEvent[] {
+  return events.map((event) => ({ ...event }));
 }
 
 const EVENT_DISCOVERY_QUERY = `

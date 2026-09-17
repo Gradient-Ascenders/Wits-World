@@ -250,6 +250,9 @@ jobs:
           test -f apps/web/dist/manifest.webmanifest
           test -d apps/web/dist/assets
 
+          cp apps/web/server.mjs apps/web/dist/server.mjs
+          test -f apps/web/dist/server.mjs
+
           (
             cd apps/web/dist
             zip -qr "$CANDIDATE_ROOT/witsworld-web-deploy.zip" .
@@ -270,6 +273,9 @@ jobs:
 
           unzip -l "$CANDIDATE_ROOT/witsworld-web-deploy.zip" |
             grep 'assets/'
+
+          unzip -l "$CANDIDATE_ROOT/witsworld-web-deploy.zip" |
+            grep 'server.mjs'
 
           echo "Web artifact packaging completed in $((SECONDS - PACKAGE_STARTED_AT)) seconds."
 
@@ -1278,6 +1284,9 @@ jobs:
           unzip -Z1 "$DEPLOY_ROOT/witsworld-web-deploy.zip" |
             grep -E '^assets/.+'
 
+          unzip -Z1 "$DEPLOY_ROOT/witsworld-web-deploy.zip" |
+            grep -Fx 'server.mjs'
+
       - name: Reconfirm web deployment commit is current main
         if: ${{ steps.web_deployment_changes.outputs.required == 'true' }}
         run: |
@@ -1346,6 +1355,12 @@ jobs:
             --track-status false \
             --output none
 
+          az webapp config set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEBAPP_NAME" \
+            --startup-file 'node /home/site/wwwroot/server.mjs' \
+            --output none
+
       - name: Verify production website
         run: |
           set -euo pipefail
@@ -1387,10 +1402,37 @@ jobs:
             )"
 
             if [ "$ROOT_STATUS" = "200" ] && [ "$ABOUT_STATUS" = "200" ]; then
-              echo "Production website is healthy."
-              echo "Home:  HTTP ${ROOT_STATUS}"
-              echo "About: HTTP ${ABOUT_STATUS}"
-              exit 0
+              INDEX_HTML="$(curl --silent --show-error --max-time 10 "https://${WEB_HOST}/")"
+              ENTRY_PATH="$(
+                printf '%s' "$INDEX_HTML" |
+                  sed -n 's/.*src="\([^"?]*\/assets\/index-[^"]*\.js\)".*/\1/p' |
+                  head -n 1
+              )"
+
+              if [ -n "$ENTRY_PATH" ]; then
+                ENTRY_HEADERS="$(
+                  curl \
+                    --silent \
+                    --show-error \
+                    --compressed \
+                    --dump-header - \
+                    --output /dev/null \
+                    --max-time 10 \
+                    "https://${WEB_HOST}${ENTRY_PATH}"
+                )"
+
+                if printf '%s' "$ENTRY_HEADERS" |
+                  grep -Eqi '^cache-control: public, max-age=31536000, immutable' &&
+                  printf '%s' "$ENTRY_HEADERS" |
+                    grep -Eqi '^content-encoding: (br|gzip)'; then
+                  echo "Production website is healthy and immutable assets are cached."
+                  echo "Home:  HTTP ${ROOT_STATUS}"
+                  echo "About: HTTP ${ABOUT_STATUS}"
+                  exit 0
+                fi
+              fi
+
+              echo "Website check ${attempt}/60: static cache headers are not ready."
             fi
 
             echo "Website check ${attempt}/60: home=${ROOT_STATUS:-request-error}, about=${ABOUT_STATUS:-request-error}."

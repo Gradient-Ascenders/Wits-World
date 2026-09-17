@@ -7,6 +7,7 @@ import {
   CaretRight,
   CaretUp,
   Crosshair,
+  Cube,
   MagnifyingGlass,
 } from '@phosphor-icons/react';
 
@@ -63,6 +64,8 @@ interface CampusExplorerProps {
 type EventPanelMode = 'list' | 'peek' | 'selected';
 type EventAvailabilityFilter = 'active' | 'all' | 'ended' | 'upcoming';
 type DiscoverySection = 'events' | 'nearby' | 'trail-detail' | 'trails';
+
+const MOBILE_MAP_QUERY = '(max-width: 47.999rem)';
 
 export function filterEventPresentations(
   events: readonly EventPresentation[],
@@ -128,6 +131,10 @@ export function CampusExplorer({
   trailDetail = { status: 'idle' },
   trailDiscovery = { status: 'idle' },
 }: CampusExplorerProps) {
+  const [isMobileMapViewport, setIsMobileMapViewport] = useState(
+    () => window.matchMedia?.(MOBILE_MAP_QUERY).matches ?? false,
+  );
+  const [mobile3dEnabled, setMobile3dEnabled] = useState(false);
   const [discoverySection, setDiscoverySection] =
     useState<DiscoverySection>('events');
   const [following, setFollowing] = useState(false);
@@ -228,6 +235,36 @@ export function CampusExplorer({
   );
   const hasActiveFilters =
     searchQuery.trim().length > 0 || availabilityFilter !== 'all';
+  const effectiveMapConfiguration = useMemo(() => {
+    if (!isMobileMapViewport || mobile3dEnabled) {
+      return mapConfiguration;
+    }
+
+    return {
+      ...mapConfiguration,
+      pitch: 0,
+      standardConfig: {
+        ...mapConfiguration.standardConfig,
+        show3dBuildings: false,
+        show3dLandmarks: false,
+        show3dObjects: false,
+        show3dTrees: false,
+      },
+    };
+  }, [isMobileMapViewport, mapConfiguration, mobile3dEnabled]);
+
+  useEffect(() => {
+    const media = window.matchMedia?.(MOBILE_MAP_QUERY);
+    if (!media) return;
+
+    const updateViewport = (event: MediaQueryListEvent): void => {
+      setIsMobileMapViewport(event.matches);
+    };
+    setIsMobileMapViewport(media.matches);
+    media.addEventListener('change', updateViewport);
+
+    return () => media.removeEventListener('change', updateViewport);
+  }, []);
 
   const focusDiscoveryReturnTarget = useCallback(
     (eventId: string | null = selectedEventId): void => {
@@ -479,7 +516,12 @@ export function CampusExplorer({
       </h1>
 
       <CampusMap
-        configuration={mapConfiguration}
+        accessibleLabel={
+          isMobileMapViewport && !mobile3dEnabled
+            ? 'Interactive campus map in lightweight 2D mode. Event information is also available in the nearby events list.'
+            : undefined
+        }
+        configuration={effectiveMapConfiguration}
         focusPointRequest={focusPointRequest}
         mapFactory={mapFactory}
         onFollowStateChange={setFollowing}
@@ -493,6 +535,26 @@ export function CampusExplorer({
       <p aria-live="polite" className="sr-only">
         {focusAnnouncement}
       </p>
+
+      {isMobileMapViewport ? (
+        <button
+          aria-label="Detailed 3D map"
+          aria-pressed={mobile3dEnabled}
+          className={`map-detail-toggle${
+            mobile3dEnabled ? ' map-detail-toggle--active' : ''
+          }`}
+          onClick={() => setMobile3dEnabled((enabled) => !enabled)}
+          title={
+            mobile3dEnabled
+              ? 'Use lightweight 2D map'
+              : 'Enable detailed 3D map'
+          }
+          type="button"
+        >
+          <Cube aria-hidden="true" size={20} />
+          <span>3D</span>
+        </button>
+      ) : null}
 
       <div className="location-control-wrap">
         <button
