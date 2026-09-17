@@ -370,6 +370,13 @@ Application roles and object-level permissions are separate from
 authentication. A valid Auth0 token does not automatically grant author or
 administrator privileges.
 
+Concurrent requests for the same validated external identity may reuse only the
+stable local player ID learned by an identity resolution already in flight.
+Every request still performs its own database read of role, lifecycle status,
+and deleted-token denial state before it is authorized. The in-flight player-ID
+entry is removed as soon as the original resolution settles, avoiding stale
+authorization decisions.
+
 ### Authentication test route
 
 The current authentication foundation exposes:
@@ -648,6 +655,11 @@ Published events may have an availability value of:
 - `active`;
 - `upcoming`;
 - `ended`.
+
+The production service coalesces concurrent discovery reads and may reuse the
+same player-safe result for up to five seconds. The cache expires early at an
+event start or end boundary. It is not used for location eligibility,
+challenge access, or any other authoritative game decision.
 
 ### Event eligibility
 

@@ -62,6 +62,66 @@ describe('local player identity', () => {
     );
   });
 
+  it('shares only the stable identity result and rechecks concurrent authorization', async () => {
+    const initialResult = {
+      rows: [
+        {
+          id: 'player',
+          player_name: 'naledi',
+          role: 'player' as const,
+          lifecycle_status: 'active' as const,
+          identity_denied: false as const,
+        },
+      ],
+    };
+    const updatedResult = {
+      rows: [
+        {
+          ...initialResult.rows[0],
+          role: 'author' as const,
+        },
+      ],
+    };
+    let releaseQuery!: (value: typeof initialResult) => void;
+    const query = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<typeof initialResult>((resolve) => {
+            releaseQuery = resolve;
+          }),
+      )
+      .mockResolvedValue(updatedResult);
+    const service = createPlayerIdentityService({
+      query,
+      connect: vi.fn(),
+    } as unknown as Pick<pg.Pool, 'query' | 'connect'>);
+
+    const first = service.resolve(trustedPrincipal);
+    const concurrent = service.resolve(trustedPrincipal);
+
+    expect(query).toHaveBeenCalledOnce();
+    releaseQuery(initialResult);
+    await expect(Promise.all([first, concurrent])).resolves.toEqual([
+      expect.objectContaining({ id: 'player', role: 'player' }),
+      expect.objectContaining({ id: 'player', role: 'author' }),
+    ]);
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(query.mock.calls[1]?.[1]).toEqual([
+      trustedPrincipal.issuer,
+      trustedPrincipal.subject,
+      trustedPrincipal.tokenIssuedAt,
+      trustedPrincipal.playerName,
+      true,
+      'player',
+    ]);
+
+    await expect(service.resolve(trustedPrincipal)).resolves.toMatchObject({
+      id: 'player',
+    });
+    expect(query).toHaveBeenCalledTimes(3);
+  });
+
   it('rejects a denied token even when the unchanged player exists', async () => {
     const query = vi
       .fn()

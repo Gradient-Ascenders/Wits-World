@@ -4,7 +4,10 @@ import { buildApiConfig } from './config/api.js';
 import { buildAuthConfig } from './config/auth.js';
 import { buildDatabaseConfig, loadApiEnvironment } from './config/database.js';
 import { createDatabasePool } from './database/connection.js';
-import { createEventDiscoveryService } from './events/event-discovery.js';
+import {
+  createCachedEventDiscoveryService,
+  createEventDiscoveryService,
+} from './events/event-discovery.js';
 import { createEventEligibilityService } from './events/event-eligibility.js';
 import { buildCorsConfig } from './config/cors.js';
 import { createPlayerIdentityService } from './players/player-identity.js';
@@ -173,7 +176,9 @@ async function startServer(): Promise<void> {
     },
 
     eventServices: {
-      discovery: createEventDiscoveryService(database),
+      discovery: createCachedEventDiscoveryService(
+        createEventDiscoveryService(database),
+      ),
       eligibility: createEventEligibilityService(database),
       movementEvidence: movementEvidenceService,
     },
