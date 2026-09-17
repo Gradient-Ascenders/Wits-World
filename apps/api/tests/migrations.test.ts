@@ -63,7 +63,11 @@ describe('migration file loading', () => {
         name.startsWith('0037_') ||
         name.startsWith('0038_') ||
         name.startsWith('0039_') ||
-        name.startsWith('0040_'),
+        name.startsWith('0040_') ||
+        name.startsWith('0041_') ||
+        name.startsWith('0042_') ||
+        name.startsWith('0043_') ||
+        name.startsWith('0044_'),
     );
 
     expect(
@@ -169,6 +173,22 @@ describe('migration file loading', () => {
       {
         checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         name: '0040_add_offline_challenge_attempts.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0041_complete_card_catalogue.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0042_implement_card_evolution.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0043_add_content_source_evidence.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0044_create_live_pvp_persistence.sql',
       },
     ]);
   });

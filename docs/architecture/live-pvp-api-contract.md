@@ -7,10 +7,11 @@ title: 'Live player battle API'
 ## Status and purpose
 
 This document is the issue `#252` contract for one-minute live
-player-versus-player matches. Issue `#251` will implement the persistence
-boundary and later issues will implement the realtime gateway and player
-experience. This contract does not claim that the described routes, WebSocket
-messages, storage, or deployment settings are implemented or deployed.
+player-versus-player matches. Migration `0044_create_live_pvp_persistence.sql`
+implements the issue `#251` persistence boundary; later issues implement the
+realtime gateway and player experience. The described HTTP routes, WebSocket
+messages, gateway behavior, and deployment settings remain contracts until
+those runtime issues are delivered.
 
 Live PvP reuses the shared battle rules, card snapshots, legal action shapes,
 and hidden-card rules used by CPU and asynchronous PvP. Its distinct concerns
@@ -429,7 +430,8 @@ version, oversized-message, and superseded-connection failures close it.
 
 ## Persistence and fan-out requirements
 
-Issue `#251` must be able to represent:
+Migration `0044_create_live_pvp_persistence.sql` represents the issue `#251`
+persistence requirements:
 
 - participants, immutable battle-ready deck snapshots, and current full state;
 - match version, phase, current actor, deadline, and timeout counts;
@@ -440,11 +442,16 @@ Issue `#251` must be able to represent:
 - exactly-once progression sources and account-deletion behavior.
 
 PostgreSQL remains the source of truth across API restarts and multiple gateway
-instances. PostgreSQL `LISTEN/NOTIFY` may wake gateways after a commit, but it
-is not a durable queue and must carry only an opaque match identifier and
-committed version. The receiving gateway reloads its role-specific projection.
-Missed notifications converge through reconnect, explicit snapshot reads, and
-version-gap recovery. Correctness must not depend on Azure session affinity.
+instances. The persistence layer stores the match state, transition history,
+participant connection generation, ticket digests, and idempotency receipts;
+it does not itself start a gateway or deadline worker. PostgreSQL
+`LISTEN/NOTIFY` may wake gateways after a commit, but it is not a durable queue
+and must carry only an opaque match identifier and committed version. The
+receiving gateway reloads its role-specific projection. Missed notifications
+converge through reconnect, explicit snapshot reads, and version-gap recovery.
+Correctness must not depend on Azure session affinity. See
+[live PvP persistence](../database/live-pvp-persistence.md) for the implemented
+storage and retention boundary.
 
 ## Deployment and operational constraints
 
@@ -521,4 +528,4 @@ Before issue `#252` is closed:
 ## AI declaration
 
 This contract was planned, generated, edited, and reviewed with the assistance
-of Codex[GPT-5.6 Sol].
+of Codex[GPT-5.6 Sol] and ChatGPT-Web[GPT-5.6 Sol].

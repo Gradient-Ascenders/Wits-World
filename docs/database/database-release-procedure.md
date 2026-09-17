@@ -193,6 +193,24 @@ No new environment variable, dependency, seed, purge job, or content backfill is
 required. If the API release fails after migration, retain `0042` and roll
 forward; do not remove its provenance column or immutable history tables.
 
+Migration `0044_create_live_pvp_persistence.sql` is database-first, additive,
+and forward-only. It creates the durable live-PvP match, participant, snapshot,
+state, transition, ticket-digest, connection-access, idempotency-receipt, and
+completion-source relations required by issue `#251`. Existing API versions do
+not query these relations, so the database-to-runtime window exposes no new
+route and requires no WebSocket support. Apply `0044` before deploying the
+issue `#253` realtime gateway. No new dependency, seed, environment variable,
+or live-PvP point-award rule is introduced. The provisional 24-hour transient
+ticket/access retention value must be confirmed by the issue `#251` reviewer;
+it is stored through indexed `purge_after` values. Migration
+`0044` supplies a retry-safe purge function but does not schedule it.
+
+Once `0044` is applied, keep it in migration history. If persistence defects are
+found, stop the unreleased live gateway if necessary and correct the schema with
+a later migration. Do not drop the new authoritative history or edit the applied
+file. Rehearsal must confirm both the first application and an immediate second
+run that skips `0044` with the stored checksum unchanged.
+
 ## Prerequisites
 
 - Use the Node.js and npm versions declared by the repository.
@@ -333,6 +351,6 @@ subject to the selected Neon plan and are not created by this procedure.
 
 This procedure was planned, generated, edited, and verified with the assistance
 of Codex[GPT-6], Codex[GPT-5], Codex[GPT-5.6 Sol], Codex[gpt-5.6-sol], and
-Codex-CLI[gpt-5.6-sol medium].
+Codex-CLI[gpt-5.6-sol medium], and ChatGPT-Web[GPT-5.6 Sol].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].

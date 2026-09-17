@@ -346,6 +346,11 @@ const sidebars: SidebarsConfig = {
                 },
                 {
                   type: 'doc',
+                  id: 'database/live-pvp-persistence',
+                  label: 'Live player battle storage',
+                },
+                {
+                  type: 'doc',
                   id: 'database/account-deletion-retention',
                   label: 'Account deletion and retained data',
                 },
