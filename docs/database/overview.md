@@ -32,6 +32,7 @@ API in the current repository.
 | Player progression     | Versioned point rules, immutable source awards, Johannesburg activity days, streaks, data-driven achievements, and indexed all-time/monthly totals support deterministic profiles and standings.                                                                                                                                                                | [Player progression persistence](./player-progression-persistence.md) and [progression rules](../requirements/player-progression-rules.md)                                                                                                                                                                                                    |
 | Ordered trails         | Trail definitions and unique ordered event membership provide immutable publication history. Player progress is derived from authoritative event completions rather than a mutable cursor.                                                                                                                                                                      | [Ordered trail persistence](./ordered-trails-persistence.md) and [trail rules](../requirements/ordered-trails-rules.md)                                                                                                                                                                                                                       |
 | Asynchronous PvP       | Invitation, immutable deck-snapshot, private match-state, idempotency-receipt, action-history, terminal-result, and participant progression relations preserve asynchronous battle authority.                                                                                                                                                                   | [Asynchronous PvP persistence](./asynchronous-pvp-persistence.md) and [API contract](../architecture/asynchronous-pvp-api-contract.md)                                                                                                                                                                                                        |
+| Live PvP               | Durable two-participant state, immutable battle-ready snapshots, one-minute deadlines, participant connection generations, hashed tickets, idempotency receipts, spectator-safe transition history, and terminal completion sources support reconnectable live battle authority.                                                                                | [Live PvP persistence](./live-pvp-persistence.md) and [API contract](../architecture/live-pvp-api-contract.md)                                                                                                                                                                                                                                |
 | Authoring and audit    | Five-state lifecycle columns, versions, provenance, constraints, and triggers protect curated content; `author_content_audit` records versioned Author actions.                                                                                                                                                                                                 | [Author curation contract](../architecture/author-curation-api-contract.md), [Challenge, reward, and card persistence](./challenge-reward-persistence-design.md#event-authoring-lifecycle), and [Event schema](./event-schema.md#author-publication-lifecycle)                                                                                |
 
 Accepted choices and correct ordering positions are kept in the `private`
@@ -46,7 +47,7 @@ Start with the domain table above, then follow the diagrams and detailed field
 references below. These documents describe the application schema; the ordered
 [migration source](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/database/migrations)
 is authoritative for exact SQL types, constraints, indexes and later alterations
-through `0043_add_content_source_evidence.sql` at the Sprint 2 audit.
+through `0044_create_live_pvp_persistence.sql` for the issue `#251` update.
 
 | Schema question                                                                   | Canonical reference                                                                                                                                                                                                                                                               |
 | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -54,7 +55,7 @@ through `0043_add_content_source_evidence.sql` at the Sprint 2 audit.
 | How do identity, Player Names and lifecycle retention relate?                     | [Player schema](player-schema.md), [deletion and retention](account-deletion-retention.md)                                                                                                                                                                                        |
 | How do challenges, questions, snapshots, answers, rewards and owned cards relate? | [Challenge/reward fields and ER diagram](challenge-reward-persistence-design.md)                                                                                                                                                                                                  |
 | How do saved decks refer to individual owned copies?                              | [Saved-deck fields, ownership keys and ER diagram](saved-deck-persistence-design.md)                                                                                                                                                                                              |
-| How are authoritative CPU and two-player matches recorded?                        | [CPU match schema](cpu-match-persistence-design.md), [asynchronous PvP schema](asynchronous-pvp-persistence.md)                                                                                                                                                                   |
+| How are authoritative CPU and two-player matches recorded?                        | [CPU match schema](cpu-match-persistence-design.md), [asynchronous PvP schema](asynchronous-pvp-persistence.md), [live PvP schema](live-pvp-persistence.md)                                                                                                                       |
 | How are points, achievements and trails persisted?                                | [Progression schema](player-progression-persistence.md), [ordered trails](ordered-trails-persistence.md)                                                                                                                                                                          |
 | How do later systems extend the schema?                                           | [Campaigns](campaign-scheduling-persistence.md), [movement evidence](movement-evidence.md), [question analytics](question-performance-analytics.md), [offline contract](../architecture/offline-challenge-play.md), [evolution receipts](../requirements/card-evolution-rules.md) |
 | How is schema deployed safely?                                                    | [Neon/PostGIS setup](neon-postgis-setup.md), [migration and release procedure](database-release-procedure.md), [seed policy](basic-demo-seed.md)                                                                                                                                  |
@@ -143,6 +144,14 @@ arrays to event and question definitions. Protected Author reads expose these
 review links. Player discovery and challenge-attempt contracts remain unchanged
 and never serialize the source arrays or private answer keys.
 
+Migration `0044_create_live_pvp_persistence.sql` adds the Advanced live PvP
+persistence boundary: exactly two participants, immutable five-card snapshots,
+current private state, one-minute deadlines, connection generations, hashed
+single-use ticket records, connection-access retention, immutable transition
+history, idempotency receipts, terminal results, and exactly-once completion
+sources. It adds no live route, WebSocket gateway, point-award rule, seed, or
+environment variable. See [Live PvP persistence](./live-pvp-persistence.md).
+
 ## Environments and deployment
 
 The repository documents separate PostgreSQL/PostGIS targets:
@@ -173,8 +182,8 @@ safety controls.
 The opt-in database runner applies the complete migration history to a
 disposable database and exercises geospatial calculations, constraints,
 transactions, concurrency, ownership, authoring lifecycles, ordered trail
-derivation, asynchronous PvP persistence, bounded nearby discovery, and
-recovery. The deterministic Basic E2E
+derivation, asynchronous PvP persistence, live PvP persistence and concurrency,
+bounded nearby discovery, and recovery. The deterministic Basic E2E
 also crosses the real test database boundary.
 
 Pull requests invoke the migration and database suites with four workers
@@ -204,8 +213,9 @@ of Neon or from a passing local suite.
 
 This database overview was generated, edited, and reviewed with the assistance
 of Codex[GPT-5], Codex-CLI[gpt-5.6-sol medium],
-Codex-CLI[GPT-5.6 Sol], and Codex[gpt-5.6-sol]. It was reconciled with the
-current migrations, runner, tests, and existing schema and release documents.
+Codex-CLI[GPT-5.6 Sol], Codex[gpt-5.6-sol], and ChatGPT-Web[GPT-5.6 Sol]. It
+was reconciled with the current migrations, runner, tests, and existing schema
+and release documents.
 
 Sprint 2 schema navigation updated with assistance from Codex-CLI[GPT-6].
 

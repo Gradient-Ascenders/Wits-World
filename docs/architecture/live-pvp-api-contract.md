@@ -7,10 +7,11 @@ title: 'Live player battle API'
 ## Status and purpose
 
 This document is the issue `#252` contract for one-minute live
-player-versus-player matches. Issue `#251` will implement the persistence
-boundary and later issues will implement the realtime gateway and player
-experience. This contract does not claim that the described routes, WebSocket
-messages, storage, or deployment settings are implemented or deployed.
+player-versus-player matches. Migration `0044_create_live_pvp_persistence.sql`
+implements the issue `#251` persistence boundary; later issues implement the
+realtime gateway and player experience. The described HTTP routes, WebSocket
+messages, gateway behavior, and deployment settings remain contracts until
+those runtime issues are delivered.
 
 Live PvP reuses the shared battle rules, card snapshots, legal action shapes,
 and hidden-card rules used by CPU and asynchronous PvP. Its distinct concerns
@@ -136,10 +137,13 @@ before returning:
 ```
 
 The ticket is opaque, cryptographically random, bound to one match, local
-player, role, and protocol version, and expires 60 seconds after creation. Only
-a hash of the ticket is persisted. Redemption is atomic and single-use. A
-failed, expired, replayed, wrong-match, or wrong-role redemption cannot open a
-connection.
+player, role, and protocol version, and expires 60 seconds after creation. Ticket
+minting locks the local player row and then the authoritative match row before
+sampling PostgreSQL `clock_timestamp()`; `created_at` and the 60-second expiry
+are derived from that post-lock time, so waiting for lifecycle serialization
+does not consume the ticket TTL. Only a hash of the ticket is persisted.
+Redemption is atomic and single-use. A failed, expired, replayed, wrong-match,
+or wrong-role redemption cannot open a connection.
 
 The Auth0 bearer token is sent only to the HTTPS ticket endpoint. It is never
 placed in a WebSocket URL, query string, close reason, application message, or
@@ -155,14 +159,21 @@ The future gateway upgrades:
 GET /api/v1/realtime/live?ticket=<short-lived-ticket>
 ```
 
-The gateway redeems the ticket before accepting application messages. A
-participant redemption locks that participant's live-match connection record,
-increments its persisted connection generation, and binds the accepted socket
-to the resulting immutable `(playerId, matchId, connectionGeneration)` server
-context. The generation is never taken from an application message. A newer
-generation for the same match and player supersedes the previous one; the prior
-socket closes with code `4409`. Opening or closing a socket does not change the
-battle version, state, or deadline.
+The gateway redeems the ticket before accepting application messages.
+Redemption serializes against account deletion and match completion by locking
+the local player row and then the authoritative match row before locking the
+ticket. Participant redemption additionally locks that participant's live-match
+row. PostgreSQL `clock_timestamp()` is sampled only after those locks are
+acquired, so a ticket that expires while waiting is rejected rather than
+redeemed with an earlier arrival time.
+
+A participant redemption increments its persisted connection generation and
+binds the accepted socket to the resulting immutable
+`(playerId, matchId, connectionGeneration)` server context. The generation is
+never taken from an application message. A newer generation for the same match
+and player supersedes the previous one; the prior socket closes with code
+`4409`. Opening or closing a socket does not change the battle version, state,
+or deadline.
 
 Closing the prior socket is best-effort fan-out rather than the authorization
 boundary. Every participant action and resignation must lock the authoritative
@@ -429,7 +440,8 @@ version, oversized-message, and superseded-connection failures close it.
 
 ## Persistence and fan-out requirements
 
-Issue `#251` must be able to represent:
+Migration `0044_create_live_pvp_persistence.sql` represents the issue `#251`
+persistence requirements:
 
 - participants, immutable battle-ready deck snapshots, and current full state;
 - match version, phase, current actor, deadline, and timeout counts;
@@ -440,11 +452,16 @@ Issue `#251` must be able to represent:
 - exactly-once progression sources and account-deletion behavior.
 
 PostgreSQL remains the source of truth across API restarts and multiple gateway
-instances. PostgreSQL `LISTEN/NOTIFY` may wake gateways after a commit, but it
-is not a durable queue and must carry only an opaque match identifier and
-committed version. The receiving gateway reloads its role-specific projection.
-Missed notifications converge through reconnect, explicit snapshot reads, and
-version-gap recovery. Correctness must not depend on Azure session affinity.
+instances. The persistence layer stores the match state, transition history,
+participant connection generation, ticket digests, and idempotency receipts;
+it does not itself start a gateway or deadline worker. PostgreSQL
+`LISTEN/NOTIFY` may wake gateways after a commit, but it is not a durable queue
+and must carry only an opaque match identifier and committed version. The
+receiving gateway reloads its role-specific projection. Missed notifications
+converge through reconnect, explicit snapshot reads, and version-gap recovery.
+Correctness must not depend on Azure session affinity. See
+[live PvP persistence](../database/live-pvp-persistence.md) for the implemented
+storage and retention boundary.
 
 ## Deployment and operational constraints
 
@@ -521,4 +538,4 @@ Before issue `#252` is closed:
 ## AI declaration
 
 This contract was planned, generated, edited, and reviewed with the assistance
-of Codex[GPT-5.6 Sol].
+of Codex[GPT-5.6 Sol] and ChatGPT-Web[GPT-5.6 Sol].

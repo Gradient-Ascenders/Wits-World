@@ -73,17 +73,26 @@ applies shared battle rules, signs viewer-bound cursors, hides unrevealed cards,
 enforces versions and 24-hour deadlines, and records terminal progression in
 the same transaction. The Web experience remains a separate issue.
 
-The planned live PvP boundary preserves the same authority while adding a
-realtime transport. An authenticated HTTPS request may mint a short-lived,
-single-use connection ticket bound to one local player, match, and participant
-or spectator role. Long-lived bearer tokens do not enter WebSocket URLs.
-Opening, losing, or replacing a connection cannot pause a deadline or mutate a
-match; reconnect loads the persisted server snapshot. Participant messages
-contain only an idempotency identifier, expected version, and legal intent.
-Spectators receive only revealed battle state and aggregate hidden-card counts
-and can never submit match actions. The complete planned boundary is defined in
-the [live PvP contract](./live-pvp-api-contract.md); it is not yet an
-implemented or deployed capability.
+The live PvP boundary preserves the same authority while adding a realtime
+transport. Migration `0044_create_live_pvp_persistence.sql` implements its
+durable storage boundary: immutable battle-ready snapshots, current private
+state, one-minute deadlines, participant connection generations, hashed
+single-use ticket records, idempotency receipts, spectator-safe public history,
+and terminal results survive process loss. An authenticated HTTPS request may
+mint a short-lived, single-use connection ticket bound to one local player,
+match, and participant or spectator role; raw tickets are never persisted, and
+long-lived bearer tokens are never placed in WebSocket URLs. The short-lived
+connection ticket itself is supplied in the WebSocket `ticket` query parameter
+and must be redacted from proxy and application logs. Opening, losing, or
+replacing a connection cannot pause a deadline or mutate gameplay state;
+reconnect loads the persisted server snapshot. Participant messages contain
+only an idempotency identifier, expected version, and legal intent. Spectators
+receive only revealed battle state and aggregate hidden-card counts and can
+never submit match actions. The [live PvP contract](./live-pvp-api-contract.md)
+and [persistence design](../database/live-pvp-persistence.md) define the
+implemented storage boundary. The HTTPS ticket route, WebSocket gateway,
+deadline worker, and player experience remain follow-up runtime work and are not
+yet deployed capabilities.
 
 ### Authentication provider
 
@@ -374,7 +383,8 @@ validated.
 
 This document was originally planned and generated with assistance from
 ChatGPT-Web[GPT-5.6 Thinking], and was reviewed and edited for Sprint 1 release
-validation with assistance from ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5], and
-Codex[gpt-5.6-sol], and Codex-CLI[gpt-5.6-sol medium].
+validation with assistance from ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5],
+Codex[gpt-5.6-sol], and Codex-CLI[gpt-5.6-sol medium]. The live PvP persistence
+boundary was updated with assistance from ChatGPT-Web[GPT-5.6 Sol].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
