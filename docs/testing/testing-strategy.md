@@ -26,7 +26,7 @@ check is automated in CI.
 | Pure unit tests                         | Vitest exercises domain rules, validation, configuration, timing, security policy, and deterministic state transitions without a browser or external service. The `account-policy` and `game-rules` packages have their own suites.                                                                                               | `packages/*/tests`, focused files under `apps/api/tests` and `apps/web/tests`                                                                                                             |
 | Web component and client tests          | Vitest, jsdom, React Testing Library, `user-event`, and DOM matchers exercise rendered states, typed API clients, forms, focus movement, native keyboard interaction, and provider failure boundaries. Tests normally select controls by accessible role or name.                                                                 | `apps/web/tests` and `apps/web/vite.config.ts`                                                                                                                                            |
 | API route and service tests             | Vitest and Fastify injection exercise route schemas, authentication, authorisation, safe errors, request validation, OpenAPI output, service rules, idempotency, and failure handling without opening a network listener. Authentication tests generate local keys and tokens rather than using a live Auth0 tenant.              | `apps/api/tests`, especially `*.integration.test.ts` route suites                                                                                                                         |
-| Database integration tests              | PR CI uses a per-job ephemeral PostGIS service with four workers. This covers migrations, constraints, transactions, concurrency, ownership, progression backfill, ordered trails, asynchronous PvP persistence, recovery, and geospatial behaviour without a shared remote test database.                                        | `npm run test:database --workspace @wits-world/api` and `apps/api/scripts/run-database-tests.mjs`                                                                                         |
+| Database integration tests              | PR CI uses a per-job ephemeral PostGIS service with four workers. This covers migrations, constraints, transactions, concurrency, ownership, progression backfill, ordered trails, asynchronous PvP persistence, live PvP persistence, recovery, and geospatial behaviour without a shared remote test database.                  | `npm run test:database --workspace @wits-world/api` and `apps/api/scripts/run-database-tests.mjs`                                                                                         |
 | Browser end-to-end tests                | Playwright covers integrated Web/API journeys. The deterministic Basic runner migrates and seeds the test database, starts the real Fastify and Vite applications, and controls Auth0 and Mapbox at their network boundaries. Separate smoke specifications exist for real configured integrations and focused browser behaviour. | [Basic-tier deterministic E2E](./basic-tier-deterministic-e2e.md) and `apps/web/playwright`                                                                                               |
 | Manual, accessibility, and field checks | Release records identify checks that require human judgement or physical context: responsive layout, touch, full keyboard and focus quality, screen-reader use, contrast, reduced motion, real Auth0/Mapbox behaviour, and campus location conditions.                                                                            | [Basic release validation](./basic-tier-release-validation.md) and [location field-test protocol](../requirements/location-eligibility-field-test.md)                                     |
 | Deployment and release validation       | Gitea Actions validates repository changes. PRs run migration/database suites against isolated ephemeral PostGIS and deterministic Basic E2E in a separate isolated PostGIS job. Main deployment jobs verify artifacts and deployed Web/API health. Production database releases remain a separate guarded operation.             | [Automated verification](./automated-verification.md), [Continuous integration](./continuous-integration.md), and [database release procedure](../database/database-release-procedure.md) |
@@ -268,6 +268,30 @@ duplicate submissions, treat absent `canCancel` as false, and reuse the same
 submission ID after ambiguous delivery. Production or shared
 database targets are not substitutes for this evidence.
 
+## Live PvP persistence verification
+
+Issue `#251` adds `apps/api/tests/live-pvp-persistence.integration.test.ts` to
+the disposable database runner. The focused suite exercises the migration
+upgrade path and rerun behavior, public/private separation, shared five-card
+deck-snapshot rules, immutable history, ticket redemption and reuse,
+participant connection-generation supersession, stale-generation rejection,
+same-version write races, idempotency receipts, terminal completion sources,
+account-deletion guards, transient cleanup boundaries, and recovery through a
+fresh database pool.
+
+The persistence suite does not claim that the issue `#253` realtime gateway,
+WebSocket transport, deadline worker, spectator projection, or production
+cleanup scheduler exists. Those runtime features require their own
+authentication, authorization, closed-schema, post-lock database-clock,
+idempotency replay, multi-instance, reconnect, and deadline/action-race tests
+when implemented.
+
+For normal development, the focused live-PvP database file may be run against
+`TEST_DATABASE_URL` before opening a draft pull request. The complete disposable
+database runner remains the regression gate in PR CI. A successful CI run is
+test-environment evidence only; it does not establish that migration `0044` or
+its cleanup primitive was executed in production.
+
 ## Performance and reliability evidence
 
 The repository contains measured CI and deployment timing comparisons in
@@ -301,7 +325,8 @@ for demonstrating the acceptance criteria and protected invariants.
 
 This testing strategy was generated, edited, and reviewed with the assistance
 of Codex[GPT-6], Codex[GPT-5], Codex[gpt-5.6-sol], Codex-CLI[GPT-5], and
-Codex-CLI[gpt-5.6-sol medium], and Codex-CLI[GPT-6].
+Codex-CLI[gpt-5.6-sol medium], Codex-CLI[GPT-6], and
+ChatGPT-Web[GPT-5.6 Sol].
 Repository paths and workflow claims were checked against the current source;
 this declaration is not test evidence.
 
