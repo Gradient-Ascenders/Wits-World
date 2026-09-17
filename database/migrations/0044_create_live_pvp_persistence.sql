@@ -687,18 +687,17 @@ begin
       using errcode = '55006';
   end if;
 
+  if old.outcome is not null then
+    raise exception
+      'Terminal live PvP participant history is immutable'
+      using errcode = '55006';
+  end if;
+
   if new.connection_generation < old.connection_generation
      or new.connection_generation > old.connection_generation + 1 then
     raise exception
       'Live PvP participant connection generation must advance one step at a time'
       using errcode = '23514';
-  end if;
-
-  if old.outcome is not null
-     and new.outcome is distinct from old.outcome then
-    raise exception
-      'Terminal live PvP participant outcomes are immutable'
-      using errcode = '55006';
   end if;
 
   if old.outcome is null
@@ -807,7 +806,8 @@ begin
   select lifecycle_status
     into player_status
     from public.players
-   where id = new.player_id;
+   where id = new.player_id
+   for update;
 
   if player_status is distinct from 'active' then
     raise exception
@@ -818,7 +818,8 @@ begin
   select status
     into match_status
     from public.live_pvp_matches
-   where id = new.match_id;
+   where id = new.match_id
+   for update;
 
   if match_status is distinct from 'active' then
     raise exception
@@ -949,7 +950,7 @@ execute function private.close_live_pvp_access_on_match_completion();
 
 create function private.redeem_live_pvp_connection_ticket(
   ticket_digest_to_redeem bytea,
-  redemption_now timestamptz default clock_timestamp()
+  redemption_now timestamptz default null
 )
 returns table (
   access_id uuid,
@@ -961,18 +962,61 @@ returns table (
 language plpgsql
 as $$
 declare
+  ticket_identity record;
   ticket_record record;
+  player_status text;
+  match_status text;
   current_generation bigint;
   new_generation bigint;
   new_access_id uuid;
+  effective_redemption_now timestamptz;
 begin
+  -- Read only the immutable identifiers first. Authority is established below
+  -- after locking player -> match -> ticket -> participant in that order.
+  select ticket.match_id, ticket.player_id
+    into ticket_identity
+    from private.live_pvp_connection_tickets ticket
+   where ticket.ticket_digest = ticket_digest_to_redeem;
+
+  if not found then
+    raise exception
+      'Live PvP connection ticket is invalid'
+      using errcode = '28000';
+  end if;
+
+  select player.lifecycle_status
+    into player_status
+    from public.players player
+   where player.id = ticket_identity.player_id
+   for update;
+
+  if not found or player_status is distinct from 'active' then
+    raise exception
+      'Live PvP connection ticket player is unavailable'
+      using errcode = '28000';
+  end if;
+
+  select match.status
+    into match_status
+    from public.live_pvp_matches match
+   where match.id = ticket_identity.match_id
+   for update;
+
+  if not found or match_status is distinct from 'active' then
+    raise exception
+      'Live PvP connection ticket match is unavailable'
+      using errcode = '23514';
+  end if;
+
   select ticket.*
     into ticket_record
     from private.live_pvp_connection_tickets ticket
    where ticket.ticket_digest = ticket_digest_to_redeem
    for update;
 
-  if not found then
+  if not found
+     or ticket_record.match_id is distinct from ticket_identity.match_id
+     or ticket_record.player_id is distinct from ticket_identity.player_id then
     raise exception
       'Live PvP connection ticket is invalid'
       using errcode = '28000';
@@ -982,34 +1026,6 @@ begin
     raise exception
       'Live PvP connection ticket has already been redeemed'
       using errcode = '23505';
-  end if;
-
-  if redemption_now >= ticket_record.expires_at then
-    raise exception
-      'Live PvP connection ticket has expired'
-      using errcode = '22023';
-  end if;
-
-  if not exists (
-    select 1
-      from public.players player
-     where player.id = ticket_record.player_id
-       and player.lifecycle_status = 'active'
-  ) then
-    raise exception
-      'Live PvP connection ticket player is unavailable'
-      using errcode = '28000';
-  end if;
-
-  if not exists (
-    select 1
-      from public.live_pvp_matches match
-     where match.id = ticket_record.match_id
-       and match.status = 'active'
-  ) then
-    raise exception
-      'Live PvP connection ticket match is unavailable'
-      using errcode = '23514';
   end if;
 
   new_generation := null;
@@ -1027,13 +1043,25 @@ begin
         'Live PvP participant ticket has no matching participant'
         using errcode = '23503';
     end if;
+  end if;
 
+  -- Production callers omit the override, so the authoritative clock is
+  -- sampled only after every row lock that redemption may wait for.
+  effective_redemption_now := coalesce(redemption_now, clock_timestamp());
+
+  if effective_redemption_now >= ticket_record.expires_at then
+    raise exception
+      'Live PvP connection ticket has expired'
+      using errcode = '22023';
+  end if;
+
+  if ticket_record.role = 'participant' then
     new_generation := current_generation + 1;
 
     update private.live_pvp_connection_access access
-       set closed_at = redemption_now,
+       set closed_at = effective_redemption_now,
            close_reason = 'superseded',
-           purge_after = redemption_now + interval '24 hours'
+           purge_after = effective_redemption_now + interval '24 hours'
      where access.match_id = ticket_record.match_id
        and access.player_id = ticket_record.player_id
        and access.role = 'participant'
@@ -1041,13 +1069,16 @@ begin
 
     update public.live_pvp_match_participants participant
        set connection_generation = new_generation,
-           updated_at = greatest(participant.updated_at, redemption_now)
+           updated_at = greatest(
+             participant.updated_at,
+             effective_redemption_now
+           )
      where participant.match_id = ticket_record.match_id
        and participant.player_id = ticket_record.player_id;
   end if;
 
   update private.live_pvp_connection_tickets ticket
-     set redeemed_at = redemption_now
+     set redeemed_at = effective_redemption_now
    where ticket.id = ticket_record.id;
 
   insert into private.live_pvp_connection_access (
@@ -1063,7 +1094,7 @@ begin
     ticket_record.player_id,
     ticket_record.role,
     new_generation,
-    redemption_now
+    effective_redemption_now
   )
   returning id into new_access_id;
 

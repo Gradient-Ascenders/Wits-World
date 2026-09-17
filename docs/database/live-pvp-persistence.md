@@ -62,7 +62,9 @@ replacement phases require one current participant. Every active decision has
 `turn_deadline = decision_started_at + interval '60 seconds'`; completed matches
 have no pending decision deadline. A completed match has one winner, one loser,
 a supported completion reason, matching immutable completion sources, and no
-later mutable state.
+later mutable state. Once a participant has a terminal outcome, the entire
+participant row is immutable, including timeout and connection-generation
+fields.
 
 The database stores the deadline but does not decide a late action merely from
 network arrival time. The runtime contract requires the transaction handling an
@@ -77,12 +79,20 @@ the 32-byte SHA-256 digest is persisted. A ticket is bound to one match, one
 active local player, one server-derived role, and protocol version `1`; it
 expires exactly 60 seconds after creation and can be redeemed once.
 
-Participant redemption locks the participant row, increments its persisted
-`connection_generation` by one, closes an older open participant access as
-`superseded`, and records the new access atomically. Spectator redemption does
-not increment participant generation. A participant cannot obtain spectator
-access to the same match, and a nonparticipant cannot redeem a participant
-ticket.
+Ticket minting and redemption serialize against player and match lifecycle
+changes. Both paths lock the player row before the authoritative match row;
+redemption then locks the ticket and, for participants, the participant row.
+Production redemption samples PostgreSQL `clock_timestamp()` only after those
+locks are acquired, so time spent waiting for deletion, completion, another
+redemption, or a participant update counts against the 60-second ticket
+lifetime. An expired ticket therefore cannot become valid merely because its
+redemption request arrived before a lock wait.
+
+Participant redemption increments its persisted `connection_generation` by
+one, closes an older open participant access as `superseded`, and records the
+new access atomically. Spectator redemption does not increment participant
+generation. A participant cannot obtain spectator access to the same match,
+and a nonparticipant cannot redeem a participant ticket.
 
 Connection generation is separate from gameplay version. Reconnect,
 supersession, socket close, and spectator presence do not advance battle state

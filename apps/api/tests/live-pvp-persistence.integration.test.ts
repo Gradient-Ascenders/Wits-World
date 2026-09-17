@@ -350,6 +350,82 @@ describe.skipIf(!runIntegrationTests)(
       ).rejects.toThrow('does not belong to a match participant');
     }, 30_000);
 
+    it('samples ticket expiry only after player and match lifecycle locks are acquired', async () => {
+      const fixture = await createLiveMatch(pool, cardDefinitions);
+      const databaseClock = await pool.query<{ database_now: Date }>(
+        `select clock_timestamp() as database_now`,
+      );
+      const createdAt = new Date(
+        databaseClock.rows[0]!.database_now.getTime() - 50_000,
+      );
+      const ticket = await insertConnectionTicket(
+        pool,
+        fixture.matchId,
+        fixture.playerTwo.id,
+        'participant',
+        createdAt,
+      );
+      const blocker = await pool.connect();
+
+      try {
+        await blocker.query('begin');
+        await blocker.query(
+          `select id
+             from public.live_pvp_matches
+            where id = $1::uuid
+            for update`,
+          [fixture.matchId],
+        );
+
+        const redemption = redeemTicket(pool, ticket).then(
+          (rows) => ({ ok: true as const, rows }),
+          (error: unknown) => ({ ok: false as const, error }),
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, 11_000));
+        await blocker.query('commit');
+
+        const outcome = await redemption;
+        expect(outcome.ok).toBe(false);
+        if (outcome.ok) {
+          throw new Error('Expected blocked ticket redemption to expire');
+        }
+        expect(String(outcome.error)).toContain(
+          'connection ticket has expired',
+        );
+      } catch (error) {
+        await blocker.query('rollback');
+        throw error;
+      } finally {
+        blocker.release();
+      }
+
+      const persisted = await pool.query<{
+        access_count: string;
+        connection_generation: string | number;
+        redeemed_at: Date | null;
+      }>(
+        `select ticket.redeemed_at,
+                participant.connection_generation,
+                (select count(*)::text
+                   from private.live_pvp_connection_access access
+                  where access.ticket_id = ticket.id) as access_count
+           from private.live_pvp_connection_tickets ticket
+           join public.live_pvp_match_participants participant
+             on participant.match_id = ticket.match_id
+            and participant.player_id = ticket.player_id
+          where ticket.ticket_digest = $1::bytea`,
+        [ticket],
+      );
+      expect(persisted.rows).toEqual([
+        {
+          access_count: '0',
+          connection_generation: '0',
+          redeemed_at: null,
+        },
+      ]);
+    }, 30_000);
+
     it('rejects nonparticipant mutation storage and rolls the attempted transition back', async () => {
       const fixture = await createLiveMatch(pool, cardDefinitions);
       const nonParticipant = await insertPlayer(pool, 'mutation_viewer');
@@ -593,6 +669,17 @@ describe.skipIf(!runIntegrationTests)(
           [fixture.matchId],
         ),
       ).rejects.toThrow('public action history is immutable');
+
+      await expect(
+        pool.query(
+          `update public.live_pvp_match_participants
+              set consecutive_timeout_count = consecutive_timeout_count + 1,
+                  connection_generation = connection_generation + 1
+            where match_id = $1::uuid
+              and player_id = $2::uuid`,
+          [fixture.matchId, fixture.playerOne.id],
+        ),
+      ).rejects.toThrow('Terminal live PvP participant history is immutable');
 
       await expect(
         pool.query(

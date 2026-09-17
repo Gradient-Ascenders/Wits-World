@@ -156,14 +156,21 @@ The future gateway upgrades:
 GET /api/v1/realtime/live?ticket=<short-lived-ticket>
 ```
 
-The gateway redeems the ticket before accepting application messages. A
-participant redemption locks that participant's live-match connection record,
-increments its persisted connection generation, and binds the accepted socket
-to the resulting immutable `(playerId, matchId, connectionGeneration)` server
-context. The generation is never taken from an application message. A newer
-generation for the same match and player supersedes the previous one; the prior
-socket closes with code `4409`. Opening or closing a socket does not change the
-battle version, state, or deadline.
+The gateway redeems the ticket before accepting application messages.
+Redemption serializes against account deletion and match completion by locking
+the local player row and then the authoritative match row before locking the
+ticket. Participant redemption additionally locks that participant's live-match
+row. PostgreSQL `clock_timestamp()` is sampled only after those locks are
+acquired, so a ticket that expires while waiting is rejected rather than
+redeemed with an earlier arrival time.
+
+A participant redemption increments its persisted connection generation and
+binds the accepted socket to the resulting immutable
+`(playerId, matchId, connectionGeneration)` server context. The generation is
+never taken from an application message. A newer generation for the same match
+and player supersedes the previous one; the prior socket closes with code
+`4409`. Opening or closing a socket does not change the battle version, state,
+or deadline.
 
 Closing the prior socket is best-effort fan-out rather than the authorization
 boundary. Every participant action and resignation must lock the authoritative
