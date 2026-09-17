@@ -156,9 +156,21 @@ GET /api/v1/realtime/live?ticket=<short-lived-ticket>
 ```
 
 The gateway redeems the ticket before accepting application messages. A
-participant connection for the same match and player supersedes the previous
-one after successful redemption; the prior socket closes with code `4409`.
-Opening or closing a socket does not change match state.
+participant redemption locks that participant's live-match connection record,
+increments its persisted connection generation, and binds the accepted socket
+to the resulting immutable `(playerId, matchId, connectionGeneration)` server
+context. The generation is never taken from an application message. A newer
+generation for the same match and player supersedes the previous one; the prior
+socket closes with code `4409`. Opening or closing a socket does not change the
+battle version, state, or deadline.
+
+Closing the prior socket is best-effort fan-out rather than the authorization
+boundary. Every participant action and resignation must lock the authoritative
+match and compare its socket-bound generation with the participant's persisted
+current generation before loading an idempotency receipt or applying game
+logic. A mismatch returns `LIVE_CONNECTION_SUPERSEDED`, closes that socket with
+`4409`, and performs no match mutation. This remains effective when the older
+and newer sockets are connected to different gateway instances.
 
 Transport-level WebSocket ping/pong detects dead connections. It is not a game
 action and cannot refresh a turn deadline. Implementations should send a ping
@@ -305,11 +317,25 @@ Every required decision stores:
 turnDeadline = decisionStartedAt + 60 seconds
 ```
 
-At the exact boundary, `serverReceivedAt >= turnDeadline` is late. A mutation
-must lock the match, recheck database time, and persist any overdue transition
-before validating the client intent. A deadline worker provides at-least-once
-convergence for matches receiving no traffic, but persisted deadlines and row
-locks decide the result.
+The sole acceptance timestamp is `decisionNow`, sampled from PostgreSQL with
+`clock_timestamp()` immediately after the mutation acquires the authoritative
+match row lock. At the exact boundary, `decisionNow >= turnDeadline` is late.
+The gateway's receipt time, socket timestamp, application-process clock, and
+time spent waiting for the lock have no authority. An action that reaches the
+gateway before the deadline but acquires the lock at or after it is therefore
+late. The service persists the overdue automatic transition before rejecting
+that intent with `LIVE_ACTION_LATE`, then sends the latest role-appropriate
+snapshot so the caller can reconcile.
+
+The deadline worker uses the same match lock and post-lock database-clock rule.
+If an action locks first and samples `decisionNow < turnDeadline`, it commits
+and the worker observes the new version and deadline. If the worker locks first
+at or after the deadline, it commits the timeout and the waiting action observes
+the advanced state and is rejected as late. If either path locks before the
+deadline, it cannot manufacture an early timeout. This serialization rule, not
+network arrival order, produces one deterministic transition. The worker
+provides at-least-once convergence for matches receiving no traffic, while
+persisted deadlines and row locks remain authoritative.
 
 For a missed decision:
 
@@ -349,15 +375,25 @@ later action may already have advanced the match beyond the original version.
 Every mutation also supplies `expectedVersion`. Under a participant-scoped
 match lock, the service must:
 
-1. load a committed receipt after acquiring the lock;
-2. return an identical replay or reject a payload conflict;
-3. process an elapsed deadline before client intent;
-4. compare the expected and persisted versions;
-5. validate role, current actor, phase, ownership, and legal action;
-6. apply shared battle rules and server randomness;
-7. persist state, deadline, timeout counts, history, terminal result,
+1. compare the socket-bound participant connection generation with the
+   persisted current generation, rejecting and closing a superseded socket;
+2. load a committed receipt after acquiring the lock;
+3. return an identical replay or reject a payload conflict;
+4. sample `decisionNow` from the database and process an elapsed deadline
+   before client intent;
+5. compare the expected and persisted versions;
+6. validate role, current actor, phase, ownership, and legal action;
+7. apply shared battle rules and server randomness;
+8. persist state, deadline, timeout counts, history, terminal result,
    progression source, and receipt in one transaction; and
-8. publish only after commit.
+9. publish only after commit.
+
+Participant ticket redemption and participant mutation both serialize through
+the same participant match row. If an old socket's mutation acquires the lock
+first, it may commit before the later redemption supersedes it. If redemption
+increments the generation first, every subsequent mutation from the old socket
+is rejected. An old socket can never mutate after the newer generation has
+committed, even when close notification is delayed or lost.
 
 Two intents against one version cannot both advance the match. Realtime
 delivery may be duplicated, delayed, or reordered; the browser orders state by
@@ -379,6 +415,7 @@ be unsafe.
 | `409`                | `LIVE_MATCH_COMPLETED`         | New intent targets a terminal match                         |
 | `409`                | `LIVE_VERSION_CONFLICT`        | Expected version is stale                                   |
 | `409`                | `LIVE_ACTION_ILLEGAL`          | Intent is not legal in the current state                    |
+| `409`                | `LIVE_ACTION_LATE`             | Post-lock database time reached the persisted deadline      |
 | `409`                | `LIVE_IDEMPOTENCY_CONFLICT`    | Message ID was reused with another payload                  |
 | `410` / `4401`       | `LIVE_TICKET_EXPIRED`          | Ticket expired before redemption                            |
 | `409` / `4401`       | `LIVE_TICKET_ALREADY_USED`     | Ticket has already been redeemed                            |
@@ -452,12 +489,14 @@ Later implementation issues must cover at least:
 
 ### Timing, reconnect, and concurrency
 
-- actions immediately before, exactly at, and after the deadline;
+- actions locking immediately before, exactly at, and after the deadline,
+  including an earlier gateway arrival that waits past the boundary;
 - random automatic initial and replacement choices;
 - no-action normal-turn timeout and reset after a timely action;
 - third consecutive miss producing one abandonment result;
 - reconnect before and after a deadline without extending it;
-- superseded participant sockets and stale actions;
+- an old socket on another gateway attempting an action after a newer ticket
+  redemption committed its connection generation;
 - duplicate and conflicting message IDs;
 - two actions racing on one version;
 - deadline worker racing a participant action;
