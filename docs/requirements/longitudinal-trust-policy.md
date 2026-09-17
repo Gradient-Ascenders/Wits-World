@@ -186,7 +186,6 @@ A case has one of these states:
 
 ```text
 open -> under_review -> resolved
-                     -> appealed -> appeal_resolved
 open -> resolved as decayed
 ```
 
@@ -194,7 +193,23 @@ Only one non-terminal case may exist for a player. New evidence updates its
 latest score and priority without deleting prior snapshots. A case that remains
 below 25 for seven continuous days may resolve as `decayed` through an
 append-only system decision only when it has no active restriction, reviewer
-lock, or appeal. Later evidence may create a new case.
+lock, or unfinished case-review work. Later evidence may create a new case.
+
+Appeals are a lifecycle of the challenged restriction decision, not case
+states. A restriction decision moves from appeal `eligible` to `submitted` and
+then `resolved`, or becomes `ineligible` when its 30-day post-expiry window
+ends without a submission. A case may therefore resolve while an unused appeal
+window remains or while a submitted appeal is awaiting resolution. A late
+appeal does not reopen the historical case, create another non-terminal case,
+or rewrite its score snapshots.
+
+An appeal resolution appends to the challenged decision. Any resulting
+false-positive adjustments take effect at the appeal-resolution time and cause
+a new current score calculation under the normal policy. If the player has a
+newer non-terminal case, that case receives the new snapshot; the resolved
+historical case remains terminal. A case with an active restriction remains
+`under_review` until the restriction expires or is overturned and its remaining
+case-review work is resolved.
 
 ## Author review boundary
 
@@ -380,6 +395,8 @@ tests covering:
 - seven-day restriction bounds, expiry, renewal, and server-side enforcement;
 - pre-existing attempts and matches surviving a later restriction;
 - one appeal per decision and different-Author resolution;
+- a post-expiry appeal submitted after its related case has resolved, without
+  reopening that case or creating a second non-terminal case;
 - raw movement expiry without loss of non-sensitive case explanation; and
 - account deletion, anonymisation, and retention expiry.
 
