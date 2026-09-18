@@ -19,7 +19,7 @@ import { runMigrations } from '../src/database/migrations.js';
 import { getMigrationsDirectory } from '../src/database/paths.js';
 import { createAccountDeletionLifecycle } from '../src/players/account-deletion-lifecycle.js';
 
-const MIGRATION_NAME = '0045_persist_longitudinal_trust.sql';
+const MIGRATION_NAME = '0046_persist_longitudinal_trust.sql';
 const POLICY_VERSION = 'trust-v1';
 const runIntegrationTests =
   process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';

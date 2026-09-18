@@ -6,7 +6,7 @@ title: 'Longitudinal trust persistence'
 
 ## Purpose
 
-Migration `0045_persist_longitudinal_trust.sql` implements the persistence layer
+Migration `0046_persist_longitudinal_trust.sql` implements the persistence layer
 for the `trust-v1` policy defined by issue `#254`. It stores only derived,
 privacy-limited trust data and human governance history. Issue `#257` does not
 calculate risk scores, create signals from gameplay, enforce restrictions, or

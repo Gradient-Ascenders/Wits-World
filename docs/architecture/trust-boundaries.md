@@ -372,7 +372,7 @@ restricts gameplay automatically. Any short restriction requires an
 append-only human decision, server-side scope enforcement, safe notice, and an
 appeal resolved by a different Author.
 
-Migration `0045_persist_longitudinal_trust.sql` implements the private storage
+Migration `0046_persist_longitudinal_trust.sql` implements the private storage
 boundary for that policy. Trust records use opaque source references/digests and
 safe evidence summaries rather than raw location, answer, authentication, or
 match payloads. Signals, score snapshots, decisions, adjustments, restrictions,

@@ -68,7 +68,8 @@ describe('migration file loading', () => {
         name.startsWith('0042_') ||
         name.startsWith('0043_') ||
         name.startsWith('0044_') ||
-        name.startsWith('0045_'),
+        name.startsWith('0045_') ||
+        name.startsWith('0046_'),
     );
 
     expect(
@@ -193,7 +194,11 @@ describe('migration file loading', () => {
       },
       {
         checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
-        name: '0045_persist_longitudinal_trust.sql',
+        name: '0045_create_event_placement_persistence.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0046_persist_longitudinal_trust.sql',
       },
     ]);
   });

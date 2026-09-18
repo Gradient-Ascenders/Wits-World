@@ -213,7 +213,7 @@ run that skips `0044` with the stored checksum unchanged.
 
 ## Longitudinal trust migration `0045`
 
-Migration `0045_persist_longitudinal_trust.sql` is additive and persistence-only.
+Migration `0046_persist_longitudinal_trust.sql` is additive and persistence-only.
 It creates private `trust-v1` relations, constraints, indexes, append-only audit
 guards, retention cleanup, and account-deletion cleanup. It adds no Fastify
 routes, score calculation, reviewer UI, or gameplay restriction enforcement.

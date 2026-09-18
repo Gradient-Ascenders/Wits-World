@@ -205,7 +205,8 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0042_implement_card_evolution.sql',
           '0043_add_content_source_evidence.sql',
           '0044_create_live_pvp_persistence.sql',
-          '0045_persist_longitudinal_trust.sql',
+          '0045_create_event_placement_persistence.sql',
+          '0046_persist_longitudinal_trust.sql',
         ],
       });
 
@@ -340,7 +341,8 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0042_implement_card_evolution.sql',
           '0043_add_content_source_evidence.sql',
           '0044_create_live_pvp_persistence.sql',
-          '0045_persist_longitudinal_trust.sql',
+          '0045_create_event_placement_persistence.sql',
+          '0046_persist_longitudinal_trust.sql',
         ],
       });
 

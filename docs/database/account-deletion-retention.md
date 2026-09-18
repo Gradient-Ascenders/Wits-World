@@ -101,7 +101,7 @@ forfeit progression or invitation finalization rolls back the deletion request.
 An already-elapsed decision deadline takes precedence over account deletion, so
 the current actor remains the forfeiter even when the opponent begins deletion.
 
-Migration `0045_persist_longitudinal_trust.sql` adds the trust-governance
+Migration `0046_persist_longitudinal_trust.sql` adds the trust-governance
 privacy boundary. Entering `deletion_pending` removes active signals,
 non-terminal cases, and resolved cases whose governance/appeal lifecycle was
 not finalized in the same player-lifecycle transaction. It also removes active
