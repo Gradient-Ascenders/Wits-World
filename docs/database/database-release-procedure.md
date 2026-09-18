@@ -211,6 +211,22 @@ a later migration. Do not drop the new authoritative history or edit the applied
 file. Rehearsal must confirm both the first application and an immediate second
 run that skips `0044` with the stored checksum unchanged.
 
+## Longitudinal trust migration `0045`
+
+Migration `0045_persist_longitudinal_trust.sql` is additive and persistence-only.
+It creates private `trust-v1` relations, constraints, indexes, append-only audit
+guards, retention cleanup, and account-deletion cleanup. It adds no Fastify
+routes, score calculation, reviewer UI, or gameplay restriction enforcement.
+
+Apply `0045` before deploying issue `#258` scoring/enforcement code. The
+migration can be deployed while the current application ignores the new trust
+relations. `private.purge_expired_trust_data(...)` is retry-safe but unscheduled;
+operations must not claim periodic cleanup is deployed until a scheduler is
+explicitly wired and verified.
+
+After `0045` is applied, keep its migration checksum immutable. Fix later defects
+with a new forward migration rather than editing `0045`.
+
 ## Prerequisites
 
 - Use the Node.js and npm versions declared by the repository.

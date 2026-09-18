@@ -7,11 +7,12 @@ title: 'Longitudinal trust and proportionate enforcement'
 ## Status and purpose
 
 This document is the issue `#254` policy contract for Advanced-tier trust
-scoring and proportionate enforcement. Issue `#257` will add persistence for
-derived signals, score snapshots, cases, restrictions, and decisions. Issue
-`#258` will implement scoring and server-side enforcement, and later issues will
-expose the reviewer and player experiences. This document does not claim that
-those capabilities are implemented or deployed.
+scoring and proportionate enforcement. Issue `#257` implements persistence for
+derived signals, score snapshots, cases, restrictions, appeals, and decisions
+through migration `0045_persist_longitudinal_trust.sql`. Issue `#258` remains
+responsible for scoring and server-side enforcement, and later issues will
+expose the reviewer and player experiences. Persistence alone does not mean
+that scoring, enforcement, review APIs, or player notices are deployed.
 
 The policy builds an explainable picture from weak indicators over time. A
 signal means that authoritative application data matched a review condition; it
@@ -406,4 +407,4 @@ automated checks. It does not add implementation-mirroring production tests.
 ## AI declaration
 
 This policy was planned, generated, edited, and reviewed with the assistance of
-Codex[GPT-5.6 Sol].
+Codex[GPT-5.6 Sol] and ChatGPT-Web[GPT-5.6 Sol].

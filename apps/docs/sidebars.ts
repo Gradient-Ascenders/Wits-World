@@ -356,6 +356,11 @@ const sidebars: SidebarsConfig = {
                 },
                 {
                   type: 'doc',
+                  id: 'database/trust-persistence',
+                  label: 'Trust and review storage',
+                },
+                {
+                  type: 'doc',
                   id: 'database/account-deletion-retention',
                   label: 'Account deletion and retained data',
                 },
