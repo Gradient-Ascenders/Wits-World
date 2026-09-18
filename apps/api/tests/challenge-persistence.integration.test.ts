@@ -126,6 +126,7 @@ describe.skipIf(!runIntegrationTests)(
           '0043_add_content_source_evidence.sql',
           '0044_create_live_pvp_persistence.sql',
           '0045_create_event_placement_persistence.sql',
+          '0046_persist_longitudinal_trust.sql',
         ],
         skipped: [],
       });
@@ -179,6 +180,7 @@ describe.skipIf(!runIntegrationTests)(
           '0043_add_content_source_evidence.sql',
           '0044_create_live_pvp_persistence.sql',
           '0045_create_event_placement_persistence.sql',
+          '0046_persist_longitudinal_trust.sql',
         ],
       });
     }, 30_000);
@@ -396,6 +398,7 @@ describe.skipIf(!runIntegrationTests)(
             '0043_add_content_source_evidence.sql',
             '0044_create_live_pvp_persistence.sql',
             '0045_create_event_placement_persistence.sql',
+            '0046_persist_longitudinal_trust.sql',
           ],
         });
 

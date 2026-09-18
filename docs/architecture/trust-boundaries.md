@@ -372,6 +372,16 @@ restricts gameplay automatically. Any short restriction requires an
 append-only human decision, server-side scope enforcement, safe notice, and an
 appeal resolved by a different Author.
 
+Migration `0046_persist_longitudinal_trust.sql` implements the private storage
+boundary for that policy. Trust records use opaque source references/digests and
+safe evidence summaries rather than raw location, answer, authentication, or
+match payloads. Signals, score snapshots, decisions, adjustments, restrictions,
+and appeals are append-only/immutable for normal application use; only the
+versioned case projection is mutable. Account deletion removes active trust
+state at the `deletion_pending` transition while allowed closed governance can
+remain against the anonymous local player tombstone until retention expiry.
+Scoring and restriction enforcement remain issue `#258` responsibilities.
+
 ## Open security decisions
 
 The following decisions or operational evidence still require review:
@@ -400,6 +410,7 @@ This document was originally planned and generated with assistance from
 ChatGPT-Web[GPT-5.6 Thinking], and was reviewed and edited for Sprint 1 release
 validation with assistance from ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5],
 Codex[gpt-5.6-sol], and Codex-CLI[gpt-5.6-sol medium]. The live PvP persistence
-boundary was updated with assistance from ChatGPT-Web[GPT-5.6 Sol].
+boundary and longitudinal trust persistence boundary were updated with assistance
+from ChatGPT-Web[GPT-5.6 Sol].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].

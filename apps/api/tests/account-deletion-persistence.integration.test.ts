@@ -59,6 +59,8 @@ const DENIED_TOKEN_PLAYER_ID = 'd1000000-0000-4000-8000-000000000005';
 const DENIED_TOKEN_DELETION_ID = 'd1100000-0000-4000-8000-000000000005';
 const RACING_TOKEN_PLAYER_ID = 'd1000000-0000-4000-8000-000000000006';
 const RACING_TOKEN_DELETION_ID = 'd1100000-0000-4000-8000-000000000006';
+const TRUST_CLEANUP_PLAYER_ID = 'd1000000-0000-4000-8000-000000000007';
+const TRUST_CLEANUP_DELETION_ID = 'd1100000-0000-4000-8000-000000000007';
 const ACCOUNT_DELETION_MIGRATION =
   '0024_complete_account_deletion_retention.sql';
 
@@ -361,6 +363,111 @@ describe.skipIf(!runIntegrationTests)(
       );
       expect(newProgress.rows[0]?.count).toBe('0');
     }, 60_000);
+
+    it('removes active trust signals and non-terminal trust cases when deletion enters pending', async () => {
+      const identity = {
+        issuer: ISSUER,
+        subject: 'auth0|trust-account-deletion',
+      };
+      const observedAt = new Date('2026-08-25T10:00:00.000Z');
+      const snapshotId = 'd1200000-0000-4000-8000-000000000007';
+      const caseId = 'd1300000-0000-4000-8000-000000000007';
+
+      await pool.query(
+        `insert into public.players (
+           id, auth_issuer, auth_subject, player_name, role, lifecycle_status
+         ) values ($1::uuid, $2, $3, 'trust_cleanup', 'player', 'active')`,
+        [TRUST_CLEANUP_PLAYER_ID, identity.issuer, identity.subject],
+      );
+      await pool.query(
+        `insert into private.trust_signals (
+           id, player_id, policy_version, signal_type, severity, base_points,
+           observed_at, expires_at, source_type, source_identifier,
+           deduplication_digest, created_at
+         ) values (
+           'd1400000-0000-4000-8000-000000000007'::uuid,
+           $1::uuid, 'trust-v1', 'impossible_movement', 'moderate', 15,
+           $2::timestamptz, $2::timestamptz, 'movement_decision',
+           'account-delete-signal', decode(repeat('11', 32), 'hex'),
+           $2::timestamptz
+         )`,
+        [TRUST_CLEANUP_PLAYER_ID, observedAt],
+      );
+      await pool.query(
+        `insert into private.trust_score_snapshots (
+           id, player_id, policy_version, evaluated_at,
+           movement_points, submission_conflict_points, opponent_pattern_points,
+           final_score, review_band, source_signal_count, calculation_digest,
+           purge_after, created_at
+         ) values (
+           $1::uuid, $2::uuid, 'trust-v1', $3::timestamptz,
+           30, 0, 0, 30, 'observe', 1,
+           decode(repeat('22', 32), 'hex'),
+           $3::timestamptz, $3::timestamptz
+         )`,
+        [snapshotId, TRUST_CLEANUP_PLAYER_ID, observedAt],
+      );
+      const trustClient = await pool.connect();
+      try {
+        await trustClient.query('begin');
+        await trustClient.query(
+          `insert into private.trust_cases (
+             id, player_id, policy_version, status, version, current_score,
+             current_band, latest_score_snapshot_id, opened_at, updated_at
+           ) values (
+             $1::uuid, $2::uuid, 'trust-v1', 'open', 1, 30, 'observe',
+             $3::uuid, $4::timestamptz, $4::timestamptz
+           )`,
+          [caseId, TRUST_CLEANUP_PLAYER_ID, snapshotId, observedAt],
+        );
+        await trustClient.query(
+          `insert into private.trust_case_decisions (
+             id, case_id, actor_type, actor_player_id, policy_version,
+             case_version_before, case_version_after, decision_type,
+             previous_status, resulting_status, reason_code,
+             resulting_score_snapshot_id, created_at
+           ) values (
+             'd1500000-0000-4000-8000-000000000007'::uuid,
+             $1::uuid, 'system', null, 'trust-v1', 0, 1,
+             'case_opened', null, 'open', 'score_band_crossed',
+             $2::uuid, $3::timestamptz
+           )`,
+          [caseId, snapshotId, observedAt],
+        );
+        await trustClient.query('commit');
+      } catch (error) {
+        await trustClient.query('rollback');
+        throw error;
+      } finally {
+        trustClient.release();
+      }
+
+      const lifecycle = createAccountDeletionLifecycle(pool, {
+        clock: () => new Date('2026-08-26T10:00:00.000Z'),
+        createId: () => TRUST_CLEANUP_DELETION_ID,
+      });
+      await lifecycle.request(identity);
+
+      const trustState = await pool.query<{
+        cases: string;
+        signals: string;
+        snapshots: string;
+      }>(
+        `select
+           (select count(*)::text from private.trust_cases
+             where player_id = $1::uuid) as cases,
+           (select count(*)::text from private.trust_signals
+             where player_id = $1::uuid) as signals,
+           (select count(*)::text from private.trust_score_snapshots
+             where player_id = $1::uuid) as snapshots`,
+        [TRUST_CLEANUP_PLAYER_ID],
+      );
+      expect(trustState.rows[0]).toEqual({
+        cases: '0',
+        signals: '0',
+        snapshots: '1',
+      });
+    }, 30_000);
 
     it('rejects the same unexpired access token after completed deletion without reprovisioning', async () => {
       const identity = {
