@@ -75,6 +75,11 @@ const sidebars: SidebarsConfig = {
               id: 'requirements/longitudinal-trust-policy',
               label: 'Trust scoring and enforcement policy',
             },
+            {
+              type: 'doc',
+              id: 'requirements/automatic-event-placement-policy',
+              label: 'Automatic event placement policy',
+            },
           ],
         },
         {
