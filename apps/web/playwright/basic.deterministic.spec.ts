@@ -1101,7 +1101,11 @@ test('supports draggable mobile Explore sheet discovery and detail states', asyn
         ),
     )
     .toBe(1);
-  await dragExploreSheet(page, 32, { steps: 2 });
+  await dragExploreSheet(page, snapPoints.medium - snapPoints.peek + 4, {
+    delayMs: 110,
+    steps: 8,
+  });
+  await expect(sheet).toHaveAttribute('data-sheet-snap', 'peek');
   await expect(sheet).toHaveAttribute('data-sheet-snap', 'peek');
 
   await page.getByRole('button', { name: /^Events/u }).click();
