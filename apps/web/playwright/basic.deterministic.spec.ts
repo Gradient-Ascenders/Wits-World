@@ -1,3 +1,5 @@
+/// <reference types="node" />
+
 import { expect, test, type Page, type Route } from '@playwright/test';
 
 import { buildStarterCards, buildUuid } from '../tests/fixtures/cards';
