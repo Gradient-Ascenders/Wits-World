@@ -25,11 +25,12 @@
     "type-check": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@wits-world/account-policy": "0.0.0",
-    "@wits-world/game-rules": "0.0.0",
     "@fastify/cors": "^11.3.0",
     "@fastify/swagger": "^9.8.1",
     "@fastify/swagger-ui": "^6.1.1",
+    "@fastify/websocket": "^11.3.0",
+    "@wits-world/account-policy": "0.0.0",
+    "@wits-world/game-rules": "0.0.0",
     "dotenv": "^17.4.2",
     "fastify": "^5.11.2",
     "jose": "^6.2.8",
@@ -37,6 +38,7 @@
   },
   "devDependencies": {
     "@types/pg": "^8.20.4",
+    "@types/ws": "^8.18.1",
     "tsx": "^4.23.9"
   }
 }

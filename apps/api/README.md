@@ -18,7 +18,7 @@ eligibility are implemented in the API. The current API also implements local
 player provisioning and lifecycle, application roles and Author protection,
 challenge attempts and marking, atomic rewards, card collections, saved decks,
 CPU matches/history, asynchronous PvP invitations, challenger-owned invitation
-cancellation, matches, and voluntary resignation, authenticated
+cancellation, matches, voluntary resignation, live PvP ticketing/realtime gateway, authenticated
 progression/standings, and protected Author content operations. The cancellation
 endpoint requires the version 3 PvP media type and derives ownership from the
 validated player identity; it never accepts a player ID or result from the
@@ -54,18 +54,21 @@ The local `.env` file is ignored by Git and must not contain values intended for
 
 ### API variables
 
-| Variable                                        | Required | Example     | Purpose                                       |
-| ----------------------------------------------- | -------- | ----------- | --------------------------------------------- |
-| `HOST`                                          | Yes      | `127.0.0.1` | Network interface used by the API server      |
-| `PORT`                                          | Yes      | `3000`      | TCP port used by the API server               |
-| `LOG_LEVEL`                                     | Yes      | `info`      | Fastify log level                             |
-| `MAX_PLAUSIBLE_JOURNEY_SPEED_METRES_PER_SECOND` | Yes      | `12.5`      | Server-authoritative impossible-journey limit |
-| `ASYNC_PVP_CURSOR_SIGNING_KEY`                  | Yes      | secret      | HMAC key of at least 32 bytes for PvP cursors |
-| `ACCOUNT_DELETION_RETRY_INTERVAL_MS`            | No       | `1800000`   | Failed account-deletion retry interval        |
-| `ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS`          | No       | `1800000`   | PvP expiry/forfeit sweep interval             |
-| `MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS`         | No       | `1800000`   | Expired movement-evidence cleanup interval    |
-| `RATE_LIMIT_MAX_REQUESTS`                       | No       | `120`       | Authenticated requests allowed per window     |
-| `RATE_LIMIT_WINDOW_MS`                          | No       | `60000`     | Per-process fixed-window duration in ms       |
+| Variable                                        | Required | Example       | Purpose                                       |
+| ----------------------------------------------- | -------- | ------------- | --------------------------------------------- |
+| `HOST`                                          | Yes      | `127.0.0.1`   | Network interface used by the API server      |
+| `PORT`                                          | Yes      | `3000`        | TCP port used by the API server               |
+| `LOG_LEVEL`                                     | Yes      | `info`        | Fastify log level                             |
+| `MAX_PLAUSIBLE_JOURNEY_SPEED_METRES_PER_SECOND` | Yes      | `12.5`        | Server-authoritative impossible-journey limit |
+| `ASYNC_PVP_CURSOR_SIGNING_KEY`                  | Yes      | secret        | HMAC key of at least 32 bytes for PvP cursors |
+| `ACCOUNT_DELETION_RETRY_INTERVAL_MS`            | No       | `1800000`     | Failed account-deletion retry interval        |
+| `ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS`          | No       | `1800000`     | PvP expiry/forfeit sweep interval             |
+| `LIVE_PVP_WEBSOCKET_URL`                        | No       | local `ws://` | Public live PvP WebSocket endpoint            |
+| `LIVE_PVP_DEADLINE_SWEEP_INTERVAL_MS`           | No       | `1000`        | Live turn-deadline sweep interval             |
+| `LIVE_PVP_TRANSIENT_CLEANUP_INTERVAL_MS`        | No       | `1800000`     | Live ticket/access cleanup interval           |
+| `MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS`         | No       | `1800000`     | Expired movement-evidence cleanup interval    |
+| `RATE_LIMIT_MAX_REQUESTS`                       | No       | `120`         | Authenticated requests allowed per window     |
+| `RATE_LIMIT_WINDOW_MS`                          | No       | `60000`       | Per-process fixed-window duration in ms       |
 
 Supported log levels are:
 
@@ -203,6 +206,35 @@ New application endpoints should be added beneath `/api/v1`.
 
 Breaking API changes should use a new version prefix rather than silently
 changing an existing public contract.
+
+## Live PvP runtime
+
+Live PvP uses bearer authentication only on HTTPS:
+
+```http
+GET /api/v1/matches/live/:matchId
+POST /api/v1/matches/live/:matchId/connection-tickets
+```
+
+The ticket response returns a short-lived opaque ticket and the configured
+WebSocket endpoint. The browser then connects to:
+
+```text
+GET /api/v1/realtime/live?ticket=<single-use-ticket>
+```
+
+The ticket query value is redacted from Fastify logs; deployed proxies must do
+the same. Client messages are closed protocol-version-1 intent objects
+(`action.submit` or `resign.submit`) and never contain timeout, damage, winner,
+deadline, or result authority. The gateway enforces a 16 KiB payload limit,
+uses 20-second ping/pong liveness, and reloads every published match projection
+from PostgreSQL. The database-backed deadline worker runs independently of
+socket presence, and each API instance listens for committed match-version
+notifications so session affinity is not required for correctness.
+
+See the [live PvP API contract](../../docs/architecture/live-pvp-api-contract.md)
+for message schemas, reconnect, timeout, idempotency, and spectator privacy
+rules.
 
 ## OpenAPI documentation
 

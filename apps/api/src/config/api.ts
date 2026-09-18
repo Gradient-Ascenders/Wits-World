@@ -27,6 +27,9 @@ export interface ApiConfig {
   accountDeletionRetryIntervalMs: number;
   asyncPvpCursorSigningKey: string;
   asyncPvpDeadlineSweepIntervalMs: number;
+  livePvpWebSocketUrl: string;
+  livePvpDeadlineSweepIntervalMs: number;
+  livePvpTransientCleanupIntervalMs: number;
   movementEvidenceCleanupIntervalMs: number;
   movementEvidenceRetentionMs: number;
   maxPlausibleJourneySpeedMetresPerSecond: number;
@@ -67,6 +70,16 @@ export function buildApiConfig({
   );
   const asyncPvpDeadlineSweepIntervalMs = Number(
     env.ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS?.trim() ??
+      String(DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS),
+  );
+  const livePvpWebSocketUrl =
+    env.LIVE_PVP_WEBSOCKET_URL?.trim() ??
+    `ws://${host}:${port}/api/v1/realtime/live`;
+  const livePvpDeadlineSweepIntervalMs = Number(
+    env.LIVE_PVP_DEADLINE_SWEEP_INTERVAL_MS?.trim() ?? '1000',
+  );
+  const livePvpTransientCleanupIntervalMs = Number(
+    env.LIVE_PVP_TRANSIENT_CLEANUP_INTERVAL_MS?.trim() ??
       String(DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS),
   );
   const rateLimitMaxRequests = Number(
@@ -124,6 +137,28 @@ export function buildApiConfig({
     );
   }
 
+  validateLivePvpWebSocketUrl(livePvpWebSocketUrl);
+
+  if (
+    !Number.isSafeInteger(livePvpDeadlineSweepIntervalMs) ||
+    livePvpDeadlineSweepIntervalMs < 250 ||
+    livePvpDeadlineSweepIntervalMs > 5000
+  ) {
+    throw new Error(
+      'LIVE_PVP_DEADLINE_SWEEP_INTERVAL_MS must be a safe integer between 250 and 5000 milliseconds.',
+    );
+  }
+
+  if (
+    !Number.isSafeInteger(livePvpTransientCleanupIntervalMs) ||
+    livePvpTransientCleanupIntervalMs < 60000 ||
+    livePvpTransientCleanupIntervalMs > MAX_NODE_TIMER_DELAY_MS
+  ) {
+    throw new Error(
+      `LIVE_PVP_TRANSIENT_CLEANUP_INTERVAL_MS must be a safe integer between 60000 and ${MAX_NODE_TIMER_DELAY_MS} milliseconds.`,
+    );
+  }
+
   if (!Number.isInteger(rateLimitMaxRequests) || rateLimitMaxRequests < 1) {
     throw new Error('RATE_LIMIT_MAX_REQUESTS must be a positive integer.');
   }
@@ -161,6 +196,9 @@ export function buildApiConfig({
     accountDeletionRetryIntervalMs,
     asyncPvpCursorSigningKey,
     asyncPvpDeadlineSweepIntervalMs,
+    livePvpWebSocketUrl,
+    livePvpDeadlineSweepIntervalMs,
+    livePvpTransientCleanupIntervalMs,
     movementEvidenceCleanupIntervalMs,
     movementEvidenceRetentionMs,
     maxPlausibleJourneySpeedMetresPerSecond,
@@ -184,4 +222,23 @@ function requireEnvironmentValue(
 
 function isApiLogLevel(value: string): value is ApiLogLevel {
   return apiLogLevels.includes(value as ApiLogLevel);
+}
+
+function validateLivePvpWebSocketUrl(value: string): void {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(
+      'LIVE_PVP_WEBSOCKET_URL must be a valid ws:// or wss:// URL.',
+    );
+  }
+  if (url.protocol !== 'ws:' && url.protocol !== 'wss:') {
+    throw new Error('LIVE_PVP_WEBSOCKET_URL must use ws:// or wss://.');
+  }
+  if (url.username || url.password || url.search || url.hash) {
+    throw new Error(
+      'LIVE_PVP_WEBSOCKET_URL must not contain credentials, query parameters, or fragments.',
+    );
+  }
 }

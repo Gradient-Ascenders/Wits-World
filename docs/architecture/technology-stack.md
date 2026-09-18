@@ -45,13 +45,14 @@ ownership, or game outcomes.
 
 ## API application
 
-| Technology                     | Purpose                                              | Motivation                                                                                                              |
-| ------------------------------ | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Fastify                        | Hand-written HTTP API                                | Provides explicit route registration, validation integration, plugin boundaries, structured logging, and test injection |
-| TypeScript                     | API types and implementation safety                  | Keeps route, service, and database interfaces explicit                                                                  |
-| OpenAPI                        | Machine-readable API documentation                   | Documents request schemas, response schemas, authentication requirements, and errors                                    |
-| Runtime schema validation      | Validation of requests, responses, and configuration | TypeScript types alone do not validate untrusted runtime input                                                          |
-| Structured request identifiers | Correlation of requests and failures                 | Supports safe debugging without exposing internal details to clients                                                    |
+| Technology                     | Purpose                                              | Motivation                                                                                                                                  |
+| ------------------------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fastify                        | Hand-written HTTP API                                | Provides explicit route registration, validation integration, plugin boundaries, structured logging, and test injection                     |
+| `@fastify/websocket` / `ws`    | Live PvP realtime transport                          | Adds bounded WebSocket upgrade/message handling to the existing Fastify process without making socket memory authoritative for battle state |
+| TypeScript                     | API types and implementation safety                  | Keeps route, service, and database interfaces explicit                                                                                      |
+| OpenAPI                        | Machine-readable API documentation                   | Documents request schemas, response schemas, authentication requirements, and errors                                                        |
+| Runtime schema validation      | Validation of requests, responses, and configuration | TypeScript types alone do not validate untrusted runtime input                                                                              |
+| Structured request identifiers | Correlation of requests and failures                 | Supports safe debugging without exposing internal details to clients                                                                        |
 
 The API is located in `apps/api`.
 
@@ -250,3 +251,6 @@ ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5], and
 Codex-CLI[gpt-5.6-sol medium].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+Live PvP realtime transport documented with assistance from
+ChatGPT-Web[GPT-5.6 Sol].

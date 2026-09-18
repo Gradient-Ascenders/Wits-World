@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
+import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance } from 'fastify';
 
 import {
@@ -56,6 +57,9 @@ import type { CpuMatchService } from './matches/cpu-match-service.js';
 import { cpuMatchRoutes } from './routes/cpu-matches.js';
 import type { AsyncPvpService } from './matches/asynchronous-pvp-service.js';
 import { asynchronousPvpRoutes } from './routes/asynchronous-pvp.js';
+import { livePvpRoutes } from './routes/live-pvp.js';
+import type { LivePvpService } from './matches/live-pvp-service.js';
+import type { LivePvpGateway } from './matches/live-pvp-gateway.js';
 import { offlineChallengeRoutes } from './routes/offline-challenges.js';
 import type { OfflineChallengeService } from './challenges/offline-challenges.js';
 
@@ -109,6 +113,11 @@ export interface BuildAppOptions {
   trailServices?: TrailServices;
   cpuMatchService?: CpuMatchService;
   asyncPvpService?: AsyncPvpService;
+  livePvp?: {
+    service: LivePvpService;
+    gateway: LivePvpGateway;
+    webSocketUrl: string;
+  };
   progressionReadService?: ProgressionReadService;
   rateProtection?: AuthenticatedRateProtection;
 }
@@ -167,6 +176,7 @@ export async function buildApp({
   trailServices,
   cpuMatchService,
   asyncPvpService,
+  livePvp,
   progressionReadService,
   rateProtection,
   offlineChallengeService,
@@ -213,6 +223,9 @@ export async function buildApp({
               'req.body.finishedAt',
               'request.body.finishedAt',
               'body.finishedAt',
+              'req.query.ticket',
+              'request.query.ticket',
+              'query.ticket',
             ],
             censor: '[REDACTED]',
           },
@@ -269,6 +282,10 @@ export async function buildApp({
     throw new Error('CPU match services require a player identity service.');
   }
 
+  if (livePvp && !playerIdentityService) {
+    throw new Error('Live PvP routes require the player identity service.');
+  }
+
   if (asyncPvpService && !playerIdentityService) {
     throw new Error(
       'Asynchronous PvP routes require the player identity service.',
@@ -280,6 +297,15 @@ export async function buildApp({
 
   registerRequestTiming(app);
   registerErrorHandlers(app);
+
+  if (livePvp) {
+    await app.register(websocket, {
+      options: {
+        maxPayload: 16_384,
+      },
+    });
+    await livePvp.gateway.register(app);
+  }
 
   await app.register(swagger, {
     transform: ({ schema, url }) => ({
@@ -512,6 +538,14 @@ export async function buildApp({
     await app.register(asynchronousPvpRoutes, {
       prefix: '/api/v1',
       service: asyncPvpService,
+    });
+  }
+
+  if (livePvp) {
+    await app.register(livePvpRoutes, {
+      prefix: '/api/v1',
+      service: livePvp.service,
+      webSocketUrl: livePvp.webSocketUrl,
     });
   }
 
