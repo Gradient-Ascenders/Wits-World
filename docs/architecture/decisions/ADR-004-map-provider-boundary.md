@@ -64,6 +64,13 @@ Authoritative event data comes from the Wits Quest API.
 Authoritative distance and eligibility decisions come from the API and
 PostgreSQL/PostGIS.
 
+Advanced automatic placement keeps the same boundary. The API and
+PostgreSQL/PostGIS select reviewed candidate sites, enforce campus coverage and
+separation, and apply versioned assignment plans. The map provider may render
+candidate sites, coverage zones, and current or proposed assignments, but it
+does not select or approve them. The complete policy is recorded in
+[Automatic event placement and campus coverage](../../requirements/automatic-event-placement-policy.md).
+
 The web application must provide a text-based event list so the map is not the
 only way to discover or understand events.
 
@@ -135,6 +142,7 @@ eligibility model.
 - Submit browser geolocation and display eligibility
 - Migrate `/explore` from OpenFreeMap/MapLibre to Mapbox Standard 3D (#92)
 - [Evaluate the production map provider](../map-provider-evaluation.md)
+- Define automatic event placement and campus coverage (#259)
 
 ---
 

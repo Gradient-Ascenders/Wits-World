@@ -146,6 +146,8 @@ It is responsible for:
 - checking event publication and availability;
 - evaluating location claims;
 - deriving ordered trail progress and nearby current steps;
+- when the Advanced placement service is implemented, selecting and validating
+  versioned plans from reviewed sites without using player location history;
 - calling parameterised database operations;
 - deriving progression points, streaks, achievements, and ranks only from
   authoritative completed challenge and CPU-match records;
@@ -218,6 +220,13 @@ PostGIS performs authoritative distance calculations between:
 - the stored event point; or
 - two short-lived accepted reported-location samples for a cross-event journey.
 
+The Advanced placement boundary will also use PostGIS for reviewed
+candidate-site membership, placement separation, and campus coverage. Automatic
+placement is limited to explicitly portable published events. It will create
+immutable effective assignments rather than rewriting the authored location of
+a published event. The policy and downstream compatibility rules are documented
+in [Automatic event placement and campus coverage](../requirements/automatic-event-placement-policy.md).
+
 The impossible-journey rule uses server receipt time, subtracts both reported
 accuracy radii from the distance conservatively, and compares only with the
 required configured maximum speed. The browser cannot submit elapsed time,
@@ -242,6 +251,11 @@ It may supply:
 - map styles;
 - attribution information; and
 - related visual presentation data.
+
+For automatic placement it may additionally render API-supplied candidate
+sites, coverage polygons, assignments, and validation messages. It does not
+select sites, calculate authoritative separation or coverage, apply a plan, or
+receive player movement history for placement decisions.
 
 It must not:
 
