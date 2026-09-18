@@ -7,8 +7,10 @@ title: 'Automatic event placement and campus coverage'
 ## Status and purpose
 
 This document is the issue `#259` policy contract for Advanced-tier automatic
-event placement. Issue `#261` will persist reviewed sites, zones, policy
-versions, assignments, overrides, and history. Issue `#262` will implement the
+event placement. Issue `#261` persists reviewed sites, zones, policy versions,
+assignments, overrides, and history as described in the
+[placement persistence guide](../database/automatic-event-placement-persistence.md).
+Issue `#262` will implement the
 placement and rotation services, and issue `#265` will add the Author preview
 and control interface. This document does not claim that those capabilities are
 implemented or deployed.
