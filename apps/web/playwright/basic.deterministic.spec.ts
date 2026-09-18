@@ -237,10 +237,16 @@ test('completes the canonical 21-step Basic journey against the real API and tes
   });
 
   await test.step('11 load the reward from the owned collection', async () => {
-    const response = page.waitForResponse(`${API_BASE_URL}/cards/collection`);
+    const cardsPromise = page
+      .waitForResponse(`${API_BASE_URL}/cards/collection`)
+      .then(async (response) => {
+        const body = (await response.json()) as { cards: OwnedCard[] };
+        return body.cards;
+      });
+
     await page.goto('/collection');
-    const cards = ((await (await response).json()) as { cards: OwnedCard[] })
-      .cards;
+
+    const cards = await cardsPromise;
     expect(cards.some((card) => card.acquisitionKind === 'event_reward')).toBe(
       true,
     );
