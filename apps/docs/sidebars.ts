@@ -316,6 +316,11 @@ const sidebars: SidebarsConfig = {
               label: 'Movement checks and privacy',
             },
             {
+              type: 'doc',
+              id: 'database/automatic-event-placement-persistence',
+              label: 'Automatic event placement storage',
+            },
+            {
               type: 'category',
               label: 'Data storage and reports',
               items: [
