@@ -101,11 +101,21 @@ suspended -> active
 suspended -> retired
 ```
 
-Only `active` sites may receive a new automatic assignment. Suspension ends any
-current assignment at that site before another plan is applied. Retirement is
-permanent and never deletes assignment history. A site belongs to exactly one
-active zone, and its point must fall inside that zone's reviewed PostGIS
-geometry. Overlapping zone polygons must not make site membership ambiguous.
+Only `active` sites may receive a new automatic assignment. Suspending a site
+immediately ends its current assignment in the same Author operation; it does
+not wait for a replacement plan. Retirement is permanent and never deletes
+assignment history. A site belongs to exactly one active zone, and its point
+must fall inside that zone's reviewed PostGIS geometry. Overlapping zone
+polygons must not make site membership ambiguous.
+
+A coverage zone has the same `pending_review`, `active`, `suspended`, and
+`retired` lifecycle and transition set as a candidate site. Activation requires
+a reviewed non-empty PostGIS geometry and at least one active reviewed candidate
+site inside it. Only `active` zones participate in the preferred allocation and
+mandatory floor. Suspending a zone immediately ends its automatic assignments;
+reactivation requires the activation checks again. Retirement is permanent and
+preserves zone, plan, and assignment history. All three `placement-v1` zones
+begin active.
 
 Site review establishes that the point represents a campus place that a player
 may reasonably approach on foot during the intended event window. It does not
@@ -171,7 +181,11 @@ required separation = max(
   first event radius + second event radius
 )
 
-PostGIS distance between candidate-site centres >= required separation
+automatic pair distance = PostGIS distance between both candidate-site centres
+fixed pair distance = PostGIS distance between the candidate-site centre and
+  the fixed event's authored point
+
+applicable distance >= required separation
 ```
 
 Equality is valid. Fixed events do not consume automatic slots, but their
@@ -210,9 +224,11 @@ Planning proceeds in this order:
 1. Validate unexpired pins against every hard rule and reserve their slots.
 2. Exclude suspended, retired, temporarily excluded, radius-incompatible, and
    spatially conflicting sites, including conflicts with live fixed events.
-3. Preserve four current unpinned assignments when two valid replacements are
-   available. If fewer alternatives exist, rotate fewer rather than violate a
-   hard rule.
+3. Compute replacement slots as
+   `min(2, max(0, target - reserved pins))`. Preserve
+   `max(0, target - reserved pins - replacement slots)` current unpinned
+   assignments: four with no pins and three with one pin. If fewer alternatives
+   exist, rotate fewer rather than violate a hard rule.
 4. Prioritise zones below two assignments. A zone below the mandatory floor is
    considered before every zone already at the floor.
 5. Rank candidate sites by `last assignment ended` ascending with never-used
@@ -293,6 +309,8 @@ Authors may:
 Pins take precedence over automatic ranking and count toward the six slots and
 their zone's allocation. They do not bypass portability, publication,
 availability, radius, separation, site lifecycle, trail, or campaign rules.
+Creating a pin is rejected if unexpired pins would exceed the six-slot target or
+make the mandatory floor impossible for another active zone.
 Replaying a pin, exclusion, or pause request with the same idempotency key and
 payload returns its stored result. A changed payload with the same key is
 rejected.
@@ -419,8 +437,11 @@ tests covering:
 - scheduled or newly published fixed content safely displacing a conflicting
   automatic assignment;
 - six-slot planning, preferred two-per-zone coverage, and the mandatory floor;
+- zone activation, suspension, reactivation, retirement, and immediate
+  assignment termination;
 - deterministic selection and UUID tie-breaking under shuffled query results;
 - two-assignment rotation, cooldown, and fair site/event reuse;
+- pin-aware preservation and replacement counts at the six-slot boundary;
 - portable opt-in and fixed-event exclusion;
 - published-trail, campaign-window, and lifecycle filtering;
 - stale preview rejection and preview/apply policy-version consistency;
