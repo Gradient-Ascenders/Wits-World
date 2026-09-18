@@ -105,7 +105,8 @@ necessary to avoid disclosing private match existence.
 Participants may read their final completed projection. Non-participant
 spectator reads and new spectator tickets are available only while the match is
 active; after completion they receive `LIVE_MATCH_NOT_FOUND`. Existing
-spectator sockets receive the committed final projection and then close.
+participant and spectator sockets receive the committed final projection and
+then close.
 
 The response is the recovery authority after refresh, reconnect, an observed
 version gap, or an ambiguous realtime response. Local storage, an old socket
@@ -170,6 +171,10 @@ row. PostgreSQL `clock_timestamp()` is sampled only after those locks are
 acquired, so a ticket that expires while waiting is rejected rather than
 redeemed with an earlier arrival time.
 
+After redemption commits, any subsequent setup failure closes the persisted
+connection-access row before the socket is rejected, so failed catch-up or
+projection setup cannot leave durable ghost presence.
+
 A participant redemption increments its persisted connection generation and
 binds the accepted socket to the resulting immutable
 `(playerId, matchId, connectionGeneration)` server context. The generation is
@@ -207,9 +212,11 @@ Every text message is one UTF-8 JSON object with:
 - the fields defined for that message type, with no additional properties.
 
 Binary messages, malformed JSON, unsupported protocol versions, oversized
-messages, and unknown message types are rejected without invoking game logic.
-The implementation must set and document a bounded message-size limit before
-deployment.
+messages, and unknown message types are rejected without invoking game logic. A
+protocol failure synchronously invalidates the runtime connection before the
+WebSocket close handshake completes, and queued messages are ignored once the
+connection is closed or the transport is no longer `OPEN`. The implementation
+must set and document a bounded message-size limit before deployment.
 
 ### Client messages
 

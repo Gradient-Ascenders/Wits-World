@@ -92,6 +92,20 @@ const spectatorProjection: LivePvpProjection = {
   completedAt: null,
 };
 
+const completedParticipantProjection: LivePvpProjection = {
+  ...participantProjection,
+  status: 'completed',
+  version: 8,
+  phase: 'completed',
+  currentActor: null,
+  turnDeadline: null,
+  legalActions: [],
+  outcome: 'win',
+  completionReason: 'defeat',
+  updatedAt: '2026-09-17T22:00:40.000Z',
+  completedAt: '2026-09-17T22:00:40.000Z',
+};
+
 const openGateways: LivePvpGateway[] = [];
 
 afterEach(async () => {
@@ -235,6 +249,171 @@ describe('live PvP WebSocket gateway', () => {
         version: 8,
       }),
     );
+  });
+
+  it('closes a participant after delivering an already-completed projection', async () => {
+    const service = createService();
+    const accessId = '55555555-5555-4555-8555-555555555555';
+    service.redeemConnectionTicket.mockResolvedValue({
+      accessId,
+      matchId: MATCH_ID,
+      playerId: PLAYER_ID,
+      role: 'participant',
+      participantGeneration: 3,
+    });
+    service.getProjectionForConnection.mockResolvedValue(
+      completedParticipantProjection,
+    );
+
+    const { gateway, connect } = await registerGateway(service);
+    openGateways.push(gateway);
+    const socket = new FakeSocket();
+    connect(socket, ticketRequest());
+    socket.emitMessage({
+      protocolVersion: 1,
+      type: 'action.submit',
+      matchId: MATCH_ID,
+      messageId: MESSAGE_ID,
+      expectedVersion: 7,
+      action: { type: 'use_move', moveId: MOVE_ID },
+    });
+    await flushAsyncWork();
+
+    expect(messages(socket)).toContainEqual(
+      expect.objectContaining({
+        type: 'connection.ready',
+        role: 'participant',
+        version: 8,
+        match: completedParticipantProjection,
+      }),
+    );
+    expect(service.submitAction).not.toHaveBeenCalled();
+    expect(socket.closeCode).toBe(1000);
+    expect(service.closeConnectionAccess).toHaveBeenCalledWith(
+      accessId,
+      'match_completed',
+    );
+    expect(gateway.connectionCount()).toBe(0);
+  });
+
+  it('closes an active participant after broadcasting the final committed projection', async () => {
+    const service = createService();
+    const accessId = '55555555-5555-4555-8555-555555555555';
+    service.redeemConnectionTicket.mockResolvedValue({
+      accessId,
+      matchId: MATCH_ID,
+      playerId: PLAYER_ID,
+      role: 'participant',
+      participantGeneration: 3,
+    });
+    service.getProjectionForConnection
+      .mockResolvedValueOnce(participantProjection)
+      .mockResolvedValueOnce(participantProjection)
+      .mockResolvedValueOnce(completedParticipantProjection);
+    service.getCommittedEventMeta.mockResolvedValue({
+      eventId: '99999999-9999-4999-8999-999999999999',
+      createdAt: '2026-09-17T22:00:40.000Z',
+    });
+
+    const { gateway, connect } = await registerGateway(service);
+    openGateways.push(gateway);
+    const socket = new FakeSocket();
+    connect(socket, ticketRequest());
+    await flushAsyncWork();
+
+    await gateway.broadcastMatch(MATCH_ID, 8);
+
+    expect(messages(socket)).toContainEqual(
+      expect.objectContaining({
+        type: 'match.transition',
+        version: 8,
+        match: completedParticipantProjection,
+      }),
+    );
+    expect(socket.closeCode).toBe(1000);
+    expect(service.closeConnectionAccess).toHaveBeenCalledWith(
+      accessId,
+      'match_completed',
+    );
+    expect(gateway.connectionCount()).toBe(0);
+  });
+
+  it('does not run a queued valid action after a protocol failure begins closing the socket', async () => {
+    const service = createService();
+    const accessId = '55555555-5555-4555-8555-555555555555';
+    service.redeemConnectionTicket.mockResolvedValue({
+      accessId,
+      matchId: MATCH_ID,
+      playerId: PLAYER_ID,
+      role: 'participant',
+      participantGeneration: 3,
+    });
+    service.getProjectionForConnection.mockResolvedValue(participantProjection);
+
+    const { gateway, connect } = await registerGateway(service);
+    openGateways.push(gateway);
+    const socket = new FakeSocket();
+    connect(socket, ticketRequest());
+    await flushAsyncWork();
+
+    socket.deferCloseEvent = true;
+    socket.emitMessage({
+      protocolVersion: 1,
+      type: 'action.submit',
+      matchId: MATCH_ID,
+      messageId: MESSAGE_ID,
+      expectedVersion: 7,
+      action: { type: 'use_move', moveId: MOVE_ID },
+      outcome: 'client-forged',
+    });
+    socket.emitMessage({
+      protocolVersion: 1,
+      type: 'action.submit',
+      matchId: MATCH_ID,
+      messageId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      expectedVersion: 7,
+      action: { type: 'use_move', moveId: MOVE_ID },
+    });
+    await flushAsyncWork();
+
+    expect(socket.closeCode).toBe(4400);
+    expect(socket.readyState).toBe(2);
+    expect(service.submitAction).not.toHaveBeenCalled();
+    expect(service.closeConnectionAccess).toHaveBeenCalledWith(
+      accessId,
+      'transport_closed',
+    );
+    expect(gateway.connectionCount()).toBe(0);
+    socket.finishClose();
+  });
+
+  it('closes redeemed durable access when catch-up fails before runtime setup completes', async () => {
+    const service = createService();
+    const accessId = '55555555-5555-4555-8555-555555555555';
+    service.redeemConnectionTicket.mockResolvedValue({
+      accessId,
+      matchId: MATCH_ID,
+      playerId: PLAYER_ID,
+      role: 'participant',
+      participantGeneration: 3,
+    });
+    service.processOverdueUntilCurrent.mockRejectedValue(
+      new Error('catch-up failed'),
+    );
+
+    const { gateway, connect } = await registerGateway(service);
+    openGateways.push(gateway);
+    const socket = new FakeSocket();
+    connect(socket, ticketRequest());
+    await flushAsyncWork();
+
+    expect(service.closeConnectionAccess).toHaveBeenCalledWith(
+      accessId,
+      'transport_closed',
+    );
+    expect(service.getProjectionForConnection).not.toHaveBeenCalled();
+    expect(socket.closeCode).toBe(4401);
+    expect(gateway.connectionCount()).toBe(0);
   });
 
   it('lets a spectator resume public state but never enter participant mutation services', async () => {
@@ -414,6 +593,7 @@ function ticketRequest(): FastifyRequest {
 class FakeSocket {
   readyState = 1;
   closeCode: number | undefined;
+  deferCloseEvent = false;
   sent: string[] = [];
   private handlers = new Map<string, Array<(...args: unknown[]) => void>>();
 
@@ -432,6 +612,12 @@ class FakeSocket {
 
   close(code?: number): void {
     this.closeCode = code;
+    this.readyState = 2;
+    if (!this.deferCloseEvent) this.finishClose();
+  }
+
+  finishClose(): void {
+    if (this.readyState === 3) return;
     this.readyState = 3;
     this.emit('close');
   }

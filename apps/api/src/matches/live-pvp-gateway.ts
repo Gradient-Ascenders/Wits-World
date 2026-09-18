@@ -137,10 +137,11 @@ export function createLivePvpGateway(
     const enqueueMessage = (data: RawData, isBinary: boolean): void => {
       if (!connection || !readyForMessages) {
         if (pendingMessages.length >= LIVE_PVP_MAX_PENDING_MESSAGES) {
-          protocolFailure(
+          sendProtocolError(
             socket,
             'Too many messages arrived before connection setup completed.',
           );
+          safeClose(socket, 4400, 'protocol error');
           return;
         }
         pendingMessages.push({ data, isBinary });
@@ -197,7 +198,6 @@ export function createLivePvpGateway(
     let principal: RedeemedLivePvpConnection;
     try {
       principal = await service.redeemConnectionTicket(ticket);
-      await service.processOverdueUntilCurrent(principal.matchId);
     } catch (error) {
       const liveError = normalizeLiveError(error);
       sendError(socket, liveError);
@@ -206,6 +206,17 @@ export function createLivePvpGateway(
         liveError.code === 'LIVE_CONNECTION_SUPERSEDED' ? 4409 : 4401,
         safeCloseReason(liveError),
       );
+      return;
+    }
+
+    try {
+      await service.processOverdueUntilCurrent(principal.matchId);
+    } catch (error) {
+      const cleanup = closeRedeemedAccess(principal, 'transport_closed');
+      const liveError = normalizeLiveError(error);
+      sendError(socket, liveError);
+      safeCloseForError(socket, liveError, 'connection setup failed');
+      await cleanup;
       return;
     }
 
@@ -237,18 +248,22 @@ export function createLivePvpGateway(
         version: projection.version,
         match: projection,
       });
+      if (projection.status === 'completed') {
+        pendingMessages.length = 0;
+        await closeCompletedConnection(connection);
+        return;
+      }
       readyForMessages = true;
       for (const pending of pendingMessages.splice(0)) {
         enqueueMessage(pending.data, pending.isBinary);
       }
       await gateway.broadcastPresence(principal.matchId);
-      if (principal.role === 'spectator' && projection.status === 'completed') {
-        safeClose(socket, 1000, 'match completed');
-      }
     } catch (error) {
       const liveError = normalizeLiveError(error);
       sendError(socket, liveError);
+      const cleanup = finalizeConnection(connection, 'transport_closed');
       safeCloseForError(socket, liveError, 'projection unavailable');
+      await cleanup;
     }
   }
 
@@ -257,15 +272,15 @@ export function createLivePvpGateway(
     rawData: RawData,
     isBinary: boolean,
   ): Promise<void> {
-    if (connection.closed) return;
+    if (connection.closed || connection.socket.readyState !== 1) return;
     if (isBinary) {
-      protocolFailure(connection.socket, 'Binary messages are not supported.');
+      await failProtocol(connection, 'Binary messages are not supported.');
       return;
     }
 
     const text = rawData.toString();
     if (Buffer.byteLength(text, 'utf8') > LIVE_PVP_MAX_MESSAGE_BYTES) {
-      protocolFailure(connection.socket, 'Realtime message is too large.');
+      await failProtocol(connection, 'Realtime message is too large.');
       return;
     }
 
@@ -273,8 +288,8 @@ export function createLivePvpGateway(
     try {
       message = parseLivePvpClientMessage(text);
     } catch (error) {
-      protocolFailure(
-        connection.socket,
+      await failProtocol(
+        connection,
         error instanceof Error ? error.message : 'Invalid realtime message.',
       );
       return;
@@ -366,6 +381,9 @@ export function createLivePvpGateway(
         version: projection.version,
         match: projection,
       });
+      if (projection.status === 'completed') {
+        await closeCompletedConnection(connection);
+      }
     } catch (error) {
       const liveError = normalizeLiveError(error);
       sendError(connection.socket, liveError);
@@ -375,9 +393,43 @@ export function createLivePvpGateway(
     }
   }
 
+  async function failProtocol(
+    connection: GatewayConnection,
+    detail: string,
+  ): Promise<void> {
+    if (connection.closed || connection.socket.readyState !== 1) return;
+    sendProtocolError(connection.socket, detail);
+    const cleanup = finalizeConnection(connection, 'transport_closed');
+    safeClose(connection.socket, 4400, 'protocol error');
+    await cleanup;
+  }
+
+  async function closeCompletedConnection(
+    connection: GatewayConnection,
+  ): Promise<void> {
+    if (connection.closed) return;
+    const cleanup = finalizeConnection(connection, 'match_completed');
+    safeClose(connection.socket, 1000, 'match completed');
+    await cleanup;
+  }
+
+  async function closeRedeemedAccess(
+    principal: RedeemedLivePvpConnection,
+    reason: 'transport_closed' | 'service_shutdown' | 'match_completed',
+  ): Promise<void> {
+    try {
+      await service.closeConnectionAccess(principal.accessId, reason);
+    } catch {
+      logger.warn(
+        { matchId: principal.matchId },
+        'Live PvP redeemed access cleanup failed.',
+      );
+    }
+  }
+
   async function finalizeConnection(
     connection: GatewayConnection,
-    reason: 'transport_closed' | 'service_shutdown',
+    reason: 'transport_closed' | 'service_shutdown' | 'match_completed',
   ): Promise<void> {
     if (connection.closed) return;
     connection.closed = true;
@@ -393,7 +445,9 @@ export function createLivePvpGateway(
         'Live PvP connection access cleanup failed.',
       );
     }
-    await gateway.broadcastPresence(connection.principal.matchId);
+    if (reason !== 'match_completed') {
+      await gateway.broadcastPresence(connection.principal.matchId);
+    }
   }
 
   const gateway: LivePvpGateway = {
@@ -445,11 +499,8 @@ export function createLivePvpGateway(
                 match: projection,
               });
             }
-            if (
-              connection.principal.role === 'spectator' &&
-              projection.status === 'completed'
-            ) {
-              safeClose(connection.socket, 1000, 'match completed');
+            if (projection.status === 'completed') {
+              await closeCompletedConnection(connection);
             }
           } catch (error) {
             const liveError = normalizeLiveError(error);
@@ -485,6 +536,18 @@ export function createLivePvpGateway(
               const projection = await service.getProjectionForConnection(
                 connection.principal,
               );
+              if (projection.status === 'completed') {
+                send(connection.socket, {
+                  protocolVersion: LIVE_PVP_PROTOCOL_VERSION,
+                  type: 'match.snapshot',
+                  eventId,
+                  version: projection.version,
+                  serverTime,
+                  match: projection,
+                });
+                await closeCompletedConnection(connection);
+                return;
+              }
               send(connection.socket, {
                 protocolVersion: LIVE_PVP_PROTOCOL_VERSION,
                 type: 'presence.changed',
@@ -671,7 +734,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function protocolFailure(socket: WebSocket, detail: string): void {
+function sendProtocolError(socket: WebSocket, detail: string): void {
   send(socket, {
     protocolVersion: LIVE_PVP_PROTOCOL_VERSION,
     type: 'error',
@@ -680,7 +743,6 @@ function protocolFailure(socket: WebSocket, detail: string): void {
     retryable: false,
     serverTime: new Date().toISOString(),
   });
-  safeClose(socket, 4400, 'protocol error');
 }
 
 function sendError(
