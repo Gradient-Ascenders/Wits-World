@@ -111,9 +111,12 @@ then close.
 The response is the recovery authority after refresh, reconnect, an observed
 version gap, or an ambiguous realtime response. Local storage, an old socket
 message, countdown state, and client-simulated actions are never authoritative.
-A projection is internally version-consistent: public action/history reads are
-bounded to the already-loaded authoritative match version so a concurrent
-transition cannot be mixed into an older state snapshot.
+A projection is internally version-consistent: projection-critical match,
+battle-state, participant, access, history, and presence reads run inside one
+read-only `REPEATABLE READ` database snapshot. Public action/history reads are
+also bounded to the advertised authoritative match version, so a concurrent
+transition cannot mix version-N match state with version-N+1 participant or
+history data.
 
 ### Connection-ticket request
 
@@ -490,9 +493,13 @@ it does not itself start a gateway or deadline worker. PostgreSQL
 Both live channels carry only an opaque match identifier and committed version:
 `live_pvp_match_changed` denotes a committed gameplay transition, while
 `live_pvp_presence_changed` denotes connection-generation or advisory presence
-change. The receiving gateway reloads persisted state before delivery. Missed notifications
-converge through reconnect, explicit snapshot reads, and version-gap recovery.
-Correctness must not depend on Azure session affinity. See
+change. The receiving gateway reloads persisted state before delivery. Because
+`LISTEN/NOTIFY` is lossy across listener outages, a recovered listener forces
+all sockets held by that API instance to reconnect; their next connection loads
+the current persisted projection, so a transition missed during the outage
+cannot leave an already-open client permanently stale. Explicit snapshot reads
+and version-gap recovery remain additional repair paths. Correctness must not
+depend on Azure session affinity. See
 [live PvP persistence](../database/live-pvp-persistence.md) for the implemented
 storage and retention boundary.
 
@@ -521,9 +528,14 @@ A dedicated PostgreSQL listener receives `live_pvp_match_changed` and
 `live_pvp_presence_changed` notifications. Gameplay notifications reload the
 role-specific persisted projection before delivery; presence notifications
 reload persisted connection generations and advisory presence without replaying
-an already-delivered gameplay transition. If a gameplay notification names an
-older version than the current persisted state, the gateway sends a complete
-snapshot instead of fabricating an intermediate transition.
+an already-delivered gameplay transition. If the dedicated PostgreSQL listener
+drops, the instance marks the notification stream as having a gap. Once both
+channels are subscribed again, the gateway closes its currently registered
+sockets with a reconnect-required service-restart close code and finalizes their
+persisted access; reconnect then reloads the latest authoritative projection.
+If a gameplay notification names an older version than the current persisted
+state, the gateway sends a complete snapshot instead of fabricating an
+intermediate transition.
 
 ## Deployment and operational constraints
 

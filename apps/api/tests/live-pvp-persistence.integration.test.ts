@@ -623,6 +623,85 @@ describe.skipIf(!runIntegrationTests)(
       expect(persisted.rows[0]?.version).toBe(1);
     }, 30_000);
 
+    it('reads participant metadata from the same database snapshot as the advertised match version', async () => {
+      const fixture = await createLiveMatch(pool, cardDefinitions);
+      const participantTicket = await insertConnectionTicket(
+        pool,
+        fixture.matchId,
+        fixture.playerOne.id,
+        'participant',
+      );
+      const [participantAccess] = await redeemTicket(pool, participantTicket);
+      const participantGeneration = Number(
+        participantAccess!.participant_generation,
+      );
+      let advancedBetweenReads = false;
+
+      const racingDatabase = {
+        async connect() {
+          const client = await pool.connect();
+          return {
+            async query(statement: string, values?: unknown[]) {
+              if (
+                !advancedBetweenReads &&
+                statement.includes(
+                  'from public.live_pvp_match_participants participant',
+                ) &&
+                statement.includes('join public.players player')
+              ) {
+                advancedBetweenReads = true;
+                await commitParticipantTransition(pool, {
+                  matchId: fixture.matchId,
+                  actorPlayerId: fixture.playerOne.id,
+                  expectedVersion: 0,
+                  connectionGeneration: participantGeneration,
+                  participantTimeoutCountAfter: 1,
+                });
+              }
+              return client.query(statement, values as never[] | undefined);
+            },
+            release() {
+              client.release();
+            },
+          };
+        },
+        query(statement: string, values?: unknown[]) {
+          return pool.query(statement, values as never[] | undefined);
+        },
+      } as unknown as LivePvpDatabase;
+
+      const service = createLivePvpService(racingDatabase);
+      const projection = await service.getProjection({
+        matchId: fixture.matchId,
+        playerId: fixture.playerOne.id,
+      });
+
+      expect(advancedBetweenReads).toBe(true);
+      expect(projection).toMatchObject({
+        role: 'participant',
+        version: 0,
+        consecutiveTimeouts: { self: 0, opponent: 0 },
+      });
+
+      const persisted = await pool.query<{
+        version: number;
+        consecutive_timeout_count: number;
+      }>(
+        `select match.version,
+                participant.consecutive_timeout_count
+           from public.live_pvp_matches match
+           join public.live_pvp_match_participants participant
+             on participant.match_id = match.id
+            and participant.player_id = $2::uuid
+          where match.id = $1::uuid`,
+        [fixture.matchId, fixture.playerOne.id],
+      );
+      expect(persisted.rows[0]).toMatchObject({
+        version: 1,
+        consecutive_timeout_count: 1,
+      });
+    }, 30_000);
+
     it('rejects nonparticipant mutation storage and rolls the attempted transition back', async () => {
       const fixture = await createLiveMatch(pool, cardDefinitions);
       const nonParticipant = await insertPlayer(pool, 'mutation_viewer');
@@ -1502,6 +1581,7 @@ async function commitParticipantTransition(
     connectionGeneration: number;
     messageId?: string;
     payloadHash?: string;
+    participantTimeoutCountAfter?: number;
   },
 ): Promise<{ eventId: string; version: number }> {
   const client = await database.connect();
@@ -1539,6 +1619,21 @@ async function commitParticipantTransition(
         where match_id = $1::uuid`,
       [input.matchId, committedVersion],
     );
+    if (input.participantTimeoutCountAfter !== undefined) {
+      await client.query(
+        `update public.live_pvp_match_participants
+            set consecutive_timeout_count = $3,
+                updated_at = clock_timestamp()
+          where match_id = $1::uuid
+            and player_id = $2::uuid`,
+        [
+          input.matchId,
+          input.actorPlayerId,
+          input.participantTimeoutCountAfter,
+        ],
+      );
+    }
+
     await client.query(
       `insert into public.live_pvp_match_actions (
          id, match_id, sequence, previous_version, committed_version,

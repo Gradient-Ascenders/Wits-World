@@ -23,21 +23,23 @@ export interface LivePvpNotificationLogger {
 
 export function createLivePvpNotificationListener(
   database: Pick<pg.Pool, 'connect'>,
-  gateway: Pick<LivePvpGateway, 'broadcastMatch' | 'broadcastPresence'>,
+  gateway: Pick<
+    LivePvpGateway,
+    'broadcastMatch' | 'broadcastPresence' | 'recoverNotificationGap'
+  >,
   logger: LivePvpNotificationLogger = console,
 ): LivePvpNotificationListener {
   let client: pg.PoolClient | undefined;
   let reconnectTimer: NodeJS.Timeout | undefined;
   let stopped = true;
   let connecting: Promise<void> | undefined;
+  let recoveryRequired = false;
 
   async function connectListener(): Promise<void> {
     if (stopped || client || connecting) return connecting;
     connecting = (async () => {
       const next = await database.connect();
       try {
-        await next.query(`listen ${LIVE_PVP_NOTIFY_CHANNEL}`);
-        await next.query(`listen ${LIVE_PVP_PRESENCE_NOTIFY_CHANNEL}`);
         next.on('notification', (notification: pg.Notification) => {
           if (
             notification.channel !== LIVE_PVP_NOTIFY_CHANNEL &&
@@ -65,12 +67,26 @@ export function createLivePvpNotificationListener(
         next.on('error', () => {
           if (client !== next) return;
           client = undefined;
+          recoveryRequired = true;
           next.release(true);
           if (!stopped) scheduleReconnect();
         });
+
+        await next.query(`listen ${LIVE_PVP_NOTIFY_CHANNEL}`);
+        await next.query(`listen ${LIVE_PVP_PRESENCE_NOTIFY_CHANNEL}`);
         client = next;
         logger.info({}, 'Live PvP PostgreSQL notification listener started.');
+
+        if (recoveryRequired) {
+          recoveryRequired = false;
+          await gateway.recoverNotificationGap();
+          logger.info(
+            {},
+            'Live PvP sockets were reset after notification-listener recovery.',
+          );
+        }
       } catch (error) {
+        if (client === next) client = undefined;
         next.release(true);
         throw error;
       }
@@ -87,6 +103,7 @@ export function createLivePvpNotificationListener(
     reconnectTimer = setTimeout(() => {
       reconnectTimer = undefined;
       void connectListener().catch(() => {
+        recoveryRequired = true;
         logger.error({}, 'Live PvP notification listener reconnect failed.');
         scheduleReconnect();
       });
@@ -101,6 +118,7 @@ export function createLivePvpNotificationListener(
       try {
         await connectListener();
       } catch {
+        recoveryRequired = true;
         logger.error({}, 'Live PvP notification listener failed to start.');
         scheduleReconnect();
       }

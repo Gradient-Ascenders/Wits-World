@@ -27,6 +27,7 @@ export interface LivePvpGateway {
   register(app: FastifyInstance): Promise<void>;
   broadcastMatch(matchId: string, committedVersion: number): Promise<void>;
   broadcastPresence(matchId: string): Promise<void>;
+  recoverNotificationGap(): Promise<void>;
   closeAll(): Promise<void>;
   connectionCount(): number;
 }
@@ -578,6 +579,20 @@ export function createLivePvpGateway(
       } catch {
         logger.warn({ matchId }, 'Live PvP advisory presence refresh failed.');
       }
+    },
+
+    async recoverNotificationGap() {
+      const all = [...connectionsByMatch.values()].flatMap((items) => [
+        ...items,
+      ]);
+      await Promise.all(
+        all.map(async (connection) => {
+          if (connection.closed) return;
+          const cleanup = finalizeConnection(connection, 'transport_closed');
+          safeClose(connection.socket, 1012, 'reconnect required');
+          await cleanup;
+        }),
+      );
     },
 
     async closeAll() {

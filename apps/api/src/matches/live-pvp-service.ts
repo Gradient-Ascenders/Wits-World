@@ -376,8 +376,7 @@ export function createLivePvpService(
     },
 
     async getProjection(input) {
-      const client = await database.connect();
-      try {
+      return withProjectionSnapshot(database, async (client) => {
         const context = await loadMatchContext(client, input.matchId, false);
         if (!context) throw matchNotFound();
         const participant = context.participants.find(
@@ -400,14 +399,11 @@ export function createLivePvpService(
           await loadPublicHistory(client, input.matchId, context.match.version),
           await loadPresence(client, input.matchId),
         );
-      } finally {
-        client.release();
-      }
+      });
     },
 
     async getProjectionForConnection(connection) {
-      const client = await database.connect();
-      try {
+      return withProjectionSnapshot(database, async (client) => {
         const access = await loadPersistedConnectionAccess(client, connection);
         const context = await loadMatchContext(
           client,
@@ -447,9 +443,7 @@ export function createLivePvpService(
           ),
           await loadPresence(client, connection.matchId),
         );
-      } finally {
-        client.release();
-      }
+      });
     },
 
     async getPresence(matchId) {
@@ -1825,6 +1819,26 @@ async function withTransaction<T>(
   const client = await database.connect();
   try {
     await client.query('begin');
+    const result = await operation(client);
+    await client.query('commit');
+    return result;
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function withProjectionSnapshot<T>(
+  database: Pick<LivePvpDatabase, 'connect'>,
+  operation: (client: LivePvpDatabaseClient) => Promise<T>,
+): Promise<T> {
+  const client = await database.connect();
+  try {
+    await client.query(
+      'begin transaction isolation level repeatable read read only',
+    );
     const result = await operation(client);
     await client.query('commit');
     return result;

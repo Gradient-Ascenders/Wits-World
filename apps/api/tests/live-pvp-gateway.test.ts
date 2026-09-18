@@ -489,6 +489,35 @@ describe('live PvP WebSocket gateway', () => {
     expect(socket.closeCode).toBe(4401);
   });
 
+  it('forces connected clients to reconnect after notification-listener recovery', async () => {
+    const service = createService();
+    const accessId = '55555555-5555-4555-8555-555555555555';
+    service.redeemConnectionTicket.mockResolvedValue({
+      accessId,
+      matchId: MATCH_ID,
+      playerId: PLAYER_ID,
+      role: 'participant',
+      participantGeneration: 3,
+    });
+    service.getProjectionForConnection.mockResolvedValue(participantProjection);
+
+    const { gateway, connect } = await registerGateway(service);
+    openGateways.push(gateway);
+    const socket = new FakeSocket();
+    connect(socket, ticketRequest());
+    await flushAsyncWork();
+
+    expect(gateway.connectionCount()).toBe(1);
+    await gateway.recoverNotificationGap();
+
+    expect(socket.closeCode).toBe(1012);
+    expect(service.closeConnectionAccess).toHaveBeenCalledWith(
+      accessId,
+      'transport_closed',
+    );
+    expect(gateway.connectionCount()).toBe(0);
+  });
+
   it('closes a remote stale participant when persisted generation validation reports supersession', async () => {
     const service = createService();
     service.redeemConnectionTicket.mockResolvedValue({

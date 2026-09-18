@@ -31,6 +31,10 @@ class FakeListenerClient {
   emitNotification(notification: Notification): void {
     this.notificationHandler?.(notification);
   }
+
+  emitError(): void {
+    this.errorHandler?.();
+  }
 }
 
 describe('live PvP PostgreSQL fan-out', () => {
@@ -47,7 +51,11 @@ describe('live PvP PostgreSQL fan-out', () => {
           .fn()
           .mockResolvedValue(firstClient as unknown as pg.PoolClient),
       } as unknown as Pick<pg.Pool, 'connect'>,
-      { broadcastMatch: firstBroadcast, broadcastPresence: vi.fn() },
+      {
+        broadcastMatch: firstBroadcast,
+        broadcastPresence: vi.fn(),
+        recoverNotificationGap: vi.fn().mockResolvedValue(undefined),
+      },
       logger,
     );
     const second = createLivePvpNotificationListener(
@@ -56,7 +64,11 @@ describe('live PvP PostgreSQL fan-out', () => {
           .fn()
           .mockResolvedValue(secondClient as unknown as pg.PoolClient),
       } as unknown as Pick<pg.Pool, 'connect'>,
-      { broadcastMatch: secondBroadcast, broadcastPresence: vi.fn() },
+      {
+        broadcastMatch: secondBroadcast,
+        broadcastPresence: vi.fn(),
+        recoverNotificationGap: vi.fn().mockResolvedValue(undefined),
+      },
       logger,
     );
 
@@ -94,7 +106,11 @@ describe('live PvP PostgreSQL fan-out', () => {
       {
         connect: vi.fn().mockResolvedValue(client as unknown as pg.PoolClient),
       } as unknown as Pick<pg.Pool, 'connect'>,
-      { broadcastMatch, broadcastPresence },
+      {
+        broadcastMatch,
+        broadcastPresence,
+        recoverNotificationGap: vi.fn().mockResolvedValue(undefined),
+      },
       { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     );
     await listener.start();
@@ -112,6 +128,47 @@ describe('live PvP PostgreSQL fan-out', () => {
     await listener.stop();
   });
 
+  it('resets local sockets after a listener outage recovers so missed notifications cannot leave stale clients', async () => {
+    vi.useFakeTimers();
+    try {
+      const firstClient = new FakeListenerClient();
+      const recoveredClient = new FakeListenerClient();
+      const recoverNotificationGap = vi.fn().mockResolvedValue(undefined);
+      const connect = vi
+        .fn()
+        .mockResolvedValueOnce(firstClient as unknown as pg.PoolClient)
+        .mockResolvedValueOnce(recoveredClient as unknown as pg.PoolClient);
+      const listener = createLivePvpNotificationListener(
+        { connect } as unknown as Pick<pg.Pool, 'connect'>,
+        {
+          broadcastMatch: vi.fn().mockResolvedValue(undefined),
+          broadcastPresence: vi.fn().mockResolvedValue(undefined),
+          recoverNotificationGap,
+        },
+        { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      );
+
+      await listener.start();
+      expect(recoverNotificationGap).not.toHaveBeenCalled();
+
+      firstClient.emitError();
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(connect).toHaveBeenCalledTimes(2);
+      expect(recoveredClient.query).toHaveBeenCalledWith(
+        `listen ${LIVE_PVP_NOTIFY_CHANNEL}`,
+      );
+      expect(recoveredClient.query).toHaveBeenCalledWith(
+        `listen ${LIVE_PVP_PRESENCE_NOTIFY_CHANNEL}`,
+      );
+      expect(recoverNotificationGap).toHaveBeenCalledOnce();
+
+      await listener.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('ignores malformed notification payloads', async () => {
     const client = new FakeListenerClient();
     const broadcastMatch = vi.fn();
@@ -119,7 +176,11 @@ describe('live PvP PostgreSQL fan-out', () => {
       {
         connect: vi.fn().mockResolvedValue(client as unknown as pg.PoolClient),
       } as unknown as Pick<pg.Pool, 'connect'>,
-      { broadcastMatch, broadcastPresence: vi.fn() },
+      {
+        broadcastMatch,
+        broadcastPresence: vi.fn(),
+        recoverNotificationGap: vi.fn().mockResolvedValue(undefined),
+      },
       { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     );
     await listener.start();

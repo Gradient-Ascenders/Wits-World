@@ -84,6 +84,7 @@ beforeEach(async () => {
     register: vi.fn().mockResolvedValue(undefined),
     broadcastMatch: vi.fn().mockResolvedValue(undefined),
     broadcastPresence: vi.fn().mockResolvedValue(undefined),
+    recoverNotificationGap: vi.fn().mockResolvedValue(undefined),
     closeAll: vi.fn().mockResolvedValue(undefined),
     connectionCount: vi.fn().mockReturnValue(0),
   };
