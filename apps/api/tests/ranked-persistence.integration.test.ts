@@ -226,6 +226,49 @@ describe.skipIf(!runIntegrationTests)('ranked persistence integration', () => {
     );
   }, 60_000);
 
+  it('releases a terminal queue deck reference without allowing active queue deck deletion', async () => {
+    const player = await createPlayer(pool, seasonId);
+    const queueId = await enqueue(pool, seasonId, player);
+
+    await expect(
+      pool.query(`delete from public.player_decks where id = $1::uuid`, [
+        player.deckId,
+      ]),
+    ).rejects.toThrow();
+
+    await pool.query(
+      `update private.ranked_queue_entries
+          set status = 'expired', version = version + 1,
+              lease_expires_at = null, terminal_at = now(), updated_at = now()
+        where id = $1::uuid`,
+      [queueId],
+    );
+
+    await pool.query(`delete from public.player_decks where id = $1::uuid`, [
+      player.deckId,
+    ]);
+
+    const history = await pool.query<{
+      status: string;
+      selected_deck_id: string | null;
+      lifecycle_status: string;
+    }>(
+      `select queue.status, queue.selected_deck_id::text,
+              player.lifecycle_status
+         from private.ranked_queue_entries queue
+         join public.players player on player.id = queue.player_id
+        where queue.id = $1::uuid`,
+      [queueId],
+    );
+    expect(history.rows).toEqual([
+      {
+        status: 'expired',
+        selected_deck_id: null,
+        lifecycle_status: 'active',
+      },
+    ]);
+  }, 60_000);
+
   it('deletes an owned deck while retaining anonymous terminal queue and proposal history', async () => {
     const deletingPlayer = await createPlayer(pool, seasonId);
     const opponent = await createPlayer(pool, seasonId);
@@ -239,12 +282,6 @@ describe.skipIf(!runIntegrationTests)('ranked persistence integration', () => {
       [historicalQueueId],
     );
 
-    await expect(
-      pool.query(`delete from public.player_decks where id = $1::uuid`, [
-        deletingPlayer.deckId,
-      ]),
-    ).rejects.toThrow();
-
     const deletingQueueId = await enqueue(pool, seasonId, deletingPlayer);
     const opponentQueueId = await enqueue(pool, seasonId, opponent);
     const pair = await claimPair(
@@ -255,6 +292,12 @@ describe.skipIf(!runIntegrationTests)('ranked persistence integration', () => {
       deletingPlayer,
       opponent,
     );
+
+    await expect(
+      pool.query(`delete from public.player_decks where id = $1::uuid`, [
+        deletingPlayer.deckId,
+      ]),
+    ).rejects.toThrow();
 
     const lifecycle = createAccountDeletionLifecycle(pool);
     const request = await lifecycle.request({

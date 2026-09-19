@@ -40,13 +40,14 @@ linked `players` row; account deletion therefore displays `Deleted player`
 without rewriting historical rank, result, or rating facts. No queue, deck,
 proposal, email, Auth0 identity, or precise location belongs in the archive.
 
-Queue history also survives account deletion, but it must not retain the
-deleted player's owned deck. An active queue requires an owned deck. When a
-deletion-pending player's deck is removed, the composite foreign key clears
-only `selected_deck_id` on terminal queue rows; the queue identity, timestamps,
-status, proposal linkage, and player tombstone remain. The lifecycle guard
-rejects that clearing for an active account or an active queue, so ordinary deck
-deletion cannot silently invalidate matchmaking history.
+Queue history survives saved-deck deletion and account deletion without
+retaining a restrictive reference to a removed deck. An active searching or
+proposed queue requires an owned deck and blocks its deletion. Once the queue
+is terminal, deleting that deck clears only `selected_deck_id` through the
+composite foreign key, even for an active player. Queue identity, timestamps,
+status, proposal linkage, and the player reference remain immutable. Account
+deletion first cancels active queue/proposal state, then removes owned decks;
+the retained rows refer to the anonymised player tombstone.
 
 ## Concurrency and transactions
 

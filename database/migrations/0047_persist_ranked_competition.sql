@@ -647,11 +647,7 @@ begin
   if old.selected_deck_id is not null
      and new.selected_deck_id is null
      and old.status not in ('searching', 'proposed')
-     and to_jsonb(new) - 'selected_deck_id' = to_jsonb(old) - 'selected_deck_id'
-     and exists (
-       select 1 from public.players
-        where id = old.player_id and lifecycle_status = 'deletion_pending'
-     ) then
+     and to_jsonb(new) - 'selected_deck_id' = to_jsonb(old) - 'selected_deck_id' then
     return new;
   end if;
 
