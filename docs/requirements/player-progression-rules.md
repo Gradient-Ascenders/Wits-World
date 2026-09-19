@@ -13,6 +13,13 @@ remains. Migration `0034_retire_coin_rewards.sql` implements issue `#193` by
 retiring the legacy wallet and coin-ledger behavior without rewriting applied
 migration history.
 
+The all-time and monthly rankings on this page rank permanent progression
+points. They are separate from the Advanced-tier seasonal competitive rating
+defined by the
+[ranked competition policy](ranked-competition-policy.md). That policy does not
+add a permanent-point award for ranked live matches, and neither value is
+calculated from the other.
+
 ## Point awards
 
 Challenge points use the final five-question score stored by the server:

@@ -62,6 +62,11 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'requirements/ranked-competition-policy',
+              label: 'Ranked ratings, matchmaking and seasons',
+            },
+            {
+              type: 'doc',
               id: 'requirements/ordered-trails-rules',
               label: 'Trail rules and progress',
             },
