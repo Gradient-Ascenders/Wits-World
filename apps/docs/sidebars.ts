@@ -77,6 +77,11 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'requirements/card-trading-policy',
+              label: 'Card trading and anti-drain policy',
+            },
+            {
+              type: 'doc',
               id: 'requirements/longitudinal-trust-policy',
               label: 'Trust scoring and enforcement policy',
             },
