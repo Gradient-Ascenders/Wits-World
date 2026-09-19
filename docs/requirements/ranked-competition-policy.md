@@ -282,8 +282,9 @@ they reach a terminal result and settle.
 
 After the final ranked match settles, the close operation:
 
-1. snapshots every established final standing and every player's final rating
-   and match count;
+1. snapshots every established player's immutable final rank, rating, wins,
+   losses, and match count against their stable local player reference without
+   copying Player Name into the competitive result;
 2. seals the season archive and settlement totals;
 3. marks the season `closed`; and
 4. activates the next due scheduled season, if one exists.
@@ -324,10 +325,16 @@ tie-breaker and is never returned. Bounded pagination uses a server-issued
 cursor or an equally stable snapshot mechanism so concurrent settlements do not
 duplicate or omit rows within one traversal.
 
-Closed-season archives preserve the same final safe fields and immutable ranks.
-Deleted-player history may remain only under the project's approved anonymous
-tombstone and retention rules. A closed archive is not recomputed when a Player
-Name later changes or an account is deleted.
+Closed-season archives preserve immutable competitive facts: rank, rating,
+wins, losses, match count, and season result. Player Name is presentation data,
+not part of that immutable result. Archive responses resolve the current safe
+display value through the linked local player record. Once deletion begins, the
+existing anonymised tombstone therefore renders `Deleted player`; the API must
+not return a former name or any retained name snapshot. This presentation
+change does not recompute, reorder, or rewrite the archived competitive facts.
+Normal Player Name changes likewise affect only presentation. Deleted-player
+history remains subject to the project's approved anonymous tombstone and
+retention rules.
 
 ## Trust, privacy, and safe failures
 
@@ -371,7 +378,10 @@ Persistence and services implementing this policy must verify at minimum:
 - closing-season drain, immutable archive, idempotent reset, and delayed next
   season activation;
 - private provisional state, public established standings, tie ranks, stable
-  pagination, and player isolation; and
+  pagination, and player isolation;
+- account deletion preserving archived rank, rating, result, and aggregate
+  counts while every archive response replaces the former Player Name with
+  `Deleted player`; and
 - safe error and logging behavior without opponent, trust, or identity leakage.
 
 The OpenAPI contract, database guide, service documentation, player journey,
