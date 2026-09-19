@@ -150,8 +150,8 @@ const EVENT_DISCOVERY_QUERY = `
   select event.id::text as event_id,
          event.title,
          event.description,
-         st_y(event.location::geometry) as latitude,
-         st_x(event.location::geometry) as longitude,
+         st_y(placement.effective_location::geometry) as latitude,
+         st_x(placement.effective_location::geometry) as longitude,
          event.radius_metres,
          effective.effective_starts_at as starts_at,
          effective.effective_ends_at as ends_at,
@@ -161,7 +161,12 @@ const EVENT_DISCOVERY_QUERY = `
       event.id,
       $1::timestamptz
     ) effective
+    cross join lateral public.resolve_event_placement_location(
+      event.id,
+      $1::timestamptz
+    ) placement
    where event.is_published = true
      and effective.availability <> 'unpublished'
+     and placement.is_available = true
    order by effective.effective_starts_at asc, event.id asc
 `;

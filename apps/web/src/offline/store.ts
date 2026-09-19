@@ -8,6 +8,7 @@ export interface OfflinePack {
   issuedAt: string;
   validFrom: string;
   validUntil: string;
+  placementAssignmentId?: string;
   event: {
     eventId: string;
     version: number;

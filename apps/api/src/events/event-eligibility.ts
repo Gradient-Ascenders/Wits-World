@@ -24,6 +24,7 @@ export type EventEligibilityResult =
       eligible: boolean;
       distanceMetres: number;
       radiusMetres: number;
+      assignmentId?: string;
     };
 
 export interface EventEligibilityService {
@@ -47,6 +48,7 @@ interface EventEligibilityRow extends pg.QueryResultRow {
   event_id: string;
   radius_metres: number;
   within_radius: boolean | null;
+  assignment_id: string | null;
 }
 
 export class InvalidEventCoordinatesError extends RangeError {
@@ -102,6 +104,7 @@ export function createEventEligibilityService(
         eligible: row.within_radius,
         distanceMetres: row.distance_metres!,
         radiusMetres: row.radius_metres,
+        ...(row.assignment_id ? { assignmentId: row.assignment_id } : {}),
       };
     },
   };
@@ -134,9 +137,11 @@ const EVENT_ELIGIBILITY_QUERY = `
            )::geography as location
   ), event_status as (
     select event.id,
-           event.location,
+           placement.effective_location as location,
+           placement.placement_assignment_id::text as assignment_id,
            event.radius_metres,
            case
+             when not placement.is_available then 'unpublished'
              when effective.availability = 'active' then 'available'
              when effective.availability = 'upcoming' then 'not_started'
              when effective.availability = 'ended' then 'ended'
@@ -147,11 +152,16 @@ const EVENT_ELIGIBILITY_QUERY = `
         event.id,
         $4::timestamptz
       ) effective
+      cross join lateral public.resolve_event_placement_location(
+        event.id,
+        $4::timestamptz
+      ) placement
      where event.id = $1::uuid
   )
   select event_status.id::text as event_id,
          event_status.radius_metres,
          event_status.availability,
+         event_status.assignment_id,
          case when event_status.availability = 'available'
               then st_distance(event_status.location, claim.location)
               else null

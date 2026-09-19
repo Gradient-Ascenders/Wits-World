@@ -74,6 +74,7 @@ const packSchema = {
     issuedAt: timestamp,
     validFrom: timestamp,
     validUntil: timestamp,
+    placementAssignmentId: uuid,
     challengeId: uuid,
     challengeVersion: { type: 'integer' },
     format: { type: 'string', enum: ['multiple_choice', 'ordering'] },

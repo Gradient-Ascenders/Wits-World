@@ -51,6 +51,8 @@ import { createLivePvpNotificationListener } from './matches/live-pvp-notificati
 import { createTrustService } from './trust/trust-service.js';
 import { createTrustRestrictionService } from './trust/trust-restrictions.js';
 import { createTrustEvaluationScheduler } from './trust/trust-evaluation-scheduler.js';
+import { createPlacementService } from './placement/placement-service.js';
+import { createPlacementScheduler } from './placement/placement-scheduler.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
@@ -71,6 +73,7 @@ async function startServer(): Promise<void> {
     createAuth0ManagementClient(authManagementConfig);
 
   const trustService = createTrustService(database);
+  const placementService = createPlacementService(database);
   const trustRestrictions = createTrustRestrictionService(database);
 
   const movementEvidenceService = createMovementEvidenceService(database, {
@@ -139,6 +142,7 @@ async function startServer(): Promise<void> {
   const playerIdentityService = createPlayerIdentityService(database);
   const livePvpGateway = createLivePvpGateway(livePvpService);
   const app = await buildApp({
+    placementService,
     offlineChallengeService: process.env.OFFLINE_PACK_SIGNING_KEY
       ? createOfflineChallengeService(database, {
           signingKey: process.env.OFFLINE_PACK_SIGNING_KEY,
@@ -236,6 +240,10 @@ async function startServer(): Promise<void> {
     app.log,
     config.trustEvaluationIntervalMs,
   );
+  const placementScheduler = createPlacementScheduler(
+    placementService,
+    app.log,
+  );
   const asyncPvpDeadlineProcessor = createAsyncPvpDeadlineProcessor(
     database,
     asyncPvpService,
@@ -266,6 +274,7 @@ async function startServer(): Promise<void> {
   );
 
   app.addHook('onClose', async () => {
+    await placementScheduler.stop();
     await livePvpNotificationListener.stop();
     await livePvpRuntimeScheduler.stop();
     await livePvpGateway.closeAll();
@@ -287,6 +296,7 @@ async function startServer(): Promise<void> {
     accountDeletionRetryScheduler.start();
     movementEvidenceCleanupScheduler.start();
     trustEvaluationScheduler.start();
+    placementScheduler.start();
     asyncPvpDeadlineScheduler.start();
 
     app.log.info(

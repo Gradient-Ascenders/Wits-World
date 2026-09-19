@@ -260,6 +260,7 @@ describe('challenge attempt start service', () => {
       new Date('2026-09-01T10:02:00.000Z'),
       120,
       1.8,
+      null,
     ]);
 
     expect(fixture.snapshotQuestions).toHaveLength(5);
@@ -537,6 +538,13 @@ function createDatabaseFixture({
             choice_text_snapshot: choice.text,
           })),
       };
+    }
+
+    if (
+      sql.includes('from public.event_placement_state') &&
+      sql.includes('for share')
+    ) {
+      return { rows: [{ version: '0' }] };
     }
 
     if (sql.includes('with claim as')) {

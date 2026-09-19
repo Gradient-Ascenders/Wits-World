@@ -95,6 +95,12 @@ Keeping the production values aligned allows an idle serverless PostgreSQL
 compute to suspend between sweeps. Asynchronous PvP reads and mutations still
 enforce the authoritative 24-hour deadlines before the periodic worker runs.
 
+The event-placement worker also evaluates at startup and every 30 minutes,
+with a timer for the next policy-defined `04:00 Africa/Johannesburg` rotation
+boundary. It requires migrations through `0049` and the `placement-v1` seed.
+See [Automatic event placement service](../../docs/architecture/automatic-event-placement-service.md)
+for the Author API and release checks.
+
 When updating an existing checkout, remove or replace any legacy `60000`
 overrides for `ACCOUNT_DELETION_RETRY_INTERVAL_MS`,
 `ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS`,

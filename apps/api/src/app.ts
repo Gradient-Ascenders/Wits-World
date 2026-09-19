@@ -65,6 +65,8 @@ import type { OfflineChallengeService } from './challenges/offline-challenges.js
 
 import type { AuthorEventService } from './events/author-event-service.js';
 import { authorEventRoutes } from './routes/author-events.js';
+import { authorEventPlacementRoutes } from './routes/author-event-placement.js';
+import type { PlacementService } from './placement/placement-service.js';
 
 import type { AuthorChallengeService } from './challenges/author-challenge-service.js';
 import { authorChallengeRoutes } from './routes/author-challenges.js';
@@ -94,6 +96,7 @@ export interface EventServices {
 }
 
 export interface BuildAppOptions {
+  placementService?: PlacementService;
   offlineChallengeService?: OfflineChallengeService;
   authConfig: AuthConfig;
   config?: Pick<ApiConfig, 'logLevel'>;
@@ -158,6 +161,7 @@ export interface TrailServices {
 }
 
 export async function buildApp({
+  placementService,
   authConfig,
   config = {
     logLevel: 'info',
@@ -442,6 +446,13 @@ export async function buildApp({
     await app.register(authorEventRoutes, {
       prefix: '/api/v1',
       service: authorContentServices.events,
+    });
+  }
+
+  if (placementService) {
+    await app.register(authorEventPlacementRoutes, {
+      prefix: '/api/v1',
+      service: placementService,
     });
   }
 

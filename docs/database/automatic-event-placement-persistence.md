@@ -5,9 +5,10 @@ title: Automatic event placement persistence
 # Automatic event placement persistence
 
 Migration `0045_create_event_placement_persistence.sql` supplies the durable
-PostgreSQL/PostGIS boundary for the automatic-placement policy. It does not run
-a scheduler, move an event, expose Author routes, or change player discovery by
-itself. Issue `#262` consumes these relations to plan and apply rotations.
+PostgreSQL/PostGIS boundary for the automatic-placement policy. Migration
+`0049_enable_event_placement_services.sql` extends it for the placement
+service, Author operations, and player location resolution. The service flow
+is documented in [Automatic event placement service](../architecture/automatic-event-placement-service.md).
 
 ## Stored model
 
@@ -73,6 +74,12 @@ input digest, expected and committed state versions, counts, exceptions,
 failure code, predecessor, and rollback source. Only one applied or degraded
 plan can commit for one policy and rotation bucket.
 
+Migration `0049` keeps scheduled plans unique per policy and bucket while
+allowing audited manual and reconciliation plans in that bucket. State-version
+increments may retain the current committed plan after an override or lifecycle
+change; selecting a different current plan requires its committed version to
+match the new state version.
+
 Plan entries use relational foreign keys rather than an unvalidated JSON list.
 Current assignment uniqueness prevents one event from appearing at two sites
 or one site from hosting two events. Assignments also verify policy consistency,
@@ -84,7 +91,10 @@ Pins, exclusions, and pauses store a canonical request hash and an
 Author-scoped idempotency key. Their maximum durations come from the referenced
 policy version: seven days for pins and pauses, and thirty days for site
 exclusions. The API must still use the singleton state version and row locking
-when issue `#262` applies a plan or override.
+when applying a plan or override. Migration `0049` also adds the optional
+`challenge_attempts.placement_assignment_id` reference and a database
+resolver for effective event locations. A managed event without a valid
+assignment is unavailable rather than falling back to its authored point.
 
 ## Privacy and release
 
@@ -102,9 +112,10 @@ and policy immutability:
 npm run test:database --workspace @wits-world/api
 ```
 
-Apply migration `0045` before deploying issue `#262`, then run the normal seed
-release step to install `placement-v1`. Applying this migration alone does not
-change any effective event location.
+Apply migrations through `0049`, then run the normal seed release step to
+install `placement-v1`, before deploying the placement-enabled API. The seed
+does not approve any portable events or create assignments. These migrations
+do not rewrite authored coordinates or historical attempts.
 
 The preceding document was generated and edited with the assistance of:
-Codex[GPT-5.6 Sol].
+Codex[GPT-5.6 Sol] and Codex[GPT-5].
