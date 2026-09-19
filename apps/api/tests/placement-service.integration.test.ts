@@ -17,6 +17,7 @@ import { createOfflineChallengeService } from '../src/challenges/offline-challen
 import type { ChallengeAttemptCompletionFinalizer } from '../src/challenges/challenge-answer-submission.js';
 import { createEventDiscoveryService } from '../src/events/event-discovery.js';
 import { createPlacementService } from '../src/placement/placement-service.js';
+import { createPlayerTrailService } from '../src/trails/player-trail-service.js';
 
 const runIntegrationTests =
   process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';
@@ -168,6 +169,32 @@ describe.skipIf(!runIntegrationTests)('placement service integration', () => {
     ).toHaveLength(3);
     const state = await service.state();
     expect(state.assignments).toHaveLength(3);
+    const assignment = state.assignments[0]!;
+    const site = state.sites.find(
+      (candidate) => candidate.id === assignment.siteId,
+    )!;
+    const authoredDistance = await pool.query<{ metres: number }>(
+      `select st_distance(event.location, site.location) as metres
+         from public.events event
+         join public.event_placement_sites site on site.id = $2::uuid
+        where event.id = $1::uuid`,
+      [assignment.eventId, assignment.siteId],
+    );
+    expect(authoredDistance.rows[0]?.metres).toBeGreaterThan(100);
+    const nearby = await createPlayerTrailService(pool).listNearbyUnvisited({
+      playerId: authorId,
+      latitude: site.latitude,
+      longitude: site.longitude,
+      accuracyMetres: 20,
+      maxDistanceMetres: 100,
+      limit: 20,
+    });
+    expect(
+      nearby.find((event) => event.eventId === assignment.eventId),
+    ).toMatchObject({
+      latitude: site.latitude,
+      longitude: site.longitude,
+    });
     const offline = createOfflineChallengeService(pool, {
       signingKey: 'placement-test-signing-key-32-characters',
       finalizer: {} as ChallengeAttemptCompletionFinalizer,

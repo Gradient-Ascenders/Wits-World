@@ -585,6 +585,37 @@ export const NEARBY_UNVISITED_QUERY = `
       4326
     )::geography as location
   ),
+  geographic_candidates as (
+    -- Keep both geographic searches on indexed stored points. The placement
+    -- resolver below remains authoritative for availability and distance.
+    select event.id
+    from public.events event
+    cross join claim
+    where st_dwithin(
+      event.location,
+      claim.location,
+      $5::double precision
+    )
+      and not exists (
+        select 1
+        from public.event_placement_portability portability
+        where portability.event_id = event.id
+          and portability.effective_at <= $2::timestamptz
+      )
+    union
+    select assignment.event_id as id
+    from public.event_placement_sites site
+    join public.event_placement_assignments assignment
+      on assignment.site_id = site.id
+    cross join claim
+    where st_dwithin(
+      site.location,
+      claim.location,
+      $5::double precision
+    )
+      and assignment.starts_at <= $2::timestamptz
+      and (assignment.ends_at is null or assignment.ends_at > $2::timestamptz)
+  ),
   nearby_candidates as (
     select
       event.id,
@@ -595,7 +626,8 @@ export const NEARBY_UNVISITED_QUERY = `
       event_schedule.effective_starts_at as starts_at,
       event_schedule.effective_ends_at as ends_at,
       st_distance(placement.effective_location, claim.location) as distance_metres
-    from public.events event
+    from geographic_candidates geographic_candidate
+    join public.events event on event.id = geographic_candidate.id
     cross join claim
     cross join lateral public.resolve_event_placement_location(event.id, $2::timestamptz) placement
     cross join lateral public.resolve_event_availability(
