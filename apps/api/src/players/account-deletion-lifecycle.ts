@@ -342,11 +342,6 @@ export function createAccountDeletionLifecycle(
         );
 
         await client.query(
-          `select private.cancel_ranked_queue_for_account_deletion($1::uuid)`,
-          [player.id],
-        );
-
-        await client.query(
           `select private.delete_player_owned_data($1::uuid, $2::uuid)`,
           [player.id, deletionRequestId],
         );

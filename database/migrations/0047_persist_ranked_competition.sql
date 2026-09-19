@@ -1385,6 +1385,30 @@ $$;
 revoke all on function private.cancel_ranked_queue_for_account_deletion(uuid)
   from public;
 
+alter function private.delete_player_owned_data(uuid, uuid)
+  rename to delete_player_owned_data_before_ranked;
+
+create function private.delete_player_owned_data(
+  player_id_to_delete uuid,
+  deletion_request_id_to_complete uuid
+)
+returns void
+language plpgsql
+as $$
+begin
+  perform private.cancel_ranked_queue_for_account_deletion(player_id_to_delete);
+  perform private.delete_player_owned_data_before_ranked(
+    player_id_to_delete,
+    deletion_request_id_to_complete
+  );
+end;
+$$;
+
+revoke all on function private.delete_player_owned_data_before_ranked(uuid, uuid)
+  from public;
+revoke all on function private.delete_player_owned_data(uuid, uuid)
+  from public;
+
 create function private.validate_ranked_matchmaking_receipt(
   match_id_to_validate uuid
 )
