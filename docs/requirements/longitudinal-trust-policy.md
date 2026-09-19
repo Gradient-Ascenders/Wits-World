@@ -9,10 +9,13 @@ title: 'Longitudinal trust and proportionate enforcement'
 This document is the issue `#254` policy contract for Advanced-tier trust
 scoring and proportionate enforcement. Issue `#257` implements persistence for
 derived signals, score snapshots, cases, restrictions, appeals, and decisions
-through migration `0046_persist_longitudinal_trust.sql`. Issue `#258` remains
-responsible for scoring and server-side enforcement, and later issues will
-expose the reviewer and player experiences. Persistence alone does not mean
-that scoring, enforcement, review APIs, or player notices are deployed.
+through migration `0046_persist_longitudinal_trust.sql`. Issue `#258` implements
+the deterministic `trust-v1` scoring service, authoritative signal ingestion,
+periodic decay/recovery evaluation, and server-side enforcement of previously
+reviewed restrictions. Migration
+`0048_implement_trust_scoring_and_enforcement.sql` adds only forward schema
+hardening needed by that runtime. Later issues expose reviewer and player
+experiences; score internals remain private.
 
 The policy builds an explainable picture from weak indicators over time. A
 signal means that authoritative application data matched a review condition; it
@@ -211,6 +214,42 @@ newer non-terminal case, that case receives the new snapshot; the resolved
 historical case remains terminal. A case with an active restriction remains
 `under_review` until the restriction expires or is overturned and its remaining
 case-review work is resolved.
+
+## Runtime evaluation and enforcement
+
+The API implements `trust-v1` as a pure deterministic calculation over the
+persisted signal set. Signal-triggered evaluations and the maintenance sweep use
+PostgreSQL `clock_timestamp()` as the authoritative evaluation time. The
+maintenance sweep revisits active signals/non-terminal cases for decay and
+recovery. Completed asynchronous and live PvP operations also attempt pattern derivation
+after completion commits; maintenance rotates through recent completed matches so
+opponent-pattern signals remain retry-safe and eventually derived after a
+transient failure or process restart.
+
+A human-resolved historical case is not reopened merely because its existing
+signals still score above 25. A later derived signal, recorded after that
+resolution, may open a new case. `under_review` cases are never auto-resolved by
+the decay worker; this prevents automated maintenance from racing reviewer work.
+
+Runtime restrictions are capability checks over persisted human decisions and
+authoritative database time. The implemented boundaries are:
+
+- new offline-pack issuance for `online_verification_required` and
+  `location_reward_challenge_hold`;
+- creation of a new reward-bearing challenge attempt for
+  `location_reward_challenge_hold`; and
+- asynchronous PvP invitation creation/acceptance for
+  `new_competitive_match_hold`.
+
+Already-created attempts and existing PvP matches continue. CPU play and live
+match reconnect/access are not blocked. The current repository has no separate
+live-match queue/join operation; a future implementation must reuse the same
+restriction service at that new-operation boundary instead of inferring access
+from the browser.
+
+Player-facing denials use the neutral `ACTIVITY_REVIEW_RESTRICTION` API code and
+do not include score, band, signal, threshold, reviewer note, opponent identity,
+or detector detail.
 
 ## Author review boundary
 

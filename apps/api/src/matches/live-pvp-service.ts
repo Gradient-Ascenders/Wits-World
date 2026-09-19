@@ -19,6 +19,8 @@ import {
 } from '@wits-world/game-rules';
 import type pg from 'pg';
 
+import type { TrustService } from '../trust/trust-service.js';
+
 const DECISION_WINDOW_MS = 60_000;
 const MAX_TIMEOUT_STRIKES = 3;
 export const LIVE_PVP_MAX_CATCH_UP_TRANSITIONS = 8;
@@ -295,7 +297,16 @@ interface PublicOpponentParticipant {
 
 export function createLivePvpService(
   database: LivePvpDatabase,
-  { randomInt = secureRandomInt }: { randomInt?: RandomInt } = {},
+  {
+    randomInt = secureRandomInt,
+    trustService,
+  }: {
+    randomInt?: RandomInt;
+    trustService?: Pick<
+      TrustService,
+      'recordSubmissionConflict' | 'evaluateOpponentPatternsForMatch'
+    >;
+  } = {},
 ): LivePvpService {
   const service: LivePvpService = {
     async mintConnectionTicket(input) {
@@ -476,6 +487,7 @@ export function createLivePvpService(
         input,
         'action_submit',
         payloadHash,
+        trustService,
         async (client, context, actor, now, recorder) => {
           if (context.match.status === 'completed') throw matchCompleted();
           if (
@@ -541,6 +553,7 @@ export function createLivePvpService(
         },
       );
 
+      await evaluateOpponentPatternsSafely(trustService, input.matchId);
       if (result.kind === 'replay') {
         return {
           acknowledgement: result.acknowledgement,
@@ -580,6 +593,7 @@ export function createLivePvpService(
         input,
         'resign_submit',
         payloadHash,
+        trustService,
         async (client, context, actor, now) => {
           if (context.match.status === 'completed') throw matchCompleted();
           if (
@@ -637,6 +651,7 @@ export function createLivePvpService(
           } as const;
         },
       );
+      await evaluateOpponentPatternsSafely(trustService, input.matchId);
       if (result.kind === 'replay') {
         return {
           acknowledgement: result.acknowledgement,
@@ -666,7 +681,7 @@ export function createLivePvpService(
     },
 
     async processOverdueMatch(matchId) {
-      return withTransaction(database, async (client) => {
+      const result = await withTransaction(database, async (client) => {
         const context = await loadMatchContext(client, matchId, true);
         if (!context || context.match.status !== 'active') {
           return { transitioned: false, matchId };
@@ -685,6 +700,10 @@ export function createLivePvpService(
           completed: await isMatchCompleted(client, matchId),
         };
       });
+      if (result.transitioned && result.completed) {
+        await evaluateOpponentPatternsSafely(trustService, matchId);
+      }
+      return result;
     },
 
     async processOverdueUntilCurrent(matchId) {
@@ -824,11 +843,25 @@ export function createLivePvpService(
   return service;
 }
 
+async function evaluateOpponentPatternsSafely(
+  trustService:
+    Pick<TrustService, 'evaluateOpponentPatternsForMatch'> | undefined,
+  matchId: string,
+): Promise<void> {
+  try {
+    await trustService?.evaluateOpponentPatternsForMatch(matchId);
+  } catch {
+    // Realtime completion/replay remains authoritative. Periodic trust
+    // maintenance retries pattern derivation after transient failures.
+  }
+}
+
 async function mutateParticipant(
   database: LivePvpDatabase,
   input: LivePvpMutationInput,
   operation: 'action_submit' | 'resign_submit',
   payloadHash: string,
+  trustService: Pick<TrustService, 'recordSubmissionConflict'> | undefined,
   operationBody: (
     client: LivePvpDatabaseClient,
     context: LockedMatchContext,
@@ -849,88 +882,117 @@ async function mutateParticipant(
       acknowledgement: LivePvpMutationResult['acknowledgement'];
     }
 > {
-  const transactionResult = await withTransaction(database, async (client) => {
-    const context = await loadMatchContext(client, input.matchId, true);
-    if (!context) throw matchNotFound();
-    const actor = context.participants.find(
-      (participant) => participant.player_id === input.playerId,
-    );
-    if (!actor) throw forbiddenAction();
-    if (Number(actor.connection_generation) !== input.connectionGeneration) {
-      throw connectionSuperseded();
-    }
-
-    const receipt = await loadReceipt(client, input, operation);
-    if (receipt) {
-      if (receipt.payload_hash !== payloadHash) {
-        throw new LivePvpError(
-          'LIVE_IDEMPOTENCY_CONFLICT',
-          'This message ID was already used with a different payload.',
-        );
+  try {
+    return await runMutationTransaction();
+  } catch (error) {
+    if (
+      error instanceof LivePvpError &&
+      error.code === 'LIVE_IDEMPOTENCY_CONFLICT'
+    ) {
+      try {
+        await trustService?.recordSubmissionConflict({
+          playerId: input.playerId,
+          operation: `live_pvp_${operation}`,
+          resourceIdentifier: input.matchId,
+          submissionId: input.messageId,
+        });
+      } catch {
+        // Preserve the realtime protocol conflict. A retry can attempt trust
+        // ingestion again without changing the committed match state.
       }
-      return {
-        kind: 'replay' as const,
-        acknowledgement: receipt.committed_acknowledgement,
-      };
     }
+    throw error;
+  }
 
-    const now = await databaseNow(client);
-    const recorder = createRandomRecorder();
-    const outcome = await operationBody(client, context, actor, now, recorder);
-    if (!('eventId' in outcome)) {
-      const latest = await loadMatchContext(client, input.matchId, false);
-      if (!latest) throw matchNotFound();
-      const action = await client.query<{ id: string; created_at: Date }>(
-        `select id::text, created_at
-           from public.live_pvp_match_actions
-          where match_id = $1::uuid
-            and committed_version = $2
-          limit 1`,
-        [input.matchId, latest.match.version],
+  async function runMutationTransaction() {
+    return withTransaction(database, async (client) => {
+      const context = await loadMatchContext(client, input.matchId, true);
+      if (!context) throw matchNotFound();
+      const actor = context.participants.find(
+        (participant) => participant.player_id === input.playerId,
       );
-      const row = action.rows[0];
-      if (!row)
-        throw new Error('Late transition did not persist a public action.');
-      return {
-        kind: 'late' as const,
-        eventId: row.id,
-        version: latest.match.version,
-        serverTime: row.created_at.toISOString(),
-      };
-    }
+      if (!actor) throw forbiddenAction();
+      if (Number(actor.connection_generation) !== input.connectionGeneration) {
+        throw connectionSuperseded();
+      }
 
-    const acknowledgement: LivePvpMutationResult['acknowledgement'] = {
-      protocolVersion: 1,
-      type: 'action.acknowledged',
-      messageId: input.messageId,
-      eventId: outcome.eventId,
-      version: outcome.committedVersion,
-      serverTime: now.toISOString(),
-    };
-    await client.query(
-      `insert into private.live_pvp_submission_receipts (
-         match_id, actor_player_id, operation, message_id, expected_version,
-         connection_generation, payload_hash, committed_event_id,
-         committed_acknowledgement
-       ) values (
-         $1::uuid, $2::uuid, $3, $4::uuid, $5,
-         $6, $7, $8::uuid, $9::jsonb
-       )`,
-      [
-        input.matchId,
-        input.playerId,
-        operation,
-        input.messageId,
-        input.expectedVersion,
-        input.connectionGeneration,
-        payloadHash,
-        outcome.eventId,
-        JSON.stringify(acknowledgement),
-      ],
-    );
-    return { kind: 'committed' as const, acknowledgement };
-  });
-  return transactionResult;
+      const receipt = await loadReceipt(client, input, operation);
+      if (receipt) {
+        if (receipt.payload_hash !== payloadHash) {
+          throw new LivePvpError(
+            'LIVE_IDEMPOTENCY_CONFLICT',
+            'This message ID was already used with a different payload.',
+          );
+        }
+        return {
+          kind: 'replay' as const,
+          acknowledgement: receipt.committed_acknowledgement,
+        };
+      }
+
+      const now = await databaseNow(client);
+      const recorder = createRandomRecorder();
+      const outcome = await operationBody(
+        client,
+        context,
+        actor,
+        now,
+        recorder,
+      );
+      if (!('eventId' in outcome)) {
+        const latest = await loadMatchContext(client, input.matchId, false);
+        if (!latest) throw matchNotFound();
+        const action = await client.query<{ id: string; created_at: Date }>(
+          `select id::text, created_at
+             from public.live_pvp_match_actions
+            where match_id = $1::uuid
+              and committed_version = $2
+            limit 1`,
+          [input.matchId, latest.match.version],
+        );
+        const row = action.rows[0];
+        if (!row)
+          throw new Error('Late transition did not persist a public action.');
+        return {
+          kind: 'late' as const,
+          eventId: row.id,
+          version: latest.match.version,
+          serverTime: row.created_at.toISOString(),
+        };
+      }
+
+      const acknowledgement: LivePvpMutationResult['acknowledgement'] = {
+        protocolVersion: 1,
+        type: 'action.acknowledged',
+        messageId: input.messageId,
+        eventId: outcome.eventId,
+        version: outcome.committedVersion,
+        serverTime: now.toISOString(),
+      };
+      await client.query(
+        `insert into private.live_pvp_submission_receipts (
+           match_id, actor_player_id, operation, message_id, expected_version,
+           connection_generation, payload_hash, committed_event_id,
+           committed_acknowledgement
+         ) values (
+           $1::uuid, $2::uuid, $3, $4::uuid, $5,
+           $6, $7, $8::uuid, $9::jsonb
+         )`,
+        [
+          input.matchId,
+          input.playerId,
+          operation,
+          input.messageId,
+          input.expectedVersion,
+          input.connectionGeneration,
+          payloadHash,
+          outcome.eventId,
+          JSON.stringify(acknowledgement),
+        ],
+      );
+      return { kind: 'committed' as const, acknowledgement };
+    });
+  }
 }
 
 async function applyOverdueTransition(

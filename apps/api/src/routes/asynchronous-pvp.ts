@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
+import { TrustActivityRestrictedError } from '../trust/trust-restrictions.js';
 import { validatePlayerName } from '@wits-world/account-policy';
 
 import { ApiError } from '../errors/api-error.js';
@@ -1002,6 +1003,14 @@ function validationError(): ApiError {
   });
 }
 function mapError(error: unknown, request?: FastifyRequest): Error {
+  if (error instanceof TrustActivityRestrictedError) {
+    return new ApiError({
+      statusCode: 403,
+      code: error.code,
+      title: 'Activity temporarily unavailable',
+      detail: error.message,
+    });
+  }
   if (
     error instanceof AsyncPvpError &&
     error.code === 'PVP_INVITATION_CANCELLED' &&

@@ -50,7 +50,7 @@ Start with the domain table above, then follow the diagrams and detailed field
 references below. These documents describe the application schema; the ordered
 [migration source](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/database/migrations)
 is authoritative for exact SQL types, constraints, indexes and later alterations
-through `0047_persist_ranked_competition.sql`, including the issue `#263` ranked-persistence update.
+through `0048_implement_trust_scoring_and_enforcement.sql`, including the issue `#257` trust-persistence update, issue `#263` ranked-persistence update, and issue `#258` forward trust hardening.
 
 | Schema question                                                                   | Canonical reference                                                                                                                                                                                                                                                                                                          |
 | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -174,6 +174,14 @@ ratings, private queue/proposal state, match and rating snapshots, immutable
 per-player settlements, and archived standings. It does not create matchmaking
 routes, run a season worker, or rate an existing live match. See
 [Ranked competition storage](./ranked-competition-persistence.md).
+
+Migration `0048_implement_trust_scoring_and_enforcement.sql` keeps `0046`
+immutable while hardening the runtime contract used by issue `#258`: trust
+review decisions require a non-null resulting score snapshot, appeal-reviewer
+and signal-adjustment lookups are indexed for audit/scoring queries, and the
+previously undocumented trust relations receive table comments. Deterministic
+score calculation and restriction enforcement remain API services; the database
+continues to own persistence constraints and authoritative time.
 
 ## Environments and deployment
 

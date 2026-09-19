@@ -19,6 +19,7 @@ import { runMigrations } from '../src/database/migrations.js';
 import { getMigrationsDirectory } from '../src/database/paths.js';
 import { runSeeds } from '../src/database/seeds.js';
 import { createAsyncPvpService } from '../src/matches/asynchronous-pvp-service.js';
+import { TrustActivityRestrictedError } from '../src/trust/trust-restrictions.js';
 import { createAsyncPvpDeadlineProcessor } from '../src/matches/asynchronous-pvp-deadline-processor.js';
 import { createSignedCursorCodec } from '../src/security/signed-cursor.js';
 import { createProgressionPersistence } from '../src/progression/progression-persistence.js';
@@ -478,6 +479,34 @@ describe.skipIf(!runIntegrationTests)(
         ],
         nextCursor: null,
       });
+
+      const restrictedAcceptService = createAsyncPvpService(pool, {
+        cursorCodec: createSignedCursorCodec(
+          'database-test-only-cursor-key-with-32-bytes',
+        ),
+        randomInt: () => 0,
+        trustRestrictions: {
+          async assertAllowed(playerId) {
+            if (playerId === challengerPlayerId) {
+              throw new TrustActivityRestrictedError({
+                scope: 'new_competitive_match_hold',
+                startsAt: new Date(),
+                expiresAt: new Date(Date.now() + 60_000),
+              });
+            }
+          },
+        },
+      });
+      await expect(
+        restrictedAcceptService.acceptInvitation({
+          playerId: recipientPlayerId,
+          invitationId: invitation.invitationId,
+          deckId: recipientDeck.deckId,
+          initialCreatureId: recipientDeck.creatureId,
+          submissionId: randomUUID(),
+          expectedVersion: 0,
+        }),
+      ).rejects.toMatchObject({ code: 'PVP_PLAYER_UNAVAILABLE' });
 
       const accepted = await service.acceptInvitation({
         playerId: recipientPlayerId,

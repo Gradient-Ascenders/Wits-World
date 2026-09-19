@@ -31,6 +31,11 @@ import {
   PlayerBattleDeckError,
   type LoadedPlayerBattleDeck,
 } from './player-battle-deck.js';
+import {
+  TrustActivityRestrictedError,
+  type TrustRestrictionService,
+} from '../trust/trust-restrictions.js';
+import type { TrustService } from '../trust/trust-service.js';
 
 const DECISION_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_PAGE_LIMIT = 20;
@@ -239,10 +244,30 @@ export class AsyncPvpError extends Error {
   }
 }
 
+class AsyncPvpIdempotencyConflictError extends AsyncPvpError {
+  constructor(
+    readonly actorId: string,
+    readonly operation: string,
+    readonly submissionId: string,
+    readonly resourceIdentifier: string,
+  ) {
+    super(
+      'PVP_IDEMPOTENCY_CONFLICT',
+      'The submission identifier was already used for different input.',
+    );
+    this.name = 'AsyncPvpIdempotencyConflictError';
+  }
+}
+
 interface ServiceOptions {
   cursorCodec: SignedCursorCodec;
   randomInt?: RandomInt;
   progressionPersistence?: ProgressionPersistence;
+  trustRestrictions?: Pick<TrustRestrictionService, 'assertAllowed'>;
+  trustService?: Pick<
+    TrustService,
+    'recordSubmissionConflict' | 'evaluateOpponentPatternsForMatch'
+  >;
 }
 
 interface InvitationRow extends pg.QueryResultRow {
@@ -284,6 +309,8 @@ interface MatchRow extends pg.QueryResultRow {
 interface ReceiptRow extends pg.QueryResultRow {
   payload_hash: string;
   committed_response: unknown;
+  invitation_id: string | null;
+  match_id: string | null;
 }
 
 interface NowRow extends pg.QueryResultRow {
@@ -305,8 +332,14 @@ export function createAsyncPvpService(
     cursorCodec,
     randomInt = secureRandomInt,
     progressionPersistence = createProgressionPersistence(),
+    trustRestrictions,
+    trustService,
   }: ServiceOptions,
 ): AsyncPvpService {
+  const withServiceTransaction = <T>(
+    operation: (client: AsyncPvpClient) => Promise<T>,
+  ) => withTransaction(database, operation, trustService);
+
   const service: AsyncPvpService = {
     async findPlayer(viewerId, playerName) {
       const client = await database.connect();
@@ -338,7 +371,7 @@ export function createAsyncPvpService(
         deckId: input.deckId,
         initialCreatureId: input.initialCreatureId,
       });
-      return withTransaction(database, async (client) => {
+      return withServiceTransaction(async (client) => {
         await lockSubmissionKey(
           client,
           input.playerId,
@@ -353,6 +386,14 @@ export function createAsyncPvpService(
           payloadHash,
         );
         if (replay) return replay;
+
+        if (trustRestrictions) {
+          await trustRestrictions.assertAllowed(
+            input.playerId,
+            'new_competitive_match_hold',
+            client,
+          );
+        }
 
         const opponentResult = await client.query<{
           id: string;
@@ -553,7 +594,7 @@ export function createAsyncPvpService(
         expectedVersion: input.expectedVersion,
       });
       let deadlineExpired = false;
-      const result = await withTransaction(database, async (client) => {
+      const result = await withServiceTransaction(async (client) => {
         const invitation = await lockInvitation(
           client,
           input.invitationId,
@@ -584,6 +625,28 @@ export function createAsyncPvpService(
           return null;
         }
         assertPendingInvitation(invitation, input.expectedVersion);
+        if (trustRestrictions) {
+          await trustRestrictions.assertAllowed(
+            input.playerId,
+            'new_competitive_match_hold',
+            client,
+          );
+          try {
+            await trustRestrictions.assertAllowed(
+              invitation.challenger_player_id,
+              'new_competitive_match_hold',
+              client,
+            );
+          } catch (error) {
+            if (error instanceof TrustActivityRestrictedError) {
+              throw new AsyncPvpError(
+                'PVP_PLAYER_UNAVAILABLE',
+                'The player is not available for a new match.',
+              );
+            }
+            throw error;
+          }
+        }
 
         const recipientDeck = await loadDeck(
           client,
@@ -708,7 +771,7 @@ export function createAsyncPvpService(
         expectedVersion: input.expectedVersion,
       });
       let deadlineExpired = false;
-      const result = await withTransaction(database, async (client) => {
+      const result = await withServiceTransaction(async (client) => {
         const invitation = await lockInvitation(
           client,
           input.invitationId,
@@ -773,7 +836,7 @@ export function createAsyncPvpService(
         expectedVersion: input.expectedVersion,
       });
       let deadlineExpired = false;
-      const result = await withTransaction(database, async (client) => {
+      const result = await withServiceTransaction(async (client) => {
         const invitation = await lockInvitation(
           client,
           input.invitationId,
@@ -842,7 +905,7 @@ export function createAsyncPvpService(
     },
 
     async getMatch(playerId, matchId) {
-      return withTransaction(database, async (client) => {
+      const view = await withServiceTransaction(async (client) => {
         const match = await lockMatch(client, playerId, matchId);
         if (match.status === 'active' && match.turn_deadline) {
           const now = await databaseNow(client);
@@ -859,6 +922,10 @@ export function createAsyncPvpService(
         }
         return await loadMatchView(client, playerId, matchId);
       });
+      if (view.status === 'completed') {
+        await evaluateOpponentPatternsSafely(trustService, matchId);
+      }
+      return view;
     },
 
     async submitAction(input) {
@@ -868,7 +935,7 @@ export function createAsyncPvpService(
         action: input.action,
       });
       let deadlineLost = false;
-      const response = await withTransaction(database, async (client) => {
+      const response = await withServiceTransaction(async (client) => {
         const match = await lockMatch(client, input.playerId, input.matchId);
         await lockSubmissionKey(
           client,
@@ -1033,6 +1100,9 @@ export function createAsyncPvpService(
         });
         return view;
       });
+      if (response.status === 'completed') {
+        await evaluateOpponentPatternsSafely(trustService, input.matchId);
+      }
       if (deadlineLost) {
         throw new AsyncPvpError(
           'PVP_MATCH_COMPLETED',
@@ -1048,7 +1118,7 @@ export function createAsyncPvpService(
         expectedVersion: input.expectedVersion,
       });
       let deadlineLost = false;
-      const response = await withTransaction(database, async (client) => {
+      const response = await withServiceTransaction(async (client) => {
         const match = await lockMatch(client, input.playerId, input.matchId);
         await lockSubmissionKey(
           client,
@@ -1115,6 +1185,9 @@ export function createAsyncPvpService(
         });
         return view;
       });
+      if (response.status === 'completed') {
+        await evaluateOpponentPatternsSafely(trustService, input.matchId);
+      }
       if (deadlineLost) {
         throw new AsyncPvpError(
           'PVP_MATCH_COMPLETED',
@@ -1228,16 +1301,49 @@ export function createAsyncPvpService(
   return service;
 }
 
+async function evaluateOpponentPatternsSafely(
+  trustService:
+    Pick<TrustService, 'evaluateOpponentPatternsForMatch'> | undefined,
+  matchId: string,
+): Promise<void> {
+  try {
+    await trustService?.evaluateOpponentPatternsForMatch(matchId);
+  } catch {
+    // Match completion remains authoritative. The maintenance sweep retries
+    // derived opponent-pattern evaluation after transient trust failures.
+  }
+}
+
 async function withTransaction<T>(
   database: AsyncPvpDatabase,
   operation: (client: AsyncPvpClient) => Promise<T>,
+  trustService?: Pick<TrustService, 'recordSubmissionConflict'>,
 ): Promise<T> {
   const client = await database.connect();
+  let failure: unknown;
   try {
     return await withExistingClientTransaction(client, () => operation(client));
+  } catch (error) {
+    failure = error;
   } finally {
     client.release();
   }
+
+  if (failure instanceof AsyncPvpIdempotencyConflictError) {
+    try {
+      await trustService?.recordSubmissionConflict({
+        playerId: failure.actorId,
+        operation: `async_pvp_${failure.operation}`,
+        resourceIdentifier: failure.resourceIdentifier,
+        submissionId: failure.submissionId,
+      });
+    } catch {
+      // Preserve the authoritative mutation conflict. A repeated conflict can
+      // retry trust ingestion without changing the gameplay outcome.
+    }
+  }
+
+  throw failure;
 }
 
 async function withExistingClientTransaction<T>(
@@ -1420,7 +1526,8 @@ async function loadReceipt<T>(
 ): Promise<T | null> {
   const result = await client.query<ReceiptRow>(
     `
-      select payload_hash, committed_response
+      select payload_hash, committed_response,
+             invitation_id::text, match_id::text
         from private.async_pvp_submission_receipts
        where actor_player_id = $1::uuid
          and operation = $2
@@ -1431,9 +1538,11 @@ async function loadReceipt<T>(
   const receipt = result.rows[0];
   if (!receipt) return null;
   if (receipt.payload_hash !== payloadHash) {
-    throw new AsyncPvpError(
-      'PVP_IDEMPOTENCY_CONFLICT',
-      'The submission identifier was already used for different input.',
+    throw new AsyncPvpIdempotencyConflictError(
+      actorId,
+      operation,
+      submissionId,
+      receipt.invitation_id ?? receipt.match_id ?? operation,
     );
   }
   return receipt.committed_response as T;

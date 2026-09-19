@@ -146,7 +146,7 @@ replacement of a preserved campaign draft, server-returned lifecycle feedback,
 and read-only non-draft campaign edit deep links. Analytics UI tests remain
 blocked with issue `#184` / S3-06; no mock analytics contract is used.
 
-The issue `#257` trust-persistence database suite upgrades a pre-`0045`
+The issue `#257` trust-persistence database suite upgrades a pre-`0046`
 database and also verifies a clean migration. It covers private-only trust
 relations, signal privacy/immutability, 90-day expiry, concurrent source
 deduplication, score caps/bands, one-active-case concurrency, case-version audit
@@ -156,6 +156,32 @@ decision, different-Author appeal resolution, delayed audited governance
 finalization, account-deletion cleanup, anonymous governance retention, and
 retry-safe retention purge. It does not
 claim that issue `#258` score calculation or enforcement is implemented.
+
+Issue `#258` adds pure `trust-v1` policy tests for movement severity, exact
+90-day integer decay, category/final caps, all review-band boundaries,
+false-positive adjustments, deterministic calculation digests, and the rule
+that weak opponent evidence alone remains non-severe. Restriction tests verify
+neutral allow/deny capability checks, challenge-start tests prove a later hold
+does not cancel an existing attempt, and CPU-action tests distinguish an
+identical retry from conflicting submission-ID reuse only after rollback. The
+offline database suite stores the new canonical submission digest and verifies
+that reusing one client attempt identifier with changed payload is rejected and
+produces only one deduplicated trust signal.
+
+The `trust-scoring.integration.test.ts` disposable-database suite verifies
+migration `0047`, concurrent signal deduplication, the three-conflict pattern,
+score/case persistence without automatic restrictions, direct
+`trust_decision_evidence` constraints, human-authored restriction enforcement,
+resolved-case audit preservation, seven-day decay resolution, and reciprocal
+completed-PvP pattern deduplication. Movement database coverage also verifies
+that a committed `too_fast` decision produces only the non-precise derived
+signal. The periodic scheduler has focused tests for cadence, overlap avoidance,
+shutdown, and safe failure logging.
+
+Database integration remains opt-in locally. A slow local database may use a
+larger Vitest timeout for an individual focused suite without changing the
+repository; the complete database runner and migration validation remain CI
+evidence on the ephemeral PostGIS service.
 
 Impossible-journey tests separate the pure uncertainty-adjusted speed rule from
 the PostgreSQL/PostGIS evidence path. API and Web tests cover neutral retries

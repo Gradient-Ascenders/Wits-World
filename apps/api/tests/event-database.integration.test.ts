@@ -195,6 +195,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0045_create_event_placement_persistence.sql',
         '0046_persist_longitudinal_trust.sql',
         '0047_persist_ranked_competition.sql',
+        '0048_implement_trust_scoring_and_enforcement.sql',
       ],
       skipped: [],
     });
@@ -249,6 +250,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0045_create_event_placement_persistence.sql',
         '0046_persist_longitudinal_trust.sql',
         '0047_persist_ranked_competition.sql',
+        '0048_implement_trust_scoring_and_enforcement.sql',
       ],
     });
     expect(readiness).toMatchObject({

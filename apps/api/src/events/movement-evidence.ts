@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 import type pg from 'pg';
 
+import type { TrustService } from '../trust/trust-service.js';
+
 import { evaluateJourney as evaluateJourneyPlausibility } from './journey-evaluation.js';
 
 const DEFAULT_RETENTION_MS = 24 * 60 * 60 * 1000;
@@ -59,6 +61,10 @@ interface CreateMovementEvidenceServiceOptions {
   createDecisionId?: () => string;
   maxPlausibleJourneySpeedMetresPerSecond?: number;
   retentionMs?: number;
+  trustService?: Pick<
+    TrustService,
+    'recordImpossibleMovementWithinTransaction'
+  >;
 }
 
 interface LatestEvidenceRow extends pg.QueryResultRow {
@@ -122,6 +128,7 @@ export function createMovementEvidenceService(
     createDecisionId = randomUUID,
     maxPlausibleJourneySpeedMetresPerSecond,
     retentionMs = DEFAULT_RETENTION_MS,
+    trustService,
   }: CreateMovementEvidenceServiceOptions = {},
 ): MovementEvidenceService {
   validateRetention(retentionMs);
@@ -151,6 +158,7 @@ export function createMovementEvidenceService(
         maxPlausibleSpeedMetresPerSecond:
           maxPlausibleJourneySpeedMetresPerSecond,
         retentionMs,
+        trustService,
       });
     } catch (error) {
       if (isExpectedMovementEvidenceError(error)) {
@@ -349,6 +357,10 @@ interface EvaluateAndRecordJourneyOptions {
   createEvidenceId: () => string;
   maxPlausibleSpeedMetresPerSecond: number;
   retentionMs: number;
+  trustService?: Pick<
+    TrustService,
+    'recordImpossibleMovementWithinTransaction'
+  >;
 }
 
 async function evaluateAndRecordJourney(
@@ -565,6 +577,7 @@ async function evaluateAndRecordJourney(
     }
   }
 
+  const decisionId = options.createDecisionId();
   await client.query(
     `
       insert into public.movement_eligibility_decisions (
@@ -586,7 +599,7 @@ async function evaluateAndRecordJourney(
           then 'validated_offline_claim' else 'server_receipt' end)
     `,
     [
-      options.createDecisionId(),
+      decisionId,
       evidenceId,
       priorEvidenceId,
       reachabilityStatus,
@@ -599,6 +612,23 @@ async function evaluateAndRecordJourney(
       input.receivedAt,
     ],
   );
+
+  if (
+    outcome === 'too_fast' &&
+    requiredSpeedMetresPerSecond !== null &&
+    options.trustService
+  ) {
+    await options.trustService.recordImpossibleMovementWithinTransaction(
+      client,
+      {
+        playerId: input.playerId,
+        decisionId,
+        requiredSpeedMetresPerSecond,
+        maxPlausibleSpeedMetresPerSecond:
+          options.maxPlausibleSpeedMetresPerSecond,
+      },
+    );
+  }
 
   return { outcome };
 }

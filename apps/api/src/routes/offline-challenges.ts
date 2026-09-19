@@ -1,10 +1,12 @@
 import type { FastifyPluginAsync } from 'fastify';
+import { TrustActivityRestrictedError } from '../trust/trust-restrictions.js';
 import type { OfflineChallengeService } from '../challenges/offline-challenges.js';
 import {
   OfflineRejection,
   type OfflineSubmission,
 } from '../challenges/offline-policy.js';
 import { ApiError } from '../errors/api-error.js';
+import { apiErrorSchema } from '../openapi/battle-schemas.js';
 import {
   completedAttemptResponseSchema,
   completedOrderingAttemptResponseSchema,
@@ -177,6 +179,7 @@ export const offlineChallengeRoutes: FastifyPluginAsync<{
               },
             },
           },
+          403: apiErrorSchema,
         },
         body: {
           type: 'object',
@@ -196,10 +199,22 @@ export const offlineChallengeRoutes: FastifyPluginAsync<{
     },
     async (request, reply) => {
       reply.header('Cache-Control', 'no-store');
-      return {
-        packs: await service.packs(request.player!.id, request.body.eventIds),
-        requestId: request.id,
-      };
+      try {
+        return {
+          packs: await service.packs(request.player!.id, request.body.eventIds),
+          requestId: request.id,
+        };
+      } catch (error) {
+        if (error instanceof TrustActivityRestrictedError) {
+          throw new ApiError({
+            statusCode: 403,
+            code: error.code,
+            title: 'Activity temporarily unavailable',
+            detail: error.message,
+          });
+        }
+        throw error;
+      }
     },
   );
   app.post<{ Body: OfflineSubmission }>(

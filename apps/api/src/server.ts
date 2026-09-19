@@ -48,6 +48,9 @@ import { createLivePvpGateway } from './matches/live-pvp-gateway.js';
 import { createLivePvpDeadlineProcessor } from './matches/live-pvp-deadline-processor.js';
 import { createLivePvpRuntimeScheduler } from './matches/live-pvp-runtime-scheduler.js';
 import { createLivePvpNotificationListener } from './matches/live-pvp-notifications.js';
+import { createTrustService } from './trust/trust-service.js';
+import { createTrustRestrictionService } from './trust/trust-restrictions.js';
+import { createTrustEvaluationScheduler } from './trust/trust-evaluation-scheduler.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
@@ -67,24 +70,32 @@ async function startServer(): Promise<void> {
   const auth0ManagementClient =
     createAuth0ManagementClient(authManagementConfig);
 
+  const trustService = createTrustService(database);
+  const trustRestrictions = createTrustRestrictionService(database);
+
   const movementEvidenceService = createMovementEvidenceService(database, {
     maxPlausibleJourneySpeedMetresPerSecond:
       config.maxPlausibleJourneySpeedMetresPerSecond,
     retentionMs: config.movementEvidenceRetentionMs,
+    trustService,
   });
   const challengeAttemptStartService = createChallengeAttemptStartService(
     database,
-    { movementEvidenceService },
+    { movementEvidenceService, trustRestrictions },
   );
   const starterGrantService = createStarterGrantService(database);
   const cardCollectionService = createCardCollectionService(database);
-  const cardEvolutionService = createCardEvolutionService(database);
+  const cardEvolutionService = createCardEvolutionService(database, {
+    trustService,
+  });
   const progressionPersistence = createProgressionPersistence();
   const asyncPvpService = createAsyncPvpService(database, {
     cursorCodec: createSignedCursorCodec(config.asyncPvpCursorSigningKey),
     progressionPersistence,
+    trustRestrictions,
+    trustService,
   });
-  const livePvpService = createLivePvpService(database);
+  const livePvpService = createLivePvpService(database, { trustService });
   const accountDeletionLifecycle = createAccountDeletionLifecycle(database, {
     finalizeDependentGameplay: async (client, playerId, requestedAt) => {
       await asyncPvpService.finalizeAccountDeletion(
@@ -122,6 +133,7 @@ async function startServer(): Promise<void> {
   const authorContentReadService = createAuthorContentReadService(database);
   const cpuMatchService = createCpuMatchService(database, {
     progressionPersistence,
+    trustService,
   });
   const progressionReadService = createProgressionReadService(database);
   const playerIdentityService = createPlayerIdentityService(database);
@@ -135,6 +147,8 @@ async function startServer(): Promise<void> {
           finalizer: challengeAttemptCompletionFinalizer,
           maxSpeed: config.maxPlausibleJourneySpeedMetresPerSecond,
           retentionMs: config.movementEvidenceRetentionMs,
+          trustRestrictions,
+          trustService,
         })
       : undefined,
     config,
@@ -217,6 +231,11 @@ async function startServer(): Promise<void> {
       app.log,
       config.movementEvidenceCleanupIntervalMs,
     );
+  const trustEvaluationScheduler = createTrustEvaluationScheduler(
+    trustService,
+    app.log,
+    config.trustEvaluationIntervalMs,
+  );
   const asyncPvpDeadlineProcessor = createAsyncPvpDeadlineProcessor(
     database,
     asyncPvpService,
@@ -252,6 +271,7 @@ async function startServer(): Promise<void> {
     await livePvpGateway.closeAll();
     await accountDeletionRetryScheduler.stop();
     await movementEvidenceCleanupScheduler.stop();
+    await trustEvaluationScheduler.stop();
     await asyncPvpDeadlineScheduler.stop();
     await database.end();
   });
@@ -266,6 +286,7 @@ async function startServer(): Promise<void> {
     livePvpRuntimeScheduler.start();
     accountDeletionRetryScheduler.start();
     movementEvidenceCleanupScheduler.start();
+    trustEvaluationScheduler.start();
     asyncPvpDeadlineScheduler.start();
 
     app.log.info(

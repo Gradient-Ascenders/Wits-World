@@ -15,6 +15,7 @@ import {
 } from '../src/matches/asynchronous-pvp-service.js';
 import type { PlayerIdentityService } from '../src/players/player-identity.js';
 import { createSignedCursorCodec } from '../src/security/signed-cursor.js';
+import { TrustActivityRestrictedError } from '../src/trust/trust-restrictions.js';
 
 const authConfig: AuthConfig = {
   domain: 'auth.example.test',
@@ -247,6 +248,30 @@ describe('asynchronous PvP routes', () => {
       requestId: expect.any(String),
     });
     expect(response.body).not.toContain(PLAYER_ID);
+  });
+
+  it('maps a competitive trust hold to a neutral forbidden response', async () => {
+    service.createInvitation.mockRejectedValue(
+      new TrustActivityRestrictedError({
+        scope: 'new_competitive_match_hold',
+        startsAt: new Date('2026-09-19T00:00:00.000Z'),
+        expiresAt: new Date('2026-09-20T00:00:00.000Z'),
+      }),
+    );
+
+    const response = await request('POST', '/api/v1/matches/pvp/invitations', {
+      opponentPlayerName: 'opponent_player',
+      deckId: DECK_ID,
+      initialCreatureId: CREATURE_ID,
+      submissionId: SUBMISSION_ID,
+    });
+    const body = response.json<{ code: string; detail: string }>();
+
+    expect(response.statusCode).toBe(403);
+    expect(body.code).toBe('ACTIVITY_REVIEW_RESTRICTION');
+    expect(body.detail.toLowerCase()).not.toMatch(
+      /score|signal|threshold|cheat|fraud|reviewer|opponent/u,
+    );
   });
 
   it('derives the challenger and rejects browser-owned result fields', async () => {

@@ -1,5 +1,8 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type pg from 'pg';
+
+import type { TrustRestrictionService } from '../trust/trust-restrictions.js';
+import type { TrustService } from '../trust/trust-service.js';
 
 import { createEventDiscoveryService } from '../events/event-discovery.js';
 import {
@@ -33,6 +36,8 @@ interface Options {
   maxSpeed: number;
   retentionMs: number;
   clock?: () => Date;
+  trustRestrictions?: Pick<TrustRestrictionService, 'assertAllowed'>;
+  trustService?: Pick<TrustService, 'recordSubmissionConflict'>;
 }
 
 export type OfflineChallengeService = ReturnType<
@@ -53,6 +58,18 @@ export function createOfflineChallengeService(
       const client = await database.connect();
       try {
         await client.query('begin isolation level repeatable read read only');
+        if (options.trustRestrictions) {
+          await options.trustRestrictions.assertAllowed(
+            playerId,
+            'online_verification_required',
+            client,
+          );
+          await options.trustRestrictions.assertAllowed(
+            playerId,
+            'location_reward_challenge_hold',
+            client,
+          );
+        }
         const now = clock();
         const events = await createEventDiscoveryService(client, {
           clock: () => now,
@@ -156,7 +173,10 @@ export function createOfflineChallengeService(
     },
     async submit(playerId: string, input: OfflineSubmission) {
       const pack = codec.decode(input.packToken, playerId);
+      const submissionDigest = digestOfflineSubmission(pack, input);
       const client = await database.connect();
+      let idempotencyPayloadConflict = false;
+      let released = false;
       try {
         await client.query('begin');
         const active = await client.query(
@@ -169,19 +189,28 @@ export function createOfflineChallengeService(
           id: string;
           offline_client_attempt_id: string;
           offline_pack_id: string;
+          offline_submission_digest: Buffer | null;
         }>(
           `
-          select id, offline_client_attempt_id, offline_pack_id from public.challenge_attempts
+          select id, offline_client_attempt_id, offline_pack_id, offline_submission_digest
+          from public.challenge_attempts
           where player_id = $1 and (event_id = $2 or offline_client_attempt_id = $3)
+          order by (offline_client_attempt_id = $3) desc, id
         `,
           [playerId, pack.event.eventId, input.clientAttemptId],
         );
         if (existing.rows.length) {
           const row = existing.rows[0]!;
-          if (
-            row.offline_client_attempt_id !== input.clientAttemptId ||
-            row.offline_pack_id !== pack.packId
-          ) {
+          const sameClientAttempt =
+            row.offline_client_attempt_id === input.clientAttemptId;
+          const samePack = row.offline_pack_id === pack.packId;
+          const samePayload =
+            row.offline_submission_digest === null ||
+            row.offline_submission_digest.equals(submissionDigest);
+
+          if (!sameClientAttempt || !samePack || !samePayload) {
+            idempotencyPayloadConflict =
+              sameClientAttempt && (!samePack || !samePayload);
             throw new OfflineRejection('OFFLINE_ATTEMPT_CONFLICT', 409);
           }
           const attempt = await createChallengeAttemptReader(
@@ -201,8 +230,9 @@ export function createOfflineChallengeService(
         await client.query(
           `insert into public.challenge_attempts
           (id, player_id, event_id, challenge_id, started_at, deadline, time_limit_seconds, average_difficulty,
-           attempt_origin, offline_client_attempt_id, offline_pack_id, offline_pack_issued_at, synced_at)
-          values ($1,$2,$3,$4,$5,$6,$7,$8,'offline',$9,$10,$11,$12)`,
+           attempt_origin, offline_client_attempt_id, offline_pack_id, offline_pack_issued_at, synced_at,
+           offline_submission_digest)
+          values ($1,$2,$3,$4,$5,$6,$7,$8,'offline',$9,$10,$11,$12,$13::bytea)`,
           [
             attemptId,
             playerId,
@@ -216,6 +246,7 @@ export function createOfflineChallengeService(
             pack.packId,
             pack.issuedAt,
             receivedAt,
+            submissionDigest,
           ],
         );
         for (const [index, question] of pack.questions.entries()) {
@@ -285,12 +316,63 @@ export function createOfflineChallengeService(
         return { created: true, attempt };
       } catch (error) {
         await client.query('rollback');
+        client.release();
+        released = true;
+
+        if (idempotencyPayloadConflict) {
+          try {
+            await options.trustService?.recordSubmissionConflict({
+              playerId,
+              operation: 'offline_challenge_sync',
+              resourceIdentifier: pack.event.eventId,
+              submissionId: input.clientAttemptId,
+            });
+          } catch {
+            // Preserve the authoritative offline conflict response. A retry can
+            // attempt trust ingestion again without changing attempt state.
+          }
+        }
         throw error;
       } finally {
-        client.release();
+        if (!released) client.release();
       }
     },
   };
+}
+
+function digestOfflineSubmission(
+  pack: OfflinePack,
+  input: OfflineSubmission,
+): Buffer {
+  const canonicalAnswers = [...input.answers]
+    .map((answer) => ({
+      questionId: answer.questionId,
+      answeredAt: new Date(answer.answeredAt).toISOString(),
+      optionIds: [...answer.optionIds],
+    }))
+    .sort((left, right) => left.questionId.localeCompare(right.questionId));
+
+  return createHash('sha256')
+    .update(
+      stableJson({
+        packId: pack.packId,
+        startedAt: new Date(input.startedAt).toISOString(),
+        finishedAt: new Date(input.finishedAt).toISOString(),
+        answers: canonicalAnswers,
+      }),
+    )
+    .digest();
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
 }
 
 async function validateSources(

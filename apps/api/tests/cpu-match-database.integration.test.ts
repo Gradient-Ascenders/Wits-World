@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { QueryResultRow } from 'pg';
 
 import {
@@ -24,6 +24,7 @@ import { runSeeds } from '../src/database/seeds.js';
 import {
   createCpuMatchService,
   CpuMatchNotFoundError,
+  CpuMatchSubmissionConflictError,
   CpuMatchVersionConflictError,
   type CpuMatchClient,
   type CpuMatchDatabase,
@@ -815,31 +816,51 @@ describe.skipIf(!runIntegrationTests)(
       expect(persisted.actions).toEqual([]);
     });
 
-    it('keeps timeout substitution server-controlled in the combined persistence path', async () => {
+    it('preserves late submitted intent for idempotent timeout retries and flags a changed payload', async () => {
       const battle = activeBattle(9, { playerDamage: 1, cpuDamage: 1 });
       const fixture = await insertActionMatch(pool, battle.state, {
         deadline: new Date('2026-08-16T00:00:00.000Z'),
       });
+      const recordSubmissionConflict = vi.fn().mockResolvedValue(true);
       const service = createCpuMatchService(pool, {
         clock: { now: () => new Date('2026-08-16T00:00:01.000Z') },
         randomInt: () => 0,
+        trustService: { recordSubmissionConflict },
       });
-
-      await service.submitAction({
+      const submissionId = integrationUuid(309_001);
+      const intendedAction = {
+        type: 'use_move' as const,
+        moveId: battle.playerMoveId,
+      };
+      const input = {
         playerId: fixture.playerId,
         matchId: fixture.matchId,
-        submissionId: integrationUuid(309_001),
+        submissionId,
         expectedVersion: 0,
-        action: { type: 'use_move', moveId: battle.playerMoveId },
-      });
+        action: intendedAction,
+      };
+
+      const first = await service.submitAction(input);
       const persisted = await loadActionPersistence(pool, fixture.matchId);
 
       expect(persisted.actions[0]).toMatchObject({
         side: 'player',
+        submitted_intent: intendedAction,
         action: { type: 'timeout' },
         result: { action: { type: 'timeout' } },
       });
       expect(persisted.actions[1]?.side).toBe('cpu');
+
+      await expect(service.submitAction(input)).resolves.toEqual(first);
+      expect(recordSubmissionConflict).not.toHaveBeenCalled();
+
+      await expect(
+        service.submitAction({
+          ...input,
+          action: { type: 'use_move', moveId: 'changed-move-id' },
+        }),
+      ).rejects.toBeInstanceOf(CpuMatchSubmissionConflictError);
+      expect(recordSubmissionConflict).toHaveBeenCalledOnce();
     });
 
     it('hides an uncommitted creation and recovers that exact match after commit', async () => {
@@ -1334,12 +1355,14 @@ async function loadActionPersistence(
     sequence: number;
     side: 'cpu' | 'player';
     submission_id: string | null;
+    submitted_intent: { type: string; moveId?: string } | null;
   }>(
     `
       select
         action.sequence,
         action.side,
         action.submission_id::text,
+        action.submitted_intent,
         action.action,
         action.result,
         action.response,

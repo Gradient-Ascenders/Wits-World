@@ -67,6 +67,7 @@ The local `.env` file is ignored by Git and must not contain values intended for
 | `LIVE_PVP_DEADLINE_SWEEP_INTERVAL_MS`           | No       | `1000`        | Live turn-deadline sweep interval             |
 | `LIVE_PVP_TRANSIENT_CLEANUP_INTERVAL_MS`        | No       | `1800000`     | Live ticket/access cleanup interval           |
 | `MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS`         | No       | `1800000`     | Expired movement-evidence cleanup interval    |
+| `TRUST_EVALUATION_INTERVAL_MS`                  | No       | `1800000`     | Trust decay/recovery evaluation interval      |
 | `RATE_LIMIT_MAX_REQUESTS`                       | No       | `120`         | Authenticated requests allowed per window     |
 | `RATE_LIMIT_WINDOW_MS`                          | No       | `60000`       | Per-process fixed-window duration in ms       |
 
@@ -87,16 +88,18 @@ The journey-speed setting has no default and must be a finite number greater
 than zero. The example illustrates syntax only; operators must use the reviewed
 product value for the environment.
 
-The three database-backed maintenance workers run once at startup and default
-to the same 30-minute interval. Their minimum supported interval is 15 minutes.
+The database-backed account-deletion, movement-evidence, asynchronous-PvP,
+and trust-evaluation maintenance workers run once at startup and default to the
+same 30-minute interval. Their minimum supported interval is 15 minutes.
 Keeping the production values aligned allows an idle serverless PostgreSQL
 compute to suspend between sweeps. Asynchronous PvP reads and mutations still
 enforce the authoritative 24-hour deadlines before the periodic worker runs.
 
 When updating an existing checkout, remove or replace any legacy `60000`
 overrides for `ACCOUNT_DELETION_RETRY_INTERVAL_MS`,
-`ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS`, and
-`MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS` in `apps/api/.env` or the local shell
+`ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS`,
+`MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS`, and `TRUST_EVALUATION_INTERVAL_MS` in
+`apps/api/.env` or the local shell
 environment. Omitting them uses the 30-minute defaults. `RATE_LIMIT_WINDOW_MS`
 is unrelated and may remain `60000`.
 
@@ -104,6 +107,12 @@ Rate protection is keyed by the verified local player identity and returns
 `429 RATE_LIMITED` with `Retry-After` and `RateLimit-*` headers. It is an
 application-process control, not a substitute for deployment-level protection
 of invalid-token traffic or aggregation across multiple API instances.
+
+`TRUST_EVALUATION_INTERVAL_MS` controls the retry-safe maintenance cadence for
+`trust-v1` decay/recovery, completed-PvP pattern evaluation, and retention cleanup.
+It is not a trust score threshold or policy value. Every API instance may run the
+sweep; PostgreSQL advisory/row locks, idempotent retention deletion, and signal
+uniqueness keep maintenance authoritative under concurrent workers.
 
 ### Database variables
 
