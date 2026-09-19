@@ -116,23 +116,55 @@ export function planPlacement(input: PlacementInput): PlacementResult {
   }
 
   const unpinned = current
-    .filter((entry) => !pins.some((pin) => pin.eventId === entry.eventId))
+    .filter(
+      (entry) =>
+        !pins.some((pin) => pin.eventId === entry.eventId) &&
+        canPlace(
+          entry.eventId,
+          entry.siteId,
+          pins,
+          input,
+          sites,
+          events,
+          excluded,
+        ),
+    )
     .sort(
       (a, b) =>
         compareId(b.startedAt ?? '', a.startedAt ?? '') ||
         compareId(a.eventId, b.eventId),
     );
-  const replacementLimit = Math.min(
-    policy.replacements,
-    Math.max(0, policy.target - pins.length),
-  );
+  const maximumKeep = Math.min(unpinned.length, policy.target - pins.length);
+  const replacementLimit = Math.min(policy.replacements, maximumKeep);
   let best: PlacementResult | undefined;
 
   for (let replacements = replacementLimit; replacements >= 0; replacements--) {
-    const keepCount = Math.max(0, policy.target - pins.length - replacements);
+    const keepCount = maximumKeep - replacements;
     const selected = [...pins];
-    for (const entry of unpinned) {
-      if (selected.length >= pins.length + keepCount) break;
+
+    function considerCurrent(index: number, kept: number): boolean {
+      if (kept === keepCount) {
+        const candidate = [...selected];
+        if (!fillMandatory(candidate, input, zones, sites, events, excluded)) {
+          return false;
+        }
+        fill(candidate, input, zones, sites, events, excluded);
+        const result = finish(candidate, zones, policy, []);
+        if (result.status === 'valid') {
+          best = result;
+          return true;
+        }
+        if (
+          result.status === 'degraded' &&
+          (!best || result.entries.length > best.entries.length)
+        ) {
+          best = result;
+        }
+        return false;
+      }
+
+      if (unpinned.length - index < keepCount - kept) return false;
+      const entry = unpinned[index]!;
       if (
         canPlace(
           entry.eventId,
@@ -145,21 +177,89 @@ export function planPlacement(input: PlacementInput): PlacementResult {
         )
       ) {
         selected.push({ ...entry, preserved: true });
+        if (considerCurrent(index + 1, kept + 1)) return true;
+        selected.pop();
       }
+      return considerCurrent(index + 1, kept);
     }
 
-    fill(selected, input, zones, sites, events, excluded);
-    const result = finish(selected, zones, policy, []);
-    if (result.status === 'valid') return result;
-    if (
-      result.status === 'degraded' &&
-      (!best || result.entries.length > best.entries.length)
-    ) {
-      best = result;
-    }
+    if (considerCurrent(0, 0)) return best!;
   }
 
   return best ?? finish([], zones, policy, ['unserved_zone']);
+}
+
+function fillMandatory(
+  selected: PlacementEntry[],
+  input: PlacementInput,
+  zones: PlacementZone[],
+  sites: Map<string, PlacementSite>,
+  events: Map<string, PortableEvent>,
+  excluded: Set<string>,
+): boolean {
+  const rankedSites = [...sites.values()].sort(
+    (a, b) =>
+      compareAge(a.lastEndedAt, b.lastEndedAt) ||
+      a.lifetimeCount - b.lifetimeCount ||
+      compareId(a.id, b.id),
+  );
+  const rankedEvents = [...events.values()].sort(
+    (a, b) =>
+      compareAge(a.lastEndedAt, b.lastEndedAt) ||
+      a.lifetimeCount - b.lifetimeCount ||
+      compareId(a.id, b.id),
+  );
+
+  function search(): boolean {
+    const counts = countZones(selected, zones);
+    const zone = zones.find(
+      (item) => counts[item.id]! < input.policy.mandatoryPerZone,
+    );
+    if (!zone) return true;
+    if (selected.length >= input.policy.target) return false;
+
+    for (const cooldownException of [false, true]) {
+      for (const site of rankedSites) {
+        if (site.zoneId !== zone.id || site.coolingDown !== cooldownException)
+          continue;
+        if (input.current.some((entry) => entry.siteId === site.id)) continue;
+
+        // Events with the same radius have identical placement constraints.
+        // Try the highest-ranked unused event for each radius first.
+        const triedRadii = new Set<number>();
+        for (const event of rankedEvents) {
+          if (selected.some((entry) => entry.eventId === event.id)) continue;
+          if (triedRadii.has(event.radiusMetres)) continue;
+          triedRadii.add(event.radiusMetres);
+          if (
+            !canPlace(
+              event.id,
+              site.id,
+              selected,
+              input,
+              sites,
+              events,
+              excluded,
+            )
+          )
+            continue;
+          selected.push({
+            eventId: event.id,
+            siteId: site.id,
+            zoneId: zone.id,
+            origin: 'automatic',
+            preserved: false,
+            ...(cooldownException ? { cooldownException: true } : {}),
+          });
+          if (search()) return true;
+          selected.pop();
+        }
+      }
+    }
+    return false;
+  }
+
+  return search();
 }
 
 export function validatePlacementEntries(

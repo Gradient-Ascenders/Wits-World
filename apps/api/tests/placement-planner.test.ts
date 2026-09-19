@@ -52,6 +52,29 @@ function fixture(): PlacementInput {
   };
 }
 
+function twoZoneSeparationFixture(): PlacementInput {
+  const input = fixture();
+  input.policy = {
+    ...input.policy,
+    target: 2,
+    preferredPerZone: 1,
+    replacements: 0,
+  };
+  input.zones = input.zones.slice(0, 2);
+  input.sites = [
+    { ...input.sites[0]!, id: 'A1', zoneId: 'zone1' },
+    { ...input.sites[1]!, id: 'A2', zoneId: 'zone1' },
+    { ...input.sites[3]!, id: 'B1', zoneId: 'zone2' },
+  ];
+  input.events = input.events.slice(0, 2);
+  input.siteDistances = {
+    [sitePairKey('A1', 'A2')]: 100,
+    [sitePairKey('A1', 'B1')]: 100,
+    [sitePairKey('A2', 'B1')]: 200,
+  };
+  return input;
+}
+
 describe('automatic placement planner', () => {
   it('fills six slots with two per zone deterministically under shuffled rows', () => {
     const input = fixture();
@@ -108,6 +131,95 @@ describe('automatic placement planner', () => {
         },
       ]).exceptions,
     ).toContain('invalid_rollback_assignment');
+  });
+
+  it('revisits ranked site choices to serve every feasible zone', () => {
+    const input = twoZoneSeparationFixture();
+
+    const result = planPlacement(input);
+    expect(result.status).toBe('valid');
+    expect(result.entries.map((entry) => entry.siteId)).toEqual(['A2', 'B1']);
+    expect(result.zoneCounts).toEqual({ zone1: 1, zone2: 1 });
+    expect(
+      planPlacement({
+        ...input,
+        zones: [...input.zones].reverse(),
+        sites: [...input.sites].reverse(),
+        events: [...input.events].reverse(),
+      }),
+    ).toEqual(result);
+  });
+
+  it('replaces a blocking current assignment when the rotation budget allows it', () => {
+    const input = twoZoneSeparationFixture();
+    input.policy.replacements = 1;
+    input.current = [
+      {
+        eventId: 'event1',
+        siteId: 'A1',
+        zoneId: 'zone1',
+        origin: 'automatic',
+        preserved: true,
+        startedAt: '2026-09-01T00:00:00.000Z',
+      },
+    ];
+
+    const result = planPlacement(input);
+    expect(result.status).toBe('valid');
+    expect(result.entries.map((entry) => entry.siteId)).toEqual(['A2', 'B1']);
+    expect(result.entries.every((entry) => !entry.preserved)).toBe(true);
+  });
+
+  it('tries an older current assignment when the newest one blocks a zone', () => {
+    const input = twoZoneSeparationFixture();
+    input.policy.replacements = 1;
+    input.events = fixture().events.slice(0, 3);
+    input.siteDistances[sitePairKey('A1', 'A2')] = 200;
+    input.current = [
+      {
+        eventId: 'event1',
+        siteId: 'A1',
+        zoneId: 'zone1',
+        origin: 'automatic',
+        preserved: true,
+        startedAt: '2026-09-02T00:00:00.000Z',
+      },
+      {
+        eventId: 'event2',
+        siteId: 'A2',
+        zoneId: 'zone1',
+        origin: 'automatic',
+        preserved: true,
+        startedAt: '2026-09-01T00:00:00.000Z',
+      },
+    ];
+
+    const result = planPlacement(input);
+    expect(result.status).toBe('valid');
+    expect(result.entries).toContainEqual(
+      expect.objectContaining({ siteId: 'A2', preserved: true }),
+    );
+    expect(result.entries.some((entry) => entry.siteId === 'A1')).toBe(false);
+    expect(result.zoneCounts).toEqual({ zone1: 1, zone2: 1 });
+  });
+
+  it('revisits ranked event choices when a later zone needs a smaller radius', () => {
+    const input = twoZoneSeparationFixture();
+    input.sites = [
+      { ...input.sites[0]!, id: 'A1' },
+      { ...input.sites[2]!, id: 'B1', maximumRadiusMetres: 50 },
+    ];
+    input.siteDistances = { [sitePairKey('A1', 'B1')]: 200 };
+    input.events[1]!.radiusMetres = 60;
+
+    const result = planPlacement(input);
+    expect(result.status).toBe('valid');
+    expect(
+      result.entries.map(({ eventId, siteId }) => [eventId, siteId]),
+    ).toEqual([
+      ['event2', 'A1'],
+      ['event1', 'B1'],
+    ]);
   });
 
   it('uses fixed-event radius and reserves pinned slots', () => {

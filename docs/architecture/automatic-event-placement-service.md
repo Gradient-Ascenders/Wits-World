@@ -28,8 +28,11 @@ current assignments, active overrides, and assignment history. PostGIS computes
 the authoritative metre distances. The planner uses stable UUID tie-breakers;
 it reserves pins, preserves valid current assignments where possible, and fills
 the six slots while prioritising the one-per-zone floor and then two per zone.
-It records shortfalls and cooldown-floor exceptions. An entirely unserved zone
-prevents application and leaves still-valid assignments in place.
+For the mandatory floor it revisits ranked site and event choices, including
+which current assignments to retain within the rotation replacement limit, so
+an early choice cannot hide a feasible zone assignment. It records shortfalls
+and cooldown-floor exceptions. An entirely unserved zone prevents application
+and leaves still-valid assignments in place.
 
 Preview creation writes an immutable plan and its proposed entries without
 changing player-visible assignments. Apply locks placement state, checks the
