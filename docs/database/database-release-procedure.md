@@ -220,9 +220,10 @@ routes, score calculation, reviewer UI, or gameplay restriction enforcement.
 
 Apply `0046` before deploying issue `#258` scoring/enforcement code. The
 migration can be deployed while the current application ignores the new trust
-relations. `private.purge_expired_trust_data(...)` is retry-safe but unscheduled;
-operations must not claim periodic cleanup is deployed until a scheduler is
-explicitly wired and verified.
+relations. `private.purge_expired_trust_data(...)` is retry-safe. The issue #258
+API runtime invokes it from the trust maintenance scheduler at startup and on the
+configured maintenance cadence; deployment verification must confirm that cleanup
+runs successfully before relying on the documented retention limits.
 
 After `0046` is applied, keep its migration checksum immutable. Fix later defects
 with a new forward migration rather than editing `0046`.
@@ -249,10 +250,12 @@ defects only with a later migration.
 Migration `0048_implement_trust_scoring_and_enforcement.sql` is the forward
 hardening migration for issue `#258`. Apply it before the matching API runtime.
 It makes the already-trigger-required decision snapshot reference explicitly
-non-null, adds trust audit/scoring indexes and table comments, and adds the
-nullable privacy-limited offline-submission canonical digest used for replay
-conflict detection; precise location values are excluded from that digest. It
-does not backfill scores, generate signals, or create automatic restrictions.
+non-null, adds trust audit/scoring indexes and table comments, adds the nullable
+privacy-limited offline-submission canonical digest used for replay conflict
+detection, and stores the canonical submitted CPU action separately from any
+server-authoritative timeout substitution. Precise location values are excluded
+from the offline digest. It does not backfill scores, generate signals, or create
+automatic restrictions.
 The API runtime starts the configurable trust maintenance sweep only after
 application startup succeeds.
 

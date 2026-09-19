@@ -85,6 +85,20 @@ describe.skipIf(!runIntegrationTests)(
         { data_type: 'bytea', is_nullable: 'YES' },
       ]);
 
+      const submittedIntent = await pool.query<{
+        data_type: string;
+        is_nullable: string;
+      }>(
+        `select data_type, is_nullable
+         from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'cpu_match_actions'
+          and column_name = 'submitted_intent'`,
+      );
+      expect(submittedIntent.rows).toEqual([
+        { data_type: 'jsonb', is_nullable: 'YES' },
+      ]);
+
       const indexes = await pool.query<{ indexname: string }>(
         `select indexname
          from pg_indexes
@@ -121,6 +135,45 @@ describe.skipIf(!runIntegrationTests)(
         expect(row.comment).toEqual(expect.any(String));
         expect(row.comment?.length).toBeGreaterThan(20);
       }
+    }, 30_000);
+
+    it('runs the existing trust retention purge through the application service', async () => {
+      const player = await insertPlayer(pool, 'trust_retention_cleanup');
+      const service = createTrustService(pool);
+      const observedAt = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000);
+      const sourceIdentifier = `expired-signal-${randomUUID()}`;
+
+      await service.recordSignal({
+        playerId: player.id,
+        signalType: 'idempotency_payload_conflict',
+        severity: 'conflict',
+        basePoints: 10,
+        observedAt,
+        sourceType: 'test_retention',
+        sourceIdentifier,
+        deduplicationKey: sourceIdentifier,
+      });
+
+      const before = await pool.query<{ count: number }>(
+        `select count(*)::integer as count
+           from private.trust_signals
+          where player_id = $1::uuid
+            and source_identifier = $2`,
+        [player.id, sourceIdentifier],
+      );
+      expect(before.rows[0]?.count).toBe(1);
+
+      const purged = await service.purgeExpiredData();
+      expect(purged.signalRowsDeleted).toBeGreaterThanOrEqual(1);
+
+      const after = await pool.query<{ count: number }>(
+        `select count(*)::integer as count
+           from private.trust_signals
+          where player_id = $1::uuid
+            and source_identifier = $2`,
+        [player.id, sourceIdentifier],
+      );
+      expect(after.rows[0]?.count).toBe(0);
     }, 30_000);
 
     it('deduplicates signals, derives the 24-hour conflict pattern, caps scoring, and never auto-restricts', async () => {

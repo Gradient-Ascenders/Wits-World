@@ -108,11 +108,11 @@ Rate protection is keyed by the verified local player identity and returns
 application-process control, not a substitute for deployment-level protection
 of invalid-token traffic or aggregation across multiple API instances.
 
-`TRUST_EVALUATION_INTERVAL_MS` controls only the retry-safe maintenance cadence
-for `trust-v1` decay/recovery and completed-PvP pattern evaluation. It is not a
-trust score threshold or policy value. Every API instance may run the sweep;
-PostgreSQL advisory/row locks plus signal uniqueness keep scoring and signal
-ingestion authoritative under concurrent workers.
+`TRUST_EVALUATION_INTERVAL_MS` controls the retry-safe maintenance cadence for
+`trust-v1` decay/recovery, completed-PvP pattern evaluation, and retention cleanup.
+It is not a trust score threshold or policy value. Every API instance may run the
+sweep; PostgreSQL advisory/row locks, idempotent retention deletion, and signal
+uniqueness keep maintenance authoritative under concurrent workers.
 
 ### Database variables
 

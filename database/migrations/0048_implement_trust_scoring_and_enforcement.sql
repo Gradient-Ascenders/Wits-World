@@ -13,6 +13,15 @@ alter table public.challenge_attempts
 comment on column public.challenge_attempts.offline_submission_digest is
   'SHA-256 digest of the privacy-limited canonical pack/timing/answer payload for a newly synced offline submission. Precise locations are excluded. Used only to distinguish an identical retry from conflicting reuse of the same client attempt identifier; historical rows may be null.';
 
+
+alter table public.cpu_match_actions
+  add column submitted_intent jsonb,
+  add constraint cpu_match_actions_submitted_intent_check
+    check (submitted_intent is null or submission_id is not null);
+
+comment on column public.cpu_match_actions.submitted_intent is
+  'Canonical player action submitted for an idempotent CPU-match receipt before any server-authoritative timeout substitution. Historical rows may be null.';
+
 alter table private.trust_case_decisions
   alter column resulting_score_snapshot_id set not null;
 

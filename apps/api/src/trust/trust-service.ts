@@ -41,6 +41,12 @@ export interface TrustEvaluationResult {
   caseId: string | null;
 }
 
+export interface TrustRetentionCleanupResult {
+  signalRowsDeleted: number;
+  snapshotRowsDeleted: number;
+  caseRowsDeleted: number;
+}
+
 export interface TrustService {
   recordSignal(input: TrustSignalInput): Promise<boolean>;
   recordSignalWithinTransaction(
@@ -75,6 +81,7 @@ export interface TrustService {
     matchId: string,
   ): Promise<void>;
   evaluateMaintenanceBatch(limit?: number): Promise<number>;
+  purgeExpiredData(): Promise<TrustRetentionCleanupResult>;
 }
 
 interface SignalRow extends pg.QueryResultRow {
@@ -685,6 +692,36 @@ export function createTrustService(
         await service.evaluateOpponentPatternsForMatch(match.match_id);
       }
       return evaluated;
+    },
+
+    async purgeExpiredData() {
+      const client = await database.connect();
+      try {
+        const result = await client.query<{
+          signal_rows_deleted: number;
+          snapshot_rows_deleted: number;
+          case_rows_deleted: number;
+        }>(
+          `
+            select
+              signal_rows_deleted,
+              snapshot_rows_deleted,
+              case_rows_deleted
+            from private.purge_expired_trust_data(clock_timestamp())
+          `,
+        );
+        const row = result.rows[0];
+        if (!row) {
+          throw new Error('Trust retention cleanup returned no result.');
+        }
+        return {
+          signalRowsDeleted: Number(row.signal_rows_deleted),
+          snapshotRowsDeleted: Number(row.snapshot_rows_deleted),
+          caseRowsDeleted: Number(row.case_rows_deleted),
+        };
+      } finally {
+        client.release();
+      }
     },
   };
 

@@ -299,8 +299,13 @@ describe('CPU match service', () => {
     expect(persistenceCall?.[0]).toContain(
       'insert into public.cpu_match_actions',
     );
+    expect(persistenceCall?.[0]).toContain('submitted_intent');
     expect(persistenceCall?.[0]).toContain('update public.cpu_matches');
     expect(JSON.parse(String(persistenceCall?.[1]?.[5]))).toHaveLength(2);
+    expect(JSON.parse(String(persistenceCall?.[1]?.[14]))).toEqual({
+      type: 'select_initial_creature',
+      creatureId: 'player-creature-1',
+    });
     expect(
       query.mock.calls.some(([statement]) =>
         statement.includes('select count(*)::text'),
@@ -640,6 +645,7 @@ describe('CPU match service', () => {
           rows: [
             {
               action: storedAction,
+              submitted_intent: storedAction,
               expected_version: 1,
               legacy_log_actions: [],
               response: {

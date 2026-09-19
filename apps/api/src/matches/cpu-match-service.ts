@@ -331,6 +331,7 @@ interface MatchIdentityRow extends pg.QueryResultRow {
 
 interface ActionResponseRow extends pg.QueryResultRow {
   action: BattleAction;
+  submitted_intent: BattleAction | null;
   expected_version: number;
   legacy_log_actions: BattleLogActionRow[];
   response: StoredCpuMatchResponse;
@@ -655,6 +656,7 @@ export function createCpuMatchService(
           `
             select
               submitted.action,
+              submitted.submitted_intent,
               submitted_round.round_number - 1 as expected_version,
               submitted.response,
               case
@@ -696,7 +698,7 @@ export function createCpuMatchService(
           const stored = duplicate.rows[0];
           if (
             stored.expected_version !== input.expectedVersion ||
-            !sameBattleAction(stored.action, input.action)
+            !sameSubmittedIntent(stored, input.action)
           ) {
             throw new CpuMatchSubmissionConflictError();
           }
@@ -816,6 +818,7 @@ export function createCpuMatchService(
                 sequence,
                 side,
                 submission_id,
+                submitted_intent,
                 action,
                 result,
                 response
@@ -827,6 +830,10 @@ export function createCpuMatchService(
                 transition_payload.value ->> 'side',
                 case
                   when transition_payload.ordinality = 1 then $7::uuid
+                  else null
+                end,
+                case
+                  when transition_payload.ordinality = 1 then $15::jsonb
                   else null
                 end,
                 transition_payload.value -> 'action',
@@ -926,6 +933,7 @@ export function createCpuMatchService(
             completed ? null : turnDeadline,
             completed ? now : null,
             match.version,
+            JSON.stringify(input.action),
           ],
         );
 
@@ -2424,6 +2432,24 @@ function mapCpuMatchSetupError(error: unknown): CpuMatchSetupError {
   }
 
   return new CpuMatchSetupError('The CPU deck setup is invalid.');
+}
+
+function sameSubmittedIntent(
+  stored: Pick<ActionResponseRow, 'action' | 'submitted_intent'>,
+  submitted: BattleAction,
+): boolean {
+  if (stored.submitted_intent) {
+    return sameBattleAction(stored.submitted_intent, submitted);
+  }
+
+  // Historical receipts predate submitted_intent. If a late action was
+  // substituted with an authoritative timeout, the original intent cannot be
+  // reconstructed safely. Treat that legacy receipt as replay-compatible so a
+  // retry cannot create a false trust signal; new receipts always persist the
+  // canonical submitted intent separately.
+  if (stored.action.type === 'timeout') return true;
+
+  return sameBattleAction(stored.action, submitted);
 }
 
 function sameBattleAction(left: BattleAction, right: BattleAction): boolean {

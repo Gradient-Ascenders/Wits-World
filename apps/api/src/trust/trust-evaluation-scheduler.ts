@@ -12,7 +12,7 @@ export interface TrustEvaluationScheduler {
 }
 
 export function createTrustEvaluationScheduler(
-  service: Pick<TrustService, 'evaluateMaintenanceBatch'>,
+  service: Pick<TrustService, 'evaluateMaintenanceBatch' | 'purgeExpiredData'>,
   logger: Pick<FastifyBaseLogger, 'info' | 'warn'>,
   intervalMs: number,
 ): TrustEvaluationScheduler {
@@ -38,10 +38,17 @@ export function createTrustEvaluationScheduler(
         logger.info({ evaluated }, 'Trust evaluation maintenance completed');
       } catch {
         logger.warn({}, 'Trust evaluation maintenance failed');
-      } finally {
-        running = undefined;
       }
-    })();
+
+      try {
+        const purged = await service.purgeExpiredData();
+        logger.info({ purged }, 'Trust retention cleanup completed');
+      } catch {
+        logger.warn({}, 'Trust retention cleanup failed');
+      }
+    })().finally(() => {
+      running = undefined;
+    });
     return running;
   };
 

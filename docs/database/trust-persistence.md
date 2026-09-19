@@ -95,7 +95,10 @@ signal adjustment; its effective time must equal the appeal-resolution time.
 ## Retention
 
 Migration `0046` provides `private.purge_expired_trust_data(as_of)` as an
-idempotent cleanup primitive. It does not schedule cleanup itself.
+idempotent cleanup primitive. The issue #258 API maintenance scheduler invokes
+it once at startup and on the configured `TRUST_EVALUATION_INTERVAL_MS` cadence
+using authoritative database time. Overlapping runs are suppressed per API
+process; concurrent instances remain safe because the purge is retry-safe.
 
 - derived signals expire 90 days after `observed_at`;
 - score snapshots expire 12 months after `evaluated_at`;
