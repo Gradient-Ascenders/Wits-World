@@ -67,6 +67,11 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'requirements/contested-campus-zone-policy',
+              label: 'Contested-campus zones and settlement',
+            },
+            {
+              type: 'doc',
               id: 'requirements/ordered-trails-rules',
               label: 'Trail rules and progress',
             },
