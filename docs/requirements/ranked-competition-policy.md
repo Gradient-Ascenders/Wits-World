@@ -258,6 +258,12 @@ hold created after the match begins does not cancel or unrate it. Account
 deletion may complete it through the existing deletion-forfeit path; retained
 rating history follows the existing anonymous account-deletion boundary.
 
+The [contested-campus policy](contested-campus-zone-policy.md) may derive a
+separate, exactly-once influence decision from an eligible ranked winner. That
+decision never changes Elo inputs or lets the browser select influence. Ranked
+completion, rating settlement, and the territory decision must share one
+transaction so retries cannot commit only part of the result.
+
 ## Seasons and soft reset
 
 An operator creates each season with an accessible name and intended start.

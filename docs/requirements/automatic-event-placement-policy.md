@@ -119,6 +119,12 @@ reactivation requires the activation checks again. Retirement is permanent and
 preserves zone, plan, and assignment history. All three `placement-v1` zones
 begin active.
 
+These rows remain coverage controls for automatic event distribution; they are
+not player-owned territory. The
+[contested-campus policy](contested-campus-zone-policy.md) copies their reviewed
+geometry and provenance into separately versioned territory records so
+placement lifecycle changes cannot silently transfer or move game ownership.
+
 Site review establishes that the point represents a campus place that a player
 may reasonably approach on foot during the intended event window. It does not
 promise step-free access, opening hours, route safety, or indoor GPS quality.
