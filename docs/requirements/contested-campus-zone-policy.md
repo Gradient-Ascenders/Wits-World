@@ -332,7 +332,15 @@ eligibility only when:
 - the effective point is inside one active territory zone;
 - that zone currently belongs to the player;
 - the event and challenge otherwise pass their normal eligibility checks; and
-- the player has not already received an owner bonus on that Johannesburg date.
+- the player has not already received an owner bonus on the attempt's bonus date.
+
+The bonus date is derived once from the database-recorded challenge-start time
+in `Africa/Johannesburg` and stored with the attempt snapshot. The browser
+cannot provide or change it. A challenge started before midnight and completed
+after midnight still uses its start date for the initial eligibility check,
+the unique player/date decision, retries, and the final reward. Starting an
+attempt does not reserve the bonus; concurrent eligible attempts on the same
+date are resolved by the unique completion decision.
 
 Later ownership, zone-lifecycle, or event-placement changes do not revoke an
 attempt's snapshotted eligibility. They also cannot grant eligibility to an
@@ -345,8 +353,8 @@ Common definitions in the standard reward pool. Creature and Power definitions
 participate without separate category or affinity weighting. Ordinary duplicate
 ownership is allowed.
 
-The bonus is limited to one card per player per Johannesburg date across all
-owned zones and events. A unique player/date decision prevents concurrent
+The bonus is limited to one card per player per challenge-start Johannesburg
+date across all owned zones and events. A unique player/date decision prevents concurrent
 challenge completions from awarding two bonuses. Completion, the ordinary
 score-based reward, the owner-bonus decision, and the owned card commit
 atomically; a retry returns the persisted card rather than rerolling.
@@ -369,26 +377,32 @@ An authenticated zone discovery or detail response may expose:
 - zone identifier, accessible name, geometry, and lifecycle status;
 - ranked season and current settlement-window boundaries;
 - current owner's safe Player Name;
-- the three leading active players and their accepted influence counts for the
-  current window;
+- the three leading accepted influence counts for the current window, labelled
+  by rank without player names or stable identifiers;
 - aggregate current-window activity;
 - the latest settlement outcome; and
 - recent ownership periods and archived season results.
 
 Top contributors order by accepted count descending, earliest accepted
-contribution ascending, then internal player UUID. The UUID is not returned. If
-the current viewer is outside the top three, an authenticated private field may
-return only that viewer's count, daily accepted count, and remaining cap.
+contribution ascending, then internal player UUID. Neither names nor UUIDs are
+returned for current-window contributors, even if the viewer is among them.
+An authenticated private field may return only the viewer's own count, daily
+accepted count, and remaining cap. Aggregate counts must not be accompanied by
+match or grant details that could re-identify a contributor.
 
-Responses never expose another player's location, grant, queue state, match,
+Current-window standings disclose activity in a zone but not another player's
+identity or precise location. The named current owner reflects a committed
+earlier settlement and can imply historical coarse zone participation; it does
+not establish their current location. Responses never expose another player's
+current location, grant, queue state, match,
 opponent, deck, Auth0 identity, email, trust score, restriction, exclusion
 reason, or contribution source ID. Exact location claims never appear in public
 or owner history. A zone map must have an equivalent keyboard-accessible list,
 and ownership or contest state cannot rely on colour alone.
 
-Current owners and top contributors resolve Player Name through the active
-local account. Account deletion immediately ends current ownership and removes
-the player from live leader presentation. Retained history displays
+Current owners resolve Player Name through the active local account; current
+contributors remain anonymous. Account deletion immediately ends current
+ownership and removes the player from viewer-private live state. Retained history displays
 `Deleted player` through the anonymous tombstone without changing historical
 counts, settlement order, or ownership dates.
 
@@ -431,8 +445,11 @@ zero influence with `zone_inactive`, and retirement history remains intact.
 
 One player owns East and West Campus. Their first eligible three-correct event
 completion awards one random Common bonus card. Another qualifying completion
-that Johannesburg date returns `already_claimed`, even when it occurs in the
-other owned zone.
+for the same challenge-start Johannesburg date returns `already_claimed`, even
+when it occurs in the other owned zone. An attempt started at 23:59 and
+completed after midnight uses the 23:59 start date for both eligibility and the
+unique reward decision; a retry after midnight cannot consume the next date's
+bonus.
 
 ## Downstream implementation and verification
 
@@ -456,9 +473,10 @@ Persistence and services implementing this policy must verify at minimum:
   and unowned next-season reset;
 - effective authored and automatically placed event locations for owner bonuses;
 - three-correct, already-claimed, concurrent completion, retry, random-Common,
-  duplicate-card, and account-deletion bonus behavior; and
-- top-three ordering, viewer-private cap state, anonymised history, accessible
-  alternatives, and absence of location, opponent, trust, and identity leakage.
+  duplicate-card, account-deletion, and cross-midnight bonus behavior; and
+- anonymous top-three counts without contributor identity fields or grant
+  details, viewer-private cap state, anonymised history, accessible
+  alternatives, and absence of precise location, opponent, and trust leakage.
 
 The later OpenAPI contract must accept only player intent and untrusted location
 claims. The database guide must document spatial indexes, immutable ledgers,
