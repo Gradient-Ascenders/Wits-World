@@ -137,6 +137,14 @@ cards, including the evolved grant. The retained rows contain random ownership
 identifiers and card-definition provenance, not Auth0 identity, Player Name, or
 location data, and therefore do not prevent local account cleanup.
 
+Migration `0047_persist_ranked_competition.sql` retains queue, proposal, rating,
+and settlement history against the anonymous player tombstone. During deletion
+completion, active queue/proposal state is cancelled before owned decks are
+removed. Terminal queue rows then clear only their deleted deck reference;
+queue history and the other participant's deck remain intact. The same local
+transaction covers ranked cancellation, deck deletion, and identity
+anonymisation. Ranked queue routes and workers remain follow-up work in `#266`.
+
 The planned [card-trading policy](../requirements/card-trading-policy.md)
 requires account deletion to invalidate open offers and release their exact-copy
 reservations before deleting owned cards. Minimal completed trade receipts will

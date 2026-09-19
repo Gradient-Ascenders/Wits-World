@@ -16,20 +16,20 @@ the only battle authority.
 
 ## Relationships and authority
 
-| Relation                                           | Responsibility                                                                                            |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `private.ranked_policy_versions`                   | Immutable `ranked-v1` constants and policy identity.                                                      |
-| `public.ranked_seasons`                            | Scheduled, active, closing, and closed lifecycle; one active or closing at a time.                        |
-| `public.ranked_player_season_ratings`              | One current rating, wins, losses, match count, and initial/soft-reset seed per user and season.           |
-| `private.ranked_queue_entries`                     | Selected owned deck, immutable original join time, 30-second searching lease, status, and player history. |
-| `private.ranked_matchmaking_proposals`             | A 20-second acceptance window shared by exactly two players.                                              |
-| `private.ranked_matchmaking_proposal_participants` | Each player's queue claim, acceptance decision, and any 30-second decline cooldown.                       |
-| `private.ranked_matchmaking_receipts`              | One accepted proposal bound to one live match, season, and policy version.                                |
-| `private.ranked_match_rating_inputs`               | Both immutable pre-match rating, provisional count, and K-factor snapshots.                               |
-| `private.ranked_rating_settlements`                | One terminal match result and settlement receipt per ranked live match.                                   |
-| `private.ranked_rating_ledger_entries`             | Immutable per-player pre/post rating, match count, expected score, and applied delta.                     |
-| `public.ranked_season_standing_archives`           | Immutable established-player rank and result facts, without a Player Name snapshot.                       |
-| `private.ranked_season_close_receipts`             | Exactly one season-close result and reconciled archive/settlement counts.                                 |
+| Relation                                           | Responsibility                                                                                                                  |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `private.ranked_policy_versions`                   | Immutable `ranked-v1` constants and policy identity.                                                                            |
+| `public.ranked_seasons`                            | Scheduled, active, closing, and closed lifecycle; one active or closing at a time.                                              |
+| `public.ranked_player_season_ratings`              | One current rating, wins, losses, match count, and initial/soft-reset seed per user and season.                                 |
+| `private.ranked_queue_entries`                     | Selected owned deck while active, immutable original join time, 30-second searching lease, status, and retained player history. |
+| `private.ranked_matchmaking_proposals`             | A 20-second acceptance window shared by exactly two players.                                                                    |
+| `private.ranked_matchmaking_proposal_participants` | Each player's queue claim, acceptance decision, and any 30-second decline cooldown.                                             |
+| `private.ranked_matchmaking_receipts`              | One accepted proposal bound to one live match, season, and policy version.                                                      |
+| `private.ranked_match_rating_inputs`               | Both immutable pre-match rating, provisional count, and K-factor snapshots.                                                     |
+| `private.ranked_rating_settlements`                | One terminal match result and settlement receipt per ranked live match.                                                         |
+| `private.ranked_rating_ledger_entries`             | Immutable per-player pre/post rating, match count, expected score, and applied delta.                                           |
+| `public.ranked_season_standing_archives`           | Immutable established-player rank and result facts, without a Player Name snapshot.                                             |
+| `private.ranked_season_close_receipts`             | Exactly one season-close result and reconciled archive/settlement counts.                                                       |
 
 `public` is a PostgreSQL schema, not permission to expose ratings or archives
 via a public API. The player-facing API must derive player identity from the
@@ -39,6 +39,14 @@ standings. Closed archives resolve the **current** safe Player Name via the
 linked `players` row; account deletion therefore displays `Deleted player`
 without rewriting historical rank, result, or rating facts. No queue, deck,
 proposal, email, Auth0 identity, or precise location belongs in the archive.
+
+Queue history also survives account deletion, but it must not retain the
+deleted player's owned deck. An active queue requires an owned deck. When a
+deletion-pending player's deck is removed, the composite foreign key clears
+only `selected_deck_id` on terminal queue rows; the queue identity, timestamps,
+status, proposal linkage, and player tombstone remain. The lifecycle guard
+rejects that clearing for an active account or an active queue, so ordinary deck
+deletion cannot silently invalidate matchmaking history.
 
 ## Concurrency and transactions
 
@@ -101,6 +109,13 @@ candidate list is stored by this migration. Queue and proposal internals
 remain in `private` with public grants revoked. Retained results use stable
 local player references and the existing anonymised account tombstone.
 
+Before account-deletion cleanup removes owned decks, it cancels any searching
+queue and any awaiting proposal involving the player in the same transaction.
+Both proposed queue entries become terminal and pending proposal responses
+become system-cancelled; already accepted responses remain historical facts.
+The other player's deck is untouched. A failed cleanup rolls back the queue,
+proposal, deck, and identity changes together.
+
 ## Deployment and verification
 
 Apply migration `0047` through the guarded
@@ -113,9 +128,10 @@ left to issue `#266`; this migration alone does not make ranked play available.
 
 `apps/api/tests/ranked-persistence.integration.test.ts` creates a disposable
 test database, upgrades from the preceding migration set, verifies migration
-reruns, tests queue and proposal concurrency, completes real live-match rows
-with paired rating settlements, and checks closed archive immutability and
-soft reset. These are test-database checks, not evidence of a production
+reruns, tests queue and proposal concurrency, runs account deletion against
+ranked queue history, completes real live-match rows with paired rating
+settlements, and checks closed archive immutability and soft reset. These are
+test-database checks, not evidence of a production
 migration, player acceptance, or a deployed ranked match.
 
 ## AI declaration

@@ -533,7 +533,7 @@ create table private.ranked_queue_entries (
   id uuid primary key default gen_random_uuid(),
   season_id uuid not null,
   player_id uuid not null,
-  selected_deck_id uuid not null,
+  selected_deck_id uuid,
   status text not null default 'searching',
   version integer not null default 0,
   original_joined_at timestamptz not null default now(),
@@ -550,7 +550,7 @@ create table private.ranked_queue_entries (
   constraint ranked_queue_entries_deck_fk
     foreign key (selected_deck_id, player_id)
     references public.player_decks (id, player_id)
-    on delete restrict,
+    on delete set null (selected_deck_id),
   constraint ranked_queue_entries_proposal_fk
     foreign key (active_proposal_id, season_id)
     references private.ranked_matchmaking_proposals (id, season_id)
@@ -569,6 +569,8 @@ create table private.ranked_queue_entries (
       )
     ),
   constraint ranked_queue_entries_version_check check (version >= 0),
+  constraint ranked_queue_entries_active_deck_check
+    check (selected_deck_id is not null or status not in ('searching', 'proposed')),
   constraint ranked_queue_entries_lifecycle_check
     check (
       (
@@ -640,6 +642,17 @@ begin
   if tg_op = 'DELETE' then
     raise exception 'Ranked queue entries are retained as matchmaking history'
       using errcode = '55006';
+  end if;
+
+  if old.selected_deck_id is not null
+     and new.selected_deck_id is null
+     and old.status not in ('searching', 'proposed')
+     and to_jsonb(new) - 'selected_deck_id' = to_jsonb(old) - 'selected_deck_id'
+     and exists (
+       select 1 from public.players
+        where id = old.player_id and lifecycle_status = 'deletion_pending'
+     ) then
+    return new;
   end if;
 
   if old.status not in ('searching', 'proposed') then
@@ -1301,6 +1314,76 @@ create constraint trigger ranked_queue_proposal_shape_valid
 after update on private.ranked_queue_entries
 deferrable initially deferred
 for each row execute function private.validate_ranked_proposal_trigger();
+
+create function private.cancel_ranked_queue_for_account_deletion(
+  player_id_to_delete uuid
+)
+returns void
+language plpgsql
+as $$
+declare
+  proposal_record record;
+  cancellation_at timestamptz;
+begin
+  perform 1 from public.players
+   where id = player_id_to_delete and lifecycle_status = 'deletion_pending'
+   for update;
+
+  if not found then
+    raise exception 'Ranked queue cleanup requires a deletion-pending player'
+      using errcode = '23514';
+  end if;
+
+  for proposal_record in
+    select proposal.id
+      from private.ranked_matchmaking_proposals proposal
+      join private.ranked_queue_entries queue
+        on queue.active_proposal_id = proposal.id
+     where queue.player_id = player_id_to_delete
+       and queue.status = 'proposed'
+       and proposal.status = 'awaiting_acceptance'
+     order by proposal.id
+     for update of proposal
+  loop
+    cancellation_at := clock_timestamp();
+
+    update private.ranked_matchmaking_proposal_participants
+       set acceptance_status = 'system_cancelled',
+           responded_at = cancellation_at
+     where proposal_id = proposal_record.id
+       and acceptance_status = 'pending';
+
+    update private.ranked_queue_entries
+       set status = 'cancelled',
+           version = version + 1,
+           lease_expires_at = null,
+           active_proposal_id = null,
+           terminal_at = cancellation_at,
+           updated_at = cancellation_at
+     where active_proposal_id = proposal_record.id
+       and status = 'proposed';
+
+    update private.ranked_matchmaking_proposals
+       set status = 'cancelled',
+           version = version + 1,
+           resolved_at = cancellation_at
+     where id = proposal_record.id;
+  end loop;
+
+  cancellation_at := clock_timestamp();
+  update private.ranked_queue_entries
+     set status = 'cancelled',
+         version = version + 1,
+         lease_expires_at = null,
+         terminal_at = cancellation_at,
+         updated_at = cancellation_at
+   where player_id = player_id_to_delete
+     and status = 'searching';
+end;
+$$;
+
+revoke all on function private.cancel_ranked_queue_for_account_deletion(uuid)
+  from public;
 
 create function private.validate_ranked_matchmaking_receipt(
   match_id_to_validate uuid

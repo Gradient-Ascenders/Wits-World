@@ -18,6 +18,7 @@ import {
 import { runMigrations } from '../src/database/migrations.js';
 import { getMigrationsDirectory } from '../src/database/paths.js';
 import { runSeeds } from '../src/database/seeds.js';
+import { createAccountDeletionLifecycle } from '../src/players/account-deletion-lifecycle.js';
 
 const MIGRATION_NAME = '0047_persist_ranked_competition.sql';
 const runIntegrationTests =
@@ -223,6 +224,110 @@ describe.skipIf(!runIntegrationTests)('ranked persistence integration', () => {
           and status = 'searching'`,
       [firstQueueId, secondQueueId, thirdQueueId],
     );
+  }, 60_000);
+
+  it('deletes an owned deck while retaining anonymous terminal queue and proposal history', async () => {
+    const deletingPlayer = await createPlayer(pool, seasonId);
+    const opponent = await createPlayer(pool, seasonId);
+    const historicalQueueId = await enqueue(pool, seasonId, deletingPlayer);
+
+    await pool.query(
+      `update private.ranked_queue_entries
+          set status = 'expired', version = version + 1,
+              lease_expires_at = null, terminal_at = now(), updated_at = now()
+        where id = $1::uuid`,
+      [historicalQueueId],
+    );
+
+    await expect(
+      pool.query(`delete from public.player_decks where id = $1::uuid`, [
+        deletingPlayer.deckId,
+      ]),
+    ).rejects.toThrow();
+
+    const deletingQueueId = await enqueue(pool, seasonId, deletingPlayer);
+    const opponentQueueId = await enqueue(pool, seasonId, opponent);
+    const pair = await claimPair(
+      pool,
+      seasonId,
+      deletingQueueId,
+      opponentQueueId,
+      deletingPlayer,
+      opponent,
+    );
+
+    const lifecycle = createAccountDeletionLifecycle(pool);
+    const request = await lifecycle.request({
+      issuer: 'https://issuer.example/',
+      subject: `auth0|ranked-${deletingPlayer.id}`,
+    });
+    const completed = await lifecycle.complete(request.id);
+    expect(completed.status).toBe('completed');
+    expect(await lifecycle.complete(request.id)).toEqual(completed);
+
+    const decks = await pool.query<{ id: string }>(
+      `select id::text from public.player_decks where player_id = $1::uuid`,
+      [deletingPlayer.id],
+    );
+    expect(decks.rows).toEqual([]);
+
+    const history = await pool.query<{
+      id: string;
+      status: string;
+      selected_deck_id: string | null;
+    }>(
+      `select id::text, status, selected_deck_id::text
+         from private.ranked_queue_entries
+        where player_id = $1::uuid
+        order by id`,
+      [deletingPlayer.id],
+    );
+    expect(history.rows).toEqual(
+      expect.arrayContaining([
+        {
+          id: historicalQueueId,
+          status: 'expired',
+          selected_deck_id: null,
+        },
+        {
+          id: deletingQueueId,
+          status: 'cancelled',
+          selected_deck_id: null,
+        },
+      ]),
+    );
+    expect(history.rows).toHaveLength(2);
+
+    const proposal = await pool.query<{ status: string }>(
+      `select status from private.ranked_matchmaking_proposals
+        where id = $1::uuid`,
+      [pair.proposalId],
+    );
+    expect(proposal.rows[0]?.status).toBe('cancelled');
+
+    const opponentQueue = await pool.query<{
+      status: string;
+      selected_deck_id: string;
+    }>(
+      `select status, selected_deck_id::text
+         from private.ranked_queue_entries where id = $1::uuid`,
+      [opponentQueueId],
+    );
+    expect(opponentQueue.rows).toEqual([
+      { status: 'cancelled', selected_deck_id: opponent.deckId },
+    ]);
+
+    const tombstone = await pool.query<{
+      auth_subject: string | null;
+      lifecycle_status: string;
+    }>(
+      `select auth_subject, lifecycle_status
+         from public.players where id = $1::uuid`,
+      [deletingPlayer.id],
+    );
+    expect(tombstone.rows).toEqual([
+      { auth_subject: null, lifecycle_status: 'deleted' },
+    ]);
   }, 60_000);
 
   it('requires authoritative terminal live matches and exactly one paired settlement', async () => {
