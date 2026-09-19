@@ -82,6 +82,24 @@ export function createOfflineChallengeService(
             Date.parse(item.startsAt) <
               now.getTime() + OFFLINE_PACK_LIFETIME_MS,
         )) {
+          const placement = await client.query<{
+            placement_assignment_id: string | null;
+            next_boundary: Date;
+          }>(
+            `select location.placement_assignment_id::text,
+                    (((((now() at time zone policy.rotation_timezone) -
+                       (policy.rotation_local_time - time '00:00'))::date + 1)::timestamp +
+                       (policy.rotation_local_time - time '00:00'))
+                       at time zone policy.rotation_timezone) as next_boundary
+               from public.event_placement_state state
+               join public.event_placement_policy_versions policy
+                 on policy.id=state.current_policy_version_id
+               cross join lateral public.resolve_event_placement_location($1::uuid,$2) location
+              where state.singleton=true`,
+            [event.eventId, now],
+          );
+          const assignmentId =
+            placement.rows[0]?.placement_assignment_id ?? null;
           const source = await client.query<{
             id: string;
             version: number;
@@ -128,20 +146,26 @@ export function createOfflineChallengeService(
               options: shuffleChallengeItems(items.rows),
             });
           }
+          const validFromMs = Math.max(
+            now.getTime(),
+            Date.parse(event.startsAt),
+          );
+          const validUntilMs = Math.min(
+            Date.parse(event.endsAt),
+            now.getTime() + OFFLINE_PACK_LIFETIME_MS,
+            ...(assignmentId
+              ? [placement.rows[0]!.next_boundary.getTime()]
+              : []),
+          );
+          if (validUntilMs <= validFromMs) continue;
           const pack: OfflinePack = {
             version: 1,
             packId: randomUUID(),
             playerId,
             issuedAt: now.toISOString(),
-            validFrom: new Date(
-              Math.max(now.getTime(), Date.parse(event.startsAt)),
-            ).toISOString(),
-            validUntil: new Date(
-              Math.min(
-                Date.parse(event.endsAt),
-                now.getTime() + OFFLINE_PACK_LIFETIME_MS,
-              ),
-            ).toISOString(),
+            validFrom: new Date(validFromMs).toISOString(),
+            validUntil: new Date(validUntilMs).toISOString(),
+            ...(assignmentId ? { placementAssignmentId: assignmentId } : {}),
             event: {
               eventId: event.eventId,
               version: challenge.event_version,
@@ -231,8 +255,8 @@ export function createOfflineChallengeService(
           `insert into public.challenge_attempts
           (id, player_id, event_id, challenge_id, started_at, deadline, time_limit_seconds, average_difficulty,
            attempt_origin, offline_client_attempt_id, offline_pack_id, offline_pack_issued_at, synced_at,
-           offline_submission_digest)
-          values ($1,$2,$3,$4,$5,$6,$7,$8,'offline',$9,$10,$11,$12,$13::bytea)`,
+           offline_submission_digest, placement_assignment_id)
+          values ($1,$2,$3,$4,$5,$6,$7,$8,'offline',$9,$10,$11,$12,$13::bytea,$14)`,
           [
             attemptId,
             playerId,
@@ -247,6 +271,7 @@ export function createOfflineChallengeService(
             pack.issuedAt,
             receivedAt,
             submissionDigest,
+            pack.placementAssignmentId ?? null,
           ],
         );
         for (const [index, question] of pack.questions.entries()) {
@@ -380,6 +405,31 @@ async function validateSources(
   pack: OfflinePack,
   startedAt: string,
 ) {
+  if (pack.placementAssignmentId) {
+    const assignment = await client.query(
+      `select assignment.id from public.event_placement_assignments assignment
+        cross join lateral public.resolve_event_placement_location(
+          assignment.event_id,$3::timestamptz) location
+        where assignment.id=$1::uuid and assignment.event_id=$2::uuid
+          and assignment.starts_at <= $3::timestamptz
+          and (assignment.ends_at is null or assignment.ends_at > $3::timestamptz)
+          and location.is_available=true
+          and location.placement_assignment_id=assignment.id`,
+      [pack.placementAssignmentId, pack.event.eventId, startedAt],
+    );
+    if (!assignment.rows[0]) {
+      throw new OfflineRejection('OFFLINE_CONTENT_UNAVAILABLE');
+    }
+  } else {
+    const managed = await client.query(
+      `select 1 from public.event_placement_portability
+        where event_id=$1::uuid and effective_at <= $2::timestamptz limit 1`,
+      [pack.event.eventId, startedAt],
+    );
+    if (managed.rows[0]) {
+      throw new OfflineRejection('OFFLINE_CONTENT_UNAVAILABLE');
+    }
+  }
   const source = await client.query(
     `select event.id from public.events event
     join public.event_challenges challenge on challenge.event_id = event.id

@@ -292,6 +292,11 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'architecture/automatic-event-placement-service',
+              label: 'Automatic event placement service',
+            },
+            {
+              type: 'doc',
               id: 'architecture/offline-challenge-play',
               label: 'Offline play and synchronisation',
             },

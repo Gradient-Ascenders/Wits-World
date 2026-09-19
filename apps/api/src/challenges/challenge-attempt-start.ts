@@ -228,6 +228,12 @@ export function createChallengeAttemptStartService(
           clock: () => startedAt,
         });
 
+        // Hold a stable assignment while eligibility and attempt creation run.
+        await client.query(
+          'select version from public.event_placement_state where singleton=true for share',
+          [],
+        );
+
         const eligibility = await eligibilityService.evaluate({
           eventId: input.eventId,
           latitude: input.latitude,
@@ -426,9 +432,10 @@ export function createChallengeAttemptStartService(
               started_at,
               deadline,
               time_limit_seconds,
-              average_difficulty
+              average_difficulty,
+              placement_assignment_id
             )
-            values ($1, $2, $3, $4, $5, $6, $7)
+            values ($1, $2, $3, $4, $5, $6, $7, $8)
             on conflict on constraint challenge_attempts_player_event_unique
             do nothing
             returning id::text as attempt_id
@@ -441,6 +448,7 @@ export function createChallengeAttemptStartService(
             deadline,
             challengeTiming.timeLimitSeconds,
             challengeTiming.averageDifficulty,
+            eligibility.assignmentId ?? null,
           ],
         );
 

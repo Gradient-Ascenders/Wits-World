@@ -211,8 +211,8 @@ async function loadVisibleTrailRows(
         event.id::text as event_id,
         event.title as event_title,
         event.description as event_description,
-        st_y(event.location::geometry) as latitude,
-        st_x(event.location::geometry) as longitude,
+        st_y(placement.effective_location::geometry) as latitude,
+        st_x(placement.effective_location::geometry) as longitude,
         event.radius_metres,
         coalesce(event_schedule.effective_starts_at, event.starts_at) as starts_at,
         coalesce(event_schedule.effective_ends_at, event.ends_at) as ends_at,
@@ -229,6 +229,7 @@ async function loadVisibleTrailRows(
         trail.id,
         $3::timestamptz
       ) trail_schedule
+      cross join lateral public.resolve_event_placement_location(event.id, $3::timestamptz) placement
       cross join lateral public.resolve_event_availability(
         event.id,
         $3::timestamptz
@@ -236,7 +237,8 @@ async function loadVisibleTrailRows(
       left join public.event_completions completion
         on completion.player_id = $1::uuid
        and completion.event_id = event.id
-      where (
+      where placement.is_available = true
+        and (
         (
           trail.status = 'published'
           and trail_schedule.availability <> 'retired'
@@ -588,13 +590,14 @@ export const NEARBY_UNVISITED_QUERY = `
       event.id,
       event.title,
       event.description,
-      event.location,
+      placement.effective_location as location,
       event.radius_metres,
       event_schedule.effective_starts_at as starts_at,
       event_schedule.effective_ends_at as ends_at,
-      st_distance(event.location, claim.location) as distance_metres
+      st_distance(placement.effective_location, claim.location) as distance_metres
     from public.events event
     cross join claim
+    cross join lateral public.resolve_event_placement_location(event.id, $2::timestamptz) placement
     cross join lateral public.resolve_event_availability(
       event.id,
       $2::timestamptz
@@ -602,6 +605,7 @@ export const NEARBY_UNVISITED_QUERY = `
     where event.is_published = true
       and event.retired_at is null
       and event_schedule.availability = 'active'
+      and placement.is_available = true
       and not exists (
         select 1
         from public.event_completions completion
@@ -609,7 +613,7 @@ export const NEARBY_UNVISITED_QUERY = `
           and completion.event_id = event.id
       )
       and st_dwithin(
-        event.location,
+        placement.effective_location,
         claim.location,
         $5::double precision
       )

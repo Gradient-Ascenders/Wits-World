@@ -221,11 +221,11 @@ PostGIS performs authoritative distance calculations between:
 - the stored event point; or
 - two short-lived accepted reported-location samples for a cross-event journey.
 
-The Advanced placement boundary will also use PostGIS for reviewed
-candidate-site membership, placement separation, and campus coverage. Automatic
-placement is limited to explicitly portable published events. It will create
-immutable effective assignments rather than rewriting the authored location of
-a published event. The policy and downstream compatibility rules are documented
+The Advanced placement boundary uses PostGIS for reviewed candidate-site
+membership, placement separation, and campus coverage. Automatic placement is
+limited to explicitly portable published events. The service creates effective
+assignment history rather than rewriting the authored location of a published
+event. The policy and downstream compatibility rules are documented
 in [Automatic event placement and campus coverage](../requirements/automatic-event-placement-policy.md).
 
 The impossible-journey rule uses server receipt time, subtracts both reported
