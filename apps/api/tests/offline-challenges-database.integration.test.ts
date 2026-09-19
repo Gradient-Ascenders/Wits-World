@@ -15,6 +15,7 @@ import { createOfflineChallengeService } from '../src/challenges/offline-challen
 import { createChallengeAttemptCompletionFinalizer } from '../src/challenges/challenge-attempt-completion-finalizer.js';
 import type { OfflineSubmission } from '../src/challenges/offline-policy.js';
 import { createMovementEvidenceService } from '../src/events/movement-evidence.js';
+import { createTrustService } from '../src/trust/trust-service.js';
 
 describe.skipIf(process.env.RUN_DATABASE_INTEGRATION_TESTS !== 'true')(
   'offline database integration',
@@ -122,6 +123,7 @@ describe.skipIf(process.env.RUN_DATABASE_INTEGRATION_TESTS !== 'true')(
           finalizer: createChallengeAttemptCompletionFinalizer({
             randomInt: () => 0,
           }),
+          trustService: createTrustService(pool),
         });
         const prepared = await service.packs(playerId, [eventId]);
         expect(prepared).toHaveLength(1);
@@ -282,6 +284,28 @@ describe.skipIf(process.env.RUN_DATABASE_INTEGRATION_TESTS !== 'true')(
         await expect(
           service.submit(playerId, { ...input, clientAttemptId: randomUUID() }),
         ).rejects.toMatchObject({ code: 'OFFLINE_ATTEMPT_CONFLICT' });
+
+        const conflictingReplay = {
+          ...input,
+          finishedAt: new Date(
+            Date.parse(input.finishedAt) + 1000,
+          ).toISOString(),
+        };
+        await expect(
+          service.submit(playerId, conflictingReplay),
+        ).rejects.toMatchObject({ code: 'OFFLINE_ATTEMPT_CONFLICT' });
+        await expect(
+          service.submit(playerId, conflictingReplay),
+        ).rejects.toMatchObject({ code: 'OFFLINE_ATTEMPT_CONFLICT' });
+        const conflictSignals = await pool.query<{ count: number }>(
+          `select count(*)::integer as count
+             from private.trust_signals
+            where player_id = $1::uuid
+              and signal_type = 'idempotency_payload_conflict'`,
+          [playerId],
+        );
+        expect(conflictSignals.rows[0]?.count).toBe(1);
+
         await expect(service.submit(randomUUID(), input)).rejects.toMatchObject(
           { code: 'OFFLINE_INVALID_PACK' },
         );

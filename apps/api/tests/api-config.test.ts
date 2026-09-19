@@ -35,6 +35,7 @@ describe('API configuration', () => {
       maxPlausibleJourneySpeedMetresPerSecond: 12.5,
       rateLimitMaxRequests: 120,
       rateLimitWindowMs: 60000,
+      trustEvaluationIntervalMs: DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
     });
   });
 
@@ -201,6 +202,28 @@ describe('API configuration', () => {
         },
       }),
     ).toThrow('must contain at least 32 UTF-8 bytes');
+  });
+
+  it('reads and validates the trust evaluation interval', () => {
+    const config = buildApiConfig({
+      env: {
+        ...validEnvironment,
+        TRUST_EVALUATION_INTERVAL_MS: '1200000',
+      },
+    });
+
+    expect(config.trustEvaluationIntervalMs).toBe(1_200_000);
+  });
+
+  it('rejects an unsafe trust evaluation interval', () => {
+    expect(() =>
+      buildApiConfig({
+        env: {
+          ...validEnvironment,
+          TRUST_EVALUATION_INTERVAL_MS: '1000',
+        },
+      }),
+    ).toThrow('TRUST_EVALUATION_INTERVAL_MS must be a safe integer between');
   });
 
   it('reads configured movement evidence retention and cleanup intervals', () => {

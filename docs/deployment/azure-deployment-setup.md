@@ -4,9 +4,9 @@ title: 'Deploy the app and API to Azure'
 
 # Deploy the app and API to Azure
 
-> **Project:** Wits World  
-> **Game/topic:** Wits Quest  
-> **Course:** COMS3011A Software Design Project  
+> **Project:** Wits World
+> **Game/topic:** Wits Quest
+> **Course:** COMS3011A Software Design Project
 > **Scope of this document:** Azure infrastructure, deployment, security, and CI/CD work completed after the initial Gitea CI pipeline was established.
 
 ## 1. Purpose
@@ -336,6 +336,7 @@ must set and review before enabling movement-evidence persistence:
 MOVEMENT_EVIDENCE_RETENTION_MS
 MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS
 MAX_PLAUSIBLE_JOURNEY_SPEED_METRES_PER_SECOND
+TRUST_EVALUATION_INTERVAL_MS
 ```
 
 The current defaults are a provisional 24-hour retention and a 30-minute
@@ -349,6 +350,13 @@ existing evidence keeps its stored `expires_at`. The maximum-speed setting is
 required, has no default, and must be a finite number greater than zero.
 Configure the reviewed environment value before deploying the matching API or
 startup will fail closed.
+
+Issue `#258` adds optional `TRUST_EVALUATION_INTERVAL_MS` (default `1800000`,
+minimum `900000`). This is an operational sweep cadence for deterministic score
+decay/recovery and completed-PvP pattern evaluation, not a configurable
+`trust-v1` score threshold. The worker runs once at API startup and then on the
+configured interval; concurrent API instances are safe because PostgreSQL owns
+trust uniqueness and player-level serialization.
 
 Asynchronous PvP additionally requires the server-only
 `ASYNC_PVP_CURSOR_SIGNING_KEY` (at least 32 random UTF-8 bytes) and accepts the

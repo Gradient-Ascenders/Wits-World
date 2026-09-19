@@ -42,6 +42,7 @@ import {
   loadPlayerBattleDeck,
   PlayerBattleDeckError,
 } from './player-battle-deck.js';
+import type { TrustService } from '../trust/trust-service.js';
 
 const CPU_TURN_SECONDS = 90;
 
@@ -65,6 +66,7 @@ export interface CpuMatchServiceOptions {
   clock?: CpuMatchClock;
   randomInt?: RandomInt;
   progressionPersistence?: ProgressionPersistence;
+  trustService?: Pick<TrustService, 'recordSubmissionConflict'>;
 }
 
 export interface CreateCpuMatchInput {
@@ -285,6 +287,13 @@ export class CpuMatchVersionConflictError extends Error {
   }
 }
 
+export class CpuMatchSubmissionConflictError extends Error {
+  constructor() {
+    super('This submission ID was already used with a different action.');
+    this.name = 'CpuMatchSubmissionConflictError';
+  }
+}
+
 export class CpuMatchCompletedError extends Error {
   constructor() {
     super('Completed CPU matches cannot receive more actions.');
@@ -321,6 +330,8 @@ interface MatchIdentityRow extends pg.QueryResultRow {
 }
 
 interface ActionResponseRow extends pg.QueryResultRow {
+  action: BattleAction;
+  expected_version: number;
   legacy_log_actions: BattleLogActionRow[];
   response: StoredCpuMatchResponse;
 }
@@ -480,6 +491,8 @@ export function createCpuMatchService(
   const progressionPersistence =
     options.progressionPersistence ?? createProgressionPersistence();
 
+  const trustService = options.trustService;
+
   return {
     async createMatch(input) {
       const client = await database.connect();
@@ -624,6 +637,7 @@ export function createCpuMatchService(
 
     async submitAction(input) {
       const client = await database.connect();
+      let released = false;
 
       try {
         await client.query('begin');
@@ -640,6 +654,8 @@ export function createCpuMatchService(
         const duplicate = await client.query<ActionResponseRow>(
           `
             select
+              submitted.action,
+              submitted_round.round_number - 1 as expected_version,
               submitted.response,
               case
                 when submitted.response ? 'battleLog' then '[]'::jsonb
@@ -666,6 +682,9 @@ export function createCpuMatchService(
                 ), '[]'::jsonb)
               end as legacy_log_actions
             from public.cpu_match_actions submitted
+            join public.cpu_match_rounds submitted_round
+              on submitted_round.id = submitted.round_id
+             and submitted_round.match_id = submitted.match_id
             where submitted.match_id = $1::uuid
               and submitted.submission_id = $2::uuid
               and submitted.response is not null
@@ -675,6 +694,12 @@ export function createCpuMatchService(
 
         if (duplicate.rows[0]?.response) {
           const stored = duplicate.rows[0];
+          if (
+            stored.expected_version !== input.expectedVersion ||
+            !sameBattleAction(stored.action, input.action)
+          ) {
+            throw new CpuMatchSubmissionConflictError();
+          }
           const response = hasBattleLog(stored.response)
             ? normalizeStoredResponse(
                 stored.response,
@@ -919,9 +944,26 @@ export function createCpuMatchService(
         return response;
       } catch (error) {
         await rollback(client);
-        throw mapActionError(error);
-      } finally {
+        const mapped = mapActionError(error);
         client.release();
+        released = true;
+
+        if (mapped instanceof CpuMatchSubmissionConflictError) {
+          try {
+            await trustService?.recordSubmissionConflict({
+              playerId: input.playerId,
+              operation: 'cpu_match_action',
+              resourceIdentifier: input.matchId,
+              submissionId: input.submissionId,
+            });
+          } catch {
+            // Keep the original idempotency conflict authoritative. A retry can
+            // attempt trust ingestion again without changing match state.
+          }
+        }
+        throw mapped;
+      } finally {
+        if (!released) client.release();
       }
     },
 
@@ -2384,11 +2426,27 @@ function mapCpuMatchSetupError(error: unknown): CpuMatchSetupError {
   return new CpuMatchSetupError('The CPU deck setup is invalid.');
 }
 
+function sameBattleAction(left: BattleAction, right: BattleAction): boolean {
+  return stableJson(left) === stableJson(right);
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value)
+      .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
 function mapActionError(error: unknown): Error {
   if (
     error instanceof CpuMatchNotFoundError ||
     error instanceof CpuMatchCompletedError ||
     error instanceof CpuMatchVersionConflictError ||
+    error instanceof CpuMatchSubmissionConflictError ||
     error instanceof CpuMatchActionError
   ) {
     return error;

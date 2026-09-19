@@ -38,6 +38,7 @@ const testFiles = [
   'tests/asynchronous-pvp-persistence.integration.test.ts',
   'tests/live-pvp-persistence.integration.test.ts',
   'tests/trust-persistence.integration.test.ts',
+  'tests/trust-scoring.integration.test.ts',
   'tests/campaign-persistence.integration.test.ts',
   'tests/movement-evidence-database.integration.test.ts',
   'tests/question-performance-database.integration.test.ts',

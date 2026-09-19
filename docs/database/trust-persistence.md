@@ -8,10 +8,10 @@ title: 'Longitudinal trust persistence'
 
 Migration `0046_persist_longitudinal_trust.sql` implements the persistence layer
 for the `trust-v1` policy defined by issue `#254`. It stores only derived,
-privacy-limited trust data and human governance history. Issue `#257` does not
-calculate risk scores, create signals from gameplay, enforce restrictions, or
-expose review/appeal APIs; those remain service-layer work for issue `#258` and
-later UI issues.
+privacy-limited trust data and human governance history. Issue `#258` now uses
+that schema for deterministic score calculation, authoritative signal ingestion,
+decay/recovery maintenance, and enforcement of already-reviewed restrictions.
+Reviewer and appeal APIs remain later work.
 
 All trust relations live in the `private` PostgreSQL schema. The browser does
 not read or write them directly.
@@ -94,7 +94,7 @@ signal adjustment; its effective time must equal the appeal-resolution time.
 
 ## Retention
 
-Migration `0045` provides `private.purge_expired_trust_data(as_of)` as an
+Migration `0046` provides `private.purge_expired_trust_data(as_of)` as an
 idempotent cleanup primitive. It does not schedule cleanup itself.
 
 - derived signals expire 90 days after `observed_at`;
@@ -136,9 +136,45 @@ persistence races. In particular:
 - trust history tables reject normal updates/deletes and are removed only by
   account-deletion cleanup or documented retention cleanup.
 
-No persistent reviewer-lock lease is added by `#257`. Issue `#258` should use
-PostgreSQL row locking plus `expectedVersion`; `under_review` remains the durable
-case lifecycle state.
+No persistent reviewer-lock lease is added by `#257`. Runtime scoring uses a
+per-player PostgreSQL advisory transaction lock, while reviewer mutations remain
+row/version controlled; `under_review` is the durable case lifecycle state and
+is deliberately excluded from automated decay resolution.
+
+## Issue #258 runtime and schema hardening
+
+Migration `0047_implement_trust_scoring_and_enforcement.sql` is forward-only and
+does not rewrite migration `0046`. It makes
+`trust_case_decisions.resulting_score_snapshot_id` explicitly `NOT NULL` to
+match the existing decision trigger, adds an audit-oriented
+`trust_appeal_resolutions(reviewer_player_id, resolved_at, appeal_id)` index,
+adds the signal-adjustment lookup index used by score evaluation, documents
+the four trust relations that previously lacked table comments, and adds a
+nullable SHA-256 privacy-limited canonical digest to newly synced offline attempts
+so an identical replay can be distinguished from conflicting reuse of the same
+client attempt identifier. The digest includes the random pack identifier, timing,
+and answer identifiers but deliberately excludes precise location values; trust
+storage still retains no submitted answers or location payloads. Historical attempts remain null for compatibility.
+
+The API derives `impossible_movement` only from a committed authoritative
+`too_fast` movement decision. Conflicting reuse of an idempotency/message
+identifier at supported mutation boundaries records one deduplicated
+`idempotency_payload_conflict`; three distinct conflicts in the rolling window
+may derive the bounded pattern signal. Completed asynchronous and live PvP completion paths attempt reciprocal
+opponent-pattern derivation after commit; a rotating
+maintenance sweep retries recent completed PvP history and recalculates active
+players as signals decay.
+
+Score snapshots are appended only when the persisted projection/digest changes.
+The current case projection is updated in the same transaction with one matching
+append-only system decision. Existing human-resolved cases remain terminal; the
+same historical evidence cannot immediately recreate them, while a signal
+recorded after resolution may create a new case.
+
+Restrictions are not score outputs. `private.trust_restrictions` remains
+human-authored governance, and runtime checks read only the effective scope and
+expiry after any appeal resolution. No player response exposes the stored score
+or evidence behind that decision.
 
 ## AI declaration
 

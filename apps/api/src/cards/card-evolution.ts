@@ -1,5 +1,7 @@
 import type pg from 'pg';
 
+import type { TrustService } from '../trust/trust-service.js';
+
 import { getDeckRarityPoints } from './deck-rules.js';
 import type {
   CardAffinity,
@@ -152,6 +154,11 @@ interface EvolutionTransactionRow extends pg.QueryResultRow {
 
 export function createCardEvolutionService(
   database: CardEvolutionDatabase,
+  {
+    trustService,
+  }: {
+    trustService?: Pick<TrustService, 'recordSubmissionConflict'>;
+  } = {},
 ): CardEvolutionService {
   return {
     async previewEvolution(playerId, sourceCardDefinitionId) {
@@ -192,45 +199,48 @@ export function createCardEvolutionService(
     },
 
     async evolveCards(input) {
-      return withTransaction(database, async (client) => {
-        await lockActivePlayer(client, input.playerId);
+      try {
+        return await withTransaction(database, async (client) => {
+          await lockActivePlayer(client, input.playerId);
 
-        const existing = await loadTransactionBySubmission(
-          client,
-          input.playerId,
-          input.submissionId,
-        );
+          const existing = await loadTransactionBySubmission(
+            client,
+            input.playerId,
+            input.submissionId,
+          );
 
-        if (existing) {
-          if (existing.source_definition_id !== input.sourceCardDefinitionId) {
-            throw new EvolutionReplayConflictError();
+          if (existing) {
+            if (
+              existing.source_definition_id !== input.sourceCardDefinitionId
+            ) {
+              throw new EvolutionReplayConflictError();
+            }
+
+            return loadEvolutionResult(client, existing, true);
           }
 
-          return loadEvolutionResult(client, existing, true);
-        }
+          const relationship = await loadRelationship(
+            client,
+            input.sourceCardDefinitionId,
+          );
+          const copies = await loadAndLockOwnedCopies(
+            client,
+            input.playerId,
+            relationship.source_definition_id,
+          );
+          const eligibleCopies = copies.filter((copy) => !copy.deck_locked);
 
-        const relationship = await loadRelationship(
-          client,
-          input.sourceCardDefinitionId,
-        );
-        const copies = await loadAndLockOwnedCopies(
-          client,
-          input.playerId,
-          relationship.source_definition_id,
-        );
-        const eligibleCopies = copies.filter((copy) => !copy.deck_locked);
+          if (eligibleCopies.length < 3) {
+            if (copies.length >= 3 && copies.some((copy) => copy.deck_locked)) {
+              throw new EvolutionCopiesDeckLockedError();
+            }
 
-        if (eligibleCopies.length < 3) {
-          if (copies.length >= 3 && copies.some((copy) => copy.deck_locked)) {
-            throw new EvolutionCopiesDeckLockedError();
+            throw new InsufficientEvolutionCopiesError();
           }
 
-          throw new InsufficientEvolutionCopiesError();
-        }
-
-        const selected = eligibleCopies.slice(0, 3);
-        const inserted = await client.query<EvolutionTransactionRow>(
-          `
+          const selected = eligibleCopies.slice(0, 3);
+          const inserted = await client.query<EvolutionTransactionRow>(
+            `
             insert into public.card_evolution_transactions (
               player_id,
               submission_id,
@@ -247,22 +257,24 @@ export function createCardEvolutionService(
               granted_acquired_at,
               completed_at
           `,
-          [
-            input.playerId,
-            input.submissionId,
-            relationship.source_definition_id,
-            relationship.target_definition_id,
-          ],
-        );
-        const transaction = inserted.rows[0];
+            [
+              input.playerId,
+              input.submissionId,
+              relationship.source_definition_id,
+              relationship.target_definition_id,
+            ],
+          );
+          const transaction = inserted.rows[0];
 
-        if (!transaction) {
-          throw new Error('Card evolution returned no persisted transaction.');
-        }
+          if (!transaction) {
+            throw new Error(
+              'Card evolution returned no persisted transaction.',
+            );
+          }
 
-        const consumedIds = selected.map((copy) => copy.owned_card_id);
-        const consumption = await client.query(
-          `
+          const consumedIds = selected.map((copy) => copy.owned_card_id);
+          const consumption = await client.query(
+            `
             insert into public.card_evolution_consumptions (
               evolution_id,
               player_id,
@@ -283,38 +295,38 @@ export function createCardEvolutionService(
               and owned.card_definition_id = $3::uuid
               and owned.id = any($4::uuid[])
           `,
-          [
-            transaction.evolution_id,
-            input.playerId,
-            relationship.source_definition_id,
-            consumedIds,
-          ],
-        );
-
-        if (consumption.rowCount !== 3) {
-          throw new Error(
-            'Card evolution did not snapshot exactly three copies.',
+            [
+              transaction.evolution_id,
+              input.playerId,
+              relationship.source_definition_id,
+              consumedIds,
+            ],
           );
-        }
 
-        const deleted = await client.query(
-          `
+          if (consumption.rowCount !== 3) {
+            throw new Error(
+              'Card evolution did not snapshot exactly three copies.',
+            );
+          }
+
+          const deleted = await client.query(
+            `
             delete from public.player_cards
             where player_id = $1::uuid
               and card_definition_id = $2::uuid
               and id = any($3::uuid[])
           `,
-          [input.playerId, relationship.source_definition_id, consumedIds],
-        );
-
-        if (deleted.rowCount !== 3) {
-          throw new Error(
-            'Card evolution did not consume exactly three copies.',
+            [input.playerId, relationship.source_definition_id, consumedIds],
           );
-        }
 
-        await client.query(
-          `
+          if (deleted.rowCount !== 3) {
+            throw new Error(
+              'Card evolution did not consume exactly three copies.',
+            );
+          }
+
+          await client.query(
+            `
             insert into public.player_cards (
               id,
               player_id,
@@ -334,11 +346,27 @@ export function createCardEvolutionService(
             where evolution.id = $1::uuid
               and evolution.player_id = $2::uuid
           `,
-          [transaction.evolution_id, input.playerId],
-        );
+            [transaction.evolution_id, input.playerId],
+          );
 
-        return loadEvolutionResult(client, transaction, false);
-      });
+          return loadEvolutionResult(client, transaction, false);
+        });
+      } catch (error) {
+        if (error instanceof EvolutionReplayConflictError) {
+          try {
+            await trustService?.recordSubmissionConflict({
+              playerId: input.playerId,
+              operation: 'card_evolution',
+              resourceIdentifier: input.sourceCardDefinitionId,
+              submissionId: input.submissionId,
+            });
+          } catch {
+            // Preserve the evolution idempotency conflict. A retry can attempt
+            // trust ingestion again without changing collection state.
+          }
+        }
+        throw error;
+      }
     },
   };
 }

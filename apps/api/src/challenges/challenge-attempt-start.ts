@@ -1,5 +1,7 @@
 import type pg from 'pg';
 
+import type { TrustRestrictionService } from '../trust/trust-restrictions.js';
+
 import {
   createChallengeAttemptReader,
   type ChallengeAttemptQueryable,
@@ -107,6 +109,7 @@ interface CreateChallengeAttemptStartServiceOptions {
   >;
   randomIndex?: RandomIndexSource;
   maxLocationClaimAgeMs?: number;
+  trustRestrictions?: Pick<TrustRestrictionService, 'assertAllowed'>;
 }
 
 interface PublishedChallengeRow extends pg.QueryResultRow {
@@ -172,6 +175,7 @@ export function createChallengeAttemptStartService(
     movementEvidenceService,
     randomIndex = secureRandomIndex,
     maxLocationClaimAgeMs = PROVISIONAL_MAX_LOCATION_CLAIM_AGE_MS,
+    trustRestrictions,
   }: CreateChallengeAttemptStartServiceOptions,
 ): ChallengeAttemptStartService {
   return {
@@ -198,6 +202,14 @@ export function createChallengeAttemptStartService(
             outcome: 'resumed',
             attempt: existingAttempt,
           };
+        }
+
+        if (trustRestrictions) {
+          await trustRestrictions.assertAllowed(
+            input.playerId,
+            'location_reward_challenge_hold',
+            client,
+          );
         }
 
         const startedAt = clock();

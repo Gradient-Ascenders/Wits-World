@@ -7,6 +7,7 @@ import {
   CpuMatchCompletedError,
   CpuMatchDeckError,
   CpuMatchNotFoundError,
+  CpuMatchSubmissionConflictError,
   CpuMatchVersionConflictError,
   type CpuMatchService,
   type SubmitCpuMatchActionInput,
@@ -819,6 +820,15 @@ function mapMatchError(error: unknown): Error {
       statusCode: 409,
       code: 'CPU_MATCH_STALE_ACTION',
       title: 'CPU match state is stale',
+      detail: error.message,
+    });
+  }
+
+  if (error instanceof CpuMatchSubmissionConflictError) {
+    return new ApiError({
+      statusCode: 409,
+      code: 'CPU_MATCH_IDEMPOTENCY_CONFLICT',
+      title: 'CPU match submission conflict',
       detail: error.message,
     });
   }

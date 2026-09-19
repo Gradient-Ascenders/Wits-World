@@ -49,7 +49,7 @@ Start with the domain table above, then follow the diagrams and detailed field
 references below. These documents describe the application schema; the ordered
 [migration source](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/database/migrations)
 is authoritative for exact SQL types, constraints, indexes and later alterations
-through `0046_persist_longitudinal_trust.sql`, including the issue `#257` trust-persistence update.
+through `0047_implement_trust_scoring_and_enforcement.sql`, including the issue `#257` trust-persistence update and issue `#258` forward trust hardening.
 
 | Schema question                                                                   | Canonical reference                                                                                                                                                                                                                                                                                                          |
 | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -167,6 +167,14 @@ bounded restrictions, appeals, retention cleanup, and account-deletion cleanup.
 It stores no raw precise-location, answer, authentication, or battle payloads
 and adds no scoring, enforcement, review API, or UI. See
 [Longitudinal trust persistence](./trust-persistence.md).
+
+Migration `0047_implement_trust_scoring_and_enforcement.sql` keeps `0046`
+immutable while hardening the runtime contract used by issue `#258`: trust
+review decisions require a non-null resulting score snapshot, appeal-reviewer
+and signal-adjustment lookups are indexed for audit/scoring queries, and the
+previously undocumented trust relations receive table comments. Deterministic
+score calculation and restriction enforcement remain API services; the database
+continues to own persistence constraints and authoritative time.
 
 ## Environments and deployment
 

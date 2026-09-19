@@ -16,6 +16,7 @@ import {
   NonMonotonicMovementEvidenceError,
 } from '../src/events/movement-evidence.js';
 import { createAccountDeletionLifecycle } from '../src/players/account-deletion-lifecycle.js';
+import { createTrustService } from '../src/trust/trust-service.js';
 
 const PLAYER_ID = '16800000-0000-4000-8000-000000000001';
 const DELETION_PLAYER_ID = '16800000-0000-4000-8000-000000000002';
@@ -487,6 +488,7 @@ describe.skipIf(!runIntegrationTests)(
         createId: () => requiredNextId(evidenceIds),
         createDecisionId: () => requiredNextId(decisionIds),
         maxPlausibleJourneySpeedMetresPerSecond: 10,
+        trustService: createTrustService(pool),
       });
 
       await expect(
@@ -558,6 +560,45 @@ describe.skipIf(!runIntegrationTests)(
           prior_evidence_id: '16840000-0000-4000-8000-000000000001',
           journey_outcome: 'plausible',
         },
+      ]);
+
+      const trustSignals = await pool.query<{
+        source_identifier: string;
+        signal_type: string;
+        severity: string;
+        base_points: number;
+      }>(
+        `select source_identifier, signal_type, severity, base_points
+           from private.trust_signals
+          where player_id = $1::uuid
+          order by observed_at, id`,
+        [PLAYER_ID],
+      );
+      expect(trustSignals.rows).toEqual([
+        {
+          source_identifier: '16850000-0000-4000-8000-000000000002',
+          signal_type: 'impossible_movement',
+          severity: 'strong',
+          base_points: 25,
+        },
+      ]);
+
+      const trustState = await pool.query<{
+        final_score: number;
+        review_band: string;
+        status: string;
+      }>(
+        `select snapshot.final_score, snapshot.review_band, trust_case.status
+           from private.trust_score_snapshots snapshot
+           join private.trust_cases trust_case
+             on trust_case.latest_score_snapshot_id = snapshot.id
+          where snapshot.player_id = $1::uuid
+          order by snapshot.evaluated_at desc, snapshot.id desc
+          limit 1`,
+        [PLAYER_ID],
+      );
+      expect(trustState.rows).toEqual([
+        { final_score: 25, review_band: 'observe', status: 'open' },
       ]);
 
       await expect(

@@ -211,21 +211,36 @@ a later migration. Do not drop the new authoritative history or edit the applied
 file. Rehearsal must confirm both the first application and an immediate second
 run that skips `0044` with the stored checksum unchanged.
 
-## Longitudinal trust migration `0045`
+## Longitudinal trust migrations `0046` and `0047`
 
 Migration `0046_persist_longitudinal_trust.sql` is additive and persistence-only.
 It creates private `trust-v1` relations, constraints, indexes, append-only audit
 guards, retention cleanup, and account-deletion cleanup. It adds no Fastify
 routes, score calculation, reviewer UI, or gameplay restriction enforcement.
 
-Apply `0045` before deploying issue `#258` scoring/enforcement code. The
+Apply `0046` before deploying issue `#258` scoring/enforcement code. The
 migration can be deployed while the current application ignores the new trust
 relations. `private.purge_expired_trust_data(...)` is retry-safe but unscheduled;
 operations must not claim periodic cleanup is deployed until a scheduler is
 explicitly wired and verified.
 
-After `0045` is applied, keep its migration checksum immutable. Fix later defects
-with a new forward migration rather than editing `0045`.
+After `0046` is applied, keep its migration checksum immutable. Fix later defects
+with a new forward migration rather than editing `0046`.
+
+Migration `0047_implement_trust_scoring_and_enforcement.sql` is the forward
+hardening migration for issue `#258`. Apply it before the matching API runtime.
+It makes the already-trigger-required decision snapshot reference explicitly
+non-null, adds trust audit/scoring indexes and table comments, and adds the
+nullable privacy-limited offline-submission canonical digest used for future
+replay-conflict detection; precise location values are excluded from that digest. It does not backfill scores, generate signals, or create automatic
+restrictions. The API
+runtime starts the configurable trust maintenance sweep only after application
+startup succeeds.
+
+After deployment, verify `0047` is recorded once, the API starts without schema
+errors, and the trust-focused database integration suite passes. Do not edit
+`0046` or `0047` after publication; follow-up defects require the next additive
+migration.
 
 ## Prerequisites
 

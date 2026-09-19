@@ -20,6 +20,7 @@ import { buildApp } from '../src/app.js';
 import type { AuthConfig } from '../src/config/auth.js';
 import { InvalidLocationClaimError } from '../src/events/location-claim.js';
 import type { PlayerIdentityService } from '../src/players/player-identity.js';
+import { TrustActivityRestrictedError } from '../src/trust/trust-restrictions.js';
 
 import {
   ChallengeAnswerLockedError,
@@ -294,6 +295,15 @@ describe('challenge attempt start API', () => {
       status: 400,
       code: 'INVALID_LOCATION_CLAIM',
     },
+    {
+      error: new TrustActivityRestrictedError({
+        scope: 'location_reward_challenge_hold',
+        startsAt: new Date('2026-09-19T00:00:00.000Z'),
+        expiresAt: new Date('2026-09-20T00:00:00.000Z'),
+      }),
+      status: 403,
+      code: 'ACTIVITY_REVIEW_RESTRICTION',
+    },
   ])(
     'maps challenge start failures to $status $code',
     async ({ error, status, code }) => {
@@ -309,6 +319,25 @@ describe('challenge attempt start API', () => {
       });
     },
   );
+
+  it('keeps trust-restriction feedback neutral and private', async () => {
+    startOrResume.mockRejectedValue(
+      new TrustActivityRestrictedError({
+        scope: 'location_reward_challenge_hold',
+        startsAt: new Date('2026-09-19T00:00:00.000Z'),
+        expiresAt: new Date('2026-09-20T00:00:00.000Z'),
+      }),
+    );
+
+    const response = await authenticatedStartRequest();
+    const body = response.json<{ detail: string; code: string }>();
+
+    expect(response.statusCode).toBe(403);
+    expect(body.code).toBe('ACTIVITY_REVIEW_RESTRICTION');
+    expect(body.detail.toLowerCase()).not.toMatch(
+      /score|signal|threshold|cheat|fraud|reviewer|opponent/u,
+    );
+  });
 
   it('documents the challenge start operation as bearer-protected', async () => {
     const response = await app.inject({

@@ -35,6 +35,7 @@ export interface ApiConfig {
   maxPlausibleJourneySpeedMetresPerSecond: number;
   rateLimitMaxRequests: number;
   rateLimitWindowMs: number;
+  trustEvaluationIntervalMs: number;
 }
 
 interface BuildApiConfigOptions {
@@ -91,6 +92,10 @@ export function buildApiConfig({
   );
   const movementEvidenceCleanupIntervalMs = Number(
     env.MOVEMENT_EVIDENCE_CLEANUP_INTERVAL_MS?.trim() ??
+      String(DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS),
+  );
+  const trustEvaluationIntervalMs = Number(
+    env.TRUST_EVALUATION_INTERVAL_MS?.trim() ??
       String(DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS),
   );
 
@@ -189,6 +194,16 @@ export function buildApiConfig({
     );
   }
 
+  if (
+    !Number.isSafeInteger(trustEvaluationIntervalMs) ||
+    trustEvaluationIntervalMs < MIN_DATABASE_MAINTENANCE_INTERVAL_MS ||
+    trustEvaluationIntervalMs > MAX_NODE_TIMER_DELAY_MS
+  ) {
+    throw new Error(
+      `TRUST_EVALUATION_INTERVAL_MS must be a safe integer between ${MIN_DATABASE_MAINTENANCE_INTERVAL_MS} and ${MAX_NODE_TIMER_DELAY_MS} milliseconds.`,
+    );
+  }
+
   return {
     host,
     port,
@@ -204,6 +219,7 @@ export function buildApiConfig({
     maxPlausibleJourneySpeedMetresPerSecond,
     rateLimitMaxRequests,
     rateLimitWindowMs,
+    trustEvaluationIntervalMs,
   };
 }
 

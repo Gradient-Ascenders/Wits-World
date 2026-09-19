@@ -380,7 +380,20 @@ and appeals are append-only/immutable for normal application use; only the
 versioned case projection is mutable. Account deletion removes active trust
 state at the `deletion_pending` transition while allowed closed governance can
 remain against the anonymous local player tombstone until retention expiry.
-Scoring and restriction enforcement remain issue `#258` responsibilities.
+Issue `#258` implements that runtime boundary. The API derives movement and
+submission-conflict signals only after it has resolved the authenticated actor
+and authoritative source operation. A periodic database-backed evaluator
+recalculates decay/recovery and derives repeated-opponent patterns from completed
+PvP history. Neither browser input nor a client-visible field can set a signal,
+score, band, case, or restriction.
+
+Scores only prioritise review. They never create restrictions. Runtime
+restriction checks consume the persisted human decision at the server operation
+that starts new offline/reward/competitive activity. Existing attempts and
+matches remain usable, and denials return a neutral activity-review error
+without score, signal, threshold, reviewer, or opponent details. Live match
+reconnect remains outside the restriction because it resumes an already-started
+match; any future live queue/join endpoint must use the same restriction guard.
 
 ## Open security decisions
 

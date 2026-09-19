@@ -83,6 +83,46 @@ describe('challenge attempt start service', () => {
     expect(sql).not.toContain('insert into public.challenge_attempts');
   });
 
+  it('checks a reward-challenge restriction only before creating a new attempt', async () => {
+    const fixture = createDatabaseFixture();
+    const assertAllowed = vi.fn().mockRejectedValue(new Error('restricted'));
+    const service = createChallengeAttemptStartService(fixture.database, {
+      clock: () => startedAt,
+      movementEvidenceService: acceptingMovementEvidenceService,
+      randomIndex: () => 0,
+      trustRestrictions: { assertAllowed },
+    });
+
+    await expect(service.startOrResume(validInput())).rejects.toThrow(
+      'restricted',
+    );
+
+    expect(assertAllowed).toHaveBeenCalledWith(
+      PLAYER_ID,
+      'location_reward_challenge_hold',
+      expect.anything(),
+    );
+    expect(executedSql(fixture.query)).not.toContain(
+      'insert into public.challenge_attempts',
+    );
+  });
+
+  it('lets an already-started challenge resume without a later trust restriction check', async () => {
+    const fixture = createDatabaseFixture({ existingAttempt: true });
+    const assertAllowed = vi.fn().mockRejectedValue(new Error('restricted'));
+    const service = createChallengeAttemptStartService(fixture.database, {
+      clock: () => startedAt,
+      movementEvidenceService: acceptingMovementEvidenceService,
+      randomIndex: () => 0,
+      trustRestrictions: { assertAllowed },
+    });
+
+    const result = await service.startOrResume(validInput());
+
+    expect(result.outcome).toBe('resumed');
+    expect(assertAllowed).not.toHaveBeenCalled();
+  });
+
   it('requires a new location claim when the submitted claim is stale', async () => {
     const fixture = createDatabaseFixture();
 

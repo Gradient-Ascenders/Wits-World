@@ -18,6 +18,7 @@ import {
   createCpuMatchService,
   CpuMatchDeckError,
   CpuMatchActionError,
+  CpuMatchSubmissionConflictError,
   CpuMatchVersionConflictError,
   type CpuMatchClient,
   type CpuMatchDatabase,
@@ -539,6 +540,11 @@ describe('CPU match service', () => {
         return {
           rows: [
             {
+              action: {
+                moveId: playerCreature.card.moves[0]!.id,
+                type: 'use_move',
+              },
+              expected_version: 1,
               legacy_log_actions: legacyLogActions,
               response: legacyResponse,
               sequence: 5,
@@ -594,6 +600,107 @@ describe('CPU match service', () => {
     expect(
       response.battleLog.flatMap(({ events }) => events.map(({ id }) => id)),
     ).toEqual(expect.arrayContaining(['5:0', '6:0']));
+  });
+
+  it('records trust only after a duplicate submission changes action or expected version', async () => {
+    const state = createBattleState(deck('player'), deck('cpu'));
+    const playerCreature = state.participants.player.creatures[0]!;
+    const storedAction = {
+      moveId: playerCreature.card.moves[0]!.id,
+      type: 'use_move' as const,
+    };
+    const query = vi.fn(async (statement: string) => {
+      if (statement === 'begin' || statement === 'rollback') {
+        return { rows: [] };
+      }
+      if (statement.includes('from public.cpu_matches')) {
+        return {
+          rows: [
+            {
+              action_sequence: 1,
+              card_names: {},
+              completed_at: null,
+              id: MATCH_ID,
+              latest_battle_log: [],
+              legacy_log_actions: [],
+              player_id: PLAYER_ID,
+              started_at: new Date('2026-08-16T00:00:00.000Z'),
+              state,
+              status: 'active',
+              turn_deadline: new Date('2026-08-16T00:01:30.000Z'),
+              turn_started_at: new Date('2026-08-16T00:00:00.000Z'),
+              version: 1,
+              winner: null,
+            },
+          ],
+        };
+      }
+      if (statement.includes('submitted.submission_id =')) {
+        return {
+          rows: [
+            {
+              action: storedAction,
+              expected_version: 1,
+              legacy_log_actions: [],
+              response: {
+                battleLog: [],
+                completedAt: null,
+                lastAction: null,
+                matchId: MATCH_ID,
+                startedAt: '2026-08-16T00:00:00.000Z',
+                state: {},
+                status: 'active',
+                version: 1,
+                winner: null,
+              },
+            },
+          ],
+        };
+      }
+      throw new Error(`Unexpected SQL: ${statement}`);
+    });
+    const recordSubmissionConflict = vi.fn().mockResolvedValue(true);
+    const service = createCpuMatchService(fakeDatabase(query), {
+      trustService: { recordSubmissionConflict },
+    });
+
+    await expect(
+      service.submitAction({
+        playerId: PLAYER_ID,
+        matchId: MATCH_ID,
+        submissionId: 'a5000000-0000-4000-8000-000000000012',
+        expectedVersion: 1,
+        action: {
+          type: 'select_initial_creature',
+          creatureId: 'different-card',
+        },
+      }),
+    ).rejects.toBeInstanceOf(CpuMatchSubmissionConflictError);
+
+    expect(query).toHaveBeenCalledWith('rollback');
+    expect(recordSubmissionConflict).toHaveBeenCalledWith({
+      playerId: PLAYER_ID,
+      operation: 'cpu_match_action',
+      resourceIdentifier: MATCH_ID,
+      submissionId: 'a5000000-0000-4000-8000-000000000012',
+    });
+    expect(
+      query.mock.invocationCallOrder[
+        query.mock.calls.findIndex(([statement]) => statement === 'rollback')
+      ],
+    ).toBeLessThan(recordSubmissionConflict.mock.invocationCallOrder[0]!);
+
+    recordSubmissionConflict.mockClear();
+    await expect(
+      service.submitAction({
+        playerId: PLAYER_ID,
+        matchId: MATCH_ID,
+        submissionId: 'a5000000-0000-4000-8000-000000000012',
+        expectedVersion: 2,
+        action: storedAction,
+      }),
+    ).rejects.toBeInstanceOf(CpuMatchSubmissionConflictError);
+    expect(recordSubmissionConflict).toHaveBeenCalledOnce();
   });
 
   it('projects stored engine effect metadata out of completed match history', async () => {

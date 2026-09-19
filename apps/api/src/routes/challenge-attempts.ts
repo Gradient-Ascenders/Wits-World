@@ -1,5 +1,7 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 
+import { TrustActivityRestrictedError } from '../trust/trust-restrictions.js';
+
 import {
   ChallengeEventNotActiveError,
   ChallengeEventNotFoundError,
@@ -904,6 +906,15 @@ function withRequestId<T extends PlayerSafeChallengeAttempt>(
 }
 
 function mapChallengeStartError(error: unknown): Error {
+  if (error instanceof TrustActivityRestrictedError) {
+    return new ApiError({
+      statusCode: 403,
+      code: error.code,
+      title: 'Activity temporarily unavailable',
+      detail: error.message,
+    });
+  }
+
   if (
     error instanceof InvalidLocationClaimError ||
     error instanceof InvalidEventCoordinatesError

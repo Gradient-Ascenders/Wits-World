@@ -127,6 +127,7 @@ describe.skipIf(!runIntegrationTests)(
           '0044_create_live_pvp_persistence.sql',
           '0045_create_event_placement_persistence.sql',
           '0046_persist_longitudinal_trust.sql',
+          '0047_implement_trust_scoring_and_enforcement.sql',
         ],
         skipped: [],
       });
@@ -181,6 +182,7 @@ describe.skipIf(!runIntegrationTests)(
           '0044_create_live_pvp_persistence.sql',
           '0045_create_event_placement_persistence.sql',
           '0046_persist_longitudinal_trust.sql',
+          '0047_implement_trust_scoring_and_enforcement.sql',
         ],
       });
     }, 30_000);
@@ -399,6 +401,7 @@ describe.skipIf(!runIntegrationTests)(
             '0044_create_live_pvp_persistence.sql',
             '0045_create_event_placement_persistence.sql',
             '0046_persist_longitudinal_trust.sql',
+            '0047_implement_trust_scoring_and_enforcement.sql',
           ],
         });
 
