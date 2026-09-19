@@ -206,6 +206,68 @@ Source: [live player battle storage](../../database/live-pvp-persistence.md),
 [the live PvP contract](../live-pvp-api-contract.md), and migration
 `0044_create_live_pvp_persistence.sql`.
 
+## 4. Ranked seasons, proposals and settlements
+
+<div className="diagram-scroll" role="region" aria-label="Ranked competition database relationships" tabIndex={0}>
+
+```mermaid
+erDiagram
+    accTitle: Ranked competition database relationships
+    accDescr: A season contains player ratings and private queue entries. Two claimed entries share one proposal. An accepted proposal binds to one live match whose terminal result creates one settlement and two ledger entries. Closing the season archives established standings.
+    ranked_seasons ||--o{ ranked_player_season_ratings : contains
+    players ||--o{ ranked_player_season_ratings : owns
+    ranked_player_season_ratings ||--o{ ranked_queue_entries : queues
+    ranked_queue_entries ||--o{ ranked_matchmaking_proposal_participants : claimed_by
+    ranked_matchmaking_proposals ||--|{ ranked_matchmaking_proposal_participants : has_two
+    ranked_matchmaking_proposals ||--o| ranked_matchmaking_receipts : accepted_as
+    live_pvp_matches ||--o| ranked_matchmaking_receipts : ranked_as
+    ranked_matchmaking_receipts ||--|{ ranked_match_rating_inputs : snapshots
+    live_pvp_matches ||--o| ranked_rating_settlements : settles
+    ranked_rating_settlements ||--|{ ranked_rating_ledger_entries : records_two
+    ranked_seasons ||--o{ ranked_season_standing_archives : archives
+    ranked_seasons {
+        uuid id PK
+        text status
+        text policy_version FK
+    }
+    ranked_queue_entries {
+        uuid id PK
+        uuid season_id FK
+        uuid player_id FK
+        timestamptz lease_expires_at
+    }
+    ranked_matchmaking_proposals {
+        uuid id PK
+        uuid season_id FK
+        timestamptz acceptance_deadline
+    }
+    ranked_rating_settlements {
+        uuid match_id PK, FK
+        uuid season_id FK
+        uuid winner_player_id FK
+    }
+    ranked_season_standing_archives {
+        uuid season_id PK, FK
+        uuid player_id PK, FK
+        integer rank
+        integer rating
+    }
+```
+
+</div>
+
+Queue state, proposal decisions, rating inputs, settlement receipts, and
+ledger entries are in the **private** schema. The public season rating and
+archived facts still require the API's authenticated/private and safe public
+projections. A proposal has exactly two participants, and each ranked match
+has two snapshotted rating inputs and two ledger entries; the diagram's `|{`
+means one or more because Mermaid does not express exactly two. A casual live
+match has no ranked matchmaking receipt or settlement.
+
+Source: [ranked competition storage](../../database/ranked-competition-persistence.md),
+[ranked-v1 policy](../../requirements/ranked-competition-policy.md), and
+migration `0047_persist_ranked_competition.sql`.
+
 ## Related diagrams
 
 - [Players, challenges, cards, decks and progression](database-relationships.md).
@@ -216,3 +278,5 @@ Source: [live player battle storage](../../database/live-pvp-persistence.md),
 
 Prepared from repository migrations and battle persistence contracts with
 assistance from Codex-CLI[GPT-6] and ChatGPT-Web[GPT-5.6 Sol].
+
+Ranked overlay updated with assistance from Codex[GPT-5.6 Sol].

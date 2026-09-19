@@ -20,6 +20,12 @@ fan-out. The player UI, matchmaking, ratings, seasons, and territory rules
 remain separate work. Runtime connection memory is transport state only and
 never replaces these persisted invariants.
 
+Migration `0047_persist_ranked_competition.sql` now adds an optional
+[ranked-competition persistence layer](ranked-competition-persistence.md)
+around **new** accepted ranked proposals and live matches. It does not rate
+existing casual live matches or change the live battle state machine; issue
+`#266` must still wire ranked match creation and atomic settlement.
+
 ## Public and private data
 
 The schema separates viewer-safe history from security-sensitive battle data.
@@ -202,3 +208,5 @@ recorded only when an authorised operator performs it.
 
 This document and the issue `#251` persistence implementation were generated and
 reviewed with the assistance of ChatGPT-Web[GPT-5.6 Sol].
+
+Ranked persistence handoff updated with assistance from Codex[GPT-5.6 Sol].
