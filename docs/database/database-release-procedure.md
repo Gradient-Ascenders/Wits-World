@@ -211,21 +211,38 @@ a later migration. Do not drop the new authoritative history or edit the applied
 file. Rehearsal must confirm both the first application and an immediate second
 run that skips `0044` with the stored checksum unchanged.
 
-## Longitudinal trust migration `0045`
+## Longitudinal trust migration `0046`
 
 Migration `0046_persist_longitudinal_trust.sql` is additive and persistence-only.
 It creates private `trust-v1` relations, constraints, indexes, append-only audit
 guards, retention cleanup, and account-deletion cleanup. It adds no Fastify
 routes, score calculation, reviewer UI, or gameplay restriction enforcement.
 
-Apply `0045` before deploying issue `#258` scoring/enforcement code. The
+Apply `0046` before deploying issue `#258` scoring/enforcement code. The
 migration can be deployed while the current application ignores the new trust
 relations. `private.purge_expired_trust_data(...)` is retry-safe but unscheduled;
 operations must not claim periodic cleanup is deployed until a scheduler is
 explicitly wired and verified.
 
-After `0045` is applied, keep its migration checksum immutable. Fix later defects
-with a new forward migration rather than editing `0045`.
+After `0046` is applied, keep its migration checksum immutable. Fix later defects
+with a new forward migration rather than editing `0046`.
+
+## Ranked competition migration `0047`
+
+Migration `0047_persist_ranked_competition.sql` adds the versioned `ranked-v1`
+season, rating, queue, proposal, match-snapshot, settlement, and archive
+relations. Apply it before deploying issue `#266` ranked matchmaking/settlement
+services. It creates no ranked HTTP routes, season, worker schedule, or rating
+changes for existing live matches, so the current casual live API continues to
+work unchanged. See [Ranked competition storage](ranked-competition-persistence.md)
+for transaction and privacy boundaries.
+
+The new deferred terminal-match guard applies only to live matches with an
+accepted ranked matchmaking receipt: when the ranked runtime is deployed, its
+terminal transition and both ratings must commit in one transaction. Rehearse
+the first migration and checksum-safe rerun against the separate test target;
+do not treat a test pass as a production application. Correct applied-schema
+defects only with a later migration.
 
 ## Prerequisites
 

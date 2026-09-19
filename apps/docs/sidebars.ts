@@ -366,6 +366,11 @@ const sidebars: SidebarsConfig = {
                 },
                 {
                   type: 'doc',
+                  id: 'database/ranked-competition-persistence',
+                  label: 'Ranked competition storage',
+                },
+                {
+                  type: 'doc',
                   id: 'database/trust-persistence',
                   label: 'Trust and review storage',
                 },
