@@ -285,6 +285,15 @@ An offline pack or match already authoritatively created before the restriction
 commits may complete under its original contract. This avoids retroactive
 punishment and keeps concurrency outcomes deterministic.
 
+The approved [card-trading policy](card-trading-policy.md) defines a separate
+future `card_trade_hold`. It will cancel unfinished trade offers and release
+their card reservations without reversing completed trades or changing the
+three scopes above. The current `trust-v1` persistence and enforcement do not
+yet expose this fourth scope; a new policy version and migration must add it
+before trading launches. Existing `trust-v1` decisions remain unchanged. The
+planned scope uses the same human-review, seven-day maximum, neutral notice,
+and appeal boundary as the existing restrictions.
+
 ## Player notice and appeal
 
 A restricted player receives a safe notice containing:

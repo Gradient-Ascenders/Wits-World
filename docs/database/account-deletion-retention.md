@@ -137,6 +137,14 @@ cards, including the evolved grant. The retained rows contain random ownership
 identifiers and card-definition provenance, not Auth0 identity, Player Name, or
 location data, and therefore do not prevent local account cleanup.
 
+The planned [card-trading policy](../requirements/card-trading-policy.md)
+requires account deletion to invalidate open offers and release their exact-copy
+reservations before deleting owned cards. Minimal completed trade receipts will
+remain against anonymised tombstones for copy provenance, while former Player
+Names and authentication proof are not retained. Trading and this deletion
+integration are not yet implemented; #275 and #272 must add them before trading
+is enabled.
+
 ## Transaction and concurrency rules
 
 `AccountDeletionLifecycle.complete()` locks the deletion request and linked
@@ -204,6 +212,6 @@ audit shape and twelve-month purge.
 
 The preceding document was generated and edited with the assistance of:
 Codex-CLI[gpt-5.6-sol medium], Codex-CLI[GPT-5], Codex[GPT-5], and
-ChatGPT-Web[GPT-5.6 Sol].
+ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5.6 Sol].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
