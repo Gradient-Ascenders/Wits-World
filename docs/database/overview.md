@@ -34,6 +34,7 @@ API in the current repository.
 | Ordered trails         | Trail definitions and unique ordered event membership provide immutable publication history. Player progress is derived from authoritative event completions rather than a mutable cursor.                                                                                                                                                                      | [Ordered trail persistence](./ordered-trails-persistence.md) and [trail rules](../requirements/ordered-trails-rules.md)                                                                                                                                                                                                                       |
 | Asynchronous PvP       | Invitation, immutable deck-snapshot, private match-state, idempotency-receipt, action-history, terminal-result, and participant progression relations preserve asynchronous battle authority.                                                                                                                                                                   | [Asynchronous PvP persistence](./asynchronous-pvp-persistence.md) and [API contract](../architecture/asynchronous-pvp-api-contract.md)                                                                                                                                                                                                        |
 | Live PvP               | Durable two-participant state, immutable battle-ready snapshots, one-minute deadlines, participant connection generations, hashed tickets, idempotency receipts, spectator-safe transition history, and terminal completion sources support reconnectable live battle authority.                                                                                | [Live PvP persistence](./live-pvp-persistence.md) and [API contract](../architecture/live-pvp-api-contract.md)                                                                                                                                                                                                                                |
+| Ranked competition     | Seasonal ratings, private queue leases and proposals, immutable ranked-live matchmaking receipts, paired settlement ledgers, and closed-season standing archives provide the persistence boundary for rated live PvP.                                                                                                                                           | [Ranked competition storage](./ranked-competition-persistence.md) and [ranked-v1 policy](../requirements/ranked-competition-policy.md)                                                                                                                                                                                                        |
 | Trust and review       | Private immutable derived signals, policy-versioned score snapshots, versioned cases, safe evidence summaries, append-only decisions, bounded restrictions, appeals, and retention/account-deletion primitives preserve explainable trust governance without copying sensitive source payloads.                                                                 | [Longitudinal trust persistence](./trust-persistence.md) and [trust policy](../requirements/longitudinal-trust-policy.md)                                                                                                                                                                                                                     |
 | Authoring and audit    | Five-state lifecycle columns, versions, provenance, constraints, and triggers protect curated content; `author_content_audit` records versioned Author actions.                                                                                                                                                                                                 | [Author curation contract](../architecture/author-curation-api-contract.md), [Challenge, reward, and card persistence](./challenge-reward-persistence-design.md#event-authoring-lifecycle), and [Event schema](./event-schema.md#author-publication-lifecycle)                                                                                |
 
@@ -49,7 +50,7 @@ Start with the domain table above, then follow the diagrams and detailed field
 references below. These documents describe the application schema; the ordered
 [migration source](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/database/migrations)
 is authoritative for exact SQL types, constraints, indexes and later alterations
-through `0047_implement_trust_scoring_and_enforcement.sql`, including the issue `#257` trust-persistence update and issue `#258` forward trust hardening.
+through `0048_implement_trust_scoring_and_enforcement.sql`, including the issue `#257` trust-persistence update, issue `#263` ranked-persistence update, and issue `#258` forward trust hardening.
 
 | Schema question                                                                   | Canonical reference                                                                                                                                                                                                                                                                                                          |
 | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -168,7 +169,13 @@ It stores no raw precise-location, answer, authentication, or battle payloads
 and adds no scoring, enforcement, review API, or UI. See
 [Longitudinal trust persistence](./trust-persistence.md).
 
-Migration `0047_implement_trust_scoring_and_enforcement.sql` keeps `0046`
+Migration `0047_persist_ranked_competition.sql` adds `ranked-v1` seasonal
+ratings, private queue/proposal state, match and rating snapshots, immutable
+per-player settlements, and archived standings. It does not create matchmaking
+routes, run a season worker, or rate an existing live match. See
+[Ranked competition storage](./ranked-competition-persistence.md).
+
+Migration `0048_implement_trust_scoring_and_enforcement.sql` keeps `0046`
 immutable while hardening the runtime contract used by issue `#258`: trust
 review decisions require a non-null resulting score snapshot, appeal-reviewer
 and signal-adjustment lookups are indexed for audit/scoring queries, and the
@@ -244,3 +251,5 @@ and release documents.
 Sprint 2 schema navigation updated with assistance from Codex-CLI[GPT-6].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+Ranked schema navigation updated with assistance from Codex[GPT-5.6 Sol].

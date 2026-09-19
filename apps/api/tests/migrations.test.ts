@@ -70,7 +70,8 @@ describe('migration file loading', () => {
         name.startsWith('0044_') ||
         name.startsWith('0045_') ||
         name.startsWith('0046_') ||
-        name.startsWith('0047_'),
+        name.startsWith('0047_') ||
+        name.startsWith('0048_'),
     );
 
     expect(
@@ -203,7 +204,11 @@ describe('migration file loading', () => {
       },
       {
         checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
-        name: '0047_implement_trust_scoring_and_enforcement.sql',
+        name: '0047_persist_ranked_competition.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0048_implement_trust_scoring_and_enforcement.sql',
       },
     ]);
   });

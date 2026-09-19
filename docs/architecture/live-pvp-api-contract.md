@@ -44,8 +44,12 @@ The first live implementation uses these fixed rules:
 
 The contract deliberately excludes match creation, opponent discovery,
 matchmaking, ratings, seasons, public match listings, spectator chat, and
-spectator replay. Those features may create a live match or distribute its
-opaque identifier later, but they must use this match authority boundary.
+spectator replay. The
+[ranked competition policy](../requirements/ranked-competition-policy.md)
+defines how a later server-owned queue may create and settle a ranked live
+match; it does not change this contract's battle authority. Other later features
+may distribute an opaque match identifier, but they must also use this match
+authority boundary.
 
 ## Roles and lifecycle
 

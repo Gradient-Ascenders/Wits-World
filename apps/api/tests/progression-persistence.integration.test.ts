@@ -114,7 +114,8 @@ describe.skipIf(!runIntegrationTests)(
         '0044_create_live_pvp_persistence.sql',
         '0045_create_event_placement_persistence.sql',
         '0046_persist_longitudinal_trust.sql',
-        '0047_implement_trust_scoring_and_enforcement.sql',
+        '0047_persist_ranked_competition.sql',
+        '0048_implement_trust_scoring_and_enforcement.sql',
       ]);
 
       pool = createDatabasePool(temporaryConfig);

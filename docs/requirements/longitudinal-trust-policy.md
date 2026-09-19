@@ -13,7 +13,7 @@ through migration `0046_persist_longitudinal_trust.sql`. Issue `#258` implements
 the deterministic `trust-v1` scoring service, authoritative signal ingestion,
 periodic decay/recovery evaluation, and server-side enforcement of previously
 reviewed restrictions. Migration
-`0047_implement_trust_scoring_and_enforcement.sql` adds only forward schema
+`0048_implement_trust_scoring_and_enforcement.sql` adds only forward schema
 hardening needed by that runtime. Later issues expose reviewer and player
 experiences; score internals remain private.
 
@@ -323,6 +323,15 @@ Restrictions never:
 An offline pack or match already authoritatively created before the restriction
 commits may complete under its original contract. This avoids retroactive
 punishment and keeps concurrency outcomes deterministic.
+
+The approved [card-trading policy](card-trading-policy.md) defines a separate
+future `card_trade_hold`. It will cancel unfinished trade offers and release
+their card reservations without reversing completed trades or changing the
+three scopes above. The current `trust-v1` persistence and enforcement do not
+yet expose this fourth scope; a new policy version and migration must add it
+before trading launches. Existing `trust-v1` decisions remain unchanged. The
+planned scope uses the same human-review, seven-day maximum, neutral notice,
+and appeal boundary as the existing restrictions.
 
 ## Player notice and appeal
 

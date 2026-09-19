@@ -211,7 +211,7 @@ a later migration. Do not drop the new authoritative history or edit the applied
 file. Rehearsal must confirm both the first application and an immediate second
 run that skips `0044` with the stored checksum unchanged.
 
-## Longitudinal trust migrations `0046` and `0047`
+## Longitudinal trust migration `0046`
 
 Migration `0046_persist_longitudinal_trust.sql` is additive and persistence-only.
 It creates private `trust-v1` relations, constraints, indexes, append-only audit
@@ -227,20 +227,39 @@ explicitly wired and verified.
 After `0046` is applied, keep its migration checksum immutable. Fix later defects
 with a new forward migration rather than editing `0046`.
 
-Migration `0047_implement_trust_scoring_and_enforcement.sql` is the forward
+## Ranked competition migration `0047`
+
+Migration `0047_persist_ranked_competition.sql` adds the versioned `ranked-v1`
+season, rating, queue, proposal, match-snapshot, settlement, and archive
+relations. Apply it before deploying issue `#266` ranked matchmaking/settlement
+services. It creates no ranked HTTP routes, season, worker schedule, or rating
+changes for existing live matches, so the current casual live API continues to
+work unchanged. See [Ranked competition storage](ranked-competition-persistence.md)
+for transaction and privacy boundaries.
+
+The new deferred terminal-match guard applies only to live matches with an
+accepted ranked matchmaking receipt: when the ranked runtime is deployed, its
+terminal transition and both ratings must commit in one transaction. Rehearse
+the first migration and checksum-safe rerun against the separate test target;
+do not treat a test pass as a production application. Correct applied-schema
+defects only with a later migration.
+
+## Longitudinal trust scoring migration `0048`
+
+Migration `0048_implement_trust_scoring_and_enforcement.sql` is the forward
 hardening migration for issue `#258`. Apply it before the matching API runtime.
 It makes the already-trigger-required decision snapshot reference explicitly
 non-null, adds trust audit/scoring indexes and table comments, and adds the
-nullable privacy-limited offline-submission canonical digest used for future
-replay-conflict detection; precise location values are excluded from that digest. It does not backfill scores, generate signals, or create automatic
-restrictions. The API
-runtime starts the configurable trust maintenance sweep only after application
-startup succeeds.
+nullable privacy-limited offline-submission canonical digest used for replay
+conflict detection; precise location values are excluded from that digest. It
+does not backfill scores, generate signals, or create automatic restrictions.
+The API runtime starts the configurable trust maintenance sweep only after
+application startup succeeds.
 
-After deployment, verify `0047` is recorded once, the API starts without schema
+After deployment, verify `0048` is recorded once, the API starts without schema
 errors, and the trust-focused database integration suite passes. Do not edit
-`0046` or `0047` after publication; follow-up defects require the next additive
-migration.
+`0046`, `0047`, or `0048` after publication; follow-up defects require the next
+additive migration.
 
 ## Prerequisites
 

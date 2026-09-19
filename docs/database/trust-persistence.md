@@ -143,7 +143,7 @@ is deliberately excluded from automated decay resolution.
 
 ## Issue #258 runtime and schema hardening
 
-Migration `0047_implement_trust_scoring_and_enforcement.sql` is forward-only and
+Migration `0048_implement_trust_scoring_and_enforcement.sql` is forward-only and
 does not rewrite migration `0046`. It makes
 `trust_case_decisions.resulting_score_snapshot_id` explicitly `NOT NULL` to
 match the existing decision trigger, adds an audit-oriented

@@ -62,6 +62,16 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'requirements/ranked-competition-policy',
+              label: 'Ranked ratings, matchmaking and seasons',
+            },
+            {
+              type: 'doc',
+              id: 'requirements/contested-campus-zone-policy',
+              label: 'Contested-campus zones and settlement',
+            },
+            {
+              type: 'doc',
               id: 'requirements/ordered-trails-rules',
               label: 'Trail rules and progress',
             },
@@ -69,6 +79,11 @@ const sidebars: SidebarsConfig = {
               type: 'doc',
               id: 'requirements/card-evolution-rules',
               label: 'Card evolution rules',
+            },
+            {
+              type: 'doc',
+              id: 'requirements/card-trading-policy',
+              label: 'Card trading and anti-drain policy',
             },
             {
               type: 'doc',
@@ -358,6 +373,11 @@ const sidebars: SidebarsConfig = {
                   type: 'doc',
                   id: 'database/live-pvp-persistence',
                   label: 'Live player battle storage',
+                },
+                {
+                  type: 'doc',
+                  id: 'database/ranked-competition-persistence',
+                  label: 'Ranked competition storage',
                 },
                 {
                   type: 'doc',

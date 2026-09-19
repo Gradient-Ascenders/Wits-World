@@ -61,7 +61,7 @@ describe.skipIf(!runIntegrationTests)(
       });
     }, 30_000);
 
-    it('applies the forward-only trust governance hardening from migration 0047', async () => {
+    it('applies the forward-only trust governance hardening from migration 0048', async () => {
       const column = await pool.query<{ is_nullable: string }>(
         `select is_nullable
          from information_schema.columns
