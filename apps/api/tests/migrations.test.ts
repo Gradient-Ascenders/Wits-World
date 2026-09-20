@@ -72,7 +72,10 @@ describe('migration file loading', () => {
         name.startsWith('0046_') ||
         name.startsWith('0047_') ||
         name.startsWith('0048_') ||
-        name.startsWith('0049_'),
+        name.startsWith('0049_') ||
+        name.startsWith('0050_') ||
+        name.startsWith('0051_') ||
+        name.startsWith('0052_'),
     );
 
     expect(
@@ -214,6 +217,18 @@ describe('migration file loading', () => {
       {
         checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         name: '0049_enable_event_placement_services.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0050_create_ranked_standings_snapshots.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0051_allow_ranked_acceptance_withdrawal.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0052_ranked_invalid_proposal_cooldowns.sql',
       },
     ]);
   });
