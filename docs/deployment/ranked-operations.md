@@ -39,8 +39,9 @@ Keep that value stable across API instances and rotations during a traversal.
 It must never be a `VITE_*` value.
 
 On startup and each sweep, the worker checks the season, expires stale search
-leases and proposals, claims eligible pairs, and periodically deletes expired
-ten-minute standings snapshots. The live PvP deadline worker remains
+leases and proposals, claims eligible pairs, and once per minute drains expired
+ten-minute standings snapshots in 100-row delete batches. The live PvP deadline
+worker remains
 responsible for active match completion; ranked settlement runs inside each
 live terminal transaction. A closing season waits for every ranked receipt to
 have a settlement before it seals the archive and activates the next due

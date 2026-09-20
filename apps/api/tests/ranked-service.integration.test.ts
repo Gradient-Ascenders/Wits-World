@@ -15,6 +15,7 @@ import {
 import { runMigrations } from '../src/database/migrations.js';
 import { runSeeds } from '../src/database/seeds.js';
 import { createLivePvpService } from '../src/matches/live-pvp-service.js';
+import type { RankedDatabase } from '../src/matches/ranked-database.js';
 import { rankedSearchRange } from '../src/matches/ranked-policy.js';
 import { createRankedReadService } from '../src/matches/ranked-read-service.js';
 import { createRankedService } from '../src/matches/ranked-service.js';
@@ -186,6 +187,63 @@ describe.skipIf(!enabled)('ranked service integration', () => {
     ).toEqual([]);
   });
 
+  it('drains more than one batch of expired standings snapshots', async () => {
+    const expired = await pool.query<{ id: string }>(
+      `insert into private.ranked_standings_snapshots (
+         season_id, viewer_player_id, created_at, expires_at
+       )
+       select $1::uuid, $2::uuid,
+              now() - interval '11 minutes', now() - interval '1 minute'
+         from generate_series(1, 125)
+       returning id::text`,
+      [seasonId, carryPlayerId],
+    );
+    const expiredIds = expired.rows.map((row) => row.id);
+    await pool.query(
+      `insert into private.ranked_standings_snapshot_rows (
+         snapshot_id, ordinal, player_id, rank, rating, wins, losses,
+         settled_match_count
+       )
+       select id, 1, $2::uuid, 1, 1000, 5, 0, 5
+         from private.ranked_standings_snapshots
+        where id = any($1::uuid[])`,
+      [expiredIds, carryPlayerId],
+    );
+    const fresh = await pool.query<{ id: string }>(
+      `insert into private.ranked_standings_snapshots (
+         season_id, viewer_player_id, created_at, expires_at
+       ) values ($1::uuid, $2::uuid, now(), now() + interval '10 minutes')
+       returning id::text`,
+      [seasonId, carryPlayerId],
+    );
+    const reads = createRankedReadService(
+      pool,
+      createSignedCursorCodec('ranked-test-signing-key-longer-than-32-bytes'),
+    );
+    expect(await reads.cleanupExpiredSnapshots()).toBeGreaterThanOrEqual(125);
+    const remaining = await pool.query<{ count: string }>(
+      `select count(*)::text as count
+         from private.ranked_standings_snapshots
+        where id = any($1::uuid[])`,
+      [expiredIds],
+    );
+    expect(remaining.rows[0]?.count).toBe('0');
+    const rows = await pool.query<{ count: string }>(
+      `select count(*)::text as count
+         from private.ranked_standings_snapshot_rows
+        where snapshot_id = any($1::uuid[])`,
+      [expiredIds],
+    );
+    expect(rows.rows[0]?.count).toBe('0');
+    const retained = await pool.query<{ count: string }>(
+      `select count(*)::text as count
+         from private.ranked_standings_snapshots
+        where id = $1::uuid`,
+      [fresh.rows[0]!.id],
+    );
+    expect(retained.rows[0]?.count).toBe('1');
+  }, 60_000);
+
   it('claims one pair under concurrent workers and settles an accepted live result once', async () => {
     const first = await createPlayerWithDeck(pool, cards);
     const second = await createPlayerWithDeck(pool, cards);
@@ -348,6 +406,70 @@ describe.skipIf(!enabled)('ranked service integration', () => {
     });
   }, 60_000);
 
+  it('keeps cancellation terminal when an opponent decline races it', async () => {
+    const first = await createPlayerWithDeck(pool, cards);
+    const second = await createPlayerWithDeck(pool, cards);
+    const service = createRankedService(
+      pool,
+      createTrustRestrictionService(pool),
+    );
+    await service.join(first.playerId, first.deckId);
+    await service.join(second.playerId, second.deckId);
+    expect(await service.pairOnce()).toBe(true);
+    const proposalId = (await service.status(first.playerId)).proposalId!;
+    await service.accept(first.playerId, proposalId);
+
+    const gate = pauseFirstCommit(pool);
+    const cancelling = createRankedService(
+      gate.database,
+      createTrustRestrictionService(pool),
+    );
+    const cancellation = cancelling.cancel(first.playerId);
+    await gate.committed;
+    try {
+      await service.decline(second.playerId, proposalId);
+    } finally {
+      gate.resume();
+    }
+    expect((await cancellation).status).toBe('cancelled');
+    expect((await service.status(first.playerId)).status).toBe('cancelled');
+  }, 60_000);
+
+  it('keeps cancellation terminal when proposal expiry races it', async () => {
+    const first = await createPlayerWithDeck(pool, cards);
+    const second = await createPlayerWithDeck(pool, cards);
+    const service = createRankedService(
+      pool,
+      createTrustRestrictionService(pool),
+    );
+    await service.join(first.playerId, first.deckId);
+    await service.join(second.playerId, second.deckId);
+    expect(await service.pairOnce()).toBe(true);
+    const proposal = await service.status(first.playerId);
+    await service.accept(first.playerId, proposal.proposalId!);
+    await pool.query(
+      `select pg_sleep(greatest(0, extract(epoch from (
+         $1::timestamptz - clock_timestamp())) + 0.1))`,
+      [proposal.acceptanceDeadline],
+    );
+
+    const gate = pauseFirstCommit(pool);
+    const cancelling = createRankedService(
+      gate.database,
+      createTrustRestrictionService(pool),
+    );
+    const cancellation = cancelling.cancel(first.playerId);
+    await gate.committed;
+    try {
+      await service.expireProposals();
+    } finally {
+      gate.resume();
+    }
+    expect((await cancellation).status).toBe('cancelled');
+    expect((await service.status(first.playerId)).status).toBe('cancelled');
+    expect((await service.status(second.playerId)).status).toBe('expired');
+  }, 90_000);
+
   it('revalidates edited decks before match creation', async () => {
     const first = await createPlayerWithDeck(pool, cards);
     const second = await createPlayerWithDeck(pool, cards);
@@ -452,4 +574,44 @@ async function createPlayerWithDeck(
     );
   }
   return { playerId, deckId };
+}
+
+function pauseFirstCommit(pool: pg.Pool): {
+  database: RankedDatabase;
+  committed: Promise<void>;
+  resume: () => void;
+} {
+  let signalCommit!: () => void;
+  let resume!: () => void;
+  const committed = new Promise<void>((resolve) => {
+    signalCommit = resolve;
+  });
+  const resumed = new Promise<void>((resolve) => {
+    resume = resolve;
+  });
+  let pause = true;
+  const database = {
+    query: pool.query.bind(pool),
+    connect: async () => {
+      const client = await pool.connect();
+      return new Proxy(client, {
+        get(target, property) {
+          if (property === 'query') {
+            return async (statement: string, values?: unknown[]) => {
+              const result = await target.query(statement, values);
+              if (pause && statement.toLowerCase() === 'commit') {
+                pause = false;
+                signalCommit();
+                await resumed;
+              }
+              return result;
+            };
+          }
+          const value = Reflect.get(target, property, target) as unknown;
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+    },
+  } as RankedDatabase;
+  return { database, committed, resume };
 }

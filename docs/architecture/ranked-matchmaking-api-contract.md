@@ -37,9 +37,14 @@ Acceptance does not extend it. Decline or timeout applies a 30-second cooldown
 to a non-accepting player; an accepting player keeps the original join time
 and receives a fresh lease only after a fresh eligibility check. An accepted
 player whose deck or account fails that check leaves search; invalid deck or
-restriction failures receive the same cooldown. Season closure cancels queue state without a
-cooldown. A same-proposal accept retry after match creation returns the original
-persisted match ID.
+restriction failures receive the same cooldown. Season closure cancels queue
+state without a cooldown. A same-proposal accept retry after match creation
+returns the original persisted match ID.
+
+Queue cancellation serializes with proposal acceptance, decline, and expiry.
+If another resolution requeues the caller first, cancellation leaves that
+searching entry in the same transaction. A match already committed before
+cancellation remains matched.
 
 ## Rating and standings reads
 

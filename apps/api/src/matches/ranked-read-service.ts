@@ -13,6 +13,7 @@ import {
 } from './ranked-database.js';
 
 const MAX_PAGE_SIZE = 100;
+const SNAPSHOT_CLEANUP_BATCH_SIZE = 100;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -411,17 +412,22 @@ export function createRankedReadService(
   }
 
   async function cleanupExpiredSnapshots(): Promise<number> {
-    const result = await database.query<{ id: string }>(
-      `with due as (
-         select id from private.ranked_standings_snapshots
-          where expires_at <= clock_timestamp()
-          order by expires_at, id limit 100 for update skip locked
-       )
-       delete from private.ranked_standings_snapshots snapshot
-        using due where snapshot.id = due.id
-       returning snapshot.id::text`,
-    );
-    return result.rows.length;
+    let deleted = 0;
+    for (;;) {
+      const result = await database.query<{ id: string }>(
+        `with due as (
+           select id from private.ranked_standings_snapshots
+            where expires_at <= clock_timestamp()
+            order by expires_at, id limit $1 for update skip locked
+         )
+         delete from private.ranked_standings_snapshots snapshot
+          using due where snapshot.id = due.id
+         returning snapshot.id::text`,
+        [SNAPSHOT_CLEANUP_BATCH_SIZE],
+      );
+      deleted += result.rows.length;
+      if (result.rows.length < SNAPSHOT_CLEANUP_BATCH_SIZE) return deleted;
+    }
   }
 
   return {

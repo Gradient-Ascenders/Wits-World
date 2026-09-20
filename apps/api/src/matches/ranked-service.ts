@@ -219,33 +219,73 @@ export function createRankedService(
   }
 
   async function cancel(playerId: string): Promise<RankedQueueView> {
-    let proposalId: string | null = null;
-    const result = await rankedTransaction(database, async (client) => {
-      const queue = await loadActiveQueue(client, playerId, true);
-      const now = await rankedDatabaseNow(client);
-      if (queue?.status === 'proposed') {
-        proposalId = queue.active_proposal_id;
+    // The preview is only a routing hint. Every state decision is made again
+    // while holding the same player/proposal locks as accept and expiry.
+    for (;;) {
+      const proposal = await database.query<{ active_proposal_id: string }>(
+        `select active_proposal_id::text
+           from private.ranked_queue_entries
+          where player_id = $1::uuid and status = 'proposed'
+          limit 1`,
+        [playerId],
+      );
+      const proposalId = proposal.rows[0]?.active_proposal_id;
+      if (proposalId) {
+        const result = await respond(playerId, proposalId, 'declined', true);
+        if (result) return result;
+        continue;
       }
-      if (queue?.status === 'searching') {
-        await terminalizeQueue(
-          client,
-          queue.id,
-          queue.lease_expires_at && now >= queue.lease_expires_at
-            ? 'expired'
-            : 'cancelled',
-          now,
-        );
-      }
-      return loadQueueView(client, playerId, now);
-    });
-    return proposalId ? respond(playerId, proposalId, 'declined') : result;
+      const result = await rankedTransaction(database, async (client) => {
+        await lockPlayers(client, [playerId]);
+        const queue = await loadActiveQueue(client, playerId, true);
+        const now = await rankedDatabaseNow(client);
+        if (queue?.status === 'proposed') return null;
+        if (queue?.status === 'searching') {
+          await terminalizeQueue(
+            client,
+            queue.id,
+            queue.lease_expires_at && now >= queue.lease_expires_at
+              ? 'expired'
+              : 'cancelled',
+            now,
+          );
+        }
+        return loadQueueView(client, playerId, now);
+      });
+      if (result) return result;
+    }
+  }
+
+  async function finishCancellation(
+    client: RankedClient,
+    playerId: string,
+    now: Date,
+  ): Promise<RankedQueueView | null> {
+    const queue = await loadActiveQueue(client, playerId, true);
+    if (queue?.status === 'proposed') return null;
+    if (queue?.status === 'searching') {
+      await terminalizeQueue(client, queue.id, 'cancelled', now);
+    }
+    return loadQueueView(client, playerId, now);
   }
 
   async function respond(
     playerId: string,
     proposalId: string,
     response: 'accepted' | 'declined',
-  ): Promise<RankedQueueView> {
+    cancelIntent: true,
+  ): Promise<RankedQueueView | null>;
+  async function respond(
+    playerId: string,
+    proposalId: string,
+    response: 'accepted' | 'declined',
+  ): Promise<RankedQueueView>;
+  async function respond(
+    playerId: string,
+    proposalId: string,
+    response: 'accepted' | 'declined',
+    cancelIntent = false,
+  ): Promise<RankedQueueView | null> {
     return rankedTransaction(database, async (client) => {
       const proposalPreview = await client.query<ProposalRow>(
         `select id::text, season_id::text, status, acceptance_deadline
@@ -275,6 +315,19 @@ export function createRankedService(
       if (players.length !== 2) throw new Error('Ranked proposal has no pair.');
       const own = players.find((row) => row.player_id === playerId)!;
       const now = await rankedDatabaseNow(client);
+      const finish = () =>
+        cancelIntent
+          ? finishCancellation(client, playerId, now)
+          : loadQueueView(client, playerId, now);
+      if (cancelIntent) {
+        const queue = await loadActiveQueue(client, playerId, true);
+        if (
+          queue?.status !== 'proposed' ||
+          queue.active_proposal_id !== proposalId
+        ) {
+          return finishCancellation(client, playerId, now);
+        }
+      }
       if (proposal.status !== 'awaiting_acceptance') {
         if (proposal.status === 'matched') {
           const receipt = await client.query<{ match_id: string }>(
@@ -297,7 +350,7 @@ export function createRankedService(
             matchId: receipt.rows[0].match_id,
           };
         }
-        return loadQueueView(client, playerId, now);
+        return finish();
       }
       if (
         season.rows[0]?.status !== 'active' ||
@@ -306,7 +359,7 @@ export function createRankedService(
         now >= season.rows[0].active_ends_at
       ) {
         await resolveProposal(client, proposal, players, now, 'system');
-        return loadQueueView(client, playerId, now);
+        return finish();
       }
       if (now >= proposal.acceptance_deadline) {
         const invalid = await findInvalidPlayers(
@@ -322,11 +375,11 @@ export function createRankedService(
           'timeout',
           invalid,
         );
-        return loadQueueView(client, playerId, now);
+        return finish();
       }
       if (own.acceptance_status !== 'pending') {
         if (own.acceptance_status === response) {
-          return loadQueueView(client, playerId, now);
+          return finish();
         }
         if (own.acceptance_status !== 'accepted' || response !== 'declined') {
           throw rankedConflict();
@@ -356,7 +409,7 @@ export function createRankedService(
           'decline',
           invalid,
         );
-        return loadQueueView(client, playerId, now);
+        return finish();
       }
       if (players.every((row) => row.acceptance_status === 'accepted')) {
         const invalid = await findInvalidPlayers(
@@ -390,7 +443,7 @@ export function createRankedService(
           });
         }
       }
-      return loadQueueView(client, playerId, now);
+      return finish();
     });
   }
 
