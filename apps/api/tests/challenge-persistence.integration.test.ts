@@ -130,6 +130,9 @@ describe.skipIf(!runIntegrationTests)(
           '0047_persist_ranked_competition.sql',
           '0048_implement_trust_scoring_and_enforcement.sql',
           '0049_enable_event_placement_services.sql',
+          '0050_create_ranked_standings_snapshots.sql',
+          '0051_allow_ranked_acceptance_withdrawal.sql',
+          '0052_ranked_invalid_proposal_cooldowns.sql',
         ],
         skipped: [],
       });
@@ -187,6 +190,9 @@ describe.skipIf(!runIntegrationTests)(
           '0047_persist_ranked_competition.sql',
           '0048_implement_trust_scoring_and_enforcement.sql',
           '0049_enable_event_placement_services.sql',
+          '0050_create_ranked_standings_snapshots.sql',
+          '0051_allow_ranked_acceptance_withdrawal.sql',
+          '0052_ranked_invalid_proposal_cooldowns.sql',
         ],
       });
     }, 30_000);
@@ -408,6 +414,9 @@ describe.skipIf(!runIntegrationTests)(
             '0047_persist_ranked_competition.sql',
             '0048_implement_trust_scoring_and_enforcement.sql',
             '0049_enable_event_placement_services.sql',
+            '0050_create_ranked_standings_snapshots.sql',
+            '0051_allow_ranked_acceptance_withdrawal.sql',
+            '0052_ranked_invalid_proposal_cooldowns.sql',
           ],
         });
 

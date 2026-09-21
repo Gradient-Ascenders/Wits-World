@@ -8,10 +8,14 @@ title: 'Ranked competition storage'
 
 Migration `0047_persist_ranked_competition.sql` adds the issue `#263` database
 foundation for the approved [ranked-v1 policy](../requirements/ranked-competition-policy.md).
-It does not create ranked queue routes, rating calculations in the API, a
-matchmaking worker, season-close automation, territory influence, or a player
-interface. Issue `#266` must implement the transactions and runtime checks
-described below; the existing [live PvP match](live-pvp-persistence.md) remains
+Issue `#266` adds the queue routes, rating calculations, matchmaking worker,
+season-close automation, and private ten-minute standings snapshots in
+`0050_create_ranked_standings_snapshots.sql`. Migration `0051` permits an
+accepted player to withdraw while a proposal still awaits the other player.
+Migration `0052` records the 30-second cooldown when final validation rejects
+an invalid proposed player.
+Territory influence and player UI
+remain separate work. The existing [live PvP match](live-pvp-persistence.md) remains
 the only battle authority.
 
 ## Relationships and authority
@@ -54,10 +58,10 @@ the retained rows refer to the anonymised player tombstone.
 The partial unique indexes enforce one active/closing season and one searching
 or proposed queue entry per player across API instances. The searching index
 orders claims by `(season_id, original_joined_at, id)`; leases have a separate
-expiry index. Issue `#266` should lock candidate entries in a consistent order
-with `FOR UPDATE SKIP LOCKED` or an equivalent transactional claim, recheck
-the caller's account, deck, restriction, season, lease, and active-match state,
-then move **both** entries to `proposed` and create one proposal with its two
+expiry index. The issue `#266` service locks candidate entries in a consistent
+order with `FOR UPDATE SKIP LOCKED`, rechecks each player's account, deck,
+restriction, season, lease, and active-match state, then moves **both** entries
+to `proposed` and creates one proposal with its two
 participant rows in the same transaction. A losing concurrent claim must
 return the authoritative current state, never mint another proposal. Response,
 requeue, and matched receipt updates likewise commit together. A mere queue
@@ -82,7 +86,7 @@ ledger. A unique settlement key prevents replay from applying ratings twice;
 the runtime must return the persisted receipt for identical retries. Any
 failure rolls back the live terminal transition as well as both rating
 updates. A deferred guard rejects any ranked live-match completion without a
-settlement in the same transaction; issue `#266` must integrate settlement
+settlement in the same transaction; issue `#266` integrates settlement
 inside the existing live completion coordinator. CPU, async, and casual live
 matches cannot be linked to a ranked settlement without an accepted proposal
 and match receipt.
@@ -119,13 +123,13 @@ proposal, deck, and identity changes together.
 
 ## Deployment and verification
 
-Apply migration `0047` through the guarded
-[database release procedure](database-release-procedure.md). It is additive,
-does not backfill historical casual live matches or automatically create a
-season, and introduces no environment variable or network route. After
-application, correct defects with a **new** migration rather than editing
-`0047` or its recorded checksum. Operational scheduling and activation are
-left to issue `#266`; this migration alone does not make ranked play available.
+Apply migrations `0047`, `0050`, `0051`, and `0052` through the guarded
+[database release procedure](database-release-procedure.md). They are additive,
+do not backfill historical casual live matches or automatically create a
+season. The API adds ranked routes and a configurable worker interval. After
+application, correct defects with a **new** migration rather than editing a
+recorded checksum. An operator must still schedule a season before ranked play
+becomes available; see [ranked operations](../deployment/ranked-operations.md).
 
 `apps/api/tests/ranked-persistence.integration.test.ts` creates a disposable
 test database, upgrades from the preceding migration set, verifies migration
@@ -138,4 +142,4 @@ migration, player acceptance, or a deployed ranked match.
 ## AI declaration
 
 This page and the issue `#263` implementation were drafted and reviewed with
-assistance from Codex[GPT-5.6 Sol].
+assistance from Codex[GPT-5.6 Sol] and Codex[GPT-5] (issue `#266` update).

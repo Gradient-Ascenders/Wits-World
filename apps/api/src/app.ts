@@ -60,6 +60,9 @@ import { asynchronousPvpRoutes } from './routes/asynchronous-pvp.js';
 import { livePvpRoutes } from './routes/live-pvp.js';
 import type { LivePvpService } from './matches/live-pvp-service.js';
 import type { LivePvpGateway } from './matches/live-pvp-gateway.js';
+import type { RankedService } from './matches/ranked-service.js';
+import type { RankedReadService } from './matches/ranked-read-service.js';
+import { rankedRoutes } from './routes/ranked.js';
 import { offlineChallengeRoutes } from './routes/offline-challenges.js';
 import type { OfflineChallengeService } from './challenges/offline-challenges.js';
 
@@ -121,6 +124,10 @@ export interface BuildAppOptions {
     gateway: LivePvpGateway;
     webSocketUrl: string;
   };
+  ranked?: {
+    service: RankedService;
+    reads: RankedReadService;
+  };
   progressionReadService?: ProgressionReadService;
   rateProtection?: AuthenticatedRateProtection;
 }
@@ -181,6 +188,7 @@ export async function buildApp({
   cpuMatchService,
   asyncPvpService,
   livePvp,
+  ranked,
   progressionReadService,
   rateProtection,
   offlineChallengeService,
@@ -290,6 +298,10 @@ export async function buildApp({
     throw new Error('Live PvP routes require the player identity service.');
   }
 
+  if (ranked && !playerIdentityService) {
+    throw new Error('Ranked routes require the player identity service.');
+  }
+
   if (asyncPvpService && !playerIdentityService) {
     throw new Error(
       'Asynchronous PvP routes require the player identity service.',
@@ -359,6 +371,10 @@ export async function buildApp({
         {
           name: 'Matches',
           description: 'Server-authoritative CPU matches and private history.',
+        },
+        {
+          name: 'Ranked',
+          description: 'Server-owned ranked live queue, rating, and seasons.',
         },
         {
           name: 'Progression',
@@ -557,6 +573,14 @@ export async function buildApp({
       prefix: '/api/v1',
       service: livePvp.service,
       webSocketUrl: livePvp.webSocketUrl,
+    });
+  }
+
+  if (ranked) {
+    await app.register(rankedRoutes, {
+      prefix: '/api/v1',
+      service: ranked.service,
+      reads: ranked.reads,
     });
   }
 

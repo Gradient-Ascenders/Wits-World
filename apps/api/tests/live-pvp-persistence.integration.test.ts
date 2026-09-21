@@ -113,6 +113,10 @@ describe.skipIf(!runIntegrationTests)(
 
       await verifyCleanMigration(administrationConfig);
 
+      // Runtime completion also checks ranked receipts, which were added after
+      // the historical 0044 migration under test above.
+      await runMigrations(temporaryConfig);
+
       pool = createDatabasePool(temporaryConfig);
 
       const retainedAward = await pool.query<{

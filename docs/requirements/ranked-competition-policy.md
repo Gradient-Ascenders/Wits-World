@@ -8,14 +8,14 @@ title: 'Ranked ratings, matchmaking and seasons'
 
 This document is the issue `#264` policy contract for Advanced-tier ranked live
 player-versus-player competition. It defines the first rating, matchmaking, and
-season rules before database or API implementation begins. It does not claim
-that ranked queues, ratings, standings, or season automation are implemented or
-deployed.
+season rules before database or API implementation begins. Migration `0047`
+and issue `#266` implement the storage and API services described here.
+Deployment and player-facing UI remain separate release steps.
 
-Issue `#263` may persist the policy, seasons, queue state, proposals, ratings,
-settlements, and archives described here. Issue `#266` may then implement the
-server-owned queue and settlement services, and issue `#269` may present those
-capabilities to players. Ranked matches must use the existing
+Issue `#263` persists the policy, seasons, queue state, proposals, ratings,
+settlements, and archives described here. Issue `#266` implements the
+server-owned queue and settlement services, while issue `#269` may present
+those capabilities to players. Ranked matches use the existing
 [live PvP authority contract](../architecture/live-pvp-api-contract.md); this
 policy does not create a second battle engine.
 
@@ -405,4 +405,4 @@ asynchronous rating, or draw scoring. Those require separate stakeholder
 decisions and a new policy version rather than silent implementation defaults.
 
 The preceding document was generated and edited with the assistance of:
-Codex[GPT-5.6 Sol].
+Codex[GPT-5.6 Sol] and Codex[GPT-5] (issue `#266` update).

@@ -20,6 +20,7 @@ import {
 import type pg from 'pg';
 
 import type { TrustService } from '../trust/trust-service.js';
+import { settleRankedMatch } from './ranked-settlement.js';
 
 const DECISION_WINDOW_MS = 60_000;
 const MAX_TIMEOUT_STRIKES = 3;
@@ -1276,6 +1277,22 @@ async function persistBattleTransition(
         where participant.match_id = $1::uuid`,
       [context.match.id, input.completionReason ?? 'defeat', input.committedAt],
     );
+    if (!winnerPlayerId) {
+      throw new Error(
+        'A terminal live match must have an authoritative winner.',
+      );
+    }
+    const loser = context.participants.find(
+      (participant) => participant.player_id !== winnerPlayerId,
+    );
+    if (!loser) throw new Error('A terminal live match must have a loser.');
+    await settleRankedMatch(client, {
+      matchId: context.match.id,
+      winnerPlayerId,
+      loserPlayerId: loser.player_id,
+      completionReason: input.completionReason ?? 'defeat',
+      completedAt: input.committedAt,
+    });
   }
 
   await client.query(

@@ -53,6 +53,9 @@ import { createTrustRestrictionService } from './trust/trust-restrictions.js';
 import { createTrustEvaluationScheduler } from './trust/trust-evaluation-scheduler.js';
 import { createPlacementService } from './placement/placement-service.js';
 import { createPlacementScheduler } from './placement/placement-scheduler.js';
+import { createRankedService } from './matches/ranked-service.js';
+import { createRankedReadService } from './matches/ranked-read-service.js';
+import { createRankedScheduler } from './matches/ranked-scheduler.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
@@ -75,6 +78,11 @@ async function startServer(): Promise<void> {
   const trustService = createTrustService(database);
   const placementService = createPlacementService(database);
   const trustRestrictions = createTrustRestrictionService(database);
+  const rankedService = createRankedService(database, trustRestrictions);
+  const rankedReadService = createRankedReadService(
+    database,
+    createSignedCursorCodec(config.asyncPvpCursorSigningKey),
+  );
 
   const movementEvidenceService = createMovementEvidenceService(database, {
     maxPlausibleJourneySpeedMetresPerSecond:
@@ -185,6 +193,7 @@ async function startServer(): Promise<void> {
       gateway: livePvpGateway,
       webSocketUrl: config.livePvpWebSocketUrl,
     },
+    ranked: { service: rankedService, reads: rankedReadService },
     progressionReadService,
 
     accountDeletionServices: {
@@ -272,11 +281,19 @@ async function startServer(): Promise<void> {
     livePvpGateway,
     app.log,
   );
+  const rankedScheduler = createRankedScheduler(
+    database,
+    rankedService,
+    rankedReadService,
+    app.log,
+    config.rankedSweepIntervalMs,
+  );
 
   app.addHook('onClose', async () => {
     await placementScheduler.stop();
     await livePvpNotificationListener.stop();
     await livePvpRuntimeScheduler.stop();
+    await rankedScheduler.stop();
     await livePvpGateway.closeAll();
     await accountDeletionRetryScheduler.stop();
     await movementEvidenceCleanupScheduler.stop();
@@ -293,6 +310,7 @@ async function startServer(): Promise<void> {
 
     await livePvpNotificationListener.start();
     livePvpRuntimeScheduler.start();
+    rankedScheduler.start();
     accountDeletionRetryScheduler.start();
     movementEvidenceCleanupScheduler.start();
     trustEvaluationScheduler.start();
