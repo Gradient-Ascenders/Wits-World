@@ -120,6 +120,7 @@ describe.skipIf(!runIntegrationTests)(
         '0050_create_ranked_standings_snapshots.sql',
         '0051_allow_ranked_acceptance_withdrawal.sql',
         '0052_ranked_invalid_proposal_cooldowns.sql',
+        '0053_persist_contested_territory.sql',
       ]);
 
       pool = createDatabasePool(temporaryConfig);
