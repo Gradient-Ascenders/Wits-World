@@ -418,7 +418,7 @@ export function EventWorkspace({
                   event={selected}
                   getAccessToken={getAccessToken}
                   interaction={interactionRef.current}
-                  key={`event-form:${selected.eventId}`}
+                  key={`event-form:${selected.eventId}:${selected.version}`}
                   mapFactory={mapFactory}
                   mapboxAccessToken={mapboxAccessToken}
                   mutationCoordinator={mutationCoordinator}
@@ -841,12 +841,6 @@ function EventForm({
   const feedbackRef = useRef<HTMLDivElement>(null);
   const operationRef = useRef<AbortController | null>(null);
   const interactionActiveRef = useRef(true);
-
-  useEffect(() => {
-    setDraft(eventDraft(event));
-    setErrors({});
-    setApiError(null);
-  }, [event]);
 
   useEffect(() => {
     interactionActiveRef.current = true;
@@ -2362,7 +2356,7 @@ function QuestionWorkspace({
               event={event}
               getAccessToken={getAccessToken}
               interaction={interactionRef.current}
-              key="new-question"
+              key={`new-question:${challenge.format}`}
               mutationCoordinator={mutationCoordinator}
               navigate={navigate}
               onSaved={updateQuestion}
@@ -2392,7 +2386,7 @@ function QuestionWorkspace({
               event={event}
               getAccessToken={getAccessToken}
               interaction={interactionRef.current}
-              key={selected.questionId}
+              key={`question-form:${selected.questionId}:${selected.version}:${challenge.format}`}
               mutationCoordinator={mutationCoordinator}
               navigate={navigate}
               onSaved={updateQuestion}
@@ -2662,12 +2656,6 @@ function QuestionForm({
   const operationRef = useRef<AbortController | null>(null);
   const interactionActiveRef = useRef(true);
   const focusInvalidFieldRef = useRef(false);
-
-  useEffect(() => {
-    setDraft(questionDraft(challenge.format, question));
-    setErrors({});
-    setApiError(null);
-  }, [challenge.format, question]);
 
   useEffect(() => {
     interactionActiveRef.current = true;

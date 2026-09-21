@@ -374,7 +374,7 @@ export function CardWorkspace({
                   card={selected}
                   getAccessToken={getAccessToken}
                   interaction={interactionRef.current}
-                  key={selected.id}
+                  key={`card-form:${selected.id}:${selected.version}`}
                   mutationCoordinator={mutationCoordinator}
                   onCancel={() => navigate(authorPaths.card(selected.id))}
                   onSaved={updateCard}
@@ -890,12 +890,6 @@ function CardForm({
   const feedbackRef = useRef<HTMLDivElement>(null);
   const operationRef = useRef<AbortController | null>(null);
   const interactionActiveRef = useRef(true);
-
-  useEffect(() => {
-    setDraft(cardDraft(card));
-    setErrors({});
-    setApiError(null);
-  }, [card]);
 
   useEffect(() => {
     interactionActiveRef.current = true;
