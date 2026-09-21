@@ -30,6 +30,7 @@ export interface ApiConfig {
   livePvpWebSocketUrl: string;
   livePvpDeadlineSweepIntervalMs: number;
   livePvpTransientCleanupIntervalMs: number;
+  rankedSweepIntervalMs: number;
   movementEvidenceCleanupIntervalMs: number;
   movementEvidenceRetentionMs: number;
   maxPlausibleJourneySpeedMetresPerSecond: number;
@@ -82,6 +83,9 @@ export function buildApiConfig({
   const livePvpTransientCleanupIntervalMs = Number(
     env.LIVE_PVP_TRANSIENT_CLEANUP_INTERVAL_MS?.trim() ??
       String(DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS),
+  );
+  const rankedSweepIntervalMs = Number(
+    env.RANKED_SWEEP_INTERVAL_MS?.trim() ?? '1000',
   );
   const rateLimitMaxRequests = Number(
     env.RATE_LIMIT_MAX_REQUESTS?.trim() ?? '120',
@@ -164,6 +168,16 @@ export function buildApiConfig({
     );
   }
 
+  if (
+    !Number.isSafeInteger(rankedSweepIntervalMs) ||
+    rankedSweepIntervalMs < 250 ||
+    rankedSweepIntervalMs > 30_000
+  ) {
+    throw new Error(
+      'RANKED_SWEEP_INTERVAL_MS must be a safe integer between 250 and 30000 milliseconds.',
+    );
+  }
+
   if (!Number.isInteger(rateLimitMaxRequests) || rateLimitMaxRequests < 1) {
     throw new Error('RATE_LIMIT_MAX_REQUESTS must be a positive integer.');
   }
@@ -214,6 +228,7 @@ export function buildApiConfig({
     livePvpWebSocketUrl,
     livePvpDeadlineSweepIntervalMs,
     livePvpTransientCleanupIntervalMs,
+    rankedSweepIntervalMs,
     movementEvidenceCleanupIntervalMs,
     movementEvidenceRetentionMs,
     maxPlausibleJourneySpeedMetresPerSecond,

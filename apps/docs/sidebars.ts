@@ -287,6 +287,11 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'architecture/ranked-matchmaking-api-contract',
+              label: 'Ranked matchmaking API',
+            },
+            {
+              type: 'doc',
               id: 'architecture/campaign-scheduling-api-contract',
               label: 'Campaign scheduling API',
             },
@@ -530,6 +535,11 @@ const sidebars: SidebarsConfig = {
               type: 'doc',
               id: 'deployment/mapbox-operations',
               label: 'Configure and operate Mapbox',
+            },
+            {
+              type: 'doc',
+              id: 'deployment/ranked-operations',
+              label: 'Operate ranked competition',
             },
           ],
         },

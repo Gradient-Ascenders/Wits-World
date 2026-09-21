@@ -29,6 +29,7 @@ describe('API configuration', () => {
       livePvpDeadlineSweepIntervalMs: 1000,
       livePvpTransientCleanupIntervalMs:
         DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
+      rankedSweepIntervalMs: 1000,
       movementEvidenceCleanupIntervalMs:
         DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
       movementEvidenceRetentionMs: 86400000,
@@ -38,6 +39,17 @@ describe('API configuration', () => {
       trustEvaluationIntervalMs: DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
     });
   });
+
+  it.each(['249', '30001', 'not-a-number'])(
+    'rejects an invalid ranked sweep interval of %s',
+    (value) => {
+      expect(() =>
+        buildApiConfig({
+          env: { ...validEnvironment, RANKED_SWEEP_INTERVAL_MS: value },
+        }),
+      ).toThrow(/RANKED_SWEEP_INTERVAL_MS/u);
+    },
+  );
 
   it.each([
     'HOST',
