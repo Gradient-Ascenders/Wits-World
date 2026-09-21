@@ -9,17 +9,21 @@ title: 'Contested-campus zones and settlement'
 This document is the issue `#267` policy contract for Advanced-tier contested
 campus zones. It defines how active players become eligible to contest a zone,
 how authoritative ranked wins create influence, how concurrent influence is
-settled, and what owning a zone provides. It does not claim that territory
-persistence, APIs, settlement workers, map overlays, or owner rewards are
-implemented or deployed.
+settled, and what owning a zone provides.
 
-Issue `#268` may persist the policy, reviewed zones, eligibility grants,
-contribution decisions, settlement receipts, current ownership, and immutable
-history described here. Issue `#270` may implement the server-owned eligibility,
-contribution, settlement, and read services. Issue `#271` may present those
-capabilities on the player map. Territory reuses completed ranked results from
-the [ranked competition policy](ranked-competition-policy.md); it does not create
-a second matchmaking, rating, or battle authority.
+Issue `#268` is implemented by migration
+`0053_persist_contested_territory.sql`. It persists the immutable `territory-v1`
+policy snapshot, separately versioned reviewed zone geometry, exactly-once
+contribution decisions and accepted influence, settlement receipts and totals,
+and rebuildable current ownership backed by immutable ownership history. It
+does not implement location grants, match-to-zone snapshots, settlement
+calculation, workers, player APIs, map overlays, or owner rewards. Those runtime
+boundaries remain issue `#270`; issue `#271` may present the resulting player
+experience. Territory reuses completed ranked results from the
+[ranked competition policy](ranked-competition-policy.md); it does not create a
+second matchmaking, rating, or battle authority. The corresponding database
+contract is documented in
+[Contested-campus territory persistence](../database/contested-campus-territory-persistence.md).
 
 ## Authority and terminology
 
@@ -493,4 +497,4 @@ more than three zone geometries, real-world access rights, or unbounded location
 tracking. Those require separate stakeholder decisions and a new policy version.
 
 The preceding document was generated and edited with the assistance of:
-Codex[GPT-5.6 Sol].
+Codex[GPT-5.6 Sol], ChatGPT-Web[GPT-5.6 Sol].

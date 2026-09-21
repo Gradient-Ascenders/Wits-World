@@ -75,7 +75,8 @@ describe('migration file loading', () => {
         name.startsWith('0049_') ||
         name.startsWith('0050_') ||
         name.startsWith('0051_') ||
-        name.startsWith('0052_'),
+        name.startsWith('0052_') ||
+        name.startsWith('0053_'),
     );
 
     expect(
@@ -229,6 +230,10 @@ describe('migration file loading', () => {
       {
         checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         name: '0052_ranked_invalid_proposal_cooldowns.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0053_persist_contested_territory.sql',
       },
     ]);
   });
