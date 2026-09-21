@@ -273,6 +273,7 @@ export function CampaignWorkspace({
             apiBaseUrl={apiBaseUrl}
             events={events}
             getAccessToken={getAccessToken}
+            key="new-campaign"
             navigate={navigate}
             onSaved={(campaign) => {
               applyCampaign(campaign, 'Campaign draft created.');
@@ -287,6 +288,7 @@ export function CampaignWorkspace({
               campaign={selected}
               events={events}
               getAccessToken={getAccessToken}
+              key={`campaign-form:${selected.campaignId}:${selected.version}`}
               navigate={navigate}
               onReloadServer={load}
               onSaved={(campaign) => {
@@ -585,12 +587,6 @@ function CampaignForm({
   );
 
   useEffect(() => () => operationRef.current?.abort(), []);
-  useEffect(() => {
-    setDraft(initial);
-    setApiError(null);
-    setValidation({});
-  }, [initial]);
-
   function setMember(
     kind: 'eventIds' | 'trailIds',
     id: string,

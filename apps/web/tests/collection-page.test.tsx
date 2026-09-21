@@ -13,6 +13,7 @@ import {
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { CardArtwork } from '../src/components/cards/CollectibleCard';
 import CollectionPage from '../src/pages/CollectionPage';
 import {
   buildCard,
@@ -995,6 +996,30 @@ describe('card collection page', () => {
     expect(
       screen.getByRole('img', { name: `${card.name} artwork unavailable` }),
     ).toBeVisible();
+  });
+
+  it('retries artwork when its source changes after a failure', () => {
+    const firstImageUrl = 'https://example.test/missing.png';
+    const secondImageUrl = 'https://example.test/replacement.png';
+    const card = {
+      imageAlt: null,
+      imageUrl: firstImageUrl,
+      name: 'Campus Guardian',
+      rarity: 'common' as const,
+    };
+    const view = render(<CardArtwork card={card} />);
+
+    fireEvent.error(
+      screen.getByRole('img', { name: `${card.name} card artwork` }),
+    );
+    expect(
+      screen.getByRole('img', { name: `${card.name} artwork unavailable` }),
+    ).toBeVisible();
+
+    view.rerender(<CardArtwork card={{ ...card, imageUrl: secondImageUrl }} />);
+    expect(
+      screen.getByRole('img', { name: `${card.name} card artwork` }),
+    ).toHaveAttribute('src', secondImageUrl);
   });
 
   it('offers re-authentication when the collection session expires', async () => {

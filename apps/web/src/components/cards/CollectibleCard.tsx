@@ -1,9 +1,4 @@
-import {
-  useEffect,
-  useState,
-  type MouseEventHandler,
-  type ReactNode,
-} from 'react';
+import { useState, type MouseEventHandler, type ReactNode } from 'react';
 
 import type {
   CardEffect,
@@ -188,13 +183,8 @@ export function CardArtwork({
   card: Pick<CardPresentation, 'name' | 'rarity' | 'imageUrl' | 'imageAlt'>;
   showRarity?: boolean;
 }) {
-  const [imageFailed, setImageFailed] = useState(false);
-
-  useEffect(() => {
-    setImageFailed(false);
-  }, [card.imageUrl]);
-
-  const showImage = card.imageUrl !== null && !imageFailed;
+  const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
+  const showImage = card.imageUrl !== null && card.imageUrl !== failedImageUrl;
 
   return (
     <CardFrame
@@ -206,7 +196,9 @@ export function CardArtwork({
         {showImage ? (
           <img
             alt={card.imageAlt ?? `${card.name} card artwork`}
-            onError={() => setImageFailed(true)}
+            onError={(event) =>
+              setFailedImageUrl(event.currentTarget.getAttribute('src'))
+            }
             src={card.imageUrl ?? undefined}
           />
         ) : (
