@@ -13,10 +13,12 @@ season-close automation, and private ten-minute standings snapshots in
 `0050_create_ranked_standings_snapshots.sql`. Migration `0051` permits an
 accepted player to withdraw while a proposal still awaits the other player.
 Migration `0052` records the 30-second cooldown when final validation rejects
-an invalid proposed player.
-Territory influence and player UI
-remain separate work. The existing [live PvP match](live-pvp-persistence.md) remains
-the only battle authority.
+an invalid proposed player. Migration `0053_persist_contested_territory.sql`
+adds a separate persistence boundary that may derive exactly one territory
+contribution decision from an authoritative ranked settlement without changing
+its Elo result. Territory eligibility, match-to-zone snapshots, settlement
+calculation, workers, and player UI remain separate runtime work. The existing
+[live PvP match](live-pvp-persistence.md) remains the only battle authority.
 
 ## Relationships and authority
 
@@ -139,7 +141,13 @@ settlements, and checks closed archive immutability and soft reset. These are
 test-database checks, not evidence of a production
 migration, player acceptance, or a deployed ranked match.
 
+The territory persistence integration suite creates genuine ranked settlement
+fixtures before testing source-result uniqueness so territory history cannot be
+seeded from a second or fabricated battle authority. See
+[Contested-campus territory persistence](contested-campus-territory-persistence.md).
+
 ## AI declaration
 
 This page and the issue `#263` implementation were drafted and reviewed with
-assistance from Codex[GPT-5.6 Sol] and Codex[GPT-5] (issue `#266` update).
+assistance from Codex[GPT-5.6 Sol], Codex[GPT-5] (issue `#266` update), and
+ChatGPT-Web[GPT-5.6 Sol] (issue `#268` persistence update).

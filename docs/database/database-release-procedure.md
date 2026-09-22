@@ -402,6 +402,34 @@ subject to the selected Neon plan and are not created by this procedure.
   `main` workflow; and
 - authenticated deployed-event verification.
 
+## Contested territory migration `0053`
+
+Migration `0053_persist_contested_territory.sql` is database-first, additive,
+and persistence-only. It creates the immutable `territory-v1` policy snapshot,
+separately versioned PostGIS zone definitions, private contribution and
+settlement ledgers, immutable ownership versions, and the rebuildable current
+ownership projection. It introduces no HTTP route, location-grant runtime,
+settlement worker, owner reward, map UI, dependency, or environment variable.
+
+On an existing database whose `placement-v1` catalogue is already seeded, the
+migration copies the three reviewed zone geometries and provenance immediately.
+On a clean database migrations run before seeds, so `0004_territory_catalogue.sql`
+invokes the same idempotent bootstrap after `0003_event_placement_catalogue.sql`.
+The bootstrap never updates lifecycle state on an existing territory row; a
+later placement suspension or retirement therefore cannot silently move or
+reactivate territory.
+
+Apply `0053` before issue `#270` territory services. Rehearse both the upgrade
+path and a clean migration-plus-seed path against the disposable test target.
+After application, retain the migration checksum and correct defects with a new
+forward migration. Do not edit a published territory definition to move a
+boundary: create a new reviewed territory-zone version and retire the old one.
+The settlement runtime must keep the documented player-before-zone lock order
+and serialize contributions and settlement on the same zone row; accepted
+contribution timestamps are sampled only after that zone lock is held. The database keeps contribution, receipt, total, and ownership history
+append-only and account deletion clears only the current owner projection by
+appending a new unowned version.
+
 This procedure was planned, generated, edited, and verified with the assistance
 of Codex[GPT-6], Codex[GPT-5], Codex[GPT-5.6 Sol], Codex[gpt-5.6-sol], and
 Codex-CLI[gpt-5.6-sol medium], and ChatGPT-Web[GPT-5.6 Sol].

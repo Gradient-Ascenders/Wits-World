@@ -391,6 +391,11 @@ const sidebars: SidebarsConfig = {
                 },
                 {
                   type: 'doc',
+                  id: 'database/contested-campus-territory-persistence',
+                  label: 'Contested-campus territory storage',
+                },
+                {
+                  type: 'doc',
                   id: 'database/trust-persistence',
                   label: 'Trust and review storage',
                 },
