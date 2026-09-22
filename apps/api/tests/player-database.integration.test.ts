@@ -214,6 +214,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0051_allow_ranked_acceptance_withdrawal.sql',
           '0052_ranked_invalid_proposal_cooldowns.sql',
           '0053_persist_contested_territory.sql',
+          '0054_implement_contested_territory_runtime.sql',
         ],
       });
 
@@ -357,6 +358,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0051_allow_ranked_acceptance_withdrawal.sql',
           '0052_ranked_invalid_proposal_cooldowns.sql',
           '0053_persist_contested_territory.sql',
+          '0054_implement_contested_territory_runtime.sql',
         ],
       });
 
