@@ -18,6 +18,7 @@ import type { PlayerIdentityService } from '../src/players/player-identity.js';
 import type { CardCollectionService } from '../src/cards/card-collection.js';
 import {
   EvolutionCopiesDeckLockedError,
+  EvolutionCopiesTradeReservedError,
   EvolutionNotAvailableError,
   EvolutionReplayConflictError,
   InsufficientEvolutionCopiesError,
@@ -565,6 +566,11 @@ describe('card evolution API', () => {
       'EVOLUTION_COPIES_INSUFFICIENT',
     ],
     [new EvolutionCopiesDeckLockedError(), 409, 'EVOLUTION_COPIES_DECK_LOCKED'],
+    [
+      new EvolutionCopiesTradeReservedError(),
+      409,
+      'EVOLUTION_COPIES_TRADE_RESERVED',
+    ],
     [new EvolutionReplayConflictError(), 409, 'EVOLUTION_REPLAY_CONFLICT'],
   ] as const)(
     'maps evolution failures to safe API errors',
@@ -729,6 +735,7 @@ function buildEvolutionPreview(): CardEvolutionPreview {
     ownedCopyCount: 3,
     eligibleCopyCount: 3,
     deckLockedCopyCount: 0,
+    tradeReservedCopyCount: 0,
     copies,
     canEvolve: true,
     unavailableReason: null,

@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import type { CardCollectionService } from '../cards/card-collection.js';
 import {
   EvolutionCopiesDeckLockedError,
+  EvolutionCopiesTradeReservedError,
   EvolutionNotAvailableError,
   EvolutionPlayerUnavailableError,
   EvolutionReplayConflictError,
@@ -216,7 +217,7 @@ const ownedCardSchema = {
     effects: { type: 'array', items: effectSchema },
     acquisitionKind: {
       type: 'string',
-      enum: ['event_reward', 'starter', 'evolution'],
+      enum: ['event_reward', 'starter', 'evolution', 'trade'],
     },
     acquiredAt: { type: 'string', format: 'date-time' },
   },
@@ -410,7 +411,10 @@ const evolutionCopySchema = {
     acquisitionKind: ownedCardSchema.properties.acquisitionKind,
     eligible: { type: 'boolean' },
     lockReason: {
-      anyOf: [{ type: 'string', const: 'saved_deck' }, { type: 'null' }],
+      anyOf: [
+        { type: 'string', enum: ['saved_deck', 'trade_reservation'] },
+        { type: 'null' },
+      ],
     },
   },
 } as const;
@@ -425,6 +429,7 @@ const evolutionPreviewResponseSchema = {
     'ownedCopyCount',
     'eligibleCopyCount',
     'deckLockedCopyCount',
+    'tradeReservedCopyCount',
     'copies',
     'canEvolve',
     'unavailableReason',
@@ -437,13 +442,14 @@ const evolutionPreviewResponseSchema = {
     ownedCopyCount: { type: 'integer', minimum: 0 },
     eligibleCopyCount: { type: 'integer', minimum: 0 },
     deckLockedCopyCount: { type: 'integer', minimum: 0 },
+    tradeReservedCopyCount: { type: 'integer', minimum: 0 },
     copies: { type: 'array', items: evolutionCopySchema },
     canEvolve: { type: 'boolean' },
     unavailableReason: {
       anyOf: [
         {
           type: 'string',
-          enum: ['insufficient_copies', 'saved_deck_lock'],
+          enum: ['insufficient_copies', 'saved_deck_lock', 'trade_reservation'],
         },
         { type: 'null' },
       ],
@@ -812,6 +818,15 @@ function mapEvolutionError(error: unknown): Error {
       code: 'EVOLUTION_COPIES_DECK_LOCKED',
       title: 'Copies used by saved decks',
       detail: 'Remove the required copies from saved decks before evolving.',
+    });
+  }
+
+  if (error instanceof EvolutionCopiesTradeReservedError) {
+    return new ApiError({
+      statusCode: 409,
+      code: 'EVOLUTION_COPIES_TRADE_RESERVED',
+      title: 'Copies reserved by a trade',
+      detail: 'The required copies are reserved by an unfinished trade.',
     });
   }
 

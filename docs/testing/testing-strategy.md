@@ -356,6 +356,26 @@ database runner remains the regression gate in PR CI. A successful CI run is
 test-environment evidence only; it does not establish that migration `0044` or
 its cleanup primitive was executed in production.
 
+## Card-trade persistence verification
+
+Issue `#275` adds `apps/api/tests/card-trading-persistence.integration.test.ts`
+for the private persistence boundary. The focused database suite upgrades a
+pre-`0055` database containing existing ownership and deck references, then
+checks exact-copy reservation conflicts, immutable offer-version approval
+semantics, concurrent reservation attempts, final-acceptance/cancellation
+serialization, saved-deck exclusion, exactly-once settlement/provenance, rollback
+after an injected database failure, expiry and reservation release, `trust-v2` trade-hold invalidation, terminal immutability,
+and account-deletion cleanup. The existing card-catalogue integration suite
+adds regression coverage that trade-reserved copies are excluded from evolution
+preview and destructive consumption until the reservation is released.
+
+`apps/api/tests/card-trade-policy.test.ts` covers the pure rarity-point mapping
+and input invariants without a database. During local development, run the
+focused persistence suite against `TEST_DATABASE_URL` after migration tests and
+then only the affected deck/evolution/match/trust/deletion regressions. The full
+database runner remains the Gitea PR gate; this documentation does not claim
+those checks passed until their execution evidence is recorded.
+
 ## Performance and reliability evidence
 
 The repository contains measured CI and deployment timing comparisons in

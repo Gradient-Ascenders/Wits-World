@@ -23,11 +23,11 @@ export interface EvolutionOwnedCopy {
   acquiredAt: string;
   acquisitionKind: OwnedCard['acquisitionKind'];
   eligible: boolean;
-  lockReason: 'saved_deck' | null;
+  lockReason: 'saved_deck' | 'trade_reservation' | null;
 }
 
 export type EvolutionUnavailableReason =
-  'insufficient_copies' | 'saved_deck_lock' | null;
+  'insufficient_copies' | 'saved_deck_lock' | 'trade_reservation' | null;
 
 export interface CardEvolutionPreview {
   source: EvolutionCardDefinition;
@@ -36,6 +36,7 @@ export interface CardEvolutionPreview {
   ownedCopyCount: number;
   eligibleCopyCount: number;
   deckLockedCopyCount: number;
+  tradeReservedCopyCount: number;
   copies: EvolutionOwnedCopy[];
   canEvolve: boolean;
   unavailableReason: EvolutionUnavailableReason;
@@ -99,6 +100,13 @@ export class EvolutionCopiesDeckLockedError extends Error {
   }
 }
 
+export class EvolutionCopiesTradeReservedError extends Error {
+  constructor() {
+    super('One or more required copies are reserved by an active trade.');
+    this.name = 'EvolutionCopiesTradeReservedError';
+  }
+}
+
 export class EvolutionReplayConflictError extends Error {
   constructor() {
     super('The submission identifier was already used for another evolution.');
@@ -139,6 +147,7 @@ interface OwnedCopyRow extends pg.QueryResultRow {
   acquired_at: Date;
   acquisition_kind: OwnedCard['acquisitionKind'];
   deck_locked: boolean;
+  trade_reserved: boolean;
   owned_card_id: string;
 }
 
@@ -175,7 +184,12 @@ export function createCardEvolutionService(
           loadOwnedCopies(client, playerId, relationship.source_definition_id),
         ]);
         const eligibleCopyCount = copies.filter((copy) => copy.eligible).length;
-        const deckLockedCopyCount = copies.length - eligibleCopyCount;
+        const deckLockedCopyCount = copies.filter(
+          (copy) => copy.lockReason === 'saved_deck',
+        ).length;
+        const tradeReservedCopyCount = copies.filter(
+          (copy) => copy.lockReason === 'trade_reservation',
+        ).length;
         const canEvolve = eligibleCopyCount >= 3;
 
         return {
@@ -185,13 +199,16 @@ export function createCardEvolutionService(
           ownedCopyCount: copies.length,
           eligibleCopyCount,
           deckLockedCopyCount,
+          tradeReservedCopyCount,
           copies,
           canEvolve,
           unavailableReason: canEvolve
             ? null
-            : copies.length >= 3 && deckLockedCopyCount > 0
-              ? 'saved_deck_lock'
-              : 'insufficient_copies',
+            : copies.length >= 3 && tradeReservedCopyCount > 0
+              ? 'trade_reservation'
+              : copies.length >= 3 && deckLockedCopyCount > 0
+                ? 'saved_deck_lock'
+                : 'insufficient_copies',
         };
       } finally {
         client.release();
@@ -228,9 +245,17 @@ export function createCardEvolutionService(
             input.playerId,
             relationship.source_definition_id,
           );
-          const eligibleCopies = copies.filter((copy) => !copy.deck_locked);
+          const eligibleCopies = copies.filter(
+            (copy) => !copy.deck_locked && !copy.trade_reserved,
+          );
 
           if (eligibleCopies.length < 3) {
+            if (
+              copies.length >= 3 &&
+              copies.some((copy) => copy.trade_reserved)
+            ) {
+              throw new EvolutionCopiesTradeReservedError();
+            }
             if (copies.length >= 3 && copies.some((copy) => copy.deck_locked)) {
               throw new EvolutionCopiesDeckLockedError();
             }
@@ -492,26 +517,68 @@ async function queryOwnedCopies(
           from public.player_deck_cards membership
           where membership.player_id = owned.player_id
             and membership.owned_card_id = owned.id
-        ) as deck_locked
+        ) as deck_locked,
+        exists (
+          select 1
+          from private.card_trade_reservations reservation
+          where reservation.owned_card_id = owned.id
+        ) as trade_reserved
       from public.player_cards owned
       where owned.player_id = $1::uuid
         and owned.card_definition_id = $2::uuid
-      order by owned.acquired_at desc, owned.id desc
-      ${lock ? 'for update of owned' : ''}
+      ${
+        lock
+          ? 'order by owned.id for update of owned'
+          : 'order by owned.acquired_at desc, owned.id desc'
+      }
     `,
     [playerId, sourceCardDefinitionId],
   );
 
-  return result.rows;
+  if (!lock || result.rows.length === 0) {
+    return result.rows;
+  }
+
+  // The ownership rows are locked before this second read, so a trade cannot
+  // reserve one of these copies while evolution decides what it may consume.
+  const reservations = await client.query<{ owned_card_id: string }>(
+    `
+      select owned_card_id::text
+        from private.card_trade_reservations
+       where owned_card_id = any($1::uuid[])
+       order by owned_card_id
+    `,
+    [result.rows.map((row) => row.owned_card_id)],
+  );
+  const reserved = new Set(
+    reservations.rows.map((row) => row.owned_card_id.toLowerCase()),
+  );
+  return result.rows
+    .map((row) => ({
+      ...row,
+      trade_reserved: reserved.has(row.owned_card_id.toLowerCase()),
+    }))
+    .sort((left, right) => {
+      const byAcquiredAt =
+        right.acquired_at.getTime() - left.acquired_at.getTime();
+      return byAcquiredAt !== 0
+        ? byAcquiredAt
+        : right.owned_card_id.localeCompare(left.owned_card_id);
+    });
 }
 
 function mapOwnedCopy(row: OwnedCopyRow): EvolutionOwnedCopy {
+  const lockReason = row.trade_reserved
+    ? 'trade_reservation'
+    : row.deck_locked
+      ? 'saved_deck'
+      : null;
   return {
     ownedCardId: row.owned_card_id,
     acquiredAt: row.acquired_at.toISOString(),
     acquisitionKind: row.acquisition_kind,
-    eligible: !row.deck_locked,
-    lockReason: row.deck_locked ? 'saved_deck' : null,
+    eligible: lockReason === null,
+    lockReason,
   };
 }
 

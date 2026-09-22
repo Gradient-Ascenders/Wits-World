@@ -158,13 +158,16 @@ queue history and the other participant's deck remain intact. The same local
 transaction covers ranked cancellation, deck deletion, and identity
 anonymisation. Ranked queue routes and workers remain follow-up work in `#266`.
 
-The planned [card-trading policy](../requirements/card-trading-policy.md)
-requires account deletion to invalidate open offers and release their exact-copy
-reservations before deleting owned cards. Minimal completed trade receipts will
-remain against anonymised tombstones for copy provenance, while former Player
-Names and authentication proof are not retained. Trading and this deletion
-integration are not yet implemented; #275 and #272 must add them before trading
-is enabled.
+The [card-trading policy](../requirements/card-trading-policy.md) requires
+account deletion to invalidate open offers and release their exact-copy
+reservations before deleting owned cards. Migration
+`0055_persist_versioned_card_trades.sql` installs that boundary on the
+`active` -> `deletion_pending` lifecycle transition, so reservations are
+released inside the same transaction before later owned-card cleanup can run.
+Minimal completed settlement receipts and copy-movement provenance remain
+against anonymised local tombstones; former Player Names, Auth0 tokens, and
+reauthentication proof are not copied into that history. The authenticated
+trading API remains follow-up work in `#272`.
 
 ## Transaction and concurrency rules
 

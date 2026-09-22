@@ -28,6 +28,7 @@ import { createCardCollectionService } from '../src/cards/card-collection.js';
 import {
   createCardEvolutionService,
   EvolutionCopiesDeckLockedError,
+  EvolutionCopiesTradeReservedError,
   EvolutionNotAvailableError,
   EvolutionReplayConflictError,
   InsufficientEvolutionCopiesError,
@@ -59,6 +60,10 @@ const INSUFFICIENT_EVOLUTION_PLAYER_ID = '70000000-0000-4000-8000-000000000015';
 const ROLLBACK_EVOLUTION_PLAYER_ID = '70000000-0000-4000-8000-000000000016';
 const REPLAY_EVOLUTION_PLAYER_ID = '70000000-0000-4000-8000-000000000017';
 const DECK_RACE_EVOLUTION_PLAYER_ID = '70000000-0000-4000-8000-000000000018';
+const TRADE_RESERVED_EVOLUTION_PLAYER_ID =
+  '70000000-0000-4000-8000-000000000019';
+const TRADE_RESERVED_EVOLUTION_COUNTERPARTY_ID =
+  '70000000-0000-4000-8000-000000000020';
 const CIPHRA_DEFINITION_ID = '47f04de3-98d9-79ad-2759-7409c499c5ec';
 const QUILLIP_DEFINITION_ID = '84790040-6ea8-6155-c4b7-dec3a22ac3ab';
 const QUILLUME_DEFINITION_ID = '33546c11-4a85-7d2b-ad67-df2684ae1039';
@@ -1227,6 +1232,127 @@ describe.skipIf(!runIntegrationTests)('card catalogue integration', () => {
       [LOCKED_EVOLUTION_PLAYER_ID, QUILLIP_DEFINITION_ID],
     );
     expect(remaining.rows[0]?.count).toBe('3');
+  }, 30_000);
+
+  it('treats trade-reserved copies as unavailable to evolution until the trade releases them', async () => {
+    await insertCataloguePlayer(
+      temporaryConfig,
+      TRADE_RESERVED_EVOLUTION_PLAYER_ID,
+      'trade-reserved-evolution-player',
+    );
+    await insertCataloguePlayer(
+      temporaryConfig,
+      TRADE_RESERVED_EVOLUTION_COUNTERPARTY_ID,
+      'trade-reserved-evolution-counterparty',
+    );
+    const copies = await insertEvolutionRewardCopies(
+      temporaryConfig,
+      TRADE_RESERVED_EVOLUTION_PLAYER_ID,
+      'e8000000',
+      3,
+    );
+    const tradeId = 'e8000000-0000-4000-8000-000000000080';
+
+    await withDatabaseClient(temporaryConfig, async (client) => {
+      await client.query('begin');
+      try {
+        await client.query(
+          `insert into private.card_trades (
+             id, sender_player_id, recipient_player_id, policy_version,
+             current_version, status, created_at, expires_at
+           ) values (
+             $1::uuid, $2::uuid, $3::uuid, 'card-trade-v1',
+             1, 'open', clock_timestamp(), clock_timestamp() + interval '24 hours'
+           )`,
+          [
+            tradeId,
+            TRADE_RESERVED_EVOLUTION_PLAYER_ID,
+            TRADE_RESERVED_EVOLUTION_COUNTERPARTY_ID,
+          ],
+        );
+        await client.query(
+          `insert into private.card_trade_versions (
+             trade_id, version, created_by_player_id
+           ) values ($1::uuid, 1, $2::uuid)`,
+          [tradeId, TRADE_RESERVED_EVOLUTION_PLAYER_ID],
+        );
+        await client.query(
+          `insert into private.card_trade_version_items (
+             trade_id, version, offering_player_id, position,
+             owned_card_id, card_definition_id, rarity, acquired_at,
+             acquisition_kind
+           )
+           select $1::uuid, 1, owned.player_id, 1, owned.id,
+                  owned.card_definition_id, definition.rarity,
+                  owned.acquired_at, owned.acquisition_kind
+             from public.player_cards owned
+             join public.card_definitions definition
+               on definition.id = owned.card_definition_id
+            where owned.id = $2::uuid
+              and owned.player_id = $3::uuid`,
+          [tradeId, copies[0], TRADE_RESERVED_EVOLUTION_PLAYER_ID],
+        );
+        await client.query(
+          `insert into private.card_trade_reservations (
+             owned_card_id, trade_id, version, player_id
+           ) values ($1::uuid, $2::uuid, 1, $3::uuid)`,
+          [copies[0], tradeId, TRADE_RESERVED_EVOLUTION_PLAYER_ID],
+        );
+        await client.query('commit');
+      } catch (error) {
+        await client.query('rollback');
+        throw error;
+      }
+    });
+
+    const preview = await evolutionService.previewEvolution(
+      TRADE_RESERVED_EVOLUTION_PLAYER_ID,
+      QUILLIP_DEFINITION_ID,
+    );
+    expect(preview).toMatchObject({
+      ownedCopyCount: 3,
+      eligibleCopyCount: 2,
+      deckLockedCopyCount: 0,
+      tradeReservedCopyCount: 1,
+      canEvolve: false,
+      unavailableReason: 'trade_reservation',
+    });
+    expect(
+      preview.copies.find((copy) => copy.ownedCardId === copies[0]),
+    ).toMatchObject({
+      eligible: false,
+      lockReason: 'trade_reservation',
+    });
+
+    await expect(
+      evolutionService.evolveCards({
+        playerId: TRADE_RESERVED_EVOLUTION_PLAYER_ID,
+        submissionId: 'e8000000-0000-4000-8000-000000000090',
+        sourceCardDefinitionId: QUILLIP_DEFINITION_ID,
+      }),
+    ).rejects.toBeInstanceOf(EvolutionCopiesTradeReservedError);
+
+    await cataloguePool.query(
+      `update private.card_trades
+          set status = 'cancelled',
+              terminal_at = clock_timestamp(),
+              terminal_reason = 'cancelled'
+        where id = $1::uuid`,
+      [tradeId],
+    );
+
+    await expect(
+      evolutionService.previewEvolution(
+        TRADE_RESERVED_EVOLUTION_PLAYER_ID,
+        QUILLIP_DEFINITION_ID,
+      ),
+    ).resolves.toMatchObject({
+      ownedCopyCount: 3,
+      eligibleCopyCount: 3,
+      tradeReservedCopyCount: 0,
+      canEvolve: true,
+      unavailableReason: null,
+    });
   }, 30_000);
 
   it('keeps ownership and saved decks consistent when deck save races evolution', async () => {
