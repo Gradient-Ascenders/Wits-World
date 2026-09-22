@@ -25,6 +25,10 @@ interface PolicyRow extends pg.QueryResultRow {
   daily_cap_timezone: string;
 }
 
+interface OwnershipPolicyRow extends pg.QueryResultRow {
+  minimum_ownership_influence: number;
+}
+
 interface OwnershipRow extends pg.QueryResultRow {
   state_version: string;
   owner_player_id: string | null;
@@ -177,11 +181,8 @@ export async function settleTerritoryWindow(
     };
   }
 
-  const policyResult = await client.query<PolicyRow>(
-    `select (extract(epoch from settlement_cadence) * 1000)::integer
-              as settlement_cadence_ms,
-            minimum_ownership_influence,
-            daily_cap_timezone
+  const policyResult = await client.query<OwnershipPolicyRow>(
+    `select minimum_ownership_influence
        from private.territory_policy_versions
       where policy_version = $1`,
     [policyVersion],
@@ -478,6 +479,11 @@ export async function finalizeTerritorySeason(
     ],
   );
 
+  // Settlement receipts sample their own authoritative settled_at inside the
+  // database. Sample the reset instant only after every settlement statement has
+  // completed so the season_reset version cannot move ownership history backward.
+  const resetAt = await rankedDatabaseNow(client);
+
   for (const zone of zones.rows) {
     const ownership = await loadCurrentOwnership(client, zone.id);
     if (!ownership) continue;
@@ -508,7 +514,7 @@ export async function finalizeTerritorySeason(
         fresh.state_version,
         seasonId,
         fresh.owner_player_id,
-        closeAt,
+        resetAt,
       ],
     );
   }

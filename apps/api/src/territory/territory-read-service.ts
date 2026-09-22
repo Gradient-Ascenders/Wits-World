@@ -1,5 +1,7 @@
 import type pg from 'pg';
 
+import { TERRITORY_POLICY_VERSION } from './territory-grants.js';
+
 export interface TerritoryReadDatabase {
   query<T extends pg.QueryResultRow>(
     statement: string,
@@ -104,8 +106,6 @@ interface HistoryRow extends pg.QueryResultRow {
   effective_at: Date;
 }
 
-const POLICY_VERSION = 'territory-v1';
-
 export function createTerritoryReadService(
   database: TerritoryReadDatabase,
 ): TerritoryReadService {
@@ -139,7 +139,7 @@ export function createTerritoryReadService(
         `select daily_influence_cap, daily_cap_timezone
            from private.territory_policy_versions
           where policy_version = $1`,
-        [POLICY_VERSION],
+        [TERRITORY_POLICY_VERSION],
       );
       const policy = policyResult.rows[0];
       if (!policy) throw new Error('Territory policy is unavailable.');
@@ -160,15 +160,18 @@ export function createTerritoryReadService(
       }
 
       const top = await database.query<StandingRow>(
-        `with current_window as (
+        `with sampled as (
+           select clock_timestamp() as now
+         ), current_window as (
            select date_trunc(
                     'hour',
-                    timezone($3, clock_timestamp())
+                    timezone($3, sampled.now)
                   ) at time zone $3 as window_start,
                   (
-                    date_trunc('hour', timezone($3, clock_timestamp()))
+                    date_trunc('hour', timezone($3, sampled.now))
                     + interval '1 hour'
                   ) at time zone $3 as window_end
+             from sampled
          )
          select contribution.player_id::text,
                 count(*)::integer as influence,
@@ -185,16 +188,19 @@ export function createTerritoryReadService(
         [zoneId, seasonId, policy.daily_cap_timezone],
       );
       const viewer = await database.query<ViewerRow>(
-        `with current_window as (
+        `with sampled as (
+           select clock_timestamp() as now
+         ), current_window as (
            select date_trunc(
                     'hour',
-                    timezone($4, clock_timestamp())
+                    timezone($4, sampled.now)
                   ) at time zone $4 as window_start,
                   (
-                    date_trunc('hour', timezone($4, clock_timestamp()))
+                    date_trunc('hour', timezone($4, sampled.now))
                     + interval '1 hour'
                   ) at time zone $4 as window_end,
-                  timezone($4, clock_timestamp())::date as local_date
+                  timezone($4, sampled.now)::date as local_date
+             from sampled
          )
          select
            count(*) filter (
@@ -303,6 +309,8 @@ async function loadZones(
        select daily_cap_timezone
          from private.territory_policy_versions
         where policy_version = $1
+     ), sampled as (
+       select clock_timestamp() as now
      )
      select zone.id::text as zone_id,
             zone.name,
@@ -318,14 +326,14 @@ async function loadZones(
             case when season.id is null then null else
               date_trunc(
                 'hour',
-                timezone(policy.daily_cap_timezone, clock_timestamp())
+                timezone(policy.daily_cap_timezone, sampled.now)
               ) at time zone policy.daily_cap_timezone
             end as window_start,
             case when season.id is null then null else
               (
                 date_trunc(
                   'hour',
-                  timezone(policy.daily_cap_timezone, clock_timestamp())
+                  timezone(policy.daily_cap_timezone, sampled.now)
                 ) + interval '1 hour'
               ) at time zone policy.daily_cap_timezone
             end as window_end,
@@ -338,6 +346,7 @@ async function loadZones(
        left join public.players owner on owner.id = version.owner_player_id
        left join current_season season on true
        cross join current_policy policy
+       cross join sampled
        left join lateral (
          select receipt.settled_at
            from private.territory_settlement_receipts receipt
@@ -349,7 +358,7 @@ async function loadZones(
         and zone.status in ('active', 'suspended')
         and ($2::uuid is null or zone.id = $2::uuid)
       order by zone.name, zone.id`,
-    [POLICY_VERSION, zoneId ?? null],
+    [TERRITORY_POLICY_VERSION, zoneId ?? null],
   );
   return result.rows;
 }
@@ -364,7 +373,7 @@ async function requireVisibleZone(
       where id = $1::uuid
         and policy_version = $2
         and status in ('active', 'suspended')`,
-    [zoneId, POLICY_VERSION],
+    [zoneId, TERRITORY_POLICY_VERSION],
   );
   if (!result.rows[0]) throw new TerritoryZoneNotFoundError();
 }

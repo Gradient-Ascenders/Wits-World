@@ -144,6 +144,12 @@ describe('territory settlement maintenance transactions', () => {
               };
             }
             if (
+              statement.includes('select minimum_ownership_influence') &&
+              statement.includes('from private.territory_policy_versions')
+            ) {
+              return { rows: [{ minimum_ownership_influence: 3 }] };
+            }
+            if (
               statement.includes("date_trunc('hour'") &&
               statement.includes('as boundary')
             ) {

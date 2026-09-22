@@ -157,6 +157,38 @@ describe.skipIf(!enabled)('ranked service integration', () => {
       [previousSeasonId],
     );
     expect(territoryClose.rows[0]?.count).toBe('1');
+    const territoryResets = await pool.query<{
+      zone_id: string;
+      reset_at: Date;
+      previous_effective_at: Date;
+    }>(
+      `select reset.zone_id::text,
+              reset.effective_at as reset_at,
+              previous.effective_at as previous_effective_at
+         from private.territory_ownership_versions reset
+         join private.territory_ownership_versions previous
+           on previous.zone_id = reset.zone_id
+          and previous.state_version = reset.state_version - 1
+        where reset.ranked_season_id = $1::uuid
+          and reset.transition_kind = 'season_reset'
+        order by reset.zone_id`,
+      [previousSeasonId],
+    );
+    const activeTerritoryZones = await pool.query<{ count: string }>(
+      `select count(*)::text as count
+         from public.territory_zones
+        where policy_version = 'territory-v1'
+          and status = 'active'`,
+    );
+    expect(Number(activeTerritoryZones.rows[0]?.count ?? 0)).toBeGreaterThan(0);
+    expect(territoryResets.rows).toHaveLength(
+      Number(activeTerritoryZones.rows[0]?.count ?? 0),
+    );
+    for (const reset of territoryResets.rows) {
+      expect(reset.reset_at.getTime()).toBeGreaterThanOrEqual(
+        reset.previous_effective_at.getTime(),
+      );
+    }
     const carried = await pool.query<{
       rating: number;
       count: number;
