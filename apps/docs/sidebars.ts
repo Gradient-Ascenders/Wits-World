@@ -292,6 +292,11 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'architecture/contested-campus-territory-api-contract',
+              label: 'Contested-campus territory API',
+            },
+            {
+              type: 'doc',
               id: 'architecture/campaign-scheduling-api-contract',
               label: 'Campaign scheduling API',
             },

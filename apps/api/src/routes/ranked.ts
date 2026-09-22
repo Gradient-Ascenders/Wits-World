@@ -6,6 +6,12 @@ import type { RankedReadService } from '../matches/ranked-read-service.js';
 import type { RankedService } from '../matches/ranked-service.js';
 import { apiErrorSchema } from '../openapi/battle-schemas.js';
 import { InvalidCursorError } from '../security/signed-cursor.js';
+import { InvalidEventCoordinatesError } from '../events/event-eligibility.js';
+import { InvalidLocationClaimError } from '../events/location-claim.js';
+import {
+  TerritoryClaimError,
+  type TerritoryClaim,
+} from '../territory/territory-grants.js';
 
 interface Options {
   service: RankedService;
@@ -14,6 +20,7 @@ interface Options {
 
 interface JoinBody {
   deckId: string;
+  territoryClaim?: TerritoryClaim;
 }
 interface ProposalParams {
   proposalId: string;
@@ -207,6 +214,7 @@ const authenticated = {
     403: apiErrorSchema,
     404: apiErrorSchema,
     409: apiErrorSchema,
+    503: apiErrorSchema,
   },
 } as const;
 
@@ -226,14 +234,38 @@ export const rankedRoutes: FastifyPluginAsync<Options> = async (
           type: 'object',
           additionalProperties: false,
           required: ['deckId'],
-          properties: { deckId: uuid },
+          properties: {
+            deckId: uuid,
+            territoryClaim: {
+              type: 'object',
+              additionalProperties: false,
+              required: [
+                'zoneId',
+                'latitude',
+                'longitude',
+                'accuracyMetres',
+                'acquiredAt',
+              ],
+              properties: {
+                zoneId: uuid,
+                latitude: { type: 'number', minimum: -90, maximum: 90 },
+                longitude: { type: 'number', minimum: -180, maximum: 180 },
+                accuracyMetres: { type: 'number', minimum: 0 },
+                acquiredAt: { type: 'string', format: 'date-time' },
+              },
+            },
+          },
         },
         response: { ...authenticated.response, 200: queueSchema },
       },
     },
     async (request) => {
       try {
-        return await service.join(playerId(request), request.body.deckId);
+        return await service.join(
+          playerId(request),
+          request.body.deckId,
+          request.body.territoryClaim,
+        );
       } catch (error) {
         throw toApiError(error);
       }
@@ -454,6 +486,25 @@ function playerId(request: { player?: { id: string } | null }): string {
 }
 
 function toApiError(error: unknown): Error {
+  if (error instanceof TerritoryClaimError) {
+    return new ApiError({
+      statusCode: error.statusCode,
+      code: error.code,
+      title: 'Territory request unavailable',
+      detail: error.message,
+    });
+  }
+  if (
+    error instanceof InvalidEventCoordinatesError ||
+    error instanceof InvalidLocationClaimError
+  ) {
+    return new ApiError({
+      statusCode: 400,
+      code: 'TERRITORY_LOCATION_INVALID',
+      title: 'Invalid territory location claim',
+      detail: error.message,
+    });
+  }
   if (error instanceof InvalidCursorError) {
     return new ApiError({
       statusCode: 400,

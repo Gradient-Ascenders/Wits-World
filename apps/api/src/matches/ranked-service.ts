@@ -20,6 +20,13 @@ import {
 } from './ranked-database.js';
 import { createRankedLiveMatch } from './ranked-match-creation.js';
 import { rankedSearchRange } from './ranked-policy.js';
+import {
+  assertTerritoryQueueGrantAvailable,
+  createTerritoryQueueGrant,
+  loadTerritoryGrantForQueue,
+  TerritoryGrantUnavailableError,
+  type TerritoryClaim,
+} from '../territory/territory-grants.js';
 
 type QueueStatus =
   | 'searching'
@@ -55,6 +62,7 @@ interface QueueRow extends pg.QueryResultRow {
   active_proposal_id: string | null;
   terminal_at: Date | null;
   version: number;
+  territory_contender: boolean;
 }
 
 interface ProposalRow extends pg.QueryResultRow {
@@ -70,6 +78,7 @@ interface ProposalPlayer extends pg.QueryResultRow {
   acceptance_status: AcceptanceStatus;
   selected_deck_id: string | null;
   original_joined_at: Date;
+  territory_contender: boolean;
 }
 
 interface QueueViewRow extends QueueRow {
@@ -92,7 +101,11 @@ export interface RankedQueueView {
 }
 
 export interface RankedService {
-  join(playerId: string, deckId: string): Promise<RankedQueueView>;
+  join(
+    playerId: string,
+    deckId: string,
+    territoryClaim?: TerritoryClaim,
+  ): Promise<RankedQueueView>;
   status(playerId: string): Promise<RankedQueueView>;
   heartbeat(playerId: string): Promise<RankedQueueView>;
   cancel(playerId: string): Promise<RankedQueueView>;
@@ -120,6 +133,7 @@ export function createRankedService(
   async function join(
     playerId: string,
     deckId: string,
+    territoryClaim?: TerritoryClaim,
   ): Promise<RankedQueueView> {
     return rankedTransaction(database, async (client) => {
       const player = await client.query<{ lifecycle_status: string }>(
@@ -150,10 +164,42 @@ export function createRankedService(
           now >= active.lease_expires_at
         ) {
           await terminalizeQueue(client, active.id, 'expired', now);
-        } else if (active.selected_deck_id === deckId) {
+        } else if (
+          active.status === 'searching' &&
+          active.territory_contender
+        ) {
+          try {
+            await assertTerritoryQueueGrantAvailable(client, {
+              queueEntryId: active.id,
+              playerId,
+              territoryContender: true,
+              now,
+              lock: true,
+            });
+          } catch (error) {
+            if (!(error instanceof TerritoryGrantUnavailableError)) throw error;
+            await terminalizeQueue(client, active.id, 'cancelled', now);
+          }
+        }
+        const stillActive = await loadActiveQueue(client, playerId, true);
+        if (stillActive) {
+          if (
+            stillActive.selected_deck_id !== deckId ||
+            stillActive.territory_contender !== Boolean(territoryClaim)
+          ) {
+            throw rankedConflict();
+          }
+          if (territoryClaim) {
+            const grant = await loadTerritoryGrantForQueue(
+              client,
+              stillActive.id,
+              true,
+            );
+            if (!grant || grant.zone_id !== territoryClaim.zoneId) {
+              throw rankedConflict();
+            }
+          }
           return loadQueueView(client, playerId, now);
-        } else {
-          throw rankedConflict();
         }
       }
 
@@ -182,16 +228,33 @@ export function createRankedService(
 
       await assertPlayerEligible(client, playerId, deckId, trustRestrictions);
       await ensureSeasonRating(client, season.id, playerId, now);
+      const queueEntryId = randomUUID();
       await client.query(
         `insert into private.ranked_queue_entries (
-           season_id, player_id, selected_deck_id, original_joined_at,
-           lease_expires_at, created_at, updated_at
+           id, season_id, player_id, selected_deck_id, territory_contender,
+           original_joined_at, lease_expires_at, created_at, updated_at
          ) values (
-           $1::uuid, $2::uuid, $3::uuid, $4,
-           $4::timestamptz + interval '30 seconds', $4, $4
+           $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6,
+           $6::timestamptz + interval '30 seconds', $6, $6
          )`,
-        [season.id, playerId, deckId, now],
+        [
+          queueEntryId,
+          season.id,
+          playerId,
+          deckId,
+          Boolean(territoryClaim),
+          now,
+        ],
       );
+      if (territoryClaim) {
+        await createTerritoryQueueGrant(client, {
+          queueEntryId,
+          seasonId: season.id,
+          playerId,
+          claim: territoryClaim,
+          now,
+        });
+      }
       return loadQueueView(client, playerId, now);
     });
   }
@@ -367,6 +430,7 @@ export function createRankedService(
           players.filter((player) => player.acceptance_status === 'accepted'),
           trustRestrictions,
         );
+        await addUnavailableTerritoryPlayers(client, players, invalid, now);
         await resolveProposal(
           client,
           proposal,
@@ -435,9 +499,20 @@ export function createRankedService(
               playerId: row.player_id,
               queueEntryId: row.queue_entry_id,
               deckId: row.selected_deck_id!,
+              territoryContender: row.territory_contender,
             })) as [
-              { playerId: string; queueEntryId: string; deckId: string },
-              { playerId: string; queueEntryId: string; deckId: string },
+              {
+                playerId: string;
+                queueEntryId: string;
+                deckId: string;
+                territoryContender: boolean;
+              },
+              {
+                playerId: string;
+                queueEntryId: string;
+                deckId: string;
+                territoryContender: boolean;
+              },
             ],
             now,
           });
@@ -491,7 +566,8 @@ async function loadActiveQueue(
   const result = await client.query<QueueRow>(
     `select id::text, season_id::text, player_id::text,
             selected_deck_id::text, status, original_joined_at,
-            lease_expires_at, active_proposal_id::text, terminal_at, version
+            lease_expires_at, active_proposal_id::text, terminal_at, version,
+            territory_contender
        from private.ranked_queue_entries
       where player_id = $1::uuid and status in ('searching', 'proposed')
       limit 1 ${lock ? 'for update' : ''}`,
@@ -509,7 +585,7 @@ async function loadQueueView(
     `select queue.id::text, queue.season_id::text, queue.player_id::text,
             queue.selected_deck_id::text, queue.status, queue.original_joined_at,
             queue.lease_expires_at, queue.active_proposal_id::text,
-            queue.terminal_at, queue.version,
+            queue.terminal_at, queue.version, queue.territory_contender,
             proposal.acceptance_deadline,
             response.acceptance_status,
             receipt.match_id::text
@@ -731,7 +807,7 @@ async function loadProposalPlayers(
   const result = await client.query<ProposalPlayer>(
     `select response.player_id::text, response.queue_entry_id::text,
             response.acceptance_status, queue.selected_deck_id::text,
-            queue.original_joined_at
+            queue.original_joined_at, queue.territory_contender
        from private.ranked_matchmaking_proposal_participants response
        join private.ranked_queue_entries queue
          on queue.id = response.queue_entry_id
@@ -764,8 +840,17 @@ async function findInvalidPlayers(
         player.selected_deck_id,
         restrictions,
       );
+      await assertTerritoryQueueGrantAvailable(client, {
+        queueEntryId: player.queue_entry_id,
+        playerId: player.player_id,
+        territoryContender: player.territory_contender,
+        now: await rankedDatabaseNow(client),
+        lock: true,
+      });
     } catch (error) {
-      if (error instanceof RankedError) {
+      if (error instanceof TerritoryGrantUnavailableError) {
+        invalid.set(player.player_id, 'cancelled');
+      } else if (error instanceof RankedError) {
         invalid.set(
           player.player_id,
           error.code === 'RANKED_DECK_INVALID'
@@ -782,6 +867,29 @@ async function findInvalidPlayers(
   return invalid;
 }
 
+async function addUnavailableTerritoryPlayers(
+  client: RankedClient,
+  players: readonly ProposalPlayer[],
+  invalid: Map<string, 'invalid_deck' | 'restricted' | 'cancelled'>,
+  now: Date,
+): Promise<void> {
+  for (const player of players) {
+    if (invalid.has(player.player_id) || !player.territory_contender) continue;
+    try {
+      await assertTerritoryQueueGrantAvailable(client, {
+        queueEntryId: player.queue_entry_id,
+        playerId: player.player_id,
+        territoryContender: true,
+        now,
+        lock: true,
+      });
+    } catch (error) {
+      if (!(error instanceof TerritoryGrantUnavailableError)) throw error;
+      invalid.set(player.player_id, 'cancelled');
+    }
+  }
+}
+
 async function resolveProposal(
   client: RankedClient,
   proposal: ProposalRow,
@@ -792,16 +900,15 @@ async function resolveProposal(
 ): Promise<void> {
   for (const player of players) {
     if (player.acceptance_status !== 'pending') continue;
-    const nextStatus: AcceptanceStatus =
-      reason === 'timeout'
+    const nextStatus: AcceptanceStatus = invalid?.has(player.player_id)
+      ? 'invalid'
+      : reason === 'timeout'
         ? 'timed_out'
         : reason === 'decline'
           ? 'timed_out'
           : reason === 'system'
             ? 'system_cancelled'
-            : invalid?.has(player.player_id)
-              ? 'invalid'
-              : 'system_cancelled';
+            : 'system_cancelled';
     await client.query(
       `update private.ranked_matchmaking_proposal_participants
           set acceptance_status = $3, responded_at = $4,
@@ -924,6 +1031,7 @@ async function expireProposals(
           players.filter((player) => player.acceptance_status === 'accepted'),
           restrictions,
         );
+        await addUnavailableTerritoryPlayers(client, players, invalid, now);
         await resolveProposal(
           client,
           proposal,
@@ -949,6 +1057,7 @@ interface SearchEntry extends pg.QueryResultRow {
   original_joined_at: Date;
   lease_expires_at: Date;
   rating: number;
+  territory_contender: boolean;
 }
 
 async function pairOnce(
@@ -970,7 +1079,7 @@ async function pairOnce(
     const anchors = await client.query<SearchEntry>(
       `select queue.id::text, queue.player_id::text,
               queue.selected_deck_id::text, queue.original_joined_at,
-              queue.lease_expires_at, rating.rating
+              queue.lease_expires_at, rating.rating, queue.territory_contender
          from private.ranked_queue_entries queue
          join public.ranked_player_season_ratings rating
            on rating.season_id = queue.season_id
@@ -985,7 +1094,7 @@ async function pairOnce(
       const candidates = await client.query<SearchEntry>(
         `select queue.id::text, queue.player_id::text,
                 queue.selected_deck_id::text, queue.original_joined_at,
-                queue.lease_expires_at, rating.rating
+                queue.lease_expires_at, rating.rating, queue.territory_contender
            from private.ranked_queue_entries queue
            join public.ranked_player_season_ratings rating
              on rating.season_id = queue.season_id
@@ -1019,7 +1128,7 @@ async function pairOnce(
       const locked = await client.query<SearchEntry>(
         `select queue.id::text, queue.player_id::text,
                 queue.selected_deck_id::text, queue.original_joined_at,
-                queue.lease_expires_at, rating.rating
+                queue.lease_expires_at, rating.rating, queue.territory_contender
            from private.ranked_queue_entries queue
            join public.ranked_player_season_ratings rating
              on rating.season_id = queue.season_id
@@ -1060,7 +1169,19 @@ async function pairOnce(
             entry.selected_deck_id,
             restrictions,
           );
+          await assertTerritoryQueueGrantAvailable(client, {
+            queueEntryId: entry.id,
+            playerId: entry.player_id,
+            territoryContender: entry.territory_contender,
+            now: claimNow,
+            lock: true,
+          });
         } catch (error) {
+          if (error instanceof TerritoryGrantUnavailableError) {
+            await terminalizeQueue(client, entry.id, 'cancelled', claimNow);
+            invalid = true;
+            continue;
+          }
           if (!(error instanceof RankedError)) throw error;
           await terminalizeQueue(
             client,

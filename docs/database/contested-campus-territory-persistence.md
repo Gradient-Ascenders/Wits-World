@@ -8,13 +8,13 @@ title: 'Contested-campus territory persistence'
 
 Migration `0053_persist_contested_territory.sql` implements issue `#268`, the
 persistence foundation for the Advanced-tier
-[`territory-v1` policy](../requirements/contested-campus-zone-policy.md). It
-stores reviewed zone definitions, ranked-result contribution evidence,
-settlement receipts, immutable ownership state history, and a rebuildable
-current-owner projection. It does not calculate influence eligibility or a
-settlement winner and does not add location grants, ranked match-to-zone
-snapshots, HTTP routes, workers, owner rewards, or map UI. Those runtime
-boundaries remain issue `#270`.
+[`territory-v1` policy](../requirements/contested-campus-zone-policy.md).
+Migration `0054_implement_contested_territory_runtime.sql` implements the
+issue `#270` runtime persistence without rewriting `0053`: private short-lived
+zone grants, immutable ranked match snapshots, season-close sealing, final
+partial settlement support, and owner-bonus snapshots/decisions. The API then
+calculates contribution eligibility and deterministic ownership from those
+contracts. Map presentation remains issue `#271`.
 
 The existing ranked subsystem remains the only rating and battle authority. A
 territory contribution decision must reference one committed
@@ -34,6 +34,11 @@ be used as a territory source through this schema.
 | `private.territory_settlement_totals`       | Immutable per-player accepted counts, first-contribution tie-break input, and eligibility snapshot for one receipt.           |
 | `private.territory_ownership_versions`      | Append-only owner state after activation, settlement, lifecycle changes, account deletion, and later season reset operations. |
 | `private.territory_current_ownership`       | Rebuildable one-row-per-zone projection pointing at the latest ownership version.                                             |
+| `private.territory_zone_grants`             | Short-lived queue-bound eligibility grants containing coarse evidence only; no latitude, longitude, accuracy, or path.        |
+| `private.territory_ranked_match_snapshots`  | Immutable per-participant zone/policy context consumed atomically when a ranked live match is created.                        |
+| `private.territory_season_close_receipts`   | Exactly-once seal proving all ranked sources and active-zone settlement reached one authoritative close instant.              |
+| `private.territory_owner_bonus_snapshots`   | Challenge-start ownership/date eligibility frozen from authoritative event placement and current ownership.                   |
+| `private.territory_owner_bonus_decisions`   | Exactly-once bonus outcome with a unique awarded player/Johannesburg-date boundary.                                           |
 
 Relations in the `private` schema have privileges revoked from PostgreSQL
 `PUBLIC`. `public.territory_zones` is a database-schema placement, not a browser
@@ -155,10 +160,12 @@ version.
 accepted contribution for each contributing player plus the service's
 account-eligibility decision. Deferred validation compares those immutable count
 and earliest-time facts with the accepted contribution ledger for the receipt's
-window. The schema deliberately does **not** choose the winning player; applying
-the threshold, incumbent tie rule, challenger tie break, account eligibility,
-chronological catch-up, and season-final settlement remains the issue `#270`
-server service.
+window. The issue `#270` settlement service now chooses the winner deterministically:
+minimum threshold, highest count, incumbent tie retention, earliest accepted
+contribution, then stable internal UUID. The service writes the immutable totals
+and SHA-256 input digest before the database advances ownership state. Normal
+receipts remain exactly one cadence; `0054` adds a distinct `season_final` kind
+for the closing partial window and an exactly-once season-close seal.
 
 The required runtime lock boundary is one territory-zone row, with player locks
 ordered before that zone boundary. Future ranked completion must finish its
@@ -214,3 +221,37 @@ a CI/release gate under the documented
 
 This page and the issue `#268` implementation were generated and reviewed with
 assistance from ChatGPT-Web[GPT-5.6 Sol].
+
+## Runtime grants, finalization, and owner bonus (`0054`)
+
+`private.territory_zone_grants` deliberately has no coordinate or accuracy
+columns. The API evaluates the untrusted claim with PostGIS and persists only
+the queue/player/zone/policy/lifecycle decision, device acquisition time,
+server issue/expiry time, and one-time consumption state. Used grants may be
+cleaned after the policy deadline because the immutable ranked-match snapshot
+retains the gameplay provenance needed for settlement.
+
+Ranked terminal settlement writes the territory contribution decision inside
+the same transaction as the authoritative ranked rating settlement. The API
+locks the contributing player before the target zone, rechecks the daily cap,
+and samples the accepted contribution timestamp only after the zone lock. The
+same player-before-zone ordering is used by settlement and account-deletion
+interactions. A stale ownership version or a contributor discovered while the
+zone boundary is being acquired causes a bounded rollback-to-savepoint retry.
+
+Season closure freezes one database close instant after all ranked source
+matches have settled. Complete missed hourly windows are caught up first; each
+active zone then settles the remaining partial interval to that same instant.
+`private.territory_season_close_receipts` seals contribution history, and an
+unowned `season_reset` ownership version is appended before the ranked season
+may become closed.
+
+Owner bonus state is private. Challenge start freezes effective event-location
+ownership and the Johannesburg bonus date; completion writes an immutable safe
+outcome. A partial unique index permits at most one `awarded` decision per
+player/date, and the owned bonus card references that decision while continuing
+to use the existing event-completion card ownership lifecycle. Eligible card
+definitions are active, published, reward-eligible, Common, and non-evolved.
+
+Player-facing route and privacy details are documented in the
+[contested-campus territory API contract](../architecture/contested-campus-territory-api-contract.md).

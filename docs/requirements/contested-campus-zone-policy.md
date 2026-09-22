@@ -12,14 +12,15 @@ how authoritative ranked wins create influence, how concurrent influence is
 settled, and what owning a zone provides.
 
 Issue `#268` is implemented by migration
-`0053_persist_contested_territory.sql`. It persists the immutable `territory-v1`
-policy snapshot, separately versioned reviewed zone geometry, exactly-once
-contribution decisions and accepted influence, settlement receipts and totals,
-and rebuildable current ownership backed by immutable ownership history. It
-does not implement location grants, match-to-zone snapshots, settlement
-calculation, workers, player APIs, map overlays, or owner rewards. Those runtime
-boundaries remain issue `#270`; issue `#271` may present the resulting player
-experience. Territory reuses completed ranked results from the
+`0053_persist_contested_territory.sql`, which persists the immutable
+`territory-v1` policy snapshot, independently reviewed zone geometry,
+contribution/settlement ledgers, and ownership history. Issue `#270` adds the
+runtime contract through additive migration
+`0054_implement_contested_territory_runtime.sql` and API services: short-lived
+location grants, ranked match-to-zone snapshots, transactional influence,
+deterministic hourly and season-final settlement, player-safe read APIs, and the
+owner card bonus. Issue `#271` remains responsible for the contested-campus map
+presentation. Territory reuses completed ranked results from the
 [ranked competition policy](ranked-competition-policy.md); it does not create a
 second matchmaking, rating, or battle authority. The corresponding database
 contract is documented in

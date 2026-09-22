@@ -4,11 +4,13 @@ import { createBattleState } from '@wits-world/game-rules';
 
 import { loadPlayerBattleDeck } from './player-battle-deck.js';
 import type { RankedClient } from './ranked-database.js';
+import { consumeTerritoryGrantForMatch } from '../territory/territory-grants.js';
 
 export interface RankedMatchCandidate {
   playerId: string;
   queueEntryId: string;
   deckId: string;
+  territoryContender: boolean;
 }
 
 /** The caller holds the season, both player, proposal, and queue row locks. */
@@ -132,6 +134,35 @@ export async function createRankedLiveMatch(
     [input.proposalId, matchId, input.seasonId, input.policyVersion, input.now],
   );
   for (const player of input.players) {
+    const territory = await consumeTerritoryGrantForMatch(client, {
+      queueEntryId: player.queueEntryId,
+      playerId: player.playerId,
+      territoryContender: player.territoryContender,
+      matchId,
+      now: input.now,
+    });
+    await client.query(
+      `insert into private.territory_ranked_match_snapshots (
+         match_id, player_id, ranked_season_id, ranked_policy_version,
+         territory_policy_version, zone_id, source_grant_id,
+         zone_lifecycle_version, snapshotted_at
+       ) values (
+         $1::uuid, $2::uuid, $3::uuid, $4,
+         $5, $6::uuid, $7::uuid, $8, $9::timestamptz
+       )`,
+      [
+        matchId,
+        player.playerId,
+        input.seasonId,
+        input.policyVersion,
+        territory.territoryPolicyVersion,
+        territory.zoneId,
+        territory.sourceGrantId,
+        territory.zoneLifecycleVersion,
+        territory.snapshottedAt,
+      ],
+    );
+
     const rating = ratings.rows.find(
       (row) => row.player_id === player.playerId,
     );

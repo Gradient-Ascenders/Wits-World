@@ -63,6 +63,8 @@ import type { LivePvpGateway } from './matches/live-pvp-gateway.js';
 import type { RankedService } from './matches/ranked-service.js';
 import type { RankedReadService } from './matches/ranked-read-service.js';
 import { rankedRoutes } from './routes/ranked.js';
+import type { TerritoryReadService } from './territory/territory-read-service.js';
+import { territoryRoutes } from './routes/territory.js';
 import { offlineChallengeRoutes } from './routes/offline-challenges.js';
 import type { OfflineChallengeService } from './challenges/offline-challenges.js';
 
@@ -128,6 +130,9 @@ export interface BuildAppOptions {
     service: RankedService;
     reads: RankedReadService;
   };
+  territory?: {
+    reads: TerritoryReadService;
+  };
   progressionReadService?: ProgressionReadService;
   rateProtection?: AuthenticatedRateProtection;
 }
@@ -189,6 +194,7 @@ export async function buildApp({
   asyncPvpService,
   livePvp,
   ranked,
+  territory,
   progressionReadService,
   rateProtection,
   offlineChallengeService,
@@ -217,6 +223,18 @@ export async function buildApp({
               'body.longitude',
               'body.accuracyMetres',
               'body.acquiredAt',
+              'req.body.territoryClaim.latitude',
+              'req.body.territoryClaim.longitude',
+              'req.body.territoryClaim.accuracyMetres',
+              'req.body.territoryClaim.acquiredAt',
+              'request.body.territoryClaim.latitude',
+              'request.body.territoryClaim.longitude',
+              'request.body.territoryClaim.accuracyMetres',
+              'request.body.territoryClaim.acquiredAt',
+              'body.territoryClaim.latitude',
+              'body.territoryClaim.longitude',
+              'body.territoryClaim.accuracyMetres',
+              'body.territoryClaim.acquiredAt',
               'req.body.packToken',
               'request.body.packToken',
               'body.packToken',
@@ -302,6 +320,10 @@ export async function buildApp({
     throw new Error('Ranked routes require the player identity service.');
   }
 
+  if (territory && !playerIdentityService) {
+    throw new Error('Territory routes require the player identity service.');
+  }
+
   if (asyncPvpService && !playerIdentityService) {
     throw new Error(
       'Asynchronous PvP routes require the player identity service.',
@@ -375,6 +397,11 @@ export async function buildApp({
         {
           name: 'Ranked',
           description: 'Server-owned ranked live queue, rating, and seasons.',
+        },
+        {
+          name: 'Territory',
+          description:
+            'Privacy-safe contested-campus zones, influence, and ownership history.',
         },
         {
           name: 'Progression',
@@ -581,6 +608,13 @@ export async function buildApp({
       prefix: '/api/v1',
       service: ranked.service,
       reads: ranked.reads,
+    });
+  }
+
+  if (territory) {
+    await app.register(territoryRoutes, {
+      prefix: '/api/v1',
+      reads: territory.reads,
     });
   }
 

@@ -325,6 +325,44 @@ const completedReviewEntrySchema = {
   },
 } as const;
 
+const territoryOwnerBonusCardSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'ownedCardId',
+    'cardDefinitionId',
+    'name',
+    'category',
+    'affinity',
+    'rarity',
+  ],
+  properties: {
+    ownedCardId: { type: 'string', format: 'uuid' },
+    cardDefinitionId: { type: 'string', format: 'uuid' },
+    name: { type: 'string' },
+    category: { type: 'string', enum: ['creature', 'power'] },
+    affinity: {
+      anyOf: [
+        { type: 'string', enum: ['wit', 'grit', 'spark', 'spirit', 'mystic'] },
+        { type: 'null' },
+      ],
+    },
+    rarity: { type: 'string', const: 'common' },
+  },
+} as const;
+
+const territoryOwnerBonusSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['outcome', 'card'],
+  properties: {
+    outcome: {
+      enum: ['awarded', 'not_eligible', 'score_too_low', 'already_claimed'],
+    },
+    card: { anyOf: [territoryOwnerBonusCardSchema, { type: 'null' }] },
+  },
+} as const;
+
 export const completedAttemptResponseSchema = {
   type: 'object',
   additionalProperties: false,
@@ -388,6 +426,7 @@ export const completedAttemptResponseSchema = {
         },
       },
     },
+    ownerBonus: territoryOwnerBonusSchema,
     review: {
       type: 'array',
       minItems: 5,
@@ -547,6 +586,7 @@ export const completedOrderingAttemptResponseSchema = {
     totalQuestions: { type: 'integer', const: 5 },
     scoreCorrect: { type: 'integer', minimum: 0, maximum: 5 },
     reward: completedAttemptResponseSchema.properties.reward,
+    ownerBonus: territoryOwnerBonusSchema,
     review: {
       type: 'array',
       minItems: 5,

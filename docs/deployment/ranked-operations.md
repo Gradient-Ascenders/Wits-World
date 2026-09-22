@@ -23,9 +23,10 @@ activation. Only one season may be active or closing.
 ## Release and configuration
 
 The production database release must apply migration `0047` and the issue
-`#266` snapshot migration `0050`, proposal withdrawal migration `0051`, and
-invalid-proposal cooldown migration `0052`
-before starting the new API. Existing
+`#266` snapshot migration `0050`, proposal withdrawal migration `0051`,
+invalid-proposal cooldown migration `0052`, territory persistence migration
+`0053`, and territory runtime migration `0054` before starting the new API.
+Existing
 deployment ordering already runs database release before API deployment. A
 database backup or point-in-time recovery plan should cover the release; do
 not reverse a ranked migration after ranked matches have settled.
@@ -40,12 +41,21 @@ It must never be a `VITE_*` value.
 
 On startup and each sweep, the worker checks the season, expires stale search
 leases and proposals, claims eligible pairs, and once per minute drains expired
-ten-minute standings snapshots in 100-row delete batches. The live PvP deadline
-worker remains
-responsible for active match completion; ranked settlement runs inside each
-live terminal transaction. A closing season waits for every ranked receipt to
-have a settlement before it seals the archive and activates the next due
-season. Do not manually mark a live match complete or alter rating rows.
+ten-minute standings snapshots in 100-row delete batches. The same ranked worker
+throttles territory maintenance to approximately once per minute: it settles due
+`territory-v1` windows chronologically and removes expired short-lived grants.
+The live PvP deadline worker remains responsible for active match completion;
+ranked rating settlement and qualifying territory influence recording run inside
+the authoritative live terminal transaction.
+
+A closing season now waits for both systems. Every ranked receipt must first have
+a rating settlement. The territory finalizer then catches up complete hourly
+windows, settles one final partial window per active zone, records the season
+close receipt, and appends the unowned `season_reset` state. Only after that
+transaction succeeds may ranked standings be archived and the season become
+`closed`. A failed or stale territory attempt leaves the season `closing` so the
+next sweep can retry safely. Do not manually mark a live match complete, alter
+rating rows, insert ownership state, or force a ranked season closed.
 
 ## Operational checks
 
@@ -55,10 +65,14 @@ activation. Test a two-player queue and match in a disposable environment
 before enabling player UI. Check that one match yields one settlement receipt
 and two ledger entries, and that repeated reads return the same values. Watch
 ranked sweep failures, active/closing season age, stale queue/proposal counts,
-and unmatched ranked receipts. Investigate an unsettled terminal match before
+unmatched ranked receipts, territory windows awaiting settlement, failed stale
+state retries, and expired-grant cleanup. During a closing season, confirm a
+`territory_season_close_receipts` row exists before expecting the ranked archive
+to seal. Investigate an unsettled terminal match or territory window before
 attempting a season close. The full database test suite runs in Gitea CI; a
 local focused test must use `TEST_DATABASE_URL` only.
 
 ## AI declaration
 
-This document was created and reviewed with assistance from Codex (GPT-5).
+This document was created and reviewed with assistance from Codex (GPT-5) and
+ChatGPT-Web[GPT-5.6 Sol].

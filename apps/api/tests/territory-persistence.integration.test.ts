@@ -24,6 +24,7 @@ import {
 import { runSeeds } from '../src/database/seeds.js';
 
 const MIGRATION_NAME = '0053_persist_contested_territory.sql';
+const RUNTIME_MIGRATION_NAME = '0054_implement_contested_territory_runtime.sql';
 const SEED_NAME = '0004_territory_catalogue.sql';
 const TERRITORY_POLICY = 'territory-v1';
 const RANKED_POLICY = 'ranked-v1';
@@ -83,6 +84,7 @@ describe.skipIf(!runIntegrationTests)(
 
       const migrationResult = await runMigrations(temporaryConfig);
       expect(migrationResult.applied).toContain(MIGRATION_NAME);
+      expect(migrationResult.applied).toContain(RUNTIME_MIGRATION_NAME);
       const seedResult = await runSeeds(temporaryConfig);
       expect(seedResult.applied).toContain(SEED_NAME);
 
@@ -131,6 +133,55 @@ describe.skipIf(!runIntegrationTests)(
         );
       });
     }, 30_000);
+
+    it('adds private runtime state without retaining precise territory claims', async () => {
+      const grantColumns = await pool.query<{ column_name: string }>(
+        `select column_name
+           from information_schema.columns
+          where table_schema = 'private'
+            and table_name = 'territory_zone_grants'
+          order by ordinal_position`,
+      );
+      const columnNames = grantColumns.rows.map((row) => row.column_name);
+      expect(columnNames).toEqual(
+        expect.arrayContaining([
+          'queue_entry_id',
+          'player_id',
+          'zone_id',
+          'territory_policy_version',
+          'device_acquired_at',
+          'issued_at',
+          'expires_at',
+          'used_at',
+          'used_match_id',
+        ]),
+      );
+      expect(columnNames).not.toEqual(
+        expect.arrayContaining(['latitude', 'longitude', 'accuracy_metres']),
+      );
+
+      const runtimeColumns = await pool.query<{
+        settlement_kind: boolean;
+        bonus_source: boolean;
+      }>(
+        `select
+           exists (
+             select 1 from information_schema.columns
+              where table_schema = 'private'
+                and table_name = 'territory_settlement_receipts'
+                and column_name = 'settlement_kind'
+           ) settlement_kind,
+           exists (
+             select 1 from information_schema.columns
+              where table_schema = 'public'
+                and table_name = 'player_cards'
+                and column_name = 'source_territory_bonus_id'
+           ) bonus_source`,
+      );
+      expect(runtimeColumns.rows).toEqual([
+        { settlement_kind: true, bonus_source: true },
+      ]);
+    });
 
     it('persists territory-v1 privately and copies reviewed PostGIS zones with independent lifecycle', async () => {
       const policy = await pool.query<{

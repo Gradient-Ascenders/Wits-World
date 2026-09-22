@@ -150,6 +150,13 @@ describe.skipIf(!enabled)('ranked service integration', () => {
         { id: seasonId, status: 'active' },
       ]),
     );
+    const territoryClose = await pool.query<{ count: string }>(
+      `select count(*)::text as count
+         from private.territory_season_close_receipts
+        where ranked_season_id = $1::uuid`,
+      [previousSeasonId],
+    );
+    expect(territoryClose.rows[0]?.count).toBe('1');
     const carried = await pool.query<{
       rating: number;
       count: number;

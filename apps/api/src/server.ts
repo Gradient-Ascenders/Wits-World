@@ -56,6 +56,8 @@ import { createPlacementScheduler } from './placement/placement-scheduler.js';
 import { createRankedService } from './matches/ranked-service.js';
 import { createRankedReadService } from './matches/ranked-read-service.js';
 import { createRankedScheduler } from './matches/ranked-scheduler.js';
+import { createTerritoryOwnerBonusService } from './territory/territory-owner-bonus.js';
+import { createTerritoryReadService } from './territory/territory-read-service.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
@@ -83,6 +85,8 @@ async function startServer(): Promise<void> {
     database,
     createSignedCursorCodec(config.asyncPvpCursorSigningKey),
   );
+  const territoryOwnerBonus = createTerritoryOwnerBonusService();
+  const territoryReadService = createTerritoryReadService(database);
 
   const movementEvidenceService = createMovementEvidenceService(database, {
     maxPlausibleJourneySpeedMetresPerSecond:
@@ -92,7 +96,7 @@ async function startServer(): Promise<void> {
   });
   const challengeAttemptStartService = createChallengeAttemptStartService(
     database,
-    { movementEvidenceService, trustRestrictions },
+    { movementEvidenceService, trustRestrictions, territoryOwnerBonus },
   );
   const starterGrantService = createStarterGrantService(database);
   const cardCollectionService = createCardCollectionService(database);
@@ -122,7 +126,10 @@ async function startServer(): Promise<void> {
     },
   });
   const challengeAttemptCompletionFinalizer =
-    createChallengeAttemptCompletionFinalizer({ progressionPersistence });
+    createChallengeAttemptCompletionFinalizer({
+      progressionPersistence,
+      territoryOwnerBonus,
+    });
   const challengeAnswerSubmissionService =
     createChallengeAnswerSubmissionService(database, {
       finalizer: challengeAttemptCompletionFinalizer,
@@ -194,6 +201,7 @@ async function startServer(): Promise<void> {
       webSocketUrl: config.livePvpWebSocketUrl,
     },
     ranked: { service: rankedService, reads: rankedReadService },
+    territory: { reads: territoryReadService },
     progressionReadService,
 
     accountDeletionServices: {

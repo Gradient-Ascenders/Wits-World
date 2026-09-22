@@ -6,6 +6,7 @@ import {
   type RankedClient,
   type RankedDatabase,
 } from './ranked-database.js';
+import { finalizeTerritorySeason } from '../territory/territory-settlement.js';
 
 interface SeasonRow extends pg.QueryResultRow {
   id: string;
@@ -65,7 +66,9 @@ export async function maintainRankedSeasons(
         [current.id],
       );
       if (unsettled.rows[0]) return result;
-      await closeSeason(client, current.id, now);
+      await finalizeTerritorySeason(client, current.id);
+      const closeNow = await rankedDatabaseNow(client);
+      await closeSeason(client, current.id, closeNow);
       result.closedSeason = true;
     }
 

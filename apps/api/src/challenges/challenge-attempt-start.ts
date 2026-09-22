@@ -1,6 +1,7 @@
 import type pg from 'pg';
 
 import type { TrustRestrictionService } from '../trust/trust-restrictions.js';
+import type { TerritoryOwnerBonusService } from '../territory/territory-owner-bonus.js';
 
 import {
   createChallengeAttemptReader,
@@ -110,6 +111,7 @@ interface CreateChallengeAttemptStartServiceOptions {
   randomIndex?: RandomIndexSource;
   maxLocationClaimAgeMs?: number;
   trustRestrictions?: Pick<TrustRestrictionService, 'assertAllowed'>;
+  territoryOwnerBonus?: Pick<TerritoryOwnerBonusService, 'snapshotAttempt'>;
 }
 
 interface PublishedChallengeRow extends pg.QueryResultRow {
@@ -176,6 +178,7 @@ export function createChallengeAttemptStartService(
     randomIndex = secureRandomIndex,
     maxLocationClaimAgeMs = PROVISIONAL_MAX_LOCATION_CLAIM_AGE_MS,
     trustRestrictions,
+    territoryOwnerBonus,
   }: CreateChallengeAttemptStartServiceOptions,
 ): ChallengeAttemptStartService {
   return {
@@ -473,6 +476,15 @@ export function createChallengeAttemptStartService(
             outcome: 'resumed',
             attempt: concurrentWinner,
           };
+        }
+
+        if (territoryOwnerBonus) {
+          await territoryOwnerBonus.snapshotAttempt(client, {
+            attemptId: insertedAttempt.attempt_id,
+            playerId: input.playerId,
+            eventId: input.eventId,
+            startedAt,
+          });
         }
 
         for (const [questionIndex, question] of preparedQuestions.entries()) {
