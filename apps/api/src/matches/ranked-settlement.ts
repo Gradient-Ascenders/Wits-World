@@ -1,6 +1,7 @@
 import type pg from 'pg';
 
 import type { LiveCompletionReason } from './live-pvp-service.js';
+import { recordTerritoryContribution } from '../territory/territory-contributions.js';
 
 interface QueryClient {
   query<T extends pg.QueryResultRow>(
@@ -120,6 +121,14 @@ export async function settleRankedMatch(
       input.completedAt,
     ],
   );
+
+  await recordTerritoryContribution(client, {
+    matchId: input.matchId,
+    seasonId: ranked.season_id,
+    rankedPolicyVersion: ranked.policy_version,
+    winnerPlayerId: input.winnerPlayerId,
+    completionReason: input.completionReason,
+  });
 
   for (const snapshot of inputs.rows) {
     const opponent = inputs.rows.find(

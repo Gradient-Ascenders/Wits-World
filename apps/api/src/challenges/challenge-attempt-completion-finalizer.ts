@@ -12,6 +12,7 @@ import {
   type RewardCardRarity,
   type RewardRandomInt,
 } from './challenge-reward-policy.js';
+import type { TerritoryOwnerBonusService } from '../territory/territory-owner-bonus.js';
 import {
   createProgressionPersistence,
   type ProgressionPersistence,
@@ -37,6 +38,7 @@ export interface ChallengeAttemptCompletionFinalizerOptions {
   randomInt?: RewardRandomInt;
   rewardPolicyVersion?: string;
   progressionPersistence?: ProgressionPersistence;
+  territoryOwnerBonus?: Pick<TerritoryOwnerBonusService, 'finalizeAttempt'>;
 }
 
 const DEFAULT_REWARD_POLICY_VERSION = 'points-cards-v2';
@@ -49,6 +51,7 @@ export function createChallengeAttemptCompletionFinalizer(
     options.rewardPolicyVersion ?? DEFAULT_REWARD_POLICY_VERSION;
   const progressionPersistence =
     options.progressionPersistence ?? createProgressionPersistence();
+  const territoryOwnerBonus = options.territoryOwnerBonus;
 
   return {
     async finalizeAttempt(database, input) {
@@ -127,6 +130,16 @@ export function createChallengeAttemptCompletionFinalizer(
           `,
           [input.playerId, cardDefinitionId, completion.completion_id],
         );
+      }
+
+      if (territoryOwnerBonus) {
+        await territoryOwnerBonus.finalizeAttempt(database, {
+          attemptId: input.attemptId,
+          playerId: input.playerId,
+          completionId: completion.completion_id,
+          scoreCorrect: input.scoreCorrect,
+          completedAt: input.completedAt,
+        });
       }
 
       const attemptUpdate = await database.query<{ attempt_id: string }>(

@@ -57,6 +57,7 @@ already been reached.
 | Completed asynchronous PvP matches and private snapshots                                                                | Retained against anonymous tombstones; opponent displays `Deleted player`                                                                                                               |
 | Completed live PvP matches, snapshots, and transition history                                                           | Retained against anonymous tombstones; transient ticket digests and connection-access rows for the deleting player are removed as deletion begins                                       |
 | Territory contribution, settlement, and ownership history                                                               | Retained against the anonymised player UUID; entering `deletion_pending` immediately appends an unowned territory state for every currently owned zone without rewriting prior evidence |
+| Unused territory grants and in-progress owner-bonus snapshots                                                           | Deleted when deletion begins; they are transient authority state and are not needed for retained competitive history                                                                    |
 | Point awards, activity days, streak totals, and achievements                                                            | Retained privately against the anonymised player UUID; excluded from live standings                                                                                                     |
 | Published events, questions, challenges, and cards                                                                      | Retained unchanged as system-owned content definitions                                                                                                                                  |
 | Author activity audit                                                                                                   | Retained against the anonymised player tombstone                                                                                                                                        |
@@ -73,7 +74,10 @@ ownership in the same PostgreSQL transaction that locks the account. Historical
 contribution decisions, accepted influence, settlement totals and ownership
 versions remain immutable; later reads resolve the missing Player Name as
 `Deleted player`. No Auth0 issuer/subject or precise location is copied into the
-territory ledger.
+territory ledger. Migration `0054_implement_contested_territory_runtime.sql`
+extends the deletion transaction so unused zone grants and unfinished owner-bonus
+snapshots are removed before anonymisation, while consumed ranked-match snapshots
+and finalized bonus decisions remain as anonymous game evidence.
 
 Migration `0024_complete_account_deletion_retention.sql` introduces
 `event_completion_card_rewards`. The table separates a historical reward

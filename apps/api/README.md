@@ -101,6 +101,27 @@ boundary. It requires migrations through `0049` and the `placement-v1` seed.
 See [Automatic event placement service](../../docs/architecture/automatic-event-placement-service.md)
 for the Author API and release checks.
 
+Ranked maintenance also drives the `territory-v1` runtime. `RANKED_SWEEP_INTERVAL_MS`
+remains the only ranked/territory worker cadence setting: matchmaking work runs on
+each ranked sweep, while territory settlement and expired-grant maintenance are
+throttled internally to approximately once per minute. Migration
+`0054_implement_contested_territory_runtime.sql` must be applied after `0053`
+before enabling territory queue claims. Ranked season closure waits for all
+territory windows, including the final partial window, to settle before the season
+can become `closed`; every API instance may attempt this work because PostgreSQL
+locks and immutable receipts make retries idempotent.
+
+Players may optionally attach a server-validated `territoryClaim` to
+`POST /api/v1/ranked/queue`. The browser supplies the requested zone plus a fresh
+location claim, but it never supplies influence, ownership, or a result. The API
+stores only the short-lived coarse grant provenance needed to bind a ranked match
+to a zone; latitude, longitude, and reported accuracy are not persisted in the
+territory ledger. Player-safe reads are available under
+`/api/v1/territory/zones`; standings expose ranked counts and the authenticated
+player's own cap state without contributor identities. See the
+[territory API contract](../../docs/architecture/contested-campus-territory-api-contract.md)
+and [territory-v1 policy](../../docs/requirements/contested-campus-zone-policy.md).
+
 When updating an existing checkout, remove or replace any legacy `60000`
 overrides for `ACCOUNT_DELETION_RETRY_INTERVAL_MS`,
 `ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS`,

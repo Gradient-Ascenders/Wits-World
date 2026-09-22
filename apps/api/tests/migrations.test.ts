@@ -76,7 +76,8 @@ describe('migration file loading', () => {
         name.startsWith('0050_') ||
         name.startsWith('0051_') ||
         name.startsWith('0052_') ||
-        name.startsWith('0053_'),
+        name.startsWith('0053_') ||
+        name.startsWith('0054_'),
     );
 
     expect(
@@ -234,6 +235,10 @@ describe('migration file loading', () => {
       {
         checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         name: '0053_persist_contested_territory.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0054_implement_contested_territory_runtime.sql',
       },
     ]);
   });

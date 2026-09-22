@@ -34,6 +34,8 @@ const CANCELLATION_MIGRATION_NAME =
   '0039_add_async_pvp_invitation_cancellation.sql';
 const COMPLETE_CATALOGUE_MIGRATION_NAME = '0041_complete_card_catalogue.sql';
 const CARD_EVOLUTION_MIGRATION_NAME = '0042_implement_card_evolution.sql';
+const TERRITORY_RUNTIME_MIGRATION_NAME =
+  '0054_implement_contested_territory_runtime.sql';
 const PRE_MIGRATION_PLAYER_ID = '17900000-0000-4000-8000-000000000001';
 const PRE_MIGRATION_MATCH_ID = '17900000-0000-4000-8000-000000000002';
 const runIntegrationTests =
@@ -140,6 +142,7 @@ describe.skipIf(!runIntegrationTests)(
         CANCELLATION_MIGRATION_NAME,
         COMPLETE_CATALOGUE_MIGRATION_NAME,
         CARD_EVOLUTION_MIGRATION_NAME,
+        TERRITORY_RUNTIME_MIGRATION_NAME,
       ]);
 
       pool = createDatabasePool(temporaryConfig);
@@ -2108,7 +2111,8 @@ async function copyPrePvpMigrations(): Promise<string> {
           name !== RESIGNATION_MIGRATION_NAME &&
           name !== CANCELLATION_MIGRATION_NAME &&
           name !== COMPLETE_CATALOGUE_MIGRATION_NAME &&
-          name !== CARD_EVOLUTION_MIGRATION_NAME,
+          name !== CARD_EVOLUTION_MIGRATION_NAME &&
+          name !== TERRITORY_RUNTIME_MIGRATION_NAME,
       )
       .map((name) =>
         copyFile(join(sourceDirectory, name), join(targetDirectory, name)),

@@ -426,9 +426,31 @@ forward migration. Do not edit a published territory definition to move a
 boundary: create a new reviewed territory-zone version and retire the old one.
 The settlement runtime must keep the documented player-before-zone lock order
 and serialize contributions and settlement on the same zone row; accepted
-contribution timestamps are sampled only after that zone lock is held. The database keeps contribution, receipt, total, and ownership history
-append-only and account deletion clears only the current owner projection by
-appending a new unowned version.
+contribution timestamps are sampled only after that zone lock is held. The
+database keeps contribution, receipt, total, and ownership history append-only
+and account deletion clears only the current owner projection by appending a new
+unowned version.
+
+## Contested territory runtime migration `0054`
+
+Migration `0054_implement_contested_territory_runtime.sql` is the additive
+forward migration for issue `#270`; do not fold its runtime changes back into
+`0053`. Apply `0053` first, then `0054`, before deploying the API that accepts
+ranked territory claims. `0054` adds short-lived private zone grants, immutable
+ranked-match territory snapshots, season-close receipts, owner-bonus snapshots
+and decisions, and the database validation needed for final partial settlement
+windows. It replaces selected validation trigger functions forward so ordinary
+settlements remain one full Johannesburg-aligned cadence while a closing season
+may commit exactly its remaining partial window.
+
+The migration stores no grant latitude, longitude, or reported accuracy. Grant
+cleanup may delete expired transient rows after the policy retention bound, while
+accepted contribution, settlement, ownership, season-close, and awarded-bonus
+evidence remains immutable. Rehearse migration `0054` through the normal
+`migrations.test.ts` path and the focused territory disposable-database suite;
+leave the complete database integration matrix to Gitea CI. A correction after
+`0054` has merged must use the next additive migration rather than changing
+either published territory migration.
 
 This procedure was planned, generated, edited, and verified with the assistance
 of Codex[GPT-6], Codex[GPT-5], Codex[GPT-5.6 Sol], Codex[gpt-5.6-sol], and

@@ -51,9 +51,10 @@ Start with the domain table above, then follow the diagrams and detailed field
 references below. These documents describe the application schema; the ordered
 [migration source](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/src/branch/main/database/migrations)
 is authoritative for exact SQL types, constraints, indexes and later alterations
-through `0053_persist_contested_territory.sql`, including the issue `#257`
-trust-persistence update, issue `#263` ranked-persistence update, issue `#258`
-forward trust hardening, and issue `#268` contested-territory persistence.
+through `0054_implement_contested_territory_runtime.sql`, including the issue
+`#257` trust-persistence update, issue `#263` ranked-persistence update, issue
+`#258` forward trust hardening, issue `#268` contested-territory persistence,
+and issue `#270` contested-territory runtime state.
 
 | Schema question                                                                   | Canonical reference                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -192,10 +193,17 @@ and provenance into independent territory definitions, records immutable
 contribution and settlement evidence, versions ownership state, and maintains a
 rebuildable private current-owner projection. A repeatable `0004` seed performs
 the clean-install bootstrap after the placement catalogue; upgrades bootstrap
-from already-seeded placement rows during the migration. Runtime location
-grants, ranked match snapshots, settlement calculation, workers, APIs, and map
-UI remain later work. See
-[Contested-campus territory persistence](./contested-campus-territory-persistence.md).
+from already-seeded placement rows during the migration.
+
+Migration `0054_implement_contested_territory_runtime.sql` keeps `0053`
+immutable while adding short-lived private location grants without coordinates,
+immutable ranked-match territory snapshots, final-partial-settlement and season
+close state, and owner-bonus decision persistence. Deterministic settlement,
+workers, contribution orchestration, and privacy-safe HTTP APIs are implemented
+by the API; the database continues to own the transaction and immutability
+boundaries. The contested-campus map UI remains separate issue `#271`. See
+[Contested-campus territory persistence](./contested-campus-territory-persistence.md)
+and the [territory API contract](../architecture/contested-campus-territory-api-contract.md).
 
 ## Environments and deployment
 

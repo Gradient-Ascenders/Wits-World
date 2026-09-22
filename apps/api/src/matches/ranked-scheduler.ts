@@ -5,6 +5,11 @@ import {
 } from './ranked-season-service.js';
 import type { RankedDatabase } from './ranked-database.js';
 import type { RankedReadService } from './ranked-read-service.js';
+import {
+  cancelExpiredTerritoryContenders,
+  cleanupExpiredTerritoryGrants,
+} from '../territory/territory-grants.js';
+import { maintainTerritorySettlements } from '../territory/territory-settlement.js';
 
 export interface RankedSweepResult {
   season: RankedSeasonMaintenanceResult;
@@ -12,6 +17,9 @@ export interface RankedSweepResult {
   resolvedProposals: number;
   pairedPlayers: number;
   expiredSnapshots: number;
+  territorySettlements: number;
+  cancelledTerritoryContenders: number;
+  expiredTerritoryGrants: number;
 }
 
 export interface RankedScheduler {
@@ -40,6 +48,7 @@ export function createRankedScheduler(
   let timer: NodeJS.Timeout | undefined;
   let active: Promise<RankedSweepResult> | undefined;
   let lastSnapshotCleanupAt = 0;
+  let lastTerritoryMaintenanceAt = 0;
 
   async function runOnce(): Promise<RankedSweepResult> {
     if (active) return active;
@@ -57,12 +66,26 @@ export function createRankedScheduler(
         expiredSnapshots = await reads.cleanupExpiredSnapshots();
         lastSnapshotCleanupAt = Date.now();
       }
+      let territorySettlements = 0;
+      let cancelledTerritoryContenders = 0;
+      let expiredTerritoryGrants = 0;
+      if (Date.now() - lastTerritoryMaintenanceAt >= 60_000) {
+        cancelledTerritoryContenders =
+          await cancelExpiredTerritoryContenders(database);
+        territorySettlements = (await maintainTerritorySettlements(database))
+          .settledWindows;
+        expiredTerritoryGrants = await cleanupExpiredTerritoryGrants(database);
+        lastTerritoryMaintenanceAt = Date.now();
+      }
       const result = {
         season,
         expiredEntries,
         resolvedProposals,
         pairedPlayers,
         expiredSnapshots,
+        territorySettlements,
+        cancelledTerritoryContenders,
+        expiredTerritoryGrants,
       };
       if (
         season.startedClosing ||
@@ -71,7 +94,10 @@ export function createRankedScheduler(
         expiredEntries ||
         resolvedProposals ||
         pairedPlayers ||
-        expiredSnapshots
+        expiredSnapshots ||
+        territorySettlements ||
+        cancelledTerritoryContenders ||
+        expiredTerritoryGrants
       ) {
         logger.info(result, 'Ranked maintenance sweep completed.');
       }

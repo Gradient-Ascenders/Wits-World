@@ -109,7 +109,7 @@ describe('ranked HTTP routes', () => {
       payload: { deckId: DECK_ID },
     });
     expect(response.statusCode).toBe(200);
-    expect(join).toHaveBeenCalledWith(PLAYER_ID, DECK_ID);
+    expect(join).toHaveBeenCalledWith(PLAYER_ID, DECK_ID, undefined);
     expect(response.json()).toMatchObject({
       status: 'searching',
       searchRange: 100,
@@ -122,6 +122,24 @@ describe('ranked HTTP routes', () => {
     });
     expect(invalid.statusCode).toBe(400);
     expect(join).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts a location claim only as optional territory intent', async () => {
+    const territoryClaim = {
+      zoneId: '60000000-0000-4000-8000-000000000001',
+      latitude: -26.191,
+      longitude: 28.0305,
+      accuracyMetres: 8,
+      acquiredAt: '2026-09-22T10:00:00.000Z',
+    };
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/ranked/queue',
+      headers: { authorization: 'Bearer test-token' },
+      payload: { deckId: DECK_ID, territoryClaim },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(join).toHaveBeenCalledWith(PLAYER_ID, DECK_ID, territoryClaim);
   });
 
   it('hides another player proposal behind a neutral error', async () => {

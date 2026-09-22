@@ -191,6 +191,26 @@ account deletion, idempotency, and concurrent requests. Physical campus and
 transport-mode calibration remain manual evidence; automated tests do not prove
 that a chosen production threshold is appropriate.
 
+## Contested territory
+
+Issue `#270` adds focused unit/service coverage for `territory-v1` grant
+validation, authoritative contribution decisions, deterministic owner selection,
+canonical settlement digests, stale-settlement retries, owner-bonus outcomes,
+and privacy-safe territory routes. Ranked route/service regressions cover the
+optional territory claim while ordinary ranked queueing remains valid without a
+claim. These tests deliberately keep browser-supplied ownership and influence out
+of every request contract.
+
+The disposable PostGIS regression boundary remains
+`territory-persistence.integration.test.ts`: it applies migration `0054` after
+`0053` and verifies the runtime relations alongside the existing contribution,
+settlement, ownership, account-deletion, and concurrency invariants. Local
+database work should stay focused on this file (and any directly failing ranked
+integration suite); the complete multi-worker database runner remains Gitea CI
+evidence because it is substantially faster than the normal local test target.
+A passing automated suite does not replace physical field validation of campus
+boundaries or reported-accuracy behaviour.
+
 ## Commands and data isolation
 
 The normal repository quality set is:

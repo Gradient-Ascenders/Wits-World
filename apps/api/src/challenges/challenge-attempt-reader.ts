@@ -61,6 +61,20 @@ export interface CompletedChallengeCard {
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
 }
 
+export interface CompletedTerritoryOwnerBonusCard {
+  ownedCardId: string;
+  cardDefinitionId: string;
+  name: string;
+  category: 'creature' | 'power';
+  affinity: 'wit' | 'grit' | 'spark' | 'spirit' | 'mystic' | null;
+  rarity: 'common';
+}
+
+export interface CompletedChallengeOwnerBonus {
+  outcome: 'awarded' | 'not_eligible' | 'score_too_low' | 'already_claimed';
+  card: CompletedTerritoryOwnerBonusCard | null;
+}
+
 export interface CompletedChallengeReviewEntry {
   attemptQuestionId: string;
   position: number;
@@ -82,6 +96,7 @@ export interface CompletedChallengeAttempt {
   reward: {
     cards: CompletedChallengeCard[];
   };
+  ownerBonus?: CompletedChallengeOwnerBonus;
   review: CompletedChallengeReviewEntry[];
 }
 
@@ -105,6 +120,7 @@ export interface CompletedOrderingChallengeAttempt {
   totalQuestions: 5;
   scoreCorrect: number;
   reward: CompletedChallengeAttempt['reward'];
+  ownerBonus?: CompletedChallengeOwnerBonus;
   review: CompletedOrderingReviewEntry[];
 }
 
@@ -162,6 +178,13 @@ interface AttemptChoiceRow extends pg.QueryResultRow {
 
 interface CompletionRow extends pg.QueryResultRow {
   completion_id: string;
+  owner_bonus_outcome?: CompletedChallengeOwnerBonus['outcome'] | null;
+  owner_bonus_owned_card_id?: string | null;
+  owner_bonus_card_definition_id?: string | null;
+  owner_bonus_name?: string | null;
+  owner_bonus_category?: CompletedTerritoryOwnerBonusCard['category'] | null;
+  owner_bonus_affinity?: CompletedTerritoryOwnerBonusCard['affinity'];
+  owner_bonus_rarity?: CompletedTerritoryOwnerBonusCard['rarity'] | null;
 }
 
 interface RewardCardRow extends pg.QueryResultRow {
@@ -523,8 +546,23 @@ async function loadCompletedAttempt(
   const completionResult = await database.query<CompletionRow>(
     `
       select
-        completion.id::text as completion_id
+        completion.id::text as completion_id,
+        bonus.outcome as owner_bonus_outcome,
+        bonus_card.id::text as owner_bonus_owned_card_id,
+        bonus_definition.id::text as owner_bonus_card_definition_id,
+        bonus_definition.name as owner_bonus_name,
+        bonus_definition.category as owner_bonus_category,
+        bonus_definition.affinity as owner_bonus_affinity,
+        bonus_definition.rarity as owner_bonus_rarity
       from public.event_completions completion
+      left join private.territory_owner_bonus_decisions bonus
+        on bonus.attempt_id = completion.attempt_id
+       and bonus.player_id = completion.player_id
+      left join public.player_cards bonus_card
+        on bonus_card.source_territory_bonus_id = bonus.id
+       and bonus_card.player_id = bonus.player_id
+      left join public.card_definitions bonus_definition
+        on bonus_definition.id = bonus_card.card_definition_id
       where completion.attempt_id = $1::uuid
         and completion.player_id = $2::uuid
     `,
@@ -552,6 +590,7 @@ async function loadCompletedAttempt(
       where owned.player_id = $1::uuid
         and owned.source_completion_id = $2::uuid
         and owned.acquisition_kind = 'event_reward'
+        and owned.source_territory_bonus_id is null
       order by owned.acquired_at, owned.id
     `,
     [playerId, completion.completion_id],
@@ -568,6 +607,30 @@ async function loadCompletedAttempt(
     })),
   };
 
+  const ownerBonus: CompletedChallengeOwnerBonus | undefined =
+    completion.owner_bonus_outcome
+      ? {
+          outcome: completion.owner_bonus_outcome,
+          card:
+            completion.owner_bonus_outcome === 'awarded' &&
+            completion.owner_bonus_owned_card_id &&
+            completion.owner_bonus_card_definition_id &&
+            completion.owner_bonus_name &&
+            completion.owner_bonus_category &&
+            completion.owner_bonus_affinity !== undefined &&
+            completion.owner_bonus_rarity
+              ? {
+                  ownedCardId: completion.owner_bonus_owned_card_id,
+                  cardDefinitionId: completion.owner_bonus_card_definition_id,
+                  name: completion.owner_bonus_name,
+                  category: completion.owner_bonus_category,
+                  affinity: completion.owner_bonus_affinity,
+                  rarity: completion.owner_bonus_rarity,
+                }
+              : null,
+        }
+      : undefined;
+
   if (attempt.format === 'ordering') {
     const review = await loadCompletedOrderingReview(database, attempt);
 
@@ -581,6 +644,7 @@ async function loadCompletedAttempt(
       totalQuestions: 5,
       scoreCorrect: attempt.score_correct,
       reward,
+      ...(ownerBonus ? { ownerBonus } : {}),
       review,
     };
   }
@@ -655,6 +719,7 @@ async function loadCompletedAttempt(
     totalQuestions: 5,
     scoreCorrect: attempt.score_correct,
     reward,
+    ...(ownerBonus ? { ownerBonus } : {}),
     review,
   };
 }
