@@ -71,18 +71,19 @@ authentication mechanism.
 
 The generated OpenAPI groups the current contract into these areas:
 
-| Area                       | Responsibility                                                                                               |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| System                     | Health and API version information                                                                           |
-| Authentication and account | Local identity, Player Name setup, and implemented account-lifecycle API boundaries                          |
-| Events                     | Player-safe published-event discovery and server-authoritative location eligibility                          |
-| Challenges                 | Timed attempt start/resume, answer locking, completion, marking, and completed-only review                   |
-| Cards                      | Server-derived starter grants, catalogue-safe rewards, collection, and fixed three-copy evolution            |
-| Decks                      | Saved-deck CRUD, ownership validation, and active selection                                                  |
-| Trails                     | Ordered trail progress, step state, and bounded nearby-unvisited guidance                                    |
-| Matches                    | Server-created CPU and asynchronous PvP matches, legal intent, recovery, deadlines, and viewer-safe history  |
-| Progression                | Current-player points, streaks, achievements, rank, and privacy-safe paginated standings                     |
-| Authoring                  | Author-only event, challenge, question, card, trail, and campaign lifecycle operations plus audit boundaries |
+| Area                       | Responsibility                                                                                                  |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| System                     | Health and API version information                                                                              |
+| Authentication and account | Local identity, Player Name setup, and implemented account-lifecycle API boundaries                             |
+| Events                     | Player-safe published-event discovery and server-authoritative location eligibility                             |
+| Challenges                 | Timed attempt start/resume, answer locking, completion, marking, and completed-only review                      |
+| Cards                      | Server-derived starter grants, catalogue-safe rewards, collection, and fixed three-copy evolution               |
+| Decks                      | Saved-deck CRUD, ownership validation, and active selection                                                     |
+| Trails                     | Ordered trail progress, step state, and bounded nearby-unvisited guidance                                       |
+| Matches                    | Server-created CPU and asynchronous PvP matches, legal intent, recovery, deadlines, and viewer-safe history     |
+| Trading                    | Private versioned bilateral offers, participant-only negotiation, recent-auth acceptance, and atomic settlement |
+| Progression                | Current-player points, streaks, achievements, rank, and privacy-safe paginated standings                        |
+| Authoring                  | Author-only event, challenge, question, card, trail, and campaign lifecycle operations plus audit boundaries    |
 
 The [Author curation contract](./author-curation-api-contract.md) explains the
 five-state review workflow, optimistic concurrency, safe review queue and audit
@@ -125,6 +126,14 @@ the CORS-safe `Accept` header and receive the server-derived `canCancel`
 capability.
 These routes remain separate from CPU and live PvP; the Web experience is
 tracked independently.
+
+The [card trading contract](./card-trading-api-contract.md) defines the
+implemented private `/api/v1/trades` operations. Player identity comes from the
+bearer token, counterparties are selected only by exact Player Name, mutations
+use durable submission UUIDs, and every acceptance requires recent Auth0 proof.
+The API exposes only participant-safe trade state; atomic ownership exchange
+remains inside the transactional trading service. The player trading interface
+is tracked separately in issue `#274`.
 
 The planned [live PvP contract](./live-pvp-api-contract.md) defines the future
 one-minute server-owned match boundary, short-lived connection tickets,
@@ -193,6 +202,7 @@ protected operation.
 - [Trust boundaries](./trust-boundaries.md)
 - [Author curation API contract](./author-curation-api-contract.md)
 - [Asynchronous PvP API contract](./asynchronous-pvp-api-contract.md)
+- [Card trading API contract](./card-trading-api-contract.md)
 - [Live PvP API contract](./live-pvp-api-contract.md)
 - [High-level data flow](./data-flow.md)
 - [External integrations](./external-integrations.md)
@@ -208,3 +218,5 @@ evidence rather than replacing the generated OpenAPI contract.
 Sprint 2 status reconciliation assisted by Codex-CLI[GPT-6].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+Card-trading API status updated with assistance from ChatGPT-Web[GPT-5.6 Sol].

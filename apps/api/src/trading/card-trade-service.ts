@@ -1,8 +1,9 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import type pg from 'pg';
 
 import type {
+  CardAffinity,
   CardCategory,
   CardRarity,
   OwnedCard,
@@ -21,11 +22,25 @@ export interface CardTradeRequestedDefinition {
   quantity: number;
 }
 
+export interface CardTradeRequestedDefinitionView extends CardTradeRequestedDefinition {
+  name: string;
+  category: CardCategory;
+  affinity: CardAffinity | null;
+  rarity: CardRarity;
+  imageUrl: string | null;
+  imageAlt: string | null;
+}
+
 export interface CardTradeOfferedCopy {
   position: number;
   ownedCardId: string;
   cardDefinitionId: string;
+  name: string;
+  category: CardCategory;
+  affinity: CardAffinity | null;
   rarity: CardRarity;
+  imageUrl: string | null;
+  imageAlt: string | null;
   acquisitionKind: OwnedCard['acquisitionKind'];
   acquiredAt: string;
 }
@@ -33,7 +48,7 @@ export interface CardTradeOfferedCopy {
 export interface CardTradePartyView {
   playerId: string;
   offeredCopies: readonly CardTradeOfferedCopy[];
-  requestedDefinitions: readonly CardTradeRequestedDefinition[];
+  requestedDefinitions: readonly CardTradeRequestedDefinitionView[];
   rarityPoints: number;
   accepted: boolean;
   imbalanceAcknowledged: boolean;
@@ -60,7 +75,9 @@ export interface CardTradeSettlementReceipt {
 export interface CardTradeView {
   tradeId: string;
   senderPlayerId: string;
+  senderPlayerName: string;
   recipientPlayerId: string;
+  recipientPlayerName: string;
   status: CardTradeStatus;
   version: number;
   createdAt: string;
@@ -74,16 +91,23 @@ export interface CardTradeView {
   settlement: CardTradeSettlementReceipt | null;
 }
 
-export interface CreateCardTradeInput {
+interface CreateCardTradeBaseInput {
   senderPlayerId: string;
-  recipientPlayerId: string;
+  submissionId?: string;
   offeredOwnedCardIds: readonly string[];
   requestedDefinitions: readonly CardTradeRequestedDefinition[];
 }
 
+export type CreateCardTradeInput = CreateCardTradeBaseInput &
+  (
+    | { recipientPlayerName: string; recipientPlayerId?: never }
+    | { recipientPlayerId: string; recipientPlayerName?: never }
+  );
+
 export interface ReviseCardTradeInput {
   tradeId: string;
   playerId: string;
+  submissionId?: string;
   expectedVersion: number;
   offeredOwnedCardIds: readonly string[];
   requestedDefinitions: readonly CardTradeRequestedDefinition[];
@@ -92,7 +116,40 @@ export interface ReviseCardTradeInput {
 export interface VersionedCardTradeInput {
   tradeId: string;
   playerId: string;
+  submissionId?: string;
   expectedVersion: number;
+}
+
+export interface TerminateCardTradeInput {
+  tradeId: string;
+  playerId: string;
+  submissionId: string;
+}
+
+export interface ListCardTradesInput {
+  playerId: string;
+  page?: number;
+  pageSize?: number;
+  direction?: 'sent' | 'received';
+  status?: CardTradeStatus;
+}
+
+export interface CardTradeSummary {
+  tradeId: string;
+  direction: 'sent' | 'received';
+  status: CardTradeStatus;
+  version: number;
+  counterpartyPlayerName: string;
+  createdAt: string;
+  expiresAt: string;
+  terminalAt: string | null;
+}
+
+export interface CardTradePage {
+  items: readonly CardTradeSummary[];
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
 }
 
 export interface CardTradeService {
@@ -101,14 +158,17 @@ export interface CardTradeService {
   acknowledgeImbalance(input: VersionedCardTradeInput): Promise<CardTradeView>;
   acceptTrade(input: VersionedCardTradeInput): Promise<CardTradeView>;
   cancelTrade(tradeId: string, senderPlayerId: string): Promise<CardTradeView>;
+  cancelTradeCommand(input: TerminateCardTradeInput): Promise<CardTradeView>;
   declineTrade(
     tradeId: string,
     recipientPlayerId: string,
   ): Promise<CardTradeView>;
+  declineTradeCommand(input: TerminateCardTradeInput): Promise<CardTradeView>;
   getTrade(
     tradeId: string,
     participantPlayerId: string,
   ): Promise<CardTradeView>;
+  listTrades(input: ListCardTradesInput): Promise<CardTradePage>;
   expireDueTrades(): Promise<number>;
   purgeTerminalTrades(): Promise<number>;
 }
@@ -137,7 +197,8 @@ export type CardTradeErrorCode =
   | 'TRADE_INCOMPLETE'
   | 'TRADE_IMBALANCE_ACK_REQUIRED'
   | 'TRADE_INVENTORY_MINIMUM'
-  | 'TRADE_DAILY_LIMIT_REACHED';
+  | 'TRADE_DAILY_LIMIT_REACHED'
+  | 'TRADE_IDEMPOTENCY_CONFLICT';
 
 export class CardTradeError extends Error {
   constructor(
@@ -210,7 +271,12 @@ interface VersionItemRow extends pg.QueryResultRow {
   position: number;
   owned_card_id: string;
   card_definition_id: string;
+  name: string;
+  category: CardCategory;
+  affinity: CardAffinity | null;
   rarity: CardRarity;
+  image_url: string | null;
+  image_alt: string | null;
   acquired_at: Date;
   acquisition_kind: OwnedCard['acquisitionKind'];
 }
@@ -219,6 +285,12 @@ interface VersionRequestRow extends pg.QueryResultRow {
   requesting_player_id: string;
   card_definition_id: string;
   quantity: number;
+  name: string;
+  category: CardCategory;
+  affinity: CardAffinity | null;
+  rarity: CardRarity;
+  image_url: string | null;
+  image_alt: string | null;
 }
 
 interface ApprovalRow extends pg.QueryResultRow {
@@ -254,6 +326,37 @@ interface CountRow extends pg.QueryResultRow {
   count: number;
 }
 
+interface SubmissionReceiptRow extends pg.QueryResultRow {
+  trade_id: string;
+  payload_hash: string;
+}
+
+interface PlayerNameRow extends pg.QueryResultRow {
+  id: string;
+  player_name: string | null;
+}
+
+interface TradeListRow extends pg.QueryResultRow {
+  trade_id: string;
+  sender_player_id: string;
+  recipient_player_id: string;
+  sender_name: string | null;
+  recipient_name: string | null;
+  status: CardTradeStatus;
+  current_version: number;
+  created_at: Date;
+  expires_at: Date;
+  terminal_at: Date | null;
+}
+
+type CardTradeSubmissionOperation =
+  | 'trade_create'
+  | 'trade_revise'
+  | 'trade_acknowledge_imbalance'
+  | 'trade_accept'
+  | 'trade_decline'
+  | 'trade_cancel';
+
 const UUID_LOWERCASE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 
@@ -263,11 +366,40 @@ export function createCardTradeService(
 ): CardTradeService {
   return {
     async createTrade(input) {
-      validateDistinctPlayers(input.senderPlayerId, input.recipientPlayerId);
       validateOwnedCardIds(input.offeredOwnedCardIds);
       validateRequestedDefinitions(input.requestedDefinitions);
+      if (typeof input.recipientPlayerId === 'string') {
+        validateDistinctPlayers(input.senderPlayerId, input.recipientPlayerId);
+      }
 
       return withTransaction(database, async (client) => {
+        const payloadHash = hashTradeSubmission({
+          recipient:
+            typeof input.recipientPlayerName === 'string'
+              ? input.recipientPlayerName.trim().toLowerCase()
+              : input.recipientPlayerId,
+          offeredOwnedCardIds: [...input.offeredOwnedCardIds],
+          requestedDefinitions: [...input.requestedDefinitions],
+        });
+        const replay = await beginSubmission(
+          client,
+          input.senderPlayerId,
+          'trade_create',
+          input.submissionId,
+          payloadHash,
+        );
+        if (replay) return loadTradeViewAfterExpiry(client, replay.trade_id);
+
+        const recipientPlayerId =
+          typeof input.recipientPlayerName === 'string'
+            ? await resolveRecipientPlayerId(
+                client,
+                input.senderPlayerId,
+                input.recipientPlayerName,
+              )
+            : input.recipientPlayerId;
+        validateDistinctPlayers(input.senderPlayerId, recipientPlayerId);
+
         const policy = await loadPolicy(client);
         validateSideLimits(
           input.offeredOwnedCardIds,
@@ -280,7 +412,7 @@ export function createCardTradeService(
         );
         const players = await lockPlayers(client, [
           input.senderPlayerId,
-          input.recipientPlayerId,
+          recipientPlayerId,
         ]);
         const now = await databaseNow(client);
         await expireOpenTradesForPlayers(
@@ -324,7 +456,7 @@ export function createCardTradeService(
           [
             tradeId,
             input.senderPlayerId,
-            input.recipientPlayerId,
+            recipientPlayerId,
             policy.policyVersion,
             now,
             expiresAt,
@@ -359,6 +491,15 @@ export function createCardTradeService(
           copies.map((copy) => copy.owned_card_id),
           now,
         );
+        await finishSubmission(
+          client,
+          input.senderPlayerId,
+          'trade_create',
+          input.submissionId,
+          payloadHash,
+          tradeId,
+          now,
+        );
 
         return loadTradeView(client, tradeId);
       });
@@ -369,6 +510,21 @@ export function createCardTradeService(
       validateRequestedDefinitions(input.requestedDefinitions);
 
       return withTransaction(database, async (client) => {
+        const payloadHash = hashTradeSubmission({
+          tradeId: input.tradeId,
+          expectedVersion: input.expectedVersion,
+          offeredOwnedCardIds: [...input.offeredOwnedCardIds],
+          requestedDefinitions: [...input.requestedDefinitions],
+        });
+        const replay = await beginSubmission(
+          client,
+          input.playerId,
+          'trade_revise',
+          input.submissionId,
+          payloadHash,
+        );
+        if (replay) return loadTradeViewAfterExpiry(client, replay.trade_id);
+
         const context = await lockTradeContext(client, input.tradeId);
         assertParticipant(context.trade, input.playerId);
         await ensureTradeActionable(client, context, input.expectedVersion);
@@ -494,6 +650,15 @@ export function createCardTradeService(
           otherCopies.map((copy) => copy.owned_card_id),
           context.now,
         );
+        await finishSubmission(
+          client,
+          input.playerId,
+          'trade_revise',
+          input.submissionId,
+          payloadHash,
+          input.tradeId,
+          context.now,
+        );
 
         return loadTradeView(client, input.tradeId);
       });
@@ -501,6 +666,19 @@ export function createCardTradeService(
 
     async acknowledgeImbalance(input) {
       return withTransaction(database, async (client) => {
+        const payloadHash = hashTradeSubmission({
+          tradeId: input.tradeId,
+          expectedVersion: input.expectedVersion,
+        });
+        const replay = await beginSubmission(
+          client,
+          input.playerId,
+          'trade_acknowledge_imbalance',
+          input.submissionId,
+          payloadHash,
+        );
+        if (replay) return loadTradeViewAfterExpiry(client, replay.trade_id);
+
         const context = await lockTradeContext(client, input.tradeId);
         assertParticipant(context.trade, input.playerId);
         await ensureTradeActionable(client, context, input.expectedVersion);
@@ -516,22 +694,30 @@ export function createCardTradeService(
         const state = await loadCurrentVersionState(client, context.trade);
         assertVersionComplete(context.trade, state);
         assertPersistedVersionLimits(context.trade, state, policy);
-        if (!requiresImbalanceAcknowledgement(state.items, policy)) {
-          return loadTradeView(client, input.tradeId);
+        if (requiresImbalanceAcknowledgement(state.items, policy)) {
+          await client.query(
+            `
+              insert into private.card_trade_imbalance_acknowledgements (
+                trade_id, version, player_id, acknowledged_at
+              ) values ($1::uuid, $2, $3::uuid, $4)
+              on conflict (trade_id, version, player_id) do nothing
+            `,
+            [
+              input.tradeId,
+              context.trade.current_version,
+              input.playerId,
+              context.now,
+            ],
+          );
         }
-        await client.query(
-          `
-            insert into private.card_trade_imbalance_acknowledgements (
-              trade_id, version, player_id, acknowledged_at
-            ) values ($1::uuid, $2, $3::uuid, $4)
-            on conflict (trade_id, version, player_id) do nothing
-          `,
-          [
-            input.tradeId,
-            context.trade.current_version,
-            input.playerId,
-            context.now,
-          ],
+        await finishSubmission(
+          client,
+          input.playerId,
+          'trade_acknowledge_imbalance',
+          input.submissionId,
+          payloadHash,
+          input.tradeId,
+          context.now,
         );
         return loadTradeView(client, input.tradeId);
       });
@@ -539,12 +725,29 @@ export function createCardTradeService(
 
     async acceptTrade(input) {
       return withTransaction(database, async (client) => {
+        const payloadHash = hashTradeSubmission({
+          tradeId: input.tradeId,
+          expectedVersion: input.expectedVersion,
+        });
+        const replay = await beginSubmission(
+          client,
+          input.playerId,
+          'trade_accept',
+          input.submissionId,
+          payloadHash,
+        );
+        if (replay) return loadTradeViewAfterExpiry(client, replay.trade_id);
+
         const context = await lockTradeContext(client, input.tradeId);
         assertParticipant(context.trade, input.playerId);
         if (
           context.trade.status === 'completed' &&
           context.trade.current_version === input.expectedVersion
         ) {
+          // A genuinely retried acceptance already has a durable submission
+          // receipt from the transaction that recorded it. Do not persist a
+          // fresh receipt for arbitrary post-completion submission IDs: the
+          // completed trade is immutable and already safe to replay.
           return loadTradeView(client, input.tradeId);
         }
         await ensureTradeActionable(client, context, input.expectedVersion);
@@ -678,11 +881,24 @@ export function createCardTradeService(
           [input.tradeId, context.trade.current_version],
         );
 
-        if (acceptances.rows.length < 2) {
-          return loadTradeView(client, input.tradeId);
+        if (acceptances.rows.length >= 2) {
+          await settleTrade(
+            client,
+            context.trade,
+            policy,
+            context.now,
+            createId,
+          );
         }
-
-        await settleTrade(client, context.trade, policy, context.now, createId);
+        await finishSubmission(
+          client,
+          input.playerId,
+          'trade_accept',
+          input.submissionId,
+          payloadHash,
+          input.tradeId,
+          context.now,
+        );
         return loadTradeView(client, input.tradeId);
       });
     },
@@ -697,6 +913,10 @@ export function createCardTradeService(
       );
     },
 
+    async cancelTradeCommand(input) {
+      return terminateTradeCommand(database, input, 'sender', 'cancelled');
+    },
+
     async declineTrade(tradeId, recipientPlayerId) {
       return terminateTrade(
         database,
@@ -705,6 +925,10 @@ export function createCardTradeService(
         'recipient',
         'declined',
       );
+    },
+
+    async declineTradeCommand(input) {
+      return terminateTradeCommand(database, input, 'recipient', 'declined');
     },
 
     async getTrade(tradeId, participantPlayerId) {
@@ -728,6 +952,87 @@ export function createCardTradeService(
           );
         }
         return loadTradeView(client, tradeId);
+      });
+    },
+
+    async listTrades(input) {
+      const page = input.page ?? 1;
+      const pageSize = input.pageSize ?? 20;
+      if (!Number.isInteger(page) || page < 1) {
+        throw new Error('Card trade page must be a positive integer.');
+      }
+      if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 50) {
+        throw new Error('Card trade page size must be between 1 and 50.');
+      }
+
+      return withTransaction(database, async (client) => {
+        const now = await databaseNow(client);
+        await expireOpenTradesForPlayers(client, [input.playerId], now);
+        const conditions = [
+          '(trade.sender_player_id = $1::uuid or trade.recipient_player_id = $1::uuid)',
+        ];
+        const values: unknown[] = [input.playerId];
+        if (input.direction === 'sent') {
+          conditions.push(
+            `trade.sender_player_id = $${values.length + 1}::uuid`,
+          );
+          values.push(input.playerId);
+        } else if (input.direction === 'received') {
+          conditions.push(
+            `trade.recipient_player_id = $${values.length + 1}::uuid`,
+          );
+          values.push(input.playerId);
+        }
+        if (input.status) {
+          conditions.push(`trade.status = $${values.length + 1}`);
+          values.push(input.status);
+        }
+        values.push(pageSize + 1, (page - 1) * pageSize);
+        const limitIndex = values.length - 1;
+        const offsetIndex = values.length;
+        const result = await client.query<TradeListRow>(
+          `
+            select
+              trade.id::text as trade_id,
+              trade.sender_player_id::text,
+              trade.recipient_player_id::text,
+              sender.player_name as sender_name,
+              recipient.player_name as recipient_name,
+              trade.status,
+              trade.current_version,
+              trade.created_at,
+              trade.expires_at,
+              trade.terminal_at
+            from private.card_trades trade
+            join public.players sender on sender.id = trade.sender_player_id
+            join public.players recipient on recipient.id = trade.recipient_player_id
+            where ${conditions.join(' and ')}
+            order by trade.created_at desc, trade.id desc
+            limit $${limitIndex} offset $${offsetIndex}
+          `,
+          values,
+        );
+        const hasMore = result.rows.length > pageSize;
+        return {
+          items: result.rows.slice(0, pageSize).map((row) => {
+            const sent = row.sender_player_id === input.playerId;
+            return {
+              tradeId: row.trade_id,
+              direction: sent ? ('sent' as const) : ('received' as const),
+              status: row.status,
+              version: row.current_version,
+              counterpartyPlayerName:
+                (sent ? row.recipient_name : row.sender_name) ??
+                'Deleted player',
+              createdAt: row.created_at.toISOString(),
+              expiresAt: row.expires_at.toISOString(),
+              terminalAt: row.terminal_at?.toISOString() ?? null,
+            };
+          }),
+          page,
+          pageSize,
+          hasMore,
+        };
       });
     },
 
@@ -832,6 +1137,163 @@ async function terminateTrade(
     );
     return loadTradeView(client, tradeId);
   });
+}
+
+async function terminateTradeCommand(
+  database: CardTradeDatabase,
+  input: TerminateCardTradeInput,
+  role: 'sender' | 'recipient',
+  status: 'cancelled' | 'declined',
+): Promise<CardTradeView> {
+  return withTransaction(database, async (client) => {
+    const operation: CardTradeSubmissionOperation =
+      status === 'cancelled' ? 'trade_cancel' : 'trade_decline';
+    const payloadHash = hashTradeSubmission({ tradeId: input.tradeId });
+    const replay = await beginSubmission(
+      client,
+      input.playerId,
+      operation,
+      input.submissionId,
+      payloadHash,
+    );
+    if (replay) return loadTradeViewAfterExpiry(client, replay.trade_id);
+
+    const context = await lockTradeContext(client, input.tradeId);
+    assertParticipant(context.trade, input.playerId);
+    const expectedPlayerId =
+      role === 'sender'
+        ? context.trade.sender_player_id
+        : context.trade.recipient_player_id;
+    if (expectedPlayerId !== input.playerId) {
+      throw new CardTradeError(
+        'TRADE_ACTION_NOT_ALLOWED',
+        'This participant cannot perform that trade action.',
+      );
+    }
+    await ensureTradeActionable(client, context);
+    await client.query(
+      `
+        update private.card_trades
+           set status = $2,
+               terminal_at = $3,
+               terminal_reason = $2
+         where id = $1::uuid
+      `,
+      [input.tradeId, status, context.now],
+    );
+    await finishSubmission(
+      client,
+      input.playerId,
+      operation,
+      input.submissionId,
+      payloadHash,
+      input.tradeId,
+      context.now,
+    );
+    return loadTradeView(client, input.tradeId);
+  });
+}
+
+async function resolveRecipientPlayerId(
+  client: CardTradeClient,
+  senderPlayerId: string,
+  recipientPlayerName: string,
+): Promise<string> {
+  const normalized = recipientPlayerName.trim().toLowerCase();
+  if (!normalized) {
+    throw new CardTradeError(
+      'TRADE_PLAYER_UNAVAILABLE',
+      'The requested trade participant is unavailable.',
+    );
+  }
+  const result = await client.query<PlayerNameRow>(
+    `
+      select id::text, player_name
+        from public.players
+       where player_name = $1
+         and lifecycle_status = 'active'
+         and player_name is not null
+         and id <> $2::uuid
+    `,
+    [normalized, senderPlayerId],
+  );
+  const player = result.rows[0];
+  if (!player) {
+    throw new CardTradeError(
+      'TRADE_PLAYER_UNAVAILABLE',
+      'The requested trade participant is unavailable.',
+    );
+  }
+  return player.id;
+}
+
+async function beginSubmission(
+  client: CardTradeClient,
+  actorPlayerId: string,
+  operation: CardTradeSubmissionOperation,
+  submissionId: string | undefined,
+  payloadHash: string,
+): Promise<SubmissionReceiptRow | null> {
+  if (!submissionId) return null;
+  await client.query(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [
+    `card-trade:${actorPlayerId}:${operation}:${submissionId}`,
+  ]);
+  const result = await client.query<SubmissionReceiptRow>(
+    `
+      select trade_id::text, payload_hash
+        from private.card_trade_submission_receipts
+       where actor_player_id = $1::uuid
+         and operation = $2
+         and submission_id = $3::uuid
+    `,
+    [actorPlayerId, operation, submissionId],
+  );
+  const receipt = result.rows[0];
+  if (!receipt) return null;
+  if (receipt.payload_hash !== payloadHash) {
+    throw new CardTradeError(
+      'TRADE_IDEMPOTENCY_CONFLICT',
+      'This submission identifier was already used for different trade intent.',
+    );
+  }
+  return receipt;
+}
+
+async function finishSubmission(
+  client: CardTradeClient,
+  actorPlayerId: string,
+  operation: CardTradeSubmissionOperation,
+  submissionId: string | undefined,
+  payloadHash: string,
+  tradeId: string,
+  createdAt: Date,
+): Promise<void> {
+  if (!submissionId) return;
+  await client.query(
+    `
+      insert into private.card_trade_submission_receipts (
+        actor_player_id, operation, submission_id, payload_hash, trade_id, created_at
+      ) values ($1::uuid, $2, $3::uuid, $4, $5::uuid, $6)
+    `,
+    [actorPlayerId, operation, submissionId, payloadHash, tradeId, createdAt],
+  );
+}
+
+function hashTradeSubmission(value: unknown): string {
+  return createHash('sha256').update(stableJson(value)).digest('hex');
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableJson(item)).join(',')}]`;
+  }
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
 }
 
 async function loadPolicy(
@@ -1499,12 +1961,24 @@ async function loadVersionItems(
 ): Promise<VersionItemRow[]> {
   const result = await client.query<VersionItemRow>(
     `
-      select offering_player_id::text, position, owned_card_id::text,
-             card_definition_id::text, rarity, acquired_at, acquisition_kind
-        from private.card_trade_version_items
-       where trade_id = $1::uuid
-         and version = $2
-       order by offering_player_id, position
+      select
+        item.offering_player_id::text,
+        item.position,
+        item.owned_card_id::text,
+        item.card_definition_id::text,
+        definition.name,
+        definition.category,
+        definition.affinity,
+        item.rarity,
+        definition.image_url,
+        definition.image_alt,
+        item.acquired_at,
+        item.acquisition_kind
+      from private.card_trade_version_items item
+      join public.card_definitions definition on definition.id = item.card_definition_id
+      where item.trade_id = $1::uuid
+        and item.version = $2
+      order by item.offering_player_id, item.position
     `,
     [tradeId, version],
   );
@@ -1518,11 +1992,21 @@ async function loadVersionRequests(
 ): Promise<VersionRequestRow[]> {
   const result = await client.query<VersionRequestRow>(
     `
-      select requesting_player_id::text, card_definition_id::text, quantity
-        from private.card_trade_version_requests
-       where trade_id = $1::uuid
-         and version = $2
-       order by requesting_player_id, card_definition_id
+      select
+        request.requesting_player_id::text,
+        request.card_definition_id::text,
+        request.quantity,
+        definition.name,
+        definition.category,
+        definition.affinity,
+        definition.rarity,
+        definition.image_url,
+        definition.image_alt
+      from private.card_trade_version_requests request
+      join public.card_definitions definition on definition.id = request.card_definition_id
+      where request.trade_id = $1::uuid
+        and request.version = $2
+      order by request.requesting_player_id, request.card_definition_id
     `,
     [tradeId, version],
   );
@@ -1751,6 +2235,12 @@ async function settleTrade(
       state.requests.map((request) => ({
         cardDefinitionId: request.card_definition_id,
         quantity: request.quantity,
+        name: request.name,
+        category: request.category,
+        affinity: request.affinity,
+        rarity: request.rarity,
+        imageUrl: request.image_url,
+        imageAlt: request.image_alt,
       })),
       true,
     );
@@ -2071,6 +2561,29 @@ async function invalidateTrade(
   );
 }
 
+async function loadTradeViewAfterExpiry(
+  client: CardTradeClient,
+  tradeId: string,
+): Promise<CardTradeView> {
+  const trade = await loadTrade(client, tradeId, true);
+  if (trade.status === 'open') {
+    const now = await databaseNow(client);
+    if (trade.expires_at.getTime() <= now.getTime()) {
+      await client.query(
+        `
+          update private.card_trades
+             set status = 'expired',
+                 terminal_at = $2,
+                 terminal_reason = 'deadline_elapsed'
+           where id = $1::uuid
+        `,
+        [tradeId, now],
+      );
+    }
+  }
+  return loadTradeView(client, tradeId);
+}
+
 async function loadTradeView(
   client: CardTradeClient,
   tradeId: string,
@@ -2094,10 +2607,13 @@ async function loadTradeView(
     state.acknowledgements,
   );
   const settlement = await loadSettlementReceipt(client, trade.trade_id);
+  const names = await loadParticipantNames(client, trade);
   return {
     tradeId: trade.trade_id,
     senderPlayerId: trade.sender_player_id,
+    senderPlayerName: names.sender,
     recipientPlayerId: trade.recipient_player_id,
+    recipientPlayerName: names.recipient,
     status: trade.status,
     version: trade.current_version,
     createdAt: trade.created_at.toISOString(),
@@ -2129,7 +2645,12 @@ function mapParty(
       position: item.position,
       ownedCardId: item.owned_card_id,
       cardDefinitionId: item.card_definition_id,
+      name: item.name,
+      category: item.category,
+      affinity: item.affinity,
       rarity: item.rarity,
+      imageUrl: item.image_url,
+      imageAlt: item.image_alt,
       acquisitionKind: item.acquisition_kind,
       acquiredAt: item.acquired_at.toISOString(),
     })),
@@ -2138,6 +2659,12 @@ function mapParty(
       .map((request) => ({
         cardDefinitionId: request.card_definition_id,
         quantity: request.quantity,
+        name: request.name,
+        category: request.category,
+        affinity: request.affinity,
+        rarity: request.rarity,
+        imageUrl: request.image_url,
+        imageAlt: request.image_alt,
       })),
     rarityPoints: partyItems.reduce(
       (total, item) => total + rarityTradePoints(item.rarity),
@@ -2149,6 +2676,25 @@ function mapParty(
     imbalanceAcknowledged: acknowledgements.some(
       (acknowledgement) => acknowledgement.player_id === playerId,
     ),
+  };
+}
+
+async function loadParticipantNames(
+  client: CardTradeClient,
+  trade: TradeRow,
+): Promise<{ sender: string; recipient: string }> {
+  const result = await client.query<PlayerNameRow>(
+    `
+      select id::text, player_name
+        from public.players
+       where id = any($1::uuid[])
+    `,
+    [[trade.sender_player_id, trade.recipient_player_id]],
+  );
+  const byId = new Map(result.rows.map((row) => [row.id, row.player_name]));
+  return {
+    sender: byId.get(trade.sender_player_id) ?? 'Deleted player',
+    recipient: byId.get(trade.recipient_player_id) ?? 'Deleted player',
   };
 }
 

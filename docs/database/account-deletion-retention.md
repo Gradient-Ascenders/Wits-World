@@ -164,10 +164,13 @@ reservations before deleting owned cards. Migration
 `0055_persist_versioned_card_trades.sql` installs that boundary on the
 `active` -> `deletion_pending` lifecycle transition, so reservations are
 released inside the same transaction before later owned-card cleanup can run.
-Minimal completed settlement receipts and copy-movement provenance remain
-against anonymised local tombstones; former Player Names, Auth0 tokens, and
-reauthentication proof are not copied into that history. The authenticated
-trading API remains follow-up work in `#272`.
+Minimal completed settlement receipts, command-idempotency receipts, and
+copy-movement provenance remain against anonymised local tombstones; former
+Player Names, Auth0 tokens, and reauthentication proof are not copied into that
+history. Migration `0056_add_card_trade_submission_receipts.sql` stores only
+actor/trade identifiers, operation, submission UUID, payload digest, and time.
+Issue `#272` now exposes the authenticated trading API; issue `#274` remains the
+player-interface follow-up.
 
 ## Transaction and concurrency rules
 

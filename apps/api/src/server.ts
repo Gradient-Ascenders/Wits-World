@@ -58,6 +58,8 @@ import { createRankedReadService } from './matches/ranked-read-service.js';
 import { createRankedScheduler } from './matches/ranked-scheduler.js';
 import { createTerritoryOwnerBonusService } from './territory/territory-owner-bonus.js';
 import { createTerritoryReadService } from './territory/territory-read-service.js';
+import { createCardTradeService } from './trading/card-trade-service.js';
+import { createCardTradeMaintenanceScheduler } from './trading/card-trade-maintenance-scheduler.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
@@ -87,6 +89,7 @@ async function startServer(): Promise<void> {
   );
   const territoryOwnerBonus = createTerritoryOwnerBonusService();
   const territoryReadService = createTerritoryReadService(database);
+  const cardTradeService = createCardTradeService(database);
 
   const movementEvidenceService = createMovementEvidenceService(database, {
     maxPlausibleJourneySpeedMetresPerSecond:
@@ -195,6 +198,10 @@ async function startServer(): Promise<void> {
 
     cpuMatchService,
     asyncPvpService,
+    cardTrade: {
+      service: cardTradeService,
+      reauthenticationVerifier,
+    },
     livePvp: {
       service: livePvpService,
       gateway: livePvpGateway,
@@ -296,6 +303,11 @@ async function startServer(): Promise<void> {
     app.log,
     config.rankedSweepIntervalMs,
   );
+  const cardTradeMaintenanceScheduler = createCardTradeMaintenanceScheduler(
+    cardTradeService,
+    app.log,
+    config.cardTradeMaintenanceIntervalMs,
+  );
 
   app.addHook('onClose', async () => {
     await placementScheduler.stop();
@@ -307,6 +319,7 @@ async function startServer(): Promise<void> {
     await movementEvidenceCleanupScheduler.stop();
     await trustEvaluationScheduler.stop();
     await asyncPvpDeadlineScheduler.stop();
+    await cardTradeMaintenanceScheduler.stop();
     await database.end();
   });
 
@@ -324,6 +337,7 @@ async function startServer(): Promise<void> {
     trustEvaluationScheduler.start();
     placementScheduler.start();
     asyncPvpDeadlineScheduler.start();
+    cardTradeMaintenanceScheduler.start();
 
     app.log.info(
       {

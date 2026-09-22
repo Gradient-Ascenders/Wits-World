@@ -210,7 +210,9 @@ and the [territory API contract](../architecture/contested-campus-territory-api-
 
 Migration `0055_persist_versioned_card_trades.sql` adds private immutable offer
 versions, exact-copy reservations, version-scoped approvals, atomic settlement
-receipts, and per-copy provenance movements. Traded ownership is reissued as a
+receipts, and per-copy provenance movements. Migration
+`0056_add_card_trade_submission_receipts.sql` adds private immutable mutation
+idempotency receipts keyed by actor, operation, and submission UUID. Traded ownership is reissued as a
 new `player_cards` row with `acquisition_kind = trade`; the source copy is
 consumed rather than reassigned. Existing deck and ownership identifiers are not
 rewritten by the migration. Saved-deck, battle-deck, and evolution operations

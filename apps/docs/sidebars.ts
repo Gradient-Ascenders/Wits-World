@@ -282,6 +282,11 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'architecture/card-trading-api-contract',
+              label: 'Card trading API',
+            },
+            {
+              type: 'doc',
               id: 'architecture/live-pvp-api-contract',
               label: 'Live player battle API',
             },

@@ -28,6 +28,8 @@ import {
 import { runSeeds } from '../src/database/seeds.js';
 
 const MIGRATION_NAME = '0055_persist_versioned_card_trades.sql';
+const IDEMPOTENCY_MIGRATION_NAME =
+  '0056_add_card_trade_submission_receipts.sql';
 const runIntegrationTests =
   process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true';
 
@@ -45,6 +47,7 @@ interface OwnedFixtureCard {
 
 interface PlayerFixture {
   id: string;
+  playerName: string;
   cards: OwnedFixtureCard[];
 }
 
@@ -91,6 +94,7 @@ describe.skipIf(!runIntegrationTests)(
 
       const migrationResult = await runMigrations(temporaryConfig);
       expect(migrationResult.applied).toContain(MIGRATION_NAME);
+      expect(migrationResult.applied).toContain(IDEMPOTENCY_MIGRATION_NAME);
 
       pool = createDatabasePool(temporaryConfig);
     }, 180_000);
@@ -177,6 +181,173 @@ describe.skipIf(!runIntegrationTests)(
         'trust-v1',
         'trust-v2',
       ]);
+    });
+
+    it('makes create and revision submissions durably idempotent', async () => {
+      const sender = await insertPlayerWithCollection(
+        pool,
+        'idempotent_sender',
+      );
+      const recipient = await insertPlayerWithCollection(
+        pool,
+        'idempotent_recipient',
+      );
+      const service = createCardTradeService(pool);
+      const createSubmissionId = randomUUID();
+      const createInput = {
+        senderPlayerId: sender.id,
+        recipientPlayerName: recipient.playerName,
+        submissionId: createSubmissionId,
+        offeredOwnedCardIds: [sender.cards[0]!.id],
+        requestedDefinitions: [
+          { cardDefinitionId: recipient.cards[0]!.definitionId, quantity: 1 },
+        ],
+      } as const;
+
+      const created = await service.createTrade(createInput);
+      const replayed = await service.createTrade(createInput);
+      expect(replayed.tradeId).toBe(created.tradeId);
+
+      const tradeCount = await pool.query<{ count: number }>(
+        `select count(*)::integer as count
+           from private.card_trades
+          where sender_player_id = $1::uuid
+            and recipient_player_id = $2::uuid`,
+        [sender.id, recipient.id],
+      );
+      expect(tradeCount.rows[0]?.count).toBe(1);
+
+      await expect(
+        service.createTrade({
+          ...createInput,
+          requestedDefinitions: [
+            { cardDefinitionId: recipient.cards[1]!.definitionId, quantity: 1 },
+          ],
+        }),
+      ).rejects.toMatchObject({ code: 'TRADE_IDEMPOTENCY_CONFLICT' });
+
+      const revisionSubmissionId = randomUUID();
+      const revision = {
+        tradeId: created.tradeId,
+        playerId: recipient.id,
+        submissionId: revisionSubmissionId,
+        expectedVersion: 1,
+        offeredOwnedCardIds: [recipient.cards[0]!.id],
+        requestedDefinitions: [
+          { cardDefinitionId: sender.cards[0]!.definitionId, quantity: 1 },
+        ],
+      } as const;
+      const revised = await service.reviseTrade(revision);
+      const revisionReplay = await service.reviseTrade(revision);
+      expect(revised.version).toBe(2);
+      expect(revisionReplay.version).toBe(2);
+
+      const versions = await pool.query<{ count: number }>(
+        `select count(*)::integer as count
+           from private.card_trade_versions
+          where trade_id = $1::uuid`,
+        [created.tradeId],
+      );
+      expect(versions.rows[0]?.count).toBe(2);
+
+      const receipts = await pool.query<{ count: number }>(
+        `select count(*)::integer as count
+           from private.card_trade_submission_receipts
+          where trade_id = $1::uuid`,
+        [created.tradeId],
+      );
+      expect(receipts.rows[0]?.count).toBe(2);
+
+      await expect(
+        pool.query(
+          `update private.card_trade_submission_receipts
+              set payload_hash = repeat('0', 64)
+            where trade_id = $1::uuid`,
+          [created.tradeId],
+        ),
+      ).rejects.toMatchObject({ code: '55006' });
+
+      await expect(
+        pool.query(
+          `delete from private.card_trade_submission_receipts
+            where trade_id = $1::uuid`,
+          [created.tradeId],
+        ),
+      ).rejects.toMatchObject({ code: '55006' });
+    });
+
+    it('purges idempotency receipts with expired non-completed trade history', async () => {
+      const sender = await insertPlayerWithCollection(pool, 'receipt_sender');
+      const recipient = await insertPlayerWithCollection(
+        pool,
+        'receipt_recipient',
+      );
+      const tradeId = randomUUID();
+      const submissionId = randomUUID();
+
+      const fixtureClient = await pool.connect();
+      try {
+        await fixtureClient.query('begin');
+        await fixtureClient.query(
+          `insert into private.card_trades (
+             id, sender_player_id, recipient_player_id, policy_version,
+             current_version, status, created_at, expires_at
+           ) values (
+             $1::uuid, $2::uuid, $3::uuid, 'card-trade-v1', 1, 'open',
+             clock_timestamp() - interval '32 days',
+             clock_timestamp() - interval '31 days'
+           )`,
+          [tradeId, sender.id, recipient.id],
+        );
+        await fixtureClient.query(
+          `insert into private.card_trade_versions (
+             trade_id, version, created_by_player_id, created_at
+           ) values (
+             $1::uuid, 1, $2::uuid, clock_timestamp() - interval '32 days'
+           )`,
+          [tradeId, sender.id],
+        );
+        await fixtureClient.query(
+          `update private.card_trades
+              set status = 'cancelled',
+                  terminal_at = clock_timestamp() - interval '31 days',
+                  terminal_reason = 'cancelled'
+            where id = $1::uuid`,
+          [tradeId],
+        );
+        await fixtureClient.query(
+          `insert into private.card_trade_submission_receipts (
+             actor_player_id, operation, submission_id, payload_hash, trade_id, created_at
+           ) values (
+             $1::uuid, 'trade_cancel', $2::uuid, repeat('a', 64), $3::uuid,
+             clock_timestamp() - interval '31 days'
+           )`,
+          [sender.id, submissionId, tradeId],
+        );
+        await fixtureClient.query('commit');
+      } catch (error) {
+        await fixtureClient.query('rollback');
+        throw error;
+      } finally {
+        fixtureClient.release();
+      }
+
+      const purged = await createCardTradeService(pool).purgeTerminalTrades();
+      expect(purged).toBeGreaterThanOrEqual(1);
+
+      const trade = await pool.query(
+        `select 1 from private.card_trades where id = $1::uuid`,
+        [tradeId],
+      );
+      const receipt = await pool.query(
+        `select 1 from private.card_trade_submission_receipts
+          where actor_player_id = $1::uuid
+            and operation = 'trade_cancel'
+            and submission_id = $2::uuid`,
+        [sender.id, submissionId],
+      );
+      expect(trade.rowCount).toBe(0);
+      expect(receipt.rowCount).toBe(0);
     });
 
     it('prevents conflicting reservations and makes acceptance version-specific', async () => {
@@ -338,6 +509,7 @@ describe.skipIf(!runIntegrationTests)(
       await service.acceptTrade({
         tradeId: trade.tradeId,
         playerId: sender.id,
+        submissionId: randomUUID(),
         expectedVersion: trade.version,
       });
 
@@ -345,9 +517,14 @@ describe.skipIf(!runIntegrationTests)(
         service.acceptTrade({
           tradeId: trade.tradeId,
           playerId: recipient.id,
+          submissionId: randomUUID(),
           expectedVersion: trade.version,
         }),
-        service.cancelTrade(trade.tradeId, sender.id),
+        service.cancelTradeCommand({
+          tradeId: trade.tradeId,
+          playerId: sender.id,
+          submissionId: randomUUID(),
+        }),
       ]);
 
       expect(
@@ -438,14 +615,18 @@ describe.skipIf(!runIntegrationTests)(
       const service = createCardTradeService(pool);
       const trade = await createCompleteTrade(service, sender, recipient);
 
+      const senderAcceptanceSubmissionId = randomUUID();
+      const recipientAcceptanceSubmissionId = randomUUID();
       await service.acceptTrade({
         tradeId: trade.tradeId,
         playerId: sender.id,
+        submissionId: senderAcceptanceSubmissionId,
         expectedVersion: trade.version,
       });
       const settled = await service.acceptTrade({
         tradeId: trade.tradeId,
         playerId: recipient.id,
+        submissionId: recipientAcceptanceSubmissionId,
         expectedVersion: trade.version,
       });
 
@@ -512,9 +693,19 @@ describe.skipIf(!runIntegrationTests)(
       const replay = await service.acceptTrade({
         tradeId: trade.tradeId,
         playerId: sender.id,
+        submissionId: senderAcceptanceSubmissionId,
         expectedVersion: trade.version,
       });
       expect(replay.settlement?.receiptId).toBe(receiptId);
+
+      const acceptanceSubmissionReceipts = await pool.query<{ count: number }>(
+        `select count(*)::integer as count
+           from private.card_trade_submission_receipts
+          where trade_id = $1::uuid
+            and operation = 'trade_accept'`,
+        [trade.tradeId],
+      );
+      expect(acceptanceSubmissionReceipts.rows[0]?.count).toBe(2);
 
       const receiptCount = await pool.query<{ count: number }>(
         `select count(*)::integer as count
@@ -928,15 +1119,16 @@ async function insertPlayerWithCollection(
 ): Promise<PlayerFixture> {
   const id = randomUUID();
   const grantId = randomUUID();
+  const playerName = label.slice(0, 20);
   await database.query(
     `insert into public.players (
-       id, auth_issuer, auth_subject, role, created_at, updated_at
+       id, auth_issuer, auth_subject, player_name, role, created_at, updated_at
      ) values (
-       $1::uuid, 'https://issuer.example/', $2, 'player',
+       $1::uuid, 'https://issuer.example/', $2, $3, 'player',
        clock_timestamp() - interval '2 days',
        clock_timestamp() - interval '2 days'
      )`,
-    [id, `auth0|trade-${label}-${id}`],
+    [id, `auth0|trade-${label}-${id}`, playerName],
   );
   await database.query(
     `insert into public.player_starter_grants (
@@ -980,7 +1172,7 @@ async function insertPlayerWithCollection(
       category: definition.category,
     });
   }
-  return { id, cards };
+  return { id, playerName, cards };
 }
 
 async function insertAuthor(
