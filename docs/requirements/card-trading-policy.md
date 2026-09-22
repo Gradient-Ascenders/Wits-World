@@ -7,14 +7,15 @@ title: 'Card trading and anti-drain policy'
 ## Status and boundary
 
 This is the approved issue `#273` policy for Advanced-tier, bilateral card
-trading. It is **not** a deployed trading feature. Issue `#275` must persist
-versioned offers, reservations, exchanges, and history; issue `#272` must
-implement the authenticated API; and issue `#274` must build the player
-experience. The existing [card evolution](card-evolution-rules.md),
+trading. Issue `#275` now provides the private persistence and service boundary
+for versioned offers, exact-copy reservations, atomic exchanges, and history.
+Trading is still **not** a deployed player feature: issue `#272` must expose the
+authenticated API and issue `#274` must build the player experience. The
+existing [card evolution](card-evolution-rules.md),
 [saved-deck rules](basic-game-rules.md#saved-decks),
 [account-deletion boundary](../database/account-deletion-retention.md), and
-[trust review policy](longitudinal-trust-policy.md) remain authoritative until
-their trading integrations are implemented.
+[trust review policy](longitudinal-trust-policy.md) remain authoritative across
+those integrations.
 
 Trading is card-for-card only. There is no gift, currency payment, marketplace,
 real-money transaction, or multi-party exchange in this version. The server
@@ -137,9 +138,12 @@ must not block collection browsing, deck management, CPU play, or account
 deletion. When a hold begins, the server atomically invalidates that player's
 open offers and releases their reservations. The hold prevents creating,
 countering, or accepting further offers but never reverses a completed trade.
-The current trust migration does not yet contain this scope; #275/#272 must
-integrate it through a new versioned trust-policy extension before trading is
-enabled. Existing `trust-v1` decisions are not reinterpreted.
+Migration `0055_persist_versioned_card_trades.sql` adds this scope under a new
+immutable `trust-v2` policy identifier and leaves existing `trust-v1` decisions
+unchanged. The automated trust-scoring runtime still evaluates `trust-v1`; any
+review workflow that authors `card_trade_hold` must therefore create the case,
+decision, and restriction consistently under `trust-v2` before the public
+trading API is enabled.
 
 ## Atomic settlement and history
 
@@ -199,15 +203,16 @@ reauthentication proof.
 - A trade hold cancels open offers but preserves earlier completed receipts;
   casual PvP or account browsing remains available.
 
-Issue `#275` must test reservation and transfer constraints, migration from
-existing provenance, replay, concurrent terminal actions, deletion cleanup,
-and immutable history. Issue `#272` must test authentication, object-level
-authorisation, recent proof, limits, safe errors, and all-or-nothing API
-settlement. Issue `#274` must show both sides' exact selected cards, warnings,
-expiry, version changes, and terminal outcomes without exposing an opponent's
-collection. None of those tests or features are claimed complete by this
-policy document.
+Issue `#275` adds focused persistence coverage for migration safety,
+reservation conflicts, version-scoped approvals, replay, rollback, deletion
+cleanup, terminal immutability, and atomic copy movement. Those tests remain
+execution evidence only when they are actually run. Issue `#272` must still
+test authentication, object-level authorisation, recent proof, limits, safe
+errors, and the HTTP settlement boundary. Issue `#274` must show both sides'
+exact selected cards, warnings, expiry, version changes, and terminal outcomes
+without exposing an opponent's collection.
 
 ## AI declaration
 
-This policy was drafted and reviewed with assistance from Codex[GPT-5.6 Sol].
+This policy was drafted and reviewed with assistance from Codex[GPT-5.6 Sol] and
+ChatGPT-Web[GPT-5.6 Sol].

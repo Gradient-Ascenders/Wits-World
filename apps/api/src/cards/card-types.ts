@@ -85,7 +85,7 @@ export interface CardDefinition {
 export interface OwnedCard extends Omit<CardDefinition, 'id'> {
   cardDefinitionId: string;
   ownedCardId: string;
-  acquisitionKind: 'event_reward' | 'starter' | 'evolution';
+  acquisitionKind: 'event_reward' | 'starter' | 'evolution' | 'trade';
   acquiredAt: string;
 }
 

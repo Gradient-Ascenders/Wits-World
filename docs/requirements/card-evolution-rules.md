@@ -116,15 +116,20 @@ Coin selling remains outside this contract. Issue #193 retired the active coin
 and wallet model and explicitly deferred selling for currency; the collection
 therefore exposes no speculative selling action or client-calculated value.
 
-The planned [card-trading policy](card-trading-policy.md) reserves exact owned
-copies in open offers. Once trading is implemented, evolution must exclude
-those reserved copies as well as saved-deck copies; the current evolution API
-does not yet enforce trade reservations.
+The [card-trading policy](card-trading-policy.md) reserves exact owned copies
+in open offers. Issue `#275` now makes evolution treat a current trade
+reservation as a server-owned lock alongside a saved-deck lock. Preview results
+mark affected copies with `lockReason: trade_reservation`, report the reserved
+copy count, and return `unavailableReason: trade_reservation` when those locks
+prevent the recipe. Execution locks candidate ownership rows and rechecks trade
+reservations before consuming any copies, so a concurrent trade cannot race an
+evolution. The public trading API and UI remain follow-up work.
 
 ## AI declaration
 
-This document was updated with assistance from Codex-CLI[GPT-5.6 Sol] and
-Codex[GPT-5], Codex-CLI[GPT-6], and Codex[GPT-5.6 Sol].
+This document was updated with assistance from Codex-CLI[GPT-5.6 Sol],
+Codex[GPT-5], Codex-CLI[GPT-6], Codex[GPT-5.6 Sol], and
+ChatGPT-Web[GPT-5.6 Sol].
 
 Sprint 2 status reconciliation assisted by Codex-CLI[GPT-6].
 

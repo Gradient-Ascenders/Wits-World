@@ -216,6 +216,9 @@ challenge data such as:
 - `player_id`;
 - `source_completion_id`;
 - `source_starter_grant_id`;
+- `source_evolution_id`;
+- `source_territory_bonus_id`;
+- `source_trade_movement_id`;
 - challenge attempt identifiers;
 - accepted answers;
 - reward-policy internals; or

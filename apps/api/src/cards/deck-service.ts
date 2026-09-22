@@ -349,11 +349,28 @@ async function resolveOwnedDeckCards(
           on definition.id = owned.card_definition_id
         where owned.player_id = $1::uuid
           and owned.id = any($2::uuid[])
+        order by owned.id
+        for update of owned
       `,
     [playerId, normalizedOwnedCardIds],
   );
 
   if (result.rows.length !== normalizedOwnedCardIds.length) {
+    throw new DeckOwnedCardNotFoundError();
+  }
+
+  // Check reservations only after the ownership rows are locked so a trade
+  // cannot reserve a copy concurrently with this deck mutation.
+  const reservations = await client.query<{ owned_card_id: string }>(
+    `
+      select owned_card_id::text
+        from private.card_trade_reservations
+       where owned_card_id = any($1::uuid[])
+       order by owned_card_id
+    `,
+    [normalizedOwnedCardIds],
+  );
+  if (reservations.rows.length > 0) {
     throw new DeckOwnedCardNotFoundError();
   }
 

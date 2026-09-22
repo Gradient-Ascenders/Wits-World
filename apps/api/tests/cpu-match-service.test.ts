@@ -1776,6 +1776,10 @@ function createCpuConfigurationQuery(
       return { rows: playerRows };
     }
 
+    if (statement.includes('from private.card_trade_reservations')) {
+      return { rows: [] };
+    }
+
     if (statement.includes('from unnest($1::uuid[], $2::text[])')) {
       expect(values).toEqual([
         BASIC_CPU_DECK_CONFIGURATION.map(

@@ -401,6 +401,11 @@ const sidebars: SidebarsConfig = {
                 },
                 {
                   type: 'doc',
+                  id: 'database/card-trading-persistence',
+                  label: 'Card trading storage',
+                },
+                {
+                  type: 'doc',
                   id: 'database/trust-persistence',
                   label: 'Trust and review storage',
                 },

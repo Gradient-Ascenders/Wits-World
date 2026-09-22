@@ -202,6 +202,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0052_ranked_invalid_proposal_cooldowns.sql',
         '0053_persist_contested_territory.sql',
         '0054_implement_contested_territory_runtime.sql',
+        '0055_persist_versioned_card_trades.sql',
       ],
       skipped: [],
     });
@@ -263,6 +264,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0052_ranked_invalid_proposal_cooldowns.sql',
         '0053_persist_contested_territory.sql',
         '0054_implement_contested_territory_runtime.sql',
+        '0055_persist_versioned_card_trades.sql',
       ],
     });
     expect(readiness).toMatchObject({

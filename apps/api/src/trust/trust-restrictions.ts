@@ -3,7 +3,8 @@ import type pg from 'pg';
 export type TrustRestrictionScope =
   | 'online_verification_required'
   | 'location_reward_challenge_hold'
-  | 'new_competitive_match_hold';
+  | 'new_competitive_match_hold'
+  | 'card_trade_hold';
 
 export interface ActiveTrustRestriction {
   scope: TrustRestrictionScope;

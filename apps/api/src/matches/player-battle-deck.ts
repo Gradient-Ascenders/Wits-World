@@ -140,12 +140,30 @@ export async function loadPlayerBattleDeck(
           )
         )
       order by membership.position
+      for update of owned
       for share of deck
     `,
     [deckId, playerId, requireSelected],
   );
 
   const rows = cardsResult.rows;
+  if (rows.length > 0) {
+    // Ownership rows above are locked before checking reservations. A trade
+    // therefore cannot reserve a copy concurrently with a new match snapshot.
+    const reserved = await client.query<{ owned_card_id: string }>(
+      `
+        select owned_card_id::text
+          from private.card_trade_reservations
+         where owned_card_id = any($1::uuid[])
+         limit 1
+      `,
+      [rows.map((row) => row.owned_card_id)],
+    );
+    if (reserved.rows.length > 0) {
+      throw new PlayerBattleDeckError();
+    }
+  }
+
   if (
     rows.length !== 5 ||
     rows.some(
