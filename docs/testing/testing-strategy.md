@@ -20,6 +20,15 @@ issuance independent of current ownership, rarity-inference suppression, and
 representative query plans. Run that focused database suite locally after migration tests; the complete
 database runner remains the Gitea PR gate.
 
+Issue `#280` adds the protected Web presentation boundary. Focused component and
+client tests cover the three advanced endpoints, strict privacy/suppression parsing,
+server location modes and question classifications, inclusive UI date conversion to
+the exclusive API boundary, composable question filters, server-provided rarity
+summaries, accessible horizontal table equivalents for charts, independent
+loading/empty/error recovery, and an explicit ordinary-Player denial regression for
+`/author/analytics`. These are Web/API-contract tests only; they do not replace the
+issue `#278` database integration and query-plan evidence.
+
 ## Purpose
 
 Wits World uses the smallest test boundary that can reliably demonstrate a
@@ -155,8 +164,9 @@ campaign schedule and membership submission, and preservation of campaign form
 input after a stale-version conflict. They also cover navigation-only queue
 summaries, authoritative refresh after `CONTENT_STATE_CONFLICT`, confirmed
 replacement of a preserved campaign draft, server-returned lifecycle feedback,
-and read-only non-draft campaign edit deep links. Analytics UI tests remain
-blocked with issue `#184` / S3-06; no mock analytics contract is used.
+and read-only non-draft campaign edit deep links. Issue `#184` added the first
+question-performance workspace coverage; issue `#280` extends that boundary with
+privacy-safe advanced location, question, and card analytics UI/client tests.
 
 The issue `#257` trust-persistence database suite upgrades a pre-`0046`
 database and also verifies a clean migration. It covers private-only trust
