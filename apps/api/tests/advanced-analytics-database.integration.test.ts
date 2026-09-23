@@ -202,6 +202,67 @@ describe.skipIf(!runIntegrationTests)(
       });
     });
 
+    it('suppresses rarity totals that would reveal a suppressed sibling card count', async () => {
+      const sibling = await pool.query<{ id: string }>(
+        `select sibling.id::text
+           from public.card_definitions primary_card
+           join public.card_definitions sibling
+             on sibling.rarity = primary_card.rarity
+            and sibling.id <> primary_card.id
+          where primary_card.id = $1::uuid
+          order by sibling.id
+          limit 1`,
+        [rewardCardId],
+      );
+      const siblingCardId = sibling.rows[0]?.id;
+      if (!siblingCardId) {
+        throw new Error('Expected a same-rarity sibling catalogue card.');
+      }
+
+      await pool.query(
+        `insert into public.event_completion_card_rewards (
+           completion_id, reward_position, card_definition_id, awarded_at
+         )
+         select md5('analytics-completion-' || number)::uuid,
+                2,
+                $1::uuid,
+                '2026-09-10T10:01:00Z'::timestamptz + number * interval '1 minute'
+           from generate_series(1, 3) number`,
+        [siblingCardId],
+      );
+
+      const result = await createAnalyticsService(pool).listCardIssuance({
+        fromDate: '2026-09-10',
+        toDate: '2026-09-11',
+        page: 1,
+        pageSize: 100,
+      });
+      const disclosedCard = result.items.find(
+        (item) => item.cardDefinitionId === rewardCardId,
+      );
+      const suppressedSibling = result.items.find(
+        (item) => item.cardDefinitionId === siblingCardId,
+      );
+      const rarity = result.rarities.find(
+        (item) => item.rarity === disclosedCard?.rarity,
+      );
+
+      expect(disclosedCard).toMatchObject({
+        issuanceCount: 12,
+        suppressed: false,
+      });
+      expect(suppressedSibling).toMatchObject({
+        issuanceCount: null,
+        issuancesPer100Completions: null,
+        suppressed: true,
+      });
+      expect(rarity).toMatchObject({
+        issuanceCount: null,
+        issuancesPer100Completions: null,
+        suppressed: true,
+      });
+    });
+
     it('meets the documented representative database execution target', async () => {
       const captured: Array<{ statement: string; values: unknown[] }> = [];
       const capturingDatabase: AuthorAnalyticsDatabase = {

@@ -162,6 +162,7 @@ interface CardRarityRow extends pg.QueryResultRow {
   rarity: AnalyticsCardRarity;
   issuance_count: number | string;
   total_completions: number | string;
+  has_suppressed_child: boolean;
 }
 
 interface NormalizedDateRange {
@@ -283,6 +284,7 @@ export function createAuthorAnalyticsService(
         database.query<CardRarityRow>(CARD_RARITY_ANALYTICS_QUERY, [
           range.from,
           range.to,
+          ADVANCED_ANALYTICS_MINIMUM_SAMPLE_SIZE,
         ]),
       ]);
       const totalItems = cards.rows[0]?.total_items ?? 0;
@@ -365,6 +367,7 @@ function mapCardRarityItem(row: CardRarityRow): CardRarityAnalyticsItem {
   const issuanceCount = Number(row.issuance_count);
   const totalCompletions = Number(row.total_completions);
   const suppressed =
+    row.has_suppressed_child ||
     isPositiveSmallCount(issuanceCount) ||
     isPositiveSmallCount(totalCompletions);
   return {
@@ -648,15 +651,21 @@ const CARD_ISSUANCE_ANALYTICS_QUERY = `
 const CARD_RARITY_ANALYTICS_QUERY = `
   with rarities(rarity) as (
     values ('common'::text), ('rare'::text), ('epic'::text), ('legendary'::text)
-  ), filtered_rewards as (
-    select definition.rarity
+  ), issued_by_card as (
+    select definition.rarity,
+           reward.card_definition_id,
+           count(*)::bigint as issuance_count
       from public.event_completion_card_rewards reward
       join public.card_definitions definition on definition.id = reward.card_definition_id
      where ($1::timestamptz is null or reward.awarded_at >= $1::timestamptz)
        and ($2::timestamptz is null or reward.awarded_at < $2::timestamptz)
+     group by definition.rarity, reward.card_definition_id
   ), issued as (
-    select rarity, count(*)::bigint as issuance_count
-      from filtered_rewards
+    select rarity,
+           sum(issuance_count)::bigint as issuance_count,
+           bool_or(issuance_count > 0 and issuance_count < $3::integer)
+             as has_suppressed_child
+      from issued_by_card
      group by rarity
   ), total_completions as (
     select count(*)::bigint as value
@@ -666,7 +675,8 @@ const CARD_RARITY_ANALYTICS_QUERY = `
   )
   select rarities.rarity,
          coalesce(issued.issuance_count, 0)::bigint as issuance_count,
-         total_completions.value as total_completions
+         total_completions.value as total_completions,
+         coalesce(issued.has_suppressed_child, false) as has_suppressed_child
     from rarities
     left join issued using (rarity)
     cross join total_completions

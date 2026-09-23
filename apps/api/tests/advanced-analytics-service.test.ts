@@ -188,13 +188,29 @@ describe('advanced analytics service', () => {
       if (sql.includes('with rarities(rarity)')) {
         return {
           rows: [
-            { rarity: 'common', issuance_count: '9', total_completions: '20' },
-            { rarity: 'rare', issuance_count: '10', total_completions: '20' },
-            { rarity: 'epic', issuance_count: '0', total_completions: '20' },
+            {
+              rarity: 'common',
+              issuance_count: '9',
+              total_completions: '20',
+              has_suppressed_child: true,
+            },
+            {
+              rarity: 'rare',
+              issuance_count: '10',
+              total_completions: '20',
+              has_suppressed_child: false,
+            },
+            {
+              rarity: 'epic',
+              issuance_count: '0',
+              total_completions: '20',
+              has_suppressed_child: false,
+            },
             {
               rarity: 'legendary',
               issuance_count: '0',
               total_completions: '20',
+              has_suppressed_child: false,
             },
           ],
         };
@@ -247,18 +263,131 @@ describe('advanced analytics service', () => {
     expect(String(query.mock.calls[0]?.[0])).not.toContain('player_cards');
   });
 
+  it('suppresses a rarity total when one non-zero child card count is suppressed', async () => {
+    const suppressedSiblingId = '50000000-0000-4000-8000-000000000002';
+    const query = vi.fn().mockImplementation(async (sql: string) => {
+      if (sql.includes('with rarities(rarity)')) {
+        return {
+          rows: [
+            {
+              rarity: 'common',
+              issuance_count: '0',
+              total_completions: '20',
+              has_suppressed_child: false,
+            },
+            {
+              rarity: 'rare',
+              issuance_count: '15',
+              total_completions: '20',
+              has_suppressed_child: true,
+            },
+            {
+              rarity: 'epic',
+              issuance_count: '0',
+              total_completions: '20',
+              has_suppressed_child: false,
+            },
+            {
+              rarity: 'legendary',
+              issuance_count: '0',
+              total_completions: '20',
+              has_suppressed_child: false,
+            },
+          ],
+        };
+      }
+
+      return {
+        rows: [
+          {
+            card_definition_id: CARD_ID,
+            card_name: 'Disclosed Card',
+            rarity: 'rare',
+            reward_eligible: true,
+            issuance_count: '12',
+            total_completions: '20',
+            total_items: 2,
+          },
+          {
+            card_definition_id: suppressedSiblingId,
+            card_name: 'Suppressed Sibling',
+            rarity: 'rare',
+            reward_eligible: true,
+            issuance_count: '3',
+            total_completions: '20',
+            total_items: 2,
+          },
+        ],
+      };
+    });
+    const service = createAuthorAnalyticsService(
+      { query },
+      questionPerformanceFixture([]),
+    );
+
+    const result = await service.listCardIssuance({
+      page: 1,
+      pageSize: 25,
+    });
+
+    expect(result.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          cardDefinitionId: CARD_ID,
+          issuanceCount: 12,
+          suppressed: false,
+        }),
+        expect.objectContaining({
+          cardDefinitionId: suppressedSiblingId,
+          issuanceCount: null,
+          suppressed: true,
+        }),
+      ]),
+    );
+    expect(result.rarities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          rarity: 'rare',
+          issuanceCount: null,
+          issuancesPer100Completions: null,
+          suppressed: true,
+        }),
+      ]),
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('with rarities(rarity)'),
+      [null, null, 10],
+    );
+  });
+
   it('suppresses card rates when the completion denominator is a small sample', async () => {
     const query = vi.fn().mockImplementation(async (sql: string) => {
       if (sql.includes('with rarities(rarity)')) {
         return {
           rows: [
-            { rarity: 'common', issuance_count: '0', total_completions: '5' },
-            { rarity: 'rare', issuance_count: '0', total_completions: '5' },
-            { rarity: 'epic', issuance_count: '0', total_completions: '5' },
+            {
+              rarity: 'common',
+              issuance_count: '0',
+              total_completions: '5',
+              has_suppressed_child: false,
+            },
+            {
+              rarity: 'rare',
+              issuance_count: '0',
+              total_completions: '5',
+              has_suppressed_child: false,
+            },
+            {
+              rarity: 'epic',
+              issuance_count: '0',
+              total_completions: '5',
+              has_suppressed_child: false,
+            },
             {
               rarity: 'legendary',
               issuance_count: '0',
               total_completions: '5',
+              has_suppressed_child: false,
             },
           ],
         };

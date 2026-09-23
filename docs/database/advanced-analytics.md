@@ -66,7 +66,10 @@ materialized summary of attempts, completions, or rewards is introduced.
 
 The product-event table is aggregate-only and cannot be used to reconstruct an
 individual player's path. The API additionally suppresses positive samples below
-10 for the advanced analytics projections. Exact zero remains visible.
+10 for the advanced analytics projections. Exact zero remains visible. Card rarity
+summaries use secondary suppression whenever a rarity contains a non-zero
+per-card issuance count below 10, preventing subtraction of disclosed siblings
+from revealing the suppressed child count.
 
 This design does not claim differential privacy. Authors can still learn
 operational facts about public event locations and content; the protection is
@@ -82,8 +85,8 @@ retention rules are unchanged.
 `apps/api/tests/advanced-analytics-database.integration.test.ts` is the focused
 persistence and query-plan harness. It covers concurrent counter increments,
 privacy-safe schema columns, authoritative start/completion joins, ignored
-locations, immutable reward-ledger issuance, ownership independence, and
-representative `EXPLAIN (ANALYZE, BUFFERS)` plans.
+locations, immutable reward-ledger issuance, secondary rarity suppression,
+ownership independence, and representative `EXPLAIN (ANALYZE, BUFFERS)` plans.
 
 The target is less than 1,000 ms PostgreSQL execution time for each captured
 representative advanced-analytics query on the disposable fixture. A separate

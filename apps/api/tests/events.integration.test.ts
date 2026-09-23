@@ -233,6 +233,19 @@ describe('event discovery API', () => {
     );
   });
 
+  it('does not wait for discovery analytics recording to settle', async () => {
+    recordViews.mockReturnValueOnce(new Promise<void>(() => undefined));
+
+    const response = await authenticatedRequest({
+      method: 'GET',
+      url: '/api/v1/events',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().events).toEqual([activeEvent]);
+    expect(recordViews).toHaveBeenCalledOnce();
+  });
+
   it('does not fail discovery when aggregate recording fails', async () => {
     recordViews.mockRejectedValueOnce(new Error('analytics unavailable'));
 
@@ -341,6 +354,27 @@ describe('event eligibility API', () => {
       { eventId: EVENT_ID },
       receivedAt,
     );
+  });
+
+  it('does not wait for eligibility analytics recording to settle', async () => {
+    recordEligibility.mockReturnValueOnce(new Promise<void>(() => undefined));
+    eligibilityEvaluate.mockResolvedValue({
+      outcome: 'evaluated',
+      eventId: EVENT_ID,
+      eligible: true,
+      distanceMetres: 20,
+      radiusMetres: 75,
+    } satisfies EventEligibilityResult);
+
+    const response = await authenticatedEligibilityRequest();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      eventId: EVENT_ID,
+      status: 'reachable',
+      reachable: true,
+    });
+    expect(recordEligibility).toHaveBeenCalledOnce();
   });
 
   it('does not fail a reachable eligibility response when aggregate recording fails', async () => {

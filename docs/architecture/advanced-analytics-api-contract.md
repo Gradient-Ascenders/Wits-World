@@ -40,8 +40,9 @@ Only the first two stages need an analytics-specific store because attempts and
 completions already have durable authoritative records. The aggregate recorder
 receives an event identifier, an optional placement-assignment identifier, and a
 server timestamp. It never receives a player identifier or location claim.
-Analytics-write failure is logged but does not replace the authoritative player
-discovery or eligibility response.
+Analytics writes are started in the background and are not awaited by the
+player-facing discovery or eligibility response path. A later write failure is logged
+but does not replace or delay the authoritative gameplay response.
 
 Automatic-placement activity is attributed through the historical placement
 assignment to the reviewed placement site. Multiple rotations through the same
@@ -93,7 +94,10 @@ cards with zero issuance remain visible; historically issued definitions remain
 visible even if their current reward eligibility later changes.
 `issuancesPer100Completions` uses authoritative `event_completions` in the same
 reporting window as its denominator. A positive issuance or denominator sample
-below ten suppresses both the count and derived rate for that row.
+below ten suppresses both the count and derived rate for that row. Rarity summaries
+also use secondary suppression: if any card in the rarity has a non-zero issuance
+count below ten, the rarity count and rate are hidden so the child count cannot be
+reconstructed by subtracting disclosed sibling cards from the rarity total.
 
 ## Privacy boundary
 

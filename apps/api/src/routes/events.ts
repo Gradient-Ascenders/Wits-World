@@ -197,24 +197,24 @@ export const eventRoutes: FastifyPluginAsync<EventRoutesOptions> = async (
       const events = await discoveryService.list();
 
       if (analyticsRecorder) {
-        try {
-          await analyticsRecorder.recordViews(
-            events
-              .filter((event) => event.availability === 'active')
-              .map((event) => ({
-                eventId: event.eventId,
-                ...(event.placementAssignmentId
-                  ? { placementAssignmentId: event.placementAssignmentId }
-                  : {}),
-              })),
-            clock(),
-          );
-        } catch (error) {
-          request.log.error(
-            { err: error },
-            'Failed to record event discovery analytics.',
-          );
-        }
+        const impressions = events
+          .filter((event) => event.availability === 'active')
+          .map((event) => ({
+            eventId: event.eventId,
+            ...(event.placementAssignmentId
+              ? { placementAssignmentId: event.placementAssignmentId }
+              : {}),
+          }));
+        const observedAt = clock();
+
+        void analyticsRecorder
+          .recordViews(impressions, observedAt)
+          .catch((error: unknown) => {
+            request.log.error(
+              { err: error },
+              'Failed to record event discovery analytics.',
+            );
+          });
       }
 
       return {
@@ -470,22 +470,21 @@ export const eventRoutes: FastifyPluginAsync<EventRoutesOptions> = async (
       }
 
       if (analyticsRecorder && reachability.status === 'reachable') {
-        try {
-          await analyticsRecorder.recordEligibility(
-            {
-              eventId: result.eventId,
-              ...(result.assignmentId
-                ? { placementAssignmentId: result.assignmentId }
-                : {}),
-            },
-            receivedAt,
-          );
-        } catch (error) {
-          request.log.error(
-            { err: error },
-            'Failed to record event eligibility analytics.',
-          );
-        }
+        const aggregateInput = {
+          eventId: result.eventId,
+          ...(result.assignmentId
+            ? { placementAssignmentId: result.assignmentId }
+            : {}),
+        };
+
+        void analyticsRecorder
+          .recordEligibility(aggregateInput, receivedAt)
+          .catch((error: unknown) => {
+            request.log.error(
+              { err: error },
+              'Failed to record event eligibility analytics.',
+            );
+          });
       }
 
       return {

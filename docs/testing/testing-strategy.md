@@ -12,11 +12,12 @@ Issue `#184` adds service, route, client, and Author-workspace coverage for the 
 
 Issue `#278` adds focused service and Author-route tests for date/page validation,
 authentication and Author authorization, event-location suppression, easy/problematic
-question classification, immutable reward-ledger issuance, and non-fatal analytics
-recording failures. `advanced-analytics-database.integration.test.ts` covers atomic
-concurrent hourly aggregation, authoritative start/completion joins, ignored-location
-semantics, card issuance independent of current ownership, and representative query
-plans. Run that focused database suite locally after migration tests; the complete
+question classification, immutable reward-ledger issuance, secondary rarity
+suppression, and analytics writes that neither fail nor delay player responses.
+`advanced-analytics-database.integration.test.ts` covers atomic concurrent hourly
+aggregation, authoritative start/completion joins, ignored-location semantics, card
+issuance independent of current ownership, rarity-inference suppression, and
+representative query plans. Run that focused database suite locally after migration tests; the complete
 database runner remains the Gitea PR gate.
 
 ## Purpose
