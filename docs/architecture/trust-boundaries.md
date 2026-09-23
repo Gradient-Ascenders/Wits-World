@@ -242,6 +242,27 @@ independent event-eligibility decision.
 Database constraints, indexes, and transactions must reinforce important
 application rules.
 
+### External developer applications
+
+External developer applications are separate principals from Wits Quest
+players. They present a generated `X-API-Key` credential and may read only the
+explicit developer projections for published events, public card definitions,
+and public progression standings.
+
+A developer key must not:
+
+- establish the owner's normal player identity or role;
+- read collections, decks, attempts, matches, locations, trust/restriction data,
+  or authoring state;
+- submit gameplay or authoring mutations; or
+- expose accepted answers, placement internals, or raw database rows.
+
+The complete credential is shown only once, its secret is stored only as a
+verifier, request logs redact the header, and a revoked or inactive-owner key is
+rejected. The server-resolved key ID—not an IP or caller-supplied account ID—is
+the subject of the developer quota. The [developer API contract](./developer-api.md)
+documents the complete external boundary.
+
 ### Map provider
 
 The map provider is an external presentation service.
@@ -294,6 +315,7 @@ Required protections include:
 | Browser                 | Authentication provider | Login and consent requests                   | Provider-managed authentication flow                      |
 | Authentication provider | Browser                 | Access or identity token                     | Safe browser handling and no token logging                |
 | Browser                 | API                     | Bearer token and request data                | Token validation and runtime request validation           |
+| External developer app  | API                     | `X-API-Key` and read-only resource request   | Key verification, active-owner check, quota, safe DTO     |
 | Browser geolocation     | API                     | Latitude, longitude, accuracy, and timestamp | Coordinate, accuracy, freshness, and plausibility checks  |
 | API                     | PostgreSQL/PostGIS      | SQL parameters and transaction operations    | Parameterised queries, constraints, and authorisation     |
 | PostgreSQL/PostGIS      | API                     | Event records and geospatial results         | Typed result handling and safe failure handling           |
@@ -327,6 +349,7 @@ The following information must not appear in normal logs, commits, public
 documentation examples, screenshots, error responses, or browser bundles:
 
 - private authentication secrets;
+- complete developer API keys;
 - database credentials;
 - private keys;
 - complete access tokens;

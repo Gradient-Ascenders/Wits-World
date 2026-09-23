@@ -46,7 +46,10 @@ routes outside the application prefix.
 The API is externally reachable, but that does not make protected game data
 anonymous or public. Health, the versioned root, and OpenAPI are public;
 gameplay, account, and author operations declare bearer authentication and
-enforce their own role and ownership rules.
+enforce their own role and ownership rules. A separate read-only developer
+surface exposes deliberately public event, card-catalogue, and progression
+leaderboard projections after `X-API-Key` authentication. See the
+[external developer API](./developer-api.md).
 
 ## Authentication and authorisation
 
@@ -67,6 +70,12 @@ separately enforce active-account, role, ownership, publication, and object
 permissions. CORS permits the configured exact Web origin but is not an
 authentication mechanism.
 
+External developer resources use a separate `X-API-Key` security scheme. Keys
+identify access to the read-only developer surface; they do not create a player
+principal, role, or ownership context. Normal Auth0 bearer tokens do not
+substitute for developer-key authentication, and developer keys do not
+substitute for player authentication.
+
 ## Resource areas
 
 The generated OpenAPI groups the current contract into these areas:
@@ -83,6 +92,7 @@ The generated OpenAPI groups the current contract into these areas:
 | Matches                    | Server-created CPU and asynchronous PvP matches, legal intent, recovery, deadlines, and viewer-safe history      |
 | Trading                    | Private versioned bilateral offers, participant-only negotiation, recent-auth acceptance, and atomic settlement  |
 | Progression                | Current-player points, streaks, achievements, rank, and privacy-safe paginated standings                         |
+| Developer API              | API-key-authenticated, read-only published events, public card catalogue, and public progression leaderboard     |
 | Authoring                  | Author-only event, challenge, question, card, trail, campaign, and privacy-safe operational analytics boundaries |
 
 The [Author curation contract](./author-curation-api-contract.md) explains the
@@ -206,6 +216,7 @@ protected operation.
 ## Related documentation
 
 - [Trust boundaries](./trust-boundaries.md)
+- [External developer API](./developer-api.md)
 - [Author curation API contract](./author-curation-api-contract.md)
 - [Advanced analytics API contract](./advanced-analytics-api-contract.md)
 - [Asynchronous PvP API contract](./asynchronous-pvp-api-contract.md)

@@ -5,11 +5,13 @@ export interface RateProtectionDecision {
   retryAfterSeconds: number;
 }
 
-export interface AuthenticatedRateProtection {
-  consume(playerId: string): RateProtectionDecision;
+export interface RateProtection {
+  consume(subjectId: string): RateProtectionDecision;
 }
 
-export interface AuthenticatedRateProtectionOptions {
+export type AuthenticatedRateProtection = RateProtection;
+
+export interface RateProtectionOptions {
   maxRequests: number;
   windowMs: number;
   clock?: () => number;
@@ -20,11 +22,11 @@ interface WindowState {
   startedAt: number;
 }
 
-export function createAuthenticatedRateProtection({
+export function createRateProtection({
   maxRequests,
   windowMs,
   clock = Date.now,
-}: AuthenticatedRateProtectionOptions): AuthenticatedRateProtection {
+}: RateProtectionOptions): RateProtection {
   if (!Number.isInteger(maxRequests) || maxRequests < 1) {
     throw new Error('Rate-protection maxRequests must be a positive integer.');
   }
@@ -39,7 +41,7 @@ export function createAuthenticatedRateProtection({
   let nextCleanupAt = 0;
 
   return {
-    consume(playerId) {
+    consume(subjectId) {
       const now = clock();
 
       if (!Number.isFinite(now)) {
@@ -53,14 +55,14 @@ export function createAuthenticatedRateProtection({
         nextCleanupAt = now + windowMs;
       }
 
-      const existing = windows.get(playerId);
+      const existing = windows.get(subjectId);
       const state =
         !existing || now - existing.startedAt >= windowMs
           ? { count: 0, startedAt: now }
           : existing;
 
       state.count += 1;
-      windows.set(playerId, state);
+      windows.set(subjectId, state);
 
       const retryAfterSeconds = Math.max(
         1,
@@ -76,3 +78,5 @@ export function createAuthenticatedRateProtection({
     },
   };
 }
+
+export const createAuthenticatedRateProtection = createRateProtection;

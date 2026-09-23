@@ -267,6 +267,11 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'architecture/developer-api',
+              label: 'External developer API',
+            },
+            {
+              type: 'doc',
               id: 'architecture/author-curation-api-contract',
               label: 'Content authoring API',
             },
@@ -423,6 +428,11 @@ const sidebars: SidebarsConfig = {
                   type: 'doc',
                   id: 'database/account-deletion-retention',
                   label: 'Account deletion and retained data',
+                },
+                {
+                  type: 'doc',
+                  id: 'database/developer-api-keys',
+                  label: 'Developer API key storage',
                 },
                 {
                   type: 'doc',

@@ -11,9 +11,10 @@ This diagram shows Wits Quest, its users, and its principal external systems.
 ```mermaid
 flowchart TB
     accTitle: Wits World and its external services
-    accDescr: Players and authors use the web app. The API owns protected decisions and database access; Auth0 authenticates, Mapbox presents maps, and Docusaurus publishes documentation.
+    accDescr: Players and authors use the web app, while external developer applications use a separate read-only API-key boundary. The API owns protected decisions and database access; Auth0 authenticates players, Mapbox presents maps, and Docusaurus publishes documentation.
     Player["Player"]
     Author["Author"]
+    Developer["External Developer Application"]
 
     Web["Wits Quest Web Application<br/>React, Vite and TypeScript<br/>Azure App Service"]
     API["Wits Quest Hand-Written API<br/>Fastify and TypeScript<br/>Azure App Service"]
@@ -28,6 +29,7 @@ flowchart TB
     Author -->|"Manages game content"| Web
 
     Web -->|"HTTPS and JSON"| API
+    Developer -->|"HTTPS GET + X-API-Key"| API
 
     Web -->|"Authentication flow"| Auth
     API -->|"Validates access tokens"| Auth
@@ -54,7 +56,9 @@ flowchart TB
 - PostgreSQL/PostGIS is authoritative for stored event locations and distance
   calculations.
 - The authentication provider authenticates users.
-- The API validates tokens before trusting identity.
+- The API validates tokens before trusting player identity.
+- External developer applications use a separate API-key boundary and receive
+  only read-only public event, card-catalogue, and leaderboard projections.
 - The map provider is used for presentation only.
 - The public documentation site is separate from the runtime game applications.
 

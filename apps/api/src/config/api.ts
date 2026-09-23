@@ -36,6 +36,8 @@ export interface ApiConfig {
   maxPlausibleJourneySpeedMetresPerSecond: number;
   rateLimitMaxRequests: number;
   rateLimitWindowMs: number;
+  developerApiRateLimitMaxRequests: number;
+  developerApiRateLimitWindowMs: number;
   trustEvaluationIntervalMs: number;
   cardTradeMaintenanceIntervalMs: number;
 }
@@ -92,6 +94,12 @@ export function buildApiConfig({
     env.RATE_LIMIT_MAX_REQUESTS?.trim() ?? '120',
   );
   const rateLimitWindowMs = Number(env.RATE_LIMIT_WINDOW_MS?.trim() ?? '60000');
+  const developerApiRateLimitMaxRequests = Number(
+    env.DEVELOPER_API_RATE_LIMIT_MAX_REQUESTS?.trim() ?? '120',
+  );
+  const developerApiRateLimitWindowMs = Number(
+    env.DEVELOPER_API_RATE_LIMIT_WINDOW_MS?.trim() ?? '60000',
+  );
   const movementEvidenceRetentionMs = Number(
     env.MOVEMENT_EVIDENCE_RETENTION_MS?.trim() ?? '86400000',
   );
@@ -194,6 +202,24 @@ export function buildApiConfig({
   }
 
   if (
+    !Number.isInteger(developerApiRateLimitMaxRequests) ||
+    developerApiRateLimitMaxRequests < 1
+  ) {
+    throw new Error(
+      'DEVELOPER_API_RATE_LIMIT_MAX_REQUESTS must be a positive integer.',
+    );
+  }
+
+  if (
+    !Number.isInteger(developerApiRateLimitWindowMs) ||
+    developerApiRateLimitWindowMs < 1000
+  ) {
+    throw new Error(
+      'DEVELOPER_API_RATE_LIMIT_WINDOW_MS must be an integer of at least 1000 milliseconds.',
+    );
+  }
+
+  if (
     !Number.isSafeInteger(movementEvidenceRetentionMs) ||
     movementEvidenceRetentionMs < MIN_MOVEMENT_EVIDENCE_RETENTION_MS ||
     movementEvidenceRetentionMs > MAX_MOVEMENT_EVIDENCE_RETENTION_MS
@@ -249,6 +275,8 @@ export function buildApiConfig({
     maxPlausibleJourneySpeedMetresPerSecond,
     rateLimitMaxRequests,
     rateLimitWindowMs,
+    developerApiRateLimitMaxRequests,
+    developerApiRateLimitWindowMs,
     trustEvaluationIntervalMs,
     cardTradeMaintenanceIntervalMs,
   };
