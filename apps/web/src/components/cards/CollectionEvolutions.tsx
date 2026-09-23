@@ -11,6 +11,7 @@ import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
 import { CardDetailModal } from './CardDetailModal';
 import { CardArtwork } from './CollectibleCard';
 import { StatusMessage } from '../StatusMessage';
+import { QuestMarker } from '../branding/QuestMarker';
 
 type Candidate = {
   card: OwnedCard;
@@ -133,7 +134,10 @@ export function CollectionEvolutions({
         <p>Copies used in saved decks stay protected.</p>
       </header>
       {loading || loadedSnapshot.current?.cards !== cards ? (
-        <p role={selected ? undefined : 'status'}>Checking your evolutions…</p>
+        <p role={selected ? undefined : 'status'}>
+          <QuestMarker />
+          Checking your evolutions…
+        </p>
       ) : (
         <>
           {candidates.length === 0 ? (

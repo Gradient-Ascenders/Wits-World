@@ -1,5 +1,6 @@
 import { StateIcon } from '../StatusMessage';
 import { LoadingState } from '../LoadingState';
+import { QuestMarker } from '../branding/QuestMarker';
 import {
   Archive,
   ArrowCircleRight,
@@ -53,7 +54,12 @@ interface TrailListProps {
 
 export function TrailList({ onOpenTrail, onRetry, state }: TrailListProps) {
   if (state.status === 'idle' || state.status === 'loading') {
-    return <LoadingState label="Loading trails and progress…" />;
+    return (
+      <LoadingState
+        className="trail-list__loading"
+        label="Loading trails and progress…"
+      />
+    );
   }
 
   if (state.status === 'error') {
@@ -134,7 +140,10 @@ export function TrailDetail({ onOpenEvent, onRetry, state }: TrailDetailProps) {
     return (
       <article className="trail-detail trail-detail--state">
         <h2 tabIndex={-1}>Trail details</h2>
-        <LoadingState label="Loading ordered trail…" />
+        <LoadingState
+          className="trail-detail__loading"
+          label="Loading ordered trail…"
+        />
       </article>
     );
   }
@@ -300,6 +309,7 @@ export function NearbyList({
   if (state.status === 'loading') {
     return (
       <p aria-live="polite" className="event-list__state" role="status">
+        <QuestMarker />
         Finding nearby unvisited events…
       </p>
     );
@@ -411,6 +421,9 @@ function NearbyLocationState({
       className="event-list__state nearby-location-state"
       role="status"
     >
+      {['checking-permission', 'locating', 'tracking'].includes(locationState) ? (
+        <QuestMarker />
+      ) : null}
       <strong>{content.title}</strong>
       <p>{content.detail}</p>
       {canEnable ? (

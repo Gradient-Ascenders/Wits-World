@@ -1,4 +1,5 @@
 import { StateIcon } from '../components/StatusMessage';
+import { LoadingSeal } from '../components/LoadingState';
 import { ArrowLeft } from '@phosphor-icons/react';
 import { useAuth0 } from '@auth0/auth0-react';
 import {
@@ -921,12 +922,8 @@ function PlayerBattlesLoading() {
         className="pvp-loading"
         role="status"
       >
+        <LoadingSeal />
         <p>Loading player battles…</p>
-        <div aria-hidden="true" className="pvp-loading__skeleton">
-          <span />
-          <span />
-          <span />
-        </div>
       </section>
     </div>
   );

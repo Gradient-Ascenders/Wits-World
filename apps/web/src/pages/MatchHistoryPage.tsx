@@ -1,5 +1,5 @@
 import { StateIcon } from '../components/StatusMessage';
-import { Skeleton } from '../components/LoadingState';
+import { LoadingSeal } from '../components/LoadingState';
 import { useAuth0 } from '@auth0/auth0-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
@@ -76,13 +76,13 @@ export default function MatchHistoryPage({
       <div className="matches-page">
         <section
           aria-live="polite"
-          className="match-state-panel state-message state-loading"
+          className="match-state-panel state-message state-loading state-loading--prominent"
           role="status"
         >
           <p className="eyebrow">Match history</p>
           <h1>Loading your completed matches</h1>
           <p>Loading your saved CPU battles…</p>
-          <Skeleton layout="rows" />
+          <LoadingSeal />
         </section>
       </div>
     );

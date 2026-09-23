@@ -1,5 +1,7 @@
+import { useEffect, useRef } from 'react';
 import { StatusMessage } from '../StatusMessage';
 import { LoadingState } from '../LoadingState';
+import { QuestMarker } from '../branding/QuestMarker';
 import type { PlayerEventAvailability } from '../../api/events';
 
 export interface EventPresentation {
@@ -72,7 +74,12 @@ export function EventList({
   selectedEventId,
 }: EventListProps) {
   if (discovery.status === 'loading') {
-    return <LoadingState label="Loading published events…" />;
+    return (
+      <LoadingState
+        className="event-list__loading"
+        label="Loading published events…"
+      />
+    );
   }
 
   if (discovery.status === 'error') {
@@ -148,6 +155,14 @@ export function SelectedEventDetails({
   onStart,
   state,
 }: SelectedEventDetailsProps) {
+  const decisionSeen = useRef(false);
+  const decisionReady =
+    state.status === 'reachable' || state.status === 'unreachable';
+  const emphasizeDecision = decisionReady && !decisionSeen.current;
+  useEffect(() => {
+    if (decisionReady) decisionSeen.current = true;
+  }, [decisionReady]);
+
   return (
     <div className="selected-event">
       <div className="selected-event__heading">
@@ -158,6 +173,7 @@ export function SelectedEventDetails({
       </div>
 
       <EligibilityStatus
+        emphasizeDecision={emphasizeDecision}
         eligibilityBusy={eligibilityBusy}
         event={event}
         locationState={locationState}
@@ -208,13 +224,14 @@ function KnownEligibility({ state }: { state: EventEligibilityState }) {
 }
 
 function EligibilityStatus({
+  emphasizeDecision,
   eligibilityBusy,
   event,
   locationState,
   onRetryEligibility,
   onStart,
   state,
-}: SelectedEventDetailsProps) {
+}: SelectedEventDetailsProps & { emphasizeDecision: boolean }) {
   if (event.availability !== 'active') {
     return (
       <p className="selected-event__status">
@@ -229,7 +246,7 @@ function EligibilityStatus({
     return (
       <div
         aria-live="polite"
-        className="selected-event__status selected-event__status--reachable"
+        className={`selected-event__status selected-event__status--reachable${emphasizeDecision ? ' selected-event__status--settle' : ''}`}
         role="status"
       >
         <strong>In range</strong>
@@ -250,13 +267,23 @@ function EligibilityStatus({
   if (state.status === 'starting') {
     return (
       <div aria-live="polite" className="selected-event__status" role="status">
-        <strong>Starting challenge…</strong>
+        <strong className="selected-event__status-heading">
+          <QuestMarker />
+          Starting challenge…
+        </strong>
         <span>Wits World is checking your latest reported location again.</span>
       </div>
     );
   }
 
   const content = getEligibilityContent(state, locationState);
+  const checking =
+    state.status === 'checking' ||
+    state.status === 'locating' ||
+    (state.status === 'idle' &&
+      (locationState === 'checking-permission' ||
+        locationState === 'locating' ||
+        locationState === 'tracking'));
   const canRetry =
     state.status === 'api-error' ||
     state.status === 'authorization-error' ||
@@ -267,10 +294,15 @@ function EligibilityStatus({
   return (
     <div
       aria-live="polite"
-      className={`selected-event__status selected-event__status--${state.status}`}
+      className={`selected-event__status selected-event__status--${state.status}${emphasizeDecision ? ' selected-event__status--settle' : ''}`}
       role="status"
     >
-      <strong>{content.title}</strong>
+      <strong
+        className={checking ? 'selected-event__status-heading' : undefined}
+      >
+        {checking ? <QuestMarker /> : null}
+        {content.title}
+      </strong>
       {content.detail ? <span>{content.detail}</span> : null}
       {canRetry ? (
         <button

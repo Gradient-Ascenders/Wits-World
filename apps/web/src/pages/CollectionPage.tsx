@@ -1,5 +1,6 @@
 import { StateIcon } from '../components/StatusMessage';
-import { Skeleton } from '../components/LoadingState';
+import { LoadingSeal } from '../components/LoadingState';
+import { QuestMarker } from '../components/branding/QuestMarker';
 import { useAuth0 } from '@auth0/auth0-react';
 import { MagnifyingGlass, SlidersHorizontal, X } from '@phosphor-icons/react';
 import {
@@ -367,13 +368,13 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
       {collection.status === 'loading' ? (
         <section
           aria-live="polite"
-          className="collection-state state-message state-loading"
+          className="collection-state state-message state-loading state-loading--prominent"
           role="status"
         >
           <p className="eyebrow">Collection</p>
           <h2>Loading your cards</h2>
           <p>Your collection will appear here shortly.</p>
-          <Skeleton layout="cards" />
+          <LoadingSeal />
         </section>
       ) : null}
 
@@ -507,13 +508,15 @@ function StarterSelector({
       {optionsState.status === 'idle' || optionsState.status === 'loading' ? (
         <div
           aria-live="polite"
-          className="starter-options-state state-message state-loading"
+          className="starter-options-state state-message state-loading state-loading--subtle"
           role="status"
         >
           <p className="eyebrow">Starter packages</p>
-          <h2>Loading your choices</h2>
+          <h2>
+            <QuestMarker />
+            Loading your choices
+          </h2>
           <p>Reading the current starter packages from Wits World…</p>
-          <Skeleton />
         </div>
       ) : null}
 

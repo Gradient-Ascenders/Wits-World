@@ -42,7 +42,12 @@ export function ChallengeResult({
           <span>out of {attempt.totalQuestions} correct</span>
         </p>
       </header>
-      <ChallengeRewards cards={cards} apiBaseUrl={apiBaseUrl} />
+      <ChallengeRewards
+        key={attempt.attemptId}
+        cards={cards}
+        apiBaseUrl={apiBaseUrl}
+        attemptId={attempt.attemptId}
+      />
       <nav
         className="challenge-result__actions"
         aria-label="Continue after challenge"

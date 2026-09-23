@@ -284,6 +284,58 @@
   min-width: 0;
   text-align: center;
 }
+.challenge-reward-card__frame {
+  position: relative;
+  overflow: hidden;
+}
+.challenge-reward-card--reveal .challenge-reward-card__frame {
+  animation: earned-card-settle 480ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.challenge-reward-card--reveal .challenge-reward-card__frame::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    110deg,
+    transparent 35%,
+    rgb(247 243 231 / 15%) 50%,
+    transparent 65%
+  );
+  content: '';
+  pointer-events: none;
+  transform: translateX(-125%);
+  animation: earned-card-light 480ms ease-out both;
+}
+.challenge-reward-card .collectible-card__artwork img {
+  animation: earned-artwork-arrive 180ms ease-out both;
+}
+@keyframes earned-card-settle {
+  from {
+    transform: translateY(0.35rem) scale(0.98);
+  }
+  to {
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes earned-card-light {
+  to {
+    transform: translateX(125%);
+  }
+}
+@keyframes earned-artwork-arrive {
+  from {
+    opacity: 0.4;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .challenge-reward-card--reveal .challenge-reward-card__frame,
+  .challenge-reward-card--reveal .challenge-reward-card__frame::after,
+  .challenge-reward-card .collectible-card__artwork img {
+    animation: none;
+  }
+}
 .challenge-reward-card h3 {
   margin: var(--space-3) 0 var(--space-1);
   font-size: var(--text-md);

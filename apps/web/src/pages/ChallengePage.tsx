@@ -1,5 +1,6 @@
 import { StateIcon } from '../components/StatusMessage';
-import { Skeleton } from '../components/LoadingState';
+import { LoadingSeal } from '../components/LoadingState';
+import { QuestMarker } from '../components/branding/QuestMarker';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'wouter';
 
@@ -547,13 +548,13 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
     return (
       <section
         aria-live="polite"
-        className="challenge-panel challenge-page"
+        className="challenge-panel challenge-page state-message state-loading state-loading--prominent"
         role="status"
       >
         <p className="eyebrow">Challenge</p>
         <h1>Loading your challenge</h1>
         <p>Wits World is restoring your saved attempt.</p>
-        <Skeleton layout="rows" />
+        <LoadingSeal />
       </section>
     );
   }
@@ -567,6 +568,7 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
         role="status"
       >
         <p className="eyebrow">Challenge time ended</p>
+        {isTimeoutChecking ? <QuestMarker /> : null}
         <h1 ref={timeoutHeading} tabIndex={-1}>
           Checking your result
         </h1>
@@ -590,10 +592,11 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
     return (
       <section
         aria-live="polite"
-        className="challenge-panel challenge-page"
+        className="challenge-panel challenge-page state-message state-loading state-loading--prominent"
         role="status"
       >
         <p className="eyebrow">Challenge</p>
+        <LoadingSeal />
         <h1>Checking your result</h1>
         <p>All answers are saved. Wits World is loading the final result.</p>
         <button

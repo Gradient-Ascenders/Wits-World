@@ -5,17 +5,31 @@ import { useApiAccessToken } from '../../auth/useApiAccessToken';
 import { CardArtwork } from '../cards/CollectibleCard';
 import '../cards/cards.css';
 
+const revealedAwards = new Set<string>();
+
 export function ChallengeRewards({
   cards,
   apiBaseUrl,
+  attemptId,
 }: {
   cards: readonly CompletedChallengeCard[];
   apiBaseUrl: string;
+  attemptId?: string;
 }) {
+  const awardKey = `${attemptId ?? 'standalone'}:${cards
+    .map((card) => card.ownedCardId)
+    .sort()
+    .join(',')}`;
+  const [reveal] = useState(
+    () => cards.length > 0 && !revealedAwards.has(awardKey),
+  );
   const getAccessToken = useApiAccessToken();
   const [artwork, setArtwork] = useState<OwnedCard[]>([]);
   const [failed, setFailed] = useState(false);
   const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    if (cards.length > 0) revealedAwards.add(awardKey);
+  }, [awardKey, cards.length]);
   useEffect(() => {
     const controller = new AbortController();
     setArtwork([]);
@@ -63,14 +77,19 @@ export function ChallengeRewards({
                 owned.cardDefinitionId === card.cardDefinitionId,
             );
             return (
-              <li key={card.ownedCardId} className="challenge-reward-card">
-                <CardArtwork
-                  card={{
-                    ...card,
-                    imageUrl: detail?.imageUrl ?? null,
-                    imageAlt: detail?.imageAlt,
-                  }}
-                />
+              <li
+                key={card.ownedCardId}
+                className={`challenge-reward-card${reveal ? ' challenge-reward-card--reveal' : ''}`}
+              >
+                <div className="challenge-reward-card__frame">
+                  <CardArtwork
+                    card={{
+                      ...card,
+                      imageUrl: detail?.imageUrl ?? null,
+                      imageAlt: detail?.imageAlt,
+                    }}
+                  />
+                </div>
                 <h3>{card.name}</h3>
                 <p>
                   {card.category} · {card.affinity}

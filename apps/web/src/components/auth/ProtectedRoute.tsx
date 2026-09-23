@@ -6,6 +6,7 @@ import { useCallback, useState, type ReactNode } from 'react';
 import { useCurrentPlayer } from '../../auth/CurrentPlayerProvider';
 import { clearAuthenticatedPlayerBinding } from '../../auth/player-session-binding';
 import { PlayerNameSetup } from './PlayerNameSetup';
+import { LoadingSeal } from '../LoadingState';
 
 interface ProtectedRouteProps {
   allowPlayerNameSetupRequired?: boolean;
@@ -62,10 +63,11 @@ export function ProtectedRoute({
     return (
       <section
         aria-live="polite"
-        className="auth-state state-message state-loading"
+        className="auth-state state-message state-loading state-loading--prominent"
         role="status"
       >
         <p className="eyebrow">Player access</p>
+        <LoadingSeal />
         <h1>Checking your sign-in status</h1>
         <p>Please wait while Wits World restores your session.</p>
       </section>
@@ -114,10 +116,11 @@ export function ProtectedRoute({
     return (
       <section
         aria-live="polite"
-        className="auth-state state-message state-loading"
+        className="auth-state state-message state-loading state-loading--prominent"
         role="status"
       >
         <p className="eyebrow">Player access</p>
+        <LoadingSeal />
         <h1>Confirming your Wits World player</h1>
         <p>Protected player data remains hidden until this check completes.</p>
       </section>

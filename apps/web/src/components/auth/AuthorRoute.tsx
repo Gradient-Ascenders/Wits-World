@@ -2,6 +2,7 @@ import { StateIcon } from '../StatusMessage';
 import { useCallback, type ReactNode } from 'react';
 
 import { useCurrentPlayer } from '../../auth/CurrentPlayerProvider';
+import { LoadingSeal } from '../LoadingState';
 
 interface AuthorRouteProps {
   children: ReactNode;
@@ -17,10 +18,11 @@ export function AuthorRoute({ children }: AuthorRouteProps) {
     return (
       <section
         aria-live="polite"
-        className="auth-state state-message state-loading"
+        className="auth-state state-message state-loading state-loading--prominent"
         role="status"
       >
         <p className="eyebrow">Author access</p>
+        <LoadingSeal />
         <h1>Checking author access</h1>
         <p>
           The console opens only after Wits World confirms your current role.
