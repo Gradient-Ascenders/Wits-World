@@ -692,6 +692,9 @@ function CampaignForm({
       ) : null}
 
       <div className="author-form-grid">
+        <p className="author-form-grid__wide">
+          Title, Starts, and Ends are required.
+        </p>
         <label className="form-field" htmlFor="campaign-title">
           <span>Title</span>
           <input
@@ -701,6 +704,7 @@ function CampaignForm({
             aria-invalid={validation.title ? 'true' : undefined}
             id="campaign-title"
             maxLength={120}
+            required
             onChange={(event) =>
               setDraft({ ...draft, title: event.target.value })
             }
@@ -734,6 +738,7 @@ function CampaignForm({
             }
             aria-invalid={validation.startsAt ? 'true' : undefined}
             id="campaign-starts-at"
+            required
             onChange={(event) =>
               setDraft({ ...draft, startsAt: event.target.value })
             }
@@ -754,6 +759,7 @@ function CampaignForm({
             }
             aria-invalid={validation.endsAt ? 'true' : undefined}
             id="campaign-ends-at"
+            required
             onChange={(event) =>
               setDraft({ ...draft, endsAt: event.target.value })
             }

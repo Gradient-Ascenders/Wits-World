@@ -333,7 +333,7 @@
 }
 
 .standings-period button[aria-pressed='true'] {
-  color: var(--colour-text-primary);
+  color: #fff;
   background: var(--colour-interactive);
 }
 

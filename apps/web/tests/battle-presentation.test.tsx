@@ -145,6 +145,6 @@ describe('shared battle presentation', () => {
     });
     expect(
       screen.getByRole('button', { name: /Use as replacement Wit Creature 3/ }),
-    ).toBeDisabled();
+    ).toHaveAttribute('aria-disabled', 'true');
   });
 });

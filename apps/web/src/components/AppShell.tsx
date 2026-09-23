@@ -64,6 +64,28 @@ const AUTHOR_NAVIGATION_ITEM: NavigationItem = {
   label: 'Author',
 };
 
+function pageTitle(pathname: string): string {
+  if (pathname === '/') return 'Wits World';
+  if (pathname === '/explore') return 'Explore · Wits World';
+  if (pathname === '/offline') return 'Saved events · Wits World';
+  if (pathname.startsWith('/offline-attempts/'))
+    return 'Saved attempt · Wits World';
+  if (pathname.startsWith('/challenge-attempts/'))
+    return 'Campus challenge · Wits World';
+  if (pathname === '/collection') return 'Collection · Wits World';
+  if (pathname === '/decks') return 'Decks · Wits World';
+  if (pathname === '/matches/history') return 'Battle history · Wits World';
+  if (pathname.startsWith('/matches/pvp/')) return 'Player battle · Wits World';
+  if (pathname === '/matches/pvp') return 'Player battles · Wits World';
+  if (pathname.startsWith('/matches/')) return 'CPU battle · Wits World';
+  if (pathname === '/matches') return 'Battles · Wits World';
+  if (pathname === '/profile') return 'Player profile · Wits World';
+  if (pathname === '/account') return 'Account settings · Wits World';
+  if (pathname.startsWith('/author')) return 'Author console · Wits World';
+  if (pathname === '/about') return 'About · Wits World';
+  return 'Page not found · Wits World';
+}
+
 function NavigationIcon({ name }: { name: NavigationIconName }) {
   const Icon = {
     explore: CompassIcon,
@@ -131,6 +153,17 @@ export function AppShell({ children }: AppShellProps) {
   } | null>(null);
   const suppressHeaderClick = useRef(false);
   const mainRef = useRef<HTMLElement>(null);
+  const previousPathname = useRef(pathname);
+
+  useEffect(() => {
+    document.title = pageTitle(pathname);
+    if (previousPathname.current === pathname) return;
+    previousPathname.current = pathname;
+    const main = mainRef.current;
+    if (main && !main.contains(document.activeElement)) {
+      main.focus();
+    }
+  }, [pathname]);
 
   useEffect(() => {
     setHeaderCollapsed(false);

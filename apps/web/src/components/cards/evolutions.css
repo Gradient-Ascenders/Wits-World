@@ -11,7 +11,7 @@
 }
 .collection-section-switch [aria-pressed='true'] {
   background: var(--colour-interactive);
-  color: var(--colour-text-primary);
+  color: #fff;
   border-color: var(--colour-interactive);
 }
 .collection-evolutions__intro {

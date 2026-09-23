@@ -259,5 +259,19 @@ describe('Wits World public application shell', () => {
       'href',
       '/',
     );
+    expect(document.title).toBe('Page not found · Wits World');
+  });
+
+  it('updates the page title and moves focus into main after route navigation', async () => {
+    const user = userEvent.setup();
+    renderRoute('/route-that-does-not-exist');
+
+    await user.click(await screen.findByRole('link', { name: 'Return home' }));
+
+    expect(
+      await screen.findByRole('heading', { name: 'Wits World' }),
+    ).toBeVisible();
+    expect(document.title).toBe('Wits World');
+    expect(screen.getByRole('main')).toHaveFocus();
   });
 });
