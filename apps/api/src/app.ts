@@ -96,6 +96,11 @@ import { authorTrailRoutes } from './routes/author-trails.js';
 import { playerTrailRoutes } from './routes/trails.js';
 import type { AuthorCampaignService } from './campaigns/author-campaign-service.js';
 import { authorCampaignRoutes } from './routes/author-campaigns.js';
+import type { DeveloperApiKeyService } from './developer/developer-api-key-service.js';
+import type { DeveloperPublicDataService } from './developer/developer-public-data-service.js';
+import { registerDeveloperApiAuthentication } from './developer/developer-api-authentication.js';
+import { developerApiRoutes } from './routes/developer-api.js';
+import type { RateProtection } from './security/rate-protection.js';
 
 export interface EventServices {
   discovery: EventDiscoveryService;
@@ -145,6 +150,11 @@ export interface BuildAppOptions {
   };
   progressionReadService?: ProgressionReadService;
   rateProtection?: AuthenticatedRateProtection;
+  developerApi?: {
+    keyService: DeveloperApiKeyService;
+    publicDataService: DeveloperPublicDataService;
+    rateProtection: RateProtection;
+  };
 }
 
 export interface AccountDeletionServices {
@@ -209,6 +219,7 @@ export async function buildApp({
   territory,
   progressionReadService,
   rateProtection,
+  developerApi,
   offlineChallengeService,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
@@ -220,6 +231,9 @@ export async function buildApp({
               'req.headers.authorization',
               'request.headers.authorization',
               'headers.authorization',
+              'req.headers["x-api-key"]',
+              'request.headers["x-api-key"]',
+              'headers["x-api-key"]',
               'req.body.reauthenticationToken',
               'request.body.reauthenticationToken',
               'body.reauthenticationToken',
@@ -288,6 +302,19 @@ export async function buildApp({
 
   if (playerIdentityService) {
     registerAuthorization(app, playerIdentityService, rateProtection);
+  }
+
+  if (developerApi) {
+    if (!playerIdentityService) {
+      throw new Error(
+        'Developer API key management requires a player identity service.',
+      );
+    }
+    registerDeveloperApiAuthentication(
+      app,
+      developerApi.keyService,
+      developerApi.rateProtection,
+    );
   }
 
   if (playerNameSetupService && !playerIdentityService) {
@@ -382,6 +409,11 @@ export async function buildApp({
           description: 'Authenticated API identity operations.',
         },
         {
+          name: 'Developer API',
+          description:
+            'API-key management and the external read-only Wits Quest developer API.',
+        },
+        {
           name: 'Events',
           description: 'Player-safe event discovery and location eligibility.',
         },
@@ -437,6 +469,13 @@ export async function buildApp({
             bearerFormat: 'JWT',
             description:
               'Auth0 bearer access token issued for the Wits World API.',
+          },
+          developerApiKey: {
+            type: 'apiKey',
+            in: 'header',
+            name: 'X-API-Key',
+            description:
+              'Developer credential generated from Wits World Account settings. Keep this secret out of browser bundles and URLs.',
           },
         },
       },
@@ -658,6 +697,14 @@ export async function buildApp({
     await app.register(progressionRoutes, {
       prefix: '/api/v1',
       service: progressionReadService,
+    });
+  }
+
+  if (developerApi) {
+    await app.register(developerApiRoutes, {
+      prefix: '/api/v1',
+      keyService: developerApi.keyService,
+      publicDataService: developerApi.publicDataService,
     });
   }
 

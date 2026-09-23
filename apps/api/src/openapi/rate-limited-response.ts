@@ -1,6 +1,6 @@
 import type { FastifySchema } from 'fastify';
 
-const rateLimitedResponseSchema = {
+const verifiedPlayerRateLimitedResponseSchema = {
   description:
     'The verified local player has exceeded this API process request quota. Retry after the advertised delay.',
   type: 'object',
@@ -33,21 +33,32 @@ const rateLimitedResponseSchema = {
   },
 } as const;
 
+const developerApiRateLimitedResponseSchema = {
+  ...verifiedPlayerRateLimitedResponseSchema,
+  description:
+    'The authenticated developer API key has exceeded this API process request quota. Retry after the advertised delay.',
+} as const;
+
 export function documentVerifiedPlayerRateLimit(
   schema: FastifySchema,
 ): FastifySchema {
   const usesBearerAuthentication = schema.security?.some(
     (requirement) => 'bearerAuth' in requirement,
   );
+  const usesDeveloperApiKey = schema.security?.some(
+    (requirement) => 'developerApiKey' in requirement,
+  );
 
-  if (!usesBearerAuthentication) return schema;
+  if (!usesBearerAuthentication && !usesDeveloperApiKey) return schema;
 
   const responses = (schema.response ?? {}) as Record<string | number, unknown>;
   return {
     ...schema,
     response: {
       ...responses,
-      429: rateLimitedResponseSchema,
+      429: usesBearerAuthentication
+        ? verifiedPlayerRateLimitedResponseSchema
+        : developerApiRateLimitedResponseSchema,
     },
   };
 }

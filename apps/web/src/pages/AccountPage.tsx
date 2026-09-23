@@ -12,6 +12,7 @@ import { clearAuthenticatedPlayerBinding } from '../auth/player-session-binding'
 import { confirmOfflineSignOut } from '../offline/store';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { AccountDeletionDialog } from '../components/account/AccountDeletionDialog';
+import { DeveloperApiAccess } from '../components/account/DeveloperApiAccess';
 import './account.css';
 
 const accountRoute = '/account';
@@ -272,6 +273,11 @@ export default function AccountPage({ apiBaseUrl }: { apiBaseUrl: string }) {
               )}
             </div>
           </section>
+
+          <DeveloperApiAccess
+            apiBaseUrl={apiBaseUrl}
+            getAccessToken={getAccessToken}
+          />
 
           <section
             aria-labelledby="account-deletion-title"

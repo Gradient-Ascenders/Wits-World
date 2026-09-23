@@ -172,6 +172,14 @@ actor/trade identifiers, operation, submission UUID, payload digest, and time.
 Issue `#272` now exposes the authenticated trading API; issue `#274` remains the
 player-interface follow-up.
 
+Migration `0058_create_developer_api_access.sql` adds developer credentials to
+the deletion boundary. Developer-key authentication requires the owning player
+to remain `active`, so every key is denied immediately after the account moves
+to `deletion_pending`. The final `private.delete_player_owned_data(...)` wrapper
+deletes all of the player's `private.developer_api_keys` rows before invoking
+the prior cleanup chain. No developer-key verifier is retained on the anonymous
+player tombstone.
+
 ## Transaction and concurrency rules
 
 `AccountDeletionLifecycle.complete()` locks the deletion request and linked
