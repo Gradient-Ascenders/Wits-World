@@ -99,6 +99,29 @@ also use secondary suppression: if any card in the rarity has a non-zero issuanc
 count below ten, the rarity count and rate are hidden so the child count cannot be
 reconstructed by subtracting disclosed sibling cards from the rarity total.
 
+## Author console presentation
+
+Issue `#280` consumes these endpoints at `/author/analytics` without adding a
+second analytics authority. The Web client exposes one shared UTC date period.
+Its end-date control is inclusive for Authors and is converted to the following
+UTC calendar date before it is sent as the API's exclusive `toDate`. The browser
+mirrors paired-date and 366-day validation for usability; this does not replace
+the API validation above.
+
+Location rows are requested with the server `mode` value and are not reclassified
+in the browser. The console displays the four independent funnel stages and does
+not calculate conversion percentages. Question rows use the returned
+`classification` and threshold metadata. A zero-outcome `normal` row is presented
+as **No outcomes**, while positive samples below ten remain **Suppressed**. Card
+rarity visuals and tables use `rarities` exactly as returned; the browser never
+sums per-card rows to reconstruct a suppressed rarity total.
+
+Charts are visual summaries only. Equivalent focusable tables contain the
+disclosed values and status text, and suppressed values are not assigned a chart
+magnitude. Location, question, and card reports load and recover independently.
+The existing Author route guard is a presentation boundary; all three HTTP routes
+continue to enforce authentication, active-player state, and Author authorization.
+
 ## Privacy boundary
 
 The minimum sample size is `10`. Exact zero is retained because it represents

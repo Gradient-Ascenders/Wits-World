@@ -28,6 +28,74 @@ export interface AuthorQuestionPerformancePage extends AuthorPage<AuthorQuestion
   minimumSampleSize: 10;
   problematicIncorrectRate: 0.7;
 }
+
+export type AuthorAnalyticsLocationMode = 'all' | 'popular' | 'ignored';
+export type AuthorAnalyticsQuestionClassification =
+  'suppressed' | 'easy' | 'problematic' | 'normal';
+
+export interface AuthorEventLocationAnalyticsItem {
+  eventId: string;
+  eventTitle: string;
+  locationKind: 'authored' | 'placement_site';
+  locationId: string;
+  locationName: string;
+  viewCount: number | null;
+  eligibleCount: number | null;
+  startCount: number | null;
+  completionCount: number | null;
+  suppressed: boolean;
+}
+
+export interface AuthorEventLocationAnalyticsPage extends AuthorPage<AuthorEventLocationAnalyticsItem> {
+  minimumSampleSize: 10;
+}
+
+export interface AuthorAdvancedQuestionAnalyticsItem {
+  questionId: string;
+  challengeId: string;
+  eventId: string;
+  eventTitle: string;
+  prompt: string;
+  format: ChallengeFormat;
+  difficulty: 1 | 2 | 3;
+  status: AuthoringStatus;
+  answerCount: number | null;
+  correctCount: number | null;
+  incorrectCount: number | null;
+  timeoutCount: number | null;
+  correctRate: number | null;
+  incorrectRate: number | null;
+  classification: AuthorAnalyticsQuestionClassification;
+  suppressed: boolean;
+}
+
+export interface AuthorAdvancedQuestionAnalyticsPage extends AuthorPage<AuthorAdvancedQuestionAnalyticsItem> {
+  minimumSampleSize: 10;
+  easyCorrectRate: 0.9;
+  problematicIncorrectRate: 0.7;
+}
+
+export interface AuthorCardIssuanceAnalyticsItem {
+  cardDefinitionId: string;
+  cardName: string;
+  rarity: CardRarity;
+  rewardEligible: boolean;
+  issuanceCount: number | null;
+  issuancesPer100Completions: number | null;
+  suppressed: boolean;
+}
+
+export interface AuthorCardRarityAnalyticsItem {
+  rarity: CardRarity;
+  issuanceCount: number | null;
+  issuancesPer100Completions: number | null;
+  suppressed: boolean;
+}
+
+export interface AuthorCardIssuanceAnalyticsPage extends AuthorPage<AuthorCardIssuanceAnalyticsItem> {
+  rarities: AuthorCardRarityAnalyticsItem[];
+  minimumSampleSize: 10;
+}
 export type AuthorContentEntityType =
   'event' | 'challenge' | 'question' | 'card' | 'campaign';
 export type AuthorContentAction =
@@ -538,6 +606,152 @@ export async function listAuthorQuestionPerformance(
     totalPages: payload.totalPages,
     minimumSampleSize: 10,
     problematicIncorrectRate: 0.7,
+  };
+}
+
+export async function listAuthorEventLocationAnalytics(
+  options: RequestBase & {
+    fromDate?: string;
+    toDate?: string;
+    mode?: AuthorAnalyticsLocationMode;
+    page?: number;
+    pageSize?: number;
+  },
+): Promise<AuthorEventLocationAnalyticsPage> {
+  const payload = await listAdvancedAnalyticsPage(
+    options,
+    '/author/analytics/event-locations',
+    {
+      fromDate: options.fromDate,
+      toDate: options.toDate,
+      mode: options.mode ?? 'all',
+      page: options.page ?? 1,
+      pageSize: options.pageSize ?? 25,
+    },
+  );
+  if (payload.minimumSampleSize !== 10) throw unavailableResponse();
+  return {
+    ...parseAnalyticsPage(payload, parseEventLocationAnalyticsItem),
+    minimumSampleSize: 10,
+  };
+}
+
+export async function listAuthorAdvancedQuestionAnalytics(
+  options: RequestBase & {
+    eventId?: string;
+    challengeId?: string;
+    format?: ChallengeFormat;
+    difficulty?: 1 | 2 | 3;
+    fromDate?: string;
+    toDate?: string;
+    page?: number;
+    pageSize?: number;
+  },
+): Promise<AuthorAdvancedQuestionAnalyticsPage> {
+  const payload = await listAdvancedAnalyticsPage(
+    options,
+    '/author/analytics/questions',
+    {
+      eventId: options.eventId,
+      challengeId: options.challengeId,
+      format: options.format,
+      difficulty: options.difficulty,
+      fromDate: options.fromDate,
+      toDate: options.toDate,
+      page: options.page ?? 1,
+      pageSize: options.pageSize ?? 25,
+    },
+  );
+  if (
+    payload.minimumSampleSize !== 10 ||
+    payload.easyCorrectRate !== 0.9 ||
+    payload.problematicIncorrectRate !== 0.7
+  ) {
+    throw unavailableResponse();
+  }
+  return {
+    ...parseAnalyticsPage(payload, parseAdvancedQuestionAnalyticsItem),
+    minimumSampleSize: 10,
+    easyCorrectRate: 0.9,
+    problematicIncorrectRate: 0.7,
+  };
+}
+
+export async function listAuthorCardIssuanceAnalytics(
+  options: RequestBase & {
+    fromDate?: string;
+    toDate?: string;
+    page?: number;
+    pageSize?: number;
+  },
+): Promise<AuthorCardIssuanceAnalyticsPage> {
+  const payload = await listAdvancedAnalyticsPage(
+    options,
+    '/author/analytics/card-issuance',
+    {
+      fromDate: options.fromDate,
+      toDate: options.toDate,
+      page: options.page ?? 1,
+      pageSize: options.pageSize ?? 25,
+    },
+  );
+  if (
+    payload.minimumSampleSize !== 10 ||
+    !Array.isArray(payload.rarities) ||
+    payload.rarities.length !== 4
+  ) {
+    throw unavailableResponse();
+  }
+  const rarities = payload.rarities.map(parseCardRarityAnalyticsItem);
+  if (new Set(rarities.map((item) => item.rarity)).size !== 4) {
+    throw unavailableResponse();
+  }
+  return {
+    ...parseAnalyticsPage(payload, parseCardIssuanceAnalyticsItem),
+    rarities,
+    minimumSampleSize: 10,
+  };
+}
+
+async function listAdvancedAnalyticsPage(
+  options: RequestBase,
+  path: string,
+  values: Record<string, string | number | undefined>,
+): Promise<Record<string, unknown>> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(values)) {
+    if (value !== undefined) params.set(key, String(value));
+  }
+  const payload = await authorRequest({
+    ...options,
+    method: 'GET',
+    path: `${path}?${params.toString()}`,
+  });
+  if (!isRecord(payload)) throw unavailableResponse();
+  requireRequestId(payload);
+  return payload;
+}
+
+function parseAnalyticsPage<T>(
+  payload: Record<string, unknown>,
+  itemParser: (value: unknown) => T,
+): AuthorPage<T> {
+  if (
+    !Array.isArray(payload.items) ||
+    !isPositiveInteger(payload.page) ||
+    !isPositiveInteger(payload.pageSize) ||
+    payload.pageSize > 100 ||
+    !isNonNegativeInteger(payload.totalItems) ||
+    !isNonNegativeInteger(payload.totalPages)
+  ) {
+    throw unavailableResponse();
+  }
+  return {
+    items: payload.items.map(itemParser),
+    page: payload.page,
+    pageSize: payload.pageSize,
+    totalItems: payload.totalItems,
+    totalPages: payload.totalPages,
   };
 }
 
@@ -1320,6 +1534,136 @@ function parseAuthorContentHistoryItem(
   return value as unknown as AuthorContentHistoryItem;
 }
 
+function parseEventLocationAnalyticsItem(
+  value: unknown,
+): AuthorEventLocationAnalyticsItem {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.eventId) ||
+    !isNonBlank(value.eventTitle) ||
+    (value.locationKind !== 'authored' &&
+      value.locationKind !== 'placement_site') ||
+    !isUuid(value.locationId) ||
+    !isNonBlank(value.locationName) ||
+    !isNullableNonNegativeInteger(value.viewCount) ||
+    !isNullableNonNegativeInteger(value.eligibleCount) ||
+    !isNullableNonNegativeInteger(value.startCount) ||
+    !isNullableNonNegativeInteger(value.completionCount) ||
+    typeof value.suppressed !== 'boolean'
+  ) {
+    throw unavailableResponse();
+  }
+  const metrics = [
+    value.viewCount,
+    value.eligibleCount,
+    value.startCount,
+    value.completionCount,
+  ];
+  if (value.suppressed !== metrics.some((metric) => metric === null)) {
+    throw unavailableResponse();
+  }
+  return value as unknown as AuthorEventLocationAnalyticsItem;
+}
+
+function parseAdvancedQuestionAnalyticsItem(
+  value: unknown,
+): AuthorAdvancedQuestionAnalyticsItem {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.questionId) ||
+    !isUuid(value.challengeId) ||
+    !isUuid(value.eventId) ||
+    !isNonBlank(value.eventTitle) ||
+    !isNonBlank(value.prompt) ||
+    !isChallengeFormat(value.format) ||
+    !isDifficulty(value.difficulty) ||
+    !isStatus(value.status) ||
+    !isNullableNonNegativeInteger(value.answerCount) ||
+    !isNullableNonNegativeInteger(value.correctCount) ||
+    !isNullableNonNegativeInteger(value.incorrectCount) ||
+    !isNullableNonNegativeInteger(value.timeoutCount) ||
+    !isNullableRate(value.correctRate) ||
+    !isNullableRate(value.incorrectRate) ||
+    !isAnalyticsQuestionClassification(value.classification) ||
+    typeof value.suppressed !== 'boolean'
+  ) {
+    throw unavailableResponse();
+  }
+  const metrics = [
+    value.answerCount,
+    value.correctCount,
+    value.incorrectCount,
+    value.timeoutCount,
+    value.correctRate,
+    value.incorrectRate,
+  ];
+  if (
+    value.suppressed !== (value.classification === 'suppressed') ||
+    (value.suppressed && metrics.some((metric) => metric !== null)) ||
+    (!value.suppressed && metrics.some((metric) => metric === null))
+  ) {
+    throw unavailableResponse();
+  }
+  if (
+    !value.suppressed &&
+    ((value.correctCount as number) + (value.incorrectCount as number) !==
+      value.answerCount ||
+      (value.timeoutCount as number) > (value.incorrectCount as number))
+  ) {
+    throw unavailableResponse();
+  }
+  return value as unknown as AuthorAdvancedQuestionAnalyticsItem;
+}
+
+function parseCardIssuanceAnalyticsItem(
+  value: unknown,
+): AuthorCardIssuanceAnalyticsItem {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.cardDefinitionId) ||
+    !isNonBlank(value.cardName) ||
+    !isRarity(value.rarity) ||
+    typeof value.rewardEligible !== 'boolean' ||
+    !isNullableNonNegativeInteger(value.issuanceCount) ||
+    !isNullableNonNegativeNumber(value.issuancesPer100Completions) ||
+    typeof value.suppressed !== 'boolean'
+  ) {
+    throw unavailableResponse();
+  }
+  if (
+    value.suppressed
+      ? value.issuanceCount !== null ||
+        value.issuancesPer100Completions !== null
+      : value.issuanceCount === null
+  ) {
+    throw unavailableResponse();
+  }
+  return value as unknown as AuthorCardIssuanceAnalyticsItem;
+}
+
+function parseCardRarityAnalyticsItem(
+  value: unknown,
+): AuthorCardRarityAnalyticsItem {
+  if (
+    !isRecord(value) ||
+    !isRarity(value.rarity) ||
+    !isNullableNonNegativeInteger(value.issuanceCount) ||
+    !isNullableNonNegativeNumber(value.issuancesPer100Completions) ||
+    typeof value.suppressed !== 'boolean'
+  ) {
+    throw unavailableResponse();
+  }
+  if (
+    value.suppressed
+      ? value.issuanceCount !== null ||
+        value.issuancesPer100Completions !== null
+      : value.issuanceCount === null
+  ) {
+    throw unavailableResponse();
+  }
+  return value as unknown as AuthorCardRarityAnalyticsItem;
+}
+
 function parseQuestionPerformanceItem(
   value: unknown,
 ): AuthorQuestionPerformanceItem {
@@ -1453,6 +1797,28 @@ function isRate(value: unknown): value is number {
     Number.isFinite(value) &&
     value >= 0 &&
     value <= 1
+  );
+}
+
+function isNullableRate(value: unknown): value is number | null {
+  return value === null || isRate(value);
+}
+
+function isNullableNonNegativeNumber(value: unknown): value is number | null {
+  return (
+    value === null ||
+    (typeof value === 'number' && Number.isFinite(value) && value >= 0)
+  );
+}
+
+function isAnalyticsQuestionClassification(
+  value: unknown,
+): value is AuthorAnalyticsQuestionClassification {
+  return (
+    value === 'suppressed' ||
+    value === 'easy' ||
+    value === 'problematic' ||
+    value === 'normal'
   );
 }
 
