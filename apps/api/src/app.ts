@@ -79,6 +79,9 @@ import type { AuthorChallengeService } from './challenges/author-challenge-servi
 import { authorChallengeRoutes } from './routes/author-challenges.js';
 import type { QuestionPerformanceService } from './challenges/question-performance-service.js';
 import { authorQuestionPerformanceRoutes } from './routes/author-question-performance.js';
+import type { AuthorAnalyticsService } from './analytics/author-analytics-service.js';
+import type { EventProductAnalyticsRecorder } from './analytics/event-product-aggregates.js';
+import { authorAnalyticsRoutes } from './routes/author-analytics.js';
 
 import type { AuthorCardService } from './cards/author-card-service.js';
 import { authorCardRoutes } from './routes/author-cards.js';
@@ -98,6 +101,7 @@ export interface EventServices {
   discovery: EventDiscoveryService;
   eligibility: EventEligibilityService;
   movementEvidence: MovementEvidenceService;
+  analyticsRecorder?: EventProductAnalyticsRecorder;
   clock?: () => Date;
   maxLocationClaimAgeMs?: number;
 }
@@ -170,6 +174,7 @@ export interface AuthorContentServices {
   campaigns?: AuthorCampaignService;
   read?: AuthorContentReadService;
   questionPerformance?: QuestionPerformanceService;
+  analytics?: AuthorAnalyticsService;
 }
 
 export interface TrailServices {
@@ -495,6 +500,7 @@ export async function buildApp({
       discoveryService: eventServices.discovery,
       eligibilityService: eventServices.eligibility,
       movementEvidenceService: eventServices.movementEvidence,
+      analyticsRecorder: eventServices.analyticsRecorder,
       clock: eventServices.clock,
       maxLocationClaimAgeMs: eventServices.maxLocationClaimAgeMs,
     });
@@ -525,6 +531,13 @@ export async function buildApp({
     await app.register(authorQuestionPerformanceRoutes, {
       prefix: '/api/v1',
       service: authorContentServices.questionPerformance,
+    });
+  }
+
+  if (authorContentServices?.analytics) {
+    await app.register(authorAnalyticsRoutes, {
+      prefix: '/api/v1',
+      service: authorContentServices.analytics,
     });
   }
 

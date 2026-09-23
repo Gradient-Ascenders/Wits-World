@@ -312,6 +312,11 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'architecture/advanced-analytics-api-contract',
+              label: 'Advanced analytics API',
+            },
+            {
+              type: 'doc',
               id: 'architecture/offline-challenge-play',
               label: 'Offline play and synchronisation',
             },
@@ -428,6 +433,11 @@ const sidebars: SidebarsConfig = {
                   type: 'doc',
                   id: 'database/question-performance-analytics',
                   label: 'Question performance reports',
+                },
+                {
+                  type: 'doc',
+                  id: 'database/advanced-analytics',
+                  label: 'Advanced analytics storage and privacy',
                 },
                 {
                   type: 'doc',

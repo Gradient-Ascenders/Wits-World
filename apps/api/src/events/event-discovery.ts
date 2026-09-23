@@ -12,6 +12,7 @@ export interface PlayerEvent {
   startsAt: string;
   endsAt: string;
   availability: PlayerEventAvailability;
+  placementAssignmentId?: string;
 }
 
 export interface EventDiscoveryService {
@@ -44,6 +45,7 @@ interface PlayerEventRow extends pg.QueryResultRow {
   starts_at: Date;
   ends_at: Date;
   availability: PlayerEventAvailability;
+  placement_assignment_id: string | null;
 }
 
 export function createEventDiscoveryService(
@@ -67,6 +69,9 @@ export function createEventDiscoveryService(
         startsAt: row.starts_at.toISOString(),
         endsAt: row.ends_at.toISOString(),
         availability: row.availability,
+        ...(row.placement_assignment_id
+          ? { placementAssignmentId: row.placement_assignment_id }
+          : {}),
       }));
     },
   };
@@ -155,7 +160,8 @@ const EVENT_DISCOVERY_QUERY = `
          event.radius_metres,
          effective.effective_starts_at as starts_at,
          effective.effective_ends_at as ends_at,
-         effective.availability
+         effective.availability,
+         placement.placement_assignment_id::text as placement_assignment_id
     from public.events event
     cross join lateral public.resolve_event_availability(
       event.id,
