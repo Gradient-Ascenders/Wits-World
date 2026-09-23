@@ -116,7 +116,10 @@ const RECORD_EVENT_VIEWS_QUERY = `
     on conflict (event_id, location_key, bucket_start)
     do update
       set view_count = public.event_product_event_aggregates.view_count + 1,
-          updated_at = now()
+          updated_at = greatest(
+            public.event_product_event_aggregates.updated_at,
+            clock_timestamp()
+          )
     returning event_id::text
   )
   select event_id from inserted
@@ -152,7 +155,10 @@ const RECORD_EVENT_ELIGIBILITY_QUERY = `
     on conflict (event_id, location_key, bucket_start)
     do update
       set eligible_count = public.event_product_event_aggregates.eligible_count + 1,
-          updated_at = now()
+          updated_at = greatest(
+            public.event_product_event_aggregates.updated_at,
+            clock_timestamp()
+          )
     returning event_id::text
   )
   select event_id from inserted
