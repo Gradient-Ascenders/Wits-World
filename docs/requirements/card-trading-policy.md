@@ -9,8 +9,9 @@ title: 'Card trading and anti-drain policy'
 This is the approved issue `#273` policy for Advanced-tier, bilateral card
 trading. Issue `#275` now provides the private persistence and service boundary
 for versioned offers, exact-copy reservations, atomic exchanges, and history.
-Trading is still **not** a deployed player feature: issue `#272` must expose the
-authenticated API and issue `#274` must build the player experience. The
+Issue `#272` now exposes the authenticated bilateral trading API; issue `#274`
+remains responsible for the player trading experience. Trading is not a complete
+player-facing feature until that Web work is implemented. The
 existing [card evolution](card-evolution-rules.md),
 [saved-deck rules](basic-game-rules.md#saved-decks),
 [account-deletion boundary](../database/account-deletion-retention.md), and
@@ -206,11 +207,13 @@ reauthentication proof.
 Issue `#275` adds focused persistence coverage for migration safety,
 reservation conflicts, version-scoped approvals, replay, rollback, deletion
 cleanup, terminal immutability, and atomic copy movement. Those tests remain
-execution evidence only when they are actually run. Issue `#272` must still
-test authentication, object-level authorisation, recent proof, limits, safe
-errors, and the HTTP settlement boundary. Issue `#274` must show both sides'
-exact selected cards, warnings, expiry, version changes, and terminal outcomes
-without exposing an opponent's collection.
+execution evidence only when they are actually run. Issue `#272` adds the authenticated HTTP boundary, durable command idempotency,
+recent-authentication enforcement, participant-only list/read operations, and
+production expiry/retention scheduling. Its focused tests cover those API
+boundaries; database execution evidence is recorded only when the suites are
+actually run. Issue `#274` must show both sides' exact selected cards, warnings,
+expiry, version changes, and terminal outcomes without exposing an opponent's
+collection.
 
 ## AI declaration
 

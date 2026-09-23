@@ -57,6 +57,8 @@ import type { CpuMatchService } from './matches/cpu-match-service.js';
 import { cpuMatchRoutes } from './routes/cpu-matches.js';
 import type { AsyncPvpService } from './matches/asynchronous-pvp-service.js';
 import { asynchronousPvpRoutes } from './routes/asynchronous-pvp.js';
+import type { CardTradeService } from './trading/card-trade-service.js';
+import { cardTradeRoutes } from './routes/card-trades.js';
 import { livePvpRoutes } from './routes/live-pvp.js';
 import type { LivePvpService } from './matches/live-pvp-service.js';
 import type { LivePvpGateway } from './matches/live-pvp-gateway.js';
@@ -121,6 +123,10 @@ export interface BuildAppOptions {
   trailServices?: TrailServices;
   cpuMatchService?: CpuMatchService;
   asyncPvpService?: AsyncPvpService;
+  cardTrade?: {
+    service: CardTradeService;
+    reauthenticationVerifier: ReauthenticationTokenVerifier;
+  };
   livePvp?: {
     service: LivePvpService;
     gateway: LivePvpGateway;
@@ -192,6 +198,7 @@ export async function buildApp({
   trailServices,
   cpuMatchService,
   asyncPvpService,
+  cardTrade,
   livePvp,
   ranked,
   territory,
@@ -329,6 +336,9 @@ export async function buildApp({
       'Asynchronous PvP routes require the player identity service.',
     );
   }
+  if (cardTrade && !playerIdentityService) {
+    throw new Error('Card trading routes require the player identity service.');
+  }
   if (progressionReadService && !playerIdentityService) {
     throw new Error('Progression services require a player identity service.');
   }
@@ -393,6 +403,11 @@ export async function buildApp({
         {
           name: 'Matches',
           description: 'Server-authoritative CPU matches and private history.',
+        },
+        {
+          name: 'Trading',
+          description:
+            'Private, versioned, server-authoritative bilateral card trades.',
         },
         {
           name: 'Ranked',
@@ -592,6 +607,14 @@ export async function buildApp({
     await app.register(asynchronousPvpRoutes, {
       prefix: '/api/v1',
       service: asyncPvpService,
+    });
+  }
+
+  if (cardTrade) {
+    await app.register(cardTradeRoutes, {
+      prefix: '/api/v1',
+      service: cardTrade.service,
+      reauthenticationVerifier: cardTrade.reauthenticationVerifier,
     });
   }
 

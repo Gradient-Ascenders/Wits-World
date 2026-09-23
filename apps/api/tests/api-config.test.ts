@@ -37,6 +37,7 @@ describe('API configuration', () => {
       rateLimitMaxRequests: 120,
       rateLimitWindowMs: 60000,
       trustEvaluationIntervalMs: DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
+      cardTradeMaintenanceIntervalMs: DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
     });
   });
 
@@ -236,6 +237,30 @@ describe('API configuration', () => {
         },
       }),
     ).toThrow('TRUST_EVALUATION_INTERVAL_MS must be a safe integer between');
+  });
+
+  it('reads and validates the card trade maintenance interval', () => {
+    const config = buildApiConfig({
+      env: {
+        ...validEnvironment,
+        CARD_TRADE_MAINTENANCE_INTERVAL_MS: '1200000',
+      },
+    });
+
+    expect(config.cardTradeMaintenanceIntervalMs).toBe(1_200_000);
+  });
+
+  it('rejects an unsafe card trade maintenance interval', () => {
+    expect(() =>
+      buildApiConfig({
+        env: {
+          ...validEnvironment,
+          CARD_TRADE_MAINTENANCE_INTERVAL_MS: '1000',
+        },
+      }),
+    ).toThrow(
+      'CARD_TRADE_MAINTENANCE_INTERVAL_MS must be a safe integer between',
+    );
   });
 
   it('reads configured movement evidence retention and cleanup intervals', () => {

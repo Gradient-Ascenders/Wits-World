@@ -78,7 +78,8 @@ describe('migration file loading', () => {
         name.startsWith('0052_') ||
         name.startsWith('0053_') ||
         name.startsWith('0054_') ||
-        name.startsWith('0055_'),
+        name.startsWith('0055_') ||
+        name.startsWith('0056_'),
     );
 
     expect(
@@ -244,6 +245,10 @@ describe('migration file loading', () => {
       {
         checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         name: '0055_persist_versioned_card_trades.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0056_add_card_trade_submission_receipts.sql',
       },
     ]);
   });

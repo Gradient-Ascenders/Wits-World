@@ -358,10 +358,12 @@ its cleanup primitive was executed in production.
 
 ## Card-trade persistence verification
 
-Issue `#275` adds `apps/api/tests/card-trading-persistence.integration.test.ts`
-for the private persistence boundary. The focused database suite upgrades a
-pre-`0055` database containing existing ownership and deck references, then
-checks exact-copy reservation conflicts, immutable offer-version approval
+Issues `#275` and `#272` use
+`apps/api/tests/card-trading-persistence.integration.test.ts` for the private
+persistence and durable idempotency boundaries. The focused database suite
+upgrades a pre-`0055` database containing existing ownership and deck references,
+then applies `0055` and `0056` and checks create/revision submission replay,
+conflicting submission reuse, exact-copy reservation conflicts, immutable offer-version approval
 semantics, concurrent reservation attempts, final-acceptance/cancellation
 serialization, saved-deck exclusion, exactly-once settlement/provenance, rollback
 after an injected database failure, expiry and reservation release, `trust-v2` trade-hold invalidation, terminal immutability,
@@ -370,7 +372,12 @@ adds regression coverage that trade-reserved copies are excluded from evolution
 preview and destructive consumption until the reservation is released.
 
 `apps/api/tests/card-trade-policy.test.ts` covers the pure rarity-point mapping
-and input invariants without a database. During local development, run the
+and input invariants without a database.
+`apps/api/tests/card-trades-routes.test.ts` covers authenticated identity, closed
+request schemas, recent-authentication acceptance proof, participant-safe
+responses, neutral object-level authorization errors, and participant-only
+listing. `apps/api/tests/card-trade-maintenance-scheduler.test.ts` covers startup
+maintenance, cadence validation, and non-overlapping sweeps. During local development, run the
 focused persistence suite against `TEST_DATABASE_URL` after migration tests and
 then only the affected deck/evolution/match/trust/deletion regressions. The full
 database runner remains the Gitea PR gate; this documentation does not claim

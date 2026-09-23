@@ -9,8 +9,10 @@ title: 'Card trading persistence'
 Migration `0055_persist_versioned_card_trades.sql` implements the durable
 persistence boundary for issue `#275`. It follows the approved
 [card-trading and anti-drain policy](../requirements/card-trading-policy.md).
-This migration does **not** expose trading HTTP routes or a player trading UI;
-those remain follow-up work in `#272` and `#274`.
+Migration `0056_add_card_trade_submission_receipts.sql` extends that boundary
+with private durable command-idempotency receipts for issue `#272`. The
+authenticated HTTP routes are now implemented by `#272`; the player trading UI
+remains follow-up work in `#274`.
 
 The database remains authoritative for exact-copy reservations, immutable offer
 history, terminal lifecycle, and the all-or-nothing settlement record. The API
@@ -38,6 +40,14 @@ copies and requested card-definition quantities are persisted in
 Acceptances and imbalance acknowledgements are keyed by trade, version, and
 participant. Therefore changing the current version makes every approval from
 an earlier version unusable without deleting its audit history.
+
+`private.card_trade_submission_receipts` records one immutable idempotency key
+per actor, operation, and submission UUID together with a SHA-256 command digest
+and affected trade. The API takes a transaction advisory lock for that key; an
+identical retry returns the canonical trade, while different intent under the
+same key is rejected. The table never stores access or reauthentication tokens.
+It cascades with purged non-completed trades and remains with completed trade
+provenance.
 
 `private.card_trade_reservations` is the mutable projection for the current
 open version. `owned_card_id` is its primary key, so one exact owned copy cannot
@@ -117,16 +127,18 @@ terminal offer detail after 30 days. Completed trade versions, approvals,
 settlement receipts, and movements are retained as immutable ownership
 provenance and are excluded from this purge.
 
-The persistence service exposes maintenance operations, but issue `#275` does
-not add a new production scheduler because trading is not yet publicly
-reachable. The trading API/runtime work must invoke expiry/retention maintenance
-before the feature is enabled.
+The persistence service exposes maintenance operations. Issue `#272` starts a
+non-overlapping API maintenance scheduler immediately at runtime and then at the
+configured `CARD_TRADE_MAINTENANCE_INTERVAL_MS` cadence (30 minutes by default).
+Individual trade reads/actions still enforce the exact deadline transactionally,
+so scheduler cadence never extends an offer lifetime.
 
 ## Verification
 
 `apps/api/tests/card-trading-persistence.integration.test.ts` applies the
 repository through migration `0054`, seeds existing ownership and deck
-references, then applies `0055`. It covers migration safety, conflicting
+references, then applies `0055` and `0056`. It covers migration safety, durable create and
+revision idempotency, conflicting
 reservations, version-scoped acceptance, concurrent reservation attempts,
 final-acceptance/cancellation serialization, saved-deck exclusion, exactly-once
 settlement and provenance, transaction rollback after an injected grant failure,

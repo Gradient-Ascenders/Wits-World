@@ -37,6 +37,7 @@ export interface ApiConfig {
   rateLimitMaxRequests: number;
   rateLimitWindowMs: number;
   trustEvaluationIntervalMs: number;
+  cardTradeMaintenanceIntervalMs: number;
 }
 
 interface BuildApiConfigOptions {
@@ -100,6 +101,10 @@ export function buildApiConfig({
   );
   const trustEvaluationIntervalMs = Number(
     env.TRUST_EVALUATION_INTERVAL_MS?.trim() ??
+      String(DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS),
+  );
+  const cardTradeMaintenanceIntervalMs = Number(
+    env.CARD_TRADE_MAINTENANCE_INTERVAL_MS?.trim() ??
       String(DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS),
   );
 
@@ -218,6 +223,16 @@ export function buildApiConfig({
     );
   }
 
+  if (
+    !Number.isSafeInteger(cardTradeMaintenanceIntervalMs) ||
+    cardTradeMaintenanceIntervalMs < MIN_DATABASE_MAINTENANCE_INTERVAL_MS ||
+    cardTradeMaintenanceIntervalMs > MAX_NODE_TIMER_DELAY_MS
+  ) {
+    throw new Error(
+      `CARD_TRADE_MAINTENANCE_INTERVAL_MS must be a safe integer between ${MIN_DATABASE_MAINTENANCE_INTERVAL_MS} and ${MAX_NODE_TIMER_DELAY_MS} milliseconds.`,
+    );
+  }
+
   return {
     host,
     port,
@@ -235,6 +250,7 @@ export function buildApiConfig({
     rateLimitMaxRequests,
     rateLimitWindowMs,
     trustEvaluationIntervalMs,
+    cardTradeMaintenanceIntervalMs,
   };
 }
 

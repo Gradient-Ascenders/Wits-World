@@ -358,6 +358,12 @@ decay/recovery and completed-PvP pattern evaluation, not a configurable
 configured interval; concurrent API instances are safe because PostgreSQL owns
 trust uniqueness and player-level serialization.
 
+Issue `#272` adds optional `CARD_TRADE_MAINTENANCE_INTERVAL_MS` (default
+`1800000`, minimum `900000`). It drives only bulk card-trade expiry and terminal
+retention cleanup; authenticated trade operations enforce their own exact
+deadlines regardless of the sweep cadence. The worker runs once at startup and
+then periodically, logging aggregate counts only.
+
 Asynchronous PvP additionally requires the server-only
 `ASYNC_PVP_CURSOR_SIGNING_KEY` (at least 32 random UTF-8 bytes) and accepts the
 optional `ASYNC_PVP_DEADLINE_SWEEP_INTERVAL_MS` (default `1800000`, minimum
