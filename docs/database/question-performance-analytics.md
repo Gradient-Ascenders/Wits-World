@@ -65,6 +65,19 @@ Observed warm-cache PostgreSQL plans were:
 
 The unfiltered sequential scan is appropriate because that shape consumes the full completed-attempt population. The event-only plan validly preferred the older compact event/status index; migration `0038` retains its event/date covering index for composed event/date queries. The selective challenge and date-range plans used the new partial indexes, and no plan required disabled sequential scans or other planner forcing. These measurements describe the disposable representative fixture and are not production latency claims.
 
+## Advanced analytics projection
+
+Issue `#278` deliberately leaves `GET /api/v1/author/question-performance`
+unchanged for its existing curation workflow. The separate
+`GET /api/v1/author/analytics/questions` endpoint reuses this service but applies
+a disclosure threshold before returning operational analytics: positive samples
+from one through nine hide their counts and rates; samples of ten or more are
+reportable. It also classifies reportable questions as `easy` at a correct rate of
+at least 0.90, `problematic` using the existing 0.70 incorrect-rate rule, or
+`normal`. The new suppression policy is therefore scoped to advanced analytics
+rather than retroactively changing issue `#184`. See the
+[advanced analytics API contract](../architecture/advanced-analytics-api-contract.md).
+
 ## Privacy and limitations
 
 `GET /api/v1/author/question-performance` is protected by the normal active-player and Author guards. Its response schema is closed and contains only aggregate counts/rates, content context, and edit-navigation identifiers. The browser never receives attempt rows, player identity, attempt identity, submitted answer/order, or player location.
@@ -74,3 +87,5 @@ Because exact aggregates remain visible for samples below 10, sufficiently narro
 This is a curation signal, not causal analysis. It does not explain why a question was missed, segment players, retain a separate history, rewrite content, or provide a game-wide dashboard. Because published and retired question definitions are immutable, a source identifier continues to describe the answer key used for its snapshots.
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+Advanced analytics privacy-boundary documentation was updated with the assistance of ChatGPT-Web[GPT-5.6 Sol].

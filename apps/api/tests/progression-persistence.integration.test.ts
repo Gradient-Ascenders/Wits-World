@@ -124,6 +124,7 @@ describe.skipIf(!runIntegrationTests)(
         '0054_implement_contested_territory_runtime.sql',
         '0055_persist_versioned_card_trades.sql',
         '0056_add_card_trade_submission_receipts.sql',
+        '0057_create_advanced_analytics.sql',
       ]);
 
       pool = createDatabasePool(temporaryConfig);

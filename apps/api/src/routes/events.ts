@@ -1,7 +1,11 @@
 import type { FastifyPluginAsync } from 'fastify';
 
 import { ApiError } from '../errors/api-error.js';
-import type { EventDiscoveryService } from '../events/event-discovery.js';
+import type { EventProductAnalyticsRecorder } from '../analytics/event-product-aggregates.js';
+import type {
+  EventDiscoveryService,
+  PlayerEvent,
+} from '../events/event-discovery.js';
 import type { EventEligibilityService } from '../events/event-eligibility.js';
 import {
   evaluateLocationTiming,
@@ -20,6 +24,7 @@ interface EventRoutesOptions {
   discoveryService: EventDiscoveryService;
   eligibilityService: EventEligibilityService;
   movementEvidenceService: MovementEvidenceService;
+  analyticsRecorder?: EventProductAnalyticsRecorder;
   clock?: () => Date;
   maxLocationClaimAgeMs?: number;
 }
@@ -83,6 +88,7 @@ export const eventRoutes: FastifyPluginAsync<EventRoutesOptions> = async (
     discoveryService,
     eligibilityService,
     movementEvidenceService,
+    analyticsRecorder,
     clock = () => new Date(),
     maxLocationClaimAgeMs = PROVISIONAL_MAX_LOCATION_CLAIM_AGE_MS,
   },
@@ -190,8 +196,29 @@ export const eventRoutes: FastifyPluginAsync<EventRoutesOptions> = async (
     async (request) => {
       const events = await discoveryService.list();
 
+      if (analyticsRecorder) {
+        try {
+          await analyticsRecorder.recordViews(
+            events
+              .filter((event) => event.availability === 'active')
+              .map((event) => ({
+                eventId: event.eventId,
+                ...(event.placementAssignmentId
+                  ? { placementAssignmentId: event.placementAssignmentId }
+                  : {}),
+              })),
+            clock(),
+          );
+        } catch (error) {
+          request.log.error(
+            { err: error },
+            'Failed to record event discovery analytics.',
+          );
+        }
+      }
+
       return {
-        events,
+        events: events.map(toPlayerEventResponse),
         requestId: request.id,
       };
     },
@@ -442,6 +469,25 @@ export const eventRoutes: FastifyPluginAsync<EventRoutesOptions> = async (
         throw error;
       }
 
+      if (analyticsRecorder && reachability.status === 'reachable') {
+        try {
+          await analyticsRecorder.recordEligibility(
+            {
+              eventId: result.eventId,
+              ...(result.assignmentId
+                ? { placementAssignmentId: result.assignmentId }
+                : {}),
+            },
+            receivedAt,
+          );
+        } catch (error) {
+          request.log.error(
+            { err: error },
+            'Failed to record event eligibility analytics.',
+          );
+        }
+      }
+
       return {
         eventId: result.eventId,
         ...reachability,
@@ -450,6 +496,20 @@ export const eventRoutes: FastifyPluginAsync<EventRoutesOptions> = async (
     },
   );
 };
+
+function toPlayerEventResponse(event: PlayerEvent) {
+  return {
+    eventId: event.eventId,
+    title: event.title,
+    description: event.description,
+    latitude: event.latitude,
+    longitude: event.longitude,
+    radiusMetres: event.radiusMetres,
+    startsAt: event.startsAt,
+    endsAt: event.endsAt,
+    availability: event.availability,
+  };
+}
 
 function eventNotFound(): ApiError {
   return new ApiError({

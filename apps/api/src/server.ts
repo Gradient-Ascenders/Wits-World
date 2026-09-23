@@ -60,6 +60,8 @@ import { createTerritoryOwnerBonusService } from './territory/territory-owner-bo
 import { createTerritoryReadService } from './territory/territory-read-service.js';
 import { createCardTradeService } from './trading/card-trade-service.js';
 import { createCardTradeMaintenanceScheduler } from './trading/card-trade-maintenance-scheduler.js';
+import { createAuthorAnalyticsService } from './analytics/author-analytics-service.js';
+import { createEventProductAnalyticsRecorder } from './analytics/event-product-aggregates.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
@@ -147,6 +149,12 @@ async function startServer(): Promise<void> {
   const authorEventService = createAuthorEventService(database);
   const authorChallengeService = createAuthorChallengeService(database);
   const questionPerformanceService = createQuestionPerformanceService(database);
+  const eventProductAnalyticsRecorder =
+    createEventProductAnalyticsRecorder(database);
+  const authorAnalyticsService = createAuthorAnalyticsService(
+    database,
+    questionPerformanceService,
+  );
   const authorCardService = createAuthorCardService(database);
   const authorTrailService = createAuthorTrailService(database);
   const authorCampaignService = createAuthorCampaignService(database);
@@ -223,6 +231,7 @@ async function startServer(): Promise<void> {
       ),
       eligibility: createEventEligibilityService(database),
       movementEvidence: movementEvidenceService,
+      analyticsRecorder: eventProductAnalyticsRecorder,
     },
 
     trailServices: {
@@ -237,6 +246,7 @@ async function startServer(): Promise<void> {
       campaigns: authorCampaignService,
       read: authorContentReadService,
       questionPerformance: questionPerformanceService,
+      analytics: authorAnalyticsService,
     },
   });
 

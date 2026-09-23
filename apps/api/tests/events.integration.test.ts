@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { EventProductAnalyticsRecorder } from '../src/analytics/event-product-aggregates.js';
 import type { AccessTokenVerifier } from '../src/auth/access-token-verifier.js';
 import { buildApp } from '../src/app.js';
 import type { AuthConfig } from '../src/config/auth.js';
@@ -64,6 +65,12 @@ let evaluateMovementJourney: ReturnType<
   typeof vi.fn<MovementEvidenceService['evaluateJourney']>
 >;
 let playerResolve: ReturnType<typeof createPlayerResolveMock>;
+let recordViews: ReturnType<
+  typeof vi.fn<EventProductAnalyticsRecorder['recordViews']>
+>;
+let recordEligibility: ReturnType<
+  typeof vi.fn<EventProductAnalyticsRecorder['recordEligibility']>
+>;
 
 beforeEach(async () => {
   discoveryList = createDiscoveryMock();
@@ -72,6 +79,12 @@ beforeEach(async () => {
     .fn<MovementEvidenceService['evaluateJourney']>()
     .mockResolvedValue({ outcome: 'baseline' });
   playerResolve = createPlayerResolveMock();
+  recordViews = vi
+    .fn<EventProductAnalyticsRecorder['recordViews']>()
+    .mockResolvedValue(undefined);
+  recordEligibility = vi
+    .fn<EventProductAnalyticsRecorder['recordEligibility']>()
+    .mockResolvedValue(undefined);
 
   const discoveryService: EventDiscoveryService = {
     list: discoveryList,
@@ -103,6 +116,7 @@ beforeEach(async () => {
       discovery: discoveryService,
       eligibility: eligibilityService,
       movementEvidence: movementEvidenceService,
+      analyticsRecorder: { recordViews, recordEligibility },
       clock: () => receivedAt,
       maxLocationClaimAgeMs: 120_000,
     },
@@ -185,6 +199,50 @@ describe('event discovery API', () => {
     expect(body.events[0]).not.toHaveProperty('sourceUrls');
 
     expect(discoveryList).toHaveBeenCalledOnce();
+    expect(recordViews).toHaveBeenCalledWith(
+      [{ eventId: EVENT_ID }],
+      receivedAt,
+    );
+  });
+
+  it('keeps analytics-only placement identifiers out of the player response', async () => {
+    discoveryList.mockResolvedValue([
+      {
+        ...activeEvent,
+        placementAssignmentId: '90000000-0000-4000-8000-000000000001',
+      },
+    ]);
+
+    const response = await authenticatedRequest({
+      method: 'GET',
+      url: '/api/v1/events',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().events[0]).not.toHaveProperty(
+      'placementAssignmentId',
+    );
+    expect(recordViews).toHaveBeenCalledWith(
+      [
+        {
+          eventId: EVENT_ID,
+          placementAssignmentId: '90000000-0000-4000-8000-000000000001',
+        },
+      ],
+      receivedAt,
+    );
+  });
+
+  it('does not fail discovery when aggregate recording fails', async () => {
+    recordViews.mockRejectedValueOnce(new Error('analytics unavailable'));
+
+    const response = await authenticatedRequest({
+      method: 'GET',
+      url: '/api/v1/events',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().events).toEqual([activeEvent]);
   });
 });
 
@@ -279,6 +337,38 @@ describe('event eligibility API', () => {
       },
       'reachable',
     );
+    expect(recordEligibility).toHaveBeenCalledWith(
+      { eventId: EVENT_ID },
+      receivedAt,
+    );
+  });
+
+  it('does not fail a reachable eligibility response when aggregate recording fails', async () => {
+    recordEligibility.mockRejectedValueOnce(new Error('analytics unavailable'));
+    eligibilityEvaluate.mockResolvedValue({
+      outcome: 'evaluated',
+      eventId: EVENT_ID,
+      eligible: true,
+      distanceMetres: 20,
+      radiusMetres: 75,
+      assignmentId: '90000000-0000-4000-8000-000000000001',
+    } satisfies EventEligibilityResult);
+
+    const response = await authenticatedEligibilityRequest();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      eventId: EVENT_ID,
+      status: 'reachable',
+      reachable: true,
+    });
+    expect(recordEligibility).toHaveBeenCalledWith(
+      {
+        eventId: EVENT_ID,
+        placementAssignmentId: '90000000-0000-4000-8000-000000000001',
+      },
+      receivedAt,
+    );
   });
 
   it('returns unreachable when the reported point is outside the radius', async () => {
@@ -301,6 +391,7 @@ describe('event eligibility API', () => {
       reachable: false,
       requestId: expect.any(String),
     });
+    expect(recordEligibility).not.toHaveBeenCalled();
   });
 
   it('returns retry when reported accuracy exceeds the event limit', async () => {

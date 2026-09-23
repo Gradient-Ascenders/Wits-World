@@ -8,6 +8,17 @@ title: 'Test strategy, commands and policy'
 
 Issue `#184` adds service, route, client, and Author-workspace coverage for the 10-answer flagging boundary, exact and just-below 70% incorrect rates with non-misleading decimal display, larger samples, MCQ and ordering aggregation, part-way timeout exclusion of unseen snapshots, timeout counts, composed filters, genuine empty results, stale-page recovery to the last valid page, malformed filters, Author authorization, page bounds, closed aggregate response parsing, keyboard-accessible horizontal results, and edit navigation. The Author-only response deliberately retains exact small-sample aggregates; its residual narrow-filter inference risk and the remaining database query-plan gate are documented in [Question performance analytics](../database/question-performance-analytics.md).
 
+## Advanced operational analytics
+
+Issue `#278` adds focused service and Author-route tests for date/page validation,
+authentication and Author authorization, event-location suppression, easy/problematic
+question classification, immutable reward-ledger issuance, and non-fatal analytics
+recording failures. `advanced-analytics-database.integration.test.ts` covers atomic
+concurrent hourly aggregation, authoritative start/completion joins, ignored-location
+semantics, card issuance independent of current ownership, and representative query
+plans. Run that focused database suite locally after migration tests; the complete
+database runner remains the Gitea PR gate.
+
 ## Purpose
 
 Wits World uses the smallest test boundary that can reliably demonstrate a
@@ -393,9 +404,13 @@ evidence, not application latency, throughput, rendering, or database-query
 benchmarks.
 
 No general application performance baseline or load-test result is currently
-recorded. A future benchmark must retain its scenario, data volume, environment,
-tooling, result, analysis, and resulting change before the documentation can
-claim an application performance improvement.
+recorded. Issue `#278` is narrower: its advanced-analytics database suite defines a
+repository target of less than 1,000 ms PostgreSQL execution time for each
+representative query on its disposable fixture and requires indexed access for a
+selective product-event date read. That focused target is not a production HTTP SLA
+or evidence of general application performance. Any broader benchmark must retain
+its scenario, data volume, environment, tooling, result, analysis, and resulting
+change before the documentation can claim an application performance improvement.
 
 ## Evidence and review rule
 
