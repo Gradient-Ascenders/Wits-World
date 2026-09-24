@@ -174,13 +174,7 @@
 .quest-journey {
   position: relative;
   padding-block: clamp(4.5rem, 9vw, 8rem) 0;
-  background:
-    radial-gradient(
-      circle at 78% 8rem,
-      rgb(42 107 255 / 8%),
-      transparent 24rem
-    ),
-    var(--colour-background-app);
+  background: var(--colour-background-app);
 }
 
 .section-introduction {
@@ -249,10 +243,7 @@ html:has(.home-page) {
   top: 0;
   z-index: 20;
   padding: var(--space-3) var(--space-4);
-  border-block: 1px solid var(--colour-border-subtle);
-  background: rgb(5 11 22 / 94%);
-  box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 18%);
-  backdrop-filter: blur(0.8rem);
+  background: var(--colour-background-app);
 }
 
 .journey-navigation__steps {
@@ -384,6 +375,12 @@ html:has(.home-page) {
   content: '';
   transform: rotate(45deg);
 }
+
+.journey-section:first-child::before,
+.journey-section:first-child::after {
+  display: none;
+}
+
 .journey-section__number {
   padding-top: var(--space-3);
   color: var(--colour-gold-400);
