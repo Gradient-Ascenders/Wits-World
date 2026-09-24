@@ -260,14 +260,8 @@ describe('Wits World public application shell', () => {
       ),
     ).toBeVisible();
     expect(
-      within(main).getByRole('heading', {
-        level: 2,
-        name: 'Built at Wits',
-      }),
-    ).toBeVisible();
-    expect(
-      within(main).getByText(/COMS3011A Software Design Project/),
-    ).toBeVisible();
+      within(main).queryByRole('heading', { name: 'Built at Wits' }),
+    ).not.toBeInTheDocument();
     expect(within(main).queryByText('Ready to begin?')).not.toBeInTheDocument();
     expect(
       within(main).queryByText(
@@ -290,17 +284,17 @@ describe('Wits World public application shell', () => {
     });
   });
 
-  it('redirects /about to the Home project context', async () => {
+  it('redirects /about to the Home page', async () => {
     renderRoute('/about');
 
     expect(
       await screen.findByRole('heading', {
-        level: 2,
-        name: 'Built at Wits',
+        level: 1,
+        name: 'Wits World',
       }),
     ).toBeVisible();
     expect(window.location.pathname).toBe('/');
-    expect(window.location.hash).toBe('#project-context');
+    expect(window.location.hash).toBe('');
     expect(
       screen.queryByRole('heading', {
         name: 'Campus exploration, turned into play.',

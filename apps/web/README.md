@@ -395,7 +395,7 @@ for the full flow, privacy boundary, browser limitations, and evidence steps.
 - `/account` requires Auth0 sign-in, shows the API-resolved player identity and
   provider category, delegates credential recovery, and coordinates permanent
   deletion without collecting passwords.
-- `/about` explains the Wits World project and Wits Quest game/topic distinction.
+- `/about` redirects to the home page.
 - Any unknown route presents a page-not-found message and a link home.
 
 The application uses browser-history routing. A future static host must route

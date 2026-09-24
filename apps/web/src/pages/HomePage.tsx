@@ -17,7 +17,6 @@ import { HomeChallengeCta } from '../components/home/HomeChallengeCta';
 import { HomeChallengeDemo } from '../components/home/HomeChallengeDemo';
 import { HomeCollectShowcase } from '../components/home/HomeCollectShowcase';
 import { HomeExplorePreview } from '../components/home/HomeExplorePreview';
-import { CampusSeal } from '../components/branding/CampusSeal';
 import '../styles/home.css';
 
 const greatHallHeroSrcSet = `${greatHallHero640Webp} 640w, ${greatHallHero960Webp} 960w, ${greatHallHeroWebp} 1672w`;
@@ -92,29 +91,6 @@ export default function HomePage() {
     imageSizes: '100vw',
     imageSrcSet: greatHallHeroSrcSet,
   });
-
-  useEffect(() => {
-    if (window.location.hash !== '#project-context') {
-      return;
-    }
-
-    const scrollToProjectContext = () => {
-      const projectContext = document.getElementById('project-context');
-
-      if (typeof projectContext?.scrollIntoView === 'function') {
-        projectContext.scrollIntoView();
-      }
-    };
-
-    if (typeof window.requestAnimationFrame !== 'function') {
-      scrollToProjectContext();
-      return;
-    }
-
-    const frame = window.requestAnimationFrame(scrollToProjectContext);
-
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
 
   return (
     <div className="home-page">
@@ -316,24 +292,6 @@ export default function HomePage() {
               )}
             </section>
           ))}
-        </div>
-      </section>
-
-      <section
-        aria-labelledby="project-context-title"
-        className="project-context"
-        id="project-context"
-      >
-        <div aria-hidden="true" className="project-context__mark">
-          <CampusSeal className="project-context__seal" decorative />
-        </div>
-        <div className="project-context__copy">
-          <h2 id="project-context-title">Built at Wits</h2>
-          <p>
-            Wits World is a COMS3011A Software Design Project at Wits
-            University, built around turning campus exploration into a
-            location-based card game.
-          </p>
         </div>
       </section>
     </div>

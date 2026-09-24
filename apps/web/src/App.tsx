@@ -153,7 +153,7 @@ export function AppRoutes({
                 </ProtectedRoute>
               </Route>
               <Route path="/about">
-                <Redirect replace to="/#project-context" />
+                <Redirect replace to="/" />
               </Route>
               <Route component={NotFoundPage} />
             </Switch>

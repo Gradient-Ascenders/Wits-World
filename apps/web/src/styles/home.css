@@ -161,8 +161,7 @@
 }
 
 .quest-journey > .section-introduction,
-.journey-sections,
-.project-context {
+.journey-sections {
   width: min(calc(100% - 3rem), 70rem);
   margin-inline: auto;
   scroll-margin-top: var(--space-6);
@@ -181,15 +180,13 @@
 .section-introduction {
   margin-bottom: var(--space-7);
 }
-.section-introduction h2,
-.project-context h2 {
+.section-introduction h2 {
   margin: 0 0 var(--space-3);
   font-size: clamp(2.25rem, 5vw, 3.5rem);
   line-height: 1.15;
 }
 
-.section-introduction p,
-.project-context__copy > p:last-child {
+.section-introduction p {
   max-width: 60ch;
   margin: 0;
   color: var(--colour-text-secondary);
@@ -311,20 +308,6 @@ html:has(.home-page) {
   line-height: 1.65;
 }
 
-.project-context {
-  display: grid;
-  gap: var(--space-5);
-  align-items: center;
-  padding-block: var(--space-8);
-}
-
-.project-context__seal {
-  width: 5rem;
-}
-.project-context__copy {
-  max-width: 42rem;
-}
-
 @media (min-width: 48rem) {
   .hero {
     min-height: 42rem;
@@ -367,8 +350,7 @@ html:has(.home-page) {
     max-width: 27rem;
     font-size: var(--text-lg);
   }
-  .quest-journey > .section-introduction,
-  .project-context {
+  .quest-journey > .section-introduction {
     width: min(calc(100% - 6rem), 70rem);
   }
   .journey-sections {
@@ -376,13 +358,6 @@ html:has(.home-page) {
   }
   .journey-section {
     gap: var(--space-7);
-  }
-  .project-context {
-    grid-template-columns: 6rem minmax(0, 1fr);
-    gap: var(--space-7);
-  }
-  .project-context__seal {
-    width: 6rem;
   }
 }
 
