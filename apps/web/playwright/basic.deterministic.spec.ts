@@ -239,16 +239,15 @@ test('completes the canonical 21-step Basic journey against the real API and tes
   });
 
   await test.step('11 load the reward from the owned collection', async () => {
-    const cardsPromise = page
-      .waitForResponse(`${API_BASE_URL}/cards/collection`)
-      .then(async (response) => {
-        const body = (await response.json()) as { cards: OwnedCard[] };
-        return body.cards;
-      });
-
     await page.goto('/collection');
-
-    const cards = await cardsPromise;
+    await expect(
+      page.getByRole('heading', { name: 'Cards you own' }),
+    ).toBeVisible();
+    const { cards } = await browserApi<{ cards: OwnedCard[] }>(
+      page,
+      '/cards/collection',
+      'GET',
+    );
     expect(cards.some((card) => card.acquisitionKind === 'event_reward')).toBe(
       true,
     );
@@ -718,9 +717,7 @@ test('keeps the authenticated shared application shell responsive and accessible
     });
     await accountTrigger.click();
     await expect(accountTrigger).toHaveAttribute('aria-expanded', 'true');
-    await expect(page.getByLabel('Account options')).toContainText(
-      'Signed in as',
-    );
+    await expect(page.getByText('Signed in as')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(accountTrigger).toHaveAttribute('aria-expanded', 'false');

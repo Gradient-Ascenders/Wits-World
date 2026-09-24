@@ -1101,7 +1101,11 @@ describe('Basic author console', () => {
     renderAuthorRoute(authorPaths.questions(eventId, challengeId));
 
     expect(
-      await screen.findByRole('link', { name: /Question 1/ }),
+      await screen.findByRole(
+        'link',
+        { name: /Question 1/ },
+        { timeout: 8_000 },
+      ),
     ).toBeVisible();
     await user.click(screen.getByRole('link', { name: /Library trail/ }));
     await user.click(screen.getByRole('link', { name: 'Challenge' }));

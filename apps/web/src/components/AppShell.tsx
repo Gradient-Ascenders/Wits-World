@@ -202,6 +202,9 @@ export function AppShell({ children }: AppShellProps) {
       );
     };
     updateHeight();
+    if (typeof ResizeObserver === 'undefined') {
+      return () => main.style.removeProperty('--explore-header-height');
+    }
     const observer = new ResizeObserver(updateHeight);
     observer.observe(header);
     return () => {
