@@ -4,19 +4,24 @@ import { useAuth0 } from '@auth0/auth0-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
 
+import { listCpuMatchHistory, MatchApiError } from '../api/matches';
 import {
-  listCpuMatchHistory,
-  MatchApiError,
-  type CpuMatchHistoryItem,
-} from '../api/matches';
+  listPvpHistory,
+  PvpApiError,
+  type PvpHistorySummary,
+} from '../api/pvp';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { MatchErrorState } from '../components/matches/MatchErrorState';
-import { MatchResultSummary } from '../components/matches/MatchResultSummary';
+import {
+  BattleResultSummary,
+  mergeBattleHistory,
+  type BattleHistoryItem,
+} from '../components/matches/MatchResultSummary';
 import './matches.css';
 
 type HistoryState =
   | { status: 'loading' }
-  | { matches: CpuMatchHistoryItem[]; status: 'ready' }
+  | { battles: BattleHistoryItem[]; partial: boolean; status: 'ready' }
   | { error: MatchApiError; status: 'error' };
 
 export default function MatchHistoryPage({
@@ -35,14 +40,14 @@ export default function MatchHistoryPage({
     const controller = new AbortController();
     setState({ status: 'loading' });
 
-    void listCpuMatchHistory({
+    void loadBattleHistory({
       apiBaseUrl,
       getAccessToken,
       signal: controller.signal,
     })
-      .then((matches) => {
+      .then((result) => {
         if (!controller.signal.aborted) {
-          setState({ matches, status: 'ready' });
+          setState(result);
         }
       })
       .catch((error: unknown) => {
@@ -74,8 +79,8 @@ export default function MatchHistoryPage({
   if (state.status === 'loading') {
     return (
       <PageLoadingState
-        title="Loading your completed matches"
-        description="Loading your saved CPU battles…"
+        title="Loading your battle history"
+        description="Loading your completed CPU and player battles…"
       />
     );
   }
@@ -98,43 +103,56 @@ export default function MatchHistoryPage({
   return (
     <div className="matches-page">
       <header className="matches-page__header">
-        <p className="eyebrow">Private match record</p>
         <h1
           ref={(node) => {
             resultHeading.current = node;
           }}
           tabIndex={-1}
         >
-          Completed CPU matches
+          Battle history
         </h1>
         <p className="lead">
-          Revisit your completed battles and see how each match ended.
+          Revisit every completed CPU and player battle in one timeline.
         </p>
       </header>
 
       <div className="match-page-actions">
         <Link className="button" href="/matches">
-          Continue or start a battle
-        </Link>
-        <Link className="button button--quiet" href="/matches/pvp">
-          Player battle history
+          Back to battles
         </Link>
       </div>
 
-      {state.matches.length === 0 ? (
+      {state.partial ? (
+        <div className="match-inline-alert" role="status">
+          <StateIcon tone="info" />
+          <div>
+            <h2>Some history could not load</h2>
+            <p>Showing the battle results that are currently available.</p>
+          </div>
+          <button
+            className="button button--quiet"
+            onClick={() => setRevision((value) => value + 1)}
+            type="button"
+          >
+            Try again
+          </button>
+        </div>
+      ) : null}
+
+      {state.battles.length === 0 ? (
         <section
           className="match-empty state-message state-message--empty"
           aria-labelledby="empty-history-title"
         >
           <StateIcon tone="empty" />
           <h2 id="empty-history-title">No completed matches yet</h2>
-          <p>Finish a CPU battle to see your result here.</p>
+          <p>Finish a CPU or player battle to see your result here.</p>
         </section>
       ) : (
-        <ol aria-label="Completed CPU matches" className="match-history-list">
-          {state.matches.map((match) => (
-            <li key={match.matchId}>
-              <MatchResultSummary match={match} />
+        <ol aria-label="Completed battles" className="match-history-list">
+          {state.battles.map((battle) => (
+            <li key={`${battle.kind}-${battle.match.matchId}`}>
+              <BattleResultSummary battle={battle} />
             </li>
           ))}
         </ol>
@@ -144,7 +162,80 @@ export default function MatchHistoryPage({
 }
 
 function toMatchError(error: unknown) {
+  if (error instanceof PvpApiError && error.failure === 'authorization') {
+    return new MatchApiError('authorization');
+  }
   return error instanceof MatchApiError
     ? error
     : new MatchApiError('unavailable');
+}
+
+async function loadBattleHistory({
+  apiBaseUrl,
+  getAccessToken,
+  signal,
+}: {
+  apiBaseUrl: string;
+  getAccessToken: ReturnType<typeof useApiAccessToken>;
+  signal: AbortSignal;
+}): Promise<HistoryState> {
+  const [cpuResult, playerResult] = await Promise.allSettled([
+    listCpuMatchHistory({ apiBaseUrl, getAccessToken, signal }),
+    listAllPlayerHistory({ apiBaseUrl, getAccessToken, signal }),
+  ]);
+
+  if (cpuResult.status === 'rejected' && playerResult.status === 'rejected') {
+    const errors = [cpuResult.reason, playerResult.reason];
+    const authorizationError = errors.find(
+      (error) =>
+        (error instanceof MatchApiError && error.failure === 'authorization') ||
+        (error instanceof PvpApiError && error.failure === 'authorization'),
+    );
+    throw toMatchError(authorizationError ?? errors[0]);
+  }
+
+  return {
+    battles: mergeBattleHistory(
+      cpuResult.status === 'fulfilled' ? cpuResult.value : [],
+      playerResult.status === 'fulfilled' ? playerResult.value : [],
+    ),
+    partial:
+      cpuResult.status === 'rejected' || playerResult.status === 'rejected',
+    status: 'ready',
+  };
+}
+
+async function listAllPlayerHistory({
+  apiBaseUrl,
+  getAccessToken,
+  signal,
+}: {
+  apiBaseUrl: string;
+  getAccessToken: ReturnType<typeof useApiAccessToken>;
+  signal: AbortSignal;
+}) {
+  const matches: PvpHistorySummary[] = [];
+  const seenCursors = new Set<string>();
+  let cursor: string | undefined;
+
+  do {
+    const page = await listPvpHistory({
+      apiBaseUrl,
+      cursor,
+      getAccessToken,
+      limit: 50,
+      signal,
+    });
+    matches.push(...page.items);
+    cursor = page.nextCursor ?? undefined;
+
+    if (cursor && seenCursors.has(cursor)) {
+      throw new PvpApiError('unavailable');
+    }
+    if (cursor) {
+      seenCursors.add(cursor);
+    }
+  } while (cursor);
+
+  return matches;
 }

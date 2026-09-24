@@ -358,7 +358,7 @@ test('completes the canonical 21-step Basic journey against the real API and tes
   await test.step('19 load the completed match from private history', async () => {
     await page.goto('/matches/history');
     await expect(
-      page.getByRole('heading', { name: 'Completed CPU matches' }),
+      page.getByRole('heading', { name: 'Battle history' }),
     ).toBeVisible();
     await expect(
       page.getByRole('link', { name: 'View saved match' }),
@@ -540,6 +540,22 @@ test('keeps the authenticated shared application shell responsive and accessible
     }
     if (pathname.endsWith('/matches/history')) {
       await json(route, { matches: [], requestId: 'shell-browser-history' });
+      return;
+    }
+    if (pathname.endsWith('/matches/pvp/history')) {
+      await json(route, {
+        matches: [],
+        nextCursor: null,
+        requestId: 'shell-browser-pvp-history',
+      });
+      return;
+    }
+    if (pathname.endsWith('/matches/pvp')) {
+      await json(route, {
+        matches: [],
+        nextCursor: null,
+        requestId: 'shell-browser-active-pvp',
+      });
       return;
     }
     if (pathname.endsWith('/matches/cpu')) {

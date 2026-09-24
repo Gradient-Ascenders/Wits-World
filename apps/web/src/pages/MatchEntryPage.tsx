@@ -14,11 +14,19 @@ import {
   type CpuMatch,
   type CpuMatchHistoryItem,
 } from '../api/matches';
+import {
+  listActivePvpMatches,
+  listPvpHistory,
+  type PvpHistorySummary,
+  type PvpMatchSummary,
+} from '../api/pvp';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { MatchErrorState } from '../components/matches/MatchErrorState';
 import {
+  BattleResultSummary,
   formatMatchDate,
-  MatchResultSummary,
+  mergeBattleHistory,
+  type BattleHistoryItem,
 } from '../components/matches/MatchResultSummary';
 import './matches.css';
 
@@ -33,10 +41,16 @@ type EntryState =
 
 type RecentResultsState =
   | { status: 'loading' }
-  | { matches: CpuMatchHistoryItem[]; status: 'ready' }
+  | { battles: BattleHistoryItem[]; partial: boolean; status: 'ready' }
   | { status: 'unavailable' };
 
-const recentMatchLimit = 3;
+type PlayerBattlesState =
+  | { status: 'loading' }
+  | { hasMore: boolean; matches: PvpMatchSummary[]; status: 'ready' }
+  | { status: 'unavailable' };
+
+const recentBattleLimit = 5;
+const activeBattleLimit = 20;
 
 export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const getAccessToken = useApiAccessToken();
@@ -44,6 +58,9 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const [, navigate] = useLocation();
   const [state, setState] = useState<EntryState>({ status: 'loading' });
   const [recentResults, setRecentResults] = useState<RecentResultsState>({
+    status: 'loading',
+  });
+  const [playerBattles, setPlayerBattles] = useState<PlayerBattlesState>({
     status: 'loading',
   });
   const [revision, setRevision] = useState(0);
@@ -94,6 +111,7 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     request.current = controller;
     setState({ status: 'loading' });
     setRecentResults({ status: 'loading' });
+    setPlayerBattles({ status: 'loading' });
 
     void loadEntry(controller.signal).catch((error: unknown) => {
       if (!controller.signal.aborted) {
@@ -101,24 +119,36 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       }
     });
 
-    void listCpuMatchHistory({
+    void listActivePvpMatches({
       apiBaseUrl,
       getAccessToken,
+      limit: activeBattleLimit,
       signal: controller.signal,
     })
-      .then((matches) => {
+      .then((page) => {
         if (!controller.signal.aborted) {
-          setRecentResults({
-            matches: newestMatches(matches).slice(0, recentMatchLimit),
+          setPlayerBattles({
+            hasMore: page.nextCursor !== null,
+            matches: page.items,
             status: 'ready',
           });
         }
       })
       .catch(() => {
         if (!controller.signal.aborted) {
-          setRecentResults({ status: 'unavailable' });
+          setPlayerBattles({ status: 'unavailable' });
         }
       });
+
+    void loadRecentBattles({
+      apiBaseUrl,
+      getAccessToken,
+      signal: controller.signal,
+    }).then((result) => {
+      if (!controller.signal.aborted) {
+        setRecentResults(result);
+      }
+    });
 
     return () => controller.abort();
   }, [apiBaseUrl, getAccessToken, loadEntry, revision]);
@@ -212,9 +242,6 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       </header>
 
       <div className="match-dashboard">
-        {state.activeMatch ? (
-          <ActiveMatchPanel match={state.activeMatch} />
-        ) : null}
         <div className="battle-mode-grid">
           <StartMatchPanel
             activeMatch={state.activeMatch}
@@ -222,38 +249,12 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
             isStarting={isStarting}
             onStart={startMatch}
           />
-          <PlayerBattlePanel />
+          <PlayerBattlePanel state={playerBattles} />
         </div>
 
         <RecentResults state={recentResults} />
       </div>
     </div>
-  );
-}
-
-function ActiveMatchPanel({ match }: { match: CpuMatch }) {
-  return (
-    <section
-      aria-labelledby="continue-playing-title"
-      className="continue-playing"
-      id="continue-playing"
-    >
-      <h2 id="continue-playing-title">Continue playing</h2>
-      <div className="continue-playing__row">
-        <div>
-          <h3>Match against CPU</h3>
-          <p>
-            {formatMatchPhase(match)} · Turn {match.state.turnNumber} · Started{' '}
-            <time dateTime={match.startedAt}>
-              {formatMatchDate(match.startedAt)}
-            </time>
-          </p>
-        </div>
-        <Link className="button" href={`/matches/${match.matchId}`}>
-          Resume battle
-        </Link>
-      </div>
-    </section>
   );
 }
 
@@ -269,17 +270,35 @@ function StartMatchPanel({
   onStart: (deck: SavedDeck) => Promise<void>;
 }) {
   return (
-    <section aria-labelledby="cpu-battle-title" className="battle-mode-card">
+    <section
+      aria-labelledby="cpu-battle-title"
+      className={`battle-mode-card${activeMatch ? ' battle-mode-card--active' : ''}`}
+    >
       <div className="battle-mode-card__intro">
         <h2 id="cpu-battle-title">CPU Battle</h2>
         <p>Battle the computer with your selected deck.</p>
       </div>
 
       {activeMatch ? (
-        <div className="battle-mode-card__state">
-          <strong>Battle in progress</strong>
-          <span>Your unfinished battle is ready to resume.</span>
-        </div>
+        <>
+          <div className="battle-mode-card__state">
+            <strong>
+              {formatMatchPhase(activeMatch)} · Turn{' '}
+              {activeMatch.state.turnNumber}
+            </strong>
+            <span>
+              Started{' '}
+              <time dateTime={activeMatch.startedAt}>
+                {formatMatchDate(activeMatch.startedAt)}
+              </time>
+            </span>
+          </div>
+          <div className="battle-mode-card__actions">
+            <Link className="button" href={`/matches/${activeMatch.matchId}`}>
+              Resume CPU battle
+            </Link>
+          </div>
+        </>
       ) : deck ? (
         <>
           <div className="battle-mode-card__state">
@@ -320,23 +339,74 @@ function StartMatchPanel({
   );
 }
 
-function PlayerBattlePanel() {
+function PlayerBattlePanel({ state }: { state: PlayerBattlesState }) {
+  const featuredMatch =
+    state.status === 'ready'
+      ? (state.matches.find((match) => match.currentActor === 'self') ??
+        state.matches[0])
+      : undefined;
+
   return (
     <section
       aria-labelledby="player-battles-title"
-      className="battle-mode-card"
+      className={`battle-mode-card${featuredMatch ? ' battle-mode-card--active' : ''}`}
     >
       <div className="battle-mode-card__intro">
         <h2 id="player-battles-title">Player Battles</h2>
         <p>Challenge another player and take turns when you are ready.</p>
       </div>
-      <div className="battle-mode-card__state">
-        <strong>Invites and active matches</strong>
-        <span>Manage challenges and continue player battles.</span>
-      </div>
+      {state.status === 'loading' ? (
+        <div className="battle-mode-card__state" role="status">
+          <strong>Checking active battles…</strong>
+          <span>Your invitations and matches are still available.</span>
+        </div>
+      ) : state.status === 'unavailable' ? (
+        <div className="battle-mode-card__state" role="status">
+          <strong>Battle status unavailable</strong>
+          <span>Open player battles to retry.</span>
+        </div>
+      ) : featuredMatch ? (
+        <div className="battle-mode-card__state">
+          <strong>
+            {featuredMatch.currentActor === 'self'
+              ? 'Your turn'
+              : 'Waiting for opponent'}
+          </strong>
+          <span>
+            Against {featuredMatch.opponent.playerName} · Deadline{' '}
+            <time dateTime={featuredMatch.turnDeadline}>
+              {formatMatchDate(featuredMatch.turnDeadline)}
+            </time>
+          </span>
+          {state.hasMore ? (
+            <small>More active player battles are waiting.</small>
+          ) : state.matches.length > 1 ? (
+            <small>
+              {state.matches.length - 1} more active player{' '}
+              {state.matches.length === 2 ? 'battle' : 'battles'}
+            </small>
+          ) : null}
+        </div>
+      ) : (
+        <div className="battle-mode-card__state">
+          <strong>Invites and active matches</strong>
+          <span>Manage challenges and continue player battles.</span>
+        </div>
+      )}
       <div className="battle-mode-card__actions">
-        <Link className="button" href="/matches/pvp">
-          Open player battles
+        {featuredMatch ? (
+          <Link
+            className="button"
+            href={`/matches/pvp/${featuredMatch.matchId}`}
+          >
+            Continue player battle
+          </Link>
+        ) : null}
+        <Link
+          className={`button${featuredMatch ? ' button--quiet' : ''}`}
+          href="/matches/pvp"
+        >
+          {featuredMatch ? 'View all player battles' : 'Open player battles'}
         </Link>
       </div>
     </section>
@@ -347,7 +417,7 @@ function RecentResults({ state }: { state: RecentResultsState }) {
   return (
     <section aria-labelledby="recent-results-title" className="recent-results">
       <div className="recent-results__heading">
-        <h2 id="recent-results-title">Recent CPU battles</h2>
+        <h2 id="recent-results-title">Recent battles</h2>
         <Link className="button button--quiet" href="/matches/history">
           View history
         </Link>
@@ -363,7 +433,7 @@ function RecentResults({ state }: { state: RecentResultsState }) {
             <QuestMarker />
             Loading recent results
           </h3>
-          <p>Loading your recent CPU battles…</p>
+          <p>Loading your latest CPU and player battles…</p>
         </div>
       ) : state.status === 'unavailable' ? (
         <div
@@ -373,34 +443,81 @@ function RecentResults({ state }: { state: RecentResultsState }) {
           <StateIcon tone="info" />
           <h3>Recent results unavailable</h3>
           <p>
-            The full archive can be retried without interrupting this match.
+            Try the full history again without interrupting an active battle.
           </p>
         </div>
-      ) : state.matches.length === 0 ? (
+      ) : state.battles.length === 0 ? (
         <div className="recent-results__empty state-message state-message--empty">
           <StateIcon tone="empty" />
-          <h3>No completed battles yet</h3>
-          <p>Finish a CPU battle to see your result here.</p>
+          <h3>
+            {state.partial
+              ? 'Some recent results unavailable'
+              : 'No completed battles yet'}
+          </h3>
+          <p>
+            {state.partial
+              ? 'Showing no results until the remaining battle history can be checked.'
+              : 'Finish a CPU or player battle to see your result here.'}
+          </p>
         </div>
       ) : (
-        <ol aria-label="Recent CPU match results" className="recent-match-list">
-          {state.matches.map((match) => (
-            <li key={match.matchId}>
-              <MatchResultSummary compact headingLevel={3} match={match} />
-            </li>
-          ))}
-        </ol>
+        <>
+          {state.partial ? (
+            <p className="recent-results__notice" role="status">
+              Some battle history is temporarily unavailable. Showing the
+              results that loaded.
+            </p>
+          ) : null}
+          <ol aria-label="Recent battle results" className="recent-match-list">
+            {state.battles.map((battle) => (
+              <li key={`${battle.kind}-${battle.match.matchId}`}>
+                <BattleResultSummary battle={battle} compact headingLevel={3} />
+              </li>
+            ))}
+          </ol>
+        </>
       )}
     </section>
   );
 }
 
-function newestMatches(matches: CpuMatchHistoryItem[]) {
-  return [...matches].sort(
-    (left, right) =>
-      new Date(right.completedAt).getTime() -
-      new Date(left.completedAt).getTime(),
-  );
+async function loadRecentBattles({
+  apiBaseUrl,
+  getAccessToken,
+  signal,
+}: {
+  apiBaseUrl: string;
+  getAccessToken: ReturnType<typeof useApiAccessToken>;
+  signal: AbortSignal;
+}): Promise<RecentResultsState> {
+  const [cpuResult, playerResult] = await Promise.allSettled([
+    listCpuMatchHistory({ apiBaseUrl, getAccessToken, signal }),
+    listPvpHistory({
+      apiBaseUrl,
+      getAccessToken,
+      limit: recentBattleLimit,
+      signal,
+    }),
+  ]);
+
+  if (cpuResult.status === 'rejected' && playerResult.status === 'rejected') {
+    return { status: 'unavailable' };
+  }
+
+  const cpuMatches: CpuMatchHistoryItem[] =
+    cpuResult.status === 'fulfilled' ? cpuResult.value : [];
+  const playerMatches: PvpHistorySummary[] =
+    playerResult.status === 'fulfilled' ? playerResult.value.items : [];
+
+  return {
+    battles: mergeBattleHistory(cpuMatches, playerMatches).slice(
+      0,
+      recentBattleLimit,
+    ),
+    partial:
+      cpuResult.status === 'rejected' || playerResult.status === 'rejected',
+    status: 'ready',
+  };
 }
 
 function formatMatchPhase(match: CpuMatch) {

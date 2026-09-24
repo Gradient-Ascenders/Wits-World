@@ -813,6 +813,7 @@ hr {
   font-size: var(--text-sm);
   font-weight: 800;
   letter-spacing: 0.035em;
+  text-decoration: none;
   cursor: pointer;
   box-shadow: none;
   transition:
