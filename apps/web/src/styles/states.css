@@ -92,6 +92,36 @@
   text-align: center;
 }
 
+/* Full-page waits share one viewport-centred layout across every route. */
+.main-content:has(> .page-loading-state) {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.main-content > .page-loading-state.state-message {
+  width: min(36rem, 100%);
+  flex: 0 0 auto;
+  align-self: center;
+  margin: auto;
+  padding: clamp(var(--space-5), 4vw, var(--space-7));
+  border-radius: var(--radius-lg);
+}
+
+.main-content--explore > .page-loading-state.state-message {
+  width: min(36rem, calc(100% - 2 * var(--space-4)));
+}
+
+.page-loading-state.state-message > h1 {
+  margin-bottom: var(--space-2);
+  font-size: clamp(var(--text-xl), 5vw, var(--text-2xl));
+  text-wrap: balance;
+}
+
+.page-loading-state .loading-seal {
+  margin-top: 0;
+}
+
 .state-loading--subtle.state-message {
   border: 0;
   padding: var(--space-3) 0;
@@ -437,8 +467,8 @@
   }
 }
 
-/* Standalone page states need their own inset even on full-bleed map routes. */
-.main-content > :is(.auth-state, .state-message) {
+/* Standalone non-loading states need their own inset on full-bleed routes. */
+.main-content > :is(.auth-state, .state-message):not(.page-loading-state) {
   width: min(36rem, calc(100% - 2 * var(--space-4)));
   flex: 0 0 auto;
   align-self: center;

@@ -1,5 +1,5 @@
 import { StateIcon } from '../components/StatusMessage';
-import { LoadingSeal } from '../components/LoadingState';
+import { PageLoadingState } from '../components/LoadingState';
 import {
   ArrowLeft,
   ArrowRight,
@@ -300,18 +300,10 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   if (requestStatus === 'loading' && match === null) {
     return (
-      <div className="matches-page">
-        <section
-          aria-live="polite"
-          className="match-state-panel state-message state-loading state-loading--prominent"
-          role="status"
-        >
-          <p className="eyebrow">CPU battle</p>
-          <h1>Loading saved match state</h1>
-          <p>Restoring your cards and current turn…</p>
-          <LoadingSeal />
-        </section>
-      </div>
+      <PageLoadingState
+        title="Loading saved match state"
+        description="Restoring your cards and current turn…"
+      />
     );
   }
 

@@ -1,5 +1,5 @@
 import { StateIcon } from '../components/StatusMessage';
-import { LoadingSeal } from '../components/LoadingState';
+import { PageLoadingState } from '../components/LoadingState';
 import { QuestMarker } from '../components/branding/QuestMarker';
 import { useAuth0 } from '@auth0/auth0-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -175,18 +175,10 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   if (state.status === 'loading') {
     return (
-      <div className="matches-page">
-        <section
-          aria-live="polite"
-          className="match-state-panel state-message state-loading state-loading--prominent"
-          role="status"
-        >
-          <p className="eyebrow">CPU battle</p>
-          <h1>Checking for an active match</h1>
-          <p>Loading your current battle and selected deck…</p>
-          <LoadingSeal />
-        </section>
-      </div>
+      <PageLoadingState
+        title="Checking for an active match"
+        description="Loading your current battle and selected deck…"
+      />
     );
   }
 

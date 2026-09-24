@@ -1,6 +1,6 @@
 import { StateIcon } from '../components/StatusMessage';
 import { confirmAction } from '../components/AppToaster';
-import { LoadingSeal } from '../components/LoadingState';
+import { PageLoadingState } from '../components/LoadingState';
 import { useAuth0 } from '@auth0/auth0-react';
 import {
   CaretDown,
@@ -427,19 +427,10 @@ export default function DecksPage({
 
   if (state.status === 'loading') {
     return (
-      <div className="decks-page">
-        <PageHeader />
-        <section
-          aria-live="polite"
-          className="deck-state state-message state-loading state-loading--prominent"
-          role="status"
-        >
-          <p className="eyebrow">Saved decks</p>
-          <h2>Loading your decks and collection</h2>
-          <p>Loading your saved decks and cards…</p>
-          <LoadingSeal />
-        </section>
-      </div>
+      <PageLoadingState
+        title="Loading your decks and collection"
+        description="Loading your saved decks and cards…"
+      />
     );
   }
 

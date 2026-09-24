@@ -91,7 +91,7 @@ function hubResponses({
 }
 
 describe('asynchronous player battle lobby', () => {
-  it('uses the compact Player Battles shell while initial data is loading', () => {
+  it('uses the shared page loading layout while initial data is loading', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockReturnValue(new Promise<Response>(() => undefined)),
@@ -99,27 +99,21 @@ describe('asynchronous player battle lobby', () => {
 
     renderRoute('/matches/pvp', <PvpHubPage apiBaseUrl={apiBaseUrl} />);
 
+    const loadingState = screen.getByRole('status');
+    expect(loadingState).toHaveClass('page-loading-state');
     expect(
-      screen.getByRole('heading', { level: 1, name: 'Player Battles' }),
+      screen.getByRole('heading', {
+        level: 1,
+        name: 'Loading player battles…',
+      }),
     ).toBeVisible();
-    expect(
-      screen.getByText(
-        'Challenge another explorer and take turns within 24 hours.',
-      ),
-    ).toBeVisible();
-    expect(
-      screen.getByRole('link', { name: 'Back to Battles' }),
-    ).toHaveAttribute('href', '/matches');
-    const navigation = screen.getByRole('navigation', {
-      name: 'Player battle sections',
-    });
-    for (const section of ['Invitations', 'Active', 'History']) {
-      expect(within(navigation).getByText(section)).toBeVisible();
-    }
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Loading player battles…',
+    expect(loadingState).toHaveTextContent(
+      'Retrieving invitations, active battles, and match history.',
     );
-    expect(document.body).not.toHaveTextContent(/PvP hub|Loading your PvP/i);
+    expect(
+      screen.queryByRole('navigation', { name: 'Player battle sections' }),
+    ).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Back to Battles' })).toBeNull();
     expect(document.querySelector('.match-state-panel')).toBeNull();
   });
 

@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 import { StartupSeal } from './branding/StartupSeal';
 import { QuestMarker } from './branding/QuestMarker';
 
@@ -20,7 +22,7 @@ export function LoadingState({
 }) {
   return (
     <div
-      className={`state-message state-loading${prominent ? ' state-loading--prominent' : ' state-loading--subtle'}${className ? ` ${className}` : ''}`}
+      className={`state-message state-loading${prominent ? ' page-loading-state state-loading--prominent' : ' state-loading--subtle'}${className ? ` ${className}` : ''}`}
       role="status"
       aria-live="polite"
     >
@@ -30,5 +32,32 @@ export function LoadingState({
         {label}
       </p>
     </div>
+  );
+}
+
+export function PageLoadingState({
+  children,
+  className = '',
+  description,
+  title,
+}: {
+  children?: ReactNode;
+  className?: string;
+  description: string;
+  title: string;
+}) {
+  return (
+    <section
+      aria-atomic="true"
+      aria-busy="true"
+      aria-live="polite"
+      className={`page-loading-state state-message state-loading state-loading--prominent${className ? ` ${className}` : ''}`}
+      role="status"
+    >
+      <LoadingSeal />
+      <h1>{title}</h1>
+      <p>{description}</p>
+      {children}
+    </section>
   );
 }

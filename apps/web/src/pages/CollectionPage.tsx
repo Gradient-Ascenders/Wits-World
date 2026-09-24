@@ -1,5 +1,5 @@
 import { StateIcon } from '../components/StatusMessage';
-import { LoadingSeal } from '../components/LoadingState';
+import { PageLoadingState } from '../components/LoadingState';
 import { QuestMarker } from '../components/branding/QuestMarker';
 import { useAuth0 } from '@auth0/auth0-react';
 import { MagnifyingGlass, SlidersHorizontal, X } from '@phosphor-icons/react';
@@ -304,6 +304,15 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
     );
   }
 
+  if (collection.status === 'loading') {
+    return (
+      <PageLoadingState
+        title="Loading your cards"
+        description="Your collection will appear here shortly."
+      />
+    );
+  }
+
   const cards = collection.status === 'ready' ? collection.cards : [];
   const cardDefinitionCount = new Set(
     cards.map((card) => card.cardDefinitionId),
@@ -364,19 +373,6 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
           </p>
         ) : null}
       </header>
-
-      {collection.status === 'loading' ? (
-        <section
-          aria-live="polite"
-          className="collection-state state-message state-loading state-loading--prominent"
-          role="status"
-        >
-          <p className="eyebrow">Collection</p>
-          <h2>Loading your cards</h2>
-          <p>Your collection will appear here shortly.</p>
-          <LoadingSeal />
-        </section>
-      ) : null}
 
       {collection.status === 'error' ? (
         <CollectionErrorState

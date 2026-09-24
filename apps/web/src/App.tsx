@@ -13,7 +13,7 @@ import {
   OfflineExplorePage,
 } from './offline/OfflinePages';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { LoadingState } from './components/LoadingState';
+import { PageLoadingState } from './components/LoadingState';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { StartupGate, StartupSettler } from './components/auth/startup-state';
 import { AuthorRoute } from './components/auth/AuthorRoute';
@@ -65,7 +65,14 @@ export function AppRoutes({
           <AppToaster />
           <OfflineStatus />
           <ServiceWorkerUpdate />
-          <Suspense fallback={<LoadingState prominent />}>
+          <Suspense
+            fallback={
+              <PageLoadingState
+                title="Loading Wits World"
+                description="Preparing this page…"
+              />
+            }
+          >
             <StartupSettler />
             <Switch>
               <Route path="/" component={HomePage} />
