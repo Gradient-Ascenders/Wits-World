@@ -267,6 +267,11 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'architecture/developer-api',
+              label: 'External developer API',
+            },
+            {
+              type: 'doc',
               id: 'architecture/author-curation-api-contract',
               label: 'Content authoring API',
             },
@@ -309,6 +314,11 @@ const sidebars: SidebarsConfig = {
               type: 'doc',
               id: 'architecture/automatic-event-placement-service',
               label: 'Automatic event placement service',
+            },
+            {
+              type: 'doc',
+              id: 'architecture/advanced-analytics-api-contract',
+              label: 'Advanced analytics API',
             },
             {
               type: 'doc',
@@ -421,6 +431,11 @@ const sidebars: SidebarsConfig = {
                 },
                 {
                   type: 'doc',
+                  id: 'database/developer-api-keys',
+                  label: 'Developer API key storage',
+                },
+                {
+                  type: 'doc',
                   id: 'database/campaign-scheduling-persistence',
                   label: 'Campaign schedule storage',
                 },
@@ -428,6 +443,11 @@ const sidebars: SidebarsConfig = {
                   type: 'doc',
                   id: 'database/question-performance-analytics',
                   label: 'Question performance reports',
+                },
+                {
+                  type: 'doc',
+                  id: 'database/advanced-analytics',
+                  label: 'Advanced analytics storage and privacy',
                 },
                 {
                   type: 'doc',

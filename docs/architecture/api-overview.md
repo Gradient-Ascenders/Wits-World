@@ -46,7 +46,10 @@ routes outside the application prefix.
 The API is externally reachable, but that does not make protected game data
 anonymous or public. Health, the versioned root, and OpenAPI are public;
 gameplay, account, and author operations declare bearer authentication and
-enforce their own role and ownership rules.
+enforce their own role and ownership rules. A separate read-only developer
+surface exposes deliberately public event, card-catalogue, and progression
+leaderboard projections after `X-API-Key` authentication. See the
+[external developer API](./developer-api.md).
 
 ## Authentication and authorisation
 
@@ -67,29 +70,42 @@ separately enforce active-account, role, ownership, publication, and object
 permissions. CORS permits the configured exact Web origin but is not an
 authentication mechanism.
 
+External developer resources use a separate `X-API-Key` security scheme. Keys
+identify access to the read-only developer surface; they do not create a player
+principal, role, or ownership context. Normal Auth0 bearer tokens do not
+substitute for developer-key authentication, and developer keys do not
+substitute for player authentication.
+
 ## Resource areas
 
 The generated OpenAPI groups the current contract into these areas:
 
-| Area                       | Responsibility                                                                                                  |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| System                     | Health and API version information                                                                              |
-| Authentication and account | Local identity, Player Name setup, and implemented account-lifecycle API boundaries                             |
-| Events                     | Player-safe published-event discovery and server-authoritative location eligibility                             |
-| Challenges                 | Timed attempt start/resume, answer locking, completion, marking, and completed-only review                      |
-| Cards                      | Server-derived starter grants, catalogue-safe rewards, collection, and fixed three-copy evolution               |
-| Decks                      | Saved-deck CRUD, ownership validation, and active selection                                                     |
-| Trails                     | Ordered trail progress, step state, and bounded nearby-unvisited guidance                                       |
-| Matches                    | Server-created CPU and asynchronous PvP matches, legal intent, recovery, deadlines, and viewer-safe history     |
-| Trading                    | Private versioned bilateral offers, participant-only negotiation, recent-auth acceptance, and atomic settlement |
-| Progression                | Current-player points, streaks, achievements, rank, and privacy-safe paginated standings                        |
-| Authoring                  | Author-only event, challenge, question, card, trail, and campaign lifecycle operations plus audit boundaries    |
+| Area                       | Responsibility                                                                                                   |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| System                     | Health and API version information                                                                               |
+| Authentication and account | Local identity, Player Name setup, and implemented account-lifecycle API boundaries                              |
+| Events                     | Player-safe published-event discovery and server-authoritative location eligibility                              |
+| Challenges                 | Timed attempt start/resume, answer locking, completion, marking, and completed-only review                       |
+| Cards                      | Server-derived starter grants, catalogue-safe rewards, collection, and fixed three-copy evolution                |
+| Decks                      | Saved-deck CRUD, ownership validation, and active selection                                                      |
+| Trails                     | Ordered trail progress, step state, and bounded nearby-unvisited guidance                                        |
+| Matches                    | Server-created CPU and asynchronous PvP matches, legal intent, recovery, deadlines, and viewer-safe history      |
+| Trading                    | Private versioned bilateral offers, participant-only negotiation, recent-auth acceptance, and atomic settlement  |
+| Progression                | Current-player points, streaks, achievements, rank, and privacy-safe paginated standings                         |
+| Developer API              | API-key-authenticated, read-only published events, public card catalogue, and public progression leaderboard     |
+| Authoring                  | Author-only event, challenge, question, card, trail, campaign, and privacy-safe operational analytics boundaries |
 
 The [Author curation contract](./author-curation-api-contract.md) explains the
 five-state review workflow, optimistic concurrency, safe review queue and audit
 history, and the Author-console integration. Issue `#184` implements the
 Author-only question-performance aggregate endpoint; the same contract records
 its bounded filters and privacy rules.
+
+Issue `#278` adds separate Author-only advanced analytics endpoints for event-location
+activity, privacy-suppressed question performance, and historical card issuance.
+The event funnel reuses authoritative attempts/completions and stores only coarse
+hourly view/eligibility counters; it does not create player-level analytics or new
+precise-location retention. See the [advanced analytics API contract](./advanced-analytics-api-contract.md).
 
 The OpenAPI document is the endpoint-level reference for parameters, bodies,
 status codes, and response shapes. Narrative documents explain domain contracts
@@ -200,7 +216,9 @@ protected operation.
 ## Related documentation
 
 - [Trust boundaries](./trust-boundaries.md)
+- [External developer API](./developer-api.md)
 - [Author curation API contract](./author-curation-api-contract.md)
+- [Advanced analytics API contract](./advanced-analytics-api-contract.md)
 - [Asynchronous PvP API contract](./asynchronous-pvp-api-contract.md)
 - [Card trading API contract](./card-trading-api-contract.md)
 - [Live PvP API contract](./live-pvp-api-contract.md)
