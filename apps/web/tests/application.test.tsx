@@ -193,7 +193,33 @@ describe('Wits World public application shell', () => {
         within(main).getByRole('heading', { level: 3, name: step }),
       ).toBeVisible();
     }
-    expect(within(main).getAllByRole('listitem')).toHaveLength(4);
+    expect(
+      within(
+        within(main).getByRole('navigation', { name: 'Gameplay journey' }),
+      ).getAllByRole('listitem'),
+    ).toHaveLength(4);
+    const collectionShowcase = within(main).getByRole('list', {
+      name: 'Card rarity showcase',
+    });
+    expect(within(main).getByText('Build your collection.')).toBeVisible();
+    expect(
+      within(main).getByText(
+        /Every challenge can add something new to your collection\./,
+      ),
+    ).toBeVisible();
+    for (const [rarity, name] of [
+      ['Common', 'Quillip'],
+      ['Rare', 'Axiomar'],
+      ['Epic', 'Quillume'],
+      ['Legendary', 'Axiomarch'],
+    ] as const) {
+      const card = within(collectionShowcase).getByRole('article', {
+        name: `${rarity} card: ${name}`,
+      });
+      expect(within(card).getByText(name)).toBeVisible();
+      expect(within(card).getByText(rarity)).toBeVisible();
+      expect(within(card).getByRole('img')).toBeVisible();
+    }
     expect(
       within(main).getByRole('heading', {
         level: 2,

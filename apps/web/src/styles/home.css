@@ -647,3 +647,196 @@ html:has(.home-page) {
     box-shadow: 0 0 0 0.75rem rgb(212 175 55 / 0%);
   }
 }
+
+.journey-section--collect {
+  position: relative;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-7);
+  min-height: 46rem;
+  padding-block: clamp(4rem, 8vw, 7rem);
+}
+
+.journey-section--collect::before {
+  position: absolute;
+  top: 0;
+  left: 1.45rem;
+  width: 1px;
+  height: clamp(2.5rem, 5vw, 4rem);
+  background: linear-gradient(var(--colour-gold-400), rgb(212 175 55 / 0%));
+  content: '';
+}
+
+.home-collect-copy {
+  position: relative;
+  z-index: 2;
+  max-width: 38rem;
+}
+
+.home-collect-copy .journey-section__number {
+  display: block;
+  padding: 0;
+  margin-bottom: var(--space-4);
+}
+
+.home-collect-copy h3 {
+  margin-bottom: var(--space-4);
+  color: var(--colour-text-primary);
+  font-size: clamp(3.5rem, 15vw, 5.75rem);
+  line-height: 0.96;
+  letter-spacing: -0.035em;
+}
+
+.journey-section .home-collect-lead {
+  color: var(--colour-text-primary);
+  font-size: clamp(1.2rem, 4vw, 1.5rem);
+  line-height: 1.4;
+}
+
+.home-collect-description {
+  max-width: 43ch !important;
+  margin-top: var(--space-5) !important;
+  font-size: var(--text-md) !important;
+  line-height: 1.7 !important;
+}
+
+.home-card-showcase {
+  width: 100%;
+  min-width: 0;
+}
+
+.home-card-showcase__list {
+  display: grid;
+  grid-auto-columns: min(18rem, calc(100vw - 5rem));
+  grid-auto-flow: column;
+  gap: var(--space-5);
+  margin: 0 calc(var(--space-5) * -1);
+  padding: var(--space-6) var(--space-5) var(--space-7);
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-color: var(--colour-border-strong) transparent;
+  scrollbar-width: thin;
+  scroll-padding-inline: var(--space-5);
+  scroll-snap-type: inline mandatory;
+  list-style: none;
+}
+
+.home-card-showcase__list > li {
+  min-width: 0;
+  scroll-snap-align: center;
+}
+
+.home-showcase-card {
+  perspective: 55rem;
+}
+
+.home-showcase-card__tilt {
+  --home-card-scale: 1;
+  --home-card-tilt-x: 0deg;
+  --home-card-tilt-y: 0deg;
+  --home-card-z: 0rem;
+  position: relative;
+  border-radius: 15px;
+  box-shadow: 0 1rem 2.5rem rgb(0 0 0 / 34%);
+  transform: translateZ(var(--home-card-z)) rotateX(var(--home-card-tilt-x))
+    rotateY(var(--home-card-tilt-y)) scale(var(--home-card-scale));
+  transform-origin: center;
+  transform-style: preserve-3d;
+}
+
+.home-showcase-card__tilt[data-tilting] {
+  will-change: transform;
+}
+
+.home-showcase-card__tilt[data-hovered] {
+  z-index: 2;
+  box-shadow: 0 2.4rem 5.25rem rgb(0 0 0 / 58%);
+}
+
+.home-showcase-card .card-frame__name {
+  font-size: clamp(1rem, 5.5cqw, 1.375rem);
+}
+
+.home-showcase-card .collectible-card__artwork img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.home-showcase-card .card-frame__rarity {
+  font-size: clamp(0.78rem, 4.5cqw, 1rem);
+  font-weight: 750;
+}
+
+@media (min-width: 48rem) {
+  .home-card-showcase__list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-flow: row;
+    gap: var(--space-6);
+    margin: 0;
+    padding: var(--space-6) 0 var(--space-7);
+    overflow: visible;
+    scroll-snap-type: none;
+  }
+}
+
+@media (min-width: 64rem) {
+  .journey-section--collect {
+    gap: var(--space-8);
+    min-height: 50rem;
+  }
+
+  .journey-section--collect::before {
+    left: calc(1.45rem + 0.1vw);
+  }
+
+  .home-collect-copy {
+    display: grid;
+    grid-template-columns: minmax(16rem, 0.75fr) minmax(28rem, 1.25fr);
+    column-gap: clamp(2rem, 8vw, 8rem);
+    align-items: end;
+    max-width: none;
+  }
+
+  .home-collect-copy .journey-section__number,
+  .home-collect-copy h3 {
+    grid-column: 1;
+  }
+
+  .home-collect-copy .journey-section__number {
+    grid-row: 1;
+  }
+
+  .home-collect-copy h3 {
+    grid-row: 2;
+  }
+
+  .home-collect-copy .home-collect-lead {
+    grid-row: 1;
+    grid-column: 2;
+    align-self: end;
+  }
+
+  .home-collect-copy .home-collect-description {
+    grid-row: 2;
+    grid-column: 2;
+    align-self: end;
+  }
+
+  .home-card-showcase__list {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: clamp(1rem, 2.1vw, 2rem);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .home-showcase-card__tilt {
+    transition: box-shadow 260ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-showcase-card__tilt {
+    transform: none !important;
+  }
+}

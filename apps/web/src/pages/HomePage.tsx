@@ -12,6 +12,7 @@ import {
 import greatHallHero640Webp from '../assets/home/great-hall-hero-640.webp';
 import greatHallHero960Webp from '../assets/home/great-hall-hero-960.webp';
 import greatHallHeroWebp from '../assets/home/great-hall-hero.webp';
+import { HomeCollectShowcase } from '../components/home/HomeCollectShowcase';
 import { HomeExplorePreview } from '../components/home/HomeExplorePreview';
 import { CampusSeal } from '../components/branding/CampusSeal';
 import '../styles/home.css';
@@ -30,7 +31,7 @@ const gameplaySteps = [
     icon: CheckCircleIcon,
   },
   {
-    description: 'Earn cards for your collection.',
+    description: 'Build your collection.',
     name: 'Collect',
     icon: CardsIcon,
   },
@@ -200,7 +201,7 @@ export default function HomePage() {
         <div className="journey-sections">
           {gameplaySteps.map(({ description, name }, index) => (
             <section
-              className={`journey-section${name === 'Explore' ? ' journey-section--explore' : ''}`}
+              className={`journey-section${name === 'Explore' ? ' journey-section--explore' : ''}${name === 'Collect' ? ' journey-section--collect' : ''}`}
               id={`home-${name.toLowerCase()}`}
               aria-labelledby={`home-${name.toLowerCase()}-title`}
               key={name}
@@ -249,6 +250,25 @@ export default function HomePage() {
                     </div>
                   </div>
                   <HomeExplorePreview />
+                </>
+              ) : name === 'Collect' ? (
+                <>
+                  <div className="home-collect-copy">
+                    <span
+                      aria-hidden="true"
+                      className="journey-section__number"
+                    >
+                      {String(index + 1).padStart(2, '0')} —
+                    </span>
+                    <h3 id="home-collect-title">Collect</h3>
+                    <p className="home-collect-lead">{description}</p>
+                    <p className="home-collect-description">
+                      Every challenge can add something new to your collection.
+                      Keep exploring Wits, complete more challenges, and
+                      discover the cards scattered across campus.
+                    </p>
+                  </div>
+                  <HomeCollectShowcase />
                 </>
               ) : (
                 <>
