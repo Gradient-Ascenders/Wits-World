@@ -46,6 +46,21 @@ finding ID. A `Not run` row is **Pending manual evidence**, not a pass.
 | A11Y-04 | **Pending manual evidence** | Desktop                         |            | Named screen reader           | Full Basic journey and statuses | Not run | Pending     |                   |
 | A11Y-05 | **Pending manual evidence** | Representative device           |            | Reduced motion + 200% zoom    | Core journey and overlays       | Not run | Pending     |                   |
 
+## Accessibility preferences implementation checks
+
+The implementation adds automated checks for local preference persistence,
+storage failure, motion resolution, and read-aloud controls. Browser checks
+cover Account, Collection, and CPU battle at 390, 768, and 1440 px, plus Home
+at 390 px, with 150% interface size and the optional contrast, reading, font,
+and speech choices enabled. These checks do not replace the pending real-device
+and screen-reader rows above.
+
+| Date       | Check                                                  | Result |
+| ---------- | ------------------------------------------------------ | ------ |
+| 2026-09-24 | Focused web component tests                            | Pass   |
+| 2026-09-24 | Account experience Playwright scenarios                | Pass   |
+| 2026-09-24 | Explore read and 3D control placement at 100% and 150% | Pass   |
+
 ## AI declaration
 
 This empty validation matrix was generated and edited with the assistance of
@@ -53,3 +68,6 @@ Codex[GPT-5]. The AI did not operate a real device or screen reader and did not
 perform a manual accessibility assessment.
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+Accessibility preferences implementation checks added with assistance from
+Codex-CLI[GPT-6]; no real device or screen reader was operated for those checks.

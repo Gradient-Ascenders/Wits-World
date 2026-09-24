@@ -6,12 +6,21 @@ import {
   PencilSimpleIcon,
 } from '@phosphor-icons/react';
 import { useAuth0 } from '@auth0/auth0-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'wouter';
 
 import { AccountControl } from './auth/AccountControl';
 import { CampusSeal } from './branding/CampusSeal';
 import { useCurrentPlayer } from '../auth/CurrentPlayerProvider';
+import { ReadPageControl } from '../accessibility/ReadPageControl';
+import { useAccessibilityPreferences } from '../accessibility/preferences';
 
 interface AppShellProps {
   children: ReactNode;
@@ -136,6 +145,7 @@ function PlayerNavigation({
 }
 
 export function AppShell({ children }: AppShellProps) {
+  const { speech } = useAccessibilityPreferences();
   const { isAuthenticated, isLoading } = useAuth0();
   const { state: currentPlayer } = useCurrentPlayer();
   const [pathname] = useLocation();
@@ -153,6 +163,8 @@ export function AppShell({ children }: AppShellProps) {
   } | null>(null);
   const suppressHeaderClick = useRef(false);
   const mainRef = useRef<HTMLElement>(null);
+  const [exploreReadTarget, setExploreReadTarget] =
+    useState<HTMLElement | null>(null);
   const previousPathname = useRef(pathname);
 
   useEffect(() => {
@@ -164,6 +176,39 @@ export function AppShell({ children }: AppShellProps) {
       main.focus();
     }
   }, [pathname]);
+
+  useEffect(() => {
+    if (!isExplore) return;
+    const main = mainRef.current;
+    if (!main) return;
+    const updateTarget = () => {
+      setExploreReadTarget(document.getElementById('explore-read-control'));
+    };
+    updateTarget();
+    const observer = new MutationObserver(updateTarget);
+    observer.observe(main, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [isExplore]);
+
+  useEffect(() => {
+    if (!isExplore) return;
+    const header = headerDrawerRef.current?.querySelector('header');
+    const main = mainRef.current;
+    if (!header || !main) return;
+    const updateHeight = () => {
+      main.style.setProperty(
+        '--explore-header-height',
+        `${header.getBoundingClientRect().height}px`,
+      );
+    };
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(header);
+    return () => {
+      observer.disconnect();
+      main.style.removeProperty('--explore-header-height');
+    };
+  }, [isExplore]);
 
   useEffect(() => {
     setHeaderCollapsed(false);
@@ -223,6 +268,9 @@ export function AppShell({ children }: AppShellProps) {
     isAuthenticated && currentPlayer.status === 'ready';
   const isAuthor =
     currentPlayer.status === 'ready' && currentPlayer.player.role === 'author';
+  const readControl = speech ? (
+    <ReadPageControl key={pathname} main={mainRef} pathname={pathname} />
+  ) : null;
 
   return (
     <div
@@ -375,6 +423,13 @@ export function AppShell({ children }: AppShellProps) {
 
       <main
         ref={mainRef}
+        style={
+          headerDragOffset === null
+            ? undefined
+            : ({
+                '--explore-header-drag-offset': `${headerDragOffset}px`,
+              } as CSSProperties)
+        }
         onPointerUpCapture={(event) => {
           if (
             isExplore &&
@@ -389,8 +444,15 @@ export function AppShell({ children }: AppShellProps) {
         id="main-content"
         tabIndex={-1}
       >
+        {!isExplore ? readControl : null}
         {children}
       </main>
+
+      {isExplore && readControl
+        ? exploreReadTarget
+          ? createPortal(readControl, exploreReadTarget)
+          : readControl
+        : null}
 
       {showsSiteFooter ? (
         <footer className="site-footer">

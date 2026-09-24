@@ -1,4 +1,6 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import { buildCard, buildStarterOptions } from '../tests/fixtures/cards';
+import { activeMatch, MATCH_ID } from '../tests/fixtures/matches';
 
 const apiBaseUrl = 'http://127.0.0.1:3999/api/v1';
 const playerId = '6fe7dc26-cdea-4275-a2df-861724137cbc';
@@ -127,6 +129,145 @@ test('uses desktop space without exposing federated credentials', async ({
   ).toBeVisible();
   await captureAccountScreenshot(page, testInfo, '1280-reauth-dialog.png');
 
+  expect(errors).toEqual([]);
+});
+
+test('keeps accessibility choices usable and contained across device widths', async ({
+  page,
+}, testInfo) => {
+  const errors = monitorRuntimeErrors(page);
+  await mockAccountApi(page, 'auth0', 'completed', 'player');
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto('/account');
+  await page.getByLabel('Interface size').selectOption('150');
+  await page.getByLabel('Contrast').selectOption('high');
+  await page.getByLabel('Reading layout').selectOption('comfortable');
+  await page.getByLabel('Font').selectOption('plain');
+  await page.getByLabel('Read aloud').selectOption('on');
+  await expect(page.getByRole('button', { name: 'Read page' })).toBeVisible();
+
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ height: 900, width });
+    await expectNoHorizontalOverflow(page);
+    if (width === 390) {
+      const mobileLabels = page.locator(
+        '.primary-navigation--mobile .primary-navigation__label',
+      );
+      for (const label of await mobileLabels.all()) {
+        const oneLine = await label.evaluate((element) => {
+          const lineHeight = Number.parseFloat(
+            getComputedStyle(element).lineHeight,
+          );
+          return element.getBoundingClientRect().height <= lineHeight * 1.2;
+        });
+        expect(oneLine).toBe(true);
+      }
+    }
+    await page.screenshot({
+      fullPage: true,
+      path: testInfo.outputPath(`${width}-accessibility.png`),
+    });
+  }
+
+  await page.reload();
+  await expect(page.getByLabel('Interface size')).toHaveValue('150');
+  await expect(page.getByLabel('Contrast')).toHaveValue('high');
+  await expect(page.getByRole('button', { name: 'Read page' })).toBeVisible();
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: 'Read page' })).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  const header = await page.locator('.site-header').boundingBox();
+  const reader = await page.locator('.read-page-control').boundingBox();
+  expect(header && reader && reader.y >= header.y + header.height).toBe(true);
+  expect(reader!.x + reader!.width).toBeGreaterThan(390 - 80);
+  await expect(
+    page.getByRole('button', { name: 'Read page' }).locator('svg'),
+  ).toHaveCount(1);
+  await page.screenshot({
+    fullPage: true,
+    path: testInfo.outputPath('390-home-accessibility.png'),
+  });
+  await page.goto('/account');
+  await page.getByRole('button', { name: 'Reset to defaults' }).click();
+  await expect(page.getByRole('button', { name: 'Read page' })).toHaveCount(0);
+  await expect(page.getByLabel('Interface size')).toHaveValue('100');
+  expect(errors).toEqual([]);
+});
+
+test('keeps collection and battle content readable with large high-contrast UI', async ({
+  page,
+}, testInfo) => {
+  const errors = monitorRuntimeErrors(page);
+  await mockAccountApi(page, 'auth0', 'completed', 'player');
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'wits-world.accessibility-preferences.v1',
+      JSON.stringify({
+        speech: true,
+        motion: 'reduce',
+        contrast: 'high',
+        scale: '150',
+        reading: 'comfortable',
+        font: 'plain',
+      }),
+    );
+  });
+  await page.route(`${apiBaseUrl}/cards/collection`, (route) =>
+    route.fulfill({
+      json: {
+        cards: [buildCard(1, { rarity: 'legendary' })],
+        requestId: 'accessibility-collection',
+      },
+    }),
+  );
+  await page.route(`${apiBaseUrl}/cards/starter-options`, (route) =>
+    route.fulfill({
+      json: {
+        options: buildStarterOptions(),
+        requestId: 'accessibility-starters',
+      },
+    }),
+  );
+  const match = activeMatch(1);
+  await page.route(`${apiBaseUrl}/matches/**`, (route) =>
+    route.fulfill({
+      json: {
+        ...match,
+        requestId: 'accessibility-match',
+      },
+    }),
+  );
+
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/collection');
+    await expect(
+      page
+        .getByRole('list', { name: 'Owned card designs' })
+        .locator(':scope > li'),
+    ).toHaveCount(1);
+    await expectNoHorizontalOverflow(page);
+    await page.screenshot({
+      fullPage: true,
+      path: testInfo.outputPath(`${width}-collection-accessibility.png`),
+    });
+    await page.goto(`/matches/${MATCH_ID}`);
+    await expect(page.locator('.battle-page')).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    for (const value of await page.locator('.combatant__power strong').all()) {
+      const fits = await value.evaluate((node) => {
+        const parent = node.closest('.combatant__hud')!.getBoundingClientRect();
+        const text = node.getBoundingClientRect();
+        return text.right <= parent.right + 1;
+      });
+      expect(fits).toBe(true);
+    }
+    await page.screenshot({
+      fullPage: true,
+      path: testInfo.outputPath(`${width}-battle-accessibility.png`),
+    });
+  }
   expect(errors).toEqual([]);
 });
 

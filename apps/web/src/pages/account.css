@@ -43,6 +43,44 @@
   padding: var(--space-5);
 }
 
+.accessibility-settings {
+  gap: var(--space-4);
+}
+.accessibility-settings > p:first-child {
+  margin: 0;
+  color: var(--colour-text-secondary);
+}
+.accessibility-settings__field {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-2);
+}
+.accessibility-settings__field > span {
+  font-weight: 700;
+}
+.accessibility-settings__field small {
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+}
+.accessibility-settings__field select {
+  width: 100%;
+  min-height: var(--touch-target-min);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--colour-border-default);
+  border-radius: var(--radius-sm);
+  color: var(--colour-text-primary);
+  background: var(--colour-surface-default);
+  font: inherit;
+}
+.accessibility-settings > .button {
+  justify-self: start;
+}
+.accessibility-settings__notice {
+  min-height: 1.4em;
+  margin: 0;
+  color: var(--colour-text-secondary);
+}
+
 .account-section-heading h2 {
   margin: 0;
   font-family: var(--font-body);
