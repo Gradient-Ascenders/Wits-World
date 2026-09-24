@@ -224,8 +224,8 @@ describe('Wits World public application shell', () => {
       name: 'Example battle matchup',
     });
     for (const [name, hp, power, moves] of [
-      ['Quillip', '98', '11', ['Ink Peck', 'Eureka']],
-      ['Cinderhop', '92', '13', ['Mighty Maw', 'Calculated Claw']],
+      ['Arcalyron', '100', '25', ['Ion Claw', 'Static Demolition']],
+      ['Nimbrael', '125', '15', ['Spectral Charge', 'Undying Spirit']],
     ] as const) {
       const card = within(battleMatchup).getByRole('article', {
         name: `${name} battle card`,
@@ -239,13 +239,13 @@ describe('Wits World public application shell', () => {
         expect(within(moveList).getByText(move)).toBeVisible();
       }
     }
-    const quillipBattleCard = within(battleMatchup).getByRole('article', {
-      name: 'Quillip battle card',
+    const arcalyronBattleCard = within(battleMatchup).getByRole('article', {
+      name: 'Arcalyron battle card',
     });
-    fireEvent.pointerEnter(quillipBattleCard, { pointerType: 'mouse' });
-    expect(quillipBattleCard).toHaveAttribute('data-hovered');
-    fireEvent.pointerLeave(quillipBattleCard, { pointerType: 'mouse' });
-    expect(quillipBattleCard).not.toHaveAttribute('data-hovered');
+    fireEvent.pointerEnter(arcalyronBattleCard, { pointerType: 'mouse' });
+    expect(arcalyronBattleCard).toHaveAttribute('data-hovered');
+    fireEvent.pointerLeave(arcalyronBattleCard, { pointerType: 'mouse' });
+    expect(arcalyronBattleCard).not.toHaveAttribute('data-hovered');
     expect(
       within(main).queryByText(
         'A catalogue preview using real Wits Quest cards and stats.',

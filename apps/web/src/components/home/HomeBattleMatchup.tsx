@@ -2,7 +2,7 @@ import { CardFrame } from '../cards/CardFrame';
 import { useHomeCardTilt } from './useHomeCardTilt';
 
 interface BattlePreviewCard {
-  affinity: 'Spark' | 'Wit';
+  affinity: 'Spark' | 'Spirit';
   hp: number;
   imageAlt: string;
   imageUrl: string;
@@ -13,34 +13,45 @@ interface BattlePreviewCard {
   }[];
   name: string;
   power: number;
+  rarity: 'epic' | 'legendary';
 }
 
 const battleCards: readonly BattlePreviewCard[] = [
   {
-    affinity: 'Wit',
-    hp: 98,
+    affinity: 'Spark',
+    hp: 100,
     imageAlt:
-      'A small dark-blue owl with bright blue eyes perched beside an open book in a moonlit study.',
-    imageUrl: '/cards/quillip.webp',
+      'A legendary golden lightning tiger roaring above a storm-lit city.',
+    imageUrl: '/cards/arcalyron.webp',
     moves: [
-      { cost: 0, effect: '10 damage', name: 'Ink Peck' },
-      { cost: 3, effect: '25 damage', name: 'Eureka' },
+      { cost: 0, effect: '22 damage', name: 'Ion Claw' },
+      {
+        cost: 10,
+        effect: 'Lose 20 HP · 80 damage',
+        name: 'Static Demolition',
+      },
     ],
-    name: 'Quillip',
-    power: 11,
+    name: 'Arcalyron',
+    power: 25,
+    rarity: 'legendary',
   },
   {
-    affinity: 'Spark',
-    hp: 92,
+    affinity: 'Spirit',
+    hp: 125,
     imageAlt:
-      'A bright golden rabbit-like Creature leaping from a tree as sparks trace its markings.',
-    imageUrl: '/cards/cinderhop.webp',
+      'A luminous white spirit stag with flowing antlers in an overgrown courtyard.',
+    imageUrl: '/cards/nimbrael.webp',
     moves: [
-      { cost: 0, effect: '12 damage', name: 'Mighty Maw' },
-      { cost: 4, effect: '30 damage', name: 'Calculated Claw' },
+      { cost: 0, effect: '15 damage', name: 'Spectral Charge' },
+      {
+        cost: 5,
+        effect: '35 damage · Heal 10 HP',
+        name: 'Undying Spirit',
+      },
     ],
-    name: 'Cinderhop',
-    power: 13,
+    name: 'Nimbrael',
+    power: 15,
+    rarity: 'epic',
   },
 ];
 
@@ -78,7 +89,7 @@ function BattleCard({
       {...tilt}
     >
       <div className="home-battle-card__artwork">
-        <CardFrame nameplate={<span>{card.name}</span>} rarity="common">
+        <CardFrame nameplate={<span>{card.name}</span>} rarity={card.rarity}>
           <span className="collectible-card__artwork">
             <img
               alt={card.imageAlt}
