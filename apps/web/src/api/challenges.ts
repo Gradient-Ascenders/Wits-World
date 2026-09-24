@@ -62,6 +62,20 @@ export interface CompletedChallengeCard {
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
 }
 
+export interface CompletedTerritoryOwnerBonusCard {
+  affinity: CompletedChallengeCard['affinity'] | null;
+  cardDefinitionId: string;
+  category: CompletedChallengeCard['category'];
+  name: string;
+  ownedCardId: string;
+  rarity: 'common';
+}
+
+export interface CompletedChallengeOwnerBonus {
+  card: CompletedTerritoryOwnerBonusCard | null;
+  outcome: 'awarded' | 'not_eligible' | 'score_too_low' | 'already_claimed';
+}
+
 export interface CompletedMultipleChoiceQuestionReview {
   attemptQuestionId: string;
   correctChoice: ChallengeChoice;
@@ -77,6 +91,7 @@ export interface CompletedMultipleChoiceChallengeAttempt {
   completionReason: 'answered' | 'timeout';
   eventId: string;
   format: 'multiple_choice';
+  ownerBonus?: CompletedChallengeOwnerBonus;
   review: CompletedMultipleChoiceQuestionReview[];
   reward: { cards: CompletedChallengeCard[] };
   scoreCorrect: number;
@@ -100,6 +115,7 @@ export interface CompletedOrderingChallengeAttempt {
   completionReason: 'answered' | 'timeout';
   eventId: string;
   format: 'ordering';
+  ownerBonus?: CompletedChallengeOwnerBonus;
   review: CompletedOrderingQuestionReview[];
   reward: { cards: CompletedChallengeCard[] };
   scoreCorrect: number;
@@ -565,6 +581,7 @@ function parseCompletedAttempt(
       'completionReason',
       'eventId',
       'format',
+      'ownerBonus',
       'requestId',
       'review',
       'reward',
@@ -590,6 +607,10 @@ function parseCompletedAttempt(
   }
 
   const review = payload.review.map(parseCompletedQuestionReview);
+  const ownerBonus =
+    payload.ownerBonus === undefined
+      ? undefined
+      : parseOwnerBonus(payload.ownerBonus);
 
   if (
     new Set(review.map((question) => question.position)).size !== 5 ||
@@ -615,6 +636,7 @@ function parseCompletedAttempt(
     completionReason: payload.completionReason,
     eventId: payload.eventId,
     format: 'multiple_choice',
+    ...(ownerBonus === undefined ? {} : { ownerBonus }),
     review,
     reward: {
       cards: payload.reward.cards.map(parseRewardCard),
@@ -675,6 +697,7 @@ function parseCompletedOrderingAttempt(
       'completionReason',
       'eventId',
       'format',
+      'ownerBonus',
       'requestId',
       'review',
       'reward',
@@ -700,6 +723,10 @@ function parseCompletedOrderingAttempt(
   }
 
   const review = payload.review.map(parseCompletedOrderingReview);
+  const ownerBonus =
+    payload.ownerBonus === undefined
+      ? undefined
+      : parseOwnerBonus(payload.ownerBonus);
 
   if (
     new Set(review.map((question) => question.position)).size !== 5 ||
@@ -718,6 +745,7 @@ function parseCompletedOrderingAttempt(
     completionReason: payload.completionReason,
     eventId: payload.eventId,
     format: 'ordering',
+    ...(ownerBonus === undefined ? {} : { ownerBonus }),
     review,
     reward: {
       cards: payload.reward.cards.map(parseRewardCard),
@@ -831,6 +859,57 @@ function parseRewardCard(payload: unknown): CompletedChallengeCard {
   };
 }
 
+function parseOwnerBonus(payload: unknown): CompletedChallengeOwnerBonus {
+  if (
+    !isRecord(payload) ||
+    !hasOnlyKeys(payload, ['card', 'outcome']) ||
+    !('card' in payload) ||
+    !isOwnerBonusOutcome(payload.outcome) ||
+    (payload.card !== null && !isRecord(payload.card))
+  ) {
+    throw new ChallengeApiError('unavailable');
+  }
+
+  return {
+    card:
+      payload.card === null ? null : parseTerritoryOwnerBonusCard(payload.card),
+    outcome: payload.outcome,
+  };
+}
+
+function parseTerritoryOwnerBonusCard(
+  payload: Record<string, unknown>,
+): CompletedTerritoryOwnerBonusCard {
+  if (
+    !hasOnlyKeys(payload, [
+      'affinity',
+      'cardDefinitionId',
+      'category',
+      'name',
+      'ownedCardId',
+      'rarity',
+    ]) ||
+    !isUuid(payload.ownedCardId) ||
+    !isUuid(payload.cardDefinitionId) ||
+    typeof payload.name !== 'string' ||
+    payload.name.trim() === '' ||
+    !isCardCategory(payload.category) ||
+    !(payload.affinity === null || isAffinity(payload.affinity)) ||
+    payload.rarity !== 'common'
+  ) {
+    throw new ChallengeApiError('unavailable');
+  }
+
+  return {
+    affinity: payload.affinity,
+    cardDefinitionId: payload.cardDefinitionId,
+    category: payload.category,
+    name: payload.name,
+    ownedCardId: payload.ownedCardId,
+    rarity: payload.rarity,
+  };
+}
+
 function hasForbiddenActiveAttemptFeedback(
   payload: Record<string, unknown>,
 ): boolean {
@@ -848,6 +927,7 @@ function hasForbiddenActiveAttemptFeedback(
     'correctItems',
     'explanation',
     'isCorrect',
+    'ownerBonus',
     'review',
     'reward',
     'scoreCorrect',
@@ -909,6 +989,17 @@ function isQuestionPosition(value: unknown): value is number {
 
 function isCompletionReason(value: unknown): value is 'answered' | 'timeout' {
   return value === 'answered' || value === 'timeout';
+}
+
+function isOwnerBonusOutcome(
+  value: unknown,
+): value is CompletedChallengeOwnerBonus['outcome'] {
+  return (
+    value === 'awarded' ||
+    value === 'not_eligible' ||
+    value === 'score_too_low' ||
+    value === 'already_claimed'
+  );
 }
 
 function isCardCategory(value: unknown): value is 'creature' | 'power' {

@@ -51,6 +51,38 @@ describe('challenge attempt client', () => {
     );
   });
 
+  it('resumes a completed challenge with its awarded territory owner bonus', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          ...completedAttempt(),
+          ownerBonus: awardedOwnerBonus(),
+        }),
+      ),
+    );
+
+    const attempt = await startChallengeAttempt({
+      apiBaseUrl,
+      claim,
+      eventId,
+      getAccessToken: vi.fn().mockResolvedValue('private-access-token'),
+      signal: new AbortController().signal,
+    });
+
+    expect(attempt).toMatchObject({
+      ownerBonus: {
+        card: {
+          affinity: null,
+          name: 'Territory bonus card',
+          rarity: 'common',
+        },
+        outcome: 'awarded',
+      },
+      status: 'completed',
+    });
+  });
+
   it('gets the owned attempt without a location claim for refresh and timeout reconciliation', async () => {
     const fetchMock = vi
       .fn()
@@ -220,6 +252,7 @@ describe('challenge attempt client', () => {
     { answerCorrect: true },
     { scoreCorrect: 1 },
     { reward: { cards: [], coinsAwarded: 10 } },
+    { ownerBonus: awardedOwnerBonus() },
     { review: completedReview() },
   ])('rejects an active fixture that leaks answer feedback', async (leak) => {
     vi.stubGlobal(
@@ -266,7 +299,12 @@ describe('challenge attempt client', () => {
   it('accepts the API ordering result, correct sequence, and explanation only after completion', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(jsonResponse(completedOrderingAttempt())),
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          ...completedOrderingAttempt(),
+          ownerBonus: { card: null, outcome: 'already_claimed' },
+        }),
+      ),
     );
 
     const result = await getChallengeAttempt({
@@ -278,6 +316,7 @@ describe('challenge attempt client', () => {
 
     expect(result).toMatchObject({
       format: 'ordering',
+      ownerBonus: { card: null, outcome: 'already_claimed' },
       scoreCorrect: 3,
       status: 'completed',
     });
@@ -502,6 +541,23 @@ describe('challenge attempt client', () => {
     ).rejects.toBeInstanceOf(ChallengeApiError);
   });
 
+  it('rejects a malformed territory owner bonus', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          ...completedAttempt(),
+          ownerBonus: {
+            ...awardedOwnerBonus(),
+            outcome: 'double_awarded',
+          },
+        }),
+      ),
+    );
+
+    await expectCompletedAttemptToBeRejected();
+  });
+
   it('maps an owned-or-missing attempt response to a safe failure', async () => {
     vi.stubGlobal(
       'fetch',
@@ -602,6 +658,20 @@ function completedReview() {
       isCorrect,
     };
   });
+}
+
+function awardedOwnerBonus() {
+  return {
+    card: {
+      affinity: null,
+      cardDefinitionId: '35000000-0000-4000-8000-000000000001',
+      category: 'power',
+      name: 'Territory bonus card',
+      ownedCardId: '36000000-0000-4000-8000-000000000001',
+      rarity: 'common',
+    },
+    outcome: 'awarded',
+  };
 }
 
 function activeOrderingAttempt(answeredCount = 0) {
