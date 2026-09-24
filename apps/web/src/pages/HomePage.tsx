@@ -147,8 +147,16 @@ export default function HomePage() {
         id="how-it-works"
       >
         <div className="section-introduction">
-          <h2 id="journey-title">How it works</h2>
-          <p>From your next campus discovery to your next battle.</p>
+          <div className="section-introduction__title">
+            <span aria-hidden="true" className="section-introduction__range">
+              01—04
+            </span>
+            <h2 id="journey-title">How it works</h2>
+          </div>
+          <p>
+            From your next campus discovery to your next battle, every step
+            moves your quest forward.
+          </p>
         </div>
 
         <nav
@@ -170,7 +178,10 @@ export default function HomePage() {
                   <span className="journey-navigation__node">
                     <Icon aria-hidden="true" size={22} weight="light" />
                   </span>
-                  <span>{name}</span>
+                  <span className="journey-navigation__copy">
+                    <strong>{name}</strong>
+                    <span>Stage {String(index + 1).padStart(2, '0')}</span>
+                  </span>
                 </a>
               </li>
             ))}
