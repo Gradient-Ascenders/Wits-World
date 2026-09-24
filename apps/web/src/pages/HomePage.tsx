@@ -46,6 +46,7 @@ const gameplaySteps = [
 
 export default function HomePage() {
   const journeyNav = useRef<HTMLElement>(null);
+  const journeySections = useRef<HTMLDivElement>(null);
   const [activeStage, setActiveStage] = useState(-1);
 
   useEffect(() => {
@@ -82,6 +83,35 @@ export default function HomePage() {
       window.cancelAnimationFrame(frame);
       window.removeEventListener('scroll', scheduleUpdate);
       window.removeEventListener('resize', scheduleUpdate);
+    };
+  }, []);
+
+  useEffect(() => {
+    const target = journeySections.current;
+    if (!target || !('IntersectionObserver' in window)) return;
+
+    let intersects = false;
+    const updateAnimationState = () => {
+      target.toggleAttribute(
+        'data-particles-active',
+        intersects && document.visibilityState === 'visible',
+      );
+    };
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        intersects = entry?.isIntersecting ?? false;
+        updateAnimationState();
+      },
+      { rootMargin: '20% 0px' },
+    );
+
+    observer.observe(target);
+    document.addEventListener('visibilitychange', updateAnimationState);
+
+    return () => {
+      observer.disconnect();
+      document.removeEventListener('visibilitychange', updateAnimationState);
+      target.removeAttribute('data-particles-active');
     };
   }, []);
 
@@ -188,7 +218,7 @@ export default function HomePage() {
           </ol>
         </nav>
 
-        <div className="journey-sections">
+        <div className="journey-sections" ref={journeySections}>
           {gameplaySteps.map(({ description, name }, index) => (
             <section
               className={`journey-section${name === 'Explore' ? ' journey-section--explore' : ''}${name === 'Complete' ? ' journey-section--complete' : ''}${name === 'Collect' ? ' journey-section--collect' : ''}${name === 'Battle' ? ' journey-section--battle' : ''}`}

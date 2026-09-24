@@ -168,7 +168,45 @@
 }
 
 .journey-sections {
+  position: relative;
+  isolation: isolate;
   width: min(calc(100% - 3rem), 80rem);
+}
+
+.journey-sections::before {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 100vw;
+  background-image:
+    radial-gradient(
+      circle at 18% 23%,
+      rgb(224 196 108 / 42%) 0 0.06rem,
+      transparent 0.09rem
+    ),
+    radial-gradient(
+      circle at 71% 61%,
+      rgb(212 175 55 / 28%) 0 0.045rem,
+      transparent 0.08rem
+    ),
+    radial-gradient(
+      circle at 43% 82%,
+      rgb(224 196 108 / 20%) 0 0.035rem,
+      transparent 0.07rem
+    );
+  background-position:
+    1rem 2rem,
+    9rem 13rem,
+    4rem 19rem;
+  background-size:
+    23rem 29rem,
+    31rem 37rem,
+    41rem 47rem;
+  content: '';
+  pointer-events: none;
+  transform: translateX(-50%);
 }
 
 .quest-journey {
@@ -339,6 +377,7 @@ html:has(.home-page) {
 
 .journey-section {
   position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-content: center;
@@ -483,6 +522,16 @@ html:has(.home-page) {
       background-color 180ms ease-out,
       border-color 180ms ease-out;
   }
+
+  .journey-sections::before {
+    animation: journey-particles-float 14s ease-in-out infinite alternate;
+    animation-play-state: paused;
+  }
+
+  .journey-sections[data-particles-active]::before {
+    animation-play-state: running;
+  }
+
   @supports (animation-timeline: view()) {
     .hero__media img {
       animation: atlas-drift linear both;
@@ -494,6 +543,21 @@ html:has(.home-page) {
       animation-timeline: view();
       animation-range: cover 0% cover 100%;
     }
+  }
+}
+
+@keyframes journey-particles-float {
+  from {
+    background-position:
+      1rem 2rem,
+      9rem 13rem,
+      4rem 19rem;
+  }
+  to {
+    background-position:
+      4rem 12rem,
+      4rem 4rem,
+      8rem 28rem;
   }
 }
 
