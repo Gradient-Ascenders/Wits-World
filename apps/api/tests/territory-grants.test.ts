@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  cancelExpiredTerritoryContenders,
+  cleanupExpiredTerritoryGrants,
   createTerritoryQueueGrant,
   type TerritoryQueryable,
 } from '../src/territory/territory-grants.js';
@@ -16,6 +18,22 @@ function createQueryable(query: ReturnType<typeof vi.fn>): TerritoryQueryable {
 }
 
 describe('territory-v1 location grants', () => {
+  it('uses a non-keyword alias in territory maintenance statements', async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [{ deleted_count: 0 }] })
+      .mockResolvedValueOnce({ rows: [{ cancelled_count: 0 }] });
+    const database = createQueryable(query);
+
+    await cleanupExpiredTerritoryGrants(database);
+    await cancelExpiredTerritoryContenders(database);
+
+    for (const [sql] of query.mock.calls) {
+      expect(String(sql)).toContain('zone_grant');
+      expect(String(sql)).not.toMatch(/territory_zone_grants grant\b/u);
+    }
+  });
+
   it('persists only coarse grant evidence after a strict PostGIS decision', async () => {
     const query = vi
       .fn()

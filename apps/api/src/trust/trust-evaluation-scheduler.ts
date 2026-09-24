@@ -11,6 +11,14 @@ export interface TrustEvaluationScheduler {
   stop(): Promise<void>;
 }
 
+function errorContext(error: unknown): Record<string, unknown> {
+  const code =
+    error instanceof Error ? (error as NodeJS.ErrnoException).code : undefined;
+  return typeof code === 'string' && /^[A-Z0-9_]{1,20}$/u.test(code)
+    ? { databaseErrorCode: code }
+    : {};
+}
+
 export function createTrustEvaluationScheduler(
   service: Pick<TrustService, 'evaluateMaintenanceBatch' | 'purgeExpiredData'>,
   logger: Pick<FastifyBaseLogger, 'info' | 'warn'>,
@@ -36,15 +44,15 @@ export function createTrustEvaluationScheduler(
       try {
         const evaluated = await service.evaluateMaintenanceBatch();
         logger.info({ evaluated }, 'Trust evaluation maintenance completed');
-      } catch {
-        logger.warn({}, 'Trust evaluation maintenance failed');
+      } catch (error) {
+        logger.warn(errorContext(error), 'Trust evaluation maintenance failed');
       }
 
       try {
         const purged = await service.purgeExpiredData();
         logger.info({ purged }, 'Trust retention cleanup completed');
-      } catch {
-        logger.warn({}, 'Trust retention cleanup failed');
+      } catch (error) {
+        logger.warn(errorContext(error), 'Trust retention cleanup failed');
       }
     })().finally(() => {
       running = undefined;

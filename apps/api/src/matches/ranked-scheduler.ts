@@ -28,6 +28,14 @@ export interface RankedScheduler {
   stop(): Promise<void>;
 }
 
+function errorContext(error: unknown): Record<string, unknown> {
+  const code =
+    error instanceof Error ? (error as NodeJS.ErrnoException).code : undefined;
+  return typeof code === 'string' && /^[A-Z0-9_]{1,20}$/u.test(code)
+    ? { databaseErrorCode: code }
+    : {};
+}
+
 export function createRankedScheduler(
   database: RankedDatabase,
   service: RankedService,
@@ -110,18 +118,19 @@ export function createRankedScheduler(
     }
   }
 
+  function triggerRun(): void {
+    if (active) return;
+    void runOnce().catch((error) =>
+      logger.error(errorContext(error), 'Ranked maintenance sweep failed.'),
+    );
+  }
+
   return {
     runOnce,
     start() {
       if (timer) return;
-      void runOnce().catch(() =>
-        logger.error({}, 'Ranked maintenance sweep failed.'),
-      );
-      timer = setInterval(() => {
-        void runOnce().catch(() =>
-          logger.error({}, 'Ranked maintenance sweep failed.'),
-        );
-      }, intervalMs);
+      triggerRun();
+      timer = setInterval(triggerRun, intervalMs);
       timer.unref();
     },
     async stop() {
