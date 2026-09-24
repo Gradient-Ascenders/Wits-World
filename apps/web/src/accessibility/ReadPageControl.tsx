@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pause, Play, SpeakerHigh, Stop } from '@phosphor-icons/react';
 import { useAccessibilityPreferences } from './preferences';
 
@@ -6,6 +6,16 @@ type SpeechState = 'idle' | 'speaking' | 'paused' | 'unavailable' | 'error';
 
 const EXCLUDED =
   '[aria-hidden="true"], [hidden], [inert], .sr-only, [data-read-aloud-control], script, style, svg, input, textarea, select, [role="timer"]';
+const READABLE_TEXT_DEBOUNCE_MS = 50;
+const READABLE_STATE_ATTRIBUTES = [
+  'aria-busy',
+  'aria-hidden',
+  'class',
+  'hidden',
+  'inert',
+  'open',
+  'style',
+];
 
 function isRendered(element: Element): boolean {
   let current: Element | null = element;
@@ -71,12 +81,12 @@ export function ReadPageControl({
   const run = useRef(0);
   const spokenText = useRef('');
 
-  function stop() {
+  const stop = useCallback(() => {
     run.current += 1;
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     spokenText.current = '';
     setState('idle');
-  }
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -89,16 +99,25 @@ export function ReadPageControl({
     if (state !== 'speaking' && state !== 'paused') return;
     const target = main.current;
     if (!target) return;
+    let updateTimer: number | undefined;
     const observer = new MutationObserver(() => {
-      if (readablePageText(target) !== spokenText.current) stop();
+      window.clearTimeout(updateTimer);
+      updateTimer = window.setTimeout(() => {
+        if (readablePageText(target) !== spokenText.current) stop();
+      }, READABLE_TEXT_DEBOUNCE_MS);
     });
-    observer.observe(target, {
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: READABLE_STATE_ATTRIBUTES,
       childList: true,
       characterData: true,
       subtree: true,
     });
-    return () => observer.disconnect();
-  }, [main, state]);
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(updateTimer);
+    };
+  }, [main, state, stop]);
 
   if (!speech) return null;
 

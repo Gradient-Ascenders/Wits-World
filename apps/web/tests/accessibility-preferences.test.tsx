@@ -168,4 +168,64 @@ describe('read aloud', () => {
     view.unmount();
     main.remove();
   });
+
+  it('stops when visibility state changes the readable text', async () => {
+    const cancel = vi.fn();
+    vi.stubGlobal('speechSynthesis', { speak: vi.fn(), cancel });
+    vi.stubGlobal(
+      'SpeechSynthesisUtterance',
+      class {
+        constructor(public text: string) {}
+      },
+    );
+    updateAccessibilityPreferences({ speech: true });
+    const main = document.createElement('main');
+    main.innerHTML = '<h1>Question</h1><p hidden>Revealed answer</p>';
+    document.body.append(main);
+    const ref = createRef<HTMLElement>();
+    ref.current = main;
+    const view = render(<ReadPageControl main={ref} pathname="/challenge" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Read page' }));
+
+    main.querySelector('p')!.hidden = false;
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Read page' })).toBeVisible(),
+    );
+    expect(cancel).toHaveBeenCalledTimes(2);
+    view.unmount();
+    main.remove();
+  });
+
+  it('stops when Player navigation changes outside main', async () => {
+    const cancel = vi.fn();
+    vi.stubGlobal('speechSynthesis', { speak: vi.fn(), cancel });
+    vi.stubGlobal(
+      'SpeechSynthesisUtterance',
+      class {
+        constructor(public text: string) {}
+      },
+    );
+    updateAccessibilityPreferences({ speech: true });
+    const navigation = document.createElement('nav');
+    navigation.setAttribute('aria-label', 'Player');
+    navigation.textContent = 'Explore';
+    const main = document.createElement('main');
+    main.innerHTML = '<h1>Challenge</h1>';
+    document.body.append(navigation, main);
+    const ref = createRef<HTMLElement>();
+    ref.current = main;
+    const view = render(<ReadPageControl main={ref} pathname="/challenge" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Read page' }));
+
+    navigation.textContent = 'Collection';
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Read page' })).toBeVisible(),
+    );
+    expect(cancel).toHaveBeenCalledTimes(2);
+    view.unmount();
+    navigation.remove();
+    main.remove();
+  });
 });

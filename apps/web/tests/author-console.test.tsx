@@ -61,6 +61,24 @@ vi.mock(
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Basic author console', () => {
+  it('moves route focus to main when persistent Author navigation stays mounted', async () => {
+    const user = userEvent.setup();
+    installAuthorApi();
+    renderAuthorRoute(authorPaths.events);
+
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Events' }),
+    ).toBeVisible();
+    const cardsLink = screen.getByRole('link', { name: 'Cards' });
+    await user.click(cardsLink);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Card catalogue' }),
+    ).toBeVisible();
+    expect(cardsLink).toBeInTheDocument();
+    expect(screen.getByRole('main')).toHaveFocus();
+  });
+
   it('shows seeded source evidence on event and question review screens', async () => {
     const sourceUrl = 'https://wits100.wits.ac.za/';
     const question = questionFixture(1, 'draft');

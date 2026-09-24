@@ -8,6 +8,7 @@ import {
 import { useAuth0 } from '@auth0/auth0-react';
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -166,13 +167,27 @@ export function AppShell({ children }: AppShellProps) {
   const [exploreReadTarget, setExploreReadTarget] =
     useState<HTMLElement | null>(null);
   const previousPathname = useRef(pathname);
+  const focusBeforeRouteChange = useRef<Element | null>(null);
+
+  useLayoutEffect(() => {
+    return () => {
+      focusBeforeRouteChange.current = document.activeElement;
+    };
+  }, [pathname]);
 
   useEffect(() => {
     document.title = pageTitle(pathname);
     if (previousPathname.current === pathname) return;
     previousPathname.current = pathname;
     const main = mainRef.current;
-    if (main && !main.contains(document.activeElement)) {
+    const activeElement = document.activeElement;
+    const routeManagedFocus =
+      activeElement instanceof HTMLElement &&
+      activeElement !== document.body &&
+      main?.contains(activeElement) &&
+      (activeElement !== focusBeforeRouteChange.current ||
+        activeElement.dataset.routeFocus === 'preserve');
+    if (main && !routeManagedFocus) {
       main.focus();
     }
   }, [pathname]);
