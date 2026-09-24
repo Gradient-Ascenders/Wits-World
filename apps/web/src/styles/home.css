@@ -656,7 +656,6 @@ html:has(.home-page) {
   display: block;
   width: 100%;
   height: auto;
-  mix-blend-mode: screen;
   filter: saturate(0.9) contrast(1.04)
     drop-shadow(0 1.5rem 2.5rem rgb(0 0 0 / 42%));
 }

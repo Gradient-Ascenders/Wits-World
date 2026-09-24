@@ -1,6 +1,6 @@
 import { ArrowRightIcon, MapPinIcon } from '@phosphor-icons/react';
 
-import campusPreview from '../../assets/home/campus.png';
+import campusPreview from '../../assets/home/campus-transparent.png';
 
 export function HomeExplorePreview() {
   return (
