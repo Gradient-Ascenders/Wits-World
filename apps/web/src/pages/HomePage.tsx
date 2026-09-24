@@ -12,6 +12,9 @@ import {
 import greatHallHero640Webp from '../assets/home/great-hall-hero-640.webp';
 import greatHallHero960Webp from '../assets/home/great-hall-hero-960.webp';
 import greatHallHeroWebp from '../assets/home/great-hall-hero.webp';
+import { HomeBattleMatchup } from '../components/home/HomeBattleMatchup';
+import { HomeChallengeCta } from '../components/home/HomeChallengeCta';
+import { HomeChallengeDemo } from '../components/home/HomeChallengeDemo';
 import { HomeCollectShowcase } from '../components/home/HomeCollectShowcase';
 import { HomeExplorePreview } from '../components/home/HomeExplorePreview';
 import { CampusSeal } from '../components/branding/CampusSeal';
@@ -21,12 +24,12 @@ const greatHallHeroSrcSet = `${greatHallHero640Webp} 640w, ${greatHallHero960Web
 
 const gameplaySteps = [
   {
-    description: 'Find events around Wits.',
+    description: 'See what’s happening around Wits.',
     name: 'Explore',
     icon: CompassIcon,
   },
   {
-    description: 'Take on the challenge at each event.',
+    description: 'Take on a challenge.',
     name: 'Complete',
     icon: CheckCircleIcon,
   },
@@ -36,7 +39,7 @@ const gameplaySteps = [
     icon: CardsIcon,
   },
   {
-    description: 'Build a deck and take on the CPU.',
+    description: 'Put your collection to work.',
     name: 'Battle',
     icon: SwordIcon,
   },
@@ -201,7 +204,7 @@ export default function HomePage() {
         <div className="journey-sections">
           {gameplaySteps.map(({ description, name }, index) => (
             <section
-              className={`journey-section${name === 'Explore' ? ' journey-section--explore' : ''}${name === 'Collect' ? ' journey-section--collect' : ''}`}
+              className={`journey-section${name === 'Explore' ? ' journey-section--explore' : ''}${name === 'Complete' ? ' journey-section--complete' : ''}${name === 'Collect' ? ' journey-section--collect' : ''}${name === 'Battle' ? ' journey-section--battle' : ''}`}
               id={`home-${name.toLowerCase()}`}
               aria-labelledby={`home-${name.toLowerCase()}-title`}
               key={name}
@@ -219,8 +222,9 @@ export default function HomePage() {
                     <h3 id="home-explore-title">Explore</h3>
                     <p className="home-explore-lead">{description}</p>
                     <p className="home-explore-description">
-                      See campus from a new angle. Browse the map and event
-                      list, then choose a challenge to take on at Wits.
+                      Campus is full of things you can walk past without ever
+                      noticing. Explore the map, find events and places around
+                      Wits, and pick something that catches your attention.
                     </p>
                     <div className="home-explore-highlights">
                       <div>
@@ -251,6 +255,26 @@ export default function HomePage() {
                   </div>
                   <HomeExplorePreview />
                 </>
+              ) : name === 'Complete' ? (
+                <>
+                  <div className="home-complete-copy">
+                    <span
+                      aria-hidden="true"
+                      className="journey-section__number"
+                    >
+                      {String(index + 1).padStart(2, '0')}
+                    </span>
+                    <h3 id="home-complete-title">Complete</h3>
+                    <p className="home-complete-lead">{description}</p>
+                    <p className="home-complete-description">
+                      Found something interesting? Give its challenge a go.
+                      Answer the questions, see how you did, and earn your
+                      reward for completing it.
+                    </p>
+                    <HomeChallengeCta />
+                  </div>
+                  <HomeChallengeDemo />
+                </>
               ) : name === 'Collect' ? (
                 <>
                   <div className="home-collect-copy">
@@ -258,7 +282,7 @@ export default function HomePage() {
                       aria-hidden="true"
                       className="journey-section__number"
                     >
-                      {String(index + 1).padStart(2, '0')} —
+                      {String(index + 1).padStart(2, '0')}
                     </span>
                     <h3 id="home-collect-title">Collect</h3>
                     <p className="home-collect-lead">{description}</p>
@@ -272,13 +296,22 @@ export default function HomePage() {
                 </>
               ) : (
                 <>
-                  <span aria-hidden="true" className="journey-section__number">
-                    {String(index + 1).padStart(2, '0')}
-                  </span>
-                  <div className="journey-section__copy">
-                    <h3 id={`home-${name.toLowerCase()}-title`}>{name}</h3>
-                    <p>{description}</p>
+                  <div className="home-battle-copy">
+                    <span
+                      aria-hidden="true"
+                      className="journey-section__number"
+                    >
+                      {String(index + 1).padStart(2, '0')}
+                    </span>
+                    <h3 id="home-battle-title">Battle</h3>
+                    <p className="home-battle-lead">{description}</p>
+                    <p className="home-battle-description">
+                      Your cards aren’t just there to look at. Build a deck from
+                      the ones you’ve collected and take it into battle against
+                      other players.
+                    </p>
                   </div>
+                  <HomeBattleMatchup />
                 </>
               )}
             </section>

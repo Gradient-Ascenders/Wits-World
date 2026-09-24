@@ -3,7 +3,7 @@ import {
   initialContext,
   type Auth0ContextInterface,
 } from '@auth0/auth0-react';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Router } from 'wouter';
@@ -88,7 +88,7 @@ describe('Wits World public application shell', () => {
     ).not.toBeInTheDocument();
     for (const route of ['Explore', 'Collection', 'Decks', 'Battles']) {
       expect(
-        screen.queryByRole('link', { name: route }),
+        within(screen.getByRole('banner')).queryByRole('link', { name: route }),
       ).not.toBeInTheDocument();
     }
   });
@@ -220,6 +220,45 @@ describe('Wits World public application shell', () => {
       expect(within(card).getByText(rarity)).toBeVisible();
       expect(within(card).getByRole('img')).toBeVisible();
     }
+    const battleMatchup = within(main).getByRole('group', {
+      name: 'Example battle matchup',
+    });
+    for (const [name, hp, power, moves] of [
+      ['Quillip', '98', '11', ['Ink Peck', 'Eureka']],
+      ['Cinderhop', '92', '13', ['Mighty Maw', 'Calculated Claw']],
+    ] as const) {
+      const card = within(battleMatchup).getByRole('article', {
+        name: `${name} battle card`,
+      });
+      expect(within(card).getByText(hp, { selector: 'dd' })).toBeVisible();
+      expect(within(card).getByText(power, { selector: 'dd' })).toBeVisible();
+      const moveList = within(card).getByRole('list', {
+        name: `${name} featured moves`,
+      });
+      for (const move of moves) {
+        expect(within(moveList).getByText(move)).toBeVisible();
+      }
+    }
+    const quillipBattleCard = within(battleMatchup).getByRole('article', {
+      name: 'Quillip battle card',
+    });
+    fireEvent.pointerEnter(quillipBattleCard, { pointerType: 'mouse' });
+    expect(quillipBattleCard).toHaveAttribute('data-hovered');
+    fireEvent.pointerLeave(quillipBattleCard, { pointerType: 'mouse' });
+    expect(quillipBattleCard).not.toHaveAttribute('data-hovered');
+    expect(
+      within(main).queryByText(
+        'A catalogue preview using real Wits Quest cards and stats.',
+      ),
+    ).not.toBeInTheDocument();
+    expect(
+      within(main).getByText('Put your collection to work.'),
+    ).toBeVisible();
+    expect(
+      within(main).getByText(
+        /Build a deck from the ones you’ve collected and take it into battle against other players\./,
+      ),
+    ).toBeVisible();
     expect(
       within(main).getByRole('heading', {
         level: 2,
