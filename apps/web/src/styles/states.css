@@ -136,12 +136,53 @@
 }
 
 .quest-marker {
-  display: inline-block;
+  display: inline-grid;
   flex: 0 0 auto;
   width: 1.35rem;
   height: 1.8rem;
-  object-fit: contain;
-  animation: quest-marker-wait 1.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  place-items: center;
+  color: var(--colour-gold-400);
+  line-height: 0;
+}
+
+.quest-marker svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.quest-marker__base,
+.quest-marker__trace,
+.quest-marker__orbit {
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.quest-marker__base {
+  opacity: 0.38;
+  stroke-width: 1.25;
+}
+
+.quest-marker__trace {
+  stroke-width: 1.55;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: quest-marker-trace 1.7s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.quest-marker__orbit {
+  opacity: 0.58;
+  stroke-width: 1.15;
+}
+
+.quest-marker__beacon {
+  fill: currentcolor;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: quest-marker-beacon 1.7s ease-in-out infinite;
 }
 
 .startup-seal {
@@ -233,16 +274,35 @@
   }
 }
 
-@keyframes quest-marker-wait {
-  0%,
-  48%,
-  100% {
-    transform: translateY(0);
+@keyframes quest-marker-trace {
+  0% {
+    stroke-dashoffset: 1;
+    opacity: 0;
+  }
+  12%,
+  68% {
     opacity: 1;
   }
-  16% {
-    transform: translateY(-0.2rem);
-    opacity: 0.72;
+  68%,
+  100% {
+    stroke-dashoffset: 0;
+  }
+  88%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes quest-marker-beacon {
+  0%,
+  30%,
+  100% {
+    transform: scale(0.68);
+    opacity: 0.42;
+  }
+  62%,
+  76% {
+    transform: scale(1);
+    opacity: 1;
   }
 }
 @keyframes startup-screen-exit {
@@ -277,7 +337,8 @@
   86%, 96% { opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .quest-marker,
+  .quest-marker__trace,
+  .quest-marker__beacon,
   .startup-screen[data-phase='exiting'],
   .startup-seal :is(
     .seal-loader__trace,
