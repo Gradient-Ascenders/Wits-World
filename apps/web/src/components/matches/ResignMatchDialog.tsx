@@ -1,11 +1,7 @@
 import { createPortal } from 'react-dom';
-import {
-  useEffect,
-  useId,
-  useRef,
-  type KeyboardEvent,
-  type RefObject,
-} from 'react';
+import { useId, useRef, type KeyboardEvent, type RefObject } from 'react';
+
+import { useModalFocus } from '../useModalFocus';
 
 interface ResignMatchDialogProps {
   kind?: 'resignation' | 'cancellation';
@@ -30,10 +26,12 @@ export function ResignMatchDialog({
   const dialogRef = useRef<HTMLDivElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    cancelRef.current?.focus();
-    return () => returnFocusRef.current?.focus();
-  }, [returnFocusRef]);
+  const keepFocusInside = useModalFocus({
+    busy,
+    dialogRef,
+    initialFocusRef: cancelRef,
+    returnFocusRef,
+  });
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === 'Escape' && !busy) {
@@ -41,21 +39,7 @@ export function ResignMatchDialog({
       onCancel();
       return;
     }
-    if (event.key !== 'Tab') return;
-
-    const controls = dialogRef.current?.querySelectorAll<HTMLElement>(
-      'button:not(:disabled), [href], [tabindex]:not([tabindex="-1"])',
-    );
-    if (!controls || controls.length === 0) return;
-    const first = controls[0];
-    const last = controls[controls.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last?.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first?.focus();
-    }
+    keepFocusInside(event);
   }
 
   return createPortal(
@@ -69,6 +53,7 @@ export function ResignMatchDialog({
         onKeyDown={handleKeyDown}
         ref={dialogRef}
         role="alertdialog"
+        tabIndex={-1}
       >
         <p className="eyebrow">
           {cancellation ? 'Cancel invitation' : 'Permanent battle result'}

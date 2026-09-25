@@ -8,6 +8,27 @@ title: 'Test strategy, commands and policy'
 
 Issue `#184` adds service, route, client, and Author-workspace coverage for the 10-answer flagging boundary, exact and just-below 70% incorrect rates with non-misleading decimal display, larger samples, MCQ and ordering aggregation, part-way timeout exclusion of unseen snapshots, timeout counts, composed filters, genuine empty results, stale-page recovery to the last valid page, malformed filters, Author authorization, page bounds, closed aggregate response parsing, keyboard-accessible horizontal results, and edit navigation. The Author-only response deliberately retains exact small-sample aggregates; its residual narrow-filter inference risk and the remaining database query-plan gate are documented in [Question performance analytics](../database/question-performance-analytics.md).
 
+## Advanced operational analytics
+
+Issue `#278` adds focused service and Author-route tests for date/page validation,
+authentication and Author authorization, event-location suppression, easy/problematic
+question classification, immutable reward-ledger issuance, secondary rarity
+suppression, and analytics writes that neither fail nor delay player responses.
+`advanced-analytics-database.integration.test.ts` covers atomic concurrent hourly
+aggregation, authoritative start/completion joins, ignored-location semantics, card
+issuance independent of current ownership, rarity-inference suppression, and
+representative query plans. Run that focused database suite locally after migration tests; the complete
+database runner remains the Gitea PR gate.
+
+Issue `#280` adds the protected Web presentation boundary. Focused component and
+client tests cover the three advanced endpoints, strict privacy/suppression parsing,
+server location modes and question classifications, inclusive UI date conversion to
+the exclusive API boundary, composable question filters, server-provided rarity
+summaries, accessible horizontal table equivalents for charts, independent
+loading/empty/error recovery, and an explicit ordinary-Player denial regression for
+`/author/analytics`. These are Web/API-contract tests only; they do not replace the
+issue `#278` database integration and query-plan evidence.
+
 ## Purpose
 
 Wits World uses the smallest test boundary that can reliably demonstrate a
@@ -143,8 +164,9 @@ campaign schedule and membership submission, and preservation of campaign form
 input after a stale-version conflict. They also cover navigation-only queue
 summaries, authoritative refresh after `CONTENT_STATE_CONFLICT`, confirmed
 replacement of a preserved campaign draft, server-returned lifecycle feedback,
-and read-only non-draft campaign edit deep links. Analytics UI tests remain
-blocked with issue `#184` / S3-06; no mock analytics contract is used.
+and read-only non-draft campaign edit deep links. Issue `#184` added the first
+question-performance workspace coverage; issue `#280` extends that boundary with
+privacy-safe advanced location, question, and card analytics UI/client tests.
 
 The issue `#257` trust-persistence database suite upgrades a pre-`0046`
 database and also verifies a clean migration. It covers private-only trust
@@ -393,9 +415,13 @@ evidence, not application latency, throughput, rendering, or database-query
 benchmarks.
 
 No general application performance baseline or load-test result is currently
-recorded. A future benchmark must retain its scenario, data volume, environment,
-tooling, result, analysis, and resulting change before the documentation can
-claim an application performance improvement.
+recorded. Issue `#278` is narrower: its advanced-analytics database suite defines a
+repository target of less than 1,000 ms PostgreSQL execution time for each
+representative query on its disposable fixture and requires indexed access for a
+selective product-event date read. That focused target is not a production HTTP SLA
+or evidence of general application performance. Any broader benchmark must retain
+its scenario, data volume, environment, tooling, result, analysis, and resulting
+change before the documentation can claim an application performance improvement.
 
 ## Evidence and review rule
 

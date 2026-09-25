@@ -424,10 +424,12 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .quest-marker__trace,
-  .quest-marker__beacon,
-  .startup-screen[data-phase='exiting'],
-  .startup-seal
+  :root:not([data-motion='full']) .state-spinner,
+  :root:not([data-motion='full']) .quest-marker__trace,
+  :root:not([data-motion='full']) .quest-marker__beacon,
+  :root:not([data-motion='full']) .startup-screen[data-phase='exiting'],
+  :root:not([data-motion='full'])
+    .startup-seal
     :is(
       .seal-loader__trace,
       .seal-loader__ring-art,
@@ -437,10 +439,10 @@
     ) {
     animation: none !important;
   }
-  .startup-screen[data-phase='exiting'] {
+  :root:not([data-motion='full']) .startup-screen[data-phase='exiting'] {
     opacity: 0;
   }
-  .startup-seal .seal-loader__complete {
+  :root:not([data-motion='full']) .startup-seal .seal-loader__complete {
     opacity: 1;
   }
 }
@@ -497,7 +499,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  [data-sonner-toast].app-toast {
+  :root:not([data-motion='full']) [data-sonner-toast].app-toast {
     animation: none !important;
     transition: none;
   }

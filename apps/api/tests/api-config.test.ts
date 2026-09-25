@@ -36,6 +36,8 @@ describe('API configuration', () => {
       maxPlausibleJourneySpeedMetresPerSecond: 12.5,
       rateLimitMaxRequests: 120,
       rateLimitWindowMs: 60000,
+      developerApiRateLimitMaxRequests: 120,
+      developerApiRateLimitWindowMs: 60000,
       trustEvaluationIntervalMs: DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
       cardTradeMaintenanceIntervalMs: DEFAULT_DATABASE_MAINTENANCE_INTERVAL_MS,
     });
@@ -132,6 +134,19 @@ describe('API configuration', () => {
 
     expect(config.rateLimitMaxRequests).toBe(40);
     expect(config.rateLimitWindowMs).toBe(30000);
+  });
+
+  it('reads configured developer API rate-protection limits', () => {
+    const config = buildApiConfig({
+      env: {
+        ...validEnvironment,
+        DEVELOPER_API_RATE_LIMIT_MAX_REQUESTS: '75',
+        DEVELOPER_API_RATE_LIMIT_WINDOW_MS: '45000',
+      },
+    });
+
+    expect(config.developerApiRateLimitMaxRequests).toBe(75);
+    expect(config.developerApiRateLimitWindowMs).toBe(45000);
   });
 
   it('reads and validates asynchronous PvP worker configuration', () => {
@@ -364,6 +379,8 @@ describe('API configuration', () => {
     ['RATE_LIMIT_MAX_REQUESTS', '0', 'positive integer'],
     ['RATE_LIMIT_MAX_REQUESTS', '1.5', 'positive integer'],
     ['RATE_LIMIT_WINDOW_MS', '999', 'at least 1000 milliseconds'],
+    ['DEVELOPER_API_RATE_LIMIT_MAX_REQUESTS', '0', 'positive integer'],
+    ['DEVELOPER_API_RATE_LIMIT_WINDOW_MS', '999', 'at least 1000 milliseconds'],
   ])('rejects invalid %s', (name, value, message) => {
     expect(() =>
       buildApiConfig({

@@ -12,6 +12,8 @@ import { clearAuthenticatedPlayerBinding } from '../auth/player-session-binding'
 import { confirmOfflineSignOut } from '../offline/store';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { AccountDeletionDialog } from '../components/account/AccountDeletionDialog';
+import { AccessibilitySettings } from '../accessibility/AccessibilitySettings';
+import { DeveloperApiAccess } from '../components/account/DeveloperApiAccess';
 import './account.css';
 
 const accountRoute = '/account';
@@ -217,7 +219,7 @@ export default function AccountPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     <div className="account-page">
       <header className="account-page__header">
         <h1>Account settings</h1>
-        <p>Manage your account and sign-in settings.</p>
+        <p>Manage your accessibility, account, and sign-in settings.</p>
       </header>
 
       {showsDeletionResult ? (
@@ -230,6 +232,7 @@ export default function AccountPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         />
       ) : (
         <>
+          <AccessibilitySettings />
           <section
             aria-labelledby="account-profile-title"
             className="account-profile-card"
@@ -272,6 +275,11 @@ export default function AccountPage({ apiBaseUrl }: { apiBaseUrl: string }) {
               )}
             </div>
           </section>
+
+          <DeveloperApiAccess
+            apiBaseUrl={apiBaseUrl}
+            getAccessToken={getAccessToken}
+          />
 
           <section
             aria-labelledby="account-deletion-title"

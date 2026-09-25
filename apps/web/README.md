@@ -16,7 +16,8 @@ display the persisted final score, rewards, and completed answer review. Card
 starter selection and collection browsing are available through the protected
 `/collection` route. Saved-deck building, management, and active selection are
 available through `/decks`. Authors also have a separate protected `/author`
-console for Basic event, challenge, question, and card authoring.
+console for Basic event, challenge, question, and card authoring, plus Author-only
+operational analytics for locations, question performance, and card issuance.
 Server-authoritative CPU battles and private
 completed-match history are available through the protected `/matches` routes.
 The protected `/profile` route presents server-authoritative points, rank,
@@ -497,6 +498,45 @@ Run the focused author tests from the repository root with:
 
 ```bash
 npm test --workspace @wits-world/web -- --run tests/author-client.test.ts tests/author-console.test.tsx tests/challenges-client.test.ts tests/challenge-page.test.tsx
+```
+
+## Advanced Author analytics
+
+`/author/analytics` extends the protected Author console with the issue `#280`
+operational analytics UI backed by the issue `#278` Author-only endpoints. The
+browser does not derive classifications or historical issuance from Player state;
+it renders the API's aggregate projections for event locations, question outcomes,
+and card issuance.
+
+The console provides a shared UTC reporting period. Authors choose inclusive start
+and end dates, while the client translates the selected end date to the API's
+exclusive `toDate` boundary. Both dates are optional together, and the browser
+mirrors the API's maximum 366-day range for immediate feedback. Question-specific
+event, challenge, format, and difficulty filters remain independent of the location
+and card reports. The location view sends the API's `all`, `popular`, or `ignored`
+mode rather than reclassifying rows in the browser.
+
+Positive samples below the API's minimum sample size are displayed as
+**Suppressed (<10)** rather than as zero or an inferred value. Exact zero remains
+visible. The question table uses the server-returned `easy`, `problematic`,
+`suppressed`, and `normal` classifications; the UI labels the first two as
+**Potentially too easy** and **Potentially too hard**. Card rarity summaries are
+rendered directly from the server-provided rarity projection and are never
+reconstructed by summing per-card rows, preserving secondary suppression.
+
+Location and rarity bar charts are visual companions to complete keyboard-focusable
+tables, not alternate sources of truth. Each report has independent loading, empty,
+error/retry, and pagination state so one unavailable analytics projection does not
+hide the others. The existing `ProtectedRoute` and `AuthorRoute` prevent ordinary
+Players from rendering the console, while the API remains authoritative for
+authentication, active-player state, and Author authorization.
+
+Run the focused issue `#280` Web tests from the repository root with:
+
+```bash
+cd apps/web
+npx vitest run tests/analytics-workspace.test.tsx tests/author-client.test.ts tests/author-console.test.tsx
+cd ../..
 ```
 
 ## Initial structure
@@ -1158,4 +1198,5 @@ delivery through polling, and displays server-generated cancellation, deadline,
 account-lifecycle, and voluntary-resignation results.
 
 The preceding document was generated and edited with the assistance of:
-Codex-CLI[gpt-5.6-sol medium], Codex-CLI[gpt-5.6-sol], Codex-CLI[GPT-5], and Codex[GPT-5].
+Codex-CLI[gpt-5.6-sol medium], Codex-CLI[gpt-5.6-sol], Codex-CLI[GPT-5],
+Codex[GPT-5], and ChatGPT-Web[GPT-5.6 Sol].

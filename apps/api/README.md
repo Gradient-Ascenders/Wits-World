@@ -19,8 +19,11 @@ player provisioning and lifecycle, application roles and Author protection,
 challenge attempts and marking, atomic rewards, card collections, saved decks,
 CPU matches/history, asynchronous PvP invitations, challenger-owned invitation
 cancellation, matches, voluntary resignation, live PvP ticketing/realtime gateway, authenticated
-progression/standings, and protected Author content operations. The cancellation
-endpoint requires the version 3 PvP media type and derives ownership from the
+progression/standings, protected Author content operations, and an external
+read-only developer API for published events, public cards, and progression
+standings. Developer resources use generated `X-API-Key` credentials rather
+than player bearer authentication. The cancellation endpoint requires the
+version 3 PvP media type and derives ownership from the
 validated player identity; it never accepts a player ID or result from the
 browser.
 
@@ -71,6 +74,8 @@ The local `.env` file is ignored by Git and must not contain values intended for
 | `CARD_TRADE_MAINTENANCE_INTERVAL_MS`            | No       | `1800000`     | Trade expiry/retention maintenance interval   |
 | `RATE_LIMIT_MAX_REQUESTS`                       | No       | `120`         | Authenticated requests allowed per window     |
 | `RATE_LIMIT_WINDOW_MS`                          | No       | `60000`       | Per-process fixed-window duration in ms       |
+| `DEVELOPER_API_RATE_LIMIT_MAX_REQUESTS`         | No       | `120`         | Developer-key requests allowed per window     |
+| `DEVELOPER_API_RATE_LIMIT_WINDOW_MS`            | No       | `60000`       | Developer-key fixed-window duration in ms     |
 
 Supported log levels are:
 
@@ -249,6 +254,35 @@ New application endpoints should be added beneath `/api/v1`.
 
 Breaking API changes should use a new version prefix rather than silently
 changing an existing public contract.
+
+## External developer API
+
+Wits World accounts can create and revoke named developer credentials from the
+Account page. The complete key is shown only when it is created and is sent to
+the external read-only endpoints through `X-API-Key`:
+
+```http
+GET /api/v1/developer/events
+GET /api/v1/developer/events/:eventId
+GET /api/v1/developer/cards
+GET /api/v1/developer/cards/:cardDefinitionId
+GET /api/v1/developer/leaderboard
+```
+
+Key-management operations remain normal Auth0-bearer account operations:
+
+```http
+GET    /api/v1/developer/keys
+POST   /api/v1/developer/keys
+DELETE /api/v1/developer/keys/:keyId
+```
+
+Developer keys never establish a player principal and cannot be used on normal
+player, author, or gameplay operations. Each key receives its own process-local
+quota using `DEVELOPER_API_RATE_LIMIT_*`. The reusable credential header is
+redacted from API logs and is not accepted through URLs. See the
+[external developer API guide](../../docs/architecture/developer-api.md) and
+[developer-key persistence](../../docs/database/developer-api-keys.md).
 
 ## Live PvP runtime
 

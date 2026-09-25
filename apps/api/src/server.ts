@@ -31,7 +31,10 @@ import { createQuestionPerformanceService } from './challenges/question-performa
 import { createAuthorCardService } from './cards/author-card-service.js';
 import { createAuthorContentReadService } from './authoring/content-read-service.js';
 import { createCpuMatchService } from './matches/cpu-match-service.js';
-import { createAuthenticatedRateProtection } from './security/rate-protection.js';
+import {
+  createAuthenticatedRateProtection,
+  createRateProtection,
+} from './security/rate-protection.js';
 import { createProgressionPersistence } from './progression/progression-persistence.js';
 import { createProgressionReadService } from './progression/progression-read-service.js';
 import { createAuthorTrailService } from './trails/author-trail-service.js';
@@ -60,6 +63,10 @@ import { createTerritoryOwnerBonusService } from './territory/territory-owner-bo
 import { createTerritoryReadService } from './territory/territory-read-service.js';
 import { createCardTradeService } from './trading/card-trade-service.js';
 import { createCardTradeMaintenanceScheduler } from './trading/card-trade-maintenance-scheduler.js';
+import { createAuthorAnalyticsService } from './analytics/author-analytics-service.js';
+import { createEventProductAnalyticsRecorder } from './analytics/event-product-aggregates.js';
+import { createDeveloperApiKeyService } from './developer/developer-api-key-service.js';
+import { createDeveloperPublicDataService } from './developer/developer-public-data-service.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
@@ -147,6 +154,12 @@ async function startServer(): Promise<void> {
   const authorEventService = createAuthorEventService(database);
   const authorChallengeService = createAuthorChallengeService(database);
   const questionPerformanceService = createQuestionPerformanceService(database);
+  const eventProductAnalyticsRecorder =
+    createEventProductAnalyticsRecorder(database);
+  const authorAnalyticsService = createAuthorAnalyticsService(
+    database,
+    questionPerformanceService,
+  );
   const authorCardService = createAuthorCardService(database);
   const authorTrailService = createAuthorTrailService(database);
   const authorCampaignService = createAuthorCampaignService(database);
@@ -158,6 +171,14 @@ async function startServer(): Promise<void> {
   });
   const progressionReadService = createProgressionReadService(database);
   const playerIdentityService = createPlayerIdentityService(database);
+  const eventDiscoveryService = createCachedEventDiscoveryService(
+    createEventDiscoveryService(database),
+  );
+  const developerApiKeyService = createDeveloperApiKeyService(database);
+  const developerPublicDataService = createDeveloperPublicDataService(
+    database,
+    eventDiscoveryService,
+  );
   const livePvpGateway = createLivePvpGateway(livePvpService);
   const app = await buildApp({
     placementService,
@@ -182,6 +203,14 @@ async function startServer(): Promise<void> {
       maxRequests: config.rateLimitMaxRequests,
       windowMs: config.rateLimitWindowMs,
     }),
+    developerApi: {
+      keyService: developerApiKeyService,
+      publicDataService: developerPublicDataService,
+      rateProtection: createRateProtection({
+        maxRequests: config.developerApiRateLimitMaxRequests,
+        windowMs: config.developerApiRateLimitWindowMs,
+      }),
+    },
 
     challengeAttemptServices: {
       start: challengeAttemptStartService,
@@ -218,11 +247,10 @@ async function startServer(): Promise<void> {
     },
 
     eventServices: {
-      discovery: createCachedEventDiscoveryService(
-        createEventDiscoveryService(database),
-      ),
+      discovery: eventDiscoveryService,
       eligibility: createEventEligibilityService(database),
       movementEvidence: movementEvidenceService,
+      analyticsRecorder: eventProductAnalyticsRecorder,
     },
 
     trailServices: {
@@ -237,6 +265,7 @@ async function startServer(): Promise<void> {
       campaigns: authorCampaignService,
       read: authorContentReadService,
       questionPerformance: questionPerformanceService,
+      analytics: authorAnalyticsService,
     },
   });
 

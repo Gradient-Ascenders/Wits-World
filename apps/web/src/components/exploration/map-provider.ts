@@ -2,6 +2,7 @@ import type { Feature, FeatureCollection, Geometry, Polygon } from 'geojson';
 import { ArrowCounterClockwise } from '@phosphor-icons/react';
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { prefersReducedMotion } from '../../accessibility/preferences';
 import type {
   IControl,
   Map as MapboxMap,
@@ -451,11 +452,15 @@ function createController(
     const zoom = restoreZoom
       ? Math.max(map.getZoom(), PLAYER_FOCUS_ZOOM)
       : undefined;
-    map.easeTo({
-      center: [reportedLocation.longitude, reportedLocation.latitude],
-      duration,
+    const camera = {
+      center: [reportedLocation.longitude, reportedLocation.latitude] as [
+        number,
+        number,
+      ],
       ...(zoom === undefined ? {} : { zoom }),
-    });
+    };
+    if (prefersReducedMotion()) map.jumpTo(camera);
+    else map.easeTo({ ...camera, duration });
     lastFollowedLocation = reportedLocation;
     setFollowing(true);
     return true;
@@ -467,11 +472,12 @@ function createController(
     }
 
     setFollowing(false);
-    map.easeTo({
-      center: [point.longitude, point.latitude],
-      duration: 650,
+    const camera = {
+      center: [point.longitude, point.latitude] as [number, number],
       zoom: Math.max(map.getZoom(), EVENT_FOCUS_ZOOM),
-    });
+    };
+    if (prefersReducedMotion()) map.jumpTo(camera);
+    else map.easeTo({ ...camera, duration: 650 });
     return true;
   };
 

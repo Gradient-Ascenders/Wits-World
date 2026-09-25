@@ -7,7 +7,10 @@ import {
   createAuthorCampaign,
   createAuthorEvent,
   createAuthorQuestion,
+  listAuthorAdvancedQuestionAnalytics,
   listAuthorCampaigns,
+  listAuthorCardIssuanceAnalytics,
+  listAuthorEventLocationAnalytics,
   listAuthorEvents,
   listAuthorQuestions,
   listAuthorQuestionPerformance,
@@ -164,6 +167,210 @@ describe('author API client', () => {
 
     await expect(
       listAuthorQuestionPerformance({
+        apiBaseUrl,
+        getAccessToken,
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toMatchObject({ failure: 'unavailable' });
+  });
+
+  it('loads all advanced analytics projections with bounded query parameters', async () => {
+    const signal = new AbortController().signal;
+    const location = {
+      eventId,
+      eventTitle: 'Great Hall history',
+      locationKind: 'authored',
+      locationId: eventId,
+      locationName: 'Great Hall history',
+      viewCount: 20,
+      eligibleCount: 12,
+      startCount: 10,
+      completionCount: 10,
+      suppressed: false,
+    } as const;
+    const question = {
+      answerCount: 20,
+      challengeId,
+      classification: 'easy',
+      correctCount: 19,
+      correctRate: 0.95,
+      difficulty: 2,
+      eventId,
+      eventTitle: 'Great Hall history',
+      format: 'ordering',
+      incorrectCount: 1,
+      incorrectRate: 0.05,
+      prompt: 'Order the milestones.',
+      questionId: '40000000-0000-4000-8000-000000000002',
+      status: 'published',
+      suppressed: false,
+      timeoutCount: 0,
+    } as const;
+    const card = {
+      cardDefinitionId: '50000000-0000-4000-8000-000000000001',
+      cardName: 'Campus Owl',
+      rarity: 'common',
+      rewardEligible: true,
+      issuanceCount: 25,
+      issuancesPer100Completions: 12.5,
+      suppressed: false,
+    } as const;
+    const rarities = [
+      rarityAnalyticsFixture('common', 25, 12.5),
+      rarityAnalyticsFixture('rare', 20, 10),
+      rarityAnalyticsFixture('epic', 10, 5),
+      rarityAnalyticsFixture('legendary', 0, 0),
+    ];
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [location],
+          page: 1,
+          pageSize: 25,
+          totalItems: 1,
+          totalPages: 1,
+          minimumSampleSize: 10,
+          requestId: 'locations',
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [question],
+          page: 1,
+          pageSize: 25,
+          totalItems: 1,
+          totalPages: 1,
+          minimumSampleSize: 10,
+          easyCorrectRate: 0.9,
+          problematicIncorrectRate: 0.7,
+          requestId: 'questions',
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [card],
+          rarities,
+          page: 1,
+          pageSize: 25,
+          totalItems: 1,
+          totalPages: 1,
+          minimumSampleSize: 10,
+          requestId: 'cards',
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      listAuthorEventLocationAnalytics({
+        apiBaseUrl,
+        fromDate: '2026-09-01',
+        toDate: '2026-09-08',
+        mode: 'ignored',
+        getAccessToken,
+        signal,
+      }),
+    ).resolves.toMatchObject({ items: [location], minimumSampleSize: 10 });
+    await expect(
+      listAuthorAdvancedQuestionAnalytics({
+        apiBaseUrl,
+        eventId,
+        challengeId,
+        format: 'ordering',
+        difficulty: 2,
+        fromDate: '2026-09-01',
+        toDate: '2026-09-08',
+        getAccessToken,
+        signal,
+      }),
+    ).resolves.toMatchObject({ items: [question], easyCorrectRate: 0.9 });
+    await expect(
+      listAuthorCardIssuanceAnalytics({
+        apiBaseUrl,
+        fromDate: '2026-09-01',
+        toDate: '2026-09-08',
+        getAccessToken,
+        signal,
+      }),
+    ).resolves.toMatchObject({
+      items: [card],
+      rarities,
+      minimumSampleSize: 10,
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `${apiBaseUrl}/author/analytics/event-locations?fromDate=2026-09-01&toDate=2026-09-08&mode=ignored&page=1&pageSize=25`,
+    );
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      `${apiBaseUrl}/author/analytics/questions?eventId=${eventId}&challengeId=${challengeId}&format=ordering&difficulty=2&fromDate=2026-09-01&toDate=2026-09-08&page=1&pageSize=25`,
+    );
+    expect(fetchMock.mock.calls[2]?.[0]).toBe(
+      `${apiBaseUrl}/author/analytics/card-issuance?fromDate=2026-09-01&toDate=2026-09-08&page=1&pageSize=25`,
+    );
+  });
+
+  it('rejects advanced analytics responses that contradict suppression metadata', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          items: [
+            {
+              eventId,
+              eventTitle: 'Great Hall history',
+              locationKind: 'authored',
+              locationId: eventId,
+              locationName: 'Great Hall history',
+              viewCount: null,
+              eligibleCount: 0,
+              startCount: 0,
+              completionCount: 0,
+              suppressed: false,
+            },
+          ],
+          page: 1,
+          pageSize: 25,
+          totalItems: 1,
+          totalPages: 1,
+          minimumSampleSize: 10,
+          requestId: 'locations',
+        }),
+      ),
+    );
+
+    await expect(
+      listAuthorEventLocationAnalytics({
+        apiBaseUrl,
+        getAccessToken,
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toMatchObject({ failure: 'unavailable' });
+  });
+
+  it('rejects card analytics without exactly one server summary per rarity', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          items: [],
+          rarities: [
+            rarityAnalyticsFixture('common', 0, 0),
+            rarityAnalyticsFixture('common', 0, 0),
+            rarityAnalyticsFixture('epic', 0, 0),
+            rarityAnalyticsFixture('legendary', 0, 0),
+          ],
+          page: 1,
+          pageSize: 25,
+          totalItems: 0,
+          totalPages: 0,
+          minimumSampleSize: 10,
+          requestId: 'cards',
+        }),
+      ),
+    );
+
+    await expect(
+      listAuthorCardIssuanceAnalytics({
         apiBaseUrl,
         getAccessToken,
         signal: new AbortController().signal,
@@ -717,6 +924,20 @@ function performanceFixture() {
     questionId: '40000000-0000-4000-8000-000000000002',
     status: 'published',
     timeoutCount: 1,
+  } as const;
+}
+
+function rarityAnalyticsFixture(
+  rarity: 'common' | 'rare' | 'epic' | 'legendary',
+  issuanceCount: number | null,
+  issuancesPer100Completions: number | null,
+  suppressed = false,
+) {
+  return {
+    rarity,
+    issuanceCount,
+    issuancesPer100Completions,
+    suppressed,
   } as const;
 }
 

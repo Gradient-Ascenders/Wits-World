@@ -503,6 +503,23 @@ export function CampusExplorer({
   const activeEventCount = visibleEvents.filter(
     (event) => event.availability === 'active',
   ).length;
+  const mapDetailToggle = isMobileMapViewport ? (
+    <button
+      aria-label="Detailed 3D map"
+      aria-pressed={mobile3dEnabled}
+      className={`map-detail-toggle${
+        mobile3dEnabled ? ' map-detail-toggle--active' : ''
+      }`}
+      onClick={() => setMobile3dEnabled((enabled) => !enabled)}
+      title={
+        mobile3dEnabled ? 'Use lightweight 2D map' : 'Enable detailed 3D map'
+      }
+      type="button"
+    >
+      <Cube aria-hidden="true" size={20} />
+      <span>3D</span>
+    </button>
+  ) : null;
 
   return (
     <section
@@ -536,51 +553,40 @@ export function CampusExplorer({
         {focusAnnouncement}
       </p>
 
-      {isMobileMapViewport ? (
-        <button
-          aria-label="Detailed 3D map"
-          aria-pressed={mobile3dEnabled}
-          className={`map-detail-toggle${
-            mobile3dEnabled ? ' map-detail-toggle--active' : ''
-          }`}
-          onClick={() => setMobile3dEnabled((enabled) => !enabled)}
-          title={
-            mobile3dEnabled
-              ? 'Use lightweight 2D map'
-              : 'Enable detailed 3D map'
-          }
-          type="button"
-        >
-          <Cube aria-hidden="true" size={20} />
-          <span>3D</span>
-        </button>
-      ) : null}
+      {mapDetailToggle}
 
       <div className="location-control-wrap">
-        <button
-          aria-label={locationControl.label}
-          aria-pressed={locationControl.active || undefined}
-          className={`location-control${locationControl.active ? ' location-control--active' : ''}`}
-          disabled={locationControl.disabled}
-          title={locationControl.guidance}
-          onClick={locationAction}
-          type="button"
-        >
-          <Crosshair aria-hidden="true" size={24} />
-          <span className="location-control__label">
-            {locationState === 'tracking'
-              ? following
-                ? 'Following'
-                : 'Recenter'
-              : locationControl.label}
-            {locationState === 'tracking' && reportedLocation !== null ? (
-              <span className="location-control__accuracy">
-                {' '}
-                · ±{Math.max(0, Math.round(reportedLocation.accuracyMetres))} m
-              </span>
-            ) : null}
-          </span>
-        </button>
+        <div className="location-control__stack">
+          <div id="explore-read-control" />
+          <button
+            aria-label={locationControl.label}
+            aria-pressed={locationControl.active || undefined}
+            className={`location-control${locationControl.active ? ' location-control--active' : ''}`}
+            disabled={locationControl.disabled}
+            title={locationControl.guidance}
+            onClick={locationAction}
+            type="button"
+          >
+            <Crosshair aria-hidden="true" size={24} />
+            <span className="location-control__label">
+              {locationState === 'tracking'
+                ? following
+                  ? 'Following'
+                  : 'Recenter'
+                : locationControl.label}
+              {locationState === 'tracking' && reportedLocation !== null ? (
+                <span className="location-control__accuracy">
+                  {' '}
+                  · ±{Math.max(
+                    0,
+                    Math.round(reportedLocation.accuracyMetres),
+                  )}{' '}
+                  m
+                </span>
+              ) : null}
+            </span>
+          </button>
+        </div>
         {locationControl.guidance ? (
           <p
             aria-live="polite"

@@ -1,12 +1,13 @@
 import { createPortal } from 'react-dom';
 import {
-  useEffect,
   useId,
   useRef,
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
 } from 'react';
+
+import { useModalFocus } from '../useModalFocus';
 
 interface AuthorConfirmationDialogProps {
   busy?: boolean;
@@ -35,19 +36,13 @@ export function AuthorConfirmationDialog({
   const descriptionId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
-  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    previouslyFocusedRef.current =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-    (initialFocusRef?.current ?? cancelRef.current)?.focus();
-    return () => {
-      const target = returnFocusRef?.current ?? previouslyFocusedRef.current;
-      target?.focus();
-    };
-  }, [initialFocusRef, returnFocusRef]);
+  const keepFocusInside = useModalFocus({
+    busy,
+    dialogRef,
+    fallbackFocusRef: cancelRef,
+    initialFocusRef,
+    returnFocusRef,
+  });
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === 'Escape' && !busy) {
@@ -55,32 +50,21 @@ export function AuthorConfirmationDialog({
       onCancel();
       return;
     }
-    if (event.key !== 'Tab') return;
-    const controls = dialogRef.current?.querySelectorAll<HTMLElement>(
-      'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
-    );
-    if (!controls || controls.length === 0) return;
-    const first = controls[0];
-    const last = controls[controls.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last?.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first?.focus();
-    }
+    keepFocusInside(event);
   }
 
   return createPortal(
     <div className="author-dialog-backdrop">
       <div
+        aria-busy={busy || undefined}
         aria-describedby={descriptionId}
         aria-labelledby={titleId}
         aria-modal="true"
         className="author-dialog"
         onKeyDown={handleKeyDown}
         ref={dialogRef}
-        role="alertdialog"
+        role="dialog"
+        tabIndex={-1}
       >
         <p className="eyebrow">Please confirm</p>
         <h2 id={titleId}>{title}</h2>

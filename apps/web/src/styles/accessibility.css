@@ -1,0 +1,268 @@
+/* These rules are inactive with the default preferences. */
+html[data-ui-scale='125'] {
+  font-size: 125%;
+  min-width: 0;
+}
+html[data-ui-scale='150'] {
+  font-size: 150%;
+  min-width: 0;
+}
+html[data-ui-scale='125'] body,
+html[data-ui-scale='150'] body {
+  min-width: 0;
+}
+html[data-ui-scale='150'] .owned-card-gallery {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+}
+html[data-ui-scale='150'] .card-thumbnail__title {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+}
+html[data-ui-scale='125'] .combatant__vitals,
+html[data-ui-scale='150'] .combatant__vitals {
+  grid-template-columns: minmax(0, 1fr);
+}
+html[data-ui-scale='125'] .combatant__power,
+html[data-ui-scale='150'] .combatant__power {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+html[data-ui-scale='150'] .battle-action-list:has(.battle-action-control) {
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 48rem) {
+  html[data-ui-scale='150'] .battle-arena {
+    height: auto;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+  }
+  html[data-ui-scale='150'] .battle-versus {
+    display: none;
+  }
+  html[data-ui-scale='150'] .combatant--player,
+  html[data-ui-scale='150'] .combatant--cpu {
+    transform: none;
+  }
+  html[data-ui-scale='150'] .combatant--cpu {
+    grid-row: 1;
+  }
+}
+@media (max-width: 47.999rem) {
+  html[data-ui-scale='150'] .combatant__power {
+    display: grid;
+    justify-items: start;
+    gap: var(--space-1);
+  }
+}
+
+html[data-reading='comfortable'] {
+  --content-readable: 65ch;
+}
+html[data-reading='comfortable'] .main-content p,
+html[data-reading='comfortable'] .main-content li,
+html[data-reading='comfortable'] .main-content dd,
+html[data-reading='comfortable'] .main-content label {
+  line-height: 1.65;
+  letter-spacing: 0.02em;
+  word-spacing: 0.04em;
+}
+html[data-reading='comfortable'] .main-content p + p {
+  margin-top: 1em;
+}
+html[data-reading='comfortable'] .main-content p {
+  max-width: min(100%, var(--content-readable));
+}
+html[data-font='plain'] .main-content :is(h1, h2, h3, h4),
+html[data-font='plain'] .card-frame__name {
+  font-family: var(--font-body);
+}
+
+html[data-contrast='high'] {
+  --colour-background-app: #020712;
+  --colour-background-secondary: #061224;
+  --colour-surface-default: #0a1c35;
+  --colour-surface-elevated: #102b4e;
+  --colour-text-primary: #fffdf7;
+  --colour-text-secondary: #f2f5fc;
+  --colour-text-muted: #d7dfec;
+  --colour-border-subtle: rgb(255 253 247 / 55%);
+  --colour-border-default: rgb(255 253 247 / 72%);
+  --colour-border-strong: #fffdf7;
+  --colour-focus: #8dd9ff;
+  --colour-interactive: #174a99;
+  --colour-interactive-hover: #1a58a8;
+  --colour-action-primary: #f3cf5a;
+  --colour-status-success: #78e5a6;
+  --colour-status-danger: #ff9aa2;
+}
+html[data-contrast='high'] :focus-visible {
+  outline-width: 0.25rem;
+  outline-offset: 0.2rem;
+}
+html[data-contrast='high'] .card-frame {
+  --frame-ink: #fffdf7;
+  --frame-light: #fffdf7;
+  --frame-edge: #fffdf7;
+  --frame-shadow: #020712;
+  --frame-plate: #0a1c35;
+  --frame-surface: #102b4e;
+  --frame-wash: #143657;
+}
+html[data-contrast='high'] .battle-action-switch button[aria-selected='true'],
+html[data-contrast='high'] .pvp-section-tabs__tab[aria-selected='true'] {
+  border-color: var(--colour-border-strong);
+  box-shadow: inset 0 -0.2rem var(--colour-action-primary);
+}
+
+html[data-motion='reduce'] *,
+html[data-motion='reduce'] *::before,
+html[data-motion='reduce'] *::after {
+  scroll-behavior: auto !important;
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+html[data-motion='reduce'] .evolution-source-copy:first-child,
+html[data-motion='reduce'] .evolution-source-copy:last-child,
+html[data-motion='reduce'] .deck-summary-button:hover:not(:disabled) {
+  transform: none;
+}
+html[data-motion='full'] .card-detail-modal {
+  animation: collection-detail-enter 180ms ease-out;
+}
+@media (max-width: 47.999rem) {
+  html[data-motion='full'] .card-detail-modal:not([data-dragging='true']) {
+    transition: height 180ms ease-out;
+  }
+}
+html[data-motion='full'] .card-thumbnail__button {
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    box-shadow 140ms ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  html[data-motion='full'] .card-thumbnail__button {
+    transition:
+      transform 150ms ease,
+      box-shadow 150ms ease;
+  }
+  html[data-motion='full'] .card-thumbnail__button:hover {
+    transform: translateY(-2px);
+  }
+  html[data-motion='full'] .card-thumbnail__button:active {
+    transform: translateY(0);
+  }
+}
+
+.read-page-control {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+}
+.main-content > .read-page-control {
+  width: 100%;
+  justify-content: flex-end;
+  margin-bottom: var(--space-3);
+}
+.main-content:has(.home-page) {
+  position: relative;
+}
+.main-content:has(.home-page) > .read-page-control {
+  position: absolute;
+  z-index: 10;
+  top: calc(4.5rem + var(--space-3) + env(safe-area-inset-top));
+  right: var(--space-3);
+  width: auto;
+  margin: 0;
+}
+.site-frame--explore > .read-page-control {
+  position: fixed;
+  right: var(--space-3);
+  bottom: calc(var(--player-navigation-height) + var(--space-3));
+}
+.read-page-control__button {
+  display: grid;
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  min-height: var(--touch-target-min);
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--colour-border-default);
+  border-radius: var(--radius-sm);
+  color: var(--colour-text-primary);
+  background: rgb(5 11 22 / 94%);
+  box-shadow: var(--shadow-floating);
+  cursor: pointer;
+}
+.read-page-control__button:hover {
+  border-color: var(--colour-blue-300);
+  background: rgb(12 29 56 / 96%);
+}
+.read-page-control[data-state='speaking']
+  .read-page-control__button:first-child {
+  border-color: var(--colour-gold-400);
+}
+.read-page-control__status {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + var(--space-1));
+  width: max-content;
+  max-width: min(20rem, calc(100vw - 2rem));
+  padding: var(--space-2);
+  border: 1px solid var(--colour-border-default);
+  border-radius: var(--radius-sm);
+  color: var(--colour-text-primary);
+  background: var(--colour-surface-default);
+  box-shadow: var(--shadow-panel);
+  font-size: var(--text-sm);
+}
+#explore-read-control .read-page-control {
+  position: relative;
+}
+
+@media (max-width: 47.999rem) {
+  html[data-ui-scale='125']
+    .site-frame--product-navigation
+    .product-name__wordmark,
+  html[data-ui-scale='150']
+    .site-frame--product-navigation
+    .product-name__wordmark {
+    display: none;
+  }
+  html[data-ui-scale='125'] .site-frame--product-navigation .product-name__mark,
+  html[data-ui-scale='150']
+    .site-frame--product-navigation
+    .product-name__mark {
+    width: 2.5rem;
+  }
+  html[data-ui-scale='125'] .primary-navigation__list,
+  html[data-ui-scale='150'] .primary-navigation__list {
+    width: 100%;
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  html[data-ui-scale='125'] .primary-navigation__link,
+  html[data-ui-scale='150'] .primary-navigation__link {
+    min-width: 0;
+    padding-inline: 0.1rem;
+  }
+  html[data-ui-scale='125'] .primary-navigation__label,
+  html[data-ui-scale='150'] .primary-navigation__label {
+    max-width: 100%;
+    font-size: 0.65rem;
+    line-height: 1.1;
+    overflow-wrap: anywhere;
+    text-align: center;
+  }
+  html[data-ui-scale='150'] .primary-navigation__label {
+    font-size: 0.55rem;
+    letter-spacing: 0;
+  }
+}

@@ -79,7 +79,9 @@ describe('migration file loading', () => {
         name.startsWith('0053_') ||
         name.startsWith('0054_') ||
         name.startsWith('0055_') ||
-        name.startsWith('0056_'),
+        name.startsWith('0056_') ||
+        name.startsWith('0057_') ||
+        name.startsWith('0058_'),
     );
 
     expect(
@@ -249,6 +251,14 @@ describe('migration file loading', () => {
       {
         checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         name: '0056_add_card_trade_submission_receipts.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0057_create_advanced_analytics.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0058_create_developer_api_access.sql',
       },
     ]);
   });

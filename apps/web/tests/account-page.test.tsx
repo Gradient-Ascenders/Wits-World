@@ -15,6 +15,26 @@ const apiBaseUrl = 'https://api.example.test/api/v1';
 const mapboxAccessToken = 'pk.test-token';
 const playerId = '6fe7dc26-cdea-4275-a2df-861724137cbc';
 const deletionId = '00000000-0000-4000-8000-000000000600';
+const developerKeyId = '00000000-0000-4000-8000-000000000700';
+const developerApiKey = `ww_api_0123456789abcdef_${'a'.repeat(43)}`;
+interface TestDeveloperKey {
+  id: string;
+  name: string;
+  keyPrefix: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+  status: 'active' | 'revoked';
+}
+const developerKeyMetadata: TestDeveloperKey = {
+  id: developerKeyId,
+  name: 'Lecturer demo',
+  keyPrefix: 'ww_api_0123456789abcdef_…',
+  createdAt: '2026-09-23T18:00:00.000Z',
+  lastUsedAt: null,
+  revokedAt: null,
+  status: 'active',
+};
 
 afterEach(() => {
   window.localStorage.clear();
@@ -109,6 +129,112 @@ describe('player account page', () => {
       'https://support.google.com/accounts/answer/7682439',
     );
     expect(document.querySelector('input[type="password"]')).toBeNull();
+  });
+
+  it('generates a named developer API key and shows the complete secret once', async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockAccountApi({ connectionStrategy: 'auth0' });
+
+    renderAccount('/account');
+
+    expect(
+      await screen.findByRole('heading', { name: 'Developer API access' }),
+    ).toBeVisible();
+    await user.type(
+      screen.getByRole('textbox', { name: 'Key name' }),
+      'Lecturer demo',
+    );
+    await user.click(screen.getByRole('button', { name: 'Generate API key' }));
+
+    expect(
+      await screen.findByRole('heading', { name: 'Save this API key now' }),
+    ).toHaveFocus();
+    expect(
+      screen.getByRole('textbox', { name: 'Generated API key' }),
+    ).toHaveValue(developerApiKey);
+    expect(
+      screen.getByText(/cannot show the complete value again/iu),
+    ).toBeVisible();
+
+    const createCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input).endsWith('/developer/keys') &&
+        (init as RequestInit | undefined)?.method === 'POST',
+    );
+    expect(JSON.parse(String((createCall?.[1] as RequestInit).body))).toEqual({
+      name: 'Lecturer demo',
+    });
+    expect(window.localStorage.getItem('developerApiKey')).toBeNull();
+    expect(window.sessionStorage.getItem('developerApiKey')).toBeNull();
+
+    expect(screen.getByLabelText('Key name')).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'I have saved it' }));
+    expect(screen.getByLabelText('Key name')).toBeEnabled();
+  });
+
+  it('requires explicit confirmation before revoking a developer API key', async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockAccountApi({
+      connectionStrategy: 'auth0',
+      developerKeys: [developerKeyMetadata],
+    });
+
+    renderAccount('/account');
+
+    expect(await screen.findByText('Lecturer demo')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Revoke' }));
+    expect(
+      screen.getByText(/Applications using it will stop working immediately/iu),
+    ).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Revoke key' }));
+
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          String(input).endsWith(`/developer/keys/${developerKeyId}`) &&
+          (init as RequestInit | undefined)?.method === 'DELETE',
+      ),
+    ).toBe(true);
+    expect(await screen.findByText('Revoked')).toBeVisible();
+  });
+
+  it('returns keyboard focus to the revoke trigger when confirmation is cancelled', async () => {
+    const user = userEvent.setup();
+    mockAccountApi({
+      connectionStrategy: 'auth0',
+      developerKeys: [developerKeyMetadata],
+    });
+
+    renderAccount('/account');
+
+    const revoke = await screen.findByRole('button', { name: 'Revoke' });
+    await user.click(revoke);
+    expect(revoke).toHaveAttribute('aria-expanded', 'true');
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(revoke).toHaveFocus();
+    expect(revoke).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('disables generation when five developer API keys are active', async () => {
+    mockAccountApi({
+      connectionStrategy: 'auth0',
+      developerKeys: Array.from({ length: 5 }, (_, index) => ({
+        ...developerKeyMetadata,
+        id: `00000000-0000-4000-8000-00000000070${index}`,
+        name: `Application ${index + 1}`,
+      })),
+    });
+
+    renderAccount('/account');
+
+    expect(await screen.findByText('5 of 5 active')).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Generate API key' }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText(/revoke a key before generating another/iu),
+    ).toBeVisible();
   });
 
   it('requires a fresh Auth0 login before presenting the destructive confirmation', async () => {
@@ -425,41 +551,91 @@ function renderAccount(
 function mockAccountApi({
   connectionStrategy,
   deletionResponses = [],
+  developerKeys = [],
   playerName = 'test-player',
 }: {
   connectionStrategy: 'auth0' | 'google-oauth2';
   deletionResponses?: Array<{ body: object; status: number }>;
+  developerKeys?: TestDeveloperKey[];
   playerName?: string | null;
 }) {
   let deletionIndex = 0;
+  let currentDeveloperKeys = [...developerKeys];
 
-  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-    const url = String(input);
+  return vi
+    .spyOn(globalThis, 'fetch')
+    .mockImplementation(async (input, init) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
 
-    if (url.endsWith('/auth/me')) {
-      return new Response(
-        JSON.stringify({
-          connectionStrategy,
-          id: playerId,
-          lifecycleStatus: 'active',
-          playerName,
-          playerNameSetupRequired: playerName === null,
-          requestId: 'account-profile-request',
-          role: 'player',
-        }),
-        { status: 200 },
-      );
-    }
+      if (url.endsWith('/auth/me')) {
+        return new Response(
+          JSON.stringify({
+            connectionStrategy,
+            id: playerId,
+            lifecycleStatus: 'active',
+            playerName,
+            playerNameSetupRequired: playerName === null,
+            requestId: 'account-profile-request',
+            role: 'player',
+          }),
+          { status: 200 },
+        );
+      }
 
-    if (url.endsWith('/auth/account-deletion')) {
-      const response = deletionResponses[deletionIndex];
-      deletionIndex += 1;
+      if (url.endsWith('/developer/keys') && method === 'GET') {
+        return new Response(
+          JSON.stringify({
+            activeKeyLimit: 5,
+            keys: currentDeveloperKeys,
+            requestId: 'developer-list-request',
+          }),
+          { status: 200 },
+        );
+      }
 
-      return new Response(JSON.stringify(response?.body ?? {}), {
-        status: response?.status ?? 500,
-      });
-    }
+      if (url.endsWith('/developer/keys') && method === 'POST') {
+        currentDeveloperKeys = [developerKeyMetadata, ...currentDeveloperKeys];
+        return new Response(
+          JSON.stringify({
+            apiKey: developerApiKey,
+            key: developerKeyMetadata,
+            requestId: 'developer-create-request',
+          }),
+          { status: 201 },
+        );
+      }
 
-    return new Response(null, { status: 404 });
-  });
+      if (
+        url.endsWith(`/developer/keys/${developerKeyId}`) &&
+        method === 'DELETE'
+      ) {
+        const revoked = {
+          ...developerKeyMetadata,
+          revokedAt: '2026-09-23T19:00:00.000Z',
+          status: 'revoked' as const,
+        };
+        currentDeveloperKeys = currentDeveloperKeys.map((key) =>
+          key.id === developerKeyId ? revoked : key,
+        );
+        return new Response(
+          JSON.stringify({
+            key: revoked,
+            requestId: 'developer-revoke-request',
+          }),
+          { status: 200 },
+        );
+      }
+
+      if (url.endsWith('/auth/account-deletion')) {
+        const response = deletionResponses[deletionIndex];
+        deletionIndex += 1;
+
+        return new Response(JSON.stringify(response?.body ?? {}), {
+          status: response?.status ?? 500,
+        });
+      }
+
+      return new Response(null, { status: 404 });
+    });
 }

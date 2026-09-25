@@ -166,10 +166,13 @@ export function BattleActionPanel({
               <li key={creature.id}>
                 <button
                   aria-describedby={legal ? undefined : reasonId}
+                  aria-disabled={!legal || undefined}
                   aria-label={`${phase === 'replacement' ? 'Use as replacement' : 'Choose Creature'} ${label}. ${titleCase(creature.affinity)} affinity. HP ${creature.currentHp} of ${creature.maxHp}. Power ${creature.remainingPower} of ${creature.maxPower}.`}
                   className="creature-choice-control"
-                  disabled={busy || inputBlocked || !currentActor || !legal}
-                  onClick={() => onAction(action)}
+                  disabled={busy || inputBlocked || !currentActor}
+                  onClick={() => {
+                    if (legal) onAction(action);
+                  }}
                   type="button"
                 >
                   <span
@@ -300,11 +303,12 @@ export function BattleActionPanel({
                       <li key={move.id}>
                         <button
                           aria-describedby={legal ? undefined : reasonId}
+                          aria-disabled={!legal || undefined}
                           className="battle-action-control"
-                          disabled={
-                            busy || inputBlocked || !currentActor || !legal
-                          }
-                          onClick={() => onAction(action)}
+                          disabled={busy || inputBlocked || !currentActor}
+                          onClick={() => {
+                            if (legal) onAction(action);
+                          }}
                           type="button"
                         >
                           <span className="battle-action-control__heading">
@@ -368,11 +372,12 @@ export function BattleActionPanel({
                       <li key={card.id}>
                         <button
                           aria-describedby={legal ? undefined : reasonId}
+                          aria-disabled={!legal || undefined}
                           className="battle-action-control battle-action-control--power"
-                          disabled={
-                            busy || inputBlocked || !currentActor || !legal
-                          }
-                          onClick={() => onAction(action)}
+                          disabled={busy || inputBlocked || !currentActor}
+                          onClick={() => {
+                            if (legal) onAction(action);
+                          }}
                           type="button"
                         >
                           <span className="battle-action-control__heading">

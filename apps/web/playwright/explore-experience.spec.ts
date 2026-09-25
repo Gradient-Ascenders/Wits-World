@@ -73,6 +73,181 @@ async function noOverflow(page: Page) {
   ).toBe(true);
 }
 
+test('keeps the read aloud icon clear of map controls and the collapsible header', async ({
+  page,
+}, info) => {
+  await installEvents(page);
+  await page.addInitScript(() => {
+    if (!localStorage.getItem('wits-world.accessibility-preferences.v1')) {
+      localStorage.setItem(
+        'wits-world.accessibility-preferences.v1',
+        JSON.stringify({ speech: true, scale: '150' }),
+      );
+    }
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/explore');
+  await expect(page.locator('.exploration-view')).toBeVisible();
+
+  const header = page.locator('.site-header--explore');
+  const reader = page.getByRole('button', { name: 'Read page' });
+  const detail = page.getByRole('button', { name: 'Detailed 3D map' });
+  await expect(reader).toBeVisible();
+  await expect(reader.locator('svg')).toHaveCount(1);
+  await expect(detail).toBeVisible();
+  await expect(header.locator('.map-detail-toggle')).toHaveCount(0);
+  await expect(
+    page.locator('.exploration-view .map-detail-toggle'),
+  ).toHaveCount(1);
+  const expandedHeader = await header.boundingBox();
+  const expandedDetail = await detail.boundingBox();
+  expect(expandedHeader && expandedDetail).toBeTruthy();
+  expect(expandedDetail!.y).toBeGreaterThanOrEqual(
+    expandedHeader!.y + expandedHeader!.height,
+  );
+  await detail.click();
+  await expect(detail).toHaveAttribute('aria-pressed', 'true');
+  await detail.click();
+  await expect(detail).toHaveAttribute('aria-pressed', 'false');
+  await expect(header.locator('.read-page-control')).toHaveCount(0);
+  const mobileReader = await reader.boundingBox();
+  const mobileLocation = await page.locator('.location-control').boundingBox();
+  expect(mobileReader && mobileLocation).toBeTruthy();
+  expect(mobileReader!.y + mobileReader!.height).toBeLessThanOrEqual(
+    mobileLocation!.y,
+  );
+  await noOverflow(page);
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('explore-header-controls-expanded.png'),
+  });
+
+  await page
+    .getByRole('button', { name: 'Hide header for more map space' })
+    .click();
+  await expect(page.locator('.explore-header-drawer')).toHaveAttribute(
+    'data-collapsed',
+    'true',
+  );
+  await expect(header).toHaveAttribute('aria-hidden', 'true');
+  await expect(header).toHaveAttribute('inert', '');
+  await expect(reader).toBeVisible();
+  await expect(detail).toBeVisible();
+  const cornerGap = await detail.evaluate((button) =>
+    Number.parseFloat(getComputedStyle(button).right),
+  );
+  await expect
+    .poll(async () => (await detail.boundingBox())?.y ?? Infinity)
+    .toBeLessThanOrEqual(cornerGap + 1);
+  await detail.click();
+  await expect(detail).toHaveAttribute('aria-pressed', 'true');
+  await detail.click();
+  await expect(detail).toHaveAttribute('aria-pressed', 'false');
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('explore-header-controls-collapsed.png'),
+  });
+
+  await page
+    .getByRole('button', { name: 'Show header and account menu' })
+    .click();
+  await expect(reader).toBeVisible();
+  await expect(detail).toBeVisible();
+  await expect
+    .poll(async () => (await detail.boundingBox())?.y ?? 0)
+    .toBeGreaterThanOrEqual(expandedHeader!.y + expandedHeader!.height);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(reader).toBeVisible();
+  await expect(detail).toHaveCount(0);
+  const desktopReader = await reader.boundingBox();
+  const desktopLocation = await page.locator('.location-control').boundingBox();
+  expect(desktopReader && desktopLocation).toBeTruthy();
+  expect(desktopReader!.y + desktopReader!.height).toBeLessThanOrEqual(
+    desktopLocation!.y,
+  );
+  await noOverflow(page);
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('explore-header-controls-desktop.png'),
+  });
+
+  await page.evaluate(() => {
+    localStorage.setItem(
+      'wits-world.accessibility-preferences.v1',
+      JSON.stringify({ speech: true, scale: '100' }),
+    );
+  });
+  await page.reload();
+  await expect(page.locator('.exploration-view')).toBeVisible();
+  await expect(reader).toBeVisible();
+  await noOverflow(page);
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('explore-header-controls-desktop-default-size.png'),
+  });
+  await page.setViewportSize({ width: 768, height: 900 });
+  await expect(page.locator('.exploration-view')).toBeVisible();
+  await expect(reader).toBeVisible();
+  await noOverflow(page);
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('explore-header-controls-tablet-default-size.png'),
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator('.exploration-view')).toBeVisible();
+  await expect(detail).toBeVisible();
+  await noOverflow(page);
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('explore-header-controls-mobile-default-size.png'),
+  });
+  await page.setViewportSize({ width: 500, height: 844 });
+  await expect(detail).toBeVisible();
+  const screenshotHeader = await header.boundingBox();
+  const screenshotDetail = await detail.boundingBox();
+  expect(screenshotHeader && screenshotDetail).toBeTruthy();
+  expect(screenshotDetail!.y).toBeGreaterThanOrEqual(
+    screenshotHeader!.y + screenshotHeader!.height,
+  );
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('explore-header-controls-500-expanded.png'),
+  });
+  await page
+    .getByRole('button', { name: 'Hide header for more map space' })
+    .click();
+  await expect(detail).toBeVisible();
+  await expect
+    .poll(async () => (await detail.boundingBox())?.y ?? Infinity)
+    .toBeLessThanOrEqual(cornerGap + 1);
+  await page.screenshot({
+    animations: 'disabled',
+    path: info.outputPath('explore-header-controls-500-collapsed.png'),
+  });
+
+  const showHeader = page.getByRole('button', {
+    name: 'Show header and account menu',
+  });
+  const handle = await showHeader.boundingBox();
+  expect(handle).toBeTruthy();
+  await page.mouse.move(
+    handle!.x + handle!.width / 2,
+    handle!.y + handle!.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    handle!.x + handle!.width / 2,
+    handle!.y + handle!.height / 2 + 30,
+    { steps: 5 },
+  );
+  await expect
+    .poll(async () => (await detail.boundingBox())?.y ?? 0)
+    .toBeGreaterThan(cornerGap + 20);
+  await expect(detail).toHaveCSS('transition-duration', '0s');
+  await page.mouse.up();
+});
+
 test('map and event loading preserve discovery space', async ({
   page,
 }, info) => {

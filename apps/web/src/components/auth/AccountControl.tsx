@@ -170,11 +170,7 @@ export function AccountControl() {
           </button>
 
           {isDisclosureOpen ? (
-            <div
-              aria-label="Account options"
-              className="account-disclosure__panel"
-              id={disclosureId}
-            >
+            <div className="account-disclosure__panel" id={disclosureId}>
               {playerName ? (
                 <p className="account-control__identity">
                   Signed in as <strong>{playerName}</strong>

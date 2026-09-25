@@ -1,4 +1,5 @@
 import { useEffect, type RefObject } from 'react';
+import { prefersReducedMotion } from '../../accessibility/preferences';
 
 /** Mobile sheet gestures. Consume body scroll before moving the sheet. */
 export function useCreatureSheet(
@@ -12,7 +13,6 @@ export function useCreatureSheet(
       '.battle-creature-dialog__body',
     )!;
     const mobile = window.matchMedia('(max-width: 47.99rem)');
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
     let expanded = false;
     let offset = 0;
     let frame = 0;
@@ -52,7 +52,7 @@ export function useCreatureSheet(
       closing = true;
       cancelAnimationFrame(frame);
       sheet!.removeAttribute('data-dragging');
-      if (!mobile.matches || reduced.matches) {
+      if (!mobile.matches || prefersReducedMotion()) {
         sheet!.close();
         return;
       }
@@ -134,7 +134,7 @@ export function useCreatureSheet(
       const wasScrolling = !g.header && offset === 0;
       settle();
       // Retain momentum for ordinary content scrolling, never for sheet dismissal.
-      if (wasScrolling && Math.abs(velocity) > 0.1 && !reduced.matches) {
+      if (wasScrolling && Math.abs(velocity) > 0.1 && !prefersReducedMotion()) {
         let speed = -velocity * 16;
         const coast = () => {
           const previous = body.scrollTop;
