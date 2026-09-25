@@ -1902,6 +1902,7 @@ function ChallengeWorkspace({
             <div className="challenge-selector">
               <label htmlFor="event-challenge">Challenge</label>
               <select
+                data-route-focus="preserve"
                 id="event-challenge"
                 onChange={(change) => selectChallenge(change.target.value)}
                 value={selectedChallengeId ?? ''}

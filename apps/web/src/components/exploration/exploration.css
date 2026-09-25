@@ -326,6 +326,17 @@
   transition: bottom var(--duration-standard) var(--ease-standard);
 }
 
+.location-control__stack {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.location-control__stack > #explore-read-control:empty {
+  display: none;
+}
+
 .location-control {
   display: flex;
   min-height: var(--touch-target-min);
@@ -396,9 +407,34 @@
   font-weight: 800;
   cursor: pointer;
   transition:
+    top var(--duration-standard) var(--ease-standard),
     border-color var(--duration-fast) var(--ease-standard),
     color var(--duration-fast) var(--ease-standard),
     background var(--duration-fast) var(--ease-standard);
+}
+
+@media (max-width: 47.999rem) {
+  .site-frame--explore .map-detail-toggle {
+    position: fixed;
+    top: calc(var(--explore-header-height, 4.25rem) + var(--space-2));
+  }
+
+  .site-frame--explore:has(.explore-header-drawer[data-collapsed='true'])
+    .map-detail-toggle {
+    top: var(--space-2);
+  }
+
+  .site-frame--explore:has(.explore-header-drawer[data-dragging='true'])
+    .map-detail-toggle {
+    top: max(
+      var(--space-2),
+      calc(
+        var(--explore-header-height, 4.25rem) +
+          var(--explore-header-drag-offset, 0px) + var(--space-2)
+      )
+    );
+    transition: none;
+  }
 }
 
 .map-detail-toggle:hover {
@@ -1745,21 +1781,23 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .event-panel,
-  .event-panel__drag-handle > span,
-  .location-control-wrap,
-  .exploration-view .mapboxgl-ctrl-top-right,
-  .exploration-view .mapboxgl-ctrl-bottom-left,
-  .exploration-view .mapboxgl-ctrl-bottom-right {
+  :root:not([data-motion='full']) .event-panel,
+  :root:not([data-motion='full']) .event-panel__drag-handle > span,
+  :root:not([data-motion='full']) .location-control-wrap,
+  :root:not([data-motion='full']) .exploration-view .mapboxgl-ctrl-top-right,
+  :root:not([data-motion='full']) .exploration-view .mapboxgl-ctrl-bottom-left,
+  :root:not([data-motion='full'])
+    .exploration-view
+    .mapboxgl-ctrl-bottom-right {
     transition: none;
   }
 
-  .event-panel__scroll {
+  :root:not([data-motion='full']) .event-panel__scroll {
     scroll-behavior: auto;
   }
 
-  .event-marker--selected::before,
-  .reported-location-pointer::before {
+  :root:not([data-motion='full']) .event-marker--selected::before,
+  :root:not([data-motion='full']) .reported-location-pointer::before {
     animation: none;
   }
 }

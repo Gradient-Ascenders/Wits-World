@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { App } from './App';
+import { initializeAccessibilityPreferences } from './accessibility/preferences';
 import { PlayerAuthProvider } from './auth/AuthProvider';
 import { ConfigurationErrorScreen } from './components/ConfigurationErrorScreen';
 import { ConfigurationError, loadWebConfig } from './config/environment';
@@ -13,6 +14,7 @@ import {
 import './styles/tokens.css';
 import './styles/global.css';
 import './styles/states.css';
+import './styles/accessibility.css';
 
 const rootElement = document.getElementById('root');
 
@@ -21,6 +23,7 @@ if (!rootElement) {
 }
 
 const root = createRoot(rootElement);
+initializeAccessibilityPreferences();
 
 try {
   const config = loadWebConfig(import.meta.env);

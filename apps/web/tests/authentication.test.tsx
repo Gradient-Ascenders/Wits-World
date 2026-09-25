@@ -443,7 +443,7 @@ describe('player authentication', () => {
     );
 
     const trigger = await openAccountDisclosure(user);
-    expect(screen.getByLabelText('Account options')).toBeVisible();
+    expect(screen.getByRole('link', { name: /Player profile/ })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeVisible();
 
     let escapeWasHandled = false;
@@ -455,7 +455,7 @@ describe('player authentication', () => {
     document.removeEventListener('keydown', observeEscape);
 
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByLabelText('Account options')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Player profile/ })).toBeNull();
     expect(trigger).toHaveFocus();
     expect(escapeWasHandled).toBe(true);
   });

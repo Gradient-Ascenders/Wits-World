@@ -160,7 +160,7 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .state-spinner {
+  :root:not([data-motion='full']) .state-spinner {
     animation: none;
   }
 }
@@ -193,7 +193,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  [data-sonner-toast].app-toast {
+  :root:not([data-motion='full']) [data-sonner-toast].app-toast {
     animation: none;
     transition: none;
   }

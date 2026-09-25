@@ -420,7 +420,7 @@ describe('authoritative CPU battle page', () => {
     ).toBeEnabled();
     expect(
       screen.getByRole('button', { name: /Campus Renewal 2/ }),
-    ).toBeDisabled();
+    ).toHaveAttribute('aria-disabled', 'true');
     const body = JSON.parse(String(fetchMock.mock.calls[1]![1]!.body));
     expect(body).toMatchObject({
       action: initial.state.legalActions[0],
@@ -593,7 +593,7 @@ describe('authoritative CPU battle page', () => {
       screen.getByRole('button', {
         name: /Brace.*Grit.*Opponent damage −15%.*3 turns.*11 Power/i,
       }),
-    ).toBeDisabled();
+    ).toHaveAttribute('aria-disabled', 'true');
     await userEvent.setup().click(screen.getByRole('tab', { name: /^Power/ }));
     const powerCard = screen.getByRole('button', {
       name: /Tactical Surge.*Wit.*8 base damage.*Restore 3 Power.*Available.*One use/i,
@@ -601,7 +601,7 @@ describe('authoritative CPU battle page', () => {
     expect(powerCard).toBeEnabled();
     expect(
       screen.getByRole('button', { name: /Spent Insight.*Already used/i }),
-    ).toBeDisabled();
+    ).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByText('Damage +10% · 2 turns')).toBeVisible();
     expect(screen.getByText('Damage +10% · Rest of battle')).toBeVisible();
     expect(screen.getByText('Damage −100% · 2 turns')).toBeVisible();

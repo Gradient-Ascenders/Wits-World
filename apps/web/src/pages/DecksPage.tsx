@@ -1144,6 +1144,7 @@ function DeckEditor({
                 aria-invalid={nameTouched && draft.name.trim() === ''}
                 disabled={isMutationPending}
                 maxLength={80}
+                required
                 onBlur={() => setNameTouched(true)}
                 onChange={(event) =>
                   onChange({ ...draft, name: event.currentTarget.value })

@@ -82,6 +82,7 @@ export function PlayerNameSetup() {
           minLength={PLAYER_NAME_MIN_LENGTH}
           onChange={(event) => setPlayerName(event.target.value)}
           pattern={PLAYER_NAME_INPUT_PATTERN}
+          required
           spellCheck={false}
           type="text"
           value={playerName}

@@ -964,11 +964,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .deck-summary-button {
+  :root:not([data-motion='full']) .deck-summary-button {
     transition: none;
   }
 
-  .deck-summary-button:hover:not(:disabled) {
+  :root:not([data-motion='full']) .deck-summary-button:hover:not(:disabled) {
     transform: none;
   }
 }
@@ -1354,8 +1354,8 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .deck-save-full,
-  .deck-save-compact {
+  :root:not([data-motion='full']) .deck-save-full,
+  :root:not([data-motion='full']) .deck-save-compact {
     transition: none;
   }
 }

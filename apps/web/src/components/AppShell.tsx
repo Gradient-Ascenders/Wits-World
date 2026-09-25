@@ -6,12 +6,22 @@ import {
   PencilSimpleIcon,
 } from '@phosphor-icons/react';
 import { useAuth0 } from '@auth0/auth0-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'wouter';
 
 import { AccountControl } from './auth/AccountControl';
 import { CampusSeal } from './branding/CampusSeal';
 import { useCurrentPlayer } from '../auth/CurrentPlayerProvider';
+import { ReadPageControl } from '../accessibility/ReadPageControl';
+import { useAccessibilityPreferences } from '../accessibility/preferences';
 
 interface AppShellProps {
   children: ReactNode;
@@ -64,6 +74,28 @@ const AUTHOR_NAVIGATION_ITEM: NavigationItem = {
   label: 'Author',
 };
 
+function pageTitle(pathname: string): string {
+  if (pathname === '/') return 'Wits World';
+  if (pathname === '/explore') return 'Explore · Wits World';
+  if (pathname === '/offline') return 'Saved events · Wits World';
+  if (pathname.startsWith('/offline-attempts/'))
+    return 'Saved attempt · Wits World';
+  if (pathname.startsWith('/challenge-attempts/'))
+    return 'Campus challenge · Wits World';
+  if (pathname === '/collection') return 'Collection · Wits World';
+  if (pathname === '/decks') return 'Decks · Wits World';
+  if (pathname === '/matches/history') return 'Battle history · Wits World';
+  if (pathname.startsWith('/matches/pvp/')) return 'Player battle · Wits World';
+  if (pathname === '/matches/pvp') return 'Player battles · Wits World';
+  if (pathname.startsWith('/matches/')) return 'CPU battle · Wits World';
+  if (pathname === '/matches') return 'Battles · Wits World';
+  if (pathname === '/profile') return 'Player profile · Wits World';
+  if (pathname === '/account') return 'Account settings · Wits World';
+  if (pathname.startsWith('/author')) return 'Author console · Wits World';
+  if (pathname === '/about') return 'About · Wits World';
+  return 'Page not found · Wits World';
+}
+
 function NavigationIcon({ name }: { name: NavigationIconName }) {
   const Icon = {
     explore: CompassIcon,
@@ -114,6 +146,7 @@ function PlayerNavigation({
 }
 
 export function AppShell({ children }: AppShellProps) {
+  const { speech } = useAccessibilityPreferences();
   const { isAuthenticated, isLoading } = useAuth0();
   const { state: currentPlayer } = useCurrentPlayer();
   const [pathname] = useLocation();
@@ -131,6 +164,69 @@ export function AppShell({ children }: AppShellProps) {
   } | null>(null);
   const suppressHeaderClick = useRef(false);
   const mainRef = useRef<HTMLElement>(null);
+  const [exploreReadTarget, setExploreReadTarget] =
+    useState<HTMLElement | null>(null);
+  const previousPathname = useRef(pathname);
+  const focusBeforeRouteChange = useRef<Element | null>(null);
+
+  useLayoutEffect(() => {
+    return () => {
+      focusBeforeRouteChange.current = document.activeElement;
+    };
+  }, [pathname]);
+
+  useEffect(() => {
+    document.title = pageTitle(pathname);
+    if (previousPathname.current === pathname) return;
+    previousPathname.current = pathname;
+    const main = mainRef.current;
+    const activeElement = document.activeElement;
+    const routeManagedFocus =
+      activeElement instanceof HTMLElement &&
+      activeElement !== document.body &&
+      main?.contains(activeElement) &&
+      (activeElement !== focusBeforeRouteChange.current ||
+        activeElement.dataset.routeFocus === 'preserve');
+    if (main && !routeManagedFocus) {
+      main.focus();
+    }
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!isExplore) return;
+    const main = mainRef.current;
+    if (!main) return;
+    const updateTarget = () => {
+      setExploreReadTarget(document.getElementById('explore-read-control'));
+    };
+    updateTarget();
+    const observer = new MutationObserver(updateTarget);
+    observer.observe(main, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [isExplore]);
+
+  useEffect(() => {
+    if (!isExplore) return;
+    const header = headerDrawerRef.current?.querySelector('header');
+    const main = mainRef.current;
+    if (!header || !main) return;
+    const updateHeight = () => {
+      main.style.setProperty(
+        '--explore-header-height',
+        `${header.getBoundingClientRect().height}px`,
+      );
+    };
+    updateHeight();
+    if (typeof ResizeObserver === 'undefined') {
+      return () => main.style.removeProperty('--explore-header-height');
+    }
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(header);
+    return () => {
+      observer.disconnect();
+      main.style.removeProperty('--explore-header-height');
+    };
+  }, [isExplore]);
 
   useEffect(() => {
     setHeaderCollapsed(false);
@@ -190,6 +286,9 @@ export function AppShell({ children }: AppShellProps) {
     isAuthenticated && currentPlayer.status === 'ready';
   const isAuthor =
     currentPlayer.status === 'ready' && currentPlayer.player.role === 'author';
+  const readControl = speech ? (
+    <ReadPageControl key={pathname} main={mainRef} pathname={pathname} />
+  ) : null;
 
   return (
     <div
@@ -342,6 +441,13 @@ export function AppShell({ children }: AppShellProps) {
 
       <main
         ref={mainRef}
+        style={
+          headerDragOffset === null
+            ? undefined
+            : ({
+                '--explore-header-drag-offset': `${headerDragOffset}px`,
+              } as CSSProperties)
+        }
         onPointerUpCapture={(event) => {
           if (
             isExplore &&
@@ -356,8 +462,15 @@ export function AppShell({ children }: AppShellProps) {
         id="main-content"
         tabIndex={-1}
       >
+        {!isExplore ? readControl : null}
         {children}
       </main>
+
+      {isExplore && readControl
+        ? exploreReadTarget
+          ? createPortal(readControl, exploreReadTarget)
+          : readControl
+        : null}
 
       {showsSiteFooter ? (
         <footer className="site-footer">

@@ -948,10 +948,7 @@ function CollectionGrid({
         Card gallery
       </h2>
 
-      <div
-        aria-label="Filter and sort collection"
-        className="collection-controls"
-      >
+      <div className="collection-controls">
         <label className="collection-control collection-control--search">
           <span>Search</span>
           <span className="collection-search-field">

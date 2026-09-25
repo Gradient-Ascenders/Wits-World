@@ -31,5 +31,12 @@ it('requires both the authoritative actor and legal action, and locks during sub
   rerender(<BattleActionPanel {...props} currentActor inputBlocked />);
   expect(move).toBeDisabled();
   rerender(<BattleActionPanel {...props} currentActor legalActions={[]} />);
-  expect(move).toBeDisabled();
+  expect(move).toHaveAttribute('aria-disabled', 'true');
+  const reasonId = move.getAttribute('aria-describedby');
+  expect(reasonId).toBeTruthy();
+  expect(document.getElementById(reasonId!)).toHaveTextContent(
+    'Unavailable this turn.',
+  );
+  await userEvent.click(move);
+  expect(onAction).not.toHaveBeenCalled();
 });

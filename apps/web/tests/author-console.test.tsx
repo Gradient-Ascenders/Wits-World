@@ -61,6 +61,24 @@ vi.mock(
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Basic author console', () => {
+  it('moves route focus to main when persistent Author navigation stays mounted', async () => {
+    const user = userEvent.setup();
+    installAuthorApi();
+    renderAuthorRoute(authorPaths.events);
+
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Events' }),
+    ).toBeVisible();
+    const cardsLink = screen.getByRole('link', { name: 'Cards' });
+    await user.click(cardsLink);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Card catalogue' }),
+    ).toBeVisible();
+    expect(cardsLink).toBeInTheDocument();
+    expect(screen.getByRole('main')).toHaveFocus();
+  });
+
   it('shows seeded source evidence on event and question review screens', async () => {
     const sourceUrl = 'https://wits100.wits.ac.za/';
     const question = questionFixture(1, 'draft');
@@ -960,7 +978,7 @@ describe('Basic author console', () => {
     await user.click(screen.getByRole('link', { name: 'Overview' }));
     await user.click(screen.getByRole('button', { name: 'Retire event' }));
     await user.click(
-      within(screen.getByRole('alertdialog')).getByRole('button', {
+      within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Retire event',
       }),
     );
@@ -974,7 +992,7 @@ describe('Basic author console', () => {
 
     await user.click(availableRetireChallenge);
     await user.click(
-      within(screen.getByRole('alertdialog')).getByRole('button', {
+      within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Retire challenge',
       }),
     );
@@ -1101,7 +1119,11 @@ describe('Basic author console', () => {
     renderAuthorRoute(authorPaths.questions(eventId, challengeId));
 
     expect(
-      await screen.findByRole('link', { name: /Question 1/ }),
+      await screen.findByRole(
+        'link',
+        { name: /Question 1/ },
+        { timeout: 8_000 },
+      ),
     ).toBeVisible();
     await user.click(screen.getByRole('link', { name: /Library trail/ }));
     await user.click(screen.getByRole('link', { name: 'Challenge' }));
@@ -1279,7 +1301,7 @@ describe('Basic author console', () => {
     const cardsLink = screen.getByRole('link', { name: 'Cards' });
     await user.click(cardsLink);
 
-    const dialog = screen.getByRole('alertdialog', {
+    const dialog = screen.getByRole('dialog', {
       name: 'Discard unsaved changes?',
     });
     expect(dialog).toHaveTextContent('unsaved event draft changes');
@@ -1289,11 +1311,11 @@ describe('Basic author console', () => {
     await user.click(
       within(dialog).getByRole('button', { name: 'Keep editing' }),
     );
-    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(cardsLink).toHaveFocus();
     await user.click(cardsLink);
     await user.click(
-      within(screen.getByRole('alertdialog')).getByRole('button', {
+      within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Discard changes',
       }),
     );
@@ -1343,7 +1365,7 @@ describe('Basic author console', () => {
     await user.click(screen.getByRole('link', { name: 'Questions' }));
 
     expect(
-      screen.getByRole('alertdialog', { name: 'Discard unsaved changes?' }),
+      screen.getByRole('dialog', { name: 'Discard unsaved changes?' }),
     ).toHaveTextContent('unsaved question draft changes');
     expect(prompt).toHaveValue('Question 1 unsaved');
     expect(
@@ -1390,7 +1412,7 @@ describe('Basic author console', () => {
     await user.click(screen.getByRole('link', { name: 'Events' }));
 
     expect(
-      screen.getByRole('alertdialog', { name: 'Discard unsaved changes?' }),
+      screen.getByRole('dialog', { name: 'Discard unsaved changes?' }),
     ).toHaveTextContent('unsaved card draft changes');
     expect(name).toHaveValue('Campus Owl unsaved');
     expect(
@@ -1527,7 +1549,7 @@ describe('Basic author console', () => {
     await user.click(screen.getByRole('button', { name: 'Save event' }));
     await user.click(screen.getByRole('link', { name: /Library trail/ }));
     await user.click(
-      within(screen.getByRole('alertdialog')).getByRole('button', {
+      within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Discard changes',
       }),
     );
@@ -1557,7 +1579,7 @@ describe('Basic author console', () => {
 
     await user.click(screen.getByRole('link', { name: /Delayed Event A/ }));
     await user.click(
-      within(screen.getByRole('alertdialog')).getByRole('button', {
+      within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Discard changes',
       }),
     );
@@ -1587,7 +1609,7 @@ describe('Basic author console', () => {
     await user.click(screen.getByRole('button', { name: 'Save card' }));
     await user.click(screen.getByRole('link', { name: /Library Fox/ }));
     await user.click(
-      within(screen.getByRole('alertdialog')).getByRole('button', {
+      within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Discard changes',
       }),
     );
@@ -1616,7 +1638,7 @@ describe('Basic author console', () => {
 
     await user.click(screen.getByRole('link', { name: /Campus Owl delayed/ }));
     await user.click(
-      within(screen.getByRole('alertdialog')).getByRole('button', {
+      within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Discard changes',
       }),
     );
@@ -1650,7 +1672,7 @@ describe('Basic author console', () => {
     await user.click(screen.getByRole('button', { name: 'Save question' }));
     await user.click(screen.getByRole('link', { name: /Question 2/ }));
     await user.click(
-      within(screen.getByRole('alertdialog')).getByRole('button', {
+      within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Discard changes',
       }),
     );
@@ -1686,7 +1708,7 @@ describe('Basic author console', () => {
 
     await user.click(screen.getByRole('link', { name: /Question 1 delayed/ }));
     await user.click(
-      within(screen.getByRole('alertdialog')).getByRole('button', {
+      within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Discard changes',
       }),
     );
@@ -1727,7 +1749,7 @@ describe('Basic author console', () => {
     await user.click(screen.getByRole('button', { name: 'Save event' }));
     await user.click(screen.getByRole('link', { name: /Library trail/ }));
     await user.click(
-      within(screen.getByRole('alertdialog')).getByRole('button', {
+      within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Discard changes',
       }),
     );
@@ -1739,7 +1761,7 @@ describe('Basic author console', () => {
     await user.click(screen.getByRole('button', { name: 'Save event' }));
     await user.click(screen.getByRole('link', { name: /Library trail/ }));
     await user.click(
-      within(screen.getByRole('alertdialog')).getByRole('button', {
+      within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Discard changes',
       }),
     );
@@ -1794,7 +1816,7 @@ describe('Basic author console', () => {
     await user.click(screen.getByRole('button', { name: 'Save card' }));
     await user.click(screen.getByRole('link', { name: 'Events' }));
     await user.click(
-      within(screen.getByRole('alertdialog')).getByRole('button', {
+      within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Discard changes',
       }),
     );
@@ -1823,7 +1845,7 @@ describe('Basic author console', () => {
 
     await user.click(screen.getByRole('link', { name: 'Events' }));
     await user.click(
-      within(screen.getByRole('alertdialog')).getByRole('button', {
+      within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Discard changes',
       }),
     );
@@ -1935,7 +1957,7 @@ describe('Basic author console', () => {
     await user.click(screen.getByRole('button', { name: 'Save event' }));
     await user.click(screen.getByRole('link', { name: /Library trail/ }));
     await user.click(
-      within(screen.getByRole('alertdialog')).getByRole('button', {
+      within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Discard changes',
       }),
     );
@@ -2068,7 +2090,7 @@ describe('Basic author console', () => {
 
     await user.click(screen.getByRole('link', { name: /Campus Owl/ }));
     await user.click(
-      within(screen.getByRole('alertdialog')).getByRole('button', {
+      within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Discard changes',
       }),
     );

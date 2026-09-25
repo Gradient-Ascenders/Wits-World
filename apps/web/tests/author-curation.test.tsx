@@ -322,7 +322,7 @@ describe('Author curation workspaces', () => {
     await user.click(
       screen.getByRole('button', { name: 'Reload server version' }),
     );
-    let dialog = screen.getByRole('alertdialog', {
+    let dialog = screen.getByRole('dialog', {
       name: 'Reload the server campaign?',
     });
     await user.click(
@@ -333,7 +333,7 @@ describe('Author curation workspaces', () => {
     await user.click(
       screen.getByRole('button', { name: 'Reload server version' }),
     );
-    dialog = screen.getByRole('alertdialog', {
+    dialog = screen.getByRole('dialog', {
       name: 'Reload the server campaign?',
     });
     await user.click(
@@ -568,7 +568,7 @@ describe('Author curation workspaces', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Retire campaign' }),
     );
-    const dialog = screen.getByRole('alertdialog', {
+    const dialog = screen.getByRole('dialog', {
       name: 'Retire Welcome Week?',
     });
     await user.click(
