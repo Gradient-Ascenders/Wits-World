@@ -62,7 +62,7 @@ export interface MatchCreature {
   maxPower: number;
   moves: MatchMove[];
   name: string;
-  rarity: CardRarity;
+  rarity?: CardRarity;
   remainingPower: number;
 }
 
@@ -758,7 +758,7 @@ export function parseMatchCreature(value: unknown): MatchCreature {
       currentShape || preRarityShape
         ? String(value.name)
         : `${titleCase(value.affinity)} Creature`,
-    rarity: currentShape ? (value.rarity as CardRarity) : 'common',
+    ...(currentShape ? { rarity: value.rarity as CardRarity } : {}),
     remainingPower: value.remainingPower,
   };
 }

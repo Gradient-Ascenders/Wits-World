@@ -363,9 +363,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         finishMatchResponse(result);
         if (result === 'applied') {
           setForfeitOpen(false);
-          setStatusMessage(
-            'Battle forfeited. The CPU victory is saved in match history.',
-          );
+          setStatusMessage(getMatchStatusMessage(response));
         }
       }
     } catch (nextError) {

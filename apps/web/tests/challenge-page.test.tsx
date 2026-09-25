@@ -362,6 +362,36 @@ describe('timed player challenge', () => {
     expect(within(questions[3]!).getByText('Choice 4.2')).toBeVisible();
   });
 
+  it('shows an awarded territory owner bonus in the completed result', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          ...completedAttempt(),
+          ownerBonus: {
+            card: {
+              affinity: null,
+              cardDefinitionId: '50000000-0000-4000-8000-000000000010',
+              category: 'power',
+              name: 'Braam Ward',
+              ownedCardId: '51000000-0000-4000-8000-000000000002',
+              rarity: 'common',
+            },
+            outcome: 'awarded',
+          },
+        }),
+      ),
+    );
+
+    renderChallenge();
+
+    expect(
+      await screen.findByRole('heading', { name: 'Braam Ward' }),
+    ).toBeVisible();
+    expect(screen.getByText('Territory owner bonus')).toBeVisible();
+    expect(screen.getByRole('link', { name: 'View collection' })).toBeVisible();
+  });
+
   it('renders authoritative ordering feedback, correct sequence, and explanation', async () => {
     vi.stubGlobal(
       'fetch',

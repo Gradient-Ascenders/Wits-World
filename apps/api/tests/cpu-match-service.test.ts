@@ -16,6 +16,7 @@ import {
 } from '../src/matches/basic-cpu-deck.js';
 import {
   createCpuMatchService,
+  CpuMatchCompletedError,
   CpuMatchDeckError,
   CpuMatchActionError,
   CpuMatchSubmissionConflictError,
@@ -959,6 +960,53 @@ describe('CPU match service', () => {
       MATCH_ID,
     );
     expect(query).toHaveBeenCalledWith('commit');
+  });
+
+  it('rejects a forfeit when the match already completed', async () => {
+    const state = {
+      ...terminalReadyState(),
+      phase: 'completed',
+      winner: 'player',
+    } as const;
+    const query = vi.fn(async (statement: string) => {
+      if (statement === 'begin' || statement === 'rollback') {
+        return { rows: [] };
+      }
+      if (statement.includes('from public.cpu_matches')) {
+        return {
+          rows: [
+            {
+              id: MATCH_ID,
+              player_id: PLAYER_ID,
+              status: 'completed',
+              state,
+              version: 4,
+              turn_started_at: null,
+              turn_deadline: null,
+              winner: 'player',
+              started_at: new Date('2026-08-16T00:00:00.000Z'),
+              completed_at: new Date('2026-08-16T00:03:30.000Z'),
+              legacy_log_actions: [],
+              card_names: {},
+              card_rarities: {},
+            },
+          ],
+        };
+      }
+      throw new Error(`Unexpected SQL: ${statement}`);
+    });
+    const service = createCpuMatchService(fakeDatabase(query));
+
+    await expect(
+      service.forfeitMatch({
+        playerId: PLAYER_ID,
+        matchId: MATCH_ID,
+        expectedVersion: 3,
+      }),
+    ).rejects.toBeInstanceOf(CpuMatchCompletedError);
+
+    expect(query).toHaveBeenCalledWith('rollback');
+    expect(query).not.toHaveBeenCalledWith('commit');
   });
 
   it('rolls back a terminal CPU match when progression fails', async () => {

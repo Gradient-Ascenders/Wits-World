@@ -57,6 +57,26 @@ describe('shared battle presentation', () => {
     expect(container.querySelector('img')).toBeNull();
   });
 
+  it('keeps legacy creature rarity unknown in the shared battle UI', () => {
+    const creature = {
+      ...activeMatch(1).state.player.creatures[0]!,
+      rarity: undefined,
+    };
+    const { container } = render(
+      <BattleCombatant
+        creature={creature}
+        emptyText="Hidden"
+        heading="Player"
+        isActing
+        visualSide="player"
+      />,
+    );
+
+    expect(container.querySelector('.card-frame--neutral')).toBeInTheDocument();
+    expect(container.querySelector('.card-frame__rarity')).toBeNull();
+    expect(container).not.toHaveTextContent('Common');
+  });
+
   it('discloses only the owned bench with stable Creature labels and no gameplay controls', async () => {
     const user = userEvent.setup();
     const match = activeMatch(1);

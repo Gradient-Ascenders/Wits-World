@@ -663,20 +663,7 @@ export function createCpuMatchService(
         );
 
         if (match.status === 'completed') {
-          await client.query('commit');
-          return createResponse({
-            matchId: match.id,
-            status: match.status,
-            version: match.version,
-            state: match.state,
-            winner: match.winner,
-            startedAt: match.started_at,
-            completedAt: match.completed_at,
-            turnDeadline: match.turn_deadline,
-            logActions: match.legacy_log_actions,
-            cardNames: match.card_names,
-            cardRarities: match.card_rarities,
-          });
+          throw new CpuMatchCompletedError();
         }
 
         if (match.version !== input.expectedVersion) {

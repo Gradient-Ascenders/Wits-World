@@ -297,7 +297,8 @@ describe('CPU match API client', () => {
         .mockResolvedValueOnce(matchResponse(malformed)),
     );
 
-    await expect(getActiveCpuMatch(options())).resolves.toMatchObject({
+    const parsedLegacyMatch = await getActiveCpuMatch(options());
+    expect(parsedLegacyMatch).toMatchObject({
       state: {
         player: {
           creatures: expect.arrayContaining([
@@ -312,6 +313,12 @@ describe('CPU match API client', () => {
         },
       },
     });
+    expect(parsedLegacyMatch!.state.player.creatures[0]).not.toHaveProperty(
+      'rarity',
+    );
+    expect(parsedLegacyMatch!.state.cpu.activeCreature).not.toHaveProperty(
+      'rarity',
+    );
     await expect(getActiveCpuMatch(options())).rejects.toMatchObject({
       failure: 'unavailable',
     });

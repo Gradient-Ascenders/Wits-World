@@ -619,8 +619,8 @@ function CreatureDetailsPicture({ creature }: { creature: MatchCreature }) {
               <div>
                 <h2 id={titleId}>{creature.name}</h2>
                 <p className="battle-creature-dialog__subtitle">
-                  {titleCase(creature.rarity)} Creature ·{' '}
-                  {titleCase(creature.affinity)} affinity
+                  {creature.rarity ? `${titleCase(creature.rarity)} ` : ''}
+                  Creature · {titleCase(creature.affinity)} affinity
                 </p>
               </div>
               <button

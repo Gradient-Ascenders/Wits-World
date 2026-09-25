@@ -21,7 +21,13 @@ import './matches.css';
 
 type HistoryState =
   | { status: 'loading' }
-  | { battles: BattleHistoryItem[]; partial: boolean; status: 'ready' }
+  | {
+      battles: BattleHistoryItem[];
+      partial: boolean;
+      playerNextCursor: string | null;
+      playerPageStatus: 'idle' | 'loading' | 'error';
+      status: 'ready';
+    }
   | { error: MatchApiError; status: 'error' };
 
 export default function MatchHistoryPage({
@@ -35,9 +41,14 @@ export default function MatchHistoryPage({
   const [revision, setRevision] = useState(0);
   const [reauthFailed, setReauthFailed] = useState(false);
   const resultHeading = useRef<HTMLElement | null>(null);
+  const paginationRequest = useRef<AbortController | null>(null);
+  const requestedPlayerCursors = useRef(new Set<string>());
 
   useEffect(() => {
     const controller = new AbortController();
+    paginationRequest.current?.abort();
+    paginationRequest.current = null;
+    requestedPlayerCursors.current.clear();
     setState({ status: 'loading' });
 
     void loadBattleHistory({
@@ -59,6 +70,13 @@ export default function MatchHistoryPage({
     return () => controller.abort();
   }, [apiBaseUrl, getAccessToken, revision]);
 
+  useEffect(
+    () => () => {
+      paginationRequest.current?.abort();
+    },
+    [],
+  );
+
   useEffect(() => {
     if (state.status !== 'loading') {
       resultHeading.current?.focus();
@@ -73,6 +91,74 @@ export default function MatchHistoryPage({
       });
     } catch {
       setReauthFailed(true);
+    }
+  }
+
+  async function loadMorePlayerHistory() {
+    if (
+      state.status !== 'ready' ||
+      state.playerNextCursor === null ||
+      state.playerPageStatus === 'loading'
+    ) {
+      return;
+    }
+
+    const cursor = state.playerNextCursor;
+    if (requestedPlayerCursors.current.has(cursor)) {
+      setState((current) =>
+        current.status === 'ready'
+          ? { ...current, playerNextCursor: null, playerPageStatus: 'error' }
+          : current,
+      );
+      return;
+    }
+
+    requestedPlayerCursors.current.add(cursor);
+    const controller = new AbortController();
+    paginationRequest.current?.abort();
+    paginationRequest.current = controller;
+    setState((current) =>
+      current.status === 'ready'
+        ? { ...current, playerPageStatus: 'loading' }
+        : current,
+    );
+
+    try {
+      const page = await listPvpHistory({
+        apiBaseUrl,
+        cursor,
+        getAccessToken,
+        limit: 50,
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted) return;
+
+      const repeatedCursor =
+        page.nextCursor !== null &&
+        requestedPlayerCursors.current.has(page.nextCursor);
+      setState((current) =>
+        current.status === 'ready'
+          ? {
+              ...current,
+              battles: mergePlayerHistoryPage(current.battles, page.items),
+              playerNextCursor: repeatedCursor ? null : page.nextCursor,
+              playerPageStatus: repeatedCursor ? 'error' : 'idle',
+            }
+          : current,
+      );
+    } catch {
+      if (!controller.signal.aborted) {
+        requestedPlayerCursors.current.delete(cursor);
+        setState((current) =>
+          current.status === 'ready'
+            ? { ...current, playerPageStatus: 'error' }
+            : current,
+        );
+      }
+    } finally {
+      if (paginationRequest.current === controller) {
+        paginationRequest.current = null;
+      }
     }
   }
 
@@ -157,6 +243,34 @@ export default function MatchHistoryPage({
           ))}
         </ol>
       )}
+
+      {state.playerNextCursor !== null ? (
+        <div className="match-history-pagination">
+          {state.playerPageStatus === 'error' ? (
+            <p role="alert">
+              More player battles could not load. Your current history is still
+              available.
+            </p>
+          ) : null}
+          <button
+            className="button button--quiet"
+            disabled={state.playerPageStatus === 'loading'}
+            onClick={() => void loadMorePlayerHistory()}
+            type="button"
+          >
+            {state.playerPageStatus === 'loading'
+              ? 'Loading more battles…'
+              : state.playerPageStatus === 'error'
+                ? 'Retry more battles'
+                : 'Load more battles'}
+          </button>
+        </div>
+      ) : state.playerPageStatus === 'error' ? (
+        <p className="match-history-pagination" role="alert">
+          More player battles could not be loaded. The results above are still
+          available.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -181,7 +295,7 @@ async function loadBattleHistory({
 }): Promise<HistoryState> {
   const [cpuResult, playerResult] = await Promise.allSettled([
     listCpuMatchHistory({ apiBaseUrl, getAccessToken, signal }),
-    listAllPlayerHistory({ apiBaseUrl, getAccessToken, signal }),
+    listPvpHistory({ apiBaseUrl, getAccessToken, limit: 50, signal }),
   ]);
 
   if (cpuResult.status === 'rejected' && playerResult.status === 'rejected') {
@@ -197,45 +311,35 @@ async function loadBattleHistory({
   return {
     battles: mergeBattleHistory(
       cpuResult.status === 'fulfilled' ? cpuResult.value : [],
-      playerResult.status === 'fulfilled' ? playerResult.value : [],
+      playerResult.status === 'fulfilled' ? playerResult.value.items : [],
     ),
     partial:
       cpuResult.status === 'rejected' || playerResult.status === 'rejected',
+    playerNextCursor:
+      playerResult.status === 'fulfilled'
+        ? playerResult.value.nextCursor
+        : null,
+    playerPageStatus: 'idle',
     status: 'ready',
   };
 }
 
-async function listAllPlayerHistory({
-  apiBaseUrl,
-  getAccessToken,
-  signal,
-}: {
-  apiBaseUrl: string;
-  getAccessToken: ReturnType<typeof useApiAccessToken>;
-  signal: AbortSignal;
-}) {
-  const matches: PvpHistorySummary[] = [];
-  const seenCursors = new Set<string>();
-  let cursor: string | undefined;
+function mergePlayerHistoryPage(
+  battles: BattleHistoryItem[],
+  playerMatches: PvpHistorySummary[],
+) {
+  const cpuMatches = battles
+    .filter((battle) => battle.kind === 'cpu')
+    .map((battle) => battle.match);
+  const existingPlayerMatches = battles
+    .filter((battle) => battle.kind === 'player')
+    .map((battle) => battle.match);
+  const playerById = new Map(
+    [...existingPlayerMatches, ...playerMatches].map((match) => [
+      match.matchId,
+      match,
+    ]),
+  );
 
-  do {
-    const page = await listPvpHistory({
-      apiBaseUrl,
-      cursor,
-      getAccessToken,
-      limit: 50,
-      signal,
-    });
-    matches.push(...page.items);
-    cursor = page.nextCursor ?? undefined;
-
-    if (cursor && seenCursors.has(cursor)) {
-      throw new PvpApiError('unavailable');
-    }
-    if (cursor) {
-      seenCursors.add(cursor);
-    }
-  } while (cursor);
-
-  return matches;
+  return mergeBattleHistory(cpuMatches, [...playerById.values()]);
 }

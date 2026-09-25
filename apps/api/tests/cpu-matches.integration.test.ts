@@ -6,6 +6,7 @@ import type { AccessTokenVerifier } from '../src/auth/access-token-verifier.js';
 import { buildApp } from '../src/app.js';
 import type { AuthConfig } from '../src/config/auth.js';
 import {
+  CpuMatchCompletedError,
   CpuMatchNotFoundError,
   CpuMatchActionError,
   createCpuMatchService,
@@ -483,6 +484,19 @@ describe('CPU match API', () => {
       winner: 'cpu',
       requestId: expect.any(String),
     });
+  });
+
+  it('returns a conflict when the match completed before the forfeit', async () => {
+    service.forfeitMatch.mockRejectedValueOnce(new CpuMatchCompletedError());
+
+    const response = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/matches/${MATCH_ID}/forfeit`,
+      payload: { expectedVersion: 0 },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: 'CPU_MATCH_COMPLETED' });
   });
 
   it('lists only the authenticated player history through the service boundary', async () => {

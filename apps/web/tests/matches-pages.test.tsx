@@ -388,7 +388,8 @@ describe('CPU match entry and history', () => {
     ).toHaveAttribute('href', `/matches/${MATCH_ID}`);
   });
 
-  it('shows the full combined history and follows every player-history page', async () => {
+  it('loads one combined history page first and fetches more player battles on request', async () => {
+    const user = userEvent.setup();
     const cpu = {
       ...historyItem(),
       completedAt: '2026-09-10T09:00:00.000Z',
@@ -429,6 +430,14 @@ describe('CPU match entry and history', () => {
     const history = await screen.findByRole('list', {
       name: 'Completed battles',
     });
+    expect(within(history).getAllByRole('listitem')).toHaveLength(2);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    await user.click(screen.getByRole('button', { name: 'Load more battles' }));
+
+    await waitFor(() =>
+      expect(within(history).getAllByRole('listitem')).toHaveLength(3),
+    );
     expect(within(history).getAllByRole('listitem')).toHaveLength(3);
     expect(
       within(history)
@@ -440,6 +449,42 @@ describe('CPU match entry and history', () => {
       `/matches/pvp/${secondPlayer.matchId}`,
     ]);
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps loaded history visible when a later player-history page fails', async () => {
+    const user = userEvent.setup();
+    const player = pvpHistorySummary();
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith('/matches/pvp/history')) {
+        return Promise.resolve(
+          url.searchParams.has('cursor')
+            ? problemResponse('PLAYER_HISTORY_UNAVAILABLE', 503)
+            : pvpHistoryResponse([player], 'next-page'),
+        );
+      }
+      return Promise.resolve(historyResponse([historyItem()]));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderRoute(
+      '/matches/history',
+      <MatchHistoryPage apiBaseUrl={apiBaseUrl} />,
+    );
+    const history = await screen.findByRole('list', {
+      name: 'Completed battles',
+    });
+    expect(within(history).getAllByRole('listitem')).toHaveLength(2);
+
+    await user.click(screen.getByRole('button', { name: 'Load more battles' }));
+
+    expect(
+      await screen.findByText(/More player battles could not load/),
+    ).toBeVisible();
+    expect(within(history).getAllByRole('listitem')).toHaveLength(2);
+    expect(
+      screen.getByRole('button', { name: 'Retry more battles' }),
+    ).toBeEnabled();
   });
 
   it('shows the five newest battles across both modes and links to the full archive', async () => {
@@ -550,6 +595,29 @@ describe('authoritative CPU battle page', () => {
         body: JSON.stringify({ expectedVersion: 4 }),
       }),
     );
+  });
+
+  it('shows a concurrent player victory returned by the forfeit request', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(matchResponse(activeMatch(4)))
+      .mockResolvedValueOnce(matchResponse(completedMatch(5)));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderMatchPage();
+    await user.click(
+      await screen.findByRole('button', { name: 'Forfeit match' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Confirm forfeit' }));
+
+    expect(
+      await screen.findByRole('heading', { name: 'Victory — match saved' }),
+    ).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Match completed. You won. The result is saved.',
+    );
+    expect(screen.queryByText(/Battle forfeited/)).not.toBeInTheDocument();
   });
 
   it('selects an initial Creature by keyboard and renders returned legal move and Power controls', async () => {

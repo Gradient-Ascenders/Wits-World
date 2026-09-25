@@ -2365,6 +2365,19 @@
   gap: var(--space-4);
 }
 
+.match-history-pagination {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  margin: var(--space-5) 0 0;
+  color: var(--colour-text-secondary);
+  text-align: center;
+}
+
+.match-history-pagination p {
+  margin: 0;
+}
+
 @media (min-width: 48rem) {
   .battle-mode-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
