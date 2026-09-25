@@ -12,6 +12,10 @@ import { Route, Router } from 'wouter';
 import CpuMatchPage from '../src/pages/CpuMatchPage';
 import MatchEntryPage from '../src/pages/MatchEntryPage';
 import MatchHistoryPage from '../src/pages/MatchHistoryPage';
+import {
+  resetAccessibilityPreferences,
+  updateAccessibilityPreferences,
+} from '../src/accessibility/preferences';
 import { deckListResponse, buildSavedDeck } from './fixtures/decks';
 import {
   actionResult,
@@ -38,6 +42,7 @@ import {
 const apiBaseUrl = 'https://api.example.test/api/v1';
 
 afterEach(() => {
+  resetAccessibilityPreferences();
   vi.unstubAllGlobals();
 });
 
@@ -388,7 +393,7 @@ describe('CPU match entry and history', () => {
     ).toHaveAttribute('href', `/matches/${MATCH_ID}`);
   });
 
-  it('loads one combined history page first and fetches more player battles on request', async () => {
+  it('withholds older CPU results until newer paginated player battles load', async () => {
     const user = userEvent.setup();
     const cpu = {
       ...historyItem(),
@@ -404,7 +409,7 @@ describe('CPU match entry and history', () => {
     );
     const secondPlayer = pvpHistorySummary(
       pvpMatch({
-        completedAt: '2026-09-09T09:00:00.000Z',
+        completedAt: '2026-09-10T12:00:00.000Z',
         matchId: uuid(1702),
         status: 'completed',
       }),
@@ -430,7 +435,12 @@ describe('CPU match entry and history', () => {
     const history = await screen.findByRole('list', {
       name: 'Completed battles',
     });
-    expect(within(history).getAllByRole('listitem')).toHaveLength(2);
+    expect(within(history).getAllByRole('listitem')).toHaveLength(1);
+    expect(
+      within(history)
+        .getAllByRole('link')
+        .map((link) => link.getAttribute('href')),
+    ).toEqual([`/matches/pvp/${firstPlayer.matchId}`]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
     await user.click(screen.getByRole('button', { name: 'Load more battles' }));
@@ -445,8 +455,8 @@ describe('CPU match entry and history', () => {
         .map((link) => link.getAttribute('href')),
     ).toEqual([
       `/matches/pvp/${firstPlayer.matchId}`,
-      `/matches/${cpu.matchId}`,
       `/matches/pvp/${secondPlayer.matchId}`,
+      `/matches/${cpu.matchId}`,
     ]);
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
@@ -474,14 +484,14 @@ describe('CPU match entry and history', () => {
     const history = await screen.findByRole('list', {
       name: 'Completed battles',
     });
-    expect(within(history).getAllByRole('listitem')).toHaveLength(2);
+    expect(within(history).getAllByRole('listitem')).toHaveLength(1);
 
     await user.click(screen.getByRole('button', { name: 'Load more battles' }));
 
     expect(
       await screen.findByText(/More player battles could not load/),
     ).toBeVisible();
-    expect(within(history).getAllByRole('listitem')).toHaveLength(2);
+    expect(within(history).getAllByRole('listitem')).toHaveLength(1);
     expect(
       screen.getByRole('button', { name: 'Retry more battles' }),
     ).toBeEnabled();
@@ -564,6 +574,72 @@ describe('CPU match entry and history', () => {
 });
 
 describe('authoritative CPU battle page', () => {
+  it.each([
+    {
+      appMotion: 'reduce' as const,
+      beatDelay: 120,
+      description: 'app reduce over OS normal',
+      osReduced: false,
+    },
+    {
+      appMotion: 'full' as const,
+      beatDelay: 900,
+      description: 'app full over OS reduce',
+      osReduced: true,
+    },
+  ])(
+    'applies $description to battle-beat timing',
+    async ({ appMotion, beatDelay, osReduced }) => {
+      const user = userEvent.setup();
+      vi.stubGlobal(
+        'matchMedia',
+        vi.fn().mockReturnValue({ matches: osReduced }),
+      );
+      updateAccessibilityPreferences({ motion: appMotion });
+      const next = activeMatch(2);
+      next.battleLog = [
+        {
+          events: [
+            {
+              id: '2:0',
+              kind: 'action',
+              message: "Player's Wit Creature used Knowledge Strike 1.",
+              sequence: 2,
+              side: 'player',
+            },
+            {
+              id: '2:1',
+              kind: 'effect',
+              message: "CPU's Grit Creature took 12 damage.",
+              sequence: 2,
+              side: 'cpu',
+            },
+          ],
+          id: 'turn-2',
+          label: 'Turn 2',
+          turnNumber: 2,
+        },
+      ];
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValueOnce(matchResponse(activeMatch(1)))
+          .mockResolvedValueOnce(matchResponse(next)),
+      );
+      const timeout = vi.spyOn(window, 'setTimeout');
+
+      renderMatchPage();
+      await user.click(
+        await screen.findByRole('button', { name: /Knowledge Strike 1/ }),
+      );
+
+      await waitFor(() =>
+        expect(timeout).toHaveBeenCalledWith(expect.any(Function), beatDelay),
+      );
+    },
+  );
+
   it('requires confirmation and records a CPU forfeit through the match API', async () => {
     const user = userEvent.setup();
     const active = activeMatch(4);

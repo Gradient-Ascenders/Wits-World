@@ -186,6 +186,11 @@ export default function MatchHistoryPage({
     );
   }
 
+  const visibleBattles = historyWithinLoadedPlayerBoundary(
+    state.battles,
+    state.playerNextCursor !== null || state.playerPageStatus === 'error',
+  );
+
   return (
     <div className="matches-page">
       <header className="matches-page__header">
@@ -225,7 +230,7 @@ export default function MatchHistoryPage({
         </div>
       ) : null}
 
-      {state.battles.length === 0 ? (
+      {visibleBattles.length === 0 ? (
         <section
           className="match-empty state-message state-message--empty"
           aria-labelledby="empty-history-title"
@@ -236,7 +241,7 @@ export default function MatchHistoryPage({
         </section>
       ) : (
         <ol aria-label="Completed battles" className="match-history-list">
-          {state.battles.map((battle) => (
+          {visibleBattles.map((battle) => (
             <li key={`${battle.kind}-${battle.match.matchId}`}>
               <BattleResultSummary battle={battle} />
             </li>
@@ -342,4 +347,28 @@ function mergePlayerHistoryPage(
   );
 
   return mergeBattleHistory(cpuMatches, [...playerById.values()]);
+}
+
+function historyWithinLoadedPlayerBoundary(
+  battles: BattleHistoryItem[],
+  playerHistoryIncomplete: boolean,
+) {
+  if (!playerHistoryIncomplete) return battles;
+
+  const oldestLoadedPlayerTime = battles.reduce<number | null>(
+    (oldest, battle) => {
+      if (battle.kind !== 'player') return oldest;
+      const completedAt = new Date(battle.match.completedAt).getTime();
+      return oldest === null ? completedAt : Math.min(oldest, completedAt);
+    },
+    null,
+  );
+
+  if (oldestLoadedPlayerTime === null) return [];
+
+  return battles.filter(
+    (battle) =>
+      battle.kind === 'player' ||
+      new Date(battle.match.completedAt).getTime() >= oldestLoadedPlayerTime,
+  );
 }

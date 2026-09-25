@@ -1,5 +1,7 @@
 import { useEffect, useRef, type PointerEventHandler } from 'react';
 
+import { prefersReducedMotion } from '../../accessibility/preferences';
+
 export function useCardTilt<ElementType extends HTMLElement>() {
   const elementRef = useRef<ElementType>(null);
   const animationFrame = useRef(0);
@@ -110,7 +112,7 @@ export function useCardTilt<ElementType extends HTMLElement>() {
 
   const canTilt = (pointerType: string) => {
     if (pointerType === 'touch') return false;
-    return !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    return !prefersReducedMotion();
   };
 
   const handlePointerEnter: PointerEventHandler<ElementType> = (event) => {

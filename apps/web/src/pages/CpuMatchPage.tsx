@@ -31,6 +31,7 @@ import {
   type CpuMatch,
   type CpuMatchIntent,
 } from '../api/matches';
+import { prefersReducedMotion } from '../accessibility/preferences';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { MatchErrorState } from '../components/matches/MatchErrorState';
 import { ResignMatchDialog } from '../components/matches/ResignMatchDialog';
@@ -148,9 +149,6 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   useEffect(() => {
     if (activeBeatIndex === null) return;
-    const reducedMotion = window.matchMedia?.(
-      '(prefers-reduced-motion: reduce)',
-    ).matches;
     const timeout = window.setTimeout(
       () => {
         setActiveBeatIndex((current) =>
@@ -159,7 +157,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
             : null,
         );
       },
-      reducedMotion ? 120 : 900,
+      prefersReducedMotion() ? 120 : 900,
     );
     return () => window.clearTimeout(timeout);
   }, [activeBeatIndex, battleBeats.length]);
