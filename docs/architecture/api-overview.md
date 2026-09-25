@@ -80,26 +80,36 @@ substitute for player authentication.
 
 The generated OpenAPI groups the current contract into these areas:
 
-| Area                       | Responsibility                                                                                                   |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| System                     | Health and API version information                                                                               |
-| Authentication and account | Local identity, Player Name setup, and implemented account-lifecycle API boundaries                              |
-| Events                     | Player-safe published-event discovery and server-authoritative location eligibility                              |
-| Challenges                 | Timed attempt start/resume, answer locking, completion, marking, and completed-only review                       |
-| Cards                      | Server-derived starter grants, catalogue-safe rewards, collection, and fixed three-copy evolution                |
-| Decks                      | Saved-deck CRUD, ownership validation, and active selection                                                      |
-| Trails                     | Ordered trail progress, step state, and bounded nearby-unvisited guidance                                        |
-| Matches                    | Server-created CPU and asynchronous PvP matches, legal intent, recovery, deadlines, and viewer-safe history      |
-| Trading                    | Private versioned bilateral offers, participant-only negotiation, recent-auth acceptance, and atomic settlement  |
-| Progression                | Current-player points, streaks, achievements, rank, and privacy-safe paginated standings                         |
-| Developer API              | API-key-authenticated, read-only published events, public card catalogue, and public progression leaderboard     |
-| Authoring                  | Author-only event, challenge, question, card, trail, campaign, and privacy-safe operational analytics boundaries |
+| Area                       | Responsibility                                                                                                           |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| System                     | Health and API version information                                                                                       |
+| Authentication and account | Local identity, Player Name setup, and implemented account-lifecycle API boundaries                                      |
+| Events                     | Player-safe published-event discovery and server-authoritative location eligibility                                      |
+| Challenges                 | Timed attempt start/resume, answer locking, completion, marking, and completed-only review                               |
+| Cards                      | Server-derived starter grants, catalogue-safe rewards, collection, and fixed three-copy evolution                        |
+| Decks                      | Saved-deck CRUD, ownership validation, and active selection                                                              |
+| Trails                     | Ordered trail progress, step state, and bounded nearby-unvisited guidance                                                |
+| Matches                    | Server-created CPU and asynchronous PvP matches, legal intent, recovery, deadlines, and viewer-safe history              |
+| Trading                    | Private versioned bilateral offers, participant-only negotiation, recent-auth acceptance, and atomic settlement          |
+| Progression                | Current-player points, streaks, achievements, rank, and privacy-safe paginated standings                                 |
+| Developer API              | API-key-authenticated, read-only published events, public card catalogue, and public progression leaderboard             |
+| Authoring                  | Author-only event, challenge, question, card, trail, campaign, and privacy-safe operational analytics boundaries         |
+| Trust review               | Author-only case queue, privacy-safe score explanation and evidence, versioned human decisions, and bounded restrictions |
 
 The [Author curation contract](./author-curation-api-contract.md) explains the
 five-state review workflow, optimistic concurrency, safe review queue and audit
 history, and the Author-console integration. Issue `#184` implements the
 Author-only question-performance aggregate endpoint; the same contract records
 its bounded filters and privacy rules.
+
+Issue `#256` adds `GET /author/trust-cases`,
+`GET /author/trust-cases/:caseId`, and
+`POST /author/trust-cases/:caseId/decisions`. All three require an authenticated,
+active Author. The list supports server-side search, status and priority filters
+plus bounded pagination; the detail response contains only privacy-safe derived
+evidence and append-only history. Decision writes require the current case
+version and return `409` for stale reviews. The browser never supplies a player
+identity, score, band, severity, decision result, or enforcement result.
 
 Issue `#278` adds separate Author-only advanced analytics endpoints for event-location
 activity, privacy-suppressed question performance, and historical card issuance.

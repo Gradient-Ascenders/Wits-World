@@ -27,6 +27,23 @@ version 3 PvP media type and derives ownership from the
 validated player identity; it never accepts a player ID or result from the
 browser.
 
+The protected trust-review surface is available only to authenticated active
+Authors:
+
+- `GET /api/v1/author/trust-cases` lists a server-filtered, paginated queue;
+- `GET /api/v1/author/trust-cases/:caseId` returns privacy-safe score,
+  evidence, restriction, and audit detail; and
+- `POST /api/v1/author/trust-cases/:caseId/decisions` records a versioned human
+  decision and any bounded `trust-v1` restriction.
+
+Decision requests require the current `expectedVersion`, a reason of 1 through
+1,000 characters, and, for restrictions, one or more supported scopes plus a
+duration of 1 through 168 hours. Stale writes return `409`; self-review returns
+`403`. The service derives actors, timestamps, score changes, case outcomes,
+and restriction state. Responses exclude precise location, raw source
+identifiers and payloads, submitted answers, Auth0 identity, and detector
+thresholds. No new environment variable controls these policy limits.
+
 The detailed challenge and persistence contracts are documented in the
 [challenge attempt API contract](../../docs/architecture/challenge-attempt-api-contract.md)
 and the

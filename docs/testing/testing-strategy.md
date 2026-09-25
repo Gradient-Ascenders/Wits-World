@@ -37,6 +37,23 @@ cross-system journey requires it. Tests are part of an issue's implementation
 and review; a passing unit suite is not treated as deployed, accessibility,
 field, stakeholder, or production evidence.
 
+## Player trust review
+
+Issue `#256` adds focused API route tests for authentication, active-Author
+authorisation, ordinary-player denial, queue filters, privacy-safe case detail,
+decision validation, self-review denial, and stale-version conflicts. Its
+disposable-database suite covers queue ordering/search, append-only restriction
+audit, false-positive score recalculation, and concurrent stale-decision
+rollback. That suite skips locally when `TEST_DATABASE_URL` is absent; the
+repository database runner remains the required integration gate.
+
+Web tests cover queue/search/filter behaviour, server-provided score and signal
+presentation, valid decisions, explicit restriction confirmation, validation
+focus, stale-conflict recovery, loading/empty/forbidden/API-error states,
+keyboard Escape and modal focus return, and route denial before any trust-case
+request for an ordinary player. These automated checks do not claim manual
+screen-reader, responsive-browser, deployed-role, or production-data review.
+
 This page records the practice implemented in the repository on 6 September 2026. It does not claim that an operator-run
 check is automated in CI.
 

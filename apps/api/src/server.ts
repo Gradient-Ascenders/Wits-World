@@ -54,6 +54,7 @@ import { createLivePvpNotificationListener } from './matches/live-pvp-notificati
 import { createTrustService } from './trust/trust-service.js';
 import { createTrustRestrictionService } from './trust/trust-restrictions.js';
 import { createTrustEvaluationScheduler } from './trust/trust-evaluation-scheduler.js';
+import { createTrustReviewService } from './trust/trust-review-service.js';
 import { createPlacementService } from './placement/placement-service.js';
 import { createPlacementScheduler } from './placement/placement-scheduler.js';
 import { createRankedService } from './matches/ranked-service.js';
@@ -87,6 +88,7 @@ async function startServer(): Promise<void> {
     createAuth0ManagementClient(authManagementConfig);
 
   const trustService = createTrustService(database);
+  const trustReviewService = createTrustReviewService(database);
   const placementService = createPlacementService(database);
   const trustRestrictions = createTrustRestrictionService(database);
   const rankedService = createRankedService(database, trustRestrictions);
@@ -267,6 +269,7 @@ async function startServer(): Promise<void> {
       questionPerformance: questionPerformanceService,
       analytics: authorAnalyticsService,
     },
+    trustReviewService,
   });
 
   const accountDeletionRetryProcessor = createAccountDeletionRetryProcessor(

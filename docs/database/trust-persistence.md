@@ -11,7 +11,9 @@ for the `trust-v1` policy defined by issue `#254`. It stores only derived,
 privacy-limited trust data and human governance history. Issue `#258` now uses
 that schema for deterministic score calculation, authoritative signal ingestion,
 decay/recovery maintenance, and enforcement of already-reviewed restrictions.
-Reviewer and appeal APIs remain later work.
+Issue `#256` supplies the reviewer API and Author console without changing
+the schema. Player appeal submission and appeal-resolution APIs remain later
+work.
 
 All trust relations live in the `private` PostgreSQL schema. The browser does
 not read or write them directly.
@@ -144,6 +146,14 @@ per-player PostgreSQL advisory transaction lock, while reviewer mutations remain
 row/version controlled; `under_review` is the durable case lifecycle state and
 is deliberately excluded from automated decay resolution.
 
+Issue `#256` implements those reviewer mutations as one transaction with a
+`FOR UPDATE` case lock and an exact `expectedVersion` check. The transaction
+advances the case version, appends its Author decision and evidence links, and,
+when requested, appends false-positive adjustments, a resulting score snapshot,
+or temporary restrictions. A stale version returns a conflict and commits no
+partial decision. The implementation reuses migrations `0046` and `0048`; no
+new migration or trust relation is required.
+
 ## Issue #258 runtime and schema hardening
 
 Migration `0048_implement_trust_scoring_and_enforcement.sql` is forward-only and
@@ -182,4 +192,4 @@ or evidence behind that decision.
 ## AI declaration
 
 This persistence design and implementation guide was generated, edited, and
-reviewed with the assistance of ChatGPT-Web[GPT-5.6 Sol].
+reviewed with the assistance of ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].

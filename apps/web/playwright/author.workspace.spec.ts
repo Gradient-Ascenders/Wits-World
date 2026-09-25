@@ -860,6 +860,56 @@ test('existing Event location focuses its saved point, supports dragging, and ha
   expect(consoleErrors).toEqual([]);
 });
 
+test('Player review uses a responsive, privacy-safe master-detail workflow', async ({
+  page,
+}, testInfo) => {
+  const caseId = uuid('a', 1);
+  const detail = trustCaseFixture(caseId);
+  await installTrustReviewApi(page, detail);
+  const consoleErrors = monitorConsoleErrors(page);
+
+  await page.setViewportSize({ height: 950, width: 1440 });
+  await page.goto(`/author/player-review/${caseId}`);
+  await expect(
+    page.getByRole('heading', { name: detail.playerName }),
+  ).toBeVisible();
+  await expect(page.getByLabel('Trust case queue')).toBeVisible();
+  await expect(
+    page.getByText('Review priority, not proof of misconduct.'),
+  ).toBeVisible();
+  await expect(page.getByText('Impossible movement')).toBeVisible();
+  await expect(page.getByText('High')).toBeVisible();
+  await expect(
+    page.getByRole('textbox', { name: /Reason and context/u }),
+  ).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    fullPage: true,
+    path: testInfo.outputPath('player-review-desktop.png'),
+  });
+
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto('/author/player-review');
+  await expect(page.getByLabel('Trust case queue')).toBeVisible();
+  await expect(page.getByText('Select a case to begin review.')).toBeVisible();
+  await page.getByRole('link', { name: /Casey Reviewer/u }).click();
+  await expect(page).toHaveURL(`/author/player-review/${caseId}`);
+  await expect(page.getByLabel('Trust case queue')).toBeHidden();
+  await expect(
+    page.getByRole('link', { name: 'Back to case queue' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: detail.playerName }),
+  ).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    fullPage: true,
+    path: testInfo.outputPath('player-review-mobile.png'),
+  });
+
+  expect(consoleErrors).toEqual([]);
+});
+
 test('Card catalogue uses filtered master detail and concise real-card read-only views', async ({
   page,
 }, testInfo) => {
@@ -1301,6 +1351,121 @@ interface AuthorApiState {
   questions: AuthorQuestion[];
   rejectEventPublication: boolean;
   trails: AuthorTrail[];
+}
+
+async function installTrustReviewApi(
+  page: Page,
+  detail: ReturnType<typeof trustCaseFixture>,
+) {
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request();
+    const method = request.method();
+    const path = new URL(request.url()).pathname.replace('/api/v1', '');
+    if (path === '/auth/me') {
+      await json(route, {
+        connectionStrategy: 'auth0',
+        id: uuid('9', 1),
+        lifecycleStatus: 'active',
+        playerName: 'author-e2e',
+        playerNameSetupRequired: false,
+        requestId: 'request-current-player',
+        role: 'author',
+      });
+      return;
+    }
+    if (path === '/author/cards' && method === 'GET') {
+      await json(route, { cards: [], requestId: 'request-cards' });
+      return;
+    }
+    if (path === '/author/trust-cases' && method === 'GET') {
+      await json(route, {
+        items: [detail],
+        page: 1,
+        pageSize: 20,
+        requestId: 'request-trust-cases',
+        totalItems: 1,
+        totalPages: 1,
+      });
+      return;
+    }
+    if (path === `/author/trust-cases/${detail.caseId}` && method === 'GET') {
+      await json(route, { case: detail, requestId: 'request-trust-case' });
+      return;
+    }
+    await json(
+      route,
+      {
+        code: 'NOT_FOUND',
+        detail: 'Not found',
+        requestId: 'request-missing',
+        status: 404,
+        title: 'Not found',
+        type: 'about:blank',
+      },
+      404,
+    );
+  });
+}
+
+function trustCaseFixture(caseId: string) {
+  return {
+    activeRestrictionCount: 0,
+    band: 'urgent_review',
+    canReview: true,
+    caseId,
+    evidence: [
+      {
+        basePoints: 25,
+        effectivePoints: 21,
+        evidenceId: uuid('b', 1),
+        expiresAt: '2026-12-24T09:00:00.000Z',
+        observedAt: '2026-09-25T09:00:00.000Z',
+        policyVersion: 'trust-v1',
+        safeSourceType: 'movement_decision',
+        severity: 'high',
+        signalType: 'impossible_movement',
+        state: 'active',
+      },
+    ],
+    history: [
+      {
+        actorPlayerId: null,
+        actorPlayerName: null,
+        actorType: 'system',
+        caseVersionAfter: 1,
+        caseVersionBefore: 0,
+        decisionId: uuid('c', 1),
+        decisionType: 'case_opened',
+        evidenceIds: [uuid('b', 1)],
+        occurredAt: '2026-09-25T09:00:00.000Z',
+        policyVersion: 'trust-v1',
+        previousStatus: null,
+        reasonCode: 'review_band_reached',
+        reasonNote: null,
+        restrictions: [],
+        resultingStatus: 'open',
+      },
+    ],
+    latestRestrictionExpiry: null,
+    openedAt: '2026-09-25T09:00:00.000Z',
+    playerId: uuid('d', 1),
+    playerName: 'Casey Reviewer',
+    policyVersion: 'trust-v1',
+    score: 79,
+    scoreExplanation: {
+      evaluatedAt: '2026-09-25T09:00:00.000Z',
+      finalScore: 79,
+      movementPoints: 50,
+      opponentPatternPoints: 20,
+      reviewBand: 'urgent_review',
+      snapshotId: uuid('e', 1),
+      sourceSignalCount: 4,
+      submissionConflictPoints: 9,
+    },
+    status: 'open',
+    updatedAt: '2026-09-25T09:00:00.000Z',
+    version: 3,
+  } as const;
 }
 
 async function installAuthorApi(page: Page): Promise<AuthorApiState> {

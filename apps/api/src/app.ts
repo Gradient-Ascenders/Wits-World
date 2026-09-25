@@ -101,6 +101,8 @@ import type { DeveloperPublicDataService } from './developer/developer-public-da
 import { registerDeveloperApiAuthentication } from './developer/developer-api-authentication.js';
 import { developerApiRoutes } from './routes/developer-api.js';
 import type { RateProtection } from './security/rate-protection.js';
+import type { TrustReviewService } from './trust/trust-review-service.js';
+import { authorTrustReviewRoutes } from './routes/author-trust-review.js';
 
 export interface EventServices {
   discovery: EventDiscoveryService;
@@ -129,6 +131,7 @@ export interface BuildAppOptions {
   challengeAttemptServices?: ChallengeAttemptServices;
   cardServices?: CardServices;
   authorContentServices?: AuthorContentServices;
+  trustReviewService?: TrustReviewService;
   trailServices?: TrailServices;
   cpuMatchService?: CpuMatchService;
   asyncPvpService?: AsyncPvpService;
@@ -210,6 +213,7 @@ export async function buildApp({
   challengeAttemptServices,
   cardServices,
   authorContentServices,
+  trustReviewService,
   trailServices,
   cpuMatchService,
   asyncPvpService,
@@ -344,6 +348,9 @@ export async function buildApp({
       'Author content services require a player identity service.',
     );
   }
+  if (trustReviewService && !playerIdentityService) {
+    throw new Error('Trust review services require a player identity service.');
+  }
   if (trailServices && !playerIdentityService) {
     throw new Error('Trail services require a player identity service.');
   }
@@ -436,6 +443,11 @@ export async function buildApp({
         {
           name: 'Authoring',
           description: 'Protected Author-only Basic content management.',
+        },
+        {
+          name: 'Trust review',
+          description:
+            'Protected Author-only review of privacy-limited trust cases and human decisions.',
         },
         {
           name: 'Matches',
@@ -614,6 +626,13 @@ export async function buildApp({
     await app.register(authorContentRoutes, {
       prefix: '/api/v1',
       service: authorContentServices.read,
+    });
+  }
+
+  if (trustReviewService) {
+    await app.register(authorTrustReviewRoutes, {
+      prefix: '/api/v1',
+      service: trustReviewService,
     });
   }
 

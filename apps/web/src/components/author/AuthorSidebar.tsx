@@ -4,6 +4,7 @@ import {
   ChartBarIcon,
   ClipboardTextIcon,
   ListIcon,
+  ShieldWarningIcon,
   StackIcon,
 } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
@@ -15,7 +16,12 @@ const sections = [
   { section: 'events', label: 'Events', icon: CalendarBlankIcon },
   { section: 'cards', label: 'Cards', icon: CardsIcon },
   { section: 'campaigns', label: 'Campaigns', icon: StackIcon },
-  { section: 'review', label: 'Review', icon: ClipboardTextIcon },
+  { section: 'review', label: 'Content review', icon: ClipboardTextIcon },
+  {
+    section: 'playerReview',
+    label: 'Player review',
+    icon: ShieldWarningIcon,
+  },
   { section: 'analytics', label: 'Analytics', icon: ChartBarIcon },
 ] as const;
 

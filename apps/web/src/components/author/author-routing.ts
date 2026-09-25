@@ -24,6 +24,7 @@ export type AuthorWorkspaceRoute =
   | { mode: 'new'; section: 'cards' }
   | { cardId: string; mode: 'detail' | 'edit'; section: 'cards' }
   | { mode: 'list'; section: 'review' }
+  | { caseId?: string; mode: 'detail' | 'list'; section: 'playerReview' }
   | { mode: 'list'; section: 'analytics' }
   | { mode: 'list' | 'new'; section: 'campaigns' }
   | {
@@ -45,6 +46,12 @@ export function parseAuthorWorkspaceRoute(
 
   if (segments[0] === 'review') {
     return { mode: 'list', section: 'review' };
+  }
+
+  if (segments[0] === 'player-review') {
+    return segments[1]
+      ? { caseId: segments[1], mode: 'detail', section: 'playerReview' }
+      : { mode: 'list', section: 'playerReview' };
   }
 
   if (segments[0] === 'analytics') {
@@ -177,4 +184,7 @@ export const authorPaths = {
   newQuestion: (eventId: string, challengeId: string) =>
     `${authorPaths.questions(eventId, challengeId)}/new`,
   review: `${AUTHOR_ROOT}/review`,
+  playerReview: `${AUTHOR_ROOT}/player-review`,
+  playerReviewCase: (caseId: string) =>
+    `${AUTHOR_ROOT}/player-review/${encodeURIComponent(caseId)}`,
 } as const;

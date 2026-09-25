@@ -14,8 +14,9 @@ the deterministic `trust-v1` scoring service, authoritative signal ingestion,
 periodic decay/recovery evaluation, and server-side enforcement of previously
 reviewed restrictions. Migration
 `0048_implement_trust_scoring_and_enforcement.sql` adds only forward schema
-hardening needed by that runtime. Later issues expose reviewer and player
-experiences; score internals remain private.
+hardening needed by that runtime. Issue `#256` adds the Author-only reviewer
+console and API over that existing persistence. Player appeal submission and
+appeal resolution remain later work; score internals remain private.
 
 The policy builds an explainable picture from weak indicators over time. A
 signal means that authoritative application data matched a review condition; it
@@ -281,6 +282,21 @@ An Author cannot review, restrict, dismiss, adjust a signal for, or resolve an
 appeal concerning their own player account. A server-side object-authorisation
 check enforces this independently from the UI.
 
+Issue `#256` exposes the queue at `/author/player-review` and a case detail at
+`/author/player-review/:caseId`. Search, status, band, pagination, score
+explanation, evidence state, and audit history come from the API. The browser
+does not calculate scores, severity, restrictions, or outcomes. Severity and
+priority use text and icons as well as colour, and temporary restrictions
+require a separate confirmation step. A stale expected case version returns an
+HTTP `409` conflict and the reviewer must load the latest case before deciding
+again.
+
+The first reviewer delivery is deliberately limited to `trust-v1`: the three
+documented restriction scopes, durations of 1 through 168 hours, a reason of 1
+through 1,000 characters, and at most 100 queue rows per page. It does not create
+`trust-v2` card-trade holds, accept player appeals, resolve appeals, display raw
+location, or perform automatic enforcement decisions.
+
 ## Proportionate human decisions
 
 Reviewers may:
@@ -457,4 +473,4 @@ automated checks. It does not add implementation-mirroring production tests.
 ## AI declaration
 
 This policy was planned, generated, edited, and reviewed with the assistance of
-Codex[GPT-5.6 Sol] and ChatGPT-Web[GPT-5.6 Sol].
+Codex[GPT-5.6 Sol], ChatGPT-Web[GPT-5.6 Sol], and Codex[GPT-5].
