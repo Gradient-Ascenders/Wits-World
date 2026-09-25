@@ -117,6 +117,7 @@ function evolutionPreview(
     copies,
     copiesRequired: 3,
     deckLockedCopyCount,
+    tradeReservedCopyCount: 0,
     eligibleCopyCount,
     ownedCopyCount: cards.length,
     requestId: 'evolution-preview-request',
@@ -515,6 +516,43 @@ describe('card collection page', () => {
     expect(section).toHaveTextContent(
       'Remove locked copies from saved decks first',
     );
+  });
+
+  it('shows trade-reserved evolution availability instead of a retry error', async () => {
+    const user = userEvent.setup();
+    const cards = duplicateCards(4);
+    const preview = evolutionPreview(cards, 2);
+    const reservedPreview = {
+      ...preview,
+      copies: preview.copies.map((copy, index) => ({
+        ...copy,
+        lockReason: index === 2 ? 'trade_reservation' : copy.lockReason,
+      })),
+      deckLockedCopyCount: 1,
+      tradeReservedCopyCount: 1,
+      unavailableReason: 'trade_reservation',
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(collectionResponse(cards))
+        .mockResolvedValueOnce(jsonResponse(reservedPreview)),
+    );
+
+    renderCollection();
+    await user.click(await screen.findByRole('button', { name: 'Evolutions' }));
+    expect(await screen.findByText('Copies reserved for trade')).toBeVisible();
+    expect(screen.queryByText('Availability unknown')).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole('button', { name: 'Preview Quillip evolution' }),
+    );
+    expect(screen.getByText('Reserved for trade')).toBeVisible();
+    expect(
+      screen.getByText(
+        /End the active trade offer before evolving reserved copies/,
+      ),
+    ).toBeVisible();
   });
 
   it('previews the fixed result before confirmation and supports cancellation', async () => {

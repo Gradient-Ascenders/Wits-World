@@ -140,6 +140,37 @@ describe('card API client', () => {
     );
   });
 
+  it('accepts a trade-reserved copy as unavailable without hiding the evolution', async () => {
+    const preview = buildEvolutionPreview();
+    const copies = preview.copies.map((copy, index) => ({
+      ...copy,
+      eligible: index < 2,
+      lockReason:
+        index === 2 ? 'trade_reservation' : index === 3 ? 'saved_deck' : null,
+    }));
+    const reservedPreview = {
+      ...preview,
+      canEvolve: false,
+      copies,
+      eligibleCopyCount: 2,
+      tradeReservedCopyCount: 1,
+      unavailableReason: 'trade_reservation',
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse(reservedPreview)),
+    );
+
+    await expect(
+      previewCardEvolution({
+        apiBaseUrl,
+        getAccessToken,
+        signal: new AbortController().signal,
+        sourceCardDefinitionId: preview.source.cardDefinitionId,
+      }),
+    ).resolves.toEqual(reservedPreview);
+  });
+
   it('rejects inconsistent or leaked evolution eligibility fields', async () => {
     const preview = buildEvolutionPreview();
     vi.stubGlobal(
@@ -415,6 +446,7 @@ describe('card API client', () => {
     [404, 'EVOLUTION_NOT_AVAILABLE', 'evolution-not-available'],
     [409, 'EVOLUTION_COPIES_INSUFFICIENT', 'evolution-insufficient-copies'],
     [409, 'EVOLUTION_COPIES_DECK_LOCKED', 'evolution-deck-locked'],
+    [409, 'EVOLUTION_COPIES_TRADE_RESERVED', 'evolution-trade-reserved'],
     [409, 'EVOLUTION_REPLAY_CONFLICT', 'evolution-replay-conflict'],
     [403, 'ACCOUNT_UNAVAILABLE', 'account-unavailable'],
   ] as const)(
@@ -534,6 +566,7 @@ function buildEvolutionPreview() {
     copies,
     copiesRequired: 3,
     deckLockedCopyCount: 1,
+    tradeReservedCopyCount: 0,
     eligibleCopyCount: 3,
     ownedCopyCount: 4,
     requestId: 'evolution-preview-request',
