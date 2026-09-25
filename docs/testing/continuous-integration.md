@@ -18,11 +18,11 @@ workflow passed rather than treating an available merge action as evidence.
 The workflows are separated by event so pull requests have no dependency on
 the deployment runner:
 
-| Workflow                              | Trigger                                 | Responsibility                                                                                                                                                                                             |
-| ------------------------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/.gitea/workflows/pr-validation.yml` | Pull requests targeting `main`          | Runs repository/application/shared-package validation plus migration and database integration against an isolated PostGIS service; plus Basic Playwright E2E in a separate isolated PostGIS job; no Azure. |
-| `/.gitea/workflows/ci.yml`            | Pushes to `main`                        | Runs validation, publishes coverage, creates production artifacts when required, and deploys affected applications.                                                                                        |
-| `/.gitea/workflows/docs-deploy.yml`   | Documentation-relevant pushes to `main` | Builds and deploys the documentation site to Cloudflare Pages.                                                                                                                                             |
+| Workflow                              | Trigger                                                        | Responsibility                                                                                                                                                                                             |
+| ------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/.gitea/workflows/pr-validation.yml` | Pull requests targeting `main`                                 | Runs repository/application/shared-package validation plus migration and database integration against an isolated PostGIS service; plus Basic Playwright E2E in a separate isolated PostGIS job; no Azure. |
+| `/.gitea/workflows/ci.yml`            | Pushes to `main`; manual runs on `main`                        | Runs validation, publishes coverage, creates production artifacts when required, and deploys affected applications.                                                                                        |
+| `/.gitea/workflows/docs-deploy.yml`   | Documentation-relevant pushes to `main`; manual runs on `main` | Builds and deploys the documentation site to Cloudflare Pages.                                                                                                                                             |
 
 The resulting flow is:
 
@@ -54,6 +54,20 @@ C220 validation/build
 Keeping Azure jobs out of the pull-request workflow lets a PR finish as soon as
 its C220 validation gate succeeds. A busy Azure runner cannot add a deployment
 scheduling tail to pull-request feedback.
+
+### Recover a missing main deployment
+
+If a merge reaches `main` but Gitea does not create the expected push workflow,
+open the repository Actions page, select **Continuous Integration**, choose
+**Run workflow**, and select the `main` branch. Repeat this for
+**Deploy Documentation** when the missing release includes documentation. The
+deployment jobs reject manual runs for any ref other than `refs/heads/main`.
+
+A manual CI run has no push-before commit. The conservative change detectors
+therefore build fresh Web and API artifacts before the existing validation,
+current-main, integrity, deployment, and health-check gates run. Treat the
+workflow result for the exact main SHA as deployment evidence; starting a run
+does not prove that production changed successfully.
 
 ## Runners
 
@@ -268,3 +282,5 @@ Codex-CLI[GPT-6], Codex-CLI[GPT-5], Codex[GPT-5], and ChatGPT-Web[GPT-5.6 Sol]
 ```
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+Manual deployment recovery documented with assistance from Codex[GPT-5].

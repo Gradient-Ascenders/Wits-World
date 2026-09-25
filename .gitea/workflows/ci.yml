@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   static-analysis:
@@ -546,7 +547,7 @@ jobs:
     name: Publish live coverage badge
     needs:
       - validation
-    if: ${{ gitea.event_name == 'push' && gitea.ref == 'refs/heads/main' }}
+    if: ${{ gitea.ref == 'refs/heads/main' && (gitea.event_name == 'push' || gitea.event_name == 'workflow_dispatch') }}
     runs-on: wits-world-ci
 
     steps:
@@ -611,7 +612,7 @@ jobs:
     name: Deploy API to Azure
     needs:
       - validation
-    if: ${{ gitea.event_name == 'push' && gitea.ref == 'refs/heads/main' }}
+    if: ${{ gitea.ref == 'refs/heads/main' && (gitea.event_name == 'push' || gitea.event_name == 'workflow_dispatch') }}
     runs-on: azure-deploy
 
     env:
@@ -1138,7 +1139,7 @@ jobs:
     name: Deploy Web to Azure
     needs:
       - validation
-    if: ${{ gitea.event_name == 'push' && gitea.ref == 'refs/heads/main' }}
+    if: ${{ gitea.ref == 'refs/heads/main' && (gitea.event_name == 'push' || gitea.event_name == 'workflow_dispatch') }}
     runs-on: azure-deploy
 
     env:
