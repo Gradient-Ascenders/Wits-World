@@ -1,5 +1,6 @@
 import { StateIcon } from '../components/StatusMessage';
-import { Skeleton } from '../components/LoadingState';
+import { PageLoadingState } from '../components/LoadingState';
+import { QuestMarker } from '../components/branding/QuestMarker';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'wouter';
 
@@ -545,16 +546,10 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
 
   if (attempt === null || viewState === 'loading') {
     return (
-      <section
-        aria-live="polite"
-        className="challenge-panel challenge-page"
-        role="status"
-      >
-        <p className="eyebrow">Challenge</p>
-        <h1>Loading your challenge</h1>
-        <p>Wits World is restoring your saved attempt.</p>
-        <Skeleton layout="rows" />
-      </section>
+      <PageLoadingState
+        title="Loading your challenge"
+        description="Wits World is restoring your saved attempt."
+      />
     );
   }
 
@@ -567,6 +562,7 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
         role="status"
       >
         <p className="eyebrow">Challenge time ended</p>
+        {isTimeoutChecking ? <QuestMarker /> : null}
         <h1 ref={timeoutHeading} tabIndex={-1}>
           Checking your result
         </h1>
@@ -588,14 +584,11 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
 
   if (currentQuestion === undefined) {
     return (
-      <section
-        aria-live="polite"
-        className="challenge-panel challenge-page"
-        role="status"
+      <PageLoadingState
+        className="challenge-result-loading"
+        title="Checking your result"
+        description="All answers are saved. Wits World is loading the final result."
       >
-        <p className="eyebrow">Challenge</p>
-        <h1>Checking your result</h1>
-        <p>All answers are saved. Wits World is loading the final result.</p>
         <button
           className="button"
           onClick={() => setReloadRevision((revision) => revision + 1)}
@@ -603,7 +596,7 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
         >
           Refresh result
         </button>
-      </section>
+      </PageLoadingState>
     );
   }
 

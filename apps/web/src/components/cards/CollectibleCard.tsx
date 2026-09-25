@@ -8,6 +8,7 @@ import type {
 } from '../../api/cards';
 
 import { CardFrame } from './CardFrame';
+import { useCardTilt } from './useCardTilt';
 
 interface CollectibleCardProps {
   actions?: ReactNode;
@@ -34,8 +35,11 @@ export function CardThumbnail({
   card,
   onClick,
 }: CardThumbnailProps) {
+  const tilt = useCardTilt<HTMLButtonElement>();
+
   return (
     <button
+      {...tilt}
       aria-label={accessibleLabel}
       className={`card-thumbnail card-thumbnail__button collectible-card--${card.rarity}${card.isActive ? '' : ' card-thumbnail--inactive'}`}
       onClick={onClick}

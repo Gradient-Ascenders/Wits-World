@@ -636,7 +636,7 @@ export function createTrustService(
         candidates = (
           await client.query<{ player_id: string }>(
             `
-              select distinct candidate.player_id::text
+              select distinct candidate.player_id::text as player_id
                 from (
                   select signal.player_id
                     from private.trust_signals signal
@@ -650,7 +650,7 @@ export function createTrustService(
                    where player.lifecycle_status = 'active'
                      and trust_case.status in ('open', 'under_review')
                 ) candidate
-               order by candidate.player_id
+               order by candidate.player_id::text
                limit $1
             `,
             [limit],

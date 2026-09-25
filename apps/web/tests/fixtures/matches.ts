@@ -39,6 +39,7 @@ export function buildCreature(
       },
     ],
     name: `${titleCase(overrides.affinity ?? 'wit')} Creature`,
+    rarity: 'common' as const,
     remainingPower: 10,
     ...overrides,
   };

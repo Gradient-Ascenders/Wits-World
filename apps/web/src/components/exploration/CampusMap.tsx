@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowClockwise, MapTrifold } from '@phosphor-icons/react';
+import { QuestMarker } from '../branding/QuestMarker';
+import { useSignInMapStatus } from '../auth/startup-state';
 
 import {
   createMapboxMap,
@@ -57,6 +59,8 @@ export function CampusMap({
   const selectedPointRef = useRef<MapPoint | null>(selectedPoint);
   const [status, setStatus] = useState<MapStatus>('loading');
   const [attempt, setAttempt] = useState(0);
+
+  useSignInMapStatus(status);
 
   pointsRef.current = points;
   focusPointRequestRef.current = focusPointRequest;
@@ -249,7 +253,7 @@ export function CampusMap({
   }, [attempt, configuration, mapFactory]);
 
   return (
-    <div className="campus-map">
+    <div className="campus-map" data-sign-in-map>
       <div
         aria-label={accessibleLabel}
         className="campus-map__canvas"
@@ -259,7 +263,7 @@ export function CampusMap({
 
       {status === 'loading' ? (
         <div aria-live="polite" className="map-state" role="status">
-          <span aria-hidden="true" className="map-state__indicator" />
+          <QuestMarker />
           <span>Loading the campus map…</span>
         </div>
       ) : null}

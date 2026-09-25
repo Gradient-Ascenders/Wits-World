@@ -16,6 +16,7 @@ import {
 } from '../src/matches/basic-cpu-deck.js';
 import {
   createCpuMatchService,
+  CpuMatchCompletedError,
   CpuMatchDeckError,
   CpuMatchActionError,
   CpuMatchSubmissionConflictError,
@@ -898,6 +899,116 @@ describe('CPU match service', () => {
     );
   });
 
+  it('records an authoritative CPU win when the player forfeits', async () => {
+    const state = terminalReadyState();
+    const completedAt = new Date('2026-08-16T00:04:00.000Z');
+    const query = vi.fn(async (statement: string) => {
+      if (
+        statement === 'begin' ||
+        statement === 'commit' ||
+        statement === 'rollback'
+      ) {
+        return { rows: [] };
+      }
+      if (statement.includes('from public.cpu_matches')) {
+        return {
+          rows: [
+            {
+              id: MATCH_ID,
+              player_id: PLAYER_ID,
+              status: 'active',
+              state,
+              version: 3,
+              turn_started_at: new Date('2026-08-16T00:03:00.000Z'),
+              turn_deadline: new Date('2026-08-16T00:05:00.000Z'),
+              winner: null,
+              started_at: new Date('2026-08-16T00:00:00.000Z'),
+              completed_at: null,
+              legacy_log_actions: [],
+              card_names: {},
+              card_rarities: {},
+            },
+          ],
+        };
+      }
+      if (statement.includes('update public.cpu_matches')) {
+        return { rows: [{ id: MATCH_ID }] };
+      }
+      throw new Error(`Unexpected SQL: ${statement}`);
+    });
+    const progressionPersistence = progressionMock();
+    const service = createCpuMatchService(fakeDatabase(query), {
+      clock: { now: () => completedAt },
+      progressionPersistence,
+    });
+
+    const response = await service.forfeitMatch({
+      playerId: PLAYER_ID,
+      matchId: MATCH_ID,
+      expectedVersion: 3,
+    });
+
+    expect(response).toMatchObject({
+      status: 'completed',
+      version: 4,
+      winner: 'cpu',
+      completedAt: completedAt.toISOString(),
+      state: { phase: 'completed', currentSide: null },
+    });
+    expect(progressionPersistence.recordCpuMatch).toHaveBeenCalledWith(
+      expect.objectContaining({ query: expect.any(Function) }),
+      MATCH_ID,
+    );
+    expect(query).toHaveBeenCalledWith('commit');
+  });
+
+  it('rejects a forfeit when the match already completed', async () => {
+    const state = {
+      ...terminalReadyState(),
+      phase: 'completed',
+      winner: 'player',
+    } as const;
+    const query = vi.fn(async (statement: string) => {
+      if (statement === 'begin' || statement === 'rollback') {
+        return { rows: [] };
+      }
+      if (statement.includes('from public.cpu_matches')) {
+        return {
+          rows: [
+            {
+              id: MATCH_ID,
+              player_id: PLAYER_ID,
+              status: 'completed',
+              state,
+              version: 4,
+              turn_started_at: null,
+              turn_deadline: null,
+              winner: 'player',
+              started_at: new Date('2026-08-16T00:00:00.000Z'),
+              completed_at: new Date('2026-08-16T00:03:30.000Z'),
+              legacy_log_actions: [],
+              card_names: {},
+              card_rarities: {},
+            },
+          ],
+        };
+      }
+      throw new Error(`Unexpected SQL: ${statement}`);
+    });
+    const service = createCpuMatchService(fakeDatabase(query));
+
+    await expect(
+      service.forfeitMatch({
+        playerId: PLAYER_ID,
+        matchId: MATCH_ID,
+        expectedVersion: 3,
+      }),
+    ).rejects.toBeInstanceOf(CpuMatchCompletedError);
+
+    expect(query).toHaveBeenCalledWith('rollback');
+    expect(query).not.toHaveBeenCalledWith('commit');
+  });
+
   it('rolls back a terminal CPU match when progression fails', async () => {
     const state = terminalReadyState();
     const query = terminalActionQuery(state);
@@ -1069,6 +1180,9 @@ describe('CPU match service', () => {
             [firstCreature.card.id]: 'Campus Scholar',
             [firstPowerCard.id]: 'Tactical Surge',
           },
+          card_rarities: {
+            [firstCreature.card.id]: 'epic',
+          },
           completed_at: null,
           id: MATCH_ID,
           log_actions: [
@@ -1097,6 +1211,7 @@ describe('CPU match service', () => {
 
     expect(response.state.player.creatures[0]).toMatchObject({
       name: 'Campus Scholar',
+      rarity: 'epic',
       moves: expect.arrayContaining([
         expect.objectContaining({ powerCost: 0 }),
       ]),

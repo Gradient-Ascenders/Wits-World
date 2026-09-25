@@ -367,11 +367,11 @@ export async function cleanupExpiredTerritoryGrants(
          from private.territory_policy_versions
         where policy_version = $1
      ), deleted as (
-       delete from private.territory_zone_grants grant
+       delete from private.territory_zone_grants zone_grant
         using policy
-        where grant.territory_policy_version = $1
-          and grant.expires_at + policy.grant_cleanup_deadline <= clock_timestamp()
-       returning grant.id
+        where zone_grant.territory_policy_version = $1
+          and zone_grant.expires_at + policy.grant_cleanup_deadline <= clock_timestamp()
+       returning zone_grant.id
      )
      select count(*)::integer as deleted_count from deleted`,
     [TERRITORY_POLICY_VERSION],
@@ -386,21 +386,21 @@ export async function cancelExpiredTerritoryContenders(
     `with expired as (
        select queue.id
          from private.ranked_queue_entries queue
-         left join private.territory_zone_grants grant
-           on grant.queue_entry_id = queue.id
+         left join private.territory_zone_grants zone_grant
+           on zone_grant.queue_entry_id = queue.id
         where queue.territory_contender = true
           and queue.status = 'searching'
           and (
-            grant.id is null
-            or grant.used_at is not null
-            or grant.expires_at <= clock_timestamp()
+            zone_grant.id is null
+            or zone_grant.used_at is not null
+            or zone_grant.expires_at <= clock_timestamp()
             or not exists (
               select 1
                 from public.territory_zones zone
-               where zone.id = grant.zone_id
-                 and zone.policy_version = grant.territory_policy_version
+               where zone.id = zone_grant.zone_id
+                 and zone.policy_version = zone_grant.territory_policy_version
                  and zone.status = 'active'
-                 and zone.lifecycle_version = grant.zone_lifecycle_version
+                 and zone.lifecycle_version = zone_grant.zone_lifecycle_version
             )
           )
         order by queue.id

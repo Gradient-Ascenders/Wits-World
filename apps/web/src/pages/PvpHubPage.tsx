@@ -1,4 +1,5 @@
 import { StateIcon } from '../components/StatusMessage';
+import { PageLoadingState } from '../components/LoadingState';
 import { ArrowLeft } from '@phosphor-icons/react';
 import { useAuth0 } from '@auth0/auth0-react';
 import {
@@ -886,49 +887,10 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
 function PlayerBattlesLoading() {
   return (
-    <div className="matches-page pvp-hub">
-      <header className="matches-page__header pvp-lobby-header">
-        <Link
-          aria-label="Back to Battles"
-          className="text-link pvp-lobby-header__back"
-          href="/matches"
-        >
-          <ArrowLeft size={20} aria-hidden="true" /> Battles
-        </Link>
-        <div className="pvp-lobby-header__main">
-          <div>
-            <h1>Player Battles</h1>
-            <p className="lead">
-              Challenge another explorer and take turns within 24 hours.
-            </p>
-          </div>
-        </div>
-      </header>
-
-      <nav
-        aria-busy="true"
-        aria-label="Player battle sections"
-        className="pvp-section-nav pvp-section-nav--loading"
-      >
-        <span className="pvp-loading__tab">Invitations</span>
-        <span className="pvp-loading__tab">Active</span>
-        <span className="pvp-loading__tab">History</span>
-      </nav>
-
-      <section
-        aria-busy="true"
-        aria-live="polite"
-        className="pvp-loading"
-        role="status"
-      >
-        <p>Loading player battles…</p>
-        <div aria-hidden="true" className="pvp-loading__skeleton">
-          <span />
-          <span />
-          <span />
-        </div>
-      </section>
-    </div>
+    <PageLoadingState
+      title="Loading player battles…"
+      description="Retrieving invitations, active battles, and match history."
+    />
   );
 }
 

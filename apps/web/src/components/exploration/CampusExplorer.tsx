@@ -905,6 +905,7 @@ export function CampusExplorer({
             </div>
             <div className="event-panel__scroll">
               <SelectedEventDetails
+                key={selectedEvent.id}
                 eligibilityBusy={eligibilityBusy}
                 event={selectedEvent}
                 locationState={locationState}

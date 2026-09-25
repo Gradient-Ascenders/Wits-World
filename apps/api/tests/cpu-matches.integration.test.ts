@@ -6,6 +6,7 @@ import type { AccessTokenVerifier } from '../src/auth/access-token-verifier.js';
 import { buildApp } from '../src/app.js';
 import type { AuthConfig } from '../src/config/auth.js';
 import {
+  CpuMatchCompletedError,
   CpuMatchNotFoundError,
   CpuMatchActionError,
   createCpuMatchService,
@@ -39,6 +40,7 @@ const activePlayer = {
 let app: FastifyInstance;
 let service: {
   createMatch: ReturnType<typeof vi.fn<CpuMatchService['createMatch']>>;
+  forfeitMatch: ReturnType<typeof vi.fn<CpuMatchService['forfeitMatch']>>;
   getActiveMatch: ReturnType<typeof vi.fn<CpuMatchService['getActiveMatch']>>;
   getMatch: ReturnType<typeof vi.fn<CpuMatchService['getMatch']>>;
   submitAction: ReturnType<typeof vi.fn<CpuMatchService['submitAction']>>;
@@ -61,6 +63,13 @@ beforeEach(async () => {
 
   service = {
     createMatch: vi.fn().mockResolvedValue(buildMatch()),
+    forfeitMatch: vi.fn().mockResolvedValue({
+      ...buildMatch(),
+      status: 'completed',
+      version: 1,
+      winner: 'cpu',
+      completedAt: '2026-08-16T00:01:00.000Z',
+    }),
     getActiveMatch: vi.fn().mockResolvedValue(buildMatch()),
     getMatch: vi.fn().mockResolvedValue(buildMatch()),
     submitAction: vi.fn().mockResolvedValue(buildMatch()),
@@ -454,6 +463,40 @@ describe('CPU match API', () => {
 
     expect(response.statusCode).toBe(400);
     expect(service.submitAction).not.toHaveBeenCalled();
+  });
+
+  it('forfeits the current match with the authenticated player and expected version', async () => {
+    const response = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/matches/${MATCH_ID}/forfeit`,
+      payload: { expectedVersion: 0 },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(service.forfeitMatch).toHaveBeenCalledWith({
+      playerId: PLAYER_ID,
+      matchId: MATCH_ID,
+      expectedVersion: 0,
+    });
+    expect(response.json()).toMatchObject({
+      matchId: MATCH_ID,
+      status: 'completed',
+      winner: 'cpu',
+      requestId: expect.any(String),
+    });
+  });
+
+  it('returns a conflict when the match completed before the forfeit', async () => {
+    service.forfeitMatch.mockRejectedValueOnce(new CpuMatchCompletedError());
+
+    const response = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/matches/${MATCH_ID}/forfeit`,
+      payload: { expectedVersion: 0 },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: 'CPU_MATCH_COMPLETED' });
   });
 
   it('lists only the authenticated player history through the service boundary', async () => {

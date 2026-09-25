@@ -13,8 +13,9 @@ import {
   OfflineExplorePage,
 } from './offline/OfflinePages';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { LoadingState } from './components/LoadingState';
+import { PageLoadingState } from './components/LoadingState';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { StartupGate, StartupSettler } from './components/auth/startup-state';
 import { AuthorRoute } from './components/auth/AuthorRoute';
 import { GuardedRouter } from './components/author/AuthorNavigationGuard';
 import { CurrentPlayerProvider } from './auth/CurrentPlayerProvider';
@@ -64,7 +65,15 @@ export function AppRoutes({
           <AppToaster />
           <OfflineStatus />
           <ServiceWorkerUpdate />
-          <Suspense fallback={<LoadingState />}>
+          <Suspense
+            fallback={
+              <PageLoadingState
+                title="Loading Wits World"
+                description="Preparing this page…"
+              />
+            }
+          >
+            <StartupSettler />
             <Switch>
               <Route path="/" component={HomePage} />
               <Route path="/explore">
@@ -151,7 +160,7 @@ export function AppRoutes({
                 </ProtectedRoute>
               </Route>
               <Route path="/about">
-                <Redirect replace to="/#project-context" />
+                <Redirect replace to="/" />
               </Route>
               <Route component={NotFoundPage} />
             </Switch>
@@ -204,14 +213,16 @@ export function App(props: AppProps) {
   return (
     <ErrorBoundary>
       <GuardedRouter>
-        <AppRoutes
-          apiBaseUrl={props.apiBaseUrl}
-          locationClaimProvider={props.locationClaimProvider}
-          locationObservationProvider={props.locationObservationProvider}
-          locationPermissionProvider={props.locationPermissionProvider}
-          mapFactory={props.mapFactory}
-          mapboxAccessToken={props.mapboxAccessToken}
-        />
+        <StartupGate>
+          <AppRoutes
+            apiBaseUrl={props.apiBaseUrl}
+            locationClaimProvider={props.locationClaimProvider}
+            locationObservationProvider={props.locationObservationProvider}
+            locationPermissionProvider={props.locationPermissionProvider}
+            mapFactory={props.mapFactory}
+            mapboxAccessToken={props.mapboxAccessToken}
+          />
+        </StartupGate>
       </GuardedRouter>
     </ErrorBoundary>
   );

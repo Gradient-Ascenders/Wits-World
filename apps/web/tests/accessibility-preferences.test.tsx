@@ -15,6 +15,7 @@ import {
   ReadPageControl,
   readablePageText,
 } from '../src/accessibility/ReadPageControl';
+import { useCardTilt } from '../src/components/cards/useCardTilt';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -60,6 +61,49 @@ describe('accessibility preferences', () => {
     expect(prefersReducedMotion()).toBe(true);
   });
 
+  it.each([
+    {
+      appMotion: 'reduce' as const,
+      description: 'app reduce over OS normal',
+      osReduced: false,
+      tilts: false,
+    },
+    {
+      appMotion: 'full' as const,
+      description: 'app full over OS reduce',
+      osReduced: true,
+      tilts: true,
+    },
+  ])(
+    'applies $description to JavaScript card tilt',
+    ({ appMotion, osReduced, tilts }) => {
+      vi.stubGlobal(
+        'matchMedia',
+        vi.fn().mockReturnValue({ matches: osReduced }),
+      );
+      const requestAnimationFrame = vi.fn().mockReturnValue(1);
+      vi.stubGlobal('requestAnimationFrame', requestAnimationFrame);
+      vi.stubGlobal('cancelAnimationFrame', vi.fn());
+      updateAccessibilityPreferences({ motion: appMotion });
+
+      render(<TiltTestCard />);
+      fireEvent.pointerEnter(
+        screen.getByRole('button', { name: 'Test card' }),
+        {
+          pointerType: 'mouse',
+        },
+      );
+
+      expect(requestAnimationFrame).toHaveBeenCalledTimes(tilts ? 1 : 0);
+      const card = screen.getByRole('button', { name: 'Test card' });
+      if (tilts) {
+        expect(card).toHaveAttribute('data-hovered');
+      } else {
+        expect(card).not.toHaveAttribute('data-hovered');
+      }
+    },
+  );
+
   it('accepts valid choices from another tab and rejects invalid values', () => {
     initializeAccessibilityPreferences();
     window.dispatchEvent(
@@ -85,6 +129,11 @@ describe('accessibility preferences', () => {
     expect(accessibilityPreferencesSaved()).toBe(false);
   });
 });
+
+function TiltTestCard() {
+  const tilt = useCardTilt<HTMLButtonElement>();
+  return <button aria-label="Test card" type="button" {...tilt} />;
+}
 
 describe('read aloud', () => {
   it('reads visible navigation and main text without hidden or input content', () => {

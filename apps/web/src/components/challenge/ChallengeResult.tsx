@@ -15,6 +15,9 @@ export function ChallengeResult({
   apiBaseUrl,
 }: ChallengeResultProps) {
   const { cards } = attempt.reward;
+  const hasTerritoryBonus =
+    attempt.ownerBonus?.outcome === 'awarded' &&
+    attempt.ownerBonus.card !== null;
 
   return (
     <section
@@ -42,12 +45,18 @@ export function ChallengeResult({
           <span>out of {attempt.totalQuestions} correct</span>
         </p>
       </header>
-      <ChallengeRewards cards={cards} apiBaseUrl={apiBaseUrl} />
+      <ChallengeRewards
+        key={attempt.attemptId}
+        cards={cards}
+        apiBaseUrl={apiBaseUrl}
+        attemptId={attempt.attemptId}
+        ownerBonus={attempt.ownerBonus}
+      />
       <nav
         className="challenge-result__actions"
         aria-label="Continue after challenge"
       >
-        {cards.length > 0 && (
+        {(cards.length > 0 || hasTerritoryBonus) && (
           <Link className="button" href="/collection">
             View collection
           </Link>

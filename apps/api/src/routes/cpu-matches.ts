@@ -10,6 +10,7 @@ import {
   CpuMatchSubmissionConflictError,
   CpuMatchVersionConflictError,
   type CpuMatchService,
+  type ForfeitCpuMatchInput,
   type SubmitCpuMatchActionInput,
 } from '../matches/cpu-match-service.js';
 import type { BattleAction } from '@wits-world/game-rules';
@@ -31,6 +32,10 @@ interface SubmitActionBody {
   submissionId: string;
   expectedVersion: number;
   action: Exclude<BattleAction, { type: 'timeout' }>;
+}
+
+interface ForfeitMatchBody {
+  expectedVersion: number;
 }
 
 const matchParamsSchema = {
@@ -104,6 +109,15 @@ const actionBodySchema = {
         },
       ],
     },
+  },
+} as const;
+
+const forfeitBodySchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['expectedVersion'],
+  properties: {
+    expectedVersion: { type: 'integer', minimum: 0 },
   },
 } as const;
 
@@ -285,6 +299,7 @@ const publicCreatureSchema = {
   required: [
     'id',
     'affinity',
+    'rarity',
     'maxHp',
     'maxPower',
     'currentHp',
@@ -298,6 +313,10 @@ const publicCreatureSchema = {
     affinity: {
       type: 'string',
       enum: ['wit', 'grit', 'spark', 'spirit', 'mystic'],
+    },
+    rarity: {
+      type: 'string',
+      enum: ['common', 'rare', 'epic', 'legendary'],
     },
     maxHp: { type: 'integer', minimum: 0 },
     maxPower: { type: 'integer', minimum: 0 },
@@ -727,6 +746,53 @@ export const cpuMatchRoutes: FastifyPluginAsync<CpuMatchRoutesOptions> = async (
 
       try {
         const match = await service.submitAction(input);
+        return reply.status(200).send({
+          ...match,
+          requestId: request.id,
+        });
+      } catch (error) {
+        throw mapMatchError(error);
+      }
+    },
+  );
+
+  app.post<{
+    Params: MatchParams;
+    Body: ForfeitMatchBody;
+  }>(
+    '/matches/:matchId/forfeit',
+    {
+      preHandler: [app.authenticate, app.requireActivePlayer],
+      schema: {
+        operationId: 'forfeitCpuMatch',
+        summary: 'Forfeit an active CPU match',
+        description:
+          'Records an authoritative CPU victory and completes the current match without applying another battle action.',
+        tags: ['Matches'],
+        security: [{ bearerAuth: [] }],
+        params: matchParamsSchema,
+        querystring: emptyQuerySchema,
+        body: forfeitBodySchema,
+        response: {
+          200: matchResponseSchema,
+          400: apiErrorSchema,
+          401: apiErrorSchema,
+          403: apiErrorSchema,
+          404: apiErrorSchema,
+          409: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const player = requirePlayer(request);
+      const input: ForfeitCpuMatchInput = {
+        playerId: player.id,
+        matchId: request.params.matchId,
+        expectedVersion: request.body.expectedVersion,
+      };
+
+      try {
+        const match = await service.forfeitMatch(input);
         return reply.status(200).send({
           ...match,
           requestId: request.id,

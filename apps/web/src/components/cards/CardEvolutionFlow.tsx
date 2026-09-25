@@ -14,6 +14,7 @@ import {
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
 import { CardArtwork, CollectibleCard } from './CollectibleCard';
 import { StateIcon, StatusMessage } from '../StatusMessage';
+import { QuestMarker } from '../branding/QuestMarker';
 
 type PreviewState =
   | { status: 'loading' }
@@ -367,6 +368,7 @@ export function CardEvolutionFlow({
         <p className="eyebrow">Three copies. One new form.</p>
         {previewState.status === 'loading' ? (
           <p aria-live="polite" role="status">
+            <QuestMarker />
             Checking evolution availability…
           </p>
         ) : previewState.status === 'error' ? (

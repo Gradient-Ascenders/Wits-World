@@ -18,6 +18,11 @@ import {
   MATCH_ID,
   uuid,
 } from '../tests/fixtures/matches';
+import {
+  activePvpSummary,
+  pvpHistorySummary,
+  pvpMatch,
+} from '../tests/fixtures/pvp';
 import type { CpuMatch } from '../src/api/matches';
 
 const screenshotsDirectory = path.resolve(
@@ -25,6 +30,104 @@ const screenshotsDirectory = path.resolve(
   '../../.pr-screenshots/issue-76',
 );
 const CURRENT_PLAYER_ID = '00000000-0000-4000-8000-000000009001';
+
+test('shows rarity frames and confirms an authoritative CPU forfeit', async ({
+  page,
+}) => {
+  await routeCurrentPlayer(page);
+  const active = activeMatch(4);
+  active.state.player.creatures[0]!.rarity = 'epic';
+  active.state.cpu.activeCreature!.rarity = 'legendary';
+  const forfeited = completedMatch(5);
+  forfeited.winner = 'cpu';
+  let submittedBody: unknown;
+  await page.route('**/api/v1/matches/**', async (route) => {
+    if (route.request().url().endsWith('/forfeit')) {
+      submittedBody = route.request().postDataJSON();
+      await json(route, response(forfeited));
+      return;
+    }
+    await json(route, response(active));
+  });
+
+  await page.goto(`/matches/${MATCH_ID}`);
+  await expect(
+    page.locator('.combatant--player .card-frame--epic'),
+  ).toBeVisible();
+  await expect(
+    page.locator('.combatant--cpu .card-frame--legendary'),
+  ).toBeVisible();
+
+  const forfeit = page.getByRole('button', { name: 'Forfeit match' });
+  await forfeit.click();
+  const dialog = page.getByRole('alertdialog', {
+    name: 'Forfeit this battle?',
+  });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Keep playing' }).click();
+  await expect(forfeit).toBeFocused();
+  await forfeit.click();
+  await dialog.getByRole('button', { name: 'Confirm forfeit' }).click();
+
+  await expect(
+    page.getByRole('heading', { name: 'CPU victory — match saved' }),
+  ).toBeVisible();
+  expect(submittedBody).toEqual({ expectedVersion: 4 });
+});
+
+test('animates each server-confirmed action and damage beat on its target', async ({
+  page,
+}) => {
+  await routeCurrentPlayer(page);
+  const active = activeMatch(4);
+  const resolved = activeMatch(5);
+  resolved.battleLog = [
+    {
+      events: [
+        {
+          id: '5:0',
+          kind: 'action',
+          message: "Player's Wit Creature used Knowledge Strike 1.",
+          sequence: 5,
+          side: 'player',
+        },
+        {
+          id: '5:1',
+          kind: 'effect',
+          message: "CPU's Grit Creature took 12 damage.",
+          sequence: 5,
+          side: 'cpu',
+        },
+      ],
+      id: 'turn-1',
+      label: 'Turn 1',
+      turnNumber: 1,
+    },
+  ];
+  await page.route('**/api/v1/matches/**', async (route) => {
+    await json(
+      route,
+      response(route.request().method() === 'POST' ? resolved : active),
+    );
+  });
+
+  await page.goto(`/matches/${MATCH_ID}`);
+  await page.getByRole('button', { name: /Knowledge Strike 1/ }).click();
+  await expect(page.locator('.combatant--player')).toHaveAttribute(
+    'data-feedback',
+    'action',
+  );
+  await expect(
+    page.locator('.combatant--player .combatant__feedback'),
+  ).toHaveText('Your move');
+  await expect(page.locator('.combatant--cpu')).toHaveAttribute(
+    'data-feedback',
+    'damage',
+  );
+  await expect(page.locator('.combatant--cpu .combatant__feedback')).toHaveText(
+    '−12 HP',
+  );
+});
 
 test('hands mobile Creature sheet gestures between scrolling and dragging', async ({
   page,
@@ -585,6 +688,15 @@ test('completes a mocked authoritative CPU match through the production UI', asy
       const request = route.request();
       const pathname = new URL(request.url()).pathname;
 
+      if (pathname.endsWith('/matches/pvp/history')) {
+        await json(route, {
+          matches: [],
+          nextCursor: null,
+          requestId: 'cpu-browser-pvp-history',
+        });
+        return;
+      }
+
       if (pathname.endsWith('/matches/cpu')) {
         if (request.method() === 'GET') {
           await json(route, problem('CPU_MATCH_NOT_FOUND', 404), 404);
@@ -671,6 +783,12 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     await page.setViewportSize({ height: 844, width: 390 });
     await expectPrimaryActionWithinViewport(page);
     await expectActionContentFits(page);
+    expect(
+      (await page
+        .locator('.creature-choice-control__artwork .battle-creature-artwork')
+        .first()
+        .boundingBox())!.width,
+    ).toBeGreaterThanOrEqual(92);
 
     const openingChoice = page.getByRole('button', {
       name: /Choose Creature\s*Wit Creature 1/,
@@ -754,7 +872,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
       .evaluateAll((elements) =>
         elements.map((element) => element.getBoundingClientRect().x),
       );
-    expect(new Set(moveBoxes).size).toBe(2);
+    expect(new Set(moveBoxes).size).toBe(1);
     await zeroCostMove.focus();
     await expect(zeroCostMove).toBeFocused();
     expect(
@@ -908,7 +1026,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
 
     await page.getByRole('link', { name: 'Match history' }).tap();
     await expect(
-      page.getByRole('heading', { name: 'Completed CPU matches' }),
+      page.getByRole('heading', { name: 'Battle history' }),
     ).toBeVisible();
     await page.getByRole('link', { name: 'View saved match' }).tap();
     await expect(
@@ -960,6 +1078,22 @@ test('offers the owned active CPU match for explicit resume', async ({
   await routeCurrentPlayer(page);
   await page.route('**/api/v1/matches/**', async (route) => {
     const pathname = new URL(route.request().url()).pathname;
+    if (pathname.endsWith('/matches/pvp/history')) {
+      await json(route, {
+        matches: [],
+        nextCursor: null,
+        requestId: 'cpu-browser-active-pvp-history',
+      });
+      return;
+    }
+    if (pathname.endsWith('/matches/pvp')) {
+      await json(route, {
+        matches: [],
+        nextCursor: null,
+        requestId: 'cpu-browser-active-pvp',
+      });
+      return;
+    }
     if (pathname.endsWith('/matches/history')) {
       await json(route, {
         matches: [],
@@ -975,7 +1109,7 @@ test('offers the owned active CPU match for explicit resume', async ({
   await expect(page.locator('.site-footer')).toHaveCount(0);
   await expect(page).toHaveURL('/matches');
   await expect(
-    page.getByRole('heading', { name: 'Continue playing' }),
+    page.getByRole('heading', { name: 'CPU Battle', exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Start CPU battle' }),
@@ -989,11 +1123,11 @@ test('offers the owned active CPU match for explicit resume', async ({
     await page.setViewportSize(viewport);
     await expectNoHorizontalOverflow(page);
     await expect(
-      page.getByRole('link', { name: 'Resume battle' }),
+      page.getByRole('link', { name: 'Resume CPU battle' }),
     ).toBeVisible();
   }
 
-  await page.getByRole('link', { name: 'Resume battle' }).click();
+  await page.getByRole('link', { name: 'Resume CPU battle' }).click();
   await expect(page).toHaveURL(`/matches/${MATCH_ID}`);
   await expect(page.getByRole('heading', { name: 'Your turn' })).toBeVisible();
   expect(activeLookups).toBe(1);
@@ -1196,6 +1330,14 @@ test('renders recent results and starts from the selected deck dashboard', async
     },
   ];
   const initial = buildMatch();
+  const activePlayerBattle = activePvpSummary();
+  const playerResult = pvpHistorySummary(
+    pvpMatch({
+      completedAt: '2026-08-17T12:00:00.000Z',
+      matchId: uuid(1605),
+      status: 'completed',
+    }),
+  );
   let active: CpuMatch | null = null;
   let createRequests = 0;
   const consoleErrors: string[] = [];
@@ -1210,6 +1352,23 @@ test('renders recent results and starts from the selected deck dashboard', async
   await page.route('**/api/v1/matches/**', async (route) => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
+
+    if (pathname.endsWith('/matches/pvp/history')) {
+      await json(route, {
+        matches: [playerResult],
+        nextCursor: null,
+        requestId: 'dashboard-pvp-history',
+      });
+      return;
+    }
+    if (pathname.endsWith('/matches/pvp')) {
+      await json(route, {
+        matches: [activePlayerBattle],
+        nextCursor: null,
+        requestId: 'dashboard-active-pvp',
+      });
+      return;
+    }
 
     if (pathname.endsWith('/matches/history')) {
       await json(route, { matches: results, requestId: 'dashboard-history' });
@@ -1245,10 +1404,13 @@ test('renders recent results and starts from the selected deck dashboard', async
   ).toBeVisible();
   await expect(page.getByText('Campus Five', { exact: true })).toHaveCount(1);
   await expect(
+    page.getByRole('link', { name: 'Continue player battle' }),
+  ).toHaveAttribute('href', `/matches/pvp/${activePlayerBattle.matchId}`);
+  await expect(
     page
-      .getByRole('list', { name: 'Recent CPU match results' })
+      .getByRole('list', { name: 'Recent battle results' })
       .getByRole('listitem'),
-  ).toHaveCount(3);
+  ).toHaveCount(5);
   await expectNoHorizontalOverflow(page);
 
   await page.setViewportSize({ height: 1024, width: 768 });
@@ -1281,13 +1443,11 @@ test('renders recent results and starts from the selected deck dashboard', async
   await expect(page).toHaveURL('/matches/history');
   await expect(page.locator('.site-footer')).toHaveCount(0);
   await expect(
-    page.getByRole('heading', { name: 'Completed CPU matches' }),
+    page.getByRole('heading', { name: 'Battle history' }),
   ).toBeVisible();
   await expect(
-    page
-      .getByRole('list', { name: 'Completed CPU matches' })
-      .getByRole('listitem'),
-  ).toHaveCount(results.length);
+    page.getByRole('list', { name: 'Completed battles' }).getByRole('listitem'),
+  ).toHaveCount(results.length + 1);
 
   for (const width of [390, 768, 1440]) {
     await page.setViewportSize({ width, height: 1024 });
@@ -1297,7 +1457,7 @@ test('renders recent results and starts from the selected deck dashboard', async
     });
   }
 
-  await page.getByRole('link', { name: 'Continue or start a battle' }).click();
+  await page.getByRole('link', { name: 'Back to battles' }).click();
   await expect(page).toHaveURL('/matches');
   await page.getByRole('button', { name: 'Start CPU battle' }).click();
   await expect(page).toHaveURL(`/matches/${MATCH_ID}`);
@@ -1321,6 +1481,22 @@ test('shows deck recovery without exposing a conflicting start action', async ({
   );
   await page.route('**/api/v1/matches/**', async (route) => {
     const pathname = new URL(route.request().url()).pathname;
+    if (pathname.endsWith('/matches/pvp/history')) {
+      await json(route, {
+        matches: [],
+        nextCursor: null,
+        requestId: 'dashboard-empty-pvp-history',
+      });
+      return;
+    }
+    if (pathname.endsWith('/matches/pvp')) {
+      await json(route, {
+        matches: [],
+        nextCursor: null,
+        requestId: 'dashboard-empty-active-pvp',
+      });
+      return;
+    }
     if (pathname.endsWith('/matches/history')) {
       await json(route, { matches: [], requestId: 'dashboard-empty-history' });
       return;
@@ -1396,18 +1572,23 @@ test('keeps the desktop battlefield stable when bench and details expand', async
       }),
     );
   const before = await measure();
+  const rail = page.locator('.battle-side-rail');
+  const railHeightBefore = (await rail.boundingBox())!.height;
+  await page.locator('.battle-log > summary').click();
+  expect(await measure()).toEqual(before);
   await page.locator('.battle-bench > summary').click();
   await page.locator('.battle-details > summary').click();
   expect(await measure()).toEqual(before);
-  const rail = page.locator('.battle-side-rail');
+  expect((await rail.boundingBox())!.height).toBeGreaterThan(railHeightBefore);
   expect(
-    await rail.evaluate(
-      (element) => element.scrollHeight > element.clientHeight,
-    ),
-  ).toBe(true);
-  await rail.evaluate((element) => {
-    element.scrollTop = element.scrollHeight;
-  });
+    (await rail
+      .locator('.battle-bench .battle-creature-artwork')
+      .first()
+      .boundingBox())!.width,
+  ).toBeGreaterThanOrEqual(96);
+  await page
+    .getByText('Match version', { exact: true })
+    .scrollIntoViewIfNeeded();
   await expect(
     page.getByText('Match version', { exact: true }),
   ).toBeInViewport();
@@ -1516,11 +1697,10 @@ async function expectBattleStageFirstDesktopLayout(page: Page) {
   expect(actions).not.toBeNull();
   expect(rail).not.toBeNull();
   expect(actions!.x).toBeCloseTo(stage!.x, 0);
-  expect(actions!.width).toBeCloseTo(stage!.width, 0);
+  expect(actions!.width).toBeLessThan(stage!.width);
   expect(actions!.y).toBeGreaterThanOrEqual(stage!.y + stage!.height);
-  expect(rail!.x).toBeGreaterThanOrEqual(stage!.x + stage!.width - 8);
-  expect(rail!.y).toBeCloseTo(stage!.y, 0);
-  expect(actions!.y + actions!.height).toBeCloseTo(rail!.y + rail!.height, 0);
+  expect(rail!.x).toBeGreaterThanOrEqual(actions!.x + actions!.width - 8);
+  expect(rail!.y).toBeCloseTo(actions!.y, 0);
   expect(stage!.width).toBeGreaterThan(rail!.width * 2);
   const actionContent = await page
     .locator('.battle-action-content')
@@ -1572,9 +1752,7 @@ async function expectBattleStageFirstDesktopLayout(page: Page) {
     }
   }
 
-  await expect(
-    page.getByRole('log', { name: 'Complete authoritative battle log' }),
-  ).toBeVisible();
+  await expect(page.locator('.battle-log > summary')).toBeVisible();
 }
 
 async function expectCompletedSideRailLayout(page: Page) {

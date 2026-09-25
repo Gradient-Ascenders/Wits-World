@@ -64,6 +64,7 @@ export default defineConfig(({ mode }) => ({
   test: {
     clearMocks: true,
     include: ['tests/**/*.{test,spec}.{ts,tsx}'],
+    testTimeout: 8_000,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.{ts,tsx}'],

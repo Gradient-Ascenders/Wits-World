@@ -1,4 +1,4 @@
-import { LoadingState } from '../components/LoadingState';
+import { LoadingState, PageLoadingState } from '../components/LoadingState';
 import { StatusMessage } from '../components/StatusMessage';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useParams } from 'wouter';
@@ -308,7 +308,13 @@ export function OfflineAttemptPage() {
       setBusy(false);
     }
   }
-  if (!state && !error) return <LoadingState label="Loading saved attempt…" />;
+  if (!state && !error)
+    return (
+      <PageLoadingState
+        title="Loading saved attempt"
+        description="Restoring this challenge from your device…"
+      />
+    );
   if (!attempt)
     return (
       <section className="challenge-page">

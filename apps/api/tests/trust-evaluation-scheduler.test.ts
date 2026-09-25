@@ -109,6 +109,32 @@ describe('trust evaluation scheduler', () => {
     expect(purgeExpiredData).toHaveBeenCalledOnce();
   });
 
+  it('logs a safe PostgreSQL error code without logging private context', async () => {
+    vi.useFakeTimers();
+    const warn = vi.fn();
+    const databaseError = Object.assign(
+      new Error('query contained private context'),
+      { code: '42P10' },
+    );
+    const scheduler = createTrustEvaluationScheduler(
+      {
+        evaluateMaintenanceBatch: vi.fn().mockRejectedValue(databaseError),
+        purgeExpiredData: vi.fn().mockResolvedValue(EMPTY_PURGE),
+      },
+      { info: vi.fn(), warn },
+      900_000,
+    );
+
+    scheduler.start();
+    await vi.advanceTimersByTimeAsync(0);
+    await scheduler.stop();
+
+    expect(warn).toHaveBeenCalledWith(
+      { databaseErrorCode: '42P10' },
+      'Trust evaluation maintenance failed',
+    );
+  });
+
   it('logs a privacy-safe cleanup failure without preventing future sweeps', async () => {
     vi.useFakeTimers();
     const warn = vi.fn();

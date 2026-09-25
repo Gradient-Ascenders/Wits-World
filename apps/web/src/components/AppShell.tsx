@@ -475,8 +475,20 @@ export function AppShell({ children }: AppShellProps) {
       {showsSiteFooter ? (
         <footer className="site-footer">
           <div className="site-footer__inner">
-            <p>Wits World</p>
-            <p>© 2026 Gradient Ascent</p>
+            <Link className="site-footer__brand" href="/">
+              <CampusSeal className="site-footer__mark" decorative />
+              <span>
+                <strong>Wits World</strong>
+                <small>
+                  Explore <span aria-hidden="true">·</span> Discover{' '}
+                  <span aria-hidden="true">·</span> Achieve
+                </small>
+              </span>
+            </Link>
+            <div className="site-footer__meta">
+              <span>Wits Quest</span>
+              <p>© 2026 Gradient Ascent</p>
+            </div>
           </div>
         </footer>
       ) : null}

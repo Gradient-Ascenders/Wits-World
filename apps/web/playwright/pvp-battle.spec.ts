@@ -20,7 +20,9 @@ test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-09-05T09:00:00.000Z'));
 });
 
-test('keeps the Player Battles loading shell compact', async ({ page }) => {
+test('centres Player Battles in the shared page loading layout', async ({
+  page,
+}) => {
   let releaseLoad!: () => void;
   const loadGate = new Promise<void>((resolve) => {
     releaseLoad = resolve;
@@ -52,28 +54,59 @@ test('keeps the Player Battles loading shell compact', async ({ page }) => {
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto('/matches/pvp');
   await expect(
-    page.getByRole('heading', { name: 'Player Battles' }),
+    page.getByRole('heading', { name: 'Loading player battles…' }),
   ).toBeVisible();
-  await expect(page.locator('.pvp-loading')).toHaveText(
-    'Loading player battles…',
+  await expect(page.locator('.page-loading-state')).toContainText(
+    'Retrieving invitations, active battles, and match history.',
   );
   await expect(
     page.getByRole('navigation', { name: 'Player battle sections' }),
-  ).toContainText('InvitationsActiveHistory');
-  await expect(page.getByText(/PvP hub|Loading your PvP/i)).toHaveCount(0);
+  ).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
+  await expectPageLoaderCentred(page);
+
+  await page.setViewportSize({ height: 1024, width: 768 });
+  await expectNoHorizontalOverflow(page);
+  await expectPageLoaderCentred(page);
 
   await page.setViewportSize({ height: 800, width: 1440 });
   await expectNoHorizontalOverflow(page);
-  const loadingBox = await page.locator('.pvp-loading').boundingBox();
-  expect(loadingBox).not.toBeNull();
-  expect(loadingBox!.height).toBeLessThan(160);
+  await expectPageLoaderCentred(page);
 
   releaseLoad();
   await expect(
     page.getByRole('button', { name: 'Challenge a player' }),
   ).toBeVisible();
 });
+
+async function expectPageLoaderCentred(page: Page) {
+  const centres = await page
+    .locator('#main-content')
+    .evaluate((main, loaderSelector) => {
+      const loader = main.querySelector(loaderSelector);
+      if (!(loader instanceof HTMLElement)) return null;
+      const mainBox = main.getBoundingClientRect();
+      const loaderBox = loader.getBoundingClientRect();
+      const style = getComputedStyle(main);
+      const contentTop = mainBox.top + Number.parseFloat(style.paddingTop);
+      const contentBottom =
+        mainBox.bottom - Number.parseFloat(style.paddingBottom);
+      return {
+        horizontalDelta:
+          loaderBox.left +
+          loaderBox.width / 2 -
+          (mainBox.left + mainBox.width / 2),
+        verticalDelta:
+          loaderBox.top +
+          loaderBox.height / 2 -
+          (contentTop + contentBottom) / 2,
+      };
+    }, '.page-loading-state');
+
+  expect(centres).not.toBeNull();
+  expect(Math.abs(centres!.horizontalDelta)).toBeLessThan(2);
+  expect(Math.abs(centres!.verticalDelta)).toBeLessThan(2);
+}
 
 test('renders the tabbed player battle lobby and authoritative battle', async ({
   page,

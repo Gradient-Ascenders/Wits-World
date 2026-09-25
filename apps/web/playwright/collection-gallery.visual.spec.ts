@@ -220,10 +220,24 @@ test('groups, filters, and reveals card details across collection layouts', asyn
   await expectNoHorizontalOverflow(page);
   expect(await columnsOnFirstRow(gallery)).toBeGreaterThanOrEqual(5);
   await expectSquareArtwork(gallery);
+  const firstCard = gallery.getByRole('button').first();
+  await firstCard.hover({ position: { x: 24, y: 24 } });
+  await expect(firstCard).toHaveAttribute('data-hovered', '');
+  await expect
+    .poll(() =>
+      firstCard.evaluate((element) =>
+        Number.parseFloat(
+          element.style.getPropertyValue('--card-scale') || '1',
+        ),
+      ),
+    )
+    .toBeGreaterThan(1.01);
   await page.screenshot({
-    path: testInfo.outputPath('square-artwork-desktop.png'),
+    path: testInfo.outputPath('square-artwork-desktop-hover.png'),
     fullPage: true,
   });
+  await page.mouse.move(0, 0);
+  await expect(firstCard).not.toHaveAttribute('data-hovered', '');
   await page.getByRole('combobox', { name: 'Sort' }).selectOption('rarity');
   await expect(gallery.locator('.card-thumbnail__title').first()).toHaveText(
     /Campus Guardian/u,

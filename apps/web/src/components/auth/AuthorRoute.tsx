@@ -2,6 +2,7 @@ import { StateIcon } from '../StatusMessage';
 import { useCallback, type ReactNode } from 'react';
 
 import { useCurrentPlayer } from '../../auth/CurrentPlayerProvider';
+import { PageLoadingState } from '../LoadingState';
 
 interface AuthorRouteProps {
   children: ReactNode;
@@ -15,17 +16,10 @@ export function AuthorRoute({ children }: AuthorRouteProps) {
 
   if (state.status === 'anonymous' || state.status === 'loading') {
     return (
-      <section
-        aria-live="polite"
-        className="auth-state state-message state-loading"
-        role="status"
-      >
-        <p className="eyebrow">Author access</p>
-        <h1>Checking author access</h1>
-        <p>
-          The console opens only after Wits World confirms your current role.
-        </p>
-      </section>
+      <PageLoadingState
+        title="Checking author access"
+        description="The console opens only after Wits World confirms your current role."
+      />
     );
   }
 

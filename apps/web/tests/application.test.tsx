@@ -3,7 +3,7 @@ import {
   initialContext,
   type Auth0ContextInterface,
 } from '@auth0/auth0-react';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Router } from 'wouter';
@@ -88,7 +88,7 @@ describe('Wits World public application shell', () => {
     ).not.toBeInTheDocument();
     for (const route of ['Explore', 'Collection', 'Decks', 'Battles']) {
       expect(
-        screen.queryByRole('link', { name: route }),
+        within(screen.getByRole('banner')).queryByRole('link', { name: route }),
       ).not.toBeInTheDocument();
     }
   });
@@ -193,16 +193,75 @@ describe('Wits World public application shell', () => {
         within(main).getByRole('heading', { level: 3, name: step }),
       ).toBeVisible();
     }
-    expect(within(main).getAllByRole('listitem')).toHaveLength(4);
     expect(
-      within(main).getByRole('heading', {
-        level: 2,
-        name: 'Built at Wits',
-      }),
+      within(
+        within(main).getByRole('navigation', { name: 'Gameplay journey' }),
+      ).getAllByRole('listitem'),
+    ).toHaveLength(4);
+    const collectionShowcase = within(main).getByRole('list', {
+      name: 'Card rarity showcase',
+    });
+    expect(within(main).getByText('Build your collection.')).toBeVisible();
+    expect(
+      within(main).getByText(
+        /Every challenge can add something new to your collection\./,
+      ),
+    ).toBeVisible();
+    for (const [rarity, name] of [
+      ['Common', 'Quillip'],
+      ['Rare', 'Axiomar'],
+      ['Epic', 'Quillume'],
+      ['Legendary', 'Axiomarch'],
+    ] as const) {
+      const card = within(collectionShowcase).getByRole('article', {
+        name: `${rarity} card: ${name}`,
+      });
+      expect(within(card).getByText(name)).toBeVisible();
+      expect(within(card).getByText(rarity)).toBeVisible();
+      expect(within(card).getByRole('img')).toBeVisible();
+    }
+    const battleMatchup = within(main).getByRole('group', {
+      name: 'Example battle matchup',
+    });
+    for (const [name, hp, power, moves] of [
+      ['Arcalyron', '100', '25', ['Ion Claw', 'Static Demolition']],
+      ['Nimbrael', '125', '15', ['Spectral Charge', 'Undying Spirit']],
+    ] as const) {
+      const card = within(battleMatchup).getByRole('article', {
+        name: `${name} battle card`,
+      });
+      expect(within(card).getByText(hp, { selector: 'dd' })).toBeVisible();
+      expect(within(card).getByText(power, { selector: 'dd' })).toBeVisible();
+      const moveList = within(card).getByRole('list', {
+        name: `${name} featured moves`,
+      });
+      for (const move of moves) {
+        expect(within(moveList).getByText(move)).toBeVisible();
+      }
+    }
+    const arcalyronBattleCard = within(battleMatchup).getByRole('article', {
+      name: 'Arcalyron battle card',
+    });
+    fireEvent.pointerEnter(arcalyronBattleCard, { pointerType: 'mouse' });
+    expect(arcalyronBattleCard).toHaveAttribute('data-hovered');
+    fireEvent.pointerLeave(arcalyronBattleCard, { pointerType: 'mouse' });
+    expect(arcalyronBattleCard).not.toHaveAttribute('data-hovered');
+    expect(
+      within(main).queryByText(
+        'A catalogue preview using real Wits Quest cards and stats.',
+      ),
+    ).not.toBeInTheDocument();
+    expect(
+      within(main).getByText('Put your collection to work.'),
     ).toBeVisible();
     expect(
-      within(main).getByText(/COMS3011A Software Design Project/),
+      within(main).getByText(
+        /Build a deck from the ones you’ve collected and take it into battle against other players\./,
+      ),
     ).toBeVisible();
+    expect(
+      within(main).queryByRole('heading', { name: 'Built at Wits' }),
+    ).not.toBeInTheDocument();
     expect(within(main).queryByText('Ready to begin?')).not.toBeInTheDocument();
     expect(
       within(main).queryByText(
@@ -225,17 +284,17 @@ describe('Wits World public application shell', () => {
     });
   });
 
-  it('redirects /about to the Home project context', async () => {
+  it('redirects /about to the Home page', async () => {
     renderRoute('/about');
 
     expect(
       await screen.findByRole('heading', {
-        level: 2,
-        name: 'Built at Wits',
+        level: 1,
+        name: 'Wits World',
       }),
     ).toBeVisible();
     expect(window.location.pathname).toBe('/');
-    expect(window.location.hash).toBe('#project-context');
+    expect(window.location.hash).toBe('');
     expect(
       screen.queryByRole('heading', {
         name: 'Campus exploration, turned into play.',

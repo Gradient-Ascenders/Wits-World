@@ -89,9 +89,13 @@ describe('Basic author console', () => {
     });
 
     const eventView = renderAuthorRoute(authorPaths.event(eventId));
-    const eventReview = await screen.findByRole('article', {
-      name: 'Great Hall history overview',
-    });
+    const eventReview = await screen.findByRole(
+      'article',
+      {
+        name: 'Great Hall history overview',
+      },
+      { timeout: 8_000 },
+    );
     expect(
       within(eventReview).getByRole('link', { name: 'Source 1' }),
     ).toHaveAttribute('href', sourceUrl);

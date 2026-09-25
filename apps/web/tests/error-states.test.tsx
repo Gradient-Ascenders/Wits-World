@@ -9,12 +9,26 @@ function BrokenComponent(): never {
 }
 
 describe('application status states', () => {
-  it('announces route loading without relying on animation', () => {
+  it('announces local loading with the subtle marker', () => {
     render(<LoadingState />);
 
     expect(screen.getByRole('status')).toHaveTextContent(
       'Loading this Wits World page…',
     );
+    expect(
+      screen.getByRole('status').querySelector('.quest-marker'),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('status').querySelector('.loading-seal'),
+    ).toBeNull();
+  });
+
+  it('uses the seal for a page transition', () => {
+    render(<LoadingState prominent />);
+
+    expect(
+      screen.getByRole('status').querySelector('.loading-seal svg'),
+    ).toBeTruthy();
   });
 
   it('shows a usable fallback after an unexpected render error', () => {

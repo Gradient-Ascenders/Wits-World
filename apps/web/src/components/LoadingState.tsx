@@ -1,43 +1,63 @@
-export function Skeleton({
-  layout = 'rows',
-}: {
-  layout?: 'rows' | 'cards' | 'battle';
-}) {
+import type { ReactNode } from 'react';
+
+import { StartupSeal } from './branding/StartupSeal';
+import { QuestMarker } from './branding/QuestMarker';
+
+export function LoadingSeal() {
   return (
-    <div
-      aria-hidden="true"
-      className={`state-skeleton state-skeleton--${layout}`}
-    >
-      {Array.from(
-        { length: layout === 'cards' ? 6 : layout === 'battle' ? 2 : 3 },
-        (_, index) => (
-          <span key={index} />
-        ),
-      )}
-    </div>
+    <span aria-hidden="true" className="loading-seal">
+      <StartupSeal animate />
+    </span>
   );
 }
 
 export function LoadingState({
   label = 'Loading this Wits World page…',
-  layout = 'rows',
-  compact = false,
+  prominent = false,
+  className = '',
 }: {
   label?: string;
-  layout?: 'rows' | 'cards' | 'battle';
-  compact?: boolean;
+  prominent?: boolean;
+  className?: string;
 }) {
   return (
     <div
-      className={`state-message state-loading${compact ? ' state-loading--compact' : ''}`}
+      className={`state-message state-loading${prominent ? ' page-loading-state state-loading--prominent' : ' state-loading--subtle'}${className ? ` ${className}` : ''}`}
       role="status"
       aria-live="polite"
     >
+      {prominent ? <LoadingSeal /> : null}
       <p className="state-loading__label">
-        <span className="state-spinner" aria-hidden="true" />
+        {prominent ? null : <QuestMarker />}
         {label}
       </p>
-      {!compact && <Skeleton layout={layout} />}
     </div>
+  );
+}
+
+export function PageLoadingState({
+  children,
+  className = '',
+  description,
+  title,
+}: {
+  children?: ReactNode;
+  className?: string;
+  description: string;
+  title: string;
+}) {
+  return (
+    <section
+      aria-atomic="true"
+      aria-busy="true"
+      aria-live="polite"
+      className={`page-loading-state state-message state-loading state-loading--prominent${className ? ` ${className}` : ''}`}
+      role="status"
+    >
+      <LoadingSeal />
+      <h1>{title}</h1>
+      <p>{description}</p>
+      {children}
+    </section>
   );
 }

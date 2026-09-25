@@ -26,10 +26,12 @@ describe('shared battle presentation', () => {
     );
     const picture = container.querySelector('img')!;
     expect(picture).toHaveAttribute('src', '/cards/quillip.webp');
-    const frame = picture.closest('.card-frame--neutral');
+    const frame = picture.closest('.card-frame--common');
     expect(frame?.querySelector('.card-frame__engraving')).toBeInTheDocument();
     expect(frame?.querySelector('.card-frame__rail')).toBeInTheDocument();
-    expect(frame?.querySelector('.card-frame__rarity')).toBeNull();
+    expect(frame?.querySelector('.card-frame__rarity')).toHaveTextContent(
+      'Common',
+    );
     fireEvent.error(picture);
     expect(container.querySelector('img')).toBeNull();
     expect(container.querySelector('.combatant__sigil')).toHaveTextContent('Q');
@@ -53,6 +55,26 @@ describe('shared battle presentation', () => {
       />,
     );
     expect(container.querySelector('img')).toBeNull();
+  });
+
+  it('keeps legacy creature rarity unknown in the shared battle UI', () => {
+    const creature = {
+      ...activeMatch(1).state.player.creatures[0]!,
+      rarity: undefined,
+    };
+    const { container } = render(
+      <BattleCombatant
+        creature={creature}
+        emptyText="Hidden"
+        heading="Player"
+        isActing
+        visualSide="player"
+      />,
+    );
+
+    expect(container.querySelector('.card-frame--neutral')).toBeInTheDocument();
+    expect(container.querySelector('.card-frame__rarity')).toBeNull();
+    expect(container).not.toHaveTextContent('Common');
   });
 
   it('discloses only the owned bench with stable Creature labels and no gameplay controls', async () => {

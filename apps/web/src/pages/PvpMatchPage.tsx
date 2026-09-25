@@ -1,5 +1,5 @@
 import { StateIcon } from '../components/StatusMessage';
-import { Skeleton } from '../components/LoadingState';
+import { PageLoadingState } from '../components/LoadingState';
 import { ArrowLeft } from '@phosphor-icons/react';
 import { useAuth0 } from '@auth0/auth0-react';
 import {
@@ -495,21 +495,10 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   if (requestStatus === 'loading' && !match) {
     return (
-      <div className="matches-page">
-        <section
-          aria-live="polite"
-          className="match-state-panel state-message state-loading"
-          role="status"
-        >
-          <p className="eyebrow">Asynchronous PvP</p>
-          <h1>Loading saved PvP state</h1>
-          <p>
-            Retrieving the current actor, deadline, revealed cards, and legal
-            actions…
-          </p>
-          <Skeleton layout="battle" />
-        </section>
-      </div>
+      <PageLoadingState
+        title="Loading saved PvP state"
+        description="Retrieving the current actor, deadline, revealed cards, and legal actions…"
+      />
     );
   }
 

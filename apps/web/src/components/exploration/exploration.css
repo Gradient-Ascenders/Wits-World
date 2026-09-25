@@ -74,16 +74,6 @@
   gap: var(--space-2);
 }
 
-.map-state__indicator {
-  width: 0.75rem;
-  height: 0.75rem;
-  flex: 0 0 auto;
-  border: 0.125rem solid var(--colour-blue-300);
-  border-radius: 50%;
-  background: var(--colour-blue-500);
-  box-shadow: var(--glow-blue);
-}
-
 .event-marker {
   position: relative;
   display: grid;
@@ -191,7 +181,7 @@
 
 .event-marker--selected::before {
   border-color: var(--colour-blue-300);
-  animation: selected-marker-reveal 200ms var(--ease-standard) 1;
+  animation: selected-marker-reveal 190ms cubic-bezier(0.16, 1, 0.3, 1) 1;
 }
 
 .event-marker--reachable::after {
@@ -263,16 +253,11 @@
 
 @keyframes selected-marker-reveal {
   0% {
-    opacity: 0;
-    transform: scale(0.65);
+    opacity: 0.35;
+    transform: scale(0.82);
   }
-
-  55% {
-    opacity: 1;
-    transform: scale(1.18);
-  }
-
   100% {
+    opacity: 1;
     transform: scale(1);
   }
 }
@@ -1295,6 +1280,19 @@
   min-width: 7rem;
 }
 
+.event-list__loading.state-message.state-message,
+.trail-list__loading.state-message.state-message,
+.trail-detail__loading.state-message.state-message {
+  border: 0;
+  padding: 0 var(--space-4) var(--space-4);
+  background: transparent;
+  box-shadow: none;
+}
+
+.trail-detail__loading.state-message.state-message {
+  padding: 0;
+}
+
 .selected-event {
   display: grid;
   gap: var(--space-3);
@@ -1364,6 +1362,39 @@
 
 .selected-event__status strong {
   color: var(--colour-text-primary);
+}
+.selected-event__status-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.selected-event__status-heading .quest-marker {
+  width: 0.9rem;
+  height: 1.2rem;
+}
+.selected-event {
+  animation: selected-event-enter 190ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes selected-event-enter {
+  from {
+    opacity: 0.78;
+    transform: translateY(0.3rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.selected-event__status--settle {
+  animation: eligibility-settle 160ms ease-out both;
+}
+@keyframes eligibility-settle {
+  from {
+    opacity: 0.7;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .selected-event__status span {
@@ -1797,7 +1828,9 @@
   }
 
   :root:not([data-motion='full']) .event-marker--selected::before,
-  :root:not([data-motion='full']) .reported-location-pointer::before {
+  :root:not([data-motion='full']) .reported-location-pointer::before,
+  :root:not([data-motion='full']) .selected-event,
+  :root:not([data-motion='full']) .selected-event__status--settle {
     animation: none;
   }
 }
