@@ -421,7 +421,9 @@ function NearbyLocationState({
       className="event-list__state nearby-location-state"
       role="status"
     >
-      {['checking-permission', 'locating', 'tracking'].includes(locationState) ? (
+      {['checking-permission', 'locating', 'tracking'].includes(
+        locationState,
+      ) ? (
         <QuestMarker />
       ) : null}
       <strong>{content.title}</strong>

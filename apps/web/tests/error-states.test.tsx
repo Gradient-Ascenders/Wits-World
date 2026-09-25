@@ -15,14 +15,20 @@ describe('application status states', () => {
     expect(screen.getByRole('status')).toHaveTextContent(
       'Loading this Wits World page…',
     );
-    expect(screen.getByRole('status').querySelector('.quest-marker')).toBeTruthy();
-    expect(screen.getByRole('status').querySelector('.loading-seal')).toBeNull();
+    expect(
+      screen.getByRole('status').querySelector('.quest-marker'),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('status').querySelector('.loading-seal'),
+    ).toBeNull();
   });
 
   it('uses the seal for a page transition', () => {
     render(<LoadingState prominent />);
 
-    expect(screen.getByRole('status').querySelector('.loading-seal svg')).toBeTruthy();
+    expect(
+      screen.getByRole('status').querySelector('.loading-seal svg'),
+    ).toBeTruthy();
   });
 
   it('shows a usable fallback after an unexpected render error', () => {
