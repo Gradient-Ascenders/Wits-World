@@ -2,101 +2,101 @@
 name: Wits World
 description: The Campus Quest Atlas visual system for Wits Quest
 colors:
-  night-sky: "#050b16"
-  night-sky-deep: "#081426"
-  night-sky-panel: "#0d1b31"
-  night-sky-raised: "#112440"
-  ivory: "#f7f3e7"
-  slate-secondary: "#b3bdcc"
-  slate-muted: "#7f8b9d"
-  beacon-gold: "#d4af37"
-  beacon-gold-light: "#e0c46c"
-  trail-blue: "#2a6bff"
-  trail-blue-light: "#54a8ff"
-  success-green: "#39b879"
-  warning-amber: "#e1a93a"
-  danger-red: "#dc5b65"
+  night-sky: '#050b16'
+  night-sky-deep: '#081426'
+  night-sky-panel: '#0d1b31'
+  night-sky-raised: '#112440'
+  ivory: '#f7f3e7'
+  slate-secondary: '#b3bdcc'
+  slate-muted: '#7f8b9d'
+  beacon-gold: '#d4af37'
+  beacon-gold-light: '#e0c46c'
+  trail-blue: '#2a6bff'
+  trail-blue-light: '#54a8ff'
+  success-green: '#39b879'
+  warning-amber: '#e1a93a'
+  danger-red: '#dc5b65'
 typography:
   display:
     fontFamily: "'Playfair Display', Georgia, 'Times New Roman', serif"
-    fontSize: "3rem"
+    fontSize: '3rem'
     fontWeight: 700
     lineHeight: 0.98
-    letterSpacing: "-0.035em"
+    letterSpacing: '-0.035em'
   headline:
     fontFamily: "'Playfair Display', Georgia, 'Times New Roman', serif"
-    fontSize: "2.25rem"
+    fontSize: '2.25rem'
     fontWeight: 700
     lineHeight: 1.18
   title:
     fontFamily: "'Playfair Display', Georgia, 'Times New Roman', serif"
-    fontSize: "1.75rem"
+    fontSize: '1.75rem'
     fontWeight: 700
     lineHeight: 1.18
   body:
     fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    fontSize: "1rem"
+    fontSize: '1rem'
     fontWeight: 400
     lineHeight: 1.65
   label:
     fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    fontSize: "0.75rem"
+    fontSize: '0.75rem'
     fontWeight: 800
     lineHeight: 1.1
-    letterSpacing: "0.14em"
+    letterSpacing: '0.14em'
 rounded:
-  sm: "0.375rem"
-  md: "0.625rem"
-  lg: "1rem"
-  xl: "1.5rem"
-  pill: "999px"
-  frame: "15px"
+  sm: '0.375rem'
+  md: '0.625rem'
+  lg: '1rem'
+  xl: '1.5rem'
+  pill: '999px'
+  frame: '15px'
 spacing:
-  "1": "0.25rem"
-  "2": "0.5rem"
-  "3": "0.75rem"
-  "4": "1rem"
-  "5": "1.5rem"
-  "6": "2rem"
-  "7": "3rem"
-  "8": "4rem"
+  '1': '0.25rem'
+  '2': '0.5rem'
+  '3': '0.75rem'
+  '4': '1rem'
+  '5': '1.5rem'
+  '6': '2rem'
+  '7': '3rem'
+  '8': '4rem'
 components:
   button-primary:
-    backgroundColor: "{colors.trail-blue}"
-    textColor: "#ffffff"
-    rounded: "{rounded.md}"
-    padding: "0.75rem 1.2rem"
-    height: "2.75rem"
+    backgroundColor: '{colors.trail-blue}'
+    textColor: '#ffffff'
+    rounded: '{rounded.md}'
+    padding: '0.75rem 1.2rem'
+    height: '2.75rem'
   button-quiet:
-    backgroundColor: "transparent"
-    textColor: "{colors.ivory}"
-    rounded: "{rounded.md}"
-    padding: "0.75rem 1.2rem"
-    height: "2.75rem"
+    backgroundColor: 'transparent'
+    textColor: '{colors.ivory}'
+    rounded: '{rounded.md}'
+    padding: '0.75rem 1.2rem'
+    height: '2.75rem'
   field:
-    backgroundColor: "{colors.night-sky}"
-    textColor: "{colors.ivory}"
-    rounded: "{rounded.sm}"
-    padding: "0.75rem 1rem"
-    height: "2.75rem"
+    backgroundColor: '{colors.night-sky}'
+    textColor: '{colors.ivory}'
+    rounded: '{rounded.sm}'
+    padding: '0.75rem 1rem'
+    height: '2.75rem'
   panel:
-    backgroundColor: "{colors.night-sky-panel}"
-    textColor: "{colors.ivory}"
-    rounded: "{rounded.lg}"
-    padding: "1.5rem"
+    backgroundColor: '{colors.night-sky-panel}'
+    textColor: '{colors.ivory}'
+    rounded: '{rounded.lg}'
+    padding: '1.5rem'
   navigation-current:
-    backgroundColor: "rgb(212 175 55 / 8%)"
-    textColor: "{colors.beacon-gold-light}"
-    rounded: "{rounded.md}"
+    backgroundColor: 'rgb(212 175 55 / 8%)'
+    textColor: '{colors.beacon-gold-light}'
+    rounded: '{rounded.md}'
   status-active:
-    backgroundColor: "rgb(57 184 121 / 8%)"
-    textColor: "{colors.success-green}"
-    rounded: "{rounded.pill}"
-    padding: "0.25rem 0.75rem"
+    backgroundColor: 'rgb(57 184 121 / 8%)'
+    textColor: '{colors.success-green}'
+    rounded: '{rounded.pill}'
+    padding: '0.25rem 0.75rem'
   collectible-frame:
-    textColor: "#292d34"
-    rounded: "{rounded.frame}"
-    padding: "1rem 0.75rem 0.75rem"
+    textColor: '#292d34'
+    rounded: '{rounded.frame}'
+    padding: '1rem 0.75rem 0.75rem'
 ---
 
 # Design System: Wits World

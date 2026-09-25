@@ -53,7 +53,10 @@ export function StartupGate({ children }: { children: ReactNode }) {
     [],
   );
   const reportMapSettled = useCallback(() => setMapSettled(true), []);
-  const reportStatus = useCallback((nextStatus: string) => setStatus(nextStatus), []);
+  const reportStatus = useCallback(
+    (nextStatus: string) => setStatus(nextStatus),
+    [],
+  );
   const context = useMemo(
     () => ({ reportMapSettled, reportReady, reportStatus }),
     [reportMapSettled, reportReady, reportStatus],
@@ -95,7 +98,10 @@ export function StartupGate({ children }: { children: ReactNode }) {
       return;
     }
     setStatus('Preparing the campus map…');
-    const timer = window.setTimeout(() => setMapGraceDone(true), MAP_REVEAL_GRACE_MS);
+    const timer = window.setTimeout(
+      () => setMapGraceDone(true),
+      MAP_REVEAL_GRACE_MS,
+    );
     return () => window.clearTimeout(timer);
   }, [mapSettled, path, phase, readyPath]);
 
@@ -156,7 +162,11 @@ export function StartupSettler() {
       startup.reportStatus('Checking your sign-in status…');
       return;
     }
-    if (isAuthenticated && player.status !== 'ready' && player.status !== 'error') {
+    if (
+      isAuthenticated &&
+      player.status !== 'ready' &&
+      player.status !== 'error'
+    ) {
       startup.reportStatus('Confirming your Wits World player…');
       return;
     }

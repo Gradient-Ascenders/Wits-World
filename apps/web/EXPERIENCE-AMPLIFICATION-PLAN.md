@@ -41,12 +41,12 @@ The work has five parts:
 
 Derive a loader-only SVG from the approved seal geometry. Organize it into a few semantic layers: circular boundaries; campus route and buildings; lettering and small marks; complete seal. Do not animate each of the hundreds of original paths independently. Keep the canonical branding asset unchanged and check that the last frame matches it.
 
-| Approximate interval | Visual event | Technique |
-| --- | --- | --- |
-| 0–170 ms | Outer and inner boundaries appear | Short gold stroke traces, then the corresponding source geometry settles in |
-| 170–450 ms | Route and campus buildings assemble | One or two coordinated masks reveal the central geometry |
-| 450–600 ms | Lettering, fine marks, and blue details arrive | Small grouped opacity/mask reveals |
-| 600–760 ms | Full seal settles and holds briefly | Replace any construction guides with the complete approved mark |
+| Approximate interval | Visual event                                   | Technique                                                                   |
+| -------------------- | ---------------------------------------------- | --------------------------------------------------------------------------- |
+| 0–170 ms             | Outer and inner boundaries appear              | Short gold stroke traces, then the corresponding source geometry settles in |
+| 170–450 ms           | Route and campus buildings assemble            | One or two coordinated masks reveal the central geometry                    |
+| 450–600 ms           | Lettering, fine marks, and blue details arrive | Small grouped opacity/mask reveals                                          |
+| 600–760 ms           | Full seal settles and holds briefly            | Replace any construction guides with the complete approved mark             |
 
 Use the seal's own gold and blue, without added particle effects, rotations, or bounce. Keep the drawing on compositor-friendly properties where possible. For `prefers-reduced-motion: reduce`, render the complete static seal from the start; loading text and state changes remain available.
 
@@ -63,12 +63,12 @@ Use the seal's own gold and blue, without added particle effects, rotations, or 
 
 Inventory every use of `LoadingState`, `Skeleton`, and local placeholder styles before changing the shared CSS. For each loading state, compare the placeholder container, columns, heights, and spacing with the loaded component at mobile, tablet, and desktop widths. Update a shared variant only when its consumers share the same geometry; otherwise give the route a small local variant.
 
-| Existing placeholder | Audit targets | Intended geometry |
-| --- | --- | --- |
-| `rows` | Explore event list, trail list/detail, challenge restoration, match entry/history, profile, offline and Author lists | Align bars with the final list or panel width, row spacing, and likely text/action positions. Reserve the final panel's main vertical space when practical. |
-| `cards` | Collection and Decks loading states | Match the collectible/deck grid column count, card proportions, gutters, and container width at each breakpoint. Audit Collection's separate square loading grid and remove or reconcile contradictory geometry. |
-| `battle` | CPU and PvP match restoration | Reflect the major battle panels and their responsive stacking so the battle surface does not jump from two arbitrary blocks. |
-| Direct loading panels | Challenge and other pages that compose `Skeleton` without `LoadingState` | Retain their page-specific headings and status copy while using consistent quiet placeholder surfaces. |
+| Existing placeholder  | Audit targets                                                                                                        | Intended geometry                                                                                                                                                                                                |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rows`                | Explore event list, trail list/detail, challenge restoration, match entry/history, profile, offline and Author lists | Align bars with the final list or panel width, row spacing, and likely text/action positions. Reserve the final panel's main vertical space when practical.                                                      |
+| `cards`               | Collection and Decks loading states                                                                                  | Match the collectible/deck grid column count, card proportions, gutters, and container width at each breakpoint. Audit Collection's separate square loading grid and remove or reconcile contradictory geometry. |
+| `battle`              | CPU and PvP match restoration                                                                                        | Reflect the major battle panels and their responsive stacking so the battle surface does not jump from two arbitrary blocks.                                                                                     |
+| Direct loading panels | Challenge and other pages that compose `Skeleton` without `LoadingState`                                             | Retain their page-specific headings and status copy while using consistent quiet placeholder surfaces.                                                                                                           |
 
 Skeleton surfaces use subtle Night Sky tonal steps and the existing radius language. Keep them static; do not add a prominent shimmer or a second looping animation. Reserve stable dimensions for known headers and panel regions without fabricating exact data counts. When authoritative content arrives, replace the placeholders immediately with a brief opacity handoff at most. Do not wait for that handoff before exposing the loaded content. Reduced motion removes the handoff.
 

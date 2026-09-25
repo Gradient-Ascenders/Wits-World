@@ -3,7 +3,11 @@ import sealMarkup from '../../assets/branding/wits-world-campus-seal-loader.svg?
 
 const sealMarkupHtml = { __html: sealMarkup };
 
-export const StartupSeal = memo(function StartupSeal({ animate }: { animate: boolean }) {
+export const StartupSeal = memo(function StartupSeal({
+  animate,
+}: {
+  animate: boolean;
+}) {
   return (
     <span
       aria-hidden="true"
