@@ -52,8 +52,8 @@ relationships in this catalogue.
 ## Implemented backend contract
 
 `GET /api/v1/cards/evolutions/{sourceCardDefinitionId}/preview` returns the
-fixed source and target definitions, deck point costs, owned-copy counts, and
-saved-deck locks. It does not reserve cards.
+fixed source and target definitions, deck point costs, owned-copy counts,
+saved-deck locks, and active-trade reservations. It does not reserve cards.
 
 `POST /api/v1/cards/evolutions` accepts only a client-generated UUID
 `submissionId` and the source definition UUID. The authenticated player is
@@ -78,7 +78,8 @@ Normal card details retain their copy history and no longer include evolution.
 The Evolutions section checks the existing preview endpoint for each distinct
 owned definition, with at most four requests in flight. It lists available
 relationships with server-returned eligibility, total ownership, and deck locks,
-placing ready evolutions first. Failed checks remain visible with a retry.
+placing ready evolutions first. The web client validates both lock counts and
+shows trade-reserved copies distinctly. Failed checks remain visible with a retry.
 Definitions without an available relationship are omitted unless an owned copy
 was acquired through evolution. Those entries say that no further evolution is
 currently available; the contract does not explicitly identify final stages.
