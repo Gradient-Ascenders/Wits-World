@@ -112,6 +112,12 @@ The jobs run the existing formatting, linting, type-checking, coverage, tests,
 and validation-build commands. Main deployment cannot begin unless every main
 validation category succeeds.
 
+The final pull-request gate uses `always()` so Gitea 1.24 evaluates it after
+every dependency reaches a terminal state, including after a workflow rerun.
+The gate then checks each `needs.*.result` value explicitly and fails unless all
+five dependency jobs succeeded. This avoids a scheduler stall without allowing
+a failed, cancelled, or skipped dependency to produce a green aggregate gate.
+
 The duplicated clean installations increase aggregate Gitea job-minutes, but
 independent jobs execute concurrently on the C220. Aggregate job-minutes
 measure total runner work and must not be interpreted as sequential workflow
