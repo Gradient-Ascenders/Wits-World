@@ -121,11 +121,11 @@ The jobs run the existing formatting, linting, type-checking, coverage, tests,
 and validation-build commands. Main deployment cannot begin unless every main
 validation category succeeds.
 
-PR validation deliberately has no synthetic fan-in job. Gitea 1.24 can leave a
-job with several `needs` dependencies permanently blocked after every dependency
-has succeeded, which keeps the workflow pending even though no validation work
-remains. The workflow's native result already fails when any of the five jobs
-fails or is cancelled, so the extra job provides no additional validation.
+The final pull-request gate uses `always()` so Gitea evaluates it after every
+dependency reaches a terminal state, including after a workflow rerun. The gate
+then checks each `needs.*.result` value explicitly and fails unless all five
+dependency jobs succeeded. A failed, cancelled, or skipped dependency therefore
+cannot produce a green aggregate gate.
 
 The duplicated clean installations increase aggregate Gitea job-minutes, but
 independent jobs execute concurrently on the C220. Aggregate job-minutes
