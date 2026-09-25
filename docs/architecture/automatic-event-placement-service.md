@@ -42,6 +42,14 @@ in one transaction. A stale preview returns HTTP `409`. Rollback creates a new
 plan after validating historical choices under the current policy; it does not
 reopen historical assignments.
 
+The Author state response exposes the complete immutable policy snapshot and
+portable-event display names. Preview responses include server-generated
+coverage and separation validation. Coverage diagnostics report actual,
+mandatory, and preferred counts per zone. Separation diagnostics identify
+reviewed candidate sites blocked by selected assignments or fixed events,
+without exposing fixed-event coordinates. These fields are presentation evidence
+only: the browser does not recompute placement outcomes.
+
 ## Author API
 
 All routes below use `/api/v1`, require an authenticated active Author, and
@@ -61,6 +69,31 @@ The Author identity comes from the validated token, never the request body.
 | `POST /author/event-placement/zones/:id/status`       | Suspend, reactivate, or retire a reviewed zone                                                                                                                  |
 | `POST /author/event-placement/events/:id/portability` | Approve or withdraw a separately reviewed portable event                                                                                                        |
 | `POST /author/event-placement/rollback`               | Create and apply a new plan from `sourcePlanId`                                                                                                                 |
+
+## Author workspace
+
+Issue `#265` adds the protected `/author/placement` workspace. The semantic
+current-versus-proposed ledger, coverage table, and candidate-site register are
+the complete operational representation; the synchronized Mapbox layers are a
+visual aid. Marker labels and patterns distinguish current, proposed, excluded,
+overridden, and unused candidate sites, while zone fill and line patterns show
+served, preferred-shortfall, and unserved coverage.
+
+Preview is non-consequential. Apply, pause, pin, temporary site exclusion,
+ending an override, and rollback require a reason and an explicit confirmation.
+The workspace sends the API-provided state version and, for apply, the persisted
+preview identifier. HTTP `409` clears the stale preview and refreshes current
+state and history without retrying the mutation. Applying then requires a fresh
+preview. Author navigation and route guards hide the workspace from ordinary
+players; every API route independently enforces authentication, active-player
+status, and the Author role.
+
+The workspace intentionally does not expose site/zone lifecycle controls or
+portable-event approval. Those existing API operations remain separate review
+workflows. Map failure leaves all placement data and actions available through
+the semantic tables and controls. The map receives reviewed site points and zone
+geometry only; it receives no player location, fixed-event coordinate, or
+placement-decision input.
 
 Pins require `eventId` and `siteId`; site exclusions require `siteId`; pauses
 take neither. An idempotency key replay with the same payload returns the

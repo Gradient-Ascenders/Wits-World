@@ -61,6 +61,30 @@ export interface PlacementResult {
   zoneCounts: Record<string, number>;
   status: 'valid' | 'degraded' | 'unserved';
   exceptions: string[];
+  validation: PlacementValidation;
+}
+
+export interface PlacementCoverageValidation {
+  actual: number;
+  mandatory: number;
+  preferred: number;
+  status: 'met' | 'preferred_shortfall' | 'unserved';
+  zoneId: string;
+}
+
+export interface PlacementSeparationValidation {
+  blockedSites: Array<{
+    conflictsWithFixedEvent: boolean;
+    relatedSiteIds: string[];
+    siteId: string;
+    zoneId: string;
+  }>;
+  minimumMetres: number;
+}
+
+export interface PlacementValidation {
+  coverage: PlacementCoverageValidation[];
+  separation: PlacementSeparationValidation;
 }
 
 export function sitePairKey(left: string, right: string): string {
@@ -76,6 +100,13 @@ export function planPlacement(input: PlacementInput): PlacementResult {
       zoneCounts: {},
       status: 'unserved',
       exceptions: ['no_active_zones'],
+      validation: {
+        coverage: [],
+        separation: {
+          blockedSites: [],
+          minimumMetres: policy.separationMetres,
+        },
+      },
     };
   }
   const sites = new Map(input.sites.map((site) => [site.id, site]));
@@ -92,14 +123,14 @@ export function planPlacement(input: PlacementInput): PlacementResult {
     if (
       !canPlace(pin.eventId, pin.siteId, pins, input, sites, events, excluded)
     ) {
-      return finish([], zones, policy, ['invalid_pin']);
+      return finish([], zones, input, ['invalid_pin']);
     }
     const site = sites.get(pin.siteId)!;
     const previous = current.find(
       (entry) => entry.eventId === pin.eventId && entry.siteId === pin.siteId,
     );
     if (site.coolingDown && !previous) {
-      return finish([], zones, policy, ['pin_site_in_cooldown']);
+      return finish([], zones, input, ['pin_site_in_cooldown']);
     }
     pins.push({
       eventId: pin.eventId,
@@ -112,7 +143,7 @@ export function planPlacement(input: PlacementInput): PlacementResult {
   }
 
   if (pins.length > policy.target) {
-    return finish([], zones, policy, ['too_many_pins']);
+    return finish([], zones, input, ['too_many_pins']);
   }
 
   const unpinned = current
@@ -149,7 +180,7 @@ export function planPlacement(input: PlacementInput): PlacementResult {
           return false;
         }
         fill(candidate, input, zones, sites, events, excluded);
-        const result = finish(candidate, zones, policy, []);
+        const result = finish(candidate, zones, input, []);
         if (result.status === 'valid') {
           best = result;
           return true;
@@ -186,7 +217,7 @@ export function planPlacement(input: PlacementInput): PlacementResult {
     if (considerCurrent(0, 0)) return best!;
   }
 
-  return best ?? finish([], zones, policy, ['unserved_zone']);
+  return best ?? finish([], zones, input, ['unserved_zone']);
 }
 
 function fillMandatory(
@@ -273,6 +304,13 @@ export function validatePlacementEntries(
       zoneCounts: {},
       status: 'unserved',
       exceptions: ['no_active_zones'],
+      validation: {
+        coverage: [],
+        separation: {
+          blockedSites: [],
+          minimumMetres: input.policy.separationMetres,
+        },
+      },
     };
   }
   const sites = new Map(input.sites.map((site) => [site.id, site]));
@@ -292,7 +330,7 @@ export function validatePlacementEntries(
       ) ||
       sites.get(entry.siteId)?.zoneId !== entry.zoneId
     ) {
-      return finish([], zones, input.policy, ['invalid_rollback_assignment']);
+      return finish([], zones, input, ['invalid_rollback_assignment']);
     }
     selected.push(entry);
   }
@@ -302,13 +340,13 @@ export function validatePlacementEntries(
         (entry) => entry.eventId === pin.eventId && entry.siteId === pin.siteId,
       )
     ) {
-      return finish([], zones, input.policy, ['pin_not_preserved']);
+      return finish([], zones, input, ['pin_not_preserved']);
     }
   }
   if (selected.length > input.policy.target) {
-    return finish([], zones, input.policy, ['target_exceeded']);
+    return finish([], zones, input, ['target_exceeded']);
   }
-  return finish(selected, zones, input.policy, []);
+  return finish(selected, zones, input, []);
 }
 
 function fill(
@@ -447,9 +485,10 @@ function canPlace(
 function finish(
   entries: PlacementEntry[],
   zones: PlacementZone[],
-  policy: PlacementPolicy,
+  input: PlacementInput,
   exceptions: string[],
 ): PlacementResult {
+  const { policy } = input;
   const zoneCounts = countZones(entries, zones);
   const unserved = zones.some(
     (zone) => zoneCounts[zone.id]! < policy.mandatoryPerZone,
@@ -468,7 +507,102 @@ function finish(
     exceptions.push('cooldown_floor_exception');
   if (!unserved && !preferred) exceptions.push('preferred_coverage_shortfall');
   if (unserved) exceptions.push('unserved_zone');
-  return { entries, zoneCounts, status, exceptions: [...new Set(exceptions)] };
+  return {
+    entries,
+    zoneCounts,
+    status,
+    exceptions: [...new Set(exceptions)],
+    validation: buildPlacementValidation(entries, zones, zoneCounts, input),
+  };
+}
+
+function buildPlacementValidation(
+  entries: PlacementEntry[],
+  zones: PlacementZone[],
+  zoneCounts: Record<string, number>,
+  input: PlacementInput,
+): PlacementValidation {
+  const selectedSiteIds = new Set(entries.map((entry) => entry.siteId));
+  const selectedEventIds = new Set(entries.map((entry) => entry.eventId));
+  const excludedSiteIds = new Set(input.excludedSiteIds);
+  const events = new Map(input.events.map((event) => [event.id, event]));
+  const unusedEvents = input.events.filter(
+    (event) => !selectedEventIds.has(event.id),
+  );
+
+  const blockedSites = input.sites.flatMap((site) => {
+    if (selectedSiteIds.has(site.id) || excludedSiteIds.has(site.id)) return [];
+
+    const eligibleEvents = unusedEvents.filter(
+      (event) => event.radiusMetres <= site.maximumRadiusMetres,
+    );
+    if (eligibleEvents.length === 0) return [];
+
+    const relatedSiteIds = new Set<string>();
+    let conflictsWithFixedEvent = false;
+    const everyEventBlocked = eligibleEvents.every((event) => {
+      const fixedConflict = (input.fixedDistances[site.id] ?? []).some(
+        (fixed) =>
+          fixed.distanceMetres <
+          Math.max(
+            input.policy.separationMetres,
+            event.radiusMetres + fixed.radiusMetres,
+          ),
+      );
+      conflictsWithFixedEvent ||= fixedConflict;
+
+      const selectedConflict = entries.some((entry) => {
+        const other = events.get(entry.eventId);
+        const distance =
+          input.siteDistances[sitePairKey(site.id, entry.siteId)];
+        const conflicts =
+          other !== undefined &&
+          distance !== undefined &&
+          distance <
+            Math.max(
+              input.policy.separationMetres,
+              event.radiusMetres + other.radiusMetres,
+            );
+        if (conflicts) relatedSiteIds.add(entry.siteId);
+        return conflicts;
+      });
+
+      return fixedConflict || selectedConflict;
+    });
+
+    return everyEventBlocked
+      ? [
+          {
+            conflictsWithFixedEvent,
+            relatedSiteIds: [...relatedSiteIds].sort(compareId),
+            siteId: site.id,
+            zoneId: site.zoneId,
+          },
+        ]
+      : [];
+  });
+
+  return {
+    coverage: zones.map((zone) => {
+      const actual = zoneCounts[zone.id] ?? 0;
+      return {
+        actual,
+        mandatory: input.policy.mandatoryPerZone,
+        preferred: input.policy.preferredPerZone,
+        status:
+          actual < input.policy.mandatoryPerZone
+            ? ('unserved' as const)
+            : actual < input.policy.preferredPerZone
+              ? ('preferred_shortfall' as const)
+              : ('met' as const),
+        zoneId: zone.id,
+      };
+    }),
+    separation: {
+      blockedSites,
+      minimumMetres: input.policy.separationMetres,
+    },
+  };
 }
 
 function countZones(

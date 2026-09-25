@@ -10,10 +10,9 @@ This document is the issue `#259` policy contract for Advanced-tier automatic
 event placement. Issue `#261` persists reviewed sites, zones, policy versions,
 assignments, overrides, and history as described in the
 [placement persistence guide](../database/automatic-event-placement-persistence.md).
-Issue `#262` will implement the
-placement and rotation services, and issue `#265` will add the Author preview
-and control interface. This document does not claim that those capabilities are
-implemented or deployed.
+Issue `#262` implements the placement and rotation services, and issue `#265`
+implements the Author preview and control interface. This document does not
+claim that either capability is deployed.
 
 The policy automates where explicitly portable event content is made available.
 It does not generate questions, infer safe places from player movement, edit a
@@ -461,9 +460,12 @@ tests covering:
 - assignment-bound online eligibility and offline-pack expiry; and
 - unchanged attempt, reward, ownership, progression, and trail history.
 
-Issue `#265` must cover map/list equivalence, current/proposed/excluded/overridden
-states, explicit apply confirmation, validation feedback, stale previews,
-keyboard operation, responsive layouts, and unauthorised controls.
+Issue `#265` adds focused automated coverage for map/list equivalence,
+current/proposed/excluded/overridden states, explicit confirmations,
+server-provided validation feedback, stale previews, keyboard operation,
+responsive layout structure, error and empty states, and unauthorised controls.
+Real-device, screen-reader, production Auth0, production Mapbox, and deployed
+responsive checks remain release evidence and are not implied by those tests.
 
 For issue `#259`, formatting and the documentation build are the meaningful
 automated checks. It does not add implementation-mirroring runtime tests before

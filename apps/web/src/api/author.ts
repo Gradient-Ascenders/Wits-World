@@ -1,3 +1,5 @@
+import type { Geometry } from 'geojson';
+
 import type { ApiAccessTokenProvider } from '../auth/useApiAccessToken';
 
 export type AuthoringStatus =
@@ -175,6 +177,128 @@ export interface AuthorEventInput {
   radiusMetres: number;
   startsAt: string;
   title: string;
+}
+
+export type AuthorPlacementOrigin = 'automatic' | 'pin' | 'rollback';
+export type AuthorPlacementOverrideKind =
+  'automation_pause' | 'pin' | 'site_exclusion';
+export type AuthorPlacementPlanStatus = 'degraded' | 'unserved' | 'valid';
+
+export interface AuthorPlacementPolicy {
+  cooldownBuckets: number;
+  id: string;
+  mandatoryPerZone: number;
+  maximumExclusionHours: number;
+  maximumPauseHours: number;
+  maximumPinHours: number;
+  preferredPerZone: number;
+  previewTtlMinutes: number;
+  replacements: number;
+  rotationLocalTime: string;
+  rotationTimezone: string;
+  separationMetres: number;
+  target: number;
+}
+
+export interface AuthorPlacementZone {
+  geometry: Geometry;
+  id: string;
+  key: string;
+  name: string;
+  status: string;
+}
+
+export interface AuthorPlacementSite {
+  excluded: boolean;
+  id: string;
+  latitude: number;
+  longitude: number;
+  maximumRadiusMetres: number;
+  name: string;
+  status: string;
+  zoneId: string;
+}
+
+export interface AuthorPlacementAssignment {
+  eventId: string;
+  origin: AuthorPlacementOrigin;
+  siteId: string;
+  zoneId: string;
+}
+
+export interface AuthorPlacementOverride {
+  eventId: string | null;
+  expiresAt: string;
+  id: string;
+  kind: AuthorPlacementOverrideKind;
+  siteId: string | null;
+}
+
+export interface AuthorPlacementState {
+  assignments: AuthorPlacementAssignment[];
+  currentPlanId: string | null;
+  metrics: {
+    activeAssignmentCount: number;
+    activeZoneCount: number;
+    lastAppliedAt: string | null;
+    lastFailureAt: string | null;
+    lastFailureCode: string | null;
+    servedZoneCount: number;
+    targetAssignmentCount: number;
+    unservedZoneCount: number;
+  };
+  events: Array<{ id: string; title: string }>;
+  nextRotationBoundary: string;
+  overrides: AuthorPlacementOverride[];
+  policy: AuthorPlacementPolicy;
+  policyVersion: string;
+  rotationBucket: string;
+  sites: AuthorPlacementSite[];
+  stateVersion: number;
+  zones: AuthorPlacementZone[];
+}
+
+export interface AuthorPlacementValidation {
+  coverage: Array<{
+    actual: number;
+    mandatory: number;
+    preferred: number;
+    status: 'met' | 'preferred_shortfall' | 'unserved';
+    zoneId: string;
+  }>;
+  separation: {
+    blockedSites: Array<{
+      conflictsWithFixedEvent: boolean;
+      relatedSiteIds: string[];
+      siteId: string;
+      zoneId: string;
+    }>;
+    minimumMetres: number;
+  };
+}
+
+export interface AuthorPlacementPlan {
+  entries: AuthorPlacementAssignment[];
+  exceptions: string[];
+  planId: string;
+  policyVersion: string;
+  rotationBucket: string;
+  stateVersion: number;
+  status: AuthorPlacementPlanStatus;
+  validUntil: string;
+  validation: AuthorPlacementValidation;
+  zoneCounts: Record<string, number>;
+}
+
+export interface AuthorPlacementHistoryItem {
+  assignmentCount: number;
+  createdAt: string;
+  failureCode: string | null;
+  planId: string;
+  policyVersion: string;
+  rotationBucket: string;
+  status: string;
+  trigger: string;
 }
 
 export interface AuthorChallenge extends AuthorLifecycleMetadata {
@@ -445,6 +569,136 @@ export async function listAuthorEvents(options: RequestBase) {
 
   requireRequestId(payload);
   return payload.events.map(parseAuthorEvent);
+}
+
+export async function getAuthorPlacementState(
+  options: RequestBase,
+): Promise<AuthorPlacementState> {
+  const payload = await authorRequest({
+    ...options,
+    method: 'GET',
+    path: '/author/event-placement',
+  });
+  if (!isRecord(payload)) throw unavailableResponse();
+  requireRequestId(payload);
+  return parseAuthorPlacementState(payload);
+}
+
+export async function getAuthorPlacementHistory(
+  options: RequestBase,
+): Promise<AuthorPlacementHistoryItem[]> {
+  const payload = await authorRequest({
+    ...options,
+    method: 'GET',
+    path: '/author/event-placement/history',
+  });
+  if (!isRecord(payload) || !Array.isArray(payload.plans)) {
+    throw unavailableResponse();
+  }
+  requireRequestId(payload);
+  return payload.plans.map(parseAuthorPlacementHistoryItem);
+}
+
+export async function previewAuthorPlacement(
+  options: RequestBase,
+): Promise<AuthorPlacementPlan> {
+  return requestPlacementPlan({
+    ...options,
+    method: 'POST',
+    path: '/author/event-placement/previews',
+  });
+}
+
+export async function applyAuthorPlacement(
+  options: RequestBase & {
+    expectedVersion: number;
+    planId: string;
+    reason: string;
+  },
+): Promise<AuthorPlacementPlan> {
+  return requestPlacementPlan({
+    ...options,
+    body: {
+      expectedVersion: options.expectedVersion,
+      planId: options.planId,
+      reason: options.reason,
+    },
+    method: 'POST',
+    path: '/author/event-placement/apply',
+  });
+}
+
+export async function createAuthorPlacementOverride(
+  options: RequestBase & {
+    durationHours: number;
+    eventId?: string;
+    expectedVersion: number;
+    idempotencyKey: string;
+    kind: AuthorPlacementOverrideKind;
+    reason: string;
+    siteId?: string;
+  },
+): Promise<{ overrideId: string; replayed: boolean }> {
+  const payload = await authorRequest({
+    ...options,
+    body: {
+      durationHours: options.durationHours,
+      eventId: options.eventId,
+      expectedVersion: options.expectedVersion,
+      idempotencyKey: options.idempotencyKey,
+      kind: options.kind,
+      reason: options.reason,
+      siteId: options.siteId,
+    },
+    method: 'POST',
+    path: '/author/event-placement/overrides',
+  });
+  if (
+    !isRecord(payload) ||
+    !isUuid(payload.overrideId) ||
+    typeof payload.replayed !== 'boolean'
+  ) {
+    throw unavailableResponse();
+  }
+  requireRequestId(payload);
+  return { overrideId: payload.overrideId, replayed: payload.replayed };
+}
+
+export async function endAuthorPlacementOverride(
+  options: RequestBase & {
+    expectedVersion: number;
+    overrideId: string;
+    reason: string;
+  },
+): Promise<number> {
+  return requestPlacementVersion({
+    ...options,
+    body: {
+      expectedVersion: options.expectedVersion,
+      reason: options.reason,
+    },
+    method: 'POST',
+    path: `/author/event-placement/overrides/${options.overrideId}/end`,
+  });
+}
+
+export async function rollbackAuthorPlacement(
+  options: RequestBase & {
+    expectedVersion: number;
+    reason: string;
+    sourcePlanId: string;
+  },
+): Promise<AuthorPlacementPlan> {
+  return requestPlacementPlan({
+    ...options,
+    body: {
+      expectedVersion: options.expectedVersion,
+      reason: options.reason,
+      sourcePlanId: options.sourcePlanId,
+    },
+    method: 'POST',
+    path: '/author/event-placement/rollback',
+  });
 }
 
 export async function createAuthorEvent(
@@ -1036,6 +1290,36 @@ async function requestCardLifecycle(
   });
 }
 
+async function requestPlacementPlan(
+  options: RequestBase & {
+    body?: object;
+    method: 'GET' | 'POST';
+    path: string;
+  },
+): Promise<AuthorPlacementPlan> {
+  const payload = await authorRequest(options);
+  if (!isRecord(payload) || !isRecord(payload.plan)) {
+    throw unavailableResponse();
+  }
+  requireRequestId(payload);
+  return parseAuthorPlacementPlan(payload.plan);
+}
+
+async function requestPlacementVersion(
+  options: RequestBase & {
+    body: object;
+    method: 'POST';
+    path: string;
+  },
+): Promise<number> {
+  const payload = await authorRequest(options);
+  if (!isRecord(payload) || !isNonNegativeInteger(payload.stateVersion)) {
+    throw unavailableResponse();
+  }
+  requireRequestId(payload);
+  return payload.stateVersion;
+}
+
 async function authorRequest({
   apiBaseUrl,
   body,
@@ -1212,6 +1496,255 @@ function parsePage<T>(
     totalItems: payload.totalItems,
     totalPages: payload.totalPages,
   };
+}
+
+function parseAuthorPlacementState(value: unknown): AuthorPlacementState {
+  if (
+    !isRecord(value) ||
+    !isNonBlank(value.policyVersion) ||
+    !isNonBlank(value.rotationBucket) ||
+    !isNonNegativeInteger(value.stateVersion) ||
+    !isNullableUuid(value.currentPlanId) ||
+    !isDateTime(value.nextRotationBoundary) ||
+    !isRecord(value.metrics) ||
+    !Array.isArray(value.zones) ||
+    !Array.isArray(value.sites) ||
+    !Array.isArray(value.assignments) ||
+    !Array.isArray(value.events) ||
+    !Array.isArray(value.overrides)
+  ) {
+    throw unavailableResponse();
+  }
+
+  const metrics = value.metrics;
+  if (
+    !isNonNegativeInteger(metrics.targetAssignmentCount) ||
+    !isNonNegativeInteger(metrics.activeAssignmentCount) ||
+    !isNonNegativeInteger(metrics.activeZoneCount) ||
+    !isNonNegativeInteger(metrics.servedZoneCount) ||
+    !isNonNegativeInteger(metrics.unservedZoneCount) ||
+    !isNullableDateTime(metrics.lastAppliedAt) ||
+    !isNullableDateTime(metrics.lastFailureAt) ||
+    !isNullableString(metrics.lastFailureCode)
+  ) {
+    throw unavailableResponse();
+  }
+
+  return {
+    assignments: value.assignments.map(parseAuthorPlacementAssignment),
+    currentPlanId: value.currentPlanId,
+    metrics: metrics as AuthorPlacementState['metrics'],
+    events: value.events.map((event) => {
+      if (!isRecord(event) || !isUuid(event.id) || !isNonBlank(event.title)) {
+        throw unavailableResponse();
+      }
+      return { id: event.id, title: event.title };
+    }),
+    nextRotationBoundary: value.nextRotationBoundary,
+    overrides: value.overrides.map(parseAuthorPlacementOverride),
+    policy: parseAuthorPlacementPolicy(value.policy),
+    policyVersion: value.policyVersion,
+    rotationBucket: value.rotationBucket,
+    sites: value.sites.map(parseAuthorPlacementSite),
+    stateVersion: value.stateVersion,
+    zones: value.zones.map(parseAuthorPlacementZone),
+  };
+}
+
+function parseAuthorPlacementPolicy(value: unknown): AuthorPlacementPolicy {
+  if (
+    !isRecord(value) ||
+    !isNonBlank(value.id) ||
+    !isPositiveInteger(value.target) ||
+    !isPositiveInteger(value.preferredPerZone) ||
+    !isPositiveInteger(value.mandatoryPerZone) ||
+    !isPositiveInteger(value.separationMetres) ||
+    !isNonNegativeInteger(value.replacements) ||
+    !isNonNegativeInteger(value.cooldownBuckets) ||
+    !isPositiveInteger(value.previewTtlMinutes) ||
+    !isNonBlank(value.rotationTimezone) ||
+    !isNonBlank(value.rotationLocalTime) ||
+    !isPositiveInteger(value.maximumPinHours) ||
+    !isPositiveInteger(value.maximumPauseHours) ||
+    !isPositiveInteger(value.maximumExclusionHours)
+  ) {
+    throw unavailableResponse();
+  }
+  return value as unknown as AuthorPlacementPolicy;
+}
+
+function parseAuthorPlacementZone(value: unknown): AuthorPlacementZone {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.id) ||
+    !isNonBlank(value.key) ||
+    !isNonBlank(value.name) ||
+    !isNonBlank(value.status) ||
+    !isRecord(value.geometry) ||
+    !isNonBlank(value.geometry.type)
+  ) {
+    throw unavailableResponse();
+  }
+  return value as unknown as AuthorPlacementZone;
+}
+
+function parseAuthorPlacementSite(value: unknown): AuthorPlacementSite {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.id) ||
+    !isUuid(value.zoneId) ||
+    !isNonBlank(value.name) ||
+    !isNonBlank(value.status) ||
+    !isCoordinate(value.latitude, -90, 90) ||
+    !isCoordinate(value.longitude, -180, 180) ||
+    !isPositiveInteger(value.maximumRadiusMetres) ||
+    typeof value.excluded !== 'boolean'
+  ) {
+    throw unavailableResponse();
+  }
+  return value as unknown as AuthorPlacementSite;
+}
+
+function parseAuthorPlacementAssignment(
+  value: unknown,
+): AuthorPlacementAssignment {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.eventId) ||
+    !isUuid(value.siteId) ||
+    !isUuid(value.zoneId) ||
+    !isAuthorPlacementOrigin(value.origin)
+  ) {
+    throw unavailableResponse();
+  }
+  return {
+    eventId: value.eventId,
+    origin: value.origin,
+    siteId: value.siteId,
+    zoneId: value.zoneId,
+  };
+}
+
+function parseAuthorPlacementOverride(value: unknown): AuthorPlacementOverride {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.id) ||
+    !isAuthorPlacementOverrideKind(value.kind) ||
+    !isNullableUuid(value.eventId) ||
+    !isNullableUuid(value.siteId) ||
+    !isDateTime(value.expiresAt)
+  ) {
+    throw unavailableResponse();
+  }
+  return value as unknown as AuthorPlacementOverride;
+}
+
+function parseAuthorPlacementPlan(value: unknown): AuthorPlacementPlan {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.planId) ||
+    !isNonBlank(value.policyVersion) ||
+    !isNonBlank(value.rotationBucket) ||
+    !isNonNegativeInteger(value.stateVersion) ||
+    !isDateTime(value.validUntil) ||
+    !isAuthorPlacementPlanStatus(value.status) ||
+    !Array.isArray(value.entries) ||
+    !isRecord(value.zoneCounts) ||
+    !Array.isArray(value.exceptions)
+  ) {
+    throw unavailableResponse();
+  }
+  const zoneCounts = Object.fromEntries(
+    Object.entries(value.zoneCounts).map(([zoneId, count]) => {
+      if (!isUuid(zoneId) || !isNonNegativeInteger(count)) {
+        throw unavailableResponse();
+      }
+      return [zoneId, count];
+    }),
+  );
+  if (!value.exceptions.every((item) => typeof item === 'string')) {
+    throw unavailableResponse();
+  }
+  return {
+    entries: value.entries.map(parseAuthorPlacementAssignment),
+    exceptions: value.exceptions,
+    planId: value.planId,
+    policyVersion: value.policyVersion,
+    rotationBucket: value.rotationBucket,
+    stateVersion: value.stateVersion,
+    status: value.status,
+    validUntil: value.validUntil,
+    validation: parseAuthorPlacementValidation(value.validation),
+    zoneCounts,
+  };
+}
+
+function parseAuthorPlacementValidation(
+  value: unknown,
+): AuthorPlacementValidation {
+  if (
+    !isRecord(value) ||
+    !Array.isArray(value.coverage) ||
+    !isRecord(value.separation) ||
+    !isPositiveInteger(value.separation.minimumMetres) ||
+    !Array.isArray(value.separation.blockedSites)
+  ) {
+    throw unavailableResponse();
+  }
+  const coverage = value.coverage.map((item) => {
+    if (
+      !isRecord(item) ||
+      !isUuid(item.zoneId) ||
+      !isNonNegativeInteger(item.actual) ||
+      !isNonNegativeInteger(item.mandatory) ||
+      !isNonNegativeInteger(item.preferred) ||
+      (item.status !== 'met' &&
+        item.status !== 'preferred_shortfall' &&
+        item.status !== 'unserved')
+    ) {
+      throw unavailableResponse();
+    }
+    return item as unknown as AuthorPlacementValidation['coverage'][number];
+  });
+  const blockedSites = value.separation.blockedSites.map((item) => {
+    if (
+      !isRecord(item) ||
+      !isUuid(item.siteId) ||
+      !isUuid(item.zoneId) ||
+      !Array.isArray(item.relatedSiteIds) ||
+      !item.relatedSiteIds.every(isUuid) ||
+      typeof item.conflictsWithFixedEvent !== 'boolean'
+    ) {
+      throw unavailableResponse();
+    }
+    return item as unknown as AuthorPlacementValidation['separation']['blockedSites'][number];
+  });
+  return {
+    coverage,
+    separation: {
+      blockedSites,
+      minimumMetres: value.separation.minimumMetres,
+    },
+  };
+}
+
+function parseAuthorPlacementHistoryItem(
+  value: unknown,
+): AuthorPlacementHistoryItem {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.planId) ||
+    !isNonBlank(value.policyVersion) ||
+    !isNonBlank(value.rotationBucket) ||
+    !isNonBlank(value.status) ||
+    !isNonBlank(value.trigger) ||
+    !isNullableString(value.failureCode) ||
+    !isNonNegativeInteger(value.assignmentCount) ||
+    !isDateTime(value.createdAt)
+  ) {
+    throw unavailableResponse();
+  }
+  return value as unknown as AuthorPlacementHistoryItem;
 }
 
 function parseAuthorEvent(value: unknown): AuthorEvent {
@@ -1789,6 +2322,28 @@ function isPositiveInteger(value: unknown): value is number {
 
 function isNonNegativeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+function isAuthorPlacementOrigin(
+  value: unknown,
+): value is AuthorPlacementOrigin {
+  return value === 'automatic' || value === 'pin' || value === 'rollback';
+}
+
+function isAuthorPlacementOverrideKind(
+  value: unknown,
+): value is AuthorPlacementOverrideKind {
+  return (
+    value === 'automation_pause' ||
+    value === 'pin' ||
+    value === 'site_exclusion'
+  );
+}
+
+function isAuthorPlacementPlanStatus(
+  value: unknown,
+): value is AuthorPlacementPlanStatus {
+  return value === 'valid' || value === 'degraded' || value === 'unserved';
 }
 
 function isRate(value: unknown): value is number {

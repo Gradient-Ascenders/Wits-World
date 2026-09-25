@@ -241,6 +241,9 @@ describe('Basic author console', () => {
       within(navigation).queryByRole('link', { name: 'Player application' }),
     ).not.toBeInTheDocument();
     expect(
+      within(navigation).getByRole('link', { name: 'Placement' }),
+    ).toHaveAttribute('href', authorPaths.placement);
+    expect(
       await screen.findByRole('link', { name: /Great Hall history/ }),
     ).toBeVisible();
     expect(fetchMock).toHaveBeenCalledWith(
@@ -281,6 +284,40 @@ describe('Basic author console', () => {
     expect(
       fetchMock.mock.calls.every(
         ([input]) => !String(input).includes('/author/'),
+      ),
+    ).toBe(true);
+  });
+
+  it('blocks an ordinary Player from placement controls before any placement request', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/auth/me')) {
+        return jsonResponse({
+          connectionStrategy: 'auth0',
+          id: '90000000-0000-4000-8000-000000000001',
+          playerName: 'test-player',
+          playerNameSetupRequired: false,
+          lifecycleStatus: 'active',
+          requestId: 'request-me',
+          role: 'player',
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderAuthorRoute(authorPaths.placement);
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Author permission is required',
+      }),
+    ).toHaveFocus();
+    expect(
+      screen.queryByRole('button', { name: 'Generate preview' }),
+    ).not.toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.every(
+        ([input]) => !String(input).includes('/author/event-placement'),
       ),
     ).toBe(true);
   });
