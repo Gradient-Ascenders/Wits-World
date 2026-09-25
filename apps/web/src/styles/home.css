@@ -1243,15 +1243,15 @@ html:has(.home-page) {
 }
 
 .home-showcase-card__tilt {
-  --home-card-scale: 1;
-  --home-card-tilt-x: 0deg;
-  --home-card-tilt-y: 0deg;
-  --home-card-z: 0rem;
+  --card-scale: 1;
+  --card-tilt-x: 0deg;
+  --card-tilt-y: 0deg;
+  --card-z: 0rem;
   position: relative;
   border-radius: 15px;
   box-shadow: 0 1rem 2.5rem rgb(0 0 0 / 34%);
-  transform: translateZ(var(--home-card-z)) rotateX(var(--home-card-tilt-x))
-    rotateY(var(--home-card-tilt-y)) scale(var(--home-card-scale));
+  transform: translateZ(var(--card-z)) rotateX(var(--card-tilt-x))
+    rotateY(var(--card-tilt-y)) scale(var(--card-scale));
   transform-origin: center;
   transform-style: preserve-3d;
 }
@@ -1436,17 +1436,16 @@ html:has(.home-page) {
 .home-battle-card {
   --home-battle-angle: 0deg;
   --home-battle-offset-y: 0rem;
-  --home-card-scale: 1;
-  --home-card-tilt-x: 0deg;
-  --home-card-tilt-y: 0deg;
-  --home-card-z: 0rem;
+  --card-scale: 1;
+  --card-tilt-x: 0deg;
+  --card-tilt-y: 0deg;
+  --card-z: 0rem;
   position: relative;
   z-index: 1;
   min-width: 0;
-  transform: translateY(var(--home-battle-offset-y))
-    translateZ(var(--home-card-z)) rotateZ(var(--home-battle-angle))
-    rotateX(var(--home-card-tilt-x)) rotateY(var(--home-card-tilt-y))
-    scale(var(--home-card-scale));
+  transform: translateY(var(--home-battle-offset-y)) translateZ(var(--card-z))
+    rotateZ(var(--home-battle-angle)) rotateX(var(--card-tilt-x))
+    rotateY(var(--card-tilt-y)) scale(var(--card-scale));
   transform-origin: center 28%;
   transform-style: preserve-3d;
 }

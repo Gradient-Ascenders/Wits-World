@@ -1,6 +1,6 @@
 import type { CardRarity } from '../../api/cards';
 import { CardFrame } from '../cards/CardFrame';
-import { useHomeCardTilt } from './useHomeCardTilt';
+import { useCardTilt } from '../cards/useCardTilt';
 
 interface ShowcaseCard {
   imageAlt: string;
@@ -58,7 +58,7 @@ export function HomeCollectShowcase() {
 }
 
 function TiltCard({ card }: { card: ShowcaseCard }) {
-  const tilt = useHomeCardTilt<HTMLDivElement>();
+  const tilt = useCardTilt<HTMLDivElement>();
 
   return (
     <article

@@ -1,6 +1,6 @@
 import { useEffect, useRef, type PointerEventHandler } from 'react';
 
-export function useHomeCardTilt<ElementType extends HTMLElement>() {
+export function useCardTilt<ElementType extends HTMLElement>() {
   const elementRef = useRef<ElementType>(null);
   const animationFrame = useRef(0);
   const spring = useRef({
@@ -65,21 +65,15 @@ export function useHomeCardTilt<ElementType extends HTMLElement>() {
       state.currentZ += state.velocityZ * delta;
 
       element.style.setProperty(
-        '--home-card-tilt-x',
+        '--card-tilt-x',
         `${state.currentX.toFixed(3)}deg`,
       );
       element.style.setProperty(
-        '--home-card-tilt-y',
+        '--card-tilt-y',
         `${state.currentY.toFixed(3)}deg`,
       );
-      element.style.setProperty(
-        '--home-card-scale',
-        state.currentScale.toFixed(4),
-      );
-      element.style.setProperty(
-        '--home-card-z',
-        `${state.currentZ.toFixed(3)}rem`,
-      );
+      element.style.setProperty('--card-scale', state.currentScale.toFixed(4));
+      element.style.setProperty('--card-z', `${state.currentZ.toFixed(3)}rem`);
 
       const distance =
         Math.abs(state.targetX - state.currentX) +
@@ -102,10 +96,10 @@ export function useHomeCardTilt<ElementType extends HTMLElement>() {
       state.currentScale = state.targetScale;
       state.currentZ = state.targetZ;
       state.lastTime = 0;
-      element.style.setProperty('--home-card-tilt-x', `${state.targetX}deg`);
-      element.style.setProperty('--home-card-tilt-y', `${state.targetY}deg`);
-      element.style.setProperty('--home-card-scale', String(state.targetScale));
-      element.style.setProperty('--home-card-z', `${state.targetZ}rem`);
+      element.style.setProperty('--card-tilt-x', `${state.targetX}deg`);
+      element.style.setProperty('--card-tilt-y', `${state.targetY}deg`);
+      element.style.setProperty('--card-scale', String(state.targetScale));
+      element.style.setProperty('--card-z', `${state.targetZ}rem`);
       element.removeAttribute('data-tilting');
       animationFrame.current = 0;
     };

@@ -1,5 +1,5 @@
 import { CardFrame } from '../cards/CardFrame';
-import { useHomeCardTilt } from './useHomeCardTilt';
+import { useCardTilt } from '../cards/useCardTilt';
 
 interface BattlePreviewCard {
   affinity: 'Spark' | 'Spirit';
@@ -80,7 +80,7 @@ function BattleCard({
   card: BattlePreviewCard;
   side: 'opponent' | 'player';
 }) {
-  const tilt = useHomeCardTilt<HTMLElement>();
+  const tilt = useCardTilt<HTMLElement>();
 
   return (
     <article

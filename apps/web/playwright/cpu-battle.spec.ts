@@ -783,6 +783,12 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     await page.setViewportSize({ height: 844, width: 390 });
     await expectPrimaryActionWithinViewport(page);
     await expectActionContentFits(page);
+    expect(
+      (await page
+        .locator('.creature-choice-control__artwork .battle-creature-artwork')
+        .first()
+        .boundingBox())!.width,
+    ).toBeGreaterThanOrEqual(92);
 
     const openingChoice = page.getByRole('button', {
       name: /Choose Creature\s*Wit Creature 1/,
@@ -1566,18 +1572,23 @@ test('keeps the desktop battlefield stable when bench and details expand', async
       }),
     );
   const before = await measure();
+  const rail = page.locator('.battle-side-rail');
+  const railHeightBefore = (await rail.boundingBox())!.height;
+  await page.locator('.battle-log > summary').click();
+  expect(await measure()).toEqual(before);
   await page.locator('.battle-bench > summary').click();
   await page.locator('.battle-details > summary').click();
   expect(await measure()).toEqual(before);
-  const rail = page.locator('.battle-side-rail');
+  expect((await rail.boundingBox())!.height).toBeGreaterThan(railHeightBefore);
   expect(
-    await rail.evaluate(
-      (element) => element.scrollHeight > element.clientHeight,
-    ),
-  ).toBe(true);
-  await rail.evaluate((element) => {
-    element.scrollTop = element.scrollHeight;
-  });
+    (await rail
+      .locator('.battle-bench .battle-creature-artwork')
+      .first()
+      .boundingBox())!.width,
+  ).toBeGreaterThanOrEqual(96);
+  await page
+    .getByText('Match version', { exact: true })
+    .scrollIntoViewIfNeeded();
   await expect(
     page.getByText('Match version', { exact: true }),
   ).toBeInViewport();
