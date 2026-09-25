@@ -5,9 +5,12 @@ import {
   ArrowRight,
   ArrowDown,
   ArrowUp,
+  Flag,
   Lightning,
   Heart,
   CaretDown,
+  Sparkle,
+  Sword,
 } from '@phosphor-icons/react';
 import { useAuth0 } from '@auth0/auth0-react';
 import {
@@ -21,6 +24,7 @@ import { Link, useParams } from 'wouter';
 
 import {
   getCpuMatch,
+  forfeitCpuMatch,
   MatchApiError,
   submitCpuMatchAction,
   type BattleLogEvent,
@@ -29,10 +33,12 @@ import {
 } from '../api/matches';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { MatchErrorState } from '../components/matches/MatchErrorState';
+import { ResignMatchDialog } from '../components/matches/ResignMatchDialog';
 import {
   BattleActionPanel,
   BattleBench,
   BattleCombatant,
+  type BattleFeedbackTone,
 } from '../components/matches/BattlePresentation';
 import {
   battleLogMessage,
@@ -47,6 +53,7 @@ interface MatchRouteParams {
 
 type RequestStatus = 'loading' | 'ready' | 'reconciling' | 'submitting';
 type ApplyMatchResult = 'applied' | 'obsolete' | 'wrong-route';
+type RequestKind = 'action' | 'forfeit';
 
 export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const { matchId } = useParams<MatchRouteParams>();
@@ -56,6 +63,10 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const [error, setError] = useState<MatchApiError | null>(null);
   const [requestStatus, setRequestStatus] = useState<RequestStatus>('loading');
   const [statusMessage, setStatusMessage] = useState('Loading your battle.');
+  const [requestKind, setRequestKind] = useState<RequestKind>('action');
+  const [forfeitOpen, setForfeitOpen] = useState(false);
+  const [battleBeats, setBattleBeats] = useState<BattleLogEvent[]>([]);
+  const [activeBeatIndex, setActiveBeatIndex] = useState<number | null>(null);
   const [revision, setRevision] = useState(0);
   const [reauthFailed, setReauthFailed] = useState(false);
   const mounted = useRef(true);
@@ -67,6 +78,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const actionRequest = useRef<AbortController | null>(null);
   const phaseHeading = useRef<HTMLHeadingElement | null>(null);
   const alert = useRef<HTMLElement | null>(null);
+  const forfeitTrigger = useRef<HTMLButtonElement | null>(null);
 
   routeMatchId.current = matchId;
 
@@ -104,6 +116,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       }
 
       const phaseChanged = current?.state.phase !== next.state.phase;
+      const newEvents = current ? newBattleLogEvents(current, next) : [];
       matchRef.current = next;
       latestAppliedGeneration.current = Math.max(
         latestAppliedGeneration.current,
@@ -113,7 +126,17 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       setMatch(next);
       setError(null);
 
-      setStatusMessage(getMatchStatusMessage(next));
+      if (newEvents.length > 0) {
+        const visibleBeats = newEvents.filter((event) => event.kind !== 'turn');
+        const nextBeats = visibleBeats.length > 0 ? visibleBeats : newEvents;
+        setBattleBeats(nextBeats);
+        setActiveBeatIndex(0);
+        setStatusMessage(
+          nextBeats.map((event) => battleLogMessage(event.message)).join(' '),
+        );
+      } else {
+        setStatusMessage(getMatchStatusMessage(next));
+      }
 
       if (phaseChanged || next.status === 'completed') {
         queueMicrotask(() => phaseHeading.current?.focus());
@@ -122,6 +145,24 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     },
     [],
   );
+
+  useEffect(() => {
+    if (activeBeatIndex === null) return;
+    const reducedMotion = window.matchMedia?.(
+      '(prefers-reduced-motion: reduce)',
+    ).matches;
+    const timeout = window.setTimeout(
+      () => {
+        setActiveBeatIndex((current) =>
+          current !== null && current + 1 < battleBeats.length
+            ? current + 1
+            : null,
+        );
+      },
+      reducedMotion ? 120 : 900,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [activeBeatIndex, battleBeats.length]);
 
   const finishMatchResponse = useCallback((result: ApplyMatchResult) => {
     if (result === 'wrong-route') {
@@ -217,6 +258,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     const generation = ++nextGeneration.current;
     const stateRevisionAtStart = appliedRevision.current;
     setError(null);
+    setRequestKind('action');
     setRequestStatus('submitting');
     setStatusMessage('Applying your action…');
 
@@ -287,6 +329,89 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     }
   }
 
+  async function submitForfeit() {
+    const current = matchRef.current;
+    if (
+      !current ||
+      current.status === 'completed' ||
+      requestStatus !== 'ready' ||
+      error !== null ||
+      actionRequest.current !== null
+    ) {
+      return;
+    }
+
+    const controller = new AbortController();
+    actionRequest.current = controller;
+    const generation = ++nextGeneration.current;
+    const stateRevisionAtStart = appliedRevision.current;
+    setError(null);
+    setRequestKind('forfeit');
+    setRequestStatus('submitting');
+    setStatusMessage('Submitting your forfeit…');
+
+    try {
+      const response = await forfeitCpuMatch({
+        apiBaseUrl,
+        expectedVersion: current.version,
+        getAccessToken,
+        matchId,
+        signal: controller.signal,
+      });
+      if (!controller.signal.aborted) {
+        const result = applyMatch(response, generation);
+        finishMatchResponse(result);
+        if (result === 'applied') {
+          setForfeitOpen(false);
+          setStatusMessage(
+            'Battle forfeited. The CPU victory is saved in match history.',
+          );
+        }
+      }
+    } catch (nextError) {
+      if (controller.signal.aborted) return;
+      const matchError = toMatchError(nextError);
+      if (
+        matchError.failure === 'stale-action' ||
+        matchError.failure === 'completed'
+      ) {
+        setRequestStatus('reconciling');
+        setStatusMessage(
+          'The battle changed before the forfeit was confirmed. Restoring the latest server result…',
+        );
+        const reconciliationGeneration = ++nextGeneration.current;
+        try {
+          const reconciled = await getCpuMatch({
+            apiBaseUrl,
+            getAccessToken,
+            matchId,
+            signal: controller.signal,
+          });
+          if (!controller.signal.aborted) {
+            const result = applyMatch(reconciled, reconciliationGeneration);
+            finishMatchResponse(result);
+            if (result === 'applied') setForfeitOpen(false);
+          }
+        } catch (recoveryError) {
+          if (!controller.signal.aborted) {
+            setError(toMatchError(recoveryError));
+            setRequestStatus('ready');
+          }
+        }
+      } else if (canApplyFailure(generation, stateRevisionAtStart)) {
+        setError(matchError);
+        setRequestStatus('ready');
+        setStatusMessage(
+          'The forfeit outcome could not be confirmed. Reload the battle before trying again.',
+        );
+      }
+    } finally {
+      if (actionRequest.current === controller) {
+        actionRequest.current = null;
+      }
+    }
+  }
+
   async function startSignIn() {
     setReauthFailed(false);
     try {
@@ -336,6 +461,14 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const activePlayerCreature = match.state.player.creatures.find(
     (creature) => creature.id === match.state.player.activeCreatureId,
   );
+  const activeBeat =
+    activeBeatIndex === null ? null : (battleBeats[activeBeatIndex] ?? null);
+  const latestEvents = latestBattleLogEvents(
+    match.battleLog.flatMap((group) => group.events),
+  );
+  const resolutionEvents = battleBeats.length > 0 ? battleBeats : latestEvents;
+  const playerFeedback = battleFeedback(activeBeat, 'player');
+  const cpuFeedback = battleFeedback(activeBeat, 'cpu');
 
   return (
     <div
@@ -346,19 +479,32 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       </p>
 
       <header className="battle-header">
-        <Link className="battle-back-link" href="/matches">
-          <ArrowLeft size={20} aria-hidden="true" /> Battles
-        </Link>
+        <div className="battle-header__navigation">
+          <Link className="battle-back-link" href="/matches">
+            <ArrowLeft size={20} aria-hidden="true" /> Save &amp; exit
+          </Link>
+          {match.status === 'active' ? (
+            <button
+              className="battle-forfeit-trigger"
+              disabled={busy || error !== null}
+              onClick={() => setForfeitOpen(true)}
+              ref={forfeitTrigger}
+              type="button"
+            >
+              <Flag aria-hidden="true" size={18} /> Forfeit match
+            </button>
+          ) : null}
+        </div>
 
         <div className="battle-header__phase">
-          <div className="battle-header__context">
-            <p className="eyebrow">CPU battle</p>
-            <span>Turn {match.state.turnNumber}</span>
-          </div>
           <div className="battle-header__title-row">
             <h1 ref={phaseHeading} tabIndex={-1}>
               {phaseTitle}
             </h1>
+            <div className="battle-header__context">
+              <span>CPU battle</span>
+              <span>Turn {match.state.turnNumber}</span>
+            </div>
             {turnIndicator ? (
               <span aria-live="polite" className="battle-turn-indicator">
                 {turnIndicator}
@@ -379,7 +525,11 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           tabIndex={-1}
         >
           <StateIcon tone="error" />
-          <strong>Action not confirmed.</strong>{' '}
+          <strong>
+            {requestKind === 'forfeit'
+              ? 'Forfeit not confirmed.'
+              : 'Action not confirmed.'}
+          </strong>{' '}
           {error.failure === 'authorization'
             ? 'Your session expired. Sign in again before continuing.'
             : 'The last confirmed state is shown below. Reload it before trying another intent.'}
@@ -437,16 +587,23 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
                 }
                 heading="You"
                 isActing={match.state.currentSide === 'player'}
+                feedbackKey={activeBeat?.id}
+                feedbackText={playerFeedback?.label}
+                feedbackTone={playerFeedback?.tone}
                 visualSide="player"
               />
-              <div aria-hidden="true" className="battle-versus">
-                VS
-              </div>
+              <BattleResolution
+                activeEventId={activeBeat?.id}
+                events={resolutionEvents}
+              />
               <BattleCombatant
                 creature={match.state.cpu.activeCreature}
                 emptyText="The CPU Creature has not been revealed yet."
                 heading="CPU"
                 isActing={match.state.currentSide === 'cpu'}
+                feedbackKey={activeBeat?.id}
+                feedbackText={cpuFeedback?.label}
+                feedbackTone={cpuFeedback?.tone}
                 visualSide="cpu"
               />
             </div>
@@ -475,6 +632,16 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           <BattleSideRail match={match} />
         </div>
       )}
+
+      {forfeitOpen ? (
+        <ResignMatchDialog
+          busy={requestStatus === 'submitting' && requestKind === 'forfeit'}
+          onCancel={() => setForfeitOpen(false)}
+          onConfirm={() => void submitForfeit()}
+          opponentLabel="the CPU"
+          returnFocusRef={forfeitTrigger}
+        />
+      ) : null}
     </div>
   );
 }
@@ -499,8 +666,8 @@ function BattleSideRail({ match }: { match: CpuMatch }) {
     <aside aria-label="Battle history and details" className="battle-side-rail">
       <header className="battle-side-rail__heading">
         <div>
-          <p className="eyebrow">Battle activity</p>
-          <h2>Battle log</h2>
+          <h2>Battle record</h2>
+          <p>Review the full turn history and your remaining cards.</p>
         </div>
         <Link
           aria-label="Match history"
@@ -528,11 +695,7 @@ function BattleSideRail({ match }: { match: CpuMatch }) {
 
 function BattleLog({ groups }: { groups: CpuMatch['battleLog'] }) {
   const body = useRef<HTMLDivElement | null>(null);
-  const [open, setOpen] = useState(
-    () =>
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(min-width: 64rem)').matches,
-  );
+  const [open, setOpen] = useState(false);
   const events = groups.flatMap((group) => group.events);
   const latest = latestBattleLogEvents(events);
   const latestId = events.at(-1)?.id ?? 'empty';
@@ -545,14 +708,6 @@ function BattleLog({ groups }: { groups: CpuMatch['battleLog'] }) {
   useEffect(() => {
     scrollToLatest();
   }, [latestId, scrollToLatest]);
-
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') return;
-    const media = window.matchMedia('(min-width: 64rem)');
-    const syncWithViewport = () => setOpen(media.matches);
-    media.addEventListener('change', syncWithViewport);
-    return () => media.removeEventListener('change', syncWithViewport);
-  }, []);
 
   return (
     <details
@@ -643,6 +798,97 @@ function latestBattleLogEvents(events: readonly BattleLogEvent[]) {
   return [action, outcome].filter(
     (event): event is BattleLogEvent => event !== undefined,
   );
+}
+
+function newBattleLogEvents(current: CpuMatch, next: CpuMatch) {
+  const currentIds = new Set(
+    current.battleLog.flatMap((group) => group.events.map((event) => event.id)),
+  );
+  return next.battleLog
+    .flatMap((group) => group.events)
+    .filter((event) => !currentIds.has(event.id));
+}
+
+function BattleResolution({
+  activeEventId,
+  events,
+}: {
+  activeEventId?: string;
+  events: readonly BattleLogEvent[];
+}) {
+  const visible = events.slice(-3);
+  return (
+    <section
+      aria-label="Latest battle resolution"
+      className="battle-resolution"
+    >
+      <div className="battle-resolution__heading">
+        <strong>Latest resolution</strong>
+        <span>
+          {visible.length > 0 ? 'Server confirmed' : 'Awaiting action'}
+        </span>
+      </div>
+      {visible.length > 0 ? (
+        <ol>
+          {visible.map((event) => {
+            const stat = battleLogStat(event.message);
+            const tone = battleEventTone(event);
+            const Icon =
+              tone === 'heal'
+                ? Heart
+                : tone === 'damage' || tone === 'cost'
+                  ? Sword
+                  : Sparkle;
+            return (
+              <li
+                className={event.id === activeEventId ? 'is-active' : undefined}
+                data-tone={tone}
+                key={event.id}
+              >
+                <Icon aria-hidden="true" size={16} weight="bold" />
+                <span>{battleLogMessage(event.message)}</span>
+                {stat ? (
+                  <strong>
+                    {stat.direction === 'up' ? '+' : '−'}
+                    {stat.value} {stat.resource}
+                  </strong>
+                ) : null}
+              </li>
+            );
+          })}
+        </ol>
+      ) : (
+        <p>Your first confirmed action will appear here.</p>
+      )}
+    </section>
+  );
+}
+
+function battleEventTone(event: BattleLogEvent): BattleFeedbackTone {
+  const stat = battleLogStat(event.message);
+  if (stat?.direction === 'up') return 'heal';
+  if (/\bspent\b/iu.test(event.message)) return 'cost';
+  if (stat?.direction === 'down') return 'damage';
+  if (event.kind === 'defeat') return 'defeat';
+  if (event.kind === 'action') return 'action';
+  return 'status';
+}
+
+function battleFeedback(event: BattleLogEvent | null, side: 'player' | 'cpu') {
+  if (!event || event.side !== side) return undefined;
+  const stat = battleLogStat(event.message);
+  const tone = battleEventTone(event);
+  if (stat) {
+    return {
+      label: `${stat.direction === 'up' ? '+' : '−'}${stat.value} ${stat.resource}`,
+      tone,
+    };
+  }
+  if (event.kind === 'defeat') return { label: 'Defeated', tone };
+  if (event.kind === 'action') {
+    return { label: side === 'player' ? 'Your move' : 'CPU move', tone };
+  }
+  return { label: 'Effect applied', tone };
 }
 
 function BattleDetails({ match }: { match: CpuMatch }) {

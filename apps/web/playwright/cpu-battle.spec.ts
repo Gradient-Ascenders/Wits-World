@@ -31,6 +31,104 @@ const screenshotsDirectory = path.resolve(
 );
 const CURRENT_PLAYER_ID = '00000000-0000-4000-8000-000000009001';
 
+test('shows rarity frames and confirms an authoritative CPU forfeit', async ({
+  page,
+}) => {
+  await routeCurrentPlayer(page);
+  const active = activeMatch(4);
+  active.state.player.creatures[0]!.rarity = 'epic';
+  active.state.cpu.activeCreature!.rarity = 'legendary';
+  const forfeited = completedMatch(5);
+  forfeited.winner = 'cpu';
+  let submittedBody: unknown;
+  await page.route('**/api/v1/matches/**', async (route) => {
+    if (route.request().url().endsWith('/forfeit')) {
+      submittedBody = route.request().postDataJSON();
+      await json(route, response(forfeited));
+      return;
+    }
+    await json(route, response(active));
+  });
+
+  await page.goto(`/matches/${MATCH_ID}`);
+  await expect(
+    page.locator('.combatant--player .card-frame--epic'),
+  ).toBeVisible();
+  await expect(
+    page.locator('.combatant--cpu .card-frame--legendary'),
+  ).toBeVisible();
+
+  const forfeit = page.getByRole('button', { name: 'Forfeit match' });
+  await forfeit.click();
+  const dialog = page.getByRole('alertdialog', {
+    name: 'Forfeit this battle?',
+  });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Keep playing' }).click();
+  await expect(forfeit).toBeFocused();
+  await forfeit.click();
+  await dialog.getByRole('button', { name: 'Confirm forfeit' }).click();
+
+  await expect(
+    page.getByRole('heading', { name: 'CPU victory — match saved' }),
+  ).toBeVisible();
+  expect(submittedBody).toEqual({ expectedVersion: 4 });
+});
+
+test('animates each server-confirmed action and damage beat on its target', async ({
+  page,
+}) => {
+  await routeCurrentPlayer(page);
+  const active = activeMatch(4);
+  const resolved = activeMatch(5);
+  resolved.battleLog = [
+    {
+      events: [
+        {
+          id: '5:0',
+          kind: 'action',
+          message: "Player's Wit Creature used Knowledge Strike 1.",
+          sequence: 5,
+          side: 'player',
+        },
+        {
+          id: '5:1',
+          kind: 'effect',
+          message: "CPU's Grit Creature took 12 damage.",
+          sequence: 5,
+          side: 'cpu',
+        },
+      ],
+      id: 'turn-1',
+      label: 'Turn 1',
+      turnNumber: 1,
+    },
+  ];
+  await page.route('**/api/v1/matches/**', async (route) => {
+    await json(
+      route,
+      response(route.request().method() === 'POST' ? resolved : active),
+    );
+  });
+
+  await page.goto(`/matches/${MATCH_ID}`);
+  await page.getByRole('button', { name: /Knowledge Strike 1/ }).click();
+  await expect(page.locator('.combatant--player')).toHaveAttribute(
+    'data-feedback',
+    'action',
+  );
+  await expect(
+    page.locator('.combatant--player .combatant__feedback'),
+  ).toHaveText('Your move');
+  await expect(page.locator('.combatant--cpu')).toHaveAttribute(
+    'data-feedback',
+    'damage',
+  );
+  await expect(page.locator('.combatant--cpu .combatant__feedback')).toHaveText(
+    '−12 HP',
+  );
+});
+
 test('hands mobile Creature sheet gestures between scrolling and dragging', async ({
   page,
 }) => {
@@ -768,7 +866,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
       .evaluateAll((elements) =>
         elements.map((element) => element.getBoundingClientRect().x),
       );
-    expect(new Set(moveBoxes).size).toBe(2);
+    expect(new Set(moveBoxes).size).toBe(1);
     await zeroCostMove.focus();
     await expect(zeroCostMove).toBeFocused();
     expect(
@@ -1588,11 +1686,10 @@ async function expectBattleStageFirstDesktopLayout(page: Page) {
   expect(actions).not.toBeNull();
   expect(rail).not.toBeNull();
   expect(actions!.x).toBeCloseTo(stage!.x, 0);
-  expect(actions!.width).toBeCloseTo(stage!.width, 0);
+  expect(actions!.width).toBeLessThan(stage!.width);
   expect(actions!.y).toBeGreaterThanOrEqual(stage!.y + stage!.height);
-  expect(rail!.x).toBeGreaterThanOrEqual(stage!.x + stage!.width - 8);
-  expect(rail!.y).toBeCloseTo(stage!.y, 0);
-  expect(actions!.y + actions!.height).toBeCloseTo(rail!.y + rail!.height, 0);
+  expect(rail!.x).toBeGreaterThanOrEqual(actions!.x + actions!.width - 8);
+  expect(rail!.y).toBeCloseTo(actions!.y, 0);
   expect(stage!.width).toBeGreaterThan(rail!.width * 2);
   const actionContent = await page
     .locator('.battle-action-content')
@@ -1644,9 +1741,7 @@ async function expectBattleStageFirstDesktopLayout(page: Page) {
     }
   }
 
-  await expect(
-    page.getByRole('log', { name: 'Complete authoritative battle log' }),
-  ).toBeVisible();
+  await expect(page.locator('.battle-log > summary')).toBeVisible();
 }
 
 async function expectCompletedSideRailLayout(page: Page) {

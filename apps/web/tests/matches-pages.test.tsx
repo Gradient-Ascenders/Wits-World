@@ -519,6 +519,39 @@ describe('CPU match entry and history', () => {
 });
 
 describe('authoritative CPU battle page', () => {
+  it('requires confirmation and records a CPU forfeit through the match API', async () => {
+    const user = userEvent.setup();
+    const active = activeMatch(4);
+    const forfeited = completedMatch(5);
+    forfeited.winner = 'cpu';
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(matchResponse(active))
+      .mockResolvedValueOnce(matchResponse(forfeited));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderMatchPage();
+    await user.click(
+      await screen.findByRole('button', { name: 'Forfeit match' }),
+    );
+    expect(
+      screen.getByRole('heading', { name: 'Forfeit this battle?' }),
+    ).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Confirm forfeit' }));
+
+    expect(
+      await screen.findByRole('heading', { name: 'CPU victory — match saved' }),
+    ).toBeVisible();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      `${apiBaseUrl}/matches/${MATCH_ID}/forfeit`,
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ expectedVersion: 4 }),
+      }),
+    );
+  });
+
   it('selects an initial Creature by keyboard and renders returned legal move and Power controls', async () => {
     const user = userEvent.setup();
     const initial = buildMatch();

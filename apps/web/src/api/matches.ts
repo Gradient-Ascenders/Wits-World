@@ -1,5 +1,5 @@
 import type { ApiAccessTokenProvider } from '../auth/useApiAccessToken';
-import { cardAffinities, type CardAffinity } from './cards';
+import { cardAffinities, type CardAffinity, type CardRarity } from './cards';
 
 export type BattleSide = 'cpu' | 'player';
 export type BattlePhase =
@@ -62,6 +62,7 @@ export interface MatchCreature {
   maxPower: number;
   moves: MatchMove[];
   name: string;
+  rarity: CardRarity;
   remainingPower: number;
 }
 
@@ -225,6 +226,10 @@ interface SubmitActionOptions extends GetMatchOptions {
   submissionId: string;
 }
 
+interface ForfeitMatchOptions extends GetMatchOptions {
+  expectedVersion: number;
+}
+
 const matchKeys = [
   'battleLog',
   'completedAt',
@@ -259,9 +264,11 @@ const creatureKeys = [
   'maxPower',
   'moves',
   'name',
+  'rarity',
   'remainingPower',
 ] as const;
-const legacyCreatureKeys = creatureKeys.filter(
+const preRarityCreatureKeys = creatureKeys.filter((key) => key !== 'rarity');
+const legacyCreatureKeys = preRarityCreatureKeys.filter(
   (key) => key !== 'activeModifiers' && key !== 'name',
 );
 const resultKeys = [
@@ -347,6 +354,22 @@ export async function submitCpuMatchAction({
       body: { action, expectedVersion, submissionId },
       method: 'POST',
       path: `/matches/${encodeURIComponent(matchId)}/actions`,
+    }),
+    matchId,
+  );
+}
+
+export async function forfeitCpuMatch({
+  expectedVersion,
+  matchId,
+  ...options
+}: ForfeitMatchOptions) {
+  return requireRequestedMatch(
+    await requestMatch({
+      ...options,
+      body: { expectedVersion },
+      method: 'POST',
+      path: `/matches/${encodeURIComponent(matchId)}/forfeit`,
     }),
     matchId,
   );
@@ -695,11 +718,13 @@ function parseCpu(value: unknown): CpuMatchState['cpu'] {
 
 export function parseMatchCreature(value: unknown): MatchCreature {
   const currentShape = isRecord(value) && hasExactKeys(value, creatureKeys);
+  const preRarityShape =
+    isRecord(value) && hasExactKeys(value, preRarityCreatureKeys);
   const legacyShape =
     isRecord(value) && hasExactKeys(value, legacyCreatureKeys);
   if (
     !isRecord(value) ||
-    (!currentShape && !legacyShape) ||
+    (!currentShape && !preRarityShape && !legacyShape) ||
     !isUuid(value.id) ||
     !isAffinity(value.affinity) ||
     !isNonNegativeInteger(value.maxHp) ||
@@ -708,18 +733,20 @@ export function parseMatchCreature(value: unknown): MatchCreature {
     !isNonNegativeInteger(value.remainingPower) ||
     typeof value.defeated !== 'boolean' ||
     !Array.isArray(value.moves) ||
-    (currentShape &&
+    ((currentShape || preRarityShape) &&
       (typeof value.name !== 'string' ||
         value.name.trim() === '' ||
-        !Array.isArray(value.activeModifiers)))
+        !Array.isArray(value.activeModifiers))) ||
+    (currentShape && !isCardRarity(value.rarity))
   ) {
     throw new MatchApiError('unavailable');
   }
 
   return {
-    activeModifiers: currentShape
-      ? (value.activeModifiers as unknown[]).map(parseActiveModifier)
-      : [],
+    activeModifiers:
+      currentShape || preRarityShape
+        ? (value.activeModifiers as unknown[]).map(parseActiveModifier)
+        : [],
     affinity: value.affinity,
     currentHp: value.currentHp,
     defeated: value.defeated,
@@ -727,11 +754,17 @@ export function parseMatchCreature(value: unknown): MatchCreature {
     maxHp: value.maxHp,
     maxPower: value.maxPower,
     moves: value.moves.map(parseMove),
-    name: currentShape
-      ? String(value.name)
-      : `${titleCase(value.affinity)} Creature`,
+    name:
+      currentShape || preRarityShape
+        ? String(value.name)
+        : `${titleCase(value.affinity)} Creature`,
+    rarity: currentShape ? (value.rarity as CardRarity) : 'common',
     remainingPower: value.remainingPower,
   };
+}
+
+function isCardRarity(value: unknown): value is CardRarity {
+  return ['common', 'rare', 'epic', 'legendary'].includes(String(value));
 }
 
 function parseMove(value: unknown): MatchMove {

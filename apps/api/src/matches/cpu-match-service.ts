@@ -82,6 +82,12 @@ export interface SubmitCpuMatchActionInput {
   action: Exclude<BattleAction, { type: 'timeout' }>;
 }
 
+export interface ForfeitCpuMatchInput {
+  playerId: string;
+  matchId: string;
+  expectedVersion: number;
+}
+
 export interface CpuMatchActionView {
   type: BattleAction['type'];
   creatureId?: string;
@@ -124,6 +130,7 @@ export interface PublicCreatureView {
   id: string;
   name: string;
   affinity: BattleCreatureCard['affinity'];
+  rarity: CardRarity;
   maxHp: number;
   maxPower: number;
   currentHp: number;
@@ -241,6 +248,7 @@ export interface CpuMatchService {
   createMatch(input: CreateCpuMatchInput): Promise<CpuMatchResponse>;
   getActiveMatch(playerId: string): Promise<CpuMatchResponse>;
   getMatch(playerId: string, matchId: string): Promise<CpuMatchResponse>;
+  forfeitMatch(input: ForfeitCpuMatchInput): Promise<CpuMatchResponse>;
   submitAction(input: SubmitCpuMatchActionInput): Promise<CpuMatchResponse>;
   listHistory(playerId: string): Promise<readonly CpuMatchHistory[]>;
 }
@@ -313,6 +321,7 @@ interface MatchRow extends pg.QueryResultRow {
   started_at: Date;
   completed_at: Date | null;
   card_names?: Record<string, string>;
+  card_rarities?: Record<string, CardRarity>;
 }
 
 interface MatchViewRow extends MatchRow {
@@ -544,6 +553,11 @@ export function createCpuMatchService(
           cpu: cpuDeck,
         });
 
+        const snapshots = [
+          ...snapshotDeck('player', playerCards, playerDeck),
+          ...snapshotDeck('cpu', cpuCards, cpuDeck),
+        ];
+
         await client.query('commit');
 
         return createResponse({
@@ -556,10 +570,8 @@ export function createCpuMatchService(
           completedAt: null,
           turnDeadline: null,
           logActions: [],
-          cardNames: cardNamesFromSnapshots([
-            ...snapshotDeck('player', playerCards, playerDeck),
-            ...snapshotDeck('cpu', cpuCards, cpuDeck),
-          ]),
+          cardNames: cardNamesFromSnapshots(snapshots),
+          cardRarities: cardRaritiesFromSnapshots(snapshots),
         });
       } catch (error) {
         await rollback(client);
@@ -602,6 +614,7 @@ export function createCpuMatchService(
           turnDeadline: match.turn_deadline,
           logActions: match.log_actions,
           cardNames: match.card_names,
+          cardRarities: match.card_rarities,
         });
       } finally {
         client.release();
@@ -630,7 +643,106 @@ export function createCpuMatchService(
           turnDeadline: match.turn_deadline,
           logActions: match.log_actions,
           cardNames: match.card_names,
+          cardRarities: match.card_rarities,
         });
+      } finally {
+        client.release();
+      }
+    },
+
+    async forfeitMatch(input) {
+      const client = await database.connect();
+
+      try {
+        await client.query('begin');
+        const match = await loadMatch(
+          client,
+          input.playerId,
+          input.matchId,
+          true,
+        );
+
+        if (match.status === 'completed') {
+          await client.query('commit');
+          return createResponse({
+            matchId: match.id,
+            status: match.status,
+            version: match.version,
+            state: match.state,
+            winner: match.winner,
+            startedAt: match.started_at,
+            completedAt: match.completed_at,
+            turnDeadline: match.turn_deadline,
+            logActions: match.legacy_log_actions,
+            cardNames: match.card_names,
+            cardRarities: match.card_rarities,
+          });
+        }
+
+        if (match.version !== input.expectedVersion) {
+          throw new CpuMatchVersionConflictError();
+        }
+
+        const completedAt = clock.now();
+        const version = match.version + 1;
+        const state: BattleState = {
+          ...match.state,
+          phase: 'completed',
+          currentSide: null,
+          replacementSide: null,
+          replacementQueue: [],
+          resumeSideAfterReplacement: null,
+          winner: 'cpu',
+        };
+        const updated = await client.query<MatchIdentityRow>(
+          `
+            update public.cpu_matches
+               set status = 'completed',
+                   state = $1::jsonb,
+                   version = $2,
+                   winner = 'cpu',
+                   turn_started_at = null,
+                   turn_deadline = null,
+                   completed_at = $3,
+                   updated_at = now()
+             where id = $4::uuid
+               and player_id = $5::uuid
+               and status = 'active'
+               and version = $6
+            returning id::text
+          `,
+          [
+            JSON.stringify(state),
+            version,
+            completedAt,
+            match.id,
+            input.playerId,
+            match.version,
+          ],
+        );
+        if (updated.rows[0]?.id !== match.id) {
+          throw new CpuMatchVersionConflictError();
+        }
+
+        await progressionPersistence.recordCpuMatch(client, match.id);
+        const response = createResponse({
+          matchId: match.id,
+          status: 'completed',
+          version,
+          state,
+          winner: 'cpu',
+          startedAt: match.started_at,
+          completedAt,
+          turnDeadline: null,
+          logActions: match.legacy_log_actions,
+          cardNames: match.card_names,
+          cardRarities: match.card_rarities,
+        });
+        await client.query('commit');
+        return response;
+      } catch (error) {
+        await rollback(client);
+        throw mapActionError(error);
       } finally {
         client.release();
       }
@@ -714,7 +826,7 @@ export function createCpuMatchService(
                 match.card_names,
               );
           await client.query('commit');
-          return response;
+          return addCreatureRarities(response, match.card_rarities);
         }
 
         if (match.status === 'completed') {
@@ -786,6 +898,7 @@ export function createCpuMatchService(
           logActions: currentLogActions,
           previousBattleLog,
           cardNames: match.card_names,
+          cardRarities: match.card_rarities,
         });
 
         const persisted = await client.query<TransitionPersistenceRow>(
@@ -1490,6 +1603,14 @@ async function loadMatch(
           from public.cpu_match_cards card
           where card.match_id = cpu_matches.id
         ), '{}'::jsonb) as card_names,
+        coalesce((
+          select jsonb_object_agg(
+            card.snapshot -> 'battleCard' ->> 'id',
+            card.snapshot ->> 'rarity'
+          )
+          from public.cpu_match_cards card
+          where card.match_id = cpu_matches.id
+        ), '{}'::jsonb) as card_rarities,
         action_summary.action_sequence,
         action_summary.latest_battle_log,
         case
@@ -1572,6 +1693,14 @@ async function loadMatchView(
           from public.cpu_match_cards card
           where card.match_id = match.id
         ), '{}'::jsonb) as card_names,
+        coalesce((
+          select jsonb_object_agg(
+            card.snapshot -> 'battleCard' ->> 'id',
+            card.snapshot ->> 'rarity'
+          )
+          from public.cpu_match_cards card
+          where card.match_id = match.id
+        ), '{}'::jsonb) as card_rarities,
         coalesce((
           select jsonb_agg(
             jsonb_build_object(
@@ -1663,6 +1792,7 @@ function createResponse(input: {
   logActions: readonly BattleLogActionRow[];
   previousBattleLog?: readonly CpuMatchBattleLogGroup[];
   cardNames?: Readonly<Record<string, string>>;
+  cardRarities?: Readonly<Record<string, CardRarity>>;
 }): CpuMatchResponse {
   const lastAction = input.logActions.at(-1)?.result ?? null;
   const currentBattleLog = createBattleLog(
@@ -1677,7 +1807,12 @@ function createResponse(input: {
     winner: input.winner,
     startedAt: input.startedAt.toISOString(),
     completedAt: input.completedAt?.toISOString() ?? null,
-    state: toPublicState(input.state, input.turnDeadline, input.cardNames),
+    state: toPublicState(
+      input.state,
+      input.turnDeadline,
+      input.cardNames,
+      input.cardRarities,
+    ),
     lastAction:
       lastAction === null
         ? null
@@ -2107,6 +2242,7 @@ function toPublicState(
   state: BattleState,
   turnDeadline: Date | null,
   cardNames: Readonly<Record<string, string>> = {},
+  cardRarities: Readonly<Record<string, CardRarity>> = {},
 ): CpuMatchStateView {
   const player = state.participants.player;
   const cpu = state.participants.cpu;
@@ -2115,7 +2251,7 @@ function toPublicState(
       creature.defeated || creature.card.id === cpu.activeCreatureId,
   );
   const playerCreatures = player.creatures.map((creature) =>
-    toPublicCreature(creature, cardNames),
+    toPublicCreature(creature, cardNames, cardRarities),
   );
 
   return {
@@ -2153,10 +2289,11 @@ function toPublicState(
                 (creature) => creature.card.id === cpu.activeCreatureId,
               )!,
               cardNames,
+              cardRarities,
             ),
       defeatedCreatures: visibleCpuCreatures
         .filter((creature) => creature.defeated)
-        .map((creature) => toPublicCreature(creature, cardNames)),
+        .map((creature) => toPublicCreature(creature, cardNames, cardRarities)),
       remainingCreatureCount: cpu.creatures.filter(
         (creature) => !creature.defeated,
       ).length,
@@ -2178,6 +2315,7 @@ function toPublicCreature(
     modifiers: BattleState['participants']['player']['creatures'][number]['modifiers'];
   },
   cardNames: Readonly<Record<string, string>>,
+  cardRarities: Readonly<Record<string, CardRarity>>,
 ): PublicCreatureView {
   return {
     id: creature.card.id,
@@ -2185,6 +2323,7 @@ function toPublicCreature(
       cardNames[creature.card.id] ??
       `${titleCase(creature.card.affinity)} Creature`,
     affinity: creature.card.affinity,
+    rarity: cardRarities[creature.card.id] ?? 'common',
     maxHp: creature.card.maxHp,
     maxPower: creature.card.maxPower,
     currentHp: creature.currentHp,
@@ -2310,6 +2449,50 @@ function cardNamesFromSnapshots(
   return Object.fromEntries(
     snapshots.map((snapshot) => [snapshot.card.id, snapshot.name]),
   );
+}
+
+function cardRaritiesFromSnapshots(
+  snapshots: readonly SnapshotCard[],
+): Record<string, CardRarity> {
+  return Object.fromEntries(
+    snapshots.map((snapshot) => [snapshot.card.id, snapshot.rarity]),
+  );
+}
+
+function addCreatureRarities(
+  response: CpuMatchResponse,
+  cardRarities: Readonly<Record<string, CardRarity>> = {},
+): CpuMatchResponse {
+  if (
+    !response.state.player ||
+    !Array.isArray(response.state.player.creatures) ||
+    !response.state.cpu ||
+    !Array.isArray(response.state.cpu.defeatedCreatures)
+  ) {
+    return response;
+  }
+  const withRarity = (creature: PublicCreatureView): PublicCreatureView => ({
+    ...creature,
+    rarity: cardRarities[creature.id] ?? creature.rarity ?? 'common',
+  });
+  return {
+    ...response,
+    state: {
+      ...response.state,
+      player: {
+        ...response.state.player,
+        creatures: response.state.player.creatures.map(withRarity),
+      },
+      cpu: {
+        ...response.state.cpu,
+        activeCreature:
+          response.state.cpu.activeCreature === null
+            ? null
+            : withRarity(response.state.cpu.activeCreature),
+        defeatedCreatures: response.state.cpu.defeatedCreatures.map(withRarity),
+      },
+    },
+  };
 }
 
 function titleCase(value: string): string {

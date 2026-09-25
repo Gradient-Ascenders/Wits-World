@@ -4,8 +4,11 @@ import { useCreatureSheet } from './useCreatureSheet';
 import {
   ArrowRight,
   CaretDown,
+  Heart,
   Lightning,
+  Shield,
   Sword,
+  TrendDown,
   X,
 } from '@phosphor-icons/react';
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
@@ -13,6 +16,7 @@ import { createPortal } from 'react-dom';
 
 import type {
   CpuMatchIntent,
+  MatchEffect,
   MatchCreature,
   MatchPowerCard,
 } from '../../api/matches';
@@ -22,6 +26,8 @@ import {
 } from '../../battle/effect-presentation';
 
 export type BattleActionIntent = CpuMatchIntent;
+export type BattleFeedbackTone =
+  'action' | 'cost' | 'damage' | 'defeat' | 'heal' | 'status';
 
 interface BattleActionPanelProps {
   activeCreatureId: string | null;
@@ -121,9 +127,6 @@ export function BattleActionPanel({
     >
       <div className="battle-actions__heading">
         <div>
-          <p className="eyebrow">
-            {waiting ? 'Battle controls' : 'Your action'}
-          </p>
           <h2 id={panelId}>
             {opponentReplacement
               ? `${opponentLabel} is choosing a replacement`
@@ -173,7 +176,7 @@ export function BattleActionPanel({
                     className="creature-choice-control__artwork"
                     aria-hidden="true"
                   >
-                    <BattleCreatureArtwork name={creature.name} />
+                    <BattleCreatureArtwork creature={creature} />
                   </span>
                   <span className="creature-choice-control__heading">
                     <strong>{label}</strong>
@@ -312,9 +315,10 @@ export function BattleActionPanel({
                             <span className="battle-effect-list">
                               {move.effects.length > 0 ? (
                                 move.effects.map((effect, index) => (
-                                  <span key={index}>
-                                    {describeEffect(effect)}
-                                  </span>
+                                  <BattleEffectPreview
+                                    effect={effect}
+                                    key={index}
+                                  />
                                 ))
                               ) : (
                                 <span>Effect details unavailable</span>
@@ -383,9 +387,10 @@ export function BattleActionPanel({
                             <span className="battle-effect-list">
                               {card.effects.length > 0 ? (
                                 card.effects.map((effect, index) => (
-                                  <span key={index}>
-                                    {describeEffect(effect)}
-                                  </span>
+                                  <BattleEffectPreview
+                                    effect={effect}
+                                    key={index}
+                                  />
                                 ))
                               ) : (
                                 <span>Effect details unavailable</span>
@@ -429,17 +434,24 @@ export function BattleCombatant({
   emptyText,
   heading,
   isActing,
+  feedbackKey,
+  feedbackText,
+  feedbackTone,
   visualSide,
 }: {
   creature: MatchCreature | null;
   emptyText: string;
   heading: string;
   isActing: boolean;
+  feedbackKey?: string;
+  feedbackText?: string;
+  feedbackTone?: BattleFeedbackTone;
   visualSide: 'cpu' | 'player';
 }) {
   return (
     <article
       className={`combatant combatant--${visualSide}${isActing ? ' combatant--acting' : ''}${creature?.defeated ? ' combatant--defeated' : ''}`}
+      data-feedback={feedbackTone}
     >
       <div className="combatant__presence">
         {creature ? (
@@ -449,10 +461,20 @@ export function BattleCombatant({
             <span>{visualSide === 'cpu' ? '?' : '—'}</span>
           </div>
         )}
+        {feedbackText ? (
+          <span
+            aria-hidden="true"
+            className="combatant__feedback"
+            key={feedbackKey}
+          >
+            {feedbackText}
+          </span>
+        ) : null}
       </div>
       <div className="combatant__hud">
+        {creature ? <h2>{creature.name}</h2> : null}
         <div className="combatant__heading">
-          <p className="eyebrow">
+          <p className="combatant__side">
             {heading}
             {isActing ? ' · Active turn' : ''}
           </p>
@@ -462,7 +484,6 @@ export function BattleCombatant({
         </div>
         {creature ? (
           <>
-            <h2>{creature.name}</h2>
             {creature.defeated ? (
               <strong className="combatant__defeated">Defeated</strong>
             ) : null}
@@ -575,7 +596,7 @@ function CreatureDetailsPicture({ creature }: { creature: MatchCreature }) {
         aria-haspopup="dialog"
         onClick={() => setOpen(true)}
       >
-        <BattleCreatureArtwork name={creature.name} />
+        <BattleCreatureArtwork creature={creature} />
       </button>
       {open &&
         createPortal(
@@ -593,20 +614,22 @@ function CreatureDetailsPicture({ creature }: { creature: MatchCreature }) {
               <div>
                 <h2 id={titleId}>{creature.name}</h2>
                 <p className="battle-creature-dialog__subtitle">
-                  Creature · {titleCase(creature.affinity)}
+                  {titleCase(creature.rarity)} Creature ·{' '}
+                  {titleCase(creature.affinity)} affinity
                 </p>
               </div>
               <button
                 className="button button--quiet"
                 type="button"
                 aria-label="Close Creature details"
+                onClick={() => dialog.current?.close()}
               >
                 <X size={22} aria-hidden="true" />
               </button>
             </header>
             <div className="battle-creature-dialog__body">
               <div className="battle-creature-dialog__overview">
-                <BattleCreatureArtwork name={creature.name} />
+                <BattleCreatureArtwork creature={creature} />
                 <div>
                   {creature.defeated && <strong>Defeated</strong>}
                   <p className="battle-creature-dialog__stat-label">
@@ -660,19 +683,38 @@ function CreatureDetailsPicture({ creature }: { creature: MatchCreature }) {
   );
 }
 
-function BattleCreatureArtwork({ name }: { name: string }) {
-  const src = battleArtwork(name);
+function BattleCreatureArtwork({ creature }: { creature: MatchCreature }) {
+  const src = battleArtwork(creature.name);
   const [failedUrl, setFailedUrl] = useState<string>();
   return (
-    <CardFrame className="battle-creature-artwork">
+    <CardFrame className="battle-creature-artwork" rarity={creature.rarity}>
       {src && src !== failedUrl ? (
         <img src={src} alt="" onError={() => setFailedUrl(src)} />
       ) : (
         <span className="combatant__sigil" aria-hidden="true">
-          <span>{creatureMonogram(name)}</span>
+          <span>{creatureMonogram(creature.name)}</span>
         </span>
       )}
     </CardFrame>
+  );
+}
+
+function BattleEffectPreview({ effect }: { effect: MatchEffect }) {
+  const Icon =
+    effect.effectType === 'damage'
+      ? Sword
+      : effect.effectType === 'heal'
+        ? Heart
+        : effect.effectType === 'buff'
+          ? Shield
+          : TrendDown;
+  return (
+    <span
+      className={`battle-effect-preview battle-effect-preview--${effect.effectType}`}
+    >
+      <Icon aria-hidden="true" size={15} weight="bold" />
+      {describeEffect(effect)}
+    </span>
   );
 }
 

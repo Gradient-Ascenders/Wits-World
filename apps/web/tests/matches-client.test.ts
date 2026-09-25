@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   createCpuMatch,
+  forfeitCpuMatch,
   getActiveCpuMatch,
   getCpuMatch,
   listCpuMatchHistory,
@@ -209,6 +210,28 @@ describe('CPU match API client', () => {
     });
   });
 
+  it('forfeits a match with the latest server version', async () => {
+    const forfeited = completedMatch(5);
+    forfeited.winner = 'cpu';
+    const fetchMock = vi.fn().mockResolvedValue(matchResponse(forfeited));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      forfeitCpuMatch({
+        ...options(),
+        expectedVersion: 4,
+        matchId: MATCH_ID,
+      }),
+    ).resolves.toEqual(forfeited);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${apiBaseUrl}/matches/${MATCH_ID}/forfeit`,
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ expectedVersion: 4 }),
+      }),
+    );
+  });
+
   it('accepts canonical PostgreSQL UUID text used by seeded match cards', async () => {
     const match = activeMatch(2);
     const seededMoveId = '00000000-0000-f000-0000-000000001600';
@@ -254,6 +277,7 @@ describe('CPU match API client', () => {
     ]) {
       delete creature.activeModifiers;
       delete creature.name;
+      delete creature.rarity;
       for (const move of creature.moves as Record<string, unknown>[]) {
         delete move.effects;
       }
