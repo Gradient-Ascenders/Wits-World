@@ -42,7 +42,15 @@ const ticketBodySchema = {
 const matchProjectionSchema = {
   type: 'object',
   additionalProperties: true,
-  required: ['matchId', 'mode', 'role', 'status', 'version', 'phase'],
+  required: [
+    'matchId',
+    'mode',
+    'role',
+    'status',
+    'version',
+    'phase',
+    'serverTime',
+  ],
   properties: {
     matchId: { type: 'string', format: 'uuid' },
     mode: { const: 'live' },
@@ -52,6 +60,7 @@ const matchProjectionSchema = {
     phase: {
       enum: ['initial_selection', 'active', 'replacement', 'completed'],
     },
+    serverTime: { type: 'string', format: 'date-time' },
   },
 } as const;
 
@@ -108,7 +117,11 @@ export const livePvpRoutes: FastifyPluginAsync<Options> = async (
           matchId: request.params.matchId,
           playerId: player.id,
         });
-        return { ...match, requestId: request.id };
+        return {
+          ...match,
+          requestId: request.id,
+          serverTime: new Date().toISOString(),
+        };
       } catch (error) {
         throw toApiError(error);
       }

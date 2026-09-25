@@ -309,6 +309,15 @@ from PostgreSQL. The database-backed deadline worker runs independently of
 socket presence, and each API instance listens for committed match-version
 notifications so session affinity is not required for correctness.
 
+The authenticated snapshot response includes an ISO `serverTime` for display
+countdown anchoring. Participant projections additionally include the
+authoritative `selfSide` and the complete participant-safe public history
+through the returned match version; `lastAction` is the final history item.
+Spectator responses retain their separate public shape and never include hands,
+legal actions, private snapshots, private participant data, or a participant
+side. The client may render these fields but cannot use them to resolve a
+deadline or battle transition.
+
 See the [live PvP API contract](../../docs/architecture/live-pvp-api-contract.md)
 for message schemas, reconnect, timeout, idempotency, and spectator privacy
 rules.

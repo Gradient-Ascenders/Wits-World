@@ -557,6 +557,27 @@ describe.skipIf(!runIntegrationTests)(
       });
       expect(resignation.acknowledgement.version).toBe(1);
       expect(resignation.replayed).toBe(false);
+      await expect(
+        service.getProjection({
+          matchId: fixture.matchId,
+          playerId: fixture.playerOne.id,
+        }),
+      ).resolves.toMatchObject({
+        role: 'participant',
+        version: 1,
+        history: [
+          {
+            type: 'voluntary_resignation',
+            loser: 'playerOne',
+            winner: 'playerTwo',
+          },
+        ],
+        lastAction: {
+          type: 'voluntary_resignation',
+          loser: 'playerOne',
+          winner: 'playerTwo',
+        },
+      });
     }, 30_000);
 
     it('pins spectator history to the already-loaded authoritative match version', async () => {
@@ -685,6 +706,8 @@ describe.skipIf(!runIntegrationTests)(
         role: 'participant',
         version: 0,
         consecutiveTimeouts: { self: 0, opponent: 0 },
+        selfSide: 'playerOne',
+        history: [],
       });
 
       const persisted = await pool.query<{

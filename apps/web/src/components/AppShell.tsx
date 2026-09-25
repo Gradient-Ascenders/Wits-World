@@ -85,6 +85,8 @@ function pageTitle(pathname: string): string {
   if (pathname === '/collection') return 'Collection · Wits World';
   if (pathname === '/decks') return 'Decks · Wits World';
   if (pathname === '/matches/history') return 'Battle history · Wits World';
+  if (pathname.startsWith('/matches/live/')) return 'Live battle · Wits World';
+  if (pathname === '/matches/live') return 'Live battles · Wits World';
   if (pathname.startsWith('/matches/pvp/')) return 'Player battle · Wits World';
   if (pathname === '/matches/pvp') return 'Player battles · Wits World';
   if (pathname.startsWith('/matches/')) return 'CPU battle · Wits World';

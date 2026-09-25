@@ -250,11 +250,41 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
             onStart={startMatch}
           />
           <PlayerBattlePanel state={playerBattles} />
+          <LiveBattlePanel deck={state.deck} />
         </div>
 
         <RecentResults state={recentResults} />
       </div>
     </div>
+  );
+}
+
+function LiveBattlePanel({ deck }: { deck: SavedDeck | null }) {
+  return (
+    <section
+      aria-labelledby="live-battles-title"
+      className="battle-mode-card battle-mode-card--live"
+    >
+      <div className="battle-mode-card__intro">
+        <h2 id="live-battles-title">Live Ranked</h2>
+        <p>Compete in a one-minute live match or watch a private battle.</p>
+      </div>
+      <div className="battle-mode-card__state">
+        <strong>
+          {deck ? `Ready with ${deck.name}` : 'Spectator entry available'}
+        </strong>
+        <span>
+          {deck
+            ? 'The server handles matchmaking, deadlines, and every battle result.'
+            : 'Select a deck to compete, or use a shared match link to watch.'}
+        </span>
+      </div>
+      <div className="battle-mode-card__actions">
+        <Link className="button" href="/matches/live">
+          Open live lobby
+        </Link>
+      </div>
+    </section>
   );
 }
 

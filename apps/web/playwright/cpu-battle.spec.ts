@@ -1346,6 +1346,9 @@ test('renders recent results and starts from the selected deck dashboard', async
 
   monitorBrowser(page, consoleErrors, pageErrors, failedRequests);
   await routeCurrentPlayer(page);
+  await page.route('**/api/v1/events', (route) =>
+    json(route, { events: [], requestId: 'dashboard-events' }),
+  );
   await page.route('**/api/v1/decks', (route) =>
     json(route, { decks: [selectedDeck], requestId: 'dashboard-decks' }),
   );
@@ -1411,6 +1414,14 @@ test('renders recent results and starts from the selected deck dashboard', async
       .getByRole('list', { name: 'Recent battle results' })
       .getByRole('listitem'),
   ).toHaveCount(5);
+  const dashboardBorderColours = await page
+    .locator('.battle-mode-card, .recent-match-list')
+    .evaluateAll((surfaces) =>
+      surfaces.map((surface) => getComputedStyle(surface).borderTopColor),
+    );
+  expect(dashboardBorderColours).toHaveLength(4);
+  expect(new Set(dashboardBorderColours).size).toBe(1);
+  await expectRecentResultActionsAligned(page, 'start');
   await expectNoHorizontalOverflow(page);
 
   await page.setViewportSize({ height: 1024, width: 768 });
@@ -1431,6 +1442,7 @@ test('renders recent results and starts from the selected deck dashboard', async
   expect(playerBox!.x).toBeGreaterThan(cpuBox!.x);
   expect(playerBox!.y).toBe(cpuBox!.y);
   expect(resultsBox!.y).toBeGreaterThan(cpuBox!.y + cpuBox!.height);
+  await expectRecentResultActionsAligned(page, 'end');
 
   for (const width of [390, 768, 1440]) {
     await page.setViewportSize({ width, height: 1024 });
@@ -1789,6 +1801,33 @@ async function expectVerticallySeparated(upper: Locator, lower: Locator) {
   expect(upperBox).not.toBeNull();
   expect(lowerBox).not.toBeNull();
   expect(upperBox!.y + upperBox!.height).toBeLessThanOrEqual(lowerBox!.y);
+}
+
+async function expectRecentResultActionsAligned(
+  page: Page,
+  edge: 'start' | 'end',
+) {
+  const historyAction = await page
+    .getByRole('link', { name: 'View history' })
+    .boundingBox();
+  const battleActions = await page
+    .getByRole('list', { name: 'Recent battle results' })
+    .getByRole('link', { name: 'View battle' })
+    .evaluateAll((links) =>
+      links.map((link) => {
+        const box = link.getBoundingClientRect();
+        return { left: box.left, right: box.right };
+      }),
+    );
+  expect(historyAction).not.toBeNull();
+  const historyEdge =
+    edge === 'start'
+      ? historyAction!.x
+      : historyAction!.x + historyAction!.width;
+  for (const action of battleActions) {
+    const actionEdge = edge === 'start' ? action.left : action.right;
+    expect(Math.abs(actionEdge - historyEdge)).toBeLessThanOrEqual(1);
+  }
 }
 
 async function json(route: Route, body: object, status = 200) {

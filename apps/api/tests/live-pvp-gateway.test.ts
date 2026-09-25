@@ -8,6 +8,7 @@ import {
 } from '../src/matches/live-pvp-gateway.js';
 import {
   LivePvpError,
+  type LivePvpParticipantProjection,
   type LivePvpProjection,
   type LivePvpService,
 } from '../src/matches/live-pvp-service.js';
@@ -17,7 +18,7 @@ const PLAYER_ID = '22222222-2222-4222-8222-222222222222';
 const MESSAGE_ID = '33333333-3333-4333-8333-333333333333';
 const MOVE_ID = '44444444-4444-4444-8444-444444444444';
 
-const participantProjection: LivePvpProjection = {
+const participantProjection: LivePvpParticipantProjection = {
   matchId: MATCH_ID,
   mode: 'live',
   role: 'participant',
@@ -28,6 +29,7 @@ const participantProjection: LivePvpProjection = {
   currentActor: 'self',
   turnDeadline: '2026-09-17T22:01:00.000Z',
   consecutiveTimeouts: { self: 0, opponent: 0 },
+  selfSide: 'playerOne',
   self: {
     playerName: 'player_one',
     creatures: [],
@@ -44,6 +46,7 @@ const participantProjection: LivePvpProjection = {
     remainingPowerCardCount: 2,
   },
   legalActions: [{ type: 'use_move', moveId: MOVE_ID }],
+  history: [],
   lastAction: null,
   outcome: null,
   completionReason: null,
@@ -92,7 +95,7 @@ const spectatorProjection: LivePvpProjection = {
   completedAt: null,
 };
 
-const completedParticipantProjection: LivePvpProjection = {
+const completedParticipantProjection: LivePvpParticipantProjection = {
   ...participantProjection,
   status: 'completed',
   version: 8,

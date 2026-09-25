@@ -6,7 +6,7 @@ import type { AccessTokenVerifier } from '../src/auth/access-token-verifier.js';
 import type { AuthConfig } from '../src/config/auth.js';
 import { createLivePvpGateway } from '../src/matches/live-pvp-gateway.js';
 import type {
-  LivePvpProjection,
+  LivePvpParticipantProjection,
   LivePvpService,
 } from '../src/matches/live-pvp-service.js';
 import type { PlayerIdentityService } from '../src/players/player-identity.js';
@@ -24,7 +24,7 @@ const authConfig: AuthConfig = {
   jwksUrl: new URL('https://auth.example.test/.well-known/jwks.json'),
 };
 
-const projection: LivePvpProjection = {
+const projection: LivePvpParticipantProjection = {
   matchId: MATCH_ID,
   mode: 'live',
   role: 'participant',
@@ -35,6 +35,7 @@ const projection: LivePvpProjection = {
   currentActor: 'self',
   turnDeadline: '2026-09-17T22:01:00.000Z',
   consecutiveTimeouts: { self: 0, opponent: 0 },
+  selfSide: 'playerOne',
   self: {
     playerName: 'player_one',
     creatures: [],
@@ -51,6 +52,7 @@ const projection: LivePvpProjection = {
     remainingPowerCardCount: 2,
   },
   legalActions: [{ type: 'use_move', moveId: MOVE_ID }],
+  history: [],
   lastAction: null,
   outcome: null,
   completionReason: null,
