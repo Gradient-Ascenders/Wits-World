@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 env:
   NPM_CONFIG_CACHE: /opt/wits-world/npm-cache

@@ -20,7 +20,7 @@ the deployment runner:
 
 | Workflow                              | Trigger                                                        | Responsibility                                                                                                                                                                                             |
 | ------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/.gitea/workflows/pr-validation.yml` | Pull requests targeting `main`                                 | Runs repository/application/shared-package validation plus migration and database integration against an isolated PostGIS service; plus Basic Playwright E2E in a separate isolated PostGIS job; no Azure. |
+| `/.gitea/workflows/pr-validation.yml` | Pull requests targeting `main`; manual runs on the PR branch   | Runs repository/application/shared-package validation plus migration and database integration against an isolated PostGIS service; plus Basic Playwright E2E in a separate isolated PostGIS job; no Azure. |
 | `/.gitea/workflows/ci.yml`            | Pushes to `main`; manual runs on `main`                        | Runs validation, publishes coverage, creates production artifacts when required, and deploys affected applications.                                                                                        |
 | `/.gitea/workflows/docs-deploy.yml`   | Documentation-relevant pushes to `main`; manual runs on `main` | Builds and deploys the documentation site to Cloudflare Pages.                                                                                                                                             |
 
@@ -68,6 +68,14 @@ therefore build fresh Web and API artifacts before the existing validation,
 current-main, integrity, deployment, and health-check gates run. Treat the
 workflow result for the exact main SHA as deployment evidence; starting a run
 does not prove that production changed successfully.
+
+### Recover a missing pull-request run
+
+If a push advances an open pull request but Gitea does not create the expected
+`pull_request` synchronization workflow, open **Pull Request Validation**, choose
+**Run workflow**, and select the pull-request branch. Confirm that the manual run
+targets the pull request's exact head SHA and that all five jobs pass. An older
+successful run is not evidence for the new head.
 
 ## Runners
 
