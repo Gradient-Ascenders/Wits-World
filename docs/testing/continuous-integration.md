@@ -18,11 +18,11 @@ workflow passed rather than treating an available merge action as evidence.
 The workflows are separated by event so pull requests have no dependency on
 the deployment runner:
 
-| Workflow                              | Trigger                                 | Responsibility                                                                                                                                                                                             |
-| ------------------------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/.gitea/workflows/pr-validation.yml` | Pull requests targeting `main`          | Runs repository/application/shared-package validation plus migration and database integration against an isolated PostGIS service; plus Basic Playwright E2E in a separate isolated PostGIS job; no Azure. |
-| `/.gitea/workflows/ci.yml`            | Pushes to `main`                        | Runs validation, publishes coverage, creates production artifacts when required, and deploys affected applications.                                                                                        |
-| `/.gitea/workflows/docs-deploy.yml`   | Documentation-relevant pushes to `main` | Builds and deploys the documentation site to Cloudflare Pages.                                                                                                                                             |
+| Workflow                              | Trigger                                                        | Responsibility                                                                                                                                                                                             |
+| ------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/.gitea/workflows/pr-validation.yml` | Pull requests targeting `main`; manual runs on the PR branch   | Runs repository/application/shared-package validation plus migration and database integration against an isolated PostGIS service; plus Basic Playwright E2E in a separate isolated PostGIS job; no Azure. |
+| `/.gitea/workflows/ci.yml`            | Pushes to `main`; manual runs on `main`                        | Runs validation, publishes coverage, creates production artifacts when required, and deploys affected applications.                                                                                        |
+| `/.gitea/workflows/docs-deploy.yml`   | Documentation-relevant pushes to `main`; manual runs on `main` | Builds and deploys the documentation site to Cloudflare Pages.                                                                                                                                             |
 
 The resulting flow is:
 
@@ -55,6 +55,28 @@ Keeping Azure jobs out of the pull-request workflow lets a PR finish as soon as
 its C220 validation gate succeeds. A busy Azure runner cannot add a deployment
 scheduling tail to pull-request feedback.
 
+### Recover a missing main deployment
+
+If a merge reaches `main` but Gitea does not create the expected push workflow,
+open the repository Actions page, select **Continuous Integration**, choose
+**Run workflow**, and select the `main` branch. Repeat this for
+**Deploy Documentation** when the missing release includes documentation. The
+deployment jobs reject manual runs for any ref other than `refs/heads/main`.
+
+A manual CI run has no push-before commit. The conservative change detectors
+therefore build fresh Web and API artifacts before the existing validation,
+current-main, integrity, deployment, and health-check gates run. Treat the
+workflow result for the exact main SHA as deployment evidence; starting a run
+does not prove that production changed successfully.
+
+### Recover a missing pull-request run
+
+If a push advances an open pull request but Gitea does not create the expected
+`pull_request` synchronization workflow, open **Pull Request Validation**, choose
+**Run workflow**, and select the pull-request branch. Confirm that the manual run
+targets the pull request's exact head SHA and that all five jobs pass. An older
+successful run is not evidence for the new head.
+
 ## Runners
 
 ### C220 validation and packaging runner
@@ -83,9 +105,10 @@ construct production packages.
 
 PR validation has five independent C220 jobs: bundled static analysis,
 application coverage plus explicit shared-package tests, isolated database
-verification, Basic Playwright E2E, and builds. The final PR gate needs all five. Main validation
-keeps bundled static analysis, application/package tests, and builds separate
-before its validation and deployment jobs.
+verification, Basic Playwright E2E, and builds. A PR validation workflow succeeds
+only when all five jobs succeed. Main validation keeps bundled static analysis,
+application/package tests, and builds separate before its validation and
+deployment jobs.
 
 Each job checks out the repository and performs a clean, lockfile-controlled
 installation:
@@ -97,6 +120,12 @@ npm ci --prefer-offline --no-audit --fund=false
 The jobs run the existing formatting, linting, type-checking, coverage, tests,
 and validation-build commands. Main deployment cannot begin unless every main
 validation category succeeds.
+
+The final pull-request gate uses `always()` so Gitea evaluates it after every
+dependency reaches a terminal state, including after a workflow rerun. The gate
+then checks each `needs.*.result` value explicitly and fails unless all five
+dependency jobs succeeded. A failed, cancelled, or skipped dependency therefore
+cannot produce a green aggregate gate.
 
 The duplicated clean installations increase aggregate Gitea job-minutes, but
 independent jobs execute concurrently on the C220. Aggregate job-minutes
@@ -268,3 +297,5 @@ Codex-CLI[GPT-6], Codex-CLI[GPT-5], Codex[GPT-5], and ChatGPT-Web[GPT-5.6 Sol]
 ```
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+Manual deployment recovery documented with assistance from Codex[GPT-5].

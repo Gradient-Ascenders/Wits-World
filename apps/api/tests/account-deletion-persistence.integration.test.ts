@@ -610,8 +610,8 @@ describe.skipIf(!runIntegrationTests)(
         issuer: ISSUER,
         subject: 'auth0|deletion-resolution-race',
       };
-      const tokenIssuedAt = new Date('2026-08-26T12:59:00.000Z');
-      const completedAt = new Date('2026-08-26T13:00:00.000Z');
+      const completedAt = new Date();
+      const tokenIssuedAt = new Date(completedAt.getTime() - 60_000);
       const deletionCountBefore = await pool.query<{ count: string }>(
         `select count(*)::text as count from public.account_deletion_requests`,
       );

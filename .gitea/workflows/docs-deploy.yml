@@ -11,6 +11,7 @@ on:
       - package-lock.json
       - .nvmrc
       - .gitea/workflows/docs-deploy.yml
+  workflow_dispatch:
 
 env:
   NPM_CONFIG_CACHE: /opt/wits-world/npm-cache
@@ -18,6 +19,7 @@ env:
 jobs:
   deploy-docs:
     name: Deploy documentation to Cloudflare Pages
+    if: ${{ gitea.ref == 'refs/heads/main' }}
     runs-on: wits-world-ci
 
     steps:

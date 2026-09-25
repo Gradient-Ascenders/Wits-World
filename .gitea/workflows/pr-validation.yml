@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 env:
   NPM_CONFIG_CACHE: /opt/wits-world/npm-cache
@@ -253,14 +254,42 @@ jobs:
       - database-validation
       - basic-e2e
       - build
+    if: ${{ always() }}
     runs-on: wits-world-ci
 
     steps:
       - name: Confirm validation gates passed
+        env:
+          STATIC_ANALYSIS_RESULT: ${{ needs.static-analysis.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+          DATABASE_VALIDATION_RESULT: ${{ needs.database-validation.result }}
+          BASIC_E2E_RESULT: ${{ needs.basic-e2e.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
         run: |
+          set -euo pipefail
+
+          FAILED_GATES=()
+
+          check_gate() {
+            local label="$1"
+            local result="$2"
+
+            echo "${label}: ${result}"
+
+            if [ "$result" != "success" ]; then
+              FAILED_GATES+=("${label}=${result}")
+            fi
+          }
+
+          check_gate "Static analysis" "$STATIC_ANALYSIS_RESULT"
+          check_gate "Application and explicit shared-package tests" "$TEST_RESULT"
+          check_gate "Isolated database and migration validation" "$DATABASE_VALIDATION_RESULT"
+          check_gate "Basic Playwright E2E" "$BASIC_E2E_RESULT"
+          check_gate "Application builds" "$BUILD_RESULT"
+
+          if [ "${#FAILED_GATES[@]}" -ne 0 ]; then
+            printf 'Pull-request validation failed: %s\n' "${FAILED_GATES[*]}"
+            exit 1
+          fi
+
           echo "All pull-request validation jobs passed."
-          echo "Static analysis: passed"
-          echo "Application and explicit shared-package tests: passed"
-          echo "Isolated database and migration validation: passed"
-          echo "Basic Playwright E2E: passed"
-          echo "Application builds: passed"

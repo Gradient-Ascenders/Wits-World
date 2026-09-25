@@ -371,11 +371,15 @@ export default function ChallengePage({ apiBaseUrl }: ChallengePageProps) {
   const currentQuestion = findCurrentQuestion(attempt);
 
   useEffect(() => {
-    if (shouldFocusQuestion.current && currentQuestion !== undefined) {
+    if (
+      shouldFocusQuestion.current &&
+      currentQuestion !== undefined &&
+      viewState === 'ready'
+    ) {
       shouldFocusQuestion.current = false;
       questionHeading.current?.focus();
     }
-  }, [currentQuestion]);
+  }, [currentQuestion, viewState]);
 
   useEffect(() => {
     if (shouldFocusResult.current && attempt?.status === 'completed') {
