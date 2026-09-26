@@ -167,7 +167,7 @@ export default function MatchHistoryPage({
     return (
       <PageLoadingState
         title="Loading your battle history"
-        description="Loading your completed Practice and Player Battles…"
+        description="Loading your completed CPU and Player Battles…"
       />
     );
   }
@@ -205,7 +205,7 @@ export default function MatchHistoryPage({
             Battle history
           </h1>
           <p className="lead">
-            Scan every Practice and Player Battle by result, opponent, and time.
+            Scan every CPU and Player Battle by result, opponent, and time.
           </p>
         </div>
         <Link className="button" href="/matches">
@@ -237,7 +237,7 @@ export default function MatchHistoryPage({
         >
           <StateIcon tone="empty" />
           <h2 id="empty-history-title">No completed matches yet</h2>
-          <p>Finish a Practice or Player Battle to see your result here.</p>
+          <p>Finish a CPU or Player Battle to see your result here.</p>
         </section>
       ) : (
         <div className="match-history-results">

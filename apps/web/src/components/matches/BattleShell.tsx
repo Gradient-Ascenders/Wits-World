@@ -11,9 +11,9 @@ interface BattleShellHeaderProps {
   backLabel: string;
   description?: ReactNode;
   headingRef?: RefObject<HTMLHeadingElement | null>;
-  mode: 'Live Ranked' | 'Player Battle' | 'Practice';
+  mode: 'Live Ranked' | 'Player Battle' | 'CPU battle';
   opponentLabel: string;
-  title: string;
+  title?: string;
   turnNumber?: number;
 }
 
@@ -42,11 +42,13 @@ export function BattleShellHeader({
           <span>{opponentLabel}</span>
           {turnNumber === undefined ? null : <span>Turn {turnNumber}</span>}
         </div>
-        <div className="battle-header__title-row">
-          <h1 ref={headingRef} tabIndex={headingRef ? -1 : undefined}>
-            {title}
-          </h1>
-        </div>
+        {title ? (
+          <div className="battle-header__title-row">
+            <h1 ref={headingRef} tabIndex={headingRef ? -1 : undefined}>
+              {title}
+            </h1>
+          </div>
+        ) : null}
         {description ? (
           <div className="battle-phase-prompt">{description}</div>
         ) : null}
@@ -101,7 +103,7 @@ interface BattleOutcomePanelProps {
   action: ReactNode;
   children?: ReactNode;
   facts?: Array<{ label: string; value: ReactNode }>;
-  mode: 'Live Ranked' | 'Player Battle' | 'Practice';
+  mode: 'Live Ranked' | 'Player Battle' | 'CPU battle';
   summary: ReactNode;
   title: string;
   tone: 'defeat' | 'neutral' | 'victory';

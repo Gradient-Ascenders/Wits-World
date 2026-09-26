@@ -8,7 +8,8 @@ export function battleLogMessage(message: string): string {
   return message
     .replace(/^Player's /, 'Your ')
     .replace(/^CPU's /, 'The CPU’s ')
-    .replace(/^Player (selected|sent out|used) /, 'You $1 ');
+    .replace(/^Player (selected|sent out|used) /, 'You $1 ')
+    .replace(/^Player swapped in /, 'You swapped in ');
 }
 
 type LogEvent = import('../api/matches').BattleLogEvent;

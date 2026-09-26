@@ -360,7 +360,7 @@ test('completes the canonical 21-step Basic journey against the real API and tes
 
   await test.step('18 reload the persisted completed match result', async () => {
     const completedMatchHeading = page.getByRole('heading', {
-      name: /^Practice (victory|complete)$/u,
+      name: /^CPU battle (victory|complete)$/u,
     });
     await expect(completedMatchHeading).toBeVisible();
     await page.reload();

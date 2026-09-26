@@ -4,6 +4,7 @@ import { battleArtwork } from '../../battle/card-artwork';
 import { useCreatureSheet } from './useCreatureSheet';
 import {
   ArrowRight,
+  ArrowsLeftRight,
   CaretDown,
   Heart,
   Lightning,
@@ -163,9 +164,10 @@ export function BattleActionPanel({
   phase,
   powerCards,
 }: BattleActionPanelProps) {
-  const [category, setCategory] = useState<'moves' | 'power'>('moves');
+  const [category, setCategory] = useState<'moves' | 'power' | 'swap'>('moves');
   const movesTab = useRef<HTMLButtonElement | null>(null);
   const powerTab = useRef<HTMLButtonElement | null>(null);
+  const swapTab = useRef<HTMLButtonElement | null>(null);
   const opponentReplacement = phase === 'replacement' && !currentActor;
   const selectionPhase =
     phase === 'initial_selection' || (phase === 'replacement' && currentActor);
@@ -179,6 +181,14 @@ export function BattleActionPanel({
     : 0;
   const legalPowerCount = powerCards.filter((card) =>
     isLegal({ powerCardId: card.id, type: 'use_power_card' }),
+  ).length;
+  const swapChoices = creatures
+    .map((creature, index) => ({ creature, index }))
+    .filter(
+      ({ creature }) => creature.id !== activeCreatureId && !creature.defeated,
+    );
+  const legalSwapCount = swapChoices.filter(({ creature }) =>
+    isLegal({ creatureId: creature.id, type: 'swap_creature' }),
   ).length;
   const waiting = !currentActor;
   const creatureChoices = selectionPhase
@@ -198,31 +208,30 @@ export function BattleActionPanel({
   const panelId = `${idPrefix}-battle-actions`;
   const movesTabId = `${idPrefix}-move-actions-tab`;
   const powerTabId = `${idPrefix}-power-actions-tab`;
+  const swapTabId = `${idPrefix}-swap-actions-tab`;
 
-  function selectCategory(next: 'moves' | 'power', moveFocus = false) {
+  function selectCategory(next: 'moves' | 'power' | 'swap', moveFocus = false) {
     setCategory(next);
-    if (moveFocus) {
+    if (moveFocus)
       queueMicrotask(() =>
-        (next === 'moves' ? movesTab.current : powerTab.current)?.focus(),
+        ({ moves: movesTab, power: powerTab, swap: swapTab })[
+          next
+        ].current?.focus(),
       );
-    }
   }
 
   function handleCategoryKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
+    const categories = ['moves', 'power', 'swap'] as const;
+    const index = categories.indexOf(category);
     const next =
       event.key === 'Home'
         ? 'moves'
         : event.key === 'End'
-          ? 'power'
-          : event.key === 'ArrowLeft'
-            ? category === 'moves'
-              ? 'power'
-              : 'moves'
-            : category === 'power'
-              ? 'moves'
-              : 'power';
+          ? 'swap'
+          : (categories[(index + (event.key === 'ArrowLeft' ? 2 : 1)) % 3] ??
+            'moves');
     selectCategory(next, true);
   }
 
@@ -385,6 +394,20 @@ export function BattleActionPanel({
             >
               <Lightning size={20} aria-hidden="true" /> Power{' '}
               <span>{legalPowerCount}</span>
+            </button>
+            <button
+              aria-controls={`${idPrefix}-swap-actions-panel`}
+              aria-selected={category === 'swap'}
+              id={swapTabId}
+              onClick={() => selectCategory('swap')}
+              onKeyDown={handleCategoryKeyDown}
+              ref={swapTab}
+              role="tab"
+              tabIndex={category === 'swap' ? 0 : -1}
+              type="button"
+            >
+              <ArrowsLeftRight size={20} aria-hidden="true" /> Swap{' '}
+              <span>{legalSwapCount}</span>
             </button>
           </div>
 
@@ -565,6 +588,67 @@ export function BattleActionPanel({
                 </p>
               )}
             </section>
+            <section
+              aria-labelledby={swapTabId}
+              hidden={category !== 'swap'}
+              id={`${idPrefix}-swap-actions-panel`}
+              role="tabpanel"
+            >
+              <p className="battle-action-guidance">
+                Swapping ends your turn. The outgoing Creature's end-of-turn
+                effects resolve first; its HP and Power are preserved.
+              </p>
+              {swapChoices.length > 0 ? (
+                <ul aria-label="Bench Creatures" className="battle-action-list">
+                  {swapChoices.map(({ creature, index }) => {
+                    const action: BattleActionIntent = {
+                      type: 'swap_creature',
+                      creatureId: creature.id,
+                    };
+                    const legal = isLegal(action);
+                    const label = creatureLabel(creature, index);
+                    return (
+                      <li key={creature.id}>
+                        <button
+                          aria-disabled={!legal || undefined}
+                          className="battle-action-control"
+                          disabled={busy || inputBlocked || !currentActor}
+                          onClick={() => {
+                            if (legal) onAction(action);
+                          }}
+                          type="button"
+                        >
+                          <span className="battle-action-control__heading">
+                            <strong>{label}</strong>
+                            <span>{titleCase(creature.affinity)}</span>
+                          </span>
+                          <span className="battle-action-control__detail">
+                            <span>
+                              HP {creature.currentHp} / {creature.maxHp}
+                            </span>
+                            <span>
+                              Power {creature.remainingPower} /{' '}
+                              {creature.maxPower}
+                            </span>
+                          </span>
+                        </button>
+                        {!legal ? (
+                          <small>
+                            {waiting
+                              ? 'Available on your turn.'
+                              : 'Unavailable this turn.'}
+                          </small>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="battle-action-guidance">
+                  No living bench Creatures are available.
+                </p>
+              )}
+            </section>
           </div>
         </div>
       )}
@@ -620,7 +704,10 @@ export function BattleCombatant({
           </span>
         ) : null}
       </div>
-      <div className="combatant__hud">
+      <div
+        className="combatant__hud"
+        tabIndex={creature?.activeModifiers.length ? 0 : undefined}
+      >
         {creature ? <h2>{creature.name}</h2> : null}
         <div className="combatant__heading">
           <p className="combatant__side">

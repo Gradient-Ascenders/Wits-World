@@ -112,7 +112,7 @@ test('shows rarity frames and confirms an authoritative CPU forfeit', async ({
   await dialog.getByRole('button', { name: 'Confirm forfeit' }).click();
 
   await expect(
-    page.getByRole('heading', { name: 'Practice complete' }),
+    page.getByRole('heading', { name: 'CPU battle complete' }),
   ).toBeVisible();
   expect(submittedBody).toEqual({ expectedVersion: 4 });
 });
@@ -1089,7 +1089,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     ).toBeAttached();
     await page.getByRole('button', { name: /Knowledge Strike 2/ }).tap();
     await expect(
-      page.getByRole('heading', { name: 'Practice victory' }),
+      page.getByRole('heading', { name: 'CPU battle victory' }),
     ).toBeVisible();
     for (const viewport of [
       { height: 844, label: '390', width: 390 },
@@ -1143,7 +1143,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
 
     await page.reload();
     await expect(
-      page.getByRole('heading', { name: 'Practice victory' }),
+      page.getByRole('heading', { name: 'CPU battle victory' }),
     ).toBeVisible();
     await page.locator('.battle-log > summary').tap();
     await expect(
@@ -1211,10 +1211,10 @@ test('offers the owned active CPU match for explicit resume', async ({
   await expect(page.locator('.site-footer')).toHaveCount(0);
   await expect(page).toHaveURL('/matches');
   await expect(
-    page.getByRole('heading', { name: 'Practice', exact: true }),
+    page.getByRole('heading', { name: 'CPU battle', exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole('button', { name: 'Start Practice battle' }),
+    page.getByRole('button', { name: 'Start CPU battle' }),
   ).toHaveCount(0);
 
   for (const viewport of [
@@ -1225,11 +1225,11 @@ test('offers the owned active CPU match for explicit resume', async ({
     await page.setViewportSize(viewport);
     await expectNoHorizontalOverflow(page);
     await expect(
-      page.getByRole('link', { name: 'Resume Practice battle' }),
+      page.getByRole('link', { name: 'Resume CPU battle' }),
     ).toBeVisible();
   }
 
-  await page.getByRole('link', { name: 'Resume Practice battle' }).click();
+  await page.getByRole('link', { name: 'Resume CPU battle' }).click();
   await expect(page).toHaveURL(`/matches/${MATCH_ID}`);
   await expect(page.getByRole('heading', { name: 'Your turn' })).toBeVisible();
   expect(activeLookups).toBe(1);
@@ -1545,7 +1545,7 @@ test('renders recent results and starts from the selected deck dashboard', async
     page.getByRole('heading', { exact: true, name: 'Battles' }),
   ).toBeFocused();
   await expect(
-    page.getByRole('heading', { name: 'Practice', exact: true }),
+    page.getByRole('heading', { name: 'CPU battle', exact: true }),
   ).toBeVisible();
   await expect(page.getByText('Campus Five', { exact: true })).toHaveCount(1);
   await expect(
@@ -1569,7 +1569,7 @@ test('renders recent results and starts from the selected deck dashboard', async
   await page.setViewportSize({ height: 1024, width: 768 });
   await expectNoHorizontalOverflow(page);
   await expect(
-    page.getByRole('button', { name: 'Start Practice battle' }),
+    page.getByRole('button', { name: 'Start CPU battle' }),
   ).toBeVisible();
 
   await page.setViewportSize({ height: 800, width: 1440 });
@@ -1631,7 +1631,7 @@ test('renders recent results and starts from the selected deck dashboard', async
 
   await page.getByRole('link', { name: 'Back to battles' }).click();
   await expect(page).toHaveURL('/matches');
-  await page.getByRole('button', { name: 'Start Practice battle' }).click();
+  await page.getByRole('button', { name: 'Start CPU battle' }).click();
   await expect(page).toHaveURL(`/matches/${MATCH_ID}`);
   await expect(
     page.getByRole('heading', { name: 'Choose your opening Creature' }),
@@ -1679,14 +1679,14 @@ test('shows deck recovery without exposing a conflicting start action', async ({
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto('/matches');
   await expect(
-    page.getByRole('heading', { name: 'Practice', exact: true }),
+    page.getByRole('heading', { name: 'CPU battle', exact: true }),
   ).toBeVisible();
   await expect(page.getByRole('link', { name: 'Choose deck' })).toHaveAttribute(
     'href',
     '/decks',
   );
   await expect(
-    page.getByRole('button', { name: 'Start Practice battle' }),
+    page.getByRole('button', { name: 'Start CPU battle' }),
   ).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
 });

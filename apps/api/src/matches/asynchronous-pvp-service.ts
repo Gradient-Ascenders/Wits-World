@@ -122,6 +122,7 @@ export interface PvpActionHistoryEntryView {
 
 export type PvpAction =
   | { type: 'select_replacement'; creatureId: string }
+  | { type: 'swap_creature'; creatureId: string }
   | { type: 'use_move'; moveId: string }
   | { type: 'use_power_card'; powerCardId: string };
 
@@ -2093,7 +2094,7 @@ function publicEffect(effect: BattleEffect): unknown {
 }
 
 function publicAction(action: PvpAction): PvpAction {
-  if (action.type === 'select_replacement') {
+  if (action.type === 'select_replacement' || action.type === 'swap_creature') {
     return { type: action.type, creatureId: action.creatureId };
   }
   if (action.type === 'use_move') {

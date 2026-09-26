@@ -578,6 +578,7 @@ export function buildLiveWebSocketUrl(
 ): string {
   const url = new URL(webSocketUrl, window.location.href);
   url.searchParams.set('ticket', ticket);
+  url.searchParams.set('battleSwaps', '1');
   return url.toString();
 }
 
@@ -807,6 +808,7 @@ function parseHistoryEntry(value: unknown): LiveHistoryEntry {
     isEnum(value.action.type, [
       'select_initial_creature',
       'select_replacement',
+      'swap_creature',
       'use_move',
       'use_power_card',
       'timeout',
@@ -833,7 +835,8 @@ function parseLiveAction(value: unknown): CpuMatchIntent {
   }
   if (
     (value.type === 'select_initial_creature' ||
-      value.type === 'select_replacement') &&
+      value.type === 'select_replacement' ||
+      value.type === 'swap_creature') &&
     hasExactKeys(value, ['type', 'creatureId']) &&
     isUuid(value.creatureId)
   ) {
@@ -1099,7 +1102,8 @@ async function requestJson(
     response = await fetch(`${options.apiBaseUrl}${options.path}`, {
       method: options.method,
       headers: {
-        Accept: 'application/json',
+        Accept:
+          'application/vnd.wits-world.live.v2+json, application/json;q=0.9',
         Authorization: `Bearer ${token}`,
         ...(options.body ? { 'Content-Type': 'application/json' } : {}),
       },
