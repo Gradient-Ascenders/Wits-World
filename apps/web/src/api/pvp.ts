@@ -9,7 +9,7 @@ import {
 } from './matches';
 
 const PVP_ACCEPT =
-  'application/vnd.wits-world.pvp.v4+json, application/vnd.wits-world.pvp.v3+json;q=0.9, application/vnd.wits-world.pvp.v2+json;q=0.8, application/json;q=0.7';
+  'application/vnd.wits-world.pvp.v4+json, application/vnd.wits-world.pvp.v3+json;q=0.9, application/json;q=0.8';
 
 export type PvpInvitationStatus =
   'pending' | 'accepted' | 'declined' | 'cancelled' | 'expired' | 'invalidated';

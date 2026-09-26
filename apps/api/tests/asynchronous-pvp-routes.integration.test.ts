@@ -30,7 +30,7 @@ const DECK_ID = 'a3000000-0000-4000-8000-000000000001';
 const CREATURE_ID = 'a4000000-0000-4000-8000-000000000001';
 const SUBMISSION_ID = 'a5000000-0000-4000-8000-000000000001';
 const PVP_ACCEPT =
-  'application/vnd.wits-world.pvp.v4+json, application/vnd.wits-world.pvp.v3+json;q=0.9, application/vnd.wits-world.pvp.v2+json;q=0.8, application/json;q=0.7';
+  'application/vnd.wits-world.pvp.v4+json, application/vnd.wits-world.pvp.v3+json;q=0.9, application/json;q=0.8';
 const PVP_V2_ACCEPT = 'application/vnd.wits-world.pvp.v2+json';
 
 let app: FastifyInstance;

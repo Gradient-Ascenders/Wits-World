@@ -272,7 +272,7 @@ The common match response is viewer-relative:
 | `requestId`           | string                         | Yes        | Safe request correlation         |
 
 The Web client negotiates version 4 with
-`Accept: application/vnd.wits-world.pvp.v4+json, application/vnd.wits-world.pvp.v3+json;q=0.9, application/vnd.wits-world.pvp.v2+json;q=0.8, application/json;q=0.7`.
+`Accept: application/vnd.wits-world.pvp.v4+json, application/vnd.wits-world.pvp.v3+json;q=0.9, application/json;q=0.8`.
 `Accept` is CORS-safelisted, so this does not add a request header to the browser
 preflight allow-list. An older API can ignore the preferred media type and serve
 the `application/json` fallback; the Web then treats an absent `canResign` as

@@ -2,6 +2,7 @@
 
 import { expect, test, type Page, type Route } from '@playwright/test';
 
+import type { CpuMatch } from '../src/api/matches';
 import { buildStarterCards, buildUuid } from '../tests/fixtures/cards';
 
 const EVENT_TITLE = 'Sprint 1 Demo - Wits Great Hall';
@@ -324,26 +325,37 @@ test('completes the canonical 21-step Basic journey against the real API and tes
   });
 
   await test.step('17 submit only server-provided legal battle intents', async () => {
-    let completed = false;
-    for (
-      let actionCount = 0;
-      actionCount < 120 && !completed;
-      actionCount += 1
-    ) {
-      const action = page
-        .locator('.battle-action-content button:not([disabled]):visible')
-        .last();
-      await expect(action).toBeVisible();
-      const responsePromise = page.waitForResponse(
-        `${API_BASE_URL}/matches/${matchId}/actions`,
+    const action = page
+      .locator('.battle-action-content button:not([disabled]):visible')
+      .last();
+    await expect(action).toBeVisible();
+    const responsePromise = page.waitForResponse(
+      `${API_BASE_URL}/matches/${matchId}/actions`,
+    );
+    await action.click();
+    const response = await responsePromise;
+    expect(response.status()).toBe(200);
+    let current = (await response.json()) as CpuMatch;
+
+    for (let actionCount = 1; actionCount < 120; actionCount += 1) {
+      if (current.status === 'completed') break;
+      const legalAction = current.state.legalActions.at(-1);
+      if (!legalAction) {
+        throw new Error('The active CPU match returned no legal action.');
+      }
+      current = await browserApi<CpuMatch>(
+        page,
+        `/matches/${matchId}/actions`,
+        'POST',
+        {
+          action: legalAction,
+          expectedVersion: current.version,
+          submissionId: crypto.randomUUID(),
+        },
       );
-      await action.click();
-      const response = await responsePromise;
-      expect(response.status()).toBe(200);
-      const body = (await response.json()) as { status: string };
-      completed = body.status === 'completed';
     }
-    expect(completed).toBe(true);
+    expect(current.status).toBe('completed');
+    await page.reload();
   });
 
   await test.step('18 reload the persisted completed match result', async () => {
