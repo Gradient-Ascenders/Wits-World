@@ -4,6 +4,7 @@ node_modules/
 package-lock.json
 AGENTS.md
 .playwright-mcp/
+.agents/skills/impeccable/
 
 # Docusaurus generated output
 apps/docs/build/
