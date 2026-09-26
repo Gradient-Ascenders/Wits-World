@@ -330,16 +330,24 @@ rules.
 Active Authors can use the protected trust-review operations:
 
 ```http
-GET  /api/v1/author/trust/cases
-GET  /api/v1/author/trust/cases/:caseId
-GET  /api/v1/author/trust/cases/:caseId/history
-POST /api/v1/author/trust/cases/:caseId/decisions
+GET  /api/v1/author/trust-cases
+GET  /api/v1/author/trust-cases/:caseId
+GET  /api/v1/author/trust-cases/:caseId/evidence
+GET  /api/v1/author/trust-cases/:caseId/restrictions
+GET  /api/v1/author/trust-cases/:caseId/history
+POST /api/v1/author/trust-cases/:caseId/decisions
+GET  /api/v1/author/trust-cases/:caseId/export
 ```
 
-The queue supports bounded pagination and filters for case state, review band,
-active-restriction state, derived signal type, and creation/update times. Detail
-and audit responses contain derived evidence summaries, local opaque player
-identifiers, policy/version data, and effective restrictions. They do not
+The queue defaults to `status=active` (`open` plus `under_review`) and supports
+explicit lifecycle state, bounded pagination, literal case-insensitive Player
+Name search, review band, active-restriction state, derived signal type, and
+creation/update time filters. Detail contains ten-item recent evidence and
+restriction previews plus total/truncation metadata; the separate collection
+routes provide pages up to 100 items. Opponent-pattern evidence retains only
+signal-time aggregate counts, evaluation windows, and trust-v1 thresholds.
+Detail and audit responses contain local opaque player identifiers,
+policy/version data, and effective restrictions. They do not
 contain Auth0 identifiers, precise location, raw telemetry, private match
 history, or evidence source identifiers.
 
@@ -357,6 +365,9 @@ The writable scopes are `online_verification_required`,
 `location_reward_challenge_hold`, and `new_competitive_match_hold`;
 `card_trade_hold` remains readable but requires the separate trust-v2 case
 workflow and cannot be authored by these endpoints.
+The export operation returns the same server-defined safe projection as JSON,
+with at most 100 evidence, restriction, and history records per collection and
+pagination totals that identify truncation. Clients cannot select columns.
 See the [longitudinal trust persistence guide](../../docs/database/trust-persistence.md)
 for the complete privacy and concurrency contract.
 

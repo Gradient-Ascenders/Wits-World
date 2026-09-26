@@ -11,9 +11,11 @@ for the `trust-v1` policy defined by issue `#254`. It stores only derived,
 privacy-limited trust data and human governance history. Issue `#258` now uses
 that schema for deterministic score calculation, authoritative signal ingestion,
 decay/recovery maintenance, and enforcement of already-reviewed restrictions.
-Issue `#260` exposes the Author-only case queue, detail, decision, and audit API
-over the same versioned persistence. Player appeal submission and resolution
-APIs remain later work.
+Issue `#260` exposes the Author-only case queue, detail, evidence, restriction,
+decision, audit, and bounded export API over the same versioned persistence.
+Migration `0060_persist_trust_review_evidence_summaries.sql` adds only immutable
+reviewer-safe aggregate context for opponent-pattern signals; it does not alter
+trust-v1 scoring. Player appeal submission and resolution APIs remain later work.
 
 All trust relations live in the `private` PostgreSQL schema. The browser does
 not read or write them directly.
@@ -45,6 +47,14 @@ operation that produced the signal. `deduplication_digest` is a 32-byte digest
 of the canonical deduplication key. The database enforces uniqueness on player,
 policy version, signal type, and digest so replay or concurrent ingestion cannot
 inflate the score.
+
+For opponent-pattern signals only, `review_summary` and its immutable
+`trust_case_evidence.safe_review_summary` copy retain the exact signal-time
+evaluation window, aggregate completed/repeated-opponent or qualifying-forfeit
+counts, concentration ratio, and trust-v1 threshold. They contain no opponent
+identifier, match identifier, deck, battle state, or raw result history. This
+small additive persistence is necessary because recomputing a rolling window
+later would not reproduce the evidence on which the signal was created.
 
 There is intentionally no restrictive foreign key from a signal to short-lived
 movement evidence. Precise movement rows may expire on their existing bounded
@@ -183,18 +193,24 @@ or evidence behind that decision.
 
 ## Issue #260 reviewer API
 
-Issue `#260` adds no migration. It reuses the private relations and integrity
-triggers above through a protected Author-only service:
+Issue `#260` reuses the private relations and integrity triggers above through a
+protected Author-only service, with migration `0060` preserving only the safe
+aggregate basis required for opponent-pattern human review:
 
-- `GET /api/v1/author/trust/cases` provides a bounded, deterministic queue with
-  status, review-band, active-restriction, signal-type, and date filters;
-- `GET /api/v1/author/trust/cases/:caseId` returns the current versioned case,
-  category totals, derived evidence summaries, effective restrictions, and the
-  most recent audit transitions;
-- `GET /api/v1/author/trust/cases/:caseId/history` provides the complete
+- `GET /api/v1/author/trust-cases` defaults to active cases and provides a
+  bounded, deterministic queue with lifecycle, safe Player Name search,
+  review-band, active-restriction, signal-type, and date filters;
+- `GET /api/v1/author/trust-cases/:caseId` returns the current versioned case,
+  category totals, ten-item evidence/restriction previews with total counts,
+  and the most recent audit transitions;
+- `GET /api/v1/author/trust-cases/:caseId/evidence` and `/restrictions` provide
+  the complete safe collections through deterministic bounded pagination;
+- `GET /api/v1/author/trust-cases/:caseId/history` provides the complete
   append-only decision history with bounded pagination; and
-- `POST /api/v1/author/trust/cases/:caseId/decisions` records a reasoned
-  monitoring, dismissal, restriction, or resolution decision.
+- `POST /api/v1/author/trust-cases/:caseId/decisions` records a reasoned
+  monitoring, dismissal, restriction, or resolution decision;
+- `GET /api/v1/author/trust-cases/:caseId/export` returns a server-defined JSON
+  export bounded to 100 records per evidence/restriction/history collection.
 
 The authenticated local Author UUID is always the actor; no reviewer identity
 is accepted from the request body. An Author's own case is excluded from the
@@ -224,10 +240,9 @@ separate trust-v2 case-creation and policy workflow.
 
 The API projections intentionally omit provider identifiers, raw source
 identifiers and digests, precise coordinates, exact speed/distance/accuracy,
-submitted answers, private match state, and arbitrary source payloads. There is
-no separate export operation: any later export must reuse these object-level
-authorization and privacy projections rather than reading the private tables
-directly.
+submitted answers, private match state, and arbitrary source payloads. Export
+uses the same object-level authorization and privacy projections rather than
+reading arbitrary client-selected private-table columns.
 
 ## AI declaration
 

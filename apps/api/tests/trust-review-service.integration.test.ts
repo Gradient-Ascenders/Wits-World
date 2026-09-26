@@ -125,6 +125,80 @@ describe.skipIf(!runIntegrationTests)(
       expectPrivacySafeProjection(firstPage);
     });
 
+    it('treats active as open plus under-review, excludes resolved by default, and searches Player Name literally', async () => {
+      const open = await createCase(pool, 'active_open', 25);
+      const underReview = await createCase(pool, 'active_review', 55);
+      const resolved = await createCase(pool, 'active_resolved', 80);
+      await service.decide({
+        actorPlayerId: reviewer.id,
+        caseId: underReview.caseId,
+        expectedVersion: 1,
+        action: 'monitor',
+        reasonCode: 'review_started',
+        note: 'Keep this case in the active reviewer queue.',
+        evidenceIds: [],
+        falsePositiveEvidenceIds: [],
+        restrictionScopes: [],
+      });
+      await service.decide({
+        actorPlayerId: reviewer.id,
+        caseId: resolved.caseId,
+        expectedVersion: 1,
+        action: 'monitor',
+        reasonCode: 'review_started',
+        note: 'Begin review before resolving the retained case.',
+        evidenceIds: [],
+        falsePositiveEvidenceIds: [],
+        restrictionScopes: [],
+      });
+      await service.decide({
+        actorPlayerId: reviewer.id,
+        caseId: resolved.caseId,
+        expectedVersion: 2,
+        action: 'resolve',
+        reasonCode: 'review_complete',
+        note: 'Resolve this case so it cannot crowd the active queue.',
+        evidenceIds: [],
+        falsePositiveEvidenceIds: [],
+        restrictionScopes: [],
+      });
+
+      const active = await service.listCases({
+        actorPlayerId: reviewer.id,
+        status: 'active',
+        search: 'ACTIVE_',
+        page: 1,
+        pageSize: 20,
+      });
+      expect(new Set(active.items.map((item) => item.caseId))).toEqual(
+        new Set([open.caseId, underReview.caseId]),
+      );
+      expect(active.items.some((item) => item.caseId === resolved.caseId)).toBe(
+        false,
+      );
+
+      const resolvedPage = await service.listCases({
+        actorPlayerId: reviewer.id,
+        status: 'resolved',
+        search: 'active_',
+        page: 1,
+        pageSize: 20,
+      });
+      expect(resolvedPage.items.map((item) => item.caseId)).toContain(
+        resolved.caseId,
+      );
+
+      const injectionLikeLiteral = await service.listCases({
+        actorPlayerId: reviewer.id,
+        status: 'active',
+        search: "%' OR 1=1 --",
+        page: 1,
+        pageSize: 20,
+      });
+      expect(injectionLikeLiteral.items).toEqual([]);
+      expectPrivacySafeProjection(active);
+    });
+
     it('applies lower, upper, and bounded queue date filters', async () => {
       const fixture = await createCase(pool, 'queue_date_target', 55);
       const timestamp = await pool.query<{ opened_at: Date }>(
@@ -140,18 +214,21 @@ describe.skipIf(!runIntegrationTests)(
 
       const lowerBound = await service.listCases({
         actorPlayerId: reviewer.id,
+        status: 'active',
         createdFrom: lower,
         page: 1,
         pageSize: 100,
       });
       const upperBound = await service.listCases({
         actorPlayerId: reviewer.id,
+        status: 'active',
         createdTo: upper,
         page: 1,
         pageSize: 100,
       });
       const bounded = await service.listCases({
         actorPlayerId: reviewer.id,
+        status: 'active',
         createdFrom: openedAt?.toISOString(),
         createdTo: openedAt?.toISOString(),
         updatedFrom: openedAt?.toISOString(),
@@ -185,15 +262,18 @@ describe.skipIf(!runIntegrationTests)(
         currentScore: 55,
         currentBand: 'review_required',
         policyVersion,
-        evidence: [
+        evidencePreview: [
           {
             evidenceId: fixture.evidenceId,
             signalType: 'impossible_movement',
             severity: 'strong',
             safeSourceType: 'movement_decision',
             reviewedFalsePositive: false,
+            opponentPattern: null,
           },
         ],
+        evidenceTotalItems: 1,
+        evidenceTruncated: false,
       });
       expect(JSON.stringify(detail)).not.toMatch(
         /auth_subject|latitude|longitude|required_speed|distance|accuracy/u,
@@ -206,6 +286,121 @@ describe.skipIf(!runIntegrationTests)(
           caseId: fixture.caseId,
         }),
       ).rejects.toBeInstanceOf(TrustCaseNotFoundError);
+    });
+
+    it('bounds detail previews and paginates complete evidence deterministically', async () => {
+      const fixture = await createCase(pool, 'bounded_detail', 55);
+      await addCaseEvidence(pool, fixture, 15);
+
+      const detail = await service.getCase({
+        actorPlayerId: reviewer.id,
+        caseId: fixture.caseId,
+      });
+      expect(detail.evidencePreview).toHaveLength(10);
+      expect(detail.evidenceTotalItems).toBe(16);
+      expect(detail.evidenceTruncated).toBe(true);
+
+      const first = await service.listEvidence({
+        actorPlayerId: reviewer.id,
+        caseId: fixture.caseId,
+        page: 1,
+        pageSize: 5,
+      });
+      const second = await service.listEvidence({
+        actorPlayerId: reviewer.id,
+        caseId: fixture.caseId,
+        page: 2,
+        pageSize: 5,
+      });
+      expect(first).toMatchObject({
+        page: 1,
+        pageSize: 5,
+        totalItems: 16,
+        totalPages: 4,
+      });
+      expect(first.items).toHaveLength(5);
+      expect(second.items).toHaveLength(5);
+      expect(
+        first.items.some((item) =>
+          second.items.some(
+            (candidate) => candidate.evidenceId === item.evidenceId,
+          ),
+        ),
+      ).toBe(false);
+      await expect(
+        service.listEvidence({
+          actorPlayerId: reviewer.id,
+          caseId: fixture.caseId,
+          page: 1,
+          pageSize: 101,
+        }),
+      ).rejects.toThrow(/pageSize/u);
+      expectPrivacySafeProjection(first);
+    });
+
+    it('exports only the bounded server-defined privacy-safe projection', async () => {
+      const fixture = await createCase(pool, 'bounded_export', 55);
+      await addCaseEvidence(pool, fixture, 105);
+      const exported = await service.exportCase({
+        actorPlayerId: reviewer.id,
+        caseId: fixture.caseId,
+      });
+
+      expect(exported).toMatchObject({
+        formatVersion: 'trust-case-review-v1',
+        generatedAt: expect.any(String),
+        case: {
+          caseId: fixture.caseId,
+          evidenceTotalItems: 106,
+          evidenceTruncated: true,
+        },
+        evidence: {
+          page: 1,
+          pageSize: 100,
+          totalItems: 106,
+          totalPages: 2,
+        },
+      });
+      expect(exported.evidence.items).toHaveLength(100);
+      expectPrivacySafeProjection(exported);
+
+      await expect(
+        service.exportCase({
+          actorPlayerId: fixture.player.id,
+          caseId: fixture.caseId,
+        }),
+      ).rejects.toBeInstanceOf(TrustCaseNotFoundError);
+    });
+
+    it('projects durable opponent-pattern aggregates without counterpart or match identity', async () => {
+      const fixture = await createCase(pool, 'opponent_detail', 55);
+      const evidenceId = await addOpponentPatternEvidence(pool, fixture);
+      const evidence = await service.listEvidence({
+        actorPlayerId: reviewer.id,
+        caseId: fixture.caseId,
+        page: 1,
+        pageSize: 20,
+      });
+      expect(evidence.items).toContainEqual(
+        expect.objectContaining({
+          evidenceId,
+          signalType: 'opponent_concentration',
+          opponentPattern: {
+            kind: 'opponent_concentration',
+            evaluationWindowStart: '2026-08-01T10:00:00.000Z',
+            evaluationWindowEnd: '2026-08-31T10:00:00.000Z',
+            completedMatchCount: 8,
+            repeatedOpponentMatchCount: 7,
+            opponentConcentrationRatio: 0.875,
+            minimumCompletedMatchCount: 6,
+            minimumOpponentConcentrationRatio: 0.8,
+          },
+        }),
+      );
+      expectPrivacySafeProjection(evidence);
+      expect(JSON.stringify(evidence)).not.toMatch(
+        /opponentPlayerId|matchId|deck|battleState/u,
+      );
     });
 
     it('records actor, time, reason, policy and prior history without mutation', async () => {
@@ -226,7 +421,7 @@ describe.skipIf(!runIntegrationTests)(
         version: 2,
         currentScore: 0,
         currentBand: 'normal',
-        evidence: [
+        evidencePreview: [
           {
             evidenceId: fixture.evidenceId,
             effectivePoints: 0,
@@ -413,7 +608,7 @@ describe.skipIf(!runIntegrationTests)(
       expect(restricted).toMatchObject({
         status: 'under_review',
         version: 2,
-        restrictions: [
+        restrictionPreview: [
           {
             scope: 'new_competitive_match_hold',
             active: true,
@@ -444,6 +639,33 @@ describe.skipIf(!runIntegrationTests)(
         new Date(committedRestriction?.expiresAt ?? 0).getTime() -
           new Date(committedRestriction?.startsAt ?? 0).getTime(),
       ).toBe(24 * 60 * 60 * 1000);
+
+      const restrictions = await service.listRestrictions({
+        actorPlayerId: secondReviewer.id,
+        caseId: fixture.caseId,
+        page: 1,
+        pageSize: 1,
+      });
+      expect(restrictions).toMatchObject({
+        page: 1,
+        pageSize: 1,
+        totalItems: 1,
+        totalPages: 1,
+        items: [
+          {
+            scope: 'new_competitive_match_hold',
+            active: true,
+          },
+        ],
+      });
+      await expect(
+        service.listRestrictions({
+          actorPlayerId: secondReviewer.id,
+          caseId: fixture.caseId,
+          page: 1,
+          pageSize: 101,
+        }),
+      ).rejects.toThrow(/pageSize/u);
 
       await expect(
         service.decide({
@@ -849,6 +1071,74 @@ async function addCaseEvidence(
     );
     await client.query('commit');
     return records.map((record) => record.evidenceId);
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function addOpponentPatternEvidence(
+  database: Pick<pg.Pool, 'connect'>,
+  fixture: CaseFixture,
+): Promise<string> {
+  const client = await database.connect();
+  const signalId = randomUUID();
+  const evidenceId = randomUUID();
+  const observedAt = new Date('2026-08-31T10:00:00.000Z');
+  const summary = {
+    kind: 'opponent_concentration',
+    evaluationWindowStart: '2026-08-01T10:00:00.000Z',
+    evaluationWindowEnd: observedAt.toISOString(),
+    completedMatchCount: 8,
+    repeatedOpponentMatchCount: 7,
+    opponentConcentrationRatio: 0.875,
+    minimumCompletedMatchCount: 6,
+    minimumOpponentConcentrationRatio: 0.8,
+  };
+  try {
+    await client.query('begin');
+    await client.query(
+      `insert into private.trust_signals (
+         id, player_id, policy_version, signal_type, severity, base_points,
+         observed_at, expires_at, source_type, source_identifier,
+         deduplication_digest, review_summary
+       ) values (
+         $1::uuid, $2::uuid, $3, 'opponent_concentration', 'pattern', 20,
+         $4::timestamptz, $4::timestamptz + interval '90 days',
+         'pvp_pattern', $5, $6::bytea, $7::jsonb
+       )`,
+      [
+        signalId,
+        fixture.player.id,
+        policyVersion,
+        observedAt,
+        `private-source-${signalId}`,
+        digest(signalId),
+        JSON.stringify(summary),
+      ],
+    );
+    await client.query(
+      `insert into private.trust_case_evidence (
+         id, case_id, original_signal_id, signal_type, severity,
+         base_points, observed_at, policy_version, safe_source_type,
+         safe_review_summary
+       ) values (
+         $1::uuid, $2::uuid, $3::uuid, 'opponent_concentration', 'pattern',
+         20, $4::timestamptz, $5, 'pvp_pattern', $6::jsonb
+       )`,
+      [
+        evidenceId,
+        fixture.caseId,
+        signalId,
+        observedAt,
+        policyVersion,
+        JSON.stringify(summary),
+      ],
+    );
+    await client.query('commit');
+    return evidenceId;
   } catch (error) {
     await client.query('rollback');
     throw error;

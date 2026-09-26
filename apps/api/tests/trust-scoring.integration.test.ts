@@ -639,8 +639,12 @@ describe.skipIf(!runIntegrationTests)(
           player_id: string;
           signal_type: string;
           count: number;
+          review_summary: Record<string, unknown>;
         }>(
-          `select player_id::text, signal_type, count(*)::integer as count
+          `select player_id::text,
+                  signal_type,
+                  count(*)::integer as count,
+                  min(review_summary::text)::jsonb as review_summary
            from private.trust_signals
           where player_id = any($1::uuid[])
             and signal_type in ('opponent_concentration', 'one_sided_outcome_pattern')
@@ -655,6 +659,32 @@ describe.skipIf(!runIntegrationTests)(
         );
         expect(new Set(signals.rows.map((row) => row.signal_type))).toEqual(
           new Set(['opponent_concentration', 'one_sided_outcome_pattern']),
+        );
+        const concentration = signals.rows.find(
+          (row) => row.signal_type === 'opponent_concentration',
+        )?.review_summary;
+        expect(concentration).toMatchObject({
+          kind: 'opponent_concentration',
+          completedMatchCount: 6,
+          repeatedOpponentMatchCount: 6,
+          opponentConcentrationRatio: 1,
+          minimumCompletedMatchCount: 6,
+          minimumOpponentConcentrationRatio: 0.8,
+          evaluationWindowStart: expect.any(String),
+          evaluationWindowEnd: expect.any(String),
+        });
+        const oneSided = signals.rows.find(
+          (row) => row.signal_type === 'one_sided_outcome_pattern',
+        )?.review_summary;
+        expect(oneSided).toMatchObject({
+          kind: 'one_sided_outcome_pattern',
+          qualifyingForfeitCount: 4,
+          minimumQualifyingForfeitCount: 4,
+          evaluationWindowStart: expect.any(String),
+          evaluationWindowEnd: expect.any(String),
+        });
+        expect(JSON.stringify(signals.rows)).not.toMatch(
+          /opponentPlayerId|player_low_id|player_high_id|privateMatchState/u,
         );
       } finally {
         await client.query('rollback');

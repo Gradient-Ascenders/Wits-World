@@ -31,7 +31,27 @@ export interface TrustSignalInput {
   sourceType: string;
   sourceIdentifier: string;
   deduplicationKey: string;
+  reviewSummary?: TrustSignalReviewSummary;
 }
+
+export type TrustSignalReviewSummary =
+  | {
+      kind: 'opponent_concentration';
+      evaluationWindowStart: string;
+      evaluationWindowEnd: string;
+      completedMatchCount: number;
+      repeatedOpponentMatchCount: number;
+      opponentConcentrationRatio: number;
+      minimumCompletedMatchCount: 6;
+      minimumOpponentConcentrationRatio: 0.8;
+    }
+  | {
+      kind: 'one_sided_outcome_pattern';
+      evaluationWindowStart: string;
+      evaluationWindowEnd: string;
+      qualifyingForfeitCount: number;
+      minimumQualifyingForfeitCount: 4;
+    };
 
 export interface TrustEvaluationResult {
   snapshotId: string;
@@ -92,6 +112,7 @@ interface SignalRow extends pg.QueryResultRow {
   adjusted_false_positive: boolean;
   severity: string;
   source_type: string;
+  review_summary: TrustSignalReviewSummary | null;
 }
 
 interface CaseRow extends pg.QueryResultRow {
@@ -168,11 +189,11 @@ export function createTrustService(
           insert into private.trust_signals (
             id, player_id, policy_version, signal_type, severity, base_points,
             observed_at, expires_at, source_type, source_identifier,
-            deduplication_digest
+            deduplication_digest, review_summary
           ) values (
             $1::uuid, $2::uuid, $3, $4, $5, $6, $7::timestamptz,
             $7::timestamptz + interval '90 days',
-            $8, $9, $10
+            $8, $9, $10, $11::jsonb
           )
           on conflict (player_id, policy_version, signal_type, deduplication_digest)
           do nothing
@@ -189,6 +210,7 @@ export function createTrustService(
           input.sourceType,
           input.sourceIdentifier,
           digest,
+          input.reviewSummary ? JSON.stringify(input.reviewSummary) : null,
         ],
       );
       if (!insert.rows[0]) return false;
@@ -289,6 +311,7 @@ export function createTrustService(
                  signal.base_points,
                  signal.observed_at,
                  signal.source_type,
+                 signal.review_summary,
                  exists (
                    select 1
                      from private.trust_signal_adjustments adjustment
@@ -524,8 +547,12 @@ export function createTrustService(
             `
               insert into private.trust_case_evidence (
                 id, case_id, original_signal_id, signal_type, severity,
-                base_points, observed_at, policy_version, safe_source_type
-              ) values ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9)
+                base_points, observed_at, policy_version, safe_source_type,
+                safe_review_summary
+              ) values (
+                $1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9,
+                $10::jsonb
+              )
               on conflict (case_id, original_signal_id) do nothing
             `,
             [
@@ -538,6 +565,7 @@ export function createTrustService(
               row.observed_at,
               TRUST_POLICY_VERSION,
               row.source_type,
+              row.review_summary ? JSON.stringify(row.review_summary) : null,
             ],
           );
         }
@@ -589,6 +617,10 @@ export function createTrustService(
       if (eligible) {
         const week = utcWeekKey(now);
         for (const playerId of pairKey) {
+          const playerCounts = counts.find((row) => row.player_id === playerId);
+          if (!playerCounts) continue;
+          const completedMatchCount = Number(playerCounts.total_matches);
+          const repeatedOpponentMatchCount = Number(playerCounts.pair_matches);
           await service.recordSignalWithinTransaction(client, {
             playerId,
             signalType: 'opponent_concentration',
@@ -598,6 +630,17 @@ export function createTrustService(
             sourceType: 'pvp_pattern',
             sourceIdentifier: matchId,
             deduplicationKey: `opponent_concentration:${pairKey.join(':')}:${week}`,
+            reviewSummary: {
+              kind: 'opponent_concentration',
+              evaluationWindowStart: windowStart(now, 30),
+              evaluationWindowEnd: now.toISOString(),
+              completedMatchCount,
+              repeatedOpponentMatchCount,
+              opponentConcentrationRatio:
+                repeatedOpponentMatchCount / completedMatchCount,
+              minimumCompletedMatchCount: 6,
+              minimumOpponentConcentrationRatio: 0.8,
+            },
           });
         }
       }
@@ -608,6 +651,7 @@ export function createTrustService(
       );
       if (repeatedWinner) {
         const week = utcWeekKey(now);
+        const qualifyingForfeitCount = Number(repeatedWinner.matching_forfeits);
         for (const playerId of pairKey) {
           await service.recordSignalWithinTransaction(client, {
             playerId,
@@ -618,6 +662,13 @@ export function createTrustService(
             sourceType: 'pvp_pattern',
             sourceIdentifier: matchId,
             deduplicationKey: `one_sided_outcome:${pairKey.join(':')}:${week}`,
+            reviewSummary: {
+              kind: 'one_sided_outcome_pattern',
+              evaluationWindowStart: windowStart(now, 7),
+              evaluationWindowEnd: now.toISOString(),
+              qualifyingForfeitCount,
+              minimumQualifyingForfeitCount: 4,
+            },
           });
         }
       }
@@ -1055,6 +1106,84 @@ function validateSignalInput(input: TrustSignalInput): void {
   if (!Number.isInteger(input.basePoints) || input.basePoints <= 0) {
     throw new RangeError('Trust signal points must be a positive integer.');
   }
+  if (
+    input.reviewSummary !== undefined &&
+    input.reviewSummary.kind !== input.signalType
+  ) {
+    throw new RangeError(
+      'Trust signal review summary must match its opponent-pattern signal type.',
+    );
+  }
+  if (input.reviewSummary !== undefined) {
+    validateSignalReviewSummary(input.reviewSummary);
+  }
+}
+
+function validateSignalReviewSummary(summary: TrustSignalReviewSummary): void {
+  const keys = Object.keys(summary).sort();
+  const commonValid =
+    Number.isFinite(Date.parse(summary.evaluationWindowStart)) &&
+    Number.isFinite(Date.parse(summary.evaluationWindowEnd)) &&
+    Date.parse(summary.evaluationWindowStart) <
+      Date.parse(summary.evaluationWindowEnd);
+  if (!commonValid) {
+    throw new RangeError(
+      'Trust signal review windows must be valid and ordered.',
+    );
+  }
+  if (summary.kind === 'opponent_concentration') {
+    const expectedKeys = [
+      'completedMatchCount',
+      'evaluationWindowEnd',
+      'evaluationWindowStart',
+      'kind',
+      'minimumCompletedMatchCount',
+      'minimumOpponentConcentrationRatio',
+      'opponentConcentrationRatio',
+      'repeatedOpponentMatchCount',
+    ].sort();
+    if (
+      keys.join('|') !== expectedKeys.join('|') ||
+      !Number.isInteger(summary.completedMatchCount) ||
+      summary.completedMatchCount < 0 ||
+      !Number.isInteger(summary.repeatedOpponentMatchCount) ||
+      summary.repeatedOpponentMatchCount < 0 ||
+      summary.repeatedOpponentMatchCount > summary.completedMatchCount ||
+      !Number.isFinite(summary.opponentConcentrationRatio) ||
+      summary.completedMatchCount < 6 ||
+      summary.opponentConcentrationRatio !==
+        summary.repeatedOpponentMatchCount / summary.completedMatchCount ||
+      summary.opponentConcentrationRatio < 0.8 ||
+      summary.minimumCompletedMatchCount !== 6 ||
+      summary.minimumOpponentConcentrationRatio !== 0.8
+    ) {
+      throw new RangeError(
+        'Opponent-concentration review summary does not match trust-v1.',
+      );
+    }
+    return;
+  }
+  const expectedKeys = [
+    'evaluationWindowEnd',
+    'evaluationWindowStart',
+    'kind',
+    'minimumQualifyingForfeitCount',
+    'qualifyingForfeitCount',
+  ].sort();
+  if (
+    keys.join('|') !== expectedKeys.join('|') ||
+    !Number.isInteger(summary.qualifyingForfeitCount) ||
+    summary.qualifyingForfeitCount < 4 ||
+    summary.minimumQualifyingForfeitCount !== 4
+  ) {
+    throw new RangeError(
+      'One-sided-outcome review summary does not match trust-v1.',
+    );
+  }
+}
+
+function windowStart(value: Date, days: number): string {
+  return new Date(value.getTime() - days * 86_400_000).toISOString();
 }
 
 function stableJson(value: unknown): string {

@@ -5,11 +5,14 @@ import {
   InvalidTrustDecisionError,
   StaleTrustCaseVersionError,
   TRUST_REVIEW_DEFAULT_PAGE_SIZE,
+  TRUST_REVIEW_DETAIL_PREVIEW_SIZE,
+  TRUST_REVIEW_EXPORT_PAGE_SIZE,
+  TRUST_REVIEW_MAX_SEARCH_LENGTH,
   TRUST_REVIEW_MAX_NOTE_LENGTH,
   TRUST_REVIEW_MAX_PAGE_SIZE,
   TRUST_REVIEW_MAX_RESTRICTION_HOURS,
   TrustCaseNotFoundError,
-  type TrustCaseStatus,
+  type TrustCaseQueueStatus,
   type TrustDecisionAction,
   type TrustReviewService,
   type WritableTrustRestrictionScope,
@@ -24,7 +27,8 @@ interface Options {
 }
 
 interface QueueQuery {
-  status?: TrustCaseStatus;
+  status?: TrustCaseQueueStatus;
+  search?: string;
   band?: TrustReviewBand;
   restrictionState?: 'active' | 'none';
   signalType?: TrustSignalType;
@@ -40,7 +44,7 @@ interface CaseParams {
   caseId: string;
 }
 
-interface HistoryQuery {
+interface PageQuery {
   page?: number;
   pageSize?: number;
 }
@@ -57,6 +61,7 @@ interface DecisionBody {
 }
 
 const statuses = ['open', 'under_review', 'resolved'] as const;
+const queueStatuses = ['active', ...statuses] as const;
 const bands = [
   'normal',
   'observe',
@@ -135,6 +140,61 @@ const caseParamsSchema = {
   },
 } as const;
 
+const opponentPatternSchema = {
+  anyOf: [
+    { type: 'null' },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'kind',
+        'evaluationWindowStart',
+        'evaluationWindowEnd',
+        'completedMatchCount',
+        'repeatedOpponentMatchCount',
+        'opponentConcentrationRatio',
+        'minimumCompletedMatchCount',
+        'minimumOpponentConcentrationRatio',
+      ],
+      properties: {
+        kind: { type: 'string', enum: ['opponent_concentration'] },
+        evaluationWindowStart: { type: 'string', format: 'date-time' },
+        evaluationWindowEnd: { type: 'string', format: 'date-time' },
+        completedMatchCount: { type: 'integer', minimum: 0 },
+        repeatedOpponentMatchCount: { type: 'integer', minimum: 0 },
+        opponentConcentrationRatio: {
+          type: 'number',
+          minimum: 0,
+          maximum: 1,
+        },
+        minimumCompletedMatchCount: { type: 'integer', enum: [6] },
+        minimumOpponentConcentrationRatio: {
+          type: 'number',
+          enum: [0.8],
+        },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'kind',
+        'evaluationWindowStart',
+        'evaluationWindowEnd',
+        'qualifyingForfeitCount',
+        'minimumQualifyingForfeitCount',
+      ],
+      properties: {
+        kind: { type: 'string', enum: ['one_sided_outcome_pattern'] },
+        evaluationWindowStart: { type: 'string', format: 'date-time' },
+        evaluationWindowEnd: { type: 'string', format: 'date-time' },
+        qualifyingForfeitCount: { type: 'integer', minimum: 0 },
+        minimumQualifyingForfeitCount: { type: 'integer', enum: [4] },
+      },
+    },
+  ],
+} as const;
+
 const evidenceSchema = {
   type: 'object',
   additionalProperties: false,
@@ -148,6 +208,7 @@ const evidenceSchema = {
     'decayState',
     'safeSourceType',
     'reviewedFalsePositive',
+    'opponentPattern',
   ],
   properties: {
     evidenceId: { type: 'string', format: 'uuid' },
@@ -162,6 +223,7 @@ const evidenceSchema = {
     },
     safeSourceType: { type: 'string' },
     reviewedFalsePositive: { type: 'boolean' },
+    opponentPattern: opponentPatternSchema,
   },
 } as const;
 
@@ -268,7 +330,7 @@ const historyItemSchema = {
   },
 } as const;
 
-const detailSchema = {
+const caseDetailSchema = {
   type: 'object',
   additionalProperties: false,
   required: [
@@ -282,15 +344,18 @@ const detailSchema = {
     'policyVersion',
     'categoryTotals',
     'sourceSignalCount',
-    'evidence',
-    'restrictions',
+    'evidencePreview',
+    'evidenceTotalItems',
+    'evidenceTruncated',
+    'restrictionPreview',
+    'restrictionTotalItems',
+    'restrictionsTruncated',
     'recentHistory',
     'historyTruncated',
     'openedAt',
     'updatedAt',
     'resolvedAt',
     'resolutionReason',
-    'requestId',
   ],
   properties: {
     caseId: { type: 'string', format: 'uuid' },
@@ -312,8 +377,20 @@ const detailSchema = {
       },
     },
     sourceSignalCount: { type: 'integer', minimum: 0 },
-    evidence: { type: 'array', items: evidenceSchema },
-    restrictions: { type: 'array', items: restrictionSchema },
+    evidencePreview: {
+      type: 'array',
+      maxItems: TRUST_REVIEW_DETAIL_PREVIEW_SIZE,
+      items: evidenceSchema,
+    },
+    evidenceTotalItems: { type: 'integer', minimum: 0 },
+    evidenceTruncated: { type: 'boolean' },
+    restrictionPreview: {
+      type: 'array',
+      maxItems: TRUST_REVIEW_DETAIL_PREVIEW_SIZE,
+      items: restrictionSchema,
+    },
+    restrictionTotalItems: { type: 'integer', minimum: 0 },
+    restrictionsTruncated: { type: 'boolean' },
     recentHistory: {
       type: 'array',
       maxItems: 20,
@@ -327,6 +404,87 @@ const detailSchema = {
     },
     resolutionReason: {
       anyOf: [{ type: 'string' }, { type: 'null' }],
+    },
+  },
+} as const;
+
+const detailEnvelopeSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['case', 'requestId'],
+  properties: {
+    case: caseDetailSchema,
+    requestId: { type: 'string' },
+  },
+} as const;
+
+function paginatedSchema(itemSchema: object) {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'items',
+      'page',
+      'pageSize',
+      'totalItems',
+      'totalPages',
+      'requestId',
+    ],
+    properties: {
+      items: {
+        type: 'array',
+        maxItems: TRUST_REVIEW_MAX_PAGE_SIZE,
+        items: itemSchema,
+      },
+      ...paginationProperties,
+      requestId: { type: 'string' },
+    },
+  } as const;
+}
+
+function exportPageSchema(itemSchema: object) {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['items', 'page', 'pageSize', 'totalItems', 'totalPages'],
+    properties: {
+      items: {
+        type: 'array',
+        maxItems: TRUST_REVIEW_EXPORT_PAGE_SIZE,
+        items: itemSchema,
+      },
+      ...paginationProperties,
+    },
+  } as const;
+}
+
+const exportEnvelopeSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['export', 'requestId'],
+  properties: {
+    export: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'formatVersion',
+        'generatedAt',
+        'case',
+        'evidence',
+        'restrictions',
+        'history',
+      ],
+      properties: {
+        formatVersion: {
+          type: 'string',
+          enum: ['trust-case-review-v1'],
+        },
+        generatedAt: { type: 'string', format: 'date-time' },
+        case: caseDetailSchema,
+        evidence: exportPageSchema(evidenceSchema),
+        restrictions: exportPageSchema(restrictionSchema),
+        history: exportPageSchema(historyItemSchema),
+      },
     },
     requestId: { type: 'string' },
   },
@@ -432,7 +590,7 @@ export const authorTrustReviewRoutes: FastifyPluginAsync<Options> = async (
   ];
 
   app.get<{ Querystring: QueueQuery }>(
-    '/author/trust/cases',
+    '/author/trust-cases',
     {
       onRequest: authorGuards,
       schema: {
@@ -446,7 +604,22 @@ export const authorTrustReviewRoutes: FastifyPluginAsync<Options> = async (
           type: 'object',
           additionalProperties: false,
           properties: {
-            status: { type: 'string', enum: statuses },
+            status: {
+              type: 'string',
+              enum: queueStatuses,
+              default: 'active',
+              description:
+                'active selects open and under_review cases. Omitted status also defaults to active.',
+            },
+            search: {
+              type: 'string',
+              minLength: 1,
+              maxLength: TRUST_REVIEW_MAX_SEARCH_LENGTH,
+              pattern:
+                '^(?!\\s)(?![\\s\\S]*\\s$)[^\\u0000-\\u001F\\u007F-\\u009F]+$',
+              description:
+                'Case-insensitive literal substring match on the reviewer-visible Player Name only. SQL wildcard characters are treated literally.',
+            },
             band: { type: 'string', enum: bands },
             restrictionState: { type: 'string', enum: ['active', 'none'] },
             signalType: { type: 'string', enum: signalTypes },
@@ -536,6 +709,7 @@ export const authorTrustReviewRoutes: FastifyPluginAsync<Options> = async (
       const result = await service.listCases({
         actorPlayerId: author.id,
         ...request.query,
+        status: request.query.status ?? 'active',
         page: request.query.page ?? 1,
         pageSize: request.query.pageSize ?? TRUST_REVIEW_DEFAULT_PAGE_SIZE,
       });
@@ -544,7 +718,7 @@ export const authorTrustReviewRoutes: FastifyPluginAsync<Options> = async (
   );
 
   app.get<{ Params: CaseParams }>(
-    '/author/trust/cases/:caseId',
+    '/author/trust-cases/:caseId',
     {
       onRequest: authorGuards,
       schema: {
@@ -556,7 +730,7 @@ export const authorTrustReviewRoutes: FastifyPluginAsync<Options> = async (
         security: bearerSecurity,
         params: caseParamsSchema,
         response: {
-          200: detailSchema,
+          200: detailEnvelopeSchema,
           400: apiErrorSchema,
           401: apiErrorSchema,
           403: apiErrorSchema,
@@ -567,9 +741,48 @@ export const authorTrustReviewRoutes: FastifyPluginAsync<Options> = async (
     async (request) => {
       try {
         return {
-          ...(await service.getCase({
+          case: await service.getCase({
             actorPlayerId: requireAuthor(request).id,
             caseId: request.params.caseId,
+          }),
+          requestId: request.id,
+        };
+      } catch (error) {
+        throw mapTrustReviewError(error);
+      }
+    },
+  );
+
+  app.get<{ Params: CaseParams; Querystring: PageQuery }>(
+    '/author/trust-cases/:caseId/evidence',
+    {
+      onRequest: authorGuards,
+      schema: {
+        operationId: 'listSuspectPlayerCaseEvidence',
+        summary: 'List privacy-safe suspect-player evidence',
+        description:
+          'Returns a deterministic page of derived evidence summaries. Opponent-pattern evidence includes the signal-time aggregate counts and policy thresholds, never opponent identities or private match payloads.',
+        tags: ['Trust review'],
+        security: bearerSecurity,
+        params: caseParamsSchema,
+        querystring: pageQuerySchema,
+        response: {
+          200: paginatedSchema(evidenceSchema),
+          400: apiErrorSchema,
+          401: apiErrorSchema,
+          403: apiErrorSchema,
+          404: apiErrorSchema,
+        },
+      },
+    },
+    async (request) => {
+      try {
+        return {
+          ...(await service.listEvidence({
+            actorPlayerId: requireAuthor(request).id,
+            caseId: request.params.caseId,
+            page: request.query.page ?? 1,
+            pageSize: request.query.pageSize ?? TRUST_REVIEW_DEFAULT_PAGE_SIZE,
           })),
           requestId: request.id,
         };
@@ -579,8 +792,47 @@ export const authorTrustReviewRoutes: FastifyPluginAsync<Options> = async (
     },
   );
 
-  app.get<{ Params: CaseParams; Querystring: HistoryQuery }>(
-    '/author/trust/cases/:caseId/history',
+  app.get<{ Params: CaseParams; Querystring: PageQuery }>(
+    '/author/trust-cases/:caseId/restrictions',
+    {
+      onRequest: authorGuards,
+      schema: {
+        operationId: 'listSuspectPlayerCaseRestrictions',
+        summary: 'List suspect-player restriction history',
+        description:
+          'Returns a deterministic page of current and historical restriction summaries with authoritative original and effective expiry times.',
+        tags: ['Trust review'],
+        security: bearerSecurity,
+        params: caseParamsSchema,
+        querystring: pageQuerySchema,
+        response: {
+          200: paginatedSchema(restrictionSchema),
+          400: apiErrorSchema,
+          401: apiErrorSchema,
+          403: apiErrorSchema,
+          404: apiErrorSchema,
+        },
+      },
+    },
+    async (request) => {
+      try {
+        return {
+          ...(await service.listRestrictions({
+            actorPlayerId: requireAuthor(request).id,
+            caseId: request.params.caseId,
+            page: request.query.page ?? 1,
+            pageSize: request.query.pageSize ?? TRUST_REVIEW_DEFAULT_PAGE_SIZE,
+          })),
+          requestId: request.id,
+        };
+      } catch (error) {
+        throw mapTrustReviewError(error);
+      }
+    },
+  );
+
+  app.get<{ Params: CaseParams; Querystring: PageQuery }>(
+    '/author/trust-cases/:caseId/history',
     {
       onRequest: authorGuards,
       schema: {
@@ -593,27 +845,7 @@ export const authorTrustReviewRoutes: FastifyPluginAsync<Options> = async (
         params: caseParamsSchema,
         querystring: pageQuerySchema,
         response: {
-          200: {
-            type: 'object',
-            additionalProperties: false,
-            required: [
-              'items',
-              'page',
-              'pageSize',
-              'totalItems',
-              'totalPages',
-              'requestId',
-            ],
-            properties: {
-              items: {
-                type: 'array',
-                maxItems: TRUST_REVIEW_MAX_PAGE_SIZE,
-                items: historyItemSchema,
-              },
-              ...paginationProperties,
-              requestId: { type: 'string' },
-            },
-          },
+          200: paginatedSchema(historyItemSchema),
           400: apiErrorSchema,
           401: apiErrorSchema,
           403: apiErrorSchema,
@@ -639,7 +871,7 @@ export const authorTrustReviewRoutes: FastifyPluginAsync<Options> = async (
   );
 
   app.post<{ Params: CaseParams; Body: DecisionBody }>(
-    '/author/trust/cases/:caseId/decisions',
+    '/author/trust-cases/:caseId/decisions',
     {
       onRequest: authorGuards,
       schema: {
@@ -659,7 +891,7 @@ export const authorTrustReviewRoutes: FastifyPluginAsync<Options> = async (
           ],
         },
         response: {
-          200: detailSchema,
+          200: detailEnvelopeSchema,
           400: apiErrorSchema,
           401: apiErrorSchema,
           403: apiErrorSchema,
@@ -671,7 +903,7 @@ export const authorTrustReviewRoutes: FastifyPluginAsync<Options> = async (
     async (request) => {
       try {
         return {
-          ...(await service.decide({
+          case: await service.decide({
             actorPlayerId: requireAuthor(request).id,
             caseId: request.params.caseId,
             expectedVersion: request.body.expectedVersion,
@@ -688,9 +920,49 @@ export const authorTrustReviewRoutes: FastifyPluginAsync<Options> = async (
                   restrictionDurationHours:
                     request.body.restrictionDurationHours,
                 }),
-          })),
+          }),
           requestId: request.id,
         };
+      } catch (error) {
+        throw mapTrustReviewError(error);
+      }
+    },
+  );
+
+  app.get<{ Params: CaseParams }>(
+    '/author/trust-cases/:caseId/export',
+    {
+      onRequest: authorGuards,
+      schema: {
+        operationId: 'exportSuspectPlayerCase',
+        summary: 'Export a bounded privacy-safe suspect-player case',
+        description: `Returns a server-defined JSON export containing the safe case projection and at most ${TRUST_REVIEW_EXPORT_PAGE_SIZE} evidence, restriction, and history records per collection. Counts and pagination metadata identify any truncation.`,
+        tags: ['Trust review'],
+        security: bearerSecurity,
+        produces: ['application/json'],
+        params: caseParamsSchema,
+        response: {
+          200: exportEnvelopeSchema,
+          400: apiErrorSchema,
+          401: apiErrorSchema,
+          403: apiErrorSchema,
+          404: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const exported = await service.exportCase({
+          actorPlayerId: requireAuthor(request).id,
+          caseId: request.params.caseId,
+        });
+        return reply
+          .type('application/json; charset=utf-8')
+          .header(
+            'content-disposition',
+            `attachment; filename="trust-case-${request.params.caseId}.json"`,
+          )
+          .send({ export: exported, requestId: request.id });
       } catch (error) {
         throw mapTrustReviewError(error);
       }

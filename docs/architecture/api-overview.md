@@ -109,10 +109,14 @@ hourly view/eligibility counters; it does not create player-level analytics or n
 precise-location retention. See the [advanced analytics API contract](./advanced-analytics-api-contract.md).
 
 Issue `#260` adds the protected suspect-player review boundary at
-`/api/v1/author/trust/cases`. The API derives the reviewer from the bearer
+`/api/v1/author/trust-cases`. The API derives the reviewer from the bearer
 identity, excludes self-review objects, requires the current case version for
 every decision, and returns generic not-found or explicit stale-version errors.
-Queue, detail, and audit projections expose only derived trust evidence and
+The queue defaults to actionable `open` and `under_review` cases, supports
+literal case-insensitive Player Name search, and keeps resolved cases opt-in.
+Detail uses bounded recent evidence/restriction previews; full safe collections
+are pageable, and the bounded JSON export reuses those projections. Queue,
+detail, evidence, restriction, export, and audit projections expose only derived trust evidence and
 local player/reviewer identities; they omit precise location, provider identity,
 raw telemetry, source identifiers, and private security payloads. The
 [trust persistence guide](../database/trust-persistence.md) records the

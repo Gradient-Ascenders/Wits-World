@@ -7,14 +7,19 @@ import {
   type TrustReviewBand,
   type TrustSignalType,
 } from './trust-policy.js';
+import type { TrustSignalReviewSummary } from './trust-service.js';
 import type { TrustRestrictionScope } from './trust-restrictions.js';
 
 export const TRUST_REVIEW_MAX_PAGE_SIZE = 100;
 export const TRUST_REVIEW_DEFAULT_PAGE_SIZE = 20;
 export const TRUST_REVIEW_MAX_NOTE_LENGTH = 1000;
 export const TRUST_REVIEW_MAX_RESTRICTION_HOURS = 7 * 24;
+export const TRUST_REVIEW_MAX_SEARCH_LENGTH = 64;
+export const TRUST_REVIEW_DETAIL_PREVIEW_SIZE = 10;
+export const TRUST_REVIEW_EXPORT_PAGE_SIZE = 100;
 
 export type TrustCaseStatus = 'open' | 'under_review' | 'resolved';
+export type TrustCaseQueueStatus = 'active' | TrustCaseStatus;
 export type TrustDecisionAction =
   'monitor' | 'dismiss' | 'restrict' | 'resolve';
 export type WritableTrustRestrictionScope = Exclude<
@@ -39,7 +44,8 @@ export interface TrustReviewQueryable {
 
 export interface TrustCaseQueueFilters {
   actorPlayerId: string;
-  status?: TrustCaseStatus;
+  status: TrustCaseQueueStatus;
+  search?: string;
   band?: TrustReviewBand;
   restrictionState?: 'active' | 'none';
   signalType?: TrustSignalType;
@@ -76,6 +82,7 @@ export interface TrustCaseEvidenceSummary {
   decayState: 'active' | 'expired' | 'reviewed_false_positive';
   safeSourceType: string;
   reviewedFalsePositive: boolean;
+  opponentPattern: TrustSignalReviewSummary | null;
 }
 
 export interface TrustRestrictionSummary {
@@ -127,8 +134,12 @@ export interface TrustCaseDetail {
     opponentPatterns: number;
   };
   sourceSignalCount: number;
-  evidence: TrustCaseEvidenceSummary[];
-  restrictions: TrustRestrictionSummary[];
+  evidencePreview: TrustCaseEvidenceSummary[];
+  evidenceTotalItems: number;
+  evidenceTruncated: boolean;
+  restrictionPreview: TrustRestrictionSummary[];
+  restrictionTotalItems: number;
+  restrictionsTruncated: boolean;
   recentHistory: TrustDecisionHistoryItem[];
   historyTruncated: boolean;
   openedAt: string;
@@ -166,6 +177,18 @@ export interface TrustReviewService {
     actorPlayerId: string;
     caseId: string;
   }): Promise<TrustCaseDetail>;
+  listEvidence(input: {
+    actorPlayerId: string;
+    caseId: string;
+    page: number;
+    pageSize: number;
+  }): Promise<PaginatedTrustResult<TrustCaseEvidenceSummary>>;
+  listRestrictions(input: {
+    actorPlayerId: string;
+    caseId: string;
+    page: number;
+    pageSize: number;
+  }): Promise<PaginatedTrustResult<TrustRestrictionSummary>>;
   listHistory(input: {
     actorPlayerId: string;
     caseId: string;
@@ -173,6 +196,19 @@ export interface TrustReviewService {
     pageSize: number;
   }): Promise<PaginatedTrustResult<TrustDecisionHistoryItem>>;
   decide(input: TrustDecisionInput): Promise<TrustCaseDetail>;
+  exportCase(input: {
+    actorPlayerId: string;
+    caseId: string;
+  }): Promise<TrustCaseExport>;
+}
+
+export interface TrustCaseExport {
+  formatVersion: 'trust-case-review-v1';
+  generatedAt: string;
+  case: TrustCaseDetail;
+  evidence: PaginatedTrustResult<TrustCaseEvidenceSummary>;
+  restrictions: PaginatedTrustResult<TrustRestrictionSummary>;
+  history: PaginatedTrustResult<TrustDecisionHistoryItem>;
 }
 
 export class TrustCaseNotFoundError extends Error {
@@ -245,6 +281,7 @@ interface EvidenceRow extends pg.QueryResultRow {
   safe_source_type: string;
   reviewed_false_positive: boolean;
   expired: boolean;
+  safe_review_summary: unknown;
 }
 
 interface RestrictionRow extends pg.QueryResultRow {
@@ -348,12 +385,14 @@ export function createTrustReviewService(
   return {
     async listCases(filters) {
       validatePage(filters.page, filters.pageSize);
+      validateSearch(filters.search);
       const client = await database.connect();
       try {
         const { clause, values } = buildQueueWhere(filters);
         const count = await client.query<CountRow>(
           `select count(*)::integer as total_items
              from private.trust_cases trust_case
+             join public.players player on player.id = trust_case.player_id
             where ${clause}`,
           values,
         );
@@ -415,6 +454,38 @@ export function createTrustReviewService(
       const client = await database.connect();
       try {
         return await loadDetail(client, input.actorPlayerId, input.caseId);
+      } finally {
+        client.release();
+      }
+    },
+
+    async listEvidence(input) {
+      validatePage(input.page, input.pageSize);
+      const client = await database.connect();
+      try {
+        await assertAccessibleCase(client, input.actorPlayerId, input.caseId);
+        return await loadEvidencePage(
+          client,
+          input.caseId,
+          input.page,
+          input.pageSize,
+        );
+      } finally {
+        client.release();
+      }
+    },
+
+    async listRestrictions(input) {
+      validatePage(input.page, input.pageSize);
+      const client = await database.connect();
+      try {
+        await assertAccessibleCase(client, input.actorPlayerId, input.caseId);
+        return await loadRestrictionsPage(
+          client,
+          input.caseId,
+          input.page,
+          input.pageSize,
+        );
       } finally {
         client.release();
       }
@@ -710,6 +781,59 @@ export function createTrustReviewService(
         client.release();
       }
     },
+
+    async exportCase(input) {
+      const client = await database.connect();
+      try {
+        await client.query(
+          'begin transaction isolation level repeatable read read only',
+        );
+        const detail = await loadDetail(
+          client,
+          input.actorPlayerId,
+          input.caseId,
+        );
+        const evidence = await loadEvidencePage(
+          client,
+          input.caseId,
+          1,
+          TRUST_REVIEW_EXPORT_PAGE_SIZE,
+        );
+        const restrictions = await loadRestrictionsPage(
+          client,
+          input.caseId,
+          1,
+          TRUST_REVIEW_EXPORT_PAGE_SIZE,
+        );
+        const history = await loadHistoryPage(
+          client,
+          input.caseId,
+          1,
+          TRUST_REVIEW_EXPORT_PAGE_SIZE,
+        );
+        const now = await client.query<{ now: Date }>(
+          'select clock_timestamp() as now',
+        );
+        const generatedAt = now.rows[0]?.now;
+        if (!generatedAt)
+          throw new Error('Database did not return export time.');
+        const exported: TrustCaseExport = {
+          formatVersion: 'trust-case-review-v1',
+          generatedAt: generatedAt.toISOString(),
+          case: detail,
+          evidence,
+          restrictions,
+          history,
+        };
+        await client.query('commit');
+        return exported;
+      } catch (error) {
+        await client.query('rollback');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
   };
 }
 
@@ -723,7 +847,14 @@ function buildQueueWhere(filters: TrustCaseQueueFilters): {
     values.push(value);
     clauses.push(sql.replace('?', `$${values.length}`));
   };
-  if (filters.status) add('trust_case.status = ?', filters.status);
+  if (filters.status === 'active') {
+    clauses.push("trust_case.status in ('open', 'under_review')");
+  } else {
+    add('trust_case.status = ?', filters.status);
+  }
+  if (filters.search) {
+    add('strpos(lower(player.player_name), lower(?)) > 0', filters.search);
+  }
   if (filters.band) add('trust_case.current_band = ?', filters.band);
   if (filters.createdFrom)
     add('trust_case.opened_at >= ?::timestamptz', filters.createdFrom);
@@ -793,8 +924,18 @@ async function loadDetail(
 
   // A pg client executes one query at a time. Keep these reads sequential so
   // the detail projection also works with transaction-bound clients.
-  const evidence = await loadEvidence(client, caseId);
-  const restrictions = await loadRestrictions(client, caseId);
+  const evidence = await loadEvidencePage(
+    client,
+    caseId,
+    1,
+    TRUST_REVIEW_DETAIL_PREVIEW_SIZE,
+  );
+  const restrictions = await loadRestrictionsPage(
+    client,
+    caseId,
+    1,
+    TRUST_REVIEW_DETAIL_PREVIEW_SIZE,
+  );
   const history = await loadHistoryPage(
     client,
     caseId,
@@ -816,8 +957,12 @@ async function loadDetail(
       opponentPatterns: row.opponent_pattern_points,
     },
     sourceSignalCount: row.source_signal_count,
-    evidence,
-    restrictions,
+    evidencePreview: evidence.items,
+    evidenceTotalItems: evidence.totalItems,
+    evidenceTruncated: evidence.totalItems > evidence.items.length,
+    restrictionPreview: restrictions.items,
+    restrictionTotalItems: restrictions.totalItems,
+    restrictionsTruncated: restrictions.totalItems > restrictions.items.length,
     recentHistory: history.items.slice(0, HISTORY_DETAIL_LIMIT),
     historyTruncated: history.totalItems > HISTORY_DETAIL_LIMIT,
     openedAt: row.opened_at.toISOString(),
@@ -827,10 +972,18 @@ async function loadDetail(
   };
 }
 
-async function loadEvidence(
+async function loadEvidencePage(
   client: TrustReviewQueryable,
   caseId: string,
-): Promise<TrustCaseEvidenceSummary[]> {
+  page: number,
+  pageSize: number,
+): Promise<PaginatedTrustResult<TrustCaseEvidenceSummary>> {
+  const count = await client.query<CountRow>(
+    `select count(*)::integer as total_items
+       from private.trust_case_evidence
+      where case_id = $1::uuid`,
+    [caseId],
+  );
   const result = await client.query<EvidenceRow>(
     `select evidence.id::text as evidence_id,
             evidence.original_signal_id::text,
@@ -847,6 +1000,7 @@ async function loadEvidence(
             end as effective_points,
             evidence.observed_at,
             evidence.safe_source_type,
+            evidence.safe_review_summary,
             (adjustment.id is not null) as reviewed_false_positive,
             (evidence.observed_at + interval '90 days' <= clock_timestamp()) as expired
        from private.trust_case_evidence evidence
@@ -854,30 +1008,32 @@ async function loadEvidence(
          on adjustment.original_signal_id = evidence.original_signal_id
         and adjustment.adjustment_type = 'reviewed_false_positive'
       where evidence.case_id = $1::uuid
-      order by evidence.observed_at desc, evidence.id`,
-    [caseId],
+      order by evidence.observed_at desc, evidence.id
+      limit $2 offset $3`,
+    [caseId, pageSize, (page - 1) * pageSize],
   );
-  return result.rows.map((row) => ({
-    evidenceId: row.evidence_id,
-    signalType: row.signal_type,
-    severity: row.severity,
-    basePoints: row.base_points,
-    effectivePoints: row.effective_points,
-    observedAt: row.observed_at.toISOString(),
-    decayState: row.reviewed_false_positive
-      ? 'reviewed_false_positive'
-      : row.expired
-        ? 'expired'
-        : 'active',
-    safeSourceType: row.safe_source_type,
-    reviewedFalsePositive: row.reviewed_false_positive,
-  }));
+  const totalItems = count.rows[0]?.total_items ?? 0;
+  return {
+    items: result.rows.map(mapEvidenceRow),
+    page,
+    pageSize,
+    totalItems,
+    totalPages: Math.ceil(totalItems / pageSize),
+  };
 }
 
-async function loadRestrictions(
+async function loadRestrictionsPage(
   client: TrustReviewQueryable,
   caseId: string,
-): Promise<TrustRestrictionSummary[]> {
+  page: number,
+  pageSize: number,
+): Promise<PaginatedTrustResult<TrustRestrictionSummary>> {
+  const count = await client.query<CountRow>(
+    `select count(*)::integer as total_items
+       from private.trust_restrictions
+      where case_id = $1::uuid`,
+    [caseId],
+  );
   const result = await client.query<RestrictionRow>(
     `select restriction.id::text as restriction_id,
             restriction.decision_id::text,
@@ -899,19 +1055,18 @@ async function loadRestrictions(
        left join private.trust_appeal_resolutions resolution
          on resolution.appeal_id = appeal.id
       where restriction.case_id = $1::uuid
-      order by restriction.starts_at desc, restriction.id`,
-    [caseId],
+      order by restriction.starts_at desc, restriction.id
+      limit $2 offset $3`,
+    [caseId, pageSize, (page - 1) * pageSize],
   );
-  return result.rows.map((row) => ({
-    restrictionId: row.restriction_id,
-    decisionId: row.decision_id,
-    scope: row.scope,
-    startsAt: row.starts_at.toISOString(),
-    originalExpiresAt: row.original_expires_at.toISOString(),
-    effectiveExpiresAt: row.effective_expires_at.toISOString(),
-    active: row.active,
-    appealStatus: row.appeal_status,
-  }));
+  const totalItems = count.rows[0]?.total_items ?? 0;
+  return {
+    items: result.rows.map(mapRestrictionRow),
+    page,
+    pageSize,
+    totalItems,
+    totalPages: Math.ceil(totalItems / pageSize),
+  };
 }
 
 async function loadHistoryPage(
@@ -1015,6 +1170,7 @@ async function loadSelectedEvidence(
             0 as effective_points,
             evidence.observed_at,
             evidence.safe_source_type,
+            evidence.safe_review_summary,
             (adjustment.id is not null) as reviewed_false_positive,
             false as expired
        from private.trust_case_evidence evidence
@@ -1279,6 +1435,20 @@ function validatePage(page: number, pageSize: number): void {
   }
 }
 
+function validateSearch(search: string | undefined): void {
+  if (search === undefined) return;
+  if (
+    search !== search.trim() ||
+    search.length < 1 ||
+    search.length > TRUST_REVIEW_MAX_SEARCH_LENGTH ||
+    /\p{Cc}/u.test(search)
+  ) {
+    throw new RangeError(
+      `search must be trimmed, non-empty, and at most ${TRUST_REVIEW_MAX_SEARCH_LENGTH} characters.`,
+    );
+  }
+}
+
 function mapQueueRow(row: QueueRow): TrustCaseQueueItem {
   return {
     caseId: row.case_id,
@@ -1294,6 +1464,98 @@ function mapQueueRow(row: QueueRow): TrustCaseQueueItem {
     openedAt: row.opened_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
+}
+
+function mapEvidenceRow(row: EvidenceRow): TrustCaseEvidenceSummary {
+  return {
+    evidenceId: row.evidence_id,
+    signalType: row.signal_type,
+    severity: row.severity,
+    basePoints: row.base_points,
+    effectivePoints: row.effective_points,
+    observedAt: row.observed_at.toISOString(),
+    decayState: row.reviewed_false_positive
+      ? 'reviewed_false_positive'
+      : row.expired
+        ? 'expired'
+        : 'active',
+    safeSourceType: row.safe_source_type,
+    reviewedFalsePositive: row.reviewed_false_positive,
+    opponentPattern: safeOpponentPatternSummary(
+      row.safe_review_summary,
+      row.signal_type,
+    ),
+  };
+}
+
+function mapRestrictionRow(row: RestrictionRow): TrustRestrictionSummary {
+  return {
+    restrictionId: row.restriction_id,
+    decisionId: row.decision_id,
+    scope: row.scope,
+    startsAt: row.starts_at.toISOString(),
+    originalExpiresAt: row.original_expires_at.toISOString(),
+    effectiveExpiresAt: row.effective_expires_at.toISOString(),
+    active: row.active,
+    appealStatus: row.appeal_status,
+  };
+}
+
+function safeOpponentPatternSummary(
+  value: unknown,
+  signalType: TrustSignalType,
+): TrustSignalReviewSummary | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const summary = value as Record<string, unknown>;
+  if (
+    signalType === 'opponent_concentration' &&
+    summary.kind === 'opponent_concentration' &&
+    isDateTime(summary.evaluationWindowStart) &&
+    isDateTime(summary.evaluationWindowEnd) &&
+    isNonNegativeInteger(summary.completedMatchCount) &&
+    isNonNegativeInteger(summary.repeatedOpponentMatchCount) &&
+    typeof summary.opponentConcentrationRatio === 'number' &&
+    summary.opponentConcentrationRatio >= 0 &&
+    summary.opponentConcentrationRatio <= 1 &&
+    summary.minimumCompletedMatchCount === 6 &&
+    summary.minimumOpponentConcentrationRatio === 0.8
+  ) {
+    return {
+      kind: 'opponent_concentration',
+      evaluationWindowStart: summary.evaluationWindowStart,
+      evaluationWindowEnd: summary.evaluationWindowEnd,
+      completedMatchCount: summary.completedMatchCount,
+      repeatedOpponentMatchCount: summary.repeatedOpponentMatchCount,
+      opponentConcentrationRatio: summary.opponentConcentrationRatio,
+      minimumCompletedMatchCount: 6,
+      minimumOpponentConcentrationRatio: 0.8,
+    };
+  }
+  if (
+    signalType === 'one_sided_outcome_pattern' &&
+    summary.kind === 'one_sided_outcome_pattern' &&
+    isDateTime(summary.evaluationWindowStart) &&
+    isDateTime(summary.evaluationWindowEnd) &&
+    isNonNegativeInteger(summary.qualifyingForfeitCount) &&
+    summary.minimumQualifyingForfeitCount === 4
+  ) {
+    return {
+      kind: 'one_sided_outcome_pattern',
+      evaluationWindowStart: summary.evaluationWindowStart,
+      evaluationWindowEnd: summary.evaluationWindowEnd,
+      qualifyingForfeitCount: summary.qualifyingForfeitCount,
+      minimumQualifyingForfeitCount: 4,
+    };
+  }
+  return null;
+}
+
+function isDateTime(value: unknown): value is string {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) >= 0;
 }
 
 function mapHistoryRow(row: HistoryRow): TrustDecisionHistoryItem {

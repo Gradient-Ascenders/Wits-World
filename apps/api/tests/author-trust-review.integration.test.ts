@@ -30,8 +30,13 @@ const authConfig: AuthConfig = {
 let app: FastifyInstance;
 let listCases: ReturnType<typeof vi.fn<TrustReviewService['listCases']>>;
 let getCase: ReturnType<typeof vi.fn<TrustReviewService['getCase']>>;
+let listEvidence: ReturnType<typeof vi.fn<TrustReviewService['listEvidence']>>;
+let listRestrictions: ReturnType<
+  typeof vi.fn<TrustReviewService['listRestrictions']>
+>;
 let listHistory: ReturnType<typeof vi.fn<TrustReviewService['listHistory']>>;
 let decide: ReturnType<typeof vi.fn<TrustReviewService['decide']>>;
+let exportCase: ReturnType<typeof vi.fn<TrustReviewService['exportCase']>>;
 let resolvePlayer: ReturnType<typeof vi.fn<PlayerIdentityService['resolve']>>;
 
 const detail: TrustCaseDetail = {
@@ -49,7 +54,7 @@ const detail: TrustCaseDetail = {
     opponentPatterns: 20,
   },
   sourceSignalCount: 3,
-  evidence: [
+  evidencePreview: [
     {
       evidenceId,
       signalType: 'impossible_movement',
@@ -60,9 +65,14 @@ const detail: TrustCaseDetail = {
       decayState: 'active',
       safeSourceType: 'movement_decision',
       reviewedFalsePositive: false,
+      opponentPattern: null,
     },
   ],
-  restrictions: [],
+  evidenceTotalItems: 1,
+  evidenceTruncated: false,
+  restrictionPreview: [],
+  restrictionTotalItems: 0,
+  restrictionsTruncated: false,
   recentHistory: [
     {
       decisionId,
@@ -114,6 +124,20 @@ beforeEach(async () => {
     totalPages: 1,
   });
   getCase = vi.fn().mockResolvedValue(detail);
+  listEvidence = vi.fn().mockResolvedValue({
+    items: detail.evidencePreview,
+    page: 1,
+    pageSize: 20,
+    totalItems: 1,
+    totalPages: 1,
+  });
+  listRestrictions = vi.fn().mockResolvedValue({
+    items: detail.restrictionPreview,
+    page: 1,
+    pageSize: 20,
+    totalItems: 0,
+    totalPages: 0,
+  });
   listHistory = vi.fn().mockResolvedValue({
     items: detail.recentHistory,
     page: 1,
@@ -122,6 +146,32 @@ beforeEach(async () => {
     totalPages: 1,
   });
   decide = vi.fn().mockResolvedValue(detail);
+  exportCase = vi.fn().mockResolvedValue({
+    formatVersion: 'trust-case-review-v1',
+    generatedAt: '2026-09-25T11:00:00.000Z',
+    case: detail,
+    evidence: {
+      items: detail.evidencePreview,
+      page: 1,
+      pageSize: 100,
+      totalItems: 1,
+      totalPages: 1,
+    },
+    restrictions: {
+      items: [],
+      page: 1,
+      pageSize: 100,
+      totalItems: 0,
+      totalPages: 0,
+    },
+    history: {
+      items: detail.recentHistory,
+      page: 1,
+      pageSize: 100,
+      totalItems: 1,
+      totalPages: 1,
+    },
+  });
   resolvePlayer = vi.fn().mockResolvedValue({
     id: authorId,
     lifecycleStatus: 'active',
@@ -141,14 +191,22 @@ beforeEach(async () => {
     authConfig,
     logger: false,
     playerIdentityService: { resolve: resolvePlayer },
-    trustReviewService: { listCases, getCase, listHistory, decide },
+    trustReviewService: {
+      listCases,
+      getCase,
+      listEvidence,
+      listRestrictions,
+      listHistory,
+      decide,
+      exportCase,
+    },
   });
 });
 
 afterEach(async () => app.close());
 
 describe('suspect-player review API', () => {
-  it('protects all four operations from unauthenticated and ordinary players', async () => {
+  it('protects every review operation from unauthenticated and ordinary players', async () => {
     const operations = reviewOperations();
     for (const operation of operations) {
       const unauthenticated = await app.inject(operation);
@@ -170,8 +228,11 @@ describe('suspect-player review API', () => {
     }
     expect(listCases).not.toHaveBeenCalled();
     expect(getCase).not.toHaveBeenCalled();
+    expect(listEvidence).not.toHaveBeenCalled();
+    expect(listRestrictions).not.toHaveBeenCalled();
     expect(listHistory).not.toHaveBeenCalled();
     expect(decide).not.toHaveBeenCalled();
+    expect(exportCase).not.toHaveBeenCalled();
 
     resolvePlayer.mockResolvedValue({
       id: authorId,
@@ -188,14 +249,26 @@ describe('suspect-player review API', () => {
     }
   });
 
+  it('defaults the reviewer queue to active cases', async () => {
+    const response = await authenticatedGet('/api/v1/author/trust-cases');
+    expect(response.statusCode).toBe(200);
+    expect(listCases).toHaveBeenCalledWith({
+      actorPlayerId: authorId,
+      status: 'active',
+      page: 1,
+      pageSize: 20,
+    });
+  });
+
   it('forwards bounded filters and serializes only the safe queue projection', async () => {
     const response = await authenticatedGet(
-      '/api/v1/author/trust/cases?status=open&band=review_required&restrictionState=none&signalType=impossible_movement&page=1&pageSize=20',
+      '/api/v1/author/trust-cases?status=open&search=Review-Candidate&band=review_required&restrictionState=none&signalType=impossible_movement&page=1&pageSize=20',
     );
     expect(response.statusCode).toBe(200);
     expect(listCases).toHaveBeenCalledWith({
       actorPlayerId: authorId,
       status: 'open',
+      search: 'Review-Candidate',
       band: 'review_required',
       restrictionState: 'none',
       signalType: 'impossible_movement',
@@ -215,28 +288,40 @@ describe('suspect-player review API', () => {
 
   it('rejects invalid filters before calling the service', async () => {
     const response = await authenticatedGet(
-      '/api/v1/author/trust/cases?pageSize=101&signalType=raw_location',
+      '/api/v1/author/trust-cases?pageSize=101&signalType=raw_location',
     );
     expect(response.statusCode).toBe(400);
     expect(response.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(listCases).not.toHaveBeenCalled();
+
+    const invalidSearch = await authenticatedGet(
+      `/api/v1/author/trust-cases?search=${'x'.repeat(65)}`,
+    );
+    expect(invalidSearch.statusCode).toBe(400);
+    expect(invalidSearch.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
     expect(listCases).not.toHaveBeenCalled();
   });
 
   it('returns privacy-safe detail and protected paginated history', async () => {
     const caseResponse = await authenticatedGet(
-      `/api/v1/author/trust/cases/${caseId}`,
+      `/api/v1/author/trust-cases/${caseId}`,
     );
     expect(caseResponse.statusCode).toBe(200);
     expect(getCase).toHaveBeenCalledWith({ actorPlayerId: authorId, caseId });
     expect(caseResponse.json()).toMatchObject({
-      caseId,
-      evidence: [
-        {
-          evidenceId,
-          signalType: 'impossible_movement',
-          safeSourceType: 'movement_decision',
-        },
-      ],
+      case: {
+        caseId,
+        evidencePreview: [
+          {
+            evidenceId,
+            signalType: 'impossible_movement',
+            safeSourceType: 'movement_decision',
+            opponentPattern: null,
+          },
+        ],
+        evidenceTotalItems: 1,
+        evidenceTruncated: false,
+      },
     });
     expect(caseResponse.body).not.toContain('auth0|private-subject');
     expect(caseResponse.body).not.toContain('latitude');
@@ -244,7 +329,7 @@ describe('suspect-player review API', () => {
     expectPrivacySafe(caseResponse.body);
 
     const historyResponse = await authenticatedGet(
-      `/api/v1/author/trust/cases/${caseId}/history?page=1&pageSize=20`,
+      `/api/v1/author/trust-cases/${caseId}/history?page=1&pageSize=20`,
     );
     expect(historyResponse.statusCode).toBe(200);
     expect(listHistory).toHaveBeenCalledWith({
@@ -259,10 +344,117 @@ describe('suspect-player review API', () => {
     expectPrivacySafe(historyResponse.body);
   });
 
+  it('returns paginated evidence and restrictions and enforces page limits', async () => {
+    const evidenceResponse = await authenticatedGet(
+      `/api/v1/author/trust-cases/${caseId}/evidence?page=1&pageSize=20`,
+    );
+    expect(evidenceResponse.statusCode).toBe(200);
+    expect(listEvidence).toHaveBeenCalledWith({
+      actorPlayerId: authorId,
+      caseId,
+      page: 1,
+      pageSize: 20,
+    });
+    expect(evidenceResponse.json()).toMatchObject({
+      items: [{ evidenceId, opponentPattern: null }],
+      totalItems: 1,
+    });
+
+    const restrictionsResponse = await authenticatedGet(
+      `/api/v1/author/trust-cases/${caseId}/restrictions?page=1&pageSize=20`,
+    );
+    expect(restrictionsResponse.statusCode).toBe(200);
+    expect(listRestrictions).toHaveBeenCalledWith({
+      actorPlayerId: authorId,
+      caseId,
+      page: 1,
+      pageSize: 20,
+    });
+
+    const oversized = await authenticatedGet(
+      `/api/v1/author/trust-cases/${caseId}/evidence?pageSize=101`,
+    );
+    expect(oversized.statusCode).toBe(400);
+    expectPrivacySafe(evidenceResponse.body);
+    expectPrivacySafe(restrictionsResponse.body);
+  });
+
+  it('exposes useful opponent aggregates without private match data', async () => {
+    listEvidence.mockResolvedValueOnce({
+      items: [
+        {
+          ...detail.evidencePreview[0]!,
+          signalType: 'opponent_concentration',
+          severity: 'pattern',
+          basePoints: 20,
+          effectivePoints: 19,
+          safeSourceType: 'pvp_pattern',
+          opponentPattern: {
+            kind: 'opponent_concentration',
+            evaluationWindowStart: '2026-08-26T10:00:00.000Z',
+            evaluationWindowEnd: '2026-09-25T10:00:00.000Z',
+            completedMatchCount: 8,
+            repeatedOpponentMatchCount: 7,
+            opponentConcentrationRatio: 0.875,
+            minimumCompletedMatchCount: 6,
+            minimumOpponentConcentrationRatio: 0.8,
+          },
+        },
+      ],
+      page: 1,
+      pageSize: 20,
+      totalItems: 1,
+      totalPages: 1,
+    });
+    const response = await authenticatedGet(
+      `/api/v1/author/trust-cases/${caseId}/evidence`,
+    );
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      items: [
+        {
+          opponentPattern: {
+            completedMatchCount: 8,
+            repeatedOpponentMatchCount: 7,
+            opponentConcentrationRatio: 0.875,
+            minimumCompletedMatchCount: 6,
+            minimumOpponentConcentrationRatio: 0.8,
+          },
+        },
+      ],
+    });
+    expectPrivacySafe(response.body);
+    expect(response.body).not.toContain('opponentPlayerId');
+    expect(response.body).not.toContain('matchId');
+    expect(response.body).not.toContain('battleState');
+  });
+
+  it('returns a bounded privacy-safe JSON export with a safe filename', async () => {
+    const response = await authenticatedGet(
+      `/api/v1/author/trust-cases/${caseId}/export`,
+    );
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toContain('application/json');
+    expect(response.headers['content-disposition']).toBe(
+      `attachment; filename="trust-case-${caseId}.json"`,
+    );
+    expect(exportCase).toHaveBeenCalledWith({
+      actorPlayerId: authorId,
+      caseId,
+    });
+    expect(response.json()).toMatchObject({
+      export: {
+        formatVersion: 'trust-case-review-v1',
+        evidence: { pageSize: 100, totalItems: 1 },
+      },
+    });
+    expectPrivacySafe(response.body);
+  });
+
   it('uses a generic not-found response for missing or inaccessible cases', async () => {
     getCase.mockRejectedValueOnce(new TrustCaseNotFoundError());
     const response = await authenticatedGet(
-      `/api/v1/author/trust/cases/${caseId}`,
+      `/api/v1/author/trust-cases/${caseId}`,
     );
     expect(response.statusCode).toBe(404);
     expect(response.json()).toEqual({
@@ -279,7 +471,7 @@ describe('suspect-player review API', () => {
   it('derives the reviewer from authentication and returns persisted state', async () => {
     const response = await app.inject({
       method: 'POST',
-      url: `/api/v1/author/trust/cases/${caseId}/decisions`,
+      url: `/api/v1/author/trust-cases/${caseId}/decisions`,
       headers: { authorization: 'Bearer test-token' },
       payload: {
         expectedVersion: 1,
@@ -302,15 +494,14 @@ describe('suspect-player review API', () => {
       restrictionScopes: [],
     });
     expect(response.json()).toMatchObject({
-      status: 'under_review',
-      version: 2,
+      case: { status: 'under_review', version: 2 },
     });
   });
 
   it('rejects malformed decisions and maps stale decisions to a safe conflict', async () => {
     const malformed = await app.inject({
       method: 'POST',
-      url: `/api/v1/author/trust/cases/${caseId}/decisions`,
+      url: `/api/v1/author/trust-cases/${caseId}/decisions`,
       headers: { authorization: 'Bearer test-token' },
       payload: {
         expectedVersion: 0,
@@ -325,7 +516,7 @@ describe('suspect-player review API', () => {
     decide.mockRejectedValueOnce(new StaleTrustCaseVersionError());
     const stale = await app.inject({
       method: 'POST',
-      url: `/api/v1/author/trust/cases/${caseId}/decisions`,
+      url: `/api/v1/author/trust-cases/${caseId}/decisions`,
       headers: { authorization: 'Bearer test-token' },
       payload: {
         expectedVersion: 1,
@@ -406,7 +597,7 @@ describe('suspect-player review API', () => {
     for (const payload of invalidPayloads) {
       const response = await app.inject({
         method: 'POST',
-        url: `/api/v1/author/trust/cases/${caseId}/decisions`,
+        url: `/api/v1/author/trust-cases/${caseId}/decisions`,
         headers: { authorization: 'Bearer test-token' },
         payload,
       });
@@ -422,7 +613,7 @@ describe('suspect-player review API', () => {
     );
     const response = await app.inject({
       method: 'POST',
-      url: `/api/v1/author/trust/cases/${caseId}/decisions`,
+      url: `/api/v1/author/trust-cases/${caseId}/decisions`,
       headers: { authorization: 'Bearer test-token' },
       payload: {
         expectedVersion: 1,
@@ -442,12 +633,18 @@ describe('suspect-player review API', () => {
   it('documents the complete protected request and response contract', async () => {
     await app.ready();
     const document = app.swagger();
-    const queue = document.paths?.['/api/v1/author/trust/cases']?.get;
-    const casePath = document.paths?.['/api/v1/author/trust/cases/{caseId}'];
+    const queue = document.paths?.['/api/v1/author/trust-cases']?.get;
+    const casePath = document.paths?.['/api/v1/author/trust-cases/{caseId}'];
     const history =
-      document.paths?.['/api/v1/author/trust/cases/{caseId}/history']?.get;
+      document.paths?.['/api/v1/author/trust-cases/{caseId}/history']?.get;
+    const evidence =
+      document.paths?.['/api/v1/author/trust-cases/{caseId}/evidence']?.get;
+    const restrictions =
+      document.paths?.['/api/v1/author/trust-cases/{caseId}/restrictions']?.get;
+    const exportOperation =
+      document.paths?.['/api/v1/author/trust-cases/{caseId}/export']?.get;
     const decision =
-      document.paths?.['/api/v1/author/trust/cases/{caseId}/decisions']?.post;
+      document.paths?.['/api/v1/author/trust-cases/{caseId}/decisions']?.post;
 
     expect(queue).toMatchObject({
       operationId: 'listSuspectPlayerCases',
@@ -461,6 +658,18 @@ describe('suspect-player review API', () => {
       operationId: 'listSuspectPlayerCaseHistory',
       security: [{ bearerAuth: [] }],
     });
+    expect(evidence).toMatchObject({
+      operationId: 'listSuspectPlayerCaseEvidence',
+      security: [{ bearerAuth: [] }],
+    });
+    expect(restrictions).toMatchObject({
+      operationId: 'listSuspectPlayerCaseRestrictions',
+      security: [{ bearerAuth: [] }],
+    });
+    expect(exportOperation).toMatchObject({
+      operationId: 'exportSuspectPlayerCase',
+      security: [{ bearerAuth: [] }],
+    });
     expect(decision).toMatchObject({
       operationId: 'decideSuspectPlayerCase',
       security: [{ bearerAuth: [] }],
@@ -469,6 +678,7 @@ describe('suspect-player review API', () => {
     expect(queue?.parameters).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: 'status', in: 'query' }),
+        expect.objectContaining({ name: 'search', in: 'query' }),
         expect.objectContaining({ name: 'createdFrom', in: 'query' }),
         expect.objectContaining({ name: 'createdTo', in: 'query' }),
         expect.objectContaining({
@@ -478,6 +688,25 @@ describe('suspect-player review API', () => {
         }),
       ]),
     );
+    const queueParameters = (queue?.parameters ?? []) as Array<{
+      name?: string;
+      schema?: unknown;
+    }>;
+    const statusParameter = queueParameters.find(
+      (parameter) => parameter.name === 'status',
+    );
+    expect(statusParameter).toMatchObject({
+      schema: {
+        enum: ['active', 'open', 'under_review', 'resolved'],
+        default: 'active',
+      },
+    });
+    const searchParameter = queueParameters.find(
+      (parameter) => parameter.name === 'search',
+    );
+    expect(searchParameter).toMatchObject({
+      schema: { minLength: 1, maxLength: 64 },
+    });
     expect(casePath?.get?.parameters).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -492,6 +721,15 @@ describe('suspect-player review API', () => {
       expect.arrayContaining(['200', '400', '401', '403', '404', '429']),
     );
     expect(Object.keys(history?.responses ?? {})).toEqual(
+      expect.arrayContaining(['200', '400', '401', '403', '404', '429']),
+    );
+    expect(Object.keys(evidence?.responses ?? {})).toEqual(
+      expect.arrayContaining(['200', '400', '401', '403', '404', '429']),
+    );
+    expect(Object.keys(restrictions?.responses ?? {})).toEqual(
+      expect.arrayContaining(['200', '400', '401', '403', '404', '429']),
+    );
+    expect(Object.keys(exportOperation?.responses ?? {})).toEqual(
       expect.arrayContaining(['200', '400', '401', '403', '404', '429']),
     );
     expect(Object.keys(decision?.responses ?? {})).toEqual(
@@ -560,6 +798,9 @@ describe('suspect-player review API', () => {
     expect(historyDocument).toContain('falsePositiveEvidenceIds');
     expect(historyDocument).toContain('startsAt');
     expect(historyDocument).toContain('expiresAt');
+    const evidenceDocument = JSON.stringify(evidence?.responses?.['200']);
+    expect(evidenceDocument).toContain('opponentConcentrationRatio');
+    expect(evidenceDocument).toContain('qualifyingForfeitCount');
   });
 });
 
@@ -573,15 +814,27 @@ function authenticatedGet(url: string) {
 
 function reviewOperations() {
   return [
-    { method: 'GET' as const, url: '/api/v1/author/trust/cases' },
-    { method: 'GET' as const, url: `/api/v1/author/trust/cases/${caseId}` },
+    { method: 'GET' as const, url: '/api/v1/author/trust-cases' },
+    { method: 'GET' as const, url: `/api/v1/author/trust-cases/${caseId}` },
     {
       method: 'GET' as const,
-      url: `/api/v1/author/trust/cases/${caseId}/history`,
+      url: `/api/v1/author/trust-cases/${caseId}/evidence`,
+    },
+    {
+      method: 'GET' as const,
+      url: `/api/v1/author/trust-cases/${caseId}/restrictions`,
+    },
+    {
+      method: 'GET' as const,
+      url: `/api/v1/author/trust-cases/${caseId}/history`,
+    },
+    {
+      method: 'GET' as const,
+      url: `/api/v1/author/trust-cases/${caseId}/export`,
     },
     {
       method: 'POST' as const,
-      url: `/api/v1/author/trust/cases/${caseId}/decisions`,
+      url: `/api/v1/author/trust-cases/${caseId}/decisions`,
       payload: {
         expectedVersion: 1,
         action: 'monitor',
