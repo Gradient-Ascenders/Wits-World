@@ -18,6 +18,11 @@ starter selection and collection browsing are available through the protected
 available through `/decks`. Authors also have a separate protected `/author`
 console for Basic event, challenge, question, and card authoring, plus Author-only
 operational analytics for locations, question performance, and card issuance.
+The Author-only `/author/placement` route presents API-authoritative automatic
+placement policy, coverage, current/proposed assignments, temporary overrides,
+and plan history. It supports preview, confirmed apply, pause, pin, temporary
+site exclusion, ending overrides, and validated rollback; semantic tables remain
+usable if the synchronized placement map cannot load.
 Server-authoritative CPU battles and private
 completed-match history are available through the protected `/matches` routes.
 The protected `/profile` route presents server-authoritative points, rank,

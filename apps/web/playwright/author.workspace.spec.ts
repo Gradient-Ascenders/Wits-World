@@ -291,6 +291,15 @@ test('mobile Event and Question routes use list to detail to editor views', asyn
 
   await page.getByLabel('Event title').fill('Library Lawn Trail');
   await page.getByLabel('Description (optional)').fill('A new Author draft.');
+  const automaticPlacement = page.getByRole('checkbox', {
+    name: /Automatic placement/u,
+  });
+  await automaticPlacement.check();
+  await expect(
+    page.getByText('Location will be assigned automatically'),
+  ).toBeVisible();
+  await expect(page.getByText('Event location')).toHaveCount(0);
+  await automaticPlacement.uncheck();
   await page.getByLabel('Latitude').fill('-26.1908');
   await page.getByLabel('Longitude').fill('28.0305');
   await page.getByLabel('Radius (metres)').fill('60');
@@ -1198,6 +1207,140 @@ test('tablet and wide workspaces preserve loading, error, empty and deep-link st
   expect(consoleErrors).toEqual([]);
 });
 
+test('placement workspace stages preview, campus map, and secondary details across viewports', async ({
+  page,
+}, testInfo) => {
+  const authorState = await installAuthorApi(page);
+  const consoleErrors = monitorConsoleErrors(page);
+
+  await page.setViewportSize({ height: 1000, width: 1440 });
+  await page.goto('/author/placement');
+  await expect(
+    page.getByRole('heading', { name: 'Event placement' }),
+  ).toBeVisible();
+  const desktopMapSurface = (await page
+    .locator('.placement-map .campus-map')
+    .boundingBox())!;
+  const desktopPreview = (await page
+    .getByRole('complementary', {
+      name: 'Preview and validate placement changes',
+    })
+    .boundingBox())!;
+  expect(Math.abs(desktopMapSurface.y - desktopPreview.y)).toBeLessThanOrEqual(
+    1,
+  );
+  await expect(
+    page.getByRole('button', { name: 'Reset map bearing and pitch' }),
+  ).toBeHidden();
+  await expect(
+    page.getByRole('table', { name: 'Current and proposed event placements' }),
+  ).toBeVisible();
+  await expect(page.getByRole('table', { name: 'Coverage zones' })).toHaveCount(
+    0,
+  );
+  await page.getByRole('tab', { name: 'Coverage & sites' }).click();
+  await expect(
+    page.getByRole('table', { name: 'Coverage zones' }),
+  ).toBeVisible();
+  await page.getByRole('tab', { name: 'Changes' }).click();
+  await expectNoHorizontalOverflow(page);
+
+  const preview = page.getByRole('button', {
+    name: 'Create coverage preview',
+  });
+  authorState.placementPreviewDelayMs = 800;
+  await preview.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.placement-preview__loader')).toHaveCount(2);
+  await page.screenshot({
+    path: testInfo.outputPath('placement-loading.png'),
+    fullPage: true,
+  });
+  await expect(page.getByText('Review exceptions')).toBeVisible();
+  await expect(page.getByText('Plan needs review')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Review and apply' }),
+  ).toBeFocused();
+  const policyDetails = page.getByText(/separation or policy details/u);
+  await expect(policyDetails).toBeVisible();
+  await policyDetails.click();
+  await expect(
+    page.getByText(/cannot accept a remaining event/u),
+  ).toBeVisible();
+  await policyDetails.click();
+  await page.screenshot({
+    path: testInfo.outputPath('placement-desktop.png'),
+    fullPage: true,
+  });
+  const placementDetails = page.getByRole('region', {
+    name: 'Placement details',
+  });
+  await placementDetails.scrollIntoViewIfNeeded();
+  const scrolledPreview = (await page
+    .getByRole('complementary', {
+      name: 'Preview and validate placement changes',
+    })
+    .boundingBox())!;
+  const scrolledDetails = (await placementDetails.boundingBox())!;
+  expect(scrolledPreview.y + scrolledPreview.height).toBeLessThanOrEqual(
+    scrolledDetails.y + 1,
+  );
+
+  await page.setViewportSize({ height: 900, width: 768 });
+  await page.reload();
+  const tabletRail = (await page
+    .getByRole('complementary', {
+      name: 'Preview and validate placement changes',
+    })
+    .boundingBox())!;
+  const tabletMap = (await page
+    .getByRole('region', { name: /Author event-placement map/u })
+    .boundingBox())!;
+  const tabletDetails = (await page
+    .getByRole('region', { name: 'Placement details' })
+    .boundingBox())!;
+  expect(tabletRail.y).toBeLessThan(tabletMap.y);
+  expect(tabletMap.y).toBeLessThan(tabletDetails.y);
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    path: testInfo.outputPath('placement-tablet.png'),
+    fullPage: true,
+  });
+
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.reload();
+  await expect(
+    page.getByRole('heading', { name: 'Event placement' }),
+  ).toBeVisible();
+  const controls = (await page
+    .getByRole('complementary', {
+      name: 'Preview and validate placement changes',
+    })
+    .boundingBox())!;
+  const map = (await page
+    .getByRole('region', { name: /Author event-placement map/u })
+    .boundingBox())!;
+  const details = (await page
+    .getByRole('region', { name: 'Placement details' })
+    .boundingBox())!;
+  expect(controls.y).toBeLessThan(map.y);
+  expect(map.y).toBeLessThan(details.y);
+  await expect(
+    page.getByRole('button', { name: 'Create coverage preview' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Create coverage preview' }).click();
+  await expect(page.getByText('Plan needs review')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Review and apply' }),
+  ).toBeFocused();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    path: testInfo.outputPath('placement-mobile.png'),
+    fullPage: true,
+  });
+  expect(consoleErrors).toEqual([]);
+});
+
 test('author save controls follow Active times in the form', async ({
   page,
 }) => {
@@ -1282,6 +1425,7 @@ interface AuthorApiState {
   failEvents: boolean;
   orderingCompleted: boolean;
   orderingSubmissions: unknown[];
+  placementPreviewDelayMs: number;
   questions: AuthorQuestion[];
   rejectEventPublication: boolean;
   trails: AuthorTrail[];
@@ -1297,6 +1441,7 @@ async function installAuthorApi(page: Page): Promise<AuthorApiState> {
     failEvents: false,
     orderingCompleted: false,
     orderingSubmissions: [],
+    placementPreviewDelayMs: 0,
     questions: authorQuestions(),
     rejectEventPublication: true,
     trails: authorTrails(),
@@ -1321,6 +1466,41 @@ async function installAuthorApi(page: Page): Promise<AuthorApiState> {
         playerNameSetupRequired: false,
         requestId: 'request-current-player',
         role: 'author',
+      });
+      return;
+    }
+
+    if (path === '/author/event-placement' && method === 'GET') {
+      await json(route, placementStateFixture());
+      return;
+    }
+    if (path === '/author/event-placement/history' && method === 'GET') {
+      await json(route, {
+        plans: [
+          {
+            assignmentCount: 2,
+            createdAt: '2026-09-24T02:00:00.000Z',
+            failureCode: null,
+            planId: uuid('4', 2),
+            policyVersion: 'placement-v1',
+            rotationBucket: '2026-09-24',
+            status: 'applied',
+            trigger: 'scheduled',
+          },
+        ],
+        requestId: 'request-placement-history',
+      });
+      return;
+    }
+    if (path === '/author/event-placement/previews' && method === 'POST') {
+      if (state.placementPreviewDelayMs > 0) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, state.placementPreviewDelayMs),
+        );
+      }
+      await json(route, {
+        plan: placementPlanFixture(),
+        requestId: 'request-placement-preview',
       });
       return;
     }
@@ -1875,6 +2055,7 @@ function eventFixture(
 ): AuthorEvent {
   return {
     ...lifecycleMetadata(authoringStatus),
+    automaticPlacement: false,
     authoringStatus,
     createdAt: '2026-08-01T08:00:00.000Z',
     description: `${title} author fixture.`,
@@ -2151,6 +2332,179 @@ function replaceById<T>(items: T[], next: T, getId: (item: T) => string) {
   const index = items.findIndex((item) => getId(item) === getId(next));
   if (index === -1) items.push(next);
   else items.splice(index, 1, next);
+}
+
+function placementStateFixture() {
+  const zoneEast = uuid('1', 101);
+  const zoneWest = uuid('1', 102);
+  const siteHall = uuid('2', 101);
+  const siteLibrary = uuid('2', 102);
+  return {
+    assignments: [
+      {
+        eventId: EVENT_A,
+        origin: 'automatic',
+        siteId: siteHall,
+        zoneId: zoneEast,
+      },
+    ],
+    currentPlanId: uuid('4', 1),
+    events: [
+      { id: EVENT_A, title: 'Great Hall Discovery' },
+      { id: EVENT_B, title: 'Library collections' },
+    ],
+    metrics: {
+      activeAssignmentCount: 1,
+      activeZoneCount: 2,
+      lastAppliedAt: '2026-09-24T02:00:00.000Z',
+      lastFailureAt: null,
+      lastFailureCode: null,
+      servedZoneCount: 1,
+      targetAssignmentCount: 6,
+      unservedZoneCount: 1,
+    },
+    nextRotationBoundary: '2026-09-26T02:00:00.000Z',
+    overrides: [
+      {
+        eventId: EVENT_B,
+        expiresAt: '2026-09-27T02:00:00.000Z',
+        id: uuid('5', 1),
+        kind: 'pin',
+        siteId: siteLibrary,
+      },
+    ],
+    policy: {
+      cooldownBuckets: 2,
+      id: 'placement-v1',
+      mandatoryPerZone: 1,
+      maximumExclusionHours: 720,
+      maximumPauseHours: 168,
+      maximumPinHours: 168,
+      preferredPerZone: 2,
+      previewTtlMinutes: 15,
+      replacements: 2,
+      rotationLocalTime: '04:00:00',
+      rotationTimezone: 'Africa/Johannesburg',
+      separationMetres: 150,
+      target: 6,
+    },
+    policyVersion: 'placement-v1',
+    requestId: 'request-placement-state',
+    rotationBucket: '2026-09-25',
+    sites: [
+      {
+        excluded: false,
+        id: siteHall,
+        latitude: -26.192,
+        longitude: 28.0304,
+        maximumRadiusMetres: 75,
+        name: 'Great Hall',
+        status: 'active',
+        zoneId: zoneEast,
+      },
+      {
+        excluded: true,
+        id: siteLibrary,
+        latitude: -26.1907,
+        longitude: 28.0293,
+        maximumRadiusMetres: 60,
+        name: 'William Cullen Library',
+        status: 'active',
+        zoneId: zoneWest,
+      },
+    ],
+    stateVersion: 4,
+    zones: [
+      {
+        geometry: placementPolygon(28.029, -26.193),
+        id: zoneEast,
+        key: 'east_campus',
+        name: 'East Campus',
+        status: 'active',
+      },
+      {
+        geometry: placementPolygon(28.026, -26.193),
+        id: zoneWest,
+        key: 'west_campus',
+        name: 'West Campus',
+        status: 'active',
+      },
+    ],
+  };
+}
+
+function placementPlanFixture() {
+  const zoneEast = uuid('1', 101);
+  const zoneWest = uuid('1', 102);
+  const siteHall = uuid('2', 101);
+  const siteLibrary = uuid('2', 102);
+  return {
+    entries: [
+      {
+        eventId: EVENT_A,
+        origin: 'automatic',
+        siteId: siteLibrary,
+        zoneId: zoneWest,
+      },
+      {
+        eventId: EVENT_B,
+        origin: 'pin',
+        siteId: siteHall,
+        zoneId: zoneEast,
+      },
+    ],
+    exceptions: ['preferred_coverage_shortfall', 'target_shortfall'],
+    planId: uuid('4', 3),
+    policyVersion: 'placement-v1',
+    rotationBucket: '2026-09-25',
+    stateVersion: 4,
+    status: 'degraded',
+    validUntil: '2027-09-25T21:15:00.000Z',
+    validation: {
+      coverage: [
+        {
+          actual: 1,
+          mandatory: 1,
+          preferred: 2,
+          status: 'preferred_shortfall',
+          zoneId: zoneEast,
+        },
+        {
+          actual: 1,
+          mandatory: 1,
+          preferred: 2,
+          status: 'preferred_shortfall',
+          zoneId: zoneWest,
+        },
+      ],
+      separation: {
+        blockedSites: [
+          {
+            conflictsWithFixedEvent: false,
+            relatedSiteIds: [siteHall],
+            siteId: siteLibrary,
+            zoneId: zoneWest,
+          },
+        ],
+        minimumMetres: 150,
+      },
+    },
+    zoneCounts: { [zoneEast]: 1, [zoneWest]: 1 },
+  };
+}
+
+function placementPolygon(longitude: number, latitude: number) {
+  return {
+    coordinates: [
+      [
+        [longitude, latitude],
+        [longitude + 0.002, latitude],
+        [longitude + 0.002, latitude + 0.002],
+        [longitude, latitude],
+      ],
+    ],
+    type: 'Polygon',
+  };
 }
 
 function uuid(prefix: string, position: number) {

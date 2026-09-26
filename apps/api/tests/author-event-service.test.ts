@@ -83,6 +83,7 @@ describe('author event service', () => {
 
     const event = await service.createEvent({
       actorPlayerId: AUTHOR_ID,
+      automaticPlacement: false,
       title: '  Great Hall Challenge  ',
       description: '  Explore East Campus.  ',
       latitude: -26.19205,
@@ -116,6 +117,49 @@ describe('author event service', () => {
     );
   });
 
+  it('enables automatic placement as part of event creation', async () => {
+    const fixture = createFixture();
+    const baseImplementation = successfulImplementation();
+    fixture.query.mockImplementation(async (statement: string) => {
+      const sql = statement.toLowerCase();
+      if (
+        sql.includes('from public.event_placement_state') &&
+        sql.includes('for update')
+      ) {
+        return {
+          rows: [
+            {
+              current_plan_id: null,
+              observed_at: new Date('2026-08-15T20:00:00.000Z'),
+              policy_version_id: 'placement-v1',
+              version: '4',
+            },
+          ],
+        };
+      }
+      return baseImplementation(statement);
+    });
+
+    const service = createAuthorEventService(fixture.database);
+    const event = await service.createEvent({
+      ...validInput(),
+      automaticPlacement: true,
+    });
+
+    expect(event.automaticPlacement).toBe(true);
+    expect(executedSql(fixture.query)).toContain(
+      'insert into public.event_placement_portability',
+    );
+    expect(executedSql(fixture.query)).toContain(
+      'update public.event_placement_state',
+    );
+    expect(fixture.query).toHaveBeenCalledWith(
+      expect.stringContaining('insert into public.event_placement_audit'),
+      expect.arrayContaining(['enable_automatic_placement']),
+    );
+    expect(executedCommands(fixture.query)).toEqual(['begin', 'commit']);
+  });
+
   it('updates an event and audits the edit in the same transaction', async () => {
     const fixture = createFixture();
 
@@ -126,6 +170,7 @@ describe('author event service', () => {
     const event = await service.updateEvent({
       expectedVersion: 0,
       actorPlayerId: AUTHOR_ID,
+      automaticPlacement: false,
       eventId: EVENT_ID,
       title: 'Updated event',
       description: null,
@@ -226,6 +271,18 @@ describe('author event service', () => {
       message: 'Longitude must be between -180 and 180 degrees.',
     },
     {
+      change: { latitude: null, longitude: null },
+      message: 'A fixed event must have a latitude and longitude.',
+    },
+    {
+      change: {
+        automaticPlacement: true,
+        latitude: null,
+        longitude: 28.03038,
+      },
+      message: 'Latitude and longitude must both be provided or both be unset.',
+    },
+    {
       change: { radiusMetres: 0 },
       message: 'Event radius must be a positive integer.',
     },
@@ -284,6 +341,7 @@ describe('author event service', () => {
 function validInput() {
   return {
     actorPlayerId: AUTHOR_ID,
+    automaticPlacement: false,
     title: 'Great Hall Challenge',
     description: 'Explore East Campus.',
     latitude: -26.19205,
@@ -344,6 +402,7 @@ function successfulImplementation() {
           {
             status: 'draft',
             version: 0,
+            automatic_placement: false,
           },
         ],
       };
@@ -388,6 +447,7 @@ function authorEventRow() {
     updated_at: new Date('2026-08-15T20:00:00.000Z'),
     retired_at: null,
     authoring_status: 'draft',
+    automatic_placement: false,
     version: 0,
     submitted_by_player_id: null,
     submitted_at: null,

@@ -6,6 +6,7 @@ import {
   type LocationObservationProvider,
 } from '../../src/browser-location';
 import type {
+  MapArea,
   MapController,
   MapFactory,
   MapPoint,
@@ -91,6 +92,7 @@ export const mapFactory: MapFactory = async (
   container.style.background =
     'radial-gradient(circle at 48% 42%, rgb(42 107 255 / 30%), transparent 22%), linear-gradient(145deg, #18304f, #071426 70%)';
   let points = initialPoints;
+  let areas: readonly MapArea[] = [];
   let selectedPoint: MapPoint | null = null;
   let focusedPointId: string | null = null;
   let pointSelectionListener: ((pointId: string) => void) | null = null;
@@ -104,6 +106,22 @@ export const mapFactory: MapFactory = async (
 
   const markerLayer = document.createElement('div');
   markerLayer.dataset.deterministicMarkers = 'true';
+  Object.assign(markerLayer.style, {
+    inset: '0',
+    pointerEvents: 'none',
+    position: 'absolute',
+    zIndex: '2',
+  });
+  const areaLayer = document.createElement('div');
+  areaLayer.dataset.deterministicAreas = 'true';
+  Object.assign(areaLayer.style, {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    inset: '8%',
+    pointerEvents: 'none',
+    position: 'absolute',
+    zIndex: '1',
+  });
   const radius = document.createElement('div');
   radius.dataset.deterministicEventRadius = 'true';
   Object.assign(radius.style, {
@@ -114,7 +132,36 @@ export const mapFactory: MapFactory = async (
     pointerEvents: 'none',
     position: 'absolute',
   });
-  container.append(radius, markerLayer);
+  container.append(radius, areaLayer, markerLayer);
+
+  const renderAreas = (): void => {
+    areaLayer.replaceChildren();
+    areas.forEach((area) => {
+      const zone = document.createElement('div');
+      zone.dataset.areaState = area.state;
+      zone.setAttribute('aria-hidden', 'true');
+      zone.textContent = area.label;
+      const color =
+        area.state === 'served'
+          ? '#54a8ff'
+          : area.state === 'shortfall'
+            ? '#e1a93a'
+            : '#dc5b65';
+      Object.assign(zone.style, {
+        alignItems: 'end',
+        background: `repeating-linear-gradient(135deg, transparent 0 18px, ${color}22 18px 20px)`,
+        border: `2px ${area.state === 'served' ? 'solid' : area.state === 'shortfall' ? 'dashed' : 'dotted'} ${color}`,
+        color: '#f7f3e7',
+        display: 'flex',
+        fontSize: '12px',
+        fontWeight: '800',
+        margin: '3%',
+        padding: '12px',
+        textShadow: '0 1px 3px #050b16',
+      });
+      areaLayer.append(zone);
+    });
+  };
 
   const coordinateAt = (clientX: number, clientY: number) => {
     const bounds = container.getBoundingClientRect();
@@ -218,11 +265,14 @@ export const mapFactory: MapFactory = async (
   navigationArea.className = 'mapboxgl-ctrl-top-right';
   const navigationGroup = document.createElement('div');
   navigationGroup.className = 'mapboxgl-ctrl mapboxgl-ctrl-group';
-  for (const [label, symbol] of [
+  const navigationControls: ReadonlyArray<readonly [string, string]> = [
     ['Zoom in', '+'],
     ['Zoom out', '−'],
-    ['Reset map bearing and pitch', '↺'],
-  ] as const) {
+    ...(config.showResetViewControl === false
+      ? []
+      : ([['Reset map bearing and pitch', '↺']] as const)),
+  ];
+  for (const [label, symbol] of navigationControls) {
     const button = document.createElement('button');
     button.type = 'button';
     button.setAttribute('aria-label', label);
@@ -247,6 +297,9 @@ export const mapFactory: MapFactory = async (
       button.className = [
         'event-marker',
         `event-marker--${availability}`,
+        ...(point.placementStates ?? []).map(
+          (state) => `event-marker--placement-${state}`,
+        ),
         point.trailState ? `event-marker--trail-${point.trailState}` : '',
         selectedPoint?.id === point.id ? 'event-marker--selected' : '',
         point.reachable ? 'event-marker--reachable' : '',
@@ -273,6 +326,7 @@ export const mapFactory: MapFactory = async (
         cursor: point.draggable ? 'grab' : 'pointer',
         left: `${position.horizontal + (applyFixtureSpread ? index * 12 : 0)}%`,
         position: 'absolute',
+        pointerEvents: 'auto',
         top: `${position.vertical + (applyFixtureSpread ? (index % 2) * 13 : 0)}%`,
       });
       const markerBody = document.createElement('span');
@@ -349,6 +403,7 @@ export const mapFactory: MapFactory = async (
       container.removeEventListener('pointerdown', stopFollowingOnPan);
       playerPuck?.remove();
       markerLayer.remove();
+      areaLayer.remove();
       radius.remove();
       logoArea.remove();
       attributionArea.remove();
@@ -372,6 +427,10 @@ export const mapFactory: MapFactory = async (
     },
     setPointSelectionListener: (listener) => {
       pointSelectionListener = listener;
+    },
+    setAreas: (nextAreas) => {
+      areas = nextAreas;
+      renderAreas();
     },
     setPoints: (nextPoints) => {
       points = nextPoints;

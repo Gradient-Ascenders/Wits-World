@@ -683,6 +683,7 @@ describe('Author curation workspaces', () => {
 
 function eventFixture() {
   return {
+    automaticPlacement: false,
     authoringStatus: 'published',
     createdAt: '2026-08-16T08:00:00.000Z',
     description: 'East Campus history.',

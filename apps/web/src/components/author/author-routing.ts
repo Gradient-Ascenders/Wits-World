@@ -25,6 +25,7 @@ export type AuthorWorkspaceRoute =
   | { cardId: string; mode: 'detail' | 'edit'; section: 'cards' }
   | { mode: 'list'; section: 'review' }
   | { mode: 'list'; section: 'analytics' }
+  | { mode: 'list'; section: 'placement' }
   | { mode: 'list' | 'new'; section: 'campaigns' }
   | {
       campaignId: string;
@@ -49,6 +50,10 @@ export function parseAuthorWorkspaceRoute(
 
   if (segments[0] === 'analytics') {
     return { mode: 'list', section: 'analytics' };
+  }
+
+  if (segments[0] === 'placement') {
+    return { mode: 'list', section: 'placement' };
   }
 
   if (segments[0] === 'campaigns') {
@@ -145,6 +150,7 @@ export function parseAuthorWorkspaceRoute(
 export const authorPaths = {
   campaigns: `${AUTHOR_ROOT}/campaigns`,
   analytics: `${AUTHOR_ROOT}/analytics`,
+  placement: `${AUTHOR_ROOT}/placement`,
   campaign: (campaignId: string) =>
     `${AUTHOR_ROOT}/campaigns/${encodeURIComponent(campaignId)}`,
   editCampaign: (campaignId: string) =>
