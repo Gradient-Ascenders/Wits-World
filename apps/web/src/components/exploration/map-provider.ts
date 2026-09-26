@@ -27,7 +27,18 @@ export interface MapPoint {
   radiusMetres?: number;
   reachable?: boolean;
   selectable?: boolean;
+  placementStates?: readonly PlacementMapState[];
   trailState?: 'completed' | 'current' | 'locked' | 'retired' | 'unavailable';
+}
+
+export type PlacementMapState =
+  'candidate' | 'current' | 'excluded' | 'overridden' | 'proposed';
+
+export interface MapArea {
+  geometry: MultiPolygon | Polygon;
+  id: string;
+  label: string;
+  state: 'served' | 'shortfall' | 'unserved';
 }
 
 export interface MapCoordinate {
@@ -106,6 +117,7 @@ export interface MapConfiguration {
   initialBounds?: MapBounds;
   initialBoundsPadding?: number;
   pitch: number;
+  showResetViewControl?: boolean;
   standardConfig: MapboxStandardConfiguration;
   styleUrl: string;
   zoom: number;
@@ -129,6 +141,7 @@ export interface MapController {
   setCoordinateSelectionListener?: (
     listener: ((coordinate: MapCoordinate) => void) | null,
   ) => void;
+  setAreas?: (areas: readonly MapArea[]) => void;
   setFollowStateListener?: (
     listener: ((following: boolean) => void) | null,
   ) => void;
@@ -167,6 +180,12 @@ const TERRITORY_LINE_LAYER_ID = 'wits-territory-line';
 const TERRITORY_SUSPENDED_LINE_LAYER_ID = 'wits-territory-suspended-line';
 const TERRITORY_SELECTED_LINE_LAYER_ID = 'wits-territory-selected-line';
 const TERRITORY_LABEL_LAYER_ID = 'wits-territory-label';
+const PLACEMENT_AREA_SOURCE_ID = 'wits-placement-areas';
+const PLACEMENT_AREA_FILL_LAYER_ID = 'wits-placement-area-fill';
+const PLACEMENT_AREA_SERVED_LAYER_ID = 'wits-placement-area-served';
+const PLACEMENT_AREA_SHORTFALL_LAYER_ID = 'wits-placement-area-shortfall';
+const PLACEMENT_AREA_UNSERVED_LAYER_ID = 'wits-placement-area-unserved';
+const PLACEMENT_AREA_LABEL_LAYER_ID = 'wits-placement-area-label';
 const EARTH_RADIUS_METRES = 6_371_008.8;
 const MIN_FOLLOW_MOVEMENT_METRES = 10;
 const MAX_FOLLOW_MOVEMENT_METRES = 40;
@@ -432,6 +451,109 @@ function addCampusDatasetLayers(
   }
 }
 
+function syncPlacementAreas(map: MapboxMap, areas: readonly MapArea[]): void {
+  const data: FeatureCollection<MultiPolygon | Polygon> = {
+    features: areas.map((area) => ({
+      geometry: area.geometry,
+      properties: {
+        id: area.id,
+        label: area.label,
+        state: area.state,
+      },
+      type: 'Feature',
+    })),
+    type: 'FeatureCollection',
+  };
+  const source = map.getSource(PLACEMENT_AREA_SOURCE_ID) as
+    | { setData: (nextData: FeatureCollection<MultiPolygon | Polygon>) => void }
+    | undefined;
+
+  if (source === undefined) {
+    map.addSource(PLACEMENT_AREA_SOURCE_ID, { data, type: 'geojson' });
+  } else {
+    source.setData(data);
+  }
+
+  if (!map.getLayer(PLACEMENT_AREA_FILL_LAYER_ID)) {
+    map.addLayer({
+      id: PLACEMENT_AREA_FILL_LAYER_ID,
+      paint: {
+        'fill-color': [
+          'match',
+          ['get', 'state'],
+          'served',
+          '#2a6bff',
+          'shortfall',
+          '#e1a93a',
+          '#dc5b65',
+        ],
+        'fill-opacity': 0.12,
+      },
+      slot: 'middle',
+      source: PLACEMENT_AREA_SOURCE_ID,
+      type: 'fill',
+    });
+  }
+
+  const lines = [
+    {
+      color: '#54a8ff',
+      dash: [1, 0.01] as [number, number],
+      id: PLACEMENT_AREA_SERVED_LAYER_ID,
+      state: 'served',
+    },
+    {
+      color: '#e1a93a',
+      dash: [3, 2] as [number, number],
+      id: PLACEMENT_AREA_SHORTFALL_LAYER_ID,
+      state: 'shortfall',
+    },
+    {
+      color: '#dc5b65',
+      dash: [1, 2] as [number, number],
+      id: PLACEMENT_AREA_UNSERVED_LAYER_ID,
+      state: 'unserved',
+    },
+  ] as const;
+  for (const line of lines) {
+    if (map.getLayer(line.id)) continue;
+    map.addLayer({
+      filter: ['==', ['get', 'state'], line.state],
+      id: line.id,
+      paint: {
+        'line-color': line.color,
+        'line-dasharray': line.dash,
+        'line-emissive-strength': 0.7,
+        'line-opacity': 0.95,
+        'line-width': 2.5,
+      },
+      slot: 'top',
+      source: PLACEMENT_AREA_SOURCE_ID,
+      type: 'line',
+    });
+  }
+
+  if (!map.getLayer(PLACEMENT_AREA_LABEL_LAYER_ID)) {
+    map.addLayer({
+      id: PLACEMENT_AREA_LABEL_LAYER_ID,
+      layout: {
+        'symbol-placement': 'point',
+        'text-field': ['get', 'label'],
+        'text-size': 12,
+      },
+      paint: {
+        'text-color': '#f7f3e7',
+        'text-emissive-strength': 0.75,
+        'text-halo-color': '#050b16',
+        'text-halo-width': 1.5,
+      },
+      slot: 'top',
+      source: PLACEMENT_AREA_SOURCE_ID,
+      type: 'symbol',
+    });
+  }
+}
+
 function createController(
   map: MapboxMap,
   MarkerConstructor: new (options?: MarkerOptions) => MapboxMarker,
@@ -448,6 +570,7 @@ function createController(
   },
   renderRegions: (regions: readonly MapRegion[]) => void,
   setSelectedRegion: (region: MapRegion | null) => void,
+  renderAreas: (areas: readonly MapArea[]) => void,
 ): MapController {
   let currentPoints: readonly MapPoint[] = [];
   let reportedLocation: ReportedMapLocation | null = null;
@@ -614,6 +737,7 @@ function createController(
       map.off('click', handleCoordinateSelection);
       map.off('dragstart', handleDeliberatePan);
       setReportedLocation(null);
+      renderAreas([]);
       renderPoints([]);
       renderRegions([]);
       map.remove();
@@ -628,6 +752,9 @@ function createController(
       if (listener !== null) {
         map.on('click', handleCoordinateSelection);
       }
+    },
+    setAreas(areas) {
+      renderAreas(areas);
     },
     setReportedLocation,
     setFollowStateListener(listener) {
@@ -763,7 +890,9 @@ export const createMapboxMap: MapFactory = async (
     }),
     'top-right',
   );
-  map.addControl(new ResetViewControl(configuration), 'top-right');
+  if (configuration.showResetViewControl !== false) {
+    map.addControl(new ResetViewControl(configuration), 'top-right');
+  }
   map.addControl(
     new mapboxgl.AttributionControl({ compact: true }),
     'bottom-right',
@@ -875,6 +1004,9 @@ export const createMapboxMap: MapFactory = async (
         'event-marker',
         `event-marker--${availability}`,
         point.trailState ? `event-marker--trail-${point.trailState}` : '',
+        ...(point.placementStates ?? []).map(
+          (state) => `event-marker--placement-${state}`,
+        ),
         selected ? 'event-marker--selected' : '',
         point.draggable ? 'event-marker--draggable' : '',
         point.reachable ? 'event-marker--reachable' : '',
@@ -886,6 +1018,8 @@ export const createMapboxMap: MapFactory = async (
       // These markers are interactive controls, including for keyboard users.
       record.button.setAttribute('role', 'button');
       record.button.dataset.trailState = point.trailState ?? '';
+      record.button.dataset.placementStates =
+        point.placementStates?.join(' ') ?? '';
       record.button.setAttribute(
         'aria-label',
         point.draggable
@@ -1137,6 +1271,26 @@ export const createMapboxMap: MapFactory = async (
     syncSelectedRadius();
   }
 
+  let currentAreas: readonly MapArea[] = [];
+  const renderAreas = (areas: readonly MapArea[]): void => {
+    currentAreas = areas;
+    if (map.isStyleLoaded() && areas.length > 0) {
+      syncPlacementAreas(map, areas);
+      return;
+    }
+    const source = map.getSource(PLACEMENT_AREA_SOURCE_ID) as
+      | {
+          setData: (
+            nextData: FeatureCollection<MultiPolygon | Polygon>,
+          ) => void;
+        }
+      | undefined;
+    source?.setData({ features: [], type: 'FeatureCollection' });
+  };
+  map.on('style.load', () => {
+    if (currentAreas.length > 0) syncPlacementAreas(map, currentAreas);
+  });
+
   const controller = createController(
     map,
     mapboxgl.Marker,
@@ -1154,6 +1308,7 @@ export const createMapboxMap: MapFactory = async (
       regionInteraction.selectedRegionId = region?.id ?? null;
       if (map.isStyleLoaded()) syncRegions();
     },
+    renderAreas,
   );
   controller.setPoints(points);
 

@@ -880,6 +880,18 @@ describe('Mapbox Standard provider', () => {
     expect(mapboxState.jumpTo).toHaveBeenCalledWith({ bearing: 20, pitch: 52 });
   });
 
+  it('omits the reset control when a flat map does not need it', async () => {
+    await createMapboxMap(
+      document.createElement('div'),
+      { ...configuration, showResetViewControl: false },
+      [],
+      new AbortController().signal,
+    );
+
+    expect(mapboxState.controls).toHaveLength(2);
+    expect(mapboxState.controls.some((control) => control.onAdd)).toBe(false);
+  });
+
   it('adds a future licensed campus dataset through Standard slots without deriving unapproved building heights', async () => {
     const dataset = {
       features: [

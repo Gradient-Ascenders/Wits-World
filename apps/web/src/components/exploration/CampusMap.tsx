@@ -5,6 +5,7 @@ import { useSignInMapStatus } from '../auth/startup-state';
 
 import {
   createMapboxMap,
+  type MapArea,
   type MapConfiguration,
   type MapCoordinate,
   type MapController,
@@ -16,6 +17,7 @@ import {
 
 interface CampusMapProps {
   accessibleLabel?: string;
+  areas?: readonly MapArea[];
   configuration: MapConfiguration;
   errorDescription?: string;
   focusPointRequest?: number;
@@ -39,6 +41,7 @@ const MAP_LOAD_TIMEOUT_MS = 15_000;
 
 export function CampusMap({
   accessibleLabel = 'Interactive campus map using Mapbox Standard 3D. Event information is also available in the nearby events list.',
+  areas = [],
   configuration,
   errorDescription = 'Open Campus events to keep exploring.',
   focusPointRequest = 0,
@@ -63,6 +66,7 @@ export function CampusMap({
   const onRegionSelectRef = useRef(onRegionSelect);
   const pointsRef = useRef(points);
   const regionsRef = useRef(regions);
+  const areasRef = useRef(areas);
   const focusPointRequestRef = useRef(focusPointRequest);
   const focusRegionRequestRef = useRef(focusRegionRequest);
   const reportedLocationRef = useRef<ReportedMapLocation | null>(
@@ -77,6 +81,7 @@ export function CampusMap({
 
   pointsRef.current = points;
   regionsRef.current = regions;
+  areasRef.current = areas;
   focusPointRequestRef.current = focusPointRequest;
   focusRegionRequestRef.current = focusRegionRequest;
   onCoordinateSelectRef.current = onCoordinateSelect;
@@ -94,6 +99,10 @@ export function CampusMap({
   useEffect(() => {
     controllerRef.current?.setRegions?.(regions);
   }, [regions]);
+
+  useEffect(() => {
+    controllerRef.current?.setAreas?.(areas);
+  }, [areas]);
 
   useEffect(() => {
     controllerRef.current?.setReportedLocation(reportedLocation);
@@ -235,6 +244,7 @@ export function CampusMap({
         resizeMap();
         map.setPoints(pointsRef.current);
         map.setRegions?.(regionsRef.current);
+        map.setAreas?.(areasRef.current);
         map.setReportedLocation(reportedLocationRef.current);
         map.setSelectedPoint?.(selectedPointRef.current);
         map.setSelectedRegion?.(selectedRegionRef.current);

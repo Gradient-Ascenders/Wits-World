@@ -19,10 +19,11 @@ interface AuthorEventParams {
 }
 
 interface AuthorEventBody {
+  automaticPlacement: boolean;
   title: string;
   description?: string | null;
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
   radiusMetres: number;
   startsAt: string;
   endsAt: string;
@@ -89,6 +90,7 @@ const authorEventSchema = {
   additionalProperties: false,
   required: [
     'eventId',
+    'automaticPlacement',
     'title',
     'description',
     'latitude',
@@ -110,6 +112,9 @@ const authorEventSchema = {
     'publicationProvenance',
   ],
   properties: {
+    automaticPlacement: {
+      type: 'boolean',
+    },
     eventId: {
       type: 'string',
       format: 'uuid',
@@ -125,11 +130,13 @@ const authorEventSchema = {
       type: 'number',
       minimum: -90,
       maximum: 90,
+      nullable: true,
     },
     longitude: {
       type: 'number',
       minimum: -180,
       maximum: 180,
+      nullable: true,
     },
     radiusMetres: {
       type: 'integer',
@@ -184,6 +191,7 @@ const authorEventBodySchema = {
   type: 'object',
   additionalProperties: false,
   required: [
+    'automaticPlacement',
     'title',
     'latitude',
     'longitude',
@@ -192,6 +200,9 @@ const authorEventBodySchema = {
     'endsAt',
   ],
   properties: {
+    automaticPlacement: {
+      type: 'boolean',
+    },
     title: {
       type: 'string',
       minLength: 1,
@@ -205,11 +216,13 @@ const authorEventBodySchema = {
       type: 'number',
       minimum: -90,
       maximum: 90,
+      nullable: true,
     },
     longitude: {
       type: 'number',
       minimum: -180,
       maximum: 180,
+      nullable: true,
     },
     radiusMetres: {
       type: 'integer',
@@ -363,6 +376,7 @@ export const authorEventRoutes: FastifyPluginAsync<
       try {
         const event = await service.createEvent({
           actorPlayerId: author.id,
+          automaticPlacement: request.body.automaticPlacement,
           title: request.body.title,
           description: request.body.description,
           latitude: request.body.latitude,
@@ -427,6 +441,7 @@ export const authorEventRoutes: FastifyPluginAsync<
       try {
         const event = await service.updateEvent({
           actorPlayerId: author.id,
+          automaticPlacement: request.body.automaticPlacement,
           eventId: request.params.eventId,
           title: request.body.title,
           description: request.body.description,

@@ -244,6 +244,9 @@ describe('Basic author console', () => {
       within(navigation).queryByRole('link', { name: 'Player application' }),
     ).not.toBeInTheDocument();
     expect(
+      within(navigation).getByRole('link', { name: 'Placement' }),
+    ).toHaveAttribute('href', authorPaths.placement);
+    expect(
       await screen.findByRole('link', { name: /Great Hall history/ }),
     ).toBeVisible();
     expect(fetchMock).toHaveBeenCalledWith(
@@ -284,6 +287,40 @@ describe('Basic author console', () => {
     expect(
       fetchMock.mock.calls.every(
         ([input]) => !String(input).includes('/author/'),
+      ),
+    ).toBe(true);
+  });
+
+  it('blocks an ordinary Player from placement controls before any placement request', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/auth/me')) {
+        return jsonResponse({
+          connectionStrategy: 'auth0',
+          id: '90000000-0000-4000-8000-000000000001',
+          playerName: 'test-player',
+          playerNameSetupRequired: false,
+          lifecycleStatus: 'active',
+          requestId: 'request-me',
+          role: 'player',
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderAuthorRoute(authorPaths.placement);
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Author permission is required',
+      }),
+    ).toHaveFocus();
+    expect(
+      screen.queryByRole('button', { name: 'Generate preview' }),
+    ).not.toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.every(
+        ([input]) => !String(input).includes('/author/event-placement'),
       ),
     ).toBe(true);
   });
@@ -444,6 +481,45 @@ describe('Basic author console', () => {
       longitude: 28.03038,
       radiusMetres: 75,
       title: 'Library discovery',
+    });
+  });
+
+  it('creates an automatic-placement event without asking for a fixed map point', async () => {
+    const user = userEvent.setup();
+    const fetchMock = installAuthorApi({ events: [] });
+    renderAuthorRoute(authorPaths.newEvent);
+
+    await user.type(
+      await screen.findByLabelText('Event title'),
+      'Rotating campus quiz',
+    );
+    await user.click(
+      screen.getByRole('checkbox', { name: /Automatic placement/ }),
+    );
+
+    expect(screen.queryByText('Event location')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Location will be assigned automatically'),
+    ).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: '75 m' }));
+    await user.type(screen.getByLabelText('Starts at'), '2026-09-01T08:00');
+    await user.type(screen.getByLabelText('Ends at'), '2026-09-01T12:00');
+    await user.click(
+      screen.getByRole('button', { name: 'Create draft event' }),
+    );
+
+    expect(await screen.findByText('Draft event created.')).toHaveFocus();
+    const createCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input).endsWith('/author/events') && init?.method === 'POST',
+    );
+    expect(JSON.parse(String(createCall?.[1]?.body))).toMatchObject({
+      automaticPlacement: true,
+      latitude: null,
+      longitude: null,
+      radiusMetres: 75,
+      title: 'Rotating campus quiz',
     });
   });
 
@@ -2768,6 +2844,7 @@ function authenticatedAuthor(): Auth0ContextInterface {
 
 function eventFixture(overrides: Partial<AuthorEvent> = {}): AuthorEvent {
   return {
+    automaticPlacement: false,
     authoringStatus: 'draft',
     createdAt: '2026-08-16T08:00:00.000Z',
     description: 'East Campus history.',
