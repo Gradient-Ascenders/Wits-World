@@ -39,6 +39,15 @@ forfeiture. This clarification does not change the implemented Basic CPU timer
 or timeout behavior. See the
 [asynchronous PvP API contract](../architecture/asynchronous-pvp-api-contract.md).
 
+### Voluntary Creature swaps
+
+The newer voluntary-swap feature supersedes the no-switching clause in
+`BASIC-10`. A living bench Creature can be swapped in on a normal turn; the
+swap consumes that turn. Mandatory replacement after defeat remains free.
+The shared battle rules and server-side legal-action checks apply to CPU,
+asynchronous PvP, and live PvP. The original issue decision remains in the
+historical table below for traceability.
+
 ### Reward-currency supersession
 
 Issue `#193` and the confirmed progression rules supersede the coin-band clauses

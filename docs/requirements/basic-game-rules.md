@@ -303,7 +303,7 @@ completed-match history. It does not use direct attribute comparison.
 
 - The server flips a coin to choose the first player.
 - Player and CPU actions use the same legal-action rules. A turn allows either
-  one legal Creature move or one Power card.
+  one legal Creature move, one Power card, or one voluntary Creature swap.
 - A Power card may be played only while an active Creature is on the board. It
   is discarded immediately after use, cannot be reused during that battle, and
   may define multiple authored effects.
@@ -313,11 +313,20 @@ completed-match history. It does not use direct attribute comparison.
 - For CPU and later live PvP modes, if the timer expires without a selected
   move or action, the turn ends without an action. Asynchronous PvP instead
   applies the forfeit rule documented below.
-- The CPU selects randomly from legal actions using server-side randomness.
+- The CPU selects randomly from legal move and Power-card actions using
+  server-side randomness; it does not currently choose voluntary swaps.
   Difficulty levels and machine-learning behaviour are deferred.
 - Ties are not possible in the current move-based system.
-- A defeated Creature cannot return. Replacement is mandatory, does not consume
-  the replacement player's normal turn, and voluntary switching is not allowed.
+- A defeated Creature cannot return. Replacement is mandatory and does not consume
+  the replacement player's normal turn. During a normal turn, a player may swap
+  their active Creature for a living bench Creature instead of attacking or
+  using a Power card. This ends the turn; the outgoing Creature's end-of-turn
+  effects resolve before the new Creature enters. HP, Power, and remaining
+  effects stay attached to each Creature.
+- CPU battle-log action and effect entries may include the UUID of the visible
+  Creature involved. The player presentation uses that ID to show a swap
+  before the CPU response action and to apply later effects to the correct
+  Creature, even when two owned copies have the same display name.
 - A player loses when all of their Creatures are defeated.
 - The browser submits only an intended action identifier, such as a move ID or
   Power-card ID. It never submits damage, HP, Power, effects, multipliers,

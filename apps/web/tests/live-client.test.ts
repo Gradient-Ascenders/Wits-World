@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  buildLiveWebSocketUrl,
   createLiveConnectionTicket,
   getCurrentRankedSeason,
   getLiveProjection,
@@ -78,6 +79,8 @@ describe('live battle API client', () => {
       `${apiBaseUrl}/matches/live/${LIVE_MATCH_ID}`,
       expect.objectContaining({
         headers: expect.objectContaining({
+          Accept:
+            'application/vnd.wits-world.live.v2+json, application/json;q=0.9',
           Authorization: 'Bearer access-token',
         }),
       }),
@@ -85,6 +88,14 @@ describe('live battle API client', () => {
     expect(JSON.parse(String(fetchMock.mock.calls[1]![1]!.body))).toEqual({
       role: 'participant',
     });
+    const socketUrl = new URL(
+      buildLiveWebSocketUrl(
+        'wss://api.example.test/api/v1/realtime/live',
+        'one-use-ticket',
+      ),
+    );
+    expect(socketUrl.searchParams.get('ticket')).toBe('one-use-ticket');
+    expect(socketUrl.searchParams.get('battleSwaps')).toBe('1');
   });
 
   it('keeps spectator parsing on a closed public shape and rejects leaked private fields', async () => {

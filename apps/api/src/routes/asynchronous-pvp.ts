@@ -12,6 +12,11 @@ import {
   type PvpInvitationStatus,
 } from '../matches/asynchronous-pvp-service.js';
 import {
+  acceptsBattleSwaps,
+  asyncPvpMatchForClient,
+  PVP_SWAP_MEDIA_TYPE,
+} from '../matches/battle-projection-capability.js';
+import {
   apiErrorSchema,
   publicCreatureSchema,
   publicEffectSchema,
@@ -44,7 +49,7 @@ const pvpContractHeadersSchema = {
   properties: {
     accept: {
       type: 'string',
-      description: `Include ${BATTLE_HISTORY_CONTRACT_MEDIA_TYPE} to receive the participant-safe full battle history, ${CANCELLATION_CONTRACT_MEDIA_TYPE} for invitation cancellation, or ${RESIGNATION_CONTRACT_MEDIA_TYPE} for voluntary resignation only, without adding a non-safelisted CORS request header.`,
+      description: `Include ${PVP_SWAP_MEDIA_TYPE} for voluntary Creature swaps and the current battle projection, ${BATTLE_HISTORY_CONTRACT_MEDIA_TYPE} for participant-safe full battle history, ${CANCELLATION_CONTRACT_MEDIA_TYPE} for invitation cancellation, or ${RESIGNATION_CONTRACT_MEDIA_TYPE} for voluntary resignation only, without adding a non-safelisted CORS request header.`,
     },
   },
 } as const;
@@ -864,7 +869,11 @@ function registerMatchRoutes(
 }
 
 function matchEnvelope(match: AsyncPvpMatchView, request: FastifyRequest) {
-  const { history, ...legacyMatch } = match;
+  const compatible = asyncPvpMatchForClient(
+    match,
+    acceptsBattleSwaps(request, PVP_SWAP_MEDIA_TYPE),
+  );
+  const { history, ...legacyMatch } = compatible;
   return {
     ...legacyMatch,
     ...(supportsPvpContract(request, 4) ? { history } : {}),
@@ -900,6 +909,7 @@ function supportsPvpContract(
       ?.split(',')
       .map((range) => range.trim().split(';', 1)[0]?.toLowerCase()) ?? [];
   return acceptedTypes.some((mediaType) => {
+    if (mediaType === PVP_SWAP_MEDIA_TYPE) return true;
     if (mediaType === BATTLE_HISTORY_CONTRACT_MEDIA_TYPE) return true;
     if (mediaType === CANCELLATION_CONTRACT_MEDIA_TYPE)
       return minimumVersion <= 3;

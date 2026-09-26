@@ -19,9 +19,15 @@ The package currently covers:
 - versioned affinity type multipliers (new matches use the starter triangle
   and explicit five-type table; unversioned stored states retain the legacy
   cycle);
-- mandatory replacement and terminal match state;
+- mandatory replacement, voluntary turn-consuming Creature swaps, and terminal match state;
 - trusted timeout actions; and
 - deterministic CPU legal-action selection.
+
+A player may swap their active Creature for any living bench Creature on their
+normal turn. The outgoing Creature's end-of-turn effects resolve first; both
+Creatures retain their HP, Power, and remaining effects. Swapping passes the
+turn, unlike mandatory replacement after defeat. The CPU currently selects
+randomly from legal moves and Power cards and does not choose voluntary swaps.
 
 CPU match persistence and HTTP routes are implemented in `apps/api`; browser
 interaction is implemented in `apps/web`. Those consumers keep the API

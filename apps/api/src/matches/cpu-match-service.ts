@@ -200,6 +200,7 @@ export interface CpuMatchBattleLogEvent {
   side: 'player' | 'cpu' | null;
   kind: CpuMatchBattleLogEventKind;
   message: string;
+  creatureId?: string;
 }
 
 export interface CpuMatchBattleLogGroup {
@@ -1927,6 +1928,7 @@ function createBattleLog(
       kind: CpuMatchBattleLogEventKind,
       message: string,
       side: 'player' | 'cpu' | null = result.side,
+      creatureId?: string,
     ) => {
       group.events.push({
         id: `${row.sequence}:${eventIndex++}`,
@@ -1934,6 +1936,7 @@ function createBattleLog(
         side,
         kind,
         message,
+        ...(creatureId ? { creatureId } : {}),
       });
     };
 
@@ -1966,7 +1969,10 @@ function createBattleLog(
           firstSide,
         );
       }
-    } else if (result.action.type === 'select_replacement') {
+    } else if (
+      result.action.type === 'select_replacement' ||
+      result.action.type === 'swap_creature'
+    ) {
       const name = battleCreatureName(
         state,
         result.action.creatureId,
@@ -1974,7 +1980,11 @@ function createBattleLog(
       );
       addEvent(
         'action',
-        `${battleSideLabel(result.side)} sent out ${name} as a replacement.`,
+        result.action.type === 'swap_creature'
+          ? `${battleSideLabel(result.side)} swapped in ${name}.`
+          : `${battleSideLabel(result.side)} sent out ${name} as a replacement.`,
+        result.side,
+        result.action.creatureId,
       );
       projection.activeCreatureIds[result.side] = result.action.creatureId;
     } else if (result.action.type === 'use_move') {
@@ -1993,6 +2003,7 @@ function createBattleLog(
           'effect',
           `${creatureSubject(result.side, creatureName)} spent ${source.move.powerCost} Power.`,
           result.side,
+          actorCreatureId ?? source.creatureId,
         );
       }
     } else if (result.action.type === 'use_power_card') {
@@ -2013,6 +2024,7 @@ function createBattleLog(
         'effect',
         describeBattleLogEffect(effect, state, cardNames),
         effect.targetSide,
+        effect.targetCreatureId,
       );
     }
 
@@ -2021,11 +2033,17 @@ function createBattleLog(
         'effect_expired',
         describeExpiredBattleLogEffect(expired, state, cardNames),
         expired.targetSide,
+        expired.targetCreatureId,
       );
     }
 
     if (result.defeatedCreatureId) {
-      const defeatedSide = oppositeBattleSide(result.side);
+      const defeatedSide =
+        row.roundStateAfter.participants.player.creatures.some(
+          (creature) => creature.card.id === result.defeatedCreatureId,
+        )
+          ? 'player'
+          : 'cpu';
       addEvent(
         'defeat',
         `${creatureSubject(
@@ -2033,8 +2051,13 @@ function createBattleLog(
           battleCreatureName(state, result.defeatedCreatureId, cardNames),
         )} was defeated.`,
         defeatedSide,
+        result.defeatedCreatureId,
       );
-      projection.activeCreatureIds[defeatedSide] = null;
+      if (
+        projection.activeCreatureIds[defeatedSide] === result.defeatedCreatureId
+      ) {
+        projection.activeCreatureIds[defeatedSide] = null;
+      }
     }
 
     if (result.winner) {
@@ -2044,10 +2067,11 @@ function createBattleLog(
         result.winner,
       );
     } else if (result.turnEnded) {
-      const nextSide = oppositeBattleSide(result.side);
+      const nextSide =
+        row.roundStateAfter.replacementSide ?? oppositeBattleSide(result.side);
       addEvent(
         'turn',
-        result.defeatedCreatureId
+        row.roundStateAfter.phase === 'replacement'
           ? `Turn ${projection.turnNumber} ended. ${battleSideLabel(nextSide)} must choose a replacement.`
           : `Turn ${projection.turnNumber} ended. ${battleSideLabel(nextSide)} is next.`,
         nextSide,
@@ -2546,7 +2570,7 @@ function toPublicAction(action: BattleAction): CpuMatchActionView {
   if (action.type === 'select_initial_creature') {
     return { type: action.type, creatureId: action.creatureId };
   }
-  if (action.type === 'select_replacement') {
+  if (action.type === 'select_replacement' || action.type === 'swap_creature') {
     return { type: action.type, creatureId: action.creatureId };
   }
   if (action.type === 'use_move') {

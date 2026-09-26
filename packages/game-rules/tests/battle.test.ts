@@ -338,7 +338,7 @@ describe('Basic battle rules', () => {
       ),
     ).toThrow(IllegalBattleActionError);
     expect(state).toEqual(before);
-    expect(getLegalActions(state, 'player')).toHaveLength(2);
+    expect(getLegalActions(state, 'player')).toHaveLength(4);
   });
 
   it('applies multiple Power-card effects, discards the card, and rejects reuse', () => {
@@ -698,7 +698,169 @@ describe('Basic battle rules', () => {
     });
   });
 
-  it('rejects voluntary switching and makes a completed match immutable', () => {
+  it('swaps a living bench Creature, preserves state, and consumes the turn', () => {
+    const initial = startBattle();
+    const before = structuredClone(initial);
+    const swaps = getLegalActions(initial, 'player').filter(
+      (candidate) => candidate.type === 'swap_creature',
+    );
+    expect(swaps).toEqual([
+      { type: 'swap_creature', creatureId: 'player-creature-2' },
+      { type: 'swap_creature', creatureId: 'player-creature-3' },
+    ]);
+
+    const transition = applyBattleAction(
+      initial,
+      'player',
+      { type: 'swap_creature', creatureId: 'player-creature-2' },
+      randomZero,
+    );
+
+    expect(initial).toEqual(before);
+    expect(transition.result.turnEnded).toBe(true);
+    expect(transition.result.effects).toEqual([]);
+    expect(transition.state.currentSide).toBe('cpu');
+    expect(transition.state.participants.player.activeCreatureId).toBe(
+      'player-creature-2',
+    );
+    expect(transition.state.participants.player.creatures).toEqual(
+      initial.participants.player.creatures,
+    );
+
+    const returned = action(
+      action(transition.state, 'cpu', { type: 'timeout' }),
+      'player',
+      { type: 'swap_creature', creatureId: 'player-creature-1' },
+    );
+    expect(returned.participants.player.activeCreatureId).toBe(
+      'player-creature-1',
+    );
+  });
+
+  it('rejects swaps outside a normal turn or to the current or unknown Creature', () => {
+    const initial = createBattleState(makeDeck('player'), makeDeck('cpu'));
+    const active = startBattle();
+    const before = structuredClone(active);
+
+    expect(() =>
+      applyBattleAction(
+        initial,
+        'player',
+        { type: 'swap_creature', creatureId: 'player-creature-2' },
+        randomZero,
+      ),
+    ).toThrow(IllegalBattleActionError);
+    for (const creatureId of ['player-creature-1', 'unknown']) {
+      expect(() =>
+        applyBattleAction(
+          active,
+          'player',
+          { type: 'swap_creature', creatureId },
+          randomZero,
+        ),
+      ).toThrow(IllegalBattleActionError);
+    }
+    expect(() =>
+      applyBattleAction(
+        active,
+        'cpu',
+        { type: 'swap_creature', creatureId: 'cpu-creature-2' },
+        randomZero,
+      ),
+    ).toThrow(IllegalBattleActionError);
+    expect(active).toEqual(before);
+  });
+
+  it('resolves outgoing Poison before swapping without ticking the incoming Creature', () => {
+    const poisonMove: BattleMove = {
+      id: 'bench-poison',
+      name: 'Bench Poison',
+      moveType: 'basic',
+      powerCost: 1,
+      effects: [
+        {
+          id: 'bench-poison-effect',
+          effectCode: 'poison',
+          effectType: 'debuff',
+          effectValue: 8,
+          durationTurns: 3,
+          target: 'opponent',
+        },
+      ],
+    };
+    let state = startBattle(
+      makeDeck('player'),
+      makeDeck('cpu', { moves: [poisonMove] }),
+    );
+    state = action(state, 'player', { type: 'timeout' });
+    state = action(state, 'cpu', { type: 'use_move', moveId: poisonMove.id });
+
+    const transition = applyBattleAction(
+      state,
+      'player',
+      { type: 'swap_creature', creatureId: 'player-creature-2' },
+      randomZero,
+    );
+    expect(transition.result.effects).toMatchObject([
+      {
+        effectCode: 'poison',
+        targetCreatureId: 'player-creature-1',
+        amount: 8,
+      },
+    ]);
+    expect(transition.state.participants.player.creatures[0]!.currentHp).toBe(
+      92,
+    );
+    expect(
+      transition.state.participants.player.creatures[0]!.modifiers[0]!
+        .remainingTurns,
+    ).toBe(2);
+    expect(activeCreature(transition.state, 'player').currentHp).toBe(100);
+  });
+
+  it('keeps the swapped-in Creature active if end-of-turn Poison defeats the outgoing one', () => {
+    const poisonMove: BattleMove = {
+      id: 'fatal-poison',
+      name: 'Fatal Poison',
+      moveType: 'basic',
+      powerCost: 1,
+      effects: [
+        {
+          id: 'fatal-poison-effect',
+          effectCode: 'poison',
+          effectType: 'debuff',
+          effectValue: 8,
+          durationTurns: 3,
+          target: 'opponent',
+        },
+      ],
+    };
+    let state = startBattle(
+      makeDeck('player', { creatureHp: 8 }),
+      makeDeck('cpu', { moves: [poisonMove] }),
+    );
+    state = action(state, 'player', { type: 'timeout' });
+    state = action(state, 'cpu', { type: 'use_move', moveId: poisonMove.id });
+    const transition = applyBattleAction(
+      state,
+      'player',
+      { type: 'swap_creature', creatureId: 'player-creature-2' },
+      randomZero,
+    );
+
+    expect(transition.result.defeatedCreatureId).toBe('player-creature-1');
+    expect(transition.state.phase).toBe('active');
+    expect(transition.state.replacementSide).toBe(null);
+    expect(transition.state.participants.player.activeCreatureId).toBe(
+      'player-creature-2',
+    );
+    expect(transition.state.participants.player.creatures[0]!.defeated).toBe(
+      true,
+    );
+    expect(getLegalActions(transition.state, 'player')).toEqual([]);
+  });
+
+  it('rejects replacement outside its phase and makes a completed match immutable', () => {
     const oneHitDeck = makeDeck('cpu', {
       creatureHp: 5,
       creatureAffinity: 'grit',
@@ -1208,7 +1370,7 @@ describe('Basic battle rules', () => {
       makeDeck('cpu', { creaturePower: 0, moves: [move] }),
     );
 
-    expect(getLegalActions(state, 'player')).toHaveLength(2);
+    expect(getLegalActions(state, 'player')).toHaveLength(4);
     const afterPlayerTimeout = action(state, 'player', { type: 'timeout' });
     const afterCpuPowerCard = action(afterPlayerTimeout, 'cpu', {
       type: 'use_power_card',
