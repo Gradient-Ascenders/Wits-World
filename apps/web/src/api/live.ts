@@ -1,4 +1,5 @@
 import type { ApiAccessTokenProvider } from '../auth/useApiAccessToken';
+import type { LocationClaim } from '../browser-location';
 import {
   parseMatchCreature,
   parseMatchPowerCard,
@@ -143,13 +144,73 @@ export interface RankedSeason {
   status: 'active' | 'closing';
 }
 
+export interface RankedProfile {
+  losses: number;
+  placementMatchesRemaining: number;
+  provisional: boolean;
+  rating: number | null;
+  season: RankedSeason | null;
+  settledMatchCount: number;
+  wins: number;
+}
+
+export interface RankedStanding {
+  losses: number;
+  playerName: string;
+  rank: number;
+  rating: number;
+  settledMatchCount: number;
+  wins: number;
+}
+
+export interface RankedStandingsPage {
+  entries: RankedStanding[];
+  nextCursor: string | null;
+  season: RankedSeason;
+}
+
+export type RankedTerritoryExclusionReason =
+  | 'daily_cap_reached'
+  | 'placement_matches_remaining'
+  | 'player_unavailable'
+  | 'result_not_eligible'
+  | 'zone_unavailable';
+
+export interface RankedTerritoryContribution {
+  exclusionReason: RankedTerritoryExclusionReason | null;
+  influencePoints: number;
+  outcome: 'pending' | 'lost' | 'accepted' | 'excluded';
+  zoneId: string;
+  zoneName: string;
+}
+
+export interface RankedSettlement {
+  appliedDelta: number | null;
+  completionReason: LiveCompletionReason | null;
+  matchId: string;
+  outcome: 'win' | 'loss' | null;
+  ratingAfter: number | null;
+  ratingBefore: number | null;
+  seasonId: string;
+  settledAt: string | null;
+  status: 'pending' | 'settled';
+  territory: RankedTerritoryContribution | null;
+}
+
+export interface RankedTerritoryClaim extends LocationClaim {
+  zoneId: string;
+}
+
 export type LiveApiFailure =
   | 'authentication'
   | 'authorization'
   | 'conflict'
   | 'invalid-deck'
+  | 'location'
   | 'not-found'
   | 'restricted'
+  | 'territory-ineligible'
+  | 'territory-unavailable'
   | 'unavailable'
   | 'validation';
 
@@ -245,39 +306,64 @@ export async function getCurrentRankedSeason(
     throw new LiveApiError('unavailable');
   }
   if (payload.season === null) return null;
-  if (
-    !isRecord(payload.season) ||
-    !hasExactKeys(payload.season, [
-      'seasonId',
-      'name',
-      'status',
-      'policyVersion',
-      'activatedAt',
-      'activeEndsAt',
-      'closedAt',
-    ]) ||
-    !isUuid(payload.season.seasonId) ||
-    typeof payload.season.name !== 'string' ||
-    !isEnum(payload.season.status, ['active', 'closing']) ||
-    typeof payload.season.policyVersion !== 'string' ||
-    !isNullableDateTime(payload.season.activatedAt) ||
-    !isNullableDateTime(payload.season.activeEndsAt) ||
-    !isNullableDateTime(payload.season.closedAt)
-  ) {
-    throw new LiveApiError('unavailable');
-  }
-  return payload.season as unknown as RankedSeason;
+  return parseRankedSeason(payload.season);
 }
 
 export async function joinRankedQueue(
-  options: BaseRequestOptions & { deckId: string },
+  options: BaseRequestOptions & {
+    deckId: string;
+    territoryClaim?: RankedTerritoryClaim;
+  },
 ): Promise<RankedQueueState> {
   return parseRankedQueue(
     await requestJson({
       ...options,
-      body: { deckId: options.deckId },
+      body: {
+        deckId: options.deckId,
+        ...(options.territoryClaim
+          ? { territoryClaim: options.territoryClaim }
+          : {}),
+      },
       method: 'POST',
       path: '/ranked/queue',
+    }),
+  );
+}
+
+export async function getRankedProfile(
+  options: BaseRequestOptions,
+): Promise<RankedProfile> {
+  return parseRankedProfile(
+    await requestJson({ ...options, method: 'GET', path: '/ranked/me' }),
+  );
+}
+
+export async function listRankedStandings(
+  options: BaseRequestOptions & { cursor?: string; limit?: number },
+): Promise<RankedStandingsPage> {
+  const limit = options.limit ?? 25;
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+    throw new LiveApiError('validation');
+  }
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (options.cursor) query.set('cursor', options.cursor);
+  return parseRankedStandingsPage(
+    await requestJson({
+      ...options,
+      method: 'GET',
+      path: `/ranked/standings?${query.toString()}`,
+    }),
+  );
+}
+
+export async function getRankedSettlement(
+  options: BaseRequestOptions & { matchId: string },
+): Promise<RankedSettlement> {
+  return parseRankedSettlement(
+    await requestJson({
+      ...options,
+      method: 'GET',
+      path: `/ranked/matches/${encodeURIComponent(options.matchId)}/settlement`,
     }),
   );
 }
@@ -810,6 +896,191 @@ function parseRankedQueue(value: unknown): RankedQueueState {
   return value as unknown as RankedQueueState;
 }
 
+function parseRankedSeason(value: unknown): RankedSeason {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      'seasonId',
+      'name',
+      'status',
+      'policyVersion',
+      'activatedAt',
+      'activeEndsAt',
+      'closedAt',
+    ]) ||
+    !isUuid(value.seasonId) ||
+    typeof value.name !== 'string' ||
+    value.name.trim() === '' ||
+    !isEnum(value.status, ['active', 'closing']) ||
+    typeof value.policyVersion !== 'string' ||
+    !isNullableDateTime(value.activatedAt) ||
+    !isNullableDateTime(value.activeEndsAt) ||
+    !isNullableDateTime(value.closedAt)
+  ) {
+    throw new LiveApiError('unavailable');
+  }
+  return value as unknown as RankedSeason;
+}
+
+function parseRankedProfile(value: unknown): RankedProfile {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      'season',
+      'rating',
+      'wins',
+      'losses',
+      'settledMatchCount',
+      'placementMatchesRemaining',
+      'provisional',
+    ]) ||
+    (value.season !== null && !isRecord(value.season)) ||
+    (value.rating !== null && !isRating(value.rating)) ||
+    !isNonNegativeInteger(value.wins) ||
+    !isNonNegativeInteger(value.losses) ||
+    !isNonNegativeInteger(value.settledMatchCount) ||
+    !isBoundedInteger(value.placementMatchesRemaining, 0, 5) ||
+    typeof value.provisional !== 'boolean'
+  ) {
+    throw new LiveApiError('unavailable');
+  }
+  return {
+    losses: value.losses,
+    placementMatchesRemaining: value.placementMatchesRemaining,
+    provisional: value.provisional,
+    rating: value.rating,
+    season: value.season === null ? null : parseRankedSeason(value.season),
+    settledMatchCount: value.settledMatchCount,
+    wins: value.wins,
+  };
+}
+
+function parseRankedStanding(value: unknown): RankedStanding {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      'playerName',
+      'rank',
+      'rating',
+      'wins',
+      'losses',
+      'settledMatchCount',
+    ]) ||
+    typeof value.playerName !== 'string' ||
+    value.playerName.trim() === '' ||
+    !isPositiveInteger(value.rank) ||
+    !isRating(value.rating) ||
+    !isNonNegativeInteger(value.wins) ||
+    !isNonNegativeInteger(value.losses) ||
+    !isBoundedInteger(value.settledMatchCount, 5, Number.MAX_SAFE_INTEGER)
+  ) {
+    throw new LiveApiError('unavailable');
+  }
+  return value as unknown as RankedStanding;
+}
+
+function parseRankedStandingsPage(value: unknown): RankedStandingsPage {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ['season', 'entries', 'nextCursor']) ||
+    !Array.isArray(value.entries) ||
+    (value.nextCursor !== null && typeof value.nextCursor !== 'string')
+  ) {
+    throw new LiveApiError('unavailable');
+  }
+  return {
+    entries: value.entries.map(parseRankedStanding),
+    nextCursor: value.nextCursor,
+    season: parseRankedSeason(value.season),
+  };
+}
+
+function parseRankedSettlement(value: unknown): RankedSettlement {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      'matchId',
+      'seasonId',
+      'status',
+      'completionReason',
+      'outcome',
+      'ratingBefore',
+      'ratingAfter',
+      'appliedDelta',
+      'settledAt',
+      'territory',
+    ]) ||
+    !isUuid(value.matchId) ||
+    !isUuid(value.seasonId) ||
+    !isEnum(value.status, ['pending', 'settled']) ||
+    !isNullableEnum(value.completionReason, [
+      'defeat',
+      'abandonment_forfeit',
+      'voluntary_resignation',
+      'account_deletion_forfeit',
+    ]) ||
+    !isNullableEnum(value.outcome, ['win', 'loss']) ||
+    !isNullableInteger(value.ratingBefore) ||
+    !isNullableInteger(value.ratingAfter) ||
+    !isNullableInteger(value.appliedDelta) ||
+    !isNullableDateTime(value.settledAt) ||
+    (value.status === 'settled' &&
+      (value.completionReason === null ||
+        value.outcome === null ||
+        value.ratingBefore === null ||
+        value.ratingAfter === null ||
+        value.appliedDelta === null ||
+        value.settledAt === null))
+  ) {
+    throw new LiveApiError('unavailable');
+  }
+  return {
+    appliedDelta: value.appliedDelta,
+    completionReason: value.completionReason,
+    matchId: value.matchId,
+    outcome: value.outcome,
+    ratingAfter: value.ratingAfter,
+    ratingBefore: value.ratingBefore,
+    seasonId: value.seasonId,
+    settledAt: value.settledAt,
+    status: value.status,
+    territory:
+      value.territory === null
+        ? null
+        : parseRankedTerritoryContribution(value.territory),
+  };
+}
+
+function parseRankedTerritoryContribution(
+  value: unknown,
+): RankedTerritoryContribution {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      'zoneId',
+      'zoneName',
+      'outcome',
+      'influencePoints',
+      'exclusionReason',
+    ]) ||
+    !isUuid(value.zoneId) ||
+    typeof value.zoneName !== 'string' ||
+    value.zoneName.trim() === '' ||
+    !isEnum(value.outcome, ['pending', 'lost', 'accepted', 'excluded']) ||
+    !isNonNegativeInteger(value.influencePoints) ||
+    !isNullableEnum(value.exclusionReason, [
+      'daily_cap_reached',
+      'placement_matches_remaining',
+      'player_unavailable',
+      'result_not_eligible',
+      'zone_unavailable',
+    ])
+  ) {
+    throw new LiveApiError('unavailable');
+  }
+  return value as unknown as RankedTerritoryContribution;
+}
+
 async function requestJson(
   options: BaseRequestOptions & {
     body?: object;
@@ -850,19 +1121,26 @@ async function requestJson(
   const failure: LiveApiFailure =
     response.status === 401
       ? 'authentication'
-      : response.status === 403
-        ? 'authorization'
-        : response.status === 404
-          ? 'not-found'
-          : code === 'RANKED_DECK_INVALID'
-            ? 'invalid-deck'
-            : code === 'RANKED_RESTRICTED'
-              ? 'restricted'
-              : response.status === 409
-                ? 'conflict'
-                : response.status === 400
-                  ? 'validation'
-                  : 'unavailable';
+      : code === 'RANKED_RESTRICTED'
+        ? 'restricted'
+        : response.status === 403
+          ? 'authorization'
+          : response.status === 404
+            ? 'not-found'
+            : code === 'RANKED_DECK_INVALID'
+              ? 'invalid-deck'
+              : code === 'TERRITORY_LOCATION_INVALID' ||
+                  code === 'TERRITORY_LOCATION_REFRESH_REQUIRED'
+                ? 'location'
+                : code === 'TERRITORY_NOT_ELIGIBLE'
+                  ? 'territory-ineligible'
+                  : code === 'TERRITORY_CONFIGURATION_UNAVAILABLE'
+                    ? 'territory-unavailable'
+                    : response.status === 409
+                      ? 'conflict'
+                      : response.status === 400
+                        ? 'validation'
+                        : 'unavailable';
   throw new LiveApiError(failure, { code, detail, requestId });
 }
 
@@ -921,6 +1199,34 @@ function isPresenceParticipants(value: unknown): value is {
 
 function isTimeoutCount(value: unknown): value is number {
   return Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 3;
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Number(value) >= 0;
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Number(value) > 0;
+}
+
+function isBoundedInteger(
+  value: unknown,
+  minimum: number,
+  maximum: number,
+): value is number {
+  return (
+    Number.isSafeInteger(value) &&
+    Number(value) >= minimum &&
+    Number(value) <= maximum
+  );
+}
+
+function isRating(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Number(value) >= 100;
+}
+
+function isNullableInteger(value: unknown): value is number | null {
+  return value === null || Number.isSafeInteger(value);
 }
 
 function assertKeys(

@@ -40,7 +40,7 @@ A separate protected Author workspace supports content creation, review, campaig
 - Card trading is private, bilateral, card-for-card, versioned, and atomically settled. There is no gifting, currency, marketplace, real-money payment, public inventory lookup, or browser-owned valuation.
 - Advanced operational analytics use Author-only aggregate projections with minimum-sample suppression. They must not create player-level analytics, reveal precise location, or delay authoritative gameplay responses.
 - Developer API keys provide rate-limited, read-only access to public events, the public card catalogue, and progression standings. They are not player sessions and cannot read or mutate private gameplay state.
-- Advanced delivery is staged. The current Web app exposes advanced Author analytics, developer-key management, territory owner-bonus reward presentation, and the live ranked queue, match, and private spectator journey. Territory-map, automatic-placement control, trust-review, trading, and remaining ranked-season interfaces have documented server boundaries, but must not be presented as shipped Web journeys until implemented and verified.
+- Advanced delivery is staged. The current Web app exposes advanced Author analytics, developer-key management, territory exploration and standings, automatic-placement control, trust review, and the live ranked journey with seasonal rating, standings, optional territory contesting, settlement, and private spectating. Trading and other documented Advanced interfaces must not be presented as shipped Web journeys until implemented and verified.
 
 ## Brand Commitments
 

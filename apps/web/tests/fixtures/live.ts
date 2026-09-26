@@ -3,6 +3,7 @@ import { buildCreature, uuid } from './matches';
 export const LIVE_MATCH_ID = uuid(6000);
 export const LIVE_MOVE_ID = buildCreature(1).moves[0]!.id;
 export const LIVE_SERVER_TIME = '2026-09-25T12:00:00.000Z';
+export const TERRITORY_ZONE_ID = uuid(6400);
 
 export function participantProjection(overrides: Record<string, unknown> = {}) {
   const selfCreature = buildCreature(1);
@@ -151,6 +152,93 @@ export function rankedSeason(overrides: Record<string, unknown> = {}) {
     closedAt: null,
     ...overrides,
   };
+}
+
+export function rankedProfile(overrides: Record<string, unknown> = {}) {
+  return {
+    season: rankedSeason(),
+    rating: 1_248,
+    wins: 7,
+    losses: 3,
+    settledMatchCount: 10,
+    placementMatchesRemaining: 0,
+    provisional: false,
+    ...overrides,
+  };
+}
+
+export function rankedStandings(overrides: Record<string, unknown> = {}) {
+  return {
+    season: rankedSeason(),
+    entries: [
+      {
+        playerName: 'CampusFox',
+        rank: 1,
+        rating: 1_248,
+        wins: 7,
+        losses: 3,
+        settledMatchCount: 10,
+      },
+      {
+        playerName: 'BraamBear',
+        rank: 2,
+        rating: 1_221,
+        wins: 6,
+        losses: 4,
+        settledMatchCount: 10,
+      },
+    ],
+    nextCursor: null,
+    ...overrides,
+  };
+}
+
+export function rankedSettlement(overrides: Record<string, unknown> = {}) {
+  return {
+    matchId: LIVE_MATCH_ID,
+    seasonId: uuid(6100),
+    status: 'settled',
+    completionReason: 'abandonment_forfeit',
+    outcome: 'win',
+    ratingBefore: 1_224,
+    ratingAfter: 1_248,
+    appliedDelta: 24,
+    settledAt: '2026-09-25T12:01:01.000Z',
+    territory: {
+      zoneId: TERRITORY_ZONE_ID,
+      zoneName: 'Library Lawns',
+      outcome: 'accepted',
+      influencePoints: 30,
+      exclusionReason: null,
+    },
+    ...overrides,
+  };
+}
+
+export function territoryZones() {
+  return [
+    {
+      geometry: {
+        type: 'Polygon',
+        coordinates: [
+          [
+            [28.0295, -26.1925],
+            [28.0305, -26.1925],
+            [28.0305, -26.1915],
+            [28.0295, -26.1915],
+            [28.0295, -26.1925],
+          ],
+        ],
+      },
+      name: 'Library Lawns',
+      owner: { playerName: 'CampusFox' },
+      seasonId: uuid(6100),
+      status: 'active',
+      windowEnd: '2026-09-25T13:00:00.000Z',
+      windowStart: '2026-09-25T12:00:00.000Z',
+      zoneId: TERRITORY_ZONE_ID,
+    },
+  ];
 }
 
 export function readyMessage(projection: Record<string, unknown>) {

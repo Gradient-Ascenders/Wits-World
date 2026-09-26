@@ -5,26 +5,47 @@ import {
   Check,
   ClipboardText,
   ClockCountdown,
+  MapPin,
+  Trophy,
   WarningCircle,
   X,
 } from '@phosphor-icons/react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react';
 import { Link, useLocation } from 'wouter';
 
 import { listSavedDecks, type SavedDeck } from '../api/decks';
 import {
   cancelRankedQueue,
   getCurrentRankedSeason,
+  getRankedProfile,
   getRankedQueue,
   heartbeatRankedQueue,
   joinRankedQueue,
+  listRankedStandings,
   LiveApiError,
   resolveRankedProposal,
+  type RankedProfile,
   type RankedQueueState,
   type RankedSeason,
+  type RankedStandingsPage,
 } from '../api/live';
+import {
+  listTerritoryZones,
+  type TerritoryZoneSummary,
+} from '../api/territory';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
-import { PageLoadingState } from '../components/LoadingState';
+import {
+  BrowserLocationError,
+  requestBrowserLocation,
+  type LocationClaimProvider,
+} from '../browser-location';
+import { LoadingState, PageLoadingState } from '../components/LoadingState';
 import { StateIcon } from '../components/StatusMessage';
 import './matches.css';
 
@@ -38,12 +59,53 @@ type LobbyState =
     }
   | { error: LiveApiError; status: 'error' };
 
+type ResourceState<T> =
+  | { status: 'loading' }
+  | { error: LiveApiError; status: 'error' }
+  | { data: T; status: 'ready' };
+
+type TerritoryState =
+  | { status: 'loading' }
+  | { status: 'error' }
+  | { data: TerritoryZoneSummary[]; status: 'ready' };
+
+type TerritoryDetectionState =
+  | { status: 'idle' }
+  | { status: 'checking' }
+  | {
+      name: string;
+      status: 'detected' | 'confirmed' | 'rejected';
+      zoneId: string;
+    }
+  | { status: 'none' }
+  | { status: 'unavailable' };
+
+type LobbyTab = 'play' | 'standings' | 'watch';
+
+const lobbyTabs: ReadonlyArray<{ id: LobbyTab; label: string }> = [
+  { id: 'play', label: 'Play' },
+  { id: 'standings', label: 'Standings' },
+  { id: 'watch', label: 'Watch' },
+];
+
 const queuePollMs = 2_500;
 const queueHeartbeatMs = 8_000;
+const standingsPageSize = 25;
+const numberFormatter = new Intl.NumberFormat('en-ZA');
+const seasonDateFormatter = new Intl.DateTimeFormat('en-ZA', {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+});
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
-export default function LiveLobbyPage({ apiBaseUrl }: { apiBaseUrl: string }) {
+export default function LiveLobbyPage({
+  apiBaseUrl,
+  locationClaimProvider = requestBrowserLocation,
+}: {
+  apiBaseUrl: string;
+  locationClaimProvider?: LocationClaimProvider;
+}) {
   const getAccessToken = useApiAccessToken();
   const [, navigate] = useLocation();
   const [state, setState] = useState<LobbyState>({ status: 'loading' });
@@ -58,11 +120,78 @@ export default function LiveLobbyPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const [queueConnectionInterrupted, setQueueConnectionInterrupted] =
     useState(false);
   const [queueRefreshPending, setQueueRefreshPending] = useState(false);
+  const [profile, setProfile] = useState<ResourceState<RankedProfile>>({
+    status: 'loading',
+  });
+  const [profileRevision, setProfileRevision] = useState(0);
+  const [standings, setStandings] = useState<
+    ResourceState<RankedStandingsPage>
+  >({ status: 'loading' });
+  const [standingsRevision, setStandingsRevision] = useState(0);
+  const [standingsLoadingMore, setStandingsLoadingMore] = useState(false);
+  const [standingsPageError, setStandingsPageError] = useState(false);
+  const [territories, setTerritories] = useState<TerritoryState>({
+    status: 'loading',
+  });
+  const [territoryRevision, setTerritoryRevision] = useState(0);
+  const [contestTerritory, setContestTerritory] = useState(false);
+  const [territoryDetection, setTerritoryDetection] =
+    useState<TerritoryDetectionState>({ status: 'idle' });
+  const [clock, setClock] = useState(() => Date.now());
+  const [activeTab, setActiveTab] = useState<LobbyTab>(() =>
+    lobbyTabFromSearch(window.location.search),
+  );
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const proposalHeading = useRef<HTMLHeadingElement>(null);
+  const previousQueueStatus = useRef<RankedQueueState['status'] | null>(null);
   const [announcement, setAnnouncement] = useState(
     'Loading live battle lobby.',
   );
   const [revision, setRevision] = useState(0);
   stateRef.current = state;
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setClock(Date.now()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const syncTabFromHistory = () =>
+      setActiveTab(lobbyTabFromSearch(window.location.search));
+    window.addEventListener('popstate', syncTabFromHistory);
+    return () => window.removeEventListener('popstate', syncTabFromHistory);
+  }, []);
+
+  function selectTab(tab: LobbyTab, focus = false) {
+    setActiveTab(tab);
+    const url = new URL(window.location.href);
+    if (tab === 'play') url.searchParams.delete('tab');
+    else url.searchParams.set('tab', tab);
+    window.history.replaceState(window.history.state, '', url);
+    if (focus) {
+      const index = lobbyTabs.findIndex((candidate) => candidate.id === tab);
+      tabRefs.current[index]?.focus();
+    }
+  }
+
+  function selectTabFromKeyboard(
+    event: KeyboardEvent<HTMLButtonElement>,
+    index: number,
+  ) {
+    let nextIndex: number | null = null;
+    if (event.key === 'ArrowRight') {
+      nextIndex = (index + 1) % lobbyTabs.length;
+    } else if (event.key === 'ArrowLeft') {
+      nextIndex = (index - 1 + lobbyTabs.length) % lobbyTabs.length;
+    } else if (event.key === 'Home') {
+      nextIndex = 0;
+    } else if (event.key === 'End') {
+      nextIndex = lobbyTabs.length - 1;
+    }
+    if (nextIndex === null) return;
+    event.preventDefault();
+    selectTab(lobbyTabs[nextIndex]!.id, true);
+  }
 
   const applyQueue = useCallback(
     (queue: RankedQueueState) => {
@@ -113,6 +242,76 @@ export default function LiveLobbyPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       });
     return () => controller.abort();
   }, [apiBaseUrl, getAccessToken, navigate, revision]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setProfile({ status: 'loading' });
+    void getRankedProfile({
+      apiBaseUrl,
+      getAccessToken,
+      signal: controller.signal,
+    })
+      .then((data) => {
+        if (!controller.signal.aborted) setProfile({ data, status: 'ready' });
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setProfile({ error: toLiveError(error), status: 'error' });
+        }
+      });
+    return () => controller.abort();
+  }, [apiBaseUrl, getAccessToken, profileRevision]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setStandings({ status: 'loading' });
+    setStandingsPageError(false);
+    void listRankedStandings({
+      apiBaseUrl,
+      getAccessToken,
+      limit: standingsPageSize,
+      signal: controller.signal,
+    })
+      .then((data) => {
+        if (!controller.signal.aborted) setStandings({ data, status: 'ready' });
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setStandings({ error: toLiveError(error), status: 'error' });
+        }
+      });
+    return () => controller.abort();
+  }, [apiBaseUrl, getAccessToken, standingsRevision]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setTerritories({ status: 'loading' });
+    void listTerritoryZones({
+      apiBaseUrl,
+      getAccessToken,
+      signal: controller.signal,
+    })
+      .then((zones) => {
+        if (!controller.signal.aborted) {
+          setTerritories({ data: zones, status: 'ready' });
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setTerritories({ status: 'error' });
+      });
+    return () => controller.abort();
+  }, [apiBaseUrl, getAccessToken, territoryRevision]);
+
+  useEffect(() => {
+    if (state.status !== 'ready') return;
+    if (
+      state.queue.status === 'proposed' &&
+      previousQueueStatus.current !== 'proposed'
+    ) {
+      proposalHeading.current?.focus();
+    }
+    previousQueueStatus.current = state.queue.status;
+  }, [state]);
 
   useEffect(() => {
     if (state.status !== 'ready') return;
@@ -184,6 +383,19 @@ export default function LiveLobbyPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         const message = queueErrorMessage(error);
         setAnnouncement(message);
         setQueueError(message);
+        if (error.failure === 'conflict' || error.failure === 'unavailable') {
+          try {
+            applyQueue(
+              await getRankedQueue({
+                apiBaseUrl,
+                getAccessToken,
+                signal: controller.signal,
+              }),
+            );
+          } catch {
+            setQueueConnectionInterrupted(true);
+          }
+        }
         setState((current) =>
           current.status === 'ready' ? current : { error, status: 'error' },
         );
@@ -192,8 +404,119 @@ export default function LiveLobbyPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         setPending(null);
       }
     },
-    [applyQueue],
+    [apiBaseUrl, applyQueue, getAccessToken],
   );
+
+  async function joinQueue(deck: SavedDeck, signal: AbortSignal) {
+    if (!contestTerritory) {
+      return joinRankedQueue({
+        apiBaseUrl,
+        deckId: deck.deckId,
+        getAccessToken,
+        signal,
+      });
+    }
+    if (territories.status !== 'ready') {
+      setTerritoryDetection({ status: 'unavailable' });
+      throw new LiveApiError('validation', {
+        detail:
+          'Active territories could not be checked. Try again, or turn off territory contesting.',
+      });
+    }
+    setTerritoryDetection({ status: 'checking' });
+    let claim: Awaited<ReturnType<LocationClaimProvider>>;
+    try {
+      claim = await locationClaimProvider();
+    } catch (error) {
+      setTerritoryDetection({ status: 'unavailable' });
+      throw error;
+    }
+    if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+    const detectedTerritory = detectTerritoryAtLocation(
+      territories.data,
+      claim.latitude,
+      claim.longitude,
+    );
+    if (!detectedTerritory) {
+      setTerritoryDetection({ status: 'none' });
+      throw new LiveApiError('validation', {
+        detail:
+          'Your location could not be matched to one active territory. Move farther inside a territory, or turn off territory contesting.',
+      });
+    }
+    setTerritoryDetection({
+      name: detectedTerritory.name,
+      status: 'detected',
+      zoneId: detectedTerritory.zoneId,
+    });
+    let nextQueue: RankedQueueState;
+    try {
+      nextQueue = await joinRankedQueue({
+        apiBaseUrl,
+        deckId: deck.deckId,
+        getAccessToken,
+        signal,
+        territoryClaim: { ...claim, zoneId: detectedTerritory.zoneId },
+      });
+    } catch (error) {
+      setTerritoryDetection({
+        name: detectedTerritory.name,
+        status: 'rejected',
+        zoneId: detectedTerritory.zoneId,
+      });
+      throw error;
+    }
+    setTerritoryDetection({
+      name: detectedTerritory.name,
+      status: 'confirmed',
+      zoneId: detectedTerritory.zoneId,
+    });
+    return nextQueue;
+  }
+
+  async function loadMoreStandings() {
+    if (
+      standings.status !== 'ready' ||
+      !standings.data.nextCursor ||
+      standingsLoadingMore
+    ) {
+      return;
+    }
+    setStandingsLoadingMore(true);
+    setStandingsPageError(false);
+    const cursor = standings.data.nextCursor;
+    const seasonId = standings.data.season.seasonId;
+    const controller = new AbortController();
+    try {
+      const next = await listRankedStandings({
+        apiBaseUrl,
+        cursor,
+        getAccessToken,
+        limit: standingsPageSize,
+        signal: controller.signal,
+      });
+      if (next.season.seasonId !== seasonId) {
+        setStandingsRevision((value) => value + 1);
+        return;
+      }
+      setStandings((current) =>
+        current.status === 'ready' && current.data.nextCursor === cursor
+          ? {
+              data: {
+                ...current.data,
+                entries: [...current.data.entries, ...next.entries],
+                nextCursor: next.nextCursor,
+              },
+              status: 'ready',
+            }
+          : current,
+      );
+    } catch {
+      setStandingsPageError(true);
+    } finally {
+      setStandingsLoadingMore(false);
+    }
+  }
 
   async function refreshQueueStatus() {
     if (queueRefreshPending || pendingRef.current) return;
@@ -292,6 +615,12 @@ export default function LiveLobbyPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const proposal = queue.status === 'proposed' && queue.proposalId;
   const searching = queue.status === 'searching';
   const rankedEntryAvailable = season?.status === 'active';
+  const rankedQueueCanStart = ['idle', 'cancelled', 'expired'].includes(
+    queue.status,
+  );
+  const territoryDetectionAvailable =
+    territories.status === 'ready' &&
+    territories.data.some((zone) => zone.status === 'active');
 
   return (
     <main className="matches-page live-lobby">
@@ -305,51 +634,21 @@ export default function LiveLobbyPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         <div>
           <h1>Live Ranked</h1>
           <p>
-            Queue for a ranked battle with one minute for each decision, or
-            watch a private match shared with you. If your connection drops,
-            return to recover the latest battle state.
+            Battle for seasonal rating, follow the table, or watch a private
+            match.
           </p>
         </div>
       </header>
 
-      <div className="live-lobby__grid">
-        <section aria-labelledby="live-rank-title" className="live-lobby__lane">
-          <div className="live-lobby__lane-heading">
-            <Broadcast size={28} aria-hidden="true" />
-            <div>
-              <h2 id="live-rank-title">Play ranked</h2>
-              <p>
-                Completed ranked battles change your seasonal rating. Your first
-                five results each season are placement matches.
-              </p>
-            </div>
-          </div>
+      <RankedSeasonStrip
+        clock={clock}
+        onRetry={() => setProfileRevision((value) => value + 1)}
+        profile={profile}
+        season={season}
+      />
 
-          <dl className="live-lobby__facts">
-            <div>
-              <dt>Matchmaking status</dt>
-              <dd>
-                {rankedEntryAvailable
-                  ? queueStatusLabel(queue)
-                  : 'Season unavailable'}
-              </dd>
-            </div>
-            <div>
-              <dt>Selected deck</dt>
-              <dd>{deck?.name ?? 'No deck selected'}</dd>
-            </div>
-            <div>
-              <dt>Ranked season</dt>
-              <dd>{season?.name ?? 'No active season'}</dd>
-            </div>
-            {queue.searchRange !== null ? (
-              <div>
-                <dt>Rating search range</dt>
-                <dd>±{queue.searchRange}</dd>
-              </div>
-            ) : null}
-          </dl>
-
+      {queueConnectionInterrupted || proposal || searching ? (
+        <div className="live-lobby__active-status">
           {queueConnectionInterrupted ? (
             <div
               className="live-status-banner live-queue-recovery"
@@ -359,8 +658,8 @@ export default function LiveLobbyPage({ apiBaseUrl }: { apiBaseUrl: string }) {
               <div>
                 <strong>Checking your place in matchmaking</strong>
                 <p>
-                  Keep this page open. You do not need to join again—we’ll
-                  restore your latest search status automatically.
+                  Keep this page open. You do not need to join again; your
+                  latest search status will return automatically.
                 </p>
               </div>
               <button
@@ -374,36 +673,20 @@ export default function LiveLobbyPage({ apiBaseUrl }: { apiBaseUrl: string }) {
             </div>
           ) : null}
 
-          {queue.status === 'expired' || queue.status === 'cancelled' ? (
-            <div className="live-status-banner" role="status">
-              <WarningCircle size={24} aria-hidden="true" />
-              <div>
-                <strong>
-                  {queue.status === 'expired'
-                    ? 'Your search expired'
-                    : 'Your previous search ended'}
-                </strong>
-                <p>
-                  No battle was created, so your rating did not change. Start a
-                  new search when you are ready.
-                </p>
-              </div>
-            </div>
-          ) : null}
-
           {proposal ? (
             <div className="live-proposal" role="status">
               <ClockCountdown size={26} aria-hidden="true" />
               <div>
-                <h3>{queue.accepted ? 'Match accepted' : 'Opponent found'}</h3>
+                <h2 ref={proposalHeading} tabIndex={-1}>
+                  {queue.accepted ? 'Match accepted' : 'Opponent found'}
+                </h2>
                 {queue.accepted ? (
                   <p>
                     Waiting for the other player until{' '}
                     {queue.acceptanceDeadline
                       ? formatTime(queue.acceptanceDeadline)
                       : 'the acceptance window closes'}
-                    . If they do not accept, you keep your original search time
-                    when you remain eligible.
+                    .
                   </p>
                 ) : (
                   <p>
@@ -411,15 +694,13 @@ export default function LiveLobbyPage({ apiBaseUrl }: { apiBaseUrl: string }) {
                     {queue.acceptanceDeadline
                       ? formatTime(queue.acceptanceDeadline)
                       : 'the acceptance window closes'}
-                    . Declining or missing the deadline pauses matchmaking for
-                    30 seconds. Your opponent stays private until the battle
-                    begins.
+                    . Declining or missing it pauses matchmaking for 30 seconds.
                   </p>
                 )}
                 {queue.accepted ? (
-                  <p>
-                    <Check size={18} aria-hidden="true" /> Ready. Only a
-                    completed ranked battle can change your rating.
+                  <p className="live-proposal__accepted">
+                    <Check size={18} aria-hidden="true" /> Ready. Waiting for
+                    your opponent.
                   </p>
                 ) : (
                   <div className="live-lobby__actions">
@@ -469,11 +750,15 @@ export default function LiveLobbyPage({ apiBaseUrl }: { apiBaseUrl: string }) {
             <div className="live-searching" role="status">
               <span className="live-searching__signal" aria-hidden="true" />
               <div>
-                <h3>Searching for an opponent</h3>
+                <h2>Searching for an opponent</h2>
                 <p>
-                  Keep this page open while matchmaking widens your rating
-                  range. Leaving now ends the search with no cooldown or rating
-                  change.
+                  Matchmaking is widening your rating range
+                  {queue.searchRange === null
+                    ? '.'
+                    : ` to ±${queue.searchRange}.`}
+                  {territoryDetection.status === 'confirmed'
+                    ? ` Contesting ${territoryDetection.name}.`
+                    : ''}
                 </p>
               </div>
               <button
@@ -493,22 +778,100 @@ export default function LiveLobbyPage({ apiBaseUrl }: { apiBaseUrl: string }) {
                 {pending === 'cancel' ? 'Leaving search…' : 'Leave search'}
               </button>
             </div>
-          ) : (
-            <div className="live-lobby__start">
-              {deck && rankedEntryAvailable ? (
+          ) : null}
+        </div>
+      ) : null}
+
+      {queueError ? (
+        <p className="live-lobby__warning" role="alert">
+          {queueError}
+        </p>
+      ) : null}
+
+      <div
+        aria-label="Live Ranked views"
+        className="live-lobby__tabs"
+        role="tablist"
+      >
+        {lobbyTabs.map((tab, index) => {
+          const selected = activeTab === tab.id;
+          return (
+            <button
+              aria-controls={`live-panel-${tab.id}`}
+              aria-selected={selected}
+              className="live-lobby__tab"
+              id={`live-tab-${tab.id}`}
+              key={tab.id}
+              onClick={() => selectTab(tab.id)}
+              onKeyDown={(event) => selectTabFromKeyboard(event, index)}
+              ref={(node) => {
+                tabRefs.current[index] = node;
+              }}
+              role="tab"
+              tabIndex={selected ? 0 : -1}
+              type="button"
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="live-lobby__workspace">
+        <section
+          aria-labelledby="live-tab-play"
+          className="live-lobby__tabpanel"
+          hidden={activeTab !== 'play'}
+          id="live-panel-play"
+          role="tabpanel"
+        >
+          <div className="live-lobby__lane-heading">
+            <Broadcast size={26} aria-hidden="true" />
+            <div>
+              <h2>Find a ranked battle</h2>
+              <p>Play live with one minute for each decision.</p>
+            </div>
+          </div>
+
+          <dl className="live-lobby__facts">
+            <div>
+              <dt>Selected deck</dt>
+              <dd>{deck?.name ?? 'No deck selected'}</dd>
+            </div>
+            <div>
+              <dt>Status</dt>
+              <dd>
+                {rankedEntryAvailable
+                  ? queueStatusLabel(queue)
+                  : 'Season unavailable'}
+              </dd>
+            </div>
+          </dl>
+
+          {queue.status === 'expired' || queue.status === 'cancelled' ? (
+            <div className="live-status-banner" role="status">
+              <WarningCircle size={24} aria-hidden="true" />
+              <div>
+                <strong>
+                  {queue.status === 'expired'
+                    ? 'Your search expired'
+                    : 'Your previous search ended'}
+                </strong>
                 <p>
-                  Leaving while searching has no cooldown. Once an opponent is
-                  found, you have 20 seconds to accept; declining or running out
-                  of time pauses matchmaking for 30 seconds. After both players
-                  accept, conceding or reaching the live timeout limit counts as
-                  a ranked loss.
+                  No battle was created, so your rating did not change. Start a
+                  new search when you are ready.
                 </p>
-              ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          {!proposal && !searching ? (
+            <div className="live-lobby__start">
               {queue.status === 'restricted' ? (
                 <p className="live-lobby__warning">
                   Ranked matchmaking is unavailable for this account right now.
                   You can still play other battle modes or watch a private
-                  battle.
+                  match.
                 </p>
               ) : queue.status === 'invalid_deck' ? (
                 <p className="live-lobby__warning">
@@ -532,49 +895,92 @@ export default function LiveLobbyPage({ apiBaseUrl }: { apiBaseUrl: string }) {
                   </button>
                 </div>
               ) : null}
-              {deck ? (
-                <button
-                  className="button"
-                  disabled={pending !== null || !rankedEntryAvailable}
-                  onClick={() =>
-                    void runQueueAction('join', (signal) =>
-                      joinRankedQueue({
-                        apiBaseUrl,
-                        deckId: deck.deckId,
-                        getAccessToken,
-                        signal,
-                      }),
-                    )
-                  }
-                  type="button"
-                >
-                  <Broadcast size={19} aria-hidden="true" />
-                  {pending === 'join'
-                    ? 'Joining matchmaking…'
-                    : 'Find ranked battle'}
-                </button>
-              ) : (
+              {deck && rankedEntryAvailable && rankedQueueCanStart ? (
+                <>
+                  <button
+                    className="button"
+                    disabled={
+                      pending !== null ||
+                      queueConnectionInterrupted ||
+                      (contestTerritory && !territoryDetectionAvailable)
+                    }
+                    onClick={() =>
+                      void runQueueAction('join', (signal) =>
+                        joinQueue(deck, signal),
+                      )
+                    }
+                    type="button"
+                  >
+                    <Broadcast size={19} aria-hidden="true" />
+                    {pending === 'join'
+                      ? 'Joining matchmaking…'
+                      : contestTerritory
+                        ? 'Detect territory and find battle'
+                        : 'Find ranked battle'}
+                  </button>
+                  <TerritoryQueueOption
+                    contest={contestTerritory}
+                    disabled={pending !== null || queueConnectionInterrupted}
+                    onContestChange={(next) => {
+                      setContestTerritory(next);
+                      setTerritoryDetection({ status: 'idle' });
+                      setQueueError(null);
+                    }}
+                    onRetry={() => setTerritoryRevision((value) => value + 1)}
+                    detection={territoryDetection}
+                    state={territories}
+                  />
+                  <details className="live-ranked-rules">
+                    <summary>How ranked matchmaking works</summary>
+                    <p>
+                      Opponent proposals last 20 seconds. Declining or missing
+                      one pauses matchmaking for 30 seconds.
+                    </p>
+                    <p>
+                      Completed battles change your rating. A forfeit or three
+                      consecutive missed decisions counts as a loss.
+                    </p>
+                  </details>
+                </>
+              ) : rankedEntryAvailable && queue.status !== 'restricted' ? (
                 <Link className="button" href="/decks">
-                  Select a battle deck
+                  {queue.status === 'invalid_deck'
+                    ? 'Review battle deck'
+                    : 'Select a battle deck'}
                 </Link>
-              )}
+              ) : null}
             </div>
-          )}
-          {queueError ? (
-            <p className="live-lobby__warning" role="alert">
-              {queueError}
-            </p>
           ) : null}
         </section>
 
+        <div
+          aria-labelledby="live-tab-standings"
+          className="live-lobby__tabpanel"
+          hidden={activeTab !== 'standings'}
+          id="live-panel-standings"
+          role="tabpanel"
+        >
+          <RankedStandingsSection
+            loadingMore={standingsLoadingMore}
+            onLoadMore={() => void loadMoreStandings()}
+            onRetry={() => setStandingsRevision((value) => value + 1)}
+            pageError={standingsPageError}
+            season={season}
+            state={standings}
+          />
+        </div>
+
         <section
-          aria-labelledby="live-watch-title"
-          className="live-lobby__lane live-lobby__lane--watch"
+          aria-labelledby="live-tab-watch"
+          className="live-lobby__tabpanel"
+          hidden={activeTab !== 'watch'}
+          id="live-panel-watch"
+          role="tabpanel"
         >
           <div className="live-lobby__lane-heading">
-            <Binoculars size={28} aria-hidden="true" />
+            <Binoculars size={26} aria-hidden="true" />
             <div>
-              <h2 id="live-watch-title">Watch a private match</h2>
+              <h2>Watch a private match</h2>
               <p>Use a private battle link or match ID shared with you.</p>
             </div>
           </div>
@@ -606,8 +1012,7 @@ export default function LiveLobbyPage({ apiBaseUrl }: { apiBaseUrl: string }) {
               value={spectatorEntry}
             />
             <p id="live-match-hint">
-              Private battles are not listed publicly. Spectators can see the
-              battlefield, turn timer, and battle activity—but never either
+              Spectators see the public battlefield and activity, never either
               player’s hand or controls.
             </p>
             {spectatorError ? (
@@ -624,7 +1029,7 @@ export default function LiveLobbyPage({ apiBaseUrl }: { apiBaseUrl: string }) {
                 <ClipboardText size={19} aria-hidden="true" /> Paste and watch
               </button>
               <button
-                className="button button--quiet"
+                className="button"
                 disabled={spectatorEntry.trim() === ''}
                 type="submit"
               >
@@ -638,6 +1043,498 @@ export default function LiveLobbyPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   );
 }
 
+function RankedSeasonStrip({
+  clock,
+  onRetry,
+  profile,
+  season,
+}: {
+  clock: number;
+  onRetry: () => void;
+  profile: ResourceState<RankedProfile>;
+  season: RankedSeason | null;
+}) {
+  return (
+    <section
+      aria-labelledby="ranked-season-title"
+      className="ranked-season-strip"
+    >
+      <div className="ranked-season-strip__season">
+        <div className="ranked-season-strip__title">
+          <h2 id="ranked-season-title">{season?.name ?? 'Ranked season'}</h2>
+          <span
+            className={`ranked-season-status ranked-season-status--${season?.status ?? 'unavailable'}`}
+          >
+            {season?.status === 'active'
+              ? 'Active'
+              : season?.status === 'closing'
+                ? 'Closing'
+                : 'Unavailable'}
+          </span>
+        </div>
+        {season?.activeEndsAt ? (
+          <p>
+            {season.status === 'closing'
+              ? 'Final matches are settling.'
+              : seasonCountdownLabel(season.activeEndsAt, clock)}{' '}
+            <time dateTime={season.activeEndsAt}>
+              Ends {seasonDateFormatter.format(new Date(season.activeEndsAt))}
+            </time>
+          </p>
+        ) : (
+          <p>Season details will appear when ranked competition is active.</p>
+        )}
+      </div>
+
+      {profile.status === 'loading' ? (
+        <LoadingState
+          className="ranked-season-strip__state"
+          label="Loading your ranked record"
+        />
+      ) : profile.status === 'error' ? (
+        <div className="ranked-season-strip__state" role="alert">
+          <p>Your ranked record could not load.</p>
+          <button
+            className="button button--quiet"
+            onClick={onRetry}
+            type="button"
+          >
+            Retry
+          </button>
+        </div>
+      ) : profile.data.season === null ||
+        profile.data.rating === null ? null : (
+        <div className="ranked-season-strip__profile">
+          <div className="ranked-season-strip__rating">
+            <span>Season rating</span>
+            <strong>{numberFormatter.format(profile.data.rating)}</strong>
+            <small>
+              {profile.data.provisional
+                ? `Provisional · ${placementCopy(profile.data.placementMatchesRemaining)}`
+                : 'Established standing'}
+            </small>
+          </div>
+          <div className="ranked-season-strip__placements">
+            <div>
+              <span>Placement progress</span>
+              <strong>
+                {Math.min(5, profile.data.settledMatchCount)} of 5 complete
+              </strong>
+            </div>
+            <progress
+              aria-label={`${Math.min(5, profile.data.settledMatchCount)} of 5 placement matches complete`}
+              max={5}
+              value={Math.min(5, profile.data.settledMatchCount)}
+            />
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TerritoryQueueOption({
+  contest,
+  detection,
+  disabled,
+  onContestChange,
+  onRetry,
+  state,
+}: {
+  contest: boolean;
+  detection: TerritoryDetectionState;
+  disabled: boolean;
+  onContestChange: (contest: boolean) => void;
+  onRetry: () => void;
+  state: TerritoryState;
+}) {
+  const activeZones =
+    state.status === 'ready'
+      ? state.data.filter((zone) => zone.status === 'active')
+      : [];
+  return (
+    <fieldset className="ranked-territory-option" disabled={disabled}>
+      <legend>Territory contest</legend>
+      <label className="ranked-territory-option__toggle">
+        <input
+          checked={contest}
+          onChange={(event) => onContestChange(event.currentTarget.checked)}
+          type="checkbox"
+        />
+        <span>
+          <strong>Contest my current territory</strong>
+          <small>
+            Optional. Requests a fresh location only when searching.
+          </small>
+        </span>
+      </label>
+
+      {contest ? (
+        state.status === 'loading' ? (
+          <LoadingState label="Loading active territories" />
+        ) : state.status === 'error' ? (
+          <div className="ranked-territory-option__state" role="status">
+            <p>
+              Territory detection is unavailable. Turn this option off to play
+              ranked without using location.
+            </p>
+            <button
+              className="button button--quiet"
+              onClick={onRetry}
+              type="button"
+            >
+              Retry territories
+            </button>
+          </div>
+        ) : activeZones.length === 0 ? (
+          <p className="ranked-territory-option__state">
+            No active territories can be contested. Turn this option off to
+            continue with ordinary ranked play.
+          </p>
+        ) : (
+          <div className="ranked-territory-option__detection">
+            {detection.status === 'idle' ? (
+              <p id="ranked-territory-help">
+                <MapPin aria-hidden="true" size={18} /> We’ll match your
+                location to the public territory map. The server confirms
+                eligibility and does not keep precise coordinates.
+              </p>
+            ) : (
+              <TerritoryDetectionResult state={detection} />
+            )}
+            <Link href="/explore">Review campus territories</Link>
+          </div>
+        )
+      ) : null}
+    </fieldset>
+  );
+}
+
+function TerritoryDetectionResult({
+  state,
+}: {
+  state: TerritoryDetectionState;
+}) {
+  if (state.status === 'idle') return null;
+  if (state.status === 'checking') {
+    return (
+      <div className="ranked-territory-detection-result" role="status">
+        <MapPin aria-hidden="true" size={18} />
+        <strong>Detecting your territory…</strong>
+      </div>
+    );
+  }
+  if (
+    state.status === 'detected' ||
+    state.status === 'confirmed' ||
+    state.status === 'rejected'
+  ) {
+    return (
+      <div
+        className={`ranked-territory-detection-result ranked-territory-detection-result--${state.status === 'rejected' ? 'warning' : 'success'}`}
+        role={state.status === 'rejected' ? 'alert' : 'status'}
+      >
+        {state.status === 'rejected' ? (
+          <WarningCircle aria-hidden="true" size={18} />
+        ) : (
+          <Check aria-hidden="true" size={18} />
+        )}
+        <div>
+          <strong>
+            {state.status === 'confirmed'
+              ? `Contesting ${state.name}`
+              : `Territory detected: ${state.name}`}
+          </strong>
+          <p>
+            {state.status === 'confirmed'
+              ? 'The server confirmed this territory for your search.'
+              : state.status === 'rejected'
+                ? 'The server could not confirm eligibility for this search.'
+                : 'Waiting for the server to confirm eligibility.'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div
+      className="ranked-territory-detection-result ranked-territory-detection-result--warning"
+      role="alert"
+    >
+      <WarningCircle aria-hidden="true" size={18} />
+      <div>
+        <strong>
+          {state.status === 'none'
+            ? 'No active territory detected'
+            : 'Location could not be checked'}
+        </strong>
+        <p>
+          {state.status === 'none'
+            ? 'Move farther inside a mapped territory and try again, or play without contesting.'
+            : 'Check location access and try again, or play without contesting.'}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function RankedStandingsSection({
+  loadingMore,
+  onLoadMore,
+  onRetry,
+  pageError,
+  season,
+  state,
+}: {
+  loadingMore: boolean;
+  onLoadMore: () => void;
+  onRetry: () => void;
+  pageError: boolean;
+  season: RankedSeason | null;
+  state: ResourceState<RankedStandingsPage>;
+}) {
+  return (
+    <section
+      aria-busy={state.status === 'loading' ? 'true' : undefined}
+      aria-labelledby="ranked-standings-title"
+      className="ranked-standings"
+    >
+      <div className="ranked-standings__heading">
+        <div>
+          <h2 id="ranked-standings-title">Season standings</h2>
+          <p>
+            Established players appear after five settled placement matches.
+          </p>
+        </div>
+        <Trophy aria-hidden="true" size={28} />
+      </div>
+
+      {season === null ? (
+        <div className="ranked-standings__state state-message state-message--empty">
+          <StateIcon tone="empty" />
+          <div>
+            <strong>Standings open with the next season</strong>
+            <p>Established players will appear after ranked play resumes.</p>
+          </div>
+        </div>
+      ) : state.status === 'loading' ? (
+        <LoadingState label="Loading season standings" />
+      ) : state.status === 'error' ? (
+        <div
+          className="ranked-standings__state state-message state-message--error"
+          role="alert"
+        >
+          <StateIcon tone="error" />
+          <div>
+            <strong>Season standings could not load.</strong>
+            <p>Your queue and personal ranked record remain available.</p>
+            <button
+              className="button button--quiet"
+              onClick={onRetry}
+              type="button"
+            >
+              Retry standings
+            </button>
+          </div>
+        </div>
+      ) : state.data.entries.length === 0 ? (
+        <div className="ranked-standings__state state-message state-message--empty">
+          <StateIcon tone="empty" />
+          <div>
+            <strong>No established standings yet</strong>
+            <p>
+              Players will appear here after completing five placement matches.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div
+            aria-hidden="true"
+            className="ranked-standing-row ranked-standing-row--header"
+          >
+            <span>Rank</span>
+            <span>Player</span>
+            <span>Rating</span>
+            <span>Record</span>
+          </div>
+          <ol
+            aria-label="Established ranked players"
+            className="ranked-standing-list"
+          >
+            {state.data.entries.map((entry, index) => (
+              <li
+                aria-label={`Rank ${entry.rank}, ${entry.playerName}, rating ${entry.rating}, ${entry.wins} wins and ${entry.losses} losses across ${entry.settledMatchCount} matches`}
+                className="ranked-standing-row"
+                key={`${entry.rank}-${entry.playerName}-${index}`}
+              >
+                <strong className="ranked-standing-row__rank">
+                  #{numberFormatter.format(entry.rank)}
+                </strong>
+                <span className="ranked-standing-row__player">
+                  {entry.playerName}
+                </span>
+                <strong className="ranked-standing-row__rating">
+                  {numberFormatter.format(entry.rating)}
+                </strong>
+                <span className="ranked-standing-row__record">
+                  {entry.wins}W · {entry.losses}L
+                  <small>{entry.settledMatchCount} matches</small>
+                </span>
+              </li>
+            ))}
+          </ol>
+          {pageError ? (
+            <p className="ranked-standings__page-error" role="alert">
+              More standings could not load. Retry, or refresh the standings if
+              this season snapshot has expired.
+            </p>
+          ) : null}
+          <div className="ranked-standings__actions">
+            {state.data.nextCursor ? (
+              <button
+                className="button button--quiet"
+                disabled={loadingMore}
+                onClick={onLoadMore}
+                type="button"
+              >
+                {loadingMore ? 'Loading more…' : 'Load more standings'}
+              </button>
+            ) : (
+              <p>All available established players are shown.</p>
+            )}
+            {pageError ? (
+              <button
+                className="button button--quiet"
+                onClick={onRetry}
+                type="button"
+              >
+                Refresh standings
+              </button>
+            ) : null}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function lobbyTabFromSearch(search: string): LobbyTab {
+  const tab = new URLSearchParams(search).get('tab');
+  return tab === 'standings' || tab === 'watch' ? tab : 'play';
+}
+
+function detectTerritoryAtLocation(
+  zones: TerritoryZoneSummary[],
+  latitude: number,
+  longitude: number,
+): TerritoryZoneSummary | null {
+  const candidates = zones.filter(
+    (zone) =>
+      zone.status === 'active' &&
+      geometryContainsPoint(zone.geometry, longitude, latitude),
+  );
+  return candidates.length === 1 ? candidates[0]! : null;
+}
+
+function geometryContainsPoint(
+  geometry: TerritoryZoneSummary['geometry'],
+  longitude: number,
+  latitude: number,
+): boolean {
+  if (geometry.type === 'Polygon') {
+    return polygonContainsPoint(geometry.coordinates, longitude, latitude);
+  }
+  return geometry.coordinates.some((polygon) =>
+    polygonContainsPoint(polygon, longitude, latitude),
+  );
+}
+
+function polygonContainsPoint(
+  rings: number[][][],
+  longitude: number,
+  latitude: number,
+): boolean {
+  const outer = rings[0];
+  if (!outer || !ringContainsPoint(outer, longitude, latitude)) return false;
+  return rings
+    .slice(1)
+    .every((hole) => !ringContainsPoint(hole, longitude, latitude));
+}
+
+function ringContainsPoint(
+  ring: number[][],
+  longitude: number,
+  latitude: number,
+): boolean {
+  let inside = false;
+  for (
+    let index = 0, previous = ring.length - 1;
+    index < ring.length;
+    index++
+  ) {
+    const currentPoint = ring[index];
+    const previousPoint = ring[previous];
+    previous = index;
+    if (!currentPoint || !previousPoint) continue;
+    const [currentLongitude, currentLatitude] = currentPoint;
+    const [previousLongitude, previousLatitude] = previousPoint;
+    if (
+      currentLongitude === undefined ||
+      currentLatitude === undefined ||
+      previousLongitude === undefined ||
+      previousLatitude === undefined
+    ) {
+      continue;
+    }
+    if (
+      pointIsOnSegment(
+        longitude,
+        latitude,
+        previousLongitude,
+        previousLatitude,
+        currentLongitude,
+        currentLatitude,
+      )
+    ) {
+      return false;
+    }
+    const crossesLatitude =
+      currentLatitude > latitude !== previousLatitude > latitude;
+    if (
+      crossesLatitude &&
+      longitude <
+        ((previousLongitude - currentLongitude) *
+          (latitude - currentLatitude)) /
+          (previousLatitude - currentLatitude) +
+          currentLongitude
+    ) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function pointIsOnSegment(
+  longitude: number,
+  latitude: number,
+  startLongitude: number,
+  startLatitude: number,
+  endLongitude: number,
+  endLatitude: number,
+): boolean {
+  const cross =
+    (latitude - startLatitude) * (endLongitude - startLongitude) -
+    (longitude - startLongitude) * (endLatitude - startLatitude);
+  if (Math.abs(cross) > 1e-12) return false;
+  return (
+    longitude >= Math.min(startLongitude, endLongitude) &&
+    longitude <= Math.max(startLongitude, endLongitude) &&
+    latitude >= Math.min(startLatitude, endLatitude) &&
+    latitude <= Math.max(startLatitude, endLatitude)
+  );
+}
+
 export function parseSpectatorMatchId(value: string): string | null {
   const trimmed = value.trim();
   if (uuidPattern.test(trimmed)) return trimmed;
@@ -648,6 +1545,28 @@ export function parseSpectatorMatchId(value: string): string | null {
   } catch {
     return null;
   }
+}
+
+function seasonCountdownLabel(activeEndsAt: string, clock: number): string {
+  const remaining = Date.parse(activeEndsAt) - clock;
+  if (remaining <= 0) {
+    return 'The season boundary has arrived. The server is confirming its status.';
+  }
+  const totalMinutes = Math.ceil(remaining / 60_000);
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  if (days > 0) {
+    return `${days} ${days === 1 ? 'day' : 'days'}${hours > 0 ? `, ${hours} ${hours === 1 ? 'hour' : 'hours'}` : ''} remaining.`;
+  }
+  if (hours > 0) {
+    return `${hours} ${hours === 1 ? 'hour' : 'hours'} remaining.`;
+  }
+  return `${totalMinutes} ${totalMinutes === 1 ? 'minute' : 'minutes'} remaining.`;
+}
+
+function placementCopy(remaining: number): string {
+  if (remaining === 0) return 'placements complete';
+  return `${remaining} placement ${remaining === 1 ? 'match' : 'matches'} remaining`;
 }
 
 function queueStatusLabel(queue: RankedQueueState): string {
@@ -690,6 +1609,20 @@ function queueErrorMessage(error: LiveApiError): string {
     return 'This account cannot enter ranked matchmaking right now. Other battle modes and private spectating remain available.';
   if (error.failure === 'invalid-deck')
     return 'Your selected deck does not meet ranked rules. Review it before searching again.';
+  if (error.failure === 'location') {
+    return error.options.code === 'denied'
+      ? 'Location permission was denied. Allow location access or turn off territory contesting to play ranked.'
+      : 'A fresh usable location could not be confirmed. Try again, or turn off territory contesting to play ranked.';
+  }
+  if (error.failure === 'territory-ineligible')
+    return 'The server could not confirm you inside that active territory. Choose another territory, refresh your location, or play ranked without contesting one.';
+  if (error.failure === 'territory-unavailable')
+    return 'Territory eligibility is temporarily unavailable. Turn off territory contesting to continue with ordinary ranked play.';
+  if (error.failure === 'validation')
+    return (
+      error.options.detail ??
+      'Review the selected deck and territory option before joining matchmaking.'
+    );
   if (error.failure === 'conflict')
     return (
       error.options.detail ??
@@ -702,6 +1635,9 @@ function queueErrorMessage(error: LiveApiError): string {
 }
 
 function toLiveError(value: unknown): LiveApiError {
+  if (value instanceof BrowserLocationError) {
+    return new LiveApiError('location', { code: value.failure });
+  }
   return value instanceof LiveApiError
     ? value
     : new LiveApiError('unavailable');

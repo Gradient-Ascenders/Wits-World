@@ -22,10 +22,14 @@ import {
   LIVE_MATCH_ID,
   participantProjection,
   projectionResponse,
+  rankedProfile,
   queueState,
+  rankedSettlement,
   rankedSeason,
+  rankedStandings,
   readyMessage,
   spectatorProjection,
+  territoryZones,
   ticketResponse,
   transitionMessage,
 } from './fixtures/live';
@@ -132,7 +136,50 @@ function liveFetch(snapshots: Record<string, unknown>[]) {
       const body = JSON.parse(String(init?.body));
       return Promise.resolve(ticketResponse(body.role));
     }
+    if (pathname.endsWith(`/ranked/matches/${LIVE_MATCH_ID}/settlement`)) {
+      return Promise.resolve(jsonResponse(rankedSettlement()));
+    }
     throw new Error(`Unexpected live request: ${String(input)}`);
+  });
+}
+
+function rankedLobbyResponse(pathname: string, hasSeason = true) {
+  if (pathname.endsWith('/ranked/me')) {
+    return jsonResponse(
+      hasSeason
+        ? rankedProfile()
+        : rankedProfile({
+            season: null,
+            rating: null,
+            wins: 0,
+            losses: 0,
+            settledMatchCount: 0,
+            placementMatchesRemaining: 5,
+            provisional: true,
+          }),
+    );
+  }
+  if (pathname.endsWith('/ranked/standings')) {
+    return hasSeason
+      ? jsonResponse(rankedStandings())
+      : jsonResponse(
+          {
+            code: 'RANKED_SEASON_UNAVAILABLE',
+            detail: 'No ranked season is active.',
+          },
+          409,
+        );
+  }
+  if (pathname.endsWith('/territory/zones')) {
+    return jsonResponse({ zones: territoryZones() });
+  }
+  return null;
+}
+
+function jsonResponse(value: unknown, status = 200) {
+  return new Response(JSON.stringify(value), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
   });
 }
 
@@ -184,6 +231,8 @@ describe('live lobby and battle experience', () => {
           }),
         );
       }
+      const supplemental = rankedLobbyResponse(pathname);
+      if (supplemental) return Promise.resolve(supplemental);
       throw new Error(`Unexpected request: ${String(input)}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -192,18 +241,24 @@ describe('live lobby and battle experience', () => {
     expect(
       await screen.findByRole('heading', { name: 'Live Ranked' }),
     ).toBeVisible();
+    expect(screen.getByText(/battle for seasonal rating/i)).toBeVisible();
+    expect(screen.getByText('Season rating').parentElement).toHaveTextContent(
+      /1\s248/,
+    );
+    const playTab = screen.getByRole('tab', { name: 'Play' });
+    const standingsTab = screen.getByRole('tab', { name: 'Standings' });
+    const watchTab = screen.getByRole('tab', { name: 'Watch' });
+    expect(playTab).toHaveAttribute('aria-selected', 'true');
+    expect(standingsTab).toHaveAttribute('aria-selected', 'false');
+    expect(
+      screen.queryByRole('heading', { name: 'Season standings' }),
+    ).not.toBeInTheDocument();
     expect(screen.getByText(/one minute for each decision/i)).toBeVisible();
-    expect(
-      screen.getByText(/first five results each season are placement matches/i),
-    ).toBeVisible();
-    expect(
-      screen.getByText(/leaving while searching has no cooldown/i),
-    ).toBeVisible();
     await user.click(
       screen.getByRole('button', { name: 'Find ranked battle' }),
     );
     expect(await screen.findByText('Searching for an opponent')).toBeVisible();
-    expect(screen.getByText(/no cooldown or rating change/i)).toBeVisible();
+    expect(screen.getByText(/rating range to ±100/i)).toBeVisible();
     const join = fetchMock.mock.calls.find(
       ([input, init]) =>
         new URL(String(input)).pathname.endsWith('/ranked/queue') &&
@@ -213,11 +268,159 @@ describe('live lobby and battle experience', () => {
       deckId: deck.deckId,
     });
 
+    await user.click(standingsTab);
+    expect(window.location.search).toBe('?tab=standings');
+    expect(
+      screen.getByRole('heading', { name: 'Season standings' }),
+    ).toBeVisible();
+    standingsTab.focus();
+    await user.keyboard('{ArrowRight}');
+    expect(watchTab).toHaveAttribute('aria-selected', 'true');
+    expect(watchTab).toHaveFocus();
+    expect(window.location.search).toBe('?tab=watch');
+
     await navigator.clipboard.writeText(
       `https://witsworld.co.za/matches/live/${LIVE_MATCH_ID}`,
     );
     await user.click(screen.getByRole('button', { name: 'Paste and watch' }));
     expect(window.location.pathname).toBe(`/matches/live/${LIVE_MATCH_ID}`);
+  });
+
+  it('requests a fresh location only after territory contesting is selected', async () => {
+    const user = userEvent.setup();
+    const deck = buildSavedDeck({ isSelected: true });
+    const locationClaimProvider = vi.fn().mockResolvedValue({
+      accuracyMetres: 18,
+      acquiredAt: '2026-09-25T12:00:00.000Z',
+      latitude: -26.1919,
+      longitude: 28.0301,
+    });
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const pathname = new URL(String(input)).pathname;
+      if (pathname.endsWith('/decks')) {
+        return Promise.resolve(deckListResponse([deck]));
+      }
+      if (pathname.endsWith('/ranked/seasons/current')) {
+        return Promise.resolve(jsonResponse({ season: rankedSeason() }));
+      }
+      if (pathname.endsWith('/ranked/queue') && init?.method === 'POST') {
+        return Promise.resolve(
+          jsonResponse(queueState({ status: 'searching' })),
+        );
+      }
+      if (pathname.endsWith('/ranked/queue')) {
+        return Promise.resolve(jsonResponse(queueState()));
+      }
+      const supplemental = rankedLobbyResponse(pathname);
+      if (supplemental) return Promise.resolve(supplemental);
+      throw new Error(`Unexpected request: ${String(input)}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderRoute(
+      '/matches/live',
+      <LiveLobbyPage
+        apiBaseUrl={apiBaseUrl}
+        locationClaimProvider={locationClaimProvider}
+      />,
+    );
+
+    const contest = await screen.findByRole('checkbox', {
+      name: /contest my current territory/i,
+    });
+    expect(locationClaimProvider).not.toHaveBeenCalled();
+    await user.click(contest);
+    expect(
+      screen.queryByRole('combobox', { name: 'Territory' }),
+    ).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Detect territory and find battle',
+      }),
+    );
+
+    await waitFor(() => expect(locationClaimProvider).toHaveBeenCalledOnce());
+    const join = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        new URL(String(input)).pathname.endsWith('/ranked/queue') &&
+        init?.method === 'POST',
+    );
+    expect(JSON.parse(String(join?.[1]?.body))).toEqual({
+      deckId: deck.deckId,
+      territoryClaim: {
+        accuracyMetres: 18,
+        acquiredAt: '2026-09-25T12:00:00.000Z',
+        latitude: -26.1919,
+        longitude: 28.0301,
+        zoneId: territoryZones()[0]!.zoneId,
+      },
+    });
+    expect(await screen.findByText(/contesting library lawns/i)).toBeVisible();
+  });
+
+  it('shows when no active territory is detected at the current location', async () => {
+    const user = userEvent.setup();
+    const deck = buildSavedDeck({ isSelected: true });
+    const locationClaimProvider = vi.fn().mockResolvedValue({
+      accuracyMetres: 12,
+      acquiredAt: '2026-09-25T12:00:00.000Z',
+      latitude: -26.2,
+      longitude: 28.04,
+    });
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const pathname = new URL(String(input)).pathname;
+      if (pathname.endsWith('/decks')) {
+        return Promise.resolve(deckListResponse([deck]));
+      }
+      if (pathname.endsWith('/ranked/seasons/current')) {
+        return Promise.resolve(jsonResponse({ season: rankedSeason() }));
+      }
+      if (pathname.endsWith('/ranked/queue')) {
+        if (init?.method === 'POST') {
+          throw new Error(
+            'Queue request must not be sent without a territory.',
+          );
+        }
+        return Promise.resolve(jsonResponse(queueState()));
+      }
+      const supplemental = rankedLobbyResponse(pathname);
+      if (supplemental) return Promise.resolve(supplemental);
+      throw new Error(`Unexpected request: ${String(input)}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderRoute(
+      '/matches/live',
+      <LiveLobbyPage
+        apiBaseUrl={apiBaseUrl}
+        locationClaimProvider={locationClaimProvider}
+      />,
+    );
+
+    await user.click(
+      await screen.findByRole('checkbox', {
+        name: /contest my current territory/i,
+      }),
+    );
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Detect territory and find battle',
+      }),
+    );
+
+    expect(
+      await screen.findByText('No active territory detected'),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/move farther inside a mapped territory/i),
+    ).toBeVisible();
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          new URL(String(input)).pathname.endsWith('/ranked/queue') &&
+          init?.method === 'POST',
+      ),
+    ).toBe(false);
   });
 
   it('explains an expired search without implying a ranked penalty', async () => {
@@ -245,6 +448,8 @@ describe('live lobby and battle experience', () => {
             }),
           );
         }
+        const supplemental = rankedLobbyResponse(pathname);
+        if (supplemental) return Promise.resolve(supplemental);
         throw new Error(`Unexpected request: ${String(input)}`);
       }),
     );
@@ -296,6 +501,8 @@ describe('live lobby and battle experience', () => {
             ),
           );
         }
+        const supplemental = rankedLobbyResponse(pathname);
+        if (supplemental) return Promise.resolve(supplemental);
         throw new Error(`Unexpected request: ${String(input)}`);
       }),
     );
@@ -343,6 +550,8 @@ describe('live lobby and battle experience', () => {
             ),
           );
         }
+        const supplemental = rankedLobbyResponse(pathname);
+        if (supplemental) return Promise.resolve(supplemental);
         throw new Error(`Unexpected request: ${String(input)}`);
       }),
     );
@@ -360,6 +569,7 @@ describe('live lobby and battle experience', () => {
   });
 
   it('disables ranked entry with visible guidance when no season is active', async () => {
+    const user = userEvent.setup();
     const deck = buildSavedDeck({ isSelected: true });
     vi.stubGlobal(
       'fetch',
@@ -384,6 +594,8 @@ describe('live lobby and battle experience', () => {
             }),
           );
         }
+        const supplemental = rankedLobbyResponse(pathname, false);
+        if (supplemental) return Promise.resolve(supplemental);
         throw new Error(`Unexpected request: ${String(input)}`);
       }),
     );
@@ -396,12 +608,18 @@ describe('live lobby and battle experience', () => {
       ),
     ).toBeVisible();
     expect(
-      screen.getByRole('button', { name: 'Find ranked battle' }),
-    ).toBeDisabled();
-    expect(screen.getByText('No active season')).toBeVisible();
+      screen.queryByRole('button', { name: 'Find ranked battle' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Ranked season' }),
+    ).toBeVisible();
     expect(
       screen.getByRole('button', { name: 'Check season again' }),
     ).toBeEnabled();
+    await user.click(screen.getByRole('tab', { name: 'Standings' }));
+    expect(
+      screen.getByText('Standings open with the next season'),
+    ).toBeVisible();
   });
 
   it('shows a safe ranked conflict beside the restored join control', async () => {
@@ -442,6 +660,8 @@ describe('live lobby and battle experience', () => {
             }),
           );
         }
+        const supplemental = rankedLobbyResponse(pathname);
+        if (supplemental) return Promise.resolve(supplemental);
         throw new Error(`Unexpected request: ${String(input)}`);
       }),
     );
@@ -594,6 +814,11 @@ describe('live lobby and battle experience', () => {
     expect(
       screen.getAllByText(/three consecutive missed decisions/i).length,
     ).toBeGreaterThan(0);
+    expect(
+      await screen.findByRole('heading', { name: 'Season settlement' }),
+    ).toBeVisible();
+    expect(screen.getByText('+24')).toBeVisible();
+    expect(screen.getByText('+30 influence awarded.')).toBeVisible();
   });
 
   it('keeps spectator mode unmistakably read-only and renders only the public projection', async () => {

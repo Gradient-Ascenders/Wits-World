@@ -38,9 +38,14 @@ The client requests that capability with a CORS-safelisted version-2 `Accept`
 media type and an `application/json` fallback, so an older API can return its
 legacy shape without requiring a new preflight allow-list entry.
 Live ranked entry is available at `/matches/live`; players enter through the
-existing ranked queue and proposal acceptance flow, while spectators use only a
-privately shared `/matches/live/:matchId` link or opaque match ID. There is no
-public live-match browser.
+existing ranked queue and proposal acceptance flow. The lobby also presents the
+current season, the player's server-settled rating and placement progress, and
+the established season standings through Play, Standings, and Watch tabs.
+Time-sensitive queue and proposal states stay visible above those tabs. Players
+may explicitly opt into contesting the territory they are currently in; the
+browser requests a fresh location only when that opted-in search begins.
+Spectators use only a privately shared `/matches/live/:matchId` link or opaque
+match ID. There is no public live-match browser.
 The protected `/account` route presents the local player identity, delegates
 credential recovery to the owning provider, and starts permanent account
 deletion with fresh Auth0 reauthentication.
@@ -721,6 +726,29 @@ only to assistive technology. A private spectator link or opaque match ID opens
 the same `/matches/live/:matchId` route, where the API derives whether the
 authenticated viewer is a participant or spectator.
 
+The default Play tab keeps the selected deck and queue action first. Ranked
+rules are collapsed until requested, while territory contesting remains an
+optional Play setting. The compact season strip stays visible across the Play,
+Standings, and Watch tabs. The selected tab is stored in the URL, and active
+search, proposal, and reconnect controls remain above the tab panels.
+
+The season summary reads `GET /api/v1/ranked/me` independently from the queue,
+and the established standings use cursor pages from
+`GET /api/v1/ranked/standings`. A failure in either view does not hide or replay
+matchmaking. Provisional status and placement progress come directly from the
+profile response; the browser does not derive a rank. Standings retain their
+current snapshot while another page loads, and a stale or failed page remains
+recoverable without discarding visible entries.
+
+Territory contesting is off by default. Enabling it does not request location.
+The join action obtains one fresh browser location claim, uses public active
+geometry from `GET /api/v1/territory/zones` to choose a single candidate zone,
+and submits that candidate with the claim. PostgreSQL/PostGIS still decides
+whether the complete accuracy envelope is strictly inside that active zone and
+clear of every other zone. Server eligibility, short-lived location handling,
+influence, caps, and exclusions remain authoritative. Turning the option off
+sends the ordinary deck-only queue request.
+
 The live match always reloads its HTTPS projection before connecting or
 recovering. It then obtains a single-use ticket and subscribes to authoritative
 WebSocket transitions. Transport loss, version gaps, stale/conflicting actions,
@@ -738,6 +766,12 @@ Spectator mode is explicitly read-only and accepts only the public projection:
 public combatants, aggregate hidden-card counts, public history, deadline,
 phase, result, and aggregate presence. It exposes no hands, private snapshots,
 participant identity, legal actions, or resign control.
+
+After a participant receives the final live projection, the outcome panel reads
+`GET /api/v1/ranked/matches/:matchId/settlement`. Pending settlement refreshes
+without estimating a rating. Settled responses show the exact before and after
+rating, applied delta, and any server-returned territory outcome. Spectators do
+not request participant settlement.
 
 Focused client and component coverage can be run from `apps/web` with:
 
@@ -831,12 +865,14 @@ and API failure recovery. The CPU battle Playwright scenario uses the real
 authenticated application shell and production routes with deterministic
 intercepted API responses; it is frontend browser evidence, not a live-backend
 match E2E test.
-Live-match tests cover active-season ranked entry, visibly disabled no-season
-entry, visible ranked conflicts, private spectator entry, closed participant and
-spectator response parsing, private-field rejection, role matching, legal turn
-ownership, synchronous pending locks, duplicate prevention, stale-version
-recovery, reconnect snapshots, opponent dropout, terminal timeout/abandonment,
-and spectator read-only presentation.
+Live-match tests cover current-season profile and standings, accessible tab
+navigation, opt-in territory claims, deck-only ranked entry, an explained
+no-season state without a dead queue action, visible ranked conflicts, private
+spectator entry, closed participant and spectator response
+parsing, private-field rejection, role matching, legal turn ownership,
+synchronous pending locks, duplicate prevention, stale-version recovery,
+reconnect snapshots, opponent dropout, terminal timeout/abandonment, exact
+rating and territory settlement, and spectator read-only presentation.
 Progression tests cover approved-field runtime validation, private-field
 rejection, populated and empty achievements, current and off-page standings,
 pagination, monthly selection, zero/no-active-rank handling, tombstones, long
@@ -1200,9 +1236,10 @@ that model; the browser does not invent a replacement value.
 
 1. Start the disposable database, API, deadline worker, and Web application.
    Sign in as two active players with valid ranked decks. Open `/matches/live`
-   in both sessions, join the queue, and accept the server proposal. Confirm the
-   API-created match opens at `/matches/live/:matchId`; do not create or edit a
-   match directly in the browser.
+   in both sessions. Check Play, Standings, and Watch with pointer and arrow-key
+   navigation, then join the queue and accept the server proposal. Confirm the
+   proposal stays visible above the tabs and the API-created match opens at
+   `/matches/live/:matchId`; do not create or edit a match directly in the browser.
 2. Confirm the active participant sees an unmistakable **Your turn** treatment,
    only API-returned legal actions, the server deadline/countdown, and immediate
    control locking after one activation. Confirm the waiting participant sees
