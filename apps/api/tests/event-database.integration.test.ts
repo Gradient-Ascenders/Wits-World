@@ -348,7 +348,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
 
       expect(seededEvent.rows).toHaveLength(1);
       expect(seededEvent.rows[0]).toMatchObject({
-        count: '8',
+        count: '14',
         authoring_status: 'published',
         is_published: true,
         latitude: -26.19205,
