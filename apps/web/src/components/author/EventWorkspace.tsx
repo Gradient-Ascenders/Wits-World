@@ -723,8 +723,14 @@ function EventOverview({
               </dd>
             </div>
             <div>
-              <dt>Location</dt>
-              <dd>Configured · {event.radiusMetres} m radius</dd>
+              <dt>Placement</dt>
+              <dd>
+                {event.automaticPlacement
+                  ? event.authoringStatus === 'published'
+                    ? 'Automatic campus rotation'
+                    : 'Automatic after publication'
+                  : `Fixed location · ${event.radiusMetres} m radius`}
+              </dd>
             </div>
           </dl>
           {event.sourceUrls.length > 0 ? (
@@ -811,6 +817,7 @@ interface EventFormProps {
 }
 
 interface EventDraft {
+  automaticPlacement: boolean;
   description: string;
   endsAt: string;
   latitude: string;
@@ -860,6 +867,19 @@ function EventForm({
   function setField(field: keyof EventDraft, value: string) {
     setDraft((current) => ({ ...current, [field]: value }));
     setErrors((current) => ({ ...current, [field]: '' }));
+  }
+
+  function setAutomaticPlacement(enabled: boolean) {
+    setDraft((current) => ({
+      ...current,
+      automaticPlacement: enabled,
+      latitude:
+        enabled && !current.latitude ? String(-26.1929) : current.latitude,
+      longitude:
+        enabled && !current.longitude ? String(28.0305) : current.longitude,
+      radiusMetres:
+        enabled && !current.radiusMetres ? String(75) : current.radiusMetres,
+    }));
   }
 
   function setCoordinate(nextCoordinate: {
@@ -996,142 +1016,171 @@ function EventForm({
           />
         </FormField>
 
-        <fieldset
-          className="author-fieldset author-location-editor"
-          disabled={busy}
-        >
-          <legend>Event location</legend>
-          <p className="author-location-editor__intro">
-            Select the event point on the campus map. The marker and radius are
-            an authoring aid; the saved coordinates and distance remain exact.
-          </p>
-          <AuthorLocationMap
-            coordinate={coordinate}
+        <label className="author-toggle" htmlFor="event-automatic-placement">
+          <input
+            checked={draft.automaticPlacement}
             disabled={busy}
-            mapboxAccessToken={mapboxAccessToken}
-            mapFactory={mapFactory}
-            onChange={setCoordinate}
-            radiusMetres={radiusMetres}
+            id="event-automatic-placement"
+            onChange={(change) => setAutomaticPlacement(change.target.checked)}
+            type="checkbox"
           />
+          <span>
+            <strong>Automatic placement</strong>
+            <small>
+              When published, this event joins the automatic rotation and is
+              assigned to a campus site. No separate placement approval is
+              needed.
+            </small>
+          </span>
+        </label>
 
-          <section
-            aria-labelledby="event-radius-heading"
-            className="author-radius-editor"
+        {draft.automaticPlacement ? (
+          <div className="author-auto-placement-note" role="note">
+            <strong>Location will be assigned automatically</strong>
+            <span>
+              The placement service will choose a valid campus site when the
+              event is published and keep it in future rotations.
+            </span>
+          </div>
+        ) : (
+          <fieldset
+            className="author-fieldset author-location-editor"
+            disabled={busy}
           >
-            <div className="author-radius-editor__heading">
-              <strong id="event-radius-heading">Event radius</strong>
-              <span>How close a player needs to be.</span>
-            </div>
-            <div
-              aria-label="Common event radii"
-              className="author-radius-presets"
-              role="group"
+            <legend>Event location</legend>
+            <p className="author-location-editor__intro">
+              Select the event point on the campus map. The marker and radius
+              are an authoring aid; the saved coordinates and distance remain
+              exact.
+            </p>
+            <AuthorLocationMap
+              coordinate={coordinate}
+              disabled={busy}
+              mapboxAccessToken={mapboxAccessToken}
+              mapFactory={mapFactory}
+              onChange={setCoordinate}
+              radiusMetres={radiusMetres}
+            />
+
+            <section
+              aria-labelledby="event-radius-heading"
+              className="author-radius-editor"
             >
-              {EVENT_RADIUS_PRESETS.map((radius) => (
-                <button
-                  aria-pressed={radiusMetres === radius}
-                  className="author-radius-preset"
-                  key={radius}
-                  onClick={() => setField('radiusMetres', String(radius))}
-                  type="button"
+              <div className="author-radius-editor__heading">
+                <strong id="event-radius-heading">Event radius</strong>
+                <span>How close a player needs to be.</span>
+              </div>
+              <div
+                aria-label="Common event radii"
+                className="author-radius-presets"
+                role="group"
+              >
+                {EVENT_RADIUS_PRESETS.map((radius) => (
+                  <button
+                    aria-pressed={radiusMetres === radius}
+                    className="author-radius-preset"
+                    key={radius}
+                    onClick={() => setField('radiusMetres', String(radius))}
+                    type="button"
+                  >
+                    {radius} m
+                  </button>
+                ))}
+              </div>
+              <FormField
+                error={errors.radiusMetres}
+                label="Radius (metres)"
+                name="event-radius"
+              >
+                <input
+                  aria-describedby={[
+                    'event-radius-help',
+                    errors.radiusMetres ? 'event-radius-error' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  aria-invalid={Boolean(errors.radiusMetres)}
+                  id="event-radius"
+                  inputMode="numeric"
+                  min="1"
+                  onChange={(change) =>
+                    setField('radiusMetres', change.target.value)
+                  }
+                  required
+                  step="1"
+                  type="number"
+                  value={draft.radiusMetres}
+                />
+                <span className="field-help" id="event-radius-help">
+                  Choose a preset or enter any positive whole number of metres.
+                </span>
+              </FormField>
+            </section>
+
+            <section
+              aria-labelledby="event-coordinates-heading"
+              className="author-location-advanced"
+            >
+              <div className="author-location-advanced__heading">
+                <strong id="event-coordinates-heading">
+                  Advanced coordinates
+                </strong>
+                <span>
+                  Keyboard and map-fallback controls. Values stay synchronized
+                  with the marker.
+                </span>
+              </div>
+              <div className="author-form__grid">
+                <FormField
+                  error={errors.latitude}
+                  label="Latitude"
+                  name="event-latitude"
                 >
-                  {radius} m
-                </button>
-              ))}
-            </div>
-            <FormField
-              error={errors.radiusMetres}
-              label="Radius (metres)"
-              name="event-radius"
-            >
-              <input
-                aria-describedby={[
-                  'event-radius-help',
-                  errors.radiusMetres ? 'event-radius-error' : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-                aria-invalid={Boolean(errors.radiusMetres)}
-                id="event-radius"
-                inputMode="numeric"
-                min="1"
-                onChange={(change) =>
-                  setField('radiusMetres', change.target.value)
-                }
-                required
-                step="1"
-                type="number"
-                value={draft.radiusMetres}
-              />
-              <span className="field-help" id="event-radius-help">
-                Choose a preset or enter any positive whole number of metres.
-              </span>
-            </FormField>
-          </section>
-
-          <section
-            aria-labelledby="event-coordinates-heading"
-            className="author-location-advanced"
-          >
-            <div className="author-location-advanced__heading">
-              <strong id="event-coordinates-heading">
-                Advanced coordinates
-              </strong>
-              <span>
-                Keyboard and map-fallback controls. Values stay synchronized
-                with the marker.
-              </span>
-            </div>
-            <div className="author-form__grid">
-              <FormField
-                error={errors.latitude}
-                label="Latitude"
-                name="event-latitude"
-              >
-                <input
-                  aria-describedby={
-                    errors.latitude ? 'event-latitude-error' : undefined
-                  }
-                  aria-invalid={Boolean(errors.latitude)}
-                  id="event-latitude"
-                  inputMode="decimal"
-                  max="90"
-                  min="-90"
-                  onChange={(change) =>
-                    setField('latitude', change.target.value)
-                  }
-                  required
-                  step="any"
-                  type="number"
-                  value={draft.latitude}
-                />
-              </FormField>
-              <FormField
-                error={errors.longitude}
-                label="Longitude"
-                name="event-longitude"
-              >
-                <input
-                  aria-describedby={
-                    errors.longitude ? 'event-longitude-error' : undefined
-                  }
-                  aria-invalid={Boolean(errors.longitude)}
-                  id="event-longitude"
-                  inputMode="decimal"
-                  max="180"
-                  min="-180"
-                  onChange={(change) =>
-                    setField('longitude', change.target.value)
-                  }
-                  required
-                  step="any"
-                  type="number"
-                  value={draft.longitude}
-                />
-              </FormField>
-            </div>
-          </section>
-        </fieldset>
+                  <input
+                    aria-describedby={
+                      errors.latitude ? 'event-latitude-error' : undefined
+                    }
+                    aria-invalid={Boolean(errors.latitude)}
+                    id="event-latitude"
+                    inputMode="decimal"
+                    max="90"
+                    min="-90"
+                    onChange={(change) =>
+                      setField('latitude', change.target.value)
+                    }
+                    required
+                    step="any"
+                    type="number"
+                    value={draft.latitude}
+                  />
+                </FormField>
+                <FormField
+                  error={errors.longitude}
+                  label="Longitude"
+                  name="event-longitude"
+                >
+                  <input
+                    aria-describedby={
+                      errors.longitude ? 'event-longitude-error' : undefined
+                    }
+                    aria-invalid={Boolean(errors.longitude)}
+                    id="event-longitude"
+                    inputMode="decimal"
+                    max="180"
+                    min="-180"
+                    onChange={(change) =>
+                      setField('longitude', change.target.value)
+                    }
+                    required
+                    step="any"
+                    type="number"
+                    value={draft.longitude}
+                  />
+                </FormField>
+              </div>
+            </section>
+          </fieldset>
+        )}
 
         <fieldset className="author-fieldset" disabled={busy}>
           <legend>Active times</legend>
@@ -3059,6 +3108,7 @@ function eventDraft(event?: AuthorEvent): EventDraft {
   return event
     ? {
         description: event.description ?? '',
+        automaticPlacement: event.automaticPlacement,
         endsAt: toDateTimeLocal(event.endsAt),
         latitude: String(event.latitude),
         longitude: String(event.longitude),
@@ -3067,6 +3117,7 @@ function eventDraft(event?: AuthorEvent): EventDraft {
         title: event.title,
       }
     : {
+        automaticPlacement: false,
         description: '',
         endsAt: '',
         latitude: '',
@@ -3117,6 +3168,7 @@ function validateEventDraft(draft: EventDraft): {
   return {
     errors,
     input: {
+      automaticPlacement: draft.automaticPlacement,
       description: draft.description.trim() || null,
       endsAt: end.toISOString(),
       latitude,

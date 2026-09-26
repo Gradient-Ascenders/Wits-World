@@ -153,6 +153,7 @@ export function isAuthorContentConflict(
 }
 
 export interface AuthorEvent extends AuthorLifecycleMetadata {
+  automaticPlacement: boolean;
   authoringStatus: AuthoringStatus;
   createdAt: string;
   description: string | null;
@@ -170,6 +171,7 @@ export interface AuthorEvent extends AuthorLifecycleMetadata {
 }
 
 export interface AuthorEventInput {
+  automaticPlacement: boolean;
   description?: string | null;
   endsAt: string;
   latitude: number;
@@ -1752,6 +1754,7 @@ function parseAuthorEvent(value: unknown): AuthorEvent {
     isRecord(value) && value.sourceUrls !== undefined ? value.sourceUrls : [];
   if (
     !isRecord(value) ||
+    typeof value.automaticPlacement !== 'boolean' ||
     !isUuid(value.eventId) ||
     !isNonBlank(value.title) ||
     !isNullableString(value.description) ||

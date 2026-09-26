@@ -113,6 +113,7 @@ describe.skipIf(!runIntegrationTests)(
 
       const created = await service.createEvent({
         actorPlayerId: AUTHOR_ONE_ID,
+        automaticPlacement: false,
         title: '  Great Hall Author Event  ',
         description: '  Explore East Campus.  ',
         latitude: -26.19205,
@@ -189,6 +190,7 @@ describe.skipIf(!runIntegrationTests)(
       const service = createAuthorEventService(pool);
       const created = await service.createEvent({
         actorPlayerId: AUTHOR_ONE_ID,
+        automaticPlacement: false,
         title: 'Concurrent Author Event',
         description: 'Both writers loaded version zero.',
         latitude: -26.19205,
@@ -285,6 +287,7 @@ describe.skipIf(!runIntegrationTests)(
 
       const created = await service.createEvent({
         actorPlayerId: AUTHOR_ONE_ID,
+        automaticPlacement: false,
         title: 'Shared Author Event',
         description: null,
         latitude: -26.19205,
@@ -297,6 +300,7 @@ describe.skipIf(!runIntegrationTests)(
       const updated = await service.updateEvent({
         expectedVersion: 0,
         actorPlayerId: AUTHOR_TWO_ID,
+        automaticPlacement: false,
         eventId: created.eventId,
         title: 'Edited By Another Author',
         description: 'Authors may manage shared Basic content.',
@@ -363,6 +367,7 @@ describe.skipIf(!runIntegrationTests)(
       await expect(
         service.createEvent({
           actorPlayerId: PLAYER_ID,
+          automaticPlacement: false,
           title,
           description: null,
           latitude: -26.19205,
@@ -392,6 +397,7 @@ describe.skipIf(!runIntegrationTests)(
 
       const event = await service.createEvent({
         actorPlayerId: AUTHOR_ONE_ID,
+        automaticPlacement: false,
         title: 'Incomplete Publication Event',
         description: 'This event has no published challenge.',
         latitude: -26.19205,
@@ -433,6 +439,7 @@ describe.skipIf(!runIntegrationTests)(
 
       const event = await eventService.createEvent({
         actorPlayerId: AUTHOR_ONE_ID,
+        automaticPlacement: false,
         title: 'No Reward Catalogue Event',
         description: 'Challenge ready but reward catalogue unavailable.',
         latitude: -26.19205,
@@ -483,6 +490,7 @@ describe.skipIf(!runIntegrationTests)(
 
       const event = await eventService.createEvent({
         actorPlayerId: AUTHOR_ONE_ID,
+        automaticPlacement: false,
         title: 'Playable Published Event',
         description: 'A complete Basic event.',
         latitude: -26.19205,
@@ -515,6 +523,7 @@ describe.skipIf(!runIntegrationTests)(
         eventService.updateEvent({
           expectedVersion: 3,
           actorPlayerId: AUTHOR_ONE_ID,
+          automaticPlacement: false,
           eventId: event.eventId,
           title: 'Illegal Published Edit',
           description: 'Must not change.',
@@ -588,6 +597,7 @@ describe.skipIf(!runIntegrationTests)(
 
       const event = await eventService.createEvent({
         actorPlayerId: AUTHOR_ONE_ID,
+        automaticPlacement: false,
         title: 'Challenge Guard Event',
         description: 'Its challenge must remain live.',
         latitude: -26.19205,
@@ -653,6 +663,7 @@ describe.skipIf(!runIntegrationTests)(
 
       const event = await eventService.createEvent({
         actorPlayerId: AUTHOR_ONE_ID,
+        automaticPlacement: false,
         title: 'Retirable Event',
         description: 'This event will be removed from player visibility.',
         latitude: -26.19205,

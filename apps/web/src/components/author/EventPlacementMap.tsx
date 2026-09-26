@@ -45,6 +45,7 @@ export function EventPlacementMap({
     initialBounds: WITS_BRAAMFONTEIN_AUTHORING_BOUNDS,
     initialBoundsPadding: 28,
     pitch: 0,
+    showResetViewControl: false,
     standardConfig: {
       lightPreset: 'dusk',
       show3dBuildings: false,
@@ -151,7 +152,13 @@ export function EventPlacementMap({
       <div className="placement-map__heading">
         <div>
           <h3 id="placement-map-title">Campus map</h3>
-          <p>Compare coverage zones and reviewed placement sites.</p>
+          <p>
+            {plan
+              ? 'Blue markers are proposed. Gold markers remain live until you apply.'
+              : state.assignments.length > 0
+                ? 'Gold markers are live. Black markers are available candidate sites.'
+                : 'Black markers are reviewed candidate sites. Create a preview to see proposed placements.'}
+          </p>
         </div>
         <ul aria-label="Placement map legend" className="placement-map__legend">
           {(

@@ -70,7 +70,7 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
     page.getByRole('heading', { level: 3, name: 'Great Hall Discovery' }),
   ).toBeVisible();
   await expect(page.getByLabel('Event title')).toHaveCount(0);
-  await expect(page.getByText('Configured · 75 m radius')).toBeVisible();
+  await expect(page.getByText('Fixed location · 75 m radius')).toBeVisible();
 
   await page.getByRole('link', { name: 'Edit event' }).click();
   await expect(page).toHaveURL(`/author/events/${EVENT_A}/edit`);
@@ -304,6 +304,15 @@ test('mobile Event and Question routes use list to detail to editor views', asyn
 
   await page.getByLabel('Event title').fill('Library Lawn Trail');
   await page.getByLabel('Description (optional)').fill('A new Author draft.');
+  const automaticPlacement = page.getByRole('checkbox', {
+    name: /Automatic placement/u,
+  });
+  await automaticPlacement.check();
+  await expect(
+    page.getByText('Location will be assigned automatically'),
+  ).toBeVisible();
+  await expect(page.getByText('Event location')).toHaveCount(0);
+  await automaticPlacement.uncheck();
   await page.getByLabel('Latitude').fill('-26.1908');
   await page.getByLabel('Longitude').fill('28.0305');
   await page.getByLabel('Radius (metres)').fill('60');
@@ -1217,7 +1226,7 @@ test('tablet and wide workspaces preserve loading, error, empty and deep-link st
 test('placement workspace stages preview, campus map, and secondary details across viewports', async ({
   page,
 }, testInfo) => {
-  await installAuthorApi(page);
+  const authorState = await installAuthorApi(page);
   const consoleErrors = monitorConsoleErrors(page);
 
   await page.setViewportSize({ height: 1000, width: 1440 });
@@ -1225,6 +1234,20 @@ test('placement workspace stages preview, campus map, and secondary details acro
   await expect(
     page.getByRole('heading', { name: 'Event placement' }),
   ).toBeVisible();
+  const desktopMapSurface = (await page
+    .locator('.placement-map .campus-map')
+    .boundingBox())!;
+  const desktopPreview = (await page
+    .getByRole('complementary', {
+      name: 'Preview and validate placement changes',
+    })
+    .boundingBox())!;
+  expect(Math.abs(desktopMapSurface.y - desktopPreview.y)).toBeLessThanOrEqual(
+    1,
+  );
+  await expect(
+    page.getByRole('button', { name: 'Reset map bearing and pitch' }),
+  ).toBeHidden();
   await expect(
     page.getByRole('table', { name: 'Current and proposed event placements' }),
   ).toBeVisible();
@@ -1238,10 +1261,19 @@ test('placement workspace stages preview, campus map, and secondary details acro
   await page.getByRole('tab', { name: 'Changes' }).click();
   await expectNoHorizontalOverflow(page);
 
-  const preview = page.getByRole('button', { name: 'Create preview' });
+  const preview = page.getByRole('button', {
+    name: 'Create coverage preview',
+  });
+  authorState.placementPreviewDelayMs = 800;
   await preview.focus();
   await page.keyboard.press('Enter');
+  await expect(page.locator('.placement-preview__loader')).toHaveCount(2);
+  await page.screenshot({
+    path: testInfo.outputPath('placement-loading.png'),
+    fullPage: true,
+  });
   await expect(page.getByText('Review exceptions')).toBeVisible();
+  await expect(page.getByText('Plan needs review')).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Review and apply' }),
   ).toBeFocused();
@@ -1256,6 +1288,19 @@ test('placement workspace stages preview, campus map, and secondary details acro
     path: testInfo.outputPath('placement-desktop.png'),
     fullPage: true,
   });
+  const placementDetails = page.getByRole('region', {
+    name: 'Placement details',
+  });
+  await placementDetails.scrollIntoViewIfNeeded();
+  const scrolledPreview = (await page
+    .getByRole('complementary', {
+      name: 'Preview and validate placement changes',
+    })
+    .boundingBox())!;
+  const scrolledDetails = (await placementDetails.boundingBox())!;
+  expect(scrolledPreview.y + scrolledPreview.height).toBeLessThanOrEqual(
+    scrolledDetails.y + 1,
+  );
 
   await page.setViewportSize({ height: 900, width: 768 });
   await page.reload();
@@ -1297,8 +1342,13 @@ test('placement workspace stages preview, campus map, and secondary details acro
   expect(controls.y).toBeLessThan(map.y);
   expect(map.y).toBeLessThan(details.y);
   await expect(
-    page.getByRole('button', { name: 'Create preview' }),
+    page.getByRole('button', { name: 'Create coverage preview' }),
   ).toBeVisible();
+  await page.getByRole('button', { name: 'Create coverage preview' }).click();
+  await expect(page.getByText('Plan needs review')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Review and apply' }),
+  ).toBeFocused();
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     path: testInfo.outputPath('placement-mobile.png'),
@@ -1391,6 +1441,7 @@ interface AuthorApiState {
   failEvents: boolean;
   orderingCompleted: boolean;
   orderingSubmissions: unknown[];
+  placementPreviewDelayMs: number;
   questions: AuthorQuestion[];
   rejectEventPublication: boolean;
   trails: AuthorTrail[];
@@ -1406,6 +1457,7 @@ async function installAuthorApi(page: Page): Promise<AuthorApiState> {
     failEvents: false,
     orderingCompleted: false,
     orderingSubmissions: [],
+    placementPreviewDelayMs: 0,
     questions: authorQuestions(),
     rejectEventPublication: true,
     trails: authorTrails(),
@@ -1457,6 +1509,11 @@ async function installAuthorApi(page: Page): Promise<AuthorApiState> {
       return;
     }
     if (path === '/author/event-placement/previews' && method === 'POST') {
+      if (state.placementPreviewDelayMs > 0) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, state.placementPreviewDelayMs),
+        );
+      }
       await json(route, {
         plan: placementPlanFixture(),
         requestId: 'request-placement-preview',
@@ -2014,6 +2071,7 @@ function eventFixture(
 ): AuthorEvent {
   return {
     ...lifecycleMetadata(authoringStatus),
+    automaticPlacement: false,
     authoringStatus,
     createdAt: '2026-08-01T08:00:00.000Z',
     description: `${title} author fixture.`,

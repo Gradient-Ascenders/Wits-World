@@ -265,11 +265,14 @@ export const mapFactory: MapFactory = async (
   navigationArea.className = 'mapboxgl-ctrl-top-right';
   const navigationGroup = document.createElement('div');
   navigationGroup.className = 'mapboxgl-ctrl mapboxgl-ctrl-group';
-  for (const [label, symbol] of [
+  const navigationControls: ReadonlyArray<readonly [string, string]> = [
     ['Zoom in', '+'],
     ['Zoom out', '−'],
-    ['Reset map bearing and pitch', '↺'],
-  ] as const) {
+    ...(config.showResetViewControl === false
+      ? []
+      : ([['Reset map bearing and pitch', '↺']] as const)),
+  ];
+  for (const [label, symbol] of navigationControls) {
     const button = document.createElement('button');
     button.type = 'button';
     button.setAttribute('aria-label', label);

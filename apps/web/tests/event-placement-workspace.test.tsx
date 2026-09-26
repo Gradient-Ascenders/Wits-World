@@ -2,7 +2,10 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { AuthorPlacementState } from '../src/api/author';
+import type {
+  AuthorPlacementPlan,
+  AuthorPlacementState,
+} from '../src/api/author';
 import { EventPlacementWorkspace } from '../src/components/author/EventPlacementWorkspace';
 import type {
   MapController,
@@ -56,7 +59,9 @@ describe('author event-placement workspace', () => {
       ),
     );
 
-    await user.click(screen.getByRole('button', { name: 'Create preview' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Create coverage preview' }),
+    );
     expect(await screen.findByText('Review exceptions')).toBeVisible();
     expect(
       screen.getByText('Every active zone meets minimum coverage.'),
@@ -89,7 +94,9 @@ describe('author event-placement workspace', () => {
     renderWorkspace();
     await screen.findByText('Placement needs attention');
 
-    await user.click(screen.getByRole('button', { name: 'Create preview' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Create coverage preview' }),
+    );
     await screen.findByText('Review exceptions');
     await user.click(screen.getByRole('button', { name: 'Review and apply' }));
     expect(postedPaths(fetchMock)).not.toContain(
@@ -178,7 +185,9 @@ describe('author event-placement workspace', () => {
     });
     renderWorkspace();
     await screen.findByText('Placement needs attention');
-    await user.click(screen.getByRole('button', { name: 'Create preview' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Create coverage preview' }),
+    );
     await screen.findByText('Review exceptions');
     await user.click(screen.getByRole('button', { name: 'Review and apply' }));
     await confirmDialog(
@@ -189,7 +198,7 @@ describe('author event-placement workspace', () => {
     );
 
     expect(
-      await screen.findByText(/Placement changed while you were reviewing it/u),
+      await screen.findByText(/Placement changed while you were reviewing/u),
     ).toBeVisible();
     await user.click(screen.getByRole('tab', { name: 'Coverage & sites' }));
     await user.click(screen.getByText('Technical details'));
@@ -201,7 +210,7 @@ describe('author event-placement workspace', () => {
       screen.queryByRole('button', { name: 'Review and apply' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Create preview' }),
+      screen.getByRole('button', { name: 'Create coverage preview' }),
     ).toBeVisible();
     expect(
       fetchMock.mock.calls.filter(([input]) =>
@@ -210,7 +219,101 @@ describe('author event-placement workspace', () => {
     ).toHaveLength(2);
   });
 
-  it('does not claim authoritative success when the post-mutation refresh fails', async () => {
+  it('recognizes when automatic rotation applied the reviewed plan first', async () => {
+    const user = userEvent.setup();
+    let appliedAutomatically = false;
+    installPlacementApi({
+      applyResponse: () => {
+        appliedAutomatically = true;
+        return problemResponse(
+          409,
+          'STALE_PLACEMENT_STATE',
+          'Placement state changed.',
+        );
+      },
+      state: () =>
+        appliedAutomatically
+          ? appliedPlacementState(previewPlan(), 5)
+          : placementState(),
+    });
+    renderWorkspace();
+    await screen.findByText('Placement needs attention');
+    await user.click(
+      screen.getByRole('button', { name: 'Create coverage preview' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Review and apply' }));
+    await confirmDialog(
+      user,
+      screen.getByRole('dialog'),
+      'Reviewed apply',
+      'Apply placement plan',
+    );
+
+    expect(
+      await screen.findByText(
+        'Placement was completed while you were reviewing. The latest live assignments are shown; no further action is needed.',
+      ),
+    ).toBeVisible();
+    expect(screen.getByText('Placement healthy')).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Preview another rotation' }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Review and apply' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps an unserved zero-change preview visibly blocked', async () => {
+    const user = userEvent.setup();
+    installPlacementApi({
+      preview: () =>
+        jsonResponse({
+          plan: unservedPlan(),
+          requestId: 'request-preview',
+        }),
+      state: () => uncoveredPlacementState(),
+    });
+    renderWorkspace();
+    await screen.findByRole('button', { name: 'Create coverage preview' });
+    await user.click(
+      screen.getByRole('button', { name: 'Create coverage preview' }),
+    );
+
+    expect(await screen.findByText('No safe plan found')).toBeVisible();
+    expect(screen.getByText('Cannot apply')).toBeVisible();
+    expect(
+      screen.getByText(
+        'This preview contains no assignments. Review the coverage checks to see why it cannot be applied.',
+      ),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Review and apply' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Recalculate preview' }),
+    ).toBeEnabled();
+  });
+
+  it('treats an older failed rotation as resolved after a healthy apply', async () => {
+    installPlacementApi({ state: () => healthyPlacementState() });
+    renderWorkspace();
+
+    expect(await screen.findByText('Placement healthy')).toBeVisible();
+    expect(
+      screen.getByText('Placement is live and fully covered.'),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        'All 2 active zones meet minimum coverage, and 2 of 2 target events are live. No unresolved placement failure remains.',
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Preview another rotation' }),
+    ).toBeVisible();
+    expect(screen.queryByText('Placement needs attention')).toBeNull();
+  });
+
+  it('does not claim live-state success when the post-mutation refresh fails', async () => {
     const user = userEvent.setup();
     let stateAttempts = 0;
     installPlacementApi({
@@ -236,9 +339,9 @@ describe('author event-placement workspace', () => {
       'Pause automation',
     );
 
-    expect(await screen.findByText(/could not be refreshed/u)).toBeVisible();
+    expect(await screen.findByText(/could not be loaded/u)).toBeVisible();
     expect(
-      screen.queryByText(/Automation paused.*authoritative/u),
+      screen.queryByText(/Automation paused.*latest live state/u),
     ).not.toBeInTheDocument();
   });
 
@@ -271,7 +374,7 @@ describe('author event-placement workspace', () => {
     await user.click(screen.getByRole('button', { name: 'Retry' }));
     expect(
       await screen.findByText(
-        'No current or proposed portable-event assignments are available.',
+        'No events are currently placed. Create a coverage preview to propose assignments.',
       ),
     ).toBeVisible();
     expect(await screen.findByText('The map could not load.')).toBeVisible();
@@ -282,15 +385,14 @@ describe('author event-placement workspace', () => {
     await user.click(screen.getByRole('tab', { name: 'Coverage & sites' }));
     expect(screen.getByRole('table', { name: 'Coverage zones' })).toBeVisible();
 
-    const preview = screen.getByRole('button', { name: 'Create preview' });
-    preview.focus();
-    await user.keyboard('{Enter}');
-    expect(await screen.findByText('Review exceptions')).toBeVisible();
-    await waitFor(() =>
-      expect(
-        screen.getByRole('button', { name: 'Review and apply' }),
-      ).toHaveFocus(),
-    );
+    expect(
+      screen.getByText(
+        'A preview cannot place events until at least one coverage zone is active.',
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Create coverage preview' }),
+    ).toBeDisabled();
   });
 
   it('keeps history failures local and validates override duration before review', async () => {
@@ -303,7 +405,7 @@ describe('author event-placement workspace', () => {
 
     expect(await screen.findByText('Placement needs attention')).toBeVisible();
     expect(
-      screen.getByRole('button', { name: 'Create preview' }),
+      screen.getByRole('button', { name: 'Create coverage preview' }),
     ).toBeEnabled();
     await user.click(screen.getByRole('tab', { name: 'Recent history' }));
     expect(await screen.findByText('Recent history unavailable')).toBeVisible();
@@ -319,6 +421,60 @@ describe('author event-placement workspace', () => {
       screen.getByText('This override can last no more than 168 hours.'),
     ).toBeVisible();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('shows preview progress and keeps failures beside the retry action', async () => {
+    const user = userEvent.setup();
+    let previewAttempts = 0;
+    let releasePreview: (() => void) | undefined;
+    installPlacementApi({
+      preview: async () => {
+        previewAttempts += 1;
+        if (previewAttempts === 1) {
+          await new Promise<void>((resolve) => {
+            releasePreview = resolve;
+          });
+          return problemResponse(
+            503,
+            'PLACEMENT_UNAVAILABLE',
+            'Placement preview is temporarily unavailable.',
+          );
+        }
+        return jsonResponse({
+          plan: previewPlan(),
+          requestId: 'request-preview',
+        });
+      },
+    });
+    renderWorkspace();
+    await screen.findByText('Placement needs attention');
+
+    await user.click(
+      screen.getByRole('button', { name: 'Create coverage preview' }),
+    );
+    expect(screen.getByText('Creating preview')).toBeVisible();
+    expect(
+      screen.getByText(/Checking coverage, separation, and placement rules/u),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Creating preview…' }),
+    ).toBeDisabled();
+
+    releasePreview?.();
+    expect(
+      await screen.findByText('Preview could not be created'),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Try preview again' }),
+    ).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: 'Try preview again' }));
+    expect(await screen.findByText('Plan needs review')).toBeVisible();
+    expect(
+      screen.getByText(
+        'Minimum coverage is met, but the plan includes policy exceptions. Nothing has changed for players.',
+      ),
+    ).toBeVisible();
   });
 });
 
@@ -482,7 +638,7 @@ function polygon(longitude: number, latitude: number) {
   };
 }
 
-function previewPlan(stateVersion = 4) {
+function previewPlan(stateVersion = 4): AuthorPlacementPlan {
   return {
     entries: [
       {
@@ -532,10 +688,109 @@ function previewPlan(stateVersion = 4) {
   };
 }
 
+function uncoveredPlacementState(): AuthorPlacementState {
+  const state = placementState();
+  return {
+    ...state,
+    assignments: [],
+    currentPlanId: null,
+    metrics: {
+      ...state.metrics,
+      activeAssignmentCount: 0,
+      lastAppliedAt: null,
+      servedZoneCount: 0,
+      unservedZoneCount: 2,
+    },
+    overrides: [],
+  };
+}
+
+function healthyPlacementState(): AuthorPlacementState {
+  const state = placementState(5);
+  return {
+    ...state,
+    assignments: [
+      state.assignments[0]!,
+      {
+        eventId: eventLibrary,
+        origin: 'automatic',
+        siteId: siteLibrary,
+        zoneId: zoneWest,
+      },
+    ],
+    metrics: {
+      ...state.metrics,
+      activeAssignmentCount: 2,
+      lastAppliedAt: '2026-09-26T09:08:15.504Z',
+      lastFailureAt: '2026-09-26T09:04:04.815Z',
+      lastFailureCode: 'unserved_zone',
+      servedZoneCount: 2,
+      targetAssignmentCount: 2,
+      unservedZoneCount: 0,
+    },
+    policy: { ...state.policy, target: 2 },
+  };
+}
+
+function appliedPlacementState(
+  plan: ReturnType<typeof previewPlan>,
+  version: number,
+): AuthorPlacementState {
+  const state = placementState(version);
+  return {
+    ...state,
+    assignments: plan.entries,
+    currentPlanId: plan.planId,
+    metrics: {
+      ...state.metrics,
+      activeAssignmentCount: plan.entries.length,
+      activeZoneCount: 1,
+      lastAppliedAt: '2026-09-26T09:08:15.504Z',
+      servedZoneCount: 1,
+      targetAssignmentCount: plan.entries.length,
+      unservedZoneCount: 0,
+    },
+    policy: { ...state.policy, target: plan.entries.length },
+  };
+}
+
+function unservedPlan() {
+  return {
+    ...previewPlan(),
+    entries: [],
+    exceptions: ['unserved_zone'],
+    status: 'unserved' as const,
+    validation: {
+      coverage: [
+        {
+          actual: 0,
+          mandatory: 1,
+          preferred: 2,
+          status: 'unserved' as const,
+          zoneId: zoneEast,
+        },
+        {
+          actual: 0,
+          mandatory: 1,
+          preferred: 2,
+          status: 'unserved' as const,
+          zoneId: zoneWest,
+        },
+      ],
+      separation: {
+        blockedSites: [],
+        minimumMetres: 150,
+      },
+    },
+    zoneCounts: { [zoneEast]: 0, [zoneWest]: 0 },
+  };
+}
+
 function installPlacementApi(
   options: {
     applyResponse?: () => Response;
     history?: () => Response;
+    preview?: () => Promise<Response> | Response;
     state?: () => AuthorPlacementState | Response;
   } = {},
 ) {
@@ -573,6 +828,8 @@ function installPlacementApi(
         });
       }
       if (method === 'POST' && path === '/author/event-placement/previews') {
+        const previewResponse = await options.preview?.();
+        if (previewResponse) return previewResponse;
         return jsonResponse({
           plan: previewPlan(),
           requestId: 'request-preview',

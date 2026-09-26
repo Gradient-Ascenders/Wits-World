@@ -36,6 +36,11 @@ async function main() {
       `Published Basic demo challenges: ${result.verification.basicDemoChallengeCount}`,
     );
   }
+  if (result.verification.basicDemoPortableEventCount !== undefined) {
+    console.log(
+      `Placement-ready Basic demo events: ${result.verification.basicDemoPortableEventCount}`,
+    );
+  }
 
   if (result.verification.verifiedEventCount !== undefined) {
     console.log(`Verified events: ${result.verification.verifiedEventCount}`);

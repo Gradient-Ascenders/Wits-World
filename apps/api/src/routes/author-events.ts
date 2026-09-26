@@ -19,6 +19,7 @@ interface AuthorEventParams {
 }
 
 interface AuthorEventBody {
+  automaticPlacement: boolean;
   title: string;
   description?: string | null;
   latitude: number;
@@ -89,6 +90,7 @@ const authorEventSchema = {
   additionalProperties: false,
   required: [
     'eventId',
+    'automaticPlacement',
     'title',
     'description',
     'latitude',
@@ -110,6 +112,9 @@ const authorEventSchema = {
     'publicationProvenance',
   ],
   properties: {
+    automaticPlacement: {
+      type: 'boolean',
+    },
     eventId: {
       type: 'string',
       format: 'uuid',
@@ -184,6 +189,7 @@ const authorEventBodySchema = {
   type: 'object',
   additionalProperties: false,
   required: [
+    'automaticPlacement',
     'title',
     'latitude',
     'longitude',
@@ -192,6 +198,9 @@ const authorEventBodySchema = {
     'endsAt',
   ],
   properties: {
+    automaticPlacement: {
+      type: 'boolean',
+    },
     title: {
       type: 'string',
       minLength: 1,
@@ -363,6 +372,7 @@ export const authorEventRoutes: FastifyPluginAsync<
       try {
         const event = await service.createEvent({
           actorPlayerId: author.id,
+          automaticPlacement: request.body.automaticPlacement,
           title: request.body.title,
           description: request.body.description,
           latitude: request.body.latitude,
@@ -427,6 +437,7 @@ export const authorEventRoutes: FastifyPluginAsync<
       try {
         const event = await service.updateEvent({
           actorPlayerId: author.id,
+          automaticPlacement: request.body.automaticPlacement,
           eventId: request.params.eventId,
           title: request.body.title,
           description: request.body.description,

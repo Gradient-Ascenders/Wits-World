@@ -45,6 +45,7 @@ const activePlayer = {
 };
 
 const authoredEvent: AuthorEvent = {
+  automaticPlacement: false,
   eventId: EVENT_ID,
   title: 'Great Hall Challenge',
   description: 'Explore East Campus.',
@@ -496,6 +497,7 @@ function createPlayerResolveMock() {
 
 function validEventBody() {
   return {
+    automaticPlacement: false,
     title: 'Great Hall Challenge',
     description: 'Explore East Campus.',
     latitude: -26.19205,

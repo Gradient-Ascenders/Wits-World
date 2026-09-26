@@ -109,6 +109,7 @@ export interface MapConfiguration {
   initialBounds?: MapBounds;
   initialBoundsPadding?: number;
   pitch: number;
+  showResetViewControl?: boolean;
   standardConfig: MapboxStandardConfiguration;
   styleUrl: string;
   zoom: number;
@@ -806,7 +807,9 @@ export const createMapboxMap: MapFactory = async (
     }),
     'top-right',
   );
-  map.addControl(new ResetViewControl(configuration), 'top-right');
+  if (configuration.showResetViewControl !== false) {
+    map.addControl(new ResetViewControl(configuration), 'top-right');
+  }
   map.addControl(
     new mapboxgl.AttributionControl({ compact: true }),
     'bottom-right',

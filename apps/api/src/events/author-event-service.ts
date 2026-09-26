@@ -11,6 +11,7 @@ import {
 export type AuthorEventStatus = AuthorContentStatus;
 
 export interface AuthorEvent {
+  automaticPlacement: boolean;
   eventId: string;
   title: string;
   description: string | null;
@@ -35,6 +36,7 @@ export interface AuthorEvent {
 
 export interface AuthorEventInput {
   actorPlayerId: string;
+  automaticPlacement: boolean;
   title: string;
   description?: string | null;
   latitude: number;
@@ -85,6 +87,7 @@ export interface AuthorEventTransactionClient {
 }
 
 interface AuthorEventRow extends pg.QueryResultRow {
+  automatic_placement: boolean;
   event_id: string;
   title: string;
   description: string | null;
@@ -136,6 +139,7 @@ export class AuthorEventNotReadyError extends Error {
 }
 
 interface AuthorEventLockRow extends pg.QueryResultRow {
+  automatic_placement: boolean;
   status: AuthorEventStatus;
   version: number;
 }
@@ -161,6 +165,14 @@ export function createAuthorEventService(
               event.starts_at,
               event.ends_at,
               event.is_published,
+              exists (
+                select 1
+                from public.event_placement_portability portability
+                join public.event_placement_state state on state.singleton = true
+                where portability.event_id = event.id
+                  and portability.policy_version_id = state.current_policy_version_id
+                  and portability.ended_at is null
+              ) as automatic_placement,
               event.authoring_status,
               event.retired_at,
               event.version,
@@ -176,7 +188,7 @@ export function createAuthorEventService(
           `,
         );
 
-        return result.rows.map(mapAuthorEvent);
+        return result.rows.map((row) => mapAuthorEvent(row));
       } finally {
         client.release();
       }
@@ -221,6 +233,7 @@ export function createAuthorEventService(
               starts_at,
               ends_at,
               is_published,
+              false as automatic_placement,
               authoring_status,
               retired_at,
               version,
@@ -259,7 +272,15 @@ export function createAuthorEventService(
           resultingVersion: 0,
         });
 
-        return mapAuthorEvent(row);
+        if (validated.automaticPlacement) {
+          await syncAutomaticPlacement(client, {
+            actorPlayerId: validated.actorPlayerId,
+            enabled: true,
+            eventId: row.event_id,
+          });
+        }
+
+        return mapAuthorEvent(row, validated.automaticPlacement);
       });
     },
 
@@ -301,6 +322,7 @@ export function createAuthorEventService(
               starts_at,
               ends_at,
               is_published,
+              false as automatic_placement,
               authoring_status,
               retired_at,
               version,
@@ -341,7 +363,15 @@ export function createAuthorEventService(
           resultingVersion: row.version,
         });
 
-        return mapAuthorEvent(row);
+        if (locked.automatic_placement !== validated.automaticPlacement) {
+          await syncAutomaticPlacement(client, {
+            actorPlayerId: validated.actorPlayerId,
+            enabled: validated.automaticPlacement,
+            eventId: row.event_id,
+          });
+        }
+
+        return mapAuthorEvent(row, validated.automaticPlacement);
       });
     },
 
@@ -367,6 +397,14 @@ async function transitionEvent(
       action,
       note: input.note,
     });
+
+    if (action === 'publish' || action === 'retire') {
+      await advanceAutomaticPlacementEligibility(
+        client,
+        input.eventId,
+        input.actorPlayerId,
+      );
+    }
     return loadEvent(client, input.eventId);
   });
 }
@@ -381,6 +419,14 @@ async function loadEvent(
        st_y(location::geometry) as latitude,
        st_x(location::geometry) as longitude,
        radius_metres, source_urls, starts_at, ends_at, is_published, authoring_status,
+       exists (
+         select 1
+         from public.event_placement_portability portability
+         join public.event_placement_state state on state.singleton = true
+         where portability.event_id = events.id
+           and portability.policy_version_id = state.current_policy_version_id
+           and portability.ended_at is null
+       ) as automatic_placement,
        retired_at, version, submitted_by_player_id::text, submitted_at,
        reviewed_by_player_id::text, reviewed_at, publication_provenance,
        created_at, updated_at
@@ -400,7 +446,15 @@ async function lockEvent(
     `
       select
         authoring_status as status,
-        version
+        version,
+        exists (
+          select 1
+          from public.event_placement_portability portability
+          join public.event_placement_state state on state.singleton = true
+          where portability.event_id = events.id
+            and portability.policy_version_id = state.current_policy_version_id
+            and portability.ended_at is null
+        ) as automatic_placement
       from public.events
       where id = $1::uuid
       for update
@@ -424,6 +478,12 @@ function validateAuthorEventInput<T extends AuthorEventInput>(
   description: string | null;
 } {
   const title = input.title.trim();
+
+  if (typeof input.automaticPlacement !== 'boolean') {
+    throw new InvalidAuthorEventError(
+      'Automatic placement must be enabled or disabled.',
+    );
+  }
 
   if (title.length === 0) {
     throw new InvalidAuthorEventError('Event title must not be blank.');
@@ -491,8 +551,12 @@ function validateAuthorEventInput<T extends AuthorEventInput>(
   };
 }
 
-function mapAuthorEvent(row: AuthorEventRow): AuthorEvent {
+function mapAuthorEvent(
+  row: AuthorEventRow,
+  automaticPlacement = row.automatic_placement,
+): AuthorEvent {
   return {
+    automaticPlacement,
     eventId: row.event_id,
     title: row.title,
     description: row.description,
@@ -514,6 +578,126 @@ function mapAuthorEvent(row: AuthorEventRow): AuthorEvent {
     reviewedAt: row.reviewed_at?.toISOString() ?? null,
     publicationProvenance: row.publication_provenance,
   };
+}
+
+interface PlacementStateRow extends pg.QueryResultRow {
+  current_plan_id: string | null;
+  observed_at: Date;
+  policy_version_id: string;
+  version: string;
+}
+
+async function lockPlacementState(
+  client: AuthorEventTransactionClient,
+): Promise<PlacementStateRow> {
+  const result = await client.query<PlacementStateRow>(
+    `select current_policy_version_id as policy_version_id,
+            current_plan_id::text, version::text, now() as observed_at
+       from public.event_placement_state
+      where singleton = true
+      for update`,
+  );
+  const state = result.rows[0];
+  if (!state) throw new Error('Placement policy state has not been seeded.');
+  return state;
+}
+
+async function syncAutomaticPlacement(
+  client: AuthorEventTransactionClient,
+  input: { actorPlayerId: string; enabled: boolean; eventId: string },
+): Promise<void> {
+  const state = await lockPlacementState(client);
+
+  if (input.enabled) {
+    await client.query(
+      `insert into public.event_placement_portability
+       (event_id, policy_version_id, approved_by_player_id,
+        review_provenance, effective_at)
+       values ($1::uuid, $2, $3::uuid, 'reviewed', $4)`,
+      [
+        input.eventId,
+        state.policy_version_id,
+        input.actorPlayerId,
+        state.observed_at,
+      ],
+    );
+  } else {
+    await client.query(
+      `update public.event_placement_portability
+          set ended_at = $3, end_reason = 'automatic_placement_disabled'
+        where event_id = $1::uuid and policy_version_id = $2
+          and ended_at is null`,
+      [input.eventId, state.policy_version_id, state.observed_at],
+    );
+    await client.query(
+      `update public.event_placement_assignments
+          set ends_at = $2, end_reason = 'portability_ended'
+        where event_id = $1::uuid and ends_at is null`,
+      [input.eventId, state.observed_at],
+    );
+  }
+
+  await advancePlacementState(client, state, input.actorPlayerId, {
+    operation: input.enabled
+      ? 'enable_automatic_placement'
+      : 'disable_automatic_placement',
+    reason: input.enabled
+      ? 'Enabled from the event editor.'
+      : 'Disabled from the event editor.',
+  });
+}
+
+async function advanceAutomaticPlacementEligibility(
+  client: AuthorEventTransactionClient,
+  eventId: string,
+  actorPlayerId: string,
+): Promise<void> {
+  const state = await lockPlacementState(client);
+  const enabled = await client.query(
+    `select id
+       from public.event_placement_portability
+      where event_id = $1::uuid and policy_version_id = $2
+        and ended_at is null`,
+    [eventId, state.policy_version_id],
+  );
+  if (!enabled.rows[0]) return;
+
+  await advancePlacementState(client, state, actorPlayerId, {
+    operation: 'automatic_placement_eligibility',
+    reason: 'The event publication state changed.',
+  });
+}
+
+async function advancePlacementState(
+  client: AuthorEventTransactionClient,
+  state: PlacementStateRow,
+  actorPlayerId: string,
+  audit: { operation: string; reason: string },
+): Promise<void> {
+  const resultingVersion = Number(state.version) + 1;
+  await client.query(
+    `update public.event_placement_state
+        set version = version + 1, updated_at = $1
+      where singleton = true`,
+    [state.observed_at],
+  );
+  await client.query(
+    `insert into public.event_placement_audit
+     (policy_version_id, actor_player_id, operation,
+      previous_state_version, resulting_state_version, reason,
+      previous_state, resulting_state)
+     values ($1, $2::uuid, $3, $4, $5, $6, $7::jsonb, $8::jsonb)`,
+    [
+      state.policy_version_id,
+      actorPlayerId,
+      audit.operation,
+      Number(state.version),
+      resultingVersion,
+      audit.reason,
+      JSON.stringify({ currentPlanId: state.current_plan_id }),
+      JSON.stringify({ currentPlanId: state.current_plan_id }),
+    ],
+  );
 }
 
 async function withTransaction<T>(

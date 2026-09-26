@@ -487,6 +487,44 @@ describe('Basic author console', () => {
     });
   });
 
+  it('creates an automatic-placement event without asking for a fixed map point', async () => {
+    const user = userEvent.setup();
+    const fetchMock = installAuthorApi({ events: [] });
+    renderAuthorRoute(authorPaths.newEvent);
+
+    await user.type(
+      await screen.findByLabelText('Event title'),
+      'Rotating campus quiz',
+    );
+    await user.click(
+      screen.getByRole('checkbox', { name: /Automatic placement/ }),
+    );
+
+    expect(screen.queryByText('Event location')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Location will be assigned automatically'),
+    ).toBeVisible();
+
+    await user.type(screen.getByLabelText('Starts at'), '2026-09-01T08:00');
+    await user.type(screen.getByLabelText('Ends at'), '2026-09-01T12:00');
+    await user.click(
+      screen.getByRole('button', { name: 'Create draft event' }),
+    );
+
+    expect(await screen.findByText('Draft event created.')).toHaveFocus();
+    const createCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input).endsWith('/author/events') && init?.method === 'POST',
+    );
+    expect(JSON.parse(String(createCall?.[1]?.body))).toMatchObject({
+      automaticPlacement: true,
+      latitude: -26.1929,
+      longitude: 28.0305,
+      radiusMetres: 75,
+      title: 'Rotating campus quiz',
+    });
+  });
+
   it('edits an event definition and preserves API field validation on its control', async () => {
     const user = userEvent.setup();
     const validationResponse = problemResponse(
@@ -2817,6 +2855,7 @@ function authenticatedAuthor(): Auth0ContextInterface {
 
 function eventFixture(overrides: Partial<AuthorEvent> = {}): AuthorEvent {
   return {
+    automaticPlacement: false,
     authoringStatus: 'draft',
     createdAt: '2026-08-16T08:00:00.000Z',
     description: 'East Campus history.',

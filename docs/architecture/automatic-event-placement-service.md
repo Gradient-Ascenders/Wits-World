@@ -5,8 +5,8 @@ title: Automatic event placement service
 # Automatic event placement service
 
 Issue `#262` connects the reviewed `placement-v1` catalogue to player event
-locations. The API selects assignments from explicitly approved portable
-events, active reviewed sites, and active coverage zones. Published events
+locations. The API selects assignments from published events whose Authors
+enabled **Automatic placement**, active reviewed sites, and active coverage zones. Published events
 without portability history continue to use their authored points. A portable
 event without a valid current assignment is unavailable to players; it never
 falls back to its authored point.
@@ -67,7 +67,7 @@ The Author identity comes from the validated token, never the request body.
 | `POST /author/event-placement/overrides/:id/end`      | End an override early                                                                                                                                           |
 | `POST /author/event-placement/sites/:id/status`       | Suspend, reactivate, or retire a reviewed site                                                                                                                  |
 | `POST /author/event-placement/zones/:id/status`       | Suspend, reactivate, or retire a reviewed zone                                                                                                                  |
-| `POST /author/event-placement/events/:id/portability` | Approve or withdraw a separately reviewed portable event                                                                                                        |
+| `POST /author/event-placement/events/:id/portability` | Legacy operational compatibility for enabling or withdrawing placement management; normal Authoring uses the event editor checkbox                              |
 | `POST /author/event-placement/rollback`               | Create and apply a new plan from `sourcePlanId`                                                                                                                 |
 
 ## Author workspace
@@ -88,9 +88,11 @@ preview. Author navigation and route guards hide the workspace from ordinary
 players; every API route independently enforces authentication, active-player
 status, and the Author role.
 
-The workspace intentionally does not expose site/zone lifecycle controls or
-portable-event approval. Those existing API operations remain separate review
-workflows. Map failure leaves all placement data and actions available through
+The workspace intentionally does not expose site/zone lifecycle controls or a
+separate portable-event approval. An Author enables **Automatic placement** in
+the normal event create/edit form. The choice is persisted with the draft; once
+the event is published and content-ready, it enters the placement pool without
+another approval action. Map failure leaves all placement data and actions available through
 the semantic tables and controls. The map receives reviewed site points and zone
 geometry only; it receives no player location, fixed-event coordinate, or
 placement-decision input.
@@ -98,9 +100,9 @@ placement-decision input.
 Pins require `eventId` and `siteId`; site exclusions require `siteId`; pauses
 take neither. An idempotency key replay with the same payload returns the
 existing override. A changed payload returns HTTP `409`. Site exclusion,
-suspension, retirement, and portability withdrawal close affected assignments
-in the same transaction. Authors must review event wording and evidence for
-landmark independence before approving portability. Existing fixed,
+suspension, retirement, and disabling Automatic placement close affected assignments
+in the same transaction. Authors should enable Automatic placement only when
+event wording and evidence remain valid at any reviewed campus site. Existing fixed,
 landmark-specific published content should remain fixed; the appropriate path
 is a separately reviewed replacement event.
 
@@ -128,13 +130,13 @@ There are no new environment variables. The API process hosts the scheduler;
 Azure App Service `Always On` must stay enabled. Multiple API instances use
 the same placement-state lock and scheduled-plan uniqueness boundary.
 
-The initial seed has no portable-event approvals, so the worker may record a
-safe unserved-zone failure until reviewed portable replacements are approved.
+The initial seed has no automatic-placement events, so the worker may record a
+safe unserved-zone failure until suitable events are created and published.
 Authors can inspect recent plans through the history route. Operational logs
 contain outcome and duration, without player location or challenge answers.
-Deployment verification should confirm migration and seed completion, API
+Deployment verification should confirm migration `0059`, seed completion, API
 health, an Author preview/history response, and unchanged fixed-event
-discovery. A live rotation requires reviewed portable content and should not
+discovery. A live rotation requires published automatic-placement content and should not
 be manufactured from existing landmark-specific events.
 
 The preceding document was generated and edited with the assistance of:
