@@ -23,6 +23,7 @@ import {
   listAuthorEvents,
   listAuthorQuestions,
   transitionAuthorContent,
+  transitionAuthorEventReviewPackage,
   updateAuthorEvent,
   updateAuthorQuestion,
   type AuthorCard,
@@ -169,6 +170,7 @@ export function EventWorkspace({
 
   const selectedId = 'eventId' in route ? route.eventId : null;
   const routeContext = `${route.mode}:${selectedId ?? ''}`;
+  const focusContext = `${route.mode === 'challenge' || route.mode === 'questions' ? 'detail' : route.mode}:${selectedId ?? ''}`;
   if (routeContextRef.current !== routeContext) {
     routeContextRef.current = routeContext;
     interactionRef.current += 1;
@@ -178,11 +180,11 @@ export function EventWorkspace({
   useEffect(() => {
     if (state !== 'ready') return;
     if (focusRouteRef.current === null) {
-      focusRouteRef.current = routeContext;
+      focusRouteRef.current = focusContext;
       return;
     }
-    if (focusRouteRef.current === routeContext) return;
-    focusRouteRef.current = routeContext;
+    if (focusRouteRef.current === focusContext) return;
+    focusRouteRef.current = focusContext;
     const timer = window.setTimeout(() => {
       (route.mode === 'list'
         ? catalogueRef.current
@@ -190,7 +192,7 @@ export function EventWorkspace({
       )?.focus();
     });
     return () => window.clearTimeout(timer);
-  }, [route.mode, routeContext, state]);
+  }, [focusContext, route.mode, state]);
 
   const selected = events.find((event) => event.eventId === selectedId) ?? null;
   const visibleEvents = useMemo(
@@ -256,7 +258,7 @@ export function EventWorkspace({
 
     if (!isCurrentInteraction) return true;
     selectedIdRef.current = event.eventId;
-    const targetContext = `overview:${event.eventId}`;
+    const targetContext = `challenge:${event.eventId}`;
     navigate(authorPaths.event(event.eventId));
     if (notice)
       announce(
@@ -326,7 +328,7 @@ export function EventWorkspace({
 
       {state === 'ready' ? (
         <div
-          className={`author-management-view${route.mode === 'list' ? ' author-management-view--list' : ' author-management-view--record'}${route.mode === 'questions' ? ' author-management-view--questions' : ''}`}
+          className={`author-management-view${route.mode === 'list' ? ' author-management-view--list' : ' author-management-view--record'}${route.mode === 'questions' || route.mode === 'challenge' ? ' author-management-view--questions' : ''}`}
         >
           <aside
             aria-label="Authored events"
@@ -425,7 +427,7 @@ export function EventWorkspace({
                   onCancel={() => navigate(authorPaths.event(selected.eventId))}
                   onSaved={updateEvent}
                 />
-              ) : route.mode === 'challenge' || route.mode === 'questions' ? (
+              ) : (
                 <ChallengeWorkspace
                   apiBaseUrl={apiBaseUrl}
                   cards={cards}
@@ -441,17 +443,6 @@ export function EventWorkspace({
                   onOpenCards={onOpenCards}
                   onReloadCards={onReloadCards}
                   route={route}
-                  view={route.mode}
-                />
-              ) : (
-                <EventOverview
-                  apiBaseUrl={apiBaseUrl}
-                  event={selected}
-                  getAccessToken={getAccessToken}
-                  interaction={interactionRef.current}
-                  mutationCoordinator={mutationCoordinator}
-                  onConflict={reloadAfterLifecycleConflict}
-                  onSaved={updateEvent}
                 />
               )
             ) : (
@@ -571,13 +562,7 @@ function MissingEvent() {
   );
 }
 
-function EventContextHeader({
-  active,
-  event,
-}: {
-  active: 'challenge' | 'overview' | 'questions';
-  event: AuthorEvent;
-}) {
+function EventContextHeader({ event }: { event: AuthorEvent }) {
   return (
     <>
       <Link className="author-back-link" href={authorPaths.events}>
@@ -590,210 +575,7 @@ function EventContextHeader({
         </div>
         <StatusBadge status={event.authoringStatus} />
       </header>
-      <nav aria-label={`${event.title} sections`} className="author-tabs">
-        <Link
-          aria-current={active === 'overview' ? 'page' : undefined}
-          className="author-tabs__link"
-          href={authorPaths.event(event.eventId)}
-        >
-          Overview
-        </Link>
-        <Link
-          aria-current={active === 'challenge' ? 'page' : undefined}
-          className="author-tabs__link"
-          href={authorPaths.eventChallenge(event.eventId)}
-        >
-          Challenge
-        </Link>
-        <Link
-          aria-current={active === 'questions' ? 'page' : undefined}
-          className="author-tabs__link"
-          href={authorPaths.eventQuestions(event.eventId)}
-        >
-          Questions
-        </Link>
-      </nav>
     </>
-  );
-}
-
-function EventOverview({
-  apiBaseUrl,
-  event,
-  getAccessToken,
-  interaction,
-  mutationCoordinator,
-  onConflict,
-  onSaved,
-}: {
-  apiBaseUrl: string;
-  event: AuthorEvent;
-  getAccessToken: ApiAccessTokenProvider;
-  interaction: number;
-  mutationCoordinator: AuthorMutationCoordinator;
-  onConflict: () => Promise<void>;
-  onSaved: EventFormProps['onSaved'];
-}) {
-  const [apiError, setApiError] = useState<AuthorApiError | null>(null);
-  const [busy, setBusy] = useState(false);
-  const feedbackRef = useRef<HTMLDivElement>(null);
-  const operationRef = useRef<AbortController | null>(null);
-
-  useEffect(() => () => operationRef.current?.abort(), []);
-  useEffect(() => {
-    setApiError(null);
-  }, [event.authoringStatus, event.eventId]);
-
-  async function lifecycle(action: AuthorTransitionAction, reason?: string) {
-    const controller = new AbortController();
-    operationRef.current = controller;
-    setBusy(true);
-    setApiError(null);
-    const ticket = mutationCoordinator.beginMutation(
-      `event:${event.eventId}`,
-      'events',
-    );
-    try {
-      const next = await transitionAuthorContent({
-        action,
-        apiBaseUrl,
-        entityId: event.eventId,
-        entityType: 'event',
-        expectedVersion: event.version,
-        getAccessToken,
-        reason,
-        signal: controller.signal,
-      });
-      if (operationRef.current !== controller) return;
-      onSaved(
-        next,
-        event.eventId,
-        interaction,
-        ticket,
-        lifecycleNotice('event', next.authoringStatus),
-      );
-    } catch (error) {
-      if (operationRef.current !== controller) return;
-      if (mutationCoordinator.acceptFailure(ticket, isUncertainError(error))) {
-        const nextError = toAuthorError(error);
-        setApiError(nextError);
-        if (isAuthorContentConflict(nextError)) await onConflict();
-        else window.setTimeout(() => feedbackRef.current?.focus());
-      }
-    } finally {
-      if (operationRef.current === controller) {
-        operationRef.current = null;
-        setBusy(false);
-      }
-    }
-  }
-
-  return (
-    <article aria-label={`${event.title} overview`} className="author-detail">
-      <EventContextHeader active="overview" event={event} />
-      <AuthorFeedback error={apiError} refObject={feedbackRef} />
-
-      <div className="author-overview-grid">
-        <section className="author-summary-block">
-          <p className="eyebrow">Summary</p>
-          <h4>Event definition</h4>
-          <p>
-            {event.description?.trim() ||
-              'No public description has been added.'}
-          </p>
-          <dl className="author-metadata">
-            <div>
-              <dt>Schedule</dt>
-              <dd>{eventScheduleLabel(event)}</dd>
-            </div>
-            <div>
-              <dt>Starts</dt>
-              <dd>
-                <time dateTime={event.startsAt}>
-                  {formatAuthorDateTime(event.startsAt)}
-                </time>
-              </dd>
-            </div>
-            <div>
-              <dt>Ends</dt>
-              <dd>
-                <time dateTime={event.endsAt}>
-                  {formatAuthorDateTime(event.endsAt)}
-                </time>
-              </dd>
-            </div>
-            <div>
-              <dt>Placement</dt>
-              <dd>
-                {event.automaticPlacement
-                  ? event.authoringStatus === 'published'
-                    ? 'Automatic campus rotation'
-                    : 'Automatic after publication'
-                  : `Fixed location · ${event.radiusMetres} m radius`}
-              </dd>
-            </div>
-          </dl>
-          {event.sourceUrls.length > 0 ? (
-            <SourceEvidenceList sourceUrls={event.sourceUrls} />
-          ) : null}
-        </section>
-
-        <section className="author-summary-block author-summary-block--next">
-          <p className="eyebrow">Next action</p>
-          <h4>
-            {event.authoringStatus === 'draft'
-              ? 'Prepare the event for review'
-              : event.authoringStatus === 'in_review'
-                ? 'Awaiting independent review'
-                : event.authoringStatus === 'approved'
-                  ? 'Approved for publication'
-                  : event.authoringStatus === 'published'
-                    ? 'Published event'
-                    : 'Retired event'}
-          </h4>
-          <p>
-            {event.authoringStatus === 'draft'
-              ? 'Edit the definition, then complete its challenge and questions.'
-              : event.authoringStatus === 'in_review'
-                ? 'Another Author must approve this submission or return it with a reason.'
-                : event.authoringStatus === 'approved'
-                  ? 'The reviewed version can now be published.'
-                  : event.authoringStatus === 'published'
-                    ? 'Review the live definition or retire it when it should leave discovery.'
-                    : 'This definition is preserved as a read-only historical record.'}
-          </p>
-          <AuthorLifecycleControls
-            busy={busy}
-            editControl={
-              <Link
-                className="button"
-                href={authorPaths.editEvent(event.eventId)}
-              >
-                Edit event
-              </Link>
-            }
-            noun="event"
-            onAction={(action, reason) => void lifecycle(action, reason)}
-            retirementDescription={
-              <p>
-                This event will leave player discovery and cannot be
-                republished. Historical attempts remain intact.
-              </p>
-            }
-            retirementTitle={`Retire ${event.title}?`}
-            status={event.authoringStatus}
-            submittedBy={event.submittedBy}
-          />
-        </section>
-      </div>
-      <AuthorHistoryPanel
-        apiBaseUrl={apiBaseUrl}
-        entityId={event.eventId}
-        entityType="event"
-        getAccessToken={getAccessToken}
-        revision={event.version}
-      />
-    </article>
   );
 }
 
@@ -972,7 +754,7 @@ function EventForm({
         href={event ? authorPaths.event(event.eventId) : authorPaths.events}
       >
         <ArrowLeftIcon size={16} aria-hidden="true" />{' '}
-        {event ? 'Event overview' : 'Events'}
+        {event ? 'Event' : 'Events'}
       </Link>
       <header className="author-panel__heading">
         <div>
@@ -1262,7 +1044,6 @@ interface ChallengeWorkspaceProps {
   onOpenCards: () => void;
   onReloadCards: () => void;
   route: Extract<AuthorWorkspaceRoute, { section: 'events' }>;
-  view: 'challenge' | 'questions';
 }
 
 function ChallengeWorkspace({
@@ -1279,7 +1060,6 @@ function ChallengeWorkspace({
   onOpenCards,
   onReloadCards,
   route,
-  view,
 }: ChallengeWorkspaceProps) {
   const [challenges, setChallenges] = useState<AuthorChallenge[]>([]);
   const [questions, setQuestions] = useState<AuthorQuestion[]>([]);
@@ -1425,7 +1205,6 @@ function ChallengeWorkspace({
 
   useEffect(() => {
     if (
-      view === 'questions' &&
       route.mode === 'questions' &&
       !route.challengeId &&
       selectedChallengeId
@@ -1434,7 +1213,7 @@ function ChallengeWorkspace({
         replace: true,
       });
     }
-  }, [event.eventId, navigate, route, selectedChallengeId, view]);
+  }, [event.eventId, navigate, route, selectedChallengeId]);
 
   const loadQuestions = useCallback(async () => {
     questionRequestRef.current?.abort();
@@ -1522,14 +1301,6 @@ function ChallengeWorkspace({
     ) ?? null;
   const challengeRetirementBlocked =
     selected?.status === 'published' && event.authoringStatus === 'published';
-  const publishedQuestions =
-    questionsState === 'ready'
-      ? questions.filter(
-          (question) =>
-            question.challengeId === selectedChallengeId &&
-            question.status === 'published',
-        ).length
-      : 0;
   const hasActiveCommon = cards.some(
     (card) =>
       card.authoringStatus === 'published' &&
@@ -1566,7 +1337,7 @@ function ChallengeWorkspace({
     setQuestionsError(null);
     setMessage('');
     setApiError(null);
-    if (view === 'questions') {
+    if (route.mode === 'questions') {
       navigate(authorPaths.questions(event.eventId, challengeId));
     } else if (route.mode === 'challenge') {
       navigate(authorPaths.challenge(event.eventId, challengeId));
@@ -1744,16 +1515,26 @@ function ChallengeWorkspace({
     );
     let shouldFocus = false;
     try {
-      const next = await transitionAuthorContent({
-        action,
-        apiBaseUrl,
-        entityId: event.eventId,
-        entityType: 'event',
-        expectedVersion: event.version,
-        getAccessToken,
-        reason,
-        signal: controller.signal,
-      });
+      const next =
+        action === 'retire'
+          ? await transitionAuthorContent({
+              action,
+              apiBaseUrl,
+              entityId: event.eventId,
+              entityType: 'event',
+              expectedVersion: event.version,
+              getAccessToken,
+              signal: controller.signal,
+            })
+          : await transitionAuthorEventReviewPackage({
+              action,
+              apiBaseUrl,
+              eventId: event.eventId,
+              expectedVersion: event.version,
+              getAccessToken,
+              reason,
+              signal: controller.signal,
+            });
       if (
         !onEventChanged(
           next,
@@ -1768,6 +1549,14 @@ function ChallengeWorkspace({
         )
       )
         return;
+      if (
+        action !== 'retire' &&
+        interactionActiveRef.current &&
+        challengeInteractionRef.current === startingChallengeInteraction &&
+        selectedChallengeIdRef.current === startingChallengeId
+      ) {
+        await loadChallenges(startingChallengeId ?? undefined);
+      }
     } catch (error) {
       const accepted = mutationCoordinator.acceptFailure(
         ticket,
@@ -1797,388 +1586,299 @@ function ChallengeWorkspace({
     }
   }
 
-  const publishedChallengeCount = challenges.filter(
-    (challenge) => challenge.status === 'published',
-  ).length;
-  const publishedChallengeReady = publishedChallengeCount === 1;
-  const questionRequirementReady =
-    publishedChallengeReady ||
-    (questionsState === 'ready' && publishedQuestions >= 5);
-  const readinessChecking =
-    state === 'loading' ||
-    cardsState === 'loading' ||
-    (!publishedChallengeReady &&
-      Boolean(selected) &&
-      questionsState === 'loading');
-  const readinessUnavailable =
-    state === 'error' ||
-    cardsState === 'error' ||
-    (!publishedChallengeReady &&
-      Boolean(selected) &&
-      questionsState === 'error');
-  const readyCount = [
-    publishedChallengeReady,
-    questionRequirementReady,
-    hasAuthoritativeCommon,
-  ].filter(Boolean).length;
-  const nextAction =
-    state === 'loading'
-      ? 'Checking event challenges.'
-      : state === 'error'
-        ? 'Reload the event challenges.'
-        : publishedChallengeCount > 1
-          ? 'Resolve the published challenge conflict on the server.'
-          : !selected
-            ? 'Create the event challenge.'
-            : !publishedChallengeReady && questionsState === 'loading'
-              ? 'Checking published questions.'
-              : !publishedChallengeReady && questionsState === 'error'
-                ? 'Reload the question readiness check.'
-                : !publishedChallengeReady && selected.status === 'retired'
-                  ? 'Create or select a draft challenge.'
-                  : !publishedChallengeReady && publishedQuestions < 5
-                    ? 'Publish at least five questions.'
-                    : !publishedChallengeReady
-                      ? 'Publish the completed challenge.'
-                      : cardsState === 'loading'
-                        ? 'Checking the reward catalogue.'
-                        : cardsState === 'error'
-                          ? 'Check the reward catalogue again.'
-                          : !hasAuthoritativeCommon
-                            ? 'Publish an active Common reward card.'
-                            : 'Ask the server to publish the event.';
+  const activeChallenges = challenges.filter(
+    (challenge) => challenge.status !== 'retired',
+  );
+  const activeQuestionCount =
+    questionsState === 'ready'
+      ? questions.filter(
+          (question) =>
+            question.challengeId === selectedChallengeId &&
+            question.status !== 'retired',
+        ).length
+      : 0;
+  const questionRoute: Extract<AuthorWorkspaceRoute, { mode: 'questions' }> =
+    route.mode === 'questions'
+      ? route
+      : {
+          challengeId: selected?.challengeId,
+          eventId: event.eventId,
+          mode: 'questions',
+          questionMode: 'list',
+          section: 'events',
+        };
 
   return (
-    <section aria-label={`${event.title} ${view}`} className="author-detail">
-      <EventContextHeader active={view} event={event} />
+    <section aria-label={event.title + ' content'} className="author-detail">
+      <EventContextHeader event={event} />
+      <div className="author-section-heading">
+        <p className="field-help">
+          {eventScheduleLabel(event)} ·{' '}
+          {event.automaticPlacement
+            ? event.authoringStatus === 'published'
+              ? 'Automatic campus rotation'
+              : 'Automatic after publication'
+            : `Fixed location · ${event.radiusMetres} m radius`}
+        </p>
+        {event.authoringStatus === 'draft' ? (
+          <Link
+            className="button button--quiet"
+            href={authorPaths.editEvent(event.eventId)}
+          >
+            Edit event
+          </Link>
+        ) : null}
+      </div>
+      <details className="author-event-details">
+        <summary>Event details</summary>
+        <p>{event.description?.trim() || 'No description.'}</p>
+        <dl className="author-metadata">
+          <div>
+            <dt>Starts</dt>
+            <dd>
+              <time dateTime={event.startsAt}>
+                {formatAuthorDateTime(event.startsAt)}
+              </time>
+            </dd>
+          </div>
+          <div>
+            <dt>Ends</dt>
+            <dd>
+              <time dateTime={event.endsAt}>
+                {formatAuthorDateTime(event.endsAt)}
+              </time>
+            </dd>
+          </div>
+          <div>
+            <dt>Placement</dt>
+            <dd>
+              {event.automaticPlacement
+                ? 'Managed by automatic campus rotation'
+                : 'Uses the authored fixed location'}
+            </dd>
+          </div>
+        </dl>
+        {event.sourceUrls.length > 0 ? (
+          <SourceEvidenceList sourceUrls={event.sourceUrls} />
+        ) : null}
+        <AuthorHistoryPanel
+          apiBaseUrl={apiBaseUrl}
+          entityId={event.eventId}
+          entityType="event"
+          getAccessToken={getAccessToken}
+          revision={event.version}
+        />
+      </details>
 
-      {view === 'questions' || feedbackPlacement === 'challenge' ? (
+      {feedbackPlacement === 'challenge' ? (
         <AuthorFeedback
           error={apiError}
           message={message}
           refObject={feedbackRef}
         />
       ) : null}
-
-      {view === 'challenge' ? (
-        <>
-          <header className="author-section-heading">
-            <div>
-              <p className="eyebrow">Publication workflow</p>
-              <h4>Challenge readiness</h4>
-              <p>
-                {readyCount} of 3 requirements ready.{' '}
-                <strong>{nextAction}</strong>
-              </p>
-            </div>
-            {state === 'ready' ? (
-              <div className="challenge-create-controls">
-                <label htmlFor="new-challenge-format">
-                  New challenge format
-                </label>
-                <select
-                  disabled={busy}
-                  id="new-challenge-format"
-                  onChange={(change) =>
-                    setNewChallengeFormat(
-                      change.target.value as ChallengeFormat,
-                    )
-                  }
-                  value={newChallengeFormat}
-                >
-                  <option value="multiple_choice">Multiple choice</option>
-                  <option value="ordering">Ordering</option>
-                </select>
-                <button
-                  className="button button--quiet"
-                  disabled={busy}
-                  onClick={() => void createChallenge()}
-                  type="button"
-                >
-                  {busy ? 'Creating…' : 'Create challenge'}
-                </button>
-              </div>
-            ) : null}
-          </header>
-
-          <div className="readiness-grid" aria-label="Publication requirements">
-            <ReadinessItem ready={publishedChallengeReady} title="Challenge">
-              {publishedChallengeReady
-                ? 'Exactly one challenge is published.'
-                : 'Publish exactly one challenge.'}
-            </ReadinessItem>
-            <ReadinessItem ready={questionRequirementReady} title="Questions">
-              {publishedChallengeReady
-                ? 'The published challenge meets the server-enforced question minimum.'
-                : questionsState === 'loading'
-                  ? 'Checking published questions…'
-                  : questionsState === 'error'
-                    ? 'Question readiness could not be checked.'
-                    : `${publishedQuestions} of at least 5 are published in this challenge.`}
-            </ReadinessItem>
-            <ReadinessItem ready={hasAuthoritativeCommon} title="Rewards">
-              {cardsState === 'loading'
-                ? 'Checking the Common catalogue…'
-                : cardsState === 'error'
-                  ? 'The reward catalogue could not be checked.'
-                  : hasActiveCommon
-                    ? 'An active Common card is available.'
-                    : 'Publish an active Common card.'}
-            </ReadinessItem>
-          </div>
-
-          {state === 'loading' ? (
-            <LoadingState label="Loading event challenges…" />
-          ) : null}
-          {state === 'error' ? (
-            <div
-              className="author-state author-state--error state-message state-message--error"
-              role="alert"
+      <header className="author-section-heading">
+        <h4>Challenge</h4>
+        {state === 'ready' && activeChallenges.length === 0 ? (
+          <div className="challenge-create-controls">
+            <label htmlFor="new-challenge-format">Format</label>
+            <select
+              disabled={busy}
+              id="new-challenge-format"
+              onChange={(change) =>
+                setNewChallengeFormat(change.target.value as ChallengeFormat)
+              }
+              value={newChallengeFormat}
             >
-              <StateIcon tone="error" />
-              <strong>Challenges are unavailable.</strong>
-              <button
-                className="button button--quiet"
-                onClick={() => void loadChallenges()}
-                type="button"
-              >
-                Reload challenges
-              </button>
-            </div>
-          ) : null}
-
-          {challenges.length > 0 ? (
-            <div className="challenge-selector">
-              <label htmlFor="event-challenge">Challenge</label>
-              <select
-                data-route-focus="preserve"
-                id="event-challenge"
-                onChange={(change) => selectChallenge(change.target.value)}
-                value={selectedChallengeId ?? ''}
-              >
-                {challenges.map((challenge, index) => (
-                  <option
-                    key={challenge.challengeId}
-                    value={challenge.challengeId}
-                  >
-                    Challenge {index + 1} —{' '}
-                    {challengeFormatLabel(challenge.format)} —{' '}
-                    {challenge.status}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : null}
-
-          {selected ? (
-            <section className="author-summary-block">
-              <div className="author-section-heading">
-                <div>
-                  <p className="eyebrow">Selected challenge</p>
-                  <h4>{challengeFormatLabel(selected.format)}</h4>
-                </div>
-                <StatusBadge status={selected.status} />
-              </div>
-              <p>
-                {questions.length} total questions · {publishedQuestions}{' '}
-                published
-              </p>
-              <AuthorLifecycleControls
-                busy={busy}
-                editControl={
-                  <Link
-                    className="button button--quiet"
-                    href={authorPaths.questions(
-                      event.eventId,
-                      selected.challengeId,
-                    )}
-                  >
-                    Manage questions
-                  </Link>
-                }
-                noun="challenge"
-                onAction={(action, reason) =>
-                  void challengeLifecycle(action, reason)
-                }
-                retirementDescription={
-                  <p>
-                    This challenge cannot be edited or published again. Its
-                    event must be retired first when both are published.
-                  </p>
-                }
-                retirementDisabled={challengeRetirementBlocked}
-                retirementDisabledDescription="Retire the event before retiring its published challenge."
-                retirementTitle="Retire this challenge?"
-                status={selected.status}
-                submittedBy={selected.submittedBy}
-              />
-              <AuthorHistoryPanel
-                apiBaseUrl={apiBaseUrl}
-                entityId={selected.challengeId}
-                entityType="challenge"
-                getAccessToken={getAccessToken}
-                revision={selected.version}
-              />
-            </section>
-          ) : null}
-
-          {feedbackPlacement === 'publication' ? (
-            <AuthorFeedback
-              error={apiError}
-              message={message}
-              refObject={feedbackRef}
-            />
-          ) : null}
-          <div className="author-publish-bar">
-            <div>
-              <strong>
-                {readinessChecking
-                  ? 'Checking readiness'
-                  : readinessUnavailable
-                    ? 'Readiness check incomplete'
-                    : readyCount === 3
-                      ? 'Ready for server review'
-                      : 'Publication blocked'}
-              </strong>
-              <p>{nextAction}</p>
-            </div>
-            <div className="author-actions">
-              {!hasAuthoritativeCommon ? (
-                <button
-                  className="button button--quiet"
-                  onClick={onOpenCards}
-                  type="button"
-                >
-                  Open cards
-                </button>
-              ) : null}
-              {cardsState === 'error' ? (
-                <button
-                  className="button button--quiet"
-                  onClick={onReloadCards}
-                  type="button"
-                >
-                  Check cards again
-                </button>
-              ) : null}
-              <AuthorLifecycleControls
-                busy={busy}
-                noun="event"
-                onAction={(action, reason) =>
-                  void eventLifecycle(action, reason)
-                }
-                retirementDescription={
-                  <p>
-                    This event will leave player discovery and cannot be
-                    republished. Historical attempts remain intact.
-                  </p>
-                }
-                retirementTitle={`Retire ${event.title}?`}
-                status={event.authoringStatus}
-                submittedBy={event.submittedBy}
-              />
-            </div>
+              <option value="multiple_choice">Multiple choice</option>
+              <option value="ordering">Ordering</option>
+            </select>
+            <button
+              className="button button--quiet"
+              disabled={busy}
+              onClick={() => void createChallenge()}
+              type="button"
+            >
+              Create challenge
+            </button>
           </div>
-          <p className="field-help">
-            The server rechecks every lifecycle and content requirement when
-            publication is requested.
+        ) : null}
+      </header>
+      {state === 'loading' ? <LoadingState label="Loading challenge…" /> : null}
+      {state === 'error' ? (
+        <div className="author-state author-state--error" role="alert">
+          <strong>Challenge unavailable.</strong>
+          <button
+            className="button button--quiet"
+            onClick={() => void loadChallenges()}
+            type="button"
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
+      {challenges.length > 1 ? (
+        <div className="challenge-selector">
+          <label htmlFor="event-challenge">Challenge</label>
+          <select
+            data-route-focus="preserve"
+            id="event-challenge"
+            onChange={(change) => selectChallenge(change.target.value)}
+            value={selectedChallengeId ?? ''}
+          >
+            {challenges.map((challenge, index) => (
+              <option key={challenge.challengeId} value={challenge.challengeId}>
+                Challenge {index + 1} · {challengeFormatLabel(challenge.format)}{' '}
+                · {challenge.status}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+      {selected ? (
+        <div className="author-section-heading">
+          <p>
+            {challengeFormatLabel(selected.format)} · {selected.status}
           </p>
-        </>
-      ) : (
-        <>
-          <header className="author-section-heading">
-            <div>
-              <p className="eyebrow">Question bank</p>
-              <h4>Questions</h4>
-            </div>
-          </header>
-          {challenges.length > 1 ? (
-            <div className="challenge-selector">
-              <label htmlFor="question-challenge">Challenge</label>
-              <select
-                id="question-challenge"
-                onChange={(change) => selectChallenge(change.target.value)}
-                value={selectedChallengeId ?? ''}
-              >
-                {challenges.map((challenge, index) => (
-                  <option
-                    key={challenge.challengeId}
-                    value={challenge.challengeId}
-                  >
-                    Challenge {index + 1} —{' '}
-                    {challengeFormatLabel(challenge.format)} —{' '}
-                    {challenge.status}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : null}
-          {state === 'loading' || questionsState === 'loading' ? (
-            <LoadingState label="Loading challenge questions…" />
-          ) : null}
-          {state === 'ready' && !selected ? (
-            <div className="author-state">
-              <strong>No challenge is associated.</strong>
-              <p>Create the event challenge before adding questions.</p>
-              <Link
-                className="button button--quiet"
-                href={authorPaths.eventChallenge(event.eventId)}
-              >
-                Open challenge workflow
-              </Link>
-            </div>
-          ) : null}
-          {questionsState === 'error' ? (
-            <div
-              className="author-state author-state--error state-message state-message--error"
-              role="alert"
-            >
-              <StateIcon tone="error" />
-              <strong>Questions are unavailable.</strong>
-              <p>{questionsError ? authorErrorDetail(questionsError) : null}</p>
-              <button
-                className="button button--quiet"
-                onClick={() => void loadQuestions()}
-                type="button"
-              >
-                Reload questions
-              </button>
-            </div>
-          ) : null}
-          {selected &&
-          questionsState === 'ready' &&
-          route.mode === 'questions' ? (
-            <QuestionWorkspace
-              apiBaseUrl={apiBaseUrl}
-              challenge={selected}
-              event={event}
-              getAccessToken={getAccessToken}
-              key={selected.challengeId}
-              mutationCoordinator={mutationCoordinator}
-              navigate={navigate}
-              onLifecycleConflict={async () => {
-                await loadQuestions();
-                if (interactionActiveRef.current) {
-                  setApiError(null);
-                  setMessage(
-                    'The question changed on the server. Its authoritative state was reloaded.',
-                  );
-                }
-              }}
-              onReload={loadQuestions}
-              onQuestionsChange={setQuestions}
-              questions={questions.filter(
-                (question) => question.challengeId === selected.challengeId,
-              )}
-              route={route}
+          {event.authoringStatus === 'draft' && selected.status !== 'draft' ? (
+            <AuthorLifecycleControls
+              busy={busy}
+              noun="challenge"
+              onAction={(action, reason) =>
+                void challengeLifecycle(action, reason)
+              }
+              retirementDescription={
+                <p>Retire the event first if it is published.</p>
+              }
+              retirementDisabled={challengeRetirementBlocked}
+              retirementDisabledDescription="Retire the event first."
+              status={selected.status}
+              submittedBy={selected.submittedBy}
             />
           ) : null}
-        </>
-      )}
+          {event.authoringStatus === 'retired' &&
+          selected.status === 'published' ? (
+            <AuthorLifecycleControls
+              busy={busy}
+              noun="challenge"
+              onAction={(action, reason) =>
+                void challengeLifecycle(action, reason)
+              }
+              retirementDescription={
+                <p>This challenge cannot be republished.</p>
+              }
+              status={selected.status}
+              submittedBy={selected.submittedBy}
+            />
+          ) : null}
+        </div>
+      ) : null}
+
+      <header className="author-section-heading">
+        <h4>Questions</h4>
+        {selected ? <span>{activeQuestionCount} / 5 minimum</span> : null}
+      </header>
+      {selected && questionsState === 'loading' ? (
+        <LoadingState label="Loading questions…" />
+      ) : null}
+      {selected && questionsState === 'error' ? (
+        <div className="author-state author-state--error" role="alert">
+          <strong>Questions unavailable.</strong>
+          <p>{questionsError ? authorErrorDetail(questionsError) : null}</p>
+          <button
+            className="button button--quiet"
+            onClick={() => void loadQuestions()}
+            type="button"
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
+      {selected && questionsState === 'ready' ? (
+        <QuestionWorkspace
+          apiBaseUrl={apiBaseUrl}
+          challenge={selected}
+          event={event}
+          getAccessToken={getAccessToken}
+          key={selected.challengeId}
+          mutationCoordinator={mutationCoordinator}
+          navigate={navigate}
+          onLifecycleConflict={async () => {
+            await loadQuestions();
+            if (interactionActiveRef.current) {
+              setApiError(null);
+              setMessage('Question state reloaded.');
+            }
+          }}
+          onReload={loadQuestions}
+          onQuestionsChange={setQuestions}
+          questions={questions.filter(
+            (question) => question.challengeId === selected.challengeId,
+          )}
+          route={questionRoute}
+        />
+      ) : null}
+
+      {feedbackPlacement === 'publication' ? (
+        <AuthorFeedback
+          error={apiError}
+          message={message}
+          refObject={feedbackRef}
+        />
+      ) : null}
+      <div className="author-publish-bar">
+        <div>
+          <strong>Review package</strong>
+          <p>
+            {activeQuestionCount} questions ·{' '}
+            {hasAuthoritativeCommon ? 'Reward ready' : 'Common reward needed'}
+          </p>
+        </div>
+        <div className="author-actions">
+          {!hasAuthoritativeCommon ? (
+            <button
+              className="button button--quiet"
+              onClick={onOpenCards}
+              type="button"
+            >
+              Open cards
+            </button>
+          ) : null}
+          {cardsState === 'error' ? (
+            <button
+              className="button button--quiet"
+              onClick={onReloadCards}
+              type="button"
+            >
+              Retry cards
+            </button>
+          ) : null}
+          <AuthorLifecycleControls
+            busy={busy}
+            noun="event"
+            reviewPackage
+            submitDisabled={
+              event.authoringStatus === 'draft' &&
+              (activeChallenges.length !== 1 ||
+                questionsState !== 'ready' ||
+                activeQuestionCount < 5)
+            }
+            onAction={(action, reason) => void eventLifecycle(action, reason)}
+            retirementDescription={
+              <p>
+                Retirement removes the event from discovery. Past attempts
+                remain.
+              </p>
+            }
+            retirementTitle={'Retire ' + event.title + '?'}
+            status={event.authoringStatus}
+            submittedBy={event.submittedBy}
+          />
+        </div>
+      </div>
     </section>
   );
 }
-
 interface QuestionWorkspaceProps {
   apiBaseUrl: string;
   challenge: AuthorChallenge;
@@ -2321,7 +2021,8 @@ function QuestionWorkspace({
             <p className="eyebrow">Question bank</p>
             <h5>{questions.length} questions</h5>
           </div>
-          {challenge.status !== 'retired' ? (
+          {challenge.status !== 'retired' &&
+          event.authoringStatus === 'draft' ? (
             <Link
               className="button button--quiet"
               href={authorPaths.newQuestion(
@@ -2341,9 +2042,7 @@ function QuestionWorkspace({
           <div className="author-empty author-empty--compact state-message state-message--empty">
             <StateIcon tone="empty" />
             <strong>No questions yet</strong>
-            <p>
-              A published challenge needs at least five published questions.
-            </p>
+            <p>Add at least five questions before review.</p>
           </div>
         ) : (
           <ol aria-label="Questions" className="question-summary-list">
@@ -2393,10 +2092,7 @@ function QuestionWorkspace({
             <h5>
               {questions.length > 0 ? 'Select a question' : 'Create a question'}
             </h5>
-            <p>
-              Review one prompt at a time. Creating a question is always an
-              explicit action.
-            </p>
+            <p>Select a question to inspect or edit.</p>
           </section>
         ) : route.questionMode === 'new' ? (
           challenge.status !== 'retired' ? (
@@ -2627,21 +2323,25 @@ function QuestionDetail({
         <SourceEvidenceList sourceUrls={question.sourceUrls} />
       ) : null}
       <AuthorFeedback error={apiError} refObject={feedbackRef} />
-      {challenge.status !== 'retired' ? (
+      {challenge.status !== 'retired' &&
+      event.authoringStatus === 'draft' &&
+      question.status === 'draft' ? (
+        <Link
+          className="button"
+          href={authorPaths.editQuestion(
+            event.eventId,
+            challenge.challengeId,
+            question.questionId,
+          )}
+        >
+          Edit question
+        </Link>
+      ) : null}
+      {challenge.status !== 'retired' &&
+      event.authoringStatus === 'draft' &&
+      question.status !== 'draft' ? (
         <AuthorLifecycleControls
           busy={busy}
-          editControl={
-            <Link
-              className="button"
-              href={authorPaths.editQuestion(
-                event.eventId,
-                challenge.challengeId,
-                question.questionId,
-              )}
-            >
-              Edit question
-            </Link>
-          }
           noun="question"
           onAction={(action, reason) => void lifecycle(action, reason)}
           retirementDescription={
@@ -3057,27 +2757,6 @@ function lifecycleNotice(
     published: `${label} published.`,
     retired: `${label} retired.`,
   }[status];
-}
-
-function ReadinessItem({
-  children,
-  ready,
-  title,
-}: {
-  children: React.ReactNode;
-  ready: boolean;
-  title: string;
-}) {
-  return (
-    <div
-      className={`readiness-item readiness-item--${ready ? 'ready' : 'incomplete'}`}
-    >
-      <strong>
-        {ready ? 'Ready' : 'Incomplete'} — {title}
-      </strong>
-      <p>{children}</p>
-    </div>
-  );
 }
 
 function FormField({

@@ -45,7 +45,7 @@ export function ReviewWorkspace({
         entityType: filter === 'all' ? undefined : filter,
         getAccessToken,
         page,
-        pageSize: 20,
+        pageSize: 10,
         signal: controller.signal,
       });
       if (!controller.signal.aborted) {
@@ -156,11 +156,13 @@ export function ReviewWorkspace({
               <div className="author-review__controls">
                 <Link className="button" href={itemPath(item)}>
                   {item.canReview ? 'Review' : 'Open'} {item.entityType}
+                  {item.entityType === 'event' ? ' package' : ''}
                 </Link>
                 {!item.canReview ? (
                   <p className="author-notice" role="status">
-                    This submission is awaiting review by another Author.
-                    Self-approval is not available.
+                    {item.entityType === 'event'
+                      ? 'Another Author must review this event package.'
+                      : 'This submission is awaiting review by another Author. Self-approval is not available.'}
                   </p>
                 ) : null}
               </div>

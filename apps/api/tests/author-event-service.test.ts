@@ -2,6 +2,7 @@ import type pg from 'pg';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  AuthorEventNotReadyError,
   AuthorEventNotFoundError,
   createAuthorEventService,
   InvalidAuthorEventError,
@@ -13,6 +14,66 @@ const AUTHOR_ID = 'b1000000-0000-4000-8000-000000000001';
 const EVENT_ID = 'b2000000-0000-4000-8000-000000000001';
 
 describe('author event service', () => {
+  it('rejects an event package without one challenge and rolls back', async () => {
+    const fixture = createFixture();
+    const queryEvent = successfulImplementation();
+    fixture.query.mockImplementation(async (statement: string) => {
+      if (statement.includes('from public.event_challenges'))
+        return { rows: [] };
+      return queryEvent(statement);
+    });
+
+    await expect(
+      createAuthorEventService(fixture.database).transitionReviewPackage({
+        action: 'submit',
+        actorPlayerId: AUTHOR_ID,
+        eventId: EVENT_ID,
+        expectedVersion: 0,
+      }),
+    ).rejects.toBeInstanceOf(AuthorEventNotReadyError);
+    expect(executedCommands(fixture.query)).toEqual(['begin', 'rollback']);
+    expect(executedSql(fixture.query)).not.toContain('update public.events');
+  });
+
+  it('rolls back the whole package when a question transition fails', async () => {
+    const fixture = createFixture();
+    const queryEvent = successfulImplementation();
+    let questionsLoaded = false;
+    fixture.query.mockImplementation(async (statement: string) => {
+      if (questionsLoaded) throw new Error('child workflow failed');
+      if (statement.includes('from public.event_challenges'))
+        return {
+          rows: [
+            {
+              id: 'b3000000-0000-4000-8000-000000000001',
+              status: 'draft',
+              version: 0,
+            },
+          ],
+        };
+      if (statement.includes('from public.challenge_questions')) {
+        questionsLoaded = true;
+        return {
+          rows: Array.from({ length: 5 }, (_, index) => ({
+            id: `b4000000-0000-4000-8000-00000000000${index + 1}`,
+            status: 'draft',
+            version: 0,
+          })),
+        };
+      }
+      return queryEvent(statement);
+    });
+
+    await expect(
+      createAuthorEventService(fixture.database).transitionReviewPackage({
+        action: 'submit',
+        actorPlayerId: AUTHOR_ID,
+        eventId: EVENT_ID,
+        expectedVersion: 0,
+      }),
+    ).rejects.toThrow('child workflow failed');
+    expect(executedCommands(fixture.query)).toEqual(['begin', 'rollback']);
+  });
   it('creates an unpublished event and audits the acting Author atomically', async () => {
     const fixture = createFixture();
 

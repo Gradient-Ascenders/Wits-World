@@ -3,9 +3,12 @@ import type pg from 'pg';
 import {
   type AuthorContentLifecycle,
   type AuthorContentStatus,
+  AuthorContentStateConflictError,
   assertDraftVersion,
   insertAuthorContentAudit,
+  StaleAuthorContentVersionError,
   transitionAuthorContent,
+  validateExpectedVersion,
 } from '../authoring/content-workflow.js';
 
 export type AuthorEventStatus = AuthorContentStatus;
@@ -58,6 +61,9 @@ export interface AuthorEventTransitionInput {
   note?: string;
 }
 
+export type AuthorEventPackageAction =
+  'submit' | 'approve' | 'return' | 'publish';
+
 export interface AuthorEventService {
   listEvents(): Promise<AuthorEvent[]>;
   createEvent(input: AuthorEventInput): Promise<AuthorEvent>;
@@ -68,6 +74,9 @@ export interface AuthorEventService {
   returnEvent(input: AuthorEventTransitionInput): Promise<AuthorEvent>;
   publishEvent(input: AuthorEventTransitionInput): Promise<AuthorEvent>;
   retireEvent(input: AuthorEventTransitionInput): Promise<AuthorEvent>;
+  transitionReviewPackage(
+    input: AuthorEventTransitionInput & { action: AuthorEventPackageAction },
+  ): Promise<AuthorEvent>;
 }
 
 export interface AuthorEventDatabase {
@@ -380,7 +389,116 @@ export function createAuthorEventService(
     returnEvent: (input) => transitionEvent(database, input, 'return'),
     publishEvent: (input) => transitionEvent(database, input, 'publish'),
     retireEvent: (input) => transitionEvent(database, input, 'retire'),
+    transitionReviewPackage: (input) =>
+      transitionReviewPackage(database, input),
   };
+}
+
+interface PackageContentRow extends pg.QueryResultRow {
+  id: string;
+  status: AuthorContentStatus;
+  version: number;
+}
+
+async function transitionReviewPackage(
+  database: AuthorEventDatabase,
+  input: AuthorEventTransitionInput & { action: AuthorEventPackageAction },
+): Promise<AuthorEvent> {
+  return withTransaction(database, async (client) => {
+    validateExpectedVersion(input.expectedVersion);
+    const event = await lockEvent(client, input.eventId);
+    if (event.version !== input.expectedVersion)
+      throw new StaleAuthorContentVersionError();
+    const allowed: Record<AuthorEventPackageAction, AuthorContentStatus[]> = {
+      submit: ['draft'],
+      approve: ['in_review'],
+      return: ['in_review', 'approved'],
+      publish: ['approved'],
+    };
+    if (!allowed[input.action].includes(event.status)) {
+      throw new AuthorContentStateConflictError(
+        `Cannot ${input.action} event content while it is ${event.status}.`,
+      );
+    }
+
+    const challenges = await client.query<PackageContentRow>(
+      `select id::text, status, version from public.event_challenges
+       where event_id = $1::uuid and status <> 'retired'
+       order by id for update`,
+      [input.eventId],
+    );
+    if (challenges.rows.length !== 1)
+      throw new AuthorEventNotReadyError(
+        'An event review package requires exactly one active challenge.',
+      );
+    const challenge = challenges.rows[0]!;
+    const questions = await client.query<PackageContentRow>(
+      `select id::text, status, version from public.challenge_questions
+       where challenge_id = $1::uuid and status <> 'retired'
+       order by id for update`,
+      [challenge.id],
+    );
+    if (questions.rows.length < 5 && input.action !== 'return')
+      throw new AuthorEventNotReadyError(
+        'An event review package requires at least five questions.',
+      );
+
+    for (const question of questions.rows) {
+      if (!shouldTransitionPackageChild(question.status, input.action))
+        continue;
+      await transitionAuthorContent(client, {
+        entityType: 'question',
+        entityId: question.id,
+        actorPlayerId: input.actorPlayerId,
+        expectedVersion: question.version,
+        action: input.action,
+        note: input.note,
+      });
+    }
+    if (shouldTransitionPackageChild(challenge.status, input.action)) {
+      await transitionAuthorContent(client, {
+        entityType: 'challenge',
+        entityId: challenge.id,
+        actorPlayerId: input.actorPlayerId,
+        expectedVersion: challenge.version,
+        action: input.action,
+        note: input.note,
+        reviewPackage: input.action === 'approve',
+      });
+    }
+    await transitionAuthorContent(client, {
+      entityType: 'event',
+      entityId: input.eventId,
+      actorPlayerId: input.actorPlayerId,
+      expectedVersion: input.expectedVersion,
+      action: input.action,
+      note: input.note,
+      reviewPackage: input.action === 'approve',
+    });
+    return loadEvent(client, input.eventId);
+  });
+}
+
+function shouldTransitionPackageChild(
+  status: AuthorContentStatus,
+  action: AuthorEventPackageAction,
+): boolean {
+  if (action === 'submit') {
+    if (status === 'draft') return true;
+    if (status === 'approved' || status === 'published') return false;
+  } else if (action === 'approve') {
+    if (status === 'in_review') return true;
+    if (status === 'approved' || status === 'published') return false;
+  } else if (action === 'return') {
+    if (status === 'in_review' || status === 'approved') return true;
+    if (status === 'draft' || status === 'published') return false;
+  } else {
+    if (status === 'approved') return true;
+    if (status === 'published') return false;
+  }
+  throw new AuthorContentStateConflictError(
+    `Cannot ${action} an event package with ${status} child content.`,
+  );
 }
 
 async function transitionEvent(
