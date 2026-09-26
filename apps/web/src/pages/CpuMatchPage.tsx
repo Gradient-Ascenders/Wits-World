@@ -7,8 +7,6 @@ import {
   Lightning,
   Heart,
   CaretDown,
-  Sparkle,
-  Sword,
 } from '@phosphor-icons/react';
 import { useAuth0 } from '@auth0/auth0-react';
 import {
@@ -43,7 +41,9 @@ import {
   BattleActionPanel,
   BattleBench,
   BattleCombatant,
+  BattleResolution,
   type BattleFeedbackTone,
+  type BattleResolutionMoment,
 } from '../components/matches/BattlePresentation';
 import {
   battleLogMessage,
@@ -543,6 +543,9 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     viewMatch.battleLog.flatMap((group) => group.events),
   );
   const resolutionEvents = presenting ? battleBeats : latestEvents;
+  const resolutionMoments = resolutionEvents.map((event) =>
+    cpuResolutionMoment(event, presentationMode),
+  );
   const playerFeedback = battleFeedback(activeBeat, 'player');
   const cpuFeedback = battleFeedback(activeBeat, 'cpu');
   const actionLockReason = battleActionLockReason({
@@ -677,10 +680,18 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
                 visualSide="player"
               />
               <BattleResolution
-                activeEvent={activeBeat}
-                activeEventIndex={activeBeatIndex}
-                events={resolutionEvents}
-                mode={presentationMode}
+                activeIndex={activeBeatIndex}
+                activeMoment={
+                  activeBeat
+                    ? cpuResolutionMoment(activeBeat, presentationMode)
+                    : null
+                }
+                heading={
+                  presentationMode === 'opening'
+                    ? 'Battle opening'
+                    : 'Latest resolution'
+                }
+                moments={resolutionMoments}
               />
               <BattleCombatant
                 creature={viewMatch.state.cpu.activeCreature}
@@ -1151,90 +1162,23 @@ function updateActiveCreature(
   if (creature) update(creature);
 }
 
-function BattleResolution({
-  activeEvent,
-  activeEventIndex,
-  events,
-  mode,
-}: {
-  activeEvent: BattleLogEvent | null;
-  activeEventIndex: number | null;
-  events: readonly BattleLogEvent[];
-  mode: PresentationMode | null;
-}) {
-  const visible = events.slice(-2);
-  const activeTone = activeEvent ? battleEventTone(activeEvent) : null;
-  const activeStat = activeEvent ? battleLogStat(activeEvent.message) : null;
-  const ActiveIcon =
-    activeTone === 'heal' || activeTone === 'buff'
-      ? Heart
-      : activeTone === 'damage' ||
-          activeTone === 'debuff' ||
-          activeTone === 'cost'
-        ? Sword
-        : Sparkle;
-  return (
-    <section
-      aria-label="Latest battle resolution"
-      className={`battle-resolution${activeEvent ? ' battle-resolution--active' : ''}`}
-    >
-      <div className="battle-resolution__heading">
-        <strong>
-          {mode === 'opening' ? 'Battle opening' : 'Latest resolution'}
-        </strong>
-        <span>
-          {activeEvent && activeEventIndex !== null
-            ? `Moment ${activeEventIndex + 1} of ${events.length}`
-            : visible.length > 0
-              ? 'Server confirmed'
-              : 'Awaiting action'}
-        </span>
-      </div>
-      {activeEvent ? (
-        <div
-          className="battle-resolution__active"
-          data-tone={activeTone ?? undefined}
-          key={activeEvent.id}
-        >
-          <ActiveIcon aria-hidden="true" size={20} weight="bold" />
-          <p>{presentationMessage(activeEvent, mode ?? 'turn')}</p>
-          {activeStat ? (
-            <strong>
-              {activeStat.direction === 'up' ? '+' : '−'}
-              {activeStat.value} {activeStat.resource}
-            </strong>
-          ) : null}
-        </div>
-      ) : visible.length > 0 ? (
-        <ol>
-          {visible.map((event) => {
-            const stat = battleLogStat(event.message);
-            const tone = battleEventTone(event);
-            const Icon =
-              tone === 'heal'
-                ? Heart
-                : tone === 'damage' || tone === 'cost'
-                  ? Sword
-                  : Sparkle;
-            return (
-              <li data-tone={tone} key={event.id}>
-                <Icon aria-hidden="true" size={16} weight="bold" />
-                <span>{battleLogMessage(event.message)}</span>
-                {stat ? (
-                  <strong>
-                    {stat.direction === 'up' ? '+' : '−'}
-                    {stat.value} {stat.resource}
-                  </strong>
-                ) : null}
-              </li>
-            );
-          })}
-        </ol>
-      ) : (
-        <p>Your first confirmed action will appear here.</p>
-      )}
-    </section>
-  );
+function cpuResolutionMoment(
+  event: BattleLogEvent,
+  mode: PresentationMode | null,
+): BattleResolutionMoment {
+  const stat = battleLogStat(event.message);
+  return {
+    id: event.id,
+    message: presentationMessage(event, mode ?? 'turn'),
+    stat: stat
+      ? {
+          direction: stat.direction,
+          resource: stat.resource === 'HP' ? 'HP' : 'Power',
+          value: stat.value,
+        }
+      : null,
+    tone: battleEventTone(event),
+  };
 }
 
 function battleEventTone(event: BattleLogEvent): BattleFeedbackTone {

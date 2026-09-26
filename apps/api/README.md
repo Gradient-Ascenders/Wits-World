@@ -26,6 +26,9 @@ than player bearer authentication. The cancellation endpoint requires the
 version 3 PvP media type and derives ownership from the
 validated player identity; it never accepts a player ID or result from the
 browser.
+Asynchronous match detail negotiates version 4 to return the complete
+participant-safe public action history through the returned match version;
+unplayed opponent cards and private transition snapshots remain excluded.
 
 The detailed challenge and persistence contracts are documented in the
 [challenge attempt API contract](../../docs/architecture/challenge-attempt-api-contract.md)

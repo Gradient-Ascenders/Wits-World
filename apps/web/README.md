@@ -1289,6 +1289,11 @@ submits a stable versioned cancellation exactly once, reconciles ambiguous
 delivery through polling, and displays server-generated cancellation, deadline,
 account-lifecycle, and voluntary-resignation results.
 
+Player Battle detail prefers the version 4 PvP media type and uses its
+participant-safe full action history for paced resolution playback and the
+activity log. The browser renders these confirmed results but never resolves
+damage, turns, deadlines, or hidden opponent cards itself.
+
 The preceding document was generated and edited with the assistance of:
 Codex-CLI[gpt-5.6-sol medium], Codex-CLI[gpt-5.6-sol], Codex-CLI[GPT-5],
 Codex[GPT-5], and ChatGPT-Web[GPT-5.6 Sol].

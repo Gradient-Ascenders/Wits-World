@@ -3033,6 +3033,18 @@
   color: var(--colour-text-secondary);
 }
 
+@media (min-width: 48rem) and (max-width: 63.99rem) {
+  .combatant__vitals {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .combatant__power {
+    display: flex;
+    gap: var(--space-2);
+    justify-items: normal;
+  }
+}
+
 @media (max-width: 47.99rem) {
   .recent-results__heading {
     align-items: stretch;

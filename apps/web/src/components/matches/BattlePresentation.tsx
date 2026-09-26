@@ -8,6 +8,7 @@ import {
   Heart,
   Lightning,
   Shield,
+  Sparkle,
   Sword,
   TrendDown,
   X,
@@ -37,6 +38,101 @@ export type BattleFeedbackTone =
   | 'defeat'
   | 'heal'
   | 'status';
+
+export interface BattleResolutionMoment {
+  id: string;
+  message: string;
+  stat?: {
+    direction: 'down' | 'up';
+    resource: 'HP' | 'Power';
+    value: string | number;
+  } | null;
+  tone: BattleFeedbackTone;
+}
+
+export function BattleResolution({
+  activeIndex,
+  activeMoment,
+  emptyText = 'Your first confirmed action will appear here.',
+  heading = 'Latest resolution',
+  moments,
+}: {
+  activeIndex: number | null;
+  activeMoment: BattleResolutionMoment | null;
+  emptyText?: string;
+  heading?: string;
+  moments: readonly BattleResolutionMoment[];
+}) {
+  const visible = moments.slice(-2);
+  return (
+    <section
+      aria-label="Latest battle resolution"
+      className={`battle-resolution${activeMoment ? ' battle-resolution--active' : ''}`}
+    >
+      <div className="battle-resolution__heading">
+        <strong>{heading}</strong>
+        <span>
+          {activeMoment && activeIndex !== null
+            ? `Moment ${activeIndex + 1} of ${moments.length}`
+            : visible.length > 0
+              ? 'Server confirmed'
+              : 'Awaiting action'}
+        </span>
+      </div>
+      {activeMoment ? (
+        <ResolutionRow active moment={activeMoment} />
+      ) : visible.length > 0 ? (
+        <ol>
+          {visible.map((moment) => (
+            <ResolutionRow key={moment.id} moment={moment} />
+          ))}
+        </ol>
+      ) : (
+        <p>{emptyText}</p>
+      )}
+    </section>
+  );
+}
+
+function ResolutionRow({
+  active = false,
+  moment,
+}: {
+  active?: boolean;
+  moment: BattleResolutionMoment;
+}) {
+  const Icon =
+    moment.tone === 'heal' || moment.tone === 'buff'
+      ? Heart
+      : moment.tone === 'damage' ||
+          moment.tone === 'debuff' ||
+          moment.tone === 'cost'
+        ? Sword
+        : Sparkle;
+  const content = (
+    <>
+      <Icon aria-hidden="true" size={active ? 20 : 16} weight="bold" />
+      {active ? <p>{moment.message}</p> : <span>{moment.message}</span>}
+      {moment.stat ? (
+        <strong>
+          {moment.stat.direction === 'up' ? '+' : '−'}
+          {moment.stat.value} {moment.stat.resource}
+        </strong>
+      ) : null}
+    </>
+  );
+  return active ? (
+    <div
+      className="battle-resolution__active"
+      data-tone={moment.tone}
+      key={moment.id}
+    >
+      {content}
+    </div>
+  ) : (
+    <li data-tone={moment.tone}>{content}</li>
+  );
+}
 
 interface BattleActionPanelProps {
   activeCreatureId: string | null;

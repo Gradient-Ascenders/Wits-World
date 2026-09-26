@@ -3,7 +3,14 @@ import {
   initialContext,
   type Auth0ContextInterface,
 } from '@auth0/auth0-react';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -752,7 +759,6 @@ describe('asynchronous PvP battle', () => {
     vi.stubGlobal('fetch', fetchMock);
     renderPvpMatch();
 
-    await user.click(await screen.findByText('Leave this battle'));
     const trigger = await screen.findByRole('button', {
       name: 'Forfeit battle',
     });
@@ -831,7 +837,6 @@ describe('asynchronous PvP battle', () => {
     vi.stubGlobal('fetch', fetchMock);
     renderPvpMatch();
 
-    await user.click(await screen.findByText('Leave this battle'));
     await user.click(
       await screen.findByRole('button', { name: 'Forfeit battle' }),
     );
@@ -862,7 +867,6 @@ describe('asynchronous PvP battle', () => {
     vi.stubGlobal('fetch', fetchMock);
     renderPvpMatch();
 
-    await user.click(await screen.findByText('Leave this battle'));
     await user.click(
       await screen.findByRole('button', { name: 'Forfeit battle' }),
     );
@@ -901,7 +905,6 @@ describe('asynchronous PvP battle', () => {
     vi.stubGlobal('fetch', fetchMock);
     renderPvpMatch();
 
-    await user.click(await screen.findByText('Leave this battle'));
     await user.click(
       await screen.findByRole('button', { name: 'Forfeit battle' }),
     );
@@ -1067,6 +1070,99 @@ describe('asynchronous PvP battle', () => {
     expect(
       await screen.findByRole('heading', { name: 'Opponent’s turn' }),
     ).toBeVisible();
+  });
+
+  it('stages confirmed PvP action history before handing over the turn', async () => {
+    const initial = pvpMatch();
+    const action = initial.legalActions[0]!;
+    const opponent = initial.state.opponent.activeCreature!;
+    const result = {
+      action,
+      defeatedCreatureId: null,
+      effects: [
+        {
+          amount: 12,
+          damageMultiplier: 1,
+          effectId: uuid(2600),
+          effectType: 'damage' as const,
+          modifier: null,
+          targetCreatureId: opponent.id,
+          targetSide: 'opponent' as const,
+        },
+      ],
+      side: 'self' as const,
+      turnEnded: true,
+      winner: null,
+    };
+    const resolved = pvpMatch({
+      currentActor: 'opponent',
+      history: [
+        {
+          createdAt: '2026-09-05T09:01:00.000Z',
+          result,
+          sequence: 4,
+          turnNumber: 3,
+        },
+      ],
+      lastAction: result,
+      legalActions: [],
+      state: {
+        opponent: {
+          ...initial.state.opponent,
+          activeCreature: { ...opponent, currentHp: 88 },
+        },
+      },
+      version: 4,
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(pvpMatchResponse(initial))
+        .mockResolvedValueOnce(pvpMatchResponse(resolved)),
+    );
+    renderPvpMatch();
+    const move = await screen.findByRole('button', {
+      name: /Knowledge Strike 1/,
+    });
+    vi.useFakeTimers();
+    await act(async () => {
+      fireEvent.click(move);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(
+      screen.getAllByText('You used Knowledge Strike 1.'),
+    ).not.toHaveLength(0);
+    expect(move).toBeDisabled();
+    expect(document.querySelector('.combatant--player')).toHaveClass(
+      'combatant--acting',
+    );
+    expect(document.querySelector('.combatant--cpu')).toHaveClass(
+      'combatant--dimmed',
+    );
+    expect(screen.getByLabelText('Grit Creature HP')).toHaveAttribute(
+      'value',
+      '100',
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(1_700);
+    });
+    expect(screen.getByLabelText('Grit Creature HP')).toHaveAttribute(
+      'value',
+      '88',
+    );
+    expect(screen.getAllByText(/took 12 damage/).length).toBeGreaterThan(0);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1_600);
+    });
+    expect(
+      screen.getByRole('heading', { name: 'Opponent’s turn' }),
+    ).toHaveFocus();
   });
 
   it('does not start a deadline refresh while a move submission is pending', async () => {

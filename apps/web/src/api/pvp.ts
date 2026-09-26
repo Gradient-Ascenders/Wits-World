@@ -9,7 +9,7 @@ import {
 } from './matches';
 
 const PVP_ACCEPT =
-  'application/vnd.wits-world.pvp.v3+json, application/vnd.wits-world.pvp.v2+json;q=0.9, application/json;q=0.8';
+  'application/vnd.wits-world.pvp.v4+json, application/vnd.wits-world.pvp.v3+json;q=0.9, application/vnd.wits-world.pvp.v2+json;q=0.8, application/json;q=0.7';
 
 export type PvpInvitationStatus =
   'pending' | 'accepted' | 'declined' | 'cancelled' | 'expired' | 'invalidated';
@@ -79,11 +79,19 @@ export interface PvpActionResult {
   winner: 'opponent' | 'self' | null;
 }
 
+export interface PvpActionHistoryEntry {
+  createdAt: string;
+  result: PvpActionResult;
+  sequence: number;
+  turnNumber: number;
+}
+
 export interface AsyncPvpMatch {
   canResign: boolean;
   completedAt: string | null;
   completionReason: PvpCompletionReason | null;
   currentActor: 'opponent' | 'self' | null;
+  history: PvpActionHistoryEntry[];
   lastAction: PvpActionResult | null;
   legalActions: PvpAction[];
   matchId: string;
@@ -601,7 +609,7 @@ function parseHistorySummary(value: unknown): PvpHistorySummary {
 }
 
 function parsePvpMatch(value: unknown): AsyncPvpMatch {
-  const matchKeys = [
+  const legacyMatchKeys = [
     'matchId',
     'mode',
     'status',
@@ -619,10 +627,13 @@ function parsePvpMatch(value: unknown): AsyncPvpMatch {
     'completedAt',
     'requestId',
   ] as const;
+  const matchKeys = [...legacyMatchKeys, 'history'] as const;
   if (
     !isRecord(value) ||
     (!hasExactKeys(value, matchKeys) &&
-      !hasExactKeys(value, [...matchKeys, 'canResign'])) ||
+      !hasExactKeys(value, [...matchKeys, 'canResign']) &&
+      !hasExactKeys(value, legacyMatchKeys) &&
+      !hasExactKeys(value, [...legacyMatchKeys, 'canResign'])) ||
     (value.canResign !== undefined && typeof value.canResign !== 'boolean') ||
     !isUuid(value.matchId) ||
     value.mode !== 'asynchronous' ||
@@ -632,6 +643,7 @@ function parsePvpMatch(value: unknown): AsyncPvpMatch {
     !isNullableRelativeSide(value.currentActor) ||
     !isNullableDateTime(value.turnDeadline) ||
     !Array.isArray(value.legalActions) ||
+    (value.history !== undefined && !Array.isArray(value.history)) ||
     (value.outcome !== null &&
       value.outcome !== 'win' &&
       value.outcome !== 'loss') ||
@@ -646,6 +658,9 @@ function parsePvpMatch(value: unknown): AsyncPvpMatch {
   }
   const state = parseMatchState(value.state);
   const legalActions = value.legalActions.map(parsePvpAction);
+  const history = Array.isArray(value.history)
+    ? value.history.map(parseActionHistoryEntry)
+    : [];
   const lastAction =
     value.lastAction === null ? null : parseActionResult(value.lastAction);
   if (
@@ -666,6 +681,11 @@ function parsePvpMatch(value: unknown): AsyncPvpMatch {
         legalActions.length !== 0 ||
         value.canResign === true)) ||
     (value.currentActor === 'opponent' && legalActions.length !== 0) ||
+    history.some(
+      (entry, index) =>
+        entry.sequence > Number(value.version) ||
+        (index > 0 && history[index - 1]!.sequence >= entry.sequence),
+    ) ||
     state.opponent.playerName !== value.opponent.playerName
   ) {
     throw new PvpApiError('unavailable');
@@ -675,6 +695,7 @@ function parsePvpMatch(value: unknown): AsyncPvpMatch {
     completedAt: value.completedAt,
     completionReason: value.completionReason,
     currentActor: value.currentActor,
+    history,
     lastAction,
     legalActions,
     matchId: value.matchId,
@@ -688,6 +709,26 @@ function parsePvpMatch(value: unknown): AsyncPvpMatch {
     updatedAt: value.updatedAt,
     version: value.version,
   } as AsyncPvpMatch;
+}
+
+function parseActionHistoryEntry(value: unknown): PvpActionHistoryEntry {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ['sequence', 'turnNumber', 'createdAt', 'result']) ||
+    !Number.isInteger(value.sequence) ||
+    Number(value.sequence) < 1 ||
+    !Number.isInteger(value.turnNumber) ||
+    Number(value.turnNumber) < 1 ||
+    !isDateTime(value.createdAt)
+  ) {
+    throw new PvpApiError('unavailable');
+  }
+  return {
+    createdAt: value.createdAt,
+    result: parseActionResult(value.result),
+    sequence: Number(value.sequence),
+    turnNumber: Number(value.turnNumber),
+  };
 }
 
 function parseMatchState(value: unknown): AsyncPvpMatch['state'] {

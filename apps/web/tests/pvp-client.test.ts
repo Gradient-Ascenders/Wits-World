@@ -185,7 +185,7 @@ describe('asynchronous PvP API client', () => {
     });
     expect(fetchMock.mock.calls[0]![1]!.headers).toMatchObject({
       Accept:
-        'application/vnd.wits-world.pvp.v3+json, application/vnd.wits-world.pvp.v2+json;q=0.9, application/json;q=0.8',
+        'application/vnd.wits-world.pvp.v4+json, application/vnd.wits-world.pvp.v3+json;q=0.9, application/vnd.wits-world.pvp.v2+json;q=0.8, application/json;q=0.7',
     });
 
     await expect(
@@ -241,6 +241,54 @@ describe('asynchronous PvP API client', () => {
     await expect(
       getPvpMatch({ ...options(), matchId: PVP_MATCH_ID }),
     ).rejects.toMatchObject({ failure: 'unavailable' });
+    await expect(
+      getPvpMatch({ ...options(), matchId: PVP_MATCH_ID }),
+    ).rejects.toMatchObject({ failure: 'unavailable' });
+  });
+
+  it('parses the complete viewer-safe action history as a closed contract', async () => {
+    const base = pvpMatch();
+    const result = {
+      action: {
+        creatureId: base.state.self.creatures[1]!.id,
+        type: 'select_replacement' as const,
+      },
+      defeatedCreatureId: null,
+      effects: [],
+      side: 'self' as const,
+      turnEnded: true,
+      winner: null,
+    };
+    const match = pvpMatch({
+      history: [
+        {
+          createdAt: '2026-09-05T08:45:00.000Z',
+          result,
+          sequence: 3,
+          turnNumber: 2,
+        },
+      ],
+      lastAction: result,
+    });
+    const leaked = structuredClone(match) as typeof match & {
+      history: Array<
+        (typeof match.history)[number] & { privateState?: object }
+      >;
+    };
+    leaked.history[0]!.privateState = { opponentHand: ['hidden'] };
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(pvpMatchResponse(match))
+        .mockResolvedValueOnce(pvpMatchResponse(leaked)),
+    );
+
+    await expect(
+      getPvpMatch({ ...options(), matchId: PVP_MATCH_ID }),
+    ).resolves.toMatchObject({
+      history: [{ sequence: 3, turnNumber: 2, result }],
+    });
     await expect(
       getPvpMatch({ ...options(), matchId: PVP_MATCH_ID }),
     ).rejects.toMatchObject({ failure: 'unavailable' });
@@ -329,7 +377,7 @@ describe('asynchronous PvP API client', () => {
     );
     expect(fetchMock.mock.calls[0]![1]!.headers).toMatchObject({
       Accept:
-        'application/vnd.wits-world.pvp.v3+json, application/vnd.wits-world.pvp.v2+json;q=0.9, application/json;q=0.8',
+        'application/vnd.wits-world.pvp.v4+json, application/vnd.wits-world.pvp.v3+json;q=0.9, application/vnd.wits-world.pvp.v2+json;q=0.8, application/json;q=0.7',
     });
     expect(fetchMock.mock.calls[0]![1]!.headers).not.toHaveProperty(
       'X-Wits-PvP-Contract-Version',

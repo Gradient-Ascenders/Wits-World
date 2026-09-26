@@ -576,6 +576,13 @@ describe.skipIf(!runIntegrationTests)(
       });
       expect(advanced.version).toBe(1);
       expect(advanced.lastAction).toMatchObject({ side: 'self' });
+      expect(advanced.history).toEqual([
+        expect.objectContaining({
+          sequence: 1,
+          turnNumber: 1,
+          result: expect.objectContaining({ side: 'self' }),
+        }),
+      ]);
       await expect(service.submitAction(actionInput)).resolves.toEqual(
         advanced,
       );

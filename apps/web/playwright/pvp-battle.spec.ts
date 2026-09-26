@@ -192,10 +192,49 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
     if (pathname.endsWith(`/matches/pvp/${match.matchId}/actions`)) {
       actionRequests += 1;
       await new Promise((resolve) => setTimeout(resolve, 150));
+      const result = {
+        action: currentMatch.legalActions[0]!,
+        defeatedCreatureId: null,
+        effects: [
+          {
+            amount: 12,
+            damageMultiplier: 1,
+            effectId: uuid(2190),
+            effectType: 'damage' as const,
+            modifier: null,
+            targetCreatureId: currentMatch.state.opponent.activeCreature!.id,
+            targetSide: 'opponent' as const,
+          },
+        ],
+        side: 'self' as const,
+        turnEnded: true,
+        winner: null,
+      };
       currentMatch = {
         ...currentMatch,
         currentActor: 'opponent',
+        history: [
+          ...currentMatch.history,
+          {
+            createdAt: '2026-09-05T08:35:00.000Z',
+            result,
+            sequence: 4,
+            turnNumber: currentMatch.state.turnNumber,
+          },
+        ],
+        lastAction: result,
         legalActions: [],
+        state: {
+          ...currentMatch.state,
+          opponent: {
+            ...currentMatch.state.opponent,
+            activeCreature: {
+              ...currentMatch.state.opponent.activeCreature!,
+              currentHp:
+                currentMatch.state.opponent.activeCreature!.currentHp - 12,
+            },
+          },
+        },
         updatedAt: '2026-09-05T08:35:00.000Z',
         version: 4,
       };
@@ -400,8 +439,19 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
   await page.getByRole('tab', { name: /^Moves/ }).click();
   await move.dblclick();
   await expect(
+    page
+      .getByRole('region', { name: 'Latest battle resolution' })
+      .getByText('You used Knowledge Strike 1.'),
+  ).toBeVisible();
+  await expect(move).toBeDisabled();
+  await page.screenshot({
+    fullPage: true,
+    path: path.join(screenshotsDirectory, '390-pvp-resolution.png'),
+    style: '.skip-link, .primary-navigation { display: none !important; }',
+  });
+  await expect(
     page.getByRole('heading', { name: 'Opponent’s turn' }),
-  ).toBeFocused();
+  ).toBeFocused({ timeout: 10_000 });
   expect(actionRequests).toBe(1);
 
   await page.setViewportSize({ height: 800, width: 1440 });
@@ -411,7 +461,6 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
     style: '.skip-link, .primary-navigation { display: none !important; }',
   });
 
-  await page.getByText('Leave this battle', { exact: true }).click();
   const forfeit = page.getByRole('button', { name: 'Forfeit battle' });
   await forfeit.click();
   const dialog = page.getByRole('alertdialog', {

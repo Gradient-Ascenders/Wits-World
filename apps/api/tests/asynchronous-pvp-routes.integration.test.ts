@@ -30,7 +30,7 @@ const DECK_ID = 'a3000000-0000-4000-8000-000000000001';
 const CREATURE_ID = 'a4000000-0000-4000-8000-000000000001';
 const SUBMISSION_ID = 'a5000000-0000-4000-8000-000000000001';
 const PVP_ACCEPT =
-  'application/vnd.wits-world.pvp.v3+json, application/vnd.wits-world.pvp.v2+json;q=0.9, application/json;q=0.8';
+  'application/vnd.wits-world.pvp.v4+json, application/vnd.wits-world.pvp.v3+json;q=0.9, application/vnd.wits-world.pvp.v2+json;q=0.8, application/json;q=0.7';
 const PVP_V2_ACCEPT = 'application/vnd.wits-world.pvp.v2+json';
 
 let app: FastifyInstance;
@@ -471,7 +471,27 @@ describe('asynchronous PvP routes', () => {
   });
 
   it('derives resignation availability, loser, and winner on the server', async () => {
-    service.getMatch.mockResolvedValueOnce(match());
+    const result = {
+      action: { type: 'select_replacement' as const, creatureId: CREATURE_ID },
+      defeatedCreatureId: null,
+      effects: [],
+      side: 'self' as const,
+      turnEnded: true,
+      winner: null,
+    };
+    service.getMatch.mockResolvedValueOnce(
+      match({
+        history: [
+          {
+            createdAt: '2026-09-05T09:00:00.000Z',
+            result,
+            sequence: 3,
+            turnNumber: 2,
+          },
+        ],
+        lastAction: result,
+      }),
+    );
     service.resignMatch.mockResolvedValueOnce(
       match({
         status: 'completed',
@@ -486,7 +506,11 @@ describe('asynchronous PvP routes', () => {
 
     const active = await request('GET', `/api/v1/matches/pvp/${INVITATION_ID}`);
     expect(active.statusCode).toBe(200);
-    expect(active.json()).toMatchObject({ canResign: true, status: 'active' });
+    expect(active.json()).toMatchObject({
+      canResign: true,
+      history: [{ sequence: 3, turnNumber: 2, result }],
+      status: 'active',
+    });
 
     const resigned = await request(
       'POST',
@@ -569,6 +593,7 @@ describe('asynchronous PvP routes', () => {
     });
     expect(active.statusCode).toBe(200);
     expect(active.json()).not.toHaveProperty('canResign');
+    expect(active.json()).not.toHaveProperty('history');
 
     const unsupported = await app.inject({
       method: 'POST',
@@ -714,6 +739,7 @@ function match(overrides: Partial<AsyncPvpMatchView> = {}): AsyncPvpMatchView {
       },
     },
     legalActions: [],
+    history: [],
     lastAction: null,
     outcome: completed ? 'loss' : null,
     completionReason: completed ? 'voluntary_resignation' : null,
