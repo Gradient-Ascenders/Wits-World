@@ -1,8 +1,6 @@
 import {
-  ArrowLeft,
   Broadcast,
   CheckCircle,
-  ClockCountdown,
   Copy,
   Eye,
   Plugs,
@@ -24,6 +22,11 @@ import {
   BattleBench,
   BattleCombatant,
 } from '../components/matches/BattlePresentation';
+import {
+  BattleOutcomePanel,
+  BattleShellHeader,
+  BattleStatusDock,
+} from '../components/matches/BattleShell';
 import { ResignMatchDialog } from '../components/matches/ResignMatchDialog';
 import { useLiveBattleSession } from './useLiveBattleSession';
 import './matches.css';
@@ -67,13 +70,13 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   if (!session.match && session.connection !== 'unrecoverable') {
     return (
       <main className="matches-page live-match-page">
-        <Link className="battle-back-link" href="/matches/live">
-          <ArrowLeft size={20} aria-hidden="true" /> Live lobby
-        </Link>
         <section className="live-connection-stage" role="status">
           <span className="live-searching__signal" aria-hidden="true" />
-          <h1>Connecting to live battle</h1>
+          <h1>Connecting to Live Ranked</h1>
           <p>{session.feedback}</p>
+          <Link className="button button--quiet" href="/matches/live">
+            Return to Live Ranked
+          </Link>
         </section>
       </main>
     );
@@ -83,9 +86,6 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     const authentication = session.error?.failure === 'authentication';
     return (
       <main className="matches-page live-match-page">
-        <Link className="battle-back-link" href="/matches/live">
-          <ArrowLeft size={20} aria-hidden="true" /> Live lobby
-        </Link>
         <div
           className="match-inline-alert state-message state-message--error"
           ref={alert}
@@ -94,7 +94,7 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         >
           <WarningCircle size={24} aria-hidden="true" />
           <div>
-            <h1>Live match unavailable</h1>
+            <h1>Live Ranked battle unavailable</h1>
             <p>{session.feedback}</p>
             <div className="match-state-actions">
               {authentication ? (
@@ -119,7 +119,7 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
                 </button>
               )}
               <Link className="button button--quiet" href="/matches/live">
-                Return to live lobby
+                Return to Live Ranked
               </Link>
             </div>
           </div>
@@ -150,11 +150,8 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       <p aria-live="polite" className="sr-only" role="status">
         {session.feedback} {timerAnnouncement}
       </p>
-      <header className="live-battle-header">
-        <div className="live-battle-header__topline">
-          <Link className="battle-back-link" href="/matches/live">
-            <ArrowLeft size={20} aria-hidden="true" /> Live lobby
-          </Link>
+      <BattleShellHeader
+        action={
           <button
             className="button button--quiet live-share-button"
             onClick={() => {
@@ -189,64 +186,59 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
                 ? 'Copy failed'
                 : 'Copy private link'}
           </button>
-        </div>
-        <div className="live-authority-strip">
-          <div
-            className={`live-role-cue live-role-cue--${authorityTone(match)}`}
-          >
-            {spectator ? (
-              <Eye size={24} aria-hidden="true" />
-            ) : (
-              <Broadcast size={24} aria-hidden="true" />
-            )}
-            <div>
-              <strong>{authorityLabel(match)}</strong>
-              <span>{authorityDetail(match)}</span>
-            </div>
-          </div>
-          <ConnectionBadge connection={session.connection} />
-          {match.status === 'active' ? (
-            <div
-              aria-label={
-                expired
-                  ? 'Server decision deadline reached'
-                  : `${countdown.seconds} seconds remain before the server deadline`
+        }
+        backHref="/matches/live"
+        backLabel="Live Ranked"
+        description={
+          spectator
+            ? 'Watch the public battlefield and battle activity in real time.'
+            : 'Each decision has one minute. Three consecutive missed decisions end the battle as a ranked loss.'
+        }
+        mode="Live Ranked"
+        opponentLabel={liveOpponentLabel(match)}
+        title={battleTitle(match)}
+        turnNumber={match.turnNumber}
+      />
+
+      <BattleStatusDock
+        connection={<ConnectionBadge connection={session.connection} />}
+        detail={authorityDetail(match)}
+        label={titleCaseAuthorityLabel(authorityLabel(match))}
+        timing={
+          match.status === 'active'
+            ? {
+                detail: expired
+                  ? 'Waiting for the latest battle state.'
+                  : `Play by ${formatDate(match.turnDeadline!)}`,
+                label: expired
+                  ? 'Deadline reached'
+                  : formatCountdown(countdown.seconds),
+                tone: expired
+                  ? 'danger'
+                  : countdown.seconds <= 10
+                    ? 'warning'
+                    : undefined,
               }
-              className={`live-authority-timer${expired ? ' live-authority-timer--expired' : ''}`}
-              role="timer"
-            >
-              <ClockCountdown size={22} aria-hidden="true" />
-              <div>
-                <strong>
-                  {expired ? 'SYNCING' : formatCountdown(countdown.seconds)}
-                </strong>
-                <span>
-                  {expired
-                    ? 'Deadline reached — waiting for server'
-                    : `Server deadline ${formatDate(match.turnDeadline!)}`}
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div className="live-authority-timer live-authority-timer--complete">
-              <CheckCircle size={22} aria-hidden="true" />
-              <div>
-                <strong>FINAL</strong>
-                <span>Server-confirmed result</span>
-              </div>
-            </div>
-          )}
-        </div>
-        <div className="live-battle-title">
-          <div>
-            <h1>{battleTitle(match)}</h1>
-            <p>
-              Turn {match.turnNumber} · Version {match.version}
-            </p>
-          </div>
-          <TimeoutSummary match={match} />
-        </div>
-      </header>
+            : {
+                detail: 'The result is final.',
+                label: 'Battle complete',
+                tone: 'complete',
+              }
+        }
+        tone={
+          match.status === 'completed'
+            ? 'complete'
+            : spectator
+              ? 'spectator'
+              : expired
+                ? 'danger'
+                : match.currentActor === 'self'
+                  ? 'player'
+                  : 'opponent'
+        }
+      />
+
+      <TimeoutSummary match={match} />
 
       {session.connection === 'reconnecting' ? (
         <div
@@ -255,10 +247,10 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         >
           <Plugs size={22} aria-hidden="true" />
           <div>
-            <strong>Reconnecting to authority</strong>
+            <strong>Reconnecting</strong>
             <span>
-              The last confirmed battlefield remains visible. Actions stay
-              locked until a fresh snapshot and subscription are ready.
+              You can review the last confirmed battlefield. Actions return when
+              the live connection is ready.
             </span>
           </div>
           <button
@@ -277,7 +269,7 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           <CheckCircle size={22} aria-hidden="true" />
           <div>
             <strong>Battle recovered</strong>
-            <span>The battlefield now reflects the latest server state.</span>
+            <span>You are back online with the latest battle.</span>
           </div>
         </div>
       ) : null}
@@ -290,9 +282,7 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           <WarningCircle size={22} aria-hidden="true" />
           <div>
             <strong>Opponent connection lost</strong>
-            <span>
-              The server deadline continues and still controls the turn.
-            </span>
+            <span>The turn timer keeps running while they reconnect.</span>
           </div>
         </div>
       ) : null}
@@ -308,8 +298,8 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
             </strong>
             <span>
               {session.pending.stage === 'acknowledged'
-                ? 'Waiting for the authoritative battlefield update.'
-                : 'Battle controls are locked to prevent duplicate submissions.'}
+                ? 'Your action is being applied to the battlefield.'
+                : 'Choose again when this action is confirmed.'}
             </span>
           </div>
         </div>
@@ -333,7 +323,7 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
             <div className="battle-arena">
               <BattleCombatant
                 creature={combatants.one.creature}
-                emptyText="This Creature has not been revealed by the server."
+                emptyText="This Creature has not been revealed yet."
                 heading={combatants.one.label}
                 isActing={combatants.one.acting}
                 visualSide="player"
@@ -343,7 +333,7 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
               </div>
               <BattleCombatant
                 creature={combatants.two.creature}
-                emptyText="This Creature has not been revealed by the server."
+                emptyText="This Creature has not been revealed yet."
                 heading={combatants.two.label}
                 isActing={combatants.two.acting}
                 visualSide="cpu"
@@ -378,9 +368,8 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
               <Eye size={30} aria-hidden="true" />
               <h2 id="spectator-lock-title">Watching live — read only</h2>
               <p>
-                This view contains only the server’s public spectator
-                projection. Hands, private choices, and player actions are not
-                available here.
+                You can see the public battlefield and battle activity. Player
+                hands, private choices, and actions stay private.
               </p>
             </section>
           )}
@@ -406,8 +395,8 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
                 <summary>Leave this battle</summary>
                 <h2>Forfeit live battle</h2>
                 <p>
-                  The server records an immediate loss. Closing the browser does
-                  not forfeit or pause the deadline.
+                  Forfeiting records an immediate ranked loss. Closing the
+                  browser does not forfeit or pause the deadline.
                 </p>
                 <button
                   className="button button--danger"
@@ -558,11 +547,7 @@ function LiveMatchDetails({ match }: { match: LiveProjection }) {
         <dl className="battle-meta">
           <div>
             <dt>Role</dt>
-            <dd>{match.role === 'spectator' ? 'Spectator' : 'Participant'}</dd>
-          </div>
-          <div>
-            <dt>State version</dt>
-            <dd>{match.version}</dd>
+            <dd>{match.role === 'spectator' ? 'Watching' : 'Playing'}</dd>
           </div>
           <div>
             <dt>Started</dt>
@@ -593,20 +578,38 @@ function CompletedLiveBattle({ match }: { match: LiveProjection }) {
           : 'Live battle complete';
   return (
     <div className="battle-completed-layout">
-      <section
-        className="completed-match completed-match--player"
-        aria-labelledby="live-complete-title"
+      <BattleOutcomePanel
+        action={
+          <Link className="button" href="/matches/live">
+            Return to Live Ranked
+          </Link>
+        }
+        facts={[
+          { label: 'Final turn', value: match.turnNumber },
+          {
+            label: 'Completed',
+            value: match.completedAt
+              ? formatDate(match.completedAt)
+              : 'Not returned',
+          },
+        ]}
+        mode="Live Ranked"
+        summary={completionLabel(match.completionReason)}
+        title={title}
+        titleId="live-complete-title"
+        tone={
+          match.role === 'participant'
+            ? match.outcome === 'win'
+              ? 'victory'
+              : 'defeat'
+            : 'neutral'
+        }
       >
-        <h1 id="live-complete-title">{title}</h1>
-        <p>{completionLabel(match.completionReason)}</p>
-        <p>
-          This result came from the authoritative server state. Refreshing
-          cannot replay an action or change the outcome.
+        <p className="battle-outcome__context">
+          This result is final. Refreshing cannot replay an action or change the
+          outcome.
         </p>
-        <Link className="button" href="/matches/live">
-          Return to live lobby
-        </Link>
-      </section>
+      </BattleOutcomePanel>
       <LiveBattleHistory history={match.history} match={match} />
     </div>
   );
@@ -645,12 +648,6 @@ function battleCombatants(match: LiveProjection) {
   };
 }
 
-function authorityTone(match: LiveProjection) {
-  if (match.role === 'spectator') return 'spectator';
-  if (match.status === 'completed') return 'complete';
-  return match.currentActor === 'self' ? 'self' : 'opponent';
-}
-
 function authorityLabel(match: LiveProjection): string {
   if (match.role === 'spectator') return 'WATCHING — READ ONLY';
   if (match.status === 'completed') return 'MATCH COMPLETE';
@@ -660,13 +657,13 @@ function authorityLabel(match: LiveProjection): string {
 
 function authorityDetail(match: LiveProjection): string {
   if (match.role === 'spectator') {
-    return 'Public projection only · no player actions';
+    return 'Watching only. Player actions are unavailable.';
   }
-  if (match.status === 'completed') return 'Final server result';
+  if (match.status === 'completed') return 'The final result is saved.';
   if (match.currentActor === 'self') {
-    return `${match.legalActions.length} server-approved action${match.legalActions.length === 1 ? '' : 's'}`;
+    return `${match.legalActions.length} available action${match.legalActions.length === 1 ? '' : 's'}. Choose before time runs out.`;
   }
-  return `Waiting for ${match.opponent.playerName}`;
+  return `Waiting for ${match.opponent.playerName}.`;
 }
 
 function battleTitle(match: LiveProjection): string {
@@ -677,18 +674,18 @@ function battleTitle(match: LiveProjection): string {
 }
 
 function historyLabel(entry: LiveHistoryEntry, match: LiveProjection): string {
-  const actor = entry.side ? sideLabel(entry.side, match) : 'The server';
+  const actor = entry.side ? sideLabel(entry.side, match) : 'The battle';
   if (entry.type === 'initial_selection_submitted') {
-    return `${actor} submitted an initial Creature${entry.automatic ? ' automatically at the deadline' : ''}.`;
+    return `${actor} chose an initial Creature${entry.automatic ? ' automatically when time expired' : ''}.`;
   }
   if (entry.type === 'automatic_initial_selection') {
-    return `${actor} received a server-selected initial Creature after the deadline.`;
+    return `${actor} received an automatic initial Creature when time expired.`;
   }
   if (entry.type === 'automatic_replacement') {
-    return `${actor} received a server-selected replacement after the deadline.`;
+    return `${actor} received an automatic replacement when time expired.`;
   }
   if (entry.type === 'timeout') {
-    return `${actor} missed the server decision deadline.`;
+    return `${actor} missed the decision deadline.`;
   }
   if (entry.type === 'voluntary_resignation') {
     return `${entry.loser ? sideLabel(entry.loser, match) : 'A player'} forfeited the battle.`;
@@ -706,6 +703,18 @@ function historyLabel(entry: LiveHistoryEntry, match: LiveProjection): string {
     use_power_card: 'used a Power card',
   }[entry.actionType ?? 'use_move'];
   return `${actor} ${action}.`;
+}
+
+function liveOpponentLabel(match: LiveProjection) {
+  return match.role === 'participant'
+    ? `Against ${match.opponent.playerName}`
+    : 'Watching private battle';
+}
+
+function titleCaseAuthorityLabel(value: string) {
+  return value
+    .toLocaleLowerCase()
+    .replace(/^./u, (character) => character.toLocaleUpperCase());
 }
 
 function sideLabel(
@@ -734,7 +743,7 @@ function completionLabel(reason: LiveProjection['completionReason']): string {
   return {
     defeat: 'The opposing team was defeated.',
     abandonment_forfeit:
-      'The match ended after three consecutive missed decisions.',
+      'The battle ended after three consecutive missed decisions.',
     voluntary_resignation: 'A participant forfeited the match.',
     account_deletion_forfeit: 'A participant account became unavailable.',
   }[reason ?? 'defeat'];
@@ -778,8 +787,8 @@ function useTimerAnnouncements(seconds: number, match: LiveProjection | null) {
     ) {
       setMessage(
         seconds === 0
-          ? 'Server deadline reached. Waiting for authoritative state.'
-          : `${seconds} seconds remain before the server deadline.`,
+          ? 'Time expired. Waiting for the battle to update.'
+          : `${seconds} seconds remain to choose.`,
       );
     }
     last.current = seconds;

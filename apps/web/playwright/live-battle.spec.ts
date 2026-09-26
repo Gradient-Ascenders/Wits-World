@@ -18,6 +18,7 @@ test('renders authoritative participant and private spectator views responsively
 }, testInfo) => {
   const participant = participantProjection();
   const spectator = spectatorProjection();
+  participant.opponent.playerName = 'campus_champion_2026';
   let role: 'participant' | 'spectator' = 'participant';
   const runtimeErrors: string[] = [];
   page.on('pageerror', (error) => runtimeErrors.push(error.message));
@@ -55,7 +56,7 @@ test('renders authoritative participant and private spectator views responsively
   await page.goto(`/matches/live/${LIVE_MATCH_ID}`);
   await expect(page.getByText('Connected', { exact: true })).toBeVisible();
   await expect(
-    page.getByText('YOUR TURN', { exact: true }).first(),
+    page.getByText('Your turn', { exact: true }).first(),
   ).toBeVisible();
   await expect(
     page.getByRole('button', { name: /Knowledge Strike 1/i }),
@@ -73,12 +74,107 @@ test('renders authoritative participant and private spectator views responsively
     path: testInfo.outputPath('live-participant-1440.png'),
   });
 
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto(`/matches/live/${LIVE_MATCH_ID}`);
+  await expect(
+    page.getByRole('heading', { name: /Live against campus_champion_2026/ }),
+  ).toBeVisible();
+  const actionPanel = page.locator('.battle-actions');
+  const firstAction = page.getByRole('button', {
+    name: /Knowledge Strike 1/i,
+  });
+  await expect(firstAction).toBeInViewport();
+  const firstActionBox = await firstAction.boundingBox();
+  const stageBox = await page.locator('.battle-stage').boundingBox();
+  const actionPanelBox = await actionPanel.boundingBox();
+  expect(firstActionBox).not.toBeNull();
+  expect(stageBox).not.toBeNull();
+  expect(actionPanelBox).not.toBeNull();
+  expect(firstActionBox!.y + firstActionBox!.height).toBeLessThanOrEqual(844);
+  expect(actionPanelBox!.y).toBeLessThan(stageBox!.y);
+  await expect(page.locator('.primary-navigation--mobile')).toBeHidden();
+
+  await page.evaluate(() => window.scrollTo(0, 560));
+  const stickyGeometry = await page.evaluate(() => {
+    const status = document.querySelector('.battle-status-dock');
+    const actions = document.querySelector('.battle-actions');
+    if (!(status instanceof HTMLElement) || !(actions instanceof HTMLElement))
+      return null;
+    const statusBox = status.getBoundingClientRect();
+    const actionsBox = actions.getBoundingClientRect();
+    return {
+      actionPosition: getComputedStyle(actions).position,
+      actionsTop: actionsBox.top,
+      statusBottom: statusBox.bottom,
+      statusPosition: getComputedStyle(status).position,
+    };
+  });
+  expect(stickyGeometry).not.toBeNull();
+  expect(stickyGeometry!.statusPosition).toBe('sticky');
+  expect(stickyGeometry!.actionPosition).toBe('sticky');
+  expect(stickyGeometry!.actionsTop).toBeGreaterThanOrEqual(
+    stickyGeometry!.statusBottom,
+  );
+
+  const resignCard = page.locator('.pvp-resign-card');
+  await resignCard.locator('summary').click();
+  await resignCard.getByRole('button', { name: 'Forfeit battle' }).click();
+  const dialog = page.getByRole('alertdialog', {
+    name: 'Forfeit this battle?',
+  });
+  await expect(dialog).toBeVisible();
+  const dialogGeometry = await dialog.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const actions = document.querySelector('.battle-actions');
+    return {
+      bottom: box.bottom,
+      dialogZ: Number.parseInt(
+        getComputedStyle(element.parentElement ?? element).zIndex || '0',
+        10,
+      ),
+      left: box.left,
+      right: box.right,
+      top: box.top,
+      trayZ:
+        actions instanceof HTMLElement
+          ? Number.parseInt(getComputedStyle(actions).zIndex || '0', 10)
+          : 0,
+    };
+  });
+  expect(dialogGeometry.left).toBeGreaterThanOrEqual(0);
+  expect(dialogGeometry.top).toBeGreaterThanOrEqual(0);
+  expect(dialogGeometry.right).toBeLessThanOrEqual(390);
+  expect(dialogGeometry.bottom).toBeLessThanOrEqual(844);
+  expect(dialogGeometry.dialogZ).toBeGreaterThan(dialogGeometry.trayZ);
+  await dialog.getByRole('button', { name: 'Keep playing' }).click();
+  await expect(
+    resignCard.getByRole('button', { name: 'Forfeit battle' }),
+  ).toBeFocused();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({
+    animations: 'disabled',
+    fullPage: true,
+    path: testInfo.outputPath('live-participant-390.png'),
+  });
+
+  // A 720 CSS-pixel viewport is the reflow equivalent of a 1440px window at
+  // 200% browser zoom.
+  await page.setViewportSize({ height: 900, width: 720 });
+  await page.goto(`/matches/live/${LIVE_MATCH_ID}`);
+  await expect(firstAction).toBeInViewport();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    animations: 'disabled',
+    fullPage: true,
+    path: testInfo.outputPath('live-participant-200-percent-reflow.png'),
+  });
+
   role = 'spectator';
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto(`/matches/live/${LIVE_MATCH_ID}`);
   await expect(page.getByText('Connected', { exact: true })).toBeVisible();
   await expect(
-    page.getByText('WATCHING — READ ONLY', { exact: true }).first(),
+    page.getByText('Watching — read only', { exact: true }).first(),
   ).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'Watching live — read only' }),
@@ -94,13 +190,13 @@ test('renders authoritative participant and private spectator views responsively
     page.getByText(/private snapshot|activeCreatureId/i),
   ).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
-  await page.keyboard.press('Tab');
-  await expect(page.locator(':focus-visible')).toHaveCount(1);
   await page.screenshot({
     animations: 'disabled',
     fullPage: true,
     path: testInfo.outputPath('live-spectator-390.png'),
   });
+  await page.keyboard.press('Tab');
+  await expect(page.locator(':focus-visible')).toHaveCount(1);
 
   expect(runtimeErrors).toEqual([]);
 });
@@ -134,16 +230,33 @@ test('explains unavailable ranked entry at mobile and desktop widths', async ({
     await page.goto('/matches/live');
     await expect(
       page.getByText(
-        'No ranked season is active. Live matchmaking will open after an operator starts one.',
+        'No ranked season is active. Matchmaking will open when the next season begins.',
       ),
     ).toBeVisible();
     await expect(
-      page.getByRole('button', { name: 'Find live match' }),
+      page.getByRole('button', { name: 'Find ranked battle' }),
     ).toBeDisabled();
     await expect(page.getByText('No active season')).toBeVisible();
     await expect(
       page.getByRole('button', { name: 'Check season again' }),
     ).toBeEnabled();
+    const mobileNavigation = page.locator('.primary-navigation--mobile');
+    if (width === 390) {
+      await expect(mobileNavigation).toBeVisible();
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      const navigationBox = await mobileNavigation.boundingBox();
+      const finalActionBox = await page
+        .getByRole('button', { name: 'Watch entered match' })
+        .boundingBox();
+      expect(navigationBox).not.toBeNull();
+      expect(finalActionBox).not.toBeNull();
+      expect(finalActionBox!.y + finalActionBox!.height).toBeLessThanOrEqual(
+        navigationBox!.y,
+      );
+      await page.evaluate(() => window.scrollTo(0, 0));
+    } else {
+      await expect(mobileNavigation).toBeHidden();
+    }
     await expectNoHorizontalOverflow(page);
     await page.screenshot({
       animations: 'disabled',

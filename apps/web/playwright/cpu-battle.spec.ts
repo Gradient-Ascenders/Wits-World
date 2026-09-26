@@ -58,7 +58,7 @@ test('shows rarity frames and confirms an authoritative CPU forfeit', async ({
     page.locator('.combatant--cpu .card-frame--legendary'),
   ).toBeVisible();
 
-  const forfeit = page.getByRole('button', { name: 'Forfeit match' });
+  const forfeit = page.getByRole('button', { name: 'Forfeit battle' });
   await forfeit.click();
   const dialog = page.getByRole('alertdialog', {
     name: 'Forfeit this battle?',
@@ -70,7 +70,7 @@ test('shows rarity frames and confirms an authoritative CPU forfeit', async ({
   await dialog.getByRole('button', { name: 'Confirm forfeit' }).click();
 
   await expect(
-    page.getByRole('heading', { name: 'CPU victory — match saved' }),
+    page.getByRole('heading', { name: 'Practice complete' }),
   ).toBeVisible();
   expect(submittedBody).toEqual({ expectedVersion: 4 });
 });
@@ -752,7 +752,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
       page.getByRole('heading', { name: 'Choose your opening Creature' }),
     ).toBeVisible();
     await expect(page.locator('.battle-turn-indicator')).toHaveText(
-      'YOUR TURN',
+      'Your turn',
     );
 
     for (const viewport of [
@@ -804,7 +804,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     await expect(battleLogSummary).toContainText('CPU revealed Braam Sentinel');
     await battleLogSummary.tap();
     const completeLog = page.getByRole('log', {
-      name: 'Complete authoritative battle log',
+      name: 'Complete battle activity',
     });
     await expect(completeLog).toBeVisible();
     await expect(completeLog).toContainText('You selected Campus Scholar.');
@@ -926,7 +926,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
       page.getByRole('heading', { name: 'Replacement required' }),
     ).toBeFocused();
     await expect(page.locator('.battle-turn-indicator')).toHaveText(
-      'YOUR TURN',
+      'Your turn',
     );
     await expectNoHorizontalOverflow(page);
     await expectPrimaryActionWithinViewport(page);
@@ -968,11 +968,11 @@ test('completes a mocked authoritative CPU match through the production UI', asy
 
     await page.getByRole('button', { name: /Knowledge Strike 2/ }).tap();
     await expect(
-      page.getByText(/Authoritative match state restored/),
+      page.getByText(/battle changed while you were choosing/i),
     ).toBeAttached();
     await page.getByRole('button', { name: /Knowledge Strike 2/ }).tap();
     await expect(
-      page.getByRole('heading', { name: 'Victory — match saved' }),
+      page.getByRole('heading', { name: 'Practice victory' }),
     ).toBeVisible();
     for (const viewport of [
       { height: 844, label: '390', width: 390 },
@@ -1000,7 +1000,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     );
     await completedLogSummary.tap();
     const completedLog = page.getByRole('log', {
-      name: 'Complete authoritative battle log',
+      name: 'Complete battle activity',
     });
     await expect(completedLog).toContainText('You won the battle.');
     await expect
@@ -1028,27 +1028,27 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     await expect(
       page.getByRole('heading', { name: 'Battle history' }),
     ).toBeVisible();
-    await page.getByRole('link', { name: 'View saved match' }).tap();
+    await page.getByRole('link', { name: 'View battle' }).tap();
     await expect(
-      page.getByRole('heading', { name: 'Victory — match saved' }),
+      page.getByRole('heading', { name: 'Practice victory' }),
     ).toBeVisible();
     await page.locator('.battle-log > summary').tap();
     await expect(
-      page.getByRole('log', { name: 'Complete authoritative battle log' }),
+      page.getByRole('log', { name: 'Complete battle activity' }),
     ).toContainText('You selected Campus Scholar.');
     await expect(
-      page.getByRole('log', { name: 'Complete authoritative battle log' }),
+      page.getByRole('log', { name: 'Complete battle activity' }),
     ).toContainText('You won the battle.');
     await page.reload();
     await expect(
-      page.getByRole('heading', { name: 'Victory — match saved' }),
+      page.getByRole('heading', { name: 'Practice victory' }),
     ).toBeVisible();
     await page.locator('.battle-log > summary').tap();
     await expect(
-      page.getByRole('log', { name: 'Complete authoritative battle log' }),
+      page.getByRole('log', { name: 'Complete battle activity' }),
     ).toContainText('You selected Campus Scholar.');
     await expect(
-      page.getByRole('log', { name: 'Complete authoritative battle log' }),
+      page.getByRole('log', { name: 'Complete battle activity' }),
     ).toContainText('You won the battle.');
 
     expect(submittedBodies).toHaveLength(6);
@@ -1109,10 +1109,10 @@ test('offers the owned active CPU match for explicit resume', async ({
   await expect(page.locator('.site-footer')).toHaveCount(0);
   await expect(page).toHaveURL('/matches');
   await expect(
-    page.getByRole('heading', { name: 'CPU Battle', exact: true }),
+    page.getByRole('heading', { name: 'Practice', exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole('button', { name: 'Start CPU battle' }),
+    page.getByRole('button', { name: 'Start Practice battle' }),
   ).toHaveCount(0);
 
   for (const viewport of [
@@ -1123,11 +1123,11 @@ test('offers the owned active CPU match for explicit resume', async ({
     await page.setViewportSize(viewport);
     await expectNoHorizontalOverflow(page);
     await expect(
-      page.getByRole('link', { name: 'Resume CPU battle' }),
+      page.getByRole('link', { name: 'Resume Practice battle' }),
     ).toBeVisible();
   }
 
-  await page.getByRole('link', { name: 'Resume CPU battle' }).click();
+  await page.getByRole('link', { name: 'Resume Practice battle' }).click();
   await expect(page).toHaveURL(`/matches/${MATCH_ID}`);
   await expect(page.getByRole('heading', { name: 'Your turn' })).toBeVisible();
   expect(activeLookups).toBe(1);
@@ -1226,16 +1226,14 @@ test('keeps processing, timeout, and error states focused with long actions', as
 
   const battleDetails = page.locator('.battle-details > summary');
   await battleDetails.click();
-  await expect(page.getByText('Match version', { exact: true })).toBeVisible();
-  await expect(
-    page.getByText('Server deadline', { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText('Status', { exact: true })).toBeVisible();
+  await expect(page.getByText('Turn deadline', { exact: true })).toBeVisible();
   await page.locator('.battle-page').screenshot({
     path: path.join(screenshotsDirectory, '390-battle-details.png'),
     style: '.skip-link, .primary-navigation { display: none !important; }',
   });
   await page.keyboard.press('Escape');
-  await expect(page.getByText('Match version', { exact: true })).toBeHidden();
+  await expect(page.getByText('Status', { exact: true })).toBeHidden();
   await expect(battleDetails).toBeFocused();
 
   const hpBefore = await page
@@ -1246,7 +1244,7 @@ test('keeps processing, timeout, and error states focused with long actions', as
   });
   await longMove.click();
   await expect(
-    page.getByText('PROCESSING YOUR ACTION…', { exact: true }),
+    page.getByText('Processing your action…', { exact: true }),
   ).toBeVisible();
   await expect(longMove).toBeDisabled();
   await expect(
@@ -1258,12 +1256,12 @@ test('keeps processing, timeout, and error states focused with long actions', as
   await expect(page.getByRole('alert')).toBeFocused();
 
   current = cpuTurn;
-  await page.getByRole('button', { name: 'Reload match state' }).click();
+  await page.getByRole('button', { name: 'Check battle again' }).click();
   await expect(
     page.getByRole('heading', { level: 1, name: 'CPU turn resolving' }),
   ).toBeVisible();
   await expect(
-    page.getByText("OPPONENT'S TURN", { exact: true }),
+    page.getByText("Opponent's turn", { exact: true }),
   ).toBeVisible();
   await expect(page.locator('.battle-action-control').first()).toBeDisabled();
   await expectNoHorizontalOverflow(page);
@@ -1403,7 +1401,7 @@ test('renders recent results and starts from the selected deck dashboard', async
     page.getByRole('heading', { exact: true, name: 'Battles' }),
   ).toBeFocused();
   await expect(
-    page.getByRole('heading', { name: 'CPU Battle', exact: true }),
+    page.getByRole('heading', { name: 'Practice', exact: true }),
   ).toBeVisible();
   await expect(page.getByText('Campus Five', { exact: true })).toHaveCount(1);
   await expect(
@@ -1427,21 +1425,24 @@ test('renders recent results and starts from the selected deck dashboard', async
   await page.setViewportSize({ height: 1024, width: 768 });
   await expectNoHorizontalOverflow(page);
   await expect(
-    page.getByRole('button', { name: 'Start CPU battle' }),
+    page.getByRole('button', { name: 'Start Practice battle' }),
   ).toBeVisible();
 
   await page.setViewportSize({ height: 800, width: 1440 });
   await expectNoHorizontalOverflow(page);
   const modeCards = page.locator('.battle-mode-card');
-  const cpuBox = await modeCards.nth(0).boundingBox();
+  const liveBox = await modeCards.nth(0).boundingBox();
   const playerBox = await modeCards.nth(1).boundingBox();
+  const practiceBox = await modeCards.nth(2).boundingBox();
   const resultsBox = await page.locator('.recent-results').boundingBox();
-  expect(cpuBox).not.toBeNull();
+  expect(liveBox).not.toBeNull();
   expect(playerBox).not.toBeNull();
+  expect(practiceBox).not.toBeNull();
   expect(resultsBox).not.toBeNull();
-  expect(playerBox!.x).toBeGreaterThan(cpuBox!.x);
-  expect(playerBox!.y).toBe(cpuBox!.y);
-  expect(resultsBox!.y).toBeGreaterThan(cpuBox!.y + cpuBox!.height);
+  expect(liveBox!.y).toBeLessThan(playerBox!.y);
+  expect(practiceBox!.x).toBeGreaterThan(playerBox!.x);
+  expect(practiceBox!.y).toBe(playerBox!.y);
+  expect(resultsBox!.y).toBeGreaterThan(playerBox!.y + playerBox!.height);
   await expectRecentResultActionsAligned(page, 'end');
 
   for (const width of [390, 768, 1440]) {
@@ -1471,7 +1472,7 @@ test('renders recent results and starts from the selected deck dashboard', async
 
   await page.getByRole('link', { name: 'Back to battles' }).click();
   await expect(page).toHaveURL('/matches');
-  await page.getByRole('button', { name: 'Start CPU battle' }).click();
+  await page.getByRole('button', { name: 'Start Practice battle' }).click();
   await expect(page).toHaveURL(`/matches/${MATCH_ID}`);
   await expect(
     page.getByRole('heading', { name: 'Choose your opening Creature' }),
@@ -1519,14 +1520,14 @@ test('shows deck recovery without exposing a conflicting start action', async ({
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto('/matches');
   await expect(
-    page.getByRole('heading', { name: 'CPU Battle', exact: true }),
+    page.getByRole('heading', { name: 'Practice', exact: true }),
   ).toBeVisible();
   await expect(page.getByRole('link', { name: 'Choose deck' })).toHaveAttribute(
     'href',
     '/decks',
   );
   await expect(
-    page.getByRole('button', { name: 'Start CPU battle' }),
+    page.getByRole('button', { name: 'Start Practice battle' }),
   ).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
 });
@@ -1598,12 +1599,8 @@ test('keeps the desktop battlefield stable when bench and details expand', async
       .first()
       .boundingBox())!.width,
   ).toBeGreaterThanOrEqual(96);
-  await page
-    .getByText('Match version', { exact: true })
-    .scrollIntoViewIfNeeded();
-  await expect(
-    page.getByText('Match version', { exact: true }),
-  ).toBeInViewport();
+  await page.getByText('Status', { exact: true }).scrollIntoViewIfNeeded();
+  await expect(page.getByText('Status', { exact: true })).toBeInViewport();
   await expectNoHorizontalOverflow(page);
   await page.locator('.battle-page').screenshot({
     path: path.join(screenshotsDirectory, '1440-expanded-sidebar.png'),

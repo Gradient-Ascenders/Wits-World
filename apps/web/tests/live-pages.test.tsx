@@ -189,10 +189,21 @@ describe('live lobby and battle experience', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderRoute('/matches/live', <LiveLobbyPage apiBaseUrl={apiBaseUrl} />);
+    expect(
+      await screen.findByRole('heading', { name: 'Live Ranked' }),
+    ).toBeVisible();
+    expect(screen.getByText(/one minute for each decision/i)).toBeVisible();
+    expect(
+      screen.getByText(/first five results each season are placement matches/i),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/leaving while searching has no cooldown/i),
+    ).toBeVisible();
     await user.click(
-      await screen.findByRole('button', { name: 'Find live match' }),
+      screen.getByRole('button', { name: 'Find ranked battle' }),
     );
     expect(await screen.findByText('Searching for an opponent')).toBeVisible();
+    expect(screen.getByText(/no cooldown or rating change/i)).toBeVisible();
     const join = fetchMock.mock.calls.find(
       ([input, init]) =>
         new URL(String(input)).pathname.endsWith('/ranked/queue') &&
@@ -202,12 +213,150 @@ describe('live lobby and battle experience', () => {
       deckId: deck.deckId,
     });
 
-    await user.type(
-      screen.getByLabelText('Private match link or ID'),
+    await navigator.clipboard.writeText(
       `https://witsworld.co.za/matches/live/${LIVE_MATCH_ID}`,
     );
-    await user.click(screen.getByRole('button', { name: 'Watch match' }));
+    await user.click(screen.getByRole('button', { name: 'Paste and watch' }));
     expect(window.location.pathname).toBe(`/matches/live/${LIVE_MATCH_ID}`);
+  });
+
+  it('explains an expired search without implying a ranked penalty', async () => {
+    const deck = buildSavedDeck({ isSelected: true });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const pathname = new URL(String(input)).pathname;
+        if (pathname.endsWith('/decks')) {
+          return Promise.resolve(deckListResponse([deck]));
+        }
+        if (pathname.endsWith('/ranked/seasons/current')) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ season: rankedSeason() }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+          );
+        }
+        if (pathname.endsWith('/ranked/queue')) {
+          return Promise.resolve(
+            new Response(JSON.stringify(queueState({ status: 'expired' })), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+          );
+        }
+        throw new Error(`Unexpected request: ${String(input)}`);
+      }),
+    );
+
+    renderRoute('/matches/live', <LiveLobbyPage apiBaseUrl={apiBaseUrl} />);
+
+    expect(await screen.findByText('Your search expired')).toBeVisible();
+    expect(screen.getByText(/your rating did not change/i)).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Find ranked battle' }),
+    ).toBeEnabled();
+  });
+
+  it('keeps recovery guidance visible when matchmaking refresh is interrupted', async () => {
+    const deck = buildSavedDeck({ isSelected: true });
+    let queueReads = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const pathname = new URL(String(input)).pathname;
+        if (pathname.endsWith('/decks')) {
+          return Promise.resolve(deckListResponse([deck]));
+        }
+        if (pathname.endsWith('/ranked/seasons/current')) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ season: rankedSeason() }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+          );
+        }
+        if (pathname.endsWith('/ranked/queue')) {
+          queueReads += 1;
+          if (queueReads > 1) {
+            return Promise.reject(new TypeError('Connection interrupted'));
+          }
+          return Promise.resolve(
+            new Response(
+              JSON.stringify(
+                queueState({
+                  status: 'searching',
+                  queueEntryId: '71000000-0000-4000-8000-000000000001',
+                  joinedAt: '2026-09-25T12:00:00.000Z',
+                  leaseExpiresAt: '2026-09-25T12:00:30.000Z',
+                  searchRange: 100,
+                }),
+              ),
+              { status: 200, headers: { 'Content-Type': 'application/json' } },
+            ),
+          );
+        }
+        throw new Error(`Unexpected request: ${String(input)}`);
+      }),
+    );
+
+    renderRoute('/matches/live', <LiveLobbyPage apiBaseUrl={apiBaseUrl} />);
+
+    expect(await screen.findByText('Searching for an opponent')).toBeVisible();
+    expect(
+      await screen.findByText('Checking your place in matchmaking', undefined, {
+        timeout: 3_500,
+      }),
+    ).toBeVisible();
+    expect(screen.getByText(/do not need to join again/i)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Check now' })).toBeEnabled();
+  });
+
+  it('explains the acceptance window and cooldown before a ranked battle begins', async () => {
+    const deck = buildSavedDeck({ isSelected: true });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const pathname = new URL(String(input)).pathname;
+        if (pathname.endsWith('/decks')) {
+          return Promise.resolve(deckListResponse([deck]));
+        }
+        if (pathname.endsWith('/ranked/seasons/current')) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ season: rankedSeason() }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+          );
+        }
+        if (pathname.endsWith('/ranked/queue')) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify(
+                queueState({
+                  status: 'proposed',
+                  proposalId: '71000000-0000-4000-8000-000000000002',
+                  acceptanceDeadline: '2026-09-25T12:00:20.000Z',
+                }),
+              ),
+              { status: 200, headers: { 'Content-Type': 'application/json' } },
+            ),
+          );
+        }
+        throw new Error(`Unexpected request: ${String(input)}`);
+      }),
+    );
+
+    renderRoute('/matches/live', <LiveLobbyPage apiBaseUrl={apiBaseUrl} />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Opponent found' }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/pauses matchmaking for 30 seconds/i),
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Accept match' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Decline' })).toBeEnabled();
   });
 
   it('disables ranked entry with visible guidance when no season is active', async () => {
@@ -243,11 +392,11 @@ describe('live lobby and battle experience', () => {
 
     expect(
       await screen.findByText(
-        'No ranked season is active. Live matchmaking will open after an operator starts one.',
+        'No ranked season is active. Matchmaking will open when the next season begins.',
       ),
     ).toBeVisible();
     expect(
-      screen.getByRole('button', { name: 'Find live match' }),
+      screen.getByRole('button', { name: 'Find ranked battle' }),
     ).toBeDisabled();
     expect(screen.getByText('No active season')).toBeVisible();
     expect(
@@ -299,7 +448,7 @@ describe('live lobby and battle experience', () => {
 
     renderRoute('/matches/live', <LiveLobbyPage apiBaseUrl={apiBaseUrl} />);
     const join = await screen.findByRole('button', {
-      name: 'Find live match',
+      name: 'Find ranked battle',
     });
     await user.click(join);
 
@@ -424,10 +573,14 @@ describe('live lobby and battle experience', () => {
       }),
     );
     expect(await screen.findByText('Opponent connection lost')).toBeVisible();
-    expect(screen.getByText(/server deadline continues/i)).toBeVisible();
+    expect(screen.getByText(/turn timer keeps running/i)).toBeVisible();
 
     act(() => first.serverClose());
-    expect(await screen.findByText('Reconnecting')).toBeVisible();
+    expect(
+      await screen.findByText('Reconnecting', {
+        selector: '.live-status-banner strong',
+      }),
+    ).toBeVisible();
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2));
     act(() => FakeWebSocket.instances[1]!.emit(readyMessage(restored)));
     expect(await screen.findByText('Battle recovered')).toBeVisible();
@@ -455,7 +608,9 @@ describe('live lobby and battle experience', () => {
     expect(
       screen.getByRole('heading', { name: 'Watching live — read only' }),
     ).toBeVisible();
-    expect(screen.getByText(/public spectator projection/i)).toBeVisible();
+    expect(
+      screen.getAllByText(/public battlefield and battle activity/i),
+    ).toHaveLength(2);
     expect(screen.queryByText('Your bench')).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: /Forfeit battle/i }),

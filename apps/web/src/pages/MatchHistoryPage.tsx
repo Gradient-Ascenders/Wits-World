@@ -166,7 +166,7 @@ export default function MatchHistoryPage({
     return (
       <PageLoadingState
         title="Loading your battle history"
-        description="Loading your completed CPU and player battles…"
+        description="Loading your completed Practice and Player Battles…"
       />
     );
   }
@@ -193,25 +193,24 @@ export default function MatchHistoryPage({
 
   return (
     <div className="matches-page">
-      <header className="matches-page__header">
-        <h1
-          ref={(node) => {
-            resultHeading.current = node;
-          }}
-          tabIndex={-1}
-        >
-          Battle history
-        </h1>
-        <p className="lead">
-          Revisit every completed CPU and player battle in one timeline.
-        </p>
-      </header>
-
-      <div className="match-page-actions">
+      <header className="matches-page__header match-history-header">
+        <div>
+          <h1
+            ref={(node) => {
+              resultHeading.current = node;
+            }}
+            tabIndex={-1}
+          >
+            Battle history
+          </h1>
+          <p className="lead">
+            Scan every Practice and Player Battle by result, opponent, and time.
+          </p>
+        </div>
         <Link className="button" href="/matches">
           Back to battles
         </Link>
-      </div>
+      </header>
 
       {state.partial ? (
         <div className="match-inline-alert" role="status">
@@ -237,7 +236,7 @@ export default function MatchHistoryPage({
         >
           <StateIcon tone="empty" />
           <h2 id="empty-history-title">No completed matches yet</h2>
-          <p>Finish a CPU or player battle to see your result here.</p>
+          <p>Finish a Practice or Player Battle to see your result here.</p>
         </section>
       ) : (
         <ol aria-label="Completed battles" className="match-history-list">

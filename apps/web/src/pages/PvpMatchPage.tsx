@@ -1,6 +1,5 @@
 import { StateIcon } from '../components/StatusMessage';
 import { PageLoadingState } from '../components/LoadingState';
-import { ArrowLeft } from '@phosphor-icons/react';
 import { useAuth0 } from '@auth0/auth0-react';
 import {
   useCallback,
@@ -26,6 +25,11 @@ import {
   BattleCombatant,
   type BattleActionIntent,
 } from '../components/matches/BattlePresentation';
+import {
+  BattleOutcomePanel,
+  BattleShellHeader,
+  BattleStatusDock,
+} from '../components/matches/BattleShell';
 import { ResignMatchDialog } from '../components/matches/ResignMatchDialog';
 import './matches.css';
 
@@ -310,7 +314,7 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       ) {
         setRequestStatus('reconciling');
         setStatusMessage(
-          'The response was stale or uncertain. Restoring server state before another action is allowed…',
+          'That action could not be confirmed. Checking the latest battle before you can act again…',
         );
         try {
           const reconciled = await getPvpMatch({
@@ -332,11 +336,11 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
               setRetryAttempt(nextAttempt);
               setError(parsed);
               setStatusMessage(
-                'Server state did not advance. You may safely retry the same submission reference.',
+                'The battle did not change. You can retry the same action without risking a duplicate.',
               );
             } else {
               setStatusMessage(
-                'Authoritative state restored. Review the current turn and legal actions.',
+                'Battle updated. Review whose turn it is and the actions now available.',
               );
             }
           }
@@ -377,13 +381,13 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         setError(recovery.error);
         setErrorContext('resignation');
         setStatusMessage(
-          'The battle is still active. You may safely retry the same forfeit request.',
+          'The battle is still active. You can retry the same forfeit without recording it twice.',
         );
       } else {
         setStatusMessage(
           reconciled.status === 'completed'
             ? matchStatusMessage(reconciled)
-            : 'The latest battle state was restored. Review it before choosing whether to forfeit.',
+            : 'Battle updated. Review it before choosing whether to forfeit.',
         );
       }
     } catch (recoveryError) {
@@ -438,7 +442,7 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     setRetryAttempt(null);
     setResignationRecovery(null);
     setRequestStatus('submitting');
-    setStatusMessage('Submitting your forfeit to the server…');
+    setStatusMessage('Recording your forfeit…');
     try {
       const response = await resignPvpMatch({
         ...nextAttempt,
@@ -466,14 +470,14 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         setResignationRecovery(parsed.options.ambiguous ? recovery : null);
         setRequestStatus('reconciling');
         setStatusMessage(
-          'The forfeit result was uncertain. Refreshing the latest battle state before another attempt…',
+          'We could not confirm the result. Checking the battle before you can try again…',
         );
         await reconcileResignation(recovery, controller);
       } else {
         setError(parsed);
         setErrorContext('resignation');
         setStatusMessage(
-          'The forfeit was not completed. The last confirmed battle state remains available.',
+          'The forfeit was not recorded. You can continue from the battle shown.',
         );
       }
       setRequestStatus('ready');
@@ -496,8 +500,8 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   if (requestStatus === 'loading' && !match) {
     return (
       <PageLoadingState
-        title="Loading saved PvP state"
-        description="Retrieving the current actor, deadline, revealed cards, and legal actions…"
+        title="Loading your Player Battle"
+        description="Restoring the current turn, deadline, and available actions…"
       />
     );
   }
@@ -510,9 +514,8 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           role="alert"
         >
           <StateIcon tone="error" />
-          <p className="eyebrow">PvP connection</p>
           <h1 ref={phaseHeading} tabIndex={-1}>
-            PvP match could not load
+            Player Battle could not load
           </h1>
           <p>{errorMessage(error)}</p>
           <div className="match-state-actions">
@@ -534,7 +537,7 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
               </button>
             )}
             <Link className="button button--quiet" href="/matches/pvp">
-              Back to PvP
+              Back to Player Battles
             </Link>
           </div>
           {reauthFailed ? (
@@ -560,52 +563,64 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       <p aria-live="polite" className="sr-only" role="status">
         {statusMessage}
       </p>
-      <header className="battle-header pvp-battle-header">
-        <Link className="battle-back-link" href="/matches/pvp">
-          <ArrowLeft size={20} aria-hidden="true" /> PvP
-        </Link>
-        <div className="battle-header__phase">
-          <div className="battle-header__context">
-            <p className="eyebrow">Against {match.opponent.playerName}</p>
-            <span>Turn {match.state.turnNumber}</span>
-          </div>
-          <div className="battle-header__title-row">
-            <h1 ref={phaseHeading} tabIndex={-1}>
-              {phaseTitle(match)}
-            </h1>
-            <span aria-live="polite" className="battle-turn-indicator">
-              {busy
-                ? 'PROCESSING…'
-                : error || (countdown.expired && match.status === 'active')
-                  ? 'SYNC REQUIRED'
-                  : match.status === 'completed'
-                    ? 'Completed'
-                    : match.currentActor === 'self' &&
-                        match.legalActions.length > 0
-                      ? 'YOUR TURN'
-                      : "OPPONENT'S TURN"}
-            </span>
-          </div>
-          {match.status === 'active' ? (
-            <div
-              className={`pvp-deadline${countdown.expired ? ' pvp-deadline--expired' : ''}`}
-            >
-              <strong>
-                {countdown.expired
-                  ? 'Deadline reached — syncing server state'
-                  : countdown.label}
-              </strong>
-              <span>Server deadline {formatDate(match.turnDeadline!)}</span>
-            </div>
-          ) : null}
-        </div>
-      </header>
+      <BattleShellHeader
+        backHref="/matches/pvp"
+        backLabel="Player Battles"
+        description={
+          match.status === 'active'
+            ? 'Take your turn within 24 hours. Leaving this page does not pause the deadline.'
+            : 'This result is saved in Battle history.'
+        }
+        headingRef={phaseHeading}
+        mode="Player Battle"
+        opponentLabel={`Against ${match.opponent.playerName}`}
+        title={phaseTitle(match)}
+        turnNumber={match.state.turnNumber}
+      />
+
+      <BattleStatusDock
+        detail={playerBattleStatusDetail(
+          match,
+          busy,
+          error !== null,
+          countdown.expired,
+        )}
+        label={
+          busy
+            ? 'Processing your action'
+            : error || (countdown.expired && match.status === 'active')
+              ? 'Sync required'
+              : match.status === 'completed'
+                ? 'Battle complete'
+                : match.currentActor === 'self' && match.legalActions.length > 0
+                  ? 'Your turn'
+                  : "Opponent's turn"
+        }
+        timing={
+          match.status === 'active'
+            ? {
+                detail: `Play by ${formatDate(match.turnDeadline!)}`,
+                label: countdown.expired ? 'Deadline reached' : countdown.label,
+                tone: countdown.expired ? 'danger' : undefined,
+              }
+            : undefined
+        }
+        tone={
+          error || countdown.expired
+            ? 'danger'
+            : match.status === 'completed'
+              ? 'complete'
+              : match.currentActor === 'self'
+                ? 'player'
+                : 'opponent'
+        }
+      />
 
       {pollWarning ? (
         <div className="pvp-poll-warning" role="status">
           <span>
-            Automatic opponent refresh failed. The last confirmed server state
-            remains visible.
+            We could not check whether your opponent moved. Your last confirmed
+            battle is shown.
           </span>
           <button
             className="button button--quiet"
@@ -681,7 +696,7 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
                 onClick={() => void refreshMatch({ announce: true })}
                 type="button"
               >
-                Reload server state
+                Check battle again
               </button>
             )}
           </div>
@@ -887,43 +902,58 @@ function PvpSideRail({
 
 function CompletedPvpMatch({ match }: { match: AsyncPvpMatch }) {
   const reason = completedReason(match);
+  const playerWon = match.outcome === 'win';
   return (
-    <section
-      aria-labelledby="completed-pvp-title"
-      className={`completed-match completed-match--${match.outcome === 'win' ? 'player' : 'cpu'}`}
+    <BattleOutcomePanel
+      action={
+        <Link className="button" href="/matches/pvp">
+          Return to Player Battles
+        </Link>
+      }
+      facts={[
+        { label: 'Opponent', value: match.opponent.playerName },
+        { label: 'Final turn', value: match.state.turnNumber },
+        {
+          label: 'Completed',
+          value: match.completedAt
+            ? formatDate(match.completedAt)
+            : 'Not returned',
+        },
+      ]}
+      mode="Player Battle"
+      summary={reason}
+      title={completedResultTitle(match)}
+      titleId="completed-pvp-title"
+      tone={playerWon ? 'victory' : 'defeat'}
     >
-      <p className="eyebrow">Match complete</p>
-      <h2 id="completed-pvp-title">{completedResultTitle(match)}</h2>
-      <p>{reason}</p>
       <details className="completed-match__context">
         <summary>About this result</summary>
         <p>
-          This outcome and completion reason came from the server. Refreshing
-          cannot replay actions, change a forfeit, or reveal unplayed opponent
-          cards.
+          This result is final. Refreshing cannot replay actions, change a
+          forfeit, or reveal unplayed opponent cards.
         </p>
       </details>
-      <dl>
-        <div>
-          <dt>Opponent</dt>
-          <dd>{match.opponent.playerName}</dd>
-        </div>
-        <div>
-          <dt>Final turn</dt>
-          <dd>{match.state.turnNumber}</dd>
-        </div>
-        <div>
-          <dt>Completed</dt>
-          <dd>
-            {match.completedAt ? formatDate(match.completedAt) : 'Not returned'}
-          </dd>
-        </div>
-      </dl>
-      <Link className="button" href="/matches/pvp">
-        Back to PvP
-      </Link>
-    </section>
+    </BattleOutcomePanel>
   );
+}
+
+function playerBattleStatusDetail(
+  match: AsyncPvpMatch,
+  busy: boolean,
+  hasError: boolean,
+  expired: boolean,
+) {
+  if (hasError || expired) return 'Review the battle shown before acting.';
+  if (busy) return 'Your choice is being confirmed.';
+  if (match.status === 'completed') return 'The result is saved.';
+  if (match.state.phase === 'replacement') {
+    return match.currentActor === 'self'
+      ? 'Choose an available replacement Creature.'
+      : `${match.opponent.playerName} is choosing a replacement.`;
+  }
+  return match.currentActor === 'self'
+    ? 'Choose one available action.'
+    : `Waiting for ${match.opponent.playerName}. We’ll refresh automatically.`;
 }
 
 function useDeadlineCountdown(deadline: string | null) {
@@ -961,14 +991,14 @@ function phaseTitle(match: AsyncPvpMatch) {
 
 function matchStatusMessage(match: AsyncPvpMatch) {
   if (match.status === 'completed')
-    return `Match completed. ${completedReason(match)} The result is saved.`;
+    return `Battle completed. ${completedReason(match)} The result is saved.`;
   if (match.state.phase === 'replacement')
     return match.currentActor === 'self'
-      ? 'Your Creature was defeated. Choose a legal replacement.'
+      ? 'Your Creature was defeated. Choose an available replacement.'
       : 'Waiting for the opponent to choose a replacement.';
   return match.currentActor === 'self'
-    ? `Your turn. Match version ${match.version}.`
-    : `Waiting for ${match.opponent.playerName}. The match will refresh automatically.`;
+    ? 'Your turn. Choose an available action.'
+    : `Waiting for ${match.opponent.playerName}. The battle will refresh automatically.`;
 }
 
 function lastActionLabel(match: AsyncPvpMatch) {
@@ -1055,13 +1085,13 @@ function errorMessage(
   if (error.failure === 'not-found')
     return 'This match is not available to the signed-in player.';
   if (error.failure === 'completed')
-    return `The match completed before that ${context === 'resignation' ? 'forfeit' : 'action'} arrived. Reload its saved result.`;
+    return `The battle completed before that ${context === 'resignation' ? 'forfeit' : 'action'} arrived. Open its saved result.`;
   if (error.failure === 'stale' || error.failure === 'illegal-action')
-    return 'The match changed before that intent was accepted. Reload the current legal actions.';
+    return 'The battle changed while you were choosing. Check whose turn it is and the actions now available.';
   if (error.options.ambiguous)
     return context === 'resignation'
-      ? 'The response was interrupted. The latest battle result is checked before the same forfeit can be retried.'
-      : 'The response was interrupted. The latest battle state is checked before the action can be retried.';
+      ? 'Your connection was interrupted. The result will be checked before you can retry the forfeit.'
+      : 'Your connection was interrupted. The battle will be checked before you can retry the action.';
   return 'Check your connection, then reload the battle to continue.';
 }
 

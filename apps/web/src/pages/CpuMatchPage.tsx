@@ -1,7 +1,6 @@
 import { StateIcon } from '../components/StatusMessage';
 import { PageLoadingState } from '../components/LoadingState';
 import {
-  ArrowLeft,
   ArrowRight,
   ArrowDown,
   ArrowUp,
@@ -35,6 +34,11 @@ import { prefersReducedMotion } from '../accessibility/preferences';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { MatchErrorState } from '../components/matches/MatchErrorState';
 import { ResignMatchDialog } from '../components/matches/ResignMatchDialog';
+import {
+  BattleOutcomePanel,
+  BattleShellHeader,
+  BattleStatusDock,
+} from '../components/matches/BattleShell';
 import {
   BattleActionPanel,
   BattleBench,
@@ -285,7 +289,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       ) {
         setRequestStatus('reconciling');
         setStatusMessage(
-          'The match changed before that intent was accepted. Reloading server state; the action will not be replayed.',
+          'The battle changed while you were choosing. Checking the latest battle; your action will not be repeated.',
         );
         const reconciliationGeneration = ++nextGeneration.current;
         try {
@@ -300,7 +304,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
             finishMatchResponse(result);
             if (result === 'applied') {
               setStatusMessage(
-                'Authoritative match state restored. Review the current legal actions before continuing.',
+                'The battle changed while you were choosing. Review the latest available actions before continuing.',
               );
               queueMicrotask(() => phaseHeading.current?.focus());
             }
@@ -316,7 +320,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         setError(matchError);
         setRequestStatus('ready');
         setStatusMessage(
-          'The action outcome could not be confirmed. Reload server state before continuing.',
+          'We could not confirm what happened. Check the latest battle before choosing again.',
         );
         queueMicrotask(() => alert.current?.focus());
       }
@@ -373,7 +377,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       ) {
         setRequestStatus('reconciling');
         setStatusMessage(
-          'The battle changed before the forfeit was confirmed. Restoring the latest server result…',
+          'The battle changed before the forfeit was confirmed. Checking the saved result…',
         );
         const reconciliationGeneration = ++nextGeneration.current;
         try {
@@ -422,7 +426,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   if (requestStatus === 'loading' && match === null) {
     return (
       <PageLoadingState
-        title="Loading saved match state"
+        title="Loading your Practice battle"
         description="Restoring your cards and current turn…"
       />
     );
@@ -474,12 +478,9 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         {statusMessage}
       </p>
 
-      <header className="battle-header">
-        <div className="battle-header__navigation">
-          <Link className="battle-back-link" href="/matches">
-            <ArrowLeft size={20} aria-hidden="true" /> Save &amp; exit
-          </Link>
-          {match.status === 'active' ? (
+      <BattleShellHeader
+        action={
+          match.status === 'active' ? (
             <button
               className="battle-forfeit-trigger"
               disabled={busy || error !== null}
@@ -487,31 +488,37 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
               ref={forfeitTrigger}
               type="button"
             >
-              <Flag aria-hidden="true" size={18} /> Forfeit match
+              <Flag aria-hidden="true" size={18} /> Forfeit battle
             </button>
-          ) : null}
-        </div>
+          ) : null
+        }
+        backHref="/matches"
+        backLabel="Save and exit"
+        description={phasePrompt}
+        headingRef={phaseHeading}
+        mode="Practice"
+        opponentLabel="Against CPU"
+        title={phaseTitle}
+        turnNumber={match.state.turnNumber}
+      />
 
-        <div className="battle-header__phase">
-          <div className="battle-header__title-row">
-            <h1 ref={phaseHeading} tabIndex={-1}>
-              {phaseTitle}
-            </h1>
-            <div className="battle-header__context">
-              <span>CPU battle</span>
-              <span>Turn {match.state.turnNumber}</span>
-            </div>
-            {turnIndicator ? (
-              <span aria-live="polite" className="battle-turn-indicator">
-                {turnIndicator}
-              </span>
-            ) : null}
-          </div>
-          {phasePrompt ? (
-            <p className="battle-phase-prompt">{phasePrompt}</p>
-          ) : null}
-        </div>
-      </header>
+      <BattleStatusDock
+        detail={practiceStatusDetail(match, busy, error !== null)}
+        label={sentenceCaseStatus(turnIndicator)}
+        timing={{
+          detail: 'Leave now and continue from the latest confirmed state.',
+          label: 'No turn timer',
+        }}
+        tone={
+          error
+            ? 'danger'
+            : match.status === 'completed'
+              ? 'complete'
+              : match.state.currentSide === 'player' || selectionPhase
+                ? 'player'
+                : 'opponent'
+        }
+      />
 
       {error ? (
         <section
@@ -528,7 +535,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           </strong>{' '}
           {error.failure === 'authorization'
             ? 'Your session expired. Sign in again before continuing.'
-            : 'The last confirmed state is shown below. Reload it before trying another intent.'}
+            : 'Your last confirmed battle is shown below. Check it before trying another action.'}
           <div className="match-state-actions">
             {error.failure === 'authorization' ? (
               <button
@@ -544,7 +551,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
                 onClick={() => setRevision((value) => value + 1)}
                 type="button"
               >
-                Reload match state
+                Check battle again
               </button>
             )}
           </div>
@@ -644,26 +651,29 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
 function getMatchStatusMessage(match: CpuMatch) {
   if (match.status === 'completed') {
-    return `Match completed. ${match.winner === 'player' ? 'You won.' : 'The CPU won.'} The result is saved.`;
+    return `Battle completed. ${match.winner === 'player' ? 'You won.' : 'The CPU won.'} The result is saved.`;
   }
   if (match.state.phase === 'replacement') {
-    return 'Your Creature was defeated. Choose a legal replacement.';
+    return 'Your Creature was defeated. Choose an available replacement.';
   }
   if (match.state.phase === 'initial_selection') {
     return 'Choose your first Creature.';
   }
   return match.state.currentSide === 'player'
-    ? `Your turn. Match version ${match.version}.`
+    ? 'Your turn. Choose an available action.'
     : 'The CPU is taking its turn.';
 }
 
 function BattleSideRail({ match }: { match: CpuMatch }) {
   return (
-    <aside aria-label="Battle history and details" className="battle-side-rail">
+    <aside
+      aria-label="Battle activity and details"
+      className="battle-side-rail"
+    >
       <header className="battle-side-rail__heading">
         <div>
-          <h2>Battle record</h2>
-          <p>Review the full turn history and your remaining cards.</p>
+          <h2>Battle activity</h2>
+          <p>Review confirmed turns and your remaining cards.</p>
         </div>
         <Link
           aria-label="Match history"
@@ -717,7 +727,7 @@ function BattleLog({ groups }: { groups: CpuMatch['battleLog'] }) {
     >
       <summary>
         <span className="battle-log__summary-label">
-          Battle history
+          Battle activity
           <strong>
             {events.length} {events.length === 1 ? 'event' : 'events'}
           </strong>
@@ -735,7 +745,7 @@ function BattleLog({ groups }: { groups: CpuMatch['battleLog'] }) {
       </summary>
 
       <div
-        aria-label="Complete authoritative battle log"
+        aria-label="Complete battle activity"
         aria-live="polite"
         aria-relevant="additions"
         className="battle-log__body"
@@ -900,10 +910,6 @@ function BattleDetails({ match }: { match: CpuMatch }) {
       <div className="battle-details__panel">
         <dl className="battle-meta">
           <div>
-            <dt>Match version</dt>
-            <dd>{match.version}</dd>
-          </div>
-          <div data-tone={match.status === 'completed' ? 'complete' : 'active'}>
             <dt>Status</dt>
             <dd>
               {match.status === 'completed' ? 'Completed' : 'In progress'}
@@ -914,7 +920,7 @@ function BattleDetails({ match }: { match: CpuMatch }) {
             <dd>{formatDate(match.startedAt)}</dd>
           </div>
           <div data-tone={match.state.turnDeadline ? 'timing' : undefined}>
-            <dt>Server deadline</dt>
+            <dt>Turn deadline</dt>
             <dd>
               {match.state.turnDeadline
                 ? formatDate(match.state.turnDeadline)
@@ -946,43 +952,44 @@ function CpuReserveSummary({ match }: { match: CpuMatch }) {
 }
 
 function CompletedMatch({ match }: { match: CpuMatch }) {
+  const playerWon = match.winner === 'player';
   return (
-    <section
-      className={`completed-match completed-match--${match.winner}`}
-      aria-labelledby="completed-match-title"
+    <BattleOutcomePanel
+      action={
+        <Link className="button" href="/matches">
+          Play another battle
+        </Link>
+      }
+      facts={[
+        {
+          label: 'Winner',
+          value: match.winner ? sideLabel(match.winner) : 'Not returned',
+        },
+        { label: 'Final turn', value: match.state.turnNumber },
+        {
+          label: 'Completed',
+          value: match.completedAt
+            ? formatDate(match.completedAt)
+            : 'Not returned',
+        },
+      ]}
+      mode="Practice"
+      summary={
+        playerWon
+          ? 'You defeated the CPU. This result is saved in your battle history.'
+          : 'The CPU won this battle. This result is saved in your battle history.'
+      }
+      title={playerWon ? 'Practice victory' : 'Practice complete'}
+      titleId="completed-match-title"
+      tone={playerWon ? 'victory' : 'defeat'}
     >
-      <p className="eyebrow">Match complete</p>
-      <h2 id="completed-match-title">
-        {match.winner === 'player'
-          ? 'Victory — match saved'
-          : 'CPU victory — match saved'}
-      </h2>
       <details className="completed-match__context">
         <summary>About this result</summary>
         <p>
-          This result is saved. You can return to it from your match history.
+          Review every confirmed turn here or return to it from Battle history.
         </p>
       </details>
-      <dl>
-        <div>
-          <dt>Winner</dt>
-          <dd>{match.winner ? sideLabel(match.winner) : 'Not returned'}</dd>
-        </div>
-        <div>
-          <dt>Final turn</dt>
-          <dd>{match.state.turnNumber}</dd>
-        </div>
-        <div>
-          <dt>Completed</dt>
-          <dd>
-            {match.completedAt ? formatDate(match.completedAt) : 'Not returned'}
-          </dd>
-        </div>
-      </dl>
-      <Link className="button" href="/matches">
-        Play again
-      </Link>
-    </section>
+    </BattleOutcomePanel>
   );
 }
 
@@ -1032,7 +1039,7 @@ function getTurnIndicator(match: CpuMatch, busy: boolean) {
 function getPhasePrompt(match: CpuMatch) {
   if (match.state.phase === 'initial_selection') return null;
   if (match.state.phase === 'replacement') {
-    return 'Your active Creature was defeated. Choose a legal replacement.';
+    return 'Your active Creature was defeated. Choose an available replacement.';
   }
   if (match.status !== 'completed' && match.state.currentSide === 'cpu') {
     return 'Your actions will be available after the CPU acts.';
@@ -1042,18 +1049,42 @@ function getPhasePrompt(match: CpuMatch) {
 
 function getPhaseDescription(match: CpuMatch) {
   if (match.status === 'completed')
-    return 'This result is saved in your match history.';
+    return 'This result is saved in Battle history.';
   if (match.state.phase === 'initial_selection')
     return 'Choose an available Creature to begin.';
   if (match.state.phase === 'replacement')
-    return 'The server reports a defeat. Choose one currently legal replacement; replacement does not consume the resumed normal turn.';
+    return 'Choose an available replacement. This does not use your next normal turn.';
   if (match.state.turnDeadline)
-    return `The server deadline for this turn is ${formatDate(match.state.turnDeadline)}. A late intent may be stored as a timeout by the API.`;
+    return `Play before ${formatDate(match.state.turnDeadline)}. A late choice may not be accepted.`;
   return 'Waiting for the next battle update.';
 }
 
 function sideLabel(side: 'cpu' | 'player') {
-  return side === 'player' ? 'Player' : 'CPU';
+  return side === 'player' ? 'You' : 'CPU';
+}
+
+function sentenceCaseStatus(value: string | null) {
+  if (!value) return 'Battle ready';
+  return value
+    .toLocaleLowerCase()
+    .replace(/^./u, (character) => character.toLocaleUpperCase());
+}
+
+function practiceStatusDetail(
+  match: CpuMatch,
+  busy: boolean,
+  hasError: boolean,
+) {
+  if (hasError) return 'Reload the latest confirmed state before acting.';
+  if (busy) return 'Your choice is being confirmed.';
+  if (match.status === 'completed') return 'The result is saved.';
+  if (match.state.phase === 'replacement')
+    return 'Choose an available replacement Creature.';
+  if (match.state.phase === 'initial_selection')
+    return 'Choose your opening Creature.';
+  return match.state.currentSide === 'player'
+    ? 'Choose one available action.'
+    : 'Your actions return after the CPU acts.';
 }
 
 function formatDate(value: string) {

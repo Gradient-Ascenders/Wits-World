@@ -88,8 +88,8 @@ function CpuResultSummary({
     >
       <div className="match-result-summary__heading">
         <div>
-          <p className="match-result-summary__type">CPU battle</p>
-          <Heading>{playerWon ? 'Victory' : 'CPU victory'}</Heading>
+          <p className="match-result-summary__type">Practice</p>
+          <Heading>{playerWon ? 'Victory' : 'Defeat'}</Heading>
         </div>
         <span>{playerWon ? 'Won' : 'Lost'}</span>
       </div>
@@ -108,7 +108,7 @@ function CpuResultSummary({
         </div>
       </dl>
       <Link className="button button--quiet" href={`/matches/${match.matchId}`}>
-        {compact ? 'View battle' : 'View saved match'}
+        View battle
       </Link>
     </article>
   );
@@ -132,8 +132,11 @@ function PlayerResultSummary({
     >
       <div className="match-result-summary__heading">
         <div>
-          <p className="match-result-summary__type">Player battle</p>
-          <Heading>Against {match.opponent.playerName}</Heading>
+          <p className="match-result-summary__type">Player Battle</p>
+          <Heading>
+            {playerWon ? 'Victory' : 'Defeat'} against{' '}
+            {match.opponent.playerName}
+          </Heading>
         </div>
         <span>{playerWon ? 'Won' : 'Lost'}</span>
       </div>
