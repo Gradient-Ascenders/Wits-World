@@ -156,6 +156,7 @@
 }
 
 .card-frame .collectible-card__artwork.collectible-card__artwork,
+.card-frame .collectible-card__artwork > img,
 .card-frame__window > img {
   display: block;
   width: 100%;

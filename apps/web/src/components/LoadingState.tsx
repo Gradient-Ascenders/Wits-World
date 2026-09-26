@@ -12,10 +12,12 @@ export function LoadingSeal() {
 }
 
 export function LoadingState({
+  announce = true,
   label = 'Loading this Wits World page…',
   prominent = false,
   className = '',
 }: {
+  announce?: boolean;
   label?: string;
   prominent?: boolean;
   className?: string;
@@ -23,8 +25,8 @@ export function LoadingState({
   return (
     <div
       className={`state-message state-loading${prominent ? ' page-loading-state state-loading--prominent' : ' state-loading--subtle'}${className ? ` ${className}` : ''}`}
-      role="status"
-      aria-live="polite"
+      role={announce ? 'status' : undefined}
+      aria-live={announce ? 'polite' : undefined}
     >
       {prominent ? <LoadingSeal /> : null}
       <p className="state-loading__label">

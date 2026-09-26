@@ -1,0 +1,258 @@
+.trade-card-detail-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: var(--colour-overlay);
+}
+
+.trade-card-detail {
+  --trade-card-detail-accent: #d6d9de;
+  --trade-card-detail-accent-rgb: 214 217 222;
+  width: min(46rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--trade-card-detail-accent);
+  border-radius: var(--radius-lg);
+  color: var(--colour-text-primary);
+  background: var(--colour-surface-default);
+  box-shadow:
+    0 1.5rem 4rem rgb(0 0 0 / 55%),
+    0 0 2rem rgb(var(--trade-card-detail-accent-rgb) / 10%);
+}
+
+.trade-card-detail--rare {
+  --trade-card-detail-accent: #91cfff;
+  --trade-card-detail-accent-rgb: 145 207 255;
+}
+
+.trade-card-detail--epic {
+  --trade-card-detail-accent: #d1a7ee;
+  --trade-card-detail-accent-rgb: 209 167 238;
+}
+
+.trade-card-detail--legendary {
+  --trade-card-detail-accent: #edc664;
+  --trade-card-detail-accent-rgb: 237 198 100;
+}
+
+.trade-card-detail__header {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid rgb(var(--trade-card-detail-accent-rgb) / 24%);
+  background:
+    linear-gradient(
+      115deg,
+      rgb(var(--trade-card-detail-accent-rgb) / 14%),
+      transparent 62%
+    ),
+    var(--colour-background-secondary);
+}
+
+.trade-card-detail__header h2 {
+  margin: 0;
+  font-size: var(--text-3xl);
+}
+
+.trade-card-detail__eyebrow,
+.trade-card-detail__subtitle {
+  color: var(--trade-card-detail-accent);
+}
+
+.trade-card-detail__eyebrow {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.trade-card-detail__subtitle {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.trade-card-detail__handle {
+  display: none;
+}
+
+.trade-card-detail__close {
+  padding: var(--space-2);
+}
+
+.trade-card-detail__body {
+  min-height: 0;
+  max-height: calc(100dvh - 9rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-5);
+  scrollbar-gutter: stable;
+}
+
+.trade-card-detail__overview {
+  display: grid;
+  grid-template-columns: minmax(11rem, 13.5rem) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-6);
+}
+
+.trade-card-detail__artwork {
+  filter: drop-shadow(0 0.8rem 1rem rgb(0 0 0 / 42%));
+}
+
+.trade-card-detail__summary > p {
+  margin: 0 0 var(--space-5);
+  color: var(--colour-text-secondary);
+  line-height: 1.65;
+}
+
+.trade-card-detail__body h3 {
+  margin: var(--space-5) 0 var(--space-3);
+  color: var(--trade-card-detail-accent);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.trade-card-detail__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.trade-card-detail__stats > div {
+  padding: var(--space-3);
+  border: 1px solid rgb(var(--trade-card-detail-accent-rgb) / 22%);
+  border-radius: var(--radius-sm);
+  background: rgb(var(--trade-card-detail-accent-rgb) / 7%);
+}
+
+.trade-card-detail__stats dt {
+  color: var(--colour-text-muted);
+  font-size: var(--text-xs);
+}
+
+.trade-card-detail__stats dd {
+  margin: var(--space-1) 0 0;
+  color: var(--trade-card-detail-accent);
+  font-family: var(--font-heading);
+  font-size: var(--text-2xl);
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-card-detail__rules {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trade-card-detail__rules li {
+  padding: var(--space-3);
+  border: 1px solid var(--colour-border-subtle);
+  border-radius: var(--radius-sm);
+  background: rgb(4 10 24 / 24%);
+}
+
+.trade-card-detail__rules li > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.trade-card-detail__rules li span {
+  color: var(--trade-card-detail-accent);
+  font-size: var(--text-xs);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.trade-card-detail__rules p,
+.trade-card-detail__unavailable {
+  margin: var(--space-2) 0 0;
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.trade-card-detail__unavailable {
+  padding: var(--space-3);
+  border: 1px dashed var(--colour-border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+@media (max-width: 47.99rem) {
+  .trade-card-detail-backdrop {
+    align-items: end;
+    padding: max(0.75rem, env(safe-area-inset-top)) 0 0;
+  }
+
+  .trade-card-detail {
+    width: 100%;
+    height: min(42rem, calc(100dvh - max(0.75rem, env(safe-area-inset-top))));
+    max-height: calc(100dvh - max(0.75rem, env(safe-area-inset-top)));
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    animation: trade-card-detail-enter 160ms ease-out;
+  }
+
+  .trade-card-detail__header {
+    padding: var(--space-6) var(--space-4) var(--space-3);
+  }
+
+  .trade-card-detail__handle {
+    position: absolute;
+    top: 8px;
+    left: calc(50% - 18px);
+    display: block;
+    width: 36px;
+    height: 4px;
+    border-radius: var(--radius-pill);
+    background: var(--trade-card-detail-accent);
+    opacity: 0.65;
+  }
+
+  .trade-card-detail__header h2 {
+    font-size: var(--text-2xl);
+  }
+
+  .trade-card-detail__body {
+    flex: 1 1 auto;
+    max-height: none;
+    padding: var(--space-4);
+    padding-bottom: max(var(--space-5), env(safe-area-inset-bottom));
+  }
+
+  .trade-card-detail__overview {
+    grid-template-columns: 8.75rem minmax(0, 1fr);
+    gap: var(--space-4);
+  }
+
+  .trade-card-detail__rules {
+    grid-template-columns: 1fr;
+  }
+}
+
+@keyframes trade-card-detail-enter {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion='full']) .trade-card-detail {
+    animation: none;
+  }
+}

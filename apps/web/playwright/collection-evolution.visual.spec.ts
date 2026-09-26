@@ -34,6 +34,8 @@ for (const reducedMotion of [false, true]) {
     let previewFails = false;
     let mutation: 'success' | 'error' | 'stale' = 'error';
     let posts = 0;
+    let holdPreview = false;
+    let releasePreview: (() => void) | undefined;
     let releaseSuccess: (() => void) | undefined;
     const submissions: string[] = [];
     const runtimeErrors: string[] = [];
@@ -70,6 +72,10 @@ for (const reducedMotion of [false, true]) {
         const sourceCopies = cards.filter(
           (card) => card.cardDefinitionId === source.cardDefinitionId,
         );
+        if (holdPreview)
+          await new Promise<void>((resolve) => {
+            releasePreview = resolve;
+          });
         if (previewFails) return route.fulfill({ status: 503, json: {} });
         return route.fulfill({
           json: {
@@ -160,9 +166,21 @@ for (const reducedMotion of [false, true]) {
         page.getByRole('button', { name: 'Review evolution' }),
       ).toHaveCount(0);
       await page.keyboard.press('Escape');
-      await page
-        .getByRole('button', { name: 'Evolutions', exact: true })
-        .click();
+      holdPreview = width === 1440 && !reducedMotion;
+      await page.getByRole('link', { name: 'Evolutions', exact: true }).click();
+      if (holdPreview) {
+        await expect(
+          page
+            .getByRole('status')
+            .filter({ hasText: 'Checking evolution paths…' }),
+        ).toBeVisible();
+        await page.screenshot({
+          path: testInfo.outputPath('loading-1440.png'),
+          fullPage: true,
+        });
+        holdPreview = false;
+        releasePreview?.();
+      }
       await expect(
         page.getByText('Ready to evolve', { exact: true }),
       ).toBeVisible();
@@ -172,6 +190,36 @@ for (const reducedMotion of [false, true]) {
       await expect(
         page.getByText('No further evolution is currently available.'),
       ).toBeVisible();
+      const sourceDetailsTrigger = page.getByRole('button', {
+        name: 'View Quillip details',
+      });
+      await expect(sourceDetailsTrigger).toBeVisible();
+
+      if (width === 1440 && !reducedMotion) {
+        await sourceDetailsTrigger.hover({ position: { x: 70, y: 50 } });
+        await expect(sourceDetailsTrigger).toHaveAttribute('data-hovered', '');
+        await expect
+          .poll(() =>
+            sourceDetailsTrigger.evaluate(
+              (element) => getComputedStyle(element).transform,
+            ),
+          )
+          .not.toBe('none');
+        await page.mouse.move(0, 0);
+        await expect(sourceDetailsTrigger).not.toHaveAttribute(
+          'data-hovered',
+          '',
+        );
+      }
+
+      await sourceDetailsTrigger.click();
+      const cardDialog = page.getByRole('dialog', { name: 'Quillip' });
+      await expect(cardDialog).toHaveAttribute('data-rarity', 'common');
+      await expect(cardDialog.getByText('Knowledge Surge')).toBeVisible();
+      await cardDialog
+        .getByRole('button', { name: 'Close Quillip details' })
+        .click();
+      await expect(sourceDetailsTrigger).toBeFocused();
       await page.screenshot({
         path: testInfo.outputPath(`evolutions-${width}.png`),
         fullPage: true,
@@ -270,8 +318,8 @@ for (const reducedMotion of [false, true]) {
     });
     cards = [...initialCards, existingTarget];
     eligible = 2;
-    await page.getByRole('button', { name: 'Cards', exact: true }).click();
-    await page.getByRole('button', { name: 'Evolutions', exact: true }).click();
+    await page.getByRole('link', { name: 'Cards', exact: true }).click();
+    await page.getByRole('link', { name: 'Evolutions', exact: true }).click();
     await expect(
       page.getByText('Copies locked in decks', { exact: true }),
     ).toBeVisible();
@@ -282,8 +330,8 @@ for (const reducedMotion of [false, true]) {
     await page.screenshot({ path: testInfo.outputPath('locked-mobile.png') });
     await page.keyboard.press('Escape');
     previewFails = true;
-    await page.getByRole('button', { name: 'Cards', exact: true }).click();
-    await page.getByRole('button', { name: 'Evolutions', exact: true }).click();
+    await page.getByRole('link', { name: 'Cards', exact: true }).click();
+    await page.getByRole('link', { name: 'Evolutions', exact: true }).click();
     await expect(page.getByText('Availability unknown')).toBeVisible();
     await page.screenshot({
       path: testInfo.outputPath('preview-error-mobile.png'),
@@ -326,7 +374,7 @@ for (const reducedMotion of [false, true]) {
     await page.waitForTimeout(reducedMotion ? 200 : 1500);
     await page.screenshot({ path: testInfo.outputPath('success-mobile.png') });
     await page.getByRole('button', { name: 'Back to evolutions' }).click();
-    await page.getByRole('button', { name: 'Cards', exact: true }).click();
+    await page.getByRole('link', { name: 'Cards', exact: true }).click();
     await expect(
       page.getByRole('button', { name: 'View Quillip details', exact: true }),
     ).toBeVisible();

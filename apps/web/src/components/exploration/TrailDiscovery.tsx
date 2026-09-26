@@ -308,10 +308,10 @@ export function NearbyList({
 
   if (state.status === 'loading') {
     return (
-      <p aria-live="polite" className="event-list__state" role="status">
-        <QuestMarker />
-        Finding nearby unvisited events…
-      </p>
+      <LoadingState
+        className="event-list__state"
+        label="Finding nearby unvisited events…"
+      />
     );
   }
 
@@ -414,6 +414,9 @@ function NearbyLocationState({
     locationState === 'stale' ||
     locationState === 'timeout' ||
     locationState === 'unavailable';
+  const checking = ['checking-permission', 'locating', 'tracking'].includes(
+    locationState,
+  );
 
   return (
     <div
@@ -421,12 +424,12 @@ function NearbyLocationState({
       className="event-list__state nearby-location-state"
       role="status"
     >
-      {['checking-permission', 'locating', 'tracking'].includes(
-        locationState,
-      ) ? (
-        <QuestMarker />
-      ) : null}
-      <strong>{content.title}</strong>
+      <strong
+        className={checking ? 'selected-event__status-heading' : undefined}
+      >
+        {checking ? <QuestMarker /> : null}
+        {content.title}
+      </strong>
       <p>{content.detail}</p>
       {canEnable ? (
         <button className="button" onClick={onEnableLocation} type="button">
