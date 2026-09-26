@@ -95,9 +95,12 @@ function pageTitle(pathname: string): string {
   if (pathname === '/collection') return 'Collection · Wits World';
   if (pathname === '/decks') return 'Decks · Wits World';
   if (pathname === '/matches/history') return 'Battle history · Wits World';
+  if (pathname.startsWith('/matches/live/'))
+    return 'Live Ranked battle · Wits World';
+  if (pathname === '/matches/live') return 'Live Ranked · Wits World';
   if (pathname.startsWith('/matches/pvp/')) return 'Player battle · Wits World';
   if (pathname === '/matches/pvp') return 'Player battles · Wits World';
-  if (pathname.startsWith('/matches/')) return 'CPU battle · Wits World';
+  if (pathname.startsWith('/matches/')) return 'Practice battle · Wits World';
   if (pathname === '/matches') return 'Battles · Wits World';
   if (pathname === '/profile') return 'Player profile · Wits World';
   if (pathname === '/account') return 'Account settings · Wits World';
@@ -279,7 +282,8 @@ export function AppShell({ children }: AppShellProps) {
   const isBattleDetail =
     pathname.startsWith('/matches/') &&
     pathname !== '/matches/history' &&
-    pathname !== '/matches/pvp';
+    pathname !== '/matches/pvp' &&
+    pathname !== '/matches/live';
   const isTradeBuilder = pathname === '/collection/trades/new';
   const isFooterlessProductRoute =
     isExplore ||

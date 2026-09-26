@@ -115,7 +115,10 @@ export default function AccountPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       deletion.status === 'retry_pending' ||
       deletion.status === 'error'
     ) {
-      statusHeading.current?.focus();
+      // The confirmation dialog removes the page's inert state in its effect
+      // cleanup. Wait until that cleanup completes before moving focus to the
+      // authoritative result or recovery message.
+      queueMicrotask(() => statusHeading.current?.focus());
     }
   }, [deletion.status]);
 

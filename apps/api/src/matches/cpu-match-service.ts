@@ -8,6 +8,7 @@ import {
   createBattleState,
   getEffectDamageMultiplier,
   getLegalActions,
+  getTypeMultiplier,
   InvalidBattleSetupError,
   validateBattleDeck,
   type BattleAction,
@@ -141,6 +142,7 @@ export interface PublicCreatureView {
 }
 
 export interface PublicMoveView {
+  effectiveness: 'effective' | 'neutral' | 'resisted' | null;
   id: string;
   name: string;
   moveType: BattleMove['moveType'];
@@ -2237,8 +2239,26 @@ function toPublicState(
     (creature) =>
       creature.defeated || creature.card.id === cpu.activeCreatureId,
   );
+  const cpuActiveCreature =
+    cpu.activeCreatureId === null
+      ? null
+      : cpu.creatures.find(
+          (creature) => creature.card.id === cpu.activeCreatureId,
+        )!;
+  const playerActiveCreature =
+    player.activeCreatureId === null
+      ? null
+      : player.creatures.find(
+          (creature) => creature.card.id === player.activeCreatureId,
+        )!;
   const playerCreatures = player.creatures.map((creature) =>
-    toPublicCreature(creature, cardNames, cardRarities),
+    toPublicCreature(
+      creature,
+      cardNames,
+      cardRarities,
+      cpuActiveCreature?.card.affinity ?? null,
+      state.affinityRulesVersion ?? 1,
+    ),
   );
 
   return {
@@ -2269,18 +2289,26 @@ function toPublicState(
     },
     cpu: {
       activeCreature:
-        cpu.activeCreatureId === null
+        cpuActiveCreature === null
           ? null
           : toPublicCreature(
-              cpu.creatures.find(
-                (creature) => creature.card.id === cpu.activeCreatureId,
-              )!,
+              cpuActiveCreature,
               cardNames,
               cardRarities,
+              playerActiveCreature?.card.affinity ?? null,
+              state.affinityRulesVersion ?? 1,
             ),
       defeatedCreatures: visibleCpuCreatures
         .filter((creature) => creature.defeated)
-        .map((creature) => toPublicCreature(creature, cardNames, cardRarities)),
+        .map((creature) =>
+          toPublicCreature(
+            creature,
+            cardNames,
+            cardRarities,
+            playerActiveCreature?.card.affinity ?? null,
+            state.affinityRulesVersion ?? 1,
+          ),
+        ),
       remainingCreatureCount: cpu.creatures.filter(
         (creature) => !creature.defeated,
       ).length,
@@ -2303,6 +2331,8 @@ function toPublicCreature(
   },
   cardNames: Readonly<Record<string, string>>,
   cardRarities: Readonly<Record<string, CardRarity>>,
+  defendingAffinity: CardAffinity | null = null,
+  affinityRulesVersion: 1 | 2 = 1,
 ): PublicCreatureView {
   return {
     id: creature.card.id,
@@ -2317,6 +2347,11 @@ function toPublicCreature(
     remainingPower: creature.remainingPower,
     defeated: creature.defeated,
     moves: creature.card.moves.map((move) => ({
+      effectiveness: moveEffectiveness(
+        move,
+        defendingAffinity,
+        affinityRulesVersion,
+      ),
       id: move.id,
       name: move.name,
       moveType: move.moveType,
@@ -2325,6 +2360,27 @@ function toPublicCreature(
     })),
     activeModifiers: creature.modifiers.map(toPublicActiveModifier),
   };
+}
+
+function moveEffectiveness(
+  move: BattleMove,
+  defendingAffinity: CardAffinity | null,
+  affinityRulesVersion: 1 | 2,
+): PublicMoveView['effectiveness'] {
+  const hasAffinityDamage = move.effects.some(
+    (effect) =>
+      effect.effectType === 'damage' &&
+      effect.target !== 'self' &&
+      effect.neutral !== true,
+  );
+  if (!hasAffinityDamage || defendingAffinity === null) return null;
+
+  const multiplier = getTypeMultiplier(
+    move.moveType,
+    defendingAffinity,
+    affinityRulesVersion,
+  );
+  return multiplier > 1 ? 'effective' : multiplier < 1 ? 'resisted' : 'neutral';
 }
 
 function toPublicEffect(effect: BattleEffect): PublicEffectView {

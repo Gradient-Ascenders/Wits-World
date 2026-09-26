@@ -52,6 +52,18 @@ export function BattleResultSummary({
   );
 }
 
+export function BattleResultColumns() {
+  return (
+    <div aria-hidden="true" className="battle-result-columns">
+      <span>Opponent</span>
+      <span>Result</span>
+      <span>Completed</span>
+      <span>Rounds</span>
+      <span>Action</span>
+    </div>
+  );
+}
+
 export function MatchResultSummary({
   compact = false,
   headingLevel = 2,
@@ -86,29 +98,26 @@ function CpuResultSummary({
     <article
       className={`match-result-summary match-result-summary--${playerWon ? 'victory' : 'defeat'}${compact ? ' match-result-summary--compact' : ''}`}
     >
-      <div className="match-result-summary__heading">
-        <div>
-          <p className="match-result-summary__type">CPU battle</p>
-          <Heading>{playerWon ? 'Victory' : 'CPU victory'}</Heading>
-        </div>
-        <span>{playerWon ? 'Won' : 'Lost'}</span>
+      <div className="match-result-summary__opponent">
+        <span className="match-result-summary__label">Opponent</span>
+        <Heading>CPU</Heading>
       </div>
-      <dl>
-        <div>
-          <dt>Completed</dt>
-          <dd>
-            <time dateTime={match.completedAt}>
-              {formatMatchDate(match.completedAt)}
-            </time>
-          </dd>
-        </div>
-        <div>
-          <dt>Recorded rounds</dt>
-          <dd>{match.rounds.length}</dd>
-        </div>
-      </dl>
+      <div className="match-result-summary__field match-result-summary__result">
+        <span className="match-result-summary__label">Result</span>
+        <strong>{playerWon ? 'Won' : 'Lost'}</strong>
+      </div>
+      <div className="match-result-summary__field match-result-summary__completed">
+        <span className="match-result-summary__label">Completed</span>
+        <time dateTime={match.completedAt}>
+          {formatMatchDate(match.completedAt)}
+        </time>
+      </div>
+      <div className="match-result-summary__field match-result-summary__rounds">
+        <span className="match-result-summary__label">Rounds</span>
+        <strong>{match.rounds.length}</strong>
+      </div>
       <Link className="button button--quiet" href={`/matches/${match.matchId}`}>
-        {compact ? 'View battle' : 'View saved match'}
+        View battle
       </Link>
     </article>
   );
@@ -130,27 +139,24 @@ function PlayerResultSummary({
     <article
       className={`match-result-summary match-result-summary--${playerWon ? 'victory' : 'defeat'}${compact ? ' match-result-summary--compact' : ''}`}
     >
-      <div className="match-result-summary__heading">
-        <div>
-          <p className="match-result-summary__type">Player battle</p>
-          <Heading>Against {match.opponent.playerName}</Heading>
-        </div>
-        <span>{playerWon ? 'Won' : 'Lost'}</span>
+      <div className="match-result-summary__opponent">
+        <span className="match-result-summary__label">Opponent</span>
+        <Heading>{match.opponent.playerName}</Heading>
       </div>
-      <dl>
-        <div>
-          <dt>Completed</dt>
-          <dd>
-            <time dateTime={match.completedAt}>
-              {formatMatchDate(match.completedAt)}
-            </time>
-          </dd>
-        </div>
-        <div>
-          <dt>Result</dt>
-          <dd>{playerResultLabel(match)}</dd>
-        </div>
-      </dl>
+      <div className="match-result-summary__field match-result-summary__result">
+        <span className="match-result-summary__label">Result</span>
+        <strong>{playerWon ? 'Won' : 'Lost'}</strong>
+      </div>
+      <div className="match-result-summary__field match-result-summary__completed">
+        <span className="match-result-summary__label">Completed</span>
+        <time dateTime={match.completedAt}>
+          {formatMatchDate(match.completedAt)}
+        </time>
+      </div>
+      <div className="match-result-summary__field match-result-summary__rounds">
+        <span className="match-result-summary__label">Rounds</span>
+        <strong aria-label="Not available">—</strong>
+      </div>
       <Link
         className="button button--quiet"
         href={`/matches/pvp/${match.matchId}`}
@@ -159,21 +165,6 @@ function PlayerResultSummary({
       </Link>
     </article>
   );
-}
-
-function playerResultLabel(match: PvpHistorySummary) {
-  if (match.completionReason === 'account_deletion_forfeit') {
-    return 'Opponent account no longer available';
-  }
-  if (match.completionReason === 'voluntary_resignation') {
-    return match.outcome === 'win' ? 'Opponent conceded' : 'Battle conceded';
-  }
-  if (match.completionReason === 'turn_forfeit') {
-    return match.outcome === 'win'
-      ? 'Opponent missed the turn deadline'
-      : 'Turn deadline missed';
-  }
-  return match.outcome === 'win' ? 'Opponent defeated' : 'Opponent won';
 }
 
 export function formatMatchDate(value: string) {

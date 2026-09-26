@@ -54,10 +54,10 @@ test('centres Player Battles in the shared page loading layout', async ({
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto('/matches/pvp');
   await expect(
-    page.getByRole('heading', { name: 'Loading player battles…' }),
+    page.getByRole('heading', { name: 'Loading Player Battles' }),
   ).toBeVisible();
   await expect(page.locator('.page-loading-state')).toContainText(
-    'Retrieving invitations, active battles, and match history.',
+    'Checking whose turn it is and which challenges need a response…',
   );
   await expect(
     page.getByRole('navigation', { name: 'Player battle sections' }),
@@ -192,10 +192,49 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
     if (pathname.endsWith(`/matches/pvp/${match.matchId}/actions`)) {
       actionRequests += 1;
       await new Promise((resolve) => setTimeout(resolve, 150));
+      const result = {
+        action: currentMatch.legalActions[0]!,
+        defeatedCreatureId: null,
+        effects: [
+          {
+            amount: 12,
+            damageMultiplier: 1,
+            effectId: uuid(2190),
+            effectType: 'damage' as const,
+            modifier: null,
+            targetCreatureId: currentMatch.state.opponent.activeCreature!.id,
+            targetSide: 'opponent' as const,
+          },
+        ],
+        side: 'self' as const,
+        turnEnded: true,
+        winner: null,
+      };
       currentMatch = {
         ...currentMatch,
         currentActor: 'opponent',
+        history: [
+          ...currentMatch.history,
+          {
+            createdAt: '2026-09-05T08:35:00.000Z',
+            result,
+            sequence: 4,
+            turnNumber: currentMatch.state.turnNumber,
+          },
+        ],
+        lastAction: result,
         legalActions: [],
+        state: {
+          ...currentMatch.state,
+          opponent: {
+            ...currentMatch.state.opponent,
+            activeCreature: {
+              ...currentMatch.state.opponent.activeCreature!,
+              currentHp:
+                currentMatch.state.opponent.activeCreature!.currentHp - 12,
+            },
+          },
+        },
         updatedAt: '2026-09-05T08:35:00.000Z',
         version: 4,
       };
@@ -276,24 +315,30 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
     await page.setViewportSize(viewport);
     await page.goto('/matches/pvp');
     await expect(
-      page.getByRole('heading', { name: 'Player Battles' }),
+      page.getByRole('heading', { name: 'Player Battles', exact: true }),
     ).toBeVisible();
-    await expect(page.getByText('wits_wanderer').first()).toBeVisible();
+    await expect(
+      page
+        .getByRole('list', { name: 'Active player battles' })
+        .getByText('wits_wanderer'),
+    ).toBeVisible();
     await expect(
       page.getByRole('link', { name: 'Back to Battles' }),
     ).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Active 1' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
     await expect(
-      page.getByRole('tab', { name: 'Invitations 1' }),
-    ).toHaveAttribute('aria-selected', 'true');
-    await expect(
-      page.getByRole('heading', { name: 'Your matches' }),
-    ).toHaveCount(0);
+      page.getByRole('heading', { name: 'Active Player Battles' }),
+    ).toBeVisible();
     await expectNoHorizontalOverflow(page);
     await page.locator('.pvp-hub').screenshot({
       path: path.join(screenshotsDirectory, `${viewport.label}-pvp-hub.png`),
       style: '.skip-link, .primary-navigation { display: none !important; }',
     });
 
+    await page.getByRole('tab', { name: 'Invitations 1' }).click();
     await page
       .getByRole('button', { name: 'Cancel challenge to wits_wanderer' })
       .click();
@@ -355,9 +400,9 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
 
     await page.getByRole('tab', { name: 'Active 1' }).click();
     await expect(
-      page.getByRole('heading', { name: 'Your matches' }),
+      page.getByRole('heading', { name: 'Active Player Battles' }),
     ).toBeVisible();
-    await expect(page.getByText('Your turn')).toBeVisible();
+    await expect(page.getByText('Your turn').first()).toBeVisible();
     await expectNoHorizontalOverflow(page);
     if (viewport.label === '390') {
       await page.locator('.pvp-hub').screenshot({
@@ -368,7 +413,7 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
   }
 
   await page.setViewportSize({ height: 844, width: 390 });
-  await page.getByRole('link', { name: 'Continue' }).click();
+  await page.getByRole('link', { name: 'Take your turn' }).click();
   await expect(page).toHaveURL(`/matches/pvp/${match.matchId}`);
   await expect(page.getByRole('heading', { name: 'Your turn' })).toBeVisible();
   const move = page.getByRole('button', { name: /Knowledge Strike 1/ });
@@ -384,7 +429,9 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
     page.getByRole('button', { name: /Campus Renewal 1/ }),
   ).toBeEnabled();
   await expectNoHorizontalOverflow(page);
-  await page.locator('.battle-page').screenshot({
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({
+    fullPage: true,
     path: path.join(screenshotsDirectory, '390-pvp-own-turn.png'),
     style: '.skip-link, .primary-navigation { display: none !important; }',
   });
@@ -392,8 +439,19 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
   await page.getByRole('tab', { name: /^Moves/ }).click();
   await move.dblclick();
   await expect(
+    page
+      .getByRole('region', { name: 'Latest battle resolution' })
+      .getByText('You used Knowledge Strike 1.'),
+  ).toBeVisible();
+  await expect(move).toBeDisabled();
+  await page.screenshot({
+    fullPage: true,
+    path: path.join(screenshotsDirectory, '390-pvp-resolution.png'),
+    style: '.skip-link, .primary-navigation { display: none !important; }',
+  });
+  await expect(
     page.getByRole('heading', { name: 'Opponent’s turn' }),
-  ).toBeFocused();
+  ).toBeFocused({ timeout: 10_000 });
   expect(actionRequests).toBe(1);
 
   await page.setViewportSize({ height: 800, width: 1440 });
@@ -403,7 +461,6 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
     style: '.skip-link, .primary-navigation { display: none !important; }',
   });
 
-  await page.getByText('Leave this battle', { exact: true }).click();
   const forfeit = page.getByRole('button', { name: 'Forfeit battle' });
   await forfeit.click();
   const dialog = page.getByRole('alertdialog', {
@@ -455,8 +512,9 @@ test('keeps bench, forced replacement and results readable across battle layouts
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await routeCurrentPlayer(page);
+  const futureDeadline = '2026-09-06T08:00:00.000Z';
   let current = pvpMatch({
-    turnDeadline: new Date(Date.now() + 23 * 60 * 60 * 1000).toISOString(),
+    turnDeadline: futureDeadline,
   });
   let submissions = 0;
   await page.route('**/api/v1/matches/pvp/**', async (route) => {
@@ -465,7 +523,7 @@ test('keeps bench, forced replacement and results readable across battle layouts
       const body = route.request().postDataJSON();
       expect(body.action).toEqual(current.legalActions[0]);
       const next = pvpMatch({
-        turnDeadline: new Date(Date.now() + 23 * 60 * 60 * 1000).toISOString(),
+        turnDeadline: futureDeadline,
         version: 4,
       });
       next.state.self.activeCreatureId = current.state.self.creatures[1]!.id;
@@ -476,7 +534,7 @@ test('keeps bench, forced replacement and results readable across battle layouts
   for (const width of [390, 768, 1440]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 1024 });
     current = pvpMatch({
-      turnDeadline: new Date(Date.now() + 23 * 60 * 60 * 1000).toISOString(),
+      turnDeadline: futureDeadline,
     });
     await page.goto(`/matches/pvp/${current.matchId}`);
     await expect(
@@ -515,14 +573,18 @@ test('keeps bench, forced replacement and results readable across battle layouts
       page.getByRole('heading', { name: 'Replacement required', exact: true }),
     ).toBeVisible();
     await expect(page.getByRole('tab')).toHaveCount(0);
-    await expect(page.locator('.creature-choice-control:enabled')).toHaveCount(
-      1,
-    );
+    await expect(
+      page.locator(
+        '.creature-choice-control:enabled:not([aria-disabled="true"])',
+      ),
+    ).toHaveCount(1);
     await expectNoHorizontalOverflow(page);
     await page.locator('.battle-page').screenshot({
       path: path.join(screenshotsDirectory, `${width}-pvp-replacement.png`),
     });
-    await page.locator('.creature-choice-control:enabled').focus();
+    await page
+      .locator('.creature-choice-control:enabled:not([aria-disabled="true"])')
+      .focus();
     await page.keyboard.press('Enter');
     await expect(
       page.getByRole('heading', { name: 'Your turn', exact: true }),

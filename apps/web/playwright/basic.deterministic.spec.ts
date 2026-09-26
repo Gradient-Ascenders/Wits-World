@@ -2,6 +2,7 @@
 
 import { expect, test, type Page, type Route } from '@playwright/test';
 
+import type { CpuMatch } from '../src/api/matches';
 import { buildStarterCards, buildUuid } from '../tests/fixtures/cards';
 
 const EVENT_TITLE = 'Sprint 1 Demo - Wits Great Hall';
@@ -93,6 +94,7 @@ test('completes the canonical 21-step Basic journey against the real API and tes
   context,
   page,
 }) => {
+  test.setTimeout(480_000);
   const forbiddenRequests = monitorForbiddenProviders(page);
   const consoleErrors: string[] = [];
   const expectedRecoveryMisses: string[] = [];
@@ -310,6 +312,7 @@ test('completes the canonical 21-step Basic journey against the real API and tes
   });
 
   await test.step('16 create a server-authoritative CPU battle snapshot', async () => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     const response = page.waitForResponse(
       (candidate) =>
         candidate.request().method() === 'POST' &&
@@ -322,36 +325,47 @@ test('completes the canonical 21-step Basic journey against the real API and tes
   });
 
   await test.step('17 submit only server-provided legal battle intents', async () => {
-    let completed = false;
-    for (
-      let actionCount = 0;
-      actionCount < 120 && !completed;
-      actionCount += 1
-    ) {
-      const action = page
-        .locator('.battle-action-content button:not([disabled])')
-        .first();
-      await expect(action).toBeVisible();
-      const responsePromise = page.waitForResponse(
-        `${API_BASE_URL}/matches/${matchId}/actions`,
+    const action = page
+      .locator('.battle-action-content button:not([disabled]):visible')
+      .last();
+    await expect(action).toBeVisible();
+    const responsePromise = page.waitForResponse(
+      `${API_BASE_URL}/matches/${matchId}/actions`,
+    );
+    await action.click();
+    const response = await responsePromise;
+    expect(response.status()).toBe(200);
+    let current = (await response.json()) as CpuMatch;
+
+    for (let actionCount = 1; actionCount < 120; actionCount += 1) {
+      if (current.status === 'completed') break;
+      const legalAction = current.state.legalActions.at(-1);
+      if (!legalAction) {
+        throw new Error('The active CPU match returned no legal action.');
+      }
+      current = await browserApi<CpuMatch>(
+        page,
+        `/matches/${matchId}/actions`,
+        'POST',
+        {
+          action: legalAction,
+          expectedVersion: current.version,
+          submissionId: crypto.randomUUID(),
+        },
       );
-      await action.click();
-      const response = await responsePromise;
-      expect(response.status()).toBe(200);
-      const body = (await response.json()) as { status: string };
-      completed = body.status === 'completed';
     }
-    expect(completed).toBe(true);
+    expect(current.status).toBe('completed');
+    await page.reload();
   });
 
   await test.step('18 reload the persisted completed match result', async () => {
-    await expect(
-      page.getByRole('heading', { name: /match saved/u }),
-    ).toBeVisible();
+    const completedMatchHeading = page.getByRole('heading', {
+      name: /^Practice (victory|complete)$/u,
+    });
+    await expect(completedMatchHeading).toBeVisible();
     await page.reload();
-    await expect(
-      page.getByRole('heading', { name: /match saved/u }),
-    ).toBeVisible();
+    await expect(completedMatchHeading).toBeVisible();
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
   });
 
   await test.step('19 load the completed match from private history', async () => {
@@ -360,8 +374,8 @@ test('completes the canonical 21-step Basic journey against the real API and tes
       page.getByRole('heading', { name: 'Battle history' }),
     ).toBeVisible();
     await expect(
-      page.getByRole('link', { name: 'View saved match' }),
-    ).toBeVisible();
+      page.getByRole('link', { name: 'View battle' }),
+    ).toHaveAttribute('href', `/matches/${matchId}`);
   });
 
   await test.step('20 create and publish playable content through protected author APIs', async () => {

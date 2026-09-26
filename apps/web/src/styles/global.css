@@ -574,7 +574,10 @@ a:hover {
 }
 
 .site-frame--product-navigation .main-content {
-  padding-bottom: calc(var(--player-navigation-height) + var(--space-7));
+  padding-bottom: calc(
+    var(--player-navigation-height) + env(safe-area-inset-bottom) +
+      var(--space-7)
+  );
 }
 
 .site-frame--product-navigation .main-content--author {
@@ -1174,7 +1177,10 @@ code {
   }
 
   .site-frame--product-navigation .main-content {
-    padding-bottom: calc(var(--player-navigation-height) + var(--space-7));
+    padding-bottom: calc(
+      var(--player-navigation-height) + env(safe-area-inset-bottom) +
+        var(--space-7)
+    );
   }
 
   .site-frame--product-navigation .main-content--author {

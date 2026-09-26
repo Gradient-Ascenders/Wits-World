@@ -14,6 +14,7 @@ export type CpuMatchIntent =
 export type CpuMatchAction = CpuMatchIntent | { type: 'timeout' };
 
 export interface MatchMove {
+  effectiveness?: 'effective' | 'neutral' | 'resisted' | null;
   effects: MatchEffect[];
   id: string;
   moveType: 'basic' | CardAffinity;
@@ -768,6 +769,14 @@ function isCardRarity(value: unknown): value is CardRarity {
 }
 
 function parseMove(value: unknown): MatchMove {
+  const projectedKeys = [
+    'effectiveness',
+    'effects',
+    'id',
+    'moveType',
+    'name',
+    'powerCost',
+  ] as const;
   const currentKeys = [
     'effects',
     'id',
@@ -776,23 +785,35 @@ function parseMove(value: unknown): MatchMove {
     'powerCost',
   ] as const;
   const legacyKeys = ['id', 'moveType', 'name', 'powerCost'] as const;
+  const projectedShape = isRecord(value) && hasExactKeys(value, projectedKeys);
   const currentShape = isRecord(value) && hasExactKeys(value, currentKeys);
   if (
     !isRecord(value) ||
-    (!currentShape && !hasExactKeys(value, legacyKeys)) ||
+    (!projectedShape && !currentShape && !hasExactKeys(value, legacyKeys)) ||
     !isUuid(value.id) ||
     (value.moveType !== 'basic' && !isAffinity(value.moveType)) ||
     typeof value.name !== 'string' ||
     value.name.trim() === '' ||
     !isNonNegativeInteger(value.powerCost) ||
-    (currentShape && !Array.isArray(value.effects))
+    ((projectedShape || currentShape) && !Array.isArray(value.effects)) ||
+    (projectedShape &&
+      value.effectiveness !== null &&
+      value.effectiveness !== 'effective' &&
+      value.effectiveness !== 'neutral' &&
+      value.effectiveness !== 'resisted')
   ) {
     throw new MatchApiError('unavailable');
   }
   return {
-    effects: currentShape
-      ? (value.effects as unknown[]).map(parseBattleEffect)
-      : [],
+    ...(projectedShape
+      ? {
+          effectiveness: value.effectiveness as MatchMove['effectiveness'],
+        }
+      : {}),
+    effects:
+      projectedShape || currentShape
+        ? (value.effects as unknown[]).map(parseBattleEffect)
+        : [],
     id: value.id,
     moveType: value.moveType,
     name: value.name,
