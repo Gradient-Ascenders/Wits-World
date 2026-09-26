@@ -22,8 +22,8 @@ interface AuthorEventBody {
   automaticPlacement: boolean;
   title: string;
   description?: string | null;
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
   radiusMetres: number;
   startsAt: string;
   endsAt: string;
@@ -130,11 +130,13 @@ const authorEventSchema = {
       type: 'number',
       minimum: -90,
       maximum: 90,
+      nullable: true,
     },
     longitude: {
       type: 'number',
       minimum: -180,
       maximum: 180,
+      nullable: true,
     },
     radiusMetres: {
       type: 'integer',
@@ -214,11 +216,13 @@ const authorEventBodySchema = {
       type: 'number',
       minimum: -90,
       maximum: 90,
+      nullable: true,
     },
     longitude: {
       type: 'number',
       minimum: -180,
       maximum: 180,
+      nullable: true,
     },
     radiusMetres: {
       type: 'integer',

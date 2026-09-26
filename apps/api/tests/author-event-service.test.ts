@@ -271,6 +271,18 @@ describe('author event service', () => {
       message: 'Longitude must be between -180 and 180 degrees.',
     },
     {
+      change: { latitude: null, longitude: null },
+      message: 'A fixed event must have a latitude and longitude.',
+    },
+    {
+      change: {
+        automaticPlacement: true,
+        latitude: null,
+        longitude: 28.03038,
+      },
+      message: 'Latitude and longitude must both be provided or both be unset.',
+    },
+    {
       change: { radiusMetres: 0 },
       message: 'Event radius must be a positive integer.',
     },

@@ -38,17 +38,21 @@ Preview creation writes an immutable plan and its proposed entries without
 changing player-visible assignments. Apply locks placement state, checks the
 expected version, policy, bucket, expiry, actor, and a fresh input digest,
 recomputes the proposal, and commits assignment ends, starts, state, and audit
-in one transaction. A stale preview returns HTTP `409`. Rollback creates a new
-plan after validating historical choices under the current policy; it does not
-reopen historical assignments.
+in one transaction. The Author workspace only displays a preview after its
+current-state baseline has the same state version, refreshing or discarding the
+preview when generation races another placement change. A stale apply returns
+HTTP `409`. Rollback creates a new plan after validating historical choices
+under the current policy; it does not reopen historical assignments.
 
 The Author state response exposes the complete immutable policy snapshot and
 portable-event display names. Preview responses include server-generated
 coverage and separation validation. Coverage diagnostics report actual,
 mandatory, and preferred counts per zone. Separation diagnostics identify
 reviewed candidate sites blocked by selected assignments or fixed events,
-without exposing fixed-event coordinates. These fields are presentation evidence
-only: the browser does not recompute placement outcomes.
+without exposing fixed-event coordinates. The workspace names each blocked site
+and zone and describes whether a live fixed event or another selected site caused
+the conflict. These fields are presentation evidence only: the browser does not
+recompute placement outcomes.
 
 ## Author API
 
@@ -90,21 +94,26 @@ status, and the Author role.
 
 The workspace intentionally does not expose site/zone lifecycle controls or a
 separate portable-event approval. An Author enables **Automatic placement** in
-the normal event create/edit form. The choice is persisted with the draft; once
-the event is published and content-ready, it enters the placement pool without
-another approval action. Map failure leaves all placement data and actions available through
-the semantic tables and controls. The map receives reviewed site points and zone
-geometry only; it receives no player location, fixed-event coordinate, or
-placement-decision input.
+the normal event create/edit form. A portable event stores no authored point;
+its latitude and longitude remain unset while its interaction radius remains an
+explicit Author choice. Disabling Automatic placement therefore requires the
+Author to choose a real fixed location instead of reviving a hidden fallback.
+Once the event is published and content-ready, it enters the placement pool
+without another approval action. Map failure leaves all placement data and
+actions available through the semantic tables and controls. The map receives
+reviewed site points and zone geometry only; it receives no player location,
+fixed-event coordinate, or placement-decision input.
 
 Pins require `eventId` and `siteId`; site exclusions require `siteId`; pauses
 take neither. An idempotency key replay with the same payload returns the
 existing override. A changed payload returns HTTP `409`. Site exclusion,
-suspension, retirement, and disabling Automatic placement close affected assignments
-in the same transaction. Authors should enable Automatic placement only when
-event wording and evidence remain valid at any reviewed campus site. Existing fixed,
-landmark-specific published content should remain fixed; the appropriate path
-is a separately reviewed replacement event.
+suspension, retirement, and disabling Automatic placement close affected
+assignments in the same transaction. Event retirement also ends its active
+portability record so retired content cannot remain currently placed. Authors
+should enable Automatic placement only when event wording and evidence remain
+valid at any reviewed campus site. Existing fixed, landmark-specific published
+content should remain fixed; the appropriate path is a separately reviewed
+replacement event.
 
 ## Player and offline behavior
 
@@ -121,11 +130,12 @@ available for a valid start before a later rotation or site suspension.
 
 ## Release and operations
 
-Apply migration `0049_enable_event_placement_services.sql` and the existing
+Apply migrations through `0060_allow_unlocated_portable_events.sql` and the existing
 `0003_event_placement_catalogue.sql` seed before starting this API version.
-The migration preserves authored event coordinates and existing attempts. It
-adds an optional assignment reference to attempts, adjusts plan constraints
-for Author and reconciliation plans, and installs the location resolver.
+The migrations preserve existing authored event coordinates and attempts while
+allowing only actively portable or retired events to omit an authored point.
+They add an optional assignment reference to attempts, adjust plan constraints
+for Author and reconciliation plans, and install the location resolver.
 There are no new environment variables. The API process hosts the scheduler;
 Azure App Service `Always On` must stay enabled. Multiple API instances use
 the same placement-state lock and scheduled-plan uniqueness boundary.
@@ -134,7 +144,7 @@ The initial seed has no automatic-placement events, so the worker may record a
 safe unserved-zone failure until suitable events are created and published.
 Authors can inspect recent plans through the history route. Operational logs
 contain outcome and duration, without player location or challenge answers.
-Deployment verification should confirm migration `0059`, seed completion, API
+Deployment verification should confirm migration `0060`, seed completion, API
 health, an Author preview/history response, and unchanged fixed-event
 discovery. A live rotation requires published automatic-placement content and should not
 be manufactured from existing landmark-specific events.

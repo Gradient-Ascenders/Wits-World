@@ -660,14 +660,15 @@ describe.skipIf(!runIntegrationTests)(
       const cardService = createAuthorCardService(pool);
 
       await ensureCommonRewardCard(cardService);
+      const placement = await seedAuthorPlacementPolicy(pool);
 
       const event = await eventService.createEvent({
         actorPlayerId: AUTHOR_ONE_ID,
-        automaticPlacement: false,
+        automaticPlacement: true,
         title: 'Retirable Event',
         description: 'This event will be removed from player visibility.',
-        latitude: -26.19205,
-        longitude: 28.03038,
+        latitude: null,
+        longitude: null,
         radiusMetres: 75,
         startsAt: '2026-09-08T08:00:00.000Z',
         endsAt: '2026-09-08T12:00:00.000Z',
@@ -684,6 +685,11 @@ describe.skipIf(!runIntegrationTests)(
       });
 
       await publishEventThroughReview(eventService, event.eventId);
+      const assignmentId = await createActivePlacementAssignment(pool, {
+        eventId: event.eventId,
+        siteId: placement.siteId,
+        zoneId: placement.zoneId,
+      });
 
       const retired = await eventService.retireEvent({
         actorPlayerId: AUTHOR_TWO_ID,
@@ -695,6 +701,34 @@ describe.skipIf(!runIntegrationTests)(
       expect(retired.isPublished).toBe(false);
       expect(retired.authoringStatus).toBe('retired');
       expect(retired.retiredAt).not.toBeNull();
+      expect(retired.automaticPlacement).toBe(false);
+
+      const placementLifecycle = await pool.query<{
+        assignment_end_reason: string | null;
+        assignment_ended: boolean;
+        portability_end_reason: string | null;
+        portability_ended: boolean;
+      }>(
+        `select
+           assignment.ends_at is not null assignment_ended,
+           assignment.end_reason assignment_end_reason,
+           portability.ended_at is not null portability_ended,
+           portability.end_reason portability_end_reason
+         from public.event_placement_assignments assignment
+         join public.event_placement_portability portability
+           on portability.event_id = assignment.event_id
+        where assignment.id = $1::uuid`,
+        [assignmentId],
+      );
+
+      expect(placementLifecycle.rows).toEqual([
+        {
+          assignment_end_reason: 'event_retired',
+          assignment_ended: true,
+          portability_end_reason: 'event_retired',
+          portability_ended: true,
+        },
+      ]);
 
       const visibility = await pool.query<{
         visible_count: number;
@@ -791,6 +825,123 @@ describe.skipIf(!runIntegrationTests)(
     }, 180_000);
   },
 );
+
+async function seedAuthorPlacementPolicy(
+  database: ReturnType<typeof createDatabasePool>,
+): Promise<{ siteId: string; zoneId: string }> {
+  const policyId = 'author-event-placement-test';
+  const zoneId = 'd2000000-0000-4000-8000-000000000001';
+  const siteId = 'd3000000-0000-4000-8000-000000000001';
+  const client = await database.connect();
+  try {
+    await client.query('begin');
+    await client.query(
+      `insert into public.event_placement_policy_versions (
+         id, automatic_target, preferred_assignments_per_zone,
+         mandatory_assignments_per_zone, minimum_separation_metres,
+         rotation_timezone, rotation_local_time, replacements_per_rotation,
+         site_cooldown_buckets, preview_ttl_minutes, maximum_pin_hours,
+         maximum_pause_hours, maximum_exclusion_hours, review_provenance
+       ) values ($1, 1, 1, 1, 150, 'Africa/Johannesburg', '04:00:00',
+                 1, 0, 15, 168, 168, 720, 'Author event integration test')`,
+      [policyId],
+    );
+    await client.query(
+      `insert into public.event_placement_zones (
+         id, policy_version_id, zone_key, name, area, status, source_urls,
+         review_provenance, reviewed_by_player_id, reviewed_at, activated_at
+       ) values (
+         $1::uuid, $2, 'author_test_zone', 'Author test zone',
+         st_multi(st_geomfromtext(
+           'POLYGON((28.02 -26.20, 28.04 -26.20, 28.04 -26.18, 28.02 -26.18, 28.02 -26.20))',
+           4326
+         )),
+         'active', array['https://example.com/author-test-zone'],
+         'controlled_policy', null, now(), now()
+       )`,
+      [zoneId, policyId],
+    );
+    await client.query(
+      `insert into public.event_placement_sites (
+         id, zone_id, policy_version_id, site_key, name, location,
+         maximum_interaction_radius_metres, status, source_urls,
+         review_provenance, reviewed_by_player_id, reviewed_at, activated_at
+       ) values (
+         $1::uuid, $2::uuid, $3, 'author_test_site', 'Author test site',
+         st_setsrid(st_makepoint(28.03038, -26.19205), 4326)::geography,
+         75, 'active', array['https://example.com/author-test-site'],
+         'controlled_policy', null, now(), now()
+       )`,
+      [siteId, zoneId, policyId],
+    );
+    await client.query(
+      `insert into public.event_placement_state (
+         singleton, current_policy_version_id, version
+       ) values (true, $1, 0)`,
+      [policyId],
+    );
+    await client.query('commit');
+    return { siteId, zoneId };
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function createActivePlacementAssignment(
+  database: ReturnType<typeof createDatabasePool>,
+  input: { eventId: string; siteId: string; zoneId: string },
+): Promise<string> {
+  const state = await database.query<{
+    policy_version_id: string;
+    version: string;
+  }>(
+    `select current_policy_version_id policy_version_id, version::text
+       from public.event_placement_state where singleton = true`,
+  );
+  const policyId = state.rows[0]?.policy_version_id;
+  const stateVersion = Number(state.rows[0]?.version);
+  if (!policyId || !Number.isInteger(stateVersion)) {
+    throw new Error('Expected an active placement policy state.');
+  }
+
+  const plan = await database.query<{ id: string }>(
+    `insert into public.event_placement_plans (
+       policy_version_id, rotation_bucket, status, trigger_kind,
+       input_digest, expected_state_version, target_assignment_count,
+       actual_assignment_count, zone_assignment_counts, valid_until
+     ) values (
+       $1, '2026-09-08'::date, 'preview', 'scheduled', repeat('b', 64),
+       $2, 1, 1, '{"author_test_zone":1}'::jsonb, now() + interval '15 minutes'
+     ) returning id::text`,
+    [policyId, stateVersion],
+  );
+  const planId = plan.rows[0]?.id;
+  if (!planId) throw new Error('Expected a placement plan ID.');
+
+  await database.query(
+    `insert into public.event_placement_plan_entries (
+       plan_id, event_id, site_id, zone_id, position, origin
+     ) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 1, 'automatic')`,
+    [planId, input.eventId, input.siteId, input.zoneId],
+  );
+  await database.query(
+    `update public.event_placement_plans
+        set status = 'applied', committed_state_version = $2, applied_at = now()
+      where id = $1::uuid`,
+    [planId, stateVersion + 1],
+  );
+  const assignment = await database.query<{ id: string }>(
+    `insert into public.event_placement_assignments (
+       plan_id, policy_version_id, event_id, site_id, zone_id, origin, starts_at
+     ) values ($1::uuid, $2, $3::uuid, $4::uuid, $5::uuid, 'automatic', now())
+     returning id::text`,
+    [planId, policyId, input.eventId, input.siteId, input.zoneId],
+  );
+  return assignment.rows[0]?.id ?? '';
+}
 
 async function createPublishedChallenge(
   service: ReturnType<typeof createAuthorChallengeService>,

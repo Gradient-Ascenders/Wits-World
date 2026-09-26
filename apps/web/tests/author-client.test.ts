@@ -52,6 +52,32 @@ describe('author API client', () => {
     });
   });
 
+  it('accepts an automatic event whose authored location is intentionally unset', async () => {
+    const portableEvent = {
+      ...eventFixture(),
+      automaticPlacement: true,
+      latitude: null,
+      longitude: null,
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          events: [portableEvent],
+          requestId: 'request-portable-events',
+        }),
+      ),
+    );
+
+    await expect(
+      listAuthorEvents({
+        apiBaseUrl,
+        getAccessToken,
+        signal: new AbortController().signal,
+      }),
+    ).resolves.toEqual([portableEvent]);
+  });
+
   it('submits only the event definition fields supported by the API', async () => {
     const input = {
       automaticPlacement: false,

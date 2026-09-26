@@ -260,7 +260,25 @@ export function EventPlacementWorkspace({
         signal: controller.signal,
       });
       if (controller.signal.aborted) return;
-      const summary = placementChangeSummary(currentState, nextPlan);
+      let previewBaseline = currentState;
+      if (previewBaseline.stateVersion !== nextPlan.stateVersion) {
+        const refreshedState = await loadAuthoritativeState();
+        if (controller.signal.aborted) return;
+        if (
+          refreshedState === null ||
+          refreshedState.stateVersion !== nextPlan.stateVersion
+        ) {
+          setPreviewFeedback({
+            title: 'Placement changed while creating this preview',
+            message:
+              'The live placement and preview could not be synchronized. Create a new preview to review the latest placement.',
+            tone: 'info',
+          });
+          return;
+        }
+        previewBaseline = refreshedState;
+      }
+      const summary = placementChangeSummary(previewBaseline, nextPlan);
       const hasChanges = previewHasChanges(summary);
       focusReviewAfterPreviewRef.current =
         nextPlan.status !== 'unserved' && hasChanges;
@@ -977,14 +995,42 @@ function CoverageValidation({
               {detailCount === 1 ? '' : 's'}
             </summary>
             {plan.validation.separation.blockedSites.length > 0 ? (
-              <p>
-                {plan.validation.separation.blockedSites.length} candidate site
-                {plan.validation.separation.blockedSites.length === 1
-                  ? ''
-                  : 's'}{' '}
-                cannot accept a remaining event within the{' '}
-                {plan.validation.separation.minimumMetres} m minimum.
-              </p>
+              <ul
+                aria-label="Blocked candidate sites"
+                className="placement-validation__blocked-sites"
+              >
+                {plan.validation.separation.blockedSites.map((blockedSite) => {
+                  const site = state.sites.find(
+                    (candidate) => candidate.id === blockedSite.siteId,
+                  );
+                  const zone = state.zones.find(
+                    (candidate) => candidate.id === blockedSite.zoneId,
+                  );
+                  const relatedSites = blockedSite.relatedSiteIds.map(
+                    (relatedSiteId) =>
+                      state.sites.find(
+                        (candidate) => candidate.id === relatedSiteId,
+                      )?.name ?? relatedSiteId,
+                  );
+                  return (
+                    <li key={blockedSite.siteId}>
+                      <strong>{site?.name ?? blockedSite.siteId}</strong>
+                      <span>{zone?.name ?? 'Coverage zone'}</span>
+                      <ul>
+                        {blockedSite.conflictsWithFixedEvent ? (
+                          <li>Too close to a live fixed-location event.</li>
+                        ) : null}
+                        {relatedSites.length > 0 ? (
+                          <li>
+                            Within {plan.validation.separation.minimumMetres} m
+                            of {formatList(relatedSites)}.
+                          </li>
+                        ) : null}
+                      </ul>
+                    </li>
+                  );
+                })}
+              </ul>
             ) : null}
             {plan.exceptions.map((exception) => (
               <p key={exception}>{exceptionLabel(exception)}</p>
@@ -1847,6 +1893,13 @@ function exceptionLabel(code: string): string {
     unserved_zone: 'At least one active zone does not meet mandatory coverage.',
   };
   return labels[code] ?? code.replaceAll('_', ' ');
+}
+
+function formatList(items: string[]): string {
+  return new Intl.ListFormat('en-ZA', {
+    style: 'long',
+    type: 'conjunction',
+  }).format(items);
 }
 
 function successMessage(kind: PendingAction['kind']): string {

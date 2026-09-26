@@ -18,8 +18,8 @@ export interface AuthorEvent {
   eventId: string;
   title: string;
   description: string | null;
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
   radiusMetres: number;
   sourceUrls: string[];
   startsAt: string;
@@ -42,8 +42,8 @@ export interface AuthorEventInput {
   automaticPlacement: boolean;
   title: string;
   description?: string | null;
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
   radiusMetres: number;
   startsAt: string;
   endsAt: string;
@@ -100,8 +100,8 @@ interface AuthorEventRow extends pg.QueryResultRow {
   event_id: string;
   title: string;
   description: string | null;
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
   radius_metres: number;
   source_urls: string[];
   starts_at: Date;
@@ -220,13 +220,11 @@ export function createAuthorEventService(
             values (
               $1,
               $2,
-              st_setsrid(
-                st_makepoint(
-                  $3::double precision,
-                  $4::double precision
-                ),
-                4326
-              )::geography,
+              case
+                when $3::double precision is null
+                  or $4::double precision is null then null
+                else st_setsrid(st_makepoint($3, $4), 4326)::geography
+              end,
               $5,
               $6::timestamptz,
               $7::timestamptz
@@ -307,13 +305,11 @@ export function createAuthorEventService(
             set
               title = $2,
               description = $3,
-              location = st_setsrid(
-                st_makepoint(
-                  $4::double precision,
-                  $5::double precision
-                ),
-                4326
-              )::geography,
+              location = case
+                when $4::double precision is null
+                  or $5::double precision is null then null
+                else st_setsrid(st_makepoint($4, $5), 4326)::geography
+              end,
               radius_metres = $6,
               starts_at = $7::timestamptz,
               ends_at = $8::timestamptz,
@@ -521,6 +517,7 @@ async function transitionEvent(
         client,
         input.eventId,
         input.actorPlayerId,
+        action,
       );
     }
     return loadEvent(client, input.eventId);
@@ -619,10 +616,26 @@ function validateAuthorEventInput<T extends AuthorEventInput>(
     }
   }
 
+  const hasLatitude = input.latitude !== null;
+  const hasLongitude = input.longitude !== null;
+
+  if (hasLatitude !== hasLongitude) {
+    throw new InvalidAuthorEventError(
+      'Latitude and longitude must both be provided or both be unset.',
+    );
+  }
+
+  if (!input.automaticPlacement && !hasLatitude) {
+    throw new InvalidAuthorEventError(
+      'A fixed event must have a latitude and longitude.',
+    );
+  }
+
   if (
-    !Number.isFinite(input.latitude) ||
-    input.latitude < -90 ||
-    input.latitude > 90
+    input.latitude !== null &&
+    (!Number.isFinite(input.latitude) ||
+      input.latitude < -90 ||
+      input.latitude > 90)
   ) {
     throw new InvalidAuthorEventError(
       'Latitude must be between -90 and 90 degrees.',
@@ -630,9 +643,10 @@ function validateAuthorEventInput<T extends AuthorEventInput>(
   }
 
   if (
-    !Number.isFinite(input.longitude) ||
-    input.longitude < -180 ||
-    input.longitude > 180
+    input.longitude !== null &&
+    (!Number.isFinite(input.longitude) ||
+      input.longitude < -180 ||
+      input.longitude > 180)
   ) {
     throw new InvalidAuthorEventError(
       'Longitude must be between -180 and 180 degrees.',
@@ -768,21 +782,53 @@ async function advanceAutomaticPlacementEligibility(
   client: AuthorEventTransactionClient,
   eventId: string,
   actorPlayerId: string,
+  action: 'publish' | 'retire',
 ): Promise<void> {
   const state = await lockPlacementState(client);
-  if (!state) return;
-  const enabled = await client.query(
-    `select id
-       from public.event_placement_portability
-      where event_id = $1::uuid and policy_version_id = $2
-        and ended_at is null`,
-    [eventId, state.policy_version_id],
-  );
-  if (!enabled.rows[0]) return;
+  const enabled = state
+    ? await client.query(
+        `select id
+           from public.event_placement_portability
+          where event_id = $1::uuid and policy_version_id = $2
+            and ended_at is null`,
+        [eventId, state.policy_version_id],
+      )
+    : { rows: [] };
+
+  let retiredAssignmentCount = 0;
+  let endedPortabilityCount = 0;
+  if (action === 'retire') {
+    const retiredAssignments = await client.query(
+      `update public.event_placement_assignments
+          set ends_at = now(), end_reason = 'event_retired'
+        where event_id = $1::uuid and ends_at is null`,
+      [eventId],
+    );
+    retiredAssignmentCount = retiredAssignments.rowCount ?? 0;
+
+    const endedPortability = await client.query(
+      `update public.event_placement_portability
+          set ended_at = now(), end_reason = 'event_retired'
+        where event_id = $1::uuid and ended_at is null`,
+      [eventId],
+    );
+    endedPortabilityCount = endedPortability.rowCount ?? 0;
+  }
+
+  if (
+    !state ||
+    (!enabled.rows[0] &&
+      retiredAssignmentCount === 0 &&
+      endedPortabilityCount === 0)
+  )
+    return;
 
   await advancePlacementState(client, state, actorPlayerId, {
     operation: 'automatic_placement_eligibility',
-    reason: 'The event publication state changed.',
+    reason:
+      action === 'retire'
+        ? 'The event was retired and removed from automatic placement.'
+        : 'The event publication state changed.',
   });
 }
 

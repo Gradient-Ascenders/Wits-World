@@ -207,6 +207,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0057_create_advanced_analytics.sql',
         '0058_create_developer_api_access.sql',
         '0059_enable_event_editor_automatic_placement.sql',
+        '0060_allow_unlocated_portable_events.sql',
       ],
       skipped: [],
     });
@@ -273,6 +274,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0057_create_advanced_analytics.sql',
         '0058_create_developer_api_access.sql',
         '0059_enable_event_editor_automatic_placement.sql',
+        '0060_allow_unlocated_portable_events.sql',
       ],
     });
     expect(readiness).toMatchObject({

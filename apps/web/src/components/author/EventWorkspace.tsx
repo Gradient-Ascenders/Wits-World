@@ -655,12 +655,13 @@ function EventForm({
     setDraft((current) => ({
       ...current,
       automaticPlacement: enabled,
-      latitude:
-        enabled && !current.latitude ? String(-26.1929) : current.latitude,
-      longitude:
-        enabled && !current.longitude ? String(28.0305) : current.longitude,
-      radiusMetres:
-        enabled && !current.radiusMetres ? String(75) : current.radiusMetres,
+      latitude: enabled ? '' : current.latitude,
+      longitude: enabled ? '' : current.longitude,
+    }));
+    setErrors((current) => ({
+      ...current,
+      latitude: '',
+      longitude: '',
     }));
   }
 
@@ -845,61 +846,6 @@ function EventForm({
             />
 
             <section
-              aria-labelledby="event-radius-heading"
-              className="author-radius-editor"
-            >
-              <div className="author-radius-editor__heading">
-                <strong id="event-radius-heading">Event radius</strong>
-                <span>How close a player needs to be.</span>
-              </div>
-              <div
-                aria-label="Common event radii"
-                className="author-radius-presets"
-                role="group"
-              >
-                {EVENT_RADIUS_PRESETS.map((radius) => (
-                  <button
-                    aria-pressed={radiusMetres === radius}
-                    className="author-radius-preset"
-                    key={radius}
-                    onClick={() => setField('radiusMetres', String(radius))}
-                    type="button"
-                  >
-                    {radius} m
-                  </button>
-                ))}
-              </div>
-              <FormField
-                error={errors.radiusMetres}
-                label="Radius (metres)"
-                name="event-radius"
-              >
-                <input
-                  aria-describedby={[
-                    'event-radius-help',
-                    errors.radiusMetres ? 'event-radius-error' : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' ')}
-                  aria-invalid={Boolean(errors.radiusMetres)}
-                  id="event-radius"
-                  inputMode="numeric"
-                  min="1"
-                  onChange={(change) =>
-                    setField('radiusMetres', change.target.value)
-                  }
-                  required
-                  step="1"
-                  type="number"
-                  value={draft.radiusMetres}
-                />
-                <span className="field-help" id="event-radius-help">
-                  Choose a preset or enter any positive whole number of metres.
-                </span>
-              </FormField>
-            </section>
-
-            <section
               aria-labelledby="event-coordinates-heading"
               className="author-location-advanced"
             >
@@ -963,6 +909,67 @@ function EventForm({
             </section>
           </fieldset>
         )}
+
+        <section
+          aria-labelledby="event-radius-heading"
+          className="author-radius-editor"
+        >
+          <div className="author-radius-editor__heading">
+            <strong id="event-radius-heading">Event radius</strong>
+            <span>
+              {draft.automaticPlacement
+                ? 'Maximum player distance supported at an assigned campus site.'
+                : 'How close a player needs to be.'}
+            </span>
+          </div>
+          <div
+            aria-label="Common event radii"
+            className="author-radius-presets"
+            role="group"
+          >
+            {EVENT_RADIUS_PRESETS.map((radius) => (
+              <button
+                aria-pressed={radiusMetres === radius}
+                className="author-radius-preset"
+                disabled={busy}
+                key={radius}
+                onClick={() => setField('radiusMetres', String(radius))}
+                type="button"
+              >
+                {radius} m
+              </button>
+            ))}
+          </div>
+          <FormField
+            error={errors.radiusMetres}
+            label="Radius (metres)"
+            name="event-radius"
+          >
+            <input
+              aria-describedby={[
+                'event-radius-help',
+                errors.radiusMetres ? 'event-radius-error' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              aria-invalid={Boolean(errors.radiusMetres)}
+              disabled={busy}
+              id="event-radius"
+              inputMode="numeric"
+              min="1"
+              onChange={(change) =>
+                setField('radiusMetres', change.target.value)
+              }
+              required
+              step="1"
+              type="number"
+              value={draft.radiusMetres}
+            />
+            <span className="field-help" id="event-radius-help">
+              Choose a preset or enter any positive whole number of metres.
+            </span>
+          </FormField>
+        </section>
 
         <fieldset className="author-fieldset" disabled={busy}>
           <legend>Active times</legend>
@@ -2789,8 +2796,8 @@ function eventDraft(event?: AuthorEvent): EventDraft {
         description: event.description ?? '',
         automaticPlacement: event.automaticPlacement,
         endsAt: toDateTimeLocal(event.endsAt),
-        latitude: String(event.latitude),
-        longitude: String(event.longitude),
+        latitude: event.latitude === null ? '' : String(event.latitude),
+        longitude: event.longitude === null ? '' : String(event.longitude),
         radiusMetres: String(event.radiusMetres),
         startsAt: toDateTimeLocal(event.startsAt),
         title: event.title,
@@ -2812,27 +2819,29 @@ function validateEventDraft(draft: EventDraft): {
   input?: AuthorEventInput;
 } {
   const errors: Record<string, string> = {};
-  const latitude = Number(draft.latitude);
-  const longitude = Number(draft.longitude);
+  const latitude = draft.latitude ? Number(draft.latitude) : null;
+  const longitude = draft.longitude ? Number(draft.longitude) : null;
   const radius = Number(draft.radiusMetres);
   if (!draft.title.trim()) errors.title = 'Enter an event title.';
   if (draft.description.length > 0 && !draft.description.trim())
     errors.description =
       'Remove the blank description or enter meaningful text.';
-  if (
-    !draft.latitude ||
-    !Number.isFinite(latitude) ||
-    latitude < -90 ||
-    latitude > 90
-  )
-    errors.latitude = 'Enter a latitude from -90 to 90.';
-  if (
-    !draft.longitude ||
-    !Number.isFinite(longitude) ||
-    longitude < -180 ||
-    longitude > 180
-  )
-    errors.longitude = 'Enter a longitude from -180 to 180.';
+  if (!draft.automaticPlacement) {
+    if (
+      latitude === null ||
+      !Number.isFinite(latitude) ||
+      latitude < -90 ||
+      latitude > 90
+    )
+      errors.latitude = 'Enter a latitude from -90 to 90.';
+    if (
+      longitude === null ||
+      !Number.isFinite(longitude) ||
+      longitude < -180 ||
+      longitude > 180
+    )
+      errors.longitude = 'Enter a longitude from -180 to 180.';
+  }
   if (!draft.radiusMetres || !Number.isInteger(radius) || radius <= 0)
     errors.radiusMetres = 'Enter a positive whole-number radius.';
   const start = new Date(draft.startsAt);

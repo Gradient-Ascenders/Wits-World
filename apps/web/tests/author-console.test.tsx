@@ -502,6 +502,7 @@ describe('Basic author console', () => {
       screen.getByText('Location will be assigned automatically'),
     ).toBeVisible();
 
+    await user.click(screen.getByRole('button', { name: '75 m' }));
     await user.type(screen.getByLabelText('Starts at'), '2026-09-01T08:00');
     await user.type(screen.getByLabelText('Ends at'), '2026-09-01T12:00');
     await user.click(
@@ -515,8 +516,8 @@ describe('Basic author console', () => {
     );
     expect(JSON.parse(String(createCall?.[1]?.body))).toMatchObject({
       automaticPlacement: true,
-      latitude: -26.1929,
-      longitude: 28.0305,
+      latitude: null,
+      longitude: null,
       radiusMetres: 75,
       title: 'Rotating campus quiz',
     });

@@ -82,7 +82,8 @@ describe('migration file loading', () => {
         name.startsWith('0056_') ||
         name.startsWith('0057_') ||
         name.startsWith('0058_') ||
-        name.startsWith('0059_'),
+        name.startsWith('0059_') ||
+        name.startsWith('0060_'),
     );
 
     expect(
@@ -264,6 +265,10 @@ describe('migration file loading', () => {
       {
         checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
         name: '0059_enable_event_editor_automatic_placement.sql',
+      },
+      {
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: '0060_allow_unlocated_portable_events.sql',
       },
     ]);
   });

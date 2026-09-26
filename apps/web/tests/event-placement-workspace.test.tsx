@@ -169,6 +169,66 @@ describe('author event-placement workspace', () => {
     ).toEqual(['automation_pause', 'pin', 'site_exclusion']);
   }, 15_000);
 
+  it('refreshes the displayed baseline when preview generation races a placement change', async () => {
+    const user = userEvent.setup();
+    let stateLoads = 0;
+    const liveState = placementState(5);
+    liveState.assignments = previewPlan(5).entries;
+    installPlacementApi({
+      preview: () =>
+        jsonResponse({
+          plan: previewPlan(5),
+          requestId: 'request-preview',
+        }),
+      state: () => {
+        stateLoads += 1;
+        return stateLoads === 1 ? placementState(4) : liveState;
+      },
+    });
+    renderWorkspace();
+    await screen.findByText('Placement needs attention');
+
+    await user.click(
+      screen.getByRole('button', { name: 'Create coverage preview' }),
+    );
+
+    expect(await screen.findByText('No changes proposed')).toBeVisible();
+    expect(
+      screen.getByText(
+        'Current assignments already match the server-checked plan. Nothing has changed for players.',
+      ),
+    ).toBeVisible();
+    expect(stateLoads).toBe(2);
+    expect(
+      within(
+        screen.getByRole('table', {
+          name: 'Current and proposed event placements',
+        }),
+      ).getByText('Keep'),
+    ).toBeVisible();
+  });
+
+  it('names blocked sites and explains each separation conflict', async () => {
+    const user = userEvent.setup();
+    installPlacementApi();
+    renderWorkspace();
+    await screen.findByText('Placement needs attention');
+
+    await user.click(
+      screen.getByRole('button', { name: 'Create coverage preview' }),
+    );
+    await user.click(await screen.findByText('2 separation or policy details'));
+
+    const blockedSites = screen.getByRole('list', {
+      name: 'Blocked candidate sites',
+    });
+    expect(within(blockedSites).getByText('Great Hall')).toBeVisible();
+    expect(within(blockedSites).getByText('East Campus')).toBeVisible();
+    expect(
+      within(blockedSites).getByText('Within 150 m of Wartenweiler Library.'),
+    ).toBeVisible();
+  });
+
   it('discards a stale preview and refreshes authoritative state after a conflict', async () => {
     const user = userEvent.setup();
     let stateVersion = 4;

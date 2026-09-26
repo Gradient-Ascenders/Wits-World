@@ -160,8 +160,8 @@ export interface AuthorEvent extends AuthorLifecycleMetadata {
   endsAt: string;
   eventId: string;
   isPublished: boolean;
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
   radiusMetres: number;
   sourceUrls: string[];
   retiredAt: string | null;
@@ -174,8 +174,8 @@ export interface AuthorEventInput {
   automaticPlacement: boolean;
   description?: string | null;
   endsAt: string;
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
   radiusMetres: number;
   startsAt: string;
   title: string;
@@ -1778,8 +1778,9 @@ function parseAuthorEvent(value: unknown): AuthorEvent {
     !isUuid(value.eventId) ||
     !isNonBlank(value.title) ||
     !isNullableString(value.description) ||
-    !isCoordinate(value.latitude, -90, 90) ||
-    !isCoordinate(value.longitude, -180, 180) ||
+    (value.latitude !== null && !isCoordinate(value.latitude, -90, 90)) ||
+    (value.longitude !== null && !isCoordinate(value.longitude, -180, 180)) ||
+    (value.latitude === null) !== (value.longitude === null) ||
     !isPositiveInteger(value.radiusMetres) ||
     !isSourceUrls(sourceUrls) ||
     !isDateTime(value.startsAt) ||
