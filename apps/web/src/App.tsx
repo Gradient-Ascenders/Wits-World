@@ -124,7 +124,10 @@ export function AppRoutes({
               </Route>
               <Route path="/matches/live">
                 <ProtectedRoute destination="play or watch a live battle">
-                  <LiveLobbyPage apiBaseUrl={apiBaseUrl} />
+                  <LiveLobbyPage
+                    apiBaseUrl={apiBaseUrl}
+                    locationClaimProvider={locationClaimProvider}
+                  />
                 </ProtectedRoute>
               </Route>
               <Route path="/matches/pvp/:matchId">

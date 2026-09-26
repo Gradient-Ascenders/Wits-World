@@ -817,9 +817,10 @@ describe('timed player challenge', () => {
     await user.click(await screen.findByRole('radio', { name: 'Choice 1.2' }));
     await user.click(screen.getByRole('button', { name: 'Submit answer' }));
 
-    expect(
-      await screen.findByRole('heading', { name: 'Question 2' }),
-    ).toHaveFocus();
+    const nextQuestionHeading = await screen.findByRole('heading', {
+      name: 'Question 2',
+    });
+    await waitFor(() => expect(nextQuestionHeading).toHaveFocus());
     expect(screen.getByRole('status')).toHaveTextContent(
       'Challenge ready. Question 2 of 5.',
     );
