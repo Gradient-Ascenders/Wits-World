@@ -30,10 +30,16 @@ import {
   type TrailDetailState,
   type TrailListState,
 } from './TrailDiscovery';
+import { TerritoryDiscovery } from './TerritoryDiscovery';
+import type {
+  TerritoryDetailState,
+  TerritoryListState,
+} from './useTerritoryDiscovery';
 import type {
   MapConfiguration,
   MapFactory,
   MapPoint,
+  MapRegion,
   ReportedMapLocation,
 } from './map-provider';
 import './exploration.css';
@@ -45,25 +51,56 @@ interface CampusExplorerProps {
   locationState: LocationExperienceState;
   mapConfiguration: MapConfiguration;
   mapFactory?: MapFactory;
+  exploreMode?: ExploreMode;
   nearbyDiscovery?: NearbyDiscoveryState;
   onEnableLocation: () => void;
+  onExploreModeChange?: (mode: ExploreMode) => void;
   onClearEventSelection: () => void;
   onLoadNearby?: () => void;
   onLoadTrails?: () => void;
   onOpenTrail?: (trailId: string) => void;
   onRetry: () => void;
   onRetryEligibility: (eventId: string) => void;
+  onClearTerritorySelection?: () => void;
+  onRefreshTerritoryDetail?: () => void;
+  onRefreshTerritoryZones?: () => void;
+  onSelectTerritory?: (zoneId: string) => void;
   onSelectEvent: (eventId: string) => void;
   onStartChallenge?: (eventId: string) => void;
   reportedLocation?: ReportedMapLocation | null;
   selectedEventId: string | null;
+  selectedTerritoryId?: string | null;
+  territoryDetail?: TerritoryDetailState;
+  territoryList?: TerritoryListState;
   trailDetail?: TrailDetailState;
   trailDiscovery?: TrailListState;
 }
 
+export type ExploreMode = 'discover' | 'territories';
+
 type EventPanelMode = 'list' | 'peek' | 'selected';
 type EventAvailabilityFilter = 'active' | 'all' | 'ended' | 'upcoming';
 type DiscoverySection = 'events' | 'nearby' | 'trail-detail' | 'trails';
+
+const EMPTY_TERRITORY_LIST: TerritoryListState = {
+  lastUpdatedAt: null,
+  message: null,
+  refreshing: false,
+  stale: false,
+  status: 'idle',
+  zones: [],
+};
+const EMPTY_TERRITORY_DETAIL: TerritoryDetailState = {
+  detail: null,
+  failedSections: [],
+  history: null,
+  lastUpdatedAt: null,
+  refreshing: false,
+  stale: false,
+  standings: null,
+  status: 'idle',
+  zoneId: null,
+};
 
 const MOBILE_MAP_QUERY = '(max-width: 47.999rem)';
 
@@ -116,18 +153,27 @@ export function CampusExplorer({
   locationState,
   mapConfiguration,
   mapFactory,
+  exploreMode = 'discover',
   nearbyDiscovery = { status: 'idle' },
   onEnableLocation,
+  onExploreModeChange = () => undefined,
   onClearEventSelection,
   onLoadNearby = () => undefined,
   onLoadTrails = () => undefined,
   onOpenTrail = () => undefined,
   onRetry,
   onRetryEligibility,
+  onClearTerritorySelection = () => undefined,
+  onRefreshTerritoryDetail = () => undefined,
+  onRefreshTerritoryZones = () => undefined,
+  onSelectTerritory = () => undefined,
   onSelectEvent,
   onStartChallenge = () => undefined,
   reportedLocation = null,
   selectedEventId,
+  selectedTerritoryId = null,
+  territoryDetail = EMPTY_TERRITORY_DETAIL,
+  territoryList = EMPTY_TERRITORY_LIST,
   trailDetail = { status: 'idle' },
   trailDiscovery = { status: 'idle' },
 }: CampusExplorerProps) {
@@ -144,6 +190,7 @@ export function CampusExplorer({
   const [sheetSnap, setSheetSnap] = useState<BottomSheetSnap>('peek');
   const [recenterRequest, setRecenterRequest] = useState(0);
   const [focusPointRequest, setFocusPointRequest] = useState(0);
+  const [focusRegionRequest, setFocusRegionRequest] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [availabilityFilter, setAvailabilityFilter] =
     useState<EventAvailabilityFilter>('all');
@@ -229,6 +276,20 @@ export function CampusExplorer({
     eventCatalog.find((event) => event.id === selectedEventId) ?? null;
   const selectedPoint =
     points.find((point) => point.id === selectedEventId) ?? null;
+  const territoryRegions = useMemo<MapRegion[]>(
+    () =>
+      territoryList.zones.map((zone) => ({
+        geometry: zone.geometry,
+        id: zone.zoneId,
+        label: zone.name,
+        ownerLabel: zone.owner?.playerName ?? null,
+        status: zone.status,
+      })),
+    [territoryList.zones],
+  );
+  const selectedRegion =
+    territoryRegions.find((region) => region.id === selectedTerritoryId) ??
+    null;
   const selectablePoints = points.filter((point) => point.selectable !== false);
   const selectedIndex = selectablePoints.findIndex(
     (point) => point.id === selectedEventId,
@@ -267,7 +328,10 @@ export function CampusExplorer({
   }, []);
 
   const focusDiscoveryReturnTarget = useCallback(
-    (eventId: string | null = selectedEventId): void => {
+    (
+      eventId: string | null = selectedEventId,
+      territoryId: string | null = selectedTerritoryId,
+    ): void => {
       window.setTimeout(() => {
         const panel = panelRef.current;
         if (!panel) return;
@@ -275,7 +339,11 @@ export function CampusExplorer({
         const eventControl = [
           ...panel.querySelectorAll<HTMLElement>('[data-event-id]'),
         ].find((element) => element.dataset.eventId === eventId);
+        const territoryControl = [
+          ...panel.querySelectorAll<HTMLElement>('[data-territory-id]'),
+        ].find((element) => element.dataset.territoryId === territoryId);
         const target =
+          territoryControl ??
           eventControl ??
           panel.querySelector<HTMLElement>('[aria-pressed="true"]') ??
           panel.querySelector<HTMLElement>(
@@ -285,7 +353,7 @@ export function CampusExplorer({
         target?.focus();
       }, 0);
     },
-    [selectedEventId],
+    [selectedEventId, selectedTerritoryId],
   );
 
   useEffect(() => {
@@ -317,6 +385,7 @@ export function CampusExplorer({
 
   const dismissPanel = useCallback((): void => {
     if (panelMode === 'selected' && selectionFromListRef.current) {
+      if (exploreMode === 'territories') onClearTerritorySelection();
       setPanelMode('list');
       setSheetSnap('medium');
       focusDiscoveryReturnTarget();
@@ -332,10 +401,15 @@ export function CampusExplorer({
         peekButtonRef.current?.focus();
       }
     }, 0);
-  }, [focusDiscoveryReturnTarget, panelMode]);
+  }, [
+    exploreMode,
+    focusDiscoveryReturnTarget,
+    onClearTerritorySelection,
+    panelMode,
+  ]);
 
   useEffect(() => {
-    if (selectedEventId === null) {
+    if (exploreMode !== 'discover' || selectedEventId === null) {
       openedSelectedEventIdRef.current = null;
       return;
     }
@@ -348,7 +422,7 @@ export function CampusExplorer({
       setPanelMode('selected');
       setSheetSnap('medium');
     }
-  }, [selectedEventId, selectedPoint]);
+  }, [exploreMode, selectedEventId, selectedPoint]);
 
   useEffect(() => {
     if (panelMode === 'peek') {
@@ -360,8 +434,10 @@ export function CampusExplorer({
       return;
     }
 
-    panelRef.current?.querySelector<HTMLElement>('h2')?.focus();
-  }, [panelMode, selectedEventId]);
+    panelRef.current
+      ?.querySelector<HTMLElement>('h2')
+      ?.focus({ preventScroll: true });
+  }, [exploreMode, panelMode, selectedEventId, selectedTerritoryId]);
 
   useEffect(() => {
     if (panelMode !== 'list') return;
@@ -373,7 +449,9 @@ export function CampusExplorer({
       !activeElement.isConnected;
     if (!focusWasLost) return;
 
-    panelRef.current?.querySelector<HTMLElement>('h2')?.focus();
+    panelRef.current
+      ?.querySelector<HTMLElement>('h2')
+      ?.focus({ preventScroll: true });
   }, [
     discoverySection,
     nearbyDiscovery.status,
@@ -430,6 +508,28 @@ export function CampusExplorer({
     setSheetSnap('medium');
   };
 
+  const selectTerritory = (zoneId: string): void => {
+    returnFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    selectionFromListRef.current = Boolean(
+      returnFocusRef.current?.closest('.event-panel'),
+    );
+    onSelectTerritory(zoneId);
+    setFocusRegionRequest((current) => current + 1);
+    const zone = territoryList.zones.find(
+      (candidate) => candidate.zoneId === zoneId,
+    );
+    setFocusAnnouncement(
+      zone
+        ? `${zone.name} selected and centred on the map. ${zone.owner ? `Current owner: ${zone.owner.playerName}.` : 'The territory is unclaimed.'}`
+        : '',
+    );
+    setPanelMode('selected');
+    setSheetSnap(isMobileMapViewport ? 'expanded' : 'medium');
+  };
+
   const changeSheetSnap = (nextSnap: BottomSheetSnap): void => {
     setSheetSnap(nextSnap);
     if (nextSnap === 'peek') {
@@ -438,14 +538,32 @@ export function CampusExplorer({
     }
 
     if (panelMode === 'peek') {
-      setPanelMode(selectedEvent === null ? 'list' : 'selected');
+      setPanelMode(
+        exploreMode === 'territories'
+          ? selectedTerritoryId === null
+            ? 'list'
+            : 'selected'
+          : selectedEvent === null
+            ? 'list'
+            : 'selected',
+      );
     }
   };
 
   const openSheet = (): void => {
     returnFocusRef.current = document.activeElement as HTMLElement;
-    setPanelMode(selectedEvent === null ? 'list' : 'selected');
-    setSheetSnap(selectedEvent === null ? 'expanded' : 'medium');
+    const hasSelection =
+      exploreMode === 'territories'
+        ? selectedTerritoryId !== null
+        : selectedEvent !== null;
+    setPanelMode(hasSelection ? 'selected' : 'list');
+    setSheetSnap(
+      hasSelection
+        ? exploreMode === 'territories' && isMobileMapViewport
+          ? 'expanded'
+          : 'medium'
+        : 'expanded',
+    );
   };
 
   const showEventList = (): void => {
@@ -455,6 +573,34 @@ export function CampusExplorer({
     focusDiscoveryReturnTarget();
   };
 
+  const showTerritoryList = (): void => {
+    onClearTerritorySelection();
+    setPanelMode('list');
+    setSheetSnap('expanded');
+    focusDiscoveryReturnTarget(null, selectedTerritoryId);
+  };
+
+  const showExploreMode = (mode: ExploreMode): void => {
+    onExploreModeChange(mode);
+    const hasSelection =
+      mode === 'territories'
+        ? selectedTerritoryId !== null
+        : selectedEvent !== null;
+    setPanelMode(hasSelection ? 'selected' : 'list');
+    setSheetSnap(
+      hasSelection
+        ? mode === 'territories' && isMobileMapViewport
+          ? 'expanded'
+          : 'medium'
+        : 'expanded',
+    );
+    window.setTimeout(() => {
+      panelRef.current
+        ?.querySelector<HTMLElement>('h2')
+        ?.focus({ preventScroll: true });
+    }, 0);
+  };
+
   const showDiscoverySection = (
     section: Exclude<DiscoverySection, 'trail-detail'>,
   ): void => {
@@ -462,7 +608,9 @@ export function CampusExplorer({
     if (section === 'nearby') onLoadNearby();
     if (section === 'trails') onLoadTrails();
     window.setTimeout(() => {
-      panelRef.current?.querySelector<HTMLElement>('h2')?.focus();
+      panelRef.current
+        ?.querySelector<HTMLElement>('h2')
+        ?.focus({ preventScroll: true });
     }, 0);
   };
 
@@ -520,6 +668,25 @@ export function CampusExplorer({
       <span>3D</span>
     </button>
   ) : null;
+  const modeNavigation = (
+    <nav aria-label="Explore view" className="explore-mode-navigation">
+      {(
+        [
+          ['discover', 'Discover'],
+          ['territories', 'Territories'],
+        ] as const
+      ).map(([mode, label]) => (
+        <button
+          aria-current={exploreMode === mode ? 'page' : undefined}
+          key={mode}
+          onClick={() => showExploreMode(mode)}
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </nav>
+  );
 
   return (
     <section
@@ -534,19 +701,30 @@ export function CampusExplorer({
 
       <CampusMap
         accessibleLabel={
-          isMobileMapViewport && !mobile3dEnabled
-            ? 'Interactive campus map in lightweight 2D mode. Event information is also available in the nearby events list.'
-            : undefined
+          exploreMode === 'territories'
+            ? 'Interactive campus territory map. Zone ownership and activity are also available in the keyboard-accessible territories list.'
+            : isMobileMapViewport && !mobile3dEnabled
+              ? 'Interactive campus map in lightweight 2D mode. Event information is also available in the nearby events list.'
+              : undefined
         }
         configuration={effectiveMapConfiguration}
+        errorDescription={
+          exploreMode === 'territories'
+            ? 'Open Territories to keep exploring zone ownership.'
+            : undefined
+        }
         focusPointRequest={focusPointRequest}
+        focusRegionRequest={focusRegionRequest}
         mapFactory={mapFactory}
         onFollowStateChange={setFollowing}
         onPointSelect={selectEvent}
-        points={points}
+        onRegionSelect={selectTerritory}
+        points={exploreMode === 'discover' ? points : []}
+        regions={exploreMode === 'territories' ? territoryRegions : []}
         recenterRequest={recenterRequest}
         reportedLocation={reportedLocation}
-        selectedPoint={selectedPoint}
+        selectedPoint={exploreMode === 'discover' ? selectedPoint : null}
+        selectedRegion={exploreMode === 'territories' ? selectedRegion : null}
       />
 
       <p aria-live="polite" className="sr-only">
@@ -602,15 +780,20 @@ export function CampusExplorer({
       </div>
 
       <BottomSheetSurface
-        ariaLabel="Campus discovery"
+        ariaLabel={
+          exploreMode === 'territories'
+            ? 'Campus territories'
+            : 'Campus discovery'
+        }
         className={`event-panel event-panel--${panelMode}${
-          discoverySection === 'trail-detail'
+          exploreMode === 'discover' && discoverySection === 'trail-detail'
             ? ' event-panel--trail-detail'
             : ''
-        }`}
+        } event-panel--with-mode`}
         id="explore-event-sheet"
         onSnapChange={changeSheetSnap}
         panelRef={panelRef}
+        sheetName={exploreMode === 'territories' ? 'territory' : 'event'}
         snap={sheetSnap}
         view={panelMode}
       >
@@ -618,9 +801,13 @@ export function CampusExplorer({
           <button
             aria-expanded="false"
             aria-label={
-              selectedEvent === null
-                ? `Events — ${visibleEvents.length} ${visibleEvents.length === 1 ? 'event' : 'events'}, ${activeEventCount} available now`
-                : `Events — ${selectedEvent.title} selected, open details`
+              exploreMode === 'territories'
+                ? selectedRegion === null
+                  ? `Territories — ${territoryList.zones.length} ${territoryList.zones.length === 1 ? 'zone' : 'zones'}`
+                  : `Territories — ${selectedRegion.label} selected, open details`
+                : selectedEvent === null
+                  ? `Events — ${visibleEvents.length} ${visibleEvents.length === 1 ? 'event' : 'events'}, ${activeEventCount} available now`
+                  : `Events — ${selectedEvent.title} selected, open details`
             }
             className="event-panel__peek"
             onClick={openSheet}
@@ -629,22 +816,36 @@ export function CampusExplorer({
           >
             <span className="event-panel__peek-copy">
               <strong>
-                {selectedEvent === null
-                  ? discovery.status === 'ready'
-                    ? `${visibleEvents.length} campus ${visibleEvents.length === 1 ? 'event' : 'events'}`
-                    : 'Campus events'
-                  : selectedEvent.title}
+                {exploreMode === 'territories'
+                  ? (selectedRegion?.label ?? 'Campus territories')
+                  : selectedEvent === null
+                    ? discovery.status === 'ready'
+                      ? `${visibleEvents.length} campus ${visibleEvents.length === 1 ? 'event' : 'events'}`
+                      : 'Campus events'
+                    : selectedEvent.title}
               </strong>
               <span>
-                {selectedEvent === null
-                  ? discovery.status === 'ready'
-                    ? `${activeEventCount} available now`
-                    : discovery.status === 'loading'
-                      ? 'Loading published events…'
-                      : discovery.status === 'error'
-                        ? 'Events could not load · Open to retry'
-                        : 'No published events · Check back soon'
-                  : `${availabilityLabels[selectedEvent.availability]} · View details`}
+                {exploreMode === 'territories'
+                  ? selectedRegion !== null
+                    ? selectedRegion.ownerLabel
+                      ? `Owned by ${selectedRegion.ownerLabel} · View details`
+                      : 'Unclaimed · View details'
+                    : territoryList.status === 'loading'
+                      ? 'Loading ownership…'
+                      : territoryList.status === 'error'
+                        ? 'Territories could not load · Open to retry'
+                        : territoryList.status === 'empty'
+                          ? 'No territories available'
+                          : `${territoryList.zones.filter((zone) => zone.status === 'active').length} active`
+                  : selectedEvent === null
+                    ? discovery.status === 'ready'
+                      ? `${activeEventCount} available now`
+                      : discovery.status === 'loading'
+                        ? 'Loading published events…'
+                        : discovery.status === 'error'
+                          ? 'Events could not load · Open to retry'
+                          : 'No published events · Check back soon'
+                    : `${availabilityLabels[selectedEvent.availability]} · View details`}
               </span>
             </span>
             <CaretUp
@@ -655,7 +856,23 @@ export function CampusExplorer({
           </button>
         ) : null}
 
-        {panelMode === 'list' && discoverySection !== 'trail-detail' ? (
+        {panelMode !== 'peek' && exploreMode === 'territories' ? (
+          <TerritoryDiscovery
+            detail={territoryDetail}
+            list={territoryList}
+            modeNavigation={modeNavigation}
+            onCollapse={collapsePanel}
+            onRefreshDetail={onRefreshTerritoryDetail}
+            onRefreshZones={onRefreshTerritoryZones}
+            onSelect={selectTerritory}
+            onShowList={showTerritoryList}
+            selectedZoneId={selectedTerritoryId}
+          />
+        ) : null}
+
+        {exploreMode === 'discover' &&
+        panelMode === 'list' &&
+        discoverySection !== 'trail-detail' ? (
           <>
             <div className="event-panel__header">
               <div>
@@ -690,6 +907,7 @@ export function CampusExplorer({
                 <CaretDown aria-hidden="true" size={20} />
               </button>
             </div>
+            {modeNavigation}
             <div className="event-panel__scroll">
               <nav
                 aria-label="Campus discovery"
@@ -803,7 +1021,9 @@ export function CampusExplorer({
           </>
         ) : null}
 
-        {panelMode === 'list' && discoverySection === 'trail-detail' ? (
+        {exploreMode === 'discover' &&
+        panelMode === 'list' &&
+        discoverySection === 'trail-detail' ? (
           <>
             <div className="event-panel__toolbar">
               <button
@@ -822,6 +1042,7 @@ export function CampusExplorer({
                 <CaretDown aria-hidden="true" size={20} />
               </button>
             </div>
+            {modeNavigation}
             <div className="event-panel__scroll">
               <TrailDetail
                 onOpenEvent={openTrailEvent}
@@ -840,7 +1061,9 @@ export function CampusExplorer({
           </>
         ) : null}
 
-        {panelMode === 'selected' && selectedEvent !== null ? (
+        {exploreMode === 'discover' &&
+        panelMode === 'selected' &&
+        selectedEvent !== null ? (
           <>
             <div className="event-panel__toolbar">
               <button
@@ -903,6 +1126,7 @@ export function CampusExplorer({
                 <CaretDown aria-hidden="true" size={20} />
               </button>
             </div>
+            {modeNavigation}
             <div className="event-panel__scroll">
               <SelectedEventDetails
                 key={selectedEvent.id}

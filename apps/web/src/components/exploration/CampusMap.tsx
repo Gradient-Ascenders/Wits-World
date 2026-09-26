@@ -11,6 +11,7 @@ import {
   type MapController,
   type MapFactory,
   type MapPoint,
+  type MapRegion,
   type ReportedMapLocation,
 } from './map-provider';
 
@@ -24,10 +25,14 @@ interface CampusMapProps {
   onCoordinateSelect?: (coordinate: MapCoordinate) => void;
   onFollowStateChange?: (following: boolean) => void;
   onPointSelect?: (pointId: string) => void;
+  onRegionSelect?: (regionId: string) => void;
   points: readonly MapPoint[];
+  regions?: readonly MapRegion[];
   recenterRequest?: number;
   reportedLocation?: ReportedMapLocation | null;
   selectedPoint?: MapPoint | null;
+  selectedRegion?: MapRegion | null;
+  focusRegionRequest?: number;
 }
 
 type MapStatus = 'error' | 'loading' | 'ready';
@@ -40,44 +45,60 @@ export function CampusMap({
   configuration,
   errorDescription = 'Open Campus events to keep exploring.',
   focusPointRequest = 0,
+  focusRegionRequest = 0,
   mapFactory = createMapboxMap,
   onCoordinateSelect,
   onFollowStateChange,
   onPointSelect,
+  onRegionSelect,
   points,
+  regions = [],
   recenterRequest = 0,
   reportedLocation = null,
   selectedPoint = null,
+  selectedRegion = null,
 }: CampusMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const controllerRef = useRef<MapController | null>(null);
   const onCoordinateSelectRef = useRef(onCoordinateSelect);
   const onFollowStateChangeRef = useRef(onFollowStateChange);
   const onPointSelectRef = useRef(onPointSelect);
+  const onRegionSelectRef = useRef(onRegionSelect);
   const pointsRef = useRef(points);
+  const regionsRef = useRef(regions);
   const areasRef = useRef(areas);
   const focusPointRequestRef = useRef(focusPointRequest);
+  const focusRegionRequestRef = useRef(focusRegionRequest);
   const reportedLocationRef = useRef<ReportedMapLocation | null>(
     reportedLocation,
   );
   const selectedPointRef = useRef<MapPoint | null>(selectedPoint);
+  const selectedRegionRef = useRef<MapRegion | null>(selectedRegion);
   const [status, setStatus] = useState<MapStatus>('loading');
   const [attempt, setAttempt] = useState(0);
 
   useSignInMapStatus(status);
 
   pointsRef.current = points;
+  regionsRef.current = regions;
   areasRef.current = areas;
   focusPointRequestRef.current = focusPointRequest;
+  focusRegionRequestRef.current = focusRegionRequest;
   onCoordinateSelectRef.current = onCoordinateSelect;
   onFollowStateChangeRef.current = onFollowStateChange;
   onPointSelectRef.current = onPointSelect;
+  onRegionSelectRef.current = onRegionSelect;
   reportedLocationRef.current = reportedLocation;
   selectedPointRef.current = selectedPoint;
+  selectedRegionRef.current = selectedRegion;
 
   useEffect(() => {
     controllerRef.current?.setPoints(points);
   }, [points]);
+
+  useEffect(() => {
+    controllerRef.current?.setRegions?.(regions);
+  }, [regions]);
 
   useEffect(() => {
     controllerRef.current?.setAreas?.(areas);
@@ -92,10 +113,20 @@ export function CampusMap({
   }, [selectedPoint]);
 
   useEffect(() => {
+    controllerRef.current?.setSelectedRegion?.(selectedRegion);
+  }, [selectedRegion]);
+
+  useEffect(() => {
     if (focusPointRequest > 0 && selectedPoint !== null) {
       controllerRef.current?.focusPoint(selectedPoint);
     }
   }, [focusPointRequest, selectedPoint]);
+
+  useEffect(() => {
+    if (focusRegionRequest > 0 && selectedRegion !== null) {
+      controllerRef.current?.focusRegion?.(selectedRegion);
+    }
+  }, [focusRegionRequest, selectedRegion]);
 
   useEffect(() => {
     if (recenterRequest > 0) {
@@ -112,6 +143,10 @@ export function CampusMap({
   useEffect(() => {
     controllerRef.current?.setPointSelectionListener?.(onPointSelect ?? null);
   }, [onPointSelect]);
+
+  useEffect(() => {
+    controllerRef.current?.setRegionSelectionListener?.(onRegionSelect ?? null);
+  }, [onRegionSelect]);
 
   useEffect(() => {
     controllerRef.current?.setFollowStateListener?.(
@@ -208,19 +243,28 @@ export function CampusMap({
         controllerRef.current = map;
         resizeMap();
         map.setPoints(pointsRef.current);
+        map.setRegions?.(regionsRef.current);
         map.setAreas?.(areasRef.current);
         map.setReportedLocation(reportedLocationRef.current);
         map.setSelectedPoint?.(selectedPointRef.current);
+        map.setSelectedRegion?.(selectedRegionRef.current);
         if (
           focusPointRequestRef.current > 0 &&
           selectedPointRef.current !== null
         ) {
           map.focusPoint(selectedPointRef.current);
         }
+        if (
+          focusRegionRequestRef.current > 0 &&
+          selectedRegionRef.current !== null
+        ) {
+          map.focusRegion?.(selectedRegionRef.current);
+        }
         map.setCoordinateSelectionListener?.(
           onCoordinateSelectRef.current ?? null,
         );
         map.setPointSelectionListener?.(onPointSelectRef.current ?? null);
+        map.setRegionSelectionListener?.(onRegionSelectRef.current ?? null);
         map.setFollowStateListener?.(onFollowStateChangeRef.current ?? null);
         map.onLoad(() => {
           if (active) {

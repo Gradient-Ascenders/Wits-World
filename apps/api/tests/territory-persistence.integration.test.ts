@@ -22,6 +22,7 @@ import {
   getSeedsDirectory,
 } from '../src/database/paths.js';
 import { runSeeds } from '../src/database/seeds.js';
+import { createTerritoryReadService } from '../src/territory/territory-read-service.js';
 
 const MIGRATION_NAME = '0053_persist_contested_territory.sql';
 const RUNTIME_MIGRATION_NAME = '0054_implement_contested_territory_runtime.sql';
@@ -312,6 +313,28 @@ describe.skipIf(!runIntegrationTests)(
       await expect(runSeeds(temporaryConfig)).resolves.toEqual(
         expect.objectContaining({
           applied: expect.arrayContaining([SEED_NAME]),
+        }),
+      );
+    });
+
+    it('reads current territory standings with PostgreSQL-safe query aliases', async () => {
+      const zoneId = zones.get('arts_and_community');
+      if (!zoneId)
+        throw new Error('Arts & Community territory was not seeded.');
+
+      const standings = await createTerritoryReadService(pool).standings(
+        randomUUID(),
+        zoneId,
+      );
+
+      expect(standings).toEqual(
+        expect.objectContaining({
+          activity: expect.objectContaining({
+            contributors: expect.any(Number),
+            influence: expect.any(Number),
+          }),
+          seasonId,
+          zoneId,
         }),
       );
     });

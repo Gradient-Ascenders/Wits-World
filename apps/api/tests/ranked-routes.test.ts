@@ -24,6 +24,7 @@ describe('ranked HTTP routes', () => {
   let app: FastifyInstance;
   let join: ReturnType<typeof vi.fn>;
   let accept: ReturnType<typeof vi.fn>;
+  let settlement: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     const verifier: AccessTokenVerifier = {
@@ -74,6 +75,24 @@ describe('ranked HTTP routes', () => {
       expireProposals: vi.fn(),
       pairOnce: vi.fn(),
     } as unknown as RankedService;
+    settlement = vi.fn().mockResolvedValue({
+      matchId: '70000000-0000-4000-8000-000000000001',
+      seasonId: '50000000-0000-4000-8000-000000000001',
+      status: 'settled',
+      completionReason: 'defeat',
+      outcome: 'win',
+      ratingBefore: 1000,
+      ratingAfter: 1018,
+      appliedDelta: 18,
+      settledAt: '2026-09-22T10:15:00.000Z',
+      territory: {
+        zoneId: '60000000-0000-4000-8000-000000000001',
+        zoneName: 'East Campus',
+        outcome: 'accepted',
+        influencePoints: 1,
+        exclusionReason: null,
+      },
+    });
     const reads = {
       currentSeason: vi.fn().mockResolvedValue(null),
       profile: vi.fn().mockResolvedValue({
@@ -85,7 +104,7 @@ describe('ranked HTTP routes', () => {
         placementMatchesRemaining: 5,
         provisional: true,
       }),
-      settlement: vi.fn(),
+      settlement,
       currentStandings: vi.fn(),
       archivedStandings: vi.fn(),
       cleanupExpiredSnapshots: vi.fn(),
@@ -161,5 +180,24 @@ describe('ranked HTTP routes', () => {
       url: '/api/v1/ranked/me',
     });
     expect(response.statusCode).toBe(401);
+  });
+
+  it('returns only the authenticated player territory contribution result', async () => {
+    const matchId = '70000000-0000-4000-8000-000000000001';
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/ranked/matches/${matchId}/settlement`,
+      headers: { authorization: 'Bearer test-token' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(settlement).toHaveBeenCalledWith(PLAYER_ID, matchId);
+    expect(response.json()).toMatchObject({
+      territory: {
+        zoneName: 'East Campus',
+        outcome: 'accepted',
+        influencePoints: 1,
+      },
+    });
   });
 });
