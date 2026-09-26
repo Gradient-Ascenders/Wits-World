@@ -1465,6 +1465,21 @@ test('renders recent results and starts from the selected deck dashboard', async
   for (const width of [390, 768, 1440]) {
     await page.setViewportSize({ width, height: 1024 });
     await expectNoHorizontalOverflow(page);
+    if (width >= 768) {
+      const firstResult = page
+        .getByRole('list', { name: 'Completed battles' })
+        .getByRole('listitem')
+        .first();
+      const completedBox = await firstResult.locator('time').boundingBox();
+      const roundsBox = await firstResult
+        .locator('.match-result-summary__rounds')
+        .boundingBox();
+      expect(completedBox).not.toBeNull();
+      expect(roundsBox).not.toBeNull();
+      expect(completedBox!.x + completedBox!.width).toBeLessThanOrEqual(
+        roundsBox!.x,
+      );
+    }
     await page.locator('.matches-page').screenshot({
       path: path.join(screenshotsDirectory, `${width}-match-history.png`),
     });

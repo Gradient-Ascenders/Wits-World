@@ -23,6 +23,7 @@ import {
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { MatchErrorState } from '../components/matches/MatchErrorState';
 import {
+  BattleResultColumns,
   BattleResultSummary,
   formatMatchDate,
   mergeBattleHistory,
@@ -500,6 +501,7 @@ function RecentResults({ state }: { state: RecentResultsState }) {
               results that loaded.
             </p>
           ) : null}
+          <BattleResultColumns />
           <ol aria-label="Recent battle results" className="recent-match-list">
             {state.battles.map((battle) => (
               <li key={`${battle.kind}-${battle.match.matchId}`}>

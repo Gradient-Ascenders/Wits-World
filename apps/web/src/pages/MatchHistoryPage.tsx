@@ -13,6 +13,7 @@ import {
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { MatchErrorState } from '../components/matches/MatchErrorState';
 import {
+  BattleResultColumns,
   BattleResultSummary,
   mergeBattleHistory,
   type BattleHistoryItem,
@@ -239,13 +240,16 @@ export default function MatchHistoryPage({
           <p>Finish a Practice or Player Battle to see your result here.</p>
         </section>
       ) : (
-        <ol aria-label="Completed battles" className="match-history-list">
-          {visibleBattles.map((battle) => (
-            <li key={`${battle.kind}-${battle.match.matchId}`}>
-              <BattleResultSummary battle={battle} />
-            </li>
-          ))}
-        </ol>
+        <div className="match-history-results">
+          <BattleResultColumns />
+          <ol aria-label="Completed battles" className="match-history-list">
+            {visibleBattles.map((battle) => (
+              <li key={`${battle.kind}-${battle.match.matchId}`}>
+                <BattleResultSummary battle={battle} />
+              </li>
+            ))}
+          </ol>
+        </div>
       )}
 
       {state.playerNextCursor !== null ? (
