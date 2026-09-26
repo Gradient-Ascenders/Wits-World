@@ -67,6 +67,7 @@ import { createAuthorAnalyticsService } from './analytics/author-analytics-servi
 import { createEventProductAnalyticsRecorder } from './analytics/event-product-aggregates.js';
 import { createDeveloperApiKeyService } from './developer/developer-api-key-service.js';
 import { createDeveloperPublicDataService } from './developer/developer-public-data-service.js';
+import { createTrustReviewService } from './trust/trust-review-service.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
@@ -87,6 +88,7 @@ async function startServer(): Promise<void> {
     createAuth0ManagementClient(authManagementConfig);
 
   const trustService = createTrustService(database);
+  const trustReviewService = createTrustReviewService(database);
   const placementService = createPlacementService(database);
   const trustRestrictions = createTrustRestrictionService(database);
   const rankedService = createRankedService(database, trustRestrictions);
@@ -198,6 +200,7 @@ async function startServer(): Promise<void> {
     authConfig,
     corsConfig,
     playerIdentityService,
+    trustReviewService,
     playerNameSetupService: playerIdentityService,
     rateProtection: createAuthenticatedRateProtection({
       maxRequests: config.rateLimitMaxRequests,

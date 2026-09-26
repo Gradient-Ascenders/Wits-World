@@ -313,6 +313,41 @@ See the [live PvP API contract](../../docs/architecture/live-pvp-api-contract.md
 for message schemas, reconnect, timeout, idempotency, and spectator privacy
 rules.
 
+## Suspect-player review API
+
+Active Authors can use the protected trust-review operations:
+
+```http
+GET  /api/v1/author/trust/cases
+GET  /api/v1/author/trust/cases/:caseId
+GET  /api/v1/author/trust/cases/:caseId/history
+POST /api/v1/author/trust/cases/:caseId/decisions
+```
+
+The queue supports bounded pagination and filters for case state, review band,
+active-restriction state, derived signal type, and creation/update times. Detail
+and audit responses contain derived evidence summaries, local opaque player
+identifiers, policy/version data, and effective restrictions. They do not
+contain Auth0 identifiers, precise location, raw telemetry, private match
+history, or evidence source identifiers.
+
+Every mutation derives the reviewer from the bearer token, requires the
+expected case version and a bounded reason/note, and runs the case transition,
+append-only audit, evidence links, false-positive adjustments, and supported
+restrictions in one transaction. Stale versions return a safe `409` conflict.
+Self-review cases use the same `404` response as inaccessible/missing cases.
+Human decisions follow `open -> under_review -> resolved`: monitoring or a
+restriction starts review, while dismissal or resolution is accepted only once
+review is underway. A decision may reference at most 100 distinct evidence
+summaries in total. History distinguishes all referenced evidence from the
+false-positive subset and retains each restriction's committed start and expiry.
+The writable scopes are `online_verification_required`,
+`location_reward_challenge_hold`, and `new_competitive_match_hold`;
+`card_trade_hold` remains readable but requires the separate trust-v2 case
+workflow and cannot be authored by these endpoints.
+See the [longitudinal trust persistence guide](../../docs/database/trust-persistence.md)
+for the complete privacy and concurrency contract.
+
 ## OpenAPI documentation
 
 With the API running, open:

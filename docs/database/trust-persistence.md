@@ -11,7 +11,9 @@ for the `trust-v1` policy defined by issue `#254`. It stores only derived,
 privacy-limited trust data and human governance history. Issue `#258` now uses
 that schema for deterministic score calculation, authoritative signal ingestion,
 decay/recovery maintenance, and enforcement of already-reviewed restrictions.
-Reviewer and appeal APIs remain later work.
+Issue `#260` exposes the Author-only case queue, detail, decision, and audit API
+over the same versioned persistence. Player appeal submission and resolution
+APIs remain later work.
 
 All trust relations live in the `private` PostgreSQL schema. The browser does
 not read or write them directly.
@@ -179,7 +181,55 @@ human-authored governance, and runtime checks read only the effective scope and
 expiry after any appeal resolution. No player response exposes the stored score
 or evidence behind that decision.
 
+## Issue #260 reviewer API
+
+Issue `#260` adds no migration. It reuses the private relations and integrity
+triggers above through a protected Author-only service:
+
+- `GET /api/v1/author/trust/cases` provides a bounded, deterministic queue with
+  status, review-band, active-restriction, signal-type, and date filters;
+- `GET /api/v1/author/trust/cases/:caseId` returns the current versioned case,
+  category totals, derived evidence summaries, effective restrictions, and the
+  most recent audit transitions;
+- `GET /api/v1/author/trust/cases/:caseId/history` provides the complete
+  append-only decision history with bounded pagination; and
+- `POST /api/v1/author/trust/cases/:caseId/decisions` records a reasoned
+  monitoring, dismissal, restriction, or resolution decision.
+
+The authenticated local Author UUID is always the actor; no reviewer identity
+is accepted from the request body. An Author's own case is excluded from the
+queue and returns the same not-found response as any inaccessible case. A
+reviewer mutation takes the existing per-player advisory transaction lock,
+locks and validates the target player row before the case row, and compares the
+required `expectedVersion`. This matches account-lifecycle lock ordering. A
+stale decision returns an explicit conflict and cannot append a decision or
+restriction.
+
+Reviewer transitions follow `open -> under_review -> resolved`. Monitoring or a
+restriction may start review; dismissal and explicit resolution require an
+`under_review` case. The direct `open -> resolved` decay path remains system
+owned. The decision transaction advances the case projection, appends the
+Author decision, links at most 100 distinct safe evidence summaries, records
+any false-positive adjustments, and creates supported restrictions together. A
+failure rolls all of those writes back. Audit history distinguishes the full
+evidence set from the false-positive subset and returns each restriction's
+original committed start and expiry.
+
+The writable scopes are `online_verification_required`,
+`location_reward_challenge_hold`, and `new_competitive_match_hold`; durations
+remain whole hours from 1 through 168 and the database seven-day constraint
+remains authoritative. Read projections retain the schema-level
+`card_trade_hold`, but this API cannot author it because #260 does not add the
+separate trust-v2 case-creation and policy workflow.
+
+The API projections intentionally omit provider identifiers, raw source
+identifiers and digests, precise coordinates, exact speed/distance/accuracy,
+submitted answers, private match state, and arbitrary source payloads. There is
+no separate export operation: any later export must reuse these object-level
+authorization and privacy projections rather than reading the private tables
+directly.
+
 ## AI declaration
 
 This persistence design and implementation guide was generated, edited, and
-reviewed with the assistance of ChatGPT-Web[GPT-5.6 Sol].
+reviewed with the assistance of ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].

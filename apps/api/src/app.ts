@@ -101,6 +101,8 @@ import type { DeveloperPublicDataService } from './developer/developer-public-da
 import { registerDeveloperApiAuthentication } from './developer/developer-api-authentication.js';
 import { developerApiRoutes } from './routes/developer-api.js';
 import type { RateProtection } from './security/rate-protection.js';
+import type { TrustReviewService } from './trust/trust-review-service.js';
+import { authorTrustReviewRoutes } from './routes/author-trust-review.js';
 
 export interface EventServices {
   discovery: EventDiscoveryService;
@@ -155,6 +157,7 @@ export interface BuildAppOptions {
     publicDataService: DeveloperPublicDataService;
     rateProtection: RateProtection;
   };
+  trustReviewService?: TrustReviewService;
 }
 
 export interface AccountDeletionServices {
@@ -221,6 +224,7 @@ export async function buildApp({
   rateProtection,
   developerApi,
   offlineChallengeService,
+  trustReviewService,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: logger
@@ -374,6 +378,9 @@ export async function buildApp({
   if (progressionReadService && !playerIdentityService) {
     throw new Error('Progression services require a player identity service.');
   }
+  if (trustReviewService && !playerIdentityService) {
+    throw new Error('Trust review routes require a player identity service.');
+  }
 
   registerRequestTiming(app);
   registerErrorHandlers(app);
@@ -459,6 +466,11 @@ export async function buildApp({
           name: 'Progression',
           description:
             'Authenticated player progression and privacy-safe standings.',
+        },
+        {
+          name: 'Trust review',
+          description:
+            'Protected Author-only suspect-player review, proportionate decisions, and immutable audit history.',
         },
       ],
       components: {
@@ -577,6 +589,13 @@ export async function buildApp({
     await app.register(authorAnalyticsRoutes, {
       prefix: '/api/v1',
       service: authorContentServices.analytics,
+    });
+  }
+
+  if (trustReviewService) {
+    await app.register(authorTrustReviewRoutes, {
+      prefix: '/api/v1',
+      service: trustReviewService,
     });
   }
 
