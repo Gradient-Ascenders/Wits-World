@@ -114,8 +114,7 @@ const reviewQueueCte = `with queue as (
   from public.event_challenges challenge
   join public.events event on event.id = challenge.event_id
   where challenge.status = 'in_review'
-    and ($1::text is not null or not (event.authoring_status = 'in_review'
-      and challenge.submitted_by_player_id = event.submitted_by_player_id))
+    and event.authoring_status <> 'in_review'
   union all
   select 'question', question.id::text, challenge.event_id, question.challenge_id,
          challenge.format || ' question',
@@ -124,8 +123,7 @@ const reviewQueueCte = `with queue as (
   join public.event_challenges challenge on challenge.id = question.challenge_id
   join public.events event on event.id = challenge.event_id
   where question.status = 'in_review'
-    and ($1::text is not null or not (event.authoring_status = 'in_review'
-      and question.submitted_by_player_id = event.submitted_by_player_id))
+    and event.authoring_status <> 'in_review'
   union all
   select 'card', id::text, null::uuid, null::uuid, name,
          version, submitted_by_player_id, submitted_at

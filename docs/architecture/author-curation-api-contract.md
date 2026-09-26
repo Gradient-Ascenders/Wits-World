@@ -106,8 +106,9 @@ false`. Every item includes nullable `eventId` and `challengeId` navigation
 context. Challenges include their `eventId`; questions include both parents;
 top-level events, cards, and campaigns return `null` for both fields.
 When an event package is in review, its child challenge and questions are omitted
-from the unfiltered queue so reviewers see one event package entry. Direct
-entity-type filtering remains available for legacy individual reviews.
+from both the unfiltered queue and challenge/question-filtered queues so
+reviewers see one actionable event package entry. Child filters still show
+individually submitted content when its parent event is not in review.
 
 `GET /api/v1/author/content/:entityType/:entityId/history` returns paginated,
 version-ordered audit records. Queue and history responses contain only stable
