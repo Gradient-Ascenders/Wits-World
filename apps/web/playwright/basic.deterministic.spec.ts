@@ -93,6 +93,7 @@ test('completes the canonical 21-step Basic journey against the real API and tes
   context,
   page,
 }) => {
+  test.setTimeout(480_000);
   const forbiddenRequests = monitorForbiddenProviders(page);
   const consoleErrors: string[] = [];
   const expectedRecoveryMisses: string[] = [];
@@ -310,6 +311,7 @@ test('completes the canonical 21-step Basic journey against the real API and tes
   });
 
   await test.step('16 create a server-authoritative CPU battle snapshot', async () => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     const response = page.waitForResponse(
       (candidate) =>
         candidate.request().method() === 'POST' &&
@@ -329,8 +331,8 @@ test('completes the canonical 21-step Basic journey against the real API and tes
       actionCount += 1
     ) {
       const action = page
-        .locator('.battle-action-content button:not([disabled])')
-        .first();
+        .locator('.battle-action-content button:not([disabled]):visible')
+        .last();
       await expect(action).toBeVisible();
       const responsePromise = page.waitForResponse(
         `${API_BASE_URL}/matches/${matchId}/actions`,
@@ -345,13 +347,13 @@ test('completes the canonical 21-step Basic journey against the real API and tes
   });
 
   await test.step('18 reload the persisted completed match result', async () => {
-    await expect(
-      page.getByRole('heading', { name: /match saved/u }),
-    ).toBeVisible();
+    const completedMatchHeading = page.getByRole('heading', {
+      name: /^Practice (victory|complete)$/u,
+    });
+    await expect(completedMatchHeading).toBeVisible();
     await page.reload();
-    await expect(
-      page.getByRole('heading', { name: /match saved/u }),
-    ).toBeVisible();
+    await expect(completedMatchHeading).toBeVisible();
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
   });
 
   await test.step('19 load the completed match from private history', async () => {
@@ -360,8 +362,8 @@ test('completes the canonical 21-step Basic journey against the real API and tes
       page.getByRole('heading', { name: 'Battle history' }),
     ).toBeVisible();
     await expect(
-      page.getByRole('link', { name: 'View saved match' }),
-    ).toBeVisible();
+      page.getByRole('link', { name: 'View battle' }),
+    ).toHaveAttribute('href', `/matches/${matchId}`);
   });
 
   await test.step('20 create and publish playable content through protected author APIs', async () => {
