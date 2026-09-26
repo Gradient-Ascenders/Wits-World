@@ -177,11 +177,11 @@ export function createTerritoryReadService(
                 count(*)::integer as influence,
                 min(contribution.contributed_at) as earliest_contribution_at
            from private.territory_influence_contributions contribution
-           cross join current_window window
+           cross join current_window bounds
           where contribution.zone_id = $1::uuid
             and contribution.ranked_season_id = $2::uuid
-            and contribution.contributed_at >= window.window_start
-            and contribution.contributed_at < window.window_end
+            and contribution.contributed_at >= bounds.window_start
+            and contribution.contributed_at < bounds.window_end
           group by contribution.player_id
           order by count(*) desc, min(contribution.contributed_at), contribution.player_id
           limit 3`,
@@ -206,25 +206,25 @@ export function createTerritoryReadService(
            count(*) filter (
              where contribution.player_id = $3::uuid
                and contribution.ranked_season_id = $2::uuid
-               and contribution.contributed_at >= window.window_start
-               and contribution.contributed_at < window.window_end
+               and contribution.contributed_at >= bounds.window_start
+               and contribution.contributed_at < bounds.window_end
            )::integer as current_influence,
            count(*) filter (
              where contribution.player_id = $3::uuid
-               and contribution.contribution_date = window.local_date
+               and contribution.contribution_date = bounds.local_date
            )::integer as today_influence,
            count(*) filter (
              where contribution.ranked_season_id = $2::uuid
-               and contribution.contributed_at >= window.window_start
-               and contribution.contributed_at < window.window_end
+               and contribution.contributed_at >= bounds.window_start
+               and contribution.contributed_at < bounds.window_end
            )::integer as activity_influence,
            count(distinct contribution.player_id) filter (
              where contribution.ranked_season_id = $2::uuid
-               and contribution.contributed_at >= window.window_start
-               and contribution.contributed_at < window.window_end
+               and contribution.contributed_at >= bounds.window_start
+               and contribution.contributed_at < bounds.window_end
            )::integer as contributors
          from private.territory_influence_contributions contribution
-         cross join current_window window
+         cross join current_window bounds
         where contribution.zone_id = $1::uuid`,
         [zoneId, seasonId, playerId, policy.daily_cap_timezone],
       );

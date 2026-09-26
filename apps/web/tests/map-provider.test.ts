@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createMapboxMap,
   type CampusDataset,
+  type MapRegion,
 } from '../src/components/exploration/map-provider';
 
 const mapboxState = vi.hoisted(() => ({
@@ -12,6 +13,7 @@ const mapboxState = vi.hoisted(() => ({
   canvasContainer: null as HTMLDivElement | null,
   controls: [] as Array<{ onAdd?: (map: unknown) => HTMLElement }>,
   easeTo: vi.fn(),
+  fitBounds: vi.fn(),
   handlers: new Map<string, (...args: never[]) => void>(),
   isLoaded: false,
   isStyleLoaded: false,
@@ -72,6 +74,12 @@ vi.mock('mapbox-gl/esm', () => ({
 
     public easeTo = mapboxState.easeTo;
 
+    public fitBounds = mapboxState.fitBounds;
+
+    public getCanvas() {
+      return mapboxState.canvasContainer ?? document.createElement('div');
+    }
+
     public getZoom() {
       return 16.5;
     }
@@ -86,13 +94,27 @@ vi.mock('mapbox-gl/esm', () => ({
       return mapboxState.isLoaded;
     }
 
-    public on = (event: string, listener: (...args: never[]) => void) => {
-      mapboxState.on(event, listener);
-      const previous = mapboxState.handlers.get(event);
-      mapboxState.handlers.set(event, (...args: never[]) => {
+    public on = (
+      event: string,
+      layerOrListener: string | ((...args: never[]) => void),
+      layerListener?: (...args: never[]) => void,
+    ) => {
+      if (layerListener === undefined) {
+        mapboxState.on(event, layerOrListener);
+      } else {
+        mapboxState.on(event, layerOrListener, layerListener);
+      }
+      const layer =
+        typeof layerOrListener === 'string' ? layerOrListener : null;
+      const listener = layer === null ? layerOrListener : layerListener;
+      if (typeof listener !== 'function') return this;
+      const key = layer === null ? event : `${event}:${layer}`;
+      const previous = mapboxState.handlers.get(key);
+      mapboxState.handlers.set(key, (...args: never[]) => {
         previous?.(...args);
         listener(...args);
       });
+      return this;
     };
 
     public once = (event: string, listener: (...args: never[]) => void) => {
@@ -211,6 +233,7 @@ beforeEach(() => {
     },
   );
   mapboxState.easeTo.mockClear();
+  mapboxState.fitBounds.mockClear();
   mapboxState.jumpTo.mockClear();
   mapboxState.mapConstructor.mockClear();
   mapboxState.markerConstructor.mockClear();
@@ -476,6 +499,95 @@ describe('Mapbox Standard provider', () => {
         ([layer]) => layer.id === 'wits-selected-event-radius-fill',
       )?.[0],
     ).toMatchObject({ slot: 'middle', type: 'fill' });
+  });
+
+  it('renders selectable territory regions and fits the selected geometry', async () => {
+    mapboxState.isStyleLoaded = true;
+    const controller = await createMapboxMap(
+      document.createElement('div'),
+      configuration,
+      [],
+      new AbortController().signal,
+    );
+    const region: MapRegion = {
+      geometry: {
+        coordinates: [
+          [
+            [28.029, -26.193],
+            [28.032, -26.193],
+            [28.032, -26.19],
+            [28.029, -26.193],
+          ],
+        ],
+        type: 'Polygon',
+      },
+      id: 'zone-1',
+      label: 'East Campus',
+      ownerLabel: 'blue_witsie',
+      status: 'active',
+    };
+    const listener = vi.fn();
+
+    controller.setRegionSelectionListener?.(listener);
+    controller.setRegions?.([region]);
+    controller.setSelectedRegion?.(region);
+
+    const source = mapboxState.sources.get('wits-territory-regions') as {
+      setData: ReturnType<typeof vi.fn>;
+    };
+    expect(source.setData).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        features: [
+          expect.objectContaining({
+            properties: expect.objectContaining({
+              id: 'zone-1',
+              mapLabel: 'East Campus\nOwned by blue_witsie',
+              selected: true,
+            }),
+          }),
+        ],
+      }),
+    );
+
+    const click = mapboxState.handlers.get('click:wits-territory-fill') as
+      | ((event: { features: Array<{ properties: { id: string } }> }) => void)
+      | undefined;
+    click?.({ features: [{ properties: { id: 'zone-1' } }] });
+    expect(listener).toHaveBeenCalledWith('zone-1');
+
+    expect(controller.focusRegion?.(region)).toBe(true);
+    expect(mapboxState.fitBounds).toHaveBeenCalledWith(
+      [
+        [28.029, -26.193],
+        [28.032, -26.19],
+      ],
+      { duration: 650, maxZoom: 17, padding: 72 },
+    );
+    expect(mapboxState.addLayer.mock.calls.map(([layer]) => layer.id)).toEqual(
+      expect.arrayContaining([
+        'wits-territory-fill',
+        'wits-territory-line',
+        'wits-territory-suspended-line',
+        'wits-territory-selected-line',
+        'wits-territory-label',
+      ]),
+    );
+    const activeLine = mapboxState.addLayer.mock.calls.find(
+      ([layer]) => layer.id === 'wits-territory-line',
+    )?.[0];
+    expect(activeLine).toMatchObject({
+      filter: [
+        'all',
+        ['==', ['get', 'status'], 'active'],
+        ['==', ['get', 'selected'], false],
+      ],
+      paint: {
+        'line-color': '#e0c46c',
+        'line-emissive-strength': 0.45,
+        'line-opacity': 0.96,
+        'line-width': 2.5,
+      },
+    });
   });
 
   it('makes only opted-in author markers draggable and reports their final coordinate', async () => {

@@ -66,6 +66,39 @@ or excluded-decision reasons. Repeated same-owner hourly settlements remain in
 the immutable database ledger but are omitted from the ownership-period history
 response so they are not presented as transfers.
 
+Issue `#271` presents these reads as a `Territories` view inside `/explore`.
+The map polygons and the keyboard-accessible list are equivalent ways to select
+a zone; the list remains the complete interaction path if Mapbox is unavailable.
+The browser loads the catalogue only after the player opens the view, loads a
+selected zone's detail, standings, and history independently, and keeps the
+last good response visibly marked as stale when a refresh fails. It does not
+infer eligibility, influence, ownership, settlement, or a winner from map
+position or locally elapsed time.
+
+The territory view is browse-first. It explains how a future Ranked entry
+surface can submit the existing optional `territoryClaim`, but it does not add a
+second queue action or imply that viewing/selecting a polygon creates a grant.
+
+## Per-match contribution feedback
+
+`GET /api/v1/ranked/matches/:matchId/settlement` now includes a required,
+nullable `territory` member. Ordinary ranked matches return `null`. A match with
+the authenticated participant's immutable territory snapshot returns the zone
+ID/name and one of these player-safe outcomes:
+
+| Outcome    | Meaning                                                                                                                                                                                                 |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pending`  | The ranked match has not committed its authoritative settlement.                                                                                                                                        |
+| `lost`     | The participant lost, so the attempted territory received no influence.                                                                                                                                 |
+| `accepted` | The participant won and the reported `influencePoints` were committed.                                                                                                                                  |
+| `excluded` | The participant won but no influence was committed; `exclusionReason` is one of `daily_cap_reached`, `placement_matches_remaining`, `player_unavailable`, `result_not_eligible`, or `zone_unavailable`. |
+
+The response is scoped through the authenticated match participant. It does not
+expose the opponent's claim, contribution decision, location evidence, internal
+policy reason, or private identifiers. The browser must render this result when
+the Ranked match-result surface is available; it must not reconstruct the
+outcome from score, rating, standings, or zone state.
+
 ## Influence and settlement authority
 
 There is no influence-write HTTP endpoint. When a live ranked match commits its
@@ -119,4 +152,4 @@ The implementation is backed by additive migration
 remains unchanged.
 
 The preceding document was generated and edited with the assistance of:
-ChatGPT-Web[GPT-5.6 Sol].
+ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].

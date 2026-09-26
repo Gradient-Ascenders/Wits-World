@@ -233,6 +233,22 @@ evidence because it is substantially faster than the normal local test target.
 A passing automated suite does not replace physical field validation of campus
 boundaries or reported-accuracy behaviour.
 
+Issue `#271` adds the Player-facing read boundary. Web client tests reject
+unexpected fields, malformed polygons, open rings, and out-of-range coordinates;
+component tests cover lazy territory loading, the map-independent zone list,
+selection/focus synchronisation, owner and anonymous standings presentation,
+viewer-only influence, ownership history, and partial-detail recovery. Map
+provider tests cover GeoJSON source/layer updates, region selection, selected
+styling data, and bounded camera fitting. Ranked read/route tests cover the
+authenticated participant's accepted, lost, pending, excluded, and ordinary
+null contribution results, including the mapping from private exclusion reasons
+to the smaller player-safe contract.
+
+Responsive browser inspection at desktop and 390px mobile widths remains a
+separate visual-acceptance gate. Automated tests do not establish that the
+production Mapbox style, label density, real reviewed zone geometry, or physical
+campus boundaries are visually acceptable in the field.
+
 ## Commands and data isolation
 
 The normal repository quality set is:

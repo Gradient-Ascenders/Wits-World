@@ -10,6 +10,7 @@ import type {
   MapController,
   MapFactory,
   MapPoint,
+  MapRegion,
 } from '../../src/components/exploration/map-provider';
 
 let mapInstance = 0;
@@ -94,8 +95,11 @@ export const mapFactory: MapFactory = async (
   let points = initialPoints;
   let areas: readonly MapArea[] = [];
   let selectedPoint: MapPoint | null = null;
+  let regions: readonly MapRegion[] = [];
+  let selectedRegion: MapRegion | null = null;
   let focusedPointId: string | null = null;
   let pointSelectionListener: ((pointId: string) => void) | null = null;
+  let regionSelectionListener: ((regionId: string) => void) | null = null;
   let coordinateSelectionListener:
     ((coordinate: { latitude: number; longitude: number }) => void) | null =
     null;
@@ -111,6 +115,14 @@ export const mapFactory: MapFactory = async (
     pointerEvents: 'none',
     position: 'absolute',
     zIndex: '2',
+  });
+  const regionLayer = document.createElement('div');
+  regionLayer.dataset.deterministicTerritories = 'true';
+  Object.assign(regionLayer.style, {
+    inset: '0',
+    pointerEvents: 'none',
+    position: 'absolute',
+    zIndex: '1',
   });
   const areaLayer = document.createElement('div');
   areaLayer.dataset.deterministicAreas = 'true';
@@ -132,7 +144,7 @@ export const mapFactory: MapFactory = async (
     pointerEvents: 'none',
     position: 'absolute',
   });
-  container.append(radius, areaLayer, markerLayer);
+  container.append(regionLayer, radius, areaLayer, markerLayer);
 
   const renderAreas = (): void => {
     areaLayer.replaceChildren();
@@ -362,6 +374,91 @@ export const mapFactory: MapFactory = async (
   };
   renderMarkers();
 
+  const renderRegions = (): void => {
+    regionLayer.replaceChildren();
+    const layouts = [
+      {
+        clipPath: 'polygon(4% 12%, 92% 0, 100% 78%, 18% 100%)',
+        height: 34,
+        left: 13,
+        top: 18,
+        width: 38,
+      },
+      {
+        clipPath: 'polygon(8% 0, 100% 10%, 88% 100%, 0 82%)',
+        height: 38,
+        left: 51,
+        top: 14,
+        width: 35,
+      },
+      {
+        clipPath: 'polygon(0 18%, 82% 0, 100% 88%, 12% 100%)',
+        height: 29,
+        left: 32,
+        top: 55,
+        width: 43,
+      },
+    ] as const;
+    regions.forEach((region, index) => {
+      const layout = layouts[index % layouts.length]!;
+      const selected = selectedRegion?.id === region.id;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.territoryRegionId = region.id;
+      button.setAttribute(
+        'aria-label',
+        `Select ${region.label}, ${region.status}, ${region.ownerLabel ? `owned by ${region.ownerLabel}` : 'unclaimed'}`,
+      );
+      Object.assign(button.style, {
+        alignItems: 'center',
+        background:
+          region.status === 'suspended'
+            ? 'rgb(127 139 157 / 18%)'
+            : selected
+              ? 'rgb(42 107 255 / 36%)'
+              : 'rgb(42 107 255 / 22%)',
+        border: `${selected ? 4 : 3}px ${region.status === 'suspended' ? 'dashed' : 'solid'} ${selected ? '#54a8ff' : region.status === 'suspended' ? '#b3bdcc' : '#e0c46c'}`,
+        clipPath: layout.clipPath,
+        color: '#f7f3e7',
+        cursor: 'pointer',
+        display: 'flex',
+        filter: selected
+          ? 'drop-shadow(0 0 10px rgb(84 168 255 / 55%))'
+          : 'drop-shadow(0 3px 8px rgb(3 9 20 / 45%))',
+        height: `${layout.height}%`,
+        justifyContent: 'center',
+        left: `${layout.left}%`,
+        padding: '1rem',
+        pointerEvents: 'auto',
+        position: 'absolute',
+        textAlign: 'center',
+        top: `${layout.top}%`,
+        width: `${layout.width}%`,
+      });
+      const label = document.createElement('span');
+      label.textContent = `${region.label}\n${
+        region.status === 'suspended'
+          ? 'Suspended'
+          : region.ownerLabel
+            ? `Owned by ${region.ownerLabel}`
+            : 'Unclaimed'
+      }`;
+      Object.assign(label.style, {
+        fontSize: '0.76rem',
+        fontWeight: '700',
+        lineHeight: '1.35',
+        textShadow: '0 1px 4px #050b16',
+        whiteSpace: 'pre-line',
+      });
+      button.append(label);
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        regionSelectionListener?.(region.id);
+      });
+      regionLayer.append(button);
+    });
+  };
+
   const stopFollowingOnPan = (event: PointerEvent): void => {
     if (event.target !== container || !following) {
       return;
@@ -385,6 +482,15 @@ export const mapFactory: MapFactory = async (
       renderMarkers();
       return true;
     },
+    focusRegion: (region) => {
+      selectedRegion = region;
+      following = false;
+      container.dataset.mapFollowing = 'false';
+      container.dataset.mapFocusedTerritory = region.id;
+      followStateListener?.(false);
+      renderRegions();
+      return true;
+    },
     onError: () => undefined,
     onLoad: (listener) => {
       if (!new URLSearchParams(window.location.search).has('map-loading')) {
@@ -402,6 +508,7 @@ export const mapFactory: MapFactory = async (
       container.removeEventListener('click', selectMapCoordinate);
       container.removeEventListener('pointerdown', stopFollowingOnPan);
       playerPuck?.remove();
+      regionLayer.remove();
       markerLayer.remove();
       areaLayer.remove();
       radius.remove();
@@ -413,6 +520,7 @@ export const mapFactory: MapFactory = async (
         delete container.dataset.mapInitialBounds;
         delete container.dataset.mapFollowing;
         delete container.dataset.mapFocusedEvent;
+        delete container.dataset.mapFocusedTerritory;
         delete container.dataset.mapCameraCenter;
         delete container.dataset.mapCameraZoom;
         delete container.dataset.mapSelectedCoordinate;
@@ -435,6 +543,13 @@ export const mapFactory: MapFactory = async (
     setPoints: (nextPoints) => {
       points = nextPoints;
       renderMarkers();
+    },
+    setRegions: (nextRegions) => {
+      regions = nextRegions;
+      renderRegions();
+    },
+    setRegionSelectionListener: (listener) => {
+      regionSelectionListener = listener;
     },
     setReportedLocation: (coordinate) => {
       hasLocation = coordinate !== null;
@@ -468,6 +583,10 @@ export const mapFactory: MapFactory = async (
         container.dataset.mapSelectedCoordinate = `${point.longitude},${point.latitude}`;
       }
       renderMarkers();
+    },
+    setSelectedRegion: (region) => {
+      selectedRegion = region;
+      renderRegions();
     },
   };
 
