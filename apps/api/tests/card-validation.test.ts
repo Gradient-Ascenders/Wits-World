@@ -4,6 +4,7 @@ import {
   InvalidCardDefinitionError,
   validateCardDefinition,
   validateCardDefinitionForPublication,
+  validateCardImageUrl,
 } from '../src/cards/card-validation.js';
 
 const validCreature = {
@@ -42,6 +43,36 @@ const validPower = {
 };
 
 describe('card definition validation', () => {
+  it.each([
+    null,
+    undefined,
+    '/cards/quillip.webp',
+    'http://localhost:5174/cards/quillip.webp',
+    'https://example.test/art.png?size=large',
+  ])('accepts supported artwork reference %s', (imageUrl) => {
+    expect(() => validateCardImageUrl(imageUrl)).not.toThrow();
+    expect(() =>
+      validateCardDefinition({ ...validCreature, imageUrl }),
+    ).not.toThrow();
+  });
+
+  it.each([
+    '',
+    '   ',
+    'not-a-url',
+    'https://',
+    'https:example.test/image.png',
+    '/cards/../private.png',
+    '//example.test/image.png',
+    'file:///tmp/image.png',
+    'data:image/png;base64,AAAA',
+    'javascript:alert(1)',
+  ])('rejects unsupported artwork reference %s', (imageUrl) => {
+    expect(() =>
+      validateCardDefinition({ ...validCreature, imageUrl }),
+    ).toThrow(InvalidCardDefinitionError);
+  });
+
   it('accepts valid Creature and Power definitions', () => {
     expect(() => validateCardDefinition(validCreature)).not.toThrow();
     expect(() => validateCardDefinition(validPower)).not.toThrow();

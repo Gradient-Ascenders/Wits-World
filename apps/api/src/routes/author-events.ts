@@ -558,6 +558,74 @@ export const authorEventRoutes: FastifyPluginAsync<
     },
   );
 
+  for (const action of ['submit', 'approve', 'publish'] as const) {
+    app.post<{ Params: AuthorEventParams; Body: LifecycleBody }>(
+      `/author/events/:eventId/package/${action}`,
+      {
+        onRequest: authorGuards,
+        schema: {
+          operationId: `${action}AuthorEventReviewPackage`,
+          summary: `${action} an event with its challenge and questions`,
+          tags: ['Authoring'],
+          security: [{ bearerAuth: [] }],
+          params: authorEventParamsSchema,
+          body: lifecycleBodySchema,
+          response: lifecycleEventResponses(),
+        },
+      },
+      async (request) => {
+        const author = requireResolvedAuthor(request);
+        try {
+          return {
+            event: await service.transitionReviewPackage({
+              action,
+              actorPlayerId: author.id,
+              eventId: request.params.eventId,
+              expectedVersion: request.body.expectedVersion,
+              note: request.body.note,
+            }),
+            requestId: request.id,
+          };
+        } catch (error) {
+          throwAuthorEventError(error);
+        }
+      },
+    );
+  }
+
+  app.post<{ Params: AuthorEventParams; Body: ReturnBody }>(
+    '/author/events/:eventId/package/return',
+    {
+      onRequest: authorGuards,
+      schema: {
+        operationId: 'returnAuthorEventReviewPackage',
+        summary: 'Return an event review package to draft',
+        tags: ['Authoring'],
+        security: [{ bearerAuth: [] }],
+        params: authorEventParamsSchema,
+        body: returnBodySchema,
+        response: lifecycleEventResponses(),
+      },
+    },
+    async (request) => {
+      const author = requireResolvedAuthor(request);
+      try {
+        return {
+          event: await service.transitionReviewPackage({
+            action: 'return',
+            actorPlayerId: author.id,
+            eventId: request.params.eventId,
+            expectedVersion: request.body.expectedVersion,
+            note: request.body.reason,
+          }),
+          requestId: request.id,
+        };
+      } catch (error) {
+        throwAuthorEventError(error);
+      }
+    },
+  );
+
   app.post<{
     Params: AuthorEventParams;
     Body: LifecycleBody;

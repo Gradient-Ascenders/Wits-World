@@ -534,6 +534,51 @@ describe('author card API', () => {
     },
   );
 
+  it.each(['POST', 'PUT'] as const)(
+    'rejects invalid card artwork URLs on %s',
+    async (method) => {
+      for (const imageUrl of [
+        'javascript:alert(1)',
+        'https://',
+        '/cards/../private.png',
+      ]) {
+        const response = await authenticatedRequest({
+          method,
+          url:
+            method === 'POST'
+              ? '/api/v1/author/cards'
+              : `/api/v1/author/cards/${CARD_ID}`,
+          payload: {
+            ...validCreatureBody(),
+            imageUrl,
+            ...(method === 'PUT' ? { expectedVersion: 0 } : {}),
+          },
+        });
+
+        expect(response.statusCode).toBe(400);
+        expect(response.json()).toMatchObject({ code: 'INVALID_CARD' });
+      }
+      expect(service.createCard).not.toHaveBeenCalled();
+      expect(service.updateCard).not.toHaveBeenCalled();
+    },
+  );
+
+  it('allows the seeded same-origin card artwork path', async () => {
+    const response = await authenticatedRequest({
+      method: 'POST',
+      url: '/api/v1/author/cards',
+      payload: {
+        ...validCreatureBody(),
+        imageUrl: '/cards/quillip.webp',
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(service.createCard).toHaveBeenCalledWith(
+      expect.objectContaining({ imageUrl: '/cards/quillip.webp' }),
+    );
+  });
+
   it('preserves null Power-card fields through request validation', async () => {
     const body = validPowerBody();
 

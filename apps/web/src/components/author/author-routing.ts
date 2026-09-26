@@ -3,7 +3,7 @@ export type AuthorWorkspaceRoute =
   | { mode: 'new'; section: 'events' }
   | {
       eventId: string;
-      mode: 'edit' | 'overview';
+      mode: 'edit';
       section: 'events';
     }
   | {
@@ -139,7 +139,7 @@ export function parseAuthorWorkspaceRoute(
     }
   }
 
-  return { eventId, mode: 'overview', section: 'events' };
+  return { eventId, mode: 'challenge', section: 'events' };
 }
 
 export const authorPaths = {

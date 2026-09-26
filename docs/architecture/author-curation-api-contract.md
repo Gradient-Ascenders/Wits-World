@@ -69,6 +69,11 @@ Nested publication proceeds from leaves to roots:
 5. a campaign with at least one published event or trail, intersecting event
    periods, and no member schedule overlap.
 
+The event package endpoint performs the question, challenge, and event steps
+inside one transaction. A package approval accepts its newly approved children;
+publication still requires published children. A failure at any step rolls back
+all transitions and audit records.
+
 The coordinator locks dependencies in stable identifier order. Retirement guards
 prevent removing a dependency that would make still-published parent content
 invalid. Configured canonical starter definitions cannot be retired until their
@@ -84,6 +89,15 @@ trimmed note of at most 1,000 characters. Return contains `expectedVersion` and 
 required, trimmed `reason` of 1–1,000 characters. Edit bodies also require
 `expectedVersion`.
 
+The console uses `POST /api/v1/author/events/:eventId/package/{submit,approve,publish,return}`
+for the event review package. The body contains the event `expectedVersion` and
+an optional note, except `return` requires a reason. The server requires exactly
+one active challenge and at least five active questions for submission,
+approval, and publication. It locks and transitions children before the event;
+each child retains its own review history and independent-review check.
+Already approved or published children are not resubmitted or republished.
+Resource-specific endpoints remain available for existing clients.
+
 `GET /api/v1/author/review-queue` is an active-Author-only, paginated queue of
 `in_review` summaries. It accepts an optional `entityType` filter and a page size
 up to 100, sorts by submission time and stable identifiers, and includes a
@@ -91,6 +105,10 @@ server-derived `canReview`. Self-submissions remain visible with `canReview:
 false`. Every item includes nullable `eventId` and `challengeId` navigation
 context. Challenges include their `eventId`; questions include both parents;
 top-level events, cards, and campaigns return `null` for both fields.
+When an event package is in review, its child challenge and questions are omitted
+from both the unfiltered queue and challenge/question-filtered queues so
+reviewers see one actionable event package entry. Child filters still show
+individually submitted content when its parent event is not in review.
 
 `GET /api/v1/author/content/:entityType/:entityId/history` returns paginated,
 version-ordered audit records. Queue and history responses contain only stable
@@ -121,6 +139,10 @@ retired rows as `legacy`. Repository-controlled repeatable seeds use
 `is_published`/`retired_at` and card `is_active` remain constrained compatibility
 fields rather than independent sources of lifecycle truth.
 
+The Author console presents each event's challenge and questions in one view.
+Authors may draft all questions before submitting the package once; the Overview
+tab and separate Challenge/Questions tabs are no longer shown. Event details
+and history remain available in a disclosure, and old deep links still resolve.
 The Author console exposes submission, independent review, return reasons,
 approval, publication, confirmed retirement, the filtered review queue, and
 lazy review history for events, multiple-choice and ordering
@@ -132,6 +154,13 @@ while stale campaign edits preserve the local form until the Author confirms
 replacing it with the server version. The browser derives successful lifecycle
 feedback from the returned resource and does not infer a new state from the
 requested action.
+
+Card `imageUrl` is optional. Author card creation and editing accept a direct
+absolute HTTP(S) URL or a same-origin `/cards/` artwork path (as used by the
+seeded catalogue); malformed URLs and other schemes are rejected with a 400.
+The Author form previews valid values but does not upload or verify image
+rights. A URL may pass validation yet still fail to load, in which case the
+preview shows a failure state.
 
 Event and question reads include `sourceUrls`, a list of constrained HTTPS
 review references introduced for the issue `#165` verified content pack. The
@@ -153,3 +182,6 @@ authoring integration; it does not claim that blocked analytics or asynchronous
 PvP is implemented.
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+Event review-package, Author console, and artwork URL contract updates were
+edited with assistance from Codex[GPT-5].

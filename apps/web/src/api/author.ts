@@ -919,6 +919,26 @@ export async function transitionAuthorContent<
   return parseAuthorContentEnvelope(payload, options.entityType);
 }
 
+export async function transitionAuthorEventReviewPackage(
+  options: RequestBase & {
+    action: Exclude<AuthorTransitionAction, 'retire'>;
+    eventId: string;
+    expectedVersion: number;
+    reason?: string;
+  },
+): Promise<AuthorEvent> {
+  const payload = await authorRequest({
+    ...options,
+    body:
+      options.action === 'return'
+        ? { expectedVersion: options.expectedVersion, reason: options.reason }
+        : { expectedVersion: options.expectedVersion },
+    method: 'POST',
+    path: `/author/events/${options.eventId}/package/${options.action}`,
+  });
+  return parseAuthorContentEnvelope(payload, 'event');
+}
+
 export async function listAuthorCampaigns(
   options: RequestBase,
 ): Promise<AuthorCampaign[]> {

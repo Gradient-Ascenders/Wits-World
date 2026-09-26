@@ -116,6 +116,108 @@ describe.skipIf(!runIntegrationTests)(
       ).rejects.toThrow();
     });
 
+    it('keeps package children out of filtered review queues', async () => {
+      await pool.query(
+        `update public.challenge_questions
+            set status = 'in_review',
+                version = version + 1,
+                submitted_by_player_id = $2::uuid,
+                submitted_at = now()
+          where id = $1::uuid`,
+        [QUESTION_ID, AUTHOR_ID],
+      );
+      await pool.query(
+        `update public.event_challenges
+            set status = 'in_review',
+                version = version + 1,
+                submitted_by_player_id = $2::uuid,
+                submitted_at = now()
+          where id = $1::uuid`,
+        [CHALLENGE_ID, AUTHOR_ID],
+      );
+      await pool.query(
+        `update public.events
+            set authoring_status = 'in_review',
+                version = version + 1,
+                submitted_by_player_id = $2::uuid,
+                submitted_at = now()
+          where id = $1::uuid`,
+        [EVENT_ID, AUTHOR_ID],
+      );
+
+      const reads = createAuthorContentReadService(pool);
+      const queue = (entityType?: 'challenge' | 'question') =>
+        reads.listReviewQueue({
+          actorPlayerId: PLAYER_ID,
+          entityType,
+          page: 1,
+          pageSize: 100,
+        });
+
+      try {
+        const packageQueue = await queue();
+        expect(packageQueue.items.map((item) => item.entityId)).toContain(
+          EVENT_ID,
+        );
+        expect(packageQueue.items.map((item) => item.entityId)).not.toContain(
+          CHALLENGE_ID,
+        );
+        expect(packageQueue.items.map((item) => item.entityId)).not.toContain(
+          QUESTION_ID,
+        );
+
+        for (const entityType of ['challenge', 'question'] as const) {
+          const filtered = await queue(entityType);
+          expect(filtered.items).toEqual([]);
+          expect(filtered.totalItems).toBe(0);
+        }
+
+        await pool.query(
+          `update public.events
+              set authoring_status = 'draft',
+                  version = version + 1,
+                  submitted_by_player_id = null,
+                  submitted_at = null
+            where id = $1::uuid`,
+          [EVENT_ID],
+        );
+        expect((await queue('challenge')).items).toEqual([
+          expect.objectContaining({ entityId: CHALLENGE_ID }),
+        ]);
+        expect((await queue('question')).items).toEqual([
+          expect.objectContaining({ entityId: QUESTION_ID }),
+        ]);
+      } finally {
+        await pool.query(
+          `update public.events
+              set authoring_status = 'draft',
+                  version = version + 1,
+                  submitted_by_player_id = null,
+                  submitted_at = null
+            where id = $1::uuid`,
+          [EVENT_ID],
+        );
+        await pool.query(
+          `update public.event_challenges
+              set status = 'draft',
+                  version = version + 1,
+                  submitted_by_player_id = null,
+                  submitted_at = null
+            where id = $1::uuid`,
+          [CHALLENGE_ID],
+        );
+        await pool.query(
+          `update public.challenge_questions
+              set status = 'draft',
+                  version = version + 1,
+                  submitted_by_player_id = null,
+                  submitted_at = null
+            where id = $1::uuid`,
+          [QUESTION_ID],
+        );
+      }
+    });
+
     it('records the acting active Author and timestamp', async () => {
       const result = await pool.query<{
         action: string;
