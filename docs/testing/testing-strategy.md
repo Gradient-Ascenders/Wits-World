@@ -403,6 +403,26 @@ database runner remains the regression gate in PR CI. A successful CI run is
 test-environment evidence only; it does not establish that migration `0044` or
 its cleanup primitive was executed in production.
 
+The live Web experience adds `apps/web/tests/live-client.test.ts` and
+`apps/web/tests/live-pages.test.tsx`. Their focused coverage verifies the closed
+participant/spectator parsers, authentication and requested-role handling,
+spectator private-field rejection, ranked queue entry, private match-link entry,
+no-active-season gating, visible ranked conflicts, server-returned turn ownership
+and legal actions, immediate pending locks, duplicate suppression, stale-version
+reconciliation, transport recovery through a fresh snapshot, opponent dropout,
+authoritative timeout/abandonment terminal state, and a visibly read-only
+spectator surface. The focused Playwright scenario checks the disabled
+no-season lobby and participant/spectator battle surfaces at mobile and desktop
+widths without horizontal overflow. Existing CPU and asynchronous PvP tests
+remain in the focused regression set to guard Basic and Intermediate behavior.
+
+These deterministic Web tests do not prove a deployed WebSocket/proxy path,
+multi-instance fan-out, Auth0 tenant behavior, real-device accessibility, or
+visual acceptance. The database suite still requires
+`RUN_DATABASE_INTEGRATION_TESTS=true` and the existing disposable
+`TEST_DATABASE_URL`; a skipped or unreachable database is reported as such and
+does not count as passing integration evidence.
+
 ## Card-trade persistence verification
 
 Issues `#275` and `#272` use

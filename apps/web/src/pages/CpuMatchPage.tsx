@@ -1,16 +1,12 @@
 import { StateIcon } from '../components/StatusMessage';
 import { PageLoadingState } from '../components/LoadingState';
 import {
-  ArrowLeft,
-  ArrowRight,
   ArrowDown,
   ArrowUp,
   Flag,
   Lightning,
   Heart,
   CaretDown,
-  Sparkle,
-  Sword,
 } from '@phosphor-icons/react';
 import { useAuth0 } from '@auth0/auth0-react';
 import {
@@ -19,6 +15,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type RefObject,
 } from 'react';
 import { Link, useParams } from 'wouter';
 
@@ -36,10 +33,17 @@ import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { MatchErrorState } from '../components/matches/MatchErrorState';
 import { ResignMatchDialog } from '../components/matches/ResignMatchDialog';
 import {
+  BattleOutcomePanel,
+  BattleShellHeader,
+  BattleStatusDock,
+} from '../components/matches/BattleShell';
+import {
   BattleActionPanel,
   BattleBench,
   BattleCombatant,
+  BattleResolution,
   type BattleFeedbackTone,
+  type BattleResolutionMoment,
 } from '../components/matches/BattlePresentation';
 import {
   battleLogMessage,
@@ -55,12 +59,14 @@ interface MatchRouteParams {
 type RequestStatus = 'loading' | 'ready' | 'reconciling' | 'submitting';
 type ApplyMatchResult = 'applied' | 'obsolete' | 'wrong-route';
 type RequestKind = 'action' | 'forfeit';
+type PresentationMode = 'opening' | 'turn';
 
 export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const { matchId } = useParams<MatchRouteParams>();
   const getAccessToken = useApiAccessToken();
   const { loginWithRedirect } = useAuth0();
   const [match, setMatch] = useState<CpuMatch | null>(null);
+  const [presentedMatch, setPresentedMatch] = useState<CpuMatch | null>(null);
   const [error, setError] = useState<MatchApiError | null>(null);
   const [requestStatus, setRequestStatus] = useState<RequestStatus>('loading');
   const [statusMessage, setStatusMessage] = useState('Loading your battle.');
@@ -68,11 +74,15 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const [forfeitOpen, setForfeitOpen] = useState(false);
   const [battleBeats, setBattleBeats] = useState<BattleLogEvent[]>([]);
   const [activeBeatIndex, setActiveBeatIndex] = useState<number | null>(null);
+  const [presentationMode, setPresentationMode] =
+    useState<PresentationMode | null>(null);
   const [revision, setRevision] = useState(0);
   const [reauthFailed, setReauthFailed] = useState(false);
   const mounted = useRef(true);
   const routeMatchId = useRef(matchId);
   const matchRef = useRef<CpuMatch | null>(null);
+  const presentationActive = useRef(false);
+  const presentationTarget = useRef<CpuMatch | null>(null);
   const nextGeneration = useRef(0);
   const latestAppliedGeneration = useRef(0);
   const appliedRevision = useRef(0);
@@ -82,6 +92,27 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const forfeitTrigger = useRef<HTMLButtonElement | null>(null);
 
   routeMatchId.current = matchId;
+
+  const advancePresentation = useCallback(() => {
+    setActiveBeatIndex((current) => {
+      if (current !== null && current + 1 < battleBeats.length) {
+        return current + 1;
+      }
+
+      const target = presentationTarget.current;
+      if (target) {
+        setPresentedMatch(target);
+        setStatusMessage(getMatchStatusMessage(target));
+      }
+      if (presentationMode === 'opening') {
+        queueMicrotask(() => phaseHeading.current?.focus());
+      }
+      presentationActive.current = false;
+      presentationTarget.current = null;
+      setPresentationMode(null);
+      return null;
+    });
+  }, [battleBeats.length, presentationMode]);
 
   useEffect(() => {
     mounted.current = true;
@@ -127,15 +158,31 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       setMatch(next);
       setError(null);
 
-      if (newEvents.length > 0) {
+      if (current && newEvents.length > 0) {
         const visibleBeats = newEvents.filter((event) => event.kind !== 'turn');
-        const nextBeats = visibleBeats.length > 0 ? visibleBeats : newEvents;
+        const mode: PresentationMode =
+          current.state.phase === 'initial_selection' &&
+          next.state.phase !== 'initial_selection'
+            ? 'opening'
+            : 'turn';
+        const nextBeats = orderPresentationBeats(
+          visibleBeats.length > 0 ? visibleBeats : newEvents,
+          mode,
+        );
+        presentationActive.current = true;
+        presentationTarget.current = next;
+        setPresentedMatch(current);
+        setPresentationMode(mode);
         setBattleBeats(nextBeats);
         setActiveBeatIndex(0);
-        setStatusMessage(
-          nextBeats.map((event) => battleLogMessage(event.message)).join(' '),
-        );
+        setStatusMessage(presentationMessage(nextBeats[0]!, mode));
       } else {
+        presentationActive.current = false;
+        presentationTarget.current = null;
+        setPresentedMatch(next);
+        setPresentationMode(null);
+        setBattleBeats([]);
+        setActiveBeatIndex(null);
         setStatusMessage(getMatchStatusMessage(next));
       }
 
@@ -149,18 +196,30 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   useEffect(() => {
     if (activeBeatIndex === null) return;
+    const activeBeat = battleBeats[activeBeatIndex];
+    const target = presentationTarget.current;
+    if (!activeBeat || !target || !presentationMode) return;
+
+    setPresentedMatch((current) =>
+      current
+        ? applyPresentationBeat(
+            current,
+            target,
+            activeBeat,
+            battleBeats.slice(activeBeatIndex + 1),
+          )
+        : current,
+    );
+    setStatusMessage(presentationMessage(activeBeat, presentationMode));
+
     const timeout = window.setTimeout(
       () => {
-        setActiveBeatIndex((current) =>
-          current !== null && current + 1 < battleBeats.length
-            ? current + 1
-            : null,
-        );
+        advancePresentation();
       },
-      prefersReducedMotion() ? 120 : 900,
+      presentationBeatDelay(activeBeat, presentationMode),
     );
     return () => window.clearTimeout(timeout);
-  }, [activeBeatIndex, battleBeats.length]);
+  }, [activeBeatIndex, advancePresentation, battleBeats, presentationMode]);
 
   const finishMatchResponse = useCallback((result: ApplyMatchResult) => {
     if (result === 'wrong-route') {
@@ -226,9 +285,15 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     actionRequest.current?.abort();
     actionRequest.current = null;
     matchRef.current = null;
+    presentationActive.current = false;
+    presentationTarget.current = null;
     latestAppliedGeneration.current = 0;
     appliedRevision.current = 0;
     setMatch(null);
+    setPresentedMatch(null);
+    setBattleBeats([]);
+    setActiveBeatIndex(null);
+    setPresentationMode(null);
     setError(null);
     void loadMatch(controller.signal);
     return () => controller.abort();
@@ -240,6 +305,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       !current ||
       current.status === 'completed' ||
       requestStatus !== 'ready' ||
+      presentationActive.current ||
       error !== null ||
       !(
         current.state.phase === 'initial_selection' ||
@@ -285,7 +351,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       ) {
         setRequestStatus('reconciling');
         setStatusMessage(
-          'The match changed before that intent was accepted. Reloading server state; the action will not be replayed.',
+          'The battle changed while you were choosing. Checking the latest battle; your action will not be repeated.',
         );
         const reconciliationGeneration = ++nextGeneration.current;
         try {
@@ -300,7 +366,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
             finishMatchResponse(result);
             if (result === 'applied') {
               setStatusMessage(
-                'Authoritative match state restored. Review the current legal actions before continuing.',
+                'The battle changed while you were choosing. Review the latest available actions before continuing.',
               );
               queueMicrotask(() => phaseHeading.current?.focus());
             }
@@ -316,7 +382,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         setError(matchError);
         setRequestStatus('ready');
         setStatusMessage(
-          'The action outcome could not be confirmed. Reload server state before continuing.',
+          'We could not confirm what happened. Check the latest battle before choosing again.',
         );
         queueMicrotask(() => alert.current?.focus());
       }
@@ -333,6 +399,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       !current ||
       current.status === 'completed' ||
       requestStatus !== 'ready' ||
+      presentationActive.current ||
       error !== null ||
       actionRequest.current !== null
     ) {
@@ -373,7 +440,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       ) {
         setRequestStatus('reconciling');
         setStatusMessage(
-          'The battle changed before the forfeit was confirmed. Restoring the latest server result…',
+          'The battle changed before the forfeit was confirmed. Checking the saved result…',
         );
         const reconciliationGeneration = ++nextGeneration.current;
         try {
@@ -422,7 +489,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   if (requestStatus === 'loading' && match === null) {
     return (
       <PageLoadingState
-        title="Loading saved match state"
+        title="Loading your Practice battle"
         description="Restoring your cards and current turn…"
       />
     );
@@ -446,72 +513,89 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     return null;
   }
 
-  const busy =
+  const requestBusy =
     requestStatus === 'submitting' || requestStatus === 'reconciling';
-  const phaseTitle = getPhaseTitle(match);
-  const phasePrompt = getPhasePrompt(match);
-  const turnIndicator = error ? 'SYNC REQUIRED' : getTurnIndicator(match, busy);
+  const presenting = activeBeatIndex !== null;
+  const busy = requestBusy || presenting;
+  const viewMatch = presentedMatch ?? match;
+  const activeBeat = presenting ? (battleBeats[activeBeatIndex] ?? null) : null;
+  const activeSide = activeBeat
+    ? presentationActor(battleBeats, activeBeat)
+    : viewMatch.state.currentSide;
+  const phaseTitle = activeBeat
+    ? presentationTitle(activeBeat, activeSide, presentationMode)
+    : getPhaseTitle(viewMatch);
+  const phasePrompt = activeBeat
+    ? presentationMessage(activeBeat, presentationMode ?? 'turn')
+    : getPhasePrompt(viewMatch);
+  const turnIndicator = error
+    ? 'SYNC REQUIRED'
+    : activeBeat
+      ? presentationTurnIndicator(activeSide, presentationMode)
+      : getTurnIndicator(viewMatch, requestBusy);
   const selectionPhase =
-    match.state.phase === 'initial_selection' ||
-    match.state.phase === 'replacement';
-  const activePlayerCreature = match.state.player.creatures.find(
-    (creature) => creature.id === match.state.player.activeCreatureId,
+    viewMatch.state.phase === 'initial_selection' ||
+    viewMatch.state.phase === 'replacement';
+  const activePlayerCreature = viewMatch.state.player.creatures.find(
+    (creature) => creature.id === viewMatch.state.player.activeCreatureId,
   );
-  const activeBeat =
-    activeBeatIndex === null ? null : (battleBeats[activeBeatIndex] ?? null);
   const latestEvents = latestBattleLogEvents(
-    match.battleLog.flatMap((group) => group.events),
+    viewMatch.battleLog.flatMap((group) => group.events),
   );
-  const resolutionEvents = battleBeats.length > 0 ? battleBeats : latestEvents;
+  const resolutionEvents = presenting ? battleBeats : latestEvents;
+  const resolutionMoments = resolutionEvents.map((event) =>
+    cpuResolutionMoment(event, presentationMode),
+  );
   const playerFeedback = battleFeedback(activeBeat, 'player');
   const cpuFeedback = battleFeedback(activeBeat, 'cpu');
+  const actionLockReason = battleActionLockReason({
+    activeSide,
+    error: error !== null,
+    presentationMode,
+    presenting,
+    requestStatus,
+  });
 
   return (
     <div
-      className={`matches-page battle-page battle-page--${match.status === 'completed' ? 'completed' : 'live'}`}
+      className={`matches-page battle-page battle-page--${viewMatch.status === 'completed' ? 'completed' : 'live'}`}
     >
       <p aria-live="polite" className="sr-only" role="status">
         {statusMessage}
       </p>
 
-      <header className="battle-header">
-        <div className="battle-header__navigation">
-          <Link className="battle-back-link" href="/matches">
-            <ArrowLeft size={20} aria-hidden="true" /> Save &amp; exit
-          </Link>
-          {match.status === 'active' ? (
-            <button
-              className="battle-forfeit-trigger"
-              disabled={busy || error !== null}
-              onClick={() => setForfeitOpen(true)}
-              ref={forfeitTrigger}
-              type="button"
-            >
-              <Flag aria-hidden="true" size={18} /> Forfeit match
-            </button>
-          ) : null}
-        </div>
+      <BattleShellHeader
+        backHref="/matches"
+        backLabel="Save and exit"
+        description={phasePrompt}
+        headingRef={phaseHeading}
+        mode="Practice"
+        opponentLabel="Against CPU"
+        title={phaseTitle}
+        turnNumber={viewMatch.state.turnNumber}
+      />
 
-        <div className="battle-header__phase">
-          <div className="battle-header__title-row">
-            <h1 ref={phaseHeading} tabIndex={-1}>
-              {phaseTitle}
-            </h1>
-            <div className="battle-header__context">
-              <span>CPU battle</span>
-              <span>Turn {match.state.turnNumber}</span>
-            </div>
-            {turnIndicator ? (
-              <span aria-live="polite" className="battle-turn-indicator">
-                {turnIndicator}
-              </span>
-            ) : null}
-          </div>
-          {phasePrompt ? (
-            <p className="battle-phase-prompt">{phasePrompt}</p>
-          ) : null}
-        </div>
-      </header>
+      <BattleStatusDock
+        detail={
+          activeBeat
+            ? presentationMessage(activeBeat, presentationMode ?? 'turn')
+            : practiceStatusDetail(viewMatch, requestBusy, error !== null)
+        }
+        label={sentenceCaseStatus(turnIndicator)}
+        timing={{
+          detail: 'Progress saves automatically.',
+          label: 'Untimed',
+        }}
+        tone={
+          error
+            ? 'danger'
+            : viewMatch.status === 'completed'
+              ? 'complete'
+              : activeSide === 'player' || selectionPhase
+                ? 'player'
+                : 'opponent'
+        }
+      />
 
       {error ? (
         <section
@@ -528,7 +612,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           </strong>{' '}
           {error.failure === 'authorization'
             ? 'Your session expired. Sign in again before continuing.'
-            : 'The last confirmed state is shown below. Reload it before trying another intent.'}
+            : 'Your last confirmed battle is shown below. Check it before trying another action.'}
           <div className="match-state-actions">
             {error.failure === 'authorization' ? (
               <button
@@ -544,23 +628,23 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
                 onClick={() => setRevision((value) => value + 1)}
                 type="button"
               >
-                Reload match state
+                Check battle again
               </button>
             )}
           </div>
         </section>
       ) : null}
 
-      {match.status === 'completed' ? (
+      {viewMatch.status === 'completed' ? (
         <div className="battle-completed-layout">
-          <CompletedMatch match={match} />
-          <BattleSideRail match={match} />
+          <CompletedMatch match={viewMatch} />
+          <BattleSideRail match={viewMatch} />
         </div>
       ) : (
         <div className="battle-live-layout">
           <section
             aria-label="Current battlefield"
-            className={`battle-stage battle-stage--${match.state.currentSide ?? 'selection'}`}
+            className={`battle-stage battle-stage--${activeSide ?? 'selection'}${presenting ? ' battle-stage--resolving' : ''}`}
           >
             <div aria-hidden="true" className="battle-stage__field-lines" />
             <div className="battle-stage__label">
@@ -568,7 +652,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
               <strong>
                 {selectionPhase
                   ? 'Deployment phase'
-                  : match.state.currentSide === 'player'
+                  : activeSide === 'player'
                     ? 'Player initiative'
                     : 'CPU initiative'}
               </strong>
@@ -577,26 +661,50 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
               <BattleCombatant
                 creature={activePlayerCreature ?? null}
                 emptyText={
-                  match.state.phase === 'replacement'
+                  viewMatch.state.phase === 'replacement'
                     ? 'Defeated Creature removed. Choose a replacement.'
                     : 'Choose your initial Creature.'
                 }
                 heading="You"
-                isActing={match.state.currentSide === 'player'}
+                isActing={activeSide === 'player'}
+                isDimmed={presenting && activeSide === 'cpu'}
+                isEntering={
+                  presentationMode === 'opening' &&
+                  activeBeat?.kind === 'action' &&
+                  activeBeat.side === 'player'
+                }
+                isResolving={presenting}
                 feedbackKey={activeBeat?.id}
                 feedbackText={playerFeedback?.label}
                 feedbackTone={playerFeedback?.tone}
                 visualSide="player"
               />
               <BattleResolution
-                activeEventId={activeBeat?.id}
-                events={resolutionEvents}
+                activeIndex={activeBeatIndex}
+                activeMoment={
+                  activeBeat
+                    ? cpuResolutionMoment(activeBeat, presentationMode)
+                    : null
+                }
+                heading={
+                  presentationMode === 'opening'
+                    ? 'Battle opening'
+                    : 'Latest resolution'
+                }
+                moments={resolutionMoments}
               />
               <BattleCombatant
-                creature={match.state.cpu.activeCreature}
+                creature={viewMatch.state.cpu.activeCreature}
                 emptyText="The CPU Creature has not been revealed yet."
                 heading="CPU"
-                isActing={match.state.currentSide === 'cpu'}
+                isActing={activeSide === 'cpu'}
+                isDimmed={presenting && activeSide === 'player'}
+                isEntering={
+                  presentationMode === 'opening' &&
+                  activeBeat?.kind === 'action' &&
+                  activeBeat.side === 'cpu'
+                }
+                isResolving={presenting}
                 feedbackKey={activeBeat?.id}
                 feedbackText={cpuFeedback?.label}
                 feedbackTone={cpuFeedback?.tone}
@@ -606,26 +714,36 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           </section>
 
           <BattleActionPanel
-            activeCreatureId={match.state.player.activeCreatureId}
+            activeCreatureId={viewMatch.state.player.activeCreatureId}
             busy={busy}
-            inputBlocked={requestStatus !== 'ready' || error !== null}
-            creatures={match.state.player.creatures}
+            inputBlocked={
+              requestStatus !== 'ready' || presenting || error !== null
+            }
+            creatures={viewMatch.state.player.creatures}
             currentActor={
-              match.state.phase === 'initial_selection' ||
-              match.state.currentSide === 'player'
+              viewMatch.state.phase === 'initial_selection' ||
+              viewMatch.state.currentSide === 'player'
             }
             idPrefix="cpu"
-            key={`${match.state.phase}:${activePlayerCreature?.id ?? 'none'}`}
-            legalActions={match.state.legalActions}
+            key={`${viewMatch.state.phase}:${activePlayerCreature?.id ?? 'none'}`}
+            legalActions={viewMatch.state.legalActions}
+            lockReason={actionLockReason}
             onAction={(action) => void submitAction(action)}
             opponentLabel="the CPU"
             phase={
-              match.state.phase === 'completed' ? 'active' : match.state.phase
+              viewMatch.state.phase === 'completed'
+                ? 'active'
+                : viewMatch.state.phase
             }
-            powerCards={match.state.player.powerCards}
+            powerCards={viewMatch.state.player.powerCards}
           />
 
-          <BattleSideRail match={match} />
+          <BattleSideRail
+            forfeitDisabled={busy || error !== null}
+            forfeitTrigger={forfeitTrigger}
+            match={viewMatch}
+            onForfeit={() => setForfeitOpen(true)}
+          />
         </div>
       )}
 
@@ -644,34 +762,37 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
 function getMatchStatusMessage(match: CpuMatch) {
   if (match.status === 'completed') {
-    return `Match completed. ${match.winner === 'player' ? 'You won.' : 'The CPU won.'} The result is saved.`;
+    return `Battle completed. ${match.winner === 'player' ? 'You won.' : 'The CPU won.'} The result is saved.`;
   }
   if (match.state.phase === 'replacement') {
-    return 'Your Creature was defeated. Choose a legal replacement.';
+    return 'Your Creature was defeated. Choose an available replacement.';
   }
   if (match.state.phase === 'initial_selection') {
     return 'Choose your first Creature.';
   }
   return match.state.currentSide === 'player'
-    ? `Your turn. Match version ${match.version}.`
+    ? 'Your turn. Choose an available action.'
     : 'The CPU is taking its turn.';
 }
 
-function BattleSideRail({ match }: { match: CpuMatch }) {
+function BattleSideRail({
+  forfeitDisabled = false,
+  forfeitTrigger,
+  match,
+  onForfeit,
+}: {
+  forfeitDisabled?: boolean;
+  forfeitTrigger?: RefObject<HTMLButtonElement | null>;
+  match: CpuMatch;
+  onForfeit?: () => void;
+}) {
   return (
-    <aside aria-label="Battle history and details" className="battle-side-rail">
+    <aside
+      aria-label="Battle activity and controls"
+      className="battle-side-rail"
+    >
       <header className="battle-side-rail__heading">
-        <div>
-          <h2>Battle record</h2>
-          <p>Review the full turn history and your remaining cards.</p>
-        </div>
-        <Link
-          aria-label="Match history"
-          className="battle-side-rail__history"
-          href="/matches/history"
-        >
-          Full history <ArrowRight size={20} aria-hidden="true" />
-        </Link>
+        <h2>Activity</h2>
       </header>
 
       <BattleLog groups={match.battleLog} />
@@ -683,8 +804,19 @@ function BattleSideRail({ match }: { match: CpuMatch }) {
           activeCreatureId={match.state.player.activeCreatureId}
         />
       ) : null}
-      <BattleDetails match={match} />
       <CpuReserveSummary match={match} />
+      {match.status === 'active' && onForfeit ? (
+        <button
+          aria-label="Forfeit battle"
+          className="battle-side-rail__forfeit"
+          disabled={forfeitDisabled}
+          onClick={onForfeit}
+          ref={forfeitTrigger}
+          type="button"
+        >
+          <Flag aria-hidden="true" size={17} /> Forfeit
+        </button>
+      ) : null}
     </aside>
   );
 }
@@ -717,15 +849,18 @@ function BattleLog({ groups }: { groups: CpuMatch['battleLog'] }) {
     >
       <summary>
         <span className="battle-log__summary-label">
-          Battle history
+          Latest
           <strong>
-            {events.length} {events.length === 1 ? 'event' : 'events'}
+            <span aria-hidden="true">{events.length}</span>
+            <span className="sr-only">
+              {events.length} {events.length === 1 ? 'event' : 'events'}
+            </span>
           </strong>
         </span>
         <span className="battle-log__preview">
           {latest.length > 0
             ? latest.map(({ message }) => battleLogMessage(message)).join(' ')
-            : 'No actions recorded yet.'}
+            : 'No actions yet.'}
         </span>
         <CaretDown
           className="battle-log__toggle"
@@ -735,7 +870,7 @@ function BattleLog({ groups }: { groups: CpuMatch['battleLog'] }) {
       </summary>
 
       <div
-        aria-label="Complete authoritative battle log"
+        aria-label="Complete battle activity"
         aria-live="polite"
         aria-relevant="additions"
         className="battle-log__body"
@@ -805,62 +940,251 @@ function newBattleLogEvents(current: CpuMatch, next: CpuMatch) {
     .filter((event) => !currentIds.has(event.id));
 }
 
-function BattleResolution({
-  activeEventId,
-  events,
-}: {
-  activeEventId?: string;
-  events: readonly BattleLogEvent[];
-}) {
-  const visible = events.slice(-3);
+function orderPresentationBeats(
+  events: readonly BattleLogEvent[],
+  mode: PresentationMode,
+) {
+  if (mode !== 'opening') return [...events];
+
+  const cpuEntrance = events.find(
+    (event) =>
+      event.side === 'cpu' &&
+      event.kind === 'action' &&
+      /\b(?:revealed|sent out)\b/iu.test(event.message),
+  );
+  const playerEntrance = events.find(
+    (event) =>
+      event.side === 'player' &&
+      event.kind === 'action' &&
+      /\b(?:selected|sent out)\b/iu.test(event.message),
+  );
+  const entrances = [cpuEntrance, playerEntrance].filter(
+    (event): event is BattleLogEvent => event !== undefined,
+  );
+  const entranceIds = new Set(entrances.map((event) => event.id));
+  return [
+    ...entrances,
+    ...events.filter((event) => !entranceIds.has(event.id)),
+  ];
+}
+
+function presentationMessage(event: BattleLogEvent, mode: PresentationMode) {
+  if (mode === 'opening') {
+    const cpuName = /^CPU (?:revealed|sent out) (.+)\.$/u.exec(
+      event.message,
+    )?.[1];
+    if (cpuName) return `Opponent sent out ${cpuName}!`;
+
+    const playerName = /^Player (?:selected|sent out) (.+)\.$/u.exec(
+      event.message,
+    )?.[1];
+    if (playerName) return `Go, ${playerName}!`;
+  }
+  return battleLogMessage(event.message);
+}
+
+function presentationBeatDelay(event: BattleLogEvent, mode: PresentationMode) {
+  if (prefersReducedMotion()) return 1_000;
+  if (mode === 'opening') return 1_800;
+  if (event.kind === 'defeat' || event.kind === 'result') return 1_900;
+  if (event.kind === 'action') return 1_700;
+  return 1_600;
+}
+
+function presentationActor(
+  events: readonly BattleLogEvent[],
+  activeEvent: BattleLogEvent,
+) {
   return (
-    <section
-      aria-label="Latest battle resolution"
-      className="battle-resolution"
-    >
-      <div className="battle-resolution__heading">
-        <strong>Latest resolution</strong>
-        <span>
-          {visible.length > 0 ? 'Server confirmed' : 'Awaiting action'}
-        </span>
-      </div>
-      {visible.length > 0 ? (
-        <ol>
-          {visible.map((event) => {
-            const stat = battleLogStat(event.message);
-            const tone = battleEventTone(event);
-            const Icon =
-              tone === 'heal'
-                ? Heart
-                : tone === 'damage' || tone === 'cost'
-                  ? Sword
-                  : Sparkle;
-            return (
-              <li
-                className={event.id === activeEventId ? 'is-active' : undefined}
-                data-tone={tone}
-                key={event.id}
-              >
-                <Icon aria-hidden="true" size={16} weight="bold" />
-                <span>{battleLogMessage(event.message)}</span>
-                {stat ? (
-                  <strong>
-                    {stat.direction === 'up' ? '+' : '−'}
-                    {stat.value} {stat.resource}
-                  </strong>
-                ) : null}
-              </li>
-            );
-          })}
-        </ol>
-      ) : (
-        <p>Your first confirmed action will appear here.</p>
-      )}
-    </section>
+    events.find(
+      (event) =>
+        event.sequence === activeEvent.sequence && event.kind === 'action',
+    )?.side ?? activeEvent.side
   );
 }
 
+function presentationTitle(
+  event: BattleLogEvent,
+  actor: 'cpu' | 'player' | null,
+  mode: PresentationMode | null,
+) {
+  if (mode === 'opening') {
+    return actor === 'cpu'
+      ? 'Opponent sends out a Creature'
+      : 'Your Creature enters battle';
+  }
+  if (event.kind === 'defeat') return 'A Creature was defeated';
+  return actor === 'cpu' ? 'CPU move' : 'Your move';
+}
+
+function presentationTurnIndicator(
+  actor: 'cpu' | 'player' | null,
+  mode: PresentationMode | null,
+) {
+  if (mode === 'opening') return 'BATTLE OPENING';
+  return actor === 'cpu' ? 'CPU IS MOVING' : 'YOUR MOVE';
+}
+
+function battleActionLockReason({
+  activeSide,
+  error,
+  presentationMode,
+  presenting,
+  requestStatus,
+}: {
+  activeSide: 'cpu' | 'player' | null;
+  error: boolean;
+  presentationMode: PresentationMode | null;
+  presenting: boolean;
+  requestStatus: RequestStatus;
+}) {
+  if (error) return 'Check the latest battle before acting';
+  if (requestStatus === 'submitting') return 'Confirming your move…';
+  if (requestStatus === 'reconciling') return 'Checking the battle…';
+  if (presenting && presentationMode === 'opening') return 'Battle opening…';
+  if (presenting)
+    return activeSide === 'cpu' ? 'CPU is moving…' : 'Your move is resolving…';
+  if (activeSide === 'cpu') return 'CPU is choosing…';
+  return undefined;
+}
+
+function applyPresentationBeat(
+  current: CpuMatch,
+  target: CpuMatch,
+  event: BattleLogEvent,
+  futureEvents: readonly BattleLogEvent[],
+) {
+  const next = structuredClone(current);
+  const entrance =
+    event.kind === 'action' &&
+    /\b(?:selected|revealed|sent out)\b/iu.test(event.message);
+
+  if (entrance && event.side === 'cpu') {
+    next.state.cpu.activeCreature = target.state.cpu.activeCreature
+      ? reconstructCreatureBeforeEvents(
+          target.state.cpu.activeCreature,
+          'cpu',
+          futureEvents,
+        )
+      : null;
+    next.state.selections.cpu = target.state.selections.cpu;
+  }
+  if (entrance && event.side === 'player') {
+    next.state.player.activeCreatureId = target.state.player.activeCreatureId;
+    next.state.selections.player = target.state.selections.player;
+  }
+
+  const stat = battleLogStat(event.message);
+  if (stat && event.side) {
+    updateActiveCreature(next, event.side, (creature) => {
+      const signedValue =
+        Number(stat.value) * (stat.direction === 'up' ? 1 : -1);
+      if (stat.resource === 'HP') {
+        creature.currentHp = Math.min(
+          creature.maxHp,
+          Math.max(0, creature.currentHp + signedValue),
+        );
+      } else {
+        creature.remainingPower = Math.min(
+          creature.maxPower,
+          Math.max(0, creature.remainingPower + signedValue),
+        );
+      }
+    });
+  }
+
+  if (
+    event.side &&
+    (event.kind === 'effect_expired' ||
+      /\bgained Damage\b/iu.test(event.message))
+  ) {
+    const targetCreature = activeCreature(target, event.side);
+    if (targetCreature) {
+      updateActiveCreature(next, event.side, (creature) => {
+        creature.activeModifiers = structuredClone(
+          targetCreature.activeModifiers,
+        );
+      });
+    }
+  }
+
+  if (event.kind === 'defeat' && event.side) {
+    updateActiveCreature(next, event.side, (creature) => {
+      creature.currentHp = 0;
+      creature.defeated = true;
+    });
+  }
+
+  return next;
+}
+
+function activeCreature(match: CpuMatch, side: 'cpu' | 'player') {
+  if (side === 'cpu') return match.state.cpu.activeCreature;
+  return match.state.player.creatures.find(
+    (creature) => creature.id === match.state.player.activeCreatureId,
+  );
+}
+
+function reconstructCreatureBeforeEvents(
+  target: CpuMatch['state']['player']['creatures'][number],
+  side: 'cpu' | 'player',
+  events: readonly BattleLogEvent[],
+) {
+  const creature = structuredClone(target);
+  creature.activeModifiers = [];
+  creature.defeated = false;
+  for (const event of [...events].reverse()) {
+    if (event.side !== side) continue;
+    const stat = battleLogStat(event.message);
+    if (!stat) continue;
+    const signedValue = Number(stat.value) * (stat.direction === 'up' ? -1 : 1);
+    if (stat.resource === 'HP') {
+      creature.currentHp = Math.min(
+        creature.maxHp,
+        Math.max(0, creature.currentHp + signedValue),
+      );
+    } else {
+      creature.remainingPower = Math.min(
+        creature.maxPower,
+        Math.max(0, creature.remainingPower + signedValue),
+      );
+    }
+  }
+  return creature;
+}
+
+function updateActiveCreature(
+  match: CpuMatch,
+  side: 'cpu' | 'player',
+  update: (creature: CpuMatch['state']['player']['creatures'][number]) => void,
+) {
+  const creature = activeCreature(match, side);
+  if (creature) update(creature);
+}
+
+function cpuResolutionMoment(
+  event: BattleLogEvent,
+  mode: PresentationMode | null,
+): BattleResolutionMoment {
+  const stat = battleLogStat(event.message);
+  return {
+    id: event.id,
+    message: presentationMessage(event, mode ?? 'turn'),
+    stat: stat
+      ? {
+          direction: stat.direction,
+          resource: stat.resource === 'HP' ? 'HP' : 'Power',
+          value: stat.value,
+        }
+      : null,
+    tone: battleEventTone(event),
+  };
+}
+
 function battleEventTone(event: BattleLogEvent): BattleFeedbackTone {
+  const modifier = /\bgained Damage ([+−-]\d+%)/u.exec(event.message)?.[1];
+  if (modifier?.startsWith('+')) return 'buff';
+  if (modifier) return 'debuff';
   const stat = battleLogStat(event.message);
   if (stat?.direction === 'up') return 'heal';
   if (/\bspent\b/iu.test(event.message)) return 'cost';
@@ -880,52 +1204,13 @@ function battleFeedback(event: BattleLogEvent | null, side: 'player' | 'cpu') {
       tone,
     };
   }
+  const modifier = /\bgained Damage ([+−-]\d+%)/u.exec(event.message)?.[1];
+  if (modifier) return { label: `Damage ${modifier}`, tone };
   if (event.kind === 'defeat') return { label: 'Defeated', tone };
   if (event.kind === 'action') {
     return { label: side === 'player' ? 'Your move' : 'CPU move', tone };
   }
   return { label: 'Effect applied', tone };
-}
-
-function BattleDetails({ match }: { match: CpuMatch }) {
-  return (
-    <details
-      className="battle-details battle-rail-card"
-      onKeyDown={closeDisclosureOnEscape}
-    >
-      <summary>
-        <span>Battle details</span>
-        <strong>Turn {match.state.turnNumber}</strong>
-      </summary>
-      <div className="battle-details__panel">
-        <dl className="battle-meta">
-          <div>
-            <dt>Match version</dt>
-            <dd>{match.version}</dd>
-          </div>
-          <div data-tone={match.status === 'completed' ? 'complete' : 'active'}>
-            <dt>Status</dt>
-            <dd>
-              {match.status === 'completed' ? 'Completed' : 'In progress'}
-            </dd>
-          </div>
-          <div>
-            <dt>Started</dt>
-            <dd>{formatDate(match.startedAt)}</dd>
-          </div>
-          <div data-tone={match.state.turnDeadline ? 'timing' : undefined}>
-            <dt>Server deadline</dt>
-            <dd>
-              {match.state.turnDeadline
-                ? formatDate(match.state.turnDeadline)
-                : 'Not returned'}
-            </dd>
-          </div>
-        </dl>
-        <p>{getPhaseDescription(match)}</p>
-      </div>
-    </details>
-  );
 }
 
 function CpuReserveSummary({ match }: { match: CpuMatch }) {
@@ -937,7 +1222,13 @@ function CpuReserveSummary({ match }: { match: CpuMatch }) {
       <summary>
         <span>CPU reserve</span>
         <strong>
-          {creatures} Creature{creatures === 1 ? '' : 's'} · {powerCards} Power
+          <span aria-hidden="true">
+            {creatures} · {powerCards} Power
+          </span>
+          <span className="sr-only">
+            {creatures} Creature{creatures === 1 ? '' : 's'} and {powerCards}{' '}
+            Power cards
+          </span>
         </strong>
       </summary>
       <p>Unplayed CPU cards stay hidden until they are revealed in battle.</p>
@@ -946,43 +1237,44 @@ function CpuReserveSummary({ match }: { match: CpuMatch }) {
 }
 
 function CompletedMatch({ match }: { match: CpuMatch }) {
+  const playerWon = match.winner === 'player';
   return (
-    <section
-      className={`completed-match completed-match--${match.winner}`}
-      aria-labelledby="completed-match-title"
+    <BattleOutcomePanel
+      action={
+        <Link className="button" href="/matches">
+          Play another battle
+        </Link>
+      }
+      facts={[
+        {
+          label: 'Winner',
+          value: match.winner ? sideLabel(match.winner) : 'Not returned',
+        },
+        { label: 'Final turn', value: match.state.turnNumber },
+        {
+          label: 'Completed',
+          value: match.completedAt
+            ? formatDate(match.completedAt)
+            : 'Not returned',
+        },
+      ]}
+      mode="Practice"
+      summary={
+        playerWon
+          ? 'You defeated the CPU. This result is saved in your battle history.'
+          : 'The CPU won this battle. This result is saved in your battle history.'
+      }
+      title={playerWon ? 'Practice victory' : 'Practice complete'}
+      titleId="completed-match-title"
+      tone={playerWon ? 'victory' : 'defeat'}
     >
-      <p className="eyebrow">Match complete</p>
-      <h2 id="completed-match-title">
-        {match.winner === 'player'
-          ? 'Victory — match saved'
-          : 'CPU victory — match saved'}
-      </h2>
       <details className="completed-match__context">
         <summary>About this result</summary>
         <p>
-          This result is saved. You can return to it from your match history.
+          Review every confirmed turn here or return to it from Battle history.
         </p>
       </details>
-      <dl>
-        <div>
-          <dt>Winner</dt>
-          <dd>{match.winner ? sideLabel(match.winner) : 'Not returned'}</dd>
-        </div>
-        <div>
-          <dt>Final turn</dt>
-          <dd>{match.state.turnNumber}</dd>
-        </div>
-        <div>
-          <dt>Completed</dt>
-          <dd>
-            {match.completedAt ? formatDate(match.completedAt) : 'Not returned'}
-          </dd>
-        </div>
-      </dl>
-      <Link className="button" href="/matches">
-        Play again
-      </Link>
-    </section>
+    </BattleOutcomePanel>
   );
 }
 
@@ -1032,7 +1324,7 @@ function getTurnIndicator(match: CpuMatch, busy: boolean) {
 function getPhasePrompt(match: CpuMatch) {
   if (match.state.phase === 'initial_selection') return null;
   if (match.state.phase === 'replacement') {
-    return 'Your active Creature was defeated. Choose a legal replacement.';
+    return 'Your active Creature was defeated. Choose an available replacement.';
   }
   if (match.status !== 'completed' && match.state.currentSide === 'cpu') {
     return 'Your actions will be available after the CPU acts.';
@@ -1040,20 +1332,32 @@ function getPhasePrompt(match: CpuMatch) {
   return null;
 }
 
-function getPhaseDescription(match: CpuMatch) {
-  if (match.status === 'completed')
-    return 'This result is saved in your match history.';
-  if (match.state.phase === 'initial_selection')
-    return 'Choose an available Creature to begin.';
-  if (match.state.phase === 'replacement')
-    return 'The server reports a defeat. Choose one currently legal replacement; replacement does not consume the resumed normal turn.';
-  if (match.state.turnDeadline)
-    return `The server deadline for this turn is ${formatDate(match.state.turnDeadline)}. A late intent may be stored as a timeout by the API.`;
-  return 'Waiting for the next battle update.';
+function sideLabel(side: 'cpu' | 'player') {
+  return side === 'player' ? 'You' : 'CPU';
 }
 
-function sideLabel(side: 'cpu' | 'player') {
-  return side === 'player' ? 'Player' : 'CPU';
+function sentenceCaseStatus(value: string | null) {
+  if (!value) return 'Battle ready';
+  return value
+    .toLocaleLowerCase()
+    .replace(/^./u, (character) => character.toLocaleUpperCase());
+}
+
+function practiceStatusDetail(
+  match: CpuMatch,
+  busy: boolean,
+  hasError: boolean,
+) {
+  if (hasError) return 'Reload the latest confirmed state before acting.';
+  if (busy) return 'Your choice is being confirmed.';
+  if (match.status === 'completed') return 'The result is saved.';
+  if (match.state.phase === 'replacement')
+    return 'Choose an available replacement Creature.';
+  if (match.state.phase === 'initial_selection')
+    return 'Choose your opening Creature.';
+  return match.state.currentSide === 'player'
+    ? 'Choose one available action.'
+    : 'Your actions return after the CPU acts.';
 }
 
 function formatDate(value: string) {

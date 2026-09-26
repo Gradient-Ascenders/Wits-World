@@ -11,7 +11,8 @@ player-versus-player matches. Migration `0044_create_live_pvp_persistence.sql`
 implements the issue `#251` persistence boundary, and issue `#253` implements
 the backend HTTP ticket routes, WebSocket gateway, deadline worker, reconnect
 handling, and PostgreSQL multi-instance fan-out described here. Frontend
-presentation and deployed multi-instance verification remain later work.
+presentation is available through the protected live-match routes described
+below. Deployed multi-instance verification remains later work.
 
 Live PvP reuses the shared battle rules, card snapshots, legal action shapes,
 and hidden-card rules used by CPU and asynchronous PvP. Its distinct concerns
@@ -42,14 +43,14 @@ The first live implementation uses these fixed rules:
 - spectators cannot act, resign, or access participant-private state; and
 - a completed match sends its final state before spectator access ends.
 
-The contract deliberately excludes match creation, opponent discovery,
-matchmaking, ratings, seasons, public match listings, spectator chat, and
-spectator replay. The
-[ranked competition policy](../requirements/ranked-competition-policy.md)
-defines how a later server-owned queue may create and settle a ranked live
-match; it does not change this contract's battle authority. Other later features
-may distribute an opaque match identifier, but they must also use this match
-authority boundary.
+The live battle contract deliberately excludes opponent discovery, ratings,
+seasons, public match listings, spectator chat, and spectator replay. Match
+creation is owned by the existing server-side ranked queue and proposal
+acceptance flow in the
+[ranked competition policy](../requirements/ranked-competition-policy.md); the
+browser cannot create an arbitrary live match. Spectators enter only through a
+privately shared live-match URL or opaque match identifier. There is no public
+match browser. These entry paths do not change this contract's battle authority.
 
 ## Roles and lifecycle
 
@@ -115,6 +116,13 @@ then close.
 The response is the recovery authority after refresh, reconnect, an observed
 version gap, or an ambiguous realtime response. Local storage, an old socket
 message, countdown state, and client-simulated actions are never authoritative.
+A successful response includes `serverTime`; the participant projection also
+includes the viewer's authoritative `selfSide` and the complete persisted,
+participant-safe public `history` through the advertised match version. The
+browser anchors its display countdown to `serverTime` and `decisionDeadline`,
+but never submits or resolves a timeout. Spectator projections continue to
+exclude participant-only fields, legal actions, hands, private snapshots, and
+private participant data.
 A projection is internally version-consistent: projection-critical match,
 battle-state, participant, access, history, and presence reads run inside one
 read-only `REPEATABLE READ` database snapshot. Public action/history reads are
@@ -540,6 +548,49 @@ persisted access; reconnect then reloads the latest authoritative projection.
 If a gameplay notification names an older version than the current persisted
 state, the gateway sends a complete snapshot instead of fabricating an
 intermediate transition.
+
+## Web experience and recovery policy
+
+The protected Web entry route is `/matches/live`. Players use the existing
+ranked queue and proposal acceptance APIs; acceptance creates the match and
+navigates to `/matches/live/:matchId`. Spectators provide a privately shared URL
+or opaque match ID on the same entry route. The shared match route requests the
+server-derived role and renders either the participant projection or the
+visibly read-only spectator projection.
+
+On first load and every recovery, the client performs an authenticated HTTP
+snapshot read before minting a new single-use ticket and opening a WebSocket. It
+does not trust cached battle state. Unexpected version gaps, stale/conflicting
+responses, transport loss, and ambiguous action errors return through the same
+snapshot-first recovery path. Reconnect attempts use delays of 0, 1, 2, 5, then
+10 seconds, capped at 10 seconds. A newer client connection epoch invalidates
+messages from an older socket.
+
+The ranked lobby polls its server-owned queue view every 2.5 seconds and sends a
+lease heartbeat every 8 seconds while queued. These are presentation policies,
+not matchmaking authority. Queue expiry, proposal expiry, match creation, turn
+deadlines, timeout transitions, dropout outcomes, rules, versions, and ratings
+remain server decisions.
+
+Ranked entry is gated by `GET /api/v1/ranked/seasons/current`. No current active
+season leaves the join control disabled and exposes a manual refresh action;
+the browser does not infer season availability from an idle queue response.
+Safe `409` details from a join attempt are rendered visibly while the control is
+restored for retry.
+
+Participant controls are derived only from `legalActions`. A synchronous local
+guard locks them before the WebSocket send, and they remain locked until an
+authoritative transition or an error followed by reconciliation. Each intent
+uses one UUID `messageId` and the displayed `expectedVersion`; the client never
+automatically replays an obsolete intent. Spectators have no action or resign
+controls, and the closed response parser rejects unexpected private fields.
+
+Current limitations are intentional: there is no public match discovery,
+spectator replay, chat, client-owned timeout resolution, or offline battle
+mode. A spectator who refreshes after completion can no longer load the match;
+an already-connected spectator receives the committed final projection before
+the server closes access. Deployed proxy/WebSocket and multi-instance recovery
+remain deployment verification rather than local UI evidence.
 
 ## Deployment and operational constraints
 

@@ -104,12 +104,20 @@ export interface AsyncPvpMatchView {
     opponent: PvpOpponentView;
   };
   legalActions: readonly PvpAction[];
+  history: readonly PvpActionHistoryEntryView[];
   lastAction: unknown | null;
   outcome: 'win' | 'loss' | null;
   completionReason: PvpCompletionReason | null;
   startedAt: string;
   updatedAt: string;
   completedAt: string | null;
+}
+
+export interface PvpActionHistoryEntryView {
+  sequence: number;
+  turnNumber: number;
+  createdAt: string;
+  result: unknown;
 }
 
 export type PvpAction =
@@ -303,6 +311,12 @@ interface MatchRow extends pg.QueryResultRow {
   opponent_side: BattleSide;
   opponent_name: string | null;
   battle_state: BattleState;
+  action_history: Array<{
+    sequence: number;
+    turnNumber: number;
+    createdAt: string;
+    result: BattleActionResult;
+  }>;
   latest_result: BattleActionResult | null;
 }
 
@@ -950,7 +964,13 @@ export function createAsyncPvpService(
           input.submissionId,
           payloadHash,
         );
-        if (replay) return normalizeMatchReceipt(replay);
+        if (replay)
+          return normalizeMatchReceiptWithHistory(
+            client,
+            input.playerId,
+            input.matchId,
+            replay,
+          );
         const now = await databaseNow(client);
         if (
           match.status === 'active' &&
@@ -1133,7 +1153,13 @@ export function createAsyncPvpService(
           input.submissionId,
           payloadHash,
         );
-        if (replay) return normalizeMatchReceipt(replay);
+        if (replay)
+          return normalizeMatchReceiptWithHistory(
+            client,
+            input.playerId,
+            input.matchId,
+            replay,
+          );
 
         const now = await databaseNow(client);
         if (
@@ -1784,6 +1810,7 @@ const matchProjectionSql = `
          opponent.engine_side as opponent_side,
          opponent_player.player_name as opponent_name,
          state.battle_state,
+         coalesce(history.entries, '[]'::jsonb) as action_history,
          latest.public_result as latest_result
     from public.async_pvp_matches match
     join public.async_pvp_match_participants viewer
@@ -1800,6 +1827,28 @@ const matchProjectionSql = `
        order by action.sequence desc
        limit 1
     ) latest on true
+    left join lateral (
+      select jsonb_agg(
+               jsonb_build_object(
+                 'sequence', action.sequence,
+                 'turnNumber', greatest(
+                   1,
+                   coalesce(
+                     (transition.state_before ->> 'turnNumber')::integer,
+                     action.sequence
+                   )
+                 ),
+                 'createdAt', action.created_at,
+                 'result', action.public_result
+               )
+               order by action.sequence
+             ) as entries
+        from public.async_pvp_match_actions action
+        left join private.async_pvp_match_transitions transition
+          on transition.action_id = action.id
+       where action.match_id = match.id
+         and action.sequence <= match.version
+    ) history on true
 `;
 
 async function lockMatch(
@@ -1899,6 +1948,12 @@ function projectMatch(
           )
           .map(publicAction)
       : [];
+  const history = (match.action_history ?? []).map((entry) => ({
+    sequence: Number(entry.sequence),
+    turnNumber: Number(entry.turnNumber),
+    createdAt: new Date(entry.createdAt).toISOString(),
+    result: relativeActionResult(entry.result, match.viewer_side, state),
+  }));
 
   return {
     matchId: match.id,
@@ -1972,10 +2027,12 @@ function projectMatch(
       },
     },
     legalActions,
+    history,
     lastAction:
-      match.latest_result === null
+      history.at(-1)?.result ??
+      (match.latest_result === null
         ? null
-        : relativeActionResult(match.latest_result, match.viewer_side, state),
+        : relativeActionResult(match.latest_result, match.viewer_side, state)),
     outcome: match.viewer_outcome,
     completionReason: match.completion_reason,
     startedAt: match.started_at.toISOString(),
@@ -2073,11 +2130,9 @@ function relativeActionResult(
 // Older receipts may contain engine metadata. Preserve their confirmed version
 // and outcome while selecting only the existing public action contract.
 function normalizeMatchReceipt(view: AsyncPvpMatchView): AsyncPvpMatchView {
-  if (view.lastAction === null) return view;
-  const result = view.lastAction as ReturnType<typeof relativeActionResult>;
-  return {
-    ...view,
-    lastAction: {
+  const normalizeResult = (value: unknown) => {
+    const result = value as ReturnType<typeof relativeActionResult>;
+    return {
       action: result.action,
       side: result.side,
       defeatedCreatureId: result.defeatedCreatureId,
@@ -2092,7 +2147,38 @@ function normalizeMatchReceipt(view: AsyncPvpMatchView): AsyncPvpMatchView {
         damageMultiplier: effect.damageMultiplier,
         modifier: effect.modifier ?? null,
       })),
-    },
+    };
+  };
+  const history = Array.isArray(view.history)
+    ? view.history.map((entry) => ({
+        sequence: entry.sequence,
+        turnNumber: entry.turnNumber,
+        createdAt: entry.createdAt,
+        result: normalizeResult(entry.result),
+      }))
+    : [];
+  if (view.lastAction === null) return { ...view, history };
+  return {
+    ...view,
+    history,
+    lastAction: normalizeResult(view.lastAction),
+  };
+}
+
+async function normalizeMatchReceiptWithHistory(
+  client: AsyncPvpClient,
+  playerId: string,
+  matchId: string,
+  view: AsyncPvpMatchView,
+) {
+  const normalized = normalizeMatchReceipt(view);
+  if (Array.isArray(view.history)) return normalized;
+  const current = await loadMatchView(client, playerId, matchId);
+  return {
+    ...normalized,
+    history: current.history.filter(
+      (entry) => entry.sequence <= normalized.version,
+    ),
   };
 }
 

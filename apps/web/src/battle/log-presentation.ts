@@ -35,9 +35,8 @@ export function battleLogRows(events: readonly LogEvent[]) {
 }
 
 export function battleLogStat(message: string) {
-  const match = /^(.*) (took|restored|spent) (\d+) (damage|HP|Power)\.$/.exec(
-    message,
-  );
+  const match =
+    /^(.*) (took|restored|spent|lost) (\d+) (damage|HP|Power)\.$/.exec(message);
   if (!match) return null;
   return {
     creature: battleLogMessage(match[1]!),

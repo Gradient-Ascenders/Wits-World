@@ -93,7 +93,15 @@ and [persistence design](../database/live-pvp-persistence.md) define the
 implemented boundary. Issue `#253` adds the HTTPS ticket route, WebSocket
 gateway, server-owned deadline worker, reconnect handling, heartbeat, and
 PostgreSQL multi-instance fan-out. The player-facing live battle/spectator UI
-and deployed multi-instance verification remain follow-up work.
+uses the same boundary. It first reloads the role-appropriate HTTPS projection,
+then obtains a fresh single-use ticket; reconnects, version gaps, and stale or
+ambiguous responses repeat that snapshot-first recovery rather than trusting
+cached React state. Participant controls render only server-returned legal
+actions and lock synchronously before submission. The browser may display time
+remaining from `serverTime` and the persisted deadline, but it never resolves a
+timeout or advances battle rules. Its spectator parser and UI accept only the
+public projection, expose no mutation controls, and reject unexpected private
+fields. Deployed multi-instance verification remains follow-up work.
 
 ### Authentication provider
 

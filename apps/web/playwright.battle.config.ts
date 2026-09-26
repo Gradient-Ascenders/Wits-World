@@ -15,7 +15,7 @@ export default defineConfig({
   reporter: 'line',
   retries: 0,
   testDir: './playwright',
-  testMatch: /(cpu|pvp)-battle\.spec\.ts/,
+  testMatch: /(cpu|pvp|live)-battle\.spec\.ts/,
   timeout: 60_000,
   use: {
     ...devices['Desktop Chrome'],
