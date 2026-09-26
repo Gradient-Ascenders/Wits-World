@@ -58,7 +58,49 @@ test('shows rarity frames and confirms an authoritative CPU forfeit', async ({
     page.locator('.combatant--cpu .card-frame--legendary'),
   ).toBeVisible();
 
+  const playerCard = page
+    .getByRole('button', {
+      name: /View .* details/,
+    })
+    .first();
+  await playerCard.hover({ position: { x: 24, y: 24 } });
+  await expect(playerCard).toHaveAttribute('data-hovered', '');
+  await expect
+    .poll(() =>
+      playerCard.evaluate((element) =>
+        Number.parseFloat(
+          element.style.getPropertyValue('--card-scale') || '1',
+        ),
+      ),
+    )
+    .toBeGreaterThan(1.01);
+  await page.locator('.battle-stage').screenshot({
+    path: path.join(screenshotsDirectory, 'desktop-card-depth.png'),
+    style: '.skip-link, .primary-navigation { display: none !important; }',
+  });
+  await page.mouse.move(0, 0);
+  await expect(playerCard).not.toHaveAttribute('data-hovered', '');
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await playerCard.hover({ position: { x: 24, y: 24 } });
+  await expect(playerCard).not.toHaveAttribute('data-hovered', '');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+
   const forfeit = page.getByRole('button', { name: 'Forfeit battle' });
+  await expect(forfeit).toHaveText('Forfeit');
+  await expect(
+    page.locator('.battle-side-rail').getByRole('button', {
+      name: 'Forfeit battle',
+    }),
+  ).toBeVisible();
+  await expect(
+    page.locator('.battle-header').getByRole('button', {
+      name: 'Forfeit battle',
+    }),
+  ).toHaveCount(0);
+  await page.locator('.battle-side-rail').screenshot({
+    path: path.join(screenshotsDirectory, 'desktop-compact-rail.png'),
+  });
   await forfeit.click();
   const dialog = page.getByRole('alertdialog', {
     name: 'Forfeit this battle?',
@@ -112,6 +154,18 @@ test('animates each server-confirmed action and damage beat on its target', asyn
   });
 
   await page.goto(`/matches/${MATCH_ID}`);
+  await expect(page.locator('.battle-stage')).toHaveClass(
+    /battle-stage--player/,
+  );
+  expect(
+    await page.locator('.battle-stage').evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        cpu: style.getPropertyValue('--battle-cpu-zone-core').trim(),
+        player: style.getPropertyValue('--battle-player-zone-core').trim(),
+      };
+    }),
+  ).toEqual({ cpu: 'transparent', player: 'rgb(42 107 255 / 28%)' });
   await page.getByRole('button', { name: /Knowledge Strike 1/ }).click();
   await expect(page.locator('.combatant--player')).toHaveAttribute(
     'data-feedback',
@@ -123,6 +177,14 @@ test('animates each server-confirmed action and damage beat on its target', asyn
   await expect(page.locator('.combatant--cpu')).toHaveAttribute(
     'data-feedback',
     'damage',
+  );
+  await expect(page.locator('.combatant--cpu .combatant__presence')).toHaveCSS(
+    'filter',
+    'none',
+  );
+  await expect(page.locator('.combatant--cpu .combatant__presence')).toHaveCSS(
+    'opacity',
+    '1',
   );
   await expect(page.locator('.combatant--cpu .combatant__feedback')).toHaveText(
     '−12 HP',
@@ -244,6 +306,13 @@ test('opens Creature details from active and bench pictures', async ({
   match.state.player.creatures.forEach((creature, index) => {
     creature.name = ['Quillip', 'Ciphra', 'Prismole'][index]!;
   });
+  const previewMove = match.state.player.creatures[0]!.moves[0]!;
+  match.state.player.creatures[0]!.moves = [
+    { ...previewMove, id: uuid(901), name: 'Knowledge Strike', powerCost: 0 },
+    { ...previewMove, id: uuid(902), name: 'Measured Pounce', powerCost: 1 },
+    { ...previewMove, id: uuid(903), name: 'Campus Ward', powerCost: 2 },
+    { ...previewMove, id: uuid(904), name: 'Archive Rush', powerCost: 4 },
+  ];
   await page.route('**/api/v1/matches/**', (route) =>
     json(route, response(match)),
   );
@@ -339,6 +408,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
   ];
   openingPlayer.moves = [
     {
+      effectiveness: 'neutral',
       effects: [
         {
           damageMultiplier: null,
@@ -353,6 +423,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
       powerCost: 0,
     },
     {
+      effectiveness: null,
       effects: [
         {
           damageMultiplier: 0.85,
@@ -371,6 +442,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
       powerCost: 11,
     },
     {
+      effectiveness: 'effective',
       effects: [
         {
           damageMultiplier: null,
@@ -385,6 +457,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
       powerCost: 2,
     },
     {
+      effectiveness: 'resisted',
       effects: [
         {
           damageMultiplier: null,
@@ -797,6 +870,37 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     await openingChoice.focus();
     await page.keyboard.press('Enter');
     await expect(
+      page.getByRole('heading', {
+        name: 'Opponent sends out a Creature',
+      }),
+    ).toBeFocused();
+    await expect(
+      page.getByText('Opponent sent out Braam Sentinel!').last(),
+    ).toBeVisible();
+    await expect(page.locator('.combatant--cpu')).toHaveClass(
+      /combatant--acting/,
+    );
+    await expect(page.locator('.combatant--player')).toHaveClass(
+      /combatant--dimmed/,
+    );
+    await expect(openingChoice).toBeDisabled();
+    await page.locator('.battle-page').screenshot({
+      path: path.join(screenshotsDirectory, '390-opening-opponent.png'),
+      style: '.skip-link, .primary-navigation { display: none !important; }',
+    });
+    await expect(
+      page.getByRole('button', {
+        name: 'Show the next confirmed battle moment',
+      }),
+    ).toHaveCount(0);
+    await expect(page.getByText('Go, Campus Scholar!').last()).toBeVisible();
+    await expect(page.locator('.combatant--player')).toHaveClass(
+      /combatant--acting/,
+    );
+    await expect(page.locator('.combatant--cpu')).toHaveClass(
+      /combatant--dimmed/,
+    );
+    await expect(
       page.getByRole('heading', { name: 'Your turn' }),
     ).toBeFocused();
     await expectPrimaryActionWithinViewport(page);
@@ -818,6 +922,18 @@ test('completes a mocked authoritative CPU match through the production UI', asy
       name: /Measured Strike.*Basic.*7 base damage.*0 Power/i,
     });
     await expect(zeroCostMove).toBeEnabled();
+    await expect(page.getByText('Neutral', { exact: true })).toHaveAttribute(
+      'title',
+      'Even matchup: this move deals its normal damage.',
+    );
+    await expect(page.getByText('Effective', { exact: true })).toHaveAttribute(
+      'title',
+      'Strong matchup: this move deals increased damage.',
+    );
+    await expect(page.getByText('Resisted', { exact: true })).toHaveAttribute(
+      'title',
+      'Weak matchup: this move deals reduced damage.',
+    );
     await expect(
       page.getByRole('button', {
         name: /Brace.*Opponent damage −15%.*3 turns.*11 Power/i,
@@ -1224,17 +1340,20 @@ test('keeps processing, timeout, and error states focused with long actions', as
     }),
   ).toBeLessThanOrEqual(1);
 
-  const battleDetails = page.locator('.battle-details > summary');
-  await battleDetails.click();
-  await expect(page.getByText('Status', { exact: true })).toBeVisible();
-  await expect(page.getByText('Turn deadline', { exact: true })).toBeVisible();
+  await expect(page.locator('.battle-details')).toHaveCount(0);
+  await expect(page.getByText('Untimed', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('Progress saves automatically.', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.locator('.battle-side-rail').getByRole('button', {
+      name: 'Forfeit battle',
+    }),
+  ).toBeVisible();
   await page.locator('.battle-page').screenshot({
-    path: path.join(screenshotsDirectory, '390-battle-details.png'),
+    path: path.join(screenshotsDirectory, '390-compact-rail.png'),
     style: '.skip-link, .primary-navigation { display: none !important; }',
   });
-  await page.keyboard.press('Escape');
-  await expect(page.getByText('Status', { exact: true })).toBeHidden();
-  await expect(battleDetails).toBeFocused();
 
   const hpBefore = await page
     .locator('.combatant--player .combatant__meter strong')
@@ -1547,7 +1666,7 @@ test('shows deck recovery without exposing a conflicting start action', async ({
   await expectNoHorizontalOverflow(page);
 });
 
-test('keeps the desktop battlefield stable when bench and details expand', async ({
+test('keeps the desktop battlefield stable when activity and bench expand', async ({
   page,
 }) => {
   await routeCurrentPlayer(page);
@@ -1605,7 +1724,7 @@ test('keeps the desktop battlefield stable when bench and details expand', async
   await page.locator('.battle-log > summary').click();
   expect(await measure()).toEqual(before);
   await page.locator('.battle-bench > summary').click();
-  await page.locator('.battle-details > summary').click();
+  await page.locator('.cpu-reserve > summary').click();
   expect(await measure()).toEqual(before);
   expect((await rail.boundingBox())!.height).toBeGreaterThan(railHeightBefore);
   expect(
@@ -1614,8 +1733,12 @@ test('keeps the desktop battlefield stable when bench and details expand', async
       .first()
       .boundingBox())!.width,
   ).toBeGreaterThanOrEqual(96);
-  await page.getByText('Status', { exact: true }).scrollIntoViewIfNeeded();
-  await expect(page.getByText('Status', { exact: true })).toBeInViewport();
+  const reserveDetail = page.getByText(
+    'Unplayed CPU cards stay hidden until they are revealed in battle.',
+    { exact: true },
+  );
+  await reserveDetail.scrollIntoViewIfNeeded();
+  await expect(reserveDetail).toBeInViewport();
   await expectNoHorizontalOverflow(page);
   await page.locator('.battle-page').screenshot({
     path: path.join(screenshotsDirectory, '1440-expanded-sidebar.png'),
@@ -1726,6 +1849,24 @@ async function expectBattleStageFirstDesktopLayout(page: Page) {
   expect(rail!.x).toBeGreaterThanOrEqual(actions!.x + actions!.width - 8);
   expect(rail!.y).toBeCloseTo(actions!.y, 0);
   expect(stage!.width).toBeGreaterThan(rail!.width * 2);
+  const [playerCard, playerHud, cpuHud, cpuCard] = await Promise.all([
+    page.locator('.combatant--player .combatant__presence').boundingBox(),
+    page.locator('.combatant--player .combatant__hud').boundingBox(),
+    page.locator('.combatant--cpu .combatant__hud').boundingBox(),
+    page.locator('.combatant--cpu .combatant__presence').boundingBox(),
+  ]);
+  expect(playerCard).not.toBeNull();
+  expect(playerHud).not.toBeNull();
+  expect(cpuHud).not.toBeNull();
+  expect(cpuCard).not.toBeNull();
+  expect(playerCard!.x).toBeLessThan(playerHud!.x);
+  expect(playerHud!.x + playerHud!.width).toBeLessThanOrEqual(cpuHud!.x);
+  expect(cpuHud!.x).toBeLessThan(cpuCard!.x);
+  const playerCardGap = playerHud!.x - playerCard!.x - playerCard!.width;
+  const cpuCardGap = cpuCard!.x - cpuHud!.x - cpuHud!.width;
+  expect(playerCardGap).toBeGreaterThanOrEqual(40);
+  expect(cpuCardGap).toBeGreaterThanOrEqual(40);
+  expect(Math.abs(playerCardGap - cpuCardGap)).toBeLessThanOrEqual(1);
   const actionContent = await page
     .locator('.battle-action-content')
     .evaluate((element) => ({

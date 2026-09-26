@@ -259,6 +259,19 @@ describe('CPU match API client', () => {
     });
   });
 
+  it('accepts the server-projected effectiveness label without deriving it locally', async () => {
+    const match = activeMatch(2);
+    match.state.player.creatures[0]!.moves[0]!.effectiveness = 'effective';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(matchResponse(match)));
+
+    const projectedMatch = await getActiveCpuMatch(options());
+
+    expect(projectedMatch).not.toBeNull();
+    expect(
+      projectedMatch!.state.player.creatures[0]!.moves[0]!.effectiveness,
+    ).toBe('effective');
+  });
+
   it('accepts legacy match views while rejecting malformed new effect data', async () => {
     const legacy = structuredClone(activeMatch(2)) as unknown as Record<
       string,

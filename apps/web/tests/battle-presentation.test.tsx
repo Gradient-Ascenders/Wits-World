@@ -77,6 +77,31 @@ describe('shared battle presentation', () => {
     expect(container).not.toHaveTextContent('Common');
   });
 
+  it('exposes acting, dimmed, and entrance states without hiding combatant vitals', () => {
+    const creature = activeMatch(1).state.player.creatures[0]!;
+    const { container } = render(
+      <BattleCombatant
+        creature={creature}
+        emptyText="Hidden"
+        heading="Player"
+        isActing
+        isDimmed
+        isEntering
+        isResolving
+        visualSide="player"
+      />,
+    );
+
+    const combatant = container.querySelector('.combatant');
+    expect(combatant).toHaveClass(
+      'combatant--acting',
+      'combatant--dimmed',
+      'combatant--entering',
+    );
+    expect(screen.getByText('Player · Acting')).toBeVisible();
+    expect(screen.getByLabelText(/HP/)).toBeVisible();
+  });
+
   it('discloses only the owned bench with stable Creature labels and no gameplay controls', async () => {
     const user = userEvent.setup();
     const match = activeMatch(1);
@@ -91,7 +116,7 @@ describe('shared battle presentation', () => {
     expect(
       screen.getByRole('list', { name: 'Your bench Creatures', hidden: true }),
     ).not.toBeVisible();
-    await user.click(screen.getByText('Your bench'));
+    await user.click(screen.getByText('Bench'));
     const bench = screen.getByRole('list', { name: 'Your bench Creatures' });
     expect(within(bench).getAllByRole('listitem')).toHaveLength(2);
     expect(within(bench).getByText('Wit Creature 2')).toBeVisible();
@@ -131,6 +156,77 @@ describe('shared battle presentation', () => {
       type: 'use_move',
       moveId: move.id,
     });
+  });
+
+  it('shows only server-projected move effectiveness', () => {
+    const match = activeMatch(1);
+    const active = match.state.player.creatures[0]!;
+    active.moves[0]!.effectiveness = 'effective';
+    const props = {
+      activeCreatureId: active.id,
+      busy: false,
+      creatures: match.state.player.creatures,
+      currentActor: true,
+      idPrefix: 'effectiveness',
+      legalActions: match.state.legalActions,
+      onAction: vi.fn(),
+      opponentLabel: 'CPU',
+      phase: 'active' as const,
+      powerCards: [],
+    };
+    const { rerender } = render(<BattleActionPanel {...props} />);
+
+    const action = screen.getByRole('button', {
+      name: /Knowledge Strike 1/,
+    });
+    const effectiveBadge = screen.getByText('Effective');
+    expect(effectiveBadge).toBeVisible();
+    expect(effectiveBadge).toHaveAttribute(
+      'title',
+      'Strong matchup: this move deals increased damage.',
+    );
+    expect(action).toHaveAccessibleDescription(
+      'Strong matchup: this move deals increased damage.',
+    );
+
+    active.moves[0]!.effectiveness = 'resisted';
+    rerender(
+      <BattleActionPanel
+        {...props}
+        creatures={structuredClone(match.state.player.creatures)}
+      />,
+    );
+    expect(screen.getByText('Resisted')).toHaveAttribute(
+      'title',
+      'Weak matchup: this move deals reduced damage.',
+    );
+    expect(action).toHaveAccessibleDescription(
+      'Weak matchup: this move deals reduced damage.',
+    );
+
+    active.moves[0]!.effectiveness = 'neutral';
+    rerender(
+      <BattleActionPanel
+        {...props}
+        creatures={structuredClone(match.state.player.creatures)}
+      />,
+    );
+    expect(screen.getByText('Neutral')).toHaveAttribute(
+      'title',
+      'Even matchup: this move deals its normal damage.',
+    );
+    expect(action).toHaveAccessibleDescription(
+      'Even matchup: this move deals its normal damage.',
+    );
+
+    active.moves[0]!.effectiveness = undefined;
+    rerender(
+      <BattleActionPanel
+        {...props}
+        creatures={structuredClone(match.state.player.creatures)}
+      />,
+    );
+    expect(screen.queryByText('Effective')).toBeNull();
   });
 
   it('keeps forced replacement choices separate from normal move controls', async () => {

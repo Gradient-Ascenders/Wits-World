@@ -3,7 +3,14 @@ import {
   initialContext,
   type Auth0ContextInterface,
 } from '@auth0/auth0-react';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -42,6 +49,7 @@ import {
 const apiBaseUrl = 'https://api.example.test/api/v1';
 
 afterEach(() => {
+  vi.useRealTimers();
   resetAccessibilityPreferences();
   vi.unstubAllGlobals();
 });
@@ -612,13 +620,13 @@ describe('authoritative CPU battle page', () => {
   it.each([
     {
       appMotion: 'reduce' as const,
-      beatDelay: 120,
+      beatDelay: 450,
       description: 'app reduce over OS normal',
       osReduced: false,
     },
     {
       appMotion: 'full' as const,
-      beatDelay: 900,
+      beatDelay: 1_200,
       description: 'app full over OS reduce',
       osReduced: true,
     },
@@ -675,6 +683,200 @@ describe('authoritative CPU battle page', () => {
     },
   );
 
+  it('paces the opening as opponent first, then player, before unlocking moves', async () => {
+    const initial = buildMatch({ version: 1 });
+    const opened = activeMatch(2);
+    opened.battleLog = [
+      {
+        events: [
+          {
+            id: '1:0',
+            kind: 'action',
+            message: 'Player selected Wit Creature.',
+            sequence: 1,
+            side: 'player',
+          },
+          {
+            id: '2:0',
+            kind: 'action',
+            message: 'CPU revealed Grit Creature.',
+            sequence: 2,
+            side: 'cpu',
+          },
+          {
+            id: '2:1',
+            kind: 'turn',
+            message: 'Turn 1 began. Player has the first action.',
+            sequence: 2,
+            side: 'player',
+          },
+        ],
+        id: 'opening',
+        label: 'Opening',
+        turnNumber: 0,
+      },
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(matchResponse(initial))
+        .mockResolvedValueOnce(matchResponse(opened)),
+    );
+
+    renderMatchPage();
+    const creatureChoice = await screen.findByRole('button', {
+      name: /Choose Creature Wit Creature 1/,
+    });
+    vi.useFakeTimers();
+    await act(async () => {
+      fireEvent.click(creatureChoice);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(
+      screen.getAllByText('Opponent sent out Grit Creature!').length,
+    ).toBeGreaterThan(0);
+    expect(document.querySelector('.combatant--cpu')).toHaveClass(
+      'combatant--acting',
+      'combatant--entering',
+    );
+    expect(
+      screen.getByRole('button', { name: /Choose Creature Wit Creature 1/ }),
+    ).toBeDisabled();
+    expect(
+      screen.queryByRole('button', {
+        name: 'Show the next confirmed battle moment',
+      }),
+    ).toBeNull();
+
+    await act(async () => {
+      vi.advanceTimersByTime(1_300);
+    });
+    expect(screen.getAllByText('Go, Wit Creature!').length).toBeGreaterThan(0);
+    expect(document.querySelector('.combatant--player')).toHaveClass(
+      'combatant--acting',
+      'combatant--entering',
+    );
+    expect(document.querySelector('.combatant--cpu')).toHaveClass(
+      'combatant--dimmed',
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(1_300);
+    });
+    expect(
+      screen.getByRole('button', { name: /Knowledge Strike 1/ }),
+    ).toBeEnabled();
+  });
+
+  it('stages player and CPU actions, impacts, and control locking in order', async () => {
+    const current = activeMatch(1);
+    const resolved = activeMatch(2);
+    resolved.state.cpu.activeCreature!.currentHp = 88;
+    resolved.state.player.creatures[0]!.currentHp = 90;
+    resolved.battleLog = [
+      {
+        events: [
+          {
+            id: '3:0',
+            kind: 'action',
+            message: "Player's Wit Creature used Knowledge Strike 1.",
+            sequence: 3,
+            side: 'player',
+          },
+          {
+            id: '3:1',
+            kind: 'effect',
+            message: "CPU's Grit Creature took 12 damage.",
+            sequence: 3,
+            side: 'cpu',
+          },
+          {
+            id: '4:0',
+            kind: 'action',
+            message: "CPU's Grit Creature used Counter.",
+            sequence: 4,
+            side: 'cpu',
+          },
+          {
+            id: '4:1',
+            kind: 'effect',
+            message: "Player's Wit Creature took 10 damage.",
+            sequence: 4,
+            side: 'player',
+          },
+        ],
+        id: 'turn-1',
+        label: 'Turn 1',
+        turnNumber: 1,
+      },
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(matchResponse(current))
+        .mockResolvedValueOnce(matchResponse(resolved)),
+    );
+
+    renderMatchPage();
+    const move = await screen.findByRole('button', {
+      name: /Knowledge Strike 1/,
+    });
+    vi.useFakeTimers();
+    await act(async () => {
+      fireEvent.click(move);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(
+      screen.getAllByText('Your Wit Creature used Knowledge Strike 1.').length,
+    ).toBeGreaterThan(0);
+    expect(move).toBeDisabled();
+    expect(document.querySelector('.combatant--player')).toHaveClass(
+      'combatant--acting',
+    );
+    expect(document.querySelector('.combatant--cpu')).toHaveClass(
+      'combatant--dimmed',
+    );
+    expect(screen.getByLabelText('Grit Creature HP')).toHaveAttribute(
+      'value',
+      '100',
+    );
+
+    const advance = (milliseconds: number) =>
+      act(async () => {
+        vi.advanceTimersByTime(milliseconds);
+      });
+    await advance(1_200);
+    expect(screen.getByLabelText('Grit Creature HP')).toHaveAttribute(
+      'value',
+      '88',
+    );
+    await advance(1_100);
+    expect(
+      screen.getAllByText('The CPU’s Grit Creature used Counter.').length,
+    ).toBeGreaterThan(0);
+    expect(document.querySelector('.combatant--cpu')).toHaveClass(
+      'combatant--acting',
+    );
+    expect(document.querySelector('.combatant--player')).toHaveClass(
+      'combatant--dimmed',
+    );
+    await advance(1_200);
+    expect(screen.getByLabelText('Wit Creature HP')).toHaveAttribute(
+      'value',
+      '90',
+    );
+    await advance(1_100);
+    expect(move).toBeEnabled();
+  });
+
   it('requires confirmation and records a CPU forfeit through the match API', async () => {
     const user = userEvent.setup();
     const active = activeMatch(4);
@@ -687,9 +889,13 @@ describe('authoritative CPU battle page', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderMatchPage();
-    await user.click(
-      await screen.findByRole('button', { name: 'Forfeit battle' }),
-    );
+    const forfeit = await screen.findByRole('button', {
+      name: 'Forfeit battle',
+    });
+    expect(forfeit).toHaveTextContent('Forfeit');
+    expect(forfeit.closest('.battle-side-rail')).not.toBeNull();
+    expect(document.querySelector('.battle-details')).toBeNull();
+    await user.click(forfeit);
     expect(
       screen.getByRole('heading', { name: 'Forfeit this battle?' }),
     ).toBeVisible();
@@ -1236,7 +1442,9 @@ describe('authoritative CPU battle page', () => {
     expect(
       screen.queryByRole('button', { name: /Knowledge Strike/ }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Match history' })).toBeVisible();
+    expect(
+      screen.queryByRole('link', { name: /history/i }),
+    ).not.toBeInTheDocument();
     const finalAction = document.querySelector<HTMLElement>(
       '.battle-log > summary',
     );

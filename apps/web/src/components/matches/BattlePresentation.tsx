@@ -1,4 +1,5 @@
 import { CardFrame } from '../cards/CardFrame';
+import { useCardTilt } from '../cards/useCardTilt';
 import { battleArtwork } from '../../battle/card-artwork';
 import { useCreatureSheet } from './useCreatureSheet';
 import {
@@ -18,6 +19,7 @@ import type {
   CpuMatchIntent,
   MatchEffect,
   MatchCreature,
+  MatchMove,
   MatchPowerCard,
 } from '../../api/matches';
 import {
@@ -27,7 +29,14 @@ import {
 
 export type BattleActionIntent = CpuMatchIntent;
 export type BattleFeedbackTone =
-  'action' | 'cost' | 'damage' | 'defeat' | 'heal' | 'status';
+  | 'action'
+  | 'buff'
+  | 'cost'
+  | 'damage'
+  | 'debuff'
+  | 'defeat'
+  | 'heal'
+  | 'status';
 
 interface BattleActionPanelProps {
   activeCreatureId: string | null;
@@ -37,6 +46,7 @@ interface BattleActionPanelProps {
   idPrefix: string;
   inputBlocked?: boolean;
   legalActions: readonly BattleActionIntent[];
+  lockReason?: string;
   onAction: (action: BattleActionIntent) => void;
   opponentLabel: string;
   phase: 'active' | 'initial_selection' | 'replacement';
@@ -51,6 +61,7 @@ export function BattleActionPanel({
   idPrefix,
   inputBlocked = false,
   legalActions,
+  lockReason,
   onAction,
   opponentLabel,
   phase,
@@ -139,7 +150,11 @@ export function BattleActionPanel({
                   : 'Choose your action'}
           </h2>
         </div>
-        {busy ? <span className="battle-pending">Applying action…</span> : null}
+        {busy || lockReason ? (
+          <span className="battle-pending" role="status">
+            {lockReason ?? 'Applying action…'}
+          </span>
+        ) : null}
       </div>
 
       {phase === 'replacement' && currentActor ? (
@@ -299,10 +314,22 @@ export function BattleActionPanel({
                     };
                     const legal = isLegal(action);
                     const reasonId = `${idPrefix}-move-${move.id}-reason`;
+                    const effectivenessId = move.effectiveness
+                      ? `${idPrefix}-move-${move.id}-effectiveness`
+                      : undefined;
+                    const describedBy = [
+                      legal ? undefined : reasonId,
+                      effectivenessId,
+                    ]
+                      .filter(Boolean)
+                      .join(' ');
+                    const effectivenessDescription = move.effectiveness
+                      ? describeEffectiveness(move.effectiveness)
+                      : undefined;
                     return (
                       <li key={move.id}>
                         <button
-                          aria-describedby={legal ? undefined : reasonId}
+                          aria-describedby={describedBy || undefined}
                           aria-disabled={!legal || undefined}
                           className="battle-action-control"
                           disabled={busy || inputBlocked || !currentActor}
@@ -313,7 +340,17 @@ export function BattleActionPanel({
                         >
                           <span className="battle-action-control__heading">
                             <strong>{move.name}</strong>
-                            <span>{titleCase(move.moveType)}</span>
+                            <span className="battle-action-control__labels">
+                              <span>{titleCase(move.moveType)}</span>
+                              {move.effectiveness ? (
+                                <span
+                                  className={`battle-effectiveness battle-effectiveness--${move.effectiveness}`}
+                                  title={effectivenessDescription}
+                                >
+                                  {titleCase(move.effectiveness)}
+                                </span>
+                              ) : null}
+                            </span>
                           </span>
                           <span className="battle-action-control__detail">
                             <span className="battle-effect-list">
@@ -332,6 +369,11 @@ export function BattleActionPanel({
                               {move.powerCost} Power
                             </span>
                           </span>
+                          {effectivenessDescription && effectivenessId ? (
+                            <span className="sr-only" id={effectivenessId}>
+                              {effectivenessDescription}
+                            </span>
+                          ) : null}
                         </button>
                         {!legal ? (
                           <small id={reasonId}>
@@ -442,6 +484,9 @@ export function BattleCombatant({
   feedbackKey,
   feedbackText,
   feedbackTone,
+  isDimmed = false,
+  isEntering = false,
+  isResolving = false,
   visualSide,
 }: {
   creature: MatchCreature | null;
@@ -451,11 +496,14 @@ export function BattleCombatant({
   feedbackKey?: string;
   feedbackText?: string;
   feedbackTone?: BattleFeedbackTone;
+  isDimmed?: boolean;
+  isEntering?: boolean;
+  isResolving?: boolean;
   visualSide: 'cpu' | 'player';
 }) {
   return (
     <article
-      className={`combatant combatant--${visualSide}${isActing ? ' combatant--acting' : ''}${creature?.defeated ? ' combatant--defeated' : ''}`}
+      className={`combatant combatant--${visualSide}${isActing ? ' combatant--acting' : ''}${isDimmed ? ' combatant--dimmed' : ''}${isEntering ? ' combatant--entering' : ''}${creature?.defeated ? ' combatant--defeated' : ''}`}
       data-feedback={feedbackTone}
     >
       <div className="combatant__presence">
@@ -481,7 +529,7 @@ export function BattleCombatant({
         <div className="combatant__heading">
           <p className="combatant__side">
             {heading}
-            {isActing ? ' · Active turn' : ''}
+            {isActing ? (isResolving ? ' · Acting' : ' · Active turn') : ''}
           </p>
           {creature ? (
             <span>{titleCase(creature.affinity)} affinity</span>
@@ -551,9 +599,13 @@ export function BattleBench({
   return (
     <details className="battle-bench battle-rail-card">
       <summary>
-        <span>Your bench</span>
+        <span>Bench</span>
         <span>
-          {bench.length} Creatures <CaretDown size={16} aria-hidden="true" />
+          <span aria-hidden="true">{bench.length}</span>
+          <span className="sr-only">
+            {bench.length} Creature{bench.length === 1 ? '' : 's'}
+          </span>
+          <CaretDown size={16} aria-hidden="true" />
         </span>
       </summary>
       <ul aria-label="Your bench Creatures">
@@ -588,6 +640,7 @@ function CreatureDetailsPicture({ creature }: { creature: MatchCreature }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [open, setOpen] = useState(false);
   const titleId = useId();
+  const tilt = useCardTilt<HTMLButtonElement>();
   useEffect(() => {
     if (open) dialog.current?.showModal();
   }, [open]);
@@ -595,6 +648,7 @@ function CreatureDetailsPicture({ creature }: { creature: MatchCreature }) {
   return (
     <>
       <button
+        {...tilt}
         className="battle-picture-button"
         type="button"
         aria-label={`View ${creature.name} details`}
@@ -606,7 +660,7 @@ function CreatureDetailsPicture({ creature }: { creature: MatchCreature }) {
       {open &&
         createPortal(
           <dialog
-            className="battle-creature-dialog"
+            className={`battle-creature-dialog battle-creature-dialog--${creature.rarity ?? 'neutral'}`}
             ref={dialog}
             aria-labelledby={titleId}
             onClose={() => setOpen(false)}
@@ -624,7 +678,7 @@ function CreatureDetailsPicture({ creature }: { creature: MatchCreature }) {
                 </p>
               </div>
               <button
-                className="button button--quiet"
+                className="button button--quiet battle-creature-dialog__close"
                 type="button"
                 aria-label="Close Creature details"
                 onClick={() => dialog.current?.close()}
@@ -633,53 +687,103 @@ function CreatureDetailsPicture({ creature }: { creature: MatchCreature }) {
               </button>
             </header>
             <div className="battle-creature-dialog__body">
-              <div className="battle-creature-dialog__overview">
-                <BattleCreatureArtwork creature={creature} />
-                <div>
-                  {creature.defeated && <strong>Defeated</strong>}
-                  <p className="battle-creature-dialog__stat-label">
-                    Base stats
-                  </p>
-                  <dl className="battle-creature-dialog__stats">
-                    <div>
-                      <dt>HP</dt>
-                      <dd>{creature.maxHp}</dd>
-                    </div>
-                    <div>
-                      <dt>Power</dt>
-                      <dd>{creature.maxPower}</dd>
-                    </div>
-                  </dl>
+              <section
+                aria-label={`${creature.name} overview`}
+                className="battle-creature-dialog__overview"
+              >
+                <div className="battle-creature-dialog__artwork">
+                  <BattleCreatureArtwork creature={creature} />
                 </div>
-              </div>
-              {creature.activeModifiers.length ? (
-                <section className="battle-creature-dialog__effects">
-                  <h3>Active effects</h3>
-                  <ul>
-                    {creature.activeModifiers.map((modifier, index) => (
-                      <li key={index}>{describeActiveModifier(modifier)}</li>
+                <div className="battle-creature-dialog__summary">
+                  {creature.defeated ? (
+                    <strong className="battle-creature-dialog__defeated">
+                      Defeated
+                    </strong>
+                  ) : null}
+                  <section aria-labelledby={`${titleId}-stats`}>
+                    <h3 id={`${titleId}-stats`}>Base stats</h3>
+                    <dl
+                      aria-label="Base stats"
+                      className="battle-creature-dialog__stats"
+                    >
+                      <div>
+                        <dt>HP</dt>
+                        <dd>{creature.maxHp}</dd>
+                      </div>
+                      <div>
+                        <dt>Power</dt>
+                        <dd>{creature.maxPower}</dd>
+                      </div>
+                    </dl>
+                  </section>
+                  <section
+                    aria-labelledby={`${titleId}-effects`}
+                    className="battle-creature-dialog__effects"
+                  >
+                    <h3 id={`${titleId}-effects`}>Active effects</h3>
+                    {creature.activeModifiers.length ? (
+                      <ul>
+                        {creature.activeModifiers.map((modifier, index) => (
+                          <li key={index}>
+                            {describeActiveModifier(modifier)}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="battle-creature-dialog__empty">None</p>
+                    )}
+                  </section>
+                </div>
+              </section>
+
+              <section
+                aria-labelledby={`${titleId}-moves`}
+                className="battle-creature-dialog__moves-section"
+              >
+                <div className="battle-creature-dialog__section-heading">
+                  <h3 id={`${titleId}-moves`}>Moves</h3>
+                  <span>
+                    {creature.moves.length}{' '}
+                    {creature.moves.length === 1 ? 'move' : 'moves'}
+                  </span>
+                </div>
+                {creature.moves.length ? (
+                  <ul className="battle-creature-dialog__moves">
+                    {creature.moves.map((move) => (
+                      <li key={move.id}>
+                        <div>
+                          <strong>{move.name}</strong>
+                          <span>{titleCase(move.moveType)}</span>
+                        </div>
+                        <span className="battle-creature-dialog__move-cost">
+                          <Lightning
+                            aria-hidden="true"
+                            size={15}
+                            weight="bold"
+                          />
+                          {move.powerCost} Power
+                        </span>
+                        <div className="battle-creature-dialog__move-effects">
+                          {move.effects.length ? (
+                            move.effects.map((effect, index) => (
+                              <BattleEffectPreview
+                                effect={effect}
+                                key={index}
+                              />
+                            ))
+                          ) : (
+                            <span>Effect details unavailable</span>
+                          )}
+                        </div>
+                      </li>
                     ))}
                   </ul>
-                </section>
-              ) : (
-                <p className="battle-creature-dialog__empty">
-                  No active effects.
-                </p>
-              )}
-              <h3>Moves</h3>
-              <ul className="battle-creature-dialog__moves">
-                {creature.moves.map((move) => (
-                  <li key={move.id}>
-                    <strong>{move.name}</strong>
-                    <span>{move.powerCost} Power</span>
-                    <p>
-                      {move.effects.length
-                        ? move.effects.map(describeEffect).join(' · ')
-                        : 'Effect details unavailable.'}
-                    </p>
-                  </li>
-                ))}
-              </ul>
+                ) : (
+                  <p className="battle-creature-dialog__empty">
+                    No moves available.
+                  </p>
+                )}
+              </section>
             </div>
           </dialog>,
           document.body,
@@ -732,6 +836,18 @@ function sameIntent(left: BattleActionIntent, right: BattleActionIntent) {
   if ('powerCardId' in left && 'powerCardId' in right)
     return left.powerCardId === right.powerCardId;
   return false;
+}
+
+function describeEffectiveness(
+  effectiveness: NonNullable<MatchMove['effectiveness']>,
+) {
+  if (effectiveness === 'effective') {
+    return 'Strong matchup: this move deals increased damage.';
+  }
+  if (effectiveness === 'resisted') {
+    return 'Weak matchup: this move deals reduced damage.';
+  }
+  return 'Even matchup: this move deals its normal damage.';
 }
 
 function creatureLabel(creature: MatchCreature, index: number) {

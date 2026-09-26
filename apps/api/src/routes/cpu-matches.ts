@@ -280,8 +280,14 @@ const publicEffectSchema = {
 const publicMoveSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['id', 'name', 'moveType', 'powerCost'],
+  required: ['id', 'name', 'moveType', 'powerCost', 'effectiveness'],
   properties: {
+    effectiveness: {
+      anyOf: [
+        { type: 'string', enum: ['effective', 'neutral', 'resisted'] },
+        { type: 'null' },
+      ],
+    },
     id: { type: 'string' },
     name: { type: 'string' },
     moveType: {

@@ -611,7 +611,7 @@ describe('live lobby and battle experience', () => {
     expect(
       screen.getAllByText(/public battlefield and battle activity/i),
     ).toHaveLength(2);
-    expect(screen.queryByText('Your bench')).not.toBeInTheDocument();
+    expect(screen.queryByText('Bench')).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: /Forfeit battle/i }),
     ).not.toBeInTheDocument();
