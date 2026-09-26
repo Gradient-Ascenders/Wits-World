@@ -488,7 +488,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   if (requestStatus === 'loading' && match === null) {
     return (
       <PageLoadingState
-        title="Loading your Practice battle"
+        title="Loading your CPU battle"
         description="Restoring your cards and current turn…"
       />
     );
@@ -563,7 +563,7 @@ export default function CpuMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       <BattleShellHeader
         backHref="/matches"
         backLabel="Save and exit"
-        mode="Practice"
+        mode="CPU battle"
         opponentLabel="Against CPU"
         title={viewMatch.status === 'completed' ? phaseTitle : undefined}
         turnNumber={viewMatch.state.turnNumber}
@@ -1251,13 +1251,13 @@ function CompletedMatch({ match }: { match: CpuMatch }) {
             : 'Not returned',
         },
       ]}
-      mode="Practice"
+      mode="CPU battle"
       summary={
         playerWon
           ? 'You defeated the CPU. This result is saved in your battle history.'
           : 'The CPU won this battle. This result is saved in your battle history.'
       }
-      title={playerWon ? 'Practice victory' : 'Practice complete'}
+      title={playerWon ? 'CPU battle victory' : 'CPU battle complete'}
       titleId="completed-match-title"
       tone={playerWon ? 'victory' : 'defeat'}
     >

@@ -308,7 +308,7 @@ function StartMatchPanel({
       className={`battle-mode-card${activeMatch ? ' battle-mode-card--active' : ''}`}
     >
       <div className="battle-mode-card__intro">
-        <h2 id="cpu-battle-title">Practice</h2>
+        <h2 id="cpu-battle-title">CPU battle</h2>
         <p>Battle the computer with your selected deck.</p>
       </div>
 
@@ -328,7 +328,7 @@ function StartMatchPanel({
           </div>
           <div className="battle-mode-card__actions">
             <Link className="button" href={`/matches/${activeMatch.matchId}`}>
-              Resume Practice battle
+              Resume CPU battle
             </Link>
           </div>
         </>
@@ -348,7 +348,7 @@ function StartMatchPanel({
               onClick={() => void onStart(deck)}
               type="button"
             >
-              {isStarting ? 'Preparing battle…' : 'Start Practice battle'}
+              {isStarting ? 'Preparing battle…' : 'Start CPU battle'}
             </button>
             <Link className="button button--quiet" href="/decks">
               Review selected deck
@@ -466,7 +466,7 @@ function RecentResults({ state }: { state: RecentResultsState }) {
             <QuestMarker />
             Loading recent results
           </h3>
-          <p>Loading your latest Practice and Player Battles…</p>
+          <p>Loading your latest CPU and Player Battles…</p>
         </div>
       ) : state.status === 'unavailable' ? (
         <div
@@ -490,7 +490,7 @@ function RecentResults({ state }: { state: RecentResultsState }) {
           <p>
             {state.partial
               ? 'Showing no results until the remaining battle history can be checked.'
-              : 'Finish a Practice or Player Battle to see your result here.'}
+              : 'Finish a CPU or Player Battle to see your result here.'}
           </p>
         </div>
       ) : (

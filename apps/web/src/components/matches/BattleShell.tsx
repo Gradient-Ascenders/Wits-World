@@ -11,7 +11,7 @@ interface BattleShellHeaderProps {
   backLabel: string;
   description?: ReactNode;
   headingRef?: RefObject<HTMLHeadingElement | null>;
-  mode: 'Live Ranked' | 'Player Battle' | 'Practice';
+  mode: 'Live Ranked' | 'Player Battle' | 'CPU battle';
   opponentLabel: string;
   title?: string;
   turnNumber?: number;
@@ -103,7 +103,7 @@ interface BattleOutcomePanelProps {
   action: ReactNode;
   children?: ReactNode;
   facts?: Array<{ label: string; value: ReactNode }>;
-  mode: 'Live Ranked' | 'Player Battle' | 'Practice';
+  mode: 'Live Ranked' | 'Player Battle' | 'CPU battle';
   summary: ReactNode;
   title: string;
   tone: 'defeat' | 'neutral' | 'victory';

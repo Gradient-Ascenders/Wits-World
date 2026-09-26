@@ -111,9 +111,9 @@ describe('CPU match entry and history', () => {
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
 
     expect(
-      await screen.findByRole('heading', { name: 'Practice' }),
+      await screen.findByRole('heading', { name: 'CPU battle' }),
     ).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Practice' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'CPU battle' })).toBeVisible();
     expect(
       screen.getByRole('heading', { name: 'Player Battles' }),
     ).toBeVisible();
@@ -127,7 +127,7 @@ describe('CPU match entry and history', () => {
     const playerHeading = screen.getByRole('heading', {
       name: 'Player Battles',
     });
-    const cpuHeading = screen.getByRole('heading', { name: 'Practice' });
+    const cpuHeading = screen.getByRole('heading', { name: 'CPU battle' });
     expect(
       liveHeading.compareDocumentPosition(playerHeading) &
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -138,14 +138,12 @@ describe('CPU match entry and history', () => {
     ).toBeTruthy();
     expect(window.location.pathname).toBe('/matches');
     expect(
-      screen.queryByRole('button', { name: 'Start Practice battle' }),
+      screen.queryByRole('button', { name: 'Start CPU battle' }),
     ).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(String(fetchMock.mock.calls[1]![0])).toContain('/matches/history');
 
-    await user.click(
-      screen.getByRole('link', { name: 'Resume Practice battle' }),
-    );
+    await user.click(screen.getByRole('link', { name: 'Resume CPU battle' }));
     expect(window.location.pathname).toBe(`/matches/${MATCH_ID}`);
   });
 
@@ -188,7 +186,7 @@ describe('CPU match entry and history', () => {
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
 
     expect(
-      await screen.findByRole('link', { name: 'Resume Practice battle' }),
+      await screen.findByRole('link', { name: 'Resume CPU battle' }),
     ).toBeVisible();
     expect(screen.getByText('Some recent results unavailable')).toBeVisible();
   });
@@ -207,7 +205,7 @@ describe('CPU match entry and history', () => {
     );
 
     expect(
-      await screen.findByRole('link', { name: 'Resume Practice battle' }),
+      await screen.findByRole('link', { name: 'Resume CPU battle' }),
     ).toBeVisible();
     expect(screen.getByText('Loading recent results')).toBeVisible();
 
@@ -235,7 +233,7 @@ describe('CPU match entry and history', () => {
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
 
     expect(
-      await screen.findByRole('button', { name: 'Start Practice battle' }),
+      await screen.findByRole('button', { name: 'Start CPU battle' }),
     ).toBeEnabled();
     expect(screen.getByText('Loading recent results')).toBeVisible();
   });
@@ -254,7 +252,7 @@ describe('CPU match entry and history', () => {
 
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
     expect(
-      await screen.findByRole('heading', { name: 'Practice' }),
+      await screen.findByRole('heading', { name: 'CPU battle' }),
     ).toBeVisible();
     expect(
       screen.getByRole('link', { name: 'Open player battles' }),
@@ -262,9 +260,7 @@ describe('CPU match entry and history', () => {
     expect(screen.queryByText('Asynchronous PvP')).not.toBeInTheDocument();
     expect(screen.queryByText('Continue playing')).not.toBeInTheDocument();
     expect(screen.getAllByText(selected.name).length).toBeGreaterThan(0);
-    await user.click(
-      screen.getByRole('button', { name: 'Start Practice battle' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Start CPU battle' }));
 
     await waitFor(() =>
       expect(window.location.pathname).toBe(`/matches/${MATCH_ID}`),
@@ -294,7 +290,7 @@ describe('CPU match entry and history', () => {
       <MatchEntryPage apiBaseUrl={apiBaseUrl} />,
     );
     await user.click(
-      await screen.findByRole('button', { name: 'Start Practice battle' }),
+      await screen.findByRole('button', { name: 'Start CPU battle' }),
     );
     const oldSignal = fetchMock.mock.calls[3]![1]!.signal as AbortSignal;
 
@@ -326,7 +322,7 @@ describe('CPU match entry and history', () => {
 
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
     expect(
-      await screen.findByRole('heading', { name: 'Practice' }),
+      await screen.findByRole('heading', { name: 'CPU battle' }),
     ).toBeVisible();
     expect(screen.getByText('No deck selected')).toBeVisible();
     expect(screen.getByRole('link', { name: 'Choose deck' })).toHaveAttribute(
@@ -370,7 +366,7 @@ describe('CPU match entry and history', () => {
 
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(
-      await screen.findByRole('heading', { name: 'Practice' }),
+      await screen.findByRole('heading', { name: 'CPU battle' }),
     ).toBeVisible();
     expect(window.location.pathname).toBe('/matches');
     expect(fetchMock).toHaveBeenCalledTimes(4);
@@ -394,7 +390,7 @@ describe('CPU match entry and history', () => {
 
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
     await user.click(
-      await screen.findByRole('button', { name: 'Start Practice battle' }),
+      await screen.findByRole('button', { name: 'Start CPU battle' }),
     );
 
     expect(
@@ -1044,7 +1040,7 @@ describe('authoritative CPU battle page', () => {
     await user.click(screen.getByRole('button', { name: 'Confirm forfeit' }));
 
     expect(
-      await screen.findByRole('heading', { name: 'Practice complete' }),
+      await screen.findByRole('heading', { name: 'CPU battle complete' }),
     ).toBeVisible();
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
@@ -1071,7 +1067,7 @@ describe('authoritative CPU battle page', () => {
     await user.click(screen.getByRole('button', { name: 'Confirm forfeit' }));
 
     expect(
-      await screen.findByRole('heading', { name: 'Practice victory' }),
+      await screen.findByRole('heading', { name: 'CPU battle victory' }),
     ).toBeVisible();
     expect(screen.getByRole('status')).toHaveTextContent(
       'Battle completed. You won. The result is saved.',
@@ -1579,7 +1575,7 @@ describe('authoritative CPU battle page', () => {
     );
 
     expect(
-      await screen.findByRole('heading', { name: 'Practice victory' }),
+      await screen.findByRole('heading', { name: 'CPU battle victory' }),
     ).toBeVisible();
     expect(
       screen.queryByRole('button', { name: /Knowledge Strike/ }),
@@ -1604,7 +1600,7 @@ describe('authoritative CPU battle page', () => {
     );
     const { unmount } = renderMatchPage();
     expect(
-      await screen.findByRole('heading', { name: 'Practice victory' }),
+      await screen.findByRole('heading', { name: 'CPU battle victory' }),
     ).toBeVisible();
     unmount();
 
