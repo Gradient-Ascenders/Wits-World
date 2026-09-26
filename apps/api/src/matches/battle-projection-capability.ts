@@ -89,13 +89,22 @@ export function livePvpMatchForClient(
   match: LivePvpProjection,
   acceptsSwaps: boolean,
 ): LivePvpProjection {
-  if (acceptsSwaps || match.role === 'spectator') return match;
+  if (acceptsSwaps) return match;
+  const history = match.history.map(redactLiveSwapAction);
+  if (match.role === 'spectator') return { ...match, history };
   return {
     ...match,
     legalActions: match.legalActions.filter(
       (action) => action.type !== 'swap_creature',
     ),
+    history,
+    lastAction: redactLiveSwapAction(match.lastAction),
   };
+}
+
+function redactLiveSwapAction(value: unknown): unknown {
+  if (!isSwapResult(value)) return value;
+  return { ...(value as Record<string, unknown>), action: null };
 }
 
 function isSwapResult(value: unknown): boolean {

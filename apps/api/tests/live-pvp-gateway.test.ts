@@ -123,6 +123,11 @@ describe('live PvP WebSocket gateway', () => {
     { battleSwaps: '1', expectsSwap: true },
   ])('negotiates swap actions for the connection: %j', async (variant) => {
     const service = createService();
+    const swapHistory = {
+      type: 'participant_action',
+      sequence: 7,
+      action: { type: 'swap_creature', creatureId: MOVE_ID },
+    };
     service.redeemConnectionTicket.mockResolvedValue({
       accessId: '55555555-5555-4555-8555-555555555555',
       matchId: MATCH_ID,
@@ -136,6 +141,8 @@ describe('live PvP WebSocket gateway', () => {
         { type: 'swap_creature', creatureId: MOVE_ID },
         { type: 'use_move', moveId: MOVE_ID },
       ],
+      history: [swapHistory],
+      lastAction: swapHistory,
     });
     service.getCommittedEventMeta.mockResolvedValue(null);
 
@@ -167,8 +174,84 @@ describe('live PvP WebSocket gateway', () => {
             ]
           : [{ type: 'use_move', moveId: MOVE_ID }],
       );
+      expect(projection.match.history).toHaveLength(1);
+      expect(projection.match.history[0]).toMatchObject({ sequence: 7 });
+      expect(projection.match.lastAction).toMatchObject({ sequence: 7 });
+      if (variant.expectsSwap) {
+        expect(projection.match.history[0]).toMatchObject({
+          action: swapHistory.action,
+        });
+        expect(projection.match.lastAction).toMatchObject({
+          action: swapHistory.action,
+        });
+      } else {
+        expect(projection.match.history[0]).toMatchObject({ action: null });
+        expect(projection.match.lastAction).toMatchObject({ action: null });
+        expect(JSON.stringify(projection.match)).not.toContain('swap_creature');
+      }
     }
   });
+
+  it.each([
+    { battleSwaps: undefined, expectsSwap: false },
+    { battleSwaps: '1', expectsSwap: true },
+  ])(
+    'redacts spectator swap history by socket capability: %j',
+    async (variant) => {
+      const service = createService();
+      const swapHistory = {
+        type: 'participant_action',
+        sequence: 7,
+        action: { type: 'swap_creature', creatureId: MOVE_ID },
+      };
+      service.redeemConnectionTicket.mockResolvedValue({
+        accessId: '55555555-5555-4555-8555-555555555555',
+        matchId: MATCH_ID,
+        playerId: PLAYER_ID,
+        role: 'spectator',
+        participantGeneration: null,
+      });
+      service.getProjectionForConnection.mockResolvedValue({
+        ...spectatorProjection,
+        history: [swapHistory],
+      });
+      service.getCommittedEventMeta.mockResolvedValue(null);
+
+      const { gateway, connect } = await registerGateway(service);
+      openGateways.push(gateway);
+      const socket = new FakeSocket();
+      connect(socket, {
+        query: { ticket: 'opaque-ticket', battleSwaps: variant.battleSwaps },
+      } as unknown as FastifyRequest);
+      await flushAsyncWork();
+      await gateway.broadcastMatch(MATCH_ID, spectatorProjection.version);
+
+      const projections = messages(socket).filter(
+        (message) =>
+          typeof message === 'object' &&
+          message !== null &&
+          'type' in message &&
+          (message.type === 'connection.ready' ||
+            message.type === 'match.snapshot'),
+      ) as { match: LivePvpProjection }[];
+      expect(projections).toHaveLength(2);
+      for (const projection of projections) {
+        expect(projection.match.version).toBe(7);
+        expect(projection.match.history).toHaveLength(1);
+        expect(projection.match.history[0]).toMatchObject({ sequence: 7 });
+        if (variant.expectsSwap) {
+          expect(projection.match.history[0]).toMatchObject({
+            action: swapHistory.action,
+          });
+        } else {
+          expect(projection.match.history[0]).toMatchObject({ action: null });
+          expect(JSON.stringify(projection.match)).not.toContain(
+            'swap_creature',
+          );
+        }
+      }
+    },
+  );
 
   it('queues early client intent while asynchronous ticket redemption completes', async () => {
     const service = createService();

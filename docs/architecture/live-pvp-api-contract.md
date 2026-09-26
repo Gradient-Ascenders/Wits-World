@@ -232,8 +232,11 @@ The current HTTP client sends
 when reading a match. The current WebSocket client adds `battleSwaps=1` to
 the ticketed socket URL. Without the relevant opt-in, the server removes
 `swap_creature` from participant legal actions in HTTP and socket projections;
-it never changes the authoritative state. Spectator views have no legal
-actions. The WebSocket message `protocolVersion` remains 1 because the message
+it also redacts swap intent details from participant and spectator history and
+the participant's latest result. History entries stay in order with their
+original positions, so a committed turn does not disappear from an old
+client's timeline. The authoritative state is unchanged. Spectator views have
+no legal actions. The WebSocket message `protocolVersion` remains 1 because the message
 envelope is unchanged; the URL capability negotiates the action projection.
 
 Binary messages, malformed JSON, unsupported protocol versions, oversized
