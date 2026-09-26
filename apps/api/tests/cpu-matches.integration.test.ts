@@ -551,7 +551,22 @@ describe('CPU match API', () => {
                             activeModifiers: { type: 'array' },
                             moves: {
                               items: {
-                                properties: { effects: { type: 'array' } },
+                                properties: {
+                                  effects: { type: 'array' },
+                                  effectiveness: {
+                                    anyOf: [
+                                      {
+                                        type: 'string',
+                                        enum: [
+                                          'effective',
+                                          'neutral',
+                                          'resisted',
+                                        ],
+                                      },
+                                      { type: 'null' },
+                                    ],
+                                  },
+                                },
                               },
                             },
                           },

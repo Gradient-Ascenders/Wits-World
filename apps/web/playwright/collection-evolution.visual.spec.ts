@@ -79,6 +79,7 @@ for (const reducedMotion of [false, true]) {
             ownedCopyCount: sourceCopies.length,
             eligibleCopyCount: eligible,
             deckLockedCopyCount: sourceCopies.length - eligible,
+            tradeReservedCopyCount: 0,
             canEvolve: eligible >= 3,
             unavailableReason:
               eligible >= 3

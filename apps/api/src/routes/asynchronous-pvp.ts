@@ -37,12 +37,14 @@ const RESIGNATION_CONTRACT_MEDIA_TYPE =
   'application/vnd.wits-world.pvp.v2+json';
 const CANCELLATION_CONTRACT_MEDIA_TYPE =
   'application/vnd.wits-world.pvp.v3+json';
+const BATTLE_HISTORY_CONTRACT_MEDIA_TYPE =
+  'application/vnd.wits-world.pvp.v4+json';
 const pvpContractHeadersSchema = {
   type: 'object',
   properties: {
     accept: {
       type: 'string',
-      description: `Include ${CANCELLATION_CONTRACT_MEDIA_TYPE} to enable invitation cancellation, or ${RESIGNATION_CONTRACT_MEDIA_TYPE} for voluntary resignation only, without adding a non-safelisted CORS request header.`,
+      description: `Include ${BATTLE_HISTORY_CONTRACT_MEDIA_TYPE} to receive the participant-safe full battle history, ${CANCELLATION_CONTRACT_MEDIA_TYPE} for invitation cancellation, or ${RESIGNATION_CONTRACT_MEDIA_TYPE} for voluntary resignation only, without adding a non-safelisted CORS request header.`,
     },
   },
 } as const;
@@ -145,6 +147,17 @@ const actionResultSchema = {
     turnEnded: { type: 'boolean' },
   },
 } as const;
+const actionHistoryEntrySchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['sequence', 'turnNumber', 'createdAt', 'result'],
+  properties: {
+    sequence: { type: 'integer', minimum: 1 },
+    turnNumber: { type: 'integer', minimum: 1 },
+    createdAt: { type: 'string', format: 'date-time' },
+    result: actionResultSchema,
+  },
+} as const;
 const selfParticipantSchema = {
   type: 'object',
   additionalProperties: false,
@@ -224,6 +237,7 @@ const matchSchema = {
       },
     },
     legalActions: { type: 'array', items: pvpActionSchema },
+    history: { type: 'array', items: actionHistoryEntrySchema },
     lastAction: { anyOf: [actionResultSchema, { type: 'null' }] },
     outcome: { anyOf: [{ enum: ['win', 'loss'] }, { type: 'null' }] },
     completionReason: {
@@ -850,8 +864,10 @@ function registerMatchRoutes(
 }
 
 function matchEnvelope(match: AsyncPvpMatchView, request: FastifyRequest) {
+  const { history, ...legacyMatch } = match;
   return {
-    ...match,
+    ...legacyMatch,
+    ...(supportsPvpContract(request, 4) ? { history } : {}),
     ...(supportsPvpContract(request, 2)
       ? { canResign: match.status === 'active' }
       : {}),
@@ -877,17 +893,20 @@ function invitationEnvelope(
 
 function supportsPvpContract(
   request: FastifyRequest,
-  minimumVersion: 2 | 3,
+  minimumVersion: 2 | 3 | 4,
 ): boolean {
   const acceptedTypes =
     request.headers.accept
       ?.split(',')
       .map((range) => range.trim().split(';', 1)[0]?.toLowerCase()) ?? [];
-  return (
-    acceptedTypes.includes(CANCELLATION_CONTRACT_MEDIA_TYPE) ||
-    (minimumVersion === 2 &&
-      acceptedTypes.includes(RESIGNATION_CONTRACT_MEDIA_TYPE))
-  );
+  return acceptedTypes.some((mediaType) => {
+    if (mediaType === BATTLE_HISTORY_CONTRACT_MEDIA_TYPE) return true;
+    if (mediaType === CANCELLATION_CONTRACT_MEDIA_TYPE)
+      return minimumVersion <= 3;
+    return (
+      mediaType === RESIGNATION_CONTRACT_MEDIA_TYPE && minimumVersion === 2
+    );
+  });
 }
 
 function clientUpdateRequiredError(capability: string): ApiError {

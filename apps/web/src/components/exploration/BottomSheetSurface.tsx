@@ -31,6 +31,7 @@ interface BottomSheetSurfaceProps {
   onSnapChange: (snap: BottomSheetSnap) => void;
   panelRef: RefObject<HTMLElement | null>;
   snap: BottomSheetSnap;
+  sheetName?: string;
   view: string;
 }
 
@@ -103,6 +104,7 @@ export function BottomSheetSurface({
   onSnapChange,
   panelRef,
   snap,
+  sheetName = 'event',
   view,
 }: BottomSheetSurfaceProps) {
   const pointsRef = useRef<BottomSheetSnapPoints>(
@@ -297,10 +299,10 @@ export function BottomSheetSurface({
 
   const handleLabel =
     snap === 'peek'
-      ? 'Expand event sheet'
+      ? `Expand ${sheetName} sheet`
       : snap === 'medium'
-        ? 'Expand event sheet fully'
-        : 'Lower event sheet';
+        ? `Expand ${sheetName} sheet fully`
+        : `Lower ${sheetName} sheet`;
 
   return (
     <aside

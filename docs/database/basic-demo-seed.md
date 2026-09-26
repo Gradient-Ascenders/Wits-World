@@ -7,6 +7,8 @@ title: 'Load demo events and challenges'
 The Basic demo seed is deliberately separate from the reusable card catalogue.
 It creates the non-production event, challenge, event-state, and ordered-trail
 fixtures needed to demonstrate the Basic player journey.
+It also includes a placement-ready pool for the Author event-placement
+workspace.
 
 ## Commands
 
@@ -54,6 +56,14 @@ legacy `--seed-demo-event` release flag remains accepted as an alias for
 | Basic Demo - Expired Campus Event     | Published expired state                                             |
 | Basic Demo - Unpublished Campus Event | Unavailable/unpublished state                                       |
 | Campus Highlights Trail               | Three playable, ordered stops for trail progress and nearby testing |
+| Placement Demo events (6)             | Portable events for automatic placement preview and apply testing   |
+
+The six `Placement Demo` events run from 1 September 2026 through 31 December 2099. Each is published, has a deterministic five-question challenge, remains
+outside published trails, uses a 50-metre interaction radius, and has a
+controlled-policy portability approval for `placement-v1`. Together they give
+the placement planner enough eligible content to propose the policy target of
+six assignments. Creating a preview remains non-destructive; the assignments
+only become player-visible after an Author reviews and applies the plan.
 
 The active Great Hall coordinate is used for the reachable location claim. A
 clearly distant claim against that event demonstrates the too-far outcome. An
@@ -122,8 +132,9 @@ display content.
 
 The database integration suite verifies that a clean database can be migrated,
 seeded, and seeded again without duplicate fixture rows. It checks the event
-states, five-question challenge structure, card catalogue readiness, starter
-grant, Basic deck validation, reward catalogue, and CPU match fixture path.
+states, five-question challenge structure, placement-ready portable pool, card
+catalogue readiness, starter grant, Basic deck validation, reward catalogue,
+and CPU match fixture path.
 
 Do not run the Basic demo seed against production without an explicit release
 decision. Never include database URLs, credentials, access tokens, or player

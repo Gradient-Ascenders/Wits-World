@@ -1213,7 +1213,7 @@ describe('CPU match service', () => {
       name: 'Campus Scholar',
       rarity: 'epic',
       moves: expect.arrayContaining([
-        expect.objectContaining({ powerCost: 0 }),
+        expect.objectContaining({ effectiveness: 'neutral', powerCost: 0 }),
       ]),
       activeModifiers: [
         { percentage: 10, remainingTurns: 2 },

@@ -8,6 +8,7 @@ import {
   type PlacementEntry,
   type PlacementInput,
   type PlacementResult,
+  type PlacementValidation,
 } from './placement-planner.js';
 
 type Client = pg.PoolClient;
@@ -29,6 +30,7 @@ export interface PlacementPreview {
   entries: PlacementEntry[];
   zoneCounts: Record<string, number>;
   exceptions: string[];
+  validation: PlacementValidation;
 }
 
 interface StateRow extends pg.QueryResultRow {
@@ -42,6 +44,11 @@ interface StateRow extends pg.QueryResultRow {
   replacements_per_rotation: number;
   site_cooldown_buckets: number;
   preview_ttl_minutes: number;
+  maximum_pin_hours: number;
+  maximum_pause_hours: number;
+  maximum_exclusion_hours: number;
+  rotation_timezone: string;
+  rotation_local_time: string;
   rotation_bucket: string;
   next_boundary: Date;
   observed_at: Date;
@@ -145,6 +152,7 @@ export function createPlacementService(database: Pick<pg.Pool, 'connect'>) {
       entries: result.entries,
       zoneCounts: result.zoneCounts,
       exceptions: result.exceptions,
+      validation: result.validation,
     };
   }
 
@@ -301,6 +309,7 @@ export function createPlacementService(database: Pick<pg.Pool, 'connect'>) {
       entries: result.entries,
       zoneCounts: result.zoneCounts,
       exceptions: result.exceptions,
+      validation: result.validation,
     };
   }
 
@@ -994,7 +1003,21 @@ export function createPlacementService(database: Pick<pg.Pool, 'connect'>) {
         }>(
           `select event_id::text,site_id::text,zone_id::text,origin
              from public.event_placement_assignments where ends_at is null
-             order by zone_id,event_id`,
+            order by zone_id,event_id`,
+        );
+        const eventIds = [
+          ...new Set([
+            ...snapshot.input.events.map((event) => event.id),
+            ...assignments.rows.map((assignment) => assignment.event_id),
+          ]),
+        ];
+        const placementEvents = await client.query<{
+          id: string;
+          title: string;
+        }>(
+          `select id::text,title from public.events
+            where id = any($1::uuid[]) order by title,id`,
+          [eventIds],
         );
         const operations = await client.query<{
           last_applied_at: Date | null;
@@ -1029,7 +1052,15 @@ export function createPlacementService(database: Pick<pg.Pool, 'connect'>) {
           stateVersion: Number(snapshot.state.version),
           currentPlanId: snapshot.state.current_plan_id,
           targetCount: snapshot.input.policy.target,
-          policy: snapshot.input.policy,
+          policy: {
+            ...snapshot.input.policy,
+            previewTtlMinutes: snapshot.state.preview_ttl_minutes,
+            rotationTimezone: snapshot.state.rotation_timezone,
+            rotationLocalTime: snapshot.state.rotation_local_time,
+            maximumPinHours: snapshot.state.maximum_pin_hours,
+            maximumPauseHours: snapshot.state.maximum_pause_hours,
+            maximumExclusionHours: snapshot.state.maximum_exclusion_hours,
+          },
           nextRotationBoundary: snapshot.state.next_boundary.toISOString(),
           metrics: {
             targetAssignmentCount: snapshot.input.policy.target,
@@ -1073,6 +1104,7 @@ export function createPlacementService(database: Pick<pg.Pool, 'connect'>) {
             zoneId: row.zone_id,
             origin: row.origin,
           })),
+          events: placementEvents.rows,
         };
       });
     },
@@ -1118,6 +1150,9 @@ async function loadState(client: Client, lock = false): Promise<StateRow> {
             policy.mandatory_assignments_per_zone,
             policy.minimum_separation_metres,policy.replacements_per_rotation,
             policy.site_cooldown_buckets,policy.preview_ttl_minutes,
+            policy.maximum_pin_hours,policy.maximum_pause_hours,
+            policy.maximum_exclusion_hours,policy.rotation_timezone,
+            policy.rotation_local_time::text,
             ((now() at time zone policy.rotation_timezone) -
               (policy.rotation_local_time - time '00:00'))::date::text as rotation_bucket,
             (((((now() at time zone policy.rotation_timezone) -

@@ -12,6 +12,7 @@ import { CardWorkspace } from '../components/author/CardWorkspace';
 import { CampaignWorkspace } from '../components/author/CampaignWorkspace';
 import { AnalyticsWorkspace } from '../components/author/AnalyticsWorkspace';
 import { EventWorkspace } from '../components/author/EventWorkspace';
+import { EventPlacementWorkspace } from '../components/author/EventPlacementWorkspace';
 import { ReviewWorkspace } from '../components/author/ReviewWorkspace';
 import {
   authorPaths,
@@ -161,6 +162,13 @@ export default function AuthorConsolePage({
           <AnalyticsWorkspace
             apiBaseUrl={apiBaseUrl}
             getAccessToken={getAccessToken}
+          />
+        ) : route.section === 'placement' ? (
+          <EventPlacementWorkspace
+            apiBaseUrl={apiBaseUrl}
+            getAccessToken={getAccessToken}
+            mapFactory={mapFactory}
+            mapboxAccessToken={mapboxAccessToken}
           />
         ) : (
           <ReviewWorkspace

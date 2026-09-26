@@ -172,6 +172,7 @@ const settlementSchema = {
     'ratingAfter',
     'appliedDelta',
     'settledAt',
+    'territory',
   ],
   properties: {
     matchId: uuid,
@@ -195,6 +196,44 @@ const settlementSchema = {
     ratingAfter: { anyOf: [{ type: 'integer' }, { type: 'null' }] },
     appliedDelta: { anyOf: [{ type: 'integer' }, { type: 'null' }] },
     settledAt: nullableDate,
+    territory: {
+      anyOf: [
+        {
+          type: 'object',
+          additionalProperties: false,
+          required: [
+            'zoneId',
+            'zoneName',
+            'outcome',
+            'influencePoints',
+            'exclusionReason',
+          ],
+          properties: {
+            zoneId: uuid,
+            zoneName: { type: 'string' },
+            outcome: {
+              enum: ['pending', 'lost', 'accepted', 'excluded'],
+            },
+            influencePoints: { type: 'integer', minimum: 0 },
+            exclusionReason: {
+              anyOf: [
+                {
+                  enum: [
+                    'daily_cap_reached',
+                    'placement_matches_remaining',
+                    'player_unavailable',
+                    'result_not_eligible',
+                    'zone_unavailable',
+                  ],
+                },
+                { type: 'null' },
+              ],
+            },
+          },
+        },
+        { type: 'null' },
+      ],
+    },
   },
 } as const;
 const pageQuerySchema = {

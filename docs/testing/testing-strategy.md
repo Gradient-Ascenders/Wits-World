@@ -247,6 +247,22 @@ evidence because it is substantially faster than the normal local test target.
 A passing automated suite does not replace physical field validation of campus
 boundaries or reported-accuracy behaviour.
 
+Issue `#271` adds the Player-facing read boundary. Web client tests reject
+unexpected fields, malformed polygons, open rings, and out-of-range coordinates;
+component tests cover lazy territory loading, the map-independent zone list,
+selection/focus synchronisation, owner and anonymous standings presentation,
+viewer-only influence, ownership history, and partial-detail recovery. Map
+provider tests cover GeoJSON source/layer updates, region selection, selected
+styling data, and bounded camera fitting. Ranked read/route tests cover the
+authenticated participant's accepted, lost, pending, excluded, and ordinary
+null contribution results, including the mapping from private exclusion reasons
+to the smaller player-safe contract.
+
+Responsive browser inspection at desktop and 390px mobile widths remains a
+separate visual-acceptance gate. Automated tests do not establish that the
+production Mapbox style, label density, real reviewed zone geometry, or physical
+campus boundaries are visually acceptable in the field.
+
 ## Commands and data isolation
 
 The normal repository quality set is:
@@ -323,6 +339,15 @@ conformance suite. Those qualities require reviewed manual evidence at the
 release boundary. A passing component or E2E suite must not be reported as full
 accessibility acceptance.
 
+Issue `#265` adds focused placement-planner and Author-route assertions plus Web
+workspace tests for Author gating, server-provided coverage and separation
+diagnostics, current/proposed/excluded/overridden rendering, the semantic table
+fallback, confirmations, apply and override mutations, rollback, stale-state
+refresh, map failure, loading/error/empty states, and keyboard activation. CSS
+breakpoints keep the policy and controls before the map on narrow screens; the
+real-device, screen-reader, contrast, and deployed Mapbox checks remain manual
+release evidence.
+
 ## Manual and field evidence
 
 Manual evidence should identify the commit or deployment, date, tester, device
@@ -391,6 +416,26 @@ For normal development, the focused live-PvP database file may be run against
 database runner remains the regression gate in PR CI. A successful CI run is
 test-environment evidence only; it does not establish that migration `0044` or
 its cleanup primitive was executed in production.
+
+The live Web experience adds `apps/web/tests/live-client.test.ts` and
+`apps/web/tests/live-pages.test.tsx`. Their focused coverage verifies the closed
+participant/spectator parsers, authentication and requested-role handling,
+spectator private-field rejection, ranked queue entry, private match-link entry,
+no-active-season gating, visible ranked conflicts, server-returned turn ownership
+and legal actions, immediate pending locks, duplicate suppression, stale-version
+reconciliation, transport recovery through a fresh snapshot, opponent dropout,
+authoritative timeout/abandonment terminal state, and a visibly read-only
+spectator surface. The focused Playwright scenario checks the disabled
+no-season lobby and participant/spectator battle surfaces at mobile and desktop
+widths without horizontal overflow. Existing CPU and asynchronous PvP tests
+remain in the focused regression set to guard Basic and Intermediate behavior.
+
+These deterministic Web tests do not prove a deployed WebSocket/proxy path,
+multi-instance fan-out, Auth0 tenant behavior, real-device accessibility, or
+visual acceptance. The database suite still requires
+`RUN_DATABASE_INTEGRATION_TESTS=true` and the existing disposable
+`TEST_DATABASE_URL`; a skipped or unreachable database is reported as such and
+does not count as passing integration evidence.
 
 ## Card-trade persistence verification
 

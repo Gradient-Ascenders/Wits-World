@@ -59,9 +59,11 @@ beforeEach(async () => {
       currentActor: 'self',
       turnDeadline: '2026-09-17T22:01:00.000Z',
       consecutiveTimeouts: { self: 0, opponent: 1 },
+      selfSide: 'playerOne',
       self: {},
       opponent: {},
       legalActions: [],
+      history: [],
       lastAction: null,
       outcome: null,
       completionReason: null,
@@ -118,6 +120,7 @@ describe('live PvP HTTP routes', () => {
       role: 'participant',
       version: 4,
       requestId: expect.any(String),
+      serverTime: expect.any(String),
     });
   });
 

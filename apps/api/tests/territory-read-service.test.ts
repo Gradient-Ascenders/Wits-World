@@ -70,5 +70,14 @@ describe('territory read service time sampling', () => {
     for (const statement of timeSensitive) {
       expect(statement.match(/clock_timestamp\(\)/g)).toHaveLength(1);
     }
+
+    const standingsStatements = statements.filter((statement) =>
+      statement.includes('from private.territory_influence_contributions'),
+    );
+    expect(standingsStatements).toHaveLength(2);
+    for (const statement of standingsStatements) {
+      expect(statement).toContain('cross join current_window bounds');
+      expect(statement).not.toContain('current_window window');
+    }
   });
 });

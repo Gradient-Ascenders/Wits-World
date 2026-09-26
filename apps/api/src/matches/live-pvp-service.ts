@@ -80,9 +80,11 @@ export interface LivePvpParticipantProjection {
   currentActor: 'self' | 'opponent' | null;
   turnDeadline: string | null;
   consecutiveTimeouts: { self: number; opponent: number };
+  selfSide: 'playerOne' | 'playerTwo';
   self: PublicSelfParticipant;
   opponent: PublicOpponentParticipant;
   legalActions: readonly LiveClientAction[];
+  history: readonly unknown[];
   lastAction: unknown | null;
   outcome: 'win' | 'loss' | null;
   completionReason: LiveCompletionReason | null;
@@ -395,15 +397,12 @@ export function createLivePvpService(
           (candidate) => candidate.player_id === input.playerId,
         );
         if (participant) {
-          return projectParticipant(
-            context,
-            participant,
-            await loadLatestPublicResult(
-              client,
-              input.matchId,
-              context.match.version,
-            ),
+          const history = await loadPublicHistory(
+            client,
+            input.matchId,
+            context.match.version,
           );
+          return projectParticipant(context, participant, history);
         }
         if (context.match.status !== 'active') throw matchNotFound();
         return projectSpectator(
@@ -436,15 +435,12 @@ export function createLivePvpService(
           ) {
             throw connectionSuperseded();
           }
-          return projectParticipant(
-            context,
-            participant,
-            await loadLatestPublicResult(
-              client,
-              connection.matchId,
-              context.match.version,
-            ),
+          const history = await loadPublicHistory(
+            client,
+            connection.matchId,
+            context.match.version,
           );
+          return projectParticipant(context, participant, history);
         }
         return projectSpectator(
           context,
@@ -1477,23 +1473,6 @@ async function loadPresence(
   };
 }
 
-async function loadLatestPublicResult(
-  client: LivePvpDatabaseClient,
-  matchId: string,
-  throughVersion: number,
-): Promise<unknown | null> {
-  const result = await client.query<PublicActionRow>(
-    `select public_result
-       from public.live_pvp_match_actions
-      where match_id = $1::uuid
-        and committed_version <= $2
-      order by sequence desc
-      limit 1`,
-    [matchId, throughVersion],
-  );
-  return result.rows[0]?.public_result ?? null;
-}
-
 async function loadPublicHistory(
   client: LivePvpDatabaseClient,
   matchId: string,
@@ -1513,7 +1492,7 @@ async function loadPublicHistory(
 function projectParticipant(
   context: LockedMatchContext,
   viewer: ParticipantRow,
-  lastAction: unknown | null,
+  history: readonly unknown[],
 ): LivePvpParticipantProjection {
   const viewerSide = engineSide(viewer.participant_side);
   const opponentRow = context.participants.find(
@@ -1549,6 +1528,8 @@ function projectParticipant(
       self: viewer.consecutive_timeout_count,
       opponent: opponentRow.consecutive_timeout_count,
     },
+    selfSide:
+      viewer.participant_side === 'player_one' ? 'playerOne' : 'playerTwo',
     self: {
       playerName: viewer.player_name ?? 'Deleted player',
       creatures: self.creatures.map(publicCreature),
@@ -1560,7 +1541,8 @@ function projectParticipant(
     },
     opponent: opponentProjection(opponentRow, opponent),
     legalActions,
-    lastAction,
+    history,
+    lastAction: history.at(-1) ?? null,
     outcome: viewer.outcome,
     completionReason: context.match.completion_reason,
     startedAt: context.match.started_at.toISOString(),

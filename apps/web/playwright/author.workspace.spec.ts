@@ -70,7 +70,7 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
     page.getByRole('heading', { level: 3, name: 'Great Hall Discovery' }),
   ).toBeVisible();
   await expect(page.getByLabel('Event title')).toHaveCount(0);
-  await expect(page.getByText('Configured · 75 m radius')).toBeVisible();
+  await expect(page.getByText(/75 m radius/)).toBeVisible();
 
   await page.getByRole('link', { name: 'Edit event' }).click();
   await expect(page).toHaveURL(`/author/events/${EVENT_A}/edit`);
@@ -83,7 +83,7 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
   await page.getByLabel('Event title').fill('Great Hall Discovery revised');
 
   await page.getByRole('link', { name: /MSL Open Day/u }).click();
-  const dirtyDialog = page.getByRole('alertdialog', {
+  const dirtyDialog = page.getByRole('dialog', {
     name: 'Discard unsaved changes?',
   });
   await expect(dirtyDialog).toBeVisible();
@@ -122,15 +122,11 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
   );
   await page.reload();
 
-  await page.getByRole('link', { name: 'Challenge' }).click();
-  await expect(page).toHaveURL(`/author/events/${EVENT_A}/challenge`);
-  await expect(
-    page.getByRole('heading', { name: 'Challenge readiness' }),
-  ).toBeVisible();
-  await expect(page.getByText('2 of 3 requirements ready.')).toBeVisible();
-  await expect(page.getByText('Publication blocked')).toBeVisible();
+  await expect(page).toHaveURL(`/author/events/${EVENT_A}`);
+  await expect(page.getByRole('heading', { name: 'Challenge' })).toBeVisible();
+  await expect(page.getByText(/Reward ready/)).toBeVisible();
 
-  await page.getByRole('button', { name: 'Publish event' }).click();
+  await page.getByRole('button', { name: 'Publish event package' }).click();
   const publicationError = page.getByText(
     'The server still requires one published challenge.',
   );
@@ -142,7 +138,7 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
   ).toBeFocused();
   const errorBox = await publicationError.boundingBox();
   const publishBox = await page
-    .getByRole('button', { name: 'Publish event' })
+    .getByRole('button', { name: 'Publish event package' })
     .boundingBox();
   expect(errorBox).not.toBeNull();
   expect(publishBox).not.toBeNull();
@@ -154,23 +150,21 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
 
   state.rejectEventPublication = false;
   await page.reload();
-  await expect(
-    page.getByRole('heading', { name: 'Challenge readiness' }),
-  ).toBeVisible();
-  await page.getByRole('button', { name: 'Publish event' }).click();
+  await expect(page.getByRole('heading', { name: 'Challenge' })).toBeVisible();
+  await page.getByRole('button', { name: 'Publish event package' }).click();
   await expect(
     page.getByText(
       'Event published and available to the player API according to its active times.',
     ),
   ).toBeFocused();
   await page.goBack();
-  await expect(page).toHaveURL(`/author/events/${EVENT_A}/challenge`);
+  await expect(page).toHaveURL(`/author/events/${EVENT_A}`);
   await page.goForward();
   await expect(page).toHaveURL(`/author/events/${EVENT_A}`);
 
   const retireButton = page.getByRole('button', { name: 'Retire event' });
   await retireButton.click();
-  const retirementDialog = page.getByRole('alertdialog', {
+  const retirementDialog = page.getByRole('dialog', {
     name: 'Retire Great Hall Discovery revised?',
   });
   await expect(
@@ -223,15 +217,8 @@ test('mobile Event and Question routes use list to detail to editor views', asyn
   ).toBeVisible();
   await expectNoHorizontalOverflow(page);
   const existingEventEditorHeight = await documentHeight(page);
-  await page.getByRole('link', { name: 'Event overview' }).click();
-
-  await page
-    .getByRole('navigation', { name: 'Great Hall Discovery sections' })
-    .getByRole('link', { name: 'Questions' })
-    .click();
-  await expect(page).toHaveURL(
-    `/author/events/${EVENT_A}/challenges/${CHALLENGE_A}/questions`,
-  );
+  await page.getByRole('link', { name: 'Event', exact: true }).click();
+  await expect(page).toHaveURL(`/author/events/${EVENT_A}`);
   await expect(
     page.getByRole('link', { name: /Where is the Great Hall/u }),
   ).toBeVisible();
@@ -252,7 +239,7 @@ test('mobile Event and Question routes use list to detail to editor views', asyn
     .getByLabel('Question prompt')
     .fill('Where is the Wits Great Hall?');
   await page.getByRole('link', { name: 'Question detail' }).click();
-  const questionDirtyDialog = page.getByRole('alertdialog', {
+  const questionDirtyDialog = page.getByRole('dialog', {
     name: 'Discard unsaved changes?',
   });
   await expect(questionDirtyDialog).toContainText(
@@ -289,7 +276,7 @@ test('mobile Event and Question routes use list to detail to editor views', asyn
     .getByRole('navigation', { name: 'Author sections' })
     .getByRole('link', { name: 'Events' })
     .click();
-  await expect(page.getByRole('alertdialog')).toContainText(
+  await expect(page.getByRole('dialog')).toContainText(
     'unsaved question draft changes',
   );
   await page.getByRole('button', { name: 'Discard changes' }).click();
@@ -304,6 +291,15 @@ test('mobile Event and Question routes use list to detail to editor views', asyn
 
   await page.getByLabel('Event title').fill('Library Lawn Trail');
   await page.getByLabel('Description (optional)').fill('A new Author draft.');
+  const automaticPlacement = page.getByRole('checkbox', {
+    name: /Automatic placement/u,
+  });
+  await automaticPlacement.check();
+  await expect(
+    page.getByText('Location will be assigned automatically'),
+  ).toBeVisible();
+  await expect(page.getByText('Event location')).toHaveCount(0);
+  await automaticPlacement.uncheck();
   await page.getByLabel('Latitude').fill('-26.1908');
   await page.getByLabel('Longitude').fill('28.0305');
   await page.getByLabel('Radius (metres)').fill('60');
@@ -340,18 +336,15 @@ test('ordering authoring and player reordering work at desktop and mobile widths
   const consoleErrors = monitorConsoleErrors(page);
 
   await page.setViewportSize({ height: 800, width: 1280 });
-  await page.goto(`/author/events/${EVENT_A}/challenge`);
-  await page.getByLabel('New challenge format').selectOption('ordering');
+  state.challenges = [];
+  state.questions = [];
+  await page.goto(`/author/events/${EVENT_A}`);
+  await page.getByLabel('Format').selectOption('ordering');
   await page.getByRole('button', { name: 'Create challenge' }).click();
   await expect(
     page.getByText('Draft ordering challenge associated with this event.'),
   ).toBeFocused();
-  await expect(page.getByRole('heading', { name: 'Ordering' })).toBeVisible();
-
-  await page
-    .getByRole('navigation', { name: 'Great Hall Discovery sections' })
-    .getByRole('link', { name: 'Questions' })
-    .click();
+  await expect(page.getByText('Ordering · draft')).toBeVisible();
   await page.getByRole('link', { name: 'New question' }).click();
   await page.getByLabel('Question prompt').fill('Order these campus eras.');
   await page.getByRole('button', { name: 'Create draft question' }).click();
@@ -700,7 +693,7 @@ test('Event location authoring is map-first and synchronized at responsive width
         .getByRole('link', { name: 'Events' })
         .click();
       await expect(page).toHaveURL('/author/events');
-      await expect(page.getByRole('alertdialog')).toHaveCount(0);
+      await expect(page.getByRole('dialog')).toHaveCount(0);
       await page.goto('/author/events/new');
       await expect(map).toBeVisible();
     }
@@ -771,7 +764,7 @@ test('Event location authoring is map-first and synchronized at responsive width
       .getByRole('navigation', { name: 'Author sections' })
       .getByRole('link', { name: 'Events' })
       .click();
-    const dirtyDialog = page.getByRole('alertdialog', {
+    const dirtyDialog = page.getByRole('dialog', {
       name: 'Discard unsaved changes?',
     });
     await expect(dirtyDialog).toContainText('unsaved event draft changes');
@@ -839,8 +832,8 @@ test('existing Event location focuses its saved point, supports dragging, and ha
   );
   await expectNoHorizontalOverflow(page);
 
-  await page.getByRole('link', { name: 'Event overview' }).click();
-  const dirtyDialog = page.getByRole('alertdialog', {
+  await page.getByRole('link', { name: 'Event', exact: true }).click();
+  const dirtyDialog = page.getByRole('dialog', {
     name: 'Discard unsaved changes?',
   });
   await dirtyDialog.getByRole('button', { name: 'Discard changes' }).click();
@@ -1026,7 +1019,7 @@ test('Card catalogue uses filtered master detail and concise real-card read-only
   await cardCatalogue.getByLabel('Rarity').selectOption('all');
   await cardCatalogue.locator('.author-filter-menu > summary').click();
   await page.getByRole('link', { name: /^Four Move Ibex/u }).click();
-  const dirtyDialog = page.getByRole('alertdialog', {
+  const dirtyDialog = page.getByRole('dialog', {
     name: 'Discard unsaved changes?',
   });
   await expect(dirtyDialog).toContainText('unsaved card draft changes');
@@ -1214,6 +1207,140 @@ test('tablet and wide workspaces preserve loading, error, empty and deep-link st
   expect(consoleErrors).toEqual([]);
 });
 
+test('placement workspace stages preview, campus map, and secondary details across viewports', async ({
+  page,
+}, testInfo) => {
+  const authorState = await installAuthorApi(page);
+  const consoleErrors = monitorConsoleErrors(page);
+
+  await page.setViewportSize({ height: 1000, width: 1440 });
+  await page.goto('/author/placement');
+  await expect(
+    page.getByRole('heading', { name: 'Event placement' }),
+  ).toBeVisible();
+  const desktopMapSurface = (await page
+    .locator('.placement-map .campus-map')
+    .boundingBox())!;
+  const desktopPreview = (await page
+    .getByRole('complementary', {
+      name: 'Preview and validate placement changes',
+    })
+    .boundingBox())!;
+  expect(Math.abs(desktopMapSurface.y - desktopPreview.y)).toBeLessThanOrEqual(
+    1,
+  );
+  await expect(
+    page.getByRole('button', { name: 'Reset map bearing and pitch' }),
+  ).toBeHidden();
+  await expect(
+    page.getByRole('table', { name: 'Current and proposed event placements' }),
+  ).toBeVisible();
+  await expect(page.getByRole('table', { name: 'Coverage zones' })).toHaveCount(
+    0,
+  );
+  await page.getByRole('tab', { name: 'Coverage & sites' }).click();
+  await expect(
+    page.getByRole('table', { name: 'Coverage zones' }),
+  ).toBeVisible();
+  await page.getByRole('tab', { name: 'Changes' }).click();
+  await expectNoHorizontalOverflow(page);
+
+  const preview = page.getByRole('button', {
+    name: 'Create coverage preview',
+  });
+  authorState.placementPreviewDelayMs = 800;
+  await preview.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.placement-preview__loader')).toHaveCount(2);
+  await page.screenshot({
+    path: testInfo.outputPath('placement-loading.png'),
+    fullPage: true,
+  });
+  await expect(page.getByText('Review exceptions')).toBeVisible();
+  await expect(page.getByText('Plan needs review')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Review and apply' }),
+  ).toBeFocused();
+  const policyDetails = page.getByText(/separation or policy details/u);
+  await expect(policyDetails).toBeVisible();
+  await policyDetails.click();
+  await expect(
+    page.getByText(/cannot accept a remaining event/u),
+  ).toBeVisible();
+  await policyDetails.click();
+  await page.screenshot({
+    path: testInfo.outputPath('placement-desktop.png'),
+    fullPage: true,
+  });
+  const placementDetails = page.getByRole('region', {
+    name: 'Placement details',
+  });
+  await placementDetails.scrollIntoViewIfNeeded();
+  const scrolledPreview = (await page
+    .getByRole('complementary', {
+      name: 'Preview and validate placement changes',
+    })
+    .boundingBox())!;
+  const scrolledDetails = (await placementDetails.boundingBox())!;
+  expect(scrolledPreview.y + scrolledPreview.height).toBeLessThanOrEqual(
+    scrolledDetails.y + 1,
+  );
+
+  await page.setViewportSize({ height: 900, width: 768 });
+  await page.reload();
+  const tabletRail = (await page
+    .getByRole('complementary', {
+      name: 'Preview and validate placement changes',
+    })
+    .boundingBox())!;
+  const tabletMap = (await page
+    .getByRole('region', { name: /Author event-placement map/u })
+    .boundingBox())!;
+  const tabletDetails = (await page
+    .getByRole('region', { name: 'Placement details' })
+    .boundingBox())!;
+  expect(tabletRail.y).toBeLessThan(tabletMap.y);
+  expect(tabletMap.y).toBeLessThan(tabletDetails.y);
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    path: testInfo.outputPath('placement-tablet.png'),
+    fullPage: true,
+  });
+
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.reload();
+  await expect(
+    page.getByRole('heading', { name: 'Event placement' }),
+  ).toBeVisible();
+  const controls = (await page
+    .getByRole('complementary', {
+      name: 'Preview and validate placement changes',
+    })
+    .boundingBox())!;
+  const map = (await page
+    .getByRole('region', { name: /Author event-placement map/u })
+    .boundingBox())!;
+  const details = (await page
+    .getByRole('region', { name: 'Placement details' })
+    .boundingBox())!;
+  expect(controls.y).toBeLessThan(map.y);
+  expect(map.y).toBeLessThan(details.y);
+  await expect(
+    page.getByRole('button', { name: 'Create coverage preview' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Create coverage preview' }).click();
+  await expect(page.getByText('Plan needs review')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Review and apply' }),
+  ).toBeFocused();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    path: testInfo.outputPath('placement-mobile.png'),
+    fullPage: true,
+  });
+  expect(consoleErrors).toEqual([]);
+});
+
 test('author save controls follow Active times in the form', async ({
   page,
 }) => {
@@ -1298,6 +1425,7 @@ interface AuthorApiState {
   failEvents: boolean;
   orderingCompleted: boolean;
   orderingSubmissions: unknown[];
+  placementPreviewDelayMs: number;
   questions: AuthorQuestion[];
   rejectEventPublication: boolean;
   trails: AuthorTrail[];
@@ -1313,6 +1441,7 @@ async function installAuthorApi(page: Page): Promise<AuthorApiState> {
     failEvents: false,
     orderingCompleted: false,
     orderingSubmissions: [],
+    placementPreviewDelayMs: 0,
     questions: authorQuestions(),
     rejectEventPublication: true,
     trails: authorTrails(),
@@ -1337,6 +1466,41 @@ async function installAuthorApi(page: Page): Promise<AuthorApiState> {
         playerNameSetupRequired: false,
         requestId: 'request-current-player',
         role: 'author',
+      });
+      return;
+    }
+
+    if (path === '/author/event-placement' && method === 'GET') {
+      await json(route, placementStateFixture());
+      return;
+    }
+    if (path === '/author/event-placement/history' && method === 'GET') {
+      await json(route, {
+        plans: [
+          {
+            assignmentCount: 2,
+            createdAt: '2026-09-24T02:00:00.000Z',
+            failureCode: null,
+            planId: uuid('4', 2),
+            policyVersion: 'placement-v1',
+            rotationBucket: '2026-09-24',
+            status: 'applied',
+            trigger: 'scheduled',
+          },
+        ],
+        requestId: 'request-placement-history',
+      });
+      return;
+    }
+    if (path === '/author/event-placement/previews' && method === 'POST') {
+      if (state.placementPreviewDelayMs > 0) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, state.placementPreviewDelayMs),
+        );
+      }
+      await json(route, {
+        plan: placementPlanFixture(),
+        requestId: 'request-placement-preview',
       });
       return;
     }
@@ -1491,7 +1655,7 @@ async function installAuthorApi(page: Page): Promise<AuthorApiState> {
     }
 
     const eventLifecycle = path.match(
-      /^\/author\/events\/([^/]+)\/(submit|approve|return|publish|retire)$/u,
+      /^\/author\/events\/([^/]+)\/(?:package\/)?(submit|approve|return|publish|retire)$/u,
     );
     if (eventLifecycle && method === 'POST') {
       const eventId = eventLifecycle[1]!;
@@ -1891,6 +2055,7 @@ function eventFixture(
 ): AuthorEvent {
   return {
     ...lifecycleMetadata(authoringStatus),
+    automaticPlacement: false,
     authoringStatus,
     createdAt: '2026-08-01T08:00:00.000Z',
     description: `${title} author fixture.`,
@@ -2167,6 +2332,179 @@ function replaceById<T>(items: T[], next: T, getId: (item: T) => string) {
   const index = items.findIndex((item) => getId(item) === getId(next));
   if (index === -1) items.push(next);
   else items.splice(index, 1, next);
+}
+
+function placementStateFixture() {
+  const zoneEast = uuid('1', 101);
+  const zoneWest = uuid('1', 102);
+  const siteHall = uuid('2', 101);
+  const siteLibrary = uuid('2', 102);
+  return {
+    assignments: [
+      {
+        eventId: EVENT_A,
+        origin: 'automatic',
+        siteId: siteHall,
+        zoneId: zoneEast,
+      },
+    ],
+    currentPlanId: uuid('4', 1),
+    events: [
+      { id: EVENT_A, title: 'Great Hall Discovery' },
+      { id: EVENT_B, title: 'Library collections' },
+    ],
+    metrics: {
+      activeAssignmentCount: 1,
+      activeZoneCount: 2,
+      lastAppliedAt: '2026-09-24T02:00:00.000Z',
+      lastFailureAt: null,
+      lastFailureCode: null,
+      servedZoneCount: 1,
+      targetAssignmentCount: 6,
+      unservedZoneCount: 1,
+    },
+    nextRotationBoundary: '2026-09-26T02:00:00.000Z',
+    overrides: [
+      {
+        eventId: EVENT_B,
+        expiresAt: '2026-09-27T02:00:00.000Z',
+        id: uuid('5', 1),
+        kind: 'pin',
+        siteId: siteLibrary,
+      },
+    ],
+    policy: {
+      cooldownBuckets: 2,
+      id: 'placement-v1',
+      mandatoryPerZone: 1,
+      maximumExclusionHours: 720,
+      maximumPauseHours: 168,
+      maximumPinHours: 168,
+      preferredPerZone: 2,
+      previewTtlMinutes: 15,
+      replacements: 2,
+      rotationLocalTime: '04:00:00',
+      rotationTimezone: 'Africa/Johannesburg',
+      separationMetres: 150,
+      target: 6,
+    },
+    policyVersion: 'placement-v1',
+    requestId: 'request-placement-state',
+    rotationBucket: '2026-09-25',
+    sites: [
+      {
+        excluded: false,
+        id: siteHall,
+        latitude: -26.192,
+        longitude: 28.0304,
+        maximumRadiusMetres: 75,
+        name: 'Great Hall',
+        status: 'active',
+        zoneId: zoneEast,
+      },
+      {
+        excluded: true,
+        id: siteLibrary,
+        latitude: -26.1907,
+        longitude: 28.0293,
+        maximumRadiusMetres: 60,
+        name: 'William Cullen Library',
+        status: 'active',
+        zoneId: zoneWest,
+      },
+    ],
+    stateVersion: 4,
+    zones: [
+      {
+        geometry: placementPolygon(28.029, -26.193),
+        id: zoneEast,
+        key: 'east_campus',
+        name: 'East Campus',
+        status: 'active',
+      },
+      {
+        geometry: placementPolygon(28.026, -26.193),
+        id: zoneWest,
+        key: 'west_campus',
+        name: 'West Campus',
+        status: 'active',
+      },
+    ],
+  };
+}
+
+function placementPlanFixture() {
+  const zoneEast = uuid('1', 101);
+  const zoneWest = uuid('1', 102);
+  const siteHall = uuid('2', 101);
+  const siteLibrary = uuid('2', 102);
+  return {
+    entries: [
+      {
+        eventId: EVENT_A,
+        origin: 'automatic',
+        siteId: siteLibrary,
+        zoneId: zoneWest,
+      },
+      {
+        eventId: EVENT_B,
+        origin: 'pin',
+        siteId: siteHall,
+        zoneId: zoneEast,
+      },
+    ],
+    exceptions: ['preferred_coverage_shortfall', 'target_shortfall'],
+    planId: uuid('4', 3),
+    policyVersion: 'placement-v1',
+    rotationBucket: '2026-09-25',
+    stateVersion: 4,
+    status: 'degraded',
+    validUntil: '2027-09-25T21:15:00.000Z',
+    validation: {
+      coverage: [
+        {
+          actual: 1,
+          mandatory: 1,
+          preferred: 2,
+          status: 'preferred_shortfall',
+          zoneId: zoneEast,
+        },
+        {
+          actual: 1,
+          mandatory: 1,
+          preferred: 2,
+          status: 'preferred_shortfall',
+          zoneId: zoneWest,
+        },
+      ],
+      separation: {
+        blockedSites: [
+          {
+            conflictsWithFixedEvent: false,
+            relatedSiteIds: [siteHall],
+            siteId: siteLibrary,
+            zoneId: zoneWest,
+          },
+        ],
+        minimumMetres: 150,
+      },
+    },
+    zoneCounts: { [zoneEast]: 1, [zoneWest]: 1 },
+  };
+}
+
+function placementPolygon(longitude: number, latitude: number) {
+  return {
+    coordinates: [
+      [
+        [longitude, latitude],
+        [longitude + 0.002, latitude],
+        [longitude + 0.002, latitude + 0.002],
+        [longitude, latitude],
+      ],
+    ],
+    type: 'Polygon',
+  };
 }
 
 function uuid(prefix: string, position: number) {
