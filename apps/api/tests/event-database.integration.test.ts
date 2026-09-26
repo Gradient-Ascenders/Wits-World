@@ -206,6 +206,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0056_add_card_trade_submission_receipts.sql',
         '0057_create_advanced_analytics.sql',
         '0058_create_developer_api_access.sql',
+        '0059_enable_event_editor_automatic_placement.sql',
       ],
       skipped: [],
     });
@@ -271,6 +272,7 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0056_add_card_trade_submission_receipts.sql',
         '0057_create_advanced_analytics.sql',
         '0058_create_developer_api_access.sql',
+        '0059_enable_event_editor_automatic_placement.sql',
       ],
     });
     expect(readiness).toMatchObject({
@@ -436,6 +438,36 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
           availability: 'upcoming',
           eventId: '00000000-0000-4000-8000-000000000025',
           title: 'Trail Demo - Senate House',
+        }),
+        expect.objectContaining({
+          availability: 'upcoming',
+          eventId: '00000000-0000-4000-8000-000000000026',
+          title: 'Placement Demo - Campus Clues',
+        }),
+        expect.objectContaining({
+          availability: 'upcoming',
+          eventId: '00000000-0000-4000-8000-000000000027',
+          title: 'Placement Demo - Landmark Quiz',
+        }),
+        expect.objectContaining({
+          availability: 'upcoming',
+          eventId: '00000000-0000-4000-8000-000000000028',
+          title: 'Placement Demo - Student Life',
+        }),
+        expect.objectContaining({
+          availability: 'upcoming',
+          eventId: '00000000-0000-4000-8000-000000000029',
+          title: 'Placement Demo - Campus History',
+        }),
+        expect.objectContaining({
+          availability: 'upcoming',
+          eventId: '00000000-0000-4000-8000-000000000030',
+          title: 'Placement Demo - Arts and Culture',
+        }),
+        expect.objectContaining({
+          availability: 'upcoming',
+          eventId: '00000000-0000-4000-8000-000000000031',
+          title: 'Placement Demo - Science and Discovery',
         }),
       ]);
     });

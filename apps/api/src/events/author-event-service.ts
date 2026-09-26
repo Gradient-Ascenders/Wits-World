@@ -707,7 +707,7 @@ interface PlacementStateRow extends pg.QueryResultRow {
 
 async function lockPlacementState(
   client: AuthorEventTransactionClient,
-): Promise<PlacementStateRow> {
+): Promise<PlacementStateRow | null> {
   const result = await client.query<PlacementStateRow>(
     `select current_policy_version_id as policy_version_id,
             current_plan_id::text, version::text, now() as observed_at
@@ -715,9 +715,7 @@ async function lockPlacementState(
       where singleton = true
       for update`,
   );
-  const state = result.rows[0];
-  if (!state) throw new Error('Placement policy state has not been seeded.');
-  return state;
+  return result.rows[0] ?? null;
 }
 
 async function syncAutomaticPlacement(
@@ -725,6 +723,7 @@ async function syncAutomaticPlacement(
   input: { actorPlayerId: string; enabled: boolean; eventId: string },
 ): Promise<void> {
   const state = await lockPlacementState(client);
+  if (!state) throw new Error('Placement policy state has not been seeded.');
 
   if (input.enabled) {
     await client.query(
@@ -771,6 +770,7 @@ async function advanceAutomaticPlacementEligibility(
   actorPlayerId: string,
 ): Promise<void> {
   const state = await lockPlacementState(client);
+  if (!state) return;
   const enabled = await client.query(
     `select id
        from public.event_placement_portability

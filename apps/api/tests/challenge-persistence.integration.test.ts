@@ -139,6 +139,7 @@ describe.skipIf(!runIntegrationTests)(
           '0056_add_card_trade_submission_receipts.sql',
           '0057_create_advanced_analytics.sql',
           '0058_create_developer_api_access.sql',
+          '0059_enable_event_editor_automatic_placement.sql',
         ],
         skipped: [],
       });
@@ -205,6 +206,7 @@ describe.skipIf(!runIntegrationTests)(
           '0056_add_card_trade_submission_receipts.sql',
           '0057_create_advanced_analytics.sql',
           '0058_create_developer_api_access.sql',
+          '0059_enable_event_editor_automatic_placement.sql',
         ],
       });
     }, 30_000);
@@ -435,6 +437,7 @@ describe.skipIf(!runIntegrationTests)(
             '0056_add_card_trade_submission_receipts.sql',
             '0057_create_advanced_analytics.sql',
             '0058_create_developer_api_access.sql',
+            '0059_enable_event_editor_automatic_placement.sql',
           ],
         });
 
