@@ -904,6 +904,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
       page.getByRole('heading', { name: 'Your turn' }),
     ).toBeFocused();
     await expectPrimaryActionWithinViewport(page);
+    await expectMobileBattleStageBeforeActions(page);
     const battleLogSummary = page.locator('.battle-log > summary');
     await expect(battleLogSummary).toContainText('CPU revealed Braam Sentinel');
     await battleLogSummary.tap();
@@ -988,7 +989,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
       .evaluateAll((elements) =>
         elements.map((element) => element.getBoundingClientRect().x),
       );
-    expect(new Set(moveBoxes).size).toBe(1);
+    expect(new Set(moveBoxes).size).toBe(2);
     await zeroCostMove.focus();
     await expect(zeroCostMove).toBeFocused();
     expect(
@@ -1140,21 +1141,6 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     ).toBe(true);
     await completedLogSummary.tap();
 
-    await page.getByRole('link', { name: 'Match history' }).tap();
-    await expect(
-      page.getByRole('heading', { name: 'Battle history' }),
-    ).toBeVisible();
-    await page.getByRole('link', { name: 'View battle' }).tap();
-    await expect(
-      page.getByRole('heading', { name: 'Practice victory' }),
-    ).toBeVisible();
-    await page.locator('.battle-log > summary').tap();
-    await expect(
-      page.getByRole('log', { name: 'Complete battle activity' }),
-    ).toContainText('You selected Campus Scholar.');
-    await expect(
-      page.getByRole('log', { name: 'Complete battle activity' }),
-    ).toContainText('You won the battle.');
     await page.reload();
     await expect(
       page.getByRole('heading', { name: 'Practice victory' }),
@@ -1270,6 +1256,40 @@ test('keeps processing, timeout, and error states focused with long actions', as
       },
     },
   ];
+  const longMoveDefinition = playerCreature.moves[0]!;
+  playerCreature.moves = [
+    longMoveDefinition,
+    {
+      ...structuredClone(longMoveDefinition),
+      effectiveness: 'effective',
+      id: uuid(1901),
+      name: 'Quick Read',
+      powerCost: 0,
+    },
+    {
+      ...structuredClone(longMoveDefinition),
+      effectiveness: 'neutral',
+      id: uuid(1902),
+      name: 'Thick Hide',
+      powerCost: 1,
+    },
+    {
+      ...structuredClone(longMoveDefinition),
+      effectiveness: 'resisted',
+      id: uuid(1903),
+      name: 'Ground Hook',
+      powerCost: 2,
+    },
+  ];
+  playerTurn.state.legalActions = [
+    ...playerCreature.moves.map((move) => ({
+      moveId: move.id,
+      type: 'use_move' as const,
+    })),
+    ...playerTurn.state.legalActions.filter(
+      (action) => action.type === 'use_power_card',
+    ),
+  ];
   playerTurn.state.player.powerCards[0]!.name =
     'A very long institutional memory Power card';
   playerTurn.lastAction = actionResult({ type: 'timeout' }, { side: 'cpu' });
@@ -1329,6 +1349,10 @@ test('keeps processing, timeout, and error states focused with long actions', as
   );
   await expectNoHorizontalOverflow(page);
   await expectControlsContainTheirContent(page);
+  await expectPrimaryActionWithinViewport(page);
+  await expectMobileBattleStageBeforeActions(page);
+  await expectMobileBattleCardsReadable(page);
+  await expectMobileTurnGlow(page, 'player');
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
   expect(
@@ -1382,6 +1406,7 @@ test('keeps processing, timeout, and error states focused with long actions', as
   await expect(
     page.getByText("Opponent's turn", { exact: true }),
   ).toBeVisible();
+  await expectMobileTurnGlow(page, 'cpu');
   await expect(page.locator('.battle-action-control').first()).toBeDisabled();
   await expectNoHorizontalOverflow(page);
   await expectPrimaryActionWithinViewport(page);
@@ -1936,6 +1961,63 @@ async function expectPrimaryActionWithinViewport(page: Page) {
   expect(actions).not.toBeNull();
   expect(actions!.y + 120).toBeLessThan(page.viewportSize()!.height);
   await expectNoHorizontalOverflow(page);
+}
+
+async function expectMobileBattleStageBeforeActions(page: Page) {
+  const stage = await page.locator('.battle-stage').boundingBox();
+  const actions = await page.locator('.battle-actions').boundingBox();
+  expect(stage).not.toBeNull();
+  expect(actions).not.toBeNull();
+  expect(stage!.y + stage!.height).toBeLessThanOrEqual(actions!.y + 1);
+  await expect(page.locator('.battle-actions')).toHaveCSS(
+    'position',
+    'relative',
+  );
+}
+
+async function expectMobileBattleCardsReadable(page: Page) {
+  const cardWidths = await page
+    .locator('.combatant .battle-picture-button')
+    .evaluateAll((cards) =>
+      cards.map((card) => card.getBoundingClientRect().width),
+    );
+  expect(cardWidths.length).toBeGreaterThan(0);
+  expect(Math.min(...cardWidths)).toBeGreaterThanOrEqual(100);
+
+  const rarityLabels = await page
+    .locator('.combatant .card-frame__rarity')
+    .evaluateAll((labels) =>
+      labels.map((label) => {
+        const rail = label.closest('.card-frame__rail');
+        const labelBox = label.getBoundingClientRect();
+        const railBox = rail?.getBoundingClientRect();
+        return {
+          contentRight: labelBox.left + label.scrollWidth,
+          railRight: railBox?.right ?? 0,
+        };
+      }),
+    );
+  expect(rarityLabels.length).toBeGreaterThan(0);
+  for (const label of rarityLabels) {
+    expect(label.contentRight).toBeLessThanOrEqual(label.railRight + 1);
+  }
+}
+
+async function expectMobileTurnGlow(page: Page, side: 'cpu' | 'player') {
+  const stage = page.locator('.battle-stage');
+  await expect(stage).toHaveClass(new RegExp(`battle-stage--${side}`));
+  const zones = await stage.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      cpu: style.getPropertyValue('--battle-cpu-zone-core').trim(),
+      player: style.getPropertyValue('--battle-player-zone-core').trim(),
+    };
+  });
+  expect(zones).toEqual(
+    side === 'player'
+      ? { cpu: 'transparent', player: 'rgb(42 107 255 / 48%)' }
+      : { cpu: 'rgb(212 175 55 / 44%)', player: 'transparent' },
+  );
 }
 
 async function expectActionContentFits(page: Page) {

@@ -620,13 +620,13 @@ describe('authoritative CPU battle page', () => {
   it.each([
     {
       appMotion: 'reduce' as const,
-      beatDelay: 450,
+      beatDelay: 1_000,
       description: 'app reduce over OS normal',
       osReduced: false,
     },
     {
       appMotion: 'full' as const,
-      beatDelay: 1_200,
+      beatDelay: 1_700,
       description: 'app full over OS reduce',
       osReduced: true,
     },
@@ -753,7 +753,7 @@ describe('authoritative CPU battle page', () => {
     ).toBeNull();
 
     await act(async () => {
-      vi.advanceTimersByTime(1_300);
+      vi.advanceTimersByTime(1_800);
     });
     expect(screen.getAllByText('Go, Wit Creature!').length).toBeGreaterThan(0);
     expect(document.querySelector('.combatant--player')).toHaveClass(
@@ -765,7 +765,7 @@ describe('authoritative CPU battle page', () => {
     );
 
     await act(async () => {
-      vi.advanceTimersByTime(1_300);
+      vi.advanceTimersByTime(1_800);
     });
     expect(
       screen.getByRole('button', { name: /Knowledge Strike 1/ }),
@@ -853,12 +853,12 @@ describe('authoritative CPU battle page', () => {
       act(async () => {
         vi.advanceTimersByTime(milliseconds);
       });
-    await advance(1_200);
+    await advance(1_700);
     expect(screen.getByLabelText('Grit Creature HP')).toHaveAttribute(
       'value',
       '88',
     );
-    await advance(1_100);
+    await advance(1_600);
     expect(
       screen.getAllByText('The CPU’s Grit Creature used Counter.').length,
     ).toBeGreaterThan(0);
@@ -868,12 +868,12 @@ describe('authoritative CPU battle page', () => {
     expect(document.querySelector('.combatant--player')).toHaveClass(
       'combatant--dimmed',
     );
-    await advance(1_200);
+    await advance(1_700);
     expect(screen.getByLabelText('Wit Creature HP')).toHaveAttribute(
       'value',
       '90',
     );
-    await advance(1_100);
+    await advance(1_600);
     expect(move).toBeEnabled();
   });
 

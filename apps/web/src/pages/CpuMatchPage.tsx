@@ -973,11 +973,11 @@ function presentationMessage(event: BattleLogEvent, mode: PresentationMode) {
 }
 
 function presentationBeatDelay(event: BattleLogEvent, mode: PresentationMode) {
-  if (prefersReducedMotion()) return 450;
-  if (mode === 'opening') return 1_300;
-  if (event.kind === 'defeat' || event.kind === 'result') return 1_300;
-  if (event.kind === 'action') return 1_200;
-  return 1_100;
+  if (prefersReducedMotion()) return 1_000;
+  if (mode === 'opening') return 1_800;
+  if (event.kind === 'defeat' || event.kind === 'result') return 1_900;
+  if (event.kind === 'action') return 1_700;
+  return 1_600;
 }
 
 function presentationActor(

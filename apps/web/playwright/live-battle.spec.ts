@@ -17,7 +17,7 @@ test('renders authoritative participant and private spectator views responsively
   page,
 }, testInfo) => {
   const participant = participantProjection();
-  const spectator = spectatorProjection();
+  const spectator = spectatorProjection({ currentActor: 'playerTwo' });
   participant.opponent.playerName = 'campus_champion_2026';
   let role: 'participant' | 'spectator' = 'participant';
   const runtimeErrors: string[] = [];
@@ -61,6 +61,9 @@ test('renders authoritative participant and private spectator views responsively
   await expect(
     page.getByRole('button', { name: /Knowledge Strike 1/i }),
   ).toBeEnabled();
+  await expect(page.locator('.battle-stage')).toHaveClass(
+    /battle-stage--player/,
+  );
   await expect(
     page.getByRole('heading', { name: 'Battle activity' }),
   ).toBeVisible();
@@ -92,6 +95,9 @@ test('renders authoritative participant and private spectator views responsively
   expect(actionPanelBox).not.toBeNull();
   expect(firstActionBox!.y + firstActionBox!.height).toBeLessThanOrEqual(844);
   expect(actionPanelBox!.y).toBeLessThan(stageBox!.y);
+  expect(actionPanelBox!.y + actionPanelBox!.height).toBeLessThanOrEqual(
+    stageBox!.y,
+  );
   await expect(page.locator('.primary-navigation--mobile')).toBeHidden();
 
   await page.evaluate(() => window.scrollTo(0, 560));
@@ -100,20 +106,21 @@ test('renders authoritative participant and private spectator views responsively
     const actions = document.querySelector('.battle-actions');
     if (!(status instanceof HTMLElement) || !(actions instanceof HTMLElement))
       return null;
-    const statusBox = status.getBoundingClientRect();
     const actionsBox = actions.getBoundingClientRect();
     return {
       actionPosition: getComputedStyle(actions).position,
-      actionsTop: actionsBox.top,
-      statusBottom: statusBox.bottom,
+      actionsBottom: actionsBox.bottom,
+      stageTop:
+        document.querySelector('.battle-stage')?.getBoundingClientRect().top ??
+        Number.POSITIVE_INFINITY,
       statusPosition: getComputedStyle(status).position,
     };
   });
   expect(stickyGeometry).not.toBeNull();
   expect(stickyGeometry!.statusPosition).toBe('sticky');
-  expect(stickyGeometry!.actionPosition).toBe('sticky');
-  expect(stickyGeometry!.actionsTop).toBeGreaterThanOrEqual(
-    stickyGeometry!.statusBottom,
+  expect(stickyGeometry!.actionPosition).toBe('relative');
+  expect(stickyGeometry!.actionsBottom).toBeLessThanOrEqual(
+    stickyGeometry!.stageTop,
   );
 
   const resignCard = page.locator('.pvp-resign-card');
@@ -185,6 +192,7 @@ test('renders authoritative participant and private spectator views responsively
   await expect(
     page.getByRole('button', { name: 'Forfeit battle' }),
   ).toHaveCount(0);
+  await expect(page.locator('.battle-stage')).toHaveClass(/battle-stage--cpu/);
   await expect(page.getByText('Live presence')).toBeVisible();
   await expect(
     page.getByText(/private snapshot|activeCreatureId/i),

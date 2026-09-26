@@ -311,7 +311,7 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         <div className="battle-live-layout live-battle-layout">
           <section
             aria-label="Current live battlefield"
-            className="battle-stage battle-stage--player"
+            className={`battle-stage battle-stage--${combatants.one.acting ? 'player' : combatants.two.acting ? 'cpu' : 'selection'}`}
           >
             <div aria-hidden="true" className="battle-stage__field-lines" />
             <div className="battle-stage__label">
