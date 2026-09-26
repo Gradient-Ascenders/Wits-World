@@ -471,6 +471,14 @@ async function transitionReviewPackage(
       note: input.note,
       reviewPackage: input.action === 'approve',
     });
+    if (input.action === 'publish') {
+      await advanceAutomaticPlacementEligibility(
+        client,
+        input.eventId,
+        input.actorPlayerId,
+        'publish',
+      );
+    }
     return loadEvent(client, input.eventId);
   });
 }

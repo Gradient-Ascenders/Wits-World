@@ -156,6 +156,24 @@ describe('author event API', () => {
       note: undefined,
     });
   });
+
+  it('publishes through the review-package service path', async () => {
+    const response = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/author/events/${EVENT_ID}/package/publish`,
+      payload: { expectedVersion: 2, note: 'Package reviewed' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(transitionReviewPackage).toHaveBeenCalledWith({
+      action: 'publish',
+      actorPlayerId: AUTHOR_ID,
+      eventId: EVENT_ID,
+      expectedVersion: 2,
+      note: 'Package reviewed',
+    });
+  });
+
   it('requires authentication', async () => {
     const response = await app.inject({
       method: 'GET',

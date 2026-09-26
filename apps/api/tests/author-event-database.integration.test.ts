@@ -14,6 +14,7 @@ import { runMigrations } from '../src/database/migrations.js';
 import { createAuthorEventService } from '../src/events/author-event-service.js';
 import { createAuthorChallengeService } from '../src/challenges/author-challenge-service.js';
 import { createAuthorCardService } from '../src/cards/author-card-service.js';
+import { createPlacementService } from '../src/placement/placement-service.js';
 import {
   AuthorContentNotReadyError,
   AuthorContentStateConflictError,
@@ -654,7 +655,7 @@ describe.skipIf(!runIntegrationTests)(
       expect(challenge.rows[0]?.status).toBe('published');
     }, 180_000);
 
-    it('retires a published event, allows its challenge to retire, and prevents republication', async () => {
+    it('advances package publication and removes retired assignments from coverage', async () => {
       const eventService = createAuthorEventService(pool);
       const challengeService = createAuthorChallengeService(pool);
       const cardService = createAuthorCardService(pool);
@@ -679,16 +680,59 @@ describe.skipIf(!runIntegrationTests)(
         event.eventId,
         AUTHOR_ONE_ID,
       );
+      await submitAndApproveEvent(eventService, event.eventId);
+      const beforePackagePublish = await pool.query<{ version: string }>(
+        `select version::text
+           from public.event_placement_state
+          where singleton = true`,
+      );
+      const published = await eventService.transitionReviewPackage({
+        action: 'publish',
+        actorPlayerId: AUTHOR_ONE_ID,
+        eventId: event.eventId,
+        expectedVersion: 2,
+        note: 'Portable package reviewed',
+      });
+      expect(published.authoringStatus).toBe('published');
+
+      const packagePlacementAudit = await pool.query<{
+        operation: string;
+        previous_state_version: string;
+        resulting_state_version: string;
+      }>(
+        `select operation, previous_state_version::text, resulting_state_version::text
+           from public.event_placement_audit
+          where operation = 'automatic_placement_eligibility'
+            and actor_player_id = $1::uuid
+          order by occurred_at desc, id desc
+          limit 1`,
+        [AUTHOR_ONE_ID],
+      );
+      expect(packagePlacementAudit.rows).toEqual([
+        {
+          operation: 'automatic_placement_eligibility',
+          previous_state_version: beforePackagePublish.rows[0]?.version,
+          resulting_state_version: String(
+            Number(beforePackagePublish.rows[0]?.version) + 1,
+          ),
+        },
+      ]);
       const unrelatedChallenge = await challengeService.createChallenge({
         actorPlayerId: AUTHOR_ONE_ID,
         eventId: event.eventId,
       });
 
-      await publishEventThroughReview(eventService, event.eventId);
       const assignmentId = await createActivePlacementAssignment(pool, {
         eventId: event.eventId,
         siteId: placement.siteId,
         zoneId: placement.zoneId,
+      });
+      const placementService = createPlacementService(pool);
+      const stateBeforeRetirement = await placementService.state();
+      expect(stateBeforeRetirement.metrics).toMatchObject({
+        activeAssignmentCount: 1,
+        servedZoneCount: 1,
+        unservedZoneCount: 0,
       });
 
       const retired = await eventService.retireEvent({
@@ -729,6 +773,14 @@ describe.skipIf(!runIntegrationTests)(
           portability_ended: true,
         },
       ]);
+
+      const stateAfterRetirement = await placementService.state();
+      expect(stateAfterRetirement.assignments).toEqual([]);
+      expect(stateAfterRetirement.metrics).toMatchObject({
+        activeAssignmentCount: 0,
+        servedZoneCount: 0,
+        unservedZoneCount: 1,
+      });
 
       const visibility = await pool.query<{
         visible_count: number;
