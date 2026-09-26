@@ -70,7 +70,7 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
     page.getByRole('heading', { level: 3, name: 'Great Hall Discovery' }),
   ).toBeVisible();
   await expect(page.getByLabel('Event title')).toHaveCount(0);
-  await expect(page.getByText('Configured · 75 m radius')).toBeVisible();
+  await expect(page.getByText(/75 m radius/)).toBeVisible();
 
   await page.getByRole('link', { name: 'Edit event' }).click();
   await expect(page).toHaveURL(`/author/events/${EVENT_A}/edit`);
@@ -83,7 +83,7 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
   await page.getByLabel('Event title').fill('Great Hall Discovery revised');
 
   await page.getByRole('link', { name: /MSL Open Day/u }).click();
-  const dirtyDialog = page.getByRole('alertdialog', {
+  const dirtyDialog = page.getByRole('dialog', {
     name: 'Discard unsaved changes?',
   });
   await expect(dirtyDialog).toBeVisible();
@@ -122,15 +122,11 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
   );
   await page.reload();
 
-  await page.getByRole('link', { name: 'Challenge' }).click();
-  await expect(page).toHaveURL(`/author/events/${EVENT_A}/challenge`);
-  await expect(
-    page.getByRole('heading', { name: 'Challenge readiness' }),
-  ).toBeVisible();
-  await expect(page.getByText('2 of 3 requirements ready.')).toBeVisible();
-  await expect(page.getByText('Publication blocked')).toBeVisible();
+  await expect(page).toHaveURL(`/author/events/${EVENT_A}`);
+  await expect(page.getByRole('heading', { name: 'Challenge' })).toBeVisible();
+  await expect(page.getByText(/Reward ready/)).toBeVisible();
 
-  await page.getByRole('button', { name: 'Publish event' }).click();
+  await page.getByRole('button', { name: 'Publish event package' }).click();
   const publicationError = page.getByText(
     'The server still requires one published challenge.',
   );
@@ -142,7 +138,7 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
   ).toBeFocused();
   const errorBox = await publicationError.boundingBox();
   const publishBox = await page
-    .getByRole('button', { name: 'Publish event' })
+    .getByRole('button', { name: 'Publish event package' })
     .boundingBox();
   expect(errorBox).not.toBeNull();
   expect(publishBox).not.toBeNull();
@@ -154,23 +150,21 @@ test('desktop Event workspace keeps discovery, detail, editing and readiness foc
 
   state.rejectEventPublication = false;
   await page.reload();
-  await expect(
-    page.getByRole('heading', { name: 'Challenge readiness' }),
-  ).toBeVisible();
-  await page.getByRole('button', { name: 'Publish event' }).click();
+  await expect(page.getByRole('heading', { name: 'Challenge' })).toBeVisible();
+  await page.getByRole('button', { name: 'Publish event package' }).click();
   await expect(
     page.getByText(
       'Event published and available to the player API according to its active times.',
     ),
   ).toBeFocused();
   await page.goBack();
-  await expect(page).toHaveURL(`/author/events/${EVENT_A}/challenge`);
+  await expect(page).toHaveURL(`/author/events/${EVENT_A}`);
   await page.goForward();
   await expect(page).toHaveURL(`/author/events/${EVENT_A}`);
 
   const retireButton = page.getByRole('button', { name: 'Retire event' });
   await retireButton.click();
-  const retirementDialog = page.getByRole('alertdialog', {
+  const retirementDialog = page.getByRole('dialog', {
     name: 'Retire Great Hall Discovery revised?',
   });
   await expect(
@@ -223,15 +217,8 @@ test('mobile Event and Question routes use list to detail to editor views', asyn
   ).toBeVisible();
   await expectNoHorizontalOverflow(page);
   const existingEventEditorHeight = await documentHeight(page);
-  await page.getByRole('link', { name: 'Event overview' }).click();
-
-  await page
-    .getByRole('navigation', { name: 'Great Hall Discovery sections' })
-    .getByRole('link', { name: 'Questions' })
-    .click();
-  await expect(page).toHaveURL(
-    `/author/events/${EVENT_A}/challenges/${CHALLENGE_A}/questions`,
-  );
+  await page.getByRole('link', { name: 'Event', exact: true }).click();
+  await expect(page).toHaveURL(`/author/events/${EVENT_A}`);
   await expect(
     page.getByRole('link', { name: /Where is the Great Hall/u }),
   ).toBeVisible();
@@ -252,7 +239,7 @@ test('mobile Event and Question routes use list to detail to editor views', asyn
     .getByLabel('Question prompt')
     .fill('Where is the Wits Great Hall?');
   await page.getByRole('link', { name: 'Question detail' }).click();
-  const questionDirtyDialog = page.getByRole('alertdialog', {
+  const questionDirtyDialog = page.getByRole('dialog', {
     name: 'Discard unsaved changes?',
   });
   await expect(questionDirtyDialog).toContainText(
@@ -289,7 +276,7 @@ test('mobile Event and Question routes use list to detail to editor views', asyn
     .getByRole('navigation', { name: 'Author sections' })
     .getByRole('link', { name: 'Events' })
     .click();
-  await expect(page.getByRole('alertdialog')).toContainText(
+  await expect(page.getByRole('dialog')).toContainText(
     'unsaved question draft changes',
   );
   await page.getByRole('button', { name: 'Discard changes' }).click();
@@ -340,18 +327,15 @@ test('ordering authoring and player reordering work at desktop and mobile widths
   const consoleErrors = monitorConsoleErrors(page);
 
   await page.setViewportSize({ height: 800, width: 1280 });
-  await page.goto(`/author/events/${EVENT_A}/challenge`);
-  await page.getByLabel('New challenge format').selectOption('ordering');
+  state.challenges = [];
+  state.questions = [];
+  await page.goto(`/author/events/${EVENT_A}`);
+  await page.getByLabel('Format').selectOption('ordering');
   await page.getByRole('button', { name: 'Create challenge' }).click();
   await expect(
     page.getByText('Draft ordering challenge associated with this event.'),
   ).toBeFocused();
-  await expect(page.getByRole('heading', { name: 'Ordering' })).toBeVisible();
-
-  await page
-    .getByRole('navigation', { name: 'Great Hall Discovery sections' })
-    .getByRole('link', { name: 'Questions' })
-    .click();
+  await expect(page.getByText('Ordering · draft')).toBeVisible();
   await page.getByRole('link', { name: 'New question' }).click();
   await page.getByLabel('Question prompt').fill('Order these campus eras.');
   await page.getByRole('button', { name: 'Create draft question' }).click();
@@ -700,7 +684,7 @@ test('Event location authoring is map-first and synchronized at responsive width
         .getByRole('link', { name: 'Events' })
         .click();
       await expect(page).toHaveURL('/author/events');
-      await expect(page.getByRole('alertdialog')).toHaveCount(0);
+      await expect(page.getByRole('dialog')).toHaveCount(0);
       await page.goto('/author/events/new');
       await expect(map).toBeVisible();
     }
@@ -771,7 +755,7 @@ test('Event location authoring is map-first and synchronized at responsive width
       .getByRole('navigation', { name: 'Author sections' })
       .getByRole('link', { name: 'Events' })
       .click();
-    const dirtyDialog = page.getByRole('alertdialog', {
+    const dirtyDialog = page.getByRole('dialog', {
       name: 'Discard unsaved changes?',
     });
     await expect(dirtyDialog).toContainText('unsaved event draft changes');
@@ -839,8 +823,8 @@ test('existing Event location focuses its saved point, supports dragging, and ha
   );
   await expectNoHorizontalOverflow(page);
 
-  await page.getByRole('link', { name: 'Event overview' }).click();
-  const dirtyDialog = page.getByRole('alertdialog', {
+  await page.getByRole('link', { name: 'Event', exact: true }).click();
+  const dirtyDialog = page.getByRole('dialog', {
     name: 'Discard unsaved changes?',
   });
   await dirtyDialog.getByRole('button', { name: 'Discard changes' }).click();
@@ -1026,7 +1010,7 @@ test('Card catalogue uses filtered master detail and concise real-card read-only
   await cardCatalogue.getByLabel('Rarity').selectOption('all');
   await cardCatalogue.locator('.author-filter-menu > summary').click();
   await page.getByRole('link', { name: /^Four Move Ibex/u }).click();
-  const dirtyDialog = page.getByRole('alertdialog', {
+  const dirtyDialog = page.getByRole('dialog', {
     name: 'Discard unsaved changes?',
   });
   await expect(dirtyDialog).toContainText('unsaved card draft changes');
@@ -1491,7 +1475,7 @@ async function installAuthorApi(page: Page): Promise<AuthorApiState> {
     }
 
     const eventLifecycle = path.match(
-      /^\/author\/events\/([^/]+)\/(submit|approve|return|publish|retire)$/u,
+      /^\/author\/events\/([^/]+)\/(?:package\/)?(submit|approve|return|publish|retire)$/u,
     );
     if (eventLifecycle && method === 'POST') {
       const eventId = eventLifecycle[1]!;

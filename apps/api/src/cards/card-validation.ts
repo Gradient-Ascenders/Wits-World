@@ -59,6 +59,7 @@ export function validateCardDefinition(input: CardDefinitionInput): void {
   assertNonBlank(input.name, 'Card name');
   assertEnum(input.category, cardCategories, 'Card category');
   assertEnum(input.rarity, cardRarities, 'Card rarity');
+  validateCardImageUrl(input.imageUrl);
 
   if (input.category === 'creature') {
     assertEnum(input.affinity, cardAffinities, 'Creature affinity');
@@ -106,6 +107,28 @@ export function validateCardDefinition(input: CardDefinitionInput): void {
   }
 
   validateEffects(effects);
+}
+
+export function validateCardImageUrl(value: string | null | undefined): void {
+  if (value === null || value === undefined) return;
+
+  const url = value.trim();
+  if (/^\/cards\/[A-Za-z0-9_-]+(?:[./][A-Za-z0-9_-]+)*$/.test(url)) {
+    return;
+  }
+
+  if (/^https?:\/\//i.test(url)) {
+    try {
+      const parsed = new URL(url);
+      if (parsed.hostname) return;
+    } catch {
+      // Invalid and incomplete URLs share the same author-facing error.
+    }
+  }
+
+  throw new InvalidCardDefinitionError(
+    'Card image URL must be an http(s) URL or a /cards/ artwork path.',
+  );
 }
 
 export function validateCardDefinitionForPublication(

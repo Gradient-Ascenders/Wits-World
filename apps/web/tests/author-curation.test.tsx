@@ -258,6 +258,106 @@ describe('Author curation workspaces', () => {
     );
   });
 
+  it('searches and pages campaign members without losing selections', async () => {
+    const user = userEvent.setup();
+    const events = Array.from({ length: 12 }, (_, index) => ({
+      ...eventFixture(),
+      eventId: `10000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      title: `Event ${String(index + 1).padStart(2, '0')}`,
+    }));
+    const trails = Array.from({ length: 12 }, (_, index) => ({
+      createdAt: '2026-08-16T08:00:00.000Z',
+      description: null,
+      publishedAt: null,
+      retiredAt: null,
+      status: 'draft',
+      steps: [],
+      title: `Trail ${String(index + 1).padStart(2, '0')}`,
+      trailId: `30000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      updatedAt: '2026-08-16T08:00:00.000Z',
+    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = new URL(String(input)).pathname.replace('/api/v1', '');
+        if (path === '/author/campaigns' && init?.method === 'GET')
+          return jsonResponse({ campaigns: [], requestId: 'campaigns' });
+        if (path === '/author/events')
+          return jsonResponse({ events, requestId: 'events' });
+        if (path === '/author/trails')
+          return jsonResponse({ trails, requestId: 'trails' });
+        if (path === '/author/campaigns' && init?.method === 'POST') {
+          expect(JSON.parse(String(init.body))).toMatchObject({
+            eventIds: [events[0]!.eventId, events[10]!.eventId],
+            trailIds: [trails[10]!.trailId],
+          });
+          return jsonResponse(
+            { campaign: campaignFixture(), requestId: 'created' },
+            201,
+          );
+        }
+        throw new Error(`Unexpected request: ${path}`);
+      }),
+    );
+
+    const navigate = vi.fn();
+    render(
+      <CampaignWorkspace
+        apiBaseUrl={apiBaseUrl}
+        getAccessToken={getAccessToken}
+        navigate={navigate}
+        route={{ mode: 'new', section: 'campaigns' }}
+      />,
+    );
+
+    const eventFieldset = await screen.findByRole('group', { name: 'Events' });
+    const trailFieldset = screen.getByRole('group', { name: 'Trails' });
+    await user.click(
+      within(eventFieldset).getByRole('checkbox', { name: /Event 01/ }),
+    );
+    expect(
+      within(eventFieldset).queryByText('Event 11'),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Next events page' }));
+    await user.click(
+      within(eventFieldset).getByRole('checkbox', { name: /Event 11/ }),
+    );
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Search events' }),
+      'event 01',
+    );
+    expect(
+      within(eventFieldset).getByRole('checkbox', { name: /Event 01/ }),
+    ).toBeChecked();
+    expect(
+      within(eventFieldset).queryByText('Event 11'),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Next trails page' }));
+    await user.click(
+      within(trailFieldset).getByRole('checkbox', { name: /Trail 11/ }),
+    );
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Search trails' }),
+      'missing',
+    );
+    expect(
+      within(trailFieldset).getByText('No matching trails.'),
+    ).toBeVisible();
+
+    await user.type(screen.getByLabelText('Title'), 'Welcome Week');
+    fireEvent.change(screen.getByLabelText('Starts'), {
+      target: { value: '2026-09-01T08:00' },
+    });
+    fireEvent.change(screen.getByLabelText('Ends'), {
+      target: { value: '2026-09-05T18:00' },
+    });
+    await user.click(screen.getByRole('button', { name: 'Create campaign' }));
+    await vi.waitFor(() =>
+      expect(navigate).toHaveBeenCalledWith(authorPaths.campaign(campaignId)),
+    );
+  });
+
   it('preserves a campaign edit when the server reports a stale version', async () => {
     const user = userEvent.setup();
     const campaign = campaignFixture();

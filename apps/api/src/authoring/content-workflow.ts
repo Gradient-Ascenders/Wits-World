@@ -41,6 +41,7 @@ export interface TransitionAuthorContentInput {
   action: Exclude<AuthorContentAction, 'create' | 'edit'>;
   expectedVersion: number;
   note?: string;
+  reviewPackage?: boolean;
 }
 
 interface LifecycleRow extends pg.QueryResultRow {
@@ -252,7 +253,12 @@ export async function transitionAuthorContent(
   await assertContainerState(client, input);
 
   if (input.action === 'approve' || input.action === 'publish') {
-    await assertContentReady(client, input.entityType, input.entityId);
+    await assertContentReady(
+      client,
+      input.entityType,
+      input.entityId,
+      input.action === 'approve' && input.reviewPackage === true,
+    );
   }
 
   const metadata = metadataForTransition(current, input, target.to);
@@ -490,12 +496,14 @@ async function assertContentReady(
   client: AuthorContentClient,
   entityType: AuthorContentEntityType,
   entityId: string,
+  includeApprovedDependencies: boolean,
 ): Promise<void> {
   if (entityType === 'campaign') return assertCampaignReady(client, entityId);
   if (entityType === 'question') return assertQuestionReady(client, entityId);
-  if (entityType === 'challenge') return assertChallengeReady(client, entityId);
+  if (entityType === 'challenge')
+    return assertChallengeReady(client, entityId, includeApprovedDependencies);
   if (entityType === 'card') return assertCardReady(client, entityId);
-  return assertEventReady(client, entityId);
+  return assertEventReady(client, entityId, includeApprovedDependencies);
 }
 
 async function assertQuestionReady(client: AuthorContentClient, id: string) {
@@ -558,7 +566,14 @@ async function assertQuestionReady(client: AuthorContentClient, id: string) {
   }
 }
 
-async function assertChallengeReady(client: AuthorContentClient, id: string) {
+async function assertChallengeReady(
+  client: AuthorContentClient,
+  id: string,
+  includeApprovedDependencies = false,
+) {
+  const questionStatus = includeApprovedDependencies
+    ? "in ('approved', 'published')"
+    : "= 'published'";
   const result = await client.query<
     pg.QueryResultRow & {
       question_count: number;
@@ -571,7 +586,7 @@ async function assertChallengeReady(client: AuthorContentClient, id: string) {
         where sibling.event_id = challenge.event_id and sibling.status = 'published' and sibling.id <> challenge.id) as other_published_count
      from public.event_challenges challenge
      left join public.challenge_questions question
-       on question.challenge_id = challenge.id and question.status = 'published'
+       on question.challenge_id = challenge.id and question.status ${questionStatus}
      where challenge.id = $1::uuid
      group by challenge.id`,
     [id],
@@ -589,7 +604,7 @@ async function assertChallengeReady(client: AuthorContentClient, id: string) {
   }
   const questions = await client.query<pg.QueryResultRow & { id: string }>(
     `select id::text from public.challenge_questions
-     where challenge_id = $1::uuid and status = 'published'
+     where challenge_id = $1::uuid and status ${questionStatus}
      order by id for share`,
     [id],
   );
@@ -775,10 +790,17 @@ async function assertCampaignReady(
   }
 }
 
-async function assertEventReady(client: AuthorContentClient, id: string) {
+async function assertEventReady(
+  client: AuthorContentClient,
+  id: string,
+  includeApprovedDependencies = false,
+) {
+  const childStatus = includeApprovedDependencies
+    ? "in ('approved', 'published')"
+    : "= 'published'";
   const challengeRows = await client.query<pg.QueryResultRow & { id: string }>(
     `select id::text from public.event_challenges
-     where event_id = $1::uuid and status = 'published'
+     where event_id = $1::uuid and status ${childStatus}
      order by id for share`,
     [id],
   );
@@ -787,9 +809,10 @@ async function assertEventReady(client: AuthorContentClient, id: string) {
       'An event requires exactly one published challenge.',
     );
   }
-  await assertChallengePublishedQuestionsReady(
+  await assertChallengeQuestionsReady(
     client,
     challengeRows.rows[0]!.id,
+    includeApprovedDependencies,
   );
   const cards = await client.query<pg.QueryResultRow & { id: string }>(
     `select id::text from public.card_definitions
@@ -806,13 +829,17 @@ async function assertEventReady(client: AuthorContentClient, id: string) {
   }
 }
 
-async function assertChallengePublishedQuestionsReady(
+async function assertChallengeQuestionsReady(
   client: AuthorContentClient,
   id: string,
+  includeApprovedDependencies: boolean,
 ) {
+  const questionStatus = includeApprovedDependencies
+    ? "in ('approved', 'published')"
+    : "= 'published'";
   const questions = await client.query<pg.QueryResultRow & { id: string }>(
     `select id::text from public.challenge_questions
-     where challenge_id = $1::uuid and status = 'published'
+     where challenge_id = $1::uuid and status ${questionStatus}
      order by id for share`,
     [id],
   );
