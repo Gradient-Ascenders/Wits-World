@@ -31,6 +31,9 @@ import type { MapFactory } from './components/exploration/map-provider';
 const ExplorePage = lazy(() => import('./pages/ExplorePage'));
 const ChallengePage = lazy(() => import('./pages/ChallengePage'));
 const CollectionPage = lazy(() => import('./pages/CollectionPage'));
+const TradeInboxPage = lazy(() => import('./pages/TradeInboxPage'));
+const TradeEditorPage = lazy(() => import('./pages/TradeEditorPage'));
+const TradeDetailPage = lazy(() => import('./pages/TradeDetailPage'));
 const AuthorConsolePage = lazy(() => import('./pages/AuthorConsolePage'));
 const DecksPage = lazy(() => import('./pages/DecksPage'));
 const MatchEntryPage = lazy(() => import('./pages/MatchEntryPage'));
@@ -100,7 +103,27 @@ export function AppRoutes({
                   <ChallengePage apiBaseUrl={apiBaseUrl} />
                 </ProtectedRoute>
               </Route>
-              <Route path="/collection">
+              <Route path="/collection/trades/new">
+                <ProtectedRoute destination="start a card trade">
+                  <TradeEditorPage apiBaseUrl={apiBaseUrl} />
+                </ProtectedRoute>
+              </Route>
+              <Route path="/collection/trades/:tradeId/edit">
+                <ProtectedRoute destination="edit a card trade">
+                  <TradeEditorPage apiBaseUrl={apiBaseUrl} />
+                </ProtectedRoute>
+              </Route>
+              <Route path="/collection/trades/:tradeId">
+                <ProtectedRoute destination="review a card trade">
+                  <TradeDetailPage apiBaseUrl={apiBaseUrl} />
+                </ProtectedRoute>
+              </Route>
+              <Route path="/collection/trades">
+                <ProtectedRoute destination="manage your card trades">
+                  <TradeInboxPage apiBaseUrl={apiBaseUrl} />
+                </ProtectedRoute>
+              </Route>
+              <Route path={/^\/collection(?:\/evolutions)?\/?$/}>
                 <ProtectedRoute destination="view your collection">
                   <CollectionPage apiBaseUrl={apiBaseUrl} />
                 </ProtectedRoute>

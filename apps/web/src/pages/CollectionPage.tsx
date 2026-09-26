@@ -12,6 +12,7 @@ import {
   type FormEvent,
   type RefObject,
 } from 'react';
+import { useLocation } from 'wouter';
 
 import {
   CardApiError,
@@ -32,6 +33,7 @@ import {
 } from '../components/cards/CollectibleCard';
 import { CardDetailModal } from '../components/cards/CardDetailModal';
 import { CollectionEvolutions } from '../components/cards/CollectionEvolutions';
+import { CollectionSectionNavigation } from '../components/cards/CollectionSectionNavigation';
 import '../components/cards/evolutions.css';
 import '../components/cards/cards.css';
 
@@ -52,11 +54,13 @@ type StarterOptionsState =
 export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
   const getAccessToken = useApiAccessToken();
   const { loginWithRedirect } = useAuth0();
+  const [pathname] = useLocation();
   const [collection, setCollection] = useState<CollectionState>({
     status: 'loading',
   });
   const [collectionRevision, setCollectionRevision] = useState(0);
-  const [section, setSection] = useState<'cards' | 'evolutions'>('cards');
+  const section =
+    pathname === '/collection/evolutions' ? 'evolutions' : 'cards';
   const [starterOptions, setStarterOptions] = useState<StarterOptionsState>({
     status: 'idle',
   });
@@ -347,6 +351,7 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
   if (collection.status === 'ready' && !hasStarter && cards.length === 0) {
     return (
       <div className="collection-page collection-page--starter">
+        <CollectionSectionNavigation />
         {renderStarterSelector(1)}
       </div>
     );
@@ -354,6 +359,7 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
 
   return (
     <div className="collection-page">
+      <CollectionSectionNavigation />
       <header className="collection-page__header">
         <p className="eyebrow">Your collection</p>
         <h1>{section === 'cards' ? 'Cards you own' : 'Evolutions'}</h1>
@@ -386,31 +392,6 @@ export default function CollectionPage({ apiBaseUrl }: CollectionPageProps) {
       {collection.status === 'ready' && !hasStarter
         ? renderStarterSelector(2)
         : null}
-
-      {collection.status === 'ready' && cards.length > 0 ? (
-        <div
-          className="collection-section-switch"
-          role="group"
-          aria-label="Collection section"
-        >
-          <button
-            className="button button--quiet"
-            aria-pressed={section === 'cards'}
-            onClick={() => setSection('cards')}
-            type="button"
-          >
-            Cards
-          </button>
-          <button
-            className="button button--quiet"
-            aria-pressed={section === 'evolutions'}
-            onClick={() => setSection('evolutions')}
-            type="button"
-          >
-            Evolutions
-          </button>
-        </div>
-      ) : null}
 
       {collection.status === 'ready' &&
       cards.length > 0 &&

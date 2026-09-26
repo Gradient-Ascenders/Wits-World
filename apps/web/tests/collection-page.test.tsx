@@ -27,6 +27,7 @@ const apiBaseUrl = 'https://api.example.test/api/v1';
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  window.history.replaceState({}, '', '/');
 });
 
 function createAuthValue(
@@ -491,7 +492,7 @@ describe('card collection page', () => {
       name: 'View Quillip details, 4 owned copies',
     });
     expect(within(trigger).getByText('×4')).toBeVisible();
-    await user.click(screen.getByRole('button', { name: 'Evolutions' }));
+    await user.click(screen.getByRole('link', { name: 'Evolutions' }));
     await user.click(
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
@@ -541,7 +542,7 @@ describe('card collection page', () => {
     );
 
     renderCollection();
-    await user.click(await screen.findByRole('button', { name: 'Evolutions' }));
+    await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
     expect(await screen.findByText('Copies reserved for trade')).toBeVisible();
     expect(screen.queryByText('Availability unknown')).not.toBeInTheDocument();
     await user.click(
@@ -566,7 +567,7 @@ describe('card collection page', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderCollection();
-    await user.click(await screen.findByRole('button', { name: 'Evolutions' }));
+    await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
     await user.click(
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
@@ -619,7 +620,7 @@ describe('card collection page', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderCollection();
-    await user.click(await screen.findByRole('button', { name: 'Evolutions' }));
+    await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
     await user.click(
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
@@ -646,7 +647,7 @@ describe('card collection page', () => {
     });
 
     await user.click(screen.getByRole('button', { name: 'Close evolution' }));
-    await user.click(screen.getByRole('button', { name: 'Cards' }));
+    await user.click(screen.getByRole('link', { name: 'Cards' }));
     expect(
       screen.getByRole('button', { name: 'View Quillume details' }),
     ).toBeVisible();
@@ -679,7 +680,7 @@ describe('card collection page', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderCollection();
-    await user.click(await screen.findByRole('button', { name: 'Evolutions' }));
+    await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
     await user.click(
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
@@ -710,7 +711,7 @@ describe('card collection page', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderCollection();
-    await user.click(await screen.findByRole('button', { name: 'Evolutions' }));
+    await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
     await user.click(
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
@@ -756,7 +757,7 @@ describe('card collection page', () => {
         ),
     );
     renderCollection();
-    await user.click(await screen.findByRole('button', { name: 'Evolutions' }));
+    await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
     await user.click(
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
@@ -819,7 +820,7 @@ describe('card collection page', () => {
       .mockResolvedValueOnce(collectionResponse([result.newCard, anchor]));
     vi.stubGlobal('fetch', fetchMock);
     renderCollection();
-    await user.click(await screen.findByRole('button', { name: 'Evolutions' }));
+    await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
     await user.click(
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
@@ -855,7 +856,7 @@ describe('card collection page', () => {
         .mockResolvedValueOnce(jsonResponse(evolutionPreview(cards))),
     );
     renderCollection();
-    await user.click(await screen.findByRole('button', { name: 'Evolutions' }));
+    await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
     expect(await screen.findByText('Availability unknown')).toBeVisible();
     await user.click(
       screen.getByRole('button', { name: 'Retry availability' }),

@@ -15,7 +15,10 @@ import type {
   StarterOption,
 } from '../src/cards/card-types.js';
 import type { PlayerIdentityService } from '../src/players/player-identity.js';
-import type { CardCollectionService } from '../src/cards/card-collection.js';
+import type {
+  CardCollectionService,
+  TradingCardDefinition,
+} from '../src/cards/card-collection.js';
 import {
   EvolutionCopiesDeckLockedError,
   EvolutionCopiesTradeReservedError,
@@ -70,6 +73,9 @@ let listStarterOptions: ReturnType<
 let listOwnedCards: ReturnType<
   typeof vi.fn<CardCollectionService['listOwnedCards']>
 >;
+let listTradingCatalogue: ReturnType<
+  typeof vi.fn<CardCollectionService['listTradingCatalogue']>
+>;
 let previewEvolution: ReturnType<
   typeof vi.fn<CardEvolutionService['previewEvolution']>
 >;
@@ -91,6 +97,9 @@ beforeEach(async () => {
 
   listOwnedCards = vi
     .fn<CardCollectionService['listOwnedCards']>()
+    .mockResolvedValue([]);
+  listTradingCatalogue = vi
+    .fn<CardCollectionService['listTradingCatalogue']>()
     .mockResolvedValue([]);
   previewEvolution = vi
     .fn<CardEvolutionService['previewEvolution']>()
@@ -123,6 +132,7 @@ beforeEach(async () => {
 
   const collectionService: CardCollectionService = {
     listOwnedCards,
+    listTradingCatalogue,
   };
 
   const evolutionService: CardEvolutionService = {
@@ -471,6 +481,55 @@ describe('card collection API', () => {
         }),
       ]),
     );
+  });
+});
+
+describe('trading card catalogue API', () => {
+  const definition: TradingCardDefinition = {
+    affinity: 'wit',
+    cardDefinitionId: '00000000-0000-4000-8000-000000000799',
+    category: 'creature',
+    imageAlt: 'A campus ibis holding a sealed letter.',
+    imageUrl: '/cards/campus-courier.webp',
+    name: 'Campus Courier',
+    rarity: 'rare',
+  };
+
+  it('requires an active authenticated player', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/cards/trading-catalogue',
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(listTradingCatalogue).not.toHaveBeenCalled();
+  });
+
+  it('returns requestable definitions without player ownership data', async () => {
+    listTradingCatalogue.mockResolvedValueOnce([definition]);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/cards/trading-catalogue',
+      headers: { authorization: 'Bearer test-access-token' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      definitions: [definition],
+      requestId: expect.any(String),
+    });
+    expect(response.body).not.toContain('ownedCardId');
+    expect(response.body).not.toContain('playerId');
+  });
+
+  it('publishes a bearer-authenticated OpenAPI operation', async () => {
+    await app.ready();
+    const operation =
+      app.swagger().paths?.['/api/v1/cards/trading-catalogue']?.get;
+
+    expect(operation?.operationId).toBe('listTradingCardDefinitions');
+    expect(operation?.security).toEqual([{ bearerAuth: [] }]);
   });
 });
 

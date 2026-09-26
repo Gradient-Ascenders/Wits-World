@@ -253,6 +253,7 @@ function OwnedCopyDetails({
 function acquisitionLabel(kind: OwnedCard['acquisitionKind']) {
   if (kind === 'starter') return 'Starter card';
   if (kind === 'evolution') return 'Evolved card';
+  if (kind === 'trade') return 'Received in a trade';
   return 'Event reward';
 }
 

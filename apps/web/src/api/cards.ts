@@ -58,7 +58,7 @@ export interface CardPresentation {
 
 export interface OwnedCard extends CardPresentation {
   acquiredAt: string;
-  acquisitionKind: 'event_reward' | 'evolution' | 'starter';
+  acquisitionKind: 'event_reward' | 'evolution' | 'starter' | 'trade';
   ownedCardId: string;
 }
 
@@ -652,7 +652,8 @@ function parseOwnedCard(value: unknown): OwnedCard {
     !Array.isArray(value.effects) ||
     (value.acquisitionKind !== 'starter' &&
       value.acquisitionKind !== 'event_reward' &&
-      value.acquisitionKind !== 'evolution') ||
+      value.acquisitionKind !== 'evolution' &&
+      value.acquisitionKind !== 'trade') ||
     !isDateTime(value.acquiredAt)
   ) {
     throw new CardApiError('unavailable');
@@ -733,7 +734,8 @@ function parseEvolutionCopy(value: unknown): EvolutionOwnedCopy {
     !isDateTime(value.acquiredAt) ||
     (value.acquisitionKind !== 'starter' &&
       value.acquisitionKind !== 'event_reward' &&
-      value.acquisitionKind !== 'evolution') ||
+      value.acquisitionKind !== 'evolution' &&
+      value.acquisitionKind !== 'trade') ||
     typeof value.eligible !== 'boolean' ||
     (value.lockReason !== null &&
       value.lockReason !== 'saved_deck' &&

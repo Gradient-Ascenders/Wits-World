@@ -223,6 +223,47 @@ const ownedCardSchema = {
   },
 } as const;
 
+const tradingDefinitionSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'cardDefinitionId',
+    'name',
+    'category',
+    'affinity',
+    'rarity',
+    'imageUrl',
+    'imageAlt',
+  ],
+  properties: {
+    cardDefinitionId: { type: 'string', format: 'uuid' },
+    name: { type: 'string' },
+    category: { type: 'string', enum: ['creature', 'power'] },
+    affinity: {
+      anyOf: [
+        {
+          type: 'string',
+          enum: ['wit', 'grit', 'spark', 'spirit', 'mystic'],
+        },
+        { type: 'null' },
+      ],
+    },
+    rarity: { type: 'string', enum: ['common', 'rare', 'epic', 'legendary'] },
+    imageUrl: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    imageAlt: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+  },
+} as const;
+
+const tradingCatalogueResponseSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['definitions', 'requestId'],
+  properties: {
+    definitions: { type: 'array', items: tradingDefinitionSchema },
+    requestId: { type: 'string' },
+  },
+} as const;
+
 const starterCardSchema = {
   ...ownedCardSchema,
   properties: {
@@ -539,6 +580,43 @@ export const cardRoutes: FastifyPluginAsync<CardRoutesOptions> = async (
 
       return reply.status(200).send({
         cards,
+        requestId: request.id,
+      });
+    },
+  );
+
+  app.get(
+    '/cards/trading-catalogue',
+    {
+      preHandler: [app.authenticate, app.requireActivePlayer],
+      schema: {
+        operationId: 'listTradingCardDefinitions',
+        summary: 'List card definitions that may be requested in a trade',
+        description:
+          'Returns active player-safe card definitions without exposing any player ownership information.',
+        tags: ['Trading'],
+        security: [{ bearerAuth: [] }],
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {},
+        },
+        response: {
+          200: tradingCatalogueResponseSchema,
+          401: apiErrorSchema,
+          403: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (!request.player) {
+        throw new Error(
+          'Active player context was not set by the authorisation pre-handler.',
+        );
+      }
+
+      return reply.status(200).send({
+        definitions: await collectionService.listTradingCatalogue(),
         requestId: request.id,
       });
     },

@@ -48,7 +48,8 @@ const PLAYER_NAVIGATION_ITEMS: NavigationItem[] = [
   {
     href: '/collection',
     icon: 'collection',
-    isActive: (pathname) => pathname === '/collection',
+    isActive: (pathname) =>
+      pathname === '/collection' || pathname.startsWith('/collection/'),
     label: 'Collection',
   },
   {
@@ -82,6 +83,15 @@ function pageTitle(pathname: string): string {
     return 'Saved attempt · Wits World';
   if (pathname.startsWith('/challenge-attempts/'))
     return 'Campus challenge · Wits World';
+  if (pathname === '/collection/trades/new')
+    return 'Start a trade · Wits World';
+  if (pathname.endsWith('/edit') && pathname.startsWith('/collection/trades/'))
+    return 'Edit card trade · Wits World';
+  if (pathname.startsWith('/collection/trades/'))
+    return 'Card trade · Wits World';
+  if (pathname === '/collection/trades') return 'Card trades · Wits World';
+  if (pathname === '/collection/evolutions')
+    return 'Card evolutions · Wits World';
   if (pathname === '/collection') return 'Collection · Wits World';
   if (pathname === '/decks') return 'Decks · Wits World';
   if (pathname === '/matches/history') return 'Battle history · Wits World';
@@ -273,6 +283,7 @@ export function AppShell({ children }: AppShellProps) {
   const isFooterlessProductRoute =
     isExplore ||
     pathname === '/collection' ||
+    pathname.startsWith('/collection/') ||
     pathname === '/decks' ||
     pathname === '/matches' ||
     pathname.startsWith('/matches/') ||

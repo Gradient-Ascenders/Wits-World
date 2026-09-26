@@ -160,9 +160,7 @@ for (const reducedMotion of [false, true]) {
         page.getByRole('button', { name: 'Review evolution' }),
       ).toHaveCount(0);
       await page.keyboard.press('Escape');
-      await page
-        .getByRole('button', { name: 'Evolutions', exact: true })
-        .click();
+      await page.getByRole('link', { name: 'Evolutions', exact: true }).click();
       await expect(
         page.getByText('Ready to evolve', { exact: true }),
       ).toBeVisible();
@@ -270,8 +268,8 @@ for (const reducedMotion of [false, true]) {
     });
     cards = [...initialCards, existingTarget];
     eligible = 2;
-    await page.getByRole('button', { name: 'Cards', exact: true }).click();
-    await page.getByRole('button', { name: 'Evolutions', exact: true }).click();
+    await page.getByRole('link', { name: 'Cards', exact: true }).click();
+    await page.getByRole('link', { name: 'Evolutions', exact: true }).click();
     await expect(
       page.getByText('Copies locked in decks', { exact: true }),
     ).toBeVisible();
@@ -282,8 +280,8 @@ for (const reducedMotion of [false, true]) {
     await page.screenshot({ path: testInfo.outputPath('locked-mobile.png') });
     await page.keyboard.press('Escape');
     previewFails = true;
-    await page.getByRole('button', { name: 'Cards', exact: true }).click();
-    await page.getByRole('button', { name: 'Evolutions', exact: true }).click();
+    await page.getByRole('link', { name: 'Cards', exact: true }).click();
+    await page.getByRole('link', { name: 'Evolutions', exact: true }).click();
     await expect(page.getByText('Availability unknown')).toBeVisible();
     await page.screenshot({
       path: testInfo.outputPath('preview-error-mobile.png'),
@@ -326,7 +324,7 @@ for (const reducedMotion of [false, true]) {
     await page.waitForTimeout(reducedMotion ? 200 : 1500);
     await page.screenshot({ path: testInfo.outputPath('success-mobile.png') });
     await page.getByRole('button', { name: 'Back to evolutions' }).click();
-    await page.getByRole('button', { name: 'Cards', exact: true }).click();
+    await page.getByRole('link', { name: 'Cards', exact: true }).click();
     await expect(
       page.getByRole('button', { name: 'View Quillip details', exact: true }),
     ).toBeVisible();

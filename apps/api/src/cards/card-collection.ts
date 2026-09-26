@@ -18,7 +18,19 @@ export interface CardCollectionQueryable {
 
 export interface CardCollectionService {
   listOwnedCards(playerId: string): Promise<OwnedCard[]>;
+  listTradingCatalogue(): Promise<TradingCardDefinition[]>;
 }
+
+export type TradingCardDefinition = Pick<
+  OwnedCard,
+  | 'affinity'
+  | 'cardDefinitionId'
+  | 'category'
+  | 'imageAlt'
+  | 'imageUrl'
+  | 'name'
+  | 'rarity'
+>;
 
 interface OwnedCardRow extends pg.QueryResultRow {
   acquired_at: Date;
@@ -36,6 +48,16 @@ interface OwnedCardRow extends pg.QueryResultRow {
   name: string;
   owned_card_id: string;
   power: number | null;
+  rarity: CardRarity;
+}
+
+interface TradingCardDefinitionRow extends pg.QueryResultRow {
+  affinity: CardAffinity | null;
+  card_definition_id: string;
+  category: CardCategory;
+  image_alt: string | null;
+  image_url: string | null;
+  name: string;
   rarity: CardRarity;
 }
 
@@ -106,6 +128,39 @@ export function createCardCollectionService(
       );
 
       return result.rows.map(mapOwnedCard);
+    },
+
+    async listTradingCatalogue() {
+      const result = await database.query<TradingCardDefinitionRow>(
+        `
+          select
+            definition.id::text as card_definition_id,
+            definition.name,
+            definition.category,
+            definition.affinity,
+            definition.rarity,
+            definition.image_url,
+            definition.image_alt
+          from public.card_definitions definition
+          where definition.is_active
+            and definition.authoring_status = 'published'
+          order by
+            definition.category,
+            definition.name,
+            definition.id
+        `,
+        [],
+      );
+
+      return result.rows.map((row) => ({
+        affinity: row.affinity,
+        cardDefinitionId: row.card_definition_id,
+        category: row.category,
+        imageAlt: row.image_alt,
+        imageUrl: row.image_url,
+        name: row.name,
+        rarity: row.rarity,
+      }));
     },
   };
 }

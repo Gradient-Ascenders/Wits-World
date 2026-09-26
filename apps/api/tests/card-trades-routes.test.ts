@@ -94,6 +94,7 @@ describe('card trading HTTP routes', () => {
   let declineTradeCommand: ReturnType<typeof vi.fn>;
   let getTrade: ReturnType<typeof vi.fn>;
   let listTrades: ReturnType<typeof vi.fn>;
+  let previewSelection: ReturnType<typeof vi.fn>;
   let verifyReauthentication: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
@@ -144,6 +145,43 @@ describe('card trading HTTP routes', () => {
       pageSize: 20,
       hasMore: false,
     });
+    previewSelection = vi.fn().mockResolvedValue({
+      valid: true,
+      issues: [],
+      ownedCopies: [
+        {
+          ownedCardId: OWNED_CARD_ID,
+          cardDefinitionId: DEFINITION_ID,
+          name: 'Fixture Card',
+          category: 'creature',
+          affinity: 'wit',
+          rarity: 'common',
+          imageUrl: '/cards/fixture.webp',
+          imageAlt: 'Fixture card artwork',
+          availability: 'selected_here',
+        },
+      ],
+      requestedDefinitions: [
+        {
+          cardDefinitionId: DEFINITION_ID,
+          quantity: 1,
+          name: 'Fixture Card',
+          category: 'creature',
+          affinity: 'wit',
+          rarity: 'common',
+          imageUrl: '/cards/fixture.webp',
+          imageAlt: 'Fixture card artwork',
+        },
+      ],
+      offeredRarityPoints: 1,
+      requestedRarityPoints: 1,
+      imbalanceWarningRequired: false,
+      limits: {
+        maximumCopiesPerSide: 5,
+        minimumCreatureCopies: 3,
+        minimumPowerCopies: 2,
+      },
+    });
     const service = {
       createTrade,
       reviseTrade,
@@ -155,6 +193,7 @@ describe('card trading HTTP routes', () => {
       declineTradeCommand,
       getTrade,
       listTrades,
+      previewSelection,
       expireDueTrades: vi.fn(),
       purgeTerminalTrades: vi.fn(),
     } as unknown as CardTradeService;
@@ -232,6 +271,52 @@ describe('card trading HTTP routes', () => {
     expect(response.body).not.toContain('senderPlayerId');
     expect(response.body).not.toContain('terminalReason');
     expect(response.body).not.toContain('acquisitionKind');
+  });
+
+  it('previews exact-copy availability through authenticated player identity', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/trades/selection-preview',
+      headers: { authorization: 'Bearer test-token' },
+      payload: {
+        offeredOwnedCardIds: [OWNED_CARD_ID],
+        requestedDefinitions: [
+          { cardDefinitionId: DEFINITION_ID, quantity: 1 },
+        ],
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(previewSelection).toHaveBeenCalledWith({
+      playerId: PLAYER_ID,
+      offeredOwnedCardIds: [OWNED_CARD_ID],
+      requestedDefinitions: [{ cardDefinitionId: DEFINITION_ID, quantity: 1 }],
+    });
+    expect(response.json()).toMatchObject({
+      valid: true,
+      ownedCopies: [
+        { ownedCardId: OWNED_CARD_ID, availability: 'selected_here' },
+      ],
+      requestId: expect.any(String),
+    });
+  });
+
+  it('requires a trade identifier when previewing an expected version', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/trades/selection-preview',
+      headers: { authorization: 'Bearer test-token' },
+      payload: {
+        expectedVersion: 2,
+        offeredOwnedCardIds: [OWNED_CARD_ID],
+        requestedDefinitions: [
+          { cardDefinitionId: DEFINITION_ID, quantity: 1 },
+        ],
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(previewSelection).not.toHaveBeenCalled();
   });
 
   it('rejects browser-supplied participant authority fields', async () => {
@@ -445,6 +530,12 @@ describe('card trading HTTP routes', () => {
       document.paths?.['/api/v1/trades/{tradeId}/accept']?.post,
     ).toMatchObject({
       operationId: 'acceptCardTrade',
+      security: [{ bearerAuth: [] }],
+    });
+    expect(
+      document.paths?.['/api/v1/trades/selection-preview']?.post,
+    ).toMatchObject({
+      operationId: 'previewCardTradeSelection',
       security: [{ bearerAuth: [] }],
     });
   });

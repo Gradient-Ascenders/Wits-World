@@ -25,16 +25,18 @@ All routes are beneath `/api/v1`, require bearer authentication, resolve the
 active local player on the server, and use the ordinary authenticated-player
 rate limit.
 
-| Method | Route                                        | Purpose                                              |
-| ------ | -------------------------------------------- | ---------------------------------------------------- |
-| `POST` | `/trades`                                    | Create a directed offer using a Player Name          |
-| `GET`  | `/trades`                                    | List only trades involving the current player        |
-| `GET`  | `/trades/:tradeId`                           | Read one participant-only trade                      |
-| `PUT`  | `/trades/:tradeId`                           | Create the next immutable offer version              |
-| `POST` | `/trades/:tradeId/imbalance-acknowledgement` | Acknowledge the current version's rarity warning     |
-| `POST` | `/trades/:tradeId/accept`                    | Accept one exact version after recent authentication |
-| `POST` | `/trades/:tradeId/decline`                   | Recipient-only terminal decline                      |
-| `POST` | `/trades/:tradeId/cancel`                    | Sender-only terminal cancellation                    |
+| Method | Route                                        | Purpose                                               |
+| ------ | -------------------------------------------- | ----------------------------------------------------- |
+| `GET`  | `/cards/trading-catalogue`                   | List active requestable definitions without ownership |
+| `POST` | `/trades`                                    | Create a directed offer using a Player Name           |
+| `GET`  | `/trades`                                    | List only trades involving the current player         |
+| `POST` | `/trades/selection-preview`                  | Preview the current player's exact-copy eligibility   |
+| `GET`  | `/trades/:tradeId`                           | Read one participant-only trade                       |
+| `PUT`  | `/trades/:tradeId`                           | Create the next immutable offer version               |
+| `POST` | `/trades/:tradeId/imbalance-acknowledgement` | Acknowledge the current version's rarity warning      |
+| `POST` | `/trades/:tradeId/accept`                    | Accept one exact version after recent authentication  |
+| `POST` | `/trades/:tradeId/decline`                   | Recipient-only terminal decline                       |
+| `POST` | `/trades/:tradeId/cancel`                    | Sender-only terminal cancellation                     |
 
 Create and revision bodies contain only the current player's exact owned-copy
 identifiers plus requested card definitions and quantities. Acceptance and
@@ -43,6 +45,14 @@ conflict instead of silently applying consent to a newer offer.
 
 The list operation is bounded to at most 50 rows per page, newest first, with
 optional sent/received and status filters. It cannot query unrelated players.
+
+The trading catalogue returns only active published definition metadata. The
+selection preview returns the current player's owned copies with a server-owned
+availability reason, validates requested definitions and collection minimums,
+and calculates rarity totals and the imbalance warning. It does not reserve
+copies; an edit preview can also materialise an authoritative deadline expiry.
+Create and revision commands repeat the authoritative checks while persisting
+the next trade version.
 
 ## Durable idempotency
 
@@ -116,12 +126,18 @@ operations still close an already-expired offer before acting on it.
 
 ## Downstream UI boundary
 
-Issue `#272` supplies the API and does not implement the player trading
-experience. Issue `#274` remains responsible for selection, negotiation,
-version-change warnings, recent-authentication UX, expiry display, confirmation,
-and collection refresh after settlement.
+Issue `#274` implements the player experience as a nested Collection journey:
+`/collection/trades` for open offers and history, `/collection/trades/new` for
+the focused setup workflow, `/collection/trades/:tradeId` for participant-only
+detail, and `/collection/trades/:tradeId/edit` for revision. The browser
+displays the server preview, exact selected copies, version consent, expiry,
+rarity warnings, terminal outcomes, and a post-settlement collection refresh.
+It submits intent only and never calculates eligibility, completion,
+settlement, or warning authority locally. Acceptance redirects through Auth0
+for fresh authentication, then rechecks the returned offer version before
+showing the final confirmation.
 
 ## AI declaration
 
 This document was generated and reviewed with the assistance of:
-ChatGPT-Web[GPT-5.6 Sol].
+ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].

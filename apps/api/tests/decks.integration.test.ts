@@ -88,6 +88,7 @@ beforeEach(async () => {
       },
       collection: {
         listOwnedCards: vi.fn().mockResolvedValue([]),
+        listTradingCatalogue: vi.fn().mockResolvedValue([]),
       },
       decks: {
         listDecks,
