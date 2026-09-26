@@ -28,7 +28,10 @@ import {
   type LocationObservationProvider,
   type LocationPermissionProvider,
 } from '../browser-location';
-import { CampusExplorer } from '../components/exploration/CampusExplorer';
+import {
+  CampusExplorer,
+  type ExploreMode,
+} from '../components/exploration/CampusExplorer';
 import type {
   EventDiscoveryState,
   EventEligibilityState,
@@ -44,6 +47,7 @@ import type {
   MapFactory,
   ReportedMapLocation,
 } from '../components/exploration/map-provider';
+import { useTerritoryDiscovery } from '../components/exploration/useTerritoryDiscovery';
 import { selectReportedLocation } from '../reported-location-selection';
 
 const CAMPUS_MAP_CONFIGURATION: MapConfiguration = {
@@ -197,6 +201,10 @@ export default function ExplorePage({
   >(null);
   const [startingEventId, setStartingEventId] = useState<string | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [selectedTerritoryId, setSelectedTerritoryId] = useState<string | null>(
+    null,
+  );
+  const [exploreMode, setExploreMode] = useState<ExploreMode>('discover');
   const [locationState, setLocationState] = useState<LocationExperienceState>(
     'checking-permission',
   );
@@ -241,6 +249,17 @@ export default function ExplorePage({
 
   discoveryRef.current = discovery;
   selectedEventIdRef.current = selectedEventId;
+
+  const clearTerritorySelection = useCallback(() => {
+    setSelectedTerritoryId(null);
+  }, []);
+  const territory = useTerritoryDiscovery({
+    apiBaseUrl,
+    enabled: exploreMode === 'territories',
+    getAccessToken,
+    onSelectedZoneUnavailable: clearTerritorySelection,
+    selectedZoneId: selectedTerritoryId,
+  });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -946,18 +965,27 @@ export default function ExplorePage({
       locationState={locationState}
       mapConfiguration={mapConfiguration}
       mapFactory={mapFactory}
+      exploreMode={exploreMode}
       nearbyDiscovery={nearbyDiscovery}
       onClearEventSelection={clearSelectedEvent}
+      onClearTerritorySelection={clearTerritorySelection}
       onEnableLocation={startLocationWatch}
+      onExploreModeChange={setExploreMode}
       onLoadNearby={requestNearby}
       onLoadTrails={loadTrails}
       onOpenTrail={openTrail}
       onRetry={() => setAttempt((current) => current + 1)}
       onRetryEligibility={retryEligibility}
+      onRefreshTerritoryDetail={territory.refreshDetail}
+      onRefreshTerritoryZones={territory.refreshZones}
       onSelectEvent={selectEvent}
+      onSelectTerritory={setSelectedTerritoryId}
       onStartChallenge={(eventId) => void startChallenge(eventId)}
       reportedLocation={reportedLocation}
       selectedEventId={selectedEventId}
+      selectedTerritoryId={selectedTerritoryId}
+      territoryDetail={territory.detail}
+      territoryList={territory.list}
       trailDetail={trailDetail}
       trailDiscovery={trailDiscovery}
     />
