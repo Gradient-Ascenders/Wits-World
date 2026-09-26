@@ -10,6 +10,7 @@ import {
 } from '@phosphor-icons/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
+import { QuestMarker } from '../branding/QuestMarker';
 import { StateIcon } from '../StatusMessage';
 import type {
   TerritoryHistoryEntry,
@@ -133,11 +134,10 @@ export function TerritoryDiscovery({
         ) : null}
 
         {list.status === 'loading' ? (
-          <div className="territory-state state-message" role="status">
-            <StateIcon tone="info" />
-            <strong>Loading campus territories…</strong>
-            <p>Reading the current ownership map.</p>
-          </div>
+          <TerritoryLoadingState
+            description="Reading the current ownership map."
+            title="Loading campus territories…"
+          />
         ) : list.status === 'error' ? (
           <div
             className="territory-state state-message state-message--error"
@@ -208,6 +208,28 @@ export function TerritoryDiscovery({
   );
 }
 
+function TerritoryLoadingState({
+  description,
+  title,
+}: {
+  description: string;
+  title: string;
+}) {
+  return (
+    <div
+      aria-atomic="true"
+      aria-busy="true"
+      aria-live="polite"
+      className="territory-state territory-state--loading state-message"
+      role="status"
+    >
+      <QuestMarker className="territory-state__marker" />
+      <strong>{title}</strong>
+      <p>{description}</p>
+    </div>
+  );
+}
+
 function TerritoryDetail({
   detail,
   headingRef,
@@ -271,11 +293,10 @@ function TerritoryDetail({
       ) : null}
 
       {detail.status === 'loading' ? (
-        <div className="territory-state state-message" role="status">
-          <StateIcon tone="info" />
-          <strong>Loading territory activity…</strong>
-          <p>Reading standings and ownership history.</p>
-        </div>
+        <TerritoryLoadingState
+          description="Reading standings and ownership history."
+          title="Loading territory activity…"
+        />
       ) : detail.status === 'error' ? (
         <div
           className="territory-state state-message state-message--error"

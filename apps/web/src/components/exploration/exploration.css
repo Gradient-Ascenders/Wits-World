@@ -607,10 +607,20 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 0;
+  margin-inline-start: calc(var(--space-2) * -1);
+  padding: 0 var(--space-3) 0 var(--space-2);
+  border-radius: var(--radius-md);
   color: var(--colour-text-secondary);
   font-weight: 800;
   text-align: left;
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+.event-panel__back:focus-visible {
+  outline-offset: -0.1875rem;
 }
 
 .event-panel__scroll {
@@ -1739,10 +1749,15 @@
 }
 
 .event-panel__close:hover,
-.event-panel__back:hover,
 .location-control:hover:not(:disabled) {
   color: var(--colour-blue-300);
   background: var(--colour-surface-elevated);
+}
+
+.event-panel__back:hover {
+  color: var(--colour-blue-300);
+  background: rgb(42 107 255 / 10%);
+  box-shadow: inset 0 0 0 1px rgb(84 168 255 / 18%);
 }
 
 .event-panel button:active:not(:disabled),
@@ -1879,7 +1894,7 @@
 
 .territory-list {
   margin: 0;
-  padding: 0 var(--space-4);
+  padding: 0;
   list-style: none;
 }
 
@@ -1890,7 +1905,7 @@
   grid-template-columns: 2.5rem minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-3) 0;
+  padding: var(--space-3) var(--space-4);
   border: 0;
   border-bottom: 1px solid rgb(179 189 204 / 14%);
   color: var(--colour-text-primary);
@@ -1901,13 +1916,13 @@
 }
 
 .territory-summary:hover {
-  background: rgb(42 107 255 / 6%);
+  background: rgb(42 107 255 / 10%);
+  box-shadow: inset 0 0 0 1px rgb(84 168 255 / 18%);
 }
 
 .territory-summary:focus-visible {
-  border-radius: var(--radius-sm);
   outline: 0.1875rem solid var(--colour-blue-300);
-  outline-offset: 0.125rem;
+  outline-offset: -0.1875rem;
 }
 
 .territory-summary__marker {
@@ -1994,6 +2009,32 @@
 
 .territory-state.state-message {
   margin: var(--space-4);
+}
+
+.territory-state--loading.state-message {
+  display: grid;
+  grid-template-columns: 2.75rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-1) var(--space-4);
+  padding-block: var(--space-5);
+}
+
+.territory-state--loading > .territory-state__marker {
+  width: 2.25rem;
+  height: 3rem;
+  grid-row: 1 / span 2;
+  color: var(--colour-gold-400);
+  filter: drop-shadow(0 0.25rem 0.75rem rgb(212 175 55 / 20%));
+}
+
+.territory-state--loading.state-message > strong {
+  align-self: end;
+  margin: 0;
+}
+
+.territory-state--loading.state-message > p {
+  align-self: start;
+  margin: 0;
 }
 
 .territory-stale {

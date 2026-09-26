@@ -983,12 +983,17 @@ export const createMapboxMap: MapFactory = async (
     }
     if (!map.getLayer(TERRITORY_LINE_LAYER_ID)) {
       map.addLayer({
-        filter: ['==', ['get', 'status'], 'active'],
+        filter: [
+          'all',
+          ['==', ['get', 'status'], 'active'],
+          ['==', ['get', 'selected'], false],
+        ],
         id: TERRITORY_LINE_LAYER_ID,
         paint: {
-          'line-color': '#d4af37',
-          'line-opacity': 0.86,
-          'line-width': 2,
+          'line-color': '#e0c46c',
+          'line-emissive-strength': 0.45,
+          'line-opacity': 0.96,
+          'line-width': 2.5,
         },
         slot: 'middle',
         source: TERRITORY_SOURCE_ID,
@@ -997,13 +1002,18 @@ export const createMapboxMap: MapFactory = async (
     }
     if (!map.getLayer(TERRITORY_SUSPENDED_LINE_LAYER_ID)) {
       map.addLayer({
-        filter: ['==', ['get', 'status'], 'suspended'],
+        filter: [
+          'all',
+          ['==', ['get', 'status'], 'suspended'],
+          ['==', ['get', 'selected'], false],
+        ],
         id: TERRITORY_SUSPENDED_LINE_LAYER_ID,
         paint: {
           'line-color': '#b3bdcc',
           'line-dasharray': [2, 2],
-          'line-opacity': 0.86,
-          'line-width': 2,
+          'line-emissive-strength': 0.3,
+          'line-opacity': 0.94,
+          'line-width': 2.5,
         },
         slot: 'middle',
         source: TERRITORY_SOURCE_ID,

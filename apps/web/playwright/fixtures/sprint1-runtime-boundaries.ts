@@ -362,7 +362,7 @@ export const mapFactory: MapFactory = async (
             : selected
               ? 'rgb(42 107 255 / 36%)'
               : 'rgb(42 107 255 / 22%)',
-        border: `${selected ? 4 : 2}px ${region.status === 'suspended' ? 'dashed' : 'solid'} ${selected ? '#54a8ff' : '#d4af37'}`,
+        border: `${selected ? 4 : 3}px ${region.status === 'suspended' ? 'dashed' : 'solid'} ${selected ? '#54a8ff' : region.status === 'suspended' ? '#b3bdcc' : '#e0c46c'}`,
         clipPath: layout.clipPath,
         color: '#f7f3e7',
         cursor: 'pointer',

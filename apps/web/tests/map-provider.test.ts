@@ -572,6 +572,22 @@ describe('Mapbox Standard provider', () => {
         'wits-territory-label',
       ]),
     );
+    const activeLine = mapboxState.addLayer.mock.calls.find(
+      ([layer]) => layer.id === 'wits-territory-line',
+    )?.[0];
+    expect(activeLine).toMatchObject({
+      filter: [
+        'all',
+        ['==', ['get', 'status'], 'active'],
+        ['==', ['get', 'selected'], false],
+      ],
+      paint: {
+        'line-color': '#e0c46c',
+        'line-emissive-strength': 0.45,
+        'line-opacity': 0.96,
+        'line-width': 2.5,
+      },
+    });
   });
 
   it('makes only opted-in author markers draggable and reports their final coordinate', async () => {

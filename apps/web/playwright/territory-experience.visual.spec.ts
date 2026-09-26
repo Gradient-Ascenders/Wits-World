@@ -30,17 +30,33 @@ test('territory map and list stay equivalent at desktop and mobile widths', asyn
   await expect(
     page.locator('[data-deterministic-territories] [data-territory-region-id]'),
   ).toHaveCount(3);
+  const eastZone = page.getByRole('button', {
+    name: /Open East Campus, active, Owned by blue_witsie/,
+  });
+  await eastZone.hover();
+  const [territoryRowBox, territoryScrollBox] = await Promise.all([
+    eastZone.boundingBox(),
+    page.locator('.event-panel__scroll').boundingBox(),
+  ]);
+  expect(territoryRowBox?.x).toBe(territoryScrollBox?.x);
+  expect(territoryRowBox?.width).toBe(territoryScrollBox?.width);
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     animations: 'disabled',
     path: testInfo.outputPath('territory-list-desktop.png'),
   });
 
-  const eastZone = page.getByRole('button', {
-    name: /Open East Campus, active, Owned by blue_witsie/,
-  });
   await eastZone.focus();
   await page.keyboard.press('Enter');
+  const territoryLoading = page.getByRole('status').filter({
+    hasText: 'Loading territory activity',
+  });
+  await expect(territoryLoading).toBeVisible();
+  await expect(territoryLoading.locator('.quest-marker')).toBeVisible();
+  await page.screenshot({
+    animations: 'disabled',
+    path: testInfo.outputPath('territory-loading-desktop.png'),
+  });
   await expect(
     page.getByRole('heading', { name: 'East Campus' }),
   ).toBeFocused();
@@ -57,6 +73,11 @@ test('territory map and list stay equivalent at desktop and mobile widths', asyn
   await expect(
     page.getByRole('button', { name: /Contest|Join Ranked/i }),
   ).toHaveCount(0);
+  await page.locator('.event-panel__back').hover();
+  await expect(page.locator('.event-panel__back')).toHaveCSS(
+    'border-radius',
+    '10px',
+  );
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     animations: 'disabled',
@@ -168,6 +189,7 @@ async function installRoutes(page: Page): Promise<void> {
       return;
     }
     if (path.endsWith(`/territory/zones/${ZONE_IDS[0]}`)) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
       await route.fulfill({
         json: {
           ...zones[0],
