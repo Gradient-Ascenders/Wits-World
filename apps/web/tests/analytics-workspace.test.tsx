@@ -527,6 +527,7 @@ function rarityItem(
 
 function event() {
   return {
+    automaticPlacement: false,
     authoringStatus: 'published',
     createdAt: '2026-09-01T00:00:00.000Z',
     description: null,

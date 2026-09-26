@@ -164,9 +164,11 @@ export function CollectionEvolutions({
                     {preview
                       ? preview.canEvolve
                         ? 'Ready to evolve'
-                        : preview.unavailableReason === 'saved_deck_lock'
-                          ? 'Copies locked in decks'
-                          : 'Not enough copies'
+                        : preview.unavailableReason === 'trade_reservation'
+                          ? 'Copies reserved for trade'
+                          : preview.unavailableReason === 'saved_deck_lock'
+                            ? 'Copies locked in decks'
+                            : 'Not enough copies'
                       : unavailable
                         ? 'Evolved card'
                         : 'Availability unknown'}
@@ -193,6 +195,11 @@ export function CollectionEvolutions({
                         <p className="evolution-candidate__counts">
                           <LockKey size={16} aria-hidden="true" />{' '}
                           {preview.deckLockedCopyCount} used in a deck
+                        </p>
+                      ) : null}
+                      {preview.tradeReservedCopyCount > 0 ? (
+                        <p className="evolution-candidate__counts">
+                          {preview.tradeReservedCopyCount} reserved for trade
                         </p>
                       ) : null}
                       <button

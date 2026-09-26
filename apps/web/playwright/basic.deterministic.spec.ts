@@ -375,6 +375,7 @@ test('completes the canonical 21-step Basic journey against the real API and tes
       '/author/events',
       'POST',
       {
+        automaticPlacement: false,
         title,
         description: 'Disposable integrated release-validation content.',
         latitude: -26.19205,

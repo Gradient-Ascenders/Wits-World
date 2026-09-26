@@ -309,6 +309,15 @@ conformance suite. Those qualities require reviewed manual evidence at the
 release boundary. A passing component or E2E suite must not be reported as full
 accessibility acceptance.
 
+Issue `#265` adds focused placement-planner and Author-route assertions plus Web
+workspace tests for Author gating, server-provided coverage and separation
+diagnostics, current/proposed/excluded/overridden rendering, the semantic table
+fallback, confirmations, apply and override mutations, rollback, stale-state
+refresh, map failure, loading/error/empty states, and keyboard activation. CSS
+breakpoints keep the policy and controls before the map on narrow screens; the
+real-device, screen-reader, contrast, and deployed Mapbox checks remain manual
+release evidence.
+
 ## Manual and field evidence
 
 Manual evidence should identify the commit or deployment, date, tester, device

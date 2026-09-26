@@ -1,7 +1,11 @@
 import { authorErrorDetail } from './author-error-copy';
 import { StateIcon } from '../StatusMessage';
 import { LoadingState } from '../LoadingState';
-import { ArrowLeftIcon } from '@phosphor-icons/react';
+import {
+  ArrowLeftIcon,
+  CaretLeftIcon,
+  CaretRightIcon,
+} from '@phosphor-icons/react';
 import { AuthorSaveBar } from './AuthorSaveBar';
 import {
   useCallback,
@@ -864,29 +868,90 @@ function MembershipFieldset({
   onChange: (id: string, checked: boolean) => void;
   selected: string[];
 }) {
+  const [query, setQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const filteredItems = items.filter((item) =>
+    item.label.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
+  );
+  const pageCount = Math.max(1, Math.ceil(filteredItems.length / 10));
+  const currentPage = Math.min(page, pageCount);
+  const visibleItems = filteredItems.slice(
+    (currentPage - 1) * 10,
+    currentPage * 10,
+  );
+
   return (
     <fieldset className="author-membership">
       <legend>{legend}</legend>
       {items.length === 0 ? (
         <p>{empty}</p>
       ) : (
-        <ul>
-          {items.map((item) => (
-            <li key={item.id}>
-              <label>
-                <input
-                  checked={selected.includes(item.id)}
-                  onChange={(event) => onChange(item.id, event.target.checked)}
-                  type="checkbox"
-                />
-                <span>
-                  <strong>{item.label}</strong>
-                  <small>{item.status}</small>
-                </span>
-              </label>
-            </li>
-          ))}
-        </ul>
+        <>
+          <label className="author-search author-membership__search">
+            <span>Search {legend.toLocaleLowerCase()}</span>
+            <input
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setPage(1);
+              }}
+              type="search"
+              value={query}
+            />
+          </label>
+          {filteredItems.length === 0 ? (
+            <p>No matching {legend.toLocaleLowerCase()}.</p>
+          ) : (
+            <ul>
+              {visibleItems.map((item) => (
+                <li key={item.id}>
+                  <label>
+                    <input
+                      checked={selected.includes(item.id)}
+                      onChange={(event) =>
+                        onChange(item.id, event.target.checked)
+                      }
+                      type="checkbox"
+                    />
+                    <span>
+                      <strong>{item.label}</strong>
+                      <small>{item.status}</small>
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
+          {pageCount > 1 ? (
+            <nav
+              aria-label={`${legend} pages`}
+              className="author-pagination author-membership__pagination"
+            >
+              <button
+                aria-label={`Previous ${legend.toLocaleLowerCase()} page`}
+                className="button button--quiet"
+                disabled={currentPage === 1}
+                onClick={() => setPage(currentPage - 1)}
+                title={`Previous ${legend.toLocaleLowerCase()} page`}
+                type="button"
+              >
+                <CaretLeftIcon aria-hidden="true" size={18} />
+              </button>
+              <span>
+                Page {currentPage} of {pageCount}
+              </span>
+              <button
+                aria-label={`Next ${legend.toLocaleLowerCase()} page`}
+                className="button button--quiet"
+                disabled={currentPage === pageCount}
+                onClick={() => setPage(currentPage + 1)}
+                title={`Next ${legend.toLocaleLowerCase()} page`}
+                type="button"
+              >
+                <CaretRightIcon aria-hidden="true" size={18} />
+              </button>
+            </nav>
+          ) : null}
+        </>
       )}
     </fieldset>
   );

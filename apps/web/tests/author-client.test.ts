@@ -52,8 +52,35 @@ describe('author API client', () => {
     });
   });
 
+  it('accepts an automatic event whose authored location is intentionally unset', async () => {
+    const portableEvent = {
+      ...eventFixture(),
+      automaticPlacement: true,
+      latitude: null,
+      longitude: null,
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          events: [portableEvent],
+          requestId: 'request-portable-events',
+        }),
+      ),
+    );
+
+    await expect(
+      listAuthorEvents({
+        apiBaseUrl,
+        getAccessToken,
+        signal: new AbortController().signal,
+      }),
+    ).resolves.toEqual([portableEvent]);
+  });
+
   it('submits only the event definition fields supported by the API', async () => {
     const input = {
+      automaticPlacement: false,
       description: 'East Campus history.',
       endsAt: '2026-09-01T12:00:00.000Z',
       latitude: -26.19205,
@@ -717,6 +744,7 @@ describe('author API client', () => {
         apiBaseUrl,
         getAccessToken,
         input: {
+          automaticPlacement: false,
           endsAt: '2026-09-01T12:00:00.000Z',
           latitude: -26.19205,
           longitude: 28.03038,
@@ -789,6 +817,7 @@ describe('author API client', () => {
 
 function eventFixture() {
   return {
+    automaticPlacement: false,
     authoringStatus: 'draft',
     createdAt: '2026-08-16T08:00:00.000Z',
     description: 'East Campus history.',

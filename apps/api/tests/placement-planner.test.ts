@@ -246,6 +246,35 @@ describe('automatic placement planner', () => {
     const result = planPlacement(input);
     expect(result.status).toBe('unserved');
     expect(result.exceptions).toContain('unserved_zone');
+    expect(result.validation.coverage).toContainEqual({
+      actual: 0,
+      mandatory: 1,
+      preferred: 2,
+      status: 'unserved',
+      zoneId: 'zone3',
+    });
+  });
+
+  it('explains candidate sites blocked by authoritative separation rules', () => {
+    const input = twoZoneSeparationFixture();
+    input.policy.target = 3;
+    input.policy.preferredPerZone = 2;
+    input.events = fixture().events.slice(0, 3);
+
+    const result = planPlacement(input);
+
+    expect(result.status).toBe('degraded');
+    expect(result.validation.separation).toMatchObject({
+      minimumMetres: 150,
+      blockedSites: expect.arrayContaining([
+        expect.objectContaining({
+          conflictsWithFixedEvent: false,
+          relatedSiteIds: ['A2'],
+          siteId: 'A1',
+          zoneId: 'zone1',
+        }),
+      ]),
+    });
   });
 
   it('does not treat a fully suspended catalogue as a successful empty plan', () => {

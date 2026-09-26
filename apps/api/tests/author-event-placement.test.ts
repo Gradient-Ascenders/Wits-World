@@ -26,6 +26,9 @@ describe('Author event placement API', () => {
   let service: {
     preview: ReturnType<typeof vi.fn<PlacementService['preview']>>;
     apply: ReturnType<typeof vi.fn<PlacementService['apply']>>;
+    override: ReturnType<typeof vi.fn<PlacementService['override']>>;
+    endOverride: ReturnType<typeof vi.fn<PlacementService['endOverride']>>;
+    rollback: ReturnType<typeof vi.fn<PlacementService['rollback']>>;
     state: ReturnType<typeof vi.fn<PlacementService['state']>>;
     history: ReturnType<typeof vi.fn<PlacementService['history']>>;
   };
@@ -48,6 +51,10 @@ describe('Author event placement API', () => {
         entries: [],
         zoneCounts: {},
         exceptions: ['target_shortfall'],
+        validation: {
+          coverage: [],
+          separation: { blockedSites: [], minimumMetres: 150 },
+        },
       }),
       apply: vi.fn().mockResolvedValue({
         planId,
@@ -59,9 +66,47 @@ describe('Author event placement API', () => {
         entries: [],
         zoneCounts: {},
         exceptions: ['target_shortfall'],
+        validation: {
+          coverage: [],
+          separation: { blockedSites: [], minimumMetres: 150 },
+        },
+      }),
+      override: vi
+        .fn()
+        .mockResolvedValue({ overrideId: planId, replayed: false }),
+      endOverride: vi.fn().mockResolvedValue({ stateVersion: 1 }),
+      rollback: vi.fn().mockResolvedValue({
+        planId,
+        policyVersion: 'placement-v1',
+        rotationBucket: '2026-09-19',
+        stateVersion: 1,
+        validUntil: '2026-09-19T01:00:00.000Z',
+        status: 'degraded',
+        entries: [],
+        zoneCounts: {},
+        exceptions: ['target_shortfall'],
+        validation: {
+          coverage: [],
+          separation: { blockedSites: [], minimumMetres: 150 },
+        },
       }),
       state: vi.fn().mockResolvedValue({
         policyVersion: 'placement-v1',
+        policy: {
+          id: 'placement-v1',
+          target: 6,
+          preferredPerZone: 2,
+          mandatoryPerZone: 1,
+          separationMetres: 150,
+          replacements: 2,
+          cooldownBuckets: 2,
+          previewTtlMinutes: 15,
+          rotationTimezone: 'Africa/Johannesburg',
+          rotationLocalTime: '04:00:00',
+          maximumPinHours: 168,
+          maximumPauseHours: 168,
+          maximumExclusionHours: 720,
+        },
         rotationBucket: '2026-09-19',
         stateVersion: 0,
         currentPlanId: null,
@@ -79,6 +124,7 @@ describe('Author event placement API', () => {
         zones: [],
         sites: [],
         assignments: [],
+        events: [],
         overrides: [],
       }),
       history: vi.fn().mockResolvedValue([]),
@@ -197,6 +243,59 @@ describe('Author event placement API', () => {
     );
     expect(stale.statusCode).toBe(409);
     expect(stale.json().code).toBe('STALE_PLACEMENT_STATE');
+  });
+
+  it('validates and forwards override, end-override, and rollback mutations', async () => {
+    const override = await request(
+      'POST',
+      '/api/v1/author/event-placement/overrides',
+      {
+        kind: 'automation_pause',
+        expectedVersion: 0,
+        reason: 'Exam period operations',
+        durationHours: 24,
+        idempotencyKey: planId,
+      },
+    );
+    expect(override.statusCode).toBe(200);
+    expect(service.override).toHaveBeenCalledWith({
+      actorId: authorId,
+      kind: 'automation_pause',
+      expectedVersion: 0,
+      reason: 'Exam period operations',
+      durationHours: 24,
+      idempotencyKey: planId,
+    });
+
+    const ended = await request(
+      'POST',
+      `/api/v1/author/event-placement/overrides/${planId}/end`,
+      { expectedVersion: 1, reason: 'Resume rotation' },
+    );
+    expect(ended.statusCode).toBe(200);
+    expect(service.endOverride).toHaveBeenCalledWith(
+      authorId,
+      planId,
+      1,
+      'Resume rotation',
+    );
+
+    const rollback = await request(
+      'POST',
+      '/api/v1/author/event-placement/rollback',
+      {
+        expectedVersion: 1,
+        reason: 'Restore last safe plan',
+        sourcePlanId: planId,
+      },
+    );
+    expect(rollback.statusCode).toBe(200);
+    expect(service.rollback).toHaveBeenCalledWith(
+      authorId,
+      planId,
+      1,
+      'Restore last safe plan',
+    );
   });
 
   function request(

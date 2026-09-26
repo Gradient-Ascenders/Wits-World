@@ -45,6 +45,7 @@ const activePlayer = {
 };
 
 const authoredEvent: AuthorEvent = {
+  automaticPlacement: false,
   eventId: EVENT_ID,
   title: 'Great Hall Challenge',
   description: 'Explore East Campus.',
@@ -74,6 +75,9 @@ let updateEvent: ReturnType<typeof createUpdateEventMock>;
 let playerResolve: ReturnType<typeof createPlayerResolveMock>;
 let publishEvent: ReturnType<typeof createPublishEventMock>;
 let retireEvent: ReturnType<typeof createRetireEventMock>;
+let transitionReviewPackage: ReturnType<
+  typeof vi.fn<AuthorEventService['transitionReviewPackage']>
+>;
 
 beforeEach(async () => {
   listEvents = createListEventsMock();
@@ -82,6 +86,9 @@ beforeEach(async () => {
   playerResolve = createPlayerResolveMock();
   publishEvent = createPublishEventMock();
   retireEvent = createRetireEventMock();
+  transitionReviewPackage = vi
+    .fn<AuthorEventService['transitionReviewPackage']>()
+    .mockResolvedValue(authoredEvent);
 
   const accessTokenVerifier: AccessTokenVerifier = {
     verify: vi.fn().mockResolvedValue(authenticatedIdentity),
@@ -96,6 +103,7 @@ beforeEach(async () => {
     returnEvent: vi.fn().mockResolvedValue(authoredEvent),
     publishEvent,
     retireEvent,
+    transitionReviewPackage,
   };
 
   app = await buildApp({
@@ -116,6 +124,56 @@ afterEach(async () => {
 });
 
 describe('author event API', () => {
+  it('protects package submission and derives its actor from authentication', async () => {
+    const url = `/api/v1/author/events/${EVENT_ID}/package/submit`;
+    const missingToken = await app.inject({
+      method: 'POST',
+      url,
+      payload: { expectedVersion: 0 },
+    });
+    expect(missingToken.statusCode).toBe(401);
+
+    playerResolve.mockResolvedValueOnce(activePlayer);
+    const nonAuthor = await authenticatedRequest({
+      method: 'POST',
+      url,
+      payload: { expectedVersion: 0 },
+    });
+    expect(nonAuthor.statusCode).toBe(403);
+    expect(transitionReviewPackage).not.toHaveBeenCalled();
+
+    const response = await authenticatedRequest({
+      method: 'POST',
+      url,
+      payload: { expectedVersion: 0 },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(transitionReviewPackage).toHaveBeenCalledWith({
+      action: 'submit',
+      actorPlayerId: AUTHOR_ID,
+      eventId: EVENT_ID,
+      expectedVersion: 0,
+      note: undefined,
+    });
+  });
+
+  it('publishes through the review-package service path', async () => {
+    const response = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/author/events/${EVENT_ID}/package/publish`,
+      payload: { expectedVersion: 2, note: 'Package reviewed' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(transitionReviewPackage).toHaveBeenCalledWith({
+      action: 'publish',
+      actorPlayerId: AUTHOR_ID,
+      eventId: EVENT_ID,
+      expectedVersion: 2,
+      note: 'Package reviewed',
+    });
+  });
+
   it('requires authentication', async () => {
     const response = await app.inject({
       method: 'GET',
@@ -496,6 +554,7 @@ function createPlayerResolveMock() {
 
 function validEventBody() {
   return {
+    automaticPlacement: false,
     title: 'Great Hall Challenge',
     description: 'Explore East Campus.',
     latitude: -26.19205,

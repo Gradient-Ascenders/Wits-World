@@ -52,6 +52,7 @@ describe('database release procedure', () => {
       return {
         basicDemoEventCount: 4,
         basicDemoChallengeCount: 1,
+        basicDemoPortableEventCount: 6,
         migrationCount: 2,
       };
     });
@@ -83,6 +84,7 @@ describe('database release procedure', () => {
       verification: {
         basicDemoEventCount: 4,
         basicDemoChallengeCount: 1,
+        basicDemoPortableEventCount: 6,
         migrationCount: 2,
       },
     });
@@ -262,7 +264,8 @@ describe('database release inspection and verification', () => {
       .fn()
       .mockResolvedValueOnce({ rows: [{ count: '2' }] })
       .mockResolvedValueOnce({ rows: [{ count: '4' }] })
-      .mockResolvedValueOnce({ rows: [{ count: '1' }] });
+      .mockResolvedValueOnce({ rows: [{ count: '1' }] })
+      .mockResolvedValueOnce({ rows: [{ count: '6' }] });
 
     await expect(
       verifyDatabaseRelease(
@@ -273,6 +276,7 @@ describe('database release inspection and verification', () => {
     ).resolves.toEqual({
       basicDemoEventCount: 4,
       basicDemoChallengeCount: 1,
+      basicDemoPortableEventCount: 6,
       migrationCount: 2,
     });
   });

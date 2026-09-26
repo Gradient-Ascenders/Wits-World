@@ -23,6 +23,14 @@ const BASIC_DEMO_EVENT_IDS = [
   '00000000-0000-4000-8000-000000000021',
 ];
 const BASIC_DEMO_CHALLENGE_ID = '04b3f8bb-92ad-cd03-1d4c-11942a9d6551';
+const BASIC_DEMO_PORTABLE_EVENT_IDS = [
+  '00000000-0000-4000-8000-000000000026',
+  '00000000-0000-4000-8000-000000000027',
+  '00000000-0000-4000-8000-000000000028',
+  '00000000-0000-4000-8000-000000000029',
+  '00000000-0000-4000-8000-000000000030',
+  '00000000-0000-4000-8000-000000000031',
+];
 const VERIFIED_EVENT_KEYS = [
   'foundations',
   'heritage',
@@ -45,6 +53,7 @@ export interface DatabaseReleaseInspection {
 export interface DatabaseReleaseVerification {
   basicDemoEventCount?: number;
   basicDemoChallengeCount?: number;
+  basicDemoPortableEventCount?: number;
   migrationCount: number;
   verifiedEventCount?: number;
   verifiedQuestionCount?: number;
@@ -265,9 +274,55 @@ export async function verifyDatabaseRelease(
       );
     }
 
+    const portableEvents = await client.query<{ count: string }>(
+      `select count(*)::text as count
+         from public.events event
+        where event.id = any($1::uuid[])
+          and event.is_published = true
+          and event.authoring_status = 'published'
+          and exists (
+            select 1
+              from public.event_placement_portability portability
+             where portability.event_id = event.id
+               and portability.policy_version_id = 'placement-v1'
+               and portability.ended_at is null
+          )
+          and exists (
+            select 1
+              from public.event_challenges challenge
+             where challenge.event_id = event.id
+               and challenge.status = 'published'
+               and (
+                 select count(*)
+                   from public.challenge_questions question
+                  where question.challenge_id = challenge.id
+                    and question.status = 'published'
+               ) >= 5
+          )
+          and not exists (
+            select 1
+              from public.trail_events membership
+              join public.trails trail on trail.id = membership.trail_id
+             where membership.event_id = event.id
+               and trail.status = 'published'
+          )`,
+      [BASIC_DEMO_PORTABLE_EVENT_IDS],
+    );
+    const basicDemoPortableEventCount = parseCount(
+      portableEvents,
+      'Basic demo portable event',
+    );
+
+    if (basicDemoPortableEventCount !== BASIC_DEMO_PORTABLE_EVENT_IDS.length) {
+      throw new Error(
+        `Database verification failed: expected ${BASIC_DEMO_PORTABLE_EVENT_IDS.length} placement-ready Basic demo events, found ${basicDemoPortableEventCount}.`,
+      );
+    }
+
     return {
       basicDemoEventCount: demoEventCount,
       basicDemoChallengeCount,
+      basicDemoPortableEventCount,
       migrationCount,
     };
   });

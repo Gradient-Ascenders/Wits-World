@@ -5,6 +5,7 @@ import { useSignInMapStatus } from '../auth/startup-state';
 
 import {
   createMapboxMap,
+  type MapArea,
   type MapConfiguration,
   type MapCoordinate,
   type MapController,
@@ -15,6 +16,7 @@ import {
 
 interface CampusMapProps {
   accessibleLabel?: string;
+  areas?: readonly MapArea[];
   configuration: MapConfiguration;
   errorDescription?: string;
   focusPointRequest?: number;
@@ -34,6 +36,7 @@ const MAP_LOAD_TIMEOUT_MS = 15_000;
 
 export function CampusMap({
   accessibleLabel = 'Interactive campus map using Mapbox Standard 3D. Event information is also available in the nearby events list.',
+  areas = [],
   configuration,
   errorDescription = 'Open Campus events to keep exploring.',
   focusPointRequest = 0,
@@ -52,6 +55,7 @@ export function CampusMap({
   const onFollowStateChangeRef = useRef(onFollowStateChange);
   const onPointSelectRef = useRef(onPointSelect);
   const pointsRef = useRef(points);
+  const areasRef = useRef(areas);
   const focusPointRequestRef = useRef(focusPointRequest);
   const reportedLocationRef = useRef<ReportedMapLocation | null>(
     reportedLocation,
@@ -63,6 +67,7 @@ export function CampusMap({
   useSignInMapStatus(status);
 
   pointsRef.current = points;
+  areasRef.current = areas;
   focusPointRequestRef.current = focusPointRequest;
   onCoordinateSelectRef.current = onCoordinateSelect;
   onFollowStateChangeRef.current = onFollowStateChange;
@@ -73,6 +78,10 @@ export function CampusMap({
   useEffect(() => {
     controllerRef.current?.setPoints(points);
   }, [points]);
+
+  useEffect(() => {
+    controllerRef.current?.setAreas?.(areas);
+  }, [areas]);
 
   useEffect(() => {
     controllerRef.current?.setReportedLocation(reportedLocation);
@@ -199,6 +208,7 @@ export function CampusMap({
         controllerRef.current = map;
         resizeMap();
         map.setPoints(pointsRef.current);
+        map.setAreas?.(areasRef.current);
         map.setReportedLocation(reportedLocationRef.current);
         map.setSelectedPoint?.(selectedPointRef.current);
         if (

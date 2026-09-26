@@ -6,7 +6,10 @@ import {
   AuthorCardNotFoundError,
   type AuthorCardService,
 } from '../cards/author-card-service.js';
-import { InvalidCardDefinitionError } from '../cards/card-validation.js';
+import {
+  InvalidCardDefinitionError,
+  validateCardImageUrl,
+} from '../cards/card-validation.js';
 import { ApiError } from '../errors/api-error.js';
 
 interface AuthorCardRoutesOptions {
@@ -230,6 +233,8 @@ const cardBodyCommonProperties = {
     minLength: 1,
     pattern: '\\S',
     nullable: true,
+    description:
+      'Absolute http(s) image URL or same-origin /cards/ artwork path.',
   },
 } as const;
 
@@ -579,6 +584,7 @@ export const authorCardRoutes: FastifyPluginAsync<
       const author = requireResolvedAuthor(request);
 
       try {
+        validateCardImageUrl(request.body.imageUrl);
         const card = await service.createCard({
           actorPlayerId: author.id,
           ...request.body,
@@ -622,6 +628,7 @@ export const authorCardRoutes: FastifyPluginAsync<
       const author = requireResolvedAuthor(request);
 
       try {
+        validateCardImageUrl(request.body.imageUrl);
         return {
           card: await service.updateCard({
             actorPlayerId: author.id,
