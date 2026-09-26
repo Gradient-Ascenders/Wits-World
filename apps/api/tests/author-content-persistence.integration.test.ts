@@ -120,6 +120,7 @@ describe.skipIf(!runIntegrationTests)(
       await pool.query(
         `update public.challenge_questions
             set status = 'in_review',
+                version = version + 1,
                 submitted_by_player_id = $2::uuid,
                 submitted_at = now()
           where id = $1::uuid`,
@@ -128,6 +129,7 @@ describe.skipIf(!runIntegrationTests)(
       await pool.query(
         `update public.event_challenges
             set status = 'in_review',
+                version = version + 1,
                 submitted_by_player_id = $2::uuid,
                 submitted_at = now()
           where id = $1::uuid`,
@@ -136,6 +138,7 @@ describe.skipIf(!runIntegrationTests)(
       await pool.query(
         `update public.events
             set authoring_status = 'in_review',
+                version = version + 1,
                 submitted_by_player_id = $2::uuid,
                 submitted_at = now()
           where id = $1::uuid`,
@@ -172,6 +175,7 @@ describe.skipIf(!runIntegrationTests)(
         await pool.query(
           `update public.events
               set authoring_status = 'draft',
+                  version = version + 1,
                   submitted_by_player_id = null,
                   submitted_at = null
             where id = $1::uuid`,
@@ -187,6 +191,7 @@ describe.skipIf(!runIntegrationTests)(
         await pool.query(
           `update public.events
               set authoring_status = 'draft',
+                  version = version + 1,
                   submitted_by_player_id = null,
                   submitted_at = null
             where id = $1::uuid`,
@@ -195,6 +200,7 @@ describe.skipIf(!runIntegrationTests)(
         await pool.query(
           `update public.event_challenges
               set status = 'draft',
+                  version = version + 1,
                   submitted_by_player_id = null,
                   submitted_at = null
             where id = $1::uuid`,
@@ -203,6 +209,7 @@ describe.skipIf(!runIntegrationTests)(
         await pool.query(
           `update public.challenge_questions
               set status = 'draft',
+                  version = version + 1,
                   submitted_by_player_id = null,
                   submitted_at = null
             where id = $1::uuid`,
