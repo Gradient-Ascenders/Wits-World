@@ -91,6 +91,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 function authValue(): Auth0ContextInterface {
@@ -568,37 +569,34 @@ describe('live lobby and battle experience', () => {
     expect(screen.getByRole('button', { name: 'Decline' })).toBeEnabled();
   });
 
-  it('disables ranked entry with visible guidance when no season is active', async () => {
+  it('refreshes every season projection when a new season becomes active', async () => {
     const user = userEvent.setup();
     const deck = buildSavedDeck({ isSelected: true });
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((input: RequestInfo | URL) => {
-        const pathname = new URL(String(input)).pathname;
-        if (pathname.endsWith('/decks')) {
-          return Promise.resolve(deckListResponse([deck]));
-        }
-        if (pathname.endsWith('/ranked/queue')) {
-          return Promise.resolve(
-            new Response(JSON.stringify(queueState({ seasonId: null })), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
+    let hasSeason = false;
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const pathname = new URL(String(input)).pathname;
+      if (pathname.endsWith('/decks')) {
+        return Promise.resolve(deckListResponse([deck]));
+      }
+      if (pathname.endsWith('/ranked/queue')) {
+        return Promise.resolve(
+          jsonResponse(
+            queueState({
+              seasonId: hasSeason ? rankedSeason().seasonId : null,
             }),
-          );
-        }
-        if (pathname.endsWith('/ranked/seasons/current')) {
-          return Promise.resolve(
-            new Response(JSON.stringify({ season: null }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            }),
-          );
-        }
-        const supplemental = rankedLobbyResponse(pathname, false);
-        if (supplemental) return Promise.resolve(supplemental);
-        throw new Error(`Unexpected request: ${String(input)}`);
-      }),
-    );
+          ),
+        );
+      }
+      if (pathname.endsWith('/ranked/seasons/current')) {
+        return Promise.resolve(
+          jsonResponse({ season: hasSeason ? rankedSeason() : null }),
+        );
+      }
+      const supplemental = rankedLobbyResponse(pathname, hasSeason);
+      if (supplemental) return Promise.resolve(supplemental);
+      throw new Error(`Unexpected request: ${String(input)}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
     renderRoute('/matches/live', <LiveLobbyPage apiBaseUrl={apiBaseUrl} />);
 
@@ -620,6 +618,158 @@ describe('live lobby and battle experience', () => {
     expect(
       screen.getByText('Standings open with the next season'),
     ).toBeVisible();
+
+    hasSeason = true;
+    await user.click(screen.getByRole('tab', { name: 'Play' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Check season again' }),
+    );
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Braamfontein Test Season',
+      }),
+    ).toBeVisible();
+    expect(screen.getByText('Season rating').parentElement).toHaveTextContent(
+      /1\s248/,
+    );
+    await user.click(screen.getByRole('tab', { name: 'Standings' }));
+    expect(await screen.findByText('CampusFox')).toBeVisible();
+
+    for (const path of [
+      '/ranked/seasons/current',
+      '/ranked/me',
+      '/ranked/standings',
+    ]) {
+      expect(
+        fetchMock.mock.calls.filter(([input]) =>
+          new URL(String(input)).pathname.endsWith(path),
+        ),
+      ).toHaveLength(2);
+    }
+  });
+
+  it('refreshes at the season boundary and hides mismatched rollover snapshots', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-26T12:00:00.000Z'));
+    const deck = buildSavedDeck({ isSelected: true });
+    const seasonA = rankedSeason({
+      activeEndsAt: '2026-09-26T12:00:01.000Z',
+      name: 'Season A',
+      seasonId: '61000000-0000-4000-8000-000000000001',
+    });
+    const seasonB = rankedSeason({
+      activeEndsAt: '2026-10-26T12:00:00.000Z',
+      name: 'Season B',
+      seasonId: '61000000-0000-4000-8000-000000000002',
+    });
+    let refreshCycle = 0;
+    const projectedSeason = () => (refreshCycle === 0 ? seasonA : seasonB);
+    const projectedProfileSeason = () =>
+      refreshCycle === 1 ? seasonA : projectedSeason();
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const pathname = new URL(String(input)).pathname;
+      if (pathname.endsWith('/decks')) {
+        return Promise.resolve(deckListResponse([deck]));
+      }
+      if (pathname.endsWith('/ranked/queue')) {
+        return Promise.resolve(
+          jsonResponse(queueState({ seasonId: projectedSeason().seasonId })),
+        );
+      }
+      if (pathname.endsWith('/ranked/seasons/current')) {
+        return Promise.resolve(jsonResponse({ season: projectedSeason() }));
+      }
+      if (pathname.endsWith('/ranked/me')) {
+        const projected = projectedProfileSeason();
+        return Promise.resolve(
+          jsonResponse(
+            rankedProfile({
+              rating: projected.seasonId === seasonA.seasonId ? 1_111 : 2_222,
+              season: projected,
+            }),
+          ),
+        );
+      }
+      if (pathname.endsWith('/ranked/standings')) {
+        const projected = projectedProfileSeason();
+        return Promise.resolve(
+          jsonResponse(
+            rankedStandings({
+              entries: [
+                {
+                  losses: 1,
+                  playerName:
+                    projected.seasonId === seasonA.seasonId
+                      ? 'SeasonAPlayer'
+                      : 'SeasonBPlayer',
+                  rank: 1,
+                  rating:
+                    projected.seasonId === seasonA.seasonId ? 1_111 : 2_222,
+                  settledMatchCount: 6,
+                  wins: 5,
+                },
+              ],
+              season: projected,
+            }),
+          ),
+        );
+      }
+      if (pathname.endsWith('/territory/zones')) {
+        return Promise.resolve(jsonResponse({ zones: territoryZones() }));
+      }
+      throw new Error(`Unexpected request: ${String(input)}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderRoute('/matches/live', <LiveLobbyPage apiBaseUrl={apiBaseUrl} />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole('heading', { name: 'Season A' })).toBeVisible();
+    expect(screen.getByText('Season rating').parentElement).toHaveTextContent(
+      /1\s111/,
+    );
+
+    refreshCycle = 1;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+
+    expect(screen.getByRole('heading', { name: 'Season B' })).toBeVisible();
+    expect(
+      screen.getByText('Your ranked record does not match this season yet.'),
+    ).toBeVisible();
+    expect(screen.queryByText(/1\s111/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Standings' }));
+    expect(
+      screen.getByText('Standings are updating for this season'),
+    ).toBeVisible();
+    expect(screen.queryByText('SeasonAPlayer')).not.toBeInTheDocument();
+
+    refreshCycle = 2;
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Refresh season record' }),
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Season rating').parentElement).toHaveTextContent(
+      /2\s222/,
+    );
+    expect(screen.getByText('SeasonBPlayer')).toBeVisible();
+    expect(screen.queryByText('SeasonAPlayer')).not.toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.filter(([input]) =>
+        new URL(String(input)).pathname.endsWith('/ranked/seasons/current'),
+      ),
+    ).toHaveLength(3);
   });
 
   it('shows a safe ranked conflict beside the restored join control', async () => {

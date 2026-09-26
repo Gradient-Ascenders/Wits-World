@@ -123,11 +123,9 @@ export default function LiveLobbyPage({
   const [profile, setProfile] = useState<ResourceState<RankedProfile>>({
     status: 'loading',
   });
-  const [profileRevision, setProfileRevision] = useState(0);
   const [standings, setStandings] = useState<
     ResourceState<RankedStandingsPage>
   >({ status: 'loading' });
-  const [standingsRevision, setStandingsRevision] = useState(0);
   const [standingsLoadingMore, setStandingsLoadingMore] = useState(false);
   const [standingsPageError, setStandingsPageError] = useState(false);
   const [territories, setTerritories] = useState<TerritoryState>({
@@ -147,13 +145,54 @@ export default function LiveLobbyPage({
   const [announcement, setAnnouncement] = useState(
     'Loading live battle lobby.',
   );
-  const [revision, setRevision] = useState(0);
+  const [seasonRevision, setSeasonRevision] = useState(0);
+  const refreshedSeasonBoundary = useRef<string | null>(null);
   stateRef.current = state;
+
+  const refreshSeasonResources = useCallback(() => {
+    setSeasonRevision((value) => value + 1);
+  }, []);
 
   useEffect(() => {
     const interval = window.setInterval(() => setClock(Date.now()), 60_000);
     return () => window.clearInterval(interval);
   }, []);
+
+  const currentSeason = state.status === 'ready' ? state.season : null;
+
+  useEffect(() => {
+    if (
+      currentSeason?.status !== 'active' ||
+      currentSeason.activeEndsAt === null
+    ) {
+      return;
+    }
+
+    const boundary = Date.parse(currentSeason.activeEndsAt);
+    const boundaryKey = `${currentSeason.seasonId}:${currentSeason.activeEndsAt}`;
+    let timeout: number | undefined;
+
+    const refreshAtBoundary = () => {
+      const remaining = boundary - Date.now();
+      if (remaining > 0) {
+        timeout = window.setTimeout(
+          refreshAtBoundary,
+          Math.min(remaining, 2_147_000_000),
+        );
+        return;
+      }
+
+      setClock(Date.now());
+      if (refreshedSeasonBoundary.current === boundaryKey) return;
+      refreshedSeasonBoundary.current = boundaryKey;
+      refreshSeasonResources();
+    };
+
+    refreshAtBoundary();
+    return () => {
+      if (timeout !== undefined) window.clearTimeout(timeout);
+    };
+  }, [currentSeason, refreshSeasonResources]);
 
   useEffect(() => {
     const syncTabFromHistory = () =>
@@ -241,7 +280,7 @@ export default function LiveLobbyPage({
         setState({ error: toLiveError(caught), status: 'error' });
       });
     return () => controller.abort();
-  }, [apiBaseUrl, getAccessToken, navigate, revision]);
+  }, [apiBaseUrl, getAccessToken, navigate, seasonRevision]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -260,7 +299,7 @@ export default function LiveLobbyPage({
         }
       });
     return () => controller.abort();
-  }, [apiBaseUrl, getAccessToken, profileRevision]);
+  }, [apiBaseUrl, getAccessToken, seasonRevision]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -281,7 +320,7 @@ export default function LiveLobbyPage({
         }
       });
     return () => controller.abort();
-  }, [apiBaseUrl, getAccessToken, standingsRevision]);
+  }, [apiBaseUrl, getAccessToken, seasonRevision]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -496,7 +535,7 @@ export default function LiveLobbyPage({
         signal: controller.signal,
       });
       if (next.season.seasonId !== seasonId) {
-        setStandingsRevision((value) => value + 1);
+        refreshSeasonResources();
         return;
       }
       setStandings((current) =>
@@ -600,7 +639,7 @@ export default function LiveLobbyPage({
             <p>{queueErrorMessage(state.error)}</p>
             <button
               className="button"
-              onClick={() => setRevision((value) => value + 1)}
+              onClick={refreshSeasonResources}
               type="button"
             >
               Try again
@@ -614,7 +653,18 @@ export default function LiveLobbyPage({
   const { deck, queue, season } = state;
   const proposal = queue.status === 'proposed' && queue.proposalId;
   const searching = queue.status === 'searching';
-  const rankedEntryAvailable = season?.status === 'active';
+  const seasonBoundaryReached =
+    season?.activeEndsAt !== null &&
+    season?.activeEndsAt !== undefined &&
+    Date.parse(season.activeEndsAt) <= clock;
+  const rankedEntryAvailable =
+    season?.status === 'active' && !seasonBoundaryReached;
+  const profileSeasonMismatch =
+    profile.status === 'ready' &&
+    (profile.data.season?.seasonId ?? null) !== (season?.seasonId ?? null);
+  const standingsSeasonMismatch =
+    standings.status === 'ready' &&
+    standings.data.season.seasonId !== season?.seasonId;
   const rankedQueueCanStart = ['idle', 'cancelled', 'expired'].includes(
     queue.status,
   );
@@ -642,7 +692,8 @@ export default function LiveLobbyPage({
 
       <RankedSeasonStrip
         clock={clock}
-        onRetry={() => setProfileRevision((value) => value + 1)}
+        mismatch={profileSeasonMismatch}
+        onRetry={refreshSeasonResources}
         profile={profile}
         season={season}
       />
@@ -884,11 +935,13 @@ export default function LiveLobbyPage({
                   <p className="live-lobby__warning">
                     {season?.status === 'closing'
                       ? 'This ranked season is closing. New ranked battles will open with the next active season.'
-                      : 'No ranked season is active. Matchmaking will open when the next season begins.'}
+                      : seasonBoundaryReached
+                        ? 'This ranked season has reached its boundary. The server is checking whether the next season is ready.'
+                        : 'No ranked season is active. Matchmaking will open when the next season begins.'}
                   </p>
                   <button
                     className="button button--quiet"
-                    onClick={() => setRevision((value) => value + 1)}
+                    onClick={refreshSeasonResources}
                     type="button"
                   >
                     Check season again
@@ -962,8 +1015,9 @@ export default function LiveLobbyPage({
         >
           <RankedStandingsSection
             loadingMore={standingsLoadingMore}
+            mismatch={standingsSeasonMismatch}
             onLoadMore={() => void loadMoreStandings()}
-            onRetry={() => setStandingsRevision((value) => value + 1)}
+            onRetry={refreshSeasonResources}
             pageError={standingsPageError}
             season={season}
             state={standings}
@@ -1045,11 +1099,13 @@ export default function LiveLobbyPage({
 
 function RankedSeasonStrip({
   clock,
+  mismatch,
   onRetry,
   profile,
   season,
 }: {
   clock: number;
+  mismatch: boolean;
   onRetry: () => void;
   profile: ResourceState<RankedProfile>;
   season: RankedSeason | null;
@@ -1100,6 +1156,17 @@ function RankedSeasonStrip({
             type="button"
           >
             Retry
+          </button>
+        </div>
+      ) : mismatch ? (
+        <div className="ranked-season-strip__state" role="status">
+          <p>Your ranked record does not match this season yet.</p>
+          <button
+            className="button button--quiet"
+            onClick={onRetry}
+            type="button"
+          >
+            Refresh season record
           </button>
         </div>
       ) : profile.data.season === null ||
@@ -1280,6 +1347,7 @@ function TerritoryDetectionResult({
 
 function RankedStandingsSection({
   loadingMore,
+  mismatch,
   onLoadMore,
   onRetry,
   pageError,
@@ -1287,6 +1355,7 @@ function RankedStandingsSection({
   state,
 }: {
   loadingMore: boolean;
+  mismatch: boolean;
   onLoadMore: () => void;
   onRetry: () => void;
   pageError: boolean;
@@ -1334,6 +1403,27 @@ function RankedStandingsSection({
               type="button"
             >
               Retry standings
+            </button>
+          </div>
+        </div>
+      ) : mismatch ? (
+        <div
+          className="ranked-standings__state state-message state-message--empty"
+          role="status"
+        >
+          <StateIcon tone="empty" />
+          <div>
+            <strong>Standings are updating for this season</strong>
+            <p>
+              The previous season table is hidden while the latest season data
+              is checked.
+            </p>
+            <button
+              className="button button--quiet"
+              onClick={onRetry}
+              type="button"
+            >
+              Refresh season standings
             </button>
           </div>
         </div>

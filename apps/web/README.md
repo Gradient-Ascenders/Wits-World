@@ -740,6 +740,12 @@ profile response; the browser does not derive a rank. Standings retain their
 current snapshot while another page loads, and a stale or failed page remains
 recoverable without discarding visible entries.
 
+The current season, personal record, and first standings page refresh through
+one UI generation when the player checks again and when the displayed season
+reaches `activeEndsAt`. The browser hides personal and standings projections
+whose `seasonId` does not match the current-season response, and an expired
+active snapshot cannot open a new queue entry while reconciliation is pending.
+
 Territory contesting is off by default. Enabling it does not request location.
 The join action obtains one fresh browser location claim, uses public active
 geometry from `GET /api/v1/territory/zones` to choose a single candidate zone,
