@@ -46,13 +46,15 @@ conflict instead of silently applying consent to a newer offer.
 The list operation is bounded to at most 50 rows per page, newest first, with
 optional sent/received and status filters. It cannot query unrelated players.
 
-The trading catalogue returns only active published definition metadata. The
-selection preview returns the current player's owned copies with a server-owned
-availability reason, validates requested definitions and collection minimums,
-and calculates rarity totals and the imbalance warning. It does not reserve
-copies; an edit preview can also materialise an authoritative deadline expiry.
-Create and revision commands repeat the authoritative checks while persisting
-the next trade version.
+The trading catalogue returns only active, published, player-safe definition
+metadata: identity, category, affinity, rarity, stats, description, artwork,
+moves, and effects. It never includes ownership or another player's collection.
+The selection preview returns the current player's owned copies with a
+server-owned availability reason, validates requested definitions and
+collection minimums, and calculates rarity totals and the imbalance warning. It
+does not reserve copies; an edit preview can also materialise an authoritative
+deadline expiry. Create and revision commands repeat the authoritative checks
+while persisting the next trade version.
 
 ## Durable idempotency
 

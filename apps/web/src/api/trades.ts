@@ -1,5 +1,11 @@
 import type { ApiAccessTokenProvider } from '../auth/useApiAccessToken';
-import type { CardAffinity, CardCategory, CardRarity } from './cards';
+import {
+  parseCardPresentation,
+  type CardAffinity,
+  type CardCategory,
+  type CardPresentation,
+  type CardRarity,
+} from './cards';
 
 export type CardTradeStatus =
   'open' | 'completed' | 'declined' | 'cancelled' | 'expired' | 'invalidated';
@@ -13,6 +19,9 @@ export interface TradeCardDefinition {
   name: string;
   rarity: CardRarity;
 }
+
+export type TradingCatalogueCard = TradeCardDefinition &
+  Omit<CardPresentation, keyof TradeCardDefinition>;
 
 export interface TradeOfferedCopy extends TradeCardDefinition {
   ownedCardId: string;
@@ -235,7 +244,7 @@ const issues = new Set<TradeSelectionIssue>([
 
 export async function listTradingCatalogue(
   options: BaseOptions,
-): Promise<TradeCardDefinition[]> {
+): Promise<TradingCatalogueCard[]> {
   const payload = await tradeRequest({
     ...options,
     method: 'GET',
@@ -249,12 +258,17 @@ export async function listTradingCatalogue(
   ) {
     throw new TradeApiError('unavailable');
   }
-  return payload.definitions.map((definition) => {
-    if (!isRecord(definition) || !hasExactKeys(definition, cardKeys)) {
-      throw new TradeApiError('unavailable');
-    }
-    return parseDefinition(definition);
-  });
+  try {
+    return payload.definitions.map((definition) => {
+      const card = parseCardPresentation(definition);
+      return {
+        ...card,
+        imageAlt: card.imageAlt ?? null,
+      };
+    });
+  } catch {
+    throw new TradeApiError('unavailable');
+  }
 }
 
 export async function listTrades(

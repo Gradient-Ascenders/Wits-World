@@ -8,6 +8,7 @@ import {
 } from 'react';
 
 import { useModalFocus } from '../useModalFocus';
+import './author-confirmation-dialog.css';
 
 interface AuthorConfirmationDialogProps {
   busy?: boolean;

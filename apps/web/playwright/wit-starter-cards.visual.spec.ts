@@ -44,37 +44,37 @@ test('renders the approved Wit starter cards and production artwork', async ({
   });
 
   await page.getByRole('button', { name: 'View Ciphra details' }).click();
-  let dialog = page.getByRole('dialog', { name: 'Ciphra card details' });
+  let dialog = page.getByRole('dialog', { name: 'Ciphra' });
   await expect(
     dialog.getByText('This creature deals 20% more damage for 2 turns'),
   ).toBeVisible();
   await expect(dialog.getByText('Decoded Strike')).toBeVisible();
-  await dialog.getByRole('button', { name: 'Close card details' }).click();
+  await dialog.getByRole('button', { name: 'Close Ciphra details' }).click();
 
   await page.getByRole('button', { name: 'View Prismole details' }).click();
-  dialog = page.getByRole('dialog', { name: 'Prismole card details' });
+  dialog = page.getByRole('dialog', { name: 'Prismole' });
   await expect(
     dialog.getByText('Opponent deals 15% less damage for 2 turns'),
   ).toBeVisible();
-  await dialog.getByRole('button', { name: 'Close card details' }).click();
+  await dialog.getByRole('button', { name: 'Close Prismole details' }).click();
 
   await page.getByRole('button', { name: 'View Quillip details' }).click();
-  dialog = page.getByRole('dialog', { name: 'Quillip card details' });
-  const card = dialog.locator('.collectible-card');
+  dialog = page.getByRole('dialog', { name: 'Quillip' });
+  const card = dialog.locator('.trade-card-detail__body');
   await expect(card.getByText('Heal 25')).toBeVisible();
   await expect(card.getByText('Eureka')).toBeVisible();
 
   await page.addStyleTag({
     content: `
-      .card-detail-backdrop {
+      .trade-card-detail-backdrop {
         align-items: flex-start !important;
         position: absolute !important;
       }
-      .card-detail-modal {
+      .trade-card-detail {
         align-self: flex-start !important;
         overflow: visible !important;
       }
-      .card-detail-modal__scroll {
+      .trade-card-detail__body {
         overflow: visible !important;
       }
     `,

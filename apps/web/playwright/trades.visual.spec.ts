@@ -4,8 +4,38 @@ import { buildUuid } from '../tests/fixtures/cards';
 
 const API_BASE_URL = 'http://127.0.0.1:3999/api/v1';
 const TRADE_ID = buildUuid(1);
-const DEFINITION_ID = buildUuid(10);
-const OWNED_CARD_ID = buildUuid(20);
+const CARD_FIXTURES = [
+  {
+    affinity: 'wit',
+    category: 'creature',
+    name: 'Courier Ibis',
+    rarity: 'rare',
+  },
+  {
+    affinity: 'grit',
+    category: 'power',
+    name: 'Fate Reversal',
+    rarity: 'legendary',
+  },
+  {
+    affinity: 'wit',
+    category: 'creature',
+    name: 'Arcalyron',
+    rarity: 'legendary',
+  },
+  {
+    affinity: 'spark',
+    category: 'creature',
+    name: 'Arcalyx',
+    rarity: 'rare',
+  },
+  {
+    affinity: 'spirit',
+    category: 'creature',
+    name: 'Axiomar',
+    rarity: 'rare',
+  },
+] as const;
 
 test('trading journey is focused, responsive, and server-owned', async ({
   page,
@@ -25,15 +55,20 @@ test('trading journey is focused, responsive, and server-owned', async ({
         connectionStrategy: 'auth0',
         id: buildUuid(980),
         lifecycleStatus: 'active',
-        playerName: 'collection_browser_player',
+        playerName: 'kevin-tester9',
         playerNameSetupRequired: false,
         requestId: 'fixture-player',
         role: 'player',
       });
     }
+    if (pathname.endsWith('/events')) {
+      return json(route, { events: [], requestId: 'fixture-events' });
+    }
     if (pathname.endsWith('/cards/trading-catalogue')) {
       return json(route, {
-        definitions: [definition()],
+        definitions: CARD_FIXTURES.map((_, index) =>
+          catalogueDefinition(index),
+        ),
         requestId: 'fixture-catalogue',
       });
     }
@@ -95,26 +130,79 @@ test('trading journey is focused, responsive, and server-owned', async ({
   await expect(page.getByRole('heading', { name: 'Incoming' })).toBeVisible();
   await expect(page.getByRole('contentinfo')).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
+  await clearFocus(page);
   await page.screenshot({
     fullPage: true,
     path: testInfo.outputPath('trade-inbox-mobile.png'),
   });
 
   await page.getByRole('link', { name: 'Start a trade' }).click();
-  await page.getByRole('textbox', { name: 'Player Name' }).fill('other_player');
-  await page.getByRole('button', { name: 'Choose your cards' }).click();
-  const copy = page.getByRole('button', { name: /Courier Ibis/ });
-  await expect(copy).toBeVisible();
-  await expect(copy).toHaveAttribute('aria-pressed', 'false');
+  await expect(
+    page.getByRole('heading', { name: 'Who do you want to trade with?' }),
+  ).toBeVisible();
   await expectNoHorizontalOverflow(page);
-  await copy.click();
-  await expect(copy).toHaveAttribute('aria-pressed', 'true');
+  await page.screenshot({
+    fullPage: true,
+    path: testInfo.outputPath('trade-recipient-mobile.png'),
+  });
+  await page.getByRole('textbox', { name: 'Player Name' }).fill('other_player');
+  await page.getByRole('button', { name: 'Build trade' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Build your offer' }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      'Rarity points are server-calculated guidance, not card prices.',
+    ),
+  ).toHaveCount(0);
+  await expect(page.getByText('Resolve these before publishing:')).toHaveCount(
+    0,
+  );
+  const collection = page.getByRole('list', {
+    name: 'Card types in your collection',
+  });
+  await expect(collection.getByRole('listitem')).toHaveCount(1);
+  await expect(collection).toContainText('10 owned · 10 tradable');
+  const mobileDetailsTrigger = collection.getByRole('button', {
+    name: 'View Courier Ibis details',
+  });
+  await mobileDetailsTrigger.click();
+  const mobileCardDetails = page.getByRole('dialog', { name: 'Courier Ibis' });
+  await expect(mobileCardDetails).toHaveAttribute('data-rarity', 'rare');
+  await expect(mobileCardDetails).toContainText('Rare Creature · Wit affinity');
+  await expect(mobileCardDetails).toContainText('Campus Charge');
+  const mobileDetailsBox = await mobileCardDetails.boundingBox();
+  expect(mobileDetailsBox).not.toBeNull();
+  expect(mobileDetailsBox!.height).toBeGreaterThanOrEqual(520);
+  await expect
+    .poll(async () => (await mobileCardDetails.boundingBox())?.y ?? Infinity)
+    .toBeLessThanOrEqual(324);
+  await expect(mobileCardDetails.locator('.trade-card-detail__body')).toHaveCSS(
+    'overflow-y',
+    'auto',
+  );
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    path: testInfo.outputPath('trade-card-details-mobile.png'),
+  });
+  await mobileCardDetails
+    .getByRole('button', { name: 'Close Courier Ibis details' })
+    .click();
+  await expect(mobileDetailsTrigger).toBeFocused();
+  const addCopy = collection.getByRole('button', {
+    name: 'Offer one more Courier Ibis',
+  });
+  await expect(addCopy).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  for (let index = 0; index < 5; index += 1) await addCopy.click();
+  await expect(collection).toContainText('5 selected');
+  await clearFocus(page);
   await page.screenshot({
     fullPage: true,
     path: testInfo.outputPath('trade-copy-picker-mobile.png'),
   });
 
-  await page.getByRole('button', { name: 'Choose requested cards' }).click();
+  await page.getByRole('button', { name: /Active cards/ }).click();
   const increment = page.getByRole('button', {
     name: 'Request one more Courier Ibis',
   });
@@ -122,20 +210,193 @@ test('trading journey is focused, responsive, and server-owned', async ({
   expect(incrementBox).not.toBeNull();
   expect(incrementBox!.width).toBeGreaterThanOrEqual(44);
   expect(incrementBox!.height).toBeGreaterThanOrEqual(44);
-  await increment.click();
-  await page.getByRole('button', { name: 'Review offer' }).click();
-  await expect(page.getByText('Server preview ready')).toBeVisible();
+  for (const fixture of CARD_FIXTURES) {
+    await page
+      .getByRole('button', { name: `Request one more ${fixture.name}` })
+      .click();
+  }
+  await expect(page.getByText('Ready')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'You give' })).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: 'You request' }),
+    page.getByRole('heading', { name: 'You receive' }),
   ).toBeVisible();
   await expectNoHorizontalOverflow(page);
+  await clearFocus(page);
   await page.screenshot({
     fullPage: true,
-    path: testInfo.outputPath('trade-review-mobile.png'),
+    path: testInfo.outputPath('trade-builder-mobile.png'),
   });
 
   await page.setViewportSize({ height: 960, width: 1440 });
+  await expect(
+    page.getByRole('heading', { name: 'kevin-tester9' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'other_player' }),
+  ).toBeVisible();
+  const receiveLaneBox = await page
+    .locator('.trade-builder-lane--receive')
+    .boundingBox();
+  const exchangeMarkBox = await page
+    .locator('.trade-builder__exchange-mark')
+    .boundingBox();
+  const giveLaneBox = await page
+    .locator('.trade-builder-lane--give')
+    .boundingBox();
+  expect(receiveLaneBox).not.toBeNull();
+  expect(exchangeMarkBox).not.toBeNull();
+  expect(giveLaneBox).not.toBeNull();
+  expect(exchangeMarkBox!.y).toBeGreaterThanOrEqual(
+    receiveLaneBox!.y + receiveLaneBox!.height,
+  );
+  expect(exchangeMarkBox!.y + exchangeMarkBox!.height).toBeLessThanOrEqual(
+    giveLaneBox!.y,
+  );
+  const desktopCardFrame = page
+    .locator(
+      '.trade-builder__catalogue-panel--self .trade-card-thumbnail .card-frame',
+    )
+    .first();
+  await expect(desktopCardFrame.locator('.card-frame__rail')).toBeVisible();
+  const desktopCardBox = await desktopCardFrame.boundingBox();
+  expect(desktopCardBox).not.toBeNull();
+  expect(desktopCardBox!.width).toBeGreaterThanOrEqual(110);
+  const desktopCardTilt = desktopCardFrame.locator('..');
+  await desktopCardTilt.hover({ position: { x: 88, y: 36 } });
+  await expect(desktopCardTilt).toHaveAttribute('data-hovered', '');
+  await expect
+    .poll(() =>
+      desktopCardTilt.evaluate(
+        (element) => getComputedStyle(element).transform,
+      ),
+    )
+    .not.toBe('none');
+  const arcalyronArtwork = page
+    .getByRole('list', { name: 'Active card definitions you can request' })
+    .getByRole('listitem')
+    .filter({ hasText: 'Arcalyron' })
+    .locator('.collectible-card__artwork img');
+  await expect(arcalyronArtwork).toHaveCSS('object-fit', 'contain');
+  const legendaryDetailsTrigger = page
+    .getByRole('list', { name: 'Active card definitions you can request' })
+    .getByRole('button', { name: 'View Arcalyron details' });
+  await legendaryDetailsTrigger.click();
+  const legendaryDetails = page.getByRole('dialog', { name: 'Arcalyron' });
+  await expect(legendaryDetails).toHaveAttribute('data-rarity', 'legendary');
+  await expect(legendaryDetails).toHaveCSS(
+    'border-top-color',
+    'rgb(237, 198, 100)',
+  );
+  await page.screenshot({
+    path: testInfo.outputPath('trade-card-details-legendary-desktop.png'),
+  });
+  await legendaryDetails
+    .getByRole('button', { name: 'Close Arcalyron details' })
+    .click();
+  await expect(legendaryDetailsTrigger).toBeFocused();
+  await expectNoHorizontalOverflow(page);
+  await clearFocus(page);
+  await page.screenshot({
+    fullPage: true,
+    path: testInfo.outputPath('trade-builder-desktop.png'),
+  });
+  await page.mouse.move(0, 0);
+  await expect(desktopCardTilt).not.toHaveAttribute('data-hovered', '');
+
+  await expect(page.locator('.trade-builder-selection-strip')).toHaveCount(2);
+  await expect(
+    page.locator('.trade-builder-selection-strip .trade-card-thumbnail'),
+  ).toHaveCount(6);
+  const receiptFrames = page.locator(
+    '.trade-builder-selection-strip .trade-card-thumbnail--full .card-frame',
+  );
+  await expect(receiptFrames.locator('.card-frame__rail')).toHaveCount(6);
+  await expect(
+    receiptFrames.first().locator('.card-frame__rail'),
+  ).toBeVisible();
+  const denseReceiptCardBox = await receiptFrames.first().boundingBox();
+  expect(denseReceiptCardBox).not.toBeNull();
+  expect(denseReceiptCardBox!.width).toBeGreaterThanOrEqual(86);
+  const groupedReceiptCardBox = await page
+    .locator(
+      '.trade-builder-lane--give .trade-card-thumbnail--full .card-frame',
+    )
+    .boundingBox();
+  expect(groupedReceiptCardBox).not.toBeNull();
+  expect(groupedReceiptCardBox!.width).toBeGreaterThanOrEqual(110);
+  await expect(
+    page.getByRole('button', { name: 'Show card details' }),
+  ).toHaveCount(0);
+  const selfPanelBox = await page
+    .locator('.trade-builder__catalogue-panel--self')
+    .boundingBox();
+  const centerPanelBox = await page
+    .locator('.trade-builder__table')
+    .boundingBox();
+  const recipientPanelBox = await page
+    .locator('.trade-builder__catalogue-panel--recipient')
+    .boundingBox();
+  expect(selfPanelBox).not.toBeNull();
+  expect(centerPanelBox).not.toBeNull();
+  expect(recipientPanelBox).not.toBeNull();
+  expect(
+    Math.abs(selfPanelBox!.height - centerPanelBox!.height),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(recipientPanelBox!.height - centerPanelBox!.height),
+  ).toBeLessThanOrEqual(1);
+  const tradePanel = page.locator('.trade-builder__table');
+  await expect(tradePanel).toHaveCSS('overflow-y', 'auto');
+  await expect(tradePanel).toHaveCSS('scrollbar-gutter', 'stable');
+  expect(
+    await tradePanel.evaluate(
+      (element) => element.scrollHeight > element.clientHeight,
+    ),
+  ).toBe(true);
+  const recipientScroll = page.locator(
+    '.trade-builder__catalogue-panel--recipient .trade-builder__catalogue-scroll',
+  );
+  expect(
+    await recipientScroll.evaluate(
+      (element) => element.scrollHeight > element.clientHeight,
+    ),
+  ).toBe(true);
+  await expectNoHorizontalOverflow(page);
+  await clearFocus(page);
+
+  await page.getByRole('button', { name: 'Review offer' }).click();
+  const confirmation = page.getByRole('dialog', {
+    name: 'Send this trade offer?',
+  });
+  await expect(confirmation).toContainText(
+    'Send 5 cards to other_player and request 5 cards?',
+  );
+  await confirmation.getByRole('button', { name: 'Keep reviewing' }).click();
+
+  await page.getByRole('link', { name: 'Back to trades' }).click();
+  const discardConfirmation = page.getByRole('dialog', {
+    name: 'Discard unsaved changes?',
+  });
+  await expect(discardConfirmation).toBeVisible();
+  await expect(page.locator('.author-dialog-backdrop')).toHaveCSS(
+    'position',
+    'fixed',
+  );
+  const discardBox = await discardConfirmation.boundingBox();
+  expect(discardBox).not.toBeNull();
+  expect(
+    Math.abs(discardBox!.x + discardBox!.width / 2 - 1440 / 2),
+  ).toBeLessThanOrEqual(2);
+  expect(
+    Math.abs(discardBox!.y + discardBox!.height / 2 - 960 / 2),
+  ).toBeLessThanOrEqual(2);
+  await page.screenshot({
+    path: testInfo.outputPath('trade-discard-confirmation-desktop.png'),
+  });
+  await discardConfirmation
+    .getByRole('button', { name: 'Keep editing' })
+    .click();
+
   await page.goto(`/collection/trades/${TRADE_ID}`);
   await expect(
     page.getByRole('heading', { name: 'Trade with other_player' }),
@@ -148,6 +409,7 @@ test('trading journey is focused, responsive, and server-owned', async ({
     page.getByRole('button', { name: 'Verify and accept' }),
   ).toBeDisabled();
   await expectNoHorizontalOverflow(page);
+  await clearFocus(page);
   await page.screenshot({
     fullPage: true,
     path: testInfo.outputPath('trade-detail-desktop.png'),
@@ -157,20 +419,70 @@ test('trading journey is focused, responsive, and server-owned', async ({
   expect(consoleErrors).toEqual([]);
 });
 
-function definition() {
+function definition(index = 0) {
+  const fixture = CARD_FIXTURES[index];
+  if (!fixture) throw new Error(`Unknown card fixture index: ${index}`);
   return {
-    affinity: 'wit',
-    cardDefinitionId: DEFINITION_ID,
-    category: 'creature',
-    imageAlt: 'A courier ibis carrying a sealed offer.',
-    imageUrl: '/src/assets/home/great-hall-hero.png',
-    name: 'Courier Ibis',
-    rarity: 'rare',
+    affinity: fixture.affinity,
+    cardDefinitionId: buildUuid(10 + index),
+    category: fixture.category,
+    imageAlt: `${fixture.name} card artwork.`,
+    imageUrl:
+      fixture.name === 'Arcalyron'
+        ? '/cards/arcalyron.webp'
+        : '/src/assets/home/great-hall-hero.png',
+    name: fixture.name,
+    rarity: fixture.rarity,
   };
 }
 
-function offeredCopy() {
-  return { ...definition(), ownedCardId: OWNED_CARD_ID };
+function catalogueDefinition(index = 0) {
+  const card = definition(index);
+  const creature = card.category === 'creature';
+  return {
+    ...card,
+    description: creature
+      ? 'A campus legend ready to enter the battle.'
+      : 'Turn the course of a close battle.',
+    effects: creature
+      ? []
+      : [
+          {
+            effectType: 'buff',
+            effectValue: 20,
+            id: buildUuid(200 + index),
+            modifierDurationTurns: 2,
+            modifierOperation: 'add',
+            modifierStat: 'power',
+            position: 1,
+            rulesText: 'Restore 20 Power for two turns.',
+          },
+        ],
+    hp: creature ? 100 + index * 10 : null,
+    isActive: true,
+    moves: creature
+      ? [
+          {
+            effectType: 'damage',
+            effectValue: 25 + index,
+            id: buildUuid(100 + index),
+            modifierDurationTurns: null,
+            modifierOperation: null,
+            modifierStat: null,
+            moveType: card.affinity,
+            name: 'Campus Charge',
+            position: 1,
+            powerCost: 2,
+            rulesText: `Deal ${25 + index} base damage.`,
+          },
+        ]
+      : [],
+    power: creature ? 10 + index : null,
+  };
+}
+
+function offeredCopy(index = 0) {
+  return { ...definition(), ownedCardId: buildUuid(20 + index) };
 }
 
 function party(accepted: boolean) {
@@ -218,15 +530,28 @@ function preview(input: {
       minimumCreatureCopies: 3,
       minimumPowerCopies: 2,
     },
-    offeredRarityPoints: offered ? 2 : 0,
-    ownedCopies: [
-      {
-        ...offeredCopy(),
-        availability: offered ? 'selected_here' : 'available',
-      },
-    ],
-    requestedDefinitions: requested ? [{ ...definition(), quantity: 1 }] : [],
-    requestedRarityPoints: requested ? 2 : 0,
+    offeredRarityPoints: input.offeredOwnedCardIds.length * 2,
+    ownedCopies: Array.from({ length: 10 }, (_, index) => {
+      const copy = offeredCopy(index);
+      return {
+        ...copy,
+        availability: input.offeredOwnedCardIds.includes(copy.ownedCardId)
+          ? 'selected_here'
+          : 'available',
+      };
+    }),
+    requestedDefinitions: input.requestedDefinitions.map((request) => ({
+      ...definition(
+        CARD_FIXTURES.findIndex(
+          (_, index) => buildUuid(10 + index) === request.cardDefinitionId,
+        ),
+      ),
+      quantity: request.quantity,
+    })),
+    requestedRarityPoints: input.requestedDefinitions.reduce(
+      (total, request) => total + request.quantity * 2,
+      0,
+    ),
     requestId: 'fixture-preview',
     valid: offered && requested,
   };
@@ -238,6 +563,14 @@ async function expectNoHorizontalOverflow(page: Page) {
     scrollWidth: document.documentElement.scrollWidth,
   }));
   expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
+}
+
+async function clearFocus(page: Page) {
+  await page.evaluate(() => {
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  });
 }
 
 async function json(route: Route, body: object, status = 200) {

@@ -489,9 +489,15 @@ describe('trading card catalogue API', () => {
     affinity: 'wit',
     cardDefinitionId: '00000000-0000-4000-8000-000000000799',
     category: 'creature',
+    description: 'Delivers sealed offers across campus.',
+    effects: [],
+    hp: 90,
     imageAlt: 'A campus ibis holding a sealed letter.',
     imageUrl: '/cards/campus-courier.webp',
+    isActive: true,
+    moves: [],
     name: 'Campus Courier',
+    power: 8,
     rarity: 'rare',
   };
 

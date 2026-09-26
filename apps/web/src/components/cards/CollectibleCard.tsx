@@ -312,14 +312,14 @@ function EffectDetails({ effect }: { effect: CardEffect }) {
   );
 }
 
-function formatEffect(
+export function formatEffect(
   effectType: CardEffect['effectType'],
   effectValue: number | null,
 ) {
   return `${titleCase(effectType)}${effectValue === null ? '' : ` ${effectValue}`}`;
 }
 
-function formatModifier(
+export function formatModifier(
   value: Pick<
     CardEffect,
     | 'effectType'

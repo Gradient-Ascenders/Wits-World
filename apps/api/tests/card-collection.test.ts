@@ -206,9 +206,15 @@ describe('card collection service', () => {
         affinity: 'wit',
         card_definition_id: '72000000-0000-4000-8000-000000000099',
         category: 'creature',
+        description: 'Carries messages between the towers.',
+        effects: [],
+        hp: 90,
         image_alt: 'A luminous ibis carrying a campus map.',
         image_url: '/cards/luminous-ibis.webp',
+        is_active: true,
+        moves: [],
         name: 'Luminous Ibis',
+        power: 8,
         rarity: 'rare',
       },
     ]);
@@ -219,9 +225,15 @@ describe('card collection service', () => {
         affinity: 'wit',
         cardDefinitionId: '72000000-0000-4000-8000-000000000099',
         category: 'creature',
+        description: 'Carries messages between the towers.',
+        effects: [],
+        hp: 90,
         imageAlt: 'A luminous ibis carrying a campus map.',
         imageUrl: '/cards/luminous-ibis.webp',
+        isActive: true,
+        moves: [],
         name: 'Luminous Ibis',
+        power: 8,
         rarity: 'rare',
       },
     ]);
@@ -230,6 +242,8 @@ describe('card collection service', () => {
     expect(sql).toContain('definition.is_active');
     expect(sql).toContain("definition.authoring_status = 'published'");
     expect(sql).toContain('definition.category,');
+    expect(sql).toContain('from public.card_moves move');
+    expect(sql).toContain('from public.card_effects effect');
     expect(sql).not.toContain('player_cards');
     expect(sql).not.toContain('card_trade_reservations');
     expect(fixture.query).toHaveBeenCalledWith(expect.any(String), []);

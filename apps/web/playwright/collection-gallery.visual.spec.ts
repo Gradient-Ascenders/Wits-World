@@ -37,8 +37,11 @@ test('groups, filters, and reveals card details across collection layouts', asyn
     const expectedUnavailable =
       message.text().includes('404') &&
       message.location().url.includes('/cards/evolutions/');
-    if (message.type() === 'error' && !expectedUnavailable)
-      consoleErrors.push(message.text());
+    if (message.type() === 'error' && !expectedUnavailable) {
+      consoleErrors.push(
+        `${message.text()} @ ${message.location().url || 'unknown source'}`,
+      );
+    }
   });
   page.on('pageerror', (error) => runtimeErrors.push(error.message));
 
@@ -52,6 +55,9 @@ test('groups, filters, and reveals card details across collection layouts', asyn
       requestId: 'collection-browser-player',
       role: 'player',
     }),
+  );
+  await page.route(`${API_BASE_URL}/events`, (route) =>
+    json(route, { events: [], requestId: 'collection-browser-events' }),
   );
   await page.route(`${API_BASE_URL}/cards/collection`, async (route) => {
     await collectionDelay;
@@ -119,7 +125,7 @@ test('groups, filters, and reveals card details across collection layouts', asyn
   await duplicateTrigger.focus();
   await page.keyboard.press('Enter');
   const dialog = page.getByRole('dialog', {
-    name: 'Campus Guardian 1 card details',
+    name: 'Campus Guardian 1',
   });
   await expect(dialog).toBeVisible();
   await dialog.evaluate((element) =>
@@ -130,51 +136,27 @@ test('groups, filters, and reveals card details across collection layouts', asyn
     path: testInfo.outputPath('square-artwork-detail.png'),
   });
   await expect(
-    dialog.getByRole('button', { name: 'Close card details' }),
+    dialog.getByRole('button', {
+      name: 'Close Campus Guardian 1 details',
+    }),
   ).toBeFocused();
-  await expect(dialog.getByText('Copy history')).toBeVisible();
-  await dialog.getByText('Copy history').click();
+  await expect(dialog).toHaveAttribute('data-rarity', 'rare');
+  await expect(dialog.getByText('Copy history')).toHaveCount(0);
   await expect(
-    dialog.getByRole('list', { name: /owned copies/u }).locator('li'),
-  ).toHaveCount(4);
-  await expect(
-    dialog.getByRole('button', { name: 'Close card details' }),
+    dialog.getByRole('button', {
+      name: 'Close Campus Guardian 1 details',
+    }),
   ).toBeVisible();
+  await dialog.getByText('Knowledge Surge').scrollIntoViewIfNeeded();
+  await expect(dialog.locator('.trade-card-detail__body')).toHaveCSS(
+    'overflow-y',
+    'auto',
+  );
+  await page.screenshot({ path: testInfo.outputPath('moves-mobile.png') });
   const mobilePanel = await dialog.boundingBox();
   expect(mobilePanel).not.toBeNull();
   expect(Math.round(mobilePanel!.y + mobilePanel!.height)).toBe(844);
   await page.keyboard.press('Escape');
-  await expect(dialog).toBeHidden();
-  await expect(duplicateTrigger).toBeFocused();
-
-  await duplicateTrigger.click();
-  await page.getByRole('button', { name: 'Lower card sheet' }).click();
-  await expect(dialog).toHaveAttribute('data-card-snap', 'medium');
-  await page.getByRole('button', { name: 'Expand card sheet' }).click();
-  await dialog.evaluate((element) =>
-    Promise.all(element.getAnimations().map((animation) => animation.finished)),
-  );
-  await dialog.getByText('Knowledge Surge').scrollIntoViewIfNeeded();
-  await expect(dialog.locator('.card-detail-modal__scroll')).toHaveCSS(
-    'scrollbar-width',
-    'none',
-  );
-  await page.screenshot({ path: testInfo.outputPath('moves-mobile.png') });
-  const handle = await page
-    .getByRole('button', { name: 'Lower card sheet' })
-    .boundingBox();
-  expect(handle).not.toBeNull();
-  await page.mouse.move(
-    handle!.x + handle!.width / 2,
-    handle!.y + handle!.height / 2,
-  );
-  await page.mouse.down();
-  await page.mouse.move(
-    handle!.x + handle!.width / 2,
-    handle!.y + handle!.height / 2 + 550,
-    { steps: 15 },
-  );
-  await page.mouse.up();
   await expect(dialog).toBeHidden();
   await expect(duplicateTrigger).toBeFocused();
 
@@ -212,14 +194,35 @@ test('groups, filters, and reveals card details across collection layouts', asyn
   );
   const tabletPanel = await dialog.boundingBox();
   expect(tabletPanel).not.toBeNull();
-  expect(tabletPanel!.width).toBeLessThan(500);
-  expect(tabletPanel!.x).toBeGreaterThan(200);
-  await dialog.getByRole('button', { name: 'Close card details' }).click();
+  expect(tabletPanel!.width).toBeGreaterThan(700);
+  expect(Math.abs(tabletPanel!.x + tabletPanel!.width / 2 - 384)).toBeLessThan(
+    2,
+  );
+  await dialog
+    .getByRole('button', { name: 'Close Campus Guardian 1 details' })
+    .click();
 
   await page.setViewportSize({ height: 900, width: 1440 });
   await expectNoHorizontalOverflow(page);
   expect(await columnsOnFirstRow(gallery)).toBeGreaterThanOrEqual(5);
   await expectSquareArtwork(gallery);
+  await duplicateTrigger.click();
+  await dialog.evaluate((element) =>
+    Promise.all(element.getAnimations().map((animation) => animation.finished)),
+  );
+  await expect(dialog).toHaveAttribute('data-rarity', 'rare');
+  const desktopPanel = await dialog.boundingBox();
+  expect(desktopPanel).not.toBeNull();
+  expect(desktopPanel!.width).toBeGreaterThanOrEqual(700);
+  expect(
+    Math.abs(desktopPanel!.x + desktopPanel!.width / 2 - 720),
+  ).toBeLessThan(2);
+  await page.screenshot({
+    path: testInfo.outputPath('card-details-desktop.png'),
+  });
+  await dialog
+    .getByRole('button', { name: 'Close Campus Guardian 1 details' })
+    .click();
   const firstCard = gallery.getByRole('button').first();
   await firstCard.hover({ position: { x: 24, y: 24 } });
   await expect(firstCard).toHaveAttribute('data-hovered', '');

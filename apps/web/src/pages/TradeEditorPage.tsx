@@ -1,13 +1,22 @@
 import {
   ArrowLeft,
+  ArrowsDownUp,
   Check,
   LockSimple,
   MagnifyingGlass,
   Minus,
+  PaperPlaneTilt,
   Plus,
+  UserCircle,
   WarningCircle,
 } from '@phosphor-icons/react';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type RefObject,
+} from 'react';
 import { Link, useLocation, useParams } from 'wouter';
 
 import {
@@ -20,14 +29,17 @@ import {
   type CardTrade,
   type RequestedDefinitionInput,
   type TradeCardDefinition,
+  type TradingCatalogueCard,
   type TradeSelectionAvailability,
   type TradeSelectionCopy,
   type TradeSelectionPreview,
 } from '../api/trades';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
+import { useCurrentPlayer } from '../auth/CurrentPlayerProvider';
 import { useUnsavedAuthorChanges } from '../components/author/AuthorNavigationGuard';
 import { CardArtwork } from '../components/cards/CollectibleCard';
 import { CollectionSectionNavigation } from '../components/cards/CollectionSectionNavigation';
+import { useCardTilt } from '../components/cards/useCardTilt';
 import { PageLoadingState } from '../components/LoadingState';
 import { StateIcon } from '../components/StatusMessage';
 import {
@@ -35,12 +47,16 @@ import {
   TradeComparison,
 } from '../components/trades/TradeComparison';
 import { TradeConfirmationDialog } from '../components/trades/TradeConfirmationDialog';
+import {
+  TradeCardDetailsDialog,
+  type TradeCardDetail,
+} from '../components/trades/TradeCardDetailsDialog';
 import './trades.css';
 
 type EditorState =
   | { status: 'loading' }
   | {
-      catalogue: TradeCardDefinition[];
+      catalogue: TradingCatalogueCard[];
       originalTrade: CardTrade | null;
       preview: TradeSelectionPreview;
       status: 'ready';
@@ -55,6 +71,7 @@ export default function TradeEditorPage({
   const { tradeId } = useParams<{ tradeId?: string }>();
   const editing = Boolean(tradeId);
   const getAccessToken = useApiAccessToken();
+  const currentPlayer = useCurrentPlayer();
   const [, navigate] = useLocation();
   const [state, setState] = useState<EditorState>({ status: 'loading' });
   const [step, setStep] = useState(editing ? 2 : 1);
@@ -71,6 +88,10 @@ export default function TradeEditorPage({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<TradeApiError | null>(null);
   const [confirmRevision, setConfirmRevision] = useState(false);
+  const [confirmNewTrade, setConfirmNewTrade] = useState(false);
+  const [mobileCatalogue, setMobileCatalogue] = useState<'offer' | 'request'>(
+    'offer',
+  );
   const [dirty, setDirty] = useState(false);
   const request = useRef<AbortController | null>(null);
   const previewRequest = useRef<AbortController | null>(null);
@@ -254,6 +275,11 @@ export default function TradeEditorPage({
     (total, definition) => total + definition.quantity,
     0,
   );
+  const selfPlayerName =
+    currentPlayer.state.status === 'ready' &&
+    currentPlayer.state.player.playerName
+      ? currentPlayer.state.player.playerName
+      : 'You';
 
   function updateOffered(ownedCardId: string) {
     setDirty(true);
@@ -370,11 +396,130 @@ export default function TradeEditorPage({
             : new TradeApiError('unavailable'),
         );
         setConfirmRevision(false);
+        setConfirmNewTrade(false);
       }
     } finally {
       if (request.current === controller) request.current = null;
       if (!controller.signal.aborted) setSubmitting(false);
     }
+  }
+
+  if (!editing) {
+    return (
+      <div className="trades-page trade-editor-page trade-editor-page--new">
+        <CollectionSectionNavigation />
+        <Link className="trade-back-link" href="/collection/trades">
+          <ArrowLeft aria-hidden="true" size={18} />
+          Back to trades
+        </Link>
+
+        {submitError ? (
+          <section
+            className="state-message state-message--error trade-action-error"
+            role="alert"
+          >
+            <WarningCircle
+              aria-hidden="true"
+              className="state-icon"
+              size={24}
+            />
+            <h2>{editorErrorTitle(submitError)}</h2>
+            <p>{editorErrorCopy(submitError)}</p>
+            {submitError.options.requestId ? (
+              <small>Support reference: {submitError.options.requestId}</small>
+            ) : null}
+          </section>
+        ) : null}
+
+        {step === 1 ? (
+          <div className="trade-recipient-entry">
+            <header className="trade-recipient-entry__header">
+              <span aria-hidden="true" className="trade-recipient-entry__icon">
+                <UserCircle size={32} weight="duotone" />
+              </span>
+              <div>
+                <h1>Who do you want to trade with?</h1>
+                <p>Enter their exact Player Name to start building an offer.</p>
+              </div>
+            </header>
+            <form className="trade-recipient-entry__form" onSubmit={nextStep}>
+              <label>
+                Player Name
+                <input
+                  autoComplete="off"
+                  autoFocus
+                  maxLength={20}
+                  minLength={3}
+                  onChange={(event) => {
+                    setRecipientPlayerName(event.target.value);
+                    setDirty(true);
+                    setSubmitError(null);
+                  }}
+                  placeholder="Enter an exact Player Name"
+                  required
+                  value={recipientPlayerName}
+                />
+              </label>
+              <button className="button" type="submit">
+                Build trade
+              </button>
+            </form>
+            <p className="trade-recipient-entry__privacy">
+              Wits World keeps player directories and collections private. You
+              can request any active card without seeing what another player
+              owns.
+            </p>
+          </div>
+        ) : (
+          <NewTradeBuilder
+            catalogue={state.catalogue}
+            catalogueSearch={catalogueSearch}
+            copies={state.preview.ownedCopies}
+            copySearch={copySearch}
+            maximum={maximum}
+            mobileCatalogue={mobileCatalogue}
+            normalizedRequests={normalizedRequests}
+            offeredOwnedCardIds={offeredOwnedCardIds}
+            onCatalogueSearch={setCatalogueSearch}
+            onChangeMobileCatalogue={setMobileCatalogue}
+            onChangePlayer={() => {
+              setStep(1);
+              setSubmitError(null);
+            }}
+            onCopySearch={setCopySearch}
+            onRequestChange={updateRequest}
+            onRetryPreview={() => setPreviewRetry((current) => current + 1)}
+            onReview={() => setConfirmNewTrade(true)}
+            onToggleOffered={updateOffered}
+            preview={state.preview}
+            previewBusy={previewBusy}
+            previewFailed={Boolean(
+              submitError && previewOutdated && !previewBusy,
+            )}
+            previewOutdated={previewOutdated}
+            publishButtonRef={publishButton}
+            recipientPlayerName={recipientPlayerName}
+            requestedCount={requestedCount}
+            requestedDefinitions={requestedDefinitions}
+            selectedCopies={selectedCopies}
+            selfPlayerName={selfPlayerName}
+            submitting={submitting}
+          />
+        )}
+
+        {confirmNewTrade ? (
+          <TradeConfirmationDialog
+            busy={submitting}
+            confirmLabel="Send offer"
+            description={`Send ${offeredOwnedCardIds.length} card${offeredOwnedCardIds.length === 1 ? '' : 's'} to ${recipientPlayerName} and request ${requestedCount} card${requestedCount === 1 ? '' : 's'}? They can review the offer before accepting it.`}
+            onCancel={() => setConfirmNewTrade(false)}
+            onConfirm={() => void publish()}
+            returnFocusRef={publishButton}
+            title="Send this trade offer?"
+          />
+        ) : null}
+      </div>
+    );
   }
 
   return (
@@ -627,10 +772,6 @@ export default function TradeEditorPage({
               final version before accepting.
             </p>
           ) : null}
-          {!state.preview.valid ? (
-            <PreviewIssues preview={state.preview} />
-          ) : null}
-
           <div className="trade-editor-actions">
             <button
               className="button button--quiet"
@@ -676,6 +817,414 @@ export default function TradeEditorPage({
         />
       ) : null}
     </div>
+  );
+}
+
+interface NewTradeBuilderProps {
+  catalogue: TradingCatalogueCard[];
+  catalogueSearch: string;
+  copies: TradeSelectionCopy[];
+  copySearch: string;
+  maximum: number;
+  mobileCatalogue: 'offer' | 'request';
+  normalizedRequests: Array<TradingCatalogueCard & { quantity: number }>;
+  offeredOwnedCardIds: string[];
+  onCatalogueSearch: (value: string) => void;
+  onChangeMobileCatalogue: (value: 'offer' | 'request') => void;
+  onChangePlayer: () => void;
+  onCopySearch: (value: string) => void;
+  onRequestChange: (cardDefinitionId: string, delta: 1 | -1) => void;
+  onRetryPreview: () => void;
+  onReview: () => void;
+  onToggleOffered: (ownedCardId: string) => void;
+  preview: TradeSelectionPreview;
+  previewBusy: boolean;
+  previewFailed: boolean;
+  previewOutdated: boolean;
+  publishButtonRef: RefObject<HTMLButtonElement | null>;
+  recipientPlayerName: string;
+  requestedCount: number;
+  requestedDefinitions: RequestedDefinitionInput[];
+  selectedCopies: TradeSelectionCopy[];
+  selfPlayerName: string;
+  submitting: boolean;
+}
+
+function NewTradeBuilder({
+  catalogue,
+  catalogueSearch,
+  copies,
+  copySearch,
+  maximum,
+  mobileCatalogue,
+  normalizedRequests,
+  offeredOwnedCardIds,
+  onCatalogueSearch,
+  onChangeMobileCatalogue,
+  onChangePlayer,
+  onCopySearch,
+  onRequestChange,
+  onRetryPreview,
+  onReview,
+  onToggleOffered,
+  preview,
+  previewBusy,
+  previewFailed,
+  previewOutdated,
+  publishButtonRef,
+  recipientPlayerName,
+  requestedCount,
+  requestedDefinitions,
+  selectedCopies,
+  selfPlayerName,
+  submitting,
+}: NewTradeBuilderProps) {
+  const previewUpdating = previewBusy || previewOutdated;
+  const canSend = preview.valid && !previewUpdating && !submitting;
+  const catalogueById = new Map(
+    catalogue.map((card) => [card.cardDefinitionId, card]),
+  );
+  const offeredReceiptItems = groupSelectedCopies(selectedCopies).map(
+    ({ copy, quantity }) => ({
+      card: catalogueById.get(copy.cardDefinitionId) ?? copy,
+      quantity,
+    }),
+  );
+  const requestedReceiptItems = normalizedRequests.map((definition) => ({
+    card: definition,
+    quantity: definition.quantity,
+  }));
+
+  return (
+    <section
+      aria-labelledby="trade-builder-title"
+      className="trade-builder-page"
+    >
+      <header className="trade-builder-header">
+        <div>
+          <h1 id="trade-builder-title">Build your offer</h1>
+          <p>
+            Choose copies from your collection to offer, then request active
+            card types. {recipientPlayerName}’s collection stays private.
+          </p>
+        </div>
+        <button
+          className="button button--quiet trade-builder-header__change"
+          onClick={onChangePlayer}
+          type="button"
+        >
+          Change player
+        </button>
+      </header>
+
+      <div className="trade-builder">
+        <div className="trade-builder__center">
+          <section
+            aria-labelledby="trade-table-title"
+            className="trade-builder__table"
+          >
+            <div className="trade-builder__table-heading">
+              <div>
+                <h2 id="trade-table-title">Your trade</h2>
+                <p>
+                  You <ArrowsDownUp aria-hidden="true" size={15} />{' '}
+                  {recipientPlayerName}
+                </p>
+              </div>
+              <span
+                className={`trade-builder__server-state${
+                  previewUpdating
+                    ? ' trade-builder__server-state--checking'
+                    : preview.valid
+                      ? ' trade-builder__server-state--ready'
+                      : ''
+                }`}
+                role="status"
+              >
+                {previewUpdating ? (
+                  'Checking…'
+                ) : preview.valid ? (
+                  <>
+                    <Check aria-hidden="true" size={15} /> Ready
+                  </>
+                ) : (
+                  'Incomplete'
+                )}
+              </span>
+            </div>
+
+            <TradeReceiptLane
+              caption={`Requested from ${recipientPlayerName}`}
+              count={requestedCount}
+              empty="Choose active card types to request."
+              id="trade-receive-title"
+              items={requestedReceiptItems}
+              maximum={maximum}
+              title="You receive"
+              tone="receive"
+            />
+
+            <span aria-hidden="true" className="trade-builder__exchange-mark">
+              <ArrowsDownUp size={20} weight="bold" />
+            </span>
+
+            <TradeReceiptLane
+              caption={`Offered to ${recipientPlayerName}`}
+              count={offeredOwnedCardIds.length}
+              empty="Choose copies from your collection to offer."
+              id="trade-give-title"
+              items={offeredReceiptItems}
+              maximum={maximum}
+              title="You give"
+              tone="give"
+            />
+
+            {preview.imbalanceWarningRequired ? (
+              <p className="trade-preview-warning">
+                <WarningCircle aria-hidden="true" size={20} /> This offer
+                crosses the configured warning threshold. Both players must
+                acknowledge the final version before accepting.
+              </p>
+            ) : null}
+            {previewFailed ? (
+              <button
+                className="trade-preview-retry"
+                onClick={onRetryPreview}
+                type="button"
+              >
+                Retry server check
+              </button>
+            ) : null}
+          </section>
+
+          <div className="trade-builder__review-bar">
+            <span>
+              <strong>{offeredOwnedCardIds.length}</strong> give
+              <span aria-hidden="true"> · </span>
+              <strong>{requestedCount}</strong> receive
+            </span>
+            <button
+              className="button trade-builder__send"
+              disabled={!canSend}
+              onClick={onReview}
+              ref={publishButtonRef}
+              type="button"
+            >
+              <PaperPlaneTilt aria-hidden="true" size={19} weight="bold" />
+              {submitting ? 'Sending…' : 'Review offer'}
+            </button>
+          </div>
+        </div>
+
+        <div
+          aria-label="Choose a card catalogue"
+          className="trade-builder__mobile-tabs"
+          role="group"
+        >
+          <button
+            aria-pressed={mobileCatalogue === 'offer'}
+            onClick={() => onChangeMobileCatalogue('offer')}
+            type="button"
+          >
+            Your collection
+            <span>{offeredOwnedCardIds.length}</span>
+          </button>
+          <button
+            aria-pressed={mobileCatalogue === 'request'}
+            onClick={() => onChangeMobileCatalogue('request')}
+            type="button"
+          >
+            Active cards
+            <span>{requestedCount}</span>
+          </button>
+        </div>
+
+        <section
+          aria-labelledby="trade-self-catalogue-title"
+          className="trade-builder__catalogue-panel trade-builder__catalogue-panel--self"
+          data-mobile-active={mobileCatalogue === 'offer'}
+        >
+          <div className="trade-builder__player-heading">
+            <span aria-hidden="true" className="trade-builder__player-mark">
+              <UserCircle size={25} weight="duotone" />
+            </span>
+            <div>
+              <h2 id="trade-self-catalogue-title">{selfPlayerName}</h2>
+              <p>Your collection</p>
+            </div>
+          </div>
+          <SearchField
+            label="Search your cards"
+            onChange={onCopySearch}
+            value={copySearch}
+          />
+          <div className="trade-builder__catalogue-scroll">
+            <GroupedOwnedCopyPicker
+              catalogueById={catalogueById}
+              copies={copies}
+              maximumReached={offeredOwnedCardIds.length >= maximum}
+              onToggle={onToggleOffered}
+              search={copySearch}
+              selected={new Set(offeredOwnedCardIds)}
+            />
+          </div>
+        </section>
+
+        <section
+          aria-labelledby="trade-recipient-catalogue-title"
+          className="trade-builder__catalogue-panel trade-builder__catalogue-panel--recipient"
+          data-mobile-active={mobileCatalogue === 'request'}
+        >
+          <div className="trade-builder__player-heading">
+            <span aria-hidden="true" className="trade-builder__player-mark">
+              <UserCircle size={25} weight="duotone" />
+            </span>
+            <div>
+              <h2 id="trade-recipient-catalogue-title">
+                {recipientPlayerName}
+              </h2>
+              <p>Active cards to request</p>
+            </div>
+          </div>
+          <p className="trade-builder__catalogue-note">
+            Choose any active card type. {recipientPlayerName}’s collection
+            stays private.
+          </p>
+          <SearchField
+            label="Search cards to request"
+            onChange={onCatalogueSearch}
+            value={catalogueSearch}
+          />
+          <div className="trade-builder__catalogue-scroll">
+            <NewTradeCataloguePicker
+              definitions={catalogue}
+              maximumReached={requestedCount >= maximum}
+              onChange={onRequestChange}
+              requests={requestedDefinitions}
+              search={catalogueSearch}
+            />
+          </div>
+        </section>
+      </div>
+    </section>
+  );
+}
+
+interface TradeReceiptItem {
+  card: TradeCardDetail;
+  quantity: number;
+}
+
+function TradeReceiptLane({
+  caption,
+  count,
+  empty,
+  id,
+  items,
+  maximum,
+  title,
+  tone,
+}: {
+  caption: string;
+  count: number;
+  empty: string;
+  id: string;
+  items: TradeReceiptItem[];
+  maximum: number;
+  title: string;
+  tone: 'give' | 'receive';
+}) {
+  return (
+    <section
+      aria-labelledby={id}
+      className={`trade-builder-lane trade-builder-lane--${tone}`}
+    >
+      <div className="trade-builder-lane__heading">
+        <div>
+          <h3 id={id}>{title}</h3>
+          <span>{caption}</span>
+        </div>
+        <strong aria-live="polite">
+          {count} / {maximum}
+        </strong>
+      </div>
+      {items.length > 0 ? (
+        <>
+          <p className="trade-builder-lane__summary">
+            {items
+              .map(
+                ({ card, quantity }) =>
+                  `${card.name}${quantity > 1 ? ` ×${quantity}` : ''}`,
+              )
+              .join(' · ')}
+          </p>
+          <ul
+            aria-label={`${title} selected cards`}
+            className="trade-builder-selection-strip"
+            data-item-count={items.length}
+          >
+            {items.map(({ card, quantity }) => (
+              <li key={card.cardDefinitionId}>
+                <TradeCardThumbnail card={card} fullFrame />
+                <strong>×{quantity}</strong>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <p className="trade-builder-lane__empty">{empty}</p>
+      )}
+    </section>
+  );
+}
+
+function TradeCardThumbnail({
+  card,
+  fullFrame = false,
+}: {
+  card: TradeCardDetail;
+  fullFrame?: boolean;
+}) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const tilt = useCardTilt<HTMLButtonElement>();
+
+  return (
+    <>
+      <button
+        {...tilt}
+        aria-haspopup="dialog"
+        aria-label={`View ${card.name} details`}
+        className={`trade-card-thumbnail${fullFrame ? ' trade-card-thumbnail--full' : ''}`}
+        onClick={() => setDetailsOpen(true)}
+        type="button"
+      >
+        <CardArtwork card={card} showRarity />
+      </button>
+      {detailsOpen ? (
+        <TradeCardDetailsDialog
+          card={card}
+          onClose={() => setDetailsOpen(false)}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function groupSelectedCopies(copies: TradeSelectionCopy[]) {
+  const groups = new Map<
+    string,
+    { copy: TradeSelectionCopy; quantity: number }
+  >();
+  for (const copy of copies) {
+    const existing = groups.get(copy.cardDefinitionId);
+    if (existing) {
+      existing.quantity += 1;
+    } else {
+      groups.set(copy.cardDefinitionId, { copy, quantity: 1 });
+    }
+  }
+  return [...groups.values()].sort((left, right) =>
+    left.copy.name.localeCompare(right.copy.name),
   );
 }
 
@@ -771,6 +1320,171 @@ function OwnedCopyPicker({
   );
 }
 
+function GroupedOwnedCopyPicker({
+  catalogueById,
+  copies,
+  maximumReached,
+  onToggle,
+  search,
+  selected,
+}: {
+  catalogueById: Map<string, TradingCatalogueCard>;
+  copies: TradeSelectionCopy[];
+  maximumReached: boolean;
+  onToggle: (ownedCardId: string) => void;
+  search: string;
+  selected: Set<string>;
+}) {
+  const visibleGroups = groupOwnedCopies(copies, selected).filter((group) =>
+    group.card.name.toLowerCase().includes(search.trim().toLowerCase()),
+  );
+  if (visibleGroups.length === 0) {
+    return (
+      <p className="trade-picker-empty">No card types match this search.</p>
+    );
+  }
+  const visibleCopyCount = visibleGroups.reduce(
+    (total, group) => total + group.copies.length,
+    0,
+  );
+  return (
+    <>
+      <p className="trade-picker-results" role="status">
+        {visibleGroups.length}{' '}
+        {visibleGroups.length === 1 ? 'card type' : 'card types'} ·{' '}
+        {visibleCopyCount} {visibleCopyCount === 1 ? 'copy' : 'copies'}
+      </p>
+      <ul
+        aria-label="Card types in your collection"
+        className="trade-card-picker"
+      >
+        {visibleGroups.map((group) => {
+          const selectedCopies = group.copies.filter((copy) =>
+            selected.has(copy.ownedCardId),
+          );
+          const addCandidate = group.copies.find(
+            (copy) =>
+              !selected.has(copy.ownedCardId) &&
+              copy.availability === 'available',
+          );
+          const removeCandidate = selectedCopies.at(-1);
+          const tradableCount = group.copies.filter(
+            (copy) =>
+              copy.availability === 'available' ||
+              copy.availability === 'selected_here',
+          ).length;
+          const lockedByReason = new Map<TradeSelectionAvailability, number>();
+          for (const copy of group.copies) {
+            if (
+              copy.availability === 'available' ||
+              copy.availability === 'selected_here'
+            ) {
+              continue;
+            }
+            lockedByReason.set(
+              copy.availability,
+              (lockedByReason.get(copy.availability) ?? 0) + 1,
+            );
+          }
+          const unavailableCount = group.copies.length - tradableCount;
+          return (
+            <li
+              className="trade-copy-group"
+              data-selected={selectedCopies.length > 0 || undefined}
+              key={group.card.cardDefinitionId}
+            >
+              <TradeCardThumbnail
+                card={
+                  catalogueById.get(group.card.cardDefinitionId) ?? group.card
+                }
+              />
+              <div className="trade-picker-card__body">
+                <strong>{group.card.name}</strong>
+                <span>
+                  {titleCase(group.card.category)} ·{' '}
+                  {titleCase(group.card.rarity)}
+                </span>
+                <small>
+                  {group.copies.length} owned · {tradableCount} tradable
+                  {selectedCopies.length > 0
+                    ? ` · ${selectedCopies.length} selected`
+                    : ''}
+                </small>
+              </div>
+              <div
+                aria-label={`${group.card.name} offered quantity`}
+                className="trade-quantity trade-quantity--owned"
+              >
+                <button
+                  aria-label={`Offer one fewer ${group.card.name}`}
+                  disabled={!removeCandidate}
+                  onClick={() =>
+                    removeCandidate && onToggle(removeCandidate.ownedCardId)
+                  }
+                  type="button"
+                >
+                  <Minus aria-hidden="true" size={17} />
+                </button>
+                <output aria-live="polite">{selectedCopies.length}</output>
+                <button
+                  aria-label={`Offer one more ${group.card.name}`}
+                  disabled={!addCandidate || maximumReached}
+                  onClick={() =>
+                    addCandidate && onToggle(addCandidate.ownedCardId)
+                  }
+                  type="button"
+                >
+                  <Plus aria-hidden="true" size={17} />
+                </button>
+              </div>
+              {unavailableCount > 0 ? (
+                <details className="trade-copy-group__availability">
+                  <summary>
+                    <LockSimple aria-hidden="true" size={14} />{' '}
+                    {unavailableCount} unavailable
+                  </summary>
+                  <ul>
+                    {[...lockedByReason].map(([availability, count]) => (
+                      <li key={availability}>
+                        {count} × {availabilityCopy(availability)}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+}
+
+function groupOwnedCopies(copies: TradeSelectionCopy[], selected: Set<string>) {
+  const groups = new Map<
+    string,
+    { card: TradeSelectionCopy; copies: TradeSelectionCopy[] }
+  >();
+  for (const copy of copies) {
+    const existing = groups.get(copy.cardDefinitionId);
+    if (existing) {
+      existing.copies.push(copy);
+    } else {
+      groups.set(copy.cardDefinitionId, { card: copy, copies: [copy] });
+    }
+  }
+  return [...groups.values()].sort((left, right) => {
+    const leftSelected = left.copies.some((copy) =>
+      selected.has(copy.ownedCardId),
+    );
+    const rightSelected = right.copies.some((copy) =>
+      selected.has(copy.ownedCardId),
+    );
+    if (leftSelected !== rightSelected) return leftSelected ? -1 : 1;
+    return left.card.name.localeCompare(right.card.name);
+  });
+}
+
 function CataloguePicker({
   definitions,
   maximumReached,
@@ -844,6 +1558,99 @@ function CataloguePicker({
   );
 }
 
+function NewTradeCataloguePicker({
+  definitions,
+  maximumReached,
+  onChange,
+  requests,
+  search,
+}: {
+  definitions: TradingCatalogueCard[];
+  maximumReached: boolean;
+  onChange: (cardDefinitionId: string, delta: 1 | -1) => void;
+  requests: RequestedDefinitionInput[];
+  search: string;
+}) {
+  const visible = definitions.filter((definition) =>
+    definition.name.toLowerCase().includes(search.trim().toLowerCase()),
+  );
+  if (visible.length === 0) {
+    return (
+      <p className="trade-picker-empty">
+        No active card definitions match this search.
+      </p>
+    );
+  }
+  return (
+    <>
+      <p className="trade-picker-results" role="status">
+        {visible.length} active{' '}
+        {visible.length === 1 ? 'card type' : 'card types'}
+      </p>
+      <ul
+        aria-label="Active card definitions you can request"
+        className="trade-catalogue-picker"
+      >
+        {visible.map((definition) => {
+          const quantity =
+            requests.find(
+              (request) =>
+                request.cardDefinitionId === definition.cardDefinitionId,
+            )?.quantity ?? 0;
+          return (
+            <li
+              data-selected={quantity > 0 || undefined}
+              key={definition.cardDefinitionId}
+            >
+              <TradeCardThumbnail card={definition} />
+              <div className="trade-catalogue-card__body">
+                <strong>{definition.name}</strong>
+                <span>
+                  {titleCase(definition.category)} ·{' '}
+                  {titleCase(definition.rarity)}
+                </span>
+              </div>
+              {quantity === 0 ? (
+                <button
+                  aria-label={`Request one more ${definition.name}`}
+                  className="trade-quantity__add"
+                  disabled={maximumReached}
+                  onClick={() => onChange(definition.cardDefinitionId, 1)}
+                  type="button"
+                >
+                  <Plus aria-hidden="true" size={17} /> Add
+                </button>
+              ) : (
+                <div
+                  className="trade-quantity"
+                  aria-label={`${definition.name} requested quantity`}
+                >
+                  <button
+                    aria-label={`Request one fewer ${definition.name}`}
+                    onClick={() => onChange(definition.cardDefinitionId, -1)}
+                    type="button"
+                  >
+                    <Minus aria-hidden="true" size={17} />
+                  </button>
+                  <output aria-live="polite">{quantity}</output>
+                  <button
+                    aria-label={`Request one more ${definition.name}`}
+                    disabled={maximumReached}
+                    onClick={() => onChange(definition.cardDefinitionId, 1)}
+                    type="button"
+                  >
+                    <Plus aria-hidden="true" size={17} />
+                  </button>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+}
+
 function StepActions({
   back,
   disableBack = false,
@@ -891,19 +1698,6 @@ function ReviewCopyList({ copies }: { copies: TradeSelectionCopy[] }) {
   );
 }
 
-function PreviewIssues({ preview }: { preview: TradeSelectionPreview }) {
-  return (
-    <div className="trade-preview-issues" role="status">
-      <strong>Resolve these before publishing:</strong>
-      <ul>
-        {preview.issues.map((issue) => (
-          <li key={issue}>{issueCopy(issue)}</li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 function availabilityCopy(availability: TradeSelectionAvailability) {
   return availability === 'saved_deck'
     ? 'Used by a saved deck'
@@ -916,22 +1710,6 @@ function availabilityCopy(availability: TradeSelectionAvailability) {
           : availability === 'collection_minimum'
             ? 'Needed to keep the minimum card collection'
             : 'Available';
-}
-
-function issueCopy(issue: TradeSelectionPreview['issues'][number]) {
-  return issue === 'offer_required'
-    ? 'Select at least one owned copy to give.'
-    : issue === 'request_required'
-      ? 'Request at least one card definition.'
-      : issue === 'copy_limit'
-        ? 'Reduce the number of owned copies selected.'
-        : issue === 'request_limit'
-          ? 'Reduce the total requested quantity.'
-          : issue === 'unavailable_copy'
-            ? 'Remove any copy that is no longer available.'
-            : issue === 'definition_unavailable'
-              ? 'Remove any card definition that is no longer active.'
-              : 'Adjust the exchange so your resulting collection keeps the required Creature and Power minimums.';
 }
 
 function editorErrorTitle(error: TradeApiError) {

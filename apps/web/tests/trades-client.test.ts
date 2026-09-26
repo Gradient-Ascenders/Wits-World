@@ -20,15 +20,13 @@ afterEach(() => {
 
 describe('card trade API client', () => {
   it('loads only strict player-safe catalogue definitions', async () => {
-    const definition = buildDefinition();
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(
-        jsonResponse({
-          definitions: [definition],
-          requestId: 'catalogue-request',
-        }),
-      );
+    const definition = buildCatalogueDefinition();
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        definitions: [definition],
+        requestId: 'catalogue-request',
+      }),
+    );
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(listTradingCatalogue(baseOptions())).resolves.toEqual([
@@ -197,6 +195,18 @@ function buildDefinition() {
     imageUrl: '/cards/courier.webp',
     name: 'Courier Ibis',
     rarity: 'rare' as const,
+  };
+}
+
+function buildCatalogueDefinition() {
+  return {
+    ...buildDefinition(),
+    description: 'Delivers sealed offers across campus.',
+    effects: [],
+    hp: 90,
+    isActive: true,
+    moves: [],
+    power: 8,
   };
 }
 

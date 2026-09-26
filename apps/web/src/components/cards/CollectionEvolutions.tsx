@@ -8,10 +8,11 @@ import {
   type OwnedCard,
 } from '../../api/cards';
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
+import { LoadingState } from '../LoadingState';
 import { CardDetailModal } from './CardDetailModal';
-import { CardArtwork } from './CollectibleCard';
+import { CardPresentationDialog } from './CardPresentationDialog';
+import { CardThumbnail } from './CollectibleCard';
 import { StatusMessage } from '../StatusMessage';
-import { QuestMarker } from '../branding/QuestMarker';
 
 type Candidate = {
   card: OwnedCard;
@@ -37,6 +38,7 @@ export function CollectionEvolutions({
   const [loading, setLoading] = useState(true);
   const [revision, setRevision] = useState(0);
   const [selected, setSelected] = useState<Candidate | null>(null);
+  const [detailsCard, setDetailsCard] = useState<OwnedCard | null>(null);
   const trigger = useRef<HTMLButtonElement | null>(null);
   const heading = useRef<HTMLHeadingElement | null>(null);
   const loadedSnapshot = useRef<{
@@ -134,10 +136,11 @@ export function CollectionEvolutions({
         <p>Copies used in saved decks stay protected.</p>
       </header>
       {loading || loadedSnapshot.current?.cards !== cards ? (
-        <p role={selected ? undefined : 'status'}>
-          <QuestMarker />
-          Checking your evolutions…
-        </p>
+        <LoadingState
+          announce={!selected}
+          className="evolution-candidates__loading"
+          label="Checking evolution paths…"
+        />
       ) : (
         <>
           {candidates.length === 0 ? (
@@ -152,9 +155,10 @@ export function CollectionEvolutions({
             {candidates.map(({ card, preview, unavailable, failed }) => (
               <li key={card.cardDefinitionId} className="evolution-candidate">
                 <div className="evolution-candidate__art">
-                  <CardArtwork
+                  <CardThumbnail
+                    accessibleLabel={`View ${card.name} details`}
                     card={card}
-                    nameplate={<span>{card.name}</span>}
+                    onClick={() => setDetailsCard(card)}
                   />
                 </div>
                 <div className="evolution-candidate__info">
@@ -254,6 +258,12 @@ export function CollectionEvolutions({
           onApplyEvolutionResult={onApplyResult}
           onRefreshCollection={onRefreshCollection}
           onClose={close}
+        />
+      ) : null}
+      {detailsCard ? (
+        <CardPresentationDialog
+          card={detailsCard}
+          onClose={() => setDetailsCard(null)}
         />
       ) : null}
     </section>

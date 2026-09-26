@@ -280,6 +280,7 @@ export function AppShell({ children }: AppShellProps) {
     pathname.startsWith('/matches/') &&
     pathname !== '/matches/history' &&
     pathname !== '/matches/pvp';
+  const isTradeBuilder = pathname === '/collection/trades/new';
   const isFooterlessProductRoute =
     isExplore ||
     pathname === '/collection' ||
@@ -469,7 +470,7 @@ export function AppShell({ children }: AppShellProps) {
             setHeaderCollapsed(true);
           }
         }}
-        className={`main-content${isExplore ? ' main-content--explore' : ''}${isBattleDetail ? ' main-content--battle-focus' : ''}${isAuthorRoute ? ' main-content--author' : ''}`}
+        className={`main-content${isExplore ? ' main-content--explore' : ''}${isBattleDetail ? ' main-content--battle-focus' : ''}${isAuthorRoute ? ' main-content--author' : ''}${isTradeBuilder ? ' main-content--trade-builder' : ''}`}
         id="main-content"
         tabIndex={-1}
       >

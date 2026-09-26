@@ -82,7 +82,7 @@ describe('card trade pages', () => {
         const url = String(input);
         if (url.endsWith('/cards/trading-catalogue')) {
           return jsonResponse({
-            definitions: [buildDefinition()],
+            definitions: [buildCatalogueDefinition()],
             requestId: 'catalogue-request',
           });
         }
@@ -137,20 +137,93 @@ describe('card trade pages', () => {
       within(discardDialog).getByRole('button', { name: 'Keep editing' }),
     );
 
-    await user.click(screen.getByRole('button', { name: 'Choose your cards' }));
-    await user.click(screen.getByRole('button', { name: /Courier Ibis/ }));
+    await user.click(screen.getByRole('button', { name: 'Build trade' }));
+    expect(
+      screen.getByRole('heading', { name: 'Build your offer' }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        'Choose any active card type. other_player’s collection stays private.',
+      ),
+    ).toBeVisible();
+    expect(
+      screen.queryByText(
+        'Rarity points are server-calculated guidance, not card prices.',
+      ),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Resolve these before publishing:'),
+    ).not.toBeInTheDocument();
+    const collection = screen.getByRole('list', {
+      name: 'Card types in your collection',
+    });
+    expect(within(collection).getAllByRole('listitem')).toHaveLength(1);
+    expect(within(collection).getByText('6 owned · 6 tradable')).toBeVisible();
+    const cardDetailsTrigger = within(collection).getByRole('button', {
+      name: 'View Courier Ibis details',
+    });
+    await user.click(cardDetailsTrigger);
+    const cardDetails = screen.getByRole('dialog', {
+      name: 'Courier Ibis',
+    });
+    expect(cardDetails).toHaveAttribute('data-rarity', 'rare');
+    expect(cardDetails).toHaveClass('trade-card-detail--rare');
+    expect(
+      within(cardDetails).getByText('Rare Creature · Wit affinity'),
+    ).toBeVisible();
+    expect(within(cardDetails).getByText('Express Delivery')).toBeVisible();
+    expect(within(cardDetails).getByText('Deal 20 base damage.')).toBeVisible();
     await user.click(
-      screen.getByRole('button', { name: 'Choose requested cards' }),
+      within(cardDetails).getByRole('button', {
+        name: 'Close Courier Ibis details',
+      }),
     );
+    expect(cardDetailsTrigger).toHaveFocus();
+    await user.click(
+      within(collection).getByRole('button', {
+        name: 'Offer one more Courier Ibis',
+      }),
+    );
+    await user.click(screen.getByRole('button', { name: /Active cards/ }));
     await user.click(
       screen.getByRole('button', { name: 'Request one more Courier Ibis' }),
     );
-    await user.click(screen.getByRole('button', { name: 'Review offer' }));
 
-    expect(await screen.findByText('Server preview ready')).toBeVisible();
-    const send = screen.getByRole('button', { name: 'Send offer' });
-    expect(send).toBeEnabled();
-    await user.click(send);
+    expect(screen.getByRole('heading', { name: 'You receive' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'You give' })).toBeVisible();
+    expect(
+      document.querySelectorAll(
+        '.trade-builder-selection-strip .trade-card-thumbnail',
+      ),
+    ).toHaveLength(2);
+    expect(
+      document.querySelectorAll(
+        '.trade-builder-selection-strip .trade-card-thumbnail--full',
+      ),
+    ).toHaveLength(2);
+    expect(
+      screen.queryByRole('button', { name: 'Show card details' }),
+    ).not.toBeInTheDocument();
+    expect(await screen.findByText('Ready')).toBeVisible();
+    const review = screen.getByRole('button', { name: 'Review offer' });
+    await waitFor(() => expect(review).toBeEnabled());
+    await user.click(review);
+
+    const confirmation = screen.getByRole('dialog', {
+      name: 'Send this trade offer?',
+    });
+    expect(confirmation).toHaveTextContent(
+      'Send 1 card to other_player and request 1 card?',
+    );
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          String(input).endsWith('/trades') && init?.method === 'POST',
+      ),
+    ).toBe(false);
+    await user.click(
+      within(confirmation).getByRole('button', { name: 'Send offer' }),
+    );
 
     await waitFor(() =>
       expect(window.location.pathname).toBe(`/collection/trades/${tradeId}`),
@@ -168,6 +241,68 @@ describe('card trade pages', () => {
     });
   });
 
+  it('groups duplicate cards while selecting distinct authoritative copies', async () => {
+    const previewInputs: Array<{
+      offeredOwnedCardIds: string[];
+      requestedDefinitions: {
+        cardDefinitionId: string;
+        quantity: number;
+      }[];
+    }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith('/cards/trading-catalogue')) {
+          return jsonResponse({
+            definitions: [buildCatalogueDefinition()],
+            requestId: 'catalogue-request',
+          });
+        }
+        if (url.endsWith('/trades/selection-preview')) {
+          const body = JSON.parse(
+            String(init?.body),
+          ) as (typeof previewInputs)[number];
+          previewInputs.push(body);
+          return jsonResponse(buildPreviewResponse(body));
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      }),
+    );
+
+    renderRoute(
+      '/collection/trades/new',
+      <TradeEditorPage apiBaseUrl={apiBaseUrl} />,
+    );
+    const user = userEvent.setup();
+    await user.type(
+      await screen.findByRole('textbox', { name: 'Player Name' }),
+      'other_player',
+    );
+    await user.click(screen.getByRole('button', { name: 'Build trade' }));
+
+    const collection = screen.getByRole('list', {
+      name: 'Card types in your collection',
+    });
+    expect(within(collection).getAllByRole('listitem')).toHaveLength(1);
+    const add = within(collection).getByRole('button', {
+      name: 'Offer one more Courier Ibis',
+    });
+    await user.click(add);
+    await waitFor(() =>
+      expect(within(collection).getByText(/1 selected/)).toBeVisible(),
+    );
+    await user.click(add);
+
+    await waitFor(() =>
+      expect(previewInputs.at(-1)?.offeredOwnedCardIds).toEqual([
+        buildUuid(20),
+        buildUuid(21),
+      ]),
+    );
+    expect(within(collection).getByText(/2 selected/)).toBeVisible();
+  });
+
   it('aborts an in-flight preview when the local selection changes', async () => {
     let previewCount = 0;
     let stalePreviewSignal: AbortSignal | null = null;
@@ -178,7 +313,7 @@ describe('card trade pages', () => {
         const url = String(input);
         if (url.endsWith('/cards/trading-catalogue')) {
           return jsonResponse({
-            definitions: [buildDefinition()],
+            definitions: [buildCatalogueDefinition()],
             requestId: 'catalogue-request',
           });
         }
@@ -213,12 +348,24 @@ describe('card trade pages', () => {
       await screen.findByRole('textbox', { name: 'Player Name' }),
       'other_player',
     );
-    await user.click(screen.getByRole('button', { name: 'Choose your cards' }));
-    const copy = screen.getByRole('button', { name: /Courier Ibis/ });
-    await user.click(copy);
+    await user.click(screen.getByRole('button', { name: 'Build trade' }));
+    const collection = within(
+      screen.getByRole('list', {
+        name: 'Card types in your collection',
+      }),
+    );
+    await user.click(
+      collection.getByRole('button', {
+        name: 'Offer one more Courier Ibis',
+      }),
+    );
     await waitFor(() => expect(stalePreviewSignal).not.toBeNull());
 
-    await user.click(copy);
+    await user.click(
+      collection.getByRole('button', {
+        name: 'Offer one fewer Courier Ibis',
+      }),
+    );
     await waitFor(() =>
       expect((stalePreviewSignal as AbortSignal | null)?.aborted).toBe(true),
     );
@@ -240,7 +387,7 @@ describe('card trade pages', () => {
         const url = String(input);
         if (url.endsWith('/cards/trading-catalogue')) {
           return jsonResponse({
-            definitions: [buildDefinition()],
+            definitions: [buildCatalogueDefinition()],
             requestId: 'catalogue-request',
           });
         }
@@ -410,8 +557,34 @@ function buildDefinition() {
   };
 }
 
-function buildOfferedCopy() {
-  return { ...buildDefinition(), ownedCardId };
+function buildCatalogueDefinition() {
+  return {
+    ...buildDefinition(),
+    description: 'Delivers sealed offers across campus.',
+    effects: [],
+    hp: 90,
+    isActive: true,
+    moves: [
+      {
+        effectType: 'damage' as const,
+        effectValue: 20,
+        id: buildUuid(81),
+        modifierDurationTurns: null,
+        modifierOperation: null,
+        modifierStat: null,
+        moveType: 'wit' as const,
+        name: 'Express Delivery',
+        position: 1,
+        powerCost: 2,
+        rulesText: 'Deal 20 base damage.',
+      },
+    ],
+    power: 8,
+  };
+}
+
+function buildOfferedCopy(id = ownedCardId) {
+  return { ...buildDefinition(), ownedCardId: id };
 }
 
 function buildParty() {
@@ -474,17 +647,24 @@ function buildPreviewResponse(input: {
       minimumCreatureCopies: 3,
       minimumPowerCopies: 2,
     },
-    offeredRarityPoints: offerReady ? 2 : 0,
-    ownedCopies: [
-      {
-        ...buildOfferedCopy(),
-        availability: offerReady ? 'selected_here' : 'available',
-      },
-    ],
-    requestedDefinitions: requestReady
-      ? [{ ...buildDefinition(), quantity: 1 }]
-      : [],
-    requestedRarityPoints: requestReady ? 2 : 0,
+    offeredRarityPoints: input.offeredOwnedCardIds.length * 2,
+    ownedCopies: Array.from({ length: 6 }, (_, index) => {
+      const copy = buildOfferedCopy(buildUuid(20 + index));
+      return {
+        ...copy,
+        availability: input.offeredOwnedCardIds.includes(copy.ownedCardId)
+          ? 'selected_here'
+          : 'available',
+      };
+    }),
+    requestedDefinitions: input.requestedDefinitions.map((request) => ({
+      ...buildDefinition(),
+      quantity: request.quantity,
+    })),
+    requestedRarityPoints: input.requestedDefinitions.reduce(
+      (total, request) => total + request.quantity * 2,
+      0,
+    ),
     requestId: 'preview-request',
     valid: offerReady && requestReady,
   };
