@@ -699,7 +699,8 @@ function parseAction(value: unknown): LiveClientAction {
   }
   if (
     value.type === 'select_initial_creature' ||
-    value.type === 'select_replacement'
+    value.type === 'select_replacement' ||
+    value.type === 'swap_creature'
   ) {
     assertExactKeys(value, ['type', 'creatureId']);
     if (

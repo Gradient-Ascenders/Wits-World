@@ -807,6 +807,7 @@ function parseHistoryEntry(value: unknown): LiveHistoryEntry {
     isEnum(value.action.type, [
       'select_initial_creature',
       'select_replacement',
+      'swap_creature',
       'use_move',
       'use_power_card',
       'timeout',
@@ -833,7 +834,8 @@ function parseLiveAction(value: unknown): CpuMatchIntent {
   }
   if (
     (value.type === 'select_initial_creature' ||
-      value.type === 'select_replacement') &&
+      value.type === 'select_replacement' ||
+      value.type === 'swap_creature') &&
     hasExactKeys(value, ['type', 'creatureId']) &&
     isUuid(value.creatureId)
   ) {

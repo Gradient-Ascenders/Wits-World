@@ -450,6 +450,72 @@ describe('CPU match API', () => {
     });
   });
 
+  it('accepts a swap intent without trusting client battle state', async () => {
+    const submissionId = 'a4000000-0000-4000-8000-000000000011';
+    const creatureId = 'a5000000-0000-4000-8000-000000000011';
+    const response = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/matches/${MATCH_ID}/actions`,
+      payload: {
+        submissionId,
+        expectedVersion: 2,
+        action: { type: 'swap_creature', creatureId },
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(service.submitAction).toHaveBeenCalledWith({
+      playerId: PLAYER_ID,
+      matchId: MATCH_ID,
+      submissionId,
+      expectedVersion: 2,
+      action: { type: 'swap_creature', creatureId },
+    });
+
+    const forged = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/matches/${MATCH_ID}/actions`,
+      payload: {
+        submissionId,
+        expectedVersion: 2,
+        action: { type: 'swap_creature', creatureId, winner: 'player' },
+      },
+    });
+    expect(forged.statusCode).toBe(400);
+    expect(service.submitAction).toHaveBeenCalledOnce();
+  });
+
+  it('returns the authoritative Creature ID with a swap log event', async () => {
+    const creatureId = 'a5000000-0000-4000-8000-000000000011';
+    service.getMatch.mockResolvedValueOnce({
+      ...buildMatch(),
+      battleLog: [
+        {
+          id: 'turn-1',
+          label: 'Turn 1',
+          turnNumber: 1,
+          events: [
+            {
+              id: '3:0',
+              sequence: 3,
+              side: 'player',
+              kind: 'action',
+              message: 'Player swapped in Quillip.',
+              creatureId,
+            },
+          ],
+        },
+      ],
+    });
+
+    const response = await authenticatedRequest({
+      method: 'GET',
+      url: `/api/v1/matches/${MATCH_ID}`,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().battleLog[0].events[0].creatureId).toBe(creatureId);
+  });
+
   it('rejects timeout as a browser action', async () => {
     const response = await authenticatedRequest({
       method: 'POST',

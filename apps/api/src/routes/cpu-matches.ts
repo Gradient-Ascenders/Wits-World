@@ -92,6 +92,15 @@ const actionBodySchema = {
         {
           type: 'object',
           additionalProperties: false,
+          required: ['type', 'creatureId'],
+          properties: {
+            type: { const: 'swap_creature' },
+            creatureId: { type: 'string', format: 'uuid' },
+          },
+        },
+        {
+          type: 'object',
+          additionalProperties: false,
           required: ['type', 'moveId'],
           properties: {
             type: { const: 'use_move' },
@@ -251,6 +260,7 @@ const battleLogGroupSchema = {
             ],
           },
           message: { type: 'string' },
+          creatureId: { type: 'string', format: 'uuid' },
         },
       },
     },
@@ -391,6 +401,15 @@ const publicActionSchema = {
       required: ['type', 'creatureId'],
       properties: {
         type: { const: 'select_replacement' },
+        creatureId: { type: 'string' },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['type', 'creatureId'],
+      properties: {
+        type: { const: 'swap_creature' },
         creatureId: { type: 'string' },
       },
     },

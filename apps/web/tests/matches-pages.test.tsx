@@ -619,6 +619,41 @@ describe('CPU match entry and history', () => {
 describe('authoritative CPU battle page', () => {
   it.each([
     {
+      side: 'player' as const,
+      title: 'Your turn',
+      stageClass: 'battle-stage--player',
+    },
+    {
+      side: 'cpu' as const,
+      title: "Opponent's turn",
+      stageClass: 'battle-stage--cpu',
+    },
+  ])(
+    'shows the $side turn inside the battlefield without the status strip',
+    async ({ side, title, stageClass }) => {
+      const match = activeMatch();
+      match.state.currentSide = side;
+      if (side === 'cpu') match.state.legalActions = [];
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(matchResponse(match)));
+
+      renderMatchPage();
+
+      const heading = await screen.findByRole('heading', {
+        name: title,
+        level: 1,
+      });
+      const stage = screen.getByRole('region', { name: 'Current battlefield' });
+      expect(stage).toContainElement(heading);
+      expect(stage).toHaveClass(stageClass);
+      expect(
+        screen.queryByRole('region', { name: 'Battle status' }),
+      ).toBeNull();
+      expect(screen.queryByText('Untimed')).toBeNull();
+    },
+  );
+
+  it.each([
+    {
       appMotion: 'reduce' as const,
       beatDelay: 1_000,
       description: 'app reduce over OS normal',
@@ -875,6 +910,113 @@ describe('authoritative CPU battle page', () => {
     );
     await advance(1_600);
     expect(move).toBeEnabled();
+  });
+
+  it('shows the swapped Creature before the CPU acts and keeps outgoing effects on the old Creature', async () => {
+    const current = activeMatch(1);
+    const [outgoing, incoming] = current.state.player.creatures;
+    incoming!.currentHp = 70;
+    current.state.legalActions = [
+      { type: 'swap_creature', creatureId: incoming!.id },
+    ];
+    const resolved = structuredClone(current);
+    resolved.version = 2;
+    resolved.state.player.activeCreatureId = incoming!.id;
+    resolved.state.player.creatures[0]!.currentHp = 92;
+    resolved.state.player.creatures[1]!.currentHp = 60;
+    resolved.battleLog = [
+      {
+        id: 'turn-1',
+        label: 'Turn 1',
+        turnNumber: 1,
+        events: [
+          {
+            id: '3:0',
+            kind: 'action',
+            message: 'Player swapped in Wit Creature.',
+            sequence: 3,
+            side: 'player',
+            creatureId: incoming!.id,
+          },
+          {
+            id: '3:1',
+            kind: 'effect',
+            message: "Player's Wit Creature took 8 damage.",
+            sequence: 3,
+            side: 'player',
+            creatureId: outgoing!.id,
+          },
+          {
+            id: '4:0',
+            kind: 'action',
+            message: "CPU's Grit Creature used Counter.",
+            sequence: 4,
+            side: 'cpu',
+          },
+          {
+            id: '4:1',
+            kind: 'effect',
+            message: "Player's Wit Creature took 10 damage.",
+            sequence: 4,
+            side: 'player',
+            creatureId: incoming!.id,
+          },
+        ],
+      },
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(matchResponse(current))
+        .mockResolvedValueOnce(matchResponse(resolved)),
+    );
+
+    renderMatchPage();
+    await userEvent
+      .setup()
+      .click(await screen.findByRole('tab', { name: /Swap/ }));
+    const swap = screen.getByRole('button', { name: /Wit Creature 2/ });
+    vi.useFakeTimers();
+    await act(async () => {
+      fireEvent.click(swap);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(
+      screen.getAllByText('You swapped in Wit Creature.').length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByLabelText('Wit Creature HP')).toHaveAttribute(
+      'value',
+      '70',
+    );
+    expect(document.querySelector('.combatant--player')).toHaveClass(
+      'combatant--acting',
+    );
+    expect(document.querySelector('.combatant--cpu')).toHaveClass(
+      'combatant--dimmed',
+    );
+
+    await act(async () => vi.advanceTimersByTime(1_700));
+    expect(screen.getByLabelText('Wit Creature HP')).toHaveAttribute(
+      'value',
+      '70',
+    );
+    await act(async () => vi.advanceTimersByTime(1_600));
+    expect(
+      screen.getAllByText('The CPU’s Grit Creature used Counter.').length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByLabelText('Wit Creature HP')).toHaveAttribute(
+      'value',
+      '70',
+    );
+    await act(async () => vi.advanceTimersByTime(1_700));
+    expect(screen.getByLabelText('Wit Creature HP')).toHaveAttribute(
+      'value',
+      '60',
+    );
   });
 
   it('requires confirmation and records a CPU forfeit through the match API', async () => {

@@ -470,6 +470,28 @@ describe('asynchronous PvP routes', () => {
     expect(service.submitAction).not.toHaveBeenCalled();
   });
 
+  it('accepts a swap intent but rejects client-authoritative results', async () => {
+    service.submitAction.mockResolvedValue(match());
+    const path = `/api/v1/matches/pvp/${INVITATION_ID}/actions`;
+    const payload = {
+      submissionId: SUBMISSION_ID,
+      expectedVersion: 0,
+      action: { type: 'swap_creature', creatureId: CREATURE_ID },
+    };
+    const accepted = await request('POST', path, payload);
+    expect(accepted.statusCode).toBe(200);
+    expect(service.submitAction).toHaveBeenCalledWith(
+      expect.objectContaining({ action: payload.action }),
+    );
+
+    const forged = await request('POST', path, {
+      ...payload,
+      action: { ...payload.action, winner: 'self' },
+    });
+    expect(forged.statusCode).toBe(400);
+    expect(service.submitAction).toHaveBeenCalledOnce();
+  });
+
   it('derives resignation availability, loser, and winner on the server', async () => {
     const result = {
       action: { type: 'select_replacement' as const, creatureId: CREATURE_ID },

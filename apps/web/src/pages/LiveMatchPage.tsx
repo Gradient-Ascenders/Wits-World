@@ -911,6 +911,7 @@ function historyLabel(entry: LiveHistoryEntry, match: LiveProjection): string {
   const action = {
     select_initial_creature: 'selected an initial Creature',
     select_replacement: 'selected a replacement Creature',
+    swap_creature: 'swapped in a Creature',
     use_move: 'used a move',
     use_power_card: 'used a Power card',
   }[entry.actionType ?? 'use_move'];

@@ -544,11 +544,14 @@ The action request is:
 
 ```text
 { type: "select_replacement", creatureId: UUID }
+{ type: "swap_creature", creatureId: UUID }
 { type: "use_move", moveId: UUID }
 { type: "use_power_card", powerCardId: UUID }
 ```
 
 Initial selection is captured during invitation creation and acceptance.
+`swap_creature` is allowed only on a normal turn and consumes that turn; a
+mandatory `select_replacement` remains a separate, free decision.
 `select_initial_creature` and `timeout` are therefore never accepted at the
 match-action endpoint. The body cannot contain effects, card statistics,
 damage, HP, Power, randomness, target results, winner, completion reason,

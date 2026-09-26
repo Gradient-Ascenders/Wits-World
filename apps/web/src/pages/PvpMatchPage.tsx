@@ -1187,7 +1187,10 @@ function pvpPresentationMoments(
       action: result.action,
       actorSide: result.side,
       entranceSide:
-        result.action.type === 'select_replacement' ? result.side : undefined,
+        result.action.type === 'select_replacement' ||
+        result.action.type === 'swap_creature'
+          ? result.side
+          : undefined,
       id: `${entry.sequence}-action`,
       kind: 'action',
       message: pvpActionMessage(result, match),
@@ -1257,6 +1260,11 @@ function pvpActionMessage(result: PvpActionResult, match: AsyncPvpMatch) {
     return `${actor} played ${card?.name ?? 'a Power card'}.`;
   }
   const creature = pvpCreature(match, result.side, action.creatureId);
+  if (action.type === 'swap_creature') {
+    return result.side === 'self'
+      ? `You swapped in ${creature?.name ?? 'a Creature'}.`
+      : `${actor} swapped in ${creature?.name ?? 'a Creature'}.`;
+  }
   return result.side === 'self'
     ? `Go, ${creature?.name ?? 'Creature'}!`
     : `${actor} sent out ${creature?.name ?? 'a Creature'}!`;
@@ -1390,7 +1398,10 @@ function applyPvpPresentationMoment(
 ) {
   const next = structuredClone(current);
   if (moment.kind === 'action' && moment.action) {
-    if (moment.action.type === 'select_replacement') {
+    if (
+      moment.action.type === 'select_replacement' ||
+      moment.action.type === 'swap_creature'
+    ) {
       if (moment.actorSide === 'self') {
         next.state.self.activeCreatureId = target.state.self.activeCreatureId;
       } else {

@@ -16,6 +16,7 @@ export type PvpInvitationStatus =
 
 export type PvpAction =
   | { creatureId: string; type: 'select_replacement' }
+  | { creatureId: string; type: 'swap_creature' }
   | { moveId: string; type: 'use_move' }
   | { powerCardId: string; type: 'use_power_card' };
 
@@ -860,11 +861,11 @@ function parseActionEffect(value: unknown): PvpActionEffect {
 function parsePvpAction(value: unknown): PvpAction {
   if (!isRecord(value)) throw new PvpApiError('unavailable');
   if (
-    value.type === 'select_replacement' &&
+    (value.type === 'select_replacement' || value.type === 'swap_creature') &&
     hasExactKeys(value, ['type', 'creatureId']) &&
     isUuid(value.creatureId)
   ) {
-    return { creatureId: value.creatureId, type: 'select_replacement' };
+    return { creatureId: value.creatureId, type: value.type };
   }
   if (
     value.type === 'use_move' &&

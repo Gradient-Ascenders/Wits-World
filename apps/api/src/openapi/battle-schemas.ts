@@ -159,6 +159,15 @@ export const pvpActionSchema = {
     {
       type: 'object',
       additionalProperties: false,
+      required: ['type', 'creatureId'],
+      properties: {
+        type: { const: 'swap_creature' },
+        creatureId: { type: 'string', format: 'uuid' },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
       required: ['type', 'moveId'],
       properties: {
         type: { const: 'use_move' },

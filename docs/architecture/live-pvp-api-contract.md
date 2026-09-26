@@ -256,11 +256,13 @@ must set and document a bounded message-size limit before deployment.
 ```text
 { type: "select_initial_creature", creatureId: UUID }
 { type: "select_replacement", creatureId: UUID }
+{ type: "swap_creature", creatureId: UUID }
 { type: "use_move", moveId: UUID }
 { type: "use_power_card", powerCardId: UUID }
 ```
 
-The client cannot submit `timeout`, damage, effects, randomness, card values,
+`swap_creature` consumes a normal turn and requires a living bench Creature;
+mandatory replacement remains free. The client cannot submit `timeout`, damage, effects, randomness, card values,
 deadlines, timeout counts, presence, winner, completion, progression, or
 spectator fields. Returned legal actions are advisory; the server revalidates
 the intent under the locked current version.
@@ -669,4 +671,4 @@ Before issue `#253` is merged:
 ## AI declaration
 
 This contract was planned, generated, edited, and reviewed with the assistance
-of Codex[GPT-5.6 Sol] and ChatGPT-Web[GPT-5.6 Sol].
+of Codex[GPT-5.6 Sol], ChatGPT-Web[GPT-5.6 Sol], and Codex[GPT-5].

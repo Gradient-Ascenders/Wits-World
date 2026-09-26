@@ -254,6 +254,52 @@ describe('live PvP WebSocket gateway', () => {
     );
   });
 
+  it('forwards a swap intent without trusting browser state', async () => {
+    const service = createService();
+    service.redeemConnectionTicket.mockResolvedValue({
+      accessId: '55555555-5555-4555-8555-555555555555',
+      matchId: MATCH_ID,
+      playerId: PLAYER_ID,
+      role: 'participant',
+      participantGeneration: 3,
+    });
+    service.getProjectionForConnection.mockResolvedValue(participantProjection);
+    service.submitAction.mockResolvedValue({
+      acknowledgement: {
+        protocolVersion: 1,
+        type: 'action.acknowledged',
+        messageId: MESSAGE_ID,
+        eventId: '66666666-6666-4666-8666-666666666666',
+        version: 8,
+        serverTime: '2026-09-17T22:00:40.000Z',
+      },
+      replayed: false,
+      late: false,
+    });
+
+    const { gateway, connect } = await registerGateway(service);
+    openGateways.push(gateway);
+    const socket = new FakeSocket();
+    connect(socket, ticketRequest());
+    await flushAsyncWork();
+    const creatureId = '77777777-7777-4777-8777-777777777777';
+    socket.emitMessage({
+      protocolVersion: 1,
+      type: 'action.submit',
+      matchId: MATCH_ID,
+      messageId: MESSAGE_ID,
+      expectedVersion: 7,
+      action: { type: 'swap_creature', creatureId },
+    });
+    await flushAsyncWork();
+    expect(service.submitAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        playerId: PLAYER_ID,
+        action: { type: 'swap_creature', creatureId },
+      }),
+    );
+  });
+
   it('closes a participant after delivering an already-completed projection', async () => {
     const service = createService();
     const accessId = '55555555-5555-4555-8555-555555555555';

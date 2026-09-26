@@ -13,7 +13,7 @@ interface BattleShellHeaderProps {
   headingRef?: RefObject<HTMLHeadingElement | null>;
   mode: 'Live Ranked' | 'Player Battle' | 'Practice';
   opponentLabel: string;
-  title: string;
+  title?: string;
   turnNumber?: number;
 }
 
@@ -42,11 +42,13 @@ export function BattleShellHeader({
           <span>{opponentLabel}</span>
           {turnNumber === undefined ? null : <span>Turn {turnNumber}</span>}
         </div>
-        <div className="battle-header__title-row">
-          <h1 ref={headingRef} tabIndex={headingRef ? -1 : undefined}>
-            {title}
-          </h1>
-        </div>
+        {title ? (
+          <div className="battle-header__title-row">
+            <h1 ref={headingRef} tabIndex={headingRef ? -1 : undefined}>
+              {title}
+            </h1>
+          </div>
+        ) : null}
         {description ? (
           <div className="battle-phase-prompt">{description}</div>
         ) : null}
