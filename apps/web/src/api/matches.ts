@@ -509,7 +509,8 @@ async function matchRequest({
     response = await fetch(`${apiBaseUrl}${path}`, {
       body: body === undefined ? undefined : JSON.stringify(body),
       headers: {
-        Accept: 'application/json',
+        Accept:
+          'application/vnd.wits-world.cpu.v2+json, application/json;q=0.9',
         Authorization: `Bearer ${accessToken}`,
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
       },

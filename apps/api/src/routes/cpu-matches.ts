@@ -2,6 +2,12 @@ import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 
 import { ApiError } from '../errors/api-error.js';
 import {
+  acceptsBattleSwaps,
+  CPU_SWAP_MEDIA_TYPE,
+  cpuHistoryForClient,
+  cpuMatchForClient,
+} from '../matches/battle-projection-capability.js';
+import {
   CpuMatchActionError,
   CpuMatchAlreadyActiveError,
   CpuMatchCompletedError,
@@ -654,7 +660,10 @@ export const cpuMatchRoutes: FastifyPluginAsync<CpuMatchRoutesOptions> = async (
         });
 
         return reply.status(201).send({
-          ...match,
+          ...cpuMatchForClient(
+            match,
+            acceptsBattleSwaps(request, CPU_SWAP_MEDIA_TYPE),
+          ),
           requestId: request.id,
         });
       } catch (error) {
@@ -689,7 +698,10 @@ export const cpuMatchRoutes: FastifyPluginAsync<CpuMatchRoutesOptions> = async (
       try {
         const match = await service.getActiveMatch(player.id);
         return reply.status(200).send({
-          ...match,
+          ...cpuMatchForClient(
+            match,
+            acceptsBattleSwaps(request, CPU_SWAP_MEDIA_TYPE),
+          ),
           requestId: request.id,
         });
       } catch (error) {
@@ -705,6 +717,7 @@ export const cpuMatchRoutes: FastifyPluginAsync<CpuMatchRoutesOptions> = async (
       schema: {
         operationId: 'getCpuMatch',
         summary: 'Read the authenticated player CPU match',
+        description: `Include ${CPU_SWAP_MEDIA_TYPE} in Accept to receive voluntary swap actions and Creature IDs in battle-log events. Without it, the response retains the previous battle projection.`,
         tags: ['Matches'],
         security: [{ bearerAuth: [] }],
         params: matchParamsSchema,
@@ -723,7 +736,10 @@ export const cpuMatchRoutes: FastifyPluginAsync<CpuMatchRoutesOptions> = async (
       try {
         const match = await service.getMatch(player.id, request.params.matchId);
         return reply.status(200).send({
-          ...match,
+          ...cpuMatchForClient(
+            match,
+            acceptsBattleSwaps(request, CPU_SWAP_MEDIA_TYPE),
+          ),
           requestId: request.id,
         });
       } catch (error) {
@@ -772,7 +788,10 @@ export const cpuMatchRoutes: FastifyPluginAsync<CpuMatchRoutesOptions> = async (
       try {
         const match = await service.submitAction(input);
         return reply.status(200).send({
-          ...match,
+          ...cpuMatchForClient(
+            match,
+            acceptsBattleSwaps(request, CPU_SWAP_MEDIA_TYPE),
+          ),
           requestId: request.id,
         });
       } catch (error) {
@@ -819,7 +838,10 @@ export const cpuMatchRoutes: FastifyPluginAsync<CpuMatchRoutesOptions> = async (
       try {
         const match = await service.forfeitMatch(input);
         return reply.status(200).send({
-          ...match,
+          ...cpuMatchForClient(
+            match,
+            acceptsBattleSwaps(request, CPU_SWAP_MEDIA_TYPE),
+          ),
           requestId: request.id,
         });
       } catch (error) {
@@ -835,6 +857,7 @@ export const cpuMatchRoutes: FastifyPluginAsync<CpuMatchRoutesOptions> = async (
       schema: {
         operationId: 'listCpuMatchHistory',
         summary: 'List completed CPU matches for the current player',
+        description: `Include ${CPU_SWAP_MEDIA_TYPE} in Accept to receive swap actions in completed battle history. Without it, swap entries are omitted for older clients.`,
         tags: ['Matches'],
         security: [{ bearerAuth: [] }],
         querystring: emptyQuerySchema,
@@ -850,7 +873,10 @@ export const cpuMatchRoutes: FastifyPluginAsync<CpuMatchRoutesOptions> = async (
       const matches = await service.listHistory(player.id);
 
       return reply.status(200).send({
-        matches,
+        matches: cpuHistoryForClient(
+          matches,
+          acceptsBattleSwaps(request, CPU_SWAP_MEDIA_TYPE),
+        ),
         requestId: request.id,
       });
     },

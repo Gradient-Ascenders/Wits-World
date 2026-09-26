@@ -271,12 +271,15 @@ The common match response is viewer-relative:
 | `canResign`           | boolean                        | Version 2+ | Server-derived capability        |
 | `requestId`           | string                         | Yes        | Safe request correlation         |
 
-The Web client negotiates version 4 with
-`Accept: application/vnd.wits-world.pvp.v4+json, application/vnd.wits-world.pvp.v3+json;q=0.9, application/json;q=0.8`.
+The Web client negotiates version 5 with
+`Accept: application/vnd.wits-world.pvp.v5+json, application/vnd.wits-world.pvp.v4+json;q=0.9, application/json;q=0.8`.
 `Accept` is CORS-safelisted, so this does not add a request header to the browser
 preflight allow-list. An older API can ignore the preferred media type and serve
 the `application/json` fallback; the Web then treats an absent `canResign` as
-unavailable and an absent `canCancel` as false. Version 4 includes all version 3
+unavailable and an absent `canCancel` as false. Version 5 adds voluntary
+`swap_creature` actions to legal actions, history, and latest result. Clients
+without version 5 receive no swap legal actions or swap results; persisted
+battle state and turn order are unchanged. Version 4 includes all version 3
 behavior and adds the complete participant-safe action history through the
 returned match version. Each entry contains its committed sequence, authoritative
 turn number, server timestamp, and viewer-relative public action result. Version

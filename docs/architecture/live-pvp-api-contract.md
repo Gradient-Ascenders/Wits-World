@@ -226,6 +226,16 @@ Every text message is one UTF-8 JSON object with:
 - `matchId` as a UUID; and
 - the fields defined for that message type, with no additional properties.
 
+Voluntary Creature swaps are an opt-in projection capability during rollout.
+The current HTTP client sends
+`Accept: application/vnd.wits-world.live.v2+json, application/json;q=0.9`
+when reading a match. The current WebSocket client adds `battleSwaps=1` to
+the ticketed socket URL. Without the relevant opt-in, the server removes
+`swap_creature` from participant legal actions in HTTP and socket projections;
+it never changes the authoritative state. Spectator views have no legal
+actions. The WebSocket message `protocolVersion` remains 1 because the message
+envelope is unchanged; the URL capability negotiates the action projection.
+
 Binary messages, malformed JSON, unsupported protocol versions, oversized
 messages, and unknown message types are rejected without invoking game logic. A
 protocol failure synchronously invalidates the runtime connection before the

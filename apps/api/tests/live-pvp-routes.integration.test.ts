@@ -107,6 +107,38 @@ beforeEach(async () => {
 afterEach(async () => app.close());
 
 describe('live PvP HTTP routes', () => {
+  it('omits swap actions for old HTTP clients and exposes them to v2 clients', async () => {
+    const base = await (
+      service.getProjection as LivePvpService['getProjection']
+    )({ matchId: MATCH_ID, playerId: PLAYER_ID });
+    const swap = { type: 'swap_creature', creatureId: MATCH_ID };
+    const move = { type: 'use_move', moveId: MATCH_ID };
+    service.getProjection.mockResolvedValue({
+      ...base,
+      legalActions: [swap, move],
+    });
+
+    const url = `/api/v1/matches/live/${MATCH_ID}`;
+    const legacy = await app.inject({
+      method: 'GET',
+      url,
+      headers: { authorization: 'Bearer valid-token' },
+    });
+    const current = await app.inject({
+      method: 'GET',
+      url,
+      headers: {
+        authorization: 'Bearer valid-token',
+        accept: 'application/vnd.wits-world.live.v2+json',
+      },
+    });
+
+    expect(legacy.statusCode).toBe(200);
+    expect(legacy.json().legalActions).toEqual([move]);
+    expect(current.statusCode).toBe(200);
+    expect(current.json().legalActions).toEqual([swap, move]);
+  });
+
   it('returns the authenticated player projection without accepting browser identity', async () => {
     const response = await request('GET', `/api/v1/matches/live/${MATCH_ID}`);
 

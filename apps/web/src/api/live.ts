@@ -578,6 +578,7 @@ export function buildLiveWebSocketUrl(
 ): string {
   const url = new URL(webSocketUrl, window.location.href);
   url.searchParams.set('ticket', ticket);
+  url.searchParams.set('battleSwaps', '1');
   return url.toString();
 }
 
@@ -1101,7 +1102,8 @@ async function requestJson(
     response = await fetch(`${options.apiBaseUrl}${options.path}`, {
       method: options.method,
       headers: {
-        Accept: 'application/json',
+        Accept:
+          'application/vnd.wits-world.live.v2+json, application/json;q=0.9',
         Authorization: `Bearer ${token}`,
         ...(options.body ? { 'Content-Type': 'application/json' } : {}),
       },

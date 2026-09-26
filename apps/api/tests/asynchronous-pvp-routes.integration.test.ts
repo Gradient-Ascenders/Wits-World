@@ -81,6 +81,57 @@ beforeEach(async () => {
 afterEach(async () => app.close());
 
 describe('asynchronous PvP routes', () => {
+  it('keeps v4 battle projections compatible and exposes swaps only to v5', async () => {
+    const swap = { type: 'swap_creature' as const, creatureId: CREATURE_ID };
+    const move = { type: 'use_move' as const, moveId: DECK_ID };
+    const result = {
+      action: swap,
+      defeatedCreatureId: null,
+      effects: [],
+      side: 'self' as const,
+      turnEnded: true,
+      winner: null,
+    };
+    service.getMatch.mockResolvedValue(
+      match({
+        legalActions: [swap, move],
+        history: [
+          {
+            createdAt: '2026-09-05T09:00:00.000Z',
+            result,
+            sequence: 3,
+            turnNumber: 2,
+          },
+        ],
+        lastAction: result,
+      }),
+    );
+
+    const url = `/api/v1/matches/pvp/${INVITATION_ID}`;
+    const legacy = await app.inject({
+      method: 'GET',
+      url,
+      headers: { authorization: 'Bearer valid-token', accept: PVP_ACCEPT },
+    });
+    const current = await app.inject({
+      method: 'GET',
+      url,
+      headers: {
+        authorization: 'Bearer valid-token',
+        accept: 'application/vnd.wits-world.pvp.v5+json',
+      },
+    });
+
+    expect(legacy.statusCode).toBe(200);
+    expect(legacy.json().legalActions).toEqual([move]);
+    expect(legacy.json().lastAction).toBeNull();
+    expect(legacy.json().history).toEqual([]);
+    expect(current.statusCode).toBe(200);
+    expect(current.json().legalActions).toEqual([swap, move]);
+    expect(current.json().lastAction.action).toEqual(swap);
+    expect(current.json().history[0].result.action).toEqual(swap);
+  });
+
   it.each(['player', 'cpu'] as const)(
     'serializes engine results and old receipts for the %s viewer',
     async (viewerSide) => {

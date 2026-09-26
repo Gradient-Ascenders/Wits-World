@@ -118,6 +118,58 @@ afterEach(async () => {
 });
 
 describe('live PvP WebSocket gateway', () => {
+  it.each([
+    { battleSwaps: undefined, expectsSwap: false },
+    { battleSwaps: '1', expectsSwap: true },
+  ])('negotiates swap actions for the connection: %j', async (variant) => {
+    const service = createService();
+    service.redeemConnectionTicket.mockResolvedValue({
+      accessId: '55555555-5555-4555-8555-555555555555',
+      matchId: MATCH_ID,
+      playerId: PLAYER_ID,
+      role: 'participant',
+      participantGeneration: 1,
+    });
+    service.getProjectionForConnection.mockResolvedValue({
+      ...participantProjection,
+      legalActions: [
+        { type: 'swap_creature', creatureId: MOVE_ID },
+        { type: 'use_move', moveId: MOVE_ID },
+      ],
+    });
+    service.getCommittedEventMeta.mockResolvedValue(null);
+
+    const { gateway, connect } = await registerGateway(service);
+    openGateways.push(gateway);
+    const socket = new FakeSocket();
+    const request = {
+      query: { ticket: 'opaque-ticket', battleSwaps: variant.battleSwaps },
+    } as unknown as FastifyRequest;
+    connect(socket, request);
+    await flushAsyncWork();
+    await gateway.broadcastMatch(MATCH_ID, participantProjection.version);
+
+    const projections = messages(socket).filter(
+      (message) =>
+        typeof message === 'object' &&
+        message !== null &&
+        'type' in message &&
+        (message.type === 'connection.ready' ||
+          message.type === 'match.snapshot'),
+    ) as { match: LivePvpParticipantProjection }[];
+    expect(projections).toHaveLength(2);
+    for (const projection of projections) {
+      expect(projection.match.legalActions).toEqual(
+        variant.expectsSwap
+          ? [
+              { type: 'swap_creature', creatureId: MOVE_ID },
+              { type: 'use_move', moveId: MOVE_ID },
+            ]
+          : [{ type: 'use_move', moveId: MOVE_ID }],
+      );
+    }
+  });
+
   it('queues early client intent while asynchronous ticket redemption completes', async () => {
     const service = createService();
     let resolveRedemption!: (value: {
