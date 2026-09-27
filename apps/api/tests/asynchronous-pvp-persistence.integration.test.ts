@@ -537,6 +537,12 @@ describe.skipIf(!runIntegrationTests)(
       );
       expect(challengerView.currentActor).toBe('self');
       expect(challengerView.state.self.creatures).toHaveLength(3);
+      expect(challengerView.state.self.creatures).toEqual(
+        expect.arrayContaining([expect.objectContaining({ rarity: 'common' })]),
+      );
+      expect(challengerView.state.opponent.activeCreature).toEqual(
+        expect.objectContaining({ rarity: 'common' }),
+      );
       expect(challengerView.state.opponent).not.toHaveProperty('creatures');
       expect(challengerView.legalActions.length).toBeGreaterThan(0);
       await expect(

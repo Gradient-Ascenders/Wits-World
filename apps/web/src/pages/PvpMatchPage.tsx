@@ -37,7 +37,6 @@ import {
 import {
   BattleOutcomePanel,
   BattleShellHeader,
-  BattleStatusDock,
 } from '../components/matches/BattleShell';
 import { ResignMatchDialog } from '../components/matches/ResignMatchDialog';
 import './matches.css';
@@ -662,6 +661,25 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     ? (presentationMoments[activeMomentIndex] ?? null)
     : null;
   const activeSide = activeMoment?.actorSide ?? viewMatch.currentActor;
+  const battlefieldTitle = activeMoment
+    ? pvpPresentationTitle(activeMoment)
+    : error
+      ? 'Battle needs sync'
+      : requestBusy
+        ? errorContext === 'resignation'
+          ? 'Recording forfeit'
+          : 'Processing your action'
+        : countdown.expired && viewMatch.status === 'active'
+          ? 'Deadline reached'
+          : phaseTitle(viewMatch);
+  const battlefieldTone =
+    viewMatch.status === 'completed'
+      ? viewMatch.outcome === 'win'
+        ? 'player'
+        : 'cpu'
+      : activeSide === 'self'
+        ? 'player'
+        : 'cpu';
   const selfCreature =
     viewMatch.state.self.creatures.find(
       (creature) => creature.id === viewMatch.state.self.activeCreatureId,
@@ -687,67 +705,10 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       </p>
       <BattleShellHeader
         backHref="/matches/pvp"
-        backLabel="Player Battles"
-        description={
-          viewMatch.status === 'active'
-            ? 'Take your turn within 24 hours. Leaving this page does not pause the deadline.'
-            : 'This result is saved in Battle history.'
-        }
-        headingRef={phaseHeading}
+        backLabel="Save and exit"
         mode="Player Battle"
         opponentLabel={`Against ${viewMatch.opponent.playerName}`}
-        title={
-          activeMoment
-            ? pvpPresentationTitle(activeMoment)
-            : phaseTitle(viewMatch)
-        }
         turnNumber={viewMatch.state.turnNumber}
-      />
-
-      <BattleStatusDock
-        detail={
-          activeMoment?.message ??
-          playerBattleStatusDetail(
-            viewMatch,
-            requestBusy,
-            error !== null,
-            countdown.expired,
-          )
-        }
-        label={
-          presenting
-            ? activeSide === 'self'
-              ? 'Your move'
-              : `${viewMatch.opponent.playerName} is moving`
-            : requestBusy
-              ? 'Processing your action'
-              : error || (countdown.expired && match.status === 'active')
-                ? 'Sync required'
-                : match.status === 'completed'
-                  ? 'Battle complete'
-                  : viewMatch.currentActor === 'self' &&
-                      viewMatch.legalActions.length > 0
-                    ? 'Your turn'
-                    : "Opponent's turn"
-        }
-        timing={
-          match.status === 'active'
-            ? {
-                detail: `Play by ${formatDate(match.turnDeadline!)}`,
-                label: countdown.expired ? 'Deadline reached' : countdown.label,
-                tone: countdown.expired ? 'danger' : undefined,
-              }
-            : undefined
-        }
-        tone={
-          error || countdown.expired
-            ? 'danger'
-            : viewMatch.status === 'completed'
-              ? 'complete'
-              : activeSide === 'self'
-                ? 'player'
-                : 'opponent'
-        }
       />
 
       {pollWarning ? (
@@ -837,61 +798,69 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         </div>
       ) : null}
 
-      {viewMatch.status === 'completed' ? (
-        <div className="battle-completed-layout">
-          <CompletedPvpMatch match={viewMatch} />
-          <PvpSideRail match={viewMatch} />
-        </div>
-      ) : (
-        <div className="battle-live-layout">
-          <section
-            aria-label="Current battlefield"
-            className={`battle-stage battle-stage--${activeSide === 'self' ? 'player' : 'cpu'}${presenting ? ' battle-stage--resolving' : ''}`}
-          >
-            <div aria-hidden="true" className="battle-stage__field-lines" />
-            <div className="battle-stage__label">
-              <span>Current battlefield</span>
-              <strong>
-                {activeSide === 'self'
-                  ? 'Your initiative'
-                  : `${viewMatch.opponent.playerName} initiative`}
-              </strong>
-            </div>
-            <div className="battle-arena">
-              <BattleCombatant
-                creature={selfCreature}
-                emptyText="Choose a replacement for your defeated Creature."
-                heading="You"
-                isActing={activeSide === 'self'}
-                isDimmed={presenting && activeSide === 'opponent'}
-                isEntering={activeMoment?.entranceSide === 'self'}
-                isResolving={presenting}
-                feedbackKey={activeMoment?.id}
-                feedbackText={selfFeedback?.label}
-                feedbackTone={selfFeedback?.tone}
-                visualSide="player"
-              />
-              <BattleResolution
-                activeIndex={activeMomentIndex}
-                activeMoment={activeMoment}
-                moments={presenting ? presentationMoments : latestMoments}
-              />
-              <BattleCombatant
-                creature={viewMatch.state.opponent.activeCreature}
-                emptyText="Your opponent’s Creature has not been revealed yet."
-                heading={viewMatch.opponent.playerName}
-                isActing={activeSide === 'opponent'}
-                isDimmed={presenting && activeSide === 'self'}
-                isEntering={activeMoment?.entranceSide === 'opponent'}
-                isResolving={presenting}
-                feedbackKey={activeMoment?.id}
-                feedbackText={opponentFeedback?.label}
-                feedbackTone={opponentFeedback?.tone}
-                visualSide="cpu"
-              />
-            </div>
-          </section>
+      <div className="battle-live-layout">
+        <section
+          aria-label="Current battlefield"
+          className={`battle-stage battle-stage--${battlefieldTone}${presenting ? ' battle-stage--resolving' : ''}`}
+        >
+          <div aria-hidden="true" className="battle-stage__field-lines" />
+          <div className="battle-stage__label">
+            <span>Current battlefield</span>
+          </div>
+          <h1 className="battle-stage__turn" ref={phaseHeading} tabIndex={-1}>
+            {battlefieldTitle}
+          </h1>
+          <div className="battle-arena">
+            <BattleCombatant
+              creature={selfCreature}
+              emptyText="Choose a replacement for your defeated Creature."
+              heading="You"
+              isActing={activeSide === 'self'}
+              isDimmed={presenting && activeSide === 'opponent'}
+              isEntering={activeMoment?.entranceSide === 'self'}
+              isResolving={presenting}
+              feedbackKey={activeMoment?.id}
+              feedbackText={selfFeedback?.label}
+              feedbackTone={selfFeedback?.tone}
+              visualSide="player"
+            />
+            <BattleResolution
+              activeIndex={activeMomentIndex}
+              activeMoment={activeMoment}
+              emptyStatusLabel={
+                viewMatch.status === 'completed' ? 'Match complete' : undefined
+              }
+              emptyText={
+                viewMatch.status === 'completed'
+                  ? 'No confirmed action history was returned for this saved result.'
+                  : undefined
+              }
+              heading={
+                viewMatch.status === 'completed'
+                  ? 'Final resolution'
+                  : 'Latest resolution'
+              }
+              moments={presenting ? presentationMoments : latestMoments}
+            />
+            <BattleCombatant
+              creature={viewMatch.state.opponent.activeCreature}
+              emptyText="Your opponent’s Creature has not been revealed yet."
+              heading={viewMatch.opponent.playerName}
+              isActing={activeSide === 'opponent'}
+              isDimmed={presenting && activeSide === 'self'}
+              isEntering={activeMoment?.entranceSide === 'opponent'}
+              isResolving={presenting}
+              feedbackKey={activeMoment?.id}
+              feedbackText={opponentFeedback?.label}
+              feedbackTone={opponentFeedback?.tone}
+              visualSide="cpu"
+            />
+          </div>
+        </section>
 
+        {viewMatch.status === 'completed' ? (
+          <CompletedPvpMatch match={viewMatch} />
+        ) : (
           <BattleActionPanel
             activeCreatureId={viewMatch.state.self.activeCreatureId}
             busy={busy}
@@ -919,18 +888,31 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
             }
             powerCards={viewMatch.state.self.powerCards}
           />
+        )}
 
-          <PvpSideRail
-            busy={busy}
-            forfeitPending={
-              requestStatus === 'submitting' && errorContext === 'resignation'
-            }
-            match={viewMatch}
-            onResign={() => setConfirmingResignation(true)}
-            resignTrigger={resignTrigger}
-          />
-        </div>
-      )}
+        <PvpSideRail
+          busy={busy}
+          deadline={
+            viewMatch.status === 'active' && viewMatch.turnDeadline
+              ? {
+                  detail: `Play by ${formatDate(viewMatch.turnDeadline)}`,
+                  expired: countdown.expired,
+                  label: countdown.label,
+                }
+              : undefined
+          }
+          forfeitPending={
+            requestStatus === 'submitting' && errorContext === 'resignation'
+          }
+          match={viewMatch}
+          onResign={
+            viewMatch.status === 'active'
+              ? () => setConfirmingResignation(true)
+              : undefined
+          }
+          resignTrigger={resignTrigger}
+        />
+      </div>
       {confirmingResignation && match.canResign && !presenting ? (
         <ResignMatchDialog
           busy={busy}
@@ -946,12 +928,14 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
 function PvpSideRail({
   busy = false,
+  deadline,
   forfeitPending = false,
   match,
   onResign,
   resignTrigger,
 }: {
   busy?: boolean;
+  deadline?: { detail: string; expired: boolean; label: string };
   forfeitPending?: boolean;
   match: AsyncPvpMatch;
   onResign?: () => void;
@@ -966,6 +950,17 @@ function PvpSideRail({
         <h2>Activity</h2>
       </header>
       <PvpBattleLog match={match} />
+      {deadline ? (
+        <section
+          aria-label="Turn deadline"
+          className="battle-rail-card pvp-turn-deadline"
+          data-expired={deadline.expired || undefined}
+        >
+          <span>Turn deadline</span>
+          <strong>{deadline.label}</strong>
+          <small>{deadline.detail}</small>
+        </section>
+      ) : null}
       {match.state.phase !== 'replacement' ? (
         <BattleBench
           creatures={match.state.self.creatures}
@@ -1109,25 +1104,6 @@ function CompletedPvpMatch({ match }: { match: AsyncPvpMatch }) {
       </details>
     </BattleOutcomePanel>
   );
-}
-
-function playerBattleStatusDetail(
-  match: AsyncPvpMatch,
-  busy: boolean,
-  hasError: boolean,
-  expired: boolean,
-) {
-  if (hasError || expired) return 'Review the battle shown before acting.';
-  if (busy) return 'Your choice is being confirmed.';
-  if (match.status === 'completed') return 'The result is saved.';
-  if (match.state.phase === 'replacement') {
-    return match.currentActor === 'self'
-      ? 'Choose an available replacement Creature.'
-      : `${match.opponent.playerName} is choosing a replacement.`;
-  }
-  return match.currentActor === 'self'
-    ? 'Choose one available action.'
-    : `Waiting for ${match.opponent.playerName}. We’ll refresh automatically.`;
 }
 
 function useDeadlineCountdown(deadline: string | null) {

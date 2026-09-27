@@ -168,7 +168,7 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
     ) {
       cancellationRequests += 1;
       expect(request.headers().accept).toContain(
-        'application/vnd.wits-world.pvp.v3+json',
+        'application/vnd.wits-world.pvp.v5+json',
       );
       expect(request.postDataJSON()).toEqual({
         expectedVersion: 0,
@@ -247,7 +247,7 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
     if (pathname.endsWith(`/matches/pvp/${match.matchId}/resign`)) {
       forfeitRequests += 1;
       expect(request.headers().accept).toContain(
-        'application/vnd.wits-world.pvp.v2+json',
+        'application/vnd.wits-world.pvp.v5+json',
       );
       expect(request.headers()['x-wits-pvp-contract-version']).toBeUndefined();
       expect(request.postDataJSON()).toEqual({
@@ -536,6 +536,7 @@ test('keeps bench, forced replacement and results readable across battle layouts
     current = pvpMatch({
       turnDeadline: futureDeadline,
     });
+    current.state.self.creatures[1]!.rarity = 'rare';
     await page.goto(`/matches/pvp/${current.matchId}`);
     await expect(
       page.getByRole('heading', { name: 'Your turn', exact: true }),
@@ -550,7 +551,15 @@ test('keeps bench, forced replacement and results readable across battle layouts
     await expect(detailsButtons).toHaveCount(2);
     const submissionsBeforeInspection = submissions;
     await detailsButtons.first().click();
-    await expect(page.getByRole('dialog')).toBeVisible();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveClass(/battle-creature-dialog--rare/);
+    await expect(dialog).toContainText('Rare Creature · Wit affinity');
+    if (width === 1440) {
+      await page.screenshot({
+        path: path.join(screenshotsDirectory, '1440-rare-creature-details.png'),
+      });
+    }
     await page.getByRole('button', { name: 'Close Creature details' }).click();
     expect(submissions).toBe(submissionsBeforeInspection);
     await expectNoHorizontalOverflow(page);

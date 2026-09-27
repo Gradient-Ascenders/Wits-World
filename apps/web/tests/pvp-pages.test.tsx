@@ -36,6 +36,7 @@ import {
 import { uuid } from './fixtures/matches';
 
 const apiBaseUrl = 'https://api.example.test/api/v1';
+const originalDialogShowModal = HTMLDialogElement.prototype.showModal;
 
 beforeEach(() => {
   // Freeze only Date: normal UI timers still run, while fixtures never expire.
@@ -45,6 +46,12 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  if (originalDialogShowModal) {
+    HTMLDialogElement.prototype.showModal = originalDialogShowModal;
+  } else {
+    delete (HTMLDialogElement.prototype as Partial<HTMLDialogElement>)
+      .showModal;
+  }
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -1029,6 +1036,32 @@ describe('asynchronous PvP battle', () => {
     expect(screen.queryByText(/opponent secret/i)).not.toBeInTheDocument();
   });
 
+  it('uses authoritative rarity in the PvP Creature details dialog', async () => {
+    const user = userEvent.setup();
+    HTMLDialogElement.prototype.showModal = function showModal() {
+      this.setAttribute('open', '');
+    };
+    const current = pvpMatch();
+    current.state.self.creatures[0] = {
+      ...current.state.self.creatures[0]!,
+      affinity: 'spark',
+      name: 'Arcayx',
+      rarity: 'epic',
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(pvpMatchResponse(current)),
+    );
+    renderPvpMatch();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'View Arcayx details' }),
+    );
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveClass('battle-creature-dialog--epic');
+    expect(dialog).toHaveTextContent('Epic Creature · Spark affinity');
+  });
+
   it('prevents duplicate action submission while a mutation is unresolved', async () => {
     const user = userEvent.setup();
     const initial = pvpMatch();
@@ -1046,11 +1079,7 @@ describe('asynchronous PvP battle', () => {
     const move = await screen.findByRole('button', {
       name: /Knowledge Strike 1/,
     });
-    expect(
-      within(screen.getByRole('region', { name: 'Battle status' })).getByText(
-        'Your turn',
-      ),
-    ).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Your turn' })).toBeVisible();
     await user.dblClick(move);
     expect(screen.getByText('Processing your action')).toBeVisible();
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -1209,7 +1238,6 @@ describe('asynchronous PvP battle', () => {
     expect(
       screen.getByRole('heading', { name: 'Opponent’s turn' }),
     ).toBeVisible();
-    expect(screen.getByText("Opponent's turn")).toBeVisible();
     expect(
       screen.getByRole('button', { name: /Knowledge Strike 1/ }),
     ).toBeDisabled();
@@ -1217,11 +1245,6 @@ describe('asynchronous PvP battle', () => {
       await vi.advanceTimersByTimeAsync(5_000);
     });
     expect(screen.getByRole('heading', { name: 'Your turn' })).toBeVisible();
-    expect(
-      within(screen.getByRole('region', { name: 'Battle status' })).getByText(
-        'Your turn',
-      ),
-    ).toBeVisible();
     expect(
       screen.getByRole('button', { name: /Knowledge Strike 1/ }),
     ).toBeEnabled();
@@ -1331,10 +1354,23 @@ describe('asynchronous PvP battle', () => {
       const result = await screen.findByRole('region', {
         name: /match saved/i,
       });
+      const battlefield = screen.getByRole('region', {
+        name: 'Current battlefield',
+      });
       expect(within(result).getByText(message)).toBeVisible();
       expect(
-        screen.getByRole('heading', { name: /Battle (won|complete)/ }),
+        within(battlefield).getByRole('heading', {
+          name: /Battle (won|complete)/,
+        }),
       ).toBeVisible();
+      expect(within(battlefield).getByText('Final resolution')).toBeVisible();
+      expect(within(battlefield).getByText('Match complete')).toBeVisible();
+      expect(
+        screen.getByRole('link', { name: 'Save and exit' }),
+      ).toHaveAttribute('href', '/matches/pvp');
+      expect(
+        screen.queryByRole('region', { name: 'Battle status' }),
+      ).not.toBeInTheDocument();
       expect(document.body).not.toHaveTextContent(
         /voluntary_resignation|turn_forfeit|account_deletion_forfeit|account deletion|account deleted/i,
       );
