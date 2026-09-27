@@ -1502,36 +1502,51 @@ async function insertSnapshots(
     ...snapshotDeck('cpu', cpuCards, decks.cpu),
   ];
 
-  for (const snapshot of snapshots) {
-    await client.query(
-      `
-        insert into public.cpu_match_cards (
-          match_id,
-          side,
-          position,
-          owned_card_id,
-          card_definition_id,
-          snapshot
-        )
-        values ($1::uuid, $2, $3, $4::uuid, $5::uuid, $6::jsonb)
-      `,
-      [
-        matchId,
-        snapshot.side,
-        snapshot.position,
-        snapshot.ownedCardId,
-        snapshot.cardDefinitionId,
-        JSON.stringify({
-          cardDefinitionId: snapshot.cardDefinitionId,
-          name: snapshot.name,
-          category: snapshot.category,
-          affinity: snapshot.affinity,
-          rarity: snapshot.rarity,
-          battleCard: snapshot.card,
-        }),
-      ],
-    );
-  }
+  await client.query(
+    `
+      insert into public.cpu_match_cards (
+        match_id,
+        side,
+        position,
+        owned_card_id,
+        card_definition_id,
+        snapshot
+      )
+      select
+        $1::uuid,
+        card.side,
+        card.position,
+        card.owned_card_id,
+        card.card_definition_id,
+        card.snapshot
+      from jsonb_to_recordset($2::jsonb) as card (
+        side text,
+        position smallint,
+        owned_card_id uuid,
+        card_definition_id uuid,
+        snapshot jsonb
+      )
+    `,
+    [
+      matchId,
+      JSON.stringify(
+        snapshots.map((snapshot) => ({
+          side: snapshot.side,
+          position: snapshot.position,
+          owned_card_id: snapshot.ownedCardId,
+          card_definition_id: snapshot.cardDefinitionId,
+          snapshot: {
+            cardDefinitionId: snapshot.cardDefinitionId,
+            name: snapshot.name,
+            category: snapshot.category,
+            affinity: snapshot.affinity,
+            rarity: snapshot.rarity,
+            battleCard: snapshot.card,
+          },
+        })),
+      ),
+    ],
+  );
 }
 
 function snapshotDeck(
@@ -1585,22 +1600,8 @@ async function loadMatch(
         cpu_matches.winner,
         cpu_matches.started_at,
         cpu_matches.completed_at,
-        coalesce((
-          select jsonb_object_agg(
-            card.snapshot -> 'battleCard' ->> 'id',
-            card.snapshot ->> 'name'
-          )
-          from public.cpu_match_cards card
-          where card.match_id = cpu_matches.id
-        ), '{}'::jsonb) as card_names,
-        coalesce((
-          select jsonb_object_agg(
-            card.snapshot -> 'battleCard' ->> 'id',
-            card.snapshot ->> 'rarity'
-          )
-          from public.cpu_match_cards card
-          where card.match_id = cpu_matches.id
-        ), '{}'::jsonb) as card_rarities,
+        coalesce(cards.names, '{}'::jsonb) as card_names,
+        coalesce(cards.rarities, '{}'::jsonb) as card_rarities,
         action_summary.action_sequence,
         action_summary.latest_battle_log,
         case
@@ -1623,6 +1624,19 @@ async function loadMatch(
           ), '[]'::jsonb)
         end as legacy_log_actions
       from public.cpu_matches
+      left join lateral (
+        select
+          jsonb_object_agg(
+            card.snapshot -> 'battleCard' ->> 'id',
+            card.snapshot ->> 'name'
+          ) as names,
+          jsonb_object_agg(
+            card.snapshot -> 'battleCard' ->> 'id',
+            card.snapshot ->> 'rarity'
+          ) as rarities
+        from public.cpu_match_cards card
+        where card.match_id = cpu_matches.id
+      ) cards on true
       cross join lateral (
         select
           coalesce((
@@ -1675,22 +1689,8 @@ async function loadMatchView(
         match.winner,
         match.started_at,
         match.completed_at,
-        coalesce((
-          select jsonb_object_agg(
-            card.snapshot -> 'battleCard' ->> 'id',
-            card.snapshot ->> 'name'
-          )
-          from public.cpu_match_cards card
-          where card.match_id = match.id
-        ), '{}'::jsonb) as card_names,
-        coalesce((
-          select jsonb_object_agg(
-            card.snapshot -> 'battleCard' ->> 'id',
-            card.snapshot ->> 'rarity'
-          )
-          from public.cpu_match_cards card
-          where card.match_id = match.id
-        ), '{}'::jsonb) as card_rarities,
+        coalesce(cards.names, '{}'::jsonb) as card_names,
+        coalesce(cards.rarities, '{}'::jsonb) as card_rarities,
         coalesce((
           select jsonb_agg(
             jsonb_build_object(
@@ -1707,6 +1707,19 @@ async function loadMatchView(
           where action.match_id = match.id
         ), '[]'::jsonb) as log_actions
       from public.cpu_matches match
+      left join lateral (
+        select
+          jsonb_object_agg(
+            card.snapshot -> 'battleCard' ->> 'id',
+            card.snapshot ->> 'name'
+          ) as names,
+          jsonb_object_agg(
+            card.snapshot -> 'battleCard' ->> 'id',
+            card.snapshot ->> 'rarity'
+          ) as rarities
+        from public.cpu_match_cards card
+        where card.match_id = match.id
+      ) cards on true
       where match.player_id = $1::uuid
         and ($2::uuid is null or match.id = $2::uuid)
         and ($3::boolean = false or match.status = 'active')

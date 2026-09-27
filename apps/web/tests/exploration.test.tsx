@@ -86,6 +86,7 @@ function createController(): MapController {
     setPointSelectionListener: vi.fn(),
     setReportedLocation: vi.fn(),
     setPoints: vi.fn(),
+    setRegions: vi.fn(),
     setSelectedPoint: vi.fn(),
   };
 }
@@ -199,6 +200,8 @@ describe('map-first campus exploration', () => {
       expect(screen.getByRole('button', { name: /^Events/ })).toHaveFocus(),
     );
     await user.click(screen.getByRole('button', { name: /^Events/ }));
+    const regionUpdatesBeforeSelection = vi.mocked(controller.setRegions!).mock
+      .calls.length;
     await user.click(screen.getByRole('button', { name: /View on map/i }));
     expect(onSelectEvent).toHaveBeenCalledWith(event.id);
     view.rerender(
@@ -210,6 +213,9 @@ describe('map-first campus exploration', () => {
     );
     await waitFor(() =>
       expect(controller.focusPoint).toHaveBeenCalledWith(point),
+    );
+    expect(controller.setRegions).toHaveBeenCalledTimes(
+      regionUpdatesBeforeSelection,
     );
   });
 

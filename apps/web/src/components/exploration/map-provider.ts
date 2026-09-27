@@ -558,6 +558,10 @@ function createController(
   map: MapboxMap,
   MarkerConstructor: new (options?: MarkerOptions) => MapboxMarker,
   renderPoints: (points: readonly MapPoint[]) => void,
+  updateMarkerSelection: (
+    previousId: string | null,
+    nextId: string | null,
+  ) => void,
   markerInteraction: {
     coordinateSelectionListener: ((coordinate: MapCoordinate) => void) | null;
     listener: ((pointId: string) => void) | null;
@@ -572,7 +576,6 @@ function createController(
   setSelectedRegion: (region: MapRegion | null) => void,
   renderAreas: (areas: readonly MapArea[]) => void,
 ): MapController {
-  let currentPoints: readonly MapPoint[] = [];
   let reportedLocation: ReportedMapLocation | null = null;
   let reportedLocationPointer: HTMLSpanElement | undefined;
   let reportedLocationMarker: MapboxMarker | undefined;
@@ -765,7 +768,6 @@ function createController(
       markerInteraction.listener = listener;
     },
     setPoints(points) {
-      currentPoints = points;
       renderPoints(points);
     },
     setRegions(regions) {
@@ -779,9 +781,11 @@ function createController(
       setSelectedRegion(region);
     },
     setSelectedPoint(point) {
-      markerInteraction.selectedPointId = point?.id ?? null;
+      const previousId = markerInteraction.selectedPointId;
+      const nextId = point?.id ?? null;
+      markerInteraction.selectedPointId = nextId;
       setSelectedRadius(point);
-      renderPoints(currentPoints);
+      if (previousId !== nextId) updateMarkerSelection(previousId, nextId);
     },
   };
 }
@@ -1034,6 +1038,20 @@ export const createMapboxMap: MapFactory = async (
       if (markerLabel !== null) {
         markerLabel.textContent = point.label;
       }
+    }
+  };
+
+  const updateMarkerSelection = (
+    previousId: string | null,
+    nextId: string | null,
+  ): void => {
+    for (const id of [previousId, nextId]) {
+      if (id === null) continue;
+      const button = markerRecords.get(id)?.button;
+      if (!button) continue;
+      const selected = id === nextId;
+      button.classList.toggle('event-marker--selected', selected);
+      button.setAttribute('aria-pressed', String(selected));
     }
   };
 
@@ -1295,6 +1313,7 @@ export const createMapboxMap: MapFactory = async (
     map,
     mapboxgl.Marker,
     renderPoints,
+    updateMarkerSelection,
     markerInteraction,
     (point) => {
       selectedRadiusPoint = point;

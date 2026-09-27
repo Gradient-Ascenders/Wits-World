@@ -175,10 +175,15 @@ describe('territory exploration experience', () => {
         expect.objectContaining({ id: ZONE_ID, label: 'East Campus' }),
       ]),
     );
+    const pointUpdatesBeforeSelection = vi.mocked(controller.setPoints).mock
+      .calls.length;
 
     await user.click(zoneButton);
 
     expect(await screen.findByText('Current contest')).toBeVisible();
+    expect(controller.setPoints).toHaveBeenCalledTimes(
+      pointUpdatesBeforeSelection,
+    );
     expect(screen.getByText('blue_witsie')).toBeVisible();
     expect(
       screen.getByText('9 accepted influence from 4 contributors'),

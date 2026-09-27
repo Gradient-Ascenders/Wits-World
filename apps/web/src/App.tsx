@@ -5,13 +5,12 @@ import { Redirect, Route, Switch, useLocation } from 'wouter';
 import { recoverOrCreateCpuMatch } from './api/matches';
 import { useApiAccessToken } from './auth/useApiAccessToken';
 import { AppShell } from './components/AppShell';
-import { OfflineProvider, OfflineStatus } from './offline/OfflineProvider';
-import { ServiceWorkerUpdate } from './offline/ServiceWorkerUpdate';
 import {
-  OfflineAttemptPage,
-  OfflineExploreGate,
-  OfflineExplorePage,
-} from './offline/OfflinePages';
+  OfflineProvider,
+  OfflineStatus,
+  useOffline,
+} from './offline/OfflineProvider';
+import { ServiceWorkerUpdate } from './offline/ServiceWorkerUpdate';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { PageLoadingState } from './components/LoadingState';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
@@ -19,7 +18,6 @@ import { StartupGate, StartupSettler } from './components/auth/startup-state';
 import { AuthorRoute } from './components/auth/AuthorRoute';
 import { GuardedRouter } from './components/author/AuthorNavigationGuard';
 import { CurrentPlayerProvider } from './auth/CurrentPlayerProvider';
-import HomePage from './pages/HomePage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import type {
   LocationClaimProvider,
@@ -28,6 +26,18 @@ import type {
 } from './browser-location';
 import type { MapFactory } from './components/exploration/map-provider';
 
+const HomePage = lazy(() => import('./pages/HomePage'));
+const OfflinePages = () => import('./offline/OfflinePages');
+const OfflineExplorePage = lazy(() =>
+  OfflinePages().then(({ OfflineExplorePage }) => ({
+    default: OfflineExplorePage,
+  })),
+);
+const OfflineAttemptPage = lazy(() =>
+  OfflinePages().then(({ OfflineAttemptPage }) => ({
+    default: OfflineAttemptPage,
+  })),
+);
 const ExplorePage = lazy(() => import('./pages/ExplorePage'));
 const ChallengePage = lazy(() => import('./pages/ChallengePage'));
 const CollectionPage = lazy(() => import('./pages/CollectionPage'));
@@ -216,6 +226,11 @@ export function AppRoutes({
       </OfflineProvider>
     </CurrentPlayerProvider>
   );
+}
+
+function OfflineExploreGate({ children }: { children: ReactNode }) {
+  const { online } = useOffline();
+  return online ? children : <OfflineExplorePage />;
 }
 
 function DecksRoute({ apiBaseUrl }: { apiBaseUrl: string }) {

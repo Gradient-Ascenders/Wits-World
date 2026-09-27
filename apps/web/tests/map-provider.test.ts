@@ -364,6 +364,66 @@ describe('Mapbox Standard provider', () => {
     expect(listener).toHaveBeenCalledWith('event-1');
   });
 
+  it('changes event selection without rebuilding unchanged markers', async () => {
+    const points = [
+      {
+        id: 'event-1',
+        label: 'Great Hall',
+        latitude: -26.19205,
+        longitude: 28.03038,
+      },
+      {
+        id: 'event-2',
+        label: 'Library',
+        latitude: -26.1914,
+        longitude: 28.0311,
+      },
+    ];
+    const controller = await createMapboxMap(
+      document.createElement('div'),
+      configuration,
+      points,
+      new AbortController().signal,
+    );
+    mapboxState.markerSetLngLat.mockClear();
+    mapboxState.markerSetDraggable.mockClear();
+
+    controller.setSelectedPoint?.(points[0]!);
+    expect(mapboxState.markerElements[0]).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(mapboxState.markerElements[1]).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    expect(mapboxState.markerSetLngLat).not.toHaveBeenCalled();
+    expect(mapboxState.markerSetDraggable).not.toHaveBeenCalled();
+
+    controller.setSelectedPoint?.(points[1]!);
+    expect(mapboxState.markerElements[0]).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    expect(mapboxState.markerElements[1]).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(mapboxState.markerSetLngLat).not.toHaveBeenCalled();
+    expect(mapboxState.markerSetDraggable).not.toHaveBeenCalled();
+
+    controller.setSelectedPoint?.(null);
+    expect(mapboxState.markerElements[0]).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    expect(mapboxState.markerElements[1]).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    expect(mapboxState.markerSetLngLat).not.toHaveBeenCalled();
+  });
+
   it('represents ordered trail states and only lets the current stop open from the map', async () => {
     const controller = await createMapboxMap(
       document.createElement('div'),

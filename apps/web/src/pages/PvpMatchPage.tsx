@@ -181,13 +181,11 @@ export default function PvpMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       setError(null);
       setRetryAttempt(null);
       setResignationRecovery(null);
+      const previousSequences = new Set(
+        current?.history.map((entry) => entry.sequence) ?? [],
+      );
       const newEntries = current
-        ? next.history.filter(
-            (entry) =>
-              !current.history.some(
-                (previous) => previous.sequence === entry.sequence,
-              ),
-          )
+        ? next.history.filter((entry) => !previousSequences.has(entry.sequence))
         : [];
       const nextMoments = newEntries.flatMap((entry) =>
         pvpPresentationMoments(entry, next),

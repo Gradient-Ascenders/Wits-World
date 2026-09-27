@@ -103,6 +103,8 @@ const EMPTY_TERRITORY_DETAIL: TerritoryDetailState = {
 };
 
 const MOBILE_MAP_QUERY = '(max-width: 47.999rem)';
+const EMPTY_MAP_POINTS: readonly MapPoint[] = [];
+const EMPTY_MAP_REGIONS: readonly MapRegion[] = [];
 
 export function filterEventPresentations(
   events: readonly EventPresentation[],
@@ -719,8 +721,10 @@ export function CampusExplorer({
         onFollowStateChange={setFollowing}
         onPointSelect={selectEvent}
         onRegionSelect={selectTerritory}
-        points={exploreMode === 'discover' ? points : []}
-        regions={exploreMode === 'territories' ? territoryRegions : []}
+        points={exploreMode === 'discover' ? points : EMPTY_MAP_POINTS}
+        regions={
+          exploreMode === 'territories' ? territoryRegions : EMPTY_MAP_REGIONS
+        }
         recenterRequest={recenterRequest}
         reportedLocation={reportedLocation}
         selectedPoint={exploreMode === 'discover' ? selectedPoint : null}

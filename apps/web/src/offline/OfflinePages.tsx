@@ -1,6 +1,6 @@
 import { LoadingState, PageLoadingState } from '../components/LoadingState';
 import { StatusMessage } from '../components/StatusMessage';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useParams } from 'wouter';
 import {
   BrowserLocationError,
@@ -48,11 +48,6 @@ function useLocalState() {
         : state,
     error,
   };
-}
-
-export function OfflineExploreGate({ children }: { children: ReactNode }) {
-  const { online } = useOffline();
-  return online ? children : <OfflineExplorePage />;
 }
 
 export function OfflineExplorePage() {

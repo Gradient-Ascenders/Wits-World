@@ -1464,34 +1464,56 @@ async function insertDeckSnapshot(
       createdAt,
     ],
   );
-  for (const card of deck.cards) {
-    await client.query(
-      `
-        insert into private.async_pvp_deck_snapshot_cards (
-          id, snapshot_id, position, battle_card_id, source_owned_card_id,
-          source_card_definition_id, category, affinity, rarity, card_snapshot
-        ) values ($1::uuid, $2::uuid, $3, $4::uuid, $4::uuid,
-                  $5::uuid, $6, $7, $8, $9::jsonb)
-      `,
-      [
-        cardIds.get(card.ownedCardId),
-        snapshotId,
+  await client.query(
+    `
+      insert into private.async_pvp_deck_snapshot_cards (
+        id, snapshot_id, position, battle_card_id, source_owned_card_id,
+        source_card_definition_id, category, affinity, rarity, card_snapshot
+      )
+      select
+        card.id,
+        $1::uuid,
         card.position,
-        card.ownedCardId,
-        card.cardDefinitionId,
+        card.battle_card_id,
+        card.battle_card_id,
+        card.source_card_definition_id,
         card.category,
         card.affinity,
         card.rarity,
-        JSON.stringify({
-          name: card.name,
+        card.card_snapshot
+      from jsonb_to_recordset($2::jsonb) as card (
+        id uuid,
+        position smallint,
+        battle_card_id uuid,
+        source_card_definition_id uuid,
+        category text,
+        affinity text,
+        rarity text,
+        card_snapshot jsonb
+      )
+    `,
+    [
+      snapshotId,
+      JSON.stringify(
+        deck.cards.map((card) => ({
+          id: cardIds.get(card.ownedCardId),
+          position: card.position,
+          battle_card_id: card.ownedCardId,
+          source_card_definition_id: card.cardDefinitionId,
           category: card.category,
           affinity: card.affinity,
           rarity: card.rarity,
-          battleCard: card.battleCard,
-        }),
-      ],
-    );
-  }
+          card_snapshot: {
+            name: card.name,
+            category: card.category,
+            affinity: card.affinity,
+            rarity: card.rarity,
+            battleCard: card.battleCard,
+          },
+        })),
+      ),
+    ],
+  );
   return snapshotId;
 }
 
