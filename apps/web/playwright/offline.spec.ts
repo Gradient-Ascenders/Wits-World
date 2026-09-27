@@ -86,18 +86,40 @@ for (const format of ['multiple_choice', 'ordering'] as const) {
       } else return route.fulfill({ status: 404, json: { code: 'NOT_FOUND' } });
       return route.fulfill({ json: body });
     });
-    await page.goto('/offline');
-    await expect(
-      page.getByRole('button', { name: 'Open saved challenge' }),
-    ).toBeVisible();
+    await page.goto('/');
     await expect
       .poll(() =>
         page.evaluate(() => Boolean(navigator.serviceWorker.controller)),
       )
       .toBe(true);
+    expect(
+      await page.evaluate(() =>
+        performance
+          .getEntriesByType('resource')
+          .some((entry) => entry.name.includes('/OfflinePages-')),
+      ),
+    ).toBe(false);
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const requests = await Promise.all(
+            (await caches.keys()).map(async (key) =>
+              (await caches.open(key)).keys(),
+            ),
+          );
+          const urls = requests.flat().map((request) => request.url);
+          return ['.js', '.css'].every((extension) =>
+            urls.some(
+              (url) =>
+                url.includes('/OfflinePages-') && url.endsWith(extension),
+            ),
+          );
+        }),
+      )
+      .toBe(true);
     connected = false;
     await context.setOffline(true);
-    await page.reload();
+    await page.goto('/offline');
     await expect(
       page.getByRole('heading', { name: 'Saved campus events' }),
     ).toBeVisible();
