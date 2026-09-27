@@ -52,8 +52,12 @@ Web tests cover queue/search/filter behaviour, server-provided score and signal
 presentation, valid decisions, explicit restriction confirmation, validation
 focus, stale-conflict recovery, loading/empty/forbidden/API-error states,
 keyboard Escape and modal focus return, and route denial before any trust-case
-request for an ordinary player. These automated checks do not claim manual
-screen-reader, responsive-browser, deployed-role, or production-data review.
+request for an ordinary player. Focused coverage also exercises pageable
+evidence, independent collection failures, privacy-safe opponent aggregates,
+restriction and appeal state, audit context, bounded-export truncation notices,
+and the absence of a writable card-trade restriction control. These automated
+checks do not claim manual screen-reader, responsive-browser, deployed-role, or
+production-data review.
 
 This page records the practice implemented in the repository on 6 September 2026. It does not claim that an operator-run
 check is automated in CI.

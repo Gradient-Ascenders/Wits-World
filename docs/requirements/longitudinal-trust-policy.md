@@ -298,7 +298,12 @@ does not calculate scores, severity, restrictions, or outcomes. Severity and
 priority use text and icons as well as colour, and temporary restrictions
 require a separate confirmation step. A stale expected case version returns an
 HTTP `409` conflict and the reviewer must load the latest case before deciding
-again.
+again. The investigation view consumes the full pageable privacy-safe evidence,
+restriction, and audit projections, including retained opponent-pattern
+aggregates, and offers the API's bounded 100-record-per-collection JSON export.
+Evidence selection is required in the interface for false-positive adjustments;
+other decisions require reason and context without a mandatory evidence
+checklist.
 
 The first reviewer delivery is deliberately limited to `trust-v1`: the three
 documented restriction scopes, durations of 1 through 168 hours, a reason of 1
