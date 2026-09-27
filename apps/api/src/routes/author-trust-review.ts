@@ -152,8 +152,6 @@ const opponentPatternSchema = {
         'completedMatchCount',
         'repeatedOpponentMatchCount',
         'opponentConcentrationRatio',
-        'minimumCompletedMatchCount',
-        'minimumOpponentConcentrationRatio',
       ],
       properties: {
         availability: { type: 'string', enum: ['available'] },
@@ -167,11 +165,6 @@ const opponentPatternSchema = {
           minimum: 0,
           maximum: 1,
         },
-        minimumCompletedMatchCount: { type: 'integer', enum: [6] },
-        minimumOpponentConcentrationRatio: {
-          type: 'number',
-          enum: [0.8],
-        },
       },
     },
     {
@@ -183,7 +176,6 @@ const opponentPatternSchema = {
         'evaluationWindowStart',
         'evaluationWindowEnd',
         'qualifyingForfeitCount',
-        'minimumQualifyingForfeitCount',
       ],
       properties: {
         availability: { type: 'string', enum: ['available'] },
@@ -191,7 +183,6 @@ const opponentPatternSchema = {
         evaluationWindowStart: { type: 'string', format: 'date-time' },
         evaluationWindowEnd: { type: 'string', format: 'date-time' },
         qualifyingForfeitCount: { type: 'integer', minimum: 0 },
-        minimumQualifyingForfeitCount: { type: 'integer', enum: [4] },
       },
     },
     {
@@ -399,6 +390,7 @@ const caseDetailSchema = {
     'policyVersion',
     'restrictionCount',
     'activeRestrictionCount',
+    'activeRestrictionScopes',
     'latestRestrictionExpiry',
     'canReview',
     'categoryTotals',
@@ -430,6 +422,11 @@ const caseDetailSchema = {
     policyVersion: { type: 'string' },
     restrictionCount: { type: 'integer', minimum: 0 },
     activeRestrictionCount: { type: 'integer', minimum: 0 },
+    activeRestrictionScopes: {
+      type: 'array',
+      uniqueItems: true,
+      items: { type: 'string', enum: readableRestrictionScopes },
+    },
     latestRestrictionExpiry: {
       anyOf: [{ type: 'string', format: 'date-time' }, { type: 'null' }],
     },

@@ -530,6 +530,190 @@ export interface AuthorContentHistoryItem {
   toStatus: AuthoringStatus;
 }
 
+export type TrustCaseStatus = 'open' | 'under_review' | 'resolved';
+export type TrustCaseStatusFilter = TrustCaseStatus | 'active' | 'all';
+export type TrustReviewBand =
+  'normal' | 'observe' | 'review_required' | 'urgent_review';
+export type TrustReviewAction =
+  'continue_monitoring' | 'dismiss' | 'mark_false_positive' | 'restrict';
+export type TrustRestrictionScope =
+  | 'online_verification_required'
+  | 'location_reward_challenge_hold'
+  | 'new_competitive_match_hold'
+  | 'card_trade_hold';
+export type WritableTrustRestrictionScope = Exclude<
+  TrustRestrictionScope,
+  'card_trade_hold'
+>;
+export type TrustRestrictionStateFilter = 'active' | 'none';
+export type TrustSignalType =
+  | 'impossible_movement'
+  | 'idempotency_payload_conflict'
+  | 'submission_conflict_pattern'
+  | 'opponent_concentration'
+  | 'one_sided_outcome_pattern';
+
+export interface TrustCaseQueueItem {
+  activeRestrictionCount: number;
+  activeRestrictionScopes: TrustRestrictionScope[];
+  band: TrustReviewBand;
+  canReview: boolean;
+  caseId: string;
+  latestRestrictionExpiry: string | null;
+  openedAt: string;
+  playerId: string;
+  playerName: string;
+  policyVersion: string;
+  restrictionCount: number;
+  score: number;
+  signalTypes: TrustSignalType[];
+  status: TrustCaseStatus;
+  updatedAt: string;
+  version: number;
+}
+
+export interface TrustScoreExplanation {
+  evaluatedAt: string;
+  finalScore: number;
+  movementPoints: number;
+  opponentPatternPoints: number;
+  reviewBand: TrustReviewBand;
+  snapshotId: string;
+  sourceSignalCount: number;
+  submissionConflictPoints: number;
+}
+
+export type TrustOpponentPatternSummary =
+  | {
+      availability: 'available';
+      completedMatchCount: number;
+      evaluationWindowEnd: string;
+      evaluationWindowStart: string;
+      kind: 'opponent_concentration';
+      opponentConcentrationRatio: number;
+      repeatedOpponentMatchCount: number;
+    }
+  | {
+      availability: 'available';
+      evaluationWindowEnd: string;
+      evaluationWindowStart: string;
+      kind: 'one_sided_outcome_pattern';
+      qualifyingForfeitCount: number;
+    }
+  | {
+      availability: 'unavailable';
+      reason: 'legacy_summary_not_retained';
+      remediation: 'await_fresh_detector_evaluation';
+    };
+
+export interface TrustCaseEvidenceItem {
+  basePoints: number;
+  decayState: 'active' | 'expired' | 'reviewed_false_positive';
+  effectivePoints: number;
+  evidenceId: string;
+  expiresAt: string;
+  observedAt: string;
+  policyVersion: string;
+  opponentPattern: TrustOpponentPatternSummary | null;
+  reviewedFalsePositive: boolean;
+  safeSourceType: string;
+  severity: string;
+  signalType: TrustSignalType;
+  state: 'active' | 'adjusted_false_positive' | 'expired';
+}
+
+export interface TrustRestrictionItem {
+  active: boolean;
+  appealStatus: 'eligible' | 'submitted' | 'resolved' | 'expired';
+  decisionId: string;
+  effectiveExpiresAt: string;
+  originalExpiresAt: string;
+  restrictionId: string;
+  scope: TrustRestrictionScope;
+  startsAt: string;
+}
+
+export interface TrustCaseHistoryRestriction extends TrustRestrictionItem {
+  expiresAt: string;
+}
+
+export interface TrustCaseHistoryItem {
+  action: string;
+  actorPlayerId: string | null;
+  actorPlayerName: string | null;
+  actorType: 'author' | 'system';
+  caseVersionAfter: number;
+  caseVersionBefore: number;
+  decisionId: string;
+  decisionType: string;
+  evidenceIds: string[];
+  falsePositiveEvidenceIds: string[];
+  occurredAt: string;
+  policyVersion: string;
+  previousStatus: TrustCaseStatus | null;
+  reasonCode: string;
+  reasonNote: string | null;
+  restrictions: TrustCaseHistoryRestriction[];
+  resultingStatus: TrustCaseStatus;
+  versionAfter: number;
+  versionBefore: number;
+}
+
+export interface TrustCaseDetail {
+  activeRestrictionCount: number;
+  activeRestrictionScopes: TrustRestrictionScope[];
+  band: TrustReviewBand;
+  canReview: boolean;
+  caseId: string;
+  categoryTotals: {
+    movement: number;
+    opponentPatterns: number;
+    submissionConflicts: number;
+  };
+  evidence: TrustCaseEvidenceItem[];
+  evidencePreview: TrustCaseEvidenceItem[];
+  evidenceTotalItems: number;
+  evidenceTruncated: boolean;
+  history: TrustCaseHistoryItem[];
+  historyTruncated: boolean;
+  latestRestrictionExpiry: string | null;
+  openedAt: string;
+  playerId: string;
+  playerName: string;
+  policyVersion: string;
+  recentHistory: TrustCaseHistoryItem[];
+  resolvedAt: string | null;
+  resolutionReason: string | null;
+  restrictionCount: number;
+  restrictionPreview: TrustRestrictionItem[];
+  restrictionsTruncated: boolean;
+  restrictionTotalItems: number;
+  score: number;
+  scoreExplanation: TrustScoreExplanation;
+  sourceSignalCount: number;
+  status: TrustCaseStatus;
+  updatedAt: string;
+  version: number;
+}
+
+export interface TrustCaseExport {
+  case: TrustCaseDetail;
+  evidence: AuthorPage<TrustCaseEvidenceItem>;
+  formatVersion: 'trust-case-review-v1';
+  generatedAt: string;
+  history: AuthorPage<TrustCaseHistoryItem>;
+  restrictions: AuthorPage<TrustRestrictionItem>;
+}
+
+export interface TrustReviewDecisionInput {
+  action: TrustReviewAction;
+  durationHours?: number;
+  evidenceIds?: string[];
+  expectedVersion: number;
+  reasonNote: string;
+  restrictionScopes?: WritableTrustRestrictionScope[];
+}
+
 export interface AuthorPage<T> {
   items: T[];
   page: number;
@@ -1123,6 +1307,119 @@ export async function listAuthorReviewQueue(
     path: `/author/review-queue?${query.toString()}`,
   });
   return parsePage(payload, parseAuthorReviewQueueItem);
+}
+
+export async function listAuthorTrustCases(
+  options: RequestBase & {
+    band?: TrustReviewBand;
+    createdFrom?: string;
+    createdTo?: string;
+    page?: number;
+    pageSize?: number;
+    restrictionState?: TrustRestrictionStateFilter;
+    search?: string;
+    signalType?: TrustSignalType;
+    status?: TrustCaseStatusFilter;
+    updatedFrom?: string;
+    updatedTo?: string;
+  },
+): Promise<AuthorPage<TrustCaseQueueItem>> {
+  const query = new URLSearchParams({
+    page: String(options.page ?? 1),
+    pageSize: String(options.pageSize ?? 20),
+    status: options.status ?? 'active',
+  });
+  if (options.search) query.set('search', options.search);
+  if (options.band) query.set('band', options.band);
+  if (options.restrictionState)
+    query.set('restrictionState', options.restrictionState);
+  if (options.signalType) query.set('signalType', options.signalType);
+  if (options.createdFrom) query.set('createdFrom', options.createdFrom);
+  if (options.createdTo) query.set('createdTo', options.createdTo);
+  if (options.updatedFrom) query.set('updatedFrom', options.updatedFrom);
+  if (options.updatedTo) query.set('updatedTo', options.updatedTo);
+  const payload = await authorRequest({
+    ...options,
+    method: 'GET',
+    path: `/author/trust-cases?${query.toString()}`,
+  });
+  return parsePage(payload, parseTrustCaseQueueItem);
+}
+
+export async function listAuthorTrustCaseEvidence(
+  options: RequestBase & { caseId: string; page?: number; pageSize?: number },
+): Promise<AuthorPage<TrustCaseEvidenceItem>> {
+  return requestTrustCasePage(options, 'evidence', parseTrustCaseEvidenceItem);
+}
+
+export async function listAuthorTrustCaseRestrictions(
+  options: RequestBase & { caseId: string; page?: number; pageSize?: number },
+): Promise<AuthorPage<TrustRestrictionItem>> {
+  return requestTrustCasePage(
+    options,
+    'restrictions',
+    parseTrustRestrictionItem,
+  );
+}
+
+export async function listAuthorTrustCaseHistory(
+  options: RequestBase & { caseId: string; page?: number; pageSize?: number },
+): Promise<AuthorPage<TrustCaseHistoryItem>> {
+  return requestTrustCasePage(options, 'history', parseTrustCaseHistoryItem);
+}
+
+export async function exportAuthorTrustCase(
+  options: RequestBase & { caseId: string },
+): Promise<TrustCaseExport> {
+  const payload = await authorRequest({
+    ...options,
+    method: 'GET',
+    path: `/author/trust-cases/${encodeURIComponent(options.caseId)}/export`,
+  });
+  return parseEnvelope(payload, 'export', parseTrustCaseExport);
+}
+
+export async function getAuthorTrustCase(
+  options: RequestBase & { caseId: string },
+): Promise<TrustCaseDetail> {
+  const payload = await authorRequest({
+    ...options,
+    method: 'GET',
+    path: `/author/trust-cases/${encodeURIComponent(options.caseId)}`,
+  });
+  return parseEnvelope(payload, 'case', parseTrustCaseDetail);
+}
+
+export async function recordAuthorTrustDecision(
+  options: RequestBase & {
+    caseId: string;
+    input: TrustReviewDecisionInput;
+  },
+): Promise<TrustCaseDetail> {
+  const payload = await authorRequest({
+    ...options,
+    body: options.input,
+    method: 'POST',
+    path: `/author/trust-cases/${encodeURIComponent(options.caseId)}/decisions`,
+  });
+  return parseEnvelope(payload, 'case', parseTrustCaseDetail);
+}
+
+async function requestTrustCasePage<T>(
+  options: RequestBase & { caseId: string; page?: number; pageSize?: number },
+  resource: 'evidence' | 'history' | 'restrictions',
+  parser: (value: unknown) => T,
+): Promise<AuthorPage<T>> {
+  const query = new URLSearchParams({
+    page: String(options.page ?? 1),
+    pageSize: String(options.pageSize ?? 20),
+  });
+  const payload = await authorRequest({
+    ...options,
+    method: 'GET',
+    path: `/author/trust-cases/${encodeURIComponent(options.caseId)}/${resource}?${query.toString()}`,
+  });
+  return parsePage(payload, parser);
 }
 
 export async function getAuthorContentHistory(
@@ -2071,6 +2368,310 @@ function parseAuthorReviewQueueItem(value: unknown): AuthorReviewQueueItem {
   return value as unknown as AuthorReviewQueueItem;
 }
 
+function parseTrustCaseQueueItem(value: unknown): TrustCaseQueueItem {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.caseId) ||
+    !isUuid(value.playerId) ||
+    !isNonBlank(value.playerName) ||
+    !isTrustCaseStatus(value.status) ||
+    !isPositiveInteger(value.version) ||
+    !isBoundedInteger(value.score, 0, 100) ||
+    !isTrustReviewBand(value.band) ||
+    !isNonBlank(value.policyVersion) ||
+    !Array.isArray(value.signalTypes) ||
+    !value.signalTypes.every(isTrustSignalType) ||
+    !isNonNegativeInteger(value.restrictionCount) ||
+    !isDateTime(value.openedAt) ||
+    !isDateTime(value.updatedAt) ||
+    !isNonNegativeInteger(value.activeRestrictionCount) ||
+    !Array.isArray(value.activeRestrictionScopes) ||
+    !value.activeRestrictionScopes.every(isTrustRestrictionScope) ||
+    !isNullableDateTime(value.latestRestrictionExpiry) ||
+    typeof value.canReview !== 'boolean'
+  ) {
+    throw unavailableResponse();
+  }
+  return value as unknown as TrustCaseQueueItem;
+}
+
+function parseTrustCaseDetail(value: unknown): TrustCaseDetail {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.caseId) ||
+    !isUuid(value.playerId) ||
+    !isNonBlank(value.playerName) ||
+    !isTrustCaseStatus(value.status) ||
+    !isPositiveInteger(value.version) ||
+    !isBoundedInteger(value.score, 0, 100) ||
+    !isTrustReviewBand(value.band) ||
+    !isNonBlank(value.policyVersion) ||
+    !isNonNegativeInteger(value.restrictionCount) ||
+    !isNonNegativeInteger(value.activeRestrictionCount) ||
+    !Array.isArray(value.activeRestrictionScopes) ||
+    !value.activeRestrictionScopes.every(isTrustRestrictionScope) ||
+    !isNullableDateTime(value.latestRestrictionExpiry) ||
+    typeof value.canReview !== 'boolean' ||
+    !isRecord(value.categoryTotals) ||
+    !isBoundedInteger(value.categoryTotals.movement, 0, 50) ||
+    !isBoundedInteger(value.categoryTotals.submissionConflicts, 0, 30) ||
+    !isBoundedInteger(value.categoryTotals.opponentPatterns, 0, 30) ||
+    !isNonNegativeInteger(value.sourceSignalCount) ||
+    !isRecord(value.scoreExplanation) ||
+    !Array.isArray(value.evidence) ||
+    !Array.isArray(value.evidencePreview) ||
+    !isNonNegativeInteger(value.evidenceTotalItems) ||
+    typeof value.evidenceTruncated !== 'boolean' ||
+    !Array.isArray(value.restrictionPreview) ||
+    !isNonNegativeInteger(value.restrictionTotalItems) ||
+    typeof value.restrictionsTruncated !== 'boolean' ||
+    !Array.isArray(value.recentHistory) ||
+    !Array.isArray(value.history) ||
+    typeof value.historyTruncated !== 'boolean' ||
+    !isDateTime(value.openedAt) ||
+    !isDateTime(value.updatedAt) ||
+    !isNullableDateTime(value.resolvedAt) ||
+    !isNullableString(value.resolutionReason)
+  ) {
+    throw unavailableResponse();
+  }
+  return {
+    activeRestrictionCount: value.activeRestrictionCount,
+    activeRestrictionScopes: value.activeRestrictionScopes,
+    band: value.band,
+    canReview: value.canReview,
+    caseId: value.caseId,
+    categoryTotals: {
+      movement: value.categoryTotals.movement,
+      opponentPatterns: value.categoryTotals.opponentPatterns,
+      submissionConflicts: value.categoryTotals.submissionConflicts,
+    },
+    scoreExplanation: parseTrustScoreExplanation(value.scoreExplanation),
+    evidence: value.evidence.map(parseTrustCaseEvidenceItem),
+    evidencePreview: value.evidencePreview.map(parseTrustCaseEvidenceItem),
+    evidenceTotalItems: value.evidenceTotalItems,
+    evidenceTruncated: value.evidenceTruncated,
+    restrictionPreview: value.restrictionPreview.map(parseTrustRestrictionItem),
+    restrictionTotalItems: value.restrictionTotalItems,
+    restrictionsTruncated: value.restrictionsTruncated,
+    recentHistory: value.recentHistory.map(parseTrustCaseHistoryItem),
+    history: value.history.map(parseTrustCaseHistoryItem),
+    historyTruncated: value.historyTruncated,
+    latestRestrictionExpiry: value.latestRestrictionExpiry,
+    openedAt: value.openedAt,
+    playerId: value.playerId,
+    playerName: value.playerName,
+    policyVersion: value.policyVersion,
+    resolvedAt: value.resolvedAt,
+    resolutionReason: value.resolutionReason,
+    restrictionCount: value.restrictionCount,
+    score: value.score,
+    sourceSignalCount: value.sourceSignalCount,
+    status: value.status,
+    updatedAt: value.updatedAt,
+    version: value.version,
+  };
+}
+
+function parseTrustScoreExplanation(value: unknown): TrustScoreExplanation {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.snapshotId) ||
+    !isDateTime(value.evaluatedAt) ||
+    !isBoundedInteger(value.movementPoints, 0, 50) ||
+    !isBoundedInteger(value.submissionConflictPoints, 0, 30) ||
+    !isBoundedInteger(value.opponentPatternPoints, 0, 30) ||
+    !isBoundedInteger(value.finalScore, 0, 100) ||
+    !isTrustReviewBand(value.reviewBand) ||
+    !isNonNegativeInteger(value.sourceSignalCount)
+  ) {
+    throw unavailableResponse();
+  }
+  return value as unknown as TrustScoreExplanation;
+}
+
+function parseTrustCaseEvidenceItem(value: unknown): TrustCaseEvidenceItem {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.evidenceId) ||
+    !isTrustSignalType(value.signalType) ||
+    !isNonBlank(value.severity) ||
+    !isBoundedInteger(value.basePoints, 1, 25) ||
+    !isBoundedInteger(value.effectivePoints, 0, 25) ||
+    !isDateTime(value.observedAt) ||
+    !isDateTime(value.expiresAt) ||
+    !isTrustEvidenceState(value.state) ||
+    !isTrustDecayState(value.decayState) ||
+    !isNonBlank(value.safeSourceType) ||
+    !isNonBlank(value.policyVersion) ||
+    typeof value.reviewedFalsePositive !== 'boolean'
+  ) {
+    throw unavailableResponse();
+  }
+  return {
+    ...(value as unknown as Omit<TrustCaseEvidenceItem, 'opponentPattern'>),
+    opponentPattern: parseTrustOpponentPattern(value.opponentPattern),
+  };
+}
+
+function parseTrustRestrictionItem(value: unknown): TrustRestrictionItem {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.restrictionId) ||
+    !isUuid(value.decisionId) ||
+    !isTrustRestrictionScope(value.scope) ||
+    !isDateTime(value.startsAt) ||
+    !isDateTime(value.originalExpiresAt) ||
+    !isDateTime(value.effectiveExpiresAt) ||
+    typeof value.active !== 'boolean' ||
+    !isTrustAppealStatus(value.appealStatus)
+  ) {
+    throw unavailableResponse();
+  }
+  return value as unknown as TrustRestrictionItem;
+}
+
+function parseTrustCaseHistoryItem(value: unknown): TrustCaseHistoryItem {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.decisionId) ||
+    (value.actorType !== 'author' && value.actorType !== 'system') ||
+    !isNullableUuid(value.actorPlayerId) ||
+    !isNullableString(value.actorPlayerName) ||
+    !isNonBlank(value.policyVersion) ||
+    !isNonNegativeInteger(value.caseVersionBefore) ||
+    !isPositiveInteger(value.caseVersionAfter) ||
+    !isNonBlank(value.decisionType) ||
+    !isNonBlank(value.action) ||
+    !(
+      value.previousStatus === null || isTrustCaseStatus(value.previousStatus)
+    ) ||
+    !isTrustCaseStatus(value.resultingStatus) ||
+    !isNonBlank(value.reasonCode) ||
+    !isNullableString(value.reasonNote) ||
+    !Array.isArray(value.evidenceIds) ||
+    !value.evidenceIds.every(isUuid) ||
+    !Array.isArray(value.falsePositiveEvidenceIds) ||
+    !value.falsePositiveEvidenceIds.every(isUuid) ||
+    !Array.isArray(value.restrictions) ||
+    !isNonNegativeInteger(value.versionBefore) ||
+    !isPositiveInteger(value.versionAfter) ||
+    !isDateTime(value.occurredAt)
+  ) {
+    throw unavailableResponse();
+  }
+  return {
+    ...(value as unknown as TrustCaseHistoryItem),
+    restrictions: value.restrictions.map(parseTrustCaseHistoryRestriction),
+  };
+}
+
+function parseTrustCaseHistoryRestriction(
+  value: unknown,
+): TrustCaseHistoryRestriction {
+  const restriction = parseTrustRestrictionItem(value);
+  if (!isRecord(value) || !isDateTime(value.expiresAt)) {
+    throw unavailableResponse();
+  }
+  return { ...restriction, expiresAt: value.expiresAt };
+}
+
+function parseTrustOpponentPattern(
+  value: unknown,
+): TrustOpponentPatternSummary | null {
+  if (value === null) return null;
+  if (!isRecord(value)) throw unavailableResponse();
+  if (value.availability === 'unavailable') {
+    if (
+      value.reason !== 'legacy_summary_not_retained' ||
+      value.remediation !== 'await_fresh_detector_evaluation'
+    ) {
+      throw unavailableResponse();
+    }
+    return value as TrustOpponentPatternSummary;
+  }
+  if (
+    value.availability !== 'available' ||
+    !isDateTime(value.evaluationWindowStart) ||
+    !isDateTime(value.evaluationWindowEnd)
+  ) {
+    throw unavailableResponse();
+  }
+  if (
+    value.kind === 'opponent_concentration' &&
+    isNonNegativeInteger(value.completedMatchCount) &&
+    isNonNegativeInteger(value.repeatedOpponentMatchCount) &&
+    isRate(value.opponentConcentrationRatio)
+  ) {
+    return {
+      availability: 'available',
+      completedMatchCount: value.completedMatchCount,
+      evaluationWindowEnd: value.evaluationWindowEnd,
+      evaluationWindowStart: value.evaluationWindowStart,
+      kind: 'opponent_concentration',
+      opponentConcentrationRatio: value.opponentConcentrationRatio,
+      repeatedOpponentMatchCount: value.repeatedOpponentMatchCount,
+    };
+  }
+  if (
+    value.kind === 'one_sided_outcome_pattern' &&
+    isNonNegativeInteger(value.qualifyingForfeitCount)
+  ) {
+    return {
+      availability: 'available',
+      evaluationWindowEnd: value.evaluationWindowEnd,
+      evaluationWindowStart: value.evaluationWindowStart,
+      kind: 'one_sided_outcome_pattern',
+      qualifyingForfeitCount: value.qualifyingForfeitCount,
+    };
+  }
+  throw unavailableResponse();
+}
+
+function parseTrustCaseExport(value: unknown): TrustCaseExport {
+  if (
+    !isRecord(value) ||
+    value.formatVersion !== 'trust-case-review-v1' ||
+    !isDateTime(value.generatedAt)
+  ) {
+    throw unavailableResponse();
+  }
+  return {
+    case: parseTrustCaseDetail(value.case),
+    evidence: parseExportPage(value.evidence, parseTrustCaseEvidenceItem),
+    formatVersion: value.formatVersion,
+    generatedAt: value.generatedAt,
+    history: parseExportPage(value.history, parseTrustCaseHistoryItem),
+    restrictions: parseExportPage(
+      value.restrictions,
+      parseTrustRestrictionItem,
+    ),
+  };
+}
+
+function parseExportPage<T>(
+  value: unknown,
+  parser: (item: unknown) => T,
+): AuthorPage<T> {
+  if (
+    !isRecord(value) ||
+    !Array.isArray(value.items) ||
+    !isPositiveInteger(value.page) ||
+    !isPositiveInteger(value.pageSize) ||
+    !isNonNegativeInteger(value.totalItems) ||
+    !isNonNegativeInteger(value.totalPages)
+  ) {
+    throw unavailableResponse();
+  }
+  return {
+    items: value.items.map(parser),
+    page: value.page,
+    pageSize: value.pageSize,
+    totalItems: value.totalItems,
+    totalPages: value.totalPages,
+  };
+}
+
 function parseAuthorContentHistoryItem(
   value: unknown,
 ): AuthorContentHistoryItem {
@@ -2348,6 +2949,19 @@ function isNonNegativeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
 
+function isBoundedInteger(
+  value: unknown,
+  minimum: number,
+  maximum: number,
+): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= minimum &&
+    value <= maximum
+  );
+}
+
 function isAuthorPlacementOrigin(
   value: unknown,
 ): value is AuthorPlacementOrigin {
@@ -2416,6 +3030,71 @@ function isStatus(value: unknown): value is AuthoringStatus {
     value === 'approved' ||
     value === 'published' ||
     value === 'retired'
+  );
+}
+
+function isTrustCaseStatus(value: unknown): value is TrustCaseStatus {
+  return value === 'open' || value === 'under_review' || value === 'resolved';
+}
+
+function isTrustReviewBand(value: unknown): value is TrustReviewBand {
+  return (
+    value === 'normal' ||
+    value === 'observe' ||
+    value === 'review_required' ||
+    value === 'urgent_review'
+  );
+}
+
+function isTrustSignalType(value: unknown): value is TrustSignalType {
+  return (
+    value === 'impossible_movement' ||
+    value === 'idempotency_payload_conflict' ||
+    value === 'submission_conflict_pattern' ||
+    value === 'opponent_concentration' ||
+    value === 'one_sided_outcome_pattern'
+  );
+}
+
+function isTrustEvidenceState(
+  value: unknown,
+): value is TrustCaseEvidenceItem['state'] {
+  return (
+    value === 'active' ||
+    value === 'adjusted_false_positive' ||
+    value === 'expired'
+  );
+}
+
+function isTrustDecayState(
+  value: unknown,
+): value is TrustCaseEvidenceItem['decayState'] {
+  return (
+    value === 'active' ||
+    value === 'expired' ||
+    value === 'reviewed_false_positive'
+  );
+}
+
+function isTrustAppealStatus(
+  value: unknown,
+): value is TrustRestrictionItem['appealStatus'] {
+  return (
+    value === 'eligible' ||
+    value === 'submitted' ||
+    value === 'resolved' ||
+    value === 'expired'
+  );
+}
+
+function isTrustRestrictionScope(
+  value: unknown,
+): value is TrustRestrictionScope {
+  return (
+    value === 'online_verification_required' ||
+    value === 'location_reward_challenge_hold' ||
+    value === 'new_competitive_match_hold' ||
+    value === 'card_trade_hold'
   );
 }
 

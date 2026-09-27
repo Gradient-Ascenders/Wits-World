@@ -445,6 +445,11 @@ export async function buildApp({
           description: 'Protected Author-only Basic content management.',
         },
         {
+          name: 'Trust review',
+          description:
+            'Protected Author-only review of privacy-limited trust cases and human decisions.',
+        },
+        {
           name: 'Matches',
           description: 'Server-authoritative CPU matches and private history.',
         },

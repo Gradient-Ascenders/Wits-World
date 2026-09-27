@@ -853,6 +853,114 @@ test('existing Event location focuses its saved point, supports dragging, and ha
   expect(consoleErrors).toEqual([]);
 });
 
+test('Player review uses a responsive, privacy-safe master-detail workflow', async ({
+  page,
+}, testInfo) => {
+  const caseId = uuid('a', 1);
+  const detail = trustCaseFixture(caseId);
+  await installTrustReviewApi(page, detail);
+  const consoleErrors = monitorConsoleErrors(page);
+
+  await page.setViewportSize({ height: 950, width: 1440 });
+  await page.goto(`/author/player-review/${caseId}`);
+  await expect(
+    page.getByRole('heading', { name: detail.playerName }),
+  ).toBeVisible();
+  await expect(page.getByLabel('Trust case queue')).toBeVisible();
+  await expect(
+    page.getByText('Review priority, not proof of misconduct.'),
+  ).toBeVisible();
+  const signals = page.getByRole('region', { name: 'Signals' });
+  await expect(signals.getByText('Impossible movement')).toBeVisible();
+  await expect(signals.getByText('High severity')).toBeVisible();
+  await signals.getByText('View aggregate basis').click();
+  await expect(signals.getByText(/87.5%/u)).toBeVisible();
+  await expect(signals.getByText(/policy threshold/iu)).toHaveCount(0);
+  const queueToggle = page.getByRole('button', { name: 'Collapse case queue' });
+  await queueToggle.click();
+  await expect(
+    page.getByRole('button', { name: 'Expand case queue' }),
+  ).toHaveAttribute('aria-expanded', 'false');
+  await page.getByRole('button', { name: 'Expand case queue' }).click();
+  const decisionLink = page
+    .getByRole('navigation', { name: 'Case investigation' })
+    .getByRole('link', { name: 'Decision' });
+  await decisionLink.focus();
+  await expect(decisionLink).toBeFocused();
+  await expect(
+    page.getByRole('textbox', { name: /Reason and context/u }),
+  ).toBeVisible();
+  await page.getByLabel('Apply temporary restriction').check();
+  await page.getByLabel('Require online verification').check();
+  await page.getByLabel('Duration').selectOption('72');
+  await page
+    .getByRole('textbox', { name: /Reason and context/u })
+    .fill('Temporarily pause new matches while this case is reviewed.');
+  await page.getByRole('button', { name: 'Review restriction' }).click();
+  const desktopDialog = page.getByRole('dialog', {
+    name: `Apply temporary restrictions to ${detail.playerName}?`,
+  });
+  await expect(
+    desktopDialog.getByRole('heading', { name: 'Current state' }),
+  ).toBeVisible();
+  await expect(
+    desktopDialog.getByText('Pause new competitive matches'),
+  ).toBeVisible();
+  await expect(
+    desktopDialog.getByRole('heading', { name: 'Proposed restriction' }),
+  ).toBeVisible();
+  await expect(
+    desktopDialog.getByText('Require online verification'),
+  ).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: testInfo.outputPath('player-review-confirmation-desktop.png'),
+  });
+  await page.keyboard.press('Escape');
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    fullPage: true,
+    path: testInfo.outputPath('player-review-desktop.png'),
+  });
+
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto('/author/player-review');
+  await expect(page.getByLabel('Trust case queue')).toBeVisible();
+  await expect(page.getByText('Select a case to begin review.')).toBeVisible();
+  await page.getByRole('link', { name: /Casey Reviewer/u }).click();
+  await expect(page).toHaveURL(`/author/player-review/${caseId}`);
+  await expect(page.getByLabel('Trust case queue')).toBeHidden();
+  await expect(
+    page.getByRole('link', { name: 'Back to case queue' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: detail.playerName }),
+  ).toBeVisible();
+  await page.getByLabel('Apply temporary restriction').check();
+  await page.getByLabel('Require online verification').check();
+  await page
+    .getByRole('textbox', { name: /Reason and context/u })
+    .fill('Require a short verification step while this case is reviewed.');
+  await page.getByRole('button', { name: 'Review restriction' }).click();
+  const mobileDialog = page.getByRole('dialog', {
+    name: `Apply temporary restrictions to ${detail.playerName}?`,
+  });
+  await expect(
+    mobileDialog.getByRole('heading', { name: 'Current state' }),
+  ).toBeVisible();
+  await expect(
+    mobileDialog.getByRole('heading', { name: 'Proposed restriction' }),
+  ).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    fullPage: true,
+    path: testInfo.outputPath('player-review-confirmation-mobile.png'),
+  });
+  await page.keyboard.press('Escape');
+
+  expect(consoleErrors).toEqual([]);
+});
+
 test('Card catalogue uses filtered master detail and concise real-card read-only views', async ({
   page,
 }, testInfo) => {
@@ -1429,6 +1537,228 @@ interface AuthorApiState {
   questions: AuthorQuestion[];
   rejectEventPublication: boolean;
   trails: AuthorTrail[];
+}
+
+async function installTrustReviewApi(
+  page: Page,
+  detail: ReturnType<typeof trustCaseFixture>,
+) {
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request();
+    const method = request.method();
+    const path = new URL(request.url()).pathname.replace('/api/v1', '');
+    if (path === '/auth/me') {
+      await json(route, {
+        connectionStrategy: 'auth0',
+        id: uuid('9', 1),
+        lifecycleStatus: 'active',
+        playerName: 'author-e2e',
+        playerNameSetupRequired: false,
+        requestId: 'request-current-player',
+        role: 'author',
+      });
+      return;
+    }
+    if (path === '/author/cards' && method === 'GET') {
+      await json(route, { cards: [], requestId: 'request-cards' });
+      return;
+    }
+    if (path === '/author/trust-cases' && method === 'GET') {
+      await json(route, {
+        items: [
+          {
+            ...detail,
+            activeRestrictionScopes: ['new_competitive_match_hold'],
+            signalTypes: ['impossible_movement', 'opponent_concentration'],
+          },
+        ],
+        page: 1,
+        pageSize: 20,
+        requestId: 'request-trust-cases',
+        totalItems: 1,
+        totalPages: 1,
+      });
+      return;
+    }
+    if (path === `/author/trust-cases/${detail.caseId}` && method === 'GET') {
+      await json(route, { case: detail, requestId: 'request-trust-case' });
+      return;
+    }
+    if (
+      path === `/author/trust-cases/${detail.caseId}/evidence` &&
+      method === 'GET'
+    ) {
+      await json(route, {
+        items: detail.evidence,
+        page: 1,
+        pageSize: 20,
+        requestId: 'request-trust-evidence',
+        totalItems: detail.evidenceTotalItems,
+        totalPages: 1,
+      });
+      return;
+    }
+    if (
+      path === `/author/trust-cases/${detail.caseId}/restrictions` &&
+      method === 'GET'
+    ) {
+      await json(route, {
+        items: detail.restrictionPreview,
+        page: 1,
+        pageSize: 20,
+        requestId: 'request-trust-restrictions',
+        totalItems: detail.restrictionTotalItems,
+        totalPages: 1,
+      });
+      return;
+    }
+    if (
+      path === `/author/trust-cases/${detail.caseId}/history` &&
+      method === 'GET'
+    ) {
+      await json(route, {
+        items: detail.history,
+        page: 1,
+        pageSize: 20,
+        requestId: 'request-trust-history',
+        totalItems: detail.history.length,
+        totalPages: 1,
+      });
+      return;
+    }
+    await json(
+      route,
+      {
+        code: 'NOT_FOUND',
+        detail: 'Not found',
+        requestId: 'request-missing',
+        status: 404,
+        title: 'Not found',
+        type: 'about:blank',
+      },
+      404,
+    );
+  });
+}
+
+function trustCaseFixture(caseId: string) {
+  return {
+    activeRestrictionCount: 1,
+    activeRestrictionScopes: ['new_competitive_match_hold'],
+    band: 'urgent_review',
+    canReview: true,
+    caseId,
+    categoryTotals: {
+      movement: 50,
+      opponentPatterns: 20,
+      submissionConflicts: 9,
+    },
+    evidence: [
+      {
+        basePoints: 25,
+        decayState: 'active',
+        effectivePoints: 21,
+        evidenceId: uuid('b', 1),
+        expiresAt: '2026-12-24T09:00:00.000Z',
+        observedAt: '2026-09-25T09:00:00.000Z',
+        opponentPattern: null,
+        policyVersion: 'trust-v1',
+        reviewedFalsePositive: false,
+        safeSourceType: 'movement_decision',
+        severity: 'high',
+        signalType: 'impossible_movement',
+        state: 'active',
+      },
+      {
+        basePoints: 20,
+        decayState: 'active',
+        effectivePoints: 20,
+        evidenceId: uuid('b', 2),
+        expiresAt: '2026-12-24T09:00:00.000Z',
+        observedAt: '2026-09-25T08:00:00.000Z',
+        opponentPattern: {
+          availability: 'available',
+          completedMatchCount: 8,
+          evaluationWindowEnd: '2026-09-25T08:00:00.000Z',
+          evaluationWindowStart: '2026-09-18T08:00:00.000Z',
+          kind: 'opponent_concentration',
+          opponentConcentrationRatio: 0.875,
+          repeatedOpponentMatchCount: 7,
+        },
+        policyVersion: 'trust-v1',
+        reviewedFalsePositive: false,
+        safeSourceType: 'opponent_pattern_evaluation',
+        severity: 'medium',
+        signalType: 'opponent_concentration',
+        state: 'active',
+      },
+    ],
+    evidencePreview: [],
+    evidenceTotalItems: 2,
+    evidenceTruncated: false,
+    history: [
+      {
+        action: 'case_opened',
+        actorPlayerId: null,
+        actorPlayerName: null,
+        actorType: 'system',
+        caseVersionAfter: 1,
+        caseVersionBefore: 0,
+        decisionId: uuid('c', 1),
+        decisionType: 'case_opened',
+        evidenceIds: [uuid('b', 1)],
+        falsePositiveEvidenceIds: [],
+        occurredAt: '2026-09-25T09:00:00.000Z',
+        policyVersion: 'trust-v1',
+        previousStatus: null,
+        reasonCode: 'review_band_reached',
+        reasonNote: null,
+        restrictions: [],
+        resultingStatus: 'open',
+        versionAfter: 1,
+        versionBefore: 0,
+      },
+    ],
+    historyTruncated: false,
+    latestRestrictionExpiry: '2026-09-28T09:00:00.000Z',
+    openedAt: '2026-09-25T09:00:00.000Z',
+    playerId: uuid('d', 1),
+    playerName: 'Casey Reviewer',
+    policyVersion: 'trust-v1',
+    recentHistory: [],
+    resolvedAt: null,
+    resolutionReason: null,
+    restrictionCount: 1,
+    restrictionPreview: [
+      {
+        active: true,
+        appealStatus: 'eligible',
+        decisionId: uuid('c', 2),
+        effectiveExpiresAt: '2026-09-28T09:00:00.000Z',
+        originalExpiresAt: '2026-09-28T09:00:00.000Z',
+        restrictionId: uuid('f', 1),
+        scope: 'new_competitive_match_hold',
+        startsAt: '2026-09-25T09:00:00.000Z',
+      },
+    ],
+    restrictionTotalItems: 1,
+    restrictionsTruncated: false,
+    score: 79,
+    scoreExplanation: {
+      evaluatedAt: '2026-09-25T09:00:00.000Z',
+      finalScore: 79,
+      movementPoints: 50,
+      opponentPatternPoints: 20,
+      reviewBand: 'urgent_review',
+      snapshotId: uuid('e', 1),
+      sourceSignalCount: 4,
+      submissionConflictPoints: 9,
+    },
+    status: 'open',
+    sourceSignalCount: 4,
+    updatedAt: '2026-09-25T09:00:00.000Z',
+    version: 3,
+  } as const;
 }
 
 async function installAuthorApi(page: Page): Promise<AuthorApiState> {

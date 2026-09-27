@@ -14,6 +14,7 @@ import { AnalyticsWorkspace } from '../components/author/AnalyticsWorkspace';
 import { EventWorkspace } from '../components/author/EventWorkspace';
 import { EventPlacementWorkspace } from '../components/author/EventPlacementWorkspace';
 import { ReviewWorkspace } from '../components/author/ReviewWorkspace';
+import { TrustReviewWorkspace } from '../components/author/TrustReviewWorkspace';
 import {
   authorPaths,
   parseAuthorWorkspaceRoute,
@@ -162,6 +163,12 @@ export default function AuthorConsolePage({
           <AnalyticsWorkspace
             apiBaseUrl={apiBaseUrl}
             getAccessToken={getAccessToken}
+          />
+        ) : route.section === 'playerReview' ? (
+          <TrustReviewWorkspace
+            apiBaseUrl={apiBaseUrl}
+            getAccessToken={getAccessToken}
+            route={route}
           />
         ) : route.section === 'placement' ? (
           <EventPlacementWorkspace

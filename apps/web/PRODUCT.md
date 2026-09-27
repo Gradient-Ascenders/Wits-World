@@ -8,7 +8,7 @@ web
 
 ## Users
 
-The primary user is anyone exploring Wits campus who wants to discover and play through campus events. Players use the experience on mobile browsers while moving around campus, then continue through collection, progression, social, and competitive play. Authenticated content Authors use a separate console to create, review, publish, operate, and evaluate game content. Active players may also participate in or watch live battles. External developers use a deliberately limited, read-only API for public events, cards, and progression standings.
+The primary user is anyone exploring Wits campus who wants to discover and play through campus events. Players use the experience on mobile browsers while moving around campus, then continue through collection, progression, social, and competitive play. Authenticated content Authors use a separate console to create, review, publish, operate, and evaluate game content, including privacy-limited trust cases. Restricted players need a safe notice and an appeal path without exposure to private scores or detector details. Active players may also participate in or watch live battles. External developers use a deliberately limited, read-only API for public events, cards, and progression standings.
 
 ## Product Purpose
 
@@ -24,6 +24,8 @@ Players sign in through Auth0, browse published events on a map or in a text lis
 
 A separate protected Author workspace supports content creation, review, campaigns, question curation, and privacy-limited operational analytics. Advanced placement services rotate explicitly portable events among reviewed campus sites while preserving fixed authored locations and Author control. Account settings also support lifecycle management and developer API keys for approved public read-only integrations.
 
+For Advanced-tier trust review, the API derives privacy-limited signals from authoritative operations, calculates a private review-priority score, and opens or updates a case when policy bands require attention. Authors review safe evidence summaries and may dismiss, monitor, mark false positives, or apply a short capability-specific restriction. A restricted player receives a neutral notice and may submit one appeal; a different Author resolves it.
+
 ## Capabilities and Constraints
 
 - The browser presents state and submits player intent. The API and its server-consumed rules decide identity, event eligibility, challenge scoring, rewards, deck legality, legal battle actions, and outcomes.
@@ -37,6 +39,10 @@ A separate protected Author workspace supports content creation, review, campaig
 - Contested-campus territory is a fictional game system built from reviewed PostGIS zones and completed ranked results. It conveys no real-world ownership or access rights. Precise location is evaluated for a short-lived grant and is not retained as territory history.
 - Automatic placement applies only to explicitly portable content and reviewed sites. It does not generate questions, infer safe locations from player movement, or alter fixed authored event coordinates.
 - Longitudinal trust signals are server-derived review indicators, not proof of cheating, public reputation, or an automatic ban. Scores and detector thresholds remain private, and punitive restrictions require human review.
+- The browser cannot create or change a trust signal, score, band, case, restriction, reviewer decision, or enforcement result. The API and PostgreSQL own those decisions and their append-only audit history.
+- Human restrictions are capability-specific, last no longer than seven days, and require a reasoned Author decision. They do not block sign-in, browsing, collection or deck management, CPU play, account deletion, notice, or appeal access.
+- The Author role is also the Advanced-tier trust-review role. Authors cannot review their own player account, and the Author who made a challenged decision cannot resolve its appeal.
+- Trust review exposes only safe evidence summaries and aggregate context. It excludes provider identity, email, precise location, exact movement measurements, submitted answers, tokens, hidden cards, another player's private history, and raw logs.
 - Card trading is private, bilateral, card-for-card, versioned, and atomically settled. There is no gifting, currency, marketplace, real-money payment, public inventory lookup, or browser-owned valuation.
 - Advanced operational analytics use Author-only aggregate projections with minimum-sample suppression. They must not create player-level analytics, reveal precise location, or delay authoritative gameplay responses.
 - Developer API keys provide rate-limited, read-only access to public events, the public card catalogue, and progression standings. They are not player sessions and cannot read or mutate private gameplay state.
@@ -51,7 +57,7 @@ A separate protected Author workspace supports content creation, review, campaig
 - `README.md`, `docs/basic-release-reference.md`, `docs/sprint-2-overview.md`, and `docs/architecture/overview.md` describe the product journey, implemented scope, and authority boundaries.
 - `src/App.tsx` and `src/pages/` contain the current player and Author routes. `src/assets/branding/` contains the supplied branding assets.
 - `docs/architecture/live-pvp-api-contract.md`, `docs/architecture/ranked-matchmaking-api-contract.md`, `docs/architecture/contested-campus-territory-api-contract.md`, `docs/architecture/automatic-event-placement-service.md`, and `docs/architecture/card-trading-api-contract.md` define the Advanced server-owned gameplay and operations boundaries.
-- `docs/requirements/longitudinal-trust-policy.md`, `docs/architecture/advanced-analytics-api-contract.md`, and `docs/architecture/developer-api.md` define the trust, privacy, analytics, and external-access boundaries.
+- `docs/requirements/longitudinal-trust-policy.md`, `docs/database/trust-persistence.md`, `docs/architecture/trust-boundaries.md`, `docs/architecture/advanced-analytics-api-contract.md`, and `docs/architecture/developer-api.md` define the trust, privacy, analytics, and external-access boundaries.
 - The release and feature references distinguish policy, persistence, service implementation, Web presentation, automated verification, deployment, and human acceptance. Future product claims must preserve those distinctions.
 
 ## Product Principles
@@ -61,7 +67,10 @@ A separate protected Author workspace supports content creation, review, campaig
 3. Show server-owned outcomes and recovery honestly; never invent eligibility, rewards, opponents, ratings, ownership, settlements, or legal actions in the browser.
 4. Keep event discovery usable without a map or location permission until the player chooses a location-dependent action.
 5. Protect player identity, location, private competition state, and trust information throughout the journey.
+6. Treat trust signals as prompts for fair human review, not accusations; keep decisions proportionate, explainable, appealable, and private.
 
 ## Accessibility & Inclusion
 
-The web experience must be responsive and accessible. Key journeys must work with keyboard and screen reader input, visible focus, and textual status that does not rely on color alone. A map-independent event list supports players who cannot use the map.
+The web experience must be responsive and accessible. Key journeys must work with keyboard and screen reader input, visible focus, and textual status that does not rely on color alone. A map-independent event list supports players who cannot use the map. Trust-case review, restriction notices, and appeals must communicate priority, state, affected capability, timing, and available action without relying on color or accusatory language.
+
+The preceding document was edited with the assistance of Codex[GPT-5].

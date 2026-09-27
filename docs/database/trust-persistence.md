@@ -55,6 +55,9 @@ counts, concentration ratio, and trust-v1 threshold. They contain no opponent
 identifier, match identifier, deck, battle state, or raw result history. This
 small additive persistence is necessary because recomputing a rolling window
 later would not reproduce the evidence on which the signal was created.
+The Author reviewer projection validates these stored summaries against the
+policy version and then strips detector thresholds, exposing only the window,
+aggregate counts, and observed concentration ratio.
 
 There is intentionally no restrictive foreign key from a signal to short-lived
 movement evidence. Precise movement rows may expire on their existing bounded

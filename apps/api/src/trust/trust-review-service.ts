@@ -7,7 +7,6 @@ import {
   type TrustReviewBand,
   type TrustSignalType,
 } from './trust-policy.js';
-import type { TrustSignalReviewSummary } from './trust-service.js';
 import type { TrustRestrictionScope } from './trust-restrictions.js';
 
 export const TRUST_REVIEW_MAX_PAGE_SIZE = 100;
@@ -90,7 +89,22 @@ export interface TrustCaseEvidenceSummary {
   safeSourceType: string;
   reviewedFalsePositive: boolean;
   opponentPattern:
-    | ({ availability: 'available' } & TrustSignalReviewSummary)
+    | {
+        availability: 'available';
+        kind: 'opponent_concentration';
+        evaluationWindowStart: string;
+        evaluationWindowEnd: string;
+        completedMatchCount: number;
+        repeatedOpponentMatchCount: number;
+        opponentConcentrationRatio: number;
+      }
+    | {
+        availability: 'available';
+        kind: 'one_sided_outcome_pattern';
+        evaluationWindowStart: string;
+        evaluationWindowEnd: string;
+        qualifyingForfeitCount: number;
+      }
     | {
         availability: 'unavailable';
         reason: 'legacy_summary_not_retained';
@@ -158,6 +172,7 @@ export interface TrustCaseDetail {
   policyVersion: string;
   restrictionCount: number;
   activeRestrictionCount: number;
+  activeRestrictionScopes: TrustRestrictionScope[];
   latestRestrictionExpiry: string | null;
   canReview: boolean;
   categoryTotals: {
@@ -305,6 +320,7 @@ interface DetailRow extends pg.QueryResultRow {
   source_signal_count: number;
   restriction_count: number;
   active_restriction_count: number;
+  active_restriction_scopes: TrustRestrictionScope[] | null;
   latest_restriction_expiry: Date | null;
   can_review: boolean;
   opened_at: Date;
@@ -1062,6 +1078,16 @@ async function loadDetail(
               where restriction.case_id = trust_case.id
                 and ${activeRestrictionPredicateSql}
             ) as active_restriction_count,
+            coalesce((
+              select array_agg(distinct restriction.scope order by restriction.scope)
+                from private.trust_restrictions restriction
+                left join private.trust_appeals appeal
+                  on appeal.challenged_decision_id = restriction.decision_id
+                left join private.trust_appeal_resolutions resolution
+                  on resolution.appeal_id = appeal.id
+               where restriction.case_id = trust_case.id
+                 and ${activeRestrictionPredicateSql}
+            ), array[]::text[]) as active_restriction_scopes,
             (select max(${effectiveRestrictionExpirySql})
                from private.trust_restrictions restriction
                left join private.trust_appeals appeal
@@ -1120,6 +1146,7 @@ async function loadDetail(
     policyVersion: row.policy_version,
     restrictionCount: row.restriction_count,
     activeRestrictionCount: row.active_restriction_count,
+    activeRestrictionScopes: row.active_restriction_scopes ?? [],
     latestRestrictionExpiry:
       row.latest_restriction_expiry?.toISOString() ?? null,
     canReview: row.can_review,
@@ -1741,8 +1768,6 @@ function safeOpponentPatternSummary(
       completedMatchCount: summary.completedMatchCount,
       repeatedOpponentMatchCount: summary.repeatedOpponentMatchCount,
       opponentConcentrationRatio: summary.opponentConcentrationRatio,
-      minimumCompletedMatchCount: 6,
-      minimumOpponentConcentrationRatio: 0.8,
     };
   }
   if (
@@ -1759,7 +1784,6 @@ function safeOpponentPatternSummary(
       evaluationWindowStart: summary.evaluationWindowStart,
       evaluationWindowEnd: summary.evaluationWindowEnd,
       qualifyingForfeitCount: summary.qualifyingForfeitCount,
-      minimumQualifyingForfeitCount: 4,
     };
   }
   return {

@@ -291,6 +291,38 @@ describe('Basic author console', () => {
     ).toBe(true);
   });
 
+  it('blocks an ordinary Player from player review before any trust-case request', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/auth/me')) {
+        return jsonResponse({
+          connectionStrategy: 'auth0',
+          id: '90000000-0000-4000-8000-000000000001',
+          playerName: 'test-player',
+          playerNameSetupRequired: false,
+          lifecycleStatus: 'active',
+          requestId: 'request-me',
+          role: 'player',
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderAuthorRoute(authorPaths.playerReview);
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Author permission is required',
+      }),
+    ).toHaveFocus();
+    expect(screen.queryByText('Player review')).not.toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.every(
+        ([input]) => !String(input).includes('/author/trust-cases'),
+      ),
+    ).toBe(true);
+  });
+
   it('blocks an ordinary Player from placement controls before any placement request', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

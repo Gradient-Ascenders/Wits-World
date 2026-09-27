@@ -30,6 +30,28 @@ Asynchronous match detail negotiates version 4 to return the complete
 participant-safe public action history through the returned match version;
 unplayed opponent cards and private transition snapshots remain excluded.
 
+The protected trust-review surface is available only to authenticated active
+Authors:
+
+- `GET /api/v1/author/trust-cases` lists a server-filtered, paginated queue;
+- `GET /api/v1/author/trust-cases/:caseId` returns privacy-safe score,
+  bounded evidence, restriction, and audit previews;
+- `GET` on the case's `/evidence`, `/restrictions`, and `/history` resources
+  returns deterministic pages of the complete safe collections;
+- `POST /api/v1/author/trust-cases/:caseId/decisions` records a versioned human
+  decision and any bounded `trust-v1` restriction; and
+- `GET /api/v1/author/trust-cases/:caseId/export` returns a bounded,
+  privacy-safe JSON export with truncation metadata.
+
+Decision requests require the current `expectedVersion`, a reason of 1 through
+1,000 characters, and, for restrictions, one or more supported scopes plus a
+duration of 1 through 168 hours. Stale writes return `409`; inaccessible and
+self-review cases share the same `404` response so the API does not disclose
+case existence. The service derives actors, timestamps, score changes, case
+outcomes, and restriction state. Responses exclude precise location, raw
+source identifiers and payloads, submitted answers, Auth0 identity, and
+detector thresholds. No new environment variable controls these policy limits.
+
 The detailed challenge and persistence contracts are documented in the
 [challenge attempt API contract](../../docs/architecture/challenge-attempt-api-contract.md)
 and the
@@ -349,16 +371,20 @@ counts, `latestRestrictionExpiry`, and `canReview`. Detail contains a
 restriction previews, and 20-item `history`/`recentHistory` aliases plus
 total/truncation metadata; the separate collection routes provide pages up to
 100 items. The aliases keep the Author console contract compatible without
-making detail reads unbounded. New opponent-pattern evidence requires signal-time
-aggregate counts, evaluation windows, and trust-v1 thresholds. Legacy rows
-without that summary are explicitly unavailable and make the case
+making detail reads unbounded. New opponent-pattern evidence persists
+signal-time aggregate counts, evaluation windows, and trust-v1 thresholds so
+the service can validate the immutable summary, but reviewer responses expose
+only the window, counts, and observed concentration ratio. Legacy rows without
+that summary are explicitly unavailable and make the case
 non-reviewable only while they still contribute points and remain unadjusted;
 only a newer explained evaluation that is also effective and unadjusted can
 supersede them.
 Detail and audit responses contain local opaque player identifiers,
-policy/version data, and effective restrictions. They do not
+policy/version data, and effective restrictions. Detail also exposes the
+authoritative active restriction scopes needed for destructive confirmation.
+They do not
 contain Auth0 identifiers, precise location, raw telemetry, private match
-history, or evidence source identifiers.
+history, evidence source identifiers, or detector thresholds.
 
 Every mutation derives the reviewer from the bearer token, requires the
 expected case version and a bounded `reasonNote`, and runs the case transition,
