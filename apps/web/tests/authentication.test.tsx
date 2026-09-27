@@ -258,7 +258,7 @@ describe('player authentication', () => {
     const user = userEvent.setup();
     const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
 
-    renderRoute('/decks', createAuthValue({ loginWithRedirect }));
+    renderRoute('/collection/decks', createAuthValue({ loginWithRedirect }));
 
     await user.click(
       screen.getByRole('button', {
@@ -266,7 +266,7 @@ describe('player authentication', () => {
       }),
     );
     expect(loginWithRedirect).toHaveBeenCalledWith({
-      appState: { returnTo: '/decks' },
+      appState: { returnTo: '/collection/decks' },
     });
   });
 
@@ -416,7 +416,7 @@ describe('player authentication', () => {
         within(playerNavigation)
           .getAllByRole('link')
           .map((link) => link.textContent),
-      ).toEqual(['Explore', 'Collection', 'Decks', 'Battles']);
+      ).toEqual(['Explore', 'Collection', 'Battles', 'Leaderboard']);
       for (const link of within(playerNavigation).getAllByRole('link')) {
         expect(link.querySelector('.primary-navigation__icon')).toHaveAttribute(
           'aria-hidden',

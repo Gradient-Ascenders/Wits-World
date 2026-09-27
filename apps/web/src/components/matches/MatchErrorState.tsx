@@ -62,7 +62,7 @@ export const MatchErrorState = forwardRef<
             Sign in again
           </button>
         ) : deckInvalid ? (
-          <Link className="button" href="/decks">
+          <Link className="button" href="/collection/decks">
             Review saved decks
           </Link>
         ) : onRetry ? (

@@ -1214,7 +1214,7 @@ function DeckCreaturePicker({
     return (
       <p className="pvp-deck-empty">
         A saved battle deck is required.{' '}
-        <Link href="/decks">Create a deck</Link>.
+        <Link href="/collection/decks">Create a deck</Link>.
       </p>
     );
   }

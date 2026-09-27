@@ -1,8 +1,8 @@
 import {
   CompassIcon,
   CardsIcon,
-  StackIcon,
   SwordIcon,
+  TrophyIcon,
   PencilSimpleIcon,
 } from '@phosphor-icons/react';
 import { useAuth0 } from '@auth0/auth0-react';
@@ -28,7 +28,7 @@ interface AppShellProps {
 }
 
 type NavigationIconName =
-  'author' | 'battles' | 'collection' | 'decks' | 'explore';
+  'author' | 'battles' | 'collection' | 'explore' | 'leaderboard';
 
 interface NavigationItem {
   href: string;
@@ -53,17 +53,17 @@ const PLAYER_NAVIGATION_ITEMS: NavigationItem[] = [
     label: 'Collection',
   },
   {
-    href: '/decks',
-    icon: 'decks',
-    isActive: (pathname) => pathname === '/decks',
-    label: 'Decks',
-  },
-  {
     href: '/matches',
     icon: 'battles',
     isActive: (pathname) =>
       pathname === '/matches' || pathname.startsWith('/matches/'),
     label: 'Battles',
+  },
+  {
+    href: '/leaderboard',
+    icon: 'leaderboard',
+    isActive: (pathname) => pathname === '/leaderboard',
+    label: 'Leaderboard',
   },
 ];
 
@@ -92,8 +92,9 @@ function pageTitle(pathname: string): string {
   if (pathname === '/collection/trades') return 'Card trades · Wits World';
   if (pathname === '/collection/evolutions')
     return 'Card evolutions · Wits World';
+  if (pathname === '/collection/decks') return 'Decks · Wits World';
   if (pathname === '/collection') return 'Collection · Wits World';
-  if (pathname === '/decks') return 'Decks · Wits World';
+  if (pathname === '/leaderboard') return 'Leaderboard · Wits World';
   if (pathname === '/matches/history') return 'Battle history · Wits World';
   if (pathname.startsWith('/matches/live/'))
     return 'Live Ranked battle · Wits World';
@@ -113,8 +114,8 @@ function NavigationIcon({ name }: { name: NavigationIconName }) {
   const Icon = {
     explore: CompassIcon,
     collection: CardsIcon,
-    decks: StackIcon,
     battles: SwordIcon,
+    leaderboard: TrophyIcon,
     author: PencilSimpleIcon,
   }[name];
   return (
@@ -289,7 +290,7 @@ export function AppShell({ children }: AppShellProps) {
     isExplore ||
     pathname === '/collection' ||
     pathname.startsWith('/collection/') ||
-    pathname === '/decks' ||
+    pathname === '/leaderboard' ||
     pathname === '/matches' ||
     pathname.startsWith('/matches/') ||
     pathname === '/profile' ||

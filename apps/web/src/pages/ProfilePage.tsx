@@ -52,19 +52,9 @@ export default function ProfilePage({ apiBaseUrl }: ProfilePageProps) {
     ResourceState<CurrentProgressionProfile>
   >({ status: 'loading' });
   const [profileRevision, setProfileRevision] = useState(0);
-  const [standingsQuery, setStandingsQuery] = useState<StandingsQuery>({
-    page: 1,
-    period: 'all_time',
-  });
-  const [standings, setStandings] = useState<
-    ResourceState<ProgressionStandings>
-  >({ status: 'loading' });
-  const [standingsRevision, setStandingsRevision] = useState(0);
   const [reauthFailed, setReauthFailed] = useState(false);
   const profileHeading = useRef<HTMLHeadingElement>(null);
   const shouldFocusProfile = useRef(false);
-  const standingsHeading = useRef<HTMLHeadingElement>(null);
-  const shouldFocusStandings = useRef(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -90,47 +80,11 @@ export default function ProfilePage({ apiBaseUrl }: ProfilePageProps) {
   }, [apiBaseUrl, getAccessToken, profileRevision]);
 
   useEffect(() => {
-    const controller = new AbortController();
-    setStandings({ status: 'loading' });
-
-    void listProgressionStandings({
-      apiBaseUrl,
-      getAccessToken,
-      ...(standingsQuery.month === undefined
-        ? {}
-        : { month: standingsQuery.month }),
-      page: standingsQuery.page,
-      pageSize: STANDINGS_PAGE_SIZE,
-      period: standingsQuery.period,
-      signal: controller.signal,
-    })
-      .then((data) => {
-        if (!controller.signal.aborted) {
-          setStandings({ data, status: 'ready' });
-        }
-      })
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted) {
-          setStandings({ error: toProgressionError(error), status: 'error' });
-        }
-      });
-
-    return () => controller.abort();
-  }, [apiBaseUrl, getAccessToken, standingsQuery, standingsRevision]);
-
-  useEffect(() => {
     if (shouldFocusProfile.current && profile.status !== 'loading') {
       shouldFocusProfile.current = false;
       profileHeading.current?.focus();
     }
   }, [profile.status]);
-
-  useEffect(() => {
-    if (shouldFocusStandings.current && standings.status !== 'loading') {
-      shouldFocusStandings.current = false;
-      standingsHeading.current?.focus();
-    }
-  }, [standings.status]);
 
   async function startSignIn() {
     setReauthFailed(false);
@@ -140,29 +94,6 @@ export default function ProfilePage({ apiBaseUrl }: ProfilePageProps) {
     } catch {
       setReauthFailed(true);
     }
-  }
-
-  function selectStandingsPeriod(period: StandingsPeriod) {
-    if (period === standingsQuery.period) {
-      return;
-    }
-
-    shouldFocusStandings.current = true;
-    setStandingsQuery({
-      ...(period === 'monthly' ? { month: currentJohannesburgMonth() } : {}),
-      page: 1,
-      period,
-    });
-  }
-
-  function changePage(page: number) {
-    shouldFocusStandings.current = true;
-    setStandingsQuery((current) => ({ ...current, page }));
-  }
-
-  function retryStandings() {
-    shouldFocusStandings.current = true;
-    setStandingsRevision((revision) => revision + 1);
   }
 
   function retryProfile() {
@@ -259,76 +190,159 @@ export default function ProfilePage({ apiBaseUrl }: ProfilePageProps) {
           <AchievementList achievements={profile.data.achievements} />
         )}
       </section>
-
-      <section
-        aria-busy={standings.status === 'loading' ? 'true' : undefined}
-        aria-describedby="standings-context"
-        aria-labelledby="standings-heading"
-        className="progression-section standings-section"
-      >
-        <div className="progression-section__heading standings-section__heading">
-          <h2 id="standings-heading" ref={standingsHeading} tabIndex={-1}>
-            Campus standings
-          </h2>
-          {standings.status === 'ready' ? (
-            <p className="progression-section__summary">
-              You are{' '}
-              <span
-                aria-label={`rank ${numberFormatter.format(standings.data.currentPlayer.rank)}`}
-              >
-                #{numberFormatter.format(standings.data.currentPlayer.rank)}
-              </span>
-            </p>
-          ) : null}
-        </div>
-
-        <p aria-live="polite" className="sr-only" id="standings-context">
-          {standings.status === 'ready'
-            ? standingsTitle(standings.data)
-            : 'Standings period and results'}
-        </p>
-
-        <div
-          aria-label="Standings period"
-          className="standings-period"
-          role="group"
-        >
-          <button
-            aria-pressed={standingsQuery.period === 'all_time'}
-            disabled={standings.status === 'loading'}
-            onClick={() => selectStandingsPeriod('all_time')}
-            type="button"
-          >
-            All time
-          </button>
-          <button
-            aria-pressed={standingsQuery.period === 'monthly'}
-            disabled={standings.status === 'loading'}
-            onClick={() => selectStandingsPeriod('monthly')}
-            type="button"
-          >
-            This month
-          </button>
-        </div>
-
-        {standings.status === 'loading' ? (
-          <ProgressionLoadingState label="Loading standings" />
-        ) : standings.status === 'error' ? (
-          <ProgressionErrorState
-            context="standings"
-            error={standings.error}
-            onRetry={retryStandings}
-            onSignIn={startSignIn}
-            reauthFailed={reauthFailed}
-          />
-        ) : (
-          <StandingsResults
-            onPageChange={changePage}
-            standings={standings.data}
-          />
-        )}
-      </section>
     </div>
+  );
+}
+
+export function CampusStandings({ apiBaseUrl }: { apiBaseUrl: string }) {
+  const getAccessToken = useApiAccessToken();
+  const { loginWithRedirect } = useAuth0();
+  const [standingsQuery, setStandingsQuery] = useState<StandingsQuery>({
+    page: 1,
+    period: 'all_time',
+  });
+  const [standings, setStandings] = useState<
+    ResourceState<ProgressionStandings>
+  >({ status: 'loading' });
+  const [standingsRevision, setStandingsRevision] = useState(0);
+  const [reauthFailed, setReauthFailed] = useState(false);
+  const standingsHeading = useRef<HTMLHeadingElement>(null);
+  const shouldFocusStandings = useRef(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setStandings({ status: 'loading' });
+
+    void listProgressionStandings({
+      apiBaseUrl,
+      getAccessToken,
+      ...(standingsQuery.month === undefined
+        ? {}
+        : { month: standingsQuery.month }),
+      page: standingsQuery.page,
+      pageSize: STANDINGS_PAGE_SIZE,
+      period: standingsQuery.period,
+      signal: controller.signal,
+    })
+      .then((data) => {
+        if (!controller.signal.aborted) {
+          setStandings({ data, status: 'ready' });
+        }
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setStandings({ error: toProgressionError(error), status: 'error' });
+        }
+      });
+
+    return () => controller.abort();
+  }, [apiBaseUrl, getAccessToken, standingsQuery, standingsRevision]);
+
+  useEffect(() => {
+    if (shouldFocusStandings.current && standings.status !== 'loading') {
+      shouldFocusStandings.current = false;
+      standingsHeading.current?.focus();
+    }
+  }, [standings.status]);
+
+  async function startSignIn() {
+    setReauthFailed(false);
+    try {
+      await loginWithRedirect({ appState: { returnTo: '/leaderboard' } });
+    } catch {
+      setReauthFailed(true);
+    }
+  }
+
+  function selectStandingsPeriod(period: StandingsPeriod) {
+    if (period === standingsQuery.period) return;
+    shouldFocusStandings.current = true;
+    setStandingsQuery({
+      ...(period === 'monthly' ? { month: currentJohannesburgMonth() } : {}),
+      page: 1,
+      period,
+    });
+  }
+
+  function changePage(page: number) {
+    shouldFocusStandings.current = true;
+    setStandingsQuery((current) => ({ ...current, page }));
+  }
+
+  function retryStandings() {
+    shouldFocusStandings.current = true;
+    setStandingsRevision((revision) => revision + 1);
+  }
+
+  return (
+    <section
+      aria-busy={standings.status === 'loading' ? 'true' : undefined}
+      aria-describedby="standings-context"
+      aria-labelledby="standings-heading"
+      className="progression-section standings-section"
+    >
+      <div className="progression-section__heading standings-section__heading">
+        <h2 id="standings-heading" ref={standingsHeading} tabIndex={-1}>
+          Campus standings
+        </h2>
+        {standings.status === 'ready' ? (
+          <p className="progression-section__summary">
+            You are{' '}
+            <span
+              aria-label={`rank ${numberFormatter.format(standings.data.currentPlayer.rank)}`}
+            >
+              #{numberFormatter.format(standings.data.currentPlayer.rank)}
+            </span>
+          </p>
+        ) : null}
+      </div>
+
+      <p aria-live="polite" className="sr-only" id="standings-context">
+        {standings.status === 'ready'
+          ? standingsTitle(standings.data)
+          : 'Standings period and results'}
+      </p>
+
+      <div
+        aria-label="Standings period"
+        className="standings-period"
+        role="group"
+      >
+        <button
+          aria-pressed={standingsQuery.period === 'all_time'}
+          disabled={standings.status === 'loading'}
+          onClick={() => selectStandingsPeriod('all_time')}
+          type="button"
+        >
+          All time
+        </button>
+        <button
+          aria-pressed={standingsQuery.period === 'monthly'}
+          disabled={standings.status === 'loading'}
+          onClick={() => selectStandingsPeriod('monthly')}
+          type="button"
+        >
+          This month
+        </button>
+      </div>
+
+      {standings.status === 'loading' ? (
+        <ProgressionLoadingState label="Loading standings" />
+      ) : standings.status === 'error' ? (
+        <ProgressionErrorState
+          context="standings"
+          error={standings.error}
+          onRetry={retryStandings}
+          onSignIn={startSignIn}
+          reauthFailed={reauthFailed}
+        />
+      ) : (
+        <StandingsResults
+          onPageChange={changePage}
+          standings={standings.data}
+        />
+      )}
+    </section>
   );
 }
 

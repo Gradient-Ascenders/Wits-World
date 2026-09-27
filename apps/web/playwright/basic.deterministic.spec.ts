@@ -605,7 +605,7 @@ test('keeps the authenticated shared application shell responsive and accessible
   const routes = [
     { activeLabel: 'Explore', path: '/explore' },
     { activeLabel: 'Collection', path: '/collection' },
-    { activeLabel: 'Decks', path: '/decks' },
+    { activeLabel: 'Collection', path: '/collection/decks' },
     { activeLabel: 'Battles', path: '/matches' },
     { activeLabel: 'Battles', path: '/matches/history' },
   ];
@@ -633,8 +633,8 @@ test('keeps the authenticated shared application shell responsive and accessible
       for (const label of [
         'Explore',
         'Collection',
-        'Decks',
         'Battles',
+        'Leaderboard',
         'Author',
       ]) {
         await expect(

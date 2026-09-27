@@ -144,6 +144,14 @@ describe('saved deck management page', () => {
     const user = userEvent.setup();
     renderDecks();
 
+    expect(
+      screen.getByRole('navigation', { name: 'Collection sections' }),
+    ).toContainElement(screen.getByRole('link', { name: 'Decks' }));
+    expect(screen.getByRole('link', { name: 'Decks' })).toHaveAttribute(
+      'href',
+      '/collection/decks',
+    );
+
     expect(screen.getByRole('status')).toHaveTextContent(
       'Loading your decks and collection',
     );
@@ -665,7 +673,7 @@ describe('saved deck management page', () => {
       within(alert).getByRole('button', { name: 'Sign in again' }),
     );
     expect(loginWithRedirect).toHaveBeenCalledWith({
-      appState: { returnTo: '/decks' },
+      appState: { returnTo: '/collection/decks' },
     });
   });
 
@@ -741,7 +749,7 @@ describe('saved deck management page', () => {
       await screen.findByRole('button', { name: 'Sign in again' }),
     );
     expect(loginWithRedirect).toHaveBeenCalledWith({
-      appState: { returnTo: '/decks' },
+      appState: { returnTo: '/collection/decks' },
     });
   });
 

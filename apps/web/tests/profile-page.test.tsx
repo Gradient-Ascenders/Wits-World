@@ -8,6 +8,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import ProfilePage from '../src/pages/ProfilePage';
+import LeaderboardPage from '../src/pages/LeaderboardPage';
 import {
   buildProgressionProfile,
   buildStandingEntry,
@@ -41,6 +42,15 @@ function renderProfile(authentication = authValue()) {
   return render(
     <Auth0Context.Provider value={authentication}>
       <ProfilePage apiBaseUrl={apiBaseUrl} />
+      <LeaderboardPage apiBaseUrl={apiBaseUrl} />
+    </Auth0Context.Provider>,
+  );
+}
+
+function renderProfileOnly(authentication = authValue()) {
+  return render(
+    <Auth0Context.Provider value={authentication}>
+      <ProfilePage apiBaseUrl={apiBaseUrl} />
     </Auth0Context.Provider>,
   );
 }
@@ -65,6 +75,25 @@ function progressionFetch(
 }
 
 describe('progression profile and standings page', () => {
+  it('keeps standings on the leaderboard instead of the profile', async () => {
+    const fetchMock = progressionFetch();
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderProfileOnly();
+
+    expect(
+      await screen.findByRole('heading', { name: 'naledi-star' }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('heading', { name: 'Campus standings' }),
+    ).not.toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.filter(([input]) =>
+        String(input).includes('/progression/standings?'),
+      ),
+    ).toHaveLength(0);
+  });
+
   it('renders authoritative profile, achievement, streak, and current-player standing data accessibly', async () => {
     const longPlayerName =
       'a-very-long-player-name-that-remains-readable-without-truncation';

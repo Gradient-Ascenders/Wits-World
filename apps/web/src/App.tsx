@@ -42,6 +42,7 @@ const MatchHistoryPage = lazy(() => import('./pages/MatchHistoryPage'));
 const LiveLobbyPage = lazy(() => import('./pages/LiveLobbyPage'));
 const LiveMatchPage = lazy(() => import('./pages/LiveMatchPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const LeaderboardPage = lazy(() => import('./pages/LeaderboardPage'));
 const PvpHubPage = lazy(() => import('./pages/PvpHubPage'));
 const PvpMatchPage = lazy(() => import('./pages/PvpMatchPage'));
 const AccountPage = lazy(() => import('./pages/AccountPage'));
@@ -131,8 +132,16 @@ export function AppRoutes({
                 </ProtectedRoute>
               </Route>
               <Route path="/decks">
+                <Redirect replace to="/collection/decks" />
+              </Route>
+              <Route path="/collection/decks">
                 <ProtectedRoute destination="manage your saved decks">
                   <DecksRoute apiBaseUrl={apiBaseUrl} />
+                </ProtectedRoute>
+              </Route>
+              <Route path="/leaderboard">
+                <ProtectedRoute destination="view the leaderboard">
+                  <LeaderboardPage apiBaseUrl={apiBaseUrl} />
                 </ProtectedRoute>
               </Route>
               <Route path="/matches/history">
