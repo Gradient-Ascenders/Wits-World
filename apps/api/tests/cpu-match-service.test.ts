@@ -200,6 +200,49 @@ describe('CPU match service', () => {
     ).toBe(false);
   });
 
+  it('inserts all ten battle card snapshots in one database statement', async () => {
+    const setupQuery = createCpuConfigurationQuery(configuredCpuCardRows());
+    const query = vi.fn(async (statement: string, values?: unknown[]) => {
+      if (statement.includes('insert into public.cpu_matches')) {
+        return { rows: [{ id: MATCH_ID }] };
+      }
+      if (statement.includes('insert into public.cpu_match_cards')) {
+        return { rows: [] };
+      }
+      if (statement === 'commit') return { rows: [] };
+      return setupQuery(statement, values);
+    });
+    const service = createCpuMatchService(fakeDatabase(query));
+
+    const match = await service.createMatch({
+      playerId: PLAYER_ID,
+      deckId: DECK_ID,
+    });
+
+    expect(match.matchId).toBe(MATCH_ID);
+    const inserts = query.mock.calls.filter(([statement]) =>
+      statement.includes('insert into public.cpu_match_cards'),
+    );
+    expect(inserts).toHaveLength(1);
+    const [statement, values] = inserts[0]!;
+    expect(statement).toContain('jsonb_to_recordset');
+    expect(values?.[0]).toBe(MATCH_ID);
+    const snapshots = JSON.parse(String(values?.[1])) as Array<{
+      side: string;
+      position: number;
+      snapshot: { battleCard: { id: string } };
+    }>;
+    expect(snapshots).toHaveLength(10);
+    expect(snapshots.map(({ side, position }) => [side, position])).toEqual([
+      ...[1, 2, 3, 4, 5].map((position) => ['player', position]),
+      ...[1, 2, 3, 4, 5].map((position) => ['cpu', position]),
+    ]);
+    expect(snapshots.every(({ snapshot }) => snapshot.battleCard.id)).toBe(
+      true,
+    );
+    expect(query).toHaveBeenCalledWith('commit');
+  });
+
   it('applies the player action and server CPU action in one transaction', async () => {
     const state = createBattleState(deck('player'), deck('cpu'));
     const query = vi.fn(async (...args: [string, unknown[]?]) => {
