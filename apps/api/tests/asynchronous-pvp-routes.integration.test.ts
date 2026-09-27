@@ -30,7 +30,7 @@ const DECK_ID = 'a3000000-0000-4000-8000-000000000001';
 const CREATURE_ID = 'a4000000-0000-4000-8000-000000000001';
 const SUBMISSION_ID = 'a5000000-0000-4000-8000-000000000001';
 const PVP_ACCEPT =
-  'application/vnd.wits-world.pvp.v3+json, application/vnd.wits-world.pvp.v2+json;q=0.9, application/json;q=0.8';
+  'application/vnd.wits-world.pvp.v4+json, application/vnd.wits-world.pvp.v3+json;q=0.9, application/json;q=0.8';
 const PVP_V2_ACCEPT = 'application/vnd.wits-world.pvp.v2+json';
 
 let app: FastifyInstance;
@@ -81,6 +81,57 @@ beforeEach(async () => {
 afterEach(async () => app.close());
 
 describe('asynchronous PvP routes', () => {
+  it('keeps v4 battle projections compatible and exposes swaps only to v5', async () => {
+    const swap = { type: 'swap_creature' as const, creatureId: CREATURE_ID };
+    const move = { type: 'use_move' as const, moveId: DECK_ID };
+    const result = {
+      action: swap,
+      defeatedCreatureId: null,
+      effects: [],
+      side: 'self' as const,
+      turnEnded: true,
+      winner: null,
+    };
+    service.getMatch.mockResolvedValue(
+      match({
+        legalActions: [swap, move],
+        history: [
+          {
+            createdAt: '2026-09-05T09:00:00.000Z',
+            result,
+            sequence: 3,
+            turnNumber: 2,
+          },
+        ],
+        lastAction: result,
+      }),
+    );
+
+    const url = `/api/v1/matches/pvp/${INVITATION_ID}`;
+    const legacy = await app.inject({
+      method: 'GET',
+      url,
+      headers: { authorization: 'Bearer valid-token', accept: PVP_ACCEPT },
+    });
+    const current = await app.inject({
+      method: 'GET',
+      url,
+      headers: {
+        authorization: 'Bearer valid-token',
+        accept: 'application/vnd.wits-world.pvp.v5+json',
+      },
+    });
+
+    expect(legacy.statusCode).toBe(200);
+    expect(legacy.json().legalActions).toEqual([move]);
+    expect(legacy.json().lastAction).toBeNull();
+    expect(legacy.json().history).toEqual([]);
+    expect(current.statusCode).toBe(200);
+    expect(current.json().legalActions).toEqual([swap, move]);
+    expect(current.json().lastAction.action).toEqual(swap);
+    expect(current.json().history[0].result.action).toEqual(swap);
+  });
+
   it.each(['player', 'cpu'] as const)(
     'serializes engine results and old receipts for the %s viewer',
     async (viewerSide) => {
@@ -470,8 +521,50 @@ describe('asynchronous PvP routes', () => {
     expect(service.submitAction).not.toHaveBeenCalled();
   });
 
+  it('accepts a swap intent but rejects client-authoritative results', async () => {
+    service.submitAction.mockResolvedValue(match());
+    const path = `/api/v1/matches/pvp/${INVITATION_ID}/actions`;
+    const payload = {
+      submissionId: SUBMISSION_ID,
+      expectedVersion: 0,
+      action: { type: 'swap_creature', creatureId: CREATURE_ID },
+    };
+    const accepted = await request('POST', path, payload);
+    expect(accepted.statusCode).toBe(200);
+    expect(service.submitAction).toHaveBeenCalledWith(
+      expect.objectContaining({ action: payload.action }),
+    );
+
+    const forged = await request('POST', path, {
+      ...payload,
+      action: { ...payload.action, winner: 'self' },
+    });
+    expect(forged.statusCode).toBe(400);
+    expect(service.submitAction).toHaveBeenCalledOnce();
+  });
+
   it('derives resignation availability, loser, and winner on the server', async () => {
-    service.getMatch.mockResolvedValueOnce(match());
+    const result = {
+      action: { type: 'select_replacement' as const, creatureId: CREATURE_ID },
+      defeatedCreatureId: null,
+      effects: [],
+      side: 'self' as const,
+      turnEnded: true,
+      winner: null,
+    };
+    service.getMatch.mockResolvedValueOnce(
+      match({
+        history: [
+          {
+            createdAt: '2026-09-05T09:00:00.000Z',
+            result,
+            sequence: 3,
+            turnNumber: 2,
+          },
+        ],
+        lastAction: result,
+      }),
+    );
     service.resignMatch.mockResolvedValueOnce(
       match({
         status: 'completed',
@@ -486,7 +579,11 @@ describe('asynchronous PvP routes', () => {
 
     const active = await request('GET', `/api/v1/matches/pvp/${INVITATION_ID}`);
     expect(active.statusCode).toBe(200);
-    expect(active.json()).toMatchObject({ canResign: true, status: 'active' });
+    expect(active.json()).toMatchObject({
+      canResign: true,
+      history: [{ sequence: 3, turnNumber: 2, result }],
+      status: 'active',
+    });
 
     const resigned = await request(
       'POST',
@@ -569,6 +666,7 @@ describe('asynchronous PvP routes', () => {
     });
     expect(active.statusCode).toBe(200);
     expect(active.json()).not.toHaveProperty('canResign');
+    expect(active.json()).not.toHaveProperty('history');
 
     const unsupported = await app.inject({
       method: 'POST',
@@ -714,6 +812,7 @@ function match(overrides: Partial<AsyncPvpMatchView> = {}): AsyncPvpMatchView {
       },
     },
     legalActions: [],
+    history: [],
     lastAction: null,
     outcome: completed ? 'loss' : null,
     completionReason: completed ? 'voluntary_resignation' : null,

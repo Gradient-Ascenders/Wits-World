@@ -1,4 +1,10 @@
-import type { Feature, FeatureCollection, Geometry, Polygon } from 'geojson';
+import type {
+  Feature,
+  FeatureCollection,
+  Geometry,
+  MultiPolygon,
+  Polygon,
+} from 'geojson';
 import { ArrowCounterClockwise } from '@phosphor-icons/react';
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -21,12 +27,31 @@ export interface MapPoint {
   radiusMetres?: number;
   reachable?: boolean;
   selectable?: boolean;
+  placementStates?: readonly PlacementMapState[];
   trailState?: 'completed' | 'current' | 'locked' | 'retired' | 'unavailable';
+}
+
+export type PlacementMapState =
+  'candidate' | 'current' | 'excluded' | 'overridden' | 'proposed';
+
+export interface MapArea {
+  geometry: MultiPolygon | Polygon;
+  id: string;
+  label: string;
+  state: 'served' | 'shortfall' | 'unserved';
 }
 
 export interface MapCoordinate {
   latitude: number;
   longitude: number;
+}
+
+export interface MapRegion {
+  geometry: Polygon | MultiPolygon;
+  id: string;
+  label: string;
+  ownerLabel: string | null;
+  status: 'active' | 'suspended';
 }
 
 export interface ReportedMapLocation extends MapCoordinate {
@@ -92,6 +117,7 @@ export interface MapConfiguration {
   initialBounds?: MapBounds;
   initialBoundsPadding?: number;
   pitch: number;
+  showResetViewControl?: boolean;
   standardConfig: MapboxStandardConfiguration;
   styleUrl: string;
   zoom: number;
@@ -99,6 +125,7 @@ export interface MapConfiguration {
 
 export interface MapController {
   focusPoint: (point: MapPoint) => boolean;
+  focusRegion?: (region: MapRegion) => boolean;
   onError: (listener: () => void) => void;
   onFatalError?: (listener: () => void) => void;
   onLoad: (listener: () => void) => void;
@@ -114,6 +141,7 @@ export interface MapController {
   setCoordinateSelectionListener?: (
     listener: ((coordinate: MapCoordinate) => void) | null,
   ) => void;
+  setAreas?: (areas: readonly MapArea[]) => void;
   setFollowStateListener?: (
     listener: ((following: boolean) => void) | null,
   ) => void;
@@ -121,6 +149,11 @@ export interface MapController {
     listener: ((pointId: string) => void) | null,
   ) => void;
   setPoints: (points: readonly MapPoint[]) => void;
+  setRegions?: (regions: readonly MapRegion[]) => void;
+  setRegionSelectionListener?: (
+    listener: ((regionId: string) => void) | null,
+  ) => void;
+  setSelectedRegion?: (region: MapRegion | null) => void;
   setSelectedPoint?: (point: MapPoint | null) => void;
 }
 
@@ -141,6 +174,18 @@ const CAMPUS_POINT_LAYER_ID = 'wits-campus-points';
 const EVENT_RADIUS_SOURCE_ID = 'wits-selected-event-radius';
 const EVENT_RADIUS_FILL_LAYER_ID = 'wits-selected-event-radius-fill';
 const EVENT_RADIUS_LINE_LAYER_ID = 'wits-selected-event-radius-line';
+const TERRITORY_SOURCE_ID = 'wits-territory-regions';
+const TERRITORY_FILL_LAYER_ID = 'wits-territory-fill';
+const TERRITORY_LINE_LAYER_ID = 'wits-territory-line';
+const TERRITORY_SUSPENDED_LINE_LAYER_ID = 'wits-territory-suspended-line';
+const TERRITORY_SELECTED_LINE_LAYER_ID = 'wits-territory-selected-line';
+const TERRITORY_LABEL_LAYER_ID = 'wits-territory-label';
+const PLACEMENT_AREA_SOURCE_ID = 'wits-placement-areas';
+const PLACEMENT_AREA_FILL_LAYER_ID = 'wits-placement-area-fill';
+const PLACEMENT_AREA_SERVED_LAYER_ID = 'wits-placement-area-served';
+const PLACEMENT_AREA_SHORTFALL_LAYER_ID = 'wits-placement-area-shortfall';
+const PLACEMENT_AREA_UNSERVED_LAYER_ID = 'wits-placement-area-unserved';
+const PLACEMENT_AREA_LABEL_LAYER_ID = 'wits-placement-area-label';
 const EARTH_RADIUS_METRES = 6_371_008.8;
 const MIN_FOLLOW_MOVEMENT_METRES = 10;
 const MAX_FOLLOW_MOVEMENT_METRES = 40;
@@ -406,6 +451,109 @@ function addCampusDatasetLayers(
   }
 }
 
+function syncPlacementAreas(map: MapboxMap, areas: readonly MapArea[]): void {
+  const data: FeatureCollection<MultiPolygon | Polygon> = {
+    features: areas.map((area) => ({
+      geometry: area.geometry,
+      properties: {
+        id: area.id,
+        label: area.label,
+        state: area.state,
+      },
+      type: 'Feature',
+    })),
+    type: 'FeatureCollection',
+  };
+  const source = map.getSource(PLACEMENT_AREA_SOURCE_ID) as
+    | { setData: (nextData: FeatureCollection<MultiPolygon | Polygon>) => void }
+    | undefined;
+
+  if (source === undefined) {
+    map.addSource(PLACEMENT_AREA_SOURCE_ID, { data, type: 'geojson' });
+  } else {
+    source.setData(data);
+  }
+
+  if (!map.getLayer(PLACEMENT_AREA_FILL_LAYER_ID)) {
+    map.addLayer({
+      id: PLACEMENT_AREA_FILL_LAYER_ID,
+      paint: {
+        'fill-color': [
+          'match',
+          ['get', 'state'],
+          'served',
+          '#2a6bff',
+          'shortfall',
+          '#e1a93a',
+          '#dc5b65',
+        ],
+        'fill-opacity': 0.12,
+      },
+      slot: 'middle',
+      source: PLACEMENT_AREA_SOURCE_ID,
+      type: 'fill',
+    });
+  }
+
+  const lines = [
+    {
+      color: '#54a8ff',
+      dash: [1, 0.01] as [number, number],
+      id: PLACEMENT_AREA_SERVED_LAYER_ID,
+      state: 'served',
+    },
+    {
+      color: '#e1a93a',
+      dash: [3, 2] as [number, number],
+      id: PLACEMENT_AREA_SHORTFALL_LAYER_ID,
+      state: 'shortfall',
+    },
+    {
+      color: '#dc5b65',
+      dash: [1, 2] as [number, number],
+      id: PLACEMENT_AREA_UNSERVED_LAYER_ID,
+      state: 'unserved',
+    },
+  ] as const;
+  for (const line of lines) {
+    if (map.getLayer(line.id)) continue;
+    map.addLayer({
+      filter: ['==', ['get', 'state'], line.state],
+      id: line.id,
+      paint: {
+        'line-color': line.color,
+        'line-dasharray': line.dash,
+        'line-emissive-strength': 0.7,
+        'line-opacity': 0.95,
+        'line-width': 2.5,
+      },
+      slot: 'top',
+      source: PLACEMENT_AREA_SOURCE_ID,
+      type: 'line',
+    });
+  }
+
+  if (!map.getLayer(PLACEMENT_AREA_LABEL_LAYER_ID)) {
+    map.addLayer({
+      id: PLACEMENT_AREA_LABEL_LAYER_ID,
+      layout: {
+        'symbol-placement': 'point',
+        'text-field': ['get', 'label'],
+        'text-size': 12,
+      },
+      paint: {
+        'text-color': '#f7f3e7',
+        'text-emissive-strength': 0.75,
+        'text-halo-color': '#050b16',
+        'text-halo-width': 1.5,
+      },
+      slot: 'top',
+      source: PLACEMENT_AREA_SOURCE_ID,
+      type: 'symbol',
+    });
+  }
+}
+
 function createController(
   map: MapboxMap,
   MarkerConstructor: new (options?: MarkerOptions) => MapboxMarker,
@@ -416,6 +564,13 @@ function createController(
     selectedPointId: string | null;
   },
   setSelectedRadius: (point: MapPoint | null) => void,
+  regionInteraction: {
+    listener: ((regionId: string) => void) | null;
+    selectedRegionId: string | null;
+  },
+  renderRegions: (regions: readonly MapRegion[]) => void,
+  setSelectedRegion: (region: MapRegion | null) => void,
+  renderAreas: (areas: readonly MapArea[]) => void,
 ): MapController {
   let currentPoints: readonly MapPoint[] = [];
   let reportedLocation: ReportedMapLocation | null = null;
@@ -481,6 +636,18 @@ function createController(
     return true;
   };
 
+  const focusRegion = (region: MapRegion): boolean => {
+    const bounds = boundsForRegion(region);
+    if (bounds === null) return false;
+    setFollowing(false);
+    map.fitBounds(bounds, {
+      duration: prefersReducedMotion() ? 0 : 650,
+      maxZoom: 17,
+      padding: 72,
+    });
+    return true;
+  };
+
   const handleDeliberatePan = (): void => {
     setFollowing(false);
   };
@@ -543,6 +710,7 @@ function createController(
 
   return {
     focusPoint,
+    focusRegion,
     resize(padding) {
       map.resize();
       if (padding) map.setPadding(padding);
@@ -565,10 +733,13 @@ function createController(
       markerInteraction.coordinateSelectionListener = null;
       followStateListener = null;
       markerInteraction.listener = null;
+      regionInteraction.listener = null;
       map.off('click', handleCoordinateSelection);
       map.off('dragstart', handleDeliberatePan);
       setReportedLocation(null);
+      renderAreas([]);
       renderPoints([]);
+      renderRegions([]);
       map.remove();
     },
     recenterReportedLocation() {
@@ -582,6 +753,9 @@ function createController(
         map.on('click', handleCoordinateSelection);
       }
     },
+    setAreas(areas) {
+      renderAreas(areas);
+    },
     setReportedLocation,
     setFollowStateListener(listener) {
       followStateListener = listener;
@@ -594,12 +768,54 @@ function createController(
       currentPoints = points;
       renderPoints(points);
     },
+    setRegions(regions) {
+      renderRegions(regions);
+    },
+    setRegionSelectionListener(listener) {
+      regionInteraction.listener = listener;
+    },
+    setSelectedRegion(region) {
+      regionInteraction.selectedRegionId = region?.id ?? null;
+      setSelectedRegion(region);
+    },
     setSelectedPoint(point) {
       markerInteraction.selectedPointId = point?.id ?? null;
       setSelectedRadius(point);
       renderPoints(currentPoints);
     },
   };
+}
+
+function boundsForRegion(
+  region: MapRegion,
+): [[number, number], [number, number]] | null {
+  const positions: Array<readonly number[]> = [];
+  collectPositions(region.geometry.coordinates, positions);
+  const valid = positions.filter(
+    (position) =>
+      position.length >= 2 &&
+      Number.isFinite(position[0]) &&
+      Number.isFinite(position[1]),
+  );
+  if (valid.length === 0) return null;
+  const longitudes = valid.map((position) => position[0]!);
+  const latitudes = valid.map((position) => position[1]!);
+  return [
+    [Math.min(...longitudes), Math.min(...latitudes)],
+    [Math.max(...longitudes), Math.max(...latitudes)],
+  ];
+}
+
+function collectPositions(
+  value: unknown,
+  positions: Array<readonly number[]>,
+): void {
+  if (!Array.isArray(value)) return;
+  if (value.length >= 2 && value.every((item) => typeof item === 'number')) {
+    positions.push(value);
+    return;
+  }
+  for (const nested of value) collectPositions(nested, positions);
 }
 
 function followMovementThresholdMetres(
@@ -674,7 +890,9 @@ export const createMapboxMap: MapFactory = async (
     }),
     'top-right',
   );
-  map.addControl(new ResetViewControl(configuration), 'top-right');
+  if (configuration.showResetViewControl !== false) {
+    map.addControl(new ResetViewControl(configuration), 'top-right');
+  }
   map.addControl(
     new mapboxgl.AttributionControl({ compact: true }),
     'bottom-right',
@@ -694,6 +912,10 @@ export const createMapboxMap: MapFactory = async (
       ((coordinate: MapCoordinate) => void) | null,
     listener: null as ((pointId: string) => void) | null,
     selectedPointId: null as string | null,
+  };
+  const regionInteraction = {
+    listener: null as ((regionId: string) => void) | null,
+    selectedRegionId: null as string | null,
   };
   const markerRecords = new Map<
     string,
@@ -782,6 +1004,9 @@ export const createMapboxMap: MapFactory = async (
         'event-marker',
         `event-marker--${availability}`,
         point.trailState ? `event-marker--trail-${point.trailState}` : '',
+        ...(point.placementStates ?? []).map(
+          (state) => `event-marker--placement-${state}`,
+        ),
         selected ? 'event-marker--selected' : '',
         point.draggable ? 'event-marker--draggable' : '',
         point.reachable ? 'event-marker--reachable' : '',
@@ -793,6 +1018,8 @@ export const createMapboxMap: MapFactory = async (
       // These markers are interactive controls, including for keyboard users.
       record.button.setAttribute('role', 'button');
       record.button.dataset.trailState = point.trailState ?? '';
+      record.button.dataset.placementStates =
+        point.placementStates?.join(' ') ?? '';
       record.button.setAttribute(
         'aria-label',
         point.draggable
@@ -809,6 +1036,175 @@ export const createMapboxMap: MapFactory = async (
       }
     }
   };
+
+  let currentRegions: readonly MapRegion[] = [];
+  let territoryHandlersBound = false;
+  const emptyRegions: FeatureCollection<Polygon | MultiPolygon> = {
+    features: [],
+    type: 'FeatureCollection',
+  };
+  const handleRegionSelect = (
+    event: MapMouseEvent & { features?: Array<{ properties?: unknown }> },
+  ): void => {
+    const id = event.features?.[0]?.properties?.id;
+    if (typeof id === 'string') regionInteraction.listener?.(id);
+  };
+  const handleRegionEnter = (): void => {
+    map.getCanvas().style.cursor = 'pointer';
+  };
+  const handleRegionLeave = (): void => {
+    map.getCanvas().style.cursor = '';
+  };
+  const syncRegions = (): void => {
+    const data: FeatureCollection<Polygon | MultiPolygon> = {
+      features: currentRegions.map((region) => ({
+        geometry: region.geometry,
+        properties: {
+          id: region.id,
+          label: region.label,
+          mapLabel: `${region.label}\n${
+            region.status === 'suspended'
+              ? 'Suspended'
+              : region.ownerLabel
+                ? `Owned by ${region.ownerLabel}`
+                : 'Unclaimed'
+          }`,
+          ownerLabel: region.ownerLabel,
+          selected: region.id === regionInteraction.selectedRegionId,
+          status: region.status,
+        },
+        type: 'Feature',
+      })),
+      type: 'FeatureCollection',
+    };
+    const source = map.getSource(TERRITORY_SOURCE_ID) as
+      | {
+          setData: (
+            nextData: FeatureCollection<Polygon | MultiPolygon>,
+          ) => void;
+        }
+      | undefined;
+    if (source === undefined) {
+      map.addSource(TERRITORY_SOURCE_ID, {
+        data: currentRegions.length === 0 ? emptyRegions : data,
+        type: 'geojson',
+      });
+    } else {
+      source.setData(data);
+    }
+
+    if (!map.getLayer(TERRITORY_FILL_LAYER_ID)) {
+      map.addLayer({
+        id: TERRITORY_FILL_LAYER_ID,
+        paint: {
+          'fill-color': [
+            'case',
+            ['==', ['get', 'status'], 'suspended'],
+            '#7f8b9d',
+            '#2a6bff',
+          ],
+          'fill-opacity': [
+            'case',
+            ['==', ['get', 'status'], 'suspended'],
+            0.08,
+            0.16,
+          ],
+        },
+        slot: 'middle',
+        source: TERRITORY_SOURCE_ID,
+        type: 'fill',
+      });
+    }
+    if (!map.getLayer(TERRITORY_LINE_LAYER_ID)) {
+      map.addLayer({
+        filter: [
+          'all',
+          ['==', ['get', 'status'], 'active'],
+          ['==', ['get', 'selected'], false],
+        ],
+        id: TERRITORY_LINE_LAYER_ID,
+        paint: {
+          'line-color': '#e0c46c',
+          'line-emissive-strength': 0.45,
+          'line-opacity': 0.96,
+          'line-width': 2.5,
+        },
+        slot: 'middle',
+        source: TERRITORY_SOURCE_ID,
+        type: 'line',
+      });
+    }
+    if (!map.getLayer(TERRITORY_SUSPENDED_LINE_LAYER_ID)) {
+      map.addLayer({
+        filter: [
+          'all',
+          ['==', ['get', 'status'], 'suspended'],
+          ['==', ['get', 'selected'], false],
+        ],
+        id: TERRITORY_SUSPENDED_LINE_LAYER_ID,
+        paint: {
+          'line-color': '#b3bdcc',
+          'line-dasharray': [2, 2],
+          'line-emissive-strength': 0.3,
+          'line-opacity': 0.94,
+          'line-width': 2.5,
+        },
+        slot: 'middle',
+        source: TERRITORY_SOURCE_ID,
+        type: 'line',
+      });
+    }
+    if (!map.getLayer(TERRITORY_SELECTED_LINE_LAYER_ID)) {
+      map.addLayer({
+        filter: ['==', ['get', 'selected'], true],
+        id: TERRITORY_SELECTED_LINE_LAYER_ID,
+        paint: {
+          'line-blur': 0.4,
+          'line-color': '#54a8ff',
+          'line-emissive-strength': 0.8,
+          'line-opacity': 1,
+          'line-width': 4,
+        },
+        slot: 'middle',
+        source: TERRITORY_SOURCE_ID,
+        type: 'line',
+      });
+    }
+    if (!map.getLayer(TERRITORY_LABEL_LAYER_ID)) {
+      map.addLayer({
+        id: TERRITORY_LABEL_LAYER_ID,
+        layout: {
+          'text-field': ['get', 'mapLabel'],
+          'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
+          'text-line-height': 1.25,
+          'text-size': 12,
+        },
+        paint: {
+          'text-color': '#f7f3e7',
+          'text-emissive-strength': 0.7,
+          'text-halo-color': '#050b16',
+          'text-halo-width': 1.75,
+        },
+        slot: 'top',
+        source: TERRITORY_SOURCE_ID,
+        type: 'symbol',
+      });
+    }
+    if (!territoryHandlersBound) {
+      territoryHandlersBound = true;
+      map.on('click', TERRITORY_FILL_LAYER_ID, handleRegionSelect);
+      map.on('mouseenter', TERRITORY_FILL_LAYER_ID, handleRegionEnter);
+      map.on('mouseleave', TERRITORY_FILL_LAYER_ID, handleRegionLeave);
+    }
+  };
+
+  const renderRegions = (regions: readonly MapRegion[]): void => {
+    currentRegions = regions;
+    if (map.isStyleLoaded()) syncRegions();
+  };
+
+  map.on('style.load', syncRegions);
+  if (map.isStyleLoaded()) syncRegions();
 
   let selectedRadiusPoint: MapPoint | null = null;
   const emptyRadius: FeatureCollection<Polygon> = {
@@ -875,6 +1271,26 @@ export const createMapboxMap: MapFactory = async (
     syncSelectedRadius();
   }
 
+  let currentAreas: readonly MapArea[] = [];
+  const renderAreas = (areas: readonly MapArea[]): void => {
+    currentAreas = areas;
+    if (map.isStyleLoaded() && areas.length > 0) {
+      syncPlacementAreas(map, areas);
+      return;
+    }
+    const source = map.getSource(PLACEMENT_AREA_SOURCE_ID) as
+      | {
+          setData: (
+            nextData: FeatureCollection<MultiPolygon | Polygon>,
+          ) => void;
+        }
+      | undefined;
+    source?.setData({ features: [], type: 'FeatureCollection' });
+  };
+  map.on('style.load', () => {
+    if (currentAreas.length > 0) syncPlacementAreas(map, currentAreas);
+  });
+
   const controller = createController(
     map,
     mapboxgl.Marker,
@@ -886,6 +1302,13 @@ export const createMapboxMap: MapFactory = async (
         syncSelectedRadius();
       }
     },
+    regionInteraction,
+    renderRegions,
+    (region) => {
+      regionInteraction.selectedRegionId = region?.id ?? null;
+      if (map.isStyleLoaded()) syncRegions();
+    },
+    renderAreas,
   );
   controller.setPoints(points);
 

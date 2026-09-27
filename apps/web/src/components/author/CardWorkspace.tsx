@@ -1172,16 +1172,32 @@ function CardForm({
             aria-invalid={Boolean(errors.imageUrl)}
             disabled={busy}
             id="card-image-url"
+            inputMode="url"
             onChange={(change) => {
               const value = change.currentTarget.value;
               setDraft((current) => ({ ...current, imageUrl: value }));
+              setErrors((current) => {
+                if (!current.imageUrl) return current;
+                const next = { ...current };
+                delete next.imageUrl;
+                return next;
+              });
             }}
-            type="url"
+            spellCheck={false}
+            type="text"
             value={draft.imageUrl}
           />
           <span className="field-help" id="card-image-help">
-            Use only artwork with recorded rights and attribution.
+            Use only artwork with recorded rights and attribution. Enter a
+            direct http(s) link or /cards/ path.
           </span>
+          {draft.imageUrl.trim() ? (
+            <ArtworkPreview
+              imageUrl={draft.imageUrl}
+              key={draft.imageUrl.trim()}
+              name={draft.name}
+            />
+          ) : null}
         </Field>
 
         {draft.category === 'creature' ? (
@@ -1331,6 +1347,64 @@ function CardForm({
       </form>
     </section>
   );
+}
+
+function ArtworkPreview({
+  imageUrl,
+  name,
+}: {
+  imageUrl: string;
+  name: string;
+}) {
+  const [status, setStatus] = useState<
+    'waiting' | 'loading' | 'ready' | 'error'
+  >('waiting');
+  const url = cardArtworkUrl(imageUrl);
+
+  useEffect(() => {
+    if (!url) return;
+    const timer = window.setTimeout(() => setStatus('loading'), 350);
+    return () => window.clearTimeout(timer);
+  }, [url]);
+
+  return (
+    <div className="author-artwork-preview">
+      {url && (status === 'loading' || status === 'ready') ? (
+        <img
+          alt={`${name.trim() || 'Card'} artwork preview`}
+          hidden={status !== 'ready'}
+          onError={() => setStatus('error')}
+          onLoad={() => setStatus('ready')}
+          referrerPolicy="no-referrer"
+          src={url}
+        />
+      ) : null}
+      {status !== 'ready' ? (
+        <p role="status">
+          {!url
+            ? 'Enter an http(s) URL or /cards/ path to preview it.'
+            : status === 'error'
+              ? 'Image could not load. Check the URL.'
+              : 'Loading artwork preview…'}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function cardArtworkUrl(value: string): string | null {
+  const url = value.trim();
+  if (/^\/cards\/[A-Za-z0-9_-]+(?:[./][A-Za-z0-9_-]+)*$/.test(url)) {
+    return url;
+  }
+  if (!/^https?:\/\//i.test(url)) return null;
+
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname ? parsed.href : null;
+  } catch {
+    return null;
+  }
 }
 
 function MoveEditor({
@@ -1703,8 +1777,13 @@ function validateCardDraft(draft: CardDraft): {
   if (draft.description.length > 0 && !draft.description.trim())
     errors.description =
       'Remove the blank description or enter meaningful text.';
-  if (draft.imageUrl.length > 0 && !draft.imageUrl.trim())
-    errors.imageUrl = 'Remove the blank URL or enter a URL.';
+  if (draft.imageUrl.length > 0) {
+    if (!draft.imageUrl.trim()) {
+      errors.imageUrl = 'Remove the blank URL or enter an artwork URL.';
+    } else if (!cardArtworkUrl(draft.imageUrl)) {
+      errors.imageUrl = 'Use an http(s) URL or a /cards/ artwork path.';
+    }
+  }
   const hp = Number(draft.hp);
   const power = Number(draft.power);
   if (

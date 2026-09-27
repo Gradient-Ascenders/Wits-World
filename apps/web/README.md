@@ -18,6 +18,11 @@ starter selection and collection browsing are available through the protected
 available through `/decks`. Authors also have a separate protected `/author`
 console for Basic event, challenge, question, and card authoring, plus Author-only
 operational analytics for locations, question performance, and card issuance.
+The Author-only `/author/placement` route presents API-authoritative automatic
+placement policy, coverage, current/proposed assignments, temporary overrides,
+and plan history. It supports preview, confirmed apply, pause, pin, temporary
+site exclusion, ending overrides, and validated rollback; semantic tables remain
+usable if the synchronized placement map cannot load.
 Server-authoritative CPU battles and private
 completed-match history are available through the protected `/matches` routes.
 The protected `/profile` route presents server-authoritative points, rank,
@@ -32,6 +37,15 @@ can confirm voluntary resignation as an immediate server-recorded loss.
 The client requests that capability with a CORS-safelisted version-2 `Accept`
 media type and an `application/json` fallback, so an older API can return its
 legacy shape without requiring a new preflight allow-list entry.
+Live ranked entry is available at `/matches/live`; players enter through the
+existing ranked queue and proposal acceptance flow. The lobby also presents the
+current season, the player's server-settled rating and placement progress, and
+the established season standings through Play, Standings, and Watch tabs.
+Time-sensitive queue and proposal states stay visible above those tabs. Players
+may explicitly opt into contesting the territory they are currently in; the
+browser requests a fresh location only when that opted-in search begins.
+Spectators use only a privately shared `/matches/live/:matchId` link or opaque
+match ID. There is no public live-match browser.
 The protected `/account` route presents the local player identity, delegates
 credential recovery to the owning provider, and starts permanent account
 deletion with fresh Auth0 reauthentication.
@@ -698,6 +712,89 @@ See the complete [player CPU battle journey](../../docs/requirements/player-cpu-
 the [authoritative Basic game rules](../../docs/requirements/basic-game-rules.md),
 and the [CPU match API and persistence contract](../../docs/database/cpu-match-persistence-design.md).
 
+## Live ranked battle and private spectating
+
+The protected `/matches/live` lobby presents the existing server-owned ranked
+queue, proposal, and matched states. It polls the queue view every 2.5 seconds
+and renews an active queue lease every 8 seconds. Proposal acceptance is the
+only browser path that creates a live match; the Web application does not pair
+players or calculate ratings. The lobby also reads
+`GET /api/v1/ranked/seasons/current`: when no active season exists, ranked entry
+is disabled with a visible explanation and refresh action. Safe ranked `409`
+details are shown beside the restored queue control instead of being announced
+only to assistive technology. A private spectator link or opaque match ID opens
+the same `/matches/live/:matchId` route, where the API derives whether the
+authenticated viewer is a participant or spectator.
+
+The default Play tab keeps the selected deck and queue action first. Ranked
+rules are collapsed until requested, while territory contesting remains an
+optional Play setting. The compact season strip stays visible across the Play,
+Standings, and Watch tabs. The selected tab is stored in the URL, and active
+search, proposal, and reconnect controls remain above the tab panels.
+
+The season summary reads `GET /api/v1/ranked/me` independently from the queue,
+and the established standings use cursor pages from
+`GET /api/v1/ranked/standings`. A failure in either view does not hide or replay
+matchmaking. Provisional status and placement progress come directly from the
+profile response; the browser does not derive a rank. Standings retain their
+current snapshot while another page loads, and a stale or failed page remains
+recoverable without discarding visible entries.
+
+The current season, personal record, and first standings page refresh through
+one UI generation when the player checks again and when the displayed season
+reaches `activeEndsAt`. The browser hides personal and standings projections
+whose `seasonId` does not match the current-season response, and an expired
+active snapshot cannot open a new queue entry while reconciliation is pending.
+
+Territory contesting is off by default. Enabling it does not request location.
+The join action obtains one fresh browser location claim, uses public active
+geometry from `GET /api/v1/territory/zones` to choose a single candidate zone,
+and submits that candidate with the claim. PostgreSQL/PostGIS still decides
+whether the complete accuracy envelope is strictly inside that active zone and
+clear of every other zone. Server eligibility, short-lived location handling,
+influence, caps, and exclusions remain authoritative. Turning the option off
+sends the ordinary deck-only queue request.
+
+The live match always reloads its HTTPS projection before connecting or
+recovering. It then obtains a single-use ticket and subscribes to authoritative
+WebSocket transitions. Transport loss, version gaps, stale/conflicting actions,
+and ambiguous failures repeat that snapshot-first flow using reconnect delays
+of 0, 1, 2, 5, and then at most 10 seconds. Cached browser state never restores
+a match. The display countdown is anchored to the response `serverTime` and
+`decisionDeadline`; reaching zero locks controls but does not submit a timeout
+or advance the battle.
+
+Participant actions come directly from `legalActions`, carry the displayed
+`expectedVersion` and one generated `messageId`, and lock synchronously before
+send to prevent double activation. The UI waits for an authoritative transition
+before reporting success and never automatically replays a stale intent.
+Spectator mode is explicitly read-only and accepts only the public projection:
+public combatants, aggregate hidden-card counts, public history, deadline,
+phase, result, and aggregate presence. It exposes no hands, private snapshots,
+participant identity, legal actions, or resign control.
+
+After a participant receives the final live projection, the outcome panel reads
+`GET /api/v1/ranked/matches/:matchId/settlement`. Pending settlement refreshes
+without estimating a rating. Settled responses show the exact before and after
+rating, applied delta, and any server-returned territory outcome. Spectators do
+not request participant settlement.
+
+Focused client and component coverage can be run from `apps/web` with:
+
+```bash
+npx vitest run --config vite.config.ts tests/live-client.test.ts tests/live-pages.test.tsx
+npx playwright test --config playwright.battle.config.ts playwright/live-battle.spec.ts
+```
+
+The Playwright case uses intercepted projections and a simulated WebSocket to
+exercise the routed interface at desktop and mobile widths. It is frontend
+browser evidence, not a live-backend or deployed match test.
+
+The current experience deliberately has no public match discovery, spectator
+replay, chat, offline battle, or client-owned timeout handling. An existing
+spectator connection receives the final transition, but a spectator refresh
+after completion is unavailable by API contract.
+
 ## Progression profile and standings
 
 The protected `/profile` route loads `GET /api/v1/progression/me` and
@@ -774,6 +871,14 @@ and API failure recovery. The CPU battle Playwright scenario uses the real
 authenticated application shell and production routes with deterministic
 intercepted API responses; it is frontend browser evidence, not a live-backend
 match E2E test.
+Live-match tests cover current-season profile and standings, accessible tab
+navigation, opt-in territory claims, deck-only ranked entry, an explained
+no-season state without a dead queue action, visible ranked conflicts, private
+spectator entry, closed participant and spectator response
+parsing, private-field rejection, role matching, legal turn ownership,
+synchronous pending locks, duplicate prevention, stale-version recovery,
+reconnect snapshots, opponent dropout, terminal timeout/abandonment, exact
+rating and territory settlement, and spectator read-only presentation.
 Progression tests cover approved-field runtime validation, private-field
 rejection, populated and empty achievements, current and off-page standings,
 pagination, monthly selection, zero/no-active-rank handling, tombstones, long
@@ -1133,6 +1238,41 @@ that model; the browser does not invent a replacement value.
    responsive evidence under `.pr-screenshots/issue-76/`. Inspect the browser
    console and page errors; do not describe this fixture as a live API E2E match.
 
+#### Authenticated live ranked battle and private spectator
+
+1. Start the disposable database, API, deadline worker, and Web application.
+   Sign in as two active players with valid ranked decks. Open `/matches/live`
+   in both sessions. Check Play, Standings, and Watch with pointer and arrow-key
+   navigation, then join the queue and accept the server proposal. Confirm the
+   proposal stays visible above the tabs and the API-created match opens at
+   `/matches/live/:matchId`; do not create or edit a match directly in the browser.
+2. Confirm the active participant sees an unmistakable **Your turn** treatment,
+   only API-returned legal actions, the server deadline/countdown, and immediate
+   control locking after one activation. Confirm the waiting participant sees
+   **Opponent's turn** and cannot act. Exercise a stale response and verify the
+   latest snapshot replaces the old view without replaying the intent.
+3. Interrupt and restore the network. Confirm connecting, reconnecting, and
+   recovered statuses are announced, and that the page fetches the latest HTTP
+   projection before opening its replacement socket. Verify the persisted log
+   and current turn match the server rather than the pre-disconnect screen.
+4. Disconnect one participant and confirm the other sees a textual dropout
+   status while the authoritative deadline continues. Exercise a server timeout,
+   third-strike abandonment, voluntary resignation, ordinary defeat, and an
+   unrecoverable authorization failure; verify each terminal state remains
+   read-only after refresh.
+5. Share only the private match link with a third authenticated active player.
+   Confirm the page is labelled **Spectator mode**, contains no action or resign
+   controls, and exposes only public combatants, aggregate hidden-card counts,
+   public history, result, deadline, and aggregate presence. Inspect responses
+   and the DOM for hands, private snapshots, participant identifiers, and
+   player-only actions; none should appear.
+6. Repeat participant and spectator views at 360×800, 390×844, 768×1024, and
+   1280×800. Check for horizontal overflow, covered controls, focus visibility,
+   logical keyboard order, touch targets, non-colour status cues, timer/status
+   announcements, and reduced-motion behavior. Inspect console and network
+   errors throughout. Do not describe mocked frontend fixtures as live-backend
+   or deployed verification.
+
 #### Authenticated progression profile and standings
 
 1. Prepare and seed PostgreSQL, then start
@@ -1196,6 +1336,11 @@ Outgoing-invitation cancellation is negotiated through the version 3 PvP
 submits a stable versioned cancellation exactly once, reconciles ambiguous
 delivery through polling, and displays server-generated cancellation, deadline,
 account-lifecycle, and voluntary-resignation results.
+
+Player Battle detail prefers the version 4 PvP media type and uses its
+participant-safe full action history for paced resolution playback and the
+activity log. The browser renders these confirmed results but never resolves
+damage, turns, deadlines, or hidden opponent cards itself.
 
 The preceding document was generated and edited with the assistance of:
 Codex-CLI[gpt-5.6-sol medium], Codex-CLI[gpt-5.6-sol], Codex-CLI[GPT-5],

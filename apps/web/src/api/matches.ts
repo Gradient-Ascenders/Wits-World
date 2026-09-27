@@ -8,12 +8,14 @@ export type BattlePhase =
 export type CpuMatchIntent =
   | { creatureId: string; type: 'select_initial_creature' }
   | { creatureId: string; type: 'select_replacement' }
+  | { creatureId: string; type: 'swap_creature' }
   | { moveId: string; type: 'use_move' }
   | { powerCardId: string; type: 'use_power_card' };
 
 export type CpuMatchAction = CpuMatchIntent | { type: 'timeout' };
 
 export interface MatchMove {
+  effectiveness?: 'effective' | 'neutral' | 'resisted' | null;
   effects: MatchEffect[];
   id: string;
   moveType: 'basic' | CardAffinity;
@@ -110,6 +112,7 @@ export interface BattleLogEvent {
   message: string;
   sequence: number;
   side: BattleSide | null;
+  creatureId?: string;
 }
 
 export interface BattleLogGroup {
@@ -506,7 +509,8 @@ async function matchRequest({
     response = await fetch(`${apiBaseUrl}${path}`, {
       body: body === undefined ? undefined : JSON.stringify(body),
       headers: {
-        Accept: 'application/json',
+        Accept:
+          'application/vnd.wits-world.cpu.v2+json, application/json;q=0.9',
         Authorization: `Bearer ${accessToken}`,
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
       },
@@ -768,6 +772,14 @@ function isCardRarity(value: unknown): value is CardRarity {
 }
 
 function parseMove(value: unknown): MatchMove {
+  const projectedKeys = [
+    'effectiveness',
+    'effects',
+    'id',
+    'moveType',
+    'name',
+    'powerCost',
+  ] as const;
   const currentKeys = [
     'effects',
     'id',
@@ -776,23 +788,35 @@ function parseMove(value: unknown): MatchMove {
     'powerCost',
   ] as const;
   const legacyKeys = ['id', 'moveType', 'name', 'powerCost'] as const;
+  const projectedShape = isRecord(value) && hasExactKeys(value, projectedKeys);
   const currentShape = isRecord(value) && hasExactKeys(value, currentKeys);
   if (
     !isRecord(value) ||
-    (!currentShape && !hasExactKeys(value, legacyKeys)) ||
+    (!projectedShape && !currentShape && !hasExactKeys(value, legacyKeys)) ||
     !isUuid(value.id) ||
     (value.moveType !== 'basic' && !isAffinity(value.moveType)) ||
     typeof value.name !== 'string' ||
     value.name.trim() === '' ||
     !isNonNegativeInteger(value.powerCost) ||
-    (currentShape && !Array.isArray(value.effects))
+    ((projectedShape || currentShape) && !Array.isArray(value.effects)) ||
+    (projectedShape &&
+      value.effectiveness !== null &&
+      value.effectiveness !== 'effective' &&
+      value.effectiveness !== 'neutral' &&
+      value.effectiveness !== 'resisted')
   ) {
     throw new MatchApiError('unavailable');
   }
   return {
-    effects: currentShape
-      ? (value.effects as unknown[]).map(parseBattleEffect)
-      : [],
+    ...(projectedShape
+      ? {
+          effectiveness: value.effectiveness as MatchMove['effectiveness'],
+        }
+      : {}),
+    effects:
+      projectedShape || currentShape
+        ? (value.effects as unknown[]).map(parseBattleEffect)
+        : [],
     id: value.id,
     moveType: value.moveType,
     name: value.name,
@@ -855,7 +879,8 @@ function parseAction(value: unknown): CpuMatchAction {
   }
   if (
     (value.type === 'select_initial_creature' ||
-      value.type === 'select_replacement') &&
+      value.type === 'select_replacement' ||
+      value.type === 'swap_creature') &&
     hasExactKeys(value, ['creatureId', 'type']) &&
     isUuid(value.creatureId)
   ) {
@@ -988,7 +1013,13 @@ function parseBattleLogGroup(value: unknown): BattleLogGroup {
 function parseBattleLogEvent(value: unknown): BattleLogEvent {
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, ['id', 'kind', 'message', 'sequence', 'side']) ||
+    !hasExactKeys(
+      value,
+      value.creatureId === undefined
+        ? ['id', 'kind', 'message', 'sequence', 'side']
+        : ['id', 'kind', 'message', 'sequence', 'side', 'creatureId'],
+    ) ||
+    (value.creatureId !== undefined && !isUuid(value.creatureId)) ||
     typeof value.id !== 'string' ||
     value.id.trim() === '' ||
     !isBattleLogEventKind(value.kind) ||

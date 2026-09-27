@@ -261,6 +261,7 @@ The common match response is viewer-relative:
 | `turnDeadline`        | RFC 3339 timestamp or null     | Yes        | Null only when completed         |
 | `state`               | `AsyncPvpStateView`            | Yes        | Viewer-safe battle projection    |
 | `legalActions`        | action array                   | Yes        | Empty unless self may act        |
+| `history`             | `PvpActionHistoryEntry[]`      | Version 4+ | Full participant-safe action log |
 | `lastAction`          | `PvpActionResultView` or null  | Yes        | Legally visible committed result |
 | `outcome`             | `"win" \| "loss" \| null`      | Yes        | Non-null when completed          |
 | `completionReason`    | terminal reason or null        | Yes        | Non-null when completed          |
@@ -270,19 +271,31 @@ The common match response is viewer-relative:
 | `canResign`           | boolean                        | Version 2+ | Server-derived capability        |
 | `requestId`           | string                         | Yes        | Safe request correlation         |
 
-The Web client negotiates version 3 with
-`Accept: application/vnd.wits-world.pvp.v3+json, application/vnd.wits-world.pvp.v2+json;q=0.9, application/json;q=0.8`.
+The Web client negotiates version 5 with
+`Accept: application/vnd.wits-world.pvp.v5+json, application/vnd.wits-world.pvp.v4+json;q=0.9, application/json;q=0.8`.
 `Accept` is CORS-safelisted, so this does not add a request header to the browser
 preflight allow-list. An older API can ignore the preferred media type and serve
 the `application/json` fallback; the Web then treats an absent `canResign` as
-unavailable and an absent `canCancel` as false. Version 3 includes all version 2
-resignation behavior and adds invitation cancellation. Match responses from the
+unavailable and an absent `canCancel` as false. Version 5 adds voluntary
+`swap_creature` actions to legal actions, history, and latest result. Clients
+without version 5 receive no swap legal actions or swap results; persisted
+battle state and turn order are unchanged. Version 4 includes all version 3
+behavior and adds the complete participant-safe action history through the
+returned match version. Each entry contains its committed sequence, authoritative
+turn number, server timestamp, and viewer-relative public action result. Version
+3 includes all version 2 resignation behavior and adds invitation cancellation. Match responses from the
 version-2-or-later API include `canResign`, which
 is true only while the authoritative match is active. A detail read locks and
 finalizes an elapsed deadline before projecting the response, so an overdue
 match is returned as a `turn_forfeit` with `canResign: false`, even when the
 periodic sweep has not processed it yet. The resign mutation repeats that
 database-time deadline check under the same match lock.
+
+`PvpActionHistoryEntry` is a closed object containing `sequence`, `turnNumber`,
+`createdAt`, and `result`. Entries are ordered by committed sequence and include
+only the same viewer-relative public result shape used by `lastAction`.
+`lastAction` remains the final history result for compatibility; resignation and
+deadline completion do not invent action entries.
 
 During a mixed API/Web rollout, legacy requests receive the original shapes
 without `canResign` or `canCancel`. A legacy request that would receive a
@@ -534,11 +547,14 @@ The action request is:
 
 ```text
 { type: "select_replacement", creatureId: UUID }
+{ type: "swap_creature", creatureId: UUID }
 { type: "use_move", moveId: UUID }
 { type: "use_power_card", powerCardId: UUID }
 ```
 
 Initial selection is captured during invitation creation and acceptance.
+`swap_creature` is allowed only on a normal turn and consumes that turn; a
+mandatory `select_replacement` remains a separate, free decision.
 `select_initial_creature` and `timeout` are therefore never accepted at the
 match-action endpoint. The body cannot contain effects, card statistics,
 damage, HP, Power, randomness, target results, winner, completion reason,

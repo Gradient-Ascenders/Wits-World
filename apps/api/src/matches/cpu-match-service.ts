@@ -8,6 +8,7 @@ import {
   createBattleState,
   getEffectDamageMultiplier,
   getLegalActions,
+  getTypeMultiplier,
   InvalidBattleSetupError,
   validateBattleDeck,
   type BattleAction,
@@ -141,6 +142,7 @@ export interface PublicCreatureView {
 }
 
 export interface PublicMoveView {
+  effectiveness: 'effective' | 'neutral' | 'resisted' | null;
   id: string;
   name: string;
   moveType: BattleMove['moveType'];
@@ -198,6 +200,7 @@ export interface CpuMatchBattleLogEvent {
   side: 'player' | 'cpu' | null;
   kind: CpuMatchBattleLogEventKind;
   message: string;
+  creatureId?: string;
 }
 
 export interface CpuMatchBattleLogGroup {
@@ -1925,6 +1928,7 @@ function createBattleLog(
       kind: CpuMatchBattleLogEventKind,
       message: string,
       side: 'player' | 'cpu' | null = result.side,
+      creatureId?: string,
     ) => {
       group.events.push({
         id: `${row.sequence}:${eventIndex++}`,
@@ -1932,6 +1936,7 @@ function createBattleLog(
         side,
         kind,
         message,
+        ...(creatureId ? { creatureId } : {}),
       });
     };
 
@@ -1964,7 +1969,10 @@ function createBattleLog(
           firstSide,
         );
       }
-    } else if (result.action.type === 'select_replacement') {
+    } else if (
+      result.action.type === 'select_replacement' ||
+      result.action.type === 'swap_creature'
+    ) {
       const name = battleCreatureName(
         state,
         result.action.creatureId,
@@ -1972,7 +1980,11 @@ function createBattleLog(
       );
       addEvent(
         'action',
-        `${battleSideLabel(result.side)} sent out ${name} as a replacement.`,
+        result.action.type === 'swap_creature'
+          ? `${battleSideLabel(result.side)} swapped in ${name}.`
+          : `${battleSideLabel(result.side)} sent out ${name} as a replacement.`,
+        result.side,
+        result.action.creatureId,
       );
       projection.activeCreatureIds[result.side] = result.action.creatureId;
     } else if (result.action.type === 'use_move') {
@@ -1991,6 +2003,7 @@ function createBattleLog(
           'effect',
           `${creatureSubject(result.side, creatureName)} spent ${source.move.powerCost} Power.`,
           result.side,
+          actorCreatureId ?? source.creatureId,
         );
       }
     } else if (result.action.type === 'use_power_card') {
@@ -2011,6 +2024,7 @@ function createBattleLog(
         'effect',
         describeBattleLogEffect(effect, state, cardNames),
         effect.targetSide,
+        effect.targetCreatureId,
       );
     }
 
@@ -2019,11 +2033,17 @@ function createBattleLog(
         'effect_expired',
         describeExpiredBattleLogEffect(expired, state, cardNames),
         expired.targetSide,
+        expired.targetCreatureId,
       );
     }
 
     if (result.defeatedCreatureId) {
-      const defeatedSide = oppositeBattleSide(result.side);
+      const defeatedSide =
+        row.roundStateAfter.participants.player.creatures.some(
+          (creature) => creature.card.id === result.defeatedCreatureId,
+        )
+          ? 'player'
+          : 'cpu';
       addEvent(
         'defeat',
         `${creatureSubject(
@@ -2031,8 +2051,13 @@ function createBattleLog(
           battleCreatureName(state, result.defeatedCreatureId, cardNames),
         )} was defeated.`,
         defeatedSide,
+        result.defeatedCreatureId,
       );
-      projection.activeCreatureIds[defeatedSide] = null;
+      if (
+        projection.activeCreatureIds[defeatedSide] === result.defeatedCreatureId
+      ) {
+        projection.activeCreatureIds[defeatedSide] = null;
+      }
     }
 
     if (result.winner) {
@@ -2042,10 +2067,11 @@ function createBattleLog(
         result.winner,
       );
     } else if (result.turnEnded) {
-      const nextSide = oppositeBattleSide(result.side);
+      const nextSide =
+        row.roundStateAfter.replacementSide ?? oppositeBattleSide(result.side);
       addEvent(
         'turn',
-        result.defeatedCreatureId
+        row.roundStateAfter.phase === 'replacement'
           ? `Turn ${projection.turnNumber} ended. ${battleSideLabel(nextSide)} must choose a replacement.`
           : `Turn ${projection.turnNumber} ended. ${battleSideLabel(nextSide)} is next.`,
         nextSide,
@@ -2237,8 +2263,26 @@ function toPublicState(
     (creature) =>
       creature.defeated || creature.card.id === cpu.activeCreatureId,
   );
+  const cpuActiveCreature =
+    cpu.activeCreatureId === null
+      ? null
+      : cpu.creatures.find(
+          (creature) => creature.card.id === cpu.activeCreatureId,
+        )!;
+  const playerActiveCreature =
+    player.activeCreatureId === null
+      ? null
+      : player.creatures.find(
+          (creature) => creature.card.id === player.activeCreatureId,
+        )!;
   const playerCreatures = player.creatures.map((creature) =>
-    toPublicCreature(creature, cardNames, cardRarities),
+    toPublicCreature(
+      creature,
+      cardNames,
+      cardRarities,
+      cpuActiveCreature?.card.affinity ?? null,
+      state.affinityRulesVersion ?? 1,
+    ),
   );
 
   return {
@@ -2269,18 +2313,26 @@ function toPublicState(
     },
     cpu: {
       activeCreature:
-        cpu.activeCreatureId === null
+        cpuActiveCreature === null
           ? null
           : toPublicCreature(
-              cpu.creatures.find(
-                (creature) => creature.card.id === cpu.activeCreatureId,
-              )!,
+              cpuActiveCreature,
               cardNames,
               cardRarities,
+              playerActiveCreature?.card.affinity ?? null,
+              state.affinityRulesVersion ?? 1,
             ),
       defeatedCreatures: visibleCpuCreatures
         .filter((creature) => creature.defeated)
-        .map((creature) => toPublicCreature(creature, cardNames, cardRarities)),
+        .map((creature) =>
+          toPublicCreature(
+            creature,
+            cardNames,
+            cardRarities,
+            playerActiveCreature?.card.affinity ?? null,
+            state.affinityRulesVersion ?? 1,
+          ),
+        ),
       remainingCreatureCount: cpu.creatures.filter(
         (creature) => !creature.defeated,
       ).length,
@@ -2303,6 +2355,8 @@ function toPublicCreature(
   },
   cardNames: Readonly<Record<string, string>>,
   cardRarities: Readonly<Record<string, CardRarity>>,
+  defendingAffinity: CardAffinity | null = null,
+  affinityRulesVersion: 1 | 2 = 1,
 ): PublicCreatureView {
   return {
     id: creature.card.id,
@@ -2317,6 +2371,11 @@ function toPublicCreature(
     remainingPower: creature.remainingPower,
     defeated: creature.defeated,
     moves: creature.card.moves.map((move) => ({
+      effectiveness: moveEffectiveness(
+        move,
+        defendingAffinity,
+        affinityRulesVersion,
+      ),
       id: move.id,
       name: move.name,
       moveType: move.moveType,
@@ -2325,6 +2384,27 @@ function toPublicCreature(
     })),
     activeModifiers: creature.modifiers.map(toPublicActiveModifier),
   };
+}
+
+function moveEffectiveness(
+  move: BattleMove,
+  defendingAffinity: CardAffinity | null,
+  affinityRulesVersion: 1 | 2,
+): PublicMoveView['effectiveness'] {
+  const hasAffinityDamage = move.effects.some(
+    (effect) =>
+      effect.effectType === 'damage' &&
+      effect.target !== 'self' &&
+      effect.neutral !== true,
+  );
+  if (!hasAffinityDamage || defendingAffinity === null) return null;
+
+  const multiplier = getTypeMultiplier(
+    move.moveType,
+    defendingAffinity,
+    affinityRulesVersion,
+  );
+  return multiplier > 1 ? 'effective' : multiplier < 1 ? 'resisted' : 'neutral';
 }
 
 function toPublicEffect(effect: BattleEffect): PublicEffectView {
@@ -2490,7 +2570,7 @@ function toPublicAction(action: BattleAction): CpuMatchActionView {
   if (action.type === 'select_initial_creature') {
     return { type: action.type, creatureId: action.creatureId };
   }
-  if (action.type === 'select_replacement') {
+  if (action.type === 'select_replacement' || action.type === 'swap_creature') {
     return { type: action.type, creatureId: action.creatureId };
   }
   if (action.type === 'use_move') {

@@ -14,9 +14,10 @@ the deterministic `trust-v1` scoring service, authoritative signal ingestion,
 periodic decay/recovery evaluation, and server-side enforcement of previously
 reviewed restrictions. Migration
 `0048_implement_trust_scoring_and_enforcement.sql` adds only forward schema
-hardening needed by that runtime. Issue `#256` adds the Author-only reviewer
-console and API over that existing persistence. Player appeal submission and
-appeal resolution remain later work; score internals remain private.
+hardening needed by that runtime. Issue `#260` adds the Author-only review and
+audit API over that persistence, and issue `#256` adds the reviewer console.
+Player appeal submission and appeal resolution remain later work; score
+internals remain private.
 
 The policy builds an explainable picture from weak indicators over time. A
 signal means that authoritative application data matched a review condition; it
@@ -266,6 +267,14 @@ An Author case view may contain:
   category;
 - prior case transitions, reviewer decisions, restrictions, and appeals; and
 - safe aggregate PvP counts needed to assess an opponent pattern.
+
+Every newly recorded opponent-pattern signal must retain that reviewer-safe
+aggregate summary. If a legacy signal predates summary retention, the API marks
+its explanation unavailable rather than reconstructing historical facts. The
+case is not reviewable while that unexplained evidence still contributes points
+and remains unadjusted. A fresh detector evaluation of the same signal type
+restores reviewability only while its valid summary is effective and unadjusted;
+the original evidence remains immutable.
 
 It must not contain Auth0 issuer/subject, email, precise location, exact speed,
 distance, accuracy, submitted answers, access tokens, hidden cards, another

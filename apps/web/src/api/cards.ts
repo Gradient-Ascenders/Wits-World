@@ -58,7 +58,7 @@ export interface CardPresentation {
 
 export interface OwnedCard extends CardPresentation {
   acquiredAt: string;
-  acquisitionKind: 'event_reward' | 'evolution' | 'starter';
+  acquisitionKind: 'event_reward' | 'evolution' | 'starter' | 'trade';
   ownedCardId: string;
 }
 
@@ -70,7 +70,7 @@ export interface EvolutionOwnedCopy {
   acquiredAt: string;
   acquisitionKind: OwnedCard['acquisitionKind'];
   eligible: boolean;
-  lockReason: 'saved_deck' | null;
+  lockReason: 'saved_deck' | 'trade_reservation' | null;
   ownedCardId: string;
 }
 
@@ -79,12 +79,14 @@ export interface CardEvolutionPreview {
   copies: EvolutionOwnedCopy[];
   copiesRequired: 3;
   deckLockedCopyCount: number;
+  tradeReservedCopyCount: number;
   eligibleCopyCount: number;
   ownedCopyCount: number;
   requestId: string;
   source: EvolutionCardDefinition;
   target: EvolutionCardDefinition;
-  unavailableReason: 'insufficient_copies' | 'saved_deck_lock' | null;
+  unavailableReason:
+    'insufficient_copies' | 'saved_deck_lock' | 'trade_reservation' | null;
 }
 
 export interface CardEvolutionResult {
@@ -144,6 +146,7 @@ const evolutionPreviewResponseKeys = [
   'copies',
   'copiesRequired',
   'deckLockedCopyCount',
+  'tradeReservedCopyCount',
   'eligibleCopyCount',
   'ownedCopyCount',
   'requestId',
@@ -215,6 +218,10 @@ const ownedCardKeys = [
   'power',
   'rarity',
 ] as const;
+const cardPresentationKeys = ownedCardKeys.filter(
+  (key) =>
+    key !== 'acquiredAt' && key !== 'acquisitionKind' && key !== 'ownedCardId',
+);
 const moveKeys = [
   'effectType',
   'effectValue',
@@ -248,6 +255,7 @@ export type CardApiFailure =
   | 'account-unavailable'
   | 'authorization'
   | 'evolution-deck-locked'
+  | 'evolution-trade-reserved'
   | 'evolution-insufficient-copies'
   | 'evolution-not-available'
   | 'evolution-replay-conflict'
@@ -404,11 +412,13 @@ export async function previewCardEvolution({
     !isNonNegativeInteger(payload.ownedCopyCount) ||
     !isNonNegativeInteger(payload.eligibleCopyCount) ||
     !isNonNegativeInteger(payload.deckLockedCopyCount) ||
+    !isNonNegativeInteger(payload.tradeReservedCopyCount) ||
     !Array.isArray(payload.copies) ||
     typeof payload.canEvolve !== 'boolean' ||
     (payload.unavailableReason !== null &&
       payload.unavailableReason !== 'insufficient_copies' &&
-      payload.unavailableReason !== 'saved_deck_lock')
+      payload.unavailableReason !== 'saved_deck_lock' &&
+      payload.unavailableReason !== 'trade_reservation')
   ) {
     throw new CardApiError('unavailable');
   }
@@ -420,12 +430,17 @@ export async function previewCardEvolution({
   const deckLockedCopyCount = copies.filter(
     (copy) => copy.lockReason === 'saved_deck',
   ).length;
+  const tradeReservedCopyCount = copies.filter(
+    (copy) => copy.lockReason === 'trade_reservation',
+  ).length;
   const expectedReason =
     eligibleCopyCount >= 3
       ? null
-      : copies.length >= 3 && deckLockedCopyCount > 0
-        ? 'saved_deck_lock'
-        : 'insufficient_copies';
+      : copies.length >= 3 && tradeReservedCopyCount > 0
+        ? 'trade_reservation'
+        : copies.length >= 3 && deckLockedCopyCount > 0
+          ? 'saved_deck_lock'
+          : 'insufficient_copies';
 
   if (
     source.cardDefinitionId !== sourceCardDefinitionId ||
@@ -434,6 +449,7 @@ export async function previewCardEvolution({
     payload.ownedCopyCount !== copies.length ||
     payload.eligibleCopyCount !== eligibleCopyCount ||
     payload.deckLockedCopyCount !== deckLockedCopyCount ||
+    payload.tradeReservedCopyCount !== tradeReservedCopyCount ||
     payload.canEvolve !== eligibleCopyCount >= 3 ||
     payload.unavailableReason !== expectedReason
   ) {
@@ -445,6 +461,7 @@ export async function previewCardEvolution({
     copies,
     copiesRequired: 3,
     deckLockedCopyCount,
+    tradeReservedCopyCount,
     eligibleCopyCount,
     ownedCopyCount: copies.length,
     requestId: payload.requestId,
@@ -592,6 +609,7 @@ async function parseCardError(response: Response): Promise<CardApiError> {
   const evolutionFailures: Record<string, CardApiFailure> = {
     ACCOUNT_UNAVAILABLE: 'account-unavailable',
     EVOLUTION_COPIES_DECK_LOCKED: 'evolution-deck-locked',
+    EVOLUTION_COPIES_TRADE_RESERVED: 'evolution-trade-reserved',
     EVOLUTION_COPIES_INSUFFICIENT: 'evolution-insufficient-copies',
     EVOLUTION_NOT_AVAILABLE: 'evolution-not-available',
     EVOLUTION_REPLAY_CONFLICT: 'evolution-replay-conflict',
@@ -638,7 +656,8 @@ function parseOwnedCard(value: unknown): OwnedCard {
     !Array.isArray(value.effects) ||
     (value.acquisitionKind !== 'starter' &&
       value.acquisitionKind !== 'event_reward' &&
-      value.acquisitionKind !== 'evolution') ||
+      value.acquisitionKind !== 'evolution' &&
+      value.acquisitionKind !== 'trade') ||
     !isDateTime(value.acquiredAt)
   ) {
     throw new CardApiError('unavailable');
@@ -661,6 +680,47 @@ function parseOwnedCard(value: unknown): OwnedCard {
     moves: value.moves.map(parseMove),
     name: value.name,
     ownedCardId: value.ownedCardId,
+    power: value.power,
+    rarity: value.rarity,
+  };
+}
+
+export function parseCardPresentation(value: unknown): CardPresentation {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, cardPresentationKeys) ||
+    !isUuid(value.cardDefinitionId) ||
+    typeof value.name !== 'string' ||
+    value.name.trim() === '' ||
+    !isCardCategory(value.category) ||
+    (value.category === 'creature'
+      ? !isCardAffinity(value.affinity)
+      : value.affinity !== null && !isCardAffinity(value.affinity)) ||
+    !isCardRarity(value.rarity) ||
+    !isNullablePositiveInteger(value.hp) ||
+    !isNullableNonNegativeInteger(value.power) ||
+    (value.description !== null && typeof value.description !== 'string') ||
+    (value.imageAlt !== null && typeof value.imageAlt !== 'string') ||
+    (value.imageUrl !== null && typeof value.imageUrl !== 'string') ||
+    typeof value.isActive !== 'boolean' ||
+    !Array.isArray(value.moves) ||
+    !Array.isArray(value.effects)
+  ) {
+    throw new CardApiError('unavailable');
+  }
+
+  return {
+    affinity: isCardAffinity(value.affinity) ? value.affinity : null,
+    cardDefinitionId: value.cardDefinitionId,
+    category: value.category,
+    description: value.description,
+    effects: value.effects.map(parseEffect),
+    hp: value.hp,
+    imageAlt: value.imageAlt,
+    imageUrl: value.imageUrl,
+    isActive: value.isActive,
+    moves: value.moves.map(parseMove),
+    name: value.name,
     power: value.power,
     rarity: value.rarity,
   };
@@ -719,9 +779,12 @@ function parseEvolutionCopy(value: unknown): EvolutionOwnedCopy {
     !isDateTime(value.acquiredAt) ||
     (value.acquisitionKind !== 'starter' &&
       value.acquisitionKind !== 'event_reward' &&
-      value.acquisitionKind !== 'evolution') ||
+      value.acquisitionKind !== 'evolution' &&
+      value.acquisitionKind !== 'trade') ||
     typeof value.eligible !== 'boolean' ||
-    (value.lockReason !== null && value.lockReason !== 'saved_deck') ||
+    (value.lockReason !== null &&
+      value.lockReason !== 'saved_deck' &&
+      value.lockReason !== 'trade_reservation') ||
     value.eligible !== (value.lockReason === null)
   ) {
     throw new CardApiError('unavailable');

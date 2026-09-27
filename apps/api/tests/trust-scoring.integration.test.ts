@@ -17,7 +17,10 @@ import {
   createTrustRestrictionService,
   TrustActivityRestrictedError,
 } from '../src/trust/trust-restrictions.js';
-import { createTrustService } from '../src/trust/trust-service.js';
+import {
+  createTrustService,
+  type TrustSignalInput,
+} from '../src/trust/trust-service.js';
 
 const POLICY_VERSION = 'trust-v1';
 const runIntegrationTests =
@@ -60,6 +63,51 @@ describe.skipIf(!runIntegrationTests)(
         );
       });
     }, 30_000);
+
+    it('rejects opponent signals without matching reviewer-safe summaries', async () => {
+      const service = createTrustService(pool);
+      const base = {
+        playerId: randomUUID(),
+        severity: 'pattern',
+        basePoints: 20,
+        observedAt: new Date('2026-09-20T10:00:00.000Z'),
+        sourceType: 'pvp_pattern',
+        sourceIdentifier: randomUUID(),
+        deduplicationKey: randomUUID(),
+      };
+      await expect(
+        service.recordSignalWithinTransaction(pool, {
+          ...base,
+          signalType: 'opponent_concentration',
+        } as unknown as TrustSignalInput),
+      ).rejects.toThrow(/require a reviewer-safe summary/u);
+      await expect(
+        service.recordSignalWithinTransaction(pool, {
+          ...base,
+          signalType: 'opponent_concentration',
+          reviewSummary: {
+            kind: 'one_sided_outcome_pattern',
+            evaluationWindowStart: '2026-08-20T10:00:00.000Z',
+            evaluationWindowEnd: '2026-09-20T10:00:00.000Z',
+            qualifyingForfeitCount: 4,
+            minimumQualifyingForfeitCount: 4,
+          },
+        } as unknown as TrustSignalInput),
+      ).rejects.toThrow(/must match/u);
+      await expect(
+        service.recordSignalWithinTransaction(pool, {
+          ...base,
+          signalType: 'impossible_movement',
+          reviewSummary: {
+            kind: 'one_sided_outcome_pattern',
+            evaluationWindowStart: '2026-08-20T10:00:00.000Z',
+            evaluationWindowEnd: '2026-09-20T10:00:00.000Z',
+            qualifyingForfeitCount: 4,
+            minimumQualifyingForfeitCount: 4,
+          },
+        } as unknown as TrustSignalInput),
+      ).rejects.toThrow(/Only opponent-pattern/u);
+    });
 
     it('applies the forward-only trust governance hardening from migration 0048', async () => {
       const column = await pool.query<{ is_nullable: string }>(
@@ -221,6 +269,18 @@ describe.skipIf(!runIntegrationTests)(
         sourceType: 'pvp_pattern',
         sourceIdentifier: 'opponent-pattern-1',
         deduplicationKey: 'opponent-pattern-1',
+        reviewSummary: {
+          kind: 'opponent_concentration',
+          evaluationWindowStart: new Date(
+            observedAt.getTime() - 30 * 24 * 60 * 60 * 1000,
+          ).toISOString(),
+          evaluationWindowEnd: observedAt.toISOString(),
+          completedMatchCount: 8,
+          repeatedOpponentMatchCount: 7,
+          opponentConcentrationRatio: 0.875,
+          minimumCompletedMatchCount: 6,
+          minimumOpponentConcentrationRatio: 0.8,
+        },
       });
       await service.recordSignal({
         playerId: player.id,
@@ -231,6 +291,15 @@ describe.skipIf(!runIntegrationTests)(
         sourceType: 'pvp_pattern',
         sourceIdentifier: 'one-sided-pattern-1',
         deduplicationKey: 'one-sided-pattern-1',
+        reviewSummary: {
+          kind: 'one_sided_outcome_pattern',
+          evaluationWindowStart: new Date(
+            observedAt.getTime() - 30 * 24 * 60 * 60 * 1000,
+          ).toISOString(),
+          evaluationWindowEnd: observedAt.toISOString(),
+          qualifyingForfeitCount: 4,
+          minimumQualifyingForfeitCount: 4,
+        },
       });
 
       const signals = await pool.query<{ signal_type: string; count: number }>(
@@ -639,8 +708,12 @@ describe.skipIf(!runIntegrationTests)(
           player_id: string;
           signal_type: string;
           count: number;
+          review_summary: Record<string, unknown>;
         }>(
-          `select player_id::text, signal_type, count(*)::integer as count
+          `select player_id::text,
+                  signal_type,
+                  count(*)::integer as count,
+                  min(review_summary::text)::jsonb as review_summary
            from private.trust_signals
           where player_id = any($1::uuid[])
             and signal_type in ('opponent_concentration', 'one_sided_outcome_pattern')
@@ -655,6 +728,32 @@ describe.skipIf(!runIntegrationTests)(
         );
         expect(new Set(signals.rows.map((row) => row.signal_type))).toEqual(
           new Set(['opponent_concentration', 'one_sided_outcome_pattern']),
+        );
+        const concentration = signals.rows.find(
+          (row) => row.signal_type === 'opponent_concentration',
+        )?.review_summary;
+        expect(concentration).toMatchObject({
+          kind: 'opponent_concentration',
+          completedMatchCount: 6,
+          repeatedOpponentMatchCount: 6,
+          opponentConcentrationRatio: 1,
+          minimumCompletedMatchCount: 6,
+          minimumOpponentConcentrationRatio: 0.8,
+          evaluationWindowStart: expect.any(String),
+          evaluationWindowEnd: expect.any(String),
+        });
+        const oneSided = signals.rows.find(
+          (row) => row.signal_type === 'one_sided_outcome_pattern',
+        )?.review_summary;
+        expect(oneSided).toMatchObject({
+          kind: 'one_sided_outcome_pattern',
+          qualifyingForfeitCount: 4,
+          minimumQualifyingForfeitCount: 4,
+          evaluationWindowStart: expect.any(String),
+          evaluationWindowEnd: expect.any(String),
+        });
+        expect(JSON.stringify(signals.rows)).not.toMatch(
+          /opponentPlayerId|player_low_id|player_high_id|privateMatchState/u,
         );
       } finally {
         await client.query('rollback');

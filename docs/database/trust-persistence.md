@@ -11,9 +11,11 @@ for the `trust-v1` policy defined by issue `#254`. It stores only derived,
 privacy-limited trust data and human governance history. Issue `#258` now uses
 that schema for deterministic score calculation, authoritative signal ingestion,
 decay/recovery maintenance, and enforcement of already-reviewed restrictions.
-Issue `#256` supplies the reviewer API and Author console without changing
-the schema. Player appeal submission and appeal-resolution APIs remain later
-work.
+Issue `#260` exposes the Author-only case queue, detail, evidence, restriction,
+decision, audit, and bounded export API over the same versioned persistence.
+Migration `0061_persist_trust_review_evidence_summaries.sql` adds only immutable
+reviewer-safe aggregate context for opponent-pattern signals; it does not alter
+trust-v1 scoring. Player appeal submission and resolution APIs remain later work.
 
 All trust relations live in the `private` PostgreSQL schema. The browser does
 not read or write them directly.
@@ -45,6 +47,14 @@ operation that produced the signal. `deduplication_digest` is a 32-byte digest
 of the canonical deduplication key. The database enforces uniqueness on player,
 policy version, signal type, and digest so replay or concurrent ingestion cannot
 inflate the score.
+
+For opponent-pattern signals only, `review_summary` and its immutable
+`trust_case_evidence.safe_review_summary` copy retain the exact signal-time
+evaluation window, aggregate completed/repeated-opponent or qualifying-forfeit
+counts, concentration ratio, and trust-v1 threshold. They contain no opponent
+identifier, match identifier, deck, battle state, or raw result history. This
+small additive persistence is necessary because recomputing a rolling window
+later would not reproduce the evidence on which the signal was created.
 
 There is intentionally no restrictive foreign key from a signal to short-lived
 movement evidence. Precise movement rows may expire on their existing bounded
@@ -146,14 +156,6 @@ per-player PostgreSQL advisory transaction lock, while reviewer mutations remain
 row/version controlled; `under_review` is the durable case lifecycle state and
 is deliberately excluded from automated decay resolution.
 
-Issue `#256` implements those reviewer mutations as one transaction with a
-`FOR UPDATE` case lock and an exact `expectedVersion` check. The transaction
-advances the case version, appends its Author decision and evidence links, and,
-when requested, appends false-positive adjustments, a resulting score snapshot,
-or temporary restrictions. A stale version returns a conflict and commits no
-partial decision. The implementation reuses migrations `0046` and `0048`; no
-new migration or trust relation is required.
-
 ## Issue #258 runtime and schema hardening
 
 Migration `0048_implement_trust_scoring_and_enforcement.sql` is forward-only and
@@ -188,6 +190,76 @@ Restrictions are not score outputs. `private.trust_restrictions` remains
 human-authored governance, and runtime checks read only the effective scope and
 expiry after any appeal resolution. No player response exposes the stored score
 or evidence behind that decision.
+
+## Issue #260 reviewer API
+
+Issue `#260` reuses the private relations and integrity triggers above through a
+protected Author-only service, with migration
+`0061_persist_trust_review_evidence_summaries.sql` preserving only the safe
+aggregate basis required for opponent-pattern human review:
+
+- `GET /api/v1/author/trust-cases` defaults to active cases and provides a
+  bounded, deterministic queue with lifecycle (including `status=all`), safe
+  Player Name substring and exact case/player UUID search,
+  review-band, active-restriction, signal-type, and date filters;
+- `GET /api/v1/author/trust-cases/:caseId` returns the current versioned case,
+  category totals, ten-item evidence/restriction previews with total counts,
+  and the most recent audit transitions;
+- `GET /api/v1/author/trust-cases/:caseId/evidence` and `/restrictions` provide
+  the complete safe collections through deterministic bounded pagination;
+- `GET /api/v1/author/trust-cases/:caseId/history` provides the complete
+  append-only decision history with bounded pagination; and
+- `POST /api/v1/author/trust-cases/:caseId/decisions` records a reasoned
+  `continue_monitoring`, `dismiss`, `mark_false_positive`, or `restrict`
+  decision;
+- `GET /api/v1/author/trust-cases/:caseId/export` returns a server-defined JSON
+  export bounded to 100 records per evidence/restriction/history collection.
+
+Queue and detail expose canonical `score`, `band`, `restrictionCount`,
+`activeRestrictionCount`, `latestRestrictionExpiry`, and `canReview` fields.
+Detail also carries the current persisted `scoreExplanation` and bounded
+`evidence` and `history` aliases used by the Author console; preview counts and
+the pageable child routes remain authoritative when either alias is truncated.
+New opponent-pattern signals must carry a validated safe summary. A legacy
+opponent-pattern row without one is returned with `availability=unavailable`
+and blocks decisions only while it contributes effective points and has no
+false-positive adjustment. A later explained evaluation supersedes the gap only
+while it also contributes and remains unadjusted. The immutable legacy row is
+not rewritten and no historical aggregates are fabricated.
+
+The authenticated local Author UUID is always the actor; no reviewer identity
+is accepted from the request body. An Author's own case is excluded from the
+queue and returns the same not-found response as any inaccessible case. A
+reviewer mutation takes the existing per-player advisory transaction lock,
+locks and validates the target player row before the case row, and compares the
+required `expectedVersion`. This matches account-lifecycle lock ordering. A
+stale decision returns an explicit conflict and cannot append a decision or
+restriction.
+
+Reviewer transitions follow `open -> under_review -> resolved`. Continuing
+monitoring, marking selected evidence false-positive, or restricting may start
+review; dismissal requires an `under_review` case. The direct
+`open -> resolved` decay path remains system
+owned. The decision transaction advances the case projection, appends the
+Author decision, links at most 100 distinct safe evidence summaries, records
+false-positive adjustments only for the selected `mark_false_positive`
+evidence, and creates supported restrictions together. A
+failure rolls all of those writes back. Audit history distinguishes the full
+evidence set from the false-positive subset and returns each restriction's
+original committed start and expiry.
+
+The writable scopes are `online_verification_required`,
+`location_reward_challenge_hold`, and `new_competitive_match_hold`; durations
+remain whole hours from 1 through 168 and the database seven-day constraint
+remains authoritative. The decision request names that value `durationHours`.
+Read projections retain the schema-level
+`card_trade_hold`, but this API cannot author it.
+
+The API projections intentionally omit provider identifiers, raw source
+identifiers and digests, precise coordinates, exact speed/distance/accuracy,
+submitted answers, private match state, and arbitrary source payloads. Export
+uses the same object-level authorization and privacy projections rather than
+reading arbitrary client-selected private-table columns.
 
 ## AI declaration
 

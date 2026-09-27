@@ -107,6 +107,20 @@ test('renders and operates the progression route across mobile and desktop', asy
 
   await expect(page.getByRole('heading', { name: PLAYER_NAME })).toBeVisible();
   await expect(page.getByText('Your Wits Quest progression')).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Campus standings' }),
+  ).toHaveCount(0);
+  await expect(page.getByRole('progressbar', { name: '3 of 5' })).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    fullPage: true,
+    path: '/tmp/issue-173-profile-mobile.png',
+  });
+
+  await page.goto('/leaderboard');
+  await expect(
+    page.getByRole('heading', { name: 'Leaderboard' }),
+  ).toBeVisible();
   await expect(page.getByText('Deleted player')).toBeVisible();
   await expect(page.getByLabel('Your standing')).toContainText('#21');
   await expect(
@@ -121,13 +135,8 @@ test('renders and operates the progression route across mobile and desktop', asy
   await expect(
     page.getByLabel('Your standing').getByText('You', { exact: true }),
   ).toBeVisible();
-  await expect(page.getByRole('progressbar', { name: '3 of 5' })).toBeVisible();
   await expect(page.getByRole('contentinfo')).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
-  await page.screenshot({
-    fullPage: true,
-    path: '/tmp/issue-173-profile-mobile.png',
-  });
 
   const next = page.getByRole('button', { name: 'Next' });
   await next.focus();
@@ -158,6 +167,10 @@ test('renders and operates the progression route across mobile and desktop', asy
   await expect(
     page.locator('.primary-navigation').getByRole('link', { name: 'Profile' }),
   ).toHaveCount(0);
+  await expect(
+    page.getByRole('link', { name: 'Leaderboard' }).first(),
+  ).toHaveAttribute('aria-current', 'page');
+  await page.goto('/profile');
   const accountTrigger = page.getByRole('button', {
     name: `${PLAYER_NAME}, account menu`,
   });

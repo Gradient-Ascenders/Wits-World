@@ -6,9 +6,11 @@ import {
   type LocationObservationProvider,
 } from '../../src/browser-location';
 import type {
+  MapArea,
   MapController,
   MapFactory,
   MapPoint,
+  MapRegion,
 } from '../../src/components/exploration/map-provider';
 
 let mapInstance = 0;
@@ -91,9 +93,13 @@ export const mapFactory: MapFactory = async (
   container.style.background =
     'radial-gradient(circle at 48% 42%, rgb(42 107 255 / 30%), transparent 22%), linear-gradient(145deg, #18304f, #071426 70%)';
   let points = initialPoints;
+  let areas: readonly MapArea[] = [];
   let selectedPoint: MapPoint | null = null;
+  let regions: readonly MapRegion[] = [];
+  let selectedRegion: MapRegion | null = null;
   let focusedPointId: string | null = null;
   let pointSelectionListener: ((pointId: string) => void) | null = null;
+  let regionSelectionListener: ((regionId: string) => void) | null = null;
   let coordinateSelectionListener:
     ((coordinate: { latitude: number; longitude: number }) => void) | null =
     null;
@@ -104,6 +110,30 @@ export const mapFactory: MapFactory = async (
 
   const markerLayer = document.createElement('div');
   markerLayer.dataset.deterministicMarkers = 'true';
+  Object.assign(markerLayer.style, {
+    inset: '0',
+    pointerEvents: 'none',
+    position: 'absolute',
+    zIndex: '2',
+  });
+  const regionLayer = document.createElement('div');
+  regionLayer.dataset.deterministicTerritories = 'true';
+  Object.assign(regionLayer.style, {
+    inset: '0',
+    pointerEvents: 'none',
+    position: 'absolute',
+    zIndex: '1',
+  });
+  const areaLayer = document.createElement('div');
+  areaLayer.dataset.deterministicAreas = 'true';
+  Object.assign(areaLayer.style, {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    inset: '8%',
+    pointerEvents: 'none',
+    position: 'absolute',
+    zIndex: '1',
+  });
   const radius = document.createElement('div');
   radius.dataset.deterministicEventRadius = 'true';
   Object.assign(radius.style, {
@@ -114,7 +144,36 @@ export const mapFactory: MapFactory = async (
     pointerEvents: 'none',
     position: 'absolute',
   });
-  container.append(radius, markerLayer);
+  container.append(regionLayer, radius, areaLayer, markerLayer);
+
+  const renderAreas = (): void => {
+    areaLayer.replaceChildren();
+    areas.forEach((area) => {
+      const zone = document.createElement('div');
+      zone.dataset.areaState = area.state;
+      zone.setAttribute('aria-hidden', 'true');
+      zone.textContent = area.label;
+      const color =
+        area.state === 'served'
+          ? '#54a8ff'
+          : area.state === 'shortfall'
+            ? '#e1a93a'
+            : '#dc5b65';
+      Object.assign(zone.style, {
+        alignItems: 'end',
+        background: `repeating-linear-gradient(135deg, transparent 0 18px, ${color}22 18px 20px)`,
+        border: `2px ${area.state === 'served' ? 'solid' : area.state === 'shortfall' ? 'dashed' : 'dotted'} ${color}`,
+        color: '#f7f3e7',
+        display: 'flex',
+        fontSize: '12px',
+        fontWeight: '800',
+        margin: '3%',
+        padding: '12px',
+        textShadow: '0 1px 3px #050b16',
+      });
+      areaLayer.append(zone);
+    });
+  };
 
   const coordinateAt = (clientX: number, clientY: number) => {
     const bounds = container.getBoundingClientRect();
@@ -218,11 +277,14 @@ export const mapFactory: MapFactory = async (
   navigationArea.className = 'mapboxgl-ctrl-top-right';
   const navigationGroup = document.createElement('div');
   navigationGroup.className = 'mapboxgl-ctrl mapboxgl-ctrl-group';
-  for (const [label, symbol] of [
+  const navigationControls: ReadonlyArray<readonly [string, string]> = [
     ['Zoom in', '+'],
     ['Zoom out', '−'],
-    ['Reset map bearing and pitch', '↺'],
-  ] as const) {
+    ...(config.showResetViewControl === false
+      ? []
+      : ([['Reset map bearing and pitch', '↺']] as const)),
+  ];
+  for (const [label, symbol] of navigationControls) {
     const button = document.createElement('button');
     button.type = 'button';
     button.setAttribute('aria-label', label);
@@ -247,6 +309,9 @@ export const mapFactory: MapFactory = async (
       button.className = [
         'event-marker',
         `event-marker--${availability}`,
+        ...(point.placementStates ?? []).map(
+          (state) => `event-marker--placement-${state}`,
+        ),
         point.trailState ? `event-marker--trail-${point.trailState}` : '',
         selectedPoint?.id === point.id ? 'event-marker--selected' : '',
         point.reachable ? 'event-marker--reachable' : '',
@@ -273,6 +338,7 @@ export const mapFactory: MapFactory = async (
         cursor: point.draggable ? 'grab' : 'pointer',
         left: `${position.horizontal + (applyFixtureSpread ? index * 12 : 0)}%`,
         position: 'absolute',
+        pointerEvents: 'auto',
         top: `${position.vertical + (applyFixtureSpread ? (index % 2) * 13 : 0)}%`,
       });
       const markerBody = document.createElement('span');
@@ -308,6 +374,91 @@ export const mapFactory: MapFactory = async (
   };
   renderMarkers();
 
+  const renderRegions = (): void => {
+    regionLayer.replaceChildren();
+    const layouts = [
+      {
+        clipPath: 'polygon(4% 12%, 92% 0, 100% 78%, 18% 100%)',
+        height: 34,
+        left: 13,
+        top: 18,
+        width: 38,
+      },
+      {
+        clipPath: 'polygon(8% 0, 100% 10%, 88% 100%, 0 82%)',
+        height: 38,
+        left: 51,
+        top: 14,
+        width: 35,
+      },
+      {
+        clipPath: 'polygon(0 18%, 82% 0, 100% 88%, 12% 100%)',
+        height: 29,
+        left: 32,
+        top: 55,
+        width: 43,
+      },
+    ] as const;
+    regions.forEach((region, index) => {
+      const layout = layouts[index % layouts.length]!;
+      const selected = selectedRegion?.id === region.id;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.territoryRegionId = region.id;
+      button.setAttribute(
+        'aria-label',
+        `Select ${region.label}, ${region.status}, ${region.ownerLabel ? `owned by ${region.ownerLabel}` : 'unclaimed'}`,
+      );
+      Object.assign(button.style, {
+        alignItems: 'center',
+        background:
+          region.status === 'suspended'
+            ? 'rgb(127 139 157 / 18%)'
+            : selected
+              ? 'rgb(42 107 255 / 36%)'
+              : 'rgb(42 107 255 / 22%)',
+        border: `${selected ? 4 : 3}px ${region.status === 'suspended' ? 'dashed' : 'solid'} ${selected ? '#54a8ff' : region.status === 'suspended' ? '#b3bdcc' : '#e0c46c'}`,
+        clipPath: layout.clipPath,
+        color: '#f7f3e7',
+        cursor: 'pointer',
+        display: 'flex',
+        filter: selected
+          ? 'drop-shadow(0 0 10px rgb(84 168 255 / 55%))'
+          : 'drop-shadow(0 3px 8px rgb(3 9 20 / 45%))',
+        height: `${layout.height}%`,
+        justifyContent: 'center',
+        left: `${layout.left}%`,
+        padding: '1rem',
+        pointerEvents: 'auto',
+        position: 'absolute',
+        textAlign: 'center',
+        top: `${layout.top}%`,
+        width: `${layout.width}%`,
+      });
+      const label = document.createElement('span');
+      label.textContent = `${region.label}\n${
+        region.status === 'suspended'
+          ? 'Suspended'
+          : region.ownerLabel
+            ? `Owned by ${region.ownerLabel}`
+            : 'Unclaimed'
+      }`;
+      Object.assign(label.style, {
+        fontSize: '0.76rem',
+        fontWeight: '700',
+        lineHeight: '1.35',
+        textShadow: '0 1px 4px #050b16',
+        whiteSpace: 'pre-line',
+      });
+      button.append(label);
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        regionSelectionListener?.(region.id);
+      });
+      regionLayer.append(button);
+    });
+  };
+
   const stopFollowingOnPan = (event: PointerEvent): void => {
     if (event.target !== container || !following) {
       return;
@@ -331,6 +482,15 @@ export const mapFactory: MapFactory = async (
       renderMarkers();
       return true;
     },
+    focusRegion: (region) => {
+      selectedRegion = region;
+      following = false;
+      container.dataset.mapFollowing = 'false';
+      container.dataset.mapFocusedTerritory = region.id;
+      followStateListener?.(false);
+      renderRegions();
+      return true;
+    },
     onError: () => undefined,
     onLoad: (listener) => {
       if (!new URLSearchParams(window.location.search).has('map-loading')) {
@@ -348,7 +508,9 @@ export const mapFactory: MapFactory = async (
       container.removeEventListener('click', selectMapCoordinate);
       container.removeEventListener('pointerdown', stopFollowingOnPan);
       playerPuck?.remove();
+      regionLayer.remove();
       markerLayer.remove();
+      areaLayer.remove();
       radius.remove();
       logoArea.remove();
       attributionArea.remove();
@@ -358,6 +520,7 @@ export const mapFactory: MapFactory = async (
         delete container.dataset.mapInitialBounds;
         delete container.dataset.mapFollowing;
         delete container.dataset.mapFocusedEvent;
+        delete container.dataset.mapFocusedTerritory;
         delete container.dataset.mapCameraCenter;
         delete container.dataset.mapCameraZoom;
         delete container.dataset.mapSelectedCoordinate;
@@ -373,9 +536,20 @@ export const mapFactory: MapFactory = async (
     setPointSelectionListener: (listener) => {
       pointSelectionListener = listener;
     },
+    setAreas: (nextAreas) => {
+      areas = nextAreas;
+      renderAreas();
+    },
     setPoints: (nextPoints) => {
       points = nextPoints;
       renderMarkers();
+    },
+    setRegions: (nextRegions) => {
+      regions = nextRegions;
+      renderRegions();
+    },
+    setRegionSelectionListener: (listener) => {
+      regionSelectionListener = listener;
     },
     setReportedLocation: (coordinate) => {
       hasLocation = coordinate !== null;
@@ -409,6 +583,10 @@ export const mapFactory: MapFactory = async (
         container.dataset.mapSelectedCoordinate = `${point.longitude},${point.latitude}`;
       }
       renderMarkers();
+    },
+    setSelectedRegion: (region) => {
+      selectedRegion = region;
+      renderRegions();
     },
   };
 

@@ -67,8 +67,8 @@ interface SubmissionAttempt extends DeckChoice {
 
 const pageLimit = 50;
 const playerBattleSections: PlayerBattleSection[] = [
-  'invitations',
   'active',
+  'invitations',
   'history',
 ];
 
@@ -99,7 +99,8 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   const [reauthFailed, setReauthFailed] = useState(false);
   const [challengeOpen, setChallengeOpen] = useState(false);
   const [selectedSection, setSelectedSection] =
-    useState<PlayerBattleSection>('invitations');
+    useState<PlayerBattleSection>('active');
+  const hasChosenInitialSection = useRef(false);
   const request = useRef<AbortController | null>(null);
   const pollRequest = useRef<AbortController | null>(null);
   const pageRequest = useRef<AbortController | null>(null);
@@ -154,11 +155,18 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
     const controller = new AbortController();
     request.current?.abort();
     request.current = controller;
+    hasChosenInitialSection.current = false;
     setState({ status: 'loading' });
     setPollWarning(false);
     void loadHub(controller.signal)
       .then((data) => {
-        if (!controller.signal.aborted) setState({ data, status: 'ready' });
+        if (!controller.signal.aborted) {
+          setState({ data, status: 'ready' });
+          if (!hasChosenInitialSection.current) {
+            setSelectedSection(priorityPlayerBattleSection(data));
+            hasChosenInitialSection.current = true;
+          }
+        }
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
@@ -554,7 +562,6 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
           role="alert"
         >
           <StateIcon tone="error" />
-          <p className="eyebrow">Player Battles</p>
           <h1 ref={resultHeading} tabIndex={-1}>
             Player Battles could not load
           </h1>
@@ -590,6 +597,7 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
   }
 
   const { data } = state;
+  const priorityMatch = prioritizeActiveMatches(data.active)[0] ?? null;
   return (
     <div className="matches-page pvp-hub">
       {cancellationTarget ? (
@@ -616,18 +624,29 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
               Player Battles
             </h1>
             <p className="lead">
-              Challenge another explorer and take turns within 24 hours.
+              Take your turn, respond to a challenge, or start a battle. Each
+              turn stays open for up to 24 hours.
             </p>
           </div>
-          <button
-            aria-controls="challenge-player-panel"
-            aria-expanded={challengeOpen}
-            className="button"
-            onClick={() => setChallengeOpen((open) => !open)}
-            type="button"
-          >
-            {challengeOpen ? 'Close challenge' : 'Challenge a player'}
-          </button>
+          <div className="pvp-lobby-header__actions">
+            {priorityMatch?.currentActor === 'self' ? (
+              <Link
+                className="button"
+                href={`/matches/pvp/${priorityMatch.matchId}`}
+              >
+                Continue your turn
+              </Link>
+            ) : null}
+            <button
+              aria-controls="challenge-player-panel"
+              aria-expanded={challengeOpen}
+              className={`button${priorityMatch?.currentActor === 'self' ? ' button--quiet' : ''}`}
+              onClick={() => setChallengeOpen((open) => !open)}
+              type="button"
+            >
+              {challengeOpen ? 'Close challenge' : 'Challenge a player'}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -644,8 +663,8 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       {pollWarning ? (
         <div className="pvp-poll-warning" role="status">
           <span>
-            Automatic refresh paused after a connection problem. Your saved
-            server state is unchanged.
+            Automatic refresh paused after a connection problem. Your last
+            confirmed invitations and battles are still shown.
           </span>
           <button
             className="button button--quiet"
@@ -828,14 +847,14 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
         role="tabpanel"
         tabIndex={selectedSection === 'active' ? 0 : -1}
       >
-        <h2>Your matches</h2>
+        <h2>Active Player Battles</h2>
         {data.active.length === 0 ? (
           <EmptyState title="No active player battles">
             Accept an invitation to begin a match.
           </EmptyState>
         ) : (
           <ol aria-label="Active player battles" className="pvp-match-list">
-            {data.active.map((match) => (
+            {prioritizeActiveMatches(data.active).map((match) => (
               <li key={match.matchId}>
                 <ActivePvpSummary match={match} />
               </li>
@@ -888,8 +907,8 @@ export default function PvpHubPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 function PlayerBattlesLoading() {
   return (
     <PageLoadingState
-      title="Loading player battles…"
-      description="Retrieving invitations, active battles, and match history."
+      title="Loading Player Battles"
+      description="Checking whose turn it is and which challenges need a response…"
     />
   );
 }
@@ -1195,7 +1214,7 @@ function DeckCreaturePicker({
     return (
       <p className="pvp-deck-empty">
         A saved battle deck is required.{' '}
-        <Link href="/decks">Create a deck</Link>.
+        <Link href="/collection/decks">Create a deck</Link>.
       </p>
     );
   }
@@ -1263,7 +1282,7 @@ function ActivePvpSummary({ match }: { match: PvpMatchSummary }) {
         <div>
           <h3>{match.opponent.playerName}</h3>
           <p>
-            Deadline{' '}
+            {match.currentActor === 'self' ? 'Play by ' : 'Opponent plays by '}
             <time dateTime={match.turnDeadline}>
               {formatDate(match.turnDeadline)}
             </time>
@@ -1274,7 +1293,7 @@ function ActivePvpSummary({ match }: { match: PvpMatchSummary }) {
         </span>
       </div>
       <Link className="button" href={`/matches/pvp/${match.matchId}`}>
-        Continue
+        {match.currentActor === 'self' ? 'Take your turn' : 'View battle'}
       </Link>
     </article>
   );
@@ -1412,6 +1431,23 @@ function withoutCompletedMatches(
   );
 }
 
+function prioritizeActiveMatches(matches: PvpMatchSummary[]) {
+  return [...matches].sort(
+    (left, right) =>
+      Number(right.currentActor === 'self') -
+        Number(left.currentActor === 'self') ||
+      Date.parse(left.turnDeadline) - Date.parse(right.turnDeadline),
+  );
+}
+
+function priorityPlayerBattleSection(data: HubData): PlayerBattleSection {
+  if (data.active.some((match) => match.currentActor === 'self'))
+    return 'active';
+  if (data.incoming.some(isPending)) return 'invitations';
+  if (data.active.length > 0) return 'active';
+  return 'invitations';
+}
+
 function isPending(invitation: PvpInvitation) {
   return invitation.status === 'pending';
 }
@@ -1495,30 +1531,29 @@ function errorMessage(
       return 'The invitation became unavailable before cancellation completed. Its latest status was refreshed.';
     if (failure === 'not-found')
       return 'This invitation is no longer available. Refresh Player Battles to check its latest status.';
-    return 'Check your connection. The latest server state was requested, and the challenge remains recoverable.';
+    return 'Check your connection. Your challenge is still available to retry.';
   }
   const messages: Record<PvpApiFailure, string> = {
     'already-pending':
       'A pending invitation already exists between these players.',
     authorization: 'Your session expired. Sign in again before continuing.',
-    completed:
-      'The match is already complete. Refresh to view its saved result.',
+    completed: 'The battle is already complete. Open its saved result.',
     cancelled: 'The invitation was cancelled before this response was applied.',
     conflict:
-      'That submission reference was already used for different intent. Refresh before trying again.',
+      'That choice no longer matches the action already sent. Refresh before trying again.',
     'deck-invalid':
-      'The server rejected that saved deck or opening Creature. Review the deck and choose again.',
-    expired: 'The invitation expired before the response reached the server.',
+      'That saved deck or opening Creature cannot enter this battle. Review the deck and choose again.',
+    expired: 'The invitation expired before it could be accepted.',
     'illegal-action':
-      'That action is no longer legal in the authoritative match state.',
+      'That action is no longer available. Review the battle before choosing again.',
     invalidated: 'The invitation is no longer available.',
     'not-found': 'This player battle is not available to the signed-in player.',
     'player-unavailable':
-      'That Player Name is unavailable. The server does not reveal why.',
+      'That Player Name is unavailable. Private account details remain hidden.',
     stale:
-      'The battle changed before the request was accepted. The latest server state will be restored.',
+      'The battle changed before your choice arrived. Check the latest battle and try again.',
     unavailable:
-      'Check your connection and retry. No result is calculated in this browser.',
+      'Check your connection and retry. Your battle has not changed.',
     validation: 'Check the submitted Player Name and choices, then try again.',
   };
   return messages[failure];

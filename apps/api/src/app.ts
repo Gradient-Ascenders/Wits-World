@@ -131,7 +131,6 @@ export interface BuildAppOptions {
   challengeAttemptServices?: ChallengeAttemptServices;
   cardServices?: CardServices;
   authorContentServices?: AuthorContentServices;
-  trustReviewService?: TrustReviewService;
   trailServices?: TrailServices;
   cpuMatchService?: CpuMatchService;
   asyncPvpService?: AsyncPvpService;
@@ -158,6 +157,7 @@ export interface BuildAppOptions {
     publicDataService: DeveloperPublicDataService;
     rateProtection: RateProtection;
   };
+  trustReviewService?: TrustReviewService;
 }
 
 export interface AccountDeletionServices {
@@ -213,7 +213,6 @@ export async function buildApp({
   challengeAttemptServices,
   cardServices,
   authorContentServices,
-  trustReviewService,
   trailServices,
   cpuMatchService,
   asyncPvpService,
@@ -225,6 +224,7 @@ export async function buildApp({
   rateProtection,
   developerApi,
   offlineChallengeService,
+  trustReviewService,
 }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: logger
@@ -348,9 +348,6 @@ export async function buildApp({
       'Author content services require a player identity service.',
     );
   }
-  if (trustReviewService && !playerIdentityService) {
-    throw new Error('Trust review services require a player identity service.');
-  }
   if (trailServices && !playerIdentityService) {
     throw new Error('Trail services require a player identity service.');
   }
@@ -380,6 +377,9 @@ export async function buildApp({
   }
   if (progressionReadService && !playerIdentityService) {
     throw new Error('Progression services require a player identity service.');
+  }
+  if (trustReviewService && !playerIdentityService) {
+    throw new Error('Trust review routes require a player identity service.');
   }
 
   registerRequestTiming(app);
@@ -471,6 +471,11 @@ export async function buildApp({
           name: 'Progression',
           description:
             'Authenticated player progression and privacy-safe standings.',
+        },
+        {
+          name: 'Trust review',
+          description:
+            'Protected Author-only suspect-player review, proportionate decisions, and immutable audit history.',
         },
       ],
       components: {
@@ -592,6 +597,13 @@ export async function buildApp({
     });
   }
 
+  if (trustReviewService) {
+    await app.register(authorTrustReviewRoutes, {
+      prefix: '/api/v1',
+      service: trustReviewService,
+    });
+  }
+
   if (authorContentServices?.cards) {
     await app.register(authorCardRoutes, {
       prefix: '/api/v1',
@@ -626,13 +638,6 @@ export async function buildApp({
     await app.register(authorContentRoutes, {
       prefix: '/api/v1',
       service: authorContentServices.read,
-    });
-  }
-
-  if (trustReviewService) {
-    await app.register(authorTrustReviewRoutes, {
-      prefix: '/api/v1',
-      service: trustReviewService,
     });
   }
 

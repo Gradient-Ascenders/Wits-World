@@ -8,11 +8,14 @@ import {
 } from 'react';
 
 import { useModalFocus } from '../useModalFocus';
+import './author-confirmation-dialog.css';
 
 interface AuthorConfirmationDialogProps {
   busy?: boolean;
   cancelLabel: string;
+  confirmDisabled?: boolean;
   confirmLabel: string;
+  confirmTone?: 'danger' | 'primary';
   description: ReactNode;
   initialFocusRef?: RefObject<HTMLElement | null>;
   onCancel: () => void;
@@ -24,7 +27,9 @@ interface AuthorConfirmationDialogProps {
 export function AuthorConfirmationDialog({
   busy = false,
   cancelLabel,
+  confirmDisabled = false,
   confirmLabel,
+  confirmTone = 'danger',
   description,
   initialFocusRef,
   onCancel,
@@ -82,8 +87,8 @@ export function AuthorConfirmationDialog({
             {cancelLabel}
           </button>
           <button
-            className="button button--danger"
-            disabled={busy}
+            className={`button${confirmTone === 'danger' ? ' button--danger' : ''}`}
+            disabled={busy || confirmDisabled}
             onClick={onConfirm}
             type="button"
           >

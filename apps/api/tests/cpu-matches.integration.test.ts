@@ -92,6 +92,114 @@ afterEach(async () => {
 });
 
 describe('CPU match API', () => {
+  it('keeps old match and history projections parseable while the new client opts into swaps', async () => {
+    const swap = { type: 'swap_creature' as const, creatureId: DECK_ID };
+    const move = { type: 'use_move' as const, moveId: DECK_ID };
+    const swapResult = {
+      action: swap,
+      side: 'player' as const,
+      effects: [],
+      expiredEffects: [],
+      defeatedCreatureId: null,
+      winner: null,
+      turnEnded: true,
+    };
+    const base = buildMatch();
+    service.getMatch.mockResolvedValue({
+      ...base,
+      state: { ...base.state, legalActions: [swap, move] },
+      lastAction: swapResult,
+      battleLog: [
+        {
+          id: 'turn-1',
+          label: 'Turn 1',
+          turnNumber: 1,
+          events: [
+            {
+              id: 'event-1',
+              sequence: 1,
+              side: 'player',
+              kind: 'action',
+              message: 'The player swapped Creatures.',
+              creatureId: DECK_ID,
+            },
+          ],
+        },
+      ],
+    });
+
+    const url = `/api/v1/matches/${MATCH_ID}`;
+    const legacy = await app.inject({
+      method: 'GET',
+      url,
+      headers: { authorization: 'Bearer valid-token' },
+    });
+    const current = await app.inject({
+      method: 'GET',
+      url,
+      headers: {
+        authorization: 'Bearer valid-token',
+        accept: 'application/vnd.wits-world.cpu.v2+json',
+      },
+    });
+
+    expect(legacy.statusCode).toBe(200);
+    expect(legacy.json().state.legalActions).toEqual([move]);
+    expect(legacy.json().lastAction).toBeNull();
+    expect(legacy.json().battleLog[0].events[0]).not.toHaveProperty(
+      'creatureId',
+    );
+    expect(current.statusCode).toBe(200);
+    expect(current.json().state.legalActions).toEqual([swap, move]);
+    expect(current.json().lastAction.action).toEqual(swap);
+    expect(current.json().battleLog[0].events[0].creatureId).toBe(DECK_ID);
+
+    service.listHistory.mockResolvedValue([
+      {
+        matchId: MATCH_ID,
+        status: 'completed',
+        winner: 'player',
+        startedAt: base.startedAt,
+        completedAt: '2026-08-16T00:01:00.000Z',
+        rounds: [
+          {
+            roundNumber: 1,
+            createdAt: base.startedAt,
+            actions: [
+              {
+                sequence: 1,
+                side: 'player',
+                submissionId: null,
+                action: swap,
+                result: swapResult,
+                createdAt: base.startedAt,
+              },
+            ],
+            result: [swapResult],
+          },
+        ],
+      },
+    ]);
+    const legacyHistory = await app.inject({
+      method: 'GET',
+      url: '/api/v1/matches/history',
+      headers: { authorization: 'Bearer valid-token' },
+    });
+    const currentHistory = await app.inject({
+      method: 'GET',
+      url: '/api/v1/matches/history',
+      headers: {
+        authorization: 'Bearer valid-token',
+        accept: 'application/vnd.wits-world.cpu.v2+json',
+      },
+    });
+    expect(legacyHistory.json().matches[0].rounds[0].actions).toEqual([]);
+    expect(legacyHistory.json().matches[0].rounds[0].result).toEqual([]);
+    expect(
+      currentHistory.json().matches[0].rounds[0].actions[0].action,
+    ).toEqual(swap);
+  });
+
   it('serializes an engine power-change result for action, reload and resume responses', async () => {
     const participant = {
       creatures: [],
@@ -450,6 +558,73 @@ describe('CPU match API', () => {
     });
   });
 
+  it('accepts a swap intent without trusting client battle state', async () => {
+    const submissionId = 'a4000000-0000-4000-8000-000000000011';
+    const creatureId = 'a5000000-0000-4000-8000-000000000011';
+    const response = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/matches/${MATCH_ID}/actions`,
+      payload: {
+        submissionId,
+        expectedVersion: 2,
+        action: { type: 'swap_creature', creatureId },
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(service.submitAction).toHaveBeenCalledWith({
+      playerId: PLAYER_ID,
+      matchId: MATCH_ID,
+      submissionId,
+      expectedVersion: 2,
+      action: { type: 'swap_creature', creatureId },
+    });
+
+    const forged = await authenticatedRequest({
+      method: 'POST',
+      url: `/api/v1/matches/${MATCH_ID}/actions`,
+      payload: {
+        submissionId,
+        expectedVersion: 2,
+        action: { type: 'swap_creature', creatureId, winner: 'player' },
+      },
+    });
+    expect(forged.statusCode).toBe(400);
+    expect(service.submitAction).toHaveBeenCalledOnce();
+  });
+
+  it('returns the authoritative Creature ID with a swap log event', async () => {
+    const creatureId = 'a5000000-0000-4000-8000-000000000011';
+    service.getMatch.mockResolvedValueOnce({
+      ...buildMatch(),
+      battleLog: [
+        {
+          id: 'turn-1',
+          label: 'Turn 1',
+          turnNumber: 1,
+          events: [
+            {
+              id: '3:0',
+              sequence: 3,
+              side: 'player',
+              kind: 'action',
+              message: 'Player swapped in Quillip.',
+              creatureId,
+            },
+          ],
+        },
+      ],
+    });
+
+    const response = await authenticatedRequest({
+      method: 'GET',
+      url: `/api/v1/matches/${MATCH_ID}`,
+      accept: 'application/vnd.wits-world.cpu.v2+json',
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().battleLog[0].events[0].creatureId).toBe(creatureId);
+  });
+
   it('rejects timeout as a browser action', async () => {
     const response = await authenticatedRequest({
       method: 'POST',
@@ -551,7 +726,22 @@ describe('CPU match API', () => {
                             activeModifiers: { type: 'array' },
                             moves: {
                               items: {
-                                properties: { effects: { type: 'array' } },
+                                properties: {
+                                  effects: { type: 'array' },
+                                  effectiveness: {
+                                    anyOf: [
+                                      {
+                                        type: 'string',
+                                        enum: [
+                                          'effective',
+                                          'neutral',
+                                          'resisted',
+                                        ],
+                                      },
+                                      { type: 'null' },
+                                    ],
+                                  },
+                                },
                               },
                             },
                           },
@@ -586,9 +776,13 @@ describe('CPU match API', () => {
 async function authenticatedRequest(options: {
   method: 'GET' | 'POST';
   url: string;
+  accept?: string;
   payload?: Record<string, unknown>;
 }) {
-  const headers = { authorization: 'Bearer valid-token' };
+  const headers = {
+    authorization: 'Bearer valid-token',
+    ...(options.accept ? { accept: options.accept } : {}),
+  };
 
   if (options.payload === undefined) {
     return app.inject({

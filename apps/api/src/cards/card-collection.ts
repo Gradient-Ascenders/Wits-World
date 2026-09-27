@@ -18,7 +18,25 @@ export interface CardCollectionQueryable {
 
 export interface CardCollectionService {
   listOwnedCards(playerId: string): Promise<OwnedCard[]>;
+  listTradingCatalogue(): Promise<TradingCardDefinition[]>;
 }
+
+export type TradingCardDefinition = Pick<
+  OwnedCard,
+  | 'affinity'
+  | 'cardDefinitionId'
+  | 'category'
+  | 'description'
+  | 'effects'
+  | 'hp'
+  | 'imageAlt'
+  | 'imageUrl'
+  | 'isActive'
+  | 'moves'
+  | 'name'
+  | 'power'
+  | 'rarity'
+>;
 
 interface OwnedCardRow extends pg.QueryResultRow {
   acquired_at: Date;
@@ -35,6 +53,22 @@ interface OwnedCardRow extends pg.QueryResultRow {
   moves: CardMove[];
   name: string;
   owned_card_id: string;
+  power: number | null;
+  rarity: CardRarity;
+}
+
+interface TradingCardDefinitionRow extends pg.QueryResultRow {
+  affinity: CardAffinity | null;
+  card_definition_id: string;
+  category: CardCategory;
+  description: string | null;
+  effects: CardEffect[];
+  hp: number | null;
+  image_alt: string | null;
+  image_url: string | null;
+  is_active: boolean;
+  moves: CardMove[];
+  name: string;
   power: number | null;
   rarity: CardRarity;
 }
@@ -106,6 +140,84 @@ export function createCardCollectionService(
       );
 
       return result.rows.map(mapOwnedCard);
+    },
+
+    async listTradingCatalogue() {
+      const result = await database.query<TradingCardDefinitionRow>(
+        `
+          select
+            definition.id::text as card_definition_id,
+            definition.name,
+            definition.category,
+            definition.affinity,
+            definition.rarity,
+            definition.hp,
+            definition.power,
+            definition.description,
+            definition.image_url,
+            definition.image_alt,
+            definition.is_active,
+            coalesce((
+              select json_agg(
+                json_build_object(
+                  'id', move.id::text,
+                  'position', move.position,
+                  'name', move.name,
+                  'moveType', move.move_type,
+                  'effectType', move.effect_type,
+                  'effectValue', move.effect_value,
+                  'modifierStat', move.modifier_stat,
+                  'modifierOperation', move.modifier_operation,
+                  'modifierDurationTurns', move.modifier_duration_turns,
+                  'powerCost', move.power_cost,
+                  'rulesText', move.rules_text
+                ) order by move.position
+              )
+              from public.card_moves move
+              where move.card_definition_id = definition.id
+            ), '[]'::json) as moves,
+            coalesce((
+              select json_agg(
+                json_build_object(
+                  'id', effect.id::text,
+                  'position', effect.position,
+                  'effectType', effect.effect_type,
+                  'effectValue', effect.effect_value,
+                  'modifierStat', effect.modifier_stat,
+                  'modifierOperation', effect.modifier_operation,
+                  'modifierDurationTurns', effect.modifier_duration_turns,
+                  'rulesText', effect.rules_text
+                ) order by effect.position
+              )
+              from public.card_effects effect
+              where effect.card_definition_id = definition.id
+            ), '[]'::json) as effects
+          from public.card_definitions definition
+          where definition.is_active
+            and definition.authoring_status = 'published'
+          order by
+            definition.category,
+            definition.name,
+            definition.id
+        `,
+        [],
+      );
+
+      return result.rows.map((row) => ({
+        affinity: row.affinity,
+        cardDefinitionId: row.card_definition_id,
+        category: row.category,
+        description: row.description,
+        effects: row.effects ?? [],
+        hp: row.hp,
+        imageAlt: row.image_alt,
+        imageUrl: row.image_url,
+        isActive: row.is_active,
+        moves: row.moves ?? [],
+        name: row.name,
+        power: row.power,
+        rarity: row.rarity,
+      }));
     },
   };
 }

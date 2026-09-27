@@ -54,6 +54,11 @@ interface SettlementRow extends pg.QueryResultRow {
   rating_after: number | null;
   applied_delta: number | null;
   settled_at: Date | null;
+  territory_zone_id: string | null;
+  territory_zone_name: string | null;
+  territory_outcome: 'accepted' | 'excluded' | null;
+  territory_influence_points: number | null;
+  territory_exclusion_reason: string | null;
 }
 
 export interface RankedSeasonView {
@@ -101,6 +106,22 @@ export interface RankedSettlementView {
   ratingAfter: number | null;
   appliedDelta: number | null;
   settledAt: string | null;
+  territory: RankedTerritoryContributionView | null;
+}
+
+export type RankedTerritoryExclusionReason =
+  | 'daily_cap_reached'
+  | 'placement_matches_remaining'
+  | 'player_unavailable'
+  | 'result_not_eligible'
+  | 'zone_unavailable';
+
+export interface RankedTerritoryContributionView {
+  zoneId: string;
+  zoneName: string;
+  outcome: 'pending' | 'lost' | 'accepted' | 'excluded';
+  influencePoints: number;
+  exclusionReason: RankedTerritoryExclusionReason | null;
 }
 
 export interface RankedReadService {
@@ -194,7 +215,12 @@ export function createRankedReadService(
               case when settlement.match_id is null then 'pending' else 'settled' end as status,
               settlement.completion_reason, ledger.outcome,
               ledger.rating_before, ledger.rating_after, ledger.applied_delta,
-              settlement.settled_at
+              settlement.settled_at,
+              territory_snapshot.zone_id::text as territory_zone_id,
+              territory_zone.name as territory_zone_name,
+              territory_decision.outcome as territory_outcome,
+              territory_decision.influence_points as territory_influence_points,
+              territory_decision.exclusion_reason as territory_exclusion_reason
          from private.ranked_matchmaking_receipts receipt
          join public.live_pvp_match_participants participant
            on participant.match_id = receipt.match_id
@@ -204,6 +230,14 @@ export function createRankedReadService(
          left join private.ranked_rating_ledger_entries ledger
            on ledger.match_id = receipt.match_id
           and ledger.player_id = $2::uuid
+         left join private.territory_ranked_match_snapshots territory_snapshot
+           on territory_snapshot.match_id = receipt.match_id
+          and territory_snapshot.player_id = $2::uuid
+         left join public.territory_zones territory_zone
+           on territory_zone.id = territory_snapshot.zone_id
+         left join private.territory_contribution_decisions territory_decision
+           on territory_decision.source_match_id = receipt.match_id
+          and territory_decision.winner_player_id = $2::uuid
         where receipt.match_id = $1::uuid`,
       [matchId, playerId],
     );
@@ -224,6 +258,7 @@ export function createRankedReadService(
       ratingAfter: row.rating_after,
       appliedDelta: row.applied_delta,
       settledAt: row.settled_at?.toISOString() ?? null,
+      territory: territoryContributionView(row),
     };
   }
 
@@ -473,6 +508,75 @@ function standingView(row: StandingRow): RankedStandingView {
     losses: row.losses,
     settledMatchCount: row.settled_match_count,
   };
+}
+
+function territoryContributionView(
+  row: SettlementRow,
+): RankedTerritoryContributionView | null {
+  if (!row.territory_zone_id || !row.territory_zone_name) return null;
+
+  if (row.status !== 'settled') {
+    return {
+      zoneId: row.territory_zone_id,
+      zoneName: row.territory_zone_name,
+      outcome: 'pending',
+      influencePoints: 0,
+      exclusionReason: null,
+    };
+  }
+
+  if (row.outcome === 'loss') {
+    return {
+      zoneId: row.territory_zone_id,
+      zoneName: row.territory_zone_name,
+      outcome: 'lost',
+      influencePoints: 0,
+      exclusionReason: null,
+    };
+  }
+
+  if (row.territory_outcome === 'accepted') {
+    return {
+      zoneId: row.territory_zone_id,
+      zoneName: row.territory_zone_name,
+      outcome: 'accepted',
+      influencePoints: row.territory_influence_points ?? 0,
+      exclusionReason: null,
+    };
+  }
+
+  if (row.outcome !== 'win' || row.territory_outcome !== 'excluded') {
+    throw new Error('The territory contribution outcome is unavailable.');
+  }
+
+  return {
+    zoneId: row.territory_zone_id,
+    zoneName: row.territory_zone_name,
+    outcome: 'excluded',
+    influencePoints: 0,
+    exclusionReason: publicTerritoryExclusionReason(
+      row.territory_exclusion_reason,
+    ),
+  };
+}
+
+function publicTerritoryExclusionReason(
+  reason: string | null,
+): RankedTerritoryExclusionReason {
+  switch (reason) {
+    case 'winner_provisional':
+      return 'placement_matches_remaining';
+    case 'daily_cap_reached':
+      return 'daily_cap_reached';
+    case 'zone_inactive':
+      return 'zone_unavailable';
+    case 'result_not_eligible':
+      return 'result_not_eligible';
+    case 'winner_unavailable':
+      return 'player_unavailable';
+    default:
+      throw new Error('The territory contribution exclusion is unavailable.');
+  }
 }
 
 function assertPageLimit(limit: number): void {

@@ -12,9 +12,9 @@ import {
   type OwnedCard,
 } from '../../api/cards';
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
+import { LoadingState } from '../LoadingState';
 import { CardArtwork, CollectibleCard } from './CollectibleCard';
 import { StateIcon, StatusMessage } from '../StatusMessage';
-import { QuestMarker } from '../branding/QuestMarker';
 
 type PreviewState =
   | { status: 'loading' }
@@ -310,11 +310,18 @@ export function CardEvolutionFlow({
               <dd>{preview.deckLockedCopyCount}</dd>
             </div>
           ) : null}
+          {preview.tradeReservedCopyCount > 0 ? (
+            <div>
+              <dt>Reserved for trade</dt>
+              <dd>{preview.tradeReservedCopyCount}</dd>
+            </div>
+          ) : null}
         </dl>
         <p className="evolution-lock-note">
           <LockKey size={20} aria-hidden="true" />
           {preview.eligibleCopyCount} available · {preview.deckLockedCopyCount}{' '}
-          in saved decks. Copies in decks will not be consumed.
+          in saved decks · {preview.tradeReservedCopyCount} reserved for trade.
+          Protected copies will not be consumed.
         </p>
 
         {mutationError ? (
@@ -367,10 +374,7 @@ export function CardEvolutionFlow({
       <div className="evolution-preview">
         <p className="eyebrow">Three copies. One new form.</p>
         {previewState.status === 'loading' ? (
-          <p aria-live="polite" role="status">
-            <QuestMarker />
-            Checking evolution availability…
-          </p>
+          <LoadingState label="Checking evolution availability…" />
         ) : previewState.status === 'error' ? (
           <StatusMessage tone="error" className="evolution-availability__error">
             {mutationError ? (
@@ -592,6 +596,12 @@ function EvolutionAvailability({
           </dt>
           <dd>{preview.deckLockedCopyCount}</dd>
         </div>
+        {preview.tradeReservedCopyCount > 0 ? (
+          <div>
+            <dt>Reserved for trade</dt>
+            <dd>{preview.tradeReservedCopyCount}</dd>
+          </div>
+        ) : null}
       </dl>
 
       {preview.deckLockedCopyCount > 0 ? (
@@ -599,6 +609,12 @@ function EvolutionAvailability({
           <LockKey size={20} aria-hidden="true" />
           Copies in saved decks are protected. Remove them from every saved deck
           to make them available.
+        </p>
+      ) : null}
+      {preview.tradeReservedCopyCount > 0 ? (
+        <p className="evolution-lock-note">
+          Copies reserved by active trade offers cannot be evolved. End the
+          offer to make them available.
         </p>
       ) : null}
 
@@ -670,6 +686,9 @@ function evolutionAvailabilityMessage(preview: CardEvolutionPreview) {
   if (preview.unavailableReason === 'saved_deck_lock') {
     return `${preview.copiesRequired} available copies are required. You need ${preview.copiesRequired - preview.eligibleCopyCount} more available ${preview.copiesRequired - preview.eligibleCopyCount === 1 ? 'copy' : 'copies'}. Remove ${preview.deckLockedCopyCount === 1 ? 'the locked copy' : 'locked copies'} from saved decks first.`;
   }
+  if (preview.unavailableReason === 'trade_reservation') {
+    return `${preview.copiesRequired} available copies are required. You need ${preview.copiesRequired - preview.eligibleCopyCount} more available ${preview.copiesRequired - preview.eligibleCopyCount === 1 ? 'copy' : 'copies'}. End the active trade offer before evolving reserved copies.`;
+  }
   return `${preview.copiesRequired} available copies are required. You currently have ${preview.eligibleCopyCount}. Collect ${preview.copiesRequired - preview.eligibleCopyCount} more to evolve.`;
 }
 
@@ -677,6 +696,8 @@ function evolutionErrorMessage(error: CardApiError) {
   switch (error.failure) {
     case 'evolution-deck-locked':
       return 'Your saved decks changed, so this preview is no longer valid. No evolution was completed. Review availability and try again.';
+    case 'evolution-trade-reserved':
+      return 'A copy is now reserved for trade, so this preview is no longer valid. No evolution was completed. Review availability and try again.';
     case 'evolution-insufficient-copies':
       return 'Your collection changed before confirmation, so this preview is no longer valid. No evolution was completed. Review availability and try again.';
     case 'evolution-not-available':
@@ -695,6 +716,7 @@ function evolutionErrorMessage(error: CardApiError) {
 function isStaleEvolutionError(error: CardApiError) {
   return (
     error.failure === 'evolution-deck-locked' ||
+    error.failure === 'evolution-trade-reserved' ||
     error.failure === 'evolution-insufficient-copies' ||
     error.failure === 'evolution-not-available'
   );

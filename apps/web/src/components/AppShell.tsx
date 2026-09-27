@@ -1,8 +1,8 @@
 import {
   CompassIcon,
   CardsIcon,
-  StackIcon,
   SwordIcon,
+  TrophyIcon,
   PencilSimpleIcon,
 } from '@phosphor-icons/react';
 import { useAuth0 } from '@auth0/auth0-react';
@@ -28,7 +28,7 @@ interface AppShellProps {
 }
 
 type NavigationIconName =
-  'author' | 'battles' | 'collection' | 'decks' | 'explore';
+  'author' | 'battles' | 'collection' | 'explore' | 'leaderboard';
 
 interface NavigationItem {
   href: string;
@@ -48,14 +48,9 @@ const PLAYER_NAVIGATION_ITEMS: NavigationItem[] = [
   {
     href: '/collection',
     icon: 'collection',
-    isActive: (pathname) => pathname === '/collection',
+    isActive: (pathname) =>
+      pathname === '/collection' || pathname.startsWith('/collection/'),
     label: 'Collection',
-  },
-  {
-    href: '/decks',
-    icon: 'decks',
-    isActive: (pathname) => pathname === '/decks',
-    label: 'Decks',
   },
   {
     href: '/matches',
@@ -63,6 +58,12 @@ const PLAYER_NAVIGATION_ITEMS: NavigationItem[] = [
     isActive: (pathname) =>
       pathname === '/matches' || pathname.startsWith('/matches/'),
     label: 'Battles',
+  },
+  {
+    href: '/leaderboard',
+    icon: 'leaderboard',
+    isActive: (pathname) => pathname === '/leaderboard',
+    label: 'Leaderboard',
   },
 ];
 
@@ -82,9 +83,22 @@ function pageTitle(pathname: string): string {
     return 'Saved attempt · Wits World';
   if (pathname.startsWith('/challenge-attempts/'))
     return 'Campus challenge · Wits World';
+  if (pathname === '/collection/trades/new')
+    return 'Start a trade · Wits World';
+  if (pathname.endsWith('/edit') && pathname.startsWith('/collection/trades/'))
+    return 'Edit card trade · Wits World';
+  if (pathname.startsWith('/collection/trades/'))
+    return 'Card trade · Wits World';
+  if (pathname === '/collection/trades') return 'Card trades · Wits World';
+  if (pathname === '/collection/evolutions')
+    return 'Card evolutions · Wits World';
+  if (pathname === '/collection/decks') return 'Decks · Wits World';
   if (pathname === '/collection') return 'Collection · Wits World';
-  if (pathname === '/decks') return 'Decks · Wits World';
+  if (pathname === '/leaderboard') return 'Leaderboard · Wits World';
   if (pathname === '/matches/history') return 'Battle history · Wits World';
+  if (pathname.startsWith('/matches/live/'))
+    return 'Live Ranked battle · Wits World';
+  if (pathname === '/matches/live') return 'Live Ranked · Wits World';
   if (pathname.startsWith('/matches/pvp/')) return 'Player battle · Wits World';
   if (pathname === '/matches/pvp') return 'Player battles · Wits World';
   if (pathname.startsWith('/matches/')) return 'CPU battle · Wits World';
@@ -100,8 +114,8 @@ function NavigationIcon({ name }: { name: NavigationIconName }) {
   const Icon = {
     explore: CompassIcon,
     collection: CardsIcon,
-    decks: StackIcon,
     battles: SwordIcon,
+    leaderboard: TrophyIcon,
     author: PencilSimpleIcon,
   }[name];
   return (
@@ -269,11 +283,14 @@ export function AppShell({ children }: AppShellProps) {
   const isBattleDetail =
     pathname.startsWith('/matches/') &&
     pathname !== '/matches/history' &&
-    pathname !== '/matches/pvp';
+    pathname !== '/matches/pvp' &&
+    pathname !== '/matches/live';
+  const isTradeBuilder = pathname === '/collection/trades/new';
   const isFooterlessProductRoute =
     isExplore ||
     pathname === '/collection' ||
-    pathname === '/decks' ||
+    pathname.startsWith('/collection/') ||
+    pathname === '/leaderboard' ||
     pathname === '/matches' ||
     pathname.startsWith('/matches/') ||
     pathname === '/profile' ||
@@ -458,7 +475,7 @@ export function AppShell({ children }: AppShellProps) {
             setHeaderCollapsed(true);
           }
         }}
-        className={`main-content${isExplore ? ' main-content--explore' : ''}${isBattleDetail ? ' main-content--battle-focus' : ''}${isAuthorRoute ? ' main-content--author' : ''}`}
+        className={`main-content${isExplore ? ' main-content--explore' : ''}${isBattleDetail ? ' main-content--battle-focus' : ''}${isAuthorRoute ? ' main-content--author' : ''}${isTradeBuilder ? ' main-content--trade-builder' : ''}`}
         id="main-content"
         tabIndex={-1}
       >

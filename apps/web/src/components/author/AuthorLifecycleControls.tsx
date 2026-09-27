@@ -9,6 +9,8 @@ interface AuthorLifecycleControlsProps {
   canReview?: boolean;
   editControl?: ReactNode;
   noun: string;
+  reviewPackage?: boolean;
+  submitDisabled?: boolean;
   onAction: (action: AuthorTransitionAction, reason?: string) => void;
   retirementDescription: ReactNode;
   retirementDisabled?: boolean;
@@ -23,6 +25,8 @@ export function AuthorLifecycleControls({
   canReview: canReviewOverride,
   editControl,
   noun,
+  reviewPackage = false,
+  submitDisabled = false,
   onAction,
   retirementDescription,
   retirementDisabled = false,
@@ -73,11 +77,15 @@ export function AuthorLifecycleControls({
         {status === 'draft' ? (
           <button
             className="button button--quiet"
-            disabled={busy}
+            disabled={busy || submitDisabled}
             onClick={() => onAction('submit')}
             type="button"
           >
-            {busy ? 'Submitting…' : 'Submit for review'}
+            {busy
+              ? 'Submitting…'
+              : reviewPackage
+                ? 'Submit event and questions'
+                : 'Submit for review'}
           </button>
         ) : null}
         {status === 'in_review' && canReview ? (
@@ -88,7 +96,9 @@ export function AuthorLifecycleControls({
               onClick={() => onAction('approve')}
               type="button"
             >
-              {busy ? 'Approving…' : `Approve ${noun}`}
+              {busy
+                ? 'Approving…'
+                : `Approve ${reviewPackage ? 'event package' : noun}`}
             </button>
             <button
               className="button button--quiet"
@@ -109,7 +119,9 @@ export function AuthorLifecycleControls({
               onClick={() => onAction('publish')}
               type="button"
             >
-              {busy ? 'Publishing…' : `Publish ${noun}`}
+              {busy
+                ? 'Publishing…'
+                : `Publish ${reviewPackage ? 'event package' : noun}`}
             </button>
             {canReview ? (
               <button
@@ -152,16 +164,21 @@ export function AuthorLifecycleControls({
 
       {status === 'in_review' && !canReview ? (
         <p className="author-notice" role="status">
-          This submission is awaiting review by another Author. Self-approval is
-          not available.
+          {reviewPackage
+            ? 'Event and questions submitted. Another Author must review them.'
+            : 'This submission is awaiting review by another Author. Self-approval is not available.'}
         </p>
       ) : null}
 
       {dialog === 'return' ? (
         <AuthorConfirmationDialog
           busy={busy}
-          cancelLabel={`Keep ${noun} in review`}
-          confirmLabel={busy ? 'Returning…' : `Return ${noun}`}
+          cancelLabel={`Keep ${reviewPackage ? 'event package' : noun} in review`}
+          confirmLabel={
+            busy
+              ? 'Returning…'
+              : `Return ${reviewPackage ? 'event package' : noun}`
+          }
           description={
             <div className="form-field">
               <label htmlFor={`return-${noun}-reason`}>Return reason</label>
@@ -190,7 +207,7 @@ export function AuthorLifecycleControls({
           onCancel={() => setDialog(null)}
           onConfirm={submitReturn}
           returnFocusRef={returnButtonRef}
-          title={`Return this ${noun} to draft?`}
+          title={`Return this ${reviewPackage ? 'event package' : noun} to draft?`}
         />
       ) : null}
 

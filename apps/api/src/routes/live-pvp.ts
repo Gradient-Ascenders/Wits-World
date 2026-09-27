@@ -2,6 +2,11 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { ApiError } from '../errors/api-error.js';
 import {
+  acceptsBattleSwaps,
+  LIVE_SWAP_MEDIA_TYPE,
+  livePvpMatchForClient,
+} from '../matches/battle-projection-capability.js';
+import {
   LivePvpError,
   type LiveConnectionRole,
   type LivePvpService,
@@ -42,7 +47,15 @@ const ticketBodySchema = {
 const matchProjectionSchema = {
   type: 'object',
   additionalProperties: true,
-  required: ['matchId', 'mode', 'role', 'status', 'version', 'phase'],
+  required: [
+    'matchId',
+    'mode',
+    'role',
+    'status',
+    'version',
+    'phase',
+    'serverTime',
+  ],
   properties: {
     matchId: { type: 'string', format: 'uuid' },
     mode: { const: 'live' },
@@ -52,6 +65,7 @@ const matchProjectionSchema = {
     phase: {
       enum: ['initial_selection', 'active', 'replacement', 'completed'],
     },
+    serverTime: { type: 'string', format: 'date-time' },
   },
 } as const;
 
@@ -87,8 +101,7 @@ export const livePvpRoutes: FastifyPluginAsync<Options> = async (
       schema: {
         operationId: 'getLivePvpMatch',
         summary: 'Read the latest live PvP projection',
-        description:
-          'Returns the authoritative participant or spectator-safe projection derived from the authenticated player.',
+        description: `Returns the authoritative participant or spectator-safe projection derived from the authenticated player. Include ${LIVE_SWAP_MEDIA_TYPE} in Accept to receive voluntary swap legal actions; otherwise the previous projection is returned.`,
         tags: ['Matches'],
         security: [{ bearerAuth: [] }],
         params: matchParamsSchema,
@@ -108,7 +121,14 @@ export const livePvpRoutes: FastifyPluginAsync<Options> = async (
           matchId: request.params.matchId,
           playerId: player.id,
         });
-        return { ...match, requestId: request.id };
+        return {
+          ...livePvpMatchForClient(
+            match,
+            acceptsBattleSwaps(request, LIVE_SWAP_MEDIA_TYPE),
+          ),
+          requestId: request.id,
+          serverTime: new Date().toISOString(),
+        };
       } catch (error) {
         throw toApiError(error);
       }

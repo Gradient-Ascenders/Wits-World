@@ -23,6 +23,7 @@ import {
 import { useApiAccessToken } from '../auth/useApiAccessToken';
 import { MatchErrorState } from '../components/matches/MatchErrorState';
 import {
+  BattleResultColumns,
   BattleResultSummary,
   formatMatchDate,
   mergeBattleHistory,
@@ -243,18 +244,50 @@ export default function MatchEntryPage({ apiBaseUrl }: { apiBaseUrl: string }) {
 
       <div className="match-dashboard">
         <div className="battle-mode-grid">
+          <LiveBattlePanel deck={state.deck} />
+          <PlayerBattlePanel state={playerBattles} />
           <StartMatchPanel
             activeMatch={state.activeMatch}
             deck={state.deck}
             isStarting={isStarting}
             onStart={startMatch}
           />
-          <PlayerBattlePanel state={playerBattles} />
         </div>
 
         <RecentResults state={recentResults} />
       </div>
     </div>
+  );
+}
+
+function LiveBattlePanel({ deck }: { deck: SavedDeck | null }) {
+  return (
+    <section
+      aria-labelledby="live-battles-title"
+      className="battle-mode-card battle-mode-card--live"
+    >
+      <div className="battle-mode-card__intro">
+        <h2 id="live-battles-title">Live Ranked</h2>
+        <p>
+          Play with one minute for each decision, or watch a private battle.
+        </p>
+      </div>
+      <div className="battle-mode-card__state">
+        <strong>
+          {deck ? `Ready with ${deck.name}` : 'Spectator entry available'}
+        </strong>
+        <span>
+          {deck
+            ? 'Ranked wins and losses change your seasonal rating. Your first five results are placement matches.'
+            : 'Select a deck to compete, or use a shared match link to watch.'}
+        </span>
+      </div>
+      <div className="battle-mode-card__actions">
+        <Link className="button" href="/matches/live">
+          Play or watch live
+        </Link>
+      </div>
+    </section>
   );
 }
 
@@ -275,7 +308,7 @@ function StartMatchPanel({
       className={`battle-mode-card${activeMatch ? ' battle-mode-card--active' : ''}`}
     >
       <div className="battle-mode-card__intro">
-        <h2 id="cpu-battle-title">CPU Battle</h2>
+        <h2 id="cpu-battle-title">CPU battle</h2>
         <p>Battle the computer with your selected deck.</p>
       </div>
 
@@ -317,7 +350,7 @@ function StartMatchPanel({
             >
               {isStarting ? 'Preparing battle…' : 'Start CPU battle'}
             </button>
-            <Link className="button button--quiet" href="/decks">
+            <Link className="button button--quiet" href="/collection/decks">
               Review selected deck
             </Link>
           </div>
@@ -329,7 +362,7 @@ function StartMatchPanel({
             <span>Choose a saved deck before starting.</span>
           </div>
           <div className="battle-mode-card__actions">
-            <Link className="button" href="/decks">
+            <Link className="button" href="/collection/decks">
               Choose deck
             </Link>
           </div>
@@ -433,7 +466,7 @@ function RecentResults({ state }: { state: RecentResultsState }) {
             <QuestMarker />
             Loading recent results
           </h3>
-          <p>Loading your latest CPU and player battles…</p>
+          <p>Loading your latest CPU and Player Battles…</p>
         </div>
       ) : state.status === 'unavailable' ? (
         <div
@@ -457,7 +490,7 @@ function RecentResults({ state }: { state: RecentResultsState }) {
           <p>
             {state.partial
               ? 'Showing no results until the remaining battle history can be checked.'
-              : 'Finish a CPU or player battle to see your result here.'}
+              : 'Finish a CPU or Player Battle to see your result here.'}
           </p>
         </div>
       ) : (
@@ -468,6 +501,7 @@ function RecentResults({ state }: { state: RecentResultsState }) {
               results that loaded.
             </p>
           ) : null}
+          <BattleResultColumns />
           <ol aria-label="Recent battle results" className="recent-match-list">
             {state.battles.map((battle) => (
               <li key={`${battle.kind}-${battle.match.matchId}`}>

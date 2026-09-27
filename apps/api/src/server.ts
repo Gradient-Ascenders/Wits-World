@@ -54,7 +54,6 @@ import { createLivePvpNotificationListener } from './matches/live-pvp-notificati
 import { createTrustService } from './trust/trust-service.js';
 import { createTrustRestrictionService } from './trust/trust-restrictions.js';
 import { createTrustEvaluationScheduler } from './trust/trust-evaluation-scheduler.js';
-import { createTrustReviewService } from './trust/trust-review-service.js';
 import { createPlacementService } from './placement/placement-service.js';
 import { createPlacementScheduler } from './placement/placement-scheduler.js';
 import { createRankedService } from './matches/ranked-service.js';
@@ -68,6 +67,7 @@ import { createAuthorAnalyticsService } from './analytics/author-analytics-servi
 import { createEventProductAnalyticsRecorder } from './analytics/event-product-aggregates.js';
 import { createDeveloperApiKeyService } from './developer/developer-api-key-service.js';
 import { createDeveloperPublicDataService } from './developer/developer-public-data-service.js';
+import { createTrustReviewService } from './trust/trust-review-service.js';
 
 async function startServer(): Promise<void> {
   loadApiEnvironment();
@@ -200,6 +200,7 @@ async function startServer(): Promise<void> {
     authConfig,
     corsConfig,
     playerIdentityService,
+    trustReviewService,
     playerNameSetupService: playerIdentityService,
     rateProtection: createAuthenticatedRateProtection({
       maxRequests: config.rateLimitMaxRequests,
@@ -269,7 +270,6 @@ async function startServer(): Promise<void> {
       questionPerformance: questionPerformanceService,
       analytics: authorAnalyticsService,
     },
-    trustReviewService,
   });
 
   const accountDeletionRetryProcessor = createAccountDeletionRetryProcessor(

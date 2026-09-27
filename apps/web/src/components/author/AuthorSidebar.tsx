@@ -4,6 +4,7 @@ import {
   ChartBarIcon,
   ClipboardTextIcon,
   ListIcon,
+  MapTrifoldIcon,
   ShieldWarningIcon,
   StackIcon,
 } from '@phosphor-icons/react';
@@ -23,6 +24,7 @@ const sections = [
     icon: ShieldWarningIcon,
   },
   { section: 'analytics', label: 'Analytics', icon: ChartBarIcon },
+  { section: 'placement', label: 'Placement', icon: MapTrifoldIcon },
 ] as const;
 
 export function AuthorSidebar({

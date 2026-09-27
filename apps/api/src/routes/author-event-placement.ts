@@ -50,17 +50,53 @@ const stateResultSchema = {
   additionalProperties: true,
   required: [
     'policyVersion',
+    'policy',
     'rotationBucket',
     'stateVersion',
     'metrics',
     'zones',
     'sites',
     'assignments',
+    'events',
     'overrides',
     'requestId',
   ],
   properties: {
     policyVersion: { type: 'string' },
+    policy: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'id',
+        'target',
+        'preferredPerZone',
+        'mandatoryPerZone',
+        'separationMetres',
+        'replacements',
+        'cooldownBuckets',
+        'previewTtlMinutes',
+        'rotationTimezone',
+        'rotationLocalTime',
+        'maximumPinHours',
+        'maximumPauseHours',
+        'maximumExclusionHours',
+      ],
+      properties: {
+        id: { type: 'string' },
+        target: { type: 'integer', minimum: 1 },
+        preferredPerZone: { type: 'integer', minimum: 1 },
+        mandatoryPerZone: { type: 'integer', minimum: 1 },
+        separationMetres: { type: 'integer', minimum: 1 },
+        replacements: { type: 'integer', minimum: 0 },
+        cooldownBuckets: { type: 'integer', minimum: 0 },
+        previewTtlMinutes: { type: 'integer', minimum: 1 },
+        rotationTimezone: { type: 'string' },
+        rotationLocalTime: { type: 'string' },
+        maximumPinHours: { type: 'integer', minimum: 1 },
+        maximumPauseHours: { type: 'integer', minimum: 1 },
+        maximumExclusionHours: { type: 'integer', minimum: 1 },
+      },
+    },
     rotationBucket: { type: 'string', format: 'date' },
     stateVersion: { type: 'integer' },
     currentPlanId: { anyOf: [uuid, { type: 'null' }] },
@@ -105,6 +141,15 @@ const stateResultSchema = {
       type: 'array',
       items: { type: 'object', additionalProperties: true },
     },
+    events: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id', 'title'],
+        properties: { id: uuid, title: { type: 'string', minLength: 1 } },
+      },
+    },
     overrides: {
       type: 'array',
       items: { type: 'object', additionalProperties: true },
@@ -125,6 +170,7 @@ const planSchema = {
     'entries',
     'zoneCounts',
     'exceptions',
+    'validation',
   ],
   properties: {
     planId: uuid,
@@ -152,6 +198,58 @@ const planSchema = {
     },
     zoneCounts: { type: 'object', additionalProperties: { type: 'integer' } },
     exceptions: { type: 'array', items: { type: 'string' } },
+    validation: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['coverage', 'separation'],
+      properties: {
+        coverage: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['zoneId', 'actual', 'mandatory', 'preferred', 'status'],
+            properties: {
+              zoneId: uuid,
+              actual: { type: 'integer', minimum: 0 },
+              mandatory: { type: 'integer', minimum: 0 },
+              preferred: { type: 'integer', minimum: 0 },
+              status: {
+                type: 'string',
+                enum: ['met', 'preferred_shortfall', 'unserved'],
+              },
+            },
+          },
+        },
+        separation: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['minimumMetres', 'blockedSites'],
+          properties: {
+            minimumMetres: { type: 'integer', minimum: 1 },
+            blockedSites: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: [
+                  'siteId',
+                  'zoneId',
+                  'relatedSiteIds',
+                  'conflictsWithFixedEvent',
+                ],
+                properties: {
+                  siteId: uuid,
+                  zoneId: uuid,
+                  relatedSiteIds: { type: 'array', items: uuid },
+                  conflictsWithFixedEvent: { type: 'boolean' },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   },
 } as const;
 const planResultSchema = {
