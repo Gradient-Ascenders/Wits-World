@@ -875,6 +875,7 @@ test('Player review uses a responsive, privacy-safe master-detail workflow', asy
   await expect(signals.getByText('High severity')).toBeVisible();
   await signals.getByText('View aggregate basis').click();
   await expect(signals.getByText(/87.5%/u)).toBeVisible();
+  await expect(signals.getByText(/policy threshold/iu)).toHaveCount(0);
   const queueToggle = page.getByRole('button', { name: 'Collapse case queue' });
   await queueToggle.click();
   await expect(
@@ -889,6 +890,33 @@ test('Player review uses a responsive, privacy-safe master-detail workflow', asy
   await expect(
     page.getByRole('textbox', { name: /Reason and context/u }),
   ).toBeVisible();
+  await page.getByLabel('Apply temporary restriction').check();
+  await page.getByLabel('Require online verification').check();
+  await page.getByLabel('Duration').selectOption('72');
+  await page
+    .getByRole('textbox', { name: /Reason and context/u })
+    .fill('Temporarily pause new matches while this case is reviewed.');
+  await page.getByRole('button', { name: 'Review restriction' }).click();
+  const desktopDialog = page.getByRole('dialog', {
+    name: `Apply temporary restrictions to ${detail.playerName}?`,
+  });
+  await expect(
+    desktopDialog.getByRole('heading', { name: 'Current state' }),
+  ).toBeVisible();
+  await expect(
+    desktopDialog.getByText('Pause new competitive matches'),
+  ).toBeVisible();
+  await expect(
+    desktopDialog.getByRole('heading', { name: 'Proposed restriction' }),
+  ).toBeVisible();
+  await expect(
+    desktopDialog.getByText('Require online verification'),
+  ).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: testInfo.outputPath('player-review-confirmation-desktop.png'),
+  });
+  await page.keyboard.press('Escape');
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
@@ -908,11 +936,27 @@ test('Player review uses a responsive, privacy-safe master-detail workflow', asy
   await expect(
     page.getByRole('heading', { name: detail.playerName }),
   ).toBeVisible();
+  await page.getByLabel('Apply temporary restriction').check();
+  await page.getByLabel('Require online verification').check();
+  await page
+    .getByRole('textbox', { name: /Reason and context/u })
+    .fill('Require a short verification step while this case is reviewed.');
+  await page.getByRole('button', { name: 'Review restriction' }).click();
+  const mobileDialog = page.getByRole('dialog', {
+    name: `Apply temporary restrictions to ${detail.playerName}?`,
+  });
+  await expect(
+    mobileDialog.getByRole('heading', { name: 'Current state' }),
+  ).toBeVisible();
+  await expect(
+    mobileDialog.getByRole('heading', { name: 'Proposed restriction' }),
+  ).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: testInfo.outputPath('player-review-mobile.png'),
+    path: testInfo.outputPath('player-review-confirmation-mobile.png'),
   });
+  await page.keyboard.press('Escape');
 
   expect(consoleErrors).toEqual([]);
 });
@@ -1600,6 +1644,7 @@ async function installTrustReviewApi(
 function trustCaseFixture(caseId: string) {
   return {
     activeRestrictionCount: 1,
+    activeRestrictionScopes: ['new_competitive_match_hold'],
     band: 'urgent_review',
     canReview: true,
     caseId,
@@ -1637,8 +1682,6 @@ function trustCaseFixture(caseId: string) {
           evaluationWindowEnd: '2026-09-25T08:00:00.000Z',
           evaluationWindowStart: '2026-09-18T08:00:00.000Z',
           kind: 'opponent_concentration',
-          minimumCompletedMatchCount: 6,
-          minimumOpponentConcentrationRatio: 0.8,
           opponentConcentrationRatio: 0.875,
           repeatedOpponentMatchCount: 7,
         },

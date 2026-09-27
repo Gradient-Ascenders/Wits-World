@@ -438,8 +438,6 @@ describe.skipIf(!runIntegrationTests)(
             completedMatchCount: 8,
             repeatedOpponentMatchCount: 7,
             opponentConcentrationRatio: 0.875,
-            minimumCompletedMatchCount: 6,
-            minimumOpponentConcentrationRatio: 0.8,
           },
         }),
       );
@@ -774,6 +772,7 @@ describe.skipIf(!runIntegrationTests)(
         version: 2,
         restrictionCount: 1,
         activeRestrictionCount: 1,
+        activeRestrictionScopes: ['new_competitive_match_hold'],
         latestRestrictionExpiry: expect.any(String),
         canReview: true,
         restrictionPreview: [
@@ -1344,6 +1343,9 @@ function expectPrivacySafeProjection(value: unknown): void {
     'sourceIdentifier',
     'sourceDigest',
     'deduplicationDigest',
+    'minimumCompletedMatchCount',
+    'minimumOpponentConcentrationRatio',
+    'minimumQualifyingForfeitCount',
   ]) {
     expect(serialized).not.toContain(prohibitedField);
   }

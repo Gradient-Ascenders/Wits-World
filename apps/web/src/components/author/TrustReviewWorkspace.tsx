@@ -1020,21 +1020,13 @@ function OpponentPatternSummary({
             </div>
             <div>
               <dt>Concentration</dt>
-              <dd>
-                {formatPercent(summary.opponentConcentrationRatio)} (policy
-                threshold{' '}
-                {formatPercent(summary.minimumOpponentConcentrationRatio)}
-                across at least {summary.minimumCompletedMatchCount} matches)
-              </dd>
+              <dd>{formatPercent(summary.opponentConcentrationRatio)}</dd>
             </div>
           </>
         ) : (
           <div>
             <dt>Qualifying forfeits</dt>
-            <dd>
-              {summary.qualifyingForfeitCount} (policy threshold{' '}
-              {summary.minimumQualifyingForfeitCount})
-            </dd>
+            <dd>{summary.qualifyingForfeitCount}</dd>
           </div>
         )}
       </dl>
@@ -1591,23 +1583,84 @@ function DecisionSection({
           confirmLabel={`Apply ${durationHours}-hour restriction`}
           description={
             <div className="trust-decision__confirmation">
-              <p>
-                Apply these temporary limits to{' '}
-                <strong>{caseDetail.playerName}</strong> for {durationHours}{' '}
-                hours:
-              </p>
-              <ul>
-                {scopes.map((scope) => (
-                  <li key={scope}>{writableRestrictionLabels[scope]}</li>
-                ))}
-              </ul>
-              <p>
-                <strong>Reason:</strong> {reason.trim()}
-              </p>
-              <p>
-                The decision will be recorded against case version{' '}
-                {caseDetail.version}.
-              </p>
+              <section
+                aria-labelledby="restriction-current-state-title"
+                className="trust-decision__confirmation-state"
+              >
+                <h3 id="restriction-current-state-title">Current state</h3>
+                <dl>
+                  <div>
+                    <dt>Case status</dt>
+                    <dd>{statusLabel(caseDetail.status)}</dd>
+                  </div>
+                  <div>
+                    <dt>Active restriction records</dt>
+                    <dd>{caseDetail.activeRestrictionCount}</dd>
+                  </div>
+                  <div>
+                    <dt>Existing affected capabilities</dt>
+                    <dd>
+                      {caseDetail.activeRestrictionScopes.length ? (
+                        <ul>
+                          {caseDetail.activeRestrictionScopes.map((scope) => (
+                            <li key={scope}>{restrictionLabels[scope]}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        'None'
+                      )}
+                    </dd>
+                  </div>
+                  {caseDetail.latestRestrictionExpiry ? (
+                    <div>
+                      <dt>Latest active expiry</dt>
+                      <dd>
+                        <time dateTime={caseDetail.latestRestrictionExpiry}>
+                          {formatDateTime(caseDetail.latestRestrictionExpiry)}
+                        </time>
+                      </dd>
+                    </div>
+                  ) : null}
+                  <div>
+                    <dt>Case version</dt>
+                    <dd>{caseDetail.version}</dd>
+                  </div>
+                </dl>
+              </section>
+              <section
+                aria-labelledby="restriction-proposed-state-title"
+                className="trust-decision__confirmation-state"
+              >
+                <h3 id="restriction-proposed-state-title">
+                  Proposed restriction
+                </h3>
+                <dl>
+                  <div>
+                    <dt>Player</dt>
+                    <dd>{caseDetail.playerName}</dd>
+                  </div>
+                  <div>
+                    <dt>Affected capabilities</dt>
+                    <dd>
+                      <ul>
+                        {scopes.map((scope) => (
+                          <li key={scope}>
+                            {writableRestrictionLabels[scope]}
+                          </li>
+                        ))}
+                      </ul>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Duration</dt>
+                    <dd>{durationHours} hours</dd>
+                  </div>
+                  <div>
+                    <dt>Reason</dt>
+                    <dd>{reason.trim()}</dd>
+                  </div>
+                </dl>
+              </section>
             </div>
           }
           onCancel={() => setConfirming(false)}

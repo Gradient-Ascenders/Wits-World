@@ -1717,12 +1717,62 @@ details.trust-signal-summary {
 
 .trust-decision__confirmation {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-4);
 }
 
 .trust-decision__confirmation p,
 .trust-decision__confirmation ul {
   margin: 0;
+}
+
+.trust-decision__confirmation-state {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.trust-decision__confirmation-state + .trust-decision__confirmation-state {
+  border-block-start: 1px solid rgb(179 189 204 / 24%);
+  padding-block-start: var(--space-4);
+}
+
+.trust-decision__confirmation-state h3 {
+  font-family: var(--font-body);
+  font-size: 1rem;
+  margin: 0;
+}
+
+.trust-decision__confirmation-state dl {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.trust-decision__confirmation-state dl > div {
+  display: grid;
+  gap: var(--space-1);
+  grid-template-columns: minmax(8rem, 0.65fr) minmax(0, 1fr);
+}
+
+.trust-decision__confirmation-state dt {
+  color: var(--colour-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.trust-decision__confirmation-state dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.trust-decision__confirmation-state ul {
+  padding-inline-start: var(--space-4);
+}
+
+@media (max-width: 34rem) {
+  .trust-decision__confirmation-state dl > div {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (min-width: 60rem) {

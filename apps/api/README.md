@@ -371,16 +371,20 @@ counts, `latestRestrictionExpiry`, and `canReview`. Detail contains a
 restriction previews, and 20-item `history`/`recentHistory` aliases plus
 total/truncation metadata; the separate collection routes provide pages up to
 100 items. The aliases keep the Author console contract compatible without
-making detail reads unbounded. New opponent-pattern evidence requires signal-time
-aggregate counts, evaluation windows, and trust-v1 thresholds. Legacy rows
-without that summary are explicitly unavailable and make the case
+making detail reads unbounded. New opponent-pattern evidence persists
+signal-time aggregate counts, evaluation windows, and trust-v1 thresholds so
+the service can validate the immutable summary, but reviewer responses expose
+only the window, counts, and observed concentration ratio. Legacy rows without
+that summary are explicitly unavailable and make the case
 non-reviewable only while they still contribute points and remain unadjusted;
 only a newer explained evaluation that is also effective and unadjusted can
 supersede them.
 Detail and audit responses contain local opaque player identifiers,
-policy/version data, and effective restrictions. They do not
+policy/version data, and effective restrictions. Detail also exposes the
+authoritative active restriction scopes needed for destructive confirmation.
+They do not
 contain Auth0 identifiers, precise location, raw telemetry, private match
-history, or evidence source identifiers.
+history, evidence source identifiers, or detector thresholds.
 
 Every mutation derives the reviewer from the bearer token, requires the
 expected case version and a bounded `reasonNote`, and runs the case transition,

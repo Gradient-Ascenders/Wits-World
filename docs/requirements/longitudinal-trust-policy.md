@@ -301,6 +301,10 @@ HTTP `409` conflict and the reviewer must load the latest case before deciding
 again. The investigation view consumes the full pageable privacy-safe evidence,
 restriction, and audit projections, including retained opponent-pattern
 aggregates, and offers the API's bounded 100-record-per-collection JSON export.
+Reviewer-safe opponent aggregates expose evaluation windows, counts, and the
+observed concentration ratio, but never detector thresholds. Destructive
+restriction confirmation separates the authoritative current case status and
+active restriction scopes from the proposed capabilities, duration, and reason.
 Evidence selection is required in the interface for false-positive adjustments;
 other decisions require reason and context without a mandatory evidence
 checklist.

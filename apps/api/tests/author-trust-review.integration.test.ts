@@ -91,6 +91,7 @@ const detail: TrustCaseDetail = {
   policyVersion: 'trust-v1',
   restrictionCount: 0,
   activeRestrictionCount: 0,
+  activeRestrictionScopes: [],
   latestRestrictionExpiry: null,
   canReview: true,
   categoryTotals: {
@@ -480,8 +481,6 @@ describe('suspect-player review API', () => {
             completedMatchCount: 8,
             repeatedOpponentMatchCount: 7,
             opponentConcentrationRatio: 0.875,
-            minimumCompletedMatchCount: 6,
-            minimumOpponentConcentrationRatio: 0.8,
           },
         },
       ],
@@ -501,13 +500,14 @@ describe('suspect-player review API', () => {
             completedMatchCount: 8,
             repeatedOpponentMatchCount: 7,
             opponentConcentrationRatio: 0.875,
-            minimumCompletedMatchCount: 6,
-            minimumOpponentConcentrationRatio: 0.8,
           },
         },
       ],
     });
     expectPrivacySafe(response.body);
+    expect(response.body).not.toContain('minimumCompletedMatchCount');
+    expect(response.body).not.toContain('minimumOpponentConcentrationRatio');
+    expect(response.body).not.toContain('minimumQualifyingForfeitCount');
     expect(response.body).not.toContain('opponentPlayerId');
     expect(response.body).not.toContain('matchId');
     expect(response.body).not.toContain('battleState');
@@ -726,6 +726,12 @@ describe('suspect-player review API', () => {
   it('documents the complete protected request and response contract', async () => {
     await app.ready();
     const document = app.swagger();
+    const serializedDocument = JSON.stringify(document);
+    expect(serializedDocument).not.toContain('minimumCompletedMatchCount');
+    expect(serializedDocument).not.toContain(
+      'minimumOpponentConcentrationRatio',
+    );
+    expect(serializedDocument).not.toContain('minimumQualifyingForfeitCount');
     const queue = document.paths?.['/api/v1/author/trust-cases']?.get;
     const casePath = document.paths?.['/api/v1/author/trust-cases/{caseId}'];
     const history =
@@ -986,6 +992,9 @@ function expectPrivacySafe(body: string): void {
     'sourceIdentifier',
     'sourceDigest',
     'deduplicationDigest',
+    'minimumCompletedMatchCount',
+    'minimumOpponentConcentrationRatio',
+    'minimumQualifyingForfeitCount',
   ]) {
     expect(body).not.toContain(prohibitedField);
   }

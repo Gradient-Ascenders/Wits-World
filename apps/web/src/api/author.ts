@@ -590,8 +590,6 @@ export type TrustOpponentPatternSummary =
       evaluationWindowEnd: string;
       evaluationWindowStart: string;
       kind: 'opponent_concentration';
-      minimumCompletedMatchCount: 6;
-      minimumOpponentConcentrationRatio: 0.8;
       opponentConcentrationRatio: number;
       repeatedOpponentMatchCount: number;
     }
@@ -600,7 +598,6 @@ export type TrustOpponentPatternSummary =
       evaluationWindowEnd: string;
       evaluationWindowStart: string;
       kind: 'one_sided_outcome_pattern';
-      minimumQualifyingForfeitCount: 4;
       qualifyingForfeitCount: number;
     }
   | {
@@ -664,6 +661,7 @@ export interface TrustCaseHistoryItem {
 
 export interface TrustCaseDetail {
   activeRestrictionCount: number;
+  activeRestrictionScopes: TrustRestrictionScope[];
   band: TrustReviewBand;
   canReview: boolean;
   caseId: string;
@@ -2410,6 +2408,8 @@ function parseTrustCaseDetail(value: unknown): TrustCaseDetail {
     !isNonBlank(value.policyVersion) ||
     !isNonNegativeInteger(value.restrictionCount) ||
     !isNonNegativeInteger(value.activeRestrictionCount) ||
+    !Array.isArray(value.activeRestrictionScopes) ||
+    !value.activeRestrictionScopes.every(isTrustRestrictionScope) ||
     !isNullableDateTime(value.latestRestrictionExpiry) ||
     typeof value.canReview !== 'boolean' ||
     !isRecord(value.categoryTotals) ||
@@ -2437,6 +2437,7 @@ function parseTrustCaseDetail(value: unknown): TrustCaseDetail {
   }
   return {
     activeRestrictionCount: value.activeRestrictionCount,
+    activeRestrictionScopes: value.activeRestrictionScopes,
     band: value.band,
     canReview: value.canReview,
     caseId: value.caseId,
@@ -2600,18 +2601,29 @@ function parseTrustOpponentPattern(
     value.kind === 'opponent_concentration' &&
     isNonNegativeInteger(value.completedMatchCount) &&
     isNonNegativeInteger(value.repeatedOpponentMatchCount) &&
-    isRate(value.opponentConcentrationRatio) &&
-    value.minimumCompletedMatchCount === 6 &&
-    value.minimumOpponentConcentrationRatio === 0.8
+    isRate(value.opponentConcentrationRatio)
   ) {
-    return value as TrustOpponentPatternSummary;
+    return {
+      availability: 'available',
+      completedMatchCount: value.completedMatchCount,
+      evaluationWindowEnd: value.evaluationWindowEnd,
+      evaluationWindowStart: value.evaluationWindowStart,
+      kind: 'opponent_concentration',
+      opponentConcentrationRatio: value.opponentConcentrationRatio,
+      repeatedOpponentMatchCount: value.repeatedOpponentMatchCount,
+    };
   }
   if (
     value.kind === 'one_sided_outcome_pattern' &&
-    isNonNegativeInteger(value.qualifyingForfeitCount) &&
-    value.minimumQualifyingForfeitCount === 4
+    isNonNegativeInteger(value.qualifyingForfeitCount)
   ) {
-    return value as TrustOpponentPatternSummary;
+    return {
+      availability: 'available',
+      evaluationWindowEnd: value.evaluationWindowEnd,
+      evaluationWindowStart: value.evaluationWindowStart,
+      kind: 'one_sided_outcome_pattern',
+      qualifyingForfeitCount: value.qualifyingForfeitCount,
+    };
   }
   throw unavailableResponse();
 }

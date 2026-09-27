@@ -118,12 +118,24 @@ describe('TrustReviewWorkspace', () => {
         evaluationWindowEnd: '2026-09-25T09:00:00.000Z',
         evaluationWindowStart: '2026-09-18T09:00:00.000Z',
         kind: 'opponent_concentration' as const,
-        minimumCompletedMatchCount: 6 as const,
-        minimumOpponentConcentrationRatio: 0.8 as const,
+        minimumCompletedMatchCount: 6,
+        minimumOpponentConcentrationRatio: 0.8,
         opponentConcentrationRatio: 0.875,
         repeatedOpponentMatchCount: 7,
-      },
+      } as unknown as TrustCaseEvidenceItem['opponentPattern'],
       signalType: 'opponent_concentration' as const,
+    };
+    const forfeitEvidence: TrustCaseEvidenceItem = {
+      ...caseFixture().evidencePreview[0]!,
+      evidenceId: '30000000-0000-4000-8000-000000000004',
+      opponentPattern: {
+        availability: 'available' as const,
+        evaluationWindowEnd: '2026-09-25T09:00:00.000Z',
+        evaluationWindowStart: '2026-09-18T09:00:00.000Z',
+        kind: 'one_sided_outcome_pattern' as const,
+        qualifyingForfeitCount: 5,
+      },
+      signalType: 'one_sided_outcome_pattern' as const,
     };
     const restriction: TrustRestrictionItem = {
       active: true,
@@ -138,9 +150,10 @@ describe('TrustReviewWorkspace', () => {
     const base = caseFixture();
     const detail = caseFixture({
       activeRestrictionCount: 1,
-      evidence: [opponentEvidence],
-      evidencePreview: [opponentEvidence],
-      evidenceTotalItems: 1,
+      activeRestrictionScopes: ['card_trade_hold'],
+      evidence: [opponentEvidence, forfeitEvidence],
+      evidencePreview: [opponentEvidence, forfeitEvidence],
+      evidenceTotalItems: 2,
       recentHistory: [
         {
           ...base.recentHistory[0]!,
@@ -164,7 +177,9 @@ describe('TrustReviewWorkspace', () => {
 
     const signals = await screen.findByRole('region', { name: 'Signals' });
     expect(within(signals).getByText('Opponent concentration')).toBeVisible();
-    await user.click(screen.getByText('View aggregate basis'));
+    const aggregateToggles = screen.getAllByText('View aggregate basis');
+    await user.click(aggregateToggles[0]!);
+    await user.click(aggregateToggles[1]!);
     expect(
       screen.getByText('Completed matches').nextElementSibling,
     ).toHaveTextContent('8');
@@ -172,6 +187,10 @@ describe('TrustReviewWorkspace', () => {
       screen.getByText('Repeated-opponent matches').nextElementSibling,
     ).toHaveTextContent('7');
     expect(screen.getByText(/87.5%/)).toBeVisible();
+    expect(
+      screen.getByText('Qualifying forfeits').nextElementSibling,
+    ).toHaveTextContent('5');
+    expect(screen.queryByText(/policy threshold/i)).not.toBeInTheDocument();
     expect(screen.getByText('Pause card trading')).toBeVisible();
     expect(screen.getByText('Submitted')).toBeVisible();
     expect(
@@ -181,10 +200,10 @@ describe('TrustReviewWorkspace', () => {
       screen.queryByLabelText('Pause card trading'),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByText(
+      screen.getAllByText(
         /Opponent identities and private match records are not exposed/i,
       ),
-    ).toBeVisible();
+    ).toHaveLength(2);
   });
 
   it('loads additional signal pages without duplicating the preview', async () => {
@@ -316,7 +335,13 @@ describe('TrustReviewWorkspace', () => {
 
   it('requires keyboard-accessible confirmation before applying restrictions', async () => {
     const user = userEvent.setup();
-    const fetchMock = installCaseApi();
+    const fetchMock = installCaseApi({
+      detail: caseFixture({
+        activeRestrictionCount: 1,
+        activeRestrictionScopes: ['location_reward_challenge_hold'],
+        latestRestrictionExpiry: '2026-09-28T09:00:00.000Z',
+      }),
+    });
     renderWorkspace(caseId);
 
     await screen.findByRole('heading', { name: 'Casey Reviewer' });
@@ -339,6 +364,24 @@ describe('TrustReviewWorkspace', () => {
     expect(
       within(dialog).getByText('Pause new competitive matches'),
     ).toBeVisible();
+    expect(
+      within(dialog).getByRole('heading', { name: 'Current state' }),
+    ).toBeVisible();
+    expect(
+      within(dialog).getByText('Case status').nextElementSibling,
+    ).toHaveTextContent('Open');
+    expect(
+      within(dialog).getByText('Active restriction records').nextElementSibling,
+    ).toHaveTextContent('1');
+    expect(
+      within(dialog).getByText('Pause location reward challenges'),
+    ).toBeVisible();
+    expect(
+      within(dialog).getByRole('heading', { name: 'Proposed restriction' }),
+    ).toBeVisible();
+    expect(
+      within(dialog).getByText('Duration').nextElementSibling,
+    ).toHaveTextContent('72 hours');
     expect(
       within(dialog).getByRole('button', { name: 'Go back' }),
     ).toHaveFocus();
@@ -641,6 +684,7 @@ function caseFixture(
 ): TrustCaseDetail {
   return {
     activeRestrictionCount: 0,
+    activeRestrictionScopes: [],
     band: 'urgent_review',
     canReview: true,
     caseId,

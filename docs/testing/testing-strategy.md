@@ -49,11 +49,13 @@ when `TEST_DATABASE_URL` is absent; the repository database runner remains the
 required integration gate.
 
 Web tests cover queue/search/filter behaviour, server-provided score and signal
-presentation, valid decisions, explicit restriction confirmation, validation
-focus, stale-conflict recovery, loading/empty/forbidden/API-error states,
+presentation, valid decisions, explicit restriction confirmation with current
+case/restriction state separated from the proposed change, validation focus,
+stale-conflict recovery, loading/empty/forbidden/API-error states,
 keyboard Escape and modal focus return, and route denial before any trust-case
 request for an ordinary player. Focused coverage also exercises pageable
-evidence, independent collection failures, privacy-safe opponent aggregates,
+evidence, independent collection failures, privacy-safe opponent aggregates
+without detector thresholds,
 restriction and appeal state, audit context, bounded-export truncation notices,
 and the absence of a writable card-trade restriction control. These automated
 checks do not claim manual screen-reader, responsive-browser, deployed-role, or
