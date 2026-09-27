@@ -200,6 +200,25 @@ that a committed `too_fast` decision produces only the non-precise derived
 signal. The periodic scheduler has focused tests for cadence, overlap avoidance,
 shutdown, and safe failure logging.
 
+Issue `#260` adds Fastify-injection coverage for authentication, ordinary-Player
+denial, default/explicit active and resolved queue semantics, safe Player Name
+search, bounded queue filters, closed privacy-safe response schemas, generic
+inaccessible-case errors, authenticated reviewer derivation, malformed bodies,
+stale-version conflicts, action-specific request schemas, and generated OpenAPI
+parameters, responses, limits, and security declarations. The
+`trust-review-service.integration.test.ts` disposable-database suite verifies
+stable filtering/pagination, `status=all`, exact UUID search, and date bounds,
+self-case exclusion, derived
+bounded detail previews, paginated evidence/restrictions, signal-time
+opponent-pattern aggregate projection, explicit legacy-summary unavailability
+and effective-evidence review blocking (including expiry and adjusted
+superseding evidence), bounded safe export, the reviewer transition matrix,
+append-only actor/time/reason/policy history, false-positive provenance, committed
+restriction timing, the 100-evidence limit, one winner for concurrent
+same-version decisions, late-failure rollback across every related write,
+atomic supported restrictions, active-restriction dismissal denial, and
+authoritative unrestricted dismissal.
+
 Database integration remains opt-in locally. A slow local database may use a
 larger Vitest timeout for an individual focused suite without changing the
 repository; the complete database runner and migration validation remain CI

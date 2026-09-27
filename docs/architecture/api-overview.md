@@ -94,6 +94,7 @@ The generated OpenAPI groups the current contract into these areas:
 | Progression                | Current-player points, streaks, achievements, rank, and privacy-safe paginated standings                         |
 | Developer API              | API-key-authenticated, read-only published events, public card catalogue, and public progression leaderboard     |
 | Authoring                  | Author-only event, challenge, question, card, trail, campaign, and privacy-safe operational analytics boundaries |
+| Trust review               | Author-only suspect-player queue, derived evidence, proportionate decisions, restrictions, and audit history     |
 
 The [Author curation contract](./author-curation-api-contract.md) explains the
 five-state review workflow, optimistic concurrency, safe review queue and audit
@@ -106,6 +107,31 @@ activity, privacy-suppressed question performance, and historical card issuance.
 The event funnel reuses authoritative attempts/completions and stores only coarse
 hourly view/eligibility counters; it does not create player-level analytics or new
 precise-location retention. See the [advanced analytics API contract](./advanced-analytics-api-contract.md).
+
+Issue `#260` adds the protected suspect-player review boundary at
+`/api/v1/author/trust-cases`. The API derives the reviewer from the bearer
+identity, excludes self-review objects, requires the current case version for
+every decision, and returns generic not-found or explicit stale-version errors.
+The queue defaults to actionable `open` and `under_review` cases, supports
+`status=all`, literal case-insensitive Player Name substring search, and exact
+case/player UUID search. Queue and detail use `score`, `band`, restriction
+counts, `latestRestrictionExpiry`, and `canReview` as their canonical
+review-console fields. Detail also provides `scoreExplanation` and bounded
+`evidence`/`history` aliases alongside explicit preview and truncation metadata;
+full safe collections are pageable, and the bounded JSON export reuses those
+projections. Queue,
+detail, evidence, restriction, export, and audit projections expose only derived trust evidence and
+local player/reviewer identities; they omit precise location, provider identity,
+raw telemetry, source identifiers, and private security payloads. The
+decision body accepts `continue_monitoring`, `dismiss`,
+`mark_false_positive`, or `restrict` with a required `reasonNote`; restrictions
+use `durationHours`. New opponent-pattern signals require safe aggregate
+summaries. A legacy missing summary is explicitly unavailable and blocks review
+only while it still contributes points and has not been adjusted. A newer
+explanation supersedes it only while that replacement is likewise effective and
+unadjusted. The
+[trust persistence guide](../database/trust-persistence.md) records the
+transaction, audit, restriction, and privacy rules.
 
 The OpenAPI document is the endpoint-level reference for parameters, bodies,
 status codes, and response shapes. Narrative documents explain domain contracts
@@ -219,6 +245,7 @@ protected operation.
 - [External developer API](./developer-api.md)
 - [Author curation API contract](./author-curation-api-contract.md)
 - [Advanced analytics API contract](./advanced-analytics-api-contract.md)
+- [Longitudinal trust persistence and review API](../database/trust-persistence.md)
 - [Asynchronous PvP API contract](./asynchronous-pvp-api-contract.md)
 - [Card trading API contract](./card-trading-api-contract.md)
 - [Live PvP API contract](./live-pvp-api-contract.md)

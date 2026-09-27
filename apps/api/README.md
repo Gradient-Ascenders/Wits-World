@@ -325,6 +325,62 @@ See the [live PvP API contract](../../docs/architecture/live-pvp-api-contract.md
 for message schemas, reconnect, timeout, idempotency, and spectator privacy
 rules.
 
+## Suspect-player review API
+
+Active Authors can use the protected trust-review operations:
+
+```http
+GET  /api/v1/author/trust-cases
+GET  /api/v1/author/trust-cases/:caseId
+GET  /api/v1/author/trust-cases/:caseId/evidence
+GET  /api/v1/author/trust-cases/:caseId/restrictions
+GET  /api/v1/author/trust-cases/:caseId/history
+POST /api/v1/author/trust-cases/:caseId/decisions
+GET  /api/v1/author/trust-cases/:caseId/export
+```
+
+The queue defaults to `status=active` (`open` plus `under_review`) and supports
+explicit lifecycle state or `status=all`, bounded pagination, literal
+case-insensitive Player Name substring search, exact case/player UUID search,
+review band, active-restriction state, derived signal type, and creation/update
+time filters. Queue and detail expose canonical `score`, `band`, restriction
+counts, `latestRestrictionExpiry`, and `canReview`. Detail contains a
+`scoreExplanation`, ten-item recent `evidence`/`evidencePreview` and
+restriction previews, and 20-item `history`/`recentHistory` aliases plus
+total/truncation metadata; the separate collection routes provide pages up to
+100 items. The aliases keep the Author console contract compatible without
+making detail reads unbounded. New opponent-pattern evidence requires signal-time
+aggregate counts, evaluation windows, and trust-v1 thresholds. Legacy rows
+without that summary are explicitly unavailable and make the case
+non-reviewable only while they still contribute points and remain unadjusted;
+only a newer explained evaluation that is also effective and unadjusted can
+supersede them.
+Detail and audit responses contain local opaque player identifiers,
+policy/version data, and effective restrictions. They do not
+contain Auth0 identifiers, precise location, raw telemetry, private match
+history, or evidence source identifiers.
+
+Every mutation derives the reviewer from the bearer token, requires the
+expected case version and a bounded `reasonNote`, and runs the case transition,
+append-only audit, evidence links, false-positive adjustments, and supported
+restrictions in one transaction. Stale versions return a safe `409` conflict.
+Self-review cases use the same `404` response as inaccessible/missing cases.
+Human decisions are `continue_monitoring`, `mark_false_positive`, `restrict`,
+and `dismiss`. The first three start or continue review; dismissal resolves only
+an `under_review` case. `mark_false_positive` requires one or more evidence IDs
+and adjusts exactly those signals without resolving the case. A decision may
+reference at most 100 distinct evidence summaries. History retains the
+false-positive subset and each restriction's committed start and expiry.
+Restriction decisions accept the console-facing `durationHours` field.
+The writable scopes are `online_verification_required`,
+`location_reward_challenge_hold`, and `new_competitive_match_hold`;
+`card_trade_hold` remains readable but cannot be authored by these endpoints.
+The export operation returns the same server-defined safe projection as JSON,
+with at most 100 evidence, restriction, and history records per collection and
+pagination totals that identify truncation. Clients cannot select columns.
+See the [longitudinal trust persistence guide](../../docs/database/trust-persistence.md)
+for the complete privacy and concurrency contract.
+
 ## OpenAPI documentation
 
 With the API running, open:
