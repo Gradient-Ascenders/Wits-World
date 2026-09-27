@@ -55,7 +55,7 @@ interface DecisionBody {
   reasonNote: string;
   evidenceIds?: string[];
   restrictionScopes?: WritableTrustRestrictionScope[];
-  restrictionDurationHours?: number;
+  durationHours?: number;
 }
 
 const statuses = ['open', 'under_review', 'resolved'] as const;
@@ -220,6 +220,9 @@ const evidenceSchema = {
     'basePoints',
     'effectivePoints',
     'observedAt',
+    'expiresAt',
+    'policyVersion',
+    'state',
     'decayState',
     'safeSourceType',
     'reviewedFalsePositive',
@@ -232,6 +235,12 @@ const evidenceSchema = {
     basePoints: { type: 'integer', minimum: 1, maximum: 25 },
     effectivePoints: { type: 'integer', minimum: 0, maximum: 25 },
     observedAt: { type: 'string', format: 'date-time' },
+    expiresAt: { type: 'string', format: 'date-time' },
+    policyVersion: { type: 'string' },
+    state: {
+      type: 'string',
+      enum: ['active', 'adjusted_false_positive', 'expired'],
+    },
     decayState: {
       type: 'string',
       enum: ['active', 'expired', 'reviewed_false_positive'],
@@ -267,6 +276,15 @@ const restrictionSchema = {
   },
 } as const;
 
+const historyRestrictionSchema = {
+  ...restrictionSchema,
+  required: [...restrictionSchema.required, 'expiresAt'],
+  properties: {
+    ...restrictionSchema.properties,
+    expiresAt: { type: 'string', format: 'date-time' },
+  },
+} as const;
+
 const historyItemSchema = {
   type: 'object',
   additionalProperties: false,
@@ -275,12 +293,15 @@ const historyItemSchema = {
     'actorType',
     'actorPlayerId',
     'actorPlayerName',
+    'decisionType',
     'action',
     'previousStatus',
     'resultingStatus',
     'reasonCode',
     'reasonNote',
     'policyVersion',
+    'caseVersionBefore',
+    'caseVersionAfter',
     'versionBefore',
     'versionAfter',
     'evidenceIds',
@@ -297,6 +318,7 @@ const historyItemSchema = {
     actorPlayerName: {
       anyOf: [{ type: 'string' }, { type: 'null' }],
     },
+    decisionType: { type: 'string' },
     action: { type: 'string' },
     previousStatus: {
       anyOf: [{ type: 'string', enum: statuses }, { type: 'null' }],
@@ -314,6 +336,8 @@ const historyItemSchema = {
       ],
     },
     policyVersion: { type: 'string' },
+    caseVersionBefore: { type: 'integer', minimum: 0 },
+    caseVersionAfter: { type: 'integer', minimum: 1 },
     versionBefore: { type: 'integer', minimum: 0 },
     versionAfter: { type: 'integer', minimum: 1 },
     evidenceIds: {
@@ -330,18 +354,34 @@ const historyItemSchema = {
     restrictions: {
       type: 'array',
       maxItems: readableRestrictionScopes.length,
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['scope', 'startsAt', 'expiresAt'],
-        properties: {
-          scope: { type: 'string', enum: readableRestrictionScopes },
-          startsAt: { type: 'string', format: 'date-time' },
-          expiresAt: { type: 'string', format: 'date-time' },
-        },
-      },
+      items: historyRestrictionSchema,
     },
     occurredAt: { type: 'string', format: 'date-time' },
+  },
+} as const;
+
+const scoreExplanationSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'snapshotId',
+    'evaluatedAt',
+    'movementPoints',
+    'submissionConflictPoints',
+    'opponentPatternPoints',
+    'finalScore',
+    'reviewBand',
+    'sourceSignalCount',
+  ],
+  properties: {
+    snapshotId: { type: 'string', format: 'uuid' },
+    evaluatedAt: { type: 'string', format: 'date-time' },
+    movementPoints: { type: 'integer', minimum: 0, maximum: 50 },
+    submissionConflictPoints: { type: 'integer', minimum: 0, maximum: 30 },
+    opponentPatternPoints: { type: 'integer', minimum: 0, maximum: 30 },
+    finalScore: { type: 'integer', minimum: 0, maximum: 100 },
+    reviewBand: { type: 'string', enum: bands },
+    sourceSignalCount: { type: 'integer', minimum: 0 },
   },
 } as const;
 
@@ -359,9 +399,12 @@ const caseDetailSchema = {
     'policyVersion',
     'restrictionCount',
     'activeRestrictionCount',
+    'latestRestrictionExpiry',
     'canReview',
     'categoryTotals',
     'sourceSignalCount',
+    'scoreExplanation',
+    'evidence',
     'evidencePreview',
     'evidenceTotalItems',
     'evidenceTruncated',
@@ -369,6 +412,7 @@ const caseDetailSchema = {
     'restrictionTotalItems',
     'restrictionsTruncated',
     'recentHistory',
+    'history',
     'historyTruncated',
     'openedAt',
     'updatedAt',
@@ -386,6 +430,9 @@ const caseDetailSchema = {
     policyVersion: { type: 'string' },
     restrictionCount: { type: 'integer', minimum: 0 },
     activeRestrictionCount: { type: 'integer', minimum: 0 },
+    latestRestrictionExpiry: {
+      anyOf: [{ type: 'string', format: 'date-time' }, { type: 'null' }],
+    },
     canReview: { type: 'boolean' },
     categoryTotals: {
       type: 'object',
@@ -398,6 +445,12 @@ const caseDetailSchema = {
       },
     },
     sourceSignalCount: { type: 'integer', minimum: 0 },
+    scoreExplanation: scoreExplanationSchema,
+    evidence: {
+      type: 'array',
+      maxItems: TRUST_REVIEW_DETAIL_PREVIEW_SIZE,
+      items: evidenceSchema,
+    },
     evidencePreview: {
       type: 'array',
       maxItems: TRUST_REVIEW_DETAIL_PREVIEW_SIZE,
@@ -413,6 +466,11 @@ const caseDetailSchema = {
     restrictionTotalItems: { type: 'integer', minimum: 0 },
     restrictionsTruncated: { type: 'boolean' },
     recentHistory: {
+      type: 'array',
+      maxItems: 20,
+      items: historyItemSchema,
+    },
+    history: {
       type: 'array',
       maxItems: 20,
       items: historyItemSchema,
@@ -581,7 +639,7 @@ const restrictDecisionBodySchema = {
     'action',
     'reasonNote',
     'restrictionScopes',
-    'restrictionDurationHours',
+    'durationHours',
   ],
   properties: {
     ...decisionCommonProperties,
@@ -593,7 +651,7 @@ const restrictDecisionBodySchema = {
       uniqueItems: true,
       items: { type: 'string', enum: writableRestrictionScopes },
     },
-    restrictionDurationHours: {
+    durationHours: {
       type: 'integer',
       minimum: 1,
       maximum: TRUST_REVIEW_MAX_RESTRICTION_HOURS,
@@ -683,6 +741,7 @@ export const authorTrustReviewRoutes: FastifyPluginAsync<Options> = async (
                     'signalTypes',
                     'restrictionCount',
                     'activeRestrictionCount',
+                    'latestRestrictionExpiry',
                     'activeRestrictionScopes',
                     'canReview',
                     'openedAt',
@@ -710,6 +769,12 @@ export const authorTrustReviewRoutes: FastifyPluginAsync<Options> = async (
                     activeRestrictionCount: {
                       type: 'integer',
                       minimum: 0,
+                    },
+                    latestRestrictionExpiry: {
+                      anyOf: [
+                        { type: 'string', format: 'date-time' },
+                        { type: 'null' },
+                      ],
                     },
                     activeRestrictionScopes: {
                       type: 'array',
@@ -942,11 +1007,10 @@ export const authorTrustReviewRoutes: FastifyPluginAsync<Options> = async (
             reasonNote: request.body.reasonNote,
             evidenceIds: request.body.evidenceIds ?? [],
             restrictionScopes: request.body.restrictionScopes ?? [],
-            ...(request.body.restrictionDurationHours === undefined
+            ...(request.body.durationHours === undefined
               ? {}
               : {
-                  restrictionDurationHours:
-                    request.body.restrictionDurationHours,
+                  restrictionDurationHours: request.body.durationHours,
                 }),
           }),
           requestId: request.id,

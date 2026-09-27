@@ -269,8 +269,10 @@ An Author case view may contain:
 Every newly recorded opponent-pattern signal must retain that reviewer-safe
 aggregate summary. If a legacy signal predates summary retention, the API marks
 its explanation unavailable rather than reconstructing historical facts. The
-case is not reviewable until a fresh detector evaluation of the same signal
-type records a valid summary; the original evidence remains immutable.
+case is not reviewable while that unexplained evidence still contributes points
+and remains unadjusted. A fresh detector evaluation of the same signal type
+restores reviewability only while its valid summary is effective and unadjusted;
+the original evidence remains immutable.
 
 It must not contain Auth0 issuer/subject, email, precise location, exact speed,
 distance, accuracy, submitted answers, access tokens, hidden cards, another

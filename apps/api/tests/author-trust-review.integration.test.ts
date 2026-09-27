@@ -39,6 +39,47 @@ let decide: ReturnType<typeof vi.fn<TrustReviewService['decide']>>;
 let exportCase: ReturnType<typeof vi.fn<TrustReviewService['exportCase']>>;
 let resolvePlayer: ReturnType<typeof vi.fn<PlayerIdentityService['resolve']>>;
 
+const detailEvidence: TrustCaseDetail['evidence'] = [
+  {
+    evidenceId,
+    signalType: 'impossible_movement',
+    severity: 'strong',
+    basePoints: 25,
+    effectivePoints: 24,
+    observedAt: '2026-09-24T10:00:00.000Z',
+    expiresAt: '2026-12-23T10:00:00.000Z',
+    policyVersion: 'trust-v1',
+    state: 'active',
+    decayState: 'active',
+    safeSourceType: 'movement_decision',
+    reviewedFalsePositive: false,
+    opponentPattern: null,
+  },
+];
+const detailHistory: TrustCaseDetail['history'] = [
+  {
+    decisionId,
+    actorType: 'author',
+    actorPlayerId: authorId,
+    actorPlayerName: 'active-author',
+    decisionType: 'monitoring_continued',
+    action: 'monitoring_continued',
+    previousStatus: 'open',
+    resultingStatus: 'under_review',
+    reasonCode: 'needs_review',
+    reasonNote: 'Review the derived movement signal.',
+    policyVersion: 'trust-v1',
+    caseVersionBefore: 1,
+    caseVersionAfter: 2,
+    versionBefore: 1,
+    versionAfter: 2,
+    evidenceIds: [evidenceId],
+    falsePositiveEvidenceIds: [],
+    restrictions: [],
+    occurredAt: '2026-09-25T10:00:00.000Z',
+  },
+];
+
 const detail: TrustCaseDetail = {
   caseId,
   playerId,
@@ -50,6 +91,7 @@ const detail: TrustCaseDetail = {
   policyVersion: 'trust-v1',
   restrictionCount: 0,
   activeRestrictionCount: 0,
+  latestRestrictionExpiry: null,
   canReview: true,
   categoryTotals: {
     movement: 25,
@@ -57,45 +99,25 @@ const detail: TrustCaseDetail = {
     opponentPatterns: 20,
   },
   sourceSignalCount: 3,
-  evidencePreview: [
-    {
-      evidenceId,
-      signalType: 'impossible_movement',
-      severity: 'strong',
-      basePoints: 25,
-      effectivePoints: 24,
-      observedAt: '2026-09-24T10:00:00.000Z',
-      decayState: 'active',
-      safeSourceType: 'movement_decision',
-      reviewedFalsePositive: false,
-      opponentPattern: null,
-    },
-  ],
+  scoreExplanation: {
+    snapshotId: 'd5000000-0000-4000-8000-000000000001',
+    evaluatedAt: '2026-09-25T10:00:00.000Z',
+    movementPoints: 25,
+    submissionConflictPoints: 10,
+    opponentPatternPoints: 20,
+    finalScore: 55,
+    reviewBand: 'review_required',
+    sourceSignalCount: 3,
+  },
+  evidence: detailEvidence,
+  evidencePreview: detailEvidence,
   evidenceTotalItems: 1,
   evidenceTruncated: false,
   restrictionPreview: [],
   restrictionTotalItems: 0,
   restrictionsTruncated: false,
-  recentHistory: [
-    {
-      decisionId,
-      actorType: 'author',
-      actorPlayerId: authorId,
-      actorPlayerName: 'active-author',
-      action: 'monitoring_continued',
-      previousStatus: 'open',
-      resultingStatus: 'under_review',
-      reasonCode: 'needs_review',
-      reasonNote: 'Review the derived movement signal.',
-      policyVersion: 'trust-v1',
-      versionBefore: 1,
-      versionAfter: 2,
-      evidenceIds: [evidenceId],
-      falsePositiveEvidenceIds: [],
-      restrictions: [],
-      occurredAt: '2026-09-25T10:00:00.000Z',
-    },
-  ],
+  recentHistory: detailHistory,
+  history: detailHistory,
   historyTruncated: false,
   openedAt: '2026-09-24T10:00:00.000Z',
   updatedAt: '2026-09-25T10:00:00.000Z',
@@ -118,6 +140,7 @@ beforeEach(async () => {
         signalTypes: ['impossible_movement'],
         restrictionCount: 0,
         activeRestrictionCount: 0,
+        latestRestrictionExpiry: null,
         activeRestrictionScopes: [],
         canReview: true,
         openedAt: '2026-09-24T10:00:00.000Z',
@@ -348,7 +371,29 @@ describe('suspect-player review API', () => {
         band: 'review_required',
         restrictionCount: 0,
         activeRestrictionCount: 0,
+        latestRestrictionExpiry: null,
         canReview: true,
+        scoreExplanation: {
+          snapshotId: 'd5000000-0000-4000-8000-000000000001',
+          finalScore: 55,
+          reviewBand: 'review_required',
+        },
+        evidence: [
+          {
+            evidenceId,
+            expiresAt: '2026-12-23T10:00:00.000Z',
+            policyVersion: 'trust-v1',
+            state: 'active',
+          },
+        ],
+        history: [
+          {
+            decisionId,
+            decisionType: 'monitoring_continued',
+            caseVersionBefore: 1,
+            caseVersionAfter: 2,
+          },
+        ],
         evidencePreview: [
           {
             evidenceId,
@@ -534,6 +579,33 @@ describe('suspect-player review API', () => {
     });
   });
 
+  it('maps the console restriction duration field to the service contract', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/author/trust-cases/${caseId}/decisions`,
+      headers: { authorization: 'Bearer test-token' },
+      payload: {
+        expectedVersion: 2,
+        action: 'restrict',
+        reasonNote: 'Require verification before another competitive match.',
+        restrictionScopes: ['new_competitive_match_hold'],
+        durationHours: 24,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(decide).toHaveBeenCalledWith({
+      actorPlayerId: authorId,
+      caseId,
+      expectedVersion: 2,
+      action: 'restrict',
+      reasonNote: 'Require verification before another competitive match.',
+      evidenceIds: [],
+      restrictionScopes: ['new_competitive_match_hold'],
+      restrictionDurationHours: 24,
+    });
+  });
+
   it('rejects malformed decisions and maps stale decisions to a safe conflict', async () => {
     const malformed = await app.inject({
       method: 'POST',
@@ -572,7 +644,7 @@ describe('suspect-player review API', () => {
         expectedVersion: 1,
         action: 'restrict',
         reasonNote: 'A scope is required.',
-        restrictionDurationHours: 24,
+        durationHours: 24,
       },
       {
         expectedVersion: 1,
@@ -585,28 +657,28 @@ describe('suspect-player review API', () => {
         action: 'restrict',
         reasonNote: 'The duration is too short.',
         restrictionScopes: ['new_competitive_match_hold'],
-        restrictionDurationHours: 0,
+        durationHours: 0,
       },
       {
         expectedVersion: 1,
         action: 'restrict',
         reasonNote: 'The duration is too long.',
         restrictionScopes: ['new_competitive_match_hold'],
-        restrictionDurationHours: 169,
+        durationHours: 169,
       },
       {
         expectedVersion: 1,
         action: 'continue_monitoring',
         reasonNote: 'A monitor action cannot restrict.',
         restrictionScopes: ['new_competitive_match_hold'],
-        restrictionDurationHours: 24,
+        durationHours: 24,
       },
       {
         expectedVersion: 1,
         action: 'restrict',
         reasonNote: 'The trade hold is not writable.',
         restrictionScopes: ['card_trade_hold'],
-        restrictionDurationHours: 24,
+        durationHours: 24,
       },
       {
         expectedVersion: 1,
@@ -813,13 +885,13 @@ describe('suspect-player review API', () => {
       variant.properties?.action?.enum?.includes('restrict'),
     );
     expect(restrict?.required).toEqual(
-      expect.arrayContaining(['restrictionScopes', 'restrictionDurationHours']),
+      expect.arrayContaining(['restrictionScopes', 'durationHours']),
     );
     expect(restrict?.properties?.restrictionScopes).toMatchObject({
       minItems: 1,
       maxItems: 3,
     });
-    expect(restrict?.properties?.restrictionDurationHours).toMatchObject({
+    expect(restrict?.properties?.durationHours).toMatchObject({
       minimum: 1,
       maximum: 168,
     });
@@ -830,18 +902,30 @@ describe('suspect-player review API', () => {
       (item) => !item.properties?.action?.enum?.includes('restrict'),
     )) {
       expect(variant.properties).not.toHaveProperty('restrictionScopes');
-      expect(variant.properties).not.toHaveProperty('restrictionDurationHours');
+      expect(variant.properties).not.toHaveProperty('durationHours');
     }
     expect(restrict?.properties?.evidenceIds).toMatchObject({ maxItems: 100 });
     expect(restrict?.properties?.evidenceIds?.description).toContain(
       'mark_false_positive',
     );
 
+    const queueDocument = JSON.stringify(queue?.responses?.['200']);
+    expect(queueDocument).toContain('latestRestrictionExpiry');
+    const detailDocument = JSON.stringify(casePath?.get?.responses?.['200']);
+    expect(detailDocument).toContain('scoreExplanation');
+    expect(detailDocument).toContain('"evidence"');
+    expect(detailDocument).toContain('"history"');
     const historyDocument = JSON.stringify(history?.responses?.['200']);
     expect(historyDocument).toContain('falsePositiveEvidenceIds');
+    expect(historyDocument).toContain('caseVersionBefore');
+    expect(historyDocument).toContain('decisionType');
     expect(historyDocument).toContain('startsAt');
     expect(historyDocument).toContain('expiresAt');
+    expect(historyDocument).toContain('effectiveExpiresAt');
     const evidenceDocument = JSON.stringify(evidence?.responses?.['200']);
+    expect(evidenceDocument).toContain('expiresAt');
+    expect(evidenceDocument).toContain('policyVersion');
+    expect(evidenceDocument).toContain('adjusted_false_positive');
     expect(evidenceDocument).toContain('opponentConcentrationRatio');
     expect(evidenceDocument).toContain('qualifyingForfeitCount');
   });

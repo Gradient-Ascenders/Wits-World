@@ -115,17 +115,21 @@ every decision, and returns generic not-found or explicit stale-version errors.
 The queue defaults to actionable `open` and `under_review` cases, supports
 `status=all`, literal case-insensitive Player Name substring search, and exact
 case/player UUID search. Queue and detail use `score`, `band`, restriction
-counts, and `canReview` as their canonical review-console fields.
-Detail uses bounded recent evidence/restriction previews; full safe collections
-are pageable, and the bounded JSON export reuses those projections. Queue,
+counts, `latestRestrictionExpiry`, and `canReview` as their canonical
+review-console fields. Detail also provides `scoreExplanation` and bounded
+`evidence`/`history` aliases alongside explicit preview and truncation metadata;
+full safe collections are pageable, and the bounded JSON export reuses those
+projections. Queue,
 detail, evidence, restriction, export, and audit projections expose only derived trust evidence and
 local player/reviewer identities; they omit precise location, provider identity,
 raw telemetry, source identifiers, and private security payloads. The
 decision body accepts `continue_monitoring`, `dismiss`,
-`mark_false_positive`, or `restrict` with a required `reasonNote`. New
-opponent-pattern signals require safe aggregate summaries; a legacy missing
-summary is explicitly unavailable and blocks review until a fresh explained
-detector evaluation supersedes it. The
+`mark_false_positive`, or `restrict` with a required `reasonNote`; restrictions
+use `durationHours`. New opponent-pattern signals require safe aggregate
+summaries. A legacy missing summary is explicitly unavailable and blocks review
+only while it still contributes points and has not been adjusted. A newer
+explanation supersedes it only while that replacement is likewise effective and
+unadjusted. The
 [trust persistence guide](../database/trust-persistence.md) records the
 transaction, audit, restriction, and privacy rules.
 

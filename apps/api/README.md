@@ -344,12 +344,17 @@ explicit lifecycle state or `status=all`, bounded pagination, literal
 case-insensitive Player Name substring search, exact case/player UUID search,
 review band, active-restriction state, derived signal type, and creation/update
 time filters. Queue and detail expose canonical `score`, `band`, restriction
-counts, and `canReview`. Detail contains ten-item recent evidence and
-restriction previews plus total/truncation metadata; the separate collection
-routes provide pages up to 100 items. New opponent-pattern evidence requires
-signal-time aggregate counts, evaluation windows, and trust-v1 thresholds.
-Legacy rows without that summary are explicitly unavailable and make the case
-non-reviewable until a fresh explained detector evaluation supersedes them.
+counts, `latestRestrictionExpiry`, and `canReview`. Detail contains a
+`scoreExplanation`, ten-item recent `evidence`/`evidencePreview` and
+restriction previews, and 20-item `history`/`recentHistory` aliases plus
+total/truncation metadata; the separate collection routes provide pages up to
+100 items. The aliases keep the Author console contract compatible without
+making detail reads unbounded. New opponent-pattern evidence requires signal-time
+aggregate counts, evaluation windows, and trust-v1 thresholds. Legacy rows
+without that summary are explicitly unavailable and make the case
+non-reviewable only while they still contribute points and remain unadjusted;
+only a newer explained evaluation that is also effective and unadjusted can
+supersede them.
 Detail and audit responses contain local opaque player identifiers,
 policy/version data, and effective restrictions. They do not
 contain Auth0 identifiers, precise location, raw telemetry, private match
@@ -366,6 +371,7 @@ an `under_review` case. `mark_false_positive` requires one or more evidence IDs
 and adjusts exactly those signals without resolving the case. A decision may
 reference at most 100 distinct evidence summaries. History retains the
 false-positive subset and each restriction's committed start and expiry.
+Restriction decisions accept the console-facing `durationHours` field.
 The writable scopes are `online_verification_required`,
 `location_reward_challenge_hold`, and `new_competitive_match_hold`;
 `card_trade_hold` remains readable but cannot be authored by these endpoints.

@@ -216,11 +216,16 @@ aggregate basis required for opponent-pattern human review:
   export bounded to 100 records per evidence/restriction/history collection.
 
 Queue and detail expose canonical `score`, `band`, `restrictionCount`,
-`activeRestrictionCount`, and `canReview` fields. New opponent-pattern signals
-must carry a validated safe summary. A legacy opponent-pattern row without one
-is returned with `availability=unavailable` and blocks decisions until a later
-explained evaluation of the same signal type supersedes the gap. The immutable
-legacy row is not rewritten and no historical aggregates are fabricated.
+`activeRestrictionCount`, `latestRestrictionExpiry`, and `canReview` fields.
+Detail also carries the current persisted `scoreExplanation` and bounded
+`evidence` and `history` aliases used by the Author console; preview counts and
+the pageable child routes remain authoritative when either alias is truncated.
+New opponent-pattern signals must carry a validated safe summary. A legacy
+opponent-pattern row without one is returned with `availability=unavailable`
+and blocks decisions only while it contributes effective points and has no
+false-positive adjustment. A later explained evaluation supersedes the gap only
+while it also contributes and remains unadjusted. The immutable legacy row is
+not rewritten and no historical aggregates are fabricated.
 
 The authenticated local Author UUID is always the actor; no reviewer identity
 is accepted from the request body. An Author's own case is excluded from the
@@ -246,7 +251,8 @@ original committed start and expiry.
 The writable scopes are `online_verification_required`,
 `location_reward_challenge_hold`, and `new_competitive_match_hold`; durations
 remain whole hours from 1 through 168 and the database seven-day constraint
-remains authoritative. Read projections retain the schema-level
+remains authoritative. The decision request names that value `durationHours`.
+Read projections retain the schema-level
 `card_trade_hold`, but this API cannot author it.
 
 The API projections intentionally omit provider identifiers, raw source

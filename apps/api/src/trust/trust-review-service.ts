@@ -69,6 +69,7 @@ export interface TrustCaseQueueItem {
   signalTypes: TrustSignalType[];
   restrictionCount: number;
   activeRestrictionCount: number;
+  latestRestrictionExpiry: string | null;
   activeRestrictionScopes: TrustRestrictionScope[];
   canReview: boolean;
   openedAt: string;
@@ -82,6 +83,9 @@ export interface TrustCaseEvidenceSummary {
   basePoints: number;
   effectivePoints: number;
   observedAt: string;
+  expiresAt: string;
+  policyVersion: string;
+  state: 'active' | 'adjusted_false_positive' | 'expired';
   decayState: 'active' | 'expired' | 'reviewed_false_positive';
   safeSourceType: string;
   reviewedFalsePositive: boolean;
@@ -106,27 +110,42 @@ export interface TrustRestrictionSummary {
   appealStatus: 'eligible' | 'submitted' | 'resolved' | 'expired';
 }
 
+export interface TrustDecisionHistoryRestriction
+  extends TrustRestrictionSummary {
+  expiresAt: string;
+}
+
 export interface TrustDecisionHistoryItem {
   decisionId: string;
   actorType: 'system' | 'author';
   actorPlayerId: string | null;
   actorPlayerName: string | null;
+  decisionType: string;
   action: string;
   previousStatus: TrustCaseStatus | null;
   resultingStatus: TrustCaseStatus;
   reasonCode: string;
   reasonNote: string | null;
   policyVersion: string;
+  caseVersionBefore: number;
+  caseVersionAfter: number;
   versionBefore: number;
   versionAfter: number;
   evidenceIds: string[];
   falsePositiveEvidenceIds: string[];
-  restrictions: Array<{
-    scope: TrustRestrictionScope;
-    startsAt: string;
-    expiresAt: string;
-  }>;
+  restrictions: TrustDecisionHistoryRestriction[];
   occurredAt: string;
+}
+
+export interface TrustScoreExplanation {
+  snapshotId: string;
+  evaluatedAt: string;
+  movementPoints: number;
+  submissionConflictPoints: number;
+  opponentPatternPoints: number;
+  finalScore: number;
+  reviewBand: TrustReviewBand;
+  sourceSignalCount: number;
 }
 
 export interface TrustCaseDetail {
@@ -140,6 +159,7 @@ export interface TrustCaseDetail {
   policyVersion: string;
   restrictionCount: number;
   activeRestrictionCount: number;
+  latestRestrictionExpiry: string | null;
   canReview: boolean;
   categoryTotals: {
     movement: number;
@@ -147,6 +167,8 @@ export interface TrustCaseDetail {
     opponentPatterns: number;
   };
   sourceSignalCount: number;
+  scoreExplanation: TrustScoreExplanation;
+  evidence: TrustCaseEvidenceSummary[];
   evidencePreview: TrustCaseEvidenceSummary[];
   evidenceTotalItems: number;
   evidenceTruncated: boolean;
@@ -154,6 +176,7 @@ export interface TrustCaseDetail {
   restrictionTotalItems: number;
   restrictionsTruncated: boolean;
   recentHistory: TrustDecisionHistoryItem[];
+  history: TrustDecisionHistoryItem[];
   historyTruncated: boolean;
   openedAt: string;
   updatedAt: string;
@@ -259,6 +282,7 @@ interface QueueRow extends pg.QueryResultRow {
   signal_types: TrustSignalType[] | null;
   restriction_count: number;
   active_restriction_count: number;
+  latest_restriction_expiry: Date | null;
   active_restriction_scopes: TrustRestrictionScope[] | null;
   can_review: boolean;
   opened_at: Date;
@@ -274,12 +298,15 @@ interface DetailRow extends pg.QueryResultRow {
   current_score: number;
   current_band: TrustReviewBand;
   policy_version: string;
+  snapshot_id: string;
+  snapshot_evaluated_at: Date;
   movement_points: number;
   submission_conflict_points: number;
   opponent_pattern_points: number;
   source_signal_count: number;
   restriction_count: number;
   active_restriction_count: number;
+  latest_restriction_expiry: Date | null;
   can_review: boolean;
   opened_at: Date;
   updated_at: Date;
@@ -295,6 +322,8 @@ interface EvidenceRow extends pg.QueryResultRow {
   base_points: number;
   effective_points: number;
   observed_at: Date;
+  expires_at: Date;
+  policy_version: string;
   safe_source_type: string;
   reviewed_false_positive: boolean;
   expired: boolean;
@@ -328,9 +357,15 @@ interface HistoryRow extends pg.QueryResultRow {
   evidence_ids: string[] | null;
   false_positive_evidence_ids: string[] | null;
   restrictions: Array<{
+    restrictionId: string;
+    decisionId: string;
     scope: TrustRestrictionScope;
     startsAt: string;
+    originalExpiresAt: string;
+    effectiveExpiresAt: string;
     expiresAt: string;
+    active: boolean;
+    appealStatus: TrustRestrictionSummary['appealStatus'];
   }> | null;
   created_at: Date;
 }
@@ -396,6 +431,30 @@ const effectiveRestrictionExpirySql = `coalesce(
   restriction.original_expires_at
 )`;
 const activeRestrictionPredicateSql = `${effectiveRestrictionExpirySql} > clock_timestamp()`;
+const legacyEvidenceContributesSql = `greatest(0, floor(
+  legacy_evidence.base_points * greatest(0, extract(epoch from (
+    legacy_evidence.observed_at + interval '90 days' - clock_timestamp()
+  ))) / extract(epoch from interval '90 days')
+))::integer > 0
+  and not exists (
+    select 1
+      from private.trust_signal_adjustments legacy_adjustment
+     where legacy_adjustment.original_signal_id = legacy_evidence.original_signal_id
+       and legacy_adjustment.adjustment_type = 'reviewed_false_positive'
+       and legacy_adjustment.effective_at <= clock_timestamp()
+  )`;
+const freshEvidenceContributesSql = `greatest(0, floor(
+  fresh_evidence.base_points * greatest(0, extract(epoch from (
+    fresh_evidence.observed_at + interval '90 days' - clock_timestamp()
+  ))) / extract(epoch from interval '90 days')
+))::integer > 0
+  and not exists (
+    select 1
+      from private.trust_signal_adjustments fresh_adjustment
+     where fresh_adjustment.original_signal_id = fresh_evidence.original_signal_id
+       and fresh_adjustment.adjustment_type = 'reviewed_false_positive'
+       and fresh_adjustment.effective_at <= clock_timestamp()
+  )`;
 const caseCanReviewSql = `trust_case.status <> 'resolved'
   and not exists (
     select 1
@@ -406,12 +465,14 @@ const caseCanReviewSql = `trust_case.status <> 'resolved'
          'one_sided_outcome_pattern'
        )
        and legacy_evidence.safe_review_summary is null
+       and ${legacyEvidenceContributesSql}
        and not exists (
          select 1
            from private.trust_case_evidence fresh_evidence
           where fresh_evidence.case_id = legacy_evidence.case_id
             and fresh_evidence.signal_type = legacy_evidence.signal_type
             and fresh_evidence.safe_review_summary is not null
+            and ${freshEvidenceContributesSql}
             and (fresh_evidence.observed_at, fresh_evidence.id) >
                 (legacy_evidence.observed_at, legacy_evidence.id)
        )
@@ -463,6 +524,15 @@ export function createTrustReviewService(
                     where restriction.case_id = trust_case.id
                       and ${activeRestrictionPredicateSql}
                   ) as active_restriction_count,
+                  (select max(${effectiveRestrictionExpirySql})
+                     from private.trust_restrictions restriction
+                     left join private.trust_appeals appeal
+                       on appeal.challenged_decision_id = restriction.decision_id
+                     left join private.trust_appeal_resolutions resolution
+                       on resolution.appeal_id = appeal.id
+                    where restriction.case_id = trust_case.id
+                      and ${activeRestrictionPredicateSql}
+                  ) as latest_restriction_expiry,
                   coalesce((
                     select array_agg(distinct restriction.scope order by restriction.scope)
                       from private.trust_restrictions restriction
@@ -974,6 +1044,8 @@ async function loadDetail(
             trust_case.current_score,
             trust_case.current_band,
             trust_case.policy_version,
+            snapshot.id::text as snapshot_id,
+            snapshot.evaluated_at as snapshot_evaluated_at,
             snapshot.movement_points,
             snapshot.submission_conflict_points,
             snapshot.opponent_pattern_points,
@@ -991,6 +1063,15 @@ async function loadDetail(
               where restriction.case_id = trust_case.id
                 and ${activeRestrictionPredicateSql}
             ) as active_restriction_count,
+            (select max(${effectiveRestrictionExpirySql})
+               from private.trust_restrictions restriction
+               left join private.trust_appeals appeal
+                 on appeal.challenged_decision_id = restriction.decision_id
+               left join private.trust_appeal_resolutions resolution
+                 on resolution.appeal_id = appeal.id
+              where restriction.case_id = trust_case.id
+                and ${activeRestrictionPredicateSql}
+            ) as latest_restriction_expiry,
             (${caseCanReviewSql}) as can_review,
             trust_case.opened_at,
             trust_case.updated_at,
@@ -1027,6 +1108,8 @@ async function loadDetail(
     1,
     HISTORY_DETAIL_LIMIT + 1,
   );
+  const evidencePreview = evidence.items;
+  const recentHistory = history.items.slice(0, HISTORY_DETAIL_LIMIT);
   return {
     caseId: row.case_id,
     playerId: row.player_id,
@@ -1038,6 +1121,8 @@ async function loadDetail(
     policyVersion: row.policy_version,
     restrictionCount: row.restriction_count,
     activeRestrictionCount: row.active_restriction_count,
+    latestRestrictionExpiry:
+      row.latest_restriction_expiry?.toISOString() ?? null,
     canReview: row.can_review,
     categoryTotals: {
       movement: row.movement_points,
@@ -1045,13 +1130,25 @@ async function loadDetail(
       opponentPatterns: row.opponent_pattern_points,
     },
     sourceSignalCount: row.source_signal_count,
-    evidencePreview: evidence.items,
+    scoreExplanation: {
+      snapshotId: row.snapshot_id,
+      evaluatedAt: row.snapshot_evaluated_at.toISOString(),
+      movementPoints: row.movement_points,
+      submissionConflictPoints: row.submission_conflict_points,
+      opponentPatternPoints: row.opponent_pattern_points,
+      finalScore: row.current_score,
+      reviewBand: row.current_band,
+      sourceSignalCount: row.source_signal_count,
+    },
+    evidence: evidencePreview,
+    evidencePreview,
     evidenceTotalItems: evidence.totalItems,
     evidenceTruncated: evidence.totalItems > evidence.items.length,
     restrictionPreview: restrictions.items,
     restrictionTotalItems: restrictions.totalItems,
     restrictionsTruncated: restrictions.totalItems > restrictions.items.length,
-    recentHistory: history.items.slice(0, HISTORY_DETAIL_LIMIT),
+    recentHistory,
+    history: recentHistory,
     historyTruncated: history.totalItems > HISTORY_DETAIL_LIMIT,
     openedAt: row.opened_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
@@ -1087,6 +1184,8 @@ async function loadEvidencePage(
               ))::integer
             end as effective_points,
             evidence.observed_at,
+            evidence.observed_at + interval '90 days' as expires_at,
+            evidence.policy_version,
             evidence.safe_source_type,
             evidence.safe_review_summary,
             (adjustment.id is not null) as reviewed_false_positive,
@@ -1202,12 +1301,28 @@ async function loadHistoryPage(
             coalesce((
               select jsonb_agg(
                        jsonb_build_object(
+                         'restrictionId', restriction.id::text,
+                         'decisionId', restriction.decision_id::text,
                          'scope', restriction.scope,
                          'startsAt', restriction.starts_at,
-                         'expiresAt', restriction.original_expires_at
+                         'originalExpiresAt', restriction.original_expires_at,
+                         'effectiveExpiresAt', ${effectiveRestrictionExpirySql},
+                         'expiresAt', restriction.original_expires_at,
+                         'active', ${activeRestrictionPredicateSql},
+                         'appealStatus', case
+                           when resolution.appeal_id is not null then 'resolved'
+                           when appeal.id is not null then 'submitted'
+                           when clock_timestamp() <= restriction.original_expires_at + interval '30 days'
+                             then 'eligible'
+                           else 'expired'
+                         end
                        ) order by restriction.scope
                      )
                 from private.trust_restrictions restriction
+                left join private.trust_appeals appeal
+                  on appeal.challenged_decision_id = restriction.decision_id
+                left join private.trust_appeal_resolutions resolution
+                  on resolution.appeal_id = appeal.id
                where restriction.decision_id = decision.id
             ), '[]'::jsonb) as restrictions,
             decision.created_at
@@ -1257,6 +1372,8 @@ async function loadSelectedEvidence(
             evidence.base_points,
             0 as effective_points,
             evidence.observed_at,
+            evidence.observed_at + interval '90 days' as expires_at,
+            evidence.policy_version,
             evidence.safe_source_type,
             evidence.safe_review_summary,
             (adjustment.id is not null) as reviewed_false_positive,
@@ -1536,6 +1653,8 @@ function mapQueueRow(row: QueueRow): TrustCaseQueueItem {
     signalTypes: row.signal_types ?? [],
     restrictionCount: row.restriction_count,
     activeRestrictionCount: row.active_restriction_count,
+    latestRestrictionExpiry:
+      row.latest_restriction_expiry?.toISOString() ?? null,
     activeRestrictionScopes: row.active_restriction_scopes ?? [],
     canReview: row.can_review,
     openedAt: row.opened_at.toISOString(),
@@ -1544,6 +1663,11 @@ function mapQueueRow(row: QueueRow): TrustCaseQueueItem {
 }
 
 function mapEvidenceRow(row: EvidenceRow): TrustCaseEvidenceSummary {
+  const state = row.reviewed_false_positive
+    ? 'adjusted_false_positive'
+    : row.expired
+      ? 'expired'
+      : 'active';
   return {
     evidenceId: row.evidence_id,
     signalType: row.signal_type,
@@ -1551,6 +1675,9 @@ function mapEvidenceRow(row: EvidenceRow): TrustCaseEvidenceSummary {
     basePoints: row.base_points,
     effectivePoints: row.effective_points,
     observedAt: row.observed_at.toISOString(),
+    expiresAt: row.expires_at.toISOString(),
+    policyVersion: row.policy_version,
+    state,
     decayState: row.reviewed_false_positive
       ? 'reviewed_false_positive'
       : row.expired
@@ -1660,12 +1787,15 @@ function mapHistoryRow(row: HistoryRow): TrustDecisionHistoryItem {
       row.actor_type === 'author'
         ? safePlayerName(row.actor_player_name)
         : null,
+    decisionType: row.decision_type,
     action: row.decision_type,
     previousStatus: row.previous_status,
     resultingStatus: row.resulting_status,
     reasonCode: row.reason_code,
     reasonNote: row.reason_note,
     policyVersion: row.policy_version,
+    caseVersionBefore: row.case_version_before,
+    caseVersionAfter: row.case_version_after,
     versionBefore: row.case_version_before,
     versionAfter: row.case_version_after,
     evidenceIds: row.evidence_ids ?? [],

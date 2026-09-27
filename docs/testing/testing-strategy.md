@@ -211,8 +211,9 @@ stable filtering/pagination, `status=all`, exact UUID search, and date bounds,
 self-case exclusion, derived
 bounded detail previews, paginated evidence/restrictions, signal-time
 opponent-pattern aggregate projection, explicit legacy-summary unavailability
-and review blocking, bounded safe export, the reviewer transition matrix, append-only
-actor/time/reason/policy history, false-positive provenance, committed
+and effective-evidence review blocking (including expiry and adjusted
+superseding evidence), bounded safe export, the reviewer transition matrix,
+append-only actor/time/reason/policy history, false-positive provenance, committed
 restriction timing, the 100-evidence limit, one winner for concurrent
 same-version decisions, late-failure rollback across every related write,
 atomic supported restrictions, active-restriction dismissal denial, and

@@ -292,6 +292,21 @@ describe.skipIf(!runIntegrationTests)(
         band: 'review_required',
         canReview: true,
         policyVersion,
+        latestRestrictionExpiry: null,
+        scoreExplanation: {
+          snapshotId: fixture.snapshotId,
+          finalScore: 55,
+          reviewBand: 'review_required',
+          sourceSignalCount: 1,
+        },
+        evidence: [
+          {
+            evidenceId: fixture.evidenceId,
+            expiresAt: expect.any(String),
+            policyVersion,
+            state: 'active',
+          },
+        ],
         evidencePreview: [
           {
             evidenceId: fixture.evidenceId,
@@ -437,7 +452,7 @@ describe.skipIf(!runIntegrationTests)(
     it('blocks legacy unexplained opponent evidence until a fresh explained evaluation supersedes it', async () => {
       const fixture = await createCase(pool, 'legacy_opponent_detail', 55);
       const legacyEvidenceId = await addOpponentPatternEvidence(pool, fixture, {
-        observedAt: new Date('2026-09-20T10:00:00.000Z'),
+        observedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
         includeSummary: false,
       });
 
@@ -469,7 +484,7 @@ describe.skipIf(!runIntegrationTests)(
       ).rejects.toBeInstanceOf(InvalidTrustDecisionError);
 
       const freshEvidenceId = await addOpponentPatternEvidence(pool, fixture, {
-        observedAt: new Date('2026-09-21T10:00:00.000Z'),
+        observedAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
       });
       const reviewable = await service.getCase({
         actorPlayerId: reviewer.id,
@@ -497,14 +512,70 @@ describe.skipIf(!runIntegrationTests)(
           restrictionScopes: [],
         }),
       ).rejects.toBeInstanceOf(InvalidTrustDecisionError);
+      const adjusted = await service.decide({
+        actorPlayerId: reviewer.id,
+        caseId: fixture.caseId,
+        expectedVersion: 1,
+        action: 'mark_false_positive',
+        reasonNote: 'The fresh explained evaluation is a false positive.',
+        evidenceIds: [freshEvidenceId],
+        restrictionScopes: [],
+      });
+      expect(adjusted).toMatchObject({
+        status: 'under_review',
+        version: 2,
+        canReview: false,
+      });
+      await expect(
+        service.decide({
+          actorPlayerId: reviewer.id,
+          caseId: fixture.caseId,
+          expectedVersion: 2,
+          action: 'continue_monitoring',
+          reasonNote: 'Adjusted evidence cannot explain the legacy signal.',
+          evidenceIds: [fixture.evidenceId],
+          restrictionScopes: [],
+        }),
+      ).rejects.toBeInstanceOf(InvalidTrustDecisionError);
+
+      const replacementEvidenceId = await addOpponentPatternEvidence(
+        pool,
+        fixture,
+        { observedAt: new Date() },
+      );
+      await expect(
+        service.decide({
+          actorPlayerId: reviewer.id,
+          caseId: fixture.caseId,
+          expectedVersion: 2,
+          action: 'continue_monitoring',
+          reasonNote: 'Review using the effective replacement evaluation.',
+          evidenceIds: [replacementEvidenceId],
+          restrictionScopes: [],
+        }),
+      ).resolves.toMatchObject({ status: 'under_review', version: 3 });
+    });
+
+    it('does not let expired unexplained opponent evidence block review', async () => {
+      const fixture = await createCase(pool, 'expired_legacy_opponent', 55);
+      await addOpponentPatternEvidence(pool, fixture, {
+        observedAt: new Date('2000-01-01T10:00:00.000Z'),
+        includeSummary: false,
+      });
+
+      const detail = await service.getCase({
+        actorPlayerId: reviewer.id,
+        caseId: fixture.caseId,
+      });
+      expect(detail.canReview).toBe(true);
       await expect(
         service.decide({
           actorPlayerId: reviewer.id,
           caseId: fixture.caseId,
           expectedVersion: 1,
           action: 'continue_monitoring',
-          reasonNote: 'Review using the fresh explained detector evaluation.',
-          evidenceIds: [freshEvidenceId],
+          reasonNote: 'Expired legacy evidence no longer affects this case.',
+          evidenceIds: [fixture.evidenceId],
           restrictionScopes: [],
         }),
       ).resolves.toMatchObject({ status: 'under_review', version: 2 });
@@ -703,6 +774,7 @@ describe.skipIf(!runIntegrationTests)(
         version: 2,
         restrictionCount: 1,
         activeRestrictionCount: 1,
+        latestRestrictionExpiry: expect.any(String),
         canReview: true,
         restrictionPreview: [
           {
@@ -727,12 +799,13 @@ describe.skipIf(!runIntegrationTests)(
             scope: 'new_competitive_match_hold',
             startsAt: expect.any(String),
             expiresAt: expect.any(String),
+            effectiveExpiresAt: expect.any(String),
           },
         ],
       });
       const committedRestriction = history.items[0]?.restrictions[0];
       expect(
-        new Date(committedRestriction?.expiresAt ?? 0).getTime() -
+        new Date(committedRestriction?.effectiveExpiresAt ?? 0).getTime() -
           new Date(committedRestriction?.startsAt ?? 0).getTime(),
       ).toBe(24 * 60 * 60 * 1000);
 
