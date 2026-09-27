@@ -168,7 +168,7 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
     ) {
       cancellationRequests += 1;
       expect(request.headers().accept).toContain(
-        'application/vnd.wits-world.pvp.v3+json',
+        'application/vnd.wits-world.pvp.v5+json',
       );
       expect(request.postDataJSON()).toEqual({
         expectedVersion: 0,
@@ -247,7 +247,7 @@ test('renders the tabbed player battle lobby and authoritative battle', async ({
     if (pathname.endsWith(`/matches/pvp/${match.matchId}/resign`)) {
       forfeitRequests += 1;
       expect(request.headers().accept).toContain(
-        'application/vnd.wits-world.pvp.v2+json',
+        'application/vnd.wits-world.pvp.v5+json',
       );
       expect(request.headers()['x-wits-pvp-contract-version']).toBeUndefined();
       expect(request.postDataJSON()).toEqual({

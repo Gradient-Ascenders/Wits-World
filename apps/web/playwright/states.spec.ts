@@ -72,9 +72,10 @@ for (const width of [390, 768, 1440]) {
       '/profile',
     ]) {
       control.delay = 500;
-      await page.goto(route);
-      await expect(page.locator('.state-skeleton').first()).toBeVisible();
+      const navigation = page.goto(route);
+      await expect(page.locator('.state-loading').first()).toBeVisible();
       await capture(page, info, `${route.replaceAll('/', '-')}-loading`);
+      await navigation;
       await expect(page.getByRole('alert').first()).toBeVisible();
       await expect(
         page.getByText('SQL private diagnostic must not reach players'),

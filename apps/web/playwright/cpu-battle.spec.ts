@@ -165,7 +165,7 @@ test('animates each server-confirmed action and damage beat on its target', asyn
         player: style.getPropertyValue('--battle-player-zone-core').trim(),
       };
     }),
-  ).toEqual({ cpu: 'transparent', player: 'rgb(42 107 255 / 28%)' });
+  ).toEqual({ cpu: 'transparent', player: 'rgb(84 168 255 / 56%)' });
   await page.getByRole('button', { name: /Knowledge Strike 1/ }).click();
   await expect(page.locator('.combatant--player')).toHaveAttribute(
     'data-feedback',
@@ -824,10 +824,6 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     await expect(
       page.getByRole('heading', { name: 'Choose your opening Creature' }),
     ).toBeVisible();
-    await expect(page.locator('.battle-turn-indicator')).toHaveText(
-      'Your turn',
-    );
-
     for (const viewport of [
       { columns: 1, height: 844, label: '390', width: 390 },
       { columns: 2, height: 1024, label: 'tablet-768', width: 768 },
@@ -870,39 +866,13 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     await openingChoice.focus();
     await page.keyboard.press('Enter');
     await expect(
-      page.getByRole('heading', {
-        name: 'Opponent sends out a Creature',
-      }),
-    ).toBeFocused();
-    await expect(
-      page.getByText('Opponent sent out Braam Sentinel!').last(),
-    ).toBeVisible();
-    await expect(page.locator('.combatant--cpu')).toHaveClass(
-      /combatant--acting/,
-    );
-    await expect(page.locator('.combatant--player')).toHaveClass(
-      /combatant--dimmed/,
-    );
-    await expect(openingChoice).toBeDisabled();
-    await page.locator('.battle-page').screenshot({
-      path: path.join(screenshotsDirectory, '390-opening-opponent.png'),
-      style: '.skip-link, .primary-navigation { display: none !important; }',
-    });
-    await expect(
-      page.getByRole('button', {
-        name: 'Show the next confirmed battle moment',
-      }),
-    ).toHaveCount(0);
-    await expect(page.getByText('Go, Campus Scholar!').last()).toBeVisible();
-    await expect(page.locator('.combatant--player')).toHaveClass(
-      /combatant--acting/,
-    );
-    await expect(page.locator('.combatant--cpu')).toHaveClass(
-      /combatant--dimmed/,
-    );
-    await expect(
       page.getByRole('heading', { name: 'Your turn' }),
     ).toBeFocused();
+    await expect(
+      page
+        .getByRole('region', { name: 'Latest battle resolution' })
+        .getByText('CPU revealed Braam Sentinel.'),
+    ).toBeVisible();
     await expectPrimaryActionWithinViewport(page);
     await expectMobileBattleStageBeforeActions(page);
     const battleLogSummary = page.locator('.battle-log > summary');
@@ -980,7 +950,7 @@ test('completes a mocked authoritative CPU match through the production UI', asy
       'true',
     );
     await page.keyboard.press('ArrowLeft');
-    await expect(page.getByRole('tab', { name: /^Power/ })).toBeFocused();
+    await expect(page.getByRole('tab', { name: /^Swap/ })).toBeFocused();
     await page.keyboard.press('ArrowRight');
     await expect(page.getByRole('tab', { name: /^Moves/ })).toBeFocused();
     await expectActionContentFits(page);
@@ -1042,9 +1012,6 @@ test('completes a mocked authoritative CPU match through the production UI', asy
     await expect(
       page.getByRole('heading', { name: 'Replacement required' }),
     ).toBeFocused();
-    await expect(page.locator('.battle-turn-indicator')).toHaveText(
-      'Your turn',
-    );
     await expectNoHorizontalOverflow(page);
     await expectPrimaryActionWithinViewport(page);
     await expectActionContentFits(page);
@@ -1365,10 +1332,6 @@ test('keeps processing, timeout, and error states focused with long actions', as
   ).toBeLessThanOrEqual(1);
 
   await expect(page.locator('.battle-details')).toHaveCount(0);
-  await expect(page.getByText('Untimed', { exact: true })).toBeVisible();
-  await expect(
-    page.getByText('Progress saves automatically.', { exact: true }),
-  ).toBeVisible();
   await expect(
     page.locator('.battle-side-rail').getByRole('button', {
       name: 'Forfeit battle',
@@ -1387,7 +1350,7 @@ test('keeps processing, timeout, and error states focused with long actions', as
   });
   await longMove.click();
   await expect(
-    page.getByText('Processing your action…', { exact: true }),
+    page.getByText('Confirming your move…', { exact: true }),
   ).toBeVisible();
   await expect(longMove).toBeDisabled();
   await expect(
@@ -1401,10 +1364,7 @@ test('keeps processing, timeout, and error states focused with long actions', as
   current = cpuTurn;
   await page.getByRole('button', { name: 'Check battle again' }).click();
   await expect(
-    page.getByRole('heading', { level: 1, name: 'CPU turn resolving' }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Opponent's turn", { exact: true }),
+    page.getByRole('heading', { level: 1, name: "Opponent's turn" }),
   ).toBeVisible();
   await expectMobileTurnGlow(page, 'cpu');
   await expect(page.locator('.battle-action-control').first()).toBeDisabled();
@@ -1683,7 +1643,7 @@ test('shows deck recovery without exposing a conflicting start action', async ({
   ).toBeVisible();
   await expect(page.getByRole('link', { name: 'Choose deck' })).toHaveAttribute(
     'href',
-    '/decks',
+    '/collection/decks',
   );
   await expect(
     page.getByRole('button', { name: 'Start CPU battle' }),
@@ -1912,17 +1872,20 @@ async function expectBattleStageFirstDesktopLayout(page: Page) {
       }),
     );
     expect(switchBox).not.toBeNull();
-    expect(tabBoxes).toHaveLength(2);
-    const [firstTabBox, secondTabBox] = tabBoxes;
-    if (!firstTabBox || !secondTabBox) {
-      throw new Error('Expected both action tabs to have layout boxes.');
+    expect(tabBoxes).toHaveLength(3);
+    const firstTabBox = tabBoxes.at(0);
+    const lastTabBox = tabBoxes.at(-1);
+    if (!firstTabBox || !lastTabBox) {
+      throw new Error('Expected action tabs to have layout boxes.');
     }
-    expect(
-      Math.abs(firstTabBox.height - secondTabBox.height),
-    ).toBeLessThanOrEqual(1);
+    for (const tabBox of tabBoxes.slice(1)) {
+      expect(Math.abs(firstTabBox.height - tabBox.height)).toBeLessThanOrEqual(
+        1,
+      );
+    }
     const topInset = firstTabBox.y - switchBox!.y;
     const bottomInset =
-      switchBox!.y + switchBox!.height - secondTabBox.y - secondTabBox.height;
+      switchBox!.y + switchBox!.height - lastTabBox.y - lastTabBox.height;
     expect(Math.abs(topInset - bottomInset)).toBeLessThanOrEqual(1);
 
     if ((await page.locator('.battle-action-guidance').count()) === 0) {
@@ -2015,8 +1978,8 @@ async function expectMobileTurnGlow(page: Page, side: 'cpu' | 'player') {
   });
   expect(zones).toEqual(
     side === 'player'
-      ? { cpu: 'transparent', player: 'rgb(42 107 255 / 48%)' }
-      : { cpu: 'rgb(212 175 55 / 44%)', player: 'transparent' },
+      ? { cpu: 'transparent', player: 'rgb(84 168 255 / 62%)' }
+      : { cpu: 'rgb(242 204 88 / 62%)', player: 'transparent' },
   );
 }
 

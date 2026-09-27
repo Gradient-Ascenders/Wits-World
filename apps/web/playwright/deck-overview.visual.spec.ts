@@ -17,6 +17,12 @@ const PLAYER = {
   role: 'player',
 };
 
+test.beforeEach(async ({ page }) => {
+  await page.route(`${API_BASE_URL}/events`, (route) =>
+    json(route, { events: [], requestId: 'deck-browser-events' }),
+  );
+});
+
 test('keeps multiple deck summaries compact and reveals one detail surface', async ({
   page,
 }) => {
