@@ -29,6 +29,7 @@
     "test:deployment": "node --test scripts/confirm-current-main.test.mjs",
     "test:e2e:sprint1": "node apps/web/playwright/run-sprint1-e2e.mjs",
     "test:e2e:basic": "node apps/web/playwright/run-basic-e2e.mjs",
+    "test:e2e:experience-regressions": "npm run test:e2e:experience-regressions --workspace @wits-world/web",
     "verify:automated": "node apps/api/scripts/run-verification.mjs",
     "verify:failure-probe": "node apps/api/scripts/run-verification.mjs --failure-probe",
     "type-check": "npm run prepare:api && npm run type-check --workspaces --if-present",

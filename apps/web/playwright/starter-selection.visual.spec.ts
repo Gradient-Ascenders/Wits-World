@@ -8,6 +8,12 @@ import {
 
 const API_BASE_URL = 'http://127.0.0.1:3999/api/v1';
 
+test.beforeEach(async ({ page }) => {
+  await page.route(`${API_BASE_URL}/events`, (route) =>
+    json(route, { events: [], requestId: 'starter-browser-events' }),
+  );
+});
+
 test('renders and confirms the server starter flow at mobile and desktop widths', async ({
   page,
 }) => {

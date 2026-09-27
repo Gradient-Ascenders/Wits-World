@@ -57,7 +57,7 @@ export function getBottomSheetSnapPoints(
   const peek = Math.min(expanded, 100);
   const medium = Math.min(
     expanded,
-    Math.max(peek, 280, Math.round(expanded * 0.52)),
+    Math.max(peek, 280, Math.round(expanded * 0.54)),
   );
 
   return { expanded, medium, peek };

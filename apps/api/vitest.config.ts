@@ -8,6 +8,12 @@ export default defineConfig({
       exclude: ['src/**/*.d.ts'],
       reporter: ['text', 'json-summary', 'lcov'],
       reportsDirectory: '../../coverage/api',
+      thresholds: {
+        statements: 60,
+        branches: 50,
+        functions: 60,
+        lines: 60,
+      },
     },
   },
 });

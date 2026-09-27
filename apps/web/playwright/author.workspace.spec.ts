@@ -499,8 +499,13 @@ test('Review and campaign workspaces preserve lifecycle, keyboard and responsive
   await page.getByRole('link', { name: 'Review question' }).click();
   await page.getByRole('button', { name: 'Approve question' }).click();
   await expect(page.getByText('Question approved.')).toBeFocused();
-  await page.getByText('Review history').click();
-  await expect(page.getByText('Approve: in review to approved')).toBeVisible();
+  const questionDetail = page.getByRole('article', {
+    name: 'Where is the Great Hall?',
+  });
+  await questionDetail.getByText('Review history').click();
+  await expect(
+    questionDetail.getByText('Approve: in review to approved'),
+  ).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
   await openAuthorNavigation(page);
@@ -1372,8 +1377,12 @@ test('placement workspace stages preview, campus map, and secondary details acro
   const policyDetails = page.getByText(/separation or policy details/u);
   await expect(policyDetails).toBeVisible();
   await policyDetails.click();
+  const blockedSites = page.getByRole('list', {
+    name: 'Blocked candidate sites',
+  });
+  await expect(blockedSites.getByText('William Cullen Library')).toBeVisible();
   await expect(
-    page.getByText(/cannot accept a remaining event/u),
+    blockedSites.getByText('Within 150 m of Great Hall.'),
   ).toBeVisible();
   await policyDetails.click();
   await page.screenshot({

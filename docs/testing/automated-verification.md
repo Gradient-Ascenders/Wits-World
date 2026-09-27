@@ -11,17 +11,17 @@ receive the repository database secret or permit a production fallback.
 
 ## Verification matrix
 
-| Behaviour                                                         | Pull-request gate                                  |
-| ----------------------------------------------------------------- | -------------------------------------------------- |
-| Trigger                                                           | Every pull request targeting `main`                |
-| Formatting, lint, types, application coverage, docs tests, builds | Required in `pr-validation.yml`                    |
-| `account-policy` package test script                              | Explicitly required                                |
-| `game-rules` package test script                                  | Explicitly required                                |
-| PostgreSQL/PostGIS target                                         | Per-job ephemeral `postgis/postgis:17-3.5` service |
-| Database readiness, migrations, and integration suite             | Required with four workers                         |
-| Deterministic Basic Playwright E2E                                | Required in its own isolated PostGIS job           |
-| Candidate identity guard                                          | Pull-request checkout                              |
-| Sanitized verification summary artifact                           | Always for the Basic E2E job, including failure    |
+| Behaviour                                                  | Pull-request gate                                  |
+| ---------------------------------------------------------- | -------------------------------------------------- |
+| Trigger                                                    | Every pull request targeting `main`                |
+| Formatting, lint, types, application/docs coverage, builds | Required in `pr-validation.yml`                    |
+| `account-policy` package coverage gate                     | Explicitly required                                |
+| `game-rules` package coverage gate                         | Explicitly required                                |
+| PostgreSQL/PostGIS target                                  | Per-job ephemeral `postgis/postgis:17-3.5` service |
+| Database readiness, migrations, and integration suite      | Required with four workers                         |
+| Deterministic Basic Playwright E2E                         | Required in its own isolated PostGIS job           |
+| Candidate identity guard                                   | Pull-request checkout                              |
+| Sanitized verification summary artifact                    | Always for the Basic E2E job, including failure    |
 
 Pushes to `main` continue to run the normal validation, artifact, deployment,
 and health-check pipeline. Its application-test job now executes both shared
@@ -138,3 +138,5 @@ with the assistance of Codex[GPT-5] and Codex-CLI[GPT-6]. The declaration is not
 evidence.
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+Coverage-gate wording updated with assistance from Codex-CLI[GPT-5].

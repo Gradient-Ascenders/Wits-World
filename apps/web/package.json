@@ -25,6 +25,7 @@
     "test:e2e:battle": "playwright test --config=playwright.battle.config.ts",
     "test:e2e:progression": "playwright test --config=playwright/progression.config.ts",
     "test:e2e:offline": "playwright test --config=playwright/offline.config.ts",
+    "test:e2e:experience-regressions": "playwright test --config=playwright/explore.config.ts && playwright test --config=playwright/author.config.ts && playwright test --config=playwright/account.config.ts",
     "pretest:e2e:offline": "npm run prepare:account-policy",
     "test:e2e:auth": "playwright test --project=auth-setup",
     "test:e2e:headed": "playwright test --headed",

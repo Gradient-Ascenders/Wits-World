@@ -32,10 +32,19 @@ html[data-ui-scale='150'] .combatant__power {
 html[data-ui-scale='150'] .battle-action-list:has(.battle-action-control) {
   grid-template-columns: minmax(0, 1fr);
 }
+html[data-ui-scale='150'] .combatant__hud:has(.combatant__vitals) {
+  height: auto;
+  overflow: visible;
+}
 @media (min-width: 48rem) {
   html[data-ui-scale='150'] .battle-arena {
     height: auto;
+    grid-template-areas:
+      'cpu'
+      'resolution'
+      'player';
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
     gap: var(--space-4);
   }
   html[data-ui-scale='150'] .battle-versus {
@@ -44,9 +53,6 @@ html[data-ui-scale='150'] .battle-action-list:has(.battle-action-control) {
   html[data-ui-scale='150'] .combatant--player,
   html[data-ui-scale='150'] .combatant--cpu {
     transform: none;
-  }
-  html[data-ui-scale='150'] .combatant--cpu {
-    grid-row: 1;
   }
 }
 @media (max-width: 47.999rem) {
@@ -248,6 +254,10 @@ html[data-motion='full'] .card-thumbnail__button {
     grid-auto-columns: minmax(0, 1fr);
     gap: 0;
   }
+  html[data-ui-scale='125'] .primary-navigation--mobile,
+  html[data-ui-scale='150'] .primary-navigation--mobile {
+    padding-inline: var(--space-1);
+  }
   html[data-ui-scale='125'] .primary-navigation__link,
   html[data-ui-scale='150'] .primary-navigation__link {
     min-width: 0;
@@ -256,13 +266,16 @@ html[data-motion='full'] .card-thumbnail__button {
   html[data-ui-scale='125'] .primary-navigation__label,
   html[data-ui-scale='150'] .primary-navigation__label {
     max-width: 100%;
-    font-size: 0.65rem;
     line-height: 1.1;
-    overflow-wrap: anywhere;
+    overflow-wrap: normal;
     text-align: center;
+    white-space: nowrap;
+  }
+  html[data-ui-scale='125'] .primary-navigation__label {
+    font-size: 0.6rem;
   }
   html[data-ui-scale='150'] .primary-navigation__label {
-    font-size: 0.55rem;
+    font-size: 0.5rem;
     letter-spacing: 0;
   }
 }
