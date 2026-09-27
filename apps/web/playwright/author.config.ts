@@ -8,13 +8,14 @@ const repositoryRoot = path.resolve(webDirectory, '../..');
 export default defineConfig({
   expect: { timeout: 10_000 },
   forbidOnly: Boolean(process.env.CI),
-  fullyParallel: false,
+  fullyParallel: true,
   outputDir: 'test-results/author',
   reporter: 'line',
   retries: 0,
   testDir: '.',
   testMatch: /author\.workspace\.spec\.ts/,
   timeout: 120_000,
+  workers: process.env.CI ? 8 : undefined,
   use: {
     ...devices['Desktop Chrome'],
     baseURL: 'http://127.0.0.1:5179',
