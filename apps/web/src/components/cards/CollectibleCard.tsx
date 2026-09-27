@@ -253,6 +253,7 @@ function OwnedCopyDetails({
 function acquisitionLabel(kind: OwnedCard['acquisitionKind']) {
   if (kind === 'starter') return 'Starter card';
   if (kind === 'evolution') return 'Evolved card';
+  if (kind === 'trade') return 'Received in a trade';
   return 'Event reward';
 }
 
@@ -311,14 +312,14 @@ function EffectDetails({ effect }: { effect: CardEffect }) {
   );
 }
 
-function formatEffect(
+export function formatEffect(
   effectType: CardEffect['effectType'],
   effectValue: number | null,
 ) {
   return `${titleCase(effectType)}${effectValue === null ? '' : ` ${effectValue}`}`;
 }
 
-function formatModifier(
+export function formatModifier(
   value: Pick<
     CardEffect,
     | 'effectType'

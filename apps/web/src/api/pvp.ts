@@ -9,13 +9,14 @@ import {
 } from './matches';
 
 const PVP_ACCEPT =
-  'application/vnd.wits-world.pvp.v4+json, application/vnd.wits-world.pvp.v3+json;q=0.9, application/json;q=0.8';
+  'application/vnd.wits-world.pvp.v5+json, application/vnd.wits-world.pvp.v4+json;q=0.9, application/json;q=0.8';
 
 export type PvpInvitationStatus =
   'pending' | 'accepted' | 'declined' | 'cancelled' | 'expired' | 'invalidated';
 
 export type PvpAction =
   | { creatureId: string; type: 'select_replacement' }
+  | { creatureId: string; type: 'swap_creature' }
   | { moveId: string; type: 'use_move' }
   | { powerCardId: string; type: 'use_power_card' };
 
@@ -860,11 +861,11 @@ function parseActionEffect(value: unknown): PvpActionEffect {
 function parsePvpAction(value: unknown): PvpAction {
   if (!isRecord(value)) throw new PvpApiError('unavailable');
   if (
-    value.type === 'select_replacement' &&
+    (value.type === 'select_replacement' || value.type === 'swap_creature') &&
     hasExactKeys(value, ['type', 'creatureId']) &&
     isUuid(value.creatureId)
   ) {
-    return { creatureId: value.creatureId, type: 'select_replacement' };
+    return { creatureId: value.creatureId, type: value.type };
   }
   if (
     value.type === 'use_move' &&

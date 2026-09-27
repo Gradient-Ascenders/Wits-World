@@ -27,6 +27,7 @@ const apiBaseUrl = 'https://api.example.test/api/v1';
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  window.history.replaceState({}, '', '/');
 });
 
 function createAuthValue(
@@ -429,7 +430,7 @@ describe('card collection page', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('groups duplicate definitions while retaining every owned copy in details', async () => {
+  it('groups duplicate definitions and opens the shared card presentation', async () => {
     const user = userEvent.setup();
     const definitionId = buildUuid(901);
     const first = buildCard(1, {
@@ -462,16 +463,13 @@ describe('card collection page', () => {
 
     await user.click(trigger);
     const dialog = screen.getByRole('dialog', {
-      name: `${first.name} card details`,
+      name: first.name,
     });
-    expect(within(dialog).getByText('×2 owned')).toBeVisible();
-    await user.click(within(dialog).getByText('Copy history'));
-    const copies = within(dialog).getByRole('list', {
-      name: `${first.name} owned copies`,
-    });
-    expect(copies.children).toHaveLength(2);
-    expect(within(copies).getByText('Starter card')).toBeVisible();
-    expect(within(copies).getByText('Event reward')).toBeVisible();
+    expect(dialog).toHaveAttribute('data-rarity', first.rarity);
+    expect(
+      within(dialog).getByText('Common Creature · Wit affinity'),
+    ).toBeVisible();
+    expect(within(dialog).queryByText('Copy history')).not.toBeInTheDocument();
   });
 
   it('shows authoritative owned, available, and deck-locked quantities', async () => {
@@ -491,7 +489,20 @@ describe('card collection page', () => {
       name: 'View Quillip details, 4 owned copies',
     });
     expect(within(trigger).getByText('×4')).toBeVisible();
-    await user.click(screen.getByRole('button', { name: 'Evolutions' }));
+    await user.click(screen.getByRole('link', { name: 'Evolutions' }));
+    const detailsTrigger = await screen.findByRole('button', {
+      name: 'View Quillip details',
+    });
+    await user.click(detailsTrigger);
+    const detailsDialog = screen.getByRole('dialog', { name: 'Quillip' });
+    expect(detailsDialog).toHaveAttribute('data-rarity', 'common');
+    expect(within(detailsDialog).getByText('Knowledge Surge')).toBeVisible();
+    await user.click(
+      within(detailsDialog).getByRole('button', {
+        name: 'Close Quillip details',
+      }),
+    );
+    expect(detailsTrigger).toHaveFocus();
     await user.click(
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
@@ -541,7 +552,7 @@ describe('card collection page', () => {
     );
 
     renderCollection();
-    await user.click(await screen.findByRole('button', { name: 'Evolutions' }));
+    await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
     expect(await screen.findByText('Copies reserved for trade')).toBeVisible();
     expect(screen.queryByText('Availability unknown')).not.toBeInTheDocument();
     await user.click(
@@ -566,7 +577,7 @@ describe('card collection page', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderCollection();
-    await user.click(await screen.findByRole('button', { name: 'Evolutions' }));
+    await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
     await user.click(
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
@@ -619,7 +630,7 @@ describe('card collection page', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderCollection();
-    await user.click(await screen.findByRole('button', { name: 'Evolutions' }));
+    await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
     await user.click(
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
@@ -646,7 +657,7 @@ describe('card collection page', () => {
     });
 
     await user.click(screen.getByRole('button', { name: 'Close evolution' }));
-    await user.click(screen.getByRole('button', { name: 'Cards' }));
+    await user.click(screen.getByRole('link', { name: 'Cards' }));
     expect(
       screen.getByRole('button', { name: 'View Quillume details' }),
     ).toBeVisible();
@@ -679,7 +690,7 @@ describe('card collection page', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderCollection();
-    await user.click(await screen.findByRole('button', { name: 'Evolutions' }));
+    await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
     await user.click(
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
@@ -710,7 +721,7 @@ describe('card collection page', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderCollection();
-    await user.click(await screen.findByRole('button', { name: 'Evolutions' }));
+    await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
     await user.click(
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
@@ -756,7 +767,7 @@ describe('card collection page', () => {
         ),
     );
     renderCollection();
-    await user.click(await screen.findByRole('button', { name: 'Evolutions' }));
+    await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
     await user.click(
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
@@ -819,7 +830,7 @@ describe('card collection page', () => {
       .mockResolvedValueOnce(collectionResponse([result.newCard, anchor]));
     vi.stubGlobal('fetch', fetchMock);
     renderCollection();
-    await user.click(await screen.findByRole('button', { name: 'Evolutions' }));
+    await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
     await user.click(
       await screen.findByRole('button', { name: 'Preview Quillip evolution' }),
     );
@@ -855,7 +866,7 @@ describe('card collection page', () => {
         .mockResolvedValueOnce(jsonResponse(evolutionPreview(cards))),
     );
     renderCollection();
-    await user.click(await screen.findByRole('button', { name: 'Evolutions' }));
+    await user.click(await screen.findByRole('link', { name: 'Evolutions' }));
     expect(await screen.findByText('Availability unknown')).toBeVisible();
     await user.click(
       screen.getByRole('button', { name: 'Retry availability' }),
@@ -889,22 +900,24 @@ describe('card collection page', () => {
     expect(screen.queryByText('Knowledge Surge')).not.toBeInTheDocument();
     await user.click(trigger);
     const dialog = screen.getByRole('dialog', {
-      name: `${card.name} card details`,
+      name: card.name,
     });
-    const article = within(dialog).getByRole('article', { name: card.name });
-    expect(within(article).getByText('Creature · Wit')).toBeVisible();
-    expect(within(article).getByText('Common')).toBeVisible();
-    expect(within(article).getByText('HP')).toBeVisible();
-    expect(within(article).getByText('100')).toBeVisible();
     expect(
-      within(article).getByRole('heading', { name: 'Moves' }),
+      within(dialog).getByText('Common Creature · Wit affinity'),
     ).toBeVisible();
-    expect(within(article).getByText('Knowledge Surge')).toBeVisible();
-    expect(within(article).getByText('Damage 20')).toBeVisible();
-    expect(within(article).getByText('3 Power')).toBeVisible();
+    expect(within(dialog).getByText('HP')).toBeVisible();
+    expect(within(dialog).getByText('100')).toBeVisible();
+    expect(
+      within(dialog).getByRole('heading', { name: 'Moves' }),
+    ).toBeVisible();
+    expect(within(dialog).getByText('Knowledge Surge')).toBeVisible();
+    expect(within(dialog).getByText('Damage 20')).toBeVisible();
+    expect(within(dialog).getByText('3 Power')).toBeVisible();
     await waitFor(() =>
       expect(
-        within(dialog).getByRole('button', { name: 'Close card details' }),
+        within(dialog).getByRole('button', {
+          name: `Close ${card.name} details`,
+        }),
       ).toHaveFocus(),
     );
 
@@ -946,16 +959,16 @@ describe('card collection page', () => {
         name: `View ${card.name} details`,
       }),
     );
-    const article = within(screen.getByRole('dialog')).getByRole('article', {
-      name: card.name,
-    });
-    expect(within(article).getByText('Power · Spirit')).toBeVisible();
+    const dialog = screen.getByRole('dialog', { name: card.name });
     expect(
-      within(article).getByRole('heading', { name: 'Effects' }),
+      within(dialog).getByText('Common Power · Spirit affinity'),
     ).toBeVisible();
-    expect(within(article).getByText('Heal 12')).toBeVisible();
-    expect(within(article).queryByText('HP')).not.toBeInTheDocument();
-    expect(within(article).queryByText('Power cost')).not.toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('heading', { name: 'Effects' }),
+    ).toBeVisible();
+    expect(within(dialog).getByText('Heal 12')).toBeVisible();
+    expect(within(dialog).queryByText('HP')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('Power cost')).not.toBeInTheDocument();
   });
 
   it('filters and sorts the gallery using existing card fields', async () => {

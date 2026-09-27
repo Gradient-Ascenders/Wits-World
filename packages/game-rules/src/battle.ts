@@ -239,7 +239,17 @@ export function getLegalActions(
       powerCardId: card.id,
     }));
 
-  return [...moveActions, ...powerCardActions];
+  const swapActions = participant.creatures
+    .filter(
+      (creature) =>
+        !creature.defeated && creature.card.id !== participant.activeCreatureId,
+    )
+    .map((creature) => ({
+      type: 'swap_creature' as const,
+      creatureId: creature.card.id,
+    }));
+
+  return [...moveActions, ...powerCardActions, ...swapActions];
 }
 
 export function chooseCpuAction(
@@ -262,7 +272,13 @@ export function chooseCpuAction(
     );
   }
 
-  const action = actions[checkedRandomIndex(randomInt, actions.length)];
+  // Keep the random CPU strategy from repeatedly swapping instead of attacking.
+  const candidates =
+    state.phase === 'active'
+      ? actions.filter((action) => action.type !== 'swap_creature')
+      : actions;
+  if (candidates.length === 0) return { type: 'timeout' };
+  const action = candidates[checkedRandomIndex(randomInt, candidates.length)];
 
   if (!action) {
     throw new IllegalBattleActionError(
@@ -302,6 +318,23 @@ export function applyBattleAction(
 
   if (action.type === 'use_power_card') {
     return applyPowerCard(draft, side, action);
+  }
+
+  if (action.type === 'swap_creature') {
+    const participant = draft.participants[side];
+    if (
+      !getActiveCreature(participant) ||
+      action.creatureId === participant.activeCreatureId ||
+      !participant.creatures.some(
+        (creature) =>
+          creature.card.id === action.creatureId && !creature.defeated,
+      )
+    ) {
+      throw new IllegalBattleActionError(
+        'The selected Creature is not available to swap in.',
+      );
+    }
+    return finishNormalTurn(draft, side, action, [], null, action.creatureId);
   }
 
   throw new IllegalBattleActionError(
@@ -857,6 +890,7 @@ function finishNormalTurn(
   action: BattleAction,
   effects: readonly AppliedEffect[],
   defeatedCreatureId: string | null = null,
+  swapInCreatureId: string | null = null,
 ): BattleTransition {
   if (defeatedCreatureId !== null) {
     const opponent = opponentOf(side);
@@ -892,10 +926,15 @@ function finishNormalTurn(
     draft.turnNumber,
     resolvedEffects,
   );
+  const actingCreature = getActiveCreature(draft.participants[side]);
+  const poisonedDefeat = actingCreature?.defeated
+    ? actingCreature.card.id
+    : null;
+  if (swapInCreatureId !== null) {
+    draft.participants[side].activeCreatureId = swapInCreatureId;
+  }
   draft.turnNumber += 1;
 
-  const actingActive = getActiveCreature(draft.participants[side]);
-  const poisonedDefeat = actingActive?.defeated ? actingActive.card.id : null;
   const opponent = opponentOf(side);
   const defeatedSides = [opponent, side].filter((candidate) => {
     const active = getActiveCreature(draft.participants[candidate]);
@@ -960,7 +999,7 @@ function finishNormalTurn(
     side,
     action,
     resolvedEffects,
-    null,
+    poisonedDefeat,
     null,
     true,
     expiredEffects,

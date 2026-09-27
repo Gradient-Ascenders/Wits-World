@@ -226,6 +226,19 @@ Every text message is one UTF-8 JSON object with:
 - `matchId` as a UUID; and
 - the fields defined for that message type, with no additional properties.
 
+Voluntary Creature swaps are an opt-in projection capability during rollout.
+The current HTTP client sends
+`Accept: application/vnd.wits-world.live.v2+json, application/json;q=0.9`
+when reading a match. The current WebSocket client adds `battleSwaps=1` to
+the ticketed socket URL. Without the relevant opt-in, the server removes
+`swap_creature` from participant legal actions in HTTP and socket projections;
+it also redacts swap intent details from participant and spectator history and
+the participant's latest result. History entries stay in order with their
+original positions, so a committed turn does not disappear from an old
+client's timeline. The authoritative state is unchanged. Spectator views have
+no legal actions. The WebSocket message `protocolVersion` remains 1 because the message
+envelope is unchanged; the URL capability negotiates the action projection.
+
 Binary messages, malformed JSON, unsupported protocol versions, oversized
 messages, and unknown message types are rejected without invoking game logic. A
 protocol failure synchronously invalidates the runtime connection before the
@@ -256,11 +269,13 @@ must set and document a bounded message-size limit before deployment.
 ```text
 { type: "select_initial_creature", creatureId: UUID }
 { type: "select_replacement", creatureId: UUID }
+{ type: "swap_creature", creatureId: UUID }
 { type: "use_move", moveId: UUID }
 { type: "use_power_card", powerCardId: UUID }
 ```
 
-The client cannot submit `timeout`, damage, effects, randomness, card values,
+`swap_creature` consumes a normal turn and requires a living bench Creature;
+mandatory replacement remains free. The client cannot submit `timeout`, damage, effects, randomness, card values,
 deadlines, timeout counts, presence, winner, completion, progression, or
 spectator fields. Returned legal actions are advisory; the server revalidates
 the intent under the locked current version.
@@ -669,4 +684,4 @@ Before issue `#253` is merged:
 ## AI declaration
 
 This contract was planned, generated, edited, and reviewed with the assistance
-of Codex[GPT-5.6 Sol] and ChatGPT-Web[GPT-5.6 Sol].
+of Codex[GPT-5.6 Sol], ChatGPT-Web[GPT-5.6 Sol], and Codex[GPT-5].

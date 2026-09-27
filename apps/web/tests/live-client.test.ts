@@ -1,10 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  buildLiveWebSocketUrl,
   createLiveConnectionTicket,
   getCurrentRankedSeason,
   getLiveProjection,
+  getRankedProfile,
+  getRankedSettlement,
   joinRankedQueue,
+  listRankedStandings,
   LiveApiError,
   parseLiveServerMessage,
 } from '../src/api/live';
@@ -13,7 +17,11 @@ import {
   participantProjection,
   projectionResponse,
   queueState,
+  rankedProfile,
+  rankedSettlement,
   rankedSeason,
+  rankedStandings,
+  TERRITORY_ZONE_ID,
   readyMessage,
   spectatorProjection,
   ticketResponse,
@@ -71,6 +79,8 @@ describe('live battle API client', () => {
       `${apiBaseUrl}/matches/live/${LIVE_MATCH_ID}`,
       expect.objectContaining({
         headers: expect.objectContaining({
+          Accept:
+            'application/vnd.wits-world.live.v2+json, application/json;q=0.9',
           Authorization: 'Bearer access-token',
         }),
       }),
@@ -78,6 +88,14 @@ describe('live battle API client', () => {
     expect(JSON.parse(String(fetchMock.mock.calls[1]![1]!.body))).toEqual({
       role: 'participant',
     });
+    const socketUrl = new URL(
+      buildLiveWebSocketUrl(
+        'wss://api.example.test/api/v1/realtime/live',
+        'one-use-ticket',
+      ),
+    );
+    expect(socketUrl.searchParams.get('ticket')).toBe('one-use-ticket');
+    expect(socketUrl.searchParams.get('battleSwaps')).toBe('1');
   });
 
   it('keeps spectator parsing on a closed public shape and rejects leaked private fields', async () => {
@@ -152,6 +170,59 @@ describe('live battle API client', () => {
     });
   });
 
+  it('adds a territory claim only when the player explicitly provides one', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(queueState({ status: 'searching' })), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const territoryClaim = {
+      accuracyMetres: 18,
+      acquiredAt: '2026-09-25T12:00:00.000Z',
+      latitude: -26.1919,
+      longitude: 28.0301,
+      zoneId: TERRITORY_ZONE_ID,
+    };
+
+    await joinRankedQueue({
+      ...options(),
+      deckId: '61000000-0000-4000-8000-000000000002',
+      territoryClaim,
+    });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0]![1]!.body))).toEqual({
+      deckId: '61000000-0000-4000-8000-000000000002',
+      territoryClaim,
+    });
+  });
+
+  it('preserves the server restriction reason for ranked queue guidance', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            code: 'RANKED_RESTRICTED',
+            detail: 'Ranked matchmaking is temporarily unavailable.',
+          }),
+          {
+            status: 403,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        ),
+      ),
+    );
+
+    await expect(
+      joinRankedQueue({
+        ...options(),
+        deckId: '61000000-0000-4000-8000-000000000002',
+      }),
+    ).rejects.toMatchObject({ failure: 'restricted' });
+  });
+
   it('uses the authenticated current-season projection to gate ranked entry', async () => {
     vi.stubGlobal(
       'fetch',
@@ -176,5 +247,49 @@ describe('live battle API client', () => {
       status: 'active',
     });
     await expect(getCurrentRankedSeason(options())).resolves.toBeNull();
+  });
+
+  it('parses authoritative profile, standings, and participant settlement projections', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify(rankedProfile()), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify(rankedStandings()), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify(rankedSettlement()), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        ),
+    );
+
+    await expect(getRankedProfile(options())).resolves.toMatchObject({
+      rating: 1_248,
+      provisional: false,
+    });
+    const standings = await listRankedStandings(options());
+    expect(standings.entries[0]).toMatchObject({
+      playerName: 'CampusFox',
+      rank: 1,
+    });
+    expect(standings.nextCursor).toBeNull();
+    await expect(
+      getRankedSettlement({ ...options(), matchId: LIVE_MATCH_ID }),
+    ).resolves.toMatchObject({
+      appliedDelta: 24,
+      status: 'settled',
+      territory: { influencePoints: 30, outcome: 'accepted' },
+    });
   });
 });

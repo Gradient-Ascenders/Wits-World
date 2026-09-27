@@ -161,6 +161,7 @@ export interface BattleSelections {
 export type BattleAction =
   | { type: 'select_initial_creature'; creatureId: string }
   | { type: 'select_replacement'; creatureId: string }
+  | { type: 'swap_creature'; creatureId: string }
   | { type: 'use_move'; moveId: string }
   | { type: 'use_power_card'; powerCardId: string }
   | { type: 'timeout' };

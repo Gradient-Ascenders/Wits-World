@@ -1172,6 +1172,10 @@ code {
     padding: clamp(var(--space-7), 7vw, 6rem) var(--space-5);
   }
 
+  .main-content--trade-builder {
+    width: min(100%, 96rem);
+  }
+
   .site-frame--product-navigation .main-content {
     padding-bottom: calc(
       var(--player-navigation-height) + env(safe-area-inset-bottom) +

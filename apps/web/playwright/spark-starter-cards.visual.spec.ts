@@ -44,21 +44,21 @@ test('renders the approved Spark starter cards and production artwork', async ({
   });
 
   await page.getByRole('button', { name: 'View Voltiki details' }).click();
-  let dialog = page.getByRole('dialog', { name: 'Voltiki card details' });
+  let dialog = page.getByRole('dialog', { name: 'Voltiki' });
   await expect(dialog.getByText('Heal 25')).toBeVisible();
   await expect(dialog.getByText('Static Snap')).toBeVisible();
-  await dialog.getByRole('button', { name: 'Close card details' }).click();
+  await dialog.getByRole('button', { name: 'Close Voltiki details' }).click();
 
   await page.getByRole('button', { name: 'View Cinderhop details' }).click();
-  dialog = page.getByRole('dialog', { name: 'Cinderhop card details' });
+  dialog = page.getByRole('dialog', { name: 'Cinderhop' });
   await expect(
     dialog.getByText('This creature deals 20% more damage for 2 turns'),
   ).toBeVisible();
   await expect(dialog.getByText('Calculated Claw')).toBeVisible();
-  await dialog.getByRole('button', { name: 'Close card details' }).click();
+  await dialog.getByRole('button', { name: 'Close Cinderhop details' }).click();
 
   await page.getByRole('button', { name: 'View Lumiswift details' }).click();
-  dialog = page.getByRole('dialog', { name: 'Lumiswift card details' });
+  dialog = page.getByRole('dialog', { name: 'Lumiswift' });
   await expect(
     dialog.getByText('Opponent deals 15% less damage for 2 turns'),
   ).toBeVisible();

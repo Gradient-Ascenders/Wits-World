@@ -64,6 +64,17 @@
   border-color: rgb(220 91 101 / 48%);
 }
 
+.map-state:not(.map-state--error) {
+  gap: var(--space-2);
+  color: var(--colour-text-primary);
+  font-weight: 700;
+}
+
+.map-state:not(.map-state--error) .quest-marker {
+  width: 1rem;
+  height: 1.35rem;
+}
+
 .map-state--error strong {
   color: var(--colour-text-primary);
 }

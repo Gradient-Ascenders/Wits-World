@@ -40,3 +40,40 @@ it('requires both the authoritative actor and legal action, and locks during sub
   await userEvent.click(move);
   expect(onAction).not.toHaveBeenCalled();
 });
+
+it('offers living bench swaps only when the server lists them as legal', async () => {
+  const match = activeMatch();
+  const onAction = vi.fn();
+  const [first, second, third] = match.state.player.creatures;
+  third!.defeated = true;
+  third!.currentHp = 0;
+  const props = {
+    activeCreatureId: first!.id,
+    busy: false,
+    creatures: match.state.player.creatures,
+    currentActor: true,
+    idPrefix: 'swap-test',
+    legalActions: [{ type: 'swap_creature' as const, creatureId: second!.id }],
+    onAction,
+    opponentLabel: 'CPU',
+    phase: 'active' as const,
+    powerCards: match.state.player.powerCards,
+  };
+  const { rerender } = render(<BattleActionPanel {...props} />);
+  const user = userEvent.setup();
+  await user.click(screen.getByRole('tab', { name: /Swap/ }));
+  expect(screen.getByRole('tabpanel', { name: /Swap/ })).toHaveTextContent(
+    'Swapping ends your turn.',
+  );
+  expect(screen.queryByText('Wit Creature 3')).toBeNull();
+  await user.click(screen.getByRole('button', { name: /Wit Creature 2/ }));
+  expect(onAction).toHaveBeenCalledExactlyOnceWith({
+    type: 'swap_creature',
+    creatureId: second!.id,
+  });
+
+  rerender(<BattleActionPanel {...props} legalActions={[]} />);
+  expect(
+    screen.getByRole('button', { name: /Wit Creature 2/ }),
+  ).toHaveAttribute('aria-disabled', 'true');
+});

@@ -524,6 +524,11 @@
   color: var(--colour-gold-400);
 }
 
+.placement-preview__feedback .placement-preview__loader {
+  width: 1rem;
+  height: 1.35rem;
+}
+
 .placement-preview__feedback .placement-preview__loader svg {
   color: inherit;
 }
@@ -2089,16 +2094,14 @@
   gap: var(--space-1);
 }
 
-.author-console .button--danger,
-.author-dialog .button--danger {
+.author-console .button--danger {
   border-color: var(--colour-status-danger);
   color: var(--colour-text-primary);
   background: rgb(220 91 101 / 14%);
   box-shadow: none;
 }
 
-.author-console .button--danger:hover:not(:disabled),
-.author-dialog .button--danger:hover:not(:disabled) {
+.author-console .button--danger:hover:not(:disabled) {
   background: rgb(220 91 101 / 28%);
 }
 
@@ -2408,52 +2411,6 @@
 .card-preview p:not(.eyebrow) {
   margin: var(--space-2) 0 0;
   color: var(--colour-text-secondary);
-}
-
-.author-dialog-backdrop {
-  position: fixed;
-  z-index: 100;
-  inset: 0;
-  display: grid;
-  align-items: end;
-  padding: var(--space-3);
-  padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom));
-  background: rgb(2 7 15 / 76%);
-  backdrop-filter: blur(0.35rem);
-}
-
-.author-dialog {
-  display: grid;
-  width: min(100%, 32rem);
-  max-height: calc(100dvh - var(--space-6) - env(safe-area-inset-bottom));
-  justify-self: center;
-  gap: var(--space-3);
-  padding: var(--space-5);
-  overflow-y: auto;
-  border: 1px solid rgb(220 91 101 / 56%);
-  border-radius: var(--radius-lg);
-  color: var(--colour-text-primary);
-  background: var(--colour-navy-900);
-  box-shadow: var(--shadow-floating);
-}
-
-.author-dialog h2,
-.author-dialog p {
-  margin: 0;
-}
-
-.author-dialog h2 {
-  font-size: var(--text-2xl);
-}
-
-.author-dialog__description {
-  color: var(--colour-text-secondary);
-}
-
-.author-dialog__actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
 }
 
 .author-review {
@@ -2920,15 +2877,6 @@
   .author-publish-bar {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-  }
-
-  .author-dialog-backdrop {
-    align-items: center;
-  }
-
-  .author-dialog__actions {
-    flex-direction: row;
-    justify-content: flex-end;
   }
 }
 

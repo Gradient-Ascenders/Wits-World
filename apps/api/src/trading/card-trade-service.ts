@@ -152,6 +152,59 @@ export interface CardTradePage {
   hasMore: boolean;
 }
 
+export type CardTradeSelectionAvailability =
+  | 'available'
+  | 'selected_here'
+  | 'saved_deck'
+  | 'gameplay_commitment'
+  | 'other_trade'
+  | 'inactive_definition'
+  | 'collection_minimum';
+
+export type CardTradeSelectionIssue =
+  | 'offer_required'
+  | 'request_required'
+  | 'copy_limit'
+  | 'request_limit'
+  | 'unavailable_copy'
+  | 'definition_unavailable'
+  | 'collection_minimum';
+
+export interface CardTradeSelectionCopy {
+  ownedCardId: string;
+  cardDefinitionId: string;
+  name: string;
+  category: CardCategory;
+  affinity: CardAffinity | null;
+  rarity: CardRarity;
+  imageUrl: string | null;
+  imageAlt: string | null;
+  availability: CardTradeSelectionAvailability;
+}
+
+export interface PreviewCardTradeSelectionInput {
+  playerId: string;
+  tradeId?: string;
+  expectedVersion?: number;
+  offeredOwnedCardIds: readonly string[];
+  requestedDefinitions: readonly CardTradeRequestedDefinition[];
+}
+
+export interface CardTradeSelectionPreview {
+  valid: boolean;
+  issues: readonly CardTradeSelectionIssue[];
+  ownedCopies: readonly CardTradeSelectionCopy[];
+  requestedDefinitions: readonly CardTradeRequestedDefinitionView[];
+  offeredRarityPoints: number;
+  requestedRarityPoints: number;
+  imbalanceWarningRequired: boolean;
+  limits: {
+    maximumCopiesPerSide: number;
+    minimumCreatureCopies: number;
+    minimumPowerCopies: number;
+  };
+}
+
 export interface CardTradeService {
   createTrade(input: CreateCardTradeInput): Promise<CardTradeView>;
   reviseTrade(input: ReviseCardTradeInput): Promise<CardTradeView>;
@@ -169,6 +222,9 @@ export interface CardTradeService {
     participantPlayerId: string,
   ): Promise<CardTradeView>;
   listTrades(input: ListCardTradesInput): Promise<CardTradePage>;
+  previewSelection(
+    input: PreviewCardTradeSelectionInput,
+  ): Promise<CardTradeSelectionPreview>;
   expireDueTrades(): Promise<number>;
   purgeTerminalTrades(): Promise<number>;
 }
@@ -347,6 +403,32 @@ interface TradeListRow extends pg.QueryResultRow {
   created_at: Date;
   expires_at: Date;
   terminal_at: Date | null;
+}
+
+interface SelectionCopyRow extends pg.QueryResultRow {
+  owned_card_id: string;
+  card_definition_id: string;
+  name: string;
+  category: CardCategory;
+  affinity: CardAffinity | null;
+  rarity: CardRarity;
+  image_url: string | null;
+  image_alt: string | null;
+  is_active: boolean;
+  authoring_status: string;
+  saved_deck: boolean;
+  gameplay_commitment: boolean;
+  other_trade: boolean;
+}
+
+interface SelectionDefinitionRow extends pg.QueryResultRow {
+  card_definition_id: string;
+  name: string;
+  category: CardCategory;
+  affinity: CardAffinity | null;
+  rarity: CardRarity;
+  image_url: string | null;
+  image_alt: string | null;
 }
 
 type CardTradeSubmissionOperation =
@@ -1036,6 +1118,10 @@ export function createCardTradeService(
       });
     },
 
+    async previewSelection(input) {
+      return previewCardTradeSelection(database, input);
+    },
+
     async expireDueTrades() {
       const client = await database.connect();
       try {
@@ -1060,6 +1146,317 @@ export function createCardTradeService(
       }
     },
   };
+}
+
+async function previewCardTradeSelection(
+  database: CardTradeDatabase,
+  input: PreviewCardTradeSelectionInput,
+): Promise<CardTradeSelectionPreview> {
+  if (
+    input.offeredOwnedCardIds.some(
+      (ownedCardId) => !UUID_LOWERCASE.test(ownedCardId.toLowerCase()),
+    ) ||
+    new Set(
+      input.offeredOwnedCardIds.map((ownedCardId) => ownedCardId.toLowerCase()),
+    ).size !== input.offeredOwnedCardIds.length
+  ) {
+    throw new CardTradeError(
+      'TRADE_INCOMPLETE',
+      'Selected owned card identifiers are invalid.',
+    );
+  }
+
+  const requestedIds = input.requestedDefinitions.map((definition) =>
+    definition.cardDefinitionId.toLowerCase(),
+  );
+  if (
+    requestedIds.some(
+      (cardDefinitionId) => !UUID_LOWERCASE.test(cardDefinitionId),
+    ) ||
+    new Set(requestedIds).size !== requestedIds.length ||
+    input.requestedDefinitions.some(
+      (definition) =>
+        !Number.isInteger(definition.quantity) || definition.quantity < 1,
+    )
+  ) {
+    throw new CardTradeError(
+      'TRADE_INCOMPLETE',
+      'Requested card definitions and quantities are invalid.',
+    );
+  }
+
+  return withTransaction(database, async (client) => {
+    let allowedTradeId: string | null = null;
+    let policy: CardTradePolicyLimits;
+
+    if (input.tradeId) {
+      const context = await lockTradeContext(client, input.tradeId);
+      assertParticipant(context.trade, input.playerId);
+      await ensureTradeActionable(client, context, input.expectedVersion);
+      allowedTradeId = input.tradeId;
+      policy = await loadPolicy(client, context.trade.policy_version);
+    } else {
+      policy = await loadPolicy(client);
+    }
+
+    const copyResult = await client.query<SelectionCopyRow>(
+      `
+        select
+          owned.id::text as owned_card_id,
+          definition.id::text as card_definition_id,
+          definition.name,
+          definition.category,
+          definition.affinity,
+          definition.rarity,
+          definition.image_url,
+          definition.image_alt,
+          definition.is_active,
+          definition.authoring_status,
+          exists (
+            select 1
+              from public.player_deck_cards membership
+             where membership.player_id = owned.player_id
+               and membership.owned_card_id = owned.id
+          ) as saved_deck,
+          (
+            exists (
+              select 1
+                from public.cpu_match_cards match_card
+                join public.cpu_matches match on match.id = match_card.match_id
+               where match_card.owned_card_id = owned.id
+                 and match.status = 'active'
+            )
+            or exists (
+              select 1
+                from private.async_pvp_deck_snapshot_cards snapshot_card
+                join private.async_pvp_deck_snapshots snapshot
+                  on snapshot.id = snapshot_card.snapshot_id
+                join public.async_pvp_invitations invitation
+                  on invitation.id = snapshot.invitation_id
+                left join public.async_pvp_matches match
+                  on match.id = invitation.match_id
+               where snapshot_card.source_owned_card_id = owned.id
+                 and (invitation.status = 'pending' or match.status = 'active')
+            )
+            or exists (
+              select 1
+                from private.live_pvp_deck_snapshot_cards snapshot_card
+                join private.live_pvp_deck_snapshots snapshot
+                  on snapshot.id = snapshot_card.snapshot_id
+                join public.live_pvp_matches match on match.id = snapshot.match_id
+               where snapshot_card.source_owned_card_id = owned.id
+                 and match.status = 'active'
+            )
+          ) as gameplay_commitment,
+          exists (
+            select 1
+              from private.card_trade_reservations reservation
+             where reservation.owned_card_id = owned.id
+               and ($2::uuid is null or reservation.trade_id <> $2::uuid)
+          ) as other_trade
+        from public.player_cards owned
+        join public.card_definitions definition
+          on definition.id = owned.card_definition_id
+        where owned.player_id = $1::uuid
+        order by owned.acquired_at desc, owned.id desc
+      `,
+      [input.playerId, allowedTradeId],
+    );
+
+    const requestedResult =
+      requestedIds.length === 0
+        ? { rows: [] as SelectionDefinitionRow[] }
+        : await client.query<SelectionDefinitionRow>(
+            `
+              select
+                definition.id::text as card_definition_id,
+                definition.name,
+                definition.category,
+                definition.affinity,
+                definition.rarity,
+                definition.image_url,
+                definition.image_alt
+              from public.card_definitions definition
+              where definition.id = any($1::uuid[])
+                and definition.is_active
+                and definition.authoring_status = 'published'
+              order by definition.id
+            `,
+            [requestedIds],
+          );
+
+    const issues = new Set<CardTradeSelectionIssue>();
+    const selectedIds = new Set(
+      input.offeredOwnedCardIds.map((ownedCardId) => ownedCardId.toLowerCase()),
+    );
+    const requestedCount = input.requestedDefinitions.reduce(
+      (total, definition) => total + definition.quantity,
+      0,
+    );
+
+    if (selectedIds.size === 0) issues.add('offer_required');
+    if (requestedCount === 0) issues.add('request_required');
+    if (selectedIds.size > policy.maximumCopiesPerSide) {
+      issues.add('copy_limit');
+    }
+    if (requestedCount > policy.maximumCopiesPerSide) {
+      issues.add('request_limit');
+    }
+
+    const definitionById = new Map(
+      requestedResult.rows.map((definition) => [
+        definition.card_definition_id.toLowerCase(),
+        definition,
+      ]),
+    );
+    if (definitionById.size !== requestedIds.length) {
+      issues.add('definition_unavailable');
+    }
+
+    const copyById = new Map(
+      copyResult.rows.map((copy) => [copy.owned_card_id.toLowerCase(), copy]),
+    );
+    const selectedCopies = [...selectedIds]
+      .map((ownedCardId) => copyById.get(ownedCardId))
+      .filter((copy): copy is SelectionCopyRow => copy !== undefined);
+    if (selectedCopies.length !== selectedIds.size) {
+      issues.add('unavailable_copy');
+    }
+
+    const baseAvailability = (
+      copy: SelectionCopyRow,
+    ): CardTradeSelectionAvailability => {
+      if (!copy.is_active || copy.authoring_status !== 'published') {
+        return 'inactive_definition';
+      }
+      if (copy.saved_deck) return 'saved_deck';
+      if (copy.gameplay_commitment) return 'gameplay_commitment';
+      if (copy.other_trade) return 'other_trade';
+      return selectedIds.has(copy.owned_card_id.toLowerCase())
+        ? 'selected_here'
+        : 'available';
+    };
+
+    if (
+      selectedCopies.some((copy) => {
+        const availability = baseAvailability(copy);
+        return availability !== 'available' && availability !== 'selected_here';
+      })
+    ) {
+      issues.add('unavailable_copy');
+    }
+
+    const requestedDefinitions = input.requestedDefinitions.flatMap(
+      (request) => {
+        const definition = definitionById.get(
+          request.cardDefinitionId.toLowerCase(),
+        );
+        return definition
+          ? [
+              {
+                cardDefinitionId: definition.card_definition_id,
+                quantity: request.quantity,
+                name: definition.name,
+                category: definition.category,
+                affinity: definition.affinity,
+                rarity: definition.rarity,
+                imageUrl: definition.image_url,
+                imageAlt: definition.image_alt,
+              },
+            ]
+          : [];
+      },
+    );
+
+    const currentCounts = new Map<CardCategory, number>([
+      [
+        'creature',
+        copyResult.rows.filter((copy) => copy.category === 'creature').length,
+      ],
+      [
+        'power',
+        copyResult.rows.filter((copy) => copy.category === 'power').length,
+      ],
+    ]);
+    const finalCounts = new Map(currentCounts);
+    for (const copy of selectedCopies) {
+      finalCounts.set(copy.category, (finalCounts.get(copy.category) ?? 0) - 1);
+    }
+    for (const definition of requestedDefinitions) {
+      finalCounts.set(
+        definition.category,
+        (finalCounts.get(definition.category) ?? 0) + definition.quantity,
+      );
+    }
+
+    const minimumFor = (category: CardCategory) =>
+      category === 'creature'
+        ? policy.minimumCreatureCopies
+        : policy.minimumPowerCopies;
+    const checksInventoryMinimum =
+      selectedIds.size > 0 && requestedCount > 0 && issues.size === 0;
+    if (
+      checksInventoryMinimum &&
+      (finalCounts.get('creature')! < policy.minimumCreatureCopies ||
+        finalCounts.get('power')! < policy.minimumPowerCopies)
+    ) {
+      issues.add('collection_minimum');
+    }
+
+    const ownedCopies = copyResult.rows.map((copy) => {
+      let availability = baseAvailability(copy);
+      if (
+        checksInventoryMinimum &&
+        !selectedIds.has(copy.owned_card_id.toLowerCase()) &&
+        (availability === 'available' || availability === 'selected_here')
+      ) {
+        const prospectiveCount = (finalCounts.get(copy.category) ?? 0) - 1;
+        if (prospectiveCount < minimumFor(copy.category)) {
+          availability = 'collection_minimum';
+        }
+      }
+      return {
+        ownedCardId: copy.owned_card_id,
+        cardDefinitionId: copy.card_definition_id,
+        name: copy.name,
+        category: copy.category,
+        affinity: copy.affinity,
+        rarity: copy.rarity,
+        imageUrl: copy.image_url,
+        imageAlt: copy.image_alt,
+        availability,
+      };
+    });
+
+    const offeredRarityPoints = selectedCopies.reduce(
+      (total, copy) => total + rarityTradePoints(copy.rarity),
+      0,
+    );
+    const requestedRarityPoints = requestedDefinitions.reduce(
+      (total, definition) =>
+        total + rarityTradePoints(definition.rarity) * definition.quantity,
+      0,
+    );
+
+    return {
+      valid: issues.size === 0,
+      issues: [...issues],
+      ownedCopies,
+      requestedDefinitions,
+      offeredRarityPoints,
+      requestedRarityPoints,
+      imbalanceWarningRequired:
+        offeredRarityPoints > 0 &&
+        requestedRarityPoints > 0 &&
+        Math.abs(offeredRarityPoints - requestedRarityPoints) >
+          policy.imbalanceWarningThreshold,
+      limits: {
+        maximumCopiesPerSide: policy.maximumCopiesPerSide,
+        minimumCreatureCopies: policy.minimumCreatureCopies,
+        minimumPowerCopies: policy.minimumPowerCopies,
+      },
+    };
+  });
 }
 
 async function withTransaction<T>(

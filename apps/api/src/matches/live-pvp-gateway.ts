@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { RawData, WebSocket } from 'ws';
 
+import { livePvpMatchForClient } from './battle-projection-capability.js';
 import {
   LivePvpError,
   type LiveClientAction,
@@ -35,6 +36,7 @@ export interface LivePvpGateway {
 interface GatewayConnection {
   socket: WebSocket;
   principal: RedeemedLivePvpConnection;
+  supportsBattleSwaps: boolean;
   missedPongs: number;
   closed: boolean;
 }
@@ -224,6 +226,7 @@ export function createLivePvpGateway(
     connection = {
       socket,
       principal,
+      supportsBattleSwaps: readBattleSwaps(request),
       missedPongs: 0,
       closed: false,
     };
@@ -247,7 +250,10 @@ export function createLivePvpGateway(
         role: principal.role,
         serverTime: new Date().toISOString(),
         version: projection.version,
-        match: projection,
+        match: livePvpMatchForClient(
+          projection,
+          connection.supportsBattleSwaps,
+        ),
       });
       if (projection.status === 'completed') {
         pendingMessages.length = 0;
@@ -380,7 +386,10 @@ export function createLivePvpGateway(
         eventId: randomUUID(),
         serverTime: new Date().toISOString(),
         version: projection.version,
-        match: projection,
+        match: livePvpMatchForClient(
+          projection,
+          connection.supportsBattleSwaps,
+        ),
       });
       if (projection.status === 'completed') {
         await closeCompletedConnection(connection);
@@ -488,7 +497,10 @@ export function createLivePvpGateway(
                 previousVersion: Math.max(0, committedVersion - 1),
                 version: committedVersion,
                 serverTime: eventMeta.createdAt,
-                match: projection,
+                match: livePvpMatchForClient(
+                  projection,
+                  connection.supportsBattleSwaps,
+                ),
               });
             } else {
               send(connection.socket, {
@@ -497,7 +509,10 @@ export function createLivePvpGateway(
                 eventId: randomUUID(),
                 version: projection.version,
                 serverTime: new Date().toISOString(),
-                match: projection,
+                match: livePvpMatchForClient(
+                  projection,
+                  connection.supportsBattleSwaps,
+                ),
               });
             }
             if (projection.status === 'completed') {
@@ -544,7 +559,10 @@ export function createLivePvpGateway(
                   eventId,
                   version: projection.version,
                   serverTime,
-                  match: projection,
+                  match: livePvpMatchForClient(
+                    projection,
+                    connection.supportsBattleSwaps,
+                  ),
                 });
                 await closeCompletedConnection(connection);
                 return;
@@ -628,6 +646,11 @@ function readTicket(request: FastifyRequest): string | null {
     : null;
 }
 
+function readBattleSwaps(request: FastifyRequest): boolean {
+  const query = request.query as Record<string, unknown>;
+  return query.battleSwaps === '1';
+}
+
 export function parseLivePvpClientMessage(text: string): ClientMessage {
   let parsed: unknown;
   try {
@@ -699,7 +722,8 @@ function parseAction(value: unknown): LiveClientAction {
   }
   if (
     value.type === 'select_initial_creature' ||
-    value.type === 'select_replacement'
+    value.type === 'select_replacement' ||
+    value.type === 'swap_creature'
   ) {
     assertExactKeys(value, ['type', 'creatureId']);
     if (

@@ -61,6 +61,13 @@ interface TradeListQuery {
   status?: CardTradeStatus;
 }
 
+interface SelectionPreviewBody {
+  tradeId?: string;
+  expectedVersion?: number;
+  offeredOwnedCardIds: string[];
+  requestedDefinitions: RequestedDefinitionBody[];
+}
+
 const uuid = { type: 'string', format: 'uuid' } as const;
 const nullableTimestamp = {
   anyOf: [{ type: 'string', format: 'date-time' }, { type: 'null' }],
@@ -251,6 +258,83 @@ const mutationResponses = {
   429: apiErrorSchema,
 } as const;
 
+const selectionAvailability = {
+  enum: [
+    'available',
+    'selected_here',
+    'saved_deck',
+    'gameplay_commitment',
+    'other_trade',
+    'inactive_definition',
+    'collection_minimum',
+  ],
+} as const;
+
+const selectionIssue = {
+  enum: [
+    'offer_required',
+    'request_required',
+    'copy_limit',
+    'request_limit',
+    'unavailable_copy',
+    'definition_unavailable',
+    'collection_minimum',
+  ],
+} as const;
+
+const selectionPreviewResponseSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'valid',
+    'issues',
+    'ownedCopies',
+    'requestedDefinitions',
+    'offeredRarityPoints',
+    'requestedRarityPoints',
+    'imbalanceWarningRequired',
+    'limits',
+    'requestId',
+  ],
+  properties: {
+    valid: { type: 'boolean' },
+    issues: { type: 'array', items: selectionIssue, uniqueItems: true },
+    ownedCopies: {
+      type: 'array',
+      items: {
+        ...offeredCopySchema,
+        required: [...offeredCopySchema.required, 'availability'],
+        properties: {
+          ...offeredCopySchema.properties,
+          availability: selectionAvailability,
+        },
+      },
+    },
+    requestedDefinitions: {
+      type: 'array',
+      items: requestedDefinitionViewSchema,
+    },
+    offeredRarityPoints: { type: 'integer', minimum: 0 },
+    requestedRarityPoints: { type: 'integer', minimum: 0 },
+    imbalanceWarningRequired: { type: 'boolean' },
+    limits: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'maximumCopiesPerSide',
+        'minimumCreatureCopies',
+        'minimumPowerCopies',
+      ],
+      properties: {
+        maximumCopiesPerSide: { type: 'integer', minimum: 1 },
+        minimumCreatureCopies: { type: 'integer', minimum: 0 },
+        minimumPowerCopies: { type: 'integer', minimum: 0 },
+      },
+    },
+    requestId: { type: 'string' },
+  },
+} as const;
+
 export const cardTradeRoutes: FastifyPluginAsync<Options> = async (
   app,
   { service, reauthenticationVerifier },
@@ -368,6 +452,74 @@ export const cardTradeRoutes: FastifyPluginAsync<Options> = async (
           ...request.query,
         });
         return tradeListEnvelope(page, request);
+      } catch (error) {
+        throw mapTradeError(error);
+      }
+    },
+  );
+
+  app.post<{ Body: SelectionPreviewBody }>(
+    '/trades/selection-preview',
+    {
+      preHandler: secured,
+      schema: {
+        operationId: 'previewCardTradeSelection',
+        summary: 'Preview the current player card trade selection',
+        description:
+          'Returns non-reserving, server-computed eligibility for the current player own copies and proposed requested definitions.',
+        tags: ['Trading'],
+        security: [{ bearerAuth: [] }],
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['offeredOwnedCardIds', 'requestedDefinitions'],
+          properties: {
+            tradeId: uuid,
+            expectedVersion: { type: 'integer', minimum: 1 },
+            offeredOwnedCardIds: {
+              type: 'array',
+              maxItems: 5,
+              uniqueItems: true,
+              items: uuid,
+            },
+            requestedDefinitions: {
+              type: 'array',
+              maxItems: 5,
+              items: requestedDefinitionSchema,
+            },
+          },
+        },
+        response: {
+          200: selectionPreviewResponseSchema,
+          400: apiErrorSchema,
+          401: apiErrorSchema,
+          403: apiErrorSchema,
+          404: apiErrorSchema,
+          409: apiErrorSchema,
+          429: apiErrorSchema,
+        },
+      },
+    },
+    async (request) => {
+      if (
+        request.body.tradeId === undefined &&
+        request.body.expectedVersion !== undefined
+      ) {
+        throw new ApiError({
+          statusCode: 400,
+          code: 'VALIDATION_ERROR',
+          title: 'Validation failed',
+          detail: 'An expected version requires a card trade identifier.',
+        });
+      }
+      try {
+        return {
+          ...(await service.previewSelection({
+            playerId: playerId(request),
+            ...request.body,
+          })),
+          requestId: request.id,
+        };
       } catch (error) {
         throw mapTradeError(error);
       }

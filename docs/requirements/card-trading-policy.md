@@ -10,8 +10,8 @@ This is the approved issue `#273` policy for Advanced-tier, bilateral card
 trading. Issue `#275` now provides the private persistence and service boundary
 for versioned offers, exact-copy reservations, atomic exchanges, and history.
 Issue `#272` now exposes the authenticated bilateral trading API; issue `#274`
-remains responsible for the player trading experience. Trading is not a complete
-player-facing feature until that Web work is implemented. The
+now provides the focused, mobile-first player trading experience beneath
+Collection. The
 existing [card evolution](card-evolution-rules.md),
 [saved-deck rules](basic-game-rules.md#saved-decks),
 [account-deletion boundary](../database/account-deletion-retention.md), and
@@ -211,9 +211,11 @@ execution evidence only when they are actually run. Issue `#272` adds the authen
 recent-authentication enforcement, participant-only list/read operations, and
 production expiry/retention scheduling. Its focused tests cover those API
 boundaries; database execution evidence is recorded only when the suites are
-actually run. Issue `#274` must show both sides' exact selected cards, warnings,
+actually run. Issue `#274` shows both sides' exact selected cards, warnings,
 expiry, version changes, and terminal outcomes without exposing an opponent's
-collection.
+collection. Its editor consumes the authenticated player-safe catalogue and
+non-reserving selection preview, while create, revision, consent, and settlement
+remain server-authoritative.
 
 ## AI declaration
 

@@ -12,9 +12,9 @@ import {
   type OwnedCard,
 } from '../../api/cards';
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
+import { LoadingState } from '../LoadingState';
 import { CardArtwork, CollectibleCard } from './CollectibleCard';
 import { StateIcon, StatusMessage } from '../StatusMessage';
-import { QuestMarker } from '../branding/QuestMarker';
 
 type PreviewState =
   | { status: 'loading' }
@@ -374,10 +374,7 @@ export function CardEvolutionFlow({
       <div className="evolution-preview">
         <p className="eyebrow">Three copies. One new form.</p>
         {previewState.status === 'loading' ? (
-          <p aria-live="polite" role="status">
-            <QuestMarker />
-            Checking evolution availability…
-          </p>
+          <LoadingState label="Checking evolution availability…" />
         ) : previewState.status === 'error' ? (
           <StatusMessage tone="error" className="evolution-availability__error">
             {mutationError ? (
