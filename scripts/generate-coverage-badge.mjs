@@ -3,7 +3,10 @@ import { dirname, resolve } from 'node:path';
 
 const summaryPaths = [
   resolve('coverage/api/coverage-summary.json'),
+  resolve('coverage/docs/coverage-summary.json'),
   resolve('coverage/web/coverage-summary.json'),
+  resolve('coverage/account-policy/coverage-summary.json'),
+  resolve('coverage/game-rules/coverage-summary.json'),
 ];
 
 const lineTotals = await Promise.all(

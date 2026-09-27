@@ -71,6 +71,12 @@ export default defineConfig(({ mode }) => ({
       exclude: ['src/**/*.d.ts'],
       reporter: ['text', 'json-summary', 'lcov'],
       reportsDirectory: '../../coverage/web',
+      thresholds: {
+        statements: 75,
+        branches: 70,
+        functions: 80,
+        lines: 80,
+      },
     },
     css: false,
     environment: 'jsdom',

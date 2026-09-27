@@ -80,10 +80,10 @@ jobs:
           NPM_CONFIG_CACHE: /opt/wits-world/npm-cache
 
       - name: Test shared account policy package
-        run: time npm test --workspace @wits-world/account-policy
+        run: time npm run test:coverage --workspace @wits-world/account-policy
 
       - name: Test shared game rules package
-        run: time npm test --workspace @wits-world/game-rules
+        run: time npm run test:coverage --workspace @wits-world/game-rules
 
       - name: Test web application with coverage
         run: time npm run test:coverage --workspace @wits-world/web
@@ -91,8 +91,8 @@ jobs:
       - name: Test API application with coverage
         run: time npm run validate:api:coverage
 
-      - name: Test documentation application
-        run: time npm test --workspace @wits-world/docs
+      - name: Test documentation application with coverage
+        run: time npm run test:coverage --workspace @wits-world/docs
 
       - name: Generate coverage badge
         run: time npm run coverage:badge
