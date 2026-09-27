@@ -8,6 +8,7 @@ describe('battle log display copy', () => {
     ['Turn 17 ended. Player is next.', 'Your turn next.'],
     ['Turn 16 ended. CPU is next.', 'CPU’s turn next.'],
     ['Player selected Quillip.', 'You selected Quillip.'],
+    ['Player swapped in Quillip.', 'You swapped in Quillip.'],
     ['Player won the match.', 'You won the battle.'],
     ['Unknown event about Player.', 'Unknown event about Player.'],
   ])('formats %s without changing battle facts', (input, output) => {

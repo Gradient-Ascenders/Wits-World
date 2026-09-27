@@ -5,7 +5,11 @@ import {
   LIVE_SERVER_TIME,
   participantProjection,
   queueState,
+  rankedProfile,
+  rankedSeason,
+  rankedStandings,
   spectatorProjection,
+  territoryZones,
 } from '../tests/fixtures/live';
 import { buildSavedDeck } from '../tests/fixtures/decks';
 
@@ -232,6 +236,33 @@ test('explains unavailable ranked entry at mobile and desktop widths', async ({
   await page.route('**/api/v1/ranked/seasons/current', (route) =>
     json(route, { season: null }),
   );
+  await page.route('**/api/v1/ranked/me', (route) =>
+    json(
+      route,
+      rankedProfile({
+        season: null,
+        rating: null,
+        wins: 0,
+        losses: 0,
+        settledMatchCount: 0,
+        placementMatchesRemaining: 5,
+        provisional: true,
+      }),
+    ),
+  );
+  await page.route('**/api/v1/ranked/standings**', (route) =>
+    json(
+      route,
+      {
+        code: 'RANKED_SEASON_UNAVAILABLE',
+        detail: 'No ranked season is active.',
+      },
+      409,
+    ),
+  );
+  await page.route('**/api/v1/territory/zones', (route) =>
+    json(route, { zones: [] }),
+  );
 
   for (const width of [390, 1440]) {
     await page.setViewportSize({ height: 900, width });
@@ -243,11 +274,24 @@ test('explains unavailable ranked entry at mobile and desktop widths', async ({
     ).toBeVisible();
     await expect(
       page.getByRole('button', { name: 'Find ranked battle' }),
-    ).toBeDisabled();
-    await expect(page.getByText('No active season')).toBeVisible();
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole('heading', { name: 'Ranked season' }),
+    ).toBeVisible();
     await expect(
       page.getByRole('button', { name: 'Check season again' }),
     ).toBeEnabled();
+    await expectNoHorizontalOverflow(page);
+    await page.screenshot({
+      animations: 'disabled',
+      fullPage: true,
+      path: testInfo.outputPath(`live-lobby-unavailable-${width}.png`),
+    });
+    await page.getByRole('tab', { name: 'Standings' }).click();
+    await expect(
+      page.getByText('Standings open with the next season'),
+    ).toBeVisible();
+    await page.getByRole('tab', { name: 'Watch' }).click();
     const mobileNavigation = page.locator('.primary-navigation--mobile');
     if (width === 390) {
       await expect(mobileNavigation).toBeVisible();
@@ -266,11 +310,122 @@ test('explains unavailable ranked entry at mobile and desktop widths', async ({
       await expect(mobileNavigation).toBeHidden();
     }
     await expectNoHorizontalOverflow(page);
+  }
+
+  expect(runtimeErrors).toEqual([]);
+});
+
+test('presents the active season, personal record, standings, and territory option responsively', async ({
+  page,
+}, testInfo) => {
+  const selectedDeck = buildSavedDeck({
+    isSelected: true,
+    name: 'Braamfontein Set',
+  });
+  const runtimeErrors: string[] = [];
+  page.on('pageerror', (error) => runtimeErrors.push(error.message));
+
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        clearWatch: () => undefined,
+        getCurrentPosition: (success: PositionCallback) =>
+          success({
+            coords: {
+              accuracy: 18,
+              altitude: null,
+              altitudeAccuracy: null,
+              heading: null,
+              latitude: -26.1919,
+              longitude: 28.0301,
+              speed: null,
+              toJSON: () => ({}),
+            },
+            timestamp: Date.now(),
+            toJSON: () => ({}),
+          }),
+        watchPosition: () => 1,
+      },
+    });
+  });
+
+  await routeCurrentPlayer(page);
+  await page.route('**/api/v1/decks', (route) =>
+    json(route, { decks: [selectedDeck], requestId: 'live-browser-decks' }),
+  );
+  await page.route('**/api/v1/ranked/queue', (route) =>
+    json(route, queueState()),
+  );
+  await page.route('**/api/v1/ranked/seasons/current', (route) =>
+    json(route, { season: rankedSeason() }),
+  );
+  await page.route('**/api/v1/ranked/me', (route) =>
+    json(route, rankedProfile()),
+  );
+  await page.route('**/api/v1/ranked/standings**', (route) =>
+    json(route, rankedStandings()),
+  );
+  await page.route('**/api/v1/territory/zones', (route) =>
+    json(route, { zones: territoryZones() }),
+  );
+
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ height: 900, width });
+    await page.goto('/matches/live');
+    await expect(
+      page.getByRole('heading', { name: 'Braamfontein Test Season' }),
+    ).toBeVisible();
+    await expect(page.locator('.ranked-season-strip__rating')).toContainText(
+      /1\s248/,
+    );
+    await expect(
+      page.getByRole('heading', { name: 'Season standings' }),
+    ).toHaveCount(0);
+    const territoryContest = page.getByRole('checkbox', {
+      name: /contest my current territory/i,
+    });
+    await expect(territoryContest).not.toBeChecked();
+    await territoryContest.click();
+    await expect(territoryContest).toBeChecked();
+    await expect(
+      page.getByText(/match your location to the public territory map/i),
+    ).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Territory' })).toHaveCount(
+      0,
+    );
+    await page
+      .getByRole('button', { name: 'Detect territory and find battle' })
+      .click();
+    await expect(page.getByText('Contesting Library Lawns')).toBeVisible();
+    if (width === 390) {
+      const findBattleBox = await page
+        .getByRole('button', { name: 'Detect territory and find battle' })
+        .boundingBox();
+      const mobileNavigationBox = await page
+        .locator('.primary-navigation--mobile')
+        .boundingBox();
+      expect(findBattleBox).not.toBeNull();
+      expect(mobileNavigationBox).not.toBeNull();
+      expect(findBattleBox!.y + findBattleBox!.height).toBeLessThanOrEqual(
+        mobileNavigationBox!.y,
+      );
+    }
+    await expectNoHorizontalOverflow(page);
     await page.screenshot({
       animations: 'disabled',
       fullPage: true,
-      path: testInfo.outputPath(`live-lobby-unavailable-${width}.png`),
+      path: testInfo.outputPath(`live-lobby-active-${width}.png`),
     });
+    await page.getByRole('tab', { name: 'Standings' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Season standings' }),
+    ).toBeVisible();
+    await expect(page).toHaveURL(/\?tab=standings$/u);
+    await page.getByRole('tab', { name: 'Watch' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Watch a private match' }),
+    ).toBeVisible();
   }
 
   expect(runtimeErrors).toEqual([]);

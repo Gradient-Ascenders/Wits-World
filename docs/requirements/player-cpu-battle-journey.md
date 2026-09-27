@@ -33,6 +33,17 @@ advancement, defeat, replacement consequences, winners, or completion.
 Authentication is the only source of player ownership. The browser never sends
 a player ID or filters another player's records locally.
 
+### Swap rollout compatibility
+
+The current client sends
+`Accept: application/vnd.wits-world.cpu.v2+json, application/json;q=0.9`
+on CPU match and history requests. A client without the v2 media type receives
+the previous projection: no `swap_creature` legal actions, no `creatureId` on
+battle-log events, and no swap action results in `lastAction` or completed
+history. The server still stores and applies every swap. This keeps an older
+open browser bundle able to read a match after the API is deployed. `Accept`
+is CORS-safelisted and does not add a preflight header requirement.
+
 ## Entry, creation, and recovery
 
 On entry, `200` from the active lookup presents the returned match as the
@@ -64,7 +75,8 @@ lookup sequence. The create POST is not automatically replayed by that sequence.
   completion time, final turn, and history navigation.
 
 Creature actions are `{ type: "use_move", moveId }`; Power-card actions are
-`{ type: "use_power_card", powerCardId }`. Unreturned actions stay disabled and
+`{ type: "use_power_card", powerCardId }`. A v2 client can also submit a
+returned `{ type: "swap_creature", creatureId }` on a normal turn. Unreturned actions stay disabled and
 explain that the server did not advertise them. CPU unplayed card identities are
 never reconstructed: the UI names the hidden information and displays only the
 aggregate remaining counts returned by the API. `lastAction` is the recent

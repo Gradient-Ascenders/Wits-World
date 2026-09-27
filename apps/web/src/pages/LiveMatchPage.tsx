@@ -10,13 +10,20 @@ import { useAuth0 } from '@auth0/auth0-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'wouter';
 
-import type {
-  LiveHistoryEntry,
-  LiveParticipantProjection,
-  LiveProjection,
+import {
+  getRankedSettlement,
+  LiveApiError,
+  type LiveHistoryEntry,
+  type LiveParticipantProjection,
+  type LiveProjection,
+  type RankedSettlement,
 } from '../api/live';
 import type { CpuMatchIntent } from '../api/matches';
-import { useApiAccessToken } from '../auth/useApiAccessToken';
+import {
+  type ApiAccessTokenProvider,
+  useApiAccessToken,
+} from '../auth/useApiAccessToken';
+import { LoadingState } from '../components/LoadingState';
 import {
   BattleActionPanel,
   BattleBench,
@@ -306,7 +313,11 @@ export default function LiveMatchPage({ apiBaseUrl }: { apiBaseUrl: string }) {
       ) : null}
 
       {match.status === 'completed' ? (
-        <CompletedLiveBattle match={match} />
+        <CompletedLiveBattle
+          apiBaseUrl={apiBaseUrl}
+          getAccessToken={getAccessToken}
+          match={match}
+        />
       ) : (
         <div className="battle-live-layout live-battle-layout">
           <section
@@ -565,7 +576,15 @@ function LiveMatchDetails({ match }: { match: LiveProjection }) {
   );
 }
 
-function CompletedLiveBattle({ match }: { match: LiveProjection }) {
+function CompletedLiveBattle({
+  apiBaseUrl,
+  getAccessToken,
+  match,
+}: {
+  apiBaseUrl: string;
+  getAccessToken: ApiAccessTokenProvider;
+  match: LiveProjection;
+}) {
   const title =
     match.role === 'participant'
       ? match.outcome === 'win'
@@ -609,10 +628,203 @@ function CompletedLiveBattle({ match }: { match: LiveProjection }) {
           This result is final. Refreshing cannot replay an action or change the
           outcome.
         </p>
+        {match.role === 'participant' ? (
+          <RankedSettlementSummary
+            apiBaseUrl={apiBaseUrl}
+            getAccessToken={getAccessToken}
+            matchId={match.matchId}
+          />
+        ) : null}
       </BattleOutcomePanel>
       <LiveBattleHistory history={match.history} match={match} />
     </div>
   );
+}
+
+type SettlementState =
+  | { status: 'loading' }
+  | { error: LiveApiError; status: 'error' }
+  | { data: RankedSettlement; status: 'ready' };
+
+function RankedSettlementSummary({
+  apiBaseUrl,
+  getAccessToken,
+  matchId,
+}: {
+  apiBaseUrl: string;
+  getAccessToken: ApiAccessTokenProvider;
+  matchId: string;
+}) {
+  const [state, setState] = useState<SettlementState>({ status: 'loading' });
+  const [revision, setRevision] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let retry: number | undefined;
+
+    async function loadSettlement() {
+      try {
+        const data = await getRankedSettlement({
+          apiBaseUrl,
+          getAccessToken,
+          matchId,
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        setState({ data, status: 'ready' });
+        if (data.status === 'pending') {
+          retry = window.setTimeout(() => void loadSettlement(), 2_500);
+        }
+      } catch (caught) {
+        if (controller.signal.aborted) return;
+        setState({ error: toSettlementError(caught), status: 'error' });
+      }
+    }
+
+    setState({ status: 'loading' });
+    void loadSettlement();
+    return () => {
+      controller.abort();
+      if (retry !== undefined) window.clearTimeout(retry);
+    };
+  }, [apiBaseUrl, getAccessToken, matchId, revision]);
+
+  if (state.status === 'loading') {
+    return (
+      <LoadingState
+        className="ranked-settlement ranked-settlement--loading"
+        label="Finalizing your ranked result"
+      />
+    );
+  }
+
+  if (state.status === 'error') {
+    return (
+      <section
+        aria-labelledby="ranked-settlement-title"
+        className="ranked-settlement"
+      >
+        <h3 id="ranked-settlement-title">Ranked result unavailable</h3>
+        <p>
+          Your battle result remains final. Rating and territory details could
+          not be loaded yet.
+        </p>
+        <button
+          className="button button--quiet"
+          onClick={() => setRevision((value) => value + 1)}
+          type="button"
+        >
+          Retry ranked result
+        </button>
+      </section>
+    );
+  }
+
+  const settlement = state.data;
+  const ratingReady =
+    settlement.status === 'settled' &&
+    settlement.ratingBefore !== null &&
+    settlement.ratingAfter !== null &&
+    settlement.appliedDelta !== null;
+
+  return (
+    <section
+      aria-live={settlement.status === 'pending' ? 'polite' : undefined}
+      aria-labelledby="ranked-settlement-title"
+      className="ranked-settlement"
+    >
+      <div className="ranked-settlement__heading">
+        <h3 id="ranked-settlement-title">Season settlement</h3>
+        <span>
+          {settlement.status === 'settled' ? 'Settled' : 'Finalizing'}
+        </span>
+      </div>
+      {ratingReady ? (
+        <div className="ranked-rating-change">
+          <span>
+            <small>Before</small>
+            <strong>{numberFormatter.format(settlement.ratingBefore!)}</strong>
+          </span>
+          <strong className="ranked-rating-change__delta">
+            {formatRatingDelta(settlement.appliedDelta!)}
+            <small>rating</small>
+          </strong>
+          <span>
+            <small>After</small>
+            <strong>{numberFormatter.format(settlement.ratingAfter!)}</strong>
+          </span>
+        </div>
+      ) : (
+        <p>
+          Your rating is still being finalized by the server. This panel will
+          update automatically.
+        </p>
+      )}
+      <TerritorySettlementResult settlement={settlement} />
+      {settlement.settledAt ? (
+        <time dateTime={settlement.settledAt}>
+          Settled {formatDate(settlement.settledAt)}
+        </time>
+      ) : null}
+    </section>
+  );
+}
+
+function TerritorySettlementResult({
+  settlement,
+}: {
+  settlement: RankedSettlement;
+}) {
+  const territory = settlement.territory;
+  if (!territory) {
+    return (
+      <p className="ranked-territory-result">No territory was contested.</p>
+    );
+  }
+  const detail =
+    territory.outcome === 'pending'
+      ? 'Territory influence is still being finalized.'
+      : territory.outcome === 'lost'
+        ? 'No influence was awarded because this battle was lost.'
+        : territory.outcome === 'accepted'
+          ? `+${numberFormatter.format(territory.influencePoints)} influence awarded.`
+          : territoryExclusionMessage(territory.exclusionReason);
+  return (
+    <p className="ranked-territory-result">
+      <strong>{territory.zoneName}</strong>
+      <span>{detail}</span>
+    </p>
+  );
+}
+
+function territoryExclusionMessage(
+  reason: NonNullable<RankedSettlement['territory']>['exclusionReason'],
+): string {
+  return {
+    daily_cap_reached:
+      'No influence was awarded because the daily territory limit was reached.',
+    placement_matches_remaining:
+      'No influence was awarded while placement matches remain.',
+    player_unavailable:
+      'No influence was awarded because the player territory record was unavailable.',
+    result_not_eligible:
+      'No influence was awarded because this result was ineligible.',
+    zone_unavailable:
+      'No influence was awarded because the territory was unavailable.',
+  }[reason ?? 'result_not_eligible'];
+}
+
+const numberFormatter = new Intl.NumberFormat('en-ZA');
+
+function formatRatingDelta(delta: number): string {
+  if (delta > 0) return `+${numberFormatter.format(delta)}`;
+  return numberFormatter.format(delta);
+}
+
+function toSettlementError(value: unknown): LiveApiError {
+  return value instanceof LiveApiError
+    ? value
+    : new LiveApiError('unavailable');
 }
 
 function battleCombatants(match: LiveProjection) {
@@ -699,6 +911,7 @@ function historyLabel(entry: LiveHistoryEntry, match: LiveProjection): string {
   const action = {
     select_initial_creature: 'selected an initial Creature',
     select_replacement: 'selected a replacement Creature',
+    swap_creature: 'swapped in a Creature',
     use_move: 'used a move',
     use_power_card: 'used a Power card',
   }[entry.actionType ?? 'use_move'];

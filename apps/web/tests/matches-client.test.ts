@@ -59,6 +59,8 @@ describe('CPU match API client', () => {
       `${apiBaseUrl}/matches/cpu`,
       expect.objectContaining({
         headers: expect.objectContaining({
+          Accept:
+            'application/vnd.wits-world.cpu.v2+json, application/json;q=0.9',
           Authorization: 'Bearer access-token',
         }),
         method: 'GET',

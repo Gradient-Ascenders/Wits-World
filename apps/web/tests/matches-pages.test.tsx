@@ -111,9 +111,9 @@ describe('CPU match entry and history', () => {
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
 
     expect(
-      await screen.findByRole('heading', { name: 'Practice' }),
+      await screen.findByRole('heading', { name: 'CPU battle' }),
     ).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Practice' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'CPU battle' })).toBeVisible();
     expect(
       screen.getByRole('heading', { name: 'Player Battles' }),
     ).toBeVisible();
@@ -127,7 +127,7 @@ describe('CPU match entry and history', () => {
     const playerHeading = screen.getByRole('heading', {
       name: 'Player Battles',
     });
-    const cpuHeading = screen.getByRole('heading', { name: 'Practice' });
+    const cpuHeading = screen.getByRole('heading', { name: 'CPU battle' });
     expect(
       liveHeading.compareDocumentPosition(playerHeading) &
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -138,14 +138,12 @@ describe('CPU match entry and history', () => {
     ).toBeTruthy();
     expect(window.location.pathname).toBe('/matches');
     expect(
-      screen.queryByRole('button', { name: 'Start Practice battle' }),
+      screen.queryByRole('button', { name: 'Start CPU battle' }),
     ).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(String(fetchMock.mock.calls[1]![0])).toContain('/matches/history');
 
-    await user.click(
-      screen.getByRole('link', { name: 'Resume Practice battle' }),
-    );
+    await user.click(screen.getByRole('link', { name: 'Resume CPU battle' }));
     expect(window.location.pathname).toBe(`/matches/${MATCH_ID}`);
   });
 
@@ -188,7 +186,7 @@ describe('CPU match entry and history', () => {
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
 
     expect(
-      await screen.findByRole('link', { name: 'Resume Practice battle' }),
+      await screen.findByRole('link', { name: 'Resume CPU battle' }),
     ).toBeVisible();
     expect(screen.getByText('Some recent results unavailable')).toBeVisible();
   });
@@ -207,7 +205,7 @@ describe('CPU match entry and history', () => {
     );
 
     expect(
-      await screen.findByRole('link', { name: 'Resume Practice battle' }),
+      await screen.findByRole('link', { name: 'Resume CPU battle' }),
     ).toBeVisible();
     expect(screen.getByText('Loading recent results')).toBeVisible();
 
@@ -235,7 +233,7 @@ describe('CPU match entry and history', () => {
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
 
     expect(
-      await screen.findByRole('button', { name: 'Start Practice battle' }),
+      await screen.findByRole('button', { name: 'Start CPU battle' }),
     ).toBeEnabled();
     expect(screen.getByText('Loading recent results')).toBeVisible();
   });
@@ -254,7 +252,7 @@ describe('CPU match entry and history', () => {
 
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
     expect(
-      await screen.findByRole('heading', { name: 'Practice' }),
+      await screen.findByRole('heading', { name: 'CPU battle' }),
     ).toBeVisible();
     expect(
       screen.getByRole('link', { name: 'Open player battles' }),
@@ -262,9 +260,7 @@ describe('CPU match entry and history', () => {
     expect(screen.queryByText('Asynchronous PvP')).not.toBeInTheDocument();
     expect(screen.queryByText('Continue playing')).not.toBeInTheDocument();
     expect(screen.getAllByText(selected.name).length).toBeGreaterThan(0);
-    await user.click(
-      screen.getByRole('button', { name: 'Start Practice battle' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Start CPU battle' }));
 
     await waitFor(() =>
       expect(window.location.pathname).toBe(`/matches/${MATCH_ID}`),
@@ -294,7 +290,7 @@ describe('CPU match entry and history', () => {
       <MatchEntryPage apiBaseUrl={apiBaseUrl} />,
     );
     await user.click(
-      await screen.findByRole('button', { name: 'Start Practice battle' }),
+      await screen.findByRole('button', { name: 'Start CPU battle' }),
     );
     const oldSignal = fetchMock.mock.calls[3]![1]!.signal as AbortSignal;
 
@@ -326,7 +322,7 @@ describe('CPU match entry and history', () => {
 
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
     expect(
-      await screen.findByRole('heading', { name: 'Practice' }),
+      await screen.findByRole('heading', { name: 'CPU battle' }),
     ).toBeVisible();
     expect(screen.getByText('No deck selected')).toBeVisible();
     expect(screen.getByRole('link', { name: 'Choose deck' })).toHaveAttribute(
@@ -370,7 +366,7 @@ describe('CPU match entry and history', () => {
 
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(
-      await screen.findByRole('heading', { name: 'Practice' }),
+      await screen.findByRole('heading', { name: 'CPU battle' }),
     ).toBeVisible();
     expect(window.location.pathname).toBe('/matches');
     expect(fetchMock).toHaveBeenCalledTimes(4);
@@ -394,7 +390,7 @@ describe('CPU match entry and history', () => {
 
     renderRoute('/matches', <MatchEntryPage apiBaseUrl={apiBaseUrl} />);
     await user.click(
-      await screen.findByRole('button', { name: 'Start Practice battle' }),
+      await screen.findByRole('button', { name: 'Start CPU battle' }),
     );
 
     expect(
@@ -617,6 +613,41 @@ describe('CPU match entry and history', () => {
 });
 
 describe('authoritative CPU battle page', () => {
+  it.each([
+    {
+      side: 'player' as const,
+      title: 'Your turn',
+      stageClass: 'battle-stage--player',
+    },
+    {
+      side: 'cpu' as const,
+      title: "Opponent's turn",
+      stageClass: 'battle-stage--cpu',
+    },
+  ])(
+    'shows the $side turn inside the battlefield without the status strip',
+    async ({ side, title, stageClass }) => {
+      const match = activeMatch();
+      match.state.currentSide = side;
+      if (side === 'cpu') match.state.legalActions = [];
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(matchResponse(match)));
+
+      renderMatchPage();
+
+      const heading = await screen.findByRole('heading', {
+        name: title,
+        level: 1,
+      });
+      const stage = screen.getByRole('region', { name: 'Current battlefield' });
+      expect(stage).toContainElement(heading);
+      expect(stage).toHaveClass(stageClass);
+      expect(
+        screen.queryByRole('region', { name: 'Battle status' }),
+      ).toBeNull();
+      expect(screen.queryByText('Untimed')).toBeNull();
+    },
+  );
+
   it.each([
     {
       appMotion: 'reduce' as const,
@@ -877,6 +908,113 @@ describe('authoritative CPU battle page', () => {
     expect(move).toBeEnabled();
   });
 
+  it('shows the swapped Creature before the CPU acts and keeps outgoing effects on the old Creature', async () => {
+    const current = activeMatch(1);
+    const [outgoing, incoming] = current.state.player.creatures;
+    incoming!.currentHp = 70;
+    current.state.legalActions = [
+      { type: 'swap_creature', creatureId: incoming!.id },
+    ];
+    const resolved = structuredClone(current);
+    resolved.version = 2;
+    resolved.state.player.activeCreatureId = incoming!.id;
+    resolved.state.player.creatures[0]!.currentHp = 92;
+    resolved.state.player.creatures[1]!.currentHp = 60;
+    resolved.battleLog = [
+      {
+        id: 'turn-1',
+        label: 'Turn 1',
+        turnNumber: 1,
+        events: [
+          {
+            id: '3:0',
+            kind: 'action',
+            message: 'Player swapped in Wit Creature.',
+            sequence: 3,
+            side: 'player',
+            creatureId: incoming!.id,
+          },
+          {
+            id: '3:1',
+            kind: 'effect',
+            message: "Player's Wit Creature took 8 damage.",
+            sequence: 3,
+            side: 'player',
+            creatureId: outgoing!.id,
+          },
+          {
+            id: '4:0',
+            kind: 'action',
+            message: "CPU's Grit Creature used Counter.",
+            sequence: 4,
+            side: 'cpu',
+          },
+          {
+            id: '4:1',
+            kind: 'effect',
+            message: "Player's Wit Creature took 10 damage.",
+            sequence: 4,
+            side: 'player',
+            creatureId: incoming!.id,
+          },
+        ],
+      },
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(matchResponse(current))
+        .mockResolvedValueOnce(matchResponse(resolved)),
+    );
+
+    renderMatchPage();
+    await userEvent
+      .setup()
+      .click(await screen.findByRole('tab', { name: /Swap/ }));
+    const swap = screen.getByRole('button', { name: /Wit Creature 2/ });
+    vi.useFakeTimers();
+    await act(async () => {
+      fireEvent.click(swap);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(
+      screen.getAllByText('You swapped in Wit Creature.').length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByLabelText('Wit Creature HP')).toHaveAttribute(
+      'value',
+      '70',
+    );
+    expect(document.querySelector('.combatant--player')).toHaveClass(
+      'combatant--acting',
+    );
+    expect(document.querySelector('.combatant--cpu')).toHaveClass(
+      'combatant--dimmed',
+    );
+
+    await act(async () => vi.advanceTimersByTime(1_700));
+    expect(screen.getByLabelText('Wit Creature HP')).toHaveAttribute(
+      'value',
+      '70',
+    );
+    await act(async () => vi.advanceTimersByTime(1_600));
+    expect(
+      screen.getAllByText('The CPU’s Grit Creature used Counter.').length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByLabelText('Wit Creature HP')).toHaveAttribute(
+      'value',
+      '70',
+    );
+    await act(async () => vi.advanceTimersByTime(1_700));
+    expect(screen.getByLabelText('Wit Creature HP')).toHaveAttribute(
+      'value',
+      '60',
+    );
+  });
+
   it('requires confirmation and records a CPU forfeit through the match API', async () => {
     const user = userEvent.setup();
     const active = activeMatch(4);
@@ -902,7 +1040,7 @@ describe('authoritative CPU battle page', () => {
     await user.click(screen.getByRole('button', { name: 'Confirm forfeit' }));
 
     expect(
-      await screen.findByRole('heading', { name: 'Practice complete' }),
+      await screen.findByRole('heading', { name: 'CPU battle complete' }),
     ).toBeVisible();
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
@@ -929,7 +1067,7 @@ describe('authoritative CPU battle page', () => {
     await user.click(screen.getByRole('button', { name: 'Confirm forfeit' }));
 
     expect(
-      await screen.findByRole('heading', { name: 'Practice victory' }),
+      await screen.findByRole('heading', { name: 'CPU battle victory' }),
     ).toBeVisible();
     expect(screen.getByRole('status')).toHaveTextContent(
       'Battle completed. You won. The result is saved.',
@@ -1437,7 +1575,7 @@ describe('authoritative CPU battle page', () => {
     );
 
     expect(
-      await screen.findByRole('heading', { name: 'Practice victory' }),
+      await screen.findByRole('heading', { name: 'CPU battle victory' }),
     ).toBeVisible();
     expect(
       screen.queryByRole('button', { name: /Knowledge Strike/ }),
@@ -1462,7 +1600,7 @@ describe('authoritative CPU battle page', () => {
     );
     const { unmount } = renderMatchPage();
     expect(
-      await screen.findByRole('heading', { name: 'Practice victory' }),
+      await screen.findByRole('heading', { name: 'CPU battle victory' }),
     ).toBeVisible();
     unmount();
 

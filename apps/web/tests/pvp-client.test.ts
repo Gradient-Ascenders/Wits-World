@@ -185,7 +185,7 @@ describe('asynchronous PvP API client', () => {
     });
     expect(fetchMock.mock.calls[0]![1]!.headers).toMatchObject({
       Accept:
-        'application/vnd.wits-world.pvp.v4+json, application/vnd.wits-world.pvp.v3+json;q=0.9, application/json;q=0.8',
+        'application/vnd.wits-world.pvp.v5+json, application/vnd.wits-world.pvp.v4+json;q=0.9, application/json;q=0.8',
     });
     expect(
       String(
@@ -382,7 +382,7 @@ describe('asynchronous PvP API client', () => {
     );
     expect(fetchMock.mock.calls[0]![1]!.headers).toMatchObject({
       Accept:
-        'application/vnd.wits-world.pvp.v4+json, application/vnd.wits-world.pvp.v3+json;q=0.9, application/json;q=0.8',
+        'application/vnd.wits-world.pvp.v5+json, application/vnd.wits-world.pvp.v4+json;q=0.9, application/json;q=0.8',
     });
     expect(fetchMock.mock.calls[0]![1]!.headers).not.toHaveProperty(
       'X-Wits-PvP-Contract-Version',

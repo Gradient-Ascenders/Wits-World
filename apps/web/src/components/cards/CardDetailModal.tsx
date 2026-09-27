@@ -8,8 +8,18 @@ import type {
 } from '../../api/cards';
 import type { ApiAccessTokenProvider } from '../../auth/useApiAccessToken';
 import { CardEvolutionFlow } from './CardEvolutionFlow';
-import { CollectibleCard } from './CollectibleCard';
-import { CardSheetHandle } from './CardSheetHandle';
+import { CardPresentationDialog } from './CardPresentationDialog';
+
+interface CardDetailModalProps {
+  apiBaseUrl: string;
+  getAccessToken: ApiAccessTokenProvider;
+  group: { card: OwnedCard; copies: OwnedCard[] };
+  onApplyEvolutionResult: (result: CardEvolutionResult) => void;
+  onClose: () => void;
+  onRefreshCollection: () => Promise<void>;
+  evolutionPreview?: CardEvolutionPreview;
+  collectionCards?: OwnedCard[];
+}
 
 export function CardDetailModal({
   apiBaseUrl,
@@ -20,16 +30,35 @@ export function CardDetailModal({
   onRefreshCollection,
   evolutionPreview,
   collectionCards,
-}: {
-  apiBaseUrl: string;
-  getAccessToken: ApiAccessTokenProvider;
-  group: { card: OwnedCard; copies: OwnedCard[] };
-  onApplyEvolutionResult: (result: CardEvolutionResult) => void;
-  onClose: () => void;
-  onRefreshCollection: () => Promise<void>;
-  evolutionPreview?: CardEvolutionPreview;
-  collectionCards?: OwnedCard[];
-}) {
+}: CardDetailModalProps) {
+  if (!evolutionPreview) {
+    return <CardPresentationDialog card={group.card} onClose={onClose} />;
+  }
+
+  return (
+    <EvolutionCardDetailModal
+      apiBaseUrl={apiBaseUrl}
+      collectionCards={collectionCards}
+      evolutionPreview={evolutionPreview}
+      getAccessToken={getAccessToken}
+      group={group}
+      onApplyEvolutionResult={onApplyEvolutionResult}
+      onClose={onClose}
+      onRefreshCollection={onRefreshCollection}
+    />
+  );
+}
+
+function EvolutionCardDetailModal({
+  apiBaseUrl,
+  getAccessToken,
+  group,
+  onApplyEvolutionResult,
+  onClose,
+  onRefreshCollection,
+  evolutionPreview,
+  collectionCards,
+}: CardDetailModalProps & { evolutionPreview: CardEvolutionPreview }) {
   const dialogRef = useRef<HTMLElement | null>(null);
   const busyRef = useRef(false);
   const [isBusy, setIsBusy] = useState(false);
@@ -107,31 +136,16 @@ export function CardDetailModal({
       }}
     >
       <section
-        aria-label={
-          evolutionPreview
-            ? `${group.card.name} evolution`
-            : `${group.card.name} card details`
-        }
+        aria-label={`${group.card.name} evolution`}
         aria-modal="true"
-        className={`card-detail-modal${evolutionPreview ? ' evolution-surface' : ''}`}
+        className="card-detail-modal evolution-surface"
         ref={dialogRef}
         role="dialog"
       >
-        {!evolutionPreview ? (
-          <CardSheetHandle
-            panelRef={dialogRef}
-            onClose={requestClose}
-            disabled={isBusy}
-          />
-        ) : null}
         <header className="card-detail-modal__header">
-          <p className="eyebrow">
-            {evolutionPreview ? 'Evolution' : 'Card details'}
-          </p>
+          <p className="eyebrow">Evolution</p>
           <button
-            aria-label={
-              evolutionPreview ? 'Close evolution' : 'Close card details'
-            }
+            aria-label="Close evolution"
             className="card-detail-modal__close"
             data-card-detail-focus
             disabled={isBusy}
@@ -142,27 +156,19 @@ export function CardDetailModal({
           </button>
         </header>
         <div className="card-detail-modal__scroll" id="card-detail-content">
-          {evolutionPreview ? (
-            <CardEvolutionFlow
-              actionContainer={actionContainer}
-              apiBaseUrl={apiBaseUrl}
-              card={group.card}
-              copies={group.copies}
-              getAccessToken={getAccessToken}
-              onApplyResult={onApplyEvolutionResult}
-              onBusyChange={handleBusyChange}
-              onRefreshCollection={onRefreshCollection}
-              initialPreview={evolutionPreview}
-              collectionCards={collectionCards ?? []}
-              onClose={onClose}
-            />
-          ) : (
-            <CollectibleCard
-              card={group.card}
-              ownedCopies={group.copies}
-              headingLevel={2}
-            />
-          )}
+          <CardEvolutionFlow
+            actionContainer={actionContainer}
+            apiBaseUrl={apiBaseUrl}
+            card={group.card}
+            copies={group.copies}
+            getAccessToken={getAccessToken}
+            onApplyResult={onApplyEvolutionResult}
+            onBusyChange={handleBusyChange}
+            onRefreshCollection={onRefreshCollection}
+            initialPreview={evolutionPreview}
+            collectionCards={collectionCards ?? []}
+            onClose={onClose}
+          />
         </div>
         <div className="card-detail-modal__footer" ref={setActionContainer} />
       </section>

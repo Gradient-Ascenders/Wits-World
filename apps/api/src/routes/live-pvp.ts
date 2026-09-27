@@ -2,6 +2,11 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { ApiError } from '../errors/api-error.js';
 import {
+  acceptsBattleSwaps,
+  LIVE_SWAP_MEDIA_TYPE,
+  livePvpMatchForClient,
+} from '../matches/battle-projection-capability.js';
+import {
   LivePvpError,
   type LiveConnectionRole,
   type LivePvpService,
@@ -96,8 +101,7 @@ export const livePvpRoutes: FastifyPluginAsync<Options> = async (
       schema: {
         operationId: 'getLivePvpMatch',
         summary: 'Read the latest live PvP projection',
-        description:
-          'Returns the authoritative participant or spectator-safe projection derived from the authenticated player.',
+        description: `Returns the authoritative participant or spectator-safe projection derived from the authenticated player. Include ${LIVE_SWAP_MEDIA_TYPE} in Accept to receive voluntary swap legal actions; otherwise the previous projection is returned.`,
         tags: ['Matches'],
         security: [{ bearerAuth: [] }],
         params: matchParamsSchema,
@@ -118,7 +122,10 @@ export const livePvpRoutes: FastifyPluginAsync<Options> = async (
           playerId: player.id,
         });
         return {
-          ...match,
+          ...livePvpMatchForClient(
+            match,
+            acceptsBattleSwaps(request, LIVE_SWAP_MEDIA_TYPE),
+          ),
           requestId: request.id,
           serverTime: new Date().toISOString(),
         };

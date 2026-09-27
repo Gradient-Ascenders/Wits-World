@@ -58,7 +58,7 @@ export interface CardPresentation {
 
 export interface OwnedCard extends CardPresentation {
   acquiredAt: string;
-  acquisitionKind: 'event_reward' | 'evolution' | 'starter';
+  acquisitionKind: 'event_reward' | 'evolution' | 'starter' | 'trade';
   ownedCardId: string;
 }
 
@@ -218,6 +218,10 @@ const ownedCardKeys = [
   'power',
   'rarity',
 ] as const;
+const cardPresentationKeys = ownedCardKeys.filter(
+  (key) =>
+    key !== 'acquiredAt' && key !== 'acquisitionKind' && key !== 'ownedCardId',
+);
 const moveKeys = [
   'effectType',
   'effectValue',
@@ -652,7 +656,8 @@ function parseOwnedCard(value: unknown): OwnedCard {
     !Array.isArray(value.effects) ||
     (value.acquisitionKind !== 'starter' &&
       value.acquisitionKind !== 'event_reward' &&
-      value.acquisitionKind !== 'evolution') ||
+      value.acquisitionKind !== 'evolution' &&
+      value.acquisitionKind !== 'trade') ||
     !isDateTime(value.acquiredAt)
   ) {
     throw new CardApiError('unavailable');
@@ -675,6 +680,47 @@ function parseOwnedCard(value: unknown): OwnedCard {
     moves: value.moves.map(parseMove),
     name: value.name,
     ownedCardId: value.ownedCardId,
+    power: value.power,
+    rarity: value.rarity,
+  };
+}
+
+export function parseCardPresentation(value: unknown): CardPresentation {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, cardPresentationKeys) ||
+    !isUuid(value.cardDefinitionId) ||
+    typeof value.name !== 'string' ||
+    value.name.trim() === '' ||
+    !isCardCategory(value.category) ||
+    (value.category === 'creature'
+      ? !isCardAffinity(value.affinity)
+      : value.affinity !== null && !isCardAffinity(value.affinity)) ||
+    !isCardRarity(value.rarity) ||
+    !isNullablePositiveInteger(value.hp) ||
+    !isNullableNonNegativeInteger(value.power) ||
+    (value.description !== null && typeof value.description !== 'string') ||
+    (value.imageAlt !== null && typeof value.imageAlt !== 'string') ||
+    (value.imageUrl !== null && typeof value.imageUrl !== 'string') ||
+    typeof value.isActive !== 'boolean' ||
+    !Array.isArray(value.moves) ||
+    !Array.isArray(value.effects)
+  ) {
+    throw new CardApiError('unavailable');
+  }
+
+  return {
+    affinity: isCardAffinity(value.affinity) ? value.affinity : null,
+    cardDefinitionId: value.cardDefinitionId,
+    category: value.category,
+    description: value.description,
+    effects: value.effects.map(parseEffect),
+    hp: value.hp,
+    imageAlt: value.imageAlt,
+    imageUrl: value.imageUrl,
+    isActive: value.isActive,
+    moves: value.moves.map(parseMove),
+    name: value.name,
     power: value.power,
     rarity: value.rarity,
   };
@@ -733,7 +779,8 @@ function parseEvolutionCopy(value: unknown): EvolutionOwnedCopy {
     !isDateTime(value.acquiredAt) ||
     (value.acquisitionKind !== 'starter' &&
       value.acquisitionKind !== 'event_reward' &&
-      value.acquisitionKind !== 'evolution') ||
+      value.acquisitionKind !== 'evolution' &&
+      value.acquisitionKind !== 'trade') ||
     typeof value.eligible !== 'boolean' ||
     (value.lockReason !== null &&
       value.lockReason !== 'saved_deck' &&

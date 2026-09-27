@@ -107,6 +107,127 @@ beforeEach(async () => {
 afterEach(async () => app.close());
 
 describe('live PvP HTTP routes', () => {
+  it('redacts committed swaps for old participant HTTP clients', async () => {
+    const base = await (
+      service.getProjection as LivePvpService['getProjection']
+    )({ matchId: MATCH_ID, playerId: PLAYER_ID });
+    const swap = { type: 'swap_creature', creatureId: MATCH_ID };
+    const move = { type: 'use_move', moveId: MATCH_ID };
+    const history = [
+      { type: 'participant_action', sequence: 3, action: move },
+      { type: 'participant_action', sequence: 4, action: swap },
+    ];
+    service.getProjection.mockResolvedValue({
+      ...base,
+      legalActions: [swap, move],
+      history,
+      lastAction: history[1],
+    });
+
+    const url = `/api/v1/matches/live/${MATCH_ID}`;
+    const legacy = await app.inject({
+      method: 'GET',
+      url,
+      headers: { authorization: 'Bearer valid-token' },
+    });
+    const current = await app.inject({
+      method: 'GET',
+      url,
+      headers: {
+        authorization: 'Bearer valid-token',
+        accept: 'application/vnd.wits-world.live.v2+json',
+      },
+    });
+
+    expect(legacy.statusCode).toBe(200);
+    expect(legacy.json().legalActions).toEqual([move]);
+    expect(
+      legacy
+        .json()
+        .history.map((entry: { sequence: number }) => entry.sequence),
+    ).toEqual([3, 4]);
+    expect(legacy.json().history[1].action).toBeNull();
+    expect(legacy.json().lastAction.action).toBeNull();
+    expect(legacy.json().version).toBe(base.version);
+    expect(legacy.body).not.toContain('swap_creature');
+    expect(current.statusCode).toBe(200);
+    expect(current.json().legalActions).toEqual([swap, move]);
+    expect(current.json().history[1].action).toEqual(swap);
+    expect(current.json().lastAction.action).toEqual(swap);
+  });
+
+  it('redacts committed swaps for old spectator HTTP clients without dropping history', async () => {
+    const swap = { type: 'swap_creature', creatureId: MATCH_ID };
+    const history = [
+      {
+        type: 'participant_action',
+        sequence: 3,
+        action: { type: 'use_move', moveId: MATCH_ID },
+      },
+      { type: 'participant_action', sequence: 4, action: swap },
+    ];
+    const visibleParticipant = {
+      playerName: 'player',
+      activeCreature: null,
+      defeatedCreatures: [],
+      remainingCreatureCount: 2,
+      playedPowerCards: [],
+      remainingPowerCardCount: 1,
+    };
+    service.getProjection.mockResolvedValue({
+      matchId: MATCH_ID,
+      mode: 'live',
+      role: 'spectator',
+      status: 'active',
+      version: 4,
+      phase: 'active',
+      turnNumber: 2,
+      currentActor: 'playerOne',
+      turnDeadline: '2026-09-17T22:01:00.000Z',
+      consecutiveTimeouts: { playerOne: 0, playerTwo: 0 },
+      playerOne: visibleParticipant,
+      playerTwo: visibleParticipant,
+      history,
+      presence: {
+        playerOneConnected: true,
+        playerTwoConnected: true,
+        spectatorCount: 1,
+      },
+      completionReason: null,
+      winner: null,
+      startedAt: '2026-09-17T22:00:00.000Z',
+      updatedAt: '2026-09-17T22:00:30.000Z',
+      completedAt: null,
+    });
+
+    const url = `/api/v1/matches/live/${MATCH_ID}`;
+    const legacy = await app.inject({
+      method: 'GET',
+      url,
+      headers: { authorization: 'Bearer valid-token' },
+    });
+    const current = await app.inject({
+      method: 'GET',
+      url,
+      headers: {
+        authorization: 'Bearer valid-token',
+        accept: 'application/vnd.wits-world.live.v2+json',
+      },
+    });
+
+    expect(legacy.statusCode).toBe(200);
+    expect(
+      legacy
+        .json()
+        .history.map((entry: { sequence: number }) => entry.sequence),
+    ).toEqual([3, 4]);
+    expect(legacy.json().history[1].action).toBeNull();
+    expect(legacy.json().version).toBe(4);
+    expect(legacy.body).not.toContain('swap_creature');
+    expect(current.statusCode).toBe(200);
+    expect(current.json().history[1].action).toEqual(swap);
+  });
+
   it('returns the authenticated player projection without accepting browser identity', async () => {
     const response = await request('GET', `/api/v1/matches/live/${MATCH_ID}`);
 
