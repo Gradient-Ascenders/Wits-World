@@ -100,7 +100,8 @@ describe.skipIf(!runIntegrationTests)(
         items: [
           {
             caseId: urgent.caseId,
-            currentBand: 'urgent_review',
+            band: 'urgent_review',
+            canReview: true,
             signalTypes: ['impossible_movement'],
             activeRestrictionScopes: [],
           },
@@ -133,33 +134,27 @@ describe.skipIf(!runIntegrationTests)(
         actorPlayerId: reviewer.id,
         caseId: underReview.caseId,
         expectedVersion: 1,
-        action: 'monitor',
-        reasonCode: 'review_started',
-        note: 'Keep this case in the active reviewer queue.',
+        action: 'continue_monitoring',
+        reasonNote: 'Keep this case in the active reviewer queue.',
         evidenceIds: [],
-        falsePositiveEvidenceIds: [],
         restrictionScopes: [],
       });
       await service.decide({
         actorPlayerId: reviewer.id,
         caseId: resolved.caseId,
         expectedVersion: 1,
-        action: 'monitor',
-        reasonCode: 'review_started',
-        note: 'Begin review before resolving the retained case.',
+        action: 'continue_monitoring',
+        reasonNote: 'Begin review before resolving the retained case.',
         evidenceIds: [],
-        falsePositiveEvidenceIds: [],
         restrictionScopes: [],
       });
       await service.decide({
         actorPlayerId: reviewer.id,
         caseId: resolved.caseId,
         expectedVersion: 2,
-        action: 'resolve',
-        reasonCode: 'review_complete',
-        note: 'Resolve this case so it cannot crowd the active queue.',
+        action: 'dismiss',
+        reasonNote: 'Resolve this case so it cannot crowd the active queue.',
         evidenceIds: [],
-        falsePositiveEvidenceIds: [],
         restrictionScopes: [],
       });
 
@@ -187,6 +182,40 @@ describe.skipIf(!runIntegrationTests)(
       expect(resolvedPage.items.map((item) => item.caseId)).toContain(
         resolved.caseId,
       );
+
+      const allStatuses = await service.listCases({
+        actorPlayerId: reviewer.id,
+        status: 'all',
+        page: 1,
+        pageSize: 100,
+      });
+      expect(allStatuses.items.map((item) => item.caseId)).toEqual(
+        expect.arrayContaining([
+          open.caseId,
+          underReview.caseId,
+          resolved.caseId,
+        ]),
+      );
+      const exactCase = await service.listCases({
+        actorPlayerId: reviewer.id,
+        status: 'all',
+        search: resolved.caseId,
+        page: 1,
+        pageSize: 20,
+      });
+      expect(exactCase.items.map((item) => item.caseId)).toEqual([
+        resolved.caseId,
+      ]);
+      const exactPlayer = await service.listCases({
+        actorPlayerId: reviewer.id,
+        status: 'all',
+        search: open.player.id,
+        page: 1,
+        pageSize: 20,
+      });
+      expect(exactPlayer.items.map((item) => item.caseId)).toEqual([
+        open.caseId,
+      ]);
 
       const injectionLikeLiteral = await service.listCases({
         actorPlayerId: reviewer.id,
@@ -259,8 +288,9 @@ describe.skipIf(!runIntegrationTests)(
         playerId: fixture.player.id,
         status: 'open',
         version: 1,
-        currentScore: 55,
-        currentBand: 'review_required',
+        score: 55,
+        band: 'review_required',
+        canReview: true,
         policyVersion,
         evidencePreview: [
           {
@@ -386,6 +416,7 @@ describe.skipIf(!runIntegrationTests)(
           evidenceId,
           signalType: 'opponent_concentration',
           opponentPattern: {
+            availability: 'available',
             kind: 'opponent_concentration',
             evaluationWindowStart: '2026-08-01T10:00:00.000Z',
             evaluationWindowEnd: '2026-08-31T10:00:00.000Z',
@@ -403,24 +434,98 @@ describe.skipIf(!runIntegrationTests)(
       );
     });
 
+    it('blocks legacy unexplained opponent evidence until a fresh explained evaluation supersedes it', async () => {
+      const fixture = await createCase(pool, 'legacy_opponent_detail', 55);
+      const legacyEvidenceId = await addOpponentPatternEvidence(pool, fixture, {
+        observedAt: new Date('2026-09-20T10:00:00.000Z'),
+        includeSummary: false,
+      });
+
+      const blocked = await service.getCase({
+        actorPlayerId: reviewer.id,
+        caseId: fixture.caseId,
+      });
+      expect(blocked.canReview).toBe(false);
+      expect(blocked.evidencePreview).toContainEqual(
+        expect.objectContaining({
+          evidenceId: legacyEvidenceId,
+          opponentPattern: {
+            availability: 'unavailable',
+            reason: 'legacy_summary_not_retained',
+            remediation: 'await_fresh_detector_evaluation',
+          },
+        }),
+      );
+      await expect(
+        service.decide({
+          actorPlayerId: reviewer.id,
+          caseId: fixture.caseId,
+          expectedVersion: 1,
+          action: 'continue_monitoring',
+          reasonNote: 'This must wait for explainable opponent evidence.',
+          evidenceIds: [legacyEvidenceId],
+          restrictionScopes: [],
+        }),
+      ).rejects.toBeInstanceOf(InvalidTrustDecisionError);
+
+      const freshEvidenceId = await addOpponentPatternEvidence(pool, fixture, {
+        observedAt: new Date('2026-09-21T10:00:00.000Z'),
+      });
+      const reviewable = await service.getCase({
+        actorPlayerId: reviewer.id,
+        caseId: fixture.caseId,
+      });
+      expect(reviewable.canReview).toBe(true);
+      expect(reviewable.evidencePreview).toContainEqual(
+        expect.objectContaining({
+          evidenceId: legacyEvidenceId,
+          opponentPattern: {
+            availability: 'unavailable',
+            reason: 'legacy_summary_not_retained',
+            remediation: 'await_fresh_detector_evaluation',
+          },
+        }),
+      );
+      await expect(
+        service.decide({
+          actorPlayerId: reviewer.id,
+          caseId: fixture.caseId,
+          expectedVersion: 1,
+          action: 'continue_monitoring',
+          reasonNote: 'The selected legacy row is still unavailable.',
+          evidenceIds: [legacyEvidenceId],
+          restrictionScopes: [],
+        }),
+      ).rejects.toBeInstanceOf(InvalidTrustDecisionError);
+      await expect(
+        service.decide({
+          actorPlayerId: reviewer.id,
+          caseId: fixture.caseId,
+          expectedVersion: 1,
+          action: 'continue_monitoring',
+          reasonNote: 'Review using the fresh explained detector evaluation.',
+          evidenceIds: [freshEvidenceId],
+          restrictionScopes: [],
+        }),
+      ).resolves.toMatchObject({ status: 'under_review', version: 2 });
+    });
+
     it('records actor, time, reason, policy and prior history without mutation', async () => {
       const fixture = await createCase(pool, 'audit_target', 55);
       const decided = await service.decide({
         actorPlayerId: reviewer.id,
         caseId: fixture.caseId,
         expectedVersion: 1,
-        action: 'monitor',
-        reasonCode: 'derived_signal_review',
-        note: 'The derived signal needs continued human review.',
+        action: 'mark_false_positive',
+        reasonNote: 'The derived signal needs continued human review.',
         evidenceIds: [fixture.evidenceId],
-        falsePositiveEvidenceIds: [fixture.evidenceId],
         restrictionScopes: [],
       });
       expect(decided).toMatchObject({
         status: 'under_review',
         version: 2,
-        currentScore: 0,
-        currentBand: 'normal',
+        score: 0,
+        band: 'normal',
         evidencePreview: [
           {
             evidenceId: fixture.evidenceId,
@@ -442,10 +547,10 @@ describe.skipIf(!runIntegrationTests)(
         actorType: 'author',
         actorPlayerId: reviewer.id,
         actorPlayerName: reviewer.name,
-        action: 'monitoring_continued',
+        action: 'evidence_marked_false_positive',
         previousStatus: 'open',
         resultingStatus: 'under_review',
-        reasonCode: 'derived_signal_review',
+        reasonCode: 'review_false_positive',
         reasonNote: 'The derived signal needs continued human review.',
         policyVersion,
         versionBefore: 1,
@@ -494,7 +599,7 @@ describe.skipIf(!runIntegrationTests)(
       });
     });
 
-    it('accepts 100 combined evidence references and rejects 101', async () => {
+    it('accepts 100 evidence references and rejects 101', async () => {
       const fixture = await createCase(pool, 'evidence_limit', 55);
       const additionalEvidenceIds = await addCaseEvidence(pool, fixture, 100);
       const allEvidenceIds = [fixture.evidenceId, ...additionalEvidenceIds];
@@ -502,19 +607,15 @@ describe.skipIf(!runIntegrationTests)(
         actorPlayerId: reviewer.id,
         caseId: fixture.caseId,
         expectedVersion: 1,
-        action: 'monitor',
-        reasonCode: 'bounded_evidence_review',
-        note: 'Review exactly one hundred distinct evidence summaries.',
-        evidenceIds: allEvidenceIds.slice(0, 50),
-        falsePositiveEvidenceIds: allEvidenceIds.slice(50, 100),
+        action: 'continue_monitoring',
+        reasonNote: 'Review exactly one hundred distinct evidence summaries.',
+        evidenceIds: allEvidenceIds.slice(0, 100),
         restrictionScopes: [],
       });
       expect(accepted).toMatchObject({ status: 'under_review', version: 2 });
       expect(accepted.recentHistory[0]).toMatchObject({
         evidenceIds: expect.arrayContaining(allEvidenceIds.slice(0, 100)),
-        falsePositiveEvidenceIds: expect.arrayContaining(
-          allEvidenceIds.slice(50, 100),
-        ),
+        falsePositiveEvidenceIds: [],
       });
 
       await expect(
@@ -522,11 +623,9 @@ describe.skipIf(!runIntegrationTests)(
           actorPlayerId: reviewer.id,
           caseId: fixture.caseId,
           expectedVersion: 2,
-          action: 'monitor',
-          reasonCode: 'excess_evidence_review',
-          note: 'This decision exceeds the combined evidence-reference limit.',
-          evidenceIds: allEvidenceIds.slice(0, 51),
-          falsePositiveEvidenceIds: allEvidenceIds.slice(51),
+          action: 'continue_monitoring',
+          reasonNote: 'This decision exceeds the evidence-reference limit.',
+          evidenceIds: allEvidenceIds,
           restrictionScopes: [],
         }),
       ).rejects.toBeInstanceOf(InvalidTrustDecisionError);
@@ -538,11 +637,9 @@ describe.skipIf(!runIntegrationTests)(
       const input = {
         caseId: fixture.caseId,
         expectedVersion: 1,
-        action: 'monitor' as const,
-        reasonCode: 'concurrent_review',
-        note: 'Review started from the same queue version.',
+        action: 'continue_monitoring' as const,
+        reasonNote: 'Review started from the same queue version.',
         evidenceIds: [fixture.evidenceId],
-        falsePositiveEvidenceIds: [],
         restrictionScopes: [],
       };
       const outcomes = await Promise.allSettled([
@@ -583,10 +680,8 @@ describe.skipIf(!runIntegrationTests)(
           caseId: fixture.caseId,
           expectedVersion: 1,
           action: 'restrict',
-          reasonCode: 'trade_review',
-          note: 'The trade scope is not writable through the review API.',
+          reasonNote: 'The trade scope is not writable through the review API.',
           evidenceIds: [fixture.evidenceId],
-          falsePositiveEvidenceIds: [],
           restrictionScopes: ['card_trade_hold' as never],
           restrictionDurationHours: 24,
         }),
@@ -598,16 +693,17 @@ describe.skipIf(!runIntegrationTests)(
         caseId: fixture.caseId,
         expectedVersion: 1,
         action: 'restrict',
-        reasonCode: 'activity_review',
-        note: 'Temporarily hold new competitive matches during review.',
+        reasonNote: 'Temporarily hold new competitive matches during review.',
         evidenceIds: [fixture.evidenceId],
-        falsePositiveEvidenceIds: [],
         restrictionScopes: ['new_competitive_match_hold'],
         restrictionDurationHours: 24,
       });
       expect(restricted).toMatchObject({
         status: 'under_review',
         version: 2,
+        restrictionCount: 1,
+        activeRestrictionCount: 1,
+        canReview: true,
         restrictionPreview: [
           {
             scope: 'new_competitive_match_hold',
@@ -672,11 +768,10 @@ describe.skipIf(!runIntegrationTests)(
           actorPlayerId: secondReviewer.id,
           caseId: fixture.caseId,
           expectedVersion: 2,
-          action: 'resolve',
-          reasonCode: 'review_complete',
-          note: 'This must not resolve while the restriction remains active.',
+          action: 'dismiss',
+          reasonNote:
+            'This must not resolve while the restriction remains active.',
           evidenceIds: [],
-          falsePositiveEvidenceIds: [],
           restrictionScopes: [],
         }),
       ).rejects.toBeInstanceOf(InvalidTrustDecisionError);
@@ -686,13 +781,9 @@ describe.skipIf(!runIntegrationTests)(
     it('rolls back every reviewer write after a late restriction failure', async () => {
       const fixture = await createCase(pool, 'rollback_target', 55);
       const decisionId = randomUUID();
-      const recalculatedSnapshotId = randomUUID();
-      const adjustmentId = randomUUID();
       const duplicateRestrictionId = randomUUID();
       const generatedIds = [
         decisionId,
-        recalculatedSnapshotId,
-        adjustmentId,
         duplicateRestrictionId,
         duplicateRestrictionId,
       ];
@@ -706,10 +797,9 @@ describe.skipIf(!runIntegrationTests)(
           caseId: fixture.caseId,
           expectedVersion: 1,
           action: 'restrict',
-          reasonCode: 'late_failure_probe',
-          note: 'Force a failure only after every related write has been attempted.',
+          reasonNote:
+            'Force a failure only after every related write has been attempted.',
           evidenceIds: [fixture.evidenceId],
-          falsePositiveEvidenceIds: [fixture.evidenceId],
           restrictionScopes: [
             'online_verification_required',
             'new_competitive_match_hold',
@@ -769,32 +859,26 @@ describe.skipIf(!runIntegrationTests)(
 
     it('rejects direct open resolution and allows dismissal only after review begins', async () => {
       const fixture = await createCase(pool, 'resolution_target', 25);
-      for (const action of ['dismiss', 'resolve'] as const) {
-        await expect(
-          service.decide({
-            actorPlayerId: reviewer.id,
-            caseId: fixture.caseId,
-            expectedVersion: 1,
-            action,
-            reasonCode: 'review_complete',
-            note: 'A human decision cannot resolve an open case directly.',
-            evidenceIds: [fixture.evidenceId],
-            falsePositiveEvidenceIds: [],
-            restrictionScopes: [],
-          }),
-        ).rejects.toBeInstanceOf(InvalidTrustDecisionError);
-      }
+      await expect(
+        service.decide({
+          actorPlayerId: reviewer.id,
+          caseId: fixture.caseId,
+          expectedVersion: 1,
+          action: 'dismiss',
+          reasonNote: 'A human decision cannot resolve an open case directly.',
+          evidenceIds: [fixture.evidenceId],
+          restrictionScopes: [],
+        }),
+      ).rejects.toBeInstanceOf(InvalidTrustDecisionError);
       await expectCaseVersionAndCounts(pool, fixture.caseId, 1, 1, 0);
 
       const underReview = await service.decide({
         actorPlayerId: reviewer.id,
         caseId: fixture.caseId,
         expectedVersion: 1,
-        action: 'monitor',
-        reasonCode: 'review_started',
-        note: 'Begin the human review before deciding the case.',
+        action: 'continue_monitoring',
+        reasonNote: 'Begin the human review before deciding the case.',
         evidenceIds: [fixture.evidenceId],
-        falsePositiveEvidenceIds: [],
         restrictionScopes: [],
       });
       expect(underReview).toMatchObject({ status: 'under_review', version: 2 });
@@ -804,10 +888,8 @@ describe.skipIf(!runIntegrationTests)(
         caseId: fixture.caseId,
         expectedVersion: 2,
         action: 'dismiss',
-        reasonCode: 'insufficient_evidence',
-        note: 'The derived signal does not justify a player restriction.',
+        reasonNote: 'The derived signal does not justify a player restriction.',
         evidenceIds: [fixture.evidenceId],
-        falsePositiveEvidenceIds: [],
         restrictionScopes: [],
       });
       expect(resolved).toMatchObject({
@@ -839,44 +921,39 @@ describe.skipIf(!runIntegrationTests)(
           actorPlayerId: secondReviewer.id,
           caseId: fixture.caseId,
           expectedVersion: 3,
-          action: 'monitor',
-          reasonCode: 'late_review',
-          note: 'A resolved case cannot receive another reviewer decision.',
+          action: 'continue_monitoring',
+          reasonNote:
+            'A resolved case cannot receive another reviewer decision.',
           evidenceIds: [],
-          falsePositiveEvidenceIds: [],
           restrictionScopes: [],
         }),
       ).rejects.toBeInstanceOf(InvalidTrustDecisionError);
     });
 
-    it('allows an under-review unrestricted case to resolve explicitly', async () => {
+    it('allows an under-review unrestricted case to be dismissed', async () => {
       const fixture = await createCase(pool, 'explicit_resolution', 25);
       await service.decide({
         actorPlayerId: reviewer.id,
         caseId: fixture.caseId,
         expectedVersion: 1,
-        action: 'monitor',
-        reasonCode: 'review_started',
-        note: 'Begin the human review before resolving the case.',
+        action: 'continue_monitoring',
+        reasonNote: 'Begin the human review before resolving the case.',
         evidenceIds: [fixture.evidenceId],
-        falsePositiveEvidenceIds: [],
         restrictionScopes: [],
       });
       const resolved = await service.decide({
         actorPlayerId: reviewer.id,
         caseId: fixture.caseId,
         expectedVersion: 2,
-        action: 'resolve',
-        reasonCode: 'review_complete',
-        note: 'The unrestricted review is complete.',
+        action: 'dismiss',
+        reasonNote: 'The unrestricted review is complete.',
         evidenceIds: [fixture.evidenceId],
-        falsePositiveEvidenceIds: [],
         restrictionScopes: [],
       });
       expect(resolved).toMatchObject({
         status: 'resolved',
         version: 3,
-        resolutionReason: 'review_complete',
+        resolutionReason: 'dismissed',
       });
     });
   },
@@ -1082,11 +1159,12 @@ async function addCaseEvidence(
 async function addOpponentPatternEvidence(
   database: Pick<pg.Pool, 'connect'>,
   fixture: CaseFixture,
+  options: { observedAt?: Date; includeSummary?: boolean } = {},
 ): Promise<string> {
   const client = await database.connect();
   const signalId = randomUUID();
   const evidenceId = randomUUID();
-  const observedAt = new Date('2026-08-31T10:00:00.000Z');
+  const observedAt = options.observedAt ?? new Date('2026-08-31T10:00:00.000Z');
   const summary = {
     kind: 'opponent_concentration',
     evaluationWindowStart: '2026-08-01T10:00:00.000Z',
@@ -1116,7 +1194,7 @@ async function addOpponentPatternEvidence(
         observedAt,
         `private-source-${signalId}`,
         digest(signalId),
-        JSON.stringify(summary),
+        options.includeSummary === false ? null : JSON.stringify(summary),
       ],
     );
     await client.query(
@@ -1134,7 +1212,7 @@ async function addOpponentPatternEvidence(
         signalId,
         observedAt,
         policyVersion,
-        JSON.stringify(summary),
+        options.includeSummary === false ? null : JSON.stringify(summary),
       ],
     );
     await client.query('commit');

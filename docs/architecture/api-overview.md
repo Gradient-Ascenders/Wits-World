@@ -113,12 +113,19 @@ Issue `#260` adds the protected suspect-player review boundary at
 identity, excludes self-review objects, requires the current case version for
 every decision, and returns generic not-found or explicit stale-version errors.
 The queue defaults to actionable `open` and `under_review` cases, supports
-literal case-insensitive Player Name search, and keeps resolved cases opt-in.
+`status=all`, literal case-insensitive Player Name substring search, and exact
+case/player UUID search. Queue and detail use `score`, `band`, restriction
+counts, and `canReview` as their canonical review-console fields.
 Detail uses bounded recent evidence/restriction previews; full safe collections
 are pageable, and the bounded JSON export reuses those projections. Queue,
 detail, evidence, restriction, export, and audit projections expose only derived trust evidence and
 local player/reviewer identities; they omit precise location, provider identity,
 raw telemetry, source identifiers, and private security payloads. The
+decision body accepts `continue_monitoring`, `dismiss`,
+`mark_false_positive`, or `restrict` with a required `reasonNote`. New
+opponent-pattern signals require safe aggregate summaries; a legacy missing
+summary is explicitly unavailable and blocks review until a fresh explained
+detector evaluation supersedes it. The
 [trust persistence guide](../database/trust-persistence.md) records the
 transaction, audit, restriction, and privacy rules.
 

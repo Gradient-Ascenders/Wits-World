@@ -52,16 +52,14 @@ interface PageQuery {
 interface DecisionBody {
   expectedVersion: number;
   action: TrustDecisionAction;
-  reasonCode: string;
-  note: string;
+  reasonNote: string;
   evidenceIds?: string[];
-  falsePositiveEvidenceIds?: string[];
   restrictionScopes?: WritableTrustRestrictionScope[];
   restrictionDurationHours?: number;
 }
 
 const statuses = ['open', 'under_review', 'resolved'] as const;
-const queueStatuses = ['active', ...statuses] as const;
+const queueStatuses = ['all', 'active', ...statuses] as const;
 const bands = [
   'normal',
   'observe',
@@ -147,6 +145,7 @@ const opponentPatternSchema = {
       type: 'object',
       additionalProperties: false,
       required: [
+        'availability',
         'kind',
         'evaluationWindowStart',
         'evaluationWindowEnd',
@@ -157,6 +156,7 @@ const opponentPatternSchema = {
         'minimumOpponentConcentrationRatio',
       ],
       properties: {
+        availability: { type: 'string', enum: ['available'] },
         kind: { type: 'string', enum: ['opponent_concentration'] },
         evaluationWindowStart: { type: 'string', format: 'date-time' },
         evaluationWindowEnd: { type: 'string', format: 'date-time' },
@@ -178,6 +178,7 @@ const opponentPatternSchema = {
       type: 'object',
       additionalProperties: false,
       required: [
+        'availability',
         'kind',
         'evaluationWindowStart',
         'evaluationWindowEnd',
@@ -185,11 +186,25 @@ const opponentPatternSchema = {
         'minimumQualifyingForfeitCount',
       ],
       properties: {
+        availability: { type: 'string', enum: ['available'] },
         kind: { type: 'string', enum: ['one_sided_outcome_pattern'] },
         evaluationWindowStart: { type: 'string', format: 'date-time' },
         evaluationWindowEnd: { type: 'string', format: 'date-time' },
         qualifyingForfeitCount: { type: 'integer', minimum: 0 },
         minimumQualifyingForfeitCount: { type: 'integer', enum: [4] },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['availability', 'reason', 'remediation'],
+      properties: {
+        availability: { type: 'string', enum: ['unavailable'] },
+        reason: { type: 'string', enum: ['legacy_summary_not_retained'] },
+        remediation: {
+          type: 'string',
+          enum: ['await_fresh_detector_evaluation'],
+        },
       },
     },
   ],
@@ -339,9 +354,12 @@ const caseDetailSchema = {
     'playerName',
     'status',
     'version',
-    'currentScore',
-    'currentBand',
+    'score',
+    'band',
     'policyVersion',
+    'restrictionCount',
+    'activeRestrictionCount',
+    'canReview',
     'categoryTotals',
     'sourceSignalCount',
     'evidencePreview',
@@ -363,9 +381,12 @@ const caseDetailSchema = {
     playerName: { type: 'string' },
     status: { type: 'string', enum: statuses },
     version: { type: 'integer', minimum: 1 },
-    currentScore: { type: 'integer', minimum: 0, maximum: 100 },
-    currentBand: { type: 'string', enum: bands },
+    score: { type: 'integer', minimum: 0, maximum: 100 },
+    band: { type: 'string', enum: bands },
     policyVersion: { type: 'string' },
+    restrictionCount: { type: 'integer', minimum: 0 },
+    activeRestrictionCount: { type: 'integer', minimum: 0 },
+    canReview: { type: 'boolean' },
     categoryTotals: {
       type: 'object',
       additionalProperties: false,
@@ -506,43 +527,31 @@ const pageQuerySchema = {
 
 const decisionCommonProperties = {
   expectedVersion: { type: 'integer', minimum: 1 },
-  reasonCode: {
-    type: 'string',
-    minLength: 1,
-    maxLength: 64,
-    pattern: '^[a-z][a-z0-9_]{0,63}$',
-  },
-  note: {
+  reasonNote: {
     type: 'string',
     minLength: 1,
     maxLength: TRUST_REVIEW_MAX_NOTE_LENGTH,
     pattern: '^(?!\\s)(?![\\s\\S]*\\s$)[^\\u0000-\\u001F\\u007F-\\u009F]+$',
     description:
-      'Required reviewer note. It must be trimmed and contain no control characters.',
+      'Required reviewer reason. It must be trimmed and contain no control characters.',
   },
   evidenceIds: {
     type: 'array',
     maxItems: 100,
     uniqueItems: true,
     description:
-      'Safe evidence summaries referenced by the decision. Together with falsePositiveEvidenceIds, at most 100 distinct summaries may be referenced.',
-    items: { type: 'string', format: 'uuid' },
-  },
-  falsePositiveEvidenceIds: {
-    type: 'array',
-    maxItems: 100,
-    uniqueItems: true,
-    description:
-      'Referenced evidence explicitly reviewed as false-positive. Together with evidenceIds, at most 100 distinct summaries may be referenced.',
+      'Safe evidence summaries referenced by the decision. For mark_false_positive, every referenced summary is adjusted as a reviewed false positive.',
     items: { type: 'string', format: 'uuid' },
   },
 } as const;
 
-function decisionBodySchema(action: Exclude<TrustDecisionAction, 'restrict'>) {
+function decisionBodySchema(
+  action: Exclude<TrustDecisionAction, 'restrict' | 'mark_false_positive'>,
+) {
   return {
     type: 'object',
     additionalProperties: false,
-    required: ['expectedVersion', 'action', 'reasonCode', 'note'],
+    required: ['expectedVersion', 'action', 'reasonNote'],
     properties: {
       ...decisionCommonProperties,
       action: { type: 'string', enum: [action] },
@@ -550,14 +559,27 @@ function decisionBodySchema(action: Exclude<TrustDecisionAction, 'restrict'>) {
   } as const;
 }
 
+const falsePositiveDecisionBodySchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['expectedVersion', 'action', 'reasonNote', 'evidenceIds'],
+  properties: {
+    ...decisionCommonProperties,
+    action: { type: 'string', enum: ['mark_false_positive'] },
+    evidenceIds: {
+      ...decisionCommonProperties.evidenceIds,
+      minItems: 1,
+    },
+  },
+} as const;
+
 const restrictDecisionBodySchema = {
   type: 'object',
   additionalProperties: false,
   required: [
     'expectedVersion',
     'action',
-    'reasonCode',
-    'note',
+    'reasonNote',
     'restrictionScopes',
     'restrictionDurationHours',
   ],
@@ -609,7 +631,7 @@ export const authorTrustReviewRoutes: FastifyPluginAsync<Options> = async (
               enum: queueStatuses,
               default: 'active',
               description:
-                'active selects open and under_review cases. Omitted status also defaults to active.',
+                'active selects open and under_review cases; all applies no status filter. Omitted status defaults to active.',
             },
             search: {
               type: 'string',
@@ -618,7 +640,7 @@ export const authorTrustReviewRoutes: FastifyPluginAsync<Options> = async (
               pattern:
                 '^(?!\\s)(?![\\s\\S]*\\s$)[^\\u0000-\\u001F\\u007F-\\u009F]+$',
               description:
-                'Case-insensitive literal substring match on the reviewer-visible Player Name only. SQL wildcard characters are treated literally.',
+                'Case-insensitive literal substring match on Player Name, plus exact case or player UUID match when the complete search value is a UUID. SQL wildcard characters are treated literally.',
             },
             band: { type: 'string', enum: bands },
             restrictionState: { type: 'string', enum: ['active', 'none'] },
@@ -655,11 +677,14 @@ export const authorTrustReviewRoutes: FastifyPluginAsync<Options> = async (
                     'playerName',
                     'status',
                     'version',
-                    'currentScore',
-                    'currentBand',
+                    'score',
+                    'band',
                     'policyVersion',
                     'signalTypes',
+                    'restrictionCount',
+                    'activeRestrictionCount',
                     'activeRestrictionScopes',
+                    'canReview',
                     'openedAt',
                     'updatedAt',
                   ],
@@ -669,17 +694,22 @@ export const authorTrustReviewRoutes: FastifyPluginAsync<Options> = async (
                     playerName: { type: 'string' },
                     status: { type: 'string', enum: statuses },
                     version: { type: 'integer', minimum: 1 },
-                    currentScore: {
+                    score: {
                       type: 'integer',
                       minimum: 0,
                       maximum: 100,
                     },
-                    currentBand: { type: 'string', enum: bands },
+                    band: { type: 'string', enum: bands },
                     policyVersion: { type: 'string' },
                     signalTypes: {
                       type: 'array',
                       uniqueItems: true,
                       items: { type: 'string', enum: signalTypes },
+                    },
+                    restrictionCount: { type: 'integer', minimum: 0 },
+                    activeRestrictionCount: {
+                      type: 'integer',
+                      minimum: 0,
                     },
                     activeRestrictionScopes: {
                       type: 'array',
@@ -689,6 +719,7 @@ export const authorTrustReviewRoutes: FastifyPluginAsync<Options> = async (
                         enum: readableRestrictionScopes,
                       },
                     },
+                    canReview: { type: 'boolean' },
                     openedAt: { type: 'string', format: 'date-time' },
                     updatedAt: { type: 'string', format: 'date-time' },
                   },
@@ -878,16 +909,16 @@ export const authorTrustReviewRoutes: FastifyPluginAsync<Options> = async (
         operationId: 'decideSuspectPlayerCase',
         summary: 'Record an auditable suspect-player decision',
         description:
-          'Atomically advances the expected case version, appends the authenticated Author decision, links at most 100 distinct reviewed evidence summaries, records false-positive adjustments, and applies only the three trust-v1 time-bounded restriction scopes. The readable trust-v2 card-trade hold requires a separate future case-creation workflow and is not writable here.',
+          'Atomically advances the expected case version, appends the authenticated Author decision, links at most 100 reviewed evidence summaries, records false-positive adjustments only for mark_false_positive, and applies only the three trust-v1 time-bounded restriction scopes. Decisions are rejected while legacy opponent-pattern evidence lacks a reviewer-safe summary and no fresh explainable evaluation supersedes it.',
         tags: ['Trust review'],
         security: bearerSecurity,
         params: caseParamsSchema,
         body: {
           oneOf: [
-            decisionBodySchema('monitor'),
+            decisionBodySchema('continue_monitoring'),
             decisionBodySchema('dismiss'),
+            falsePositiveDecisionBodySchema,
             restrictDecisionBodySchema,
-            decisionBodySchema('resolve'),
           ],
         },
         response: {
@@ -908,11 +939,8 @@ export const authorTrustReviewRoutes: FastifyPluginAsync<Options> = async (
             caseId: request.params.caseId,
             expectedVersion: request.body.expectedVersion,
             action: request.body.action,
-            reasonCode: request.body.reasonCode,
-            note: request.body.note,
+            reasonNote: request.body.reasonNote,
             evidenceIds: request.body.evidenceIds ?? [],
-            falsePositiveEvidenceIds:
-              request.body.falsePositiveEvidenceIds ?? [],
             restrictionScopes: request.body.restrictionScopes ?? [],
             ...(request.body.restrictionDurationHours === undefined
               ? {}

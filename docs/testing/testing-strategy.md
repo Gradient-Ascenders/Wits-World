@@ -207,14 +207,16 @@ inaccessible-case errors, authenticated reviewer derivation, malformed bodies,
 stale-version conflicts, action-specific request schemas, and generated OpenAPI
 parameters, responses, limits, and security declarations. The
 `trust-review-service.integration.test.ts` disposable-database suite verifies
-stable filtering/pagination and date bounds, self-case exclusion, derived
+stable filtering/pagination, `status=all`, exact UUID search, and date bounds,
+self-case exclusion, derived
 bounded detail previews, paginated evidence/restrictions, signal-time
-opponent-pattern aggregate projection, bounded safe export, the reviewer transition matrix, append-only
+opponent-pattern aggregate projection, explicit legacy-summary unavailability
+and review blocking, bounded safe export, the reviewer transition matrix, append-only
 actor/time/reason/policy history, false-positive provenance, committed
-restriction timing, the combined 100-evidence limit, one winner for concurrent
+restriction timing, the 100-evidence limit, one winner for concurrent
 same-version decisions, late-failure rollback across every related write,
-atomic supported restrictions, active-restriction resolution denial, and
-authoritative unrestricted resolution.
+atomic supported restrictions, active-restriction dismissal denial, and
+authoritative unrestricted dismissal.
 
 Database integration remains opt-in locally. A slow local database may use a
 larger Vitest timeout for an individual focused suite without changing the

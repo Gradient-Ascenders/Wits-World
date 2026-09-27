@@ -340,31 +340,35 @@ GET  /api/v1/author/trust-cases/:caseId/export
 ```
 
 The queue defaults to `status=active` (`open` plus `under_review`) and supports
-explicit lifecycle state, bounded pagination, literal case-insensitive Player
-Name search, review band, active-restriction state, derived signal type, and
-creation/update time filters. Detail contains ten-item recent evidence and
+explicit lifecycle state or `status=all`, bounded pagination, literal
+case-insensitive Player Name substring search, exact case/player UUID search,
+review band, active-restriction state, derived signal type, and creation/update
+time filters. Queue and detail expose canonical `score`, `band`, restriction
+counts, and `canReview`. Detail contains ten-item recent evidence and
 restriction previews plus total/truncation metadata; the separate collection
-routes provide pages up to 100 items. Opponent-pattern evidence retains only
+routes provide pages up to 100 items. New opponent-pattern evidence requires
 signal-time aggregate counts, evaluation windows, and trust-v1 thresholds.
+Legacy rows without that summary are explicitly unavailable and make the case
+non-reviewable until a fresh explained detector evaluation supersedes them.
 Detail and audit responses contain local opaque player identifiers,
 policy/version data, and effective restrictions. They do not
 contain Auth0 identifiers, precise location, raw telemetry, private match
 history, or evidence source identifiers.
 
 Every mutation derives the reviewer from the bearer token, requires the
-expected case version and a bounded reason/note, and runs the case transition,
+expected case version and a bounded `reasonNote`, and runs the case transition,
 append-only audit, evidence links, false-positive adjustments, and supported
 restrictions in one transaction. Stale versions return a safe `409` conflict.
 Self-review cases use the same `404` response as inaccessible/missing cases.
-Human decisions follow `open -> under_review -> resolved`: monitoring or a
-restriction starts review, while dismissal or resolution is accepted only once
-review is underway. A decision may reference at most 100 distinct evidence
-summaries in total. History distinguishes all referenced evidence from the
-false-positive subset and retains each restriction's committed start and expiry.
+Human decisions are `continue_monitoring`, `mark_false_positive`, `restrict`,
+and `dismiss`. The first three start or continue review; dismissal resolves only
+an `under_review` case. `mark_false_positive` requires one or more evidence IDs
+and adjusts exactly those signals without resolving the case. A decision may
+reference at most 100 distinct evidence summaries. History retains the
+false-positive subset and each restriction's committed start and expiry.
 The writable scopes are `online_verification_required`,
 `location_reward_challenge_hold`, and `new_competitive_match_hold`;
-`card_trade_hold` remains readable but requires the separate trust-v2 case
-workflow and cannot be authored by these endpoints.
+`card_trade_hold` remains readable but cannot be authored by these endpoints.
 The export operation returns the same server-defined safe projection as JSON,
 with at most 100 evidence, restriction, and history records per collection and
 pagination totals that identify truncation. Clients cannot select columns.

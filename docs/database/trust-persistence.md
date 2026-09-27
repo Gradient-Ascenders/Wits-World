@@ -13,7 +13,7 @@ that schema for deterministic score calculation, authoritative signal ingestion,
 decay/recovery maintenance, and enforcement of already-reviewed restrictions.
 Issue `#260` exposes the Author-only case queue, detail, evidence, restriction,
 decision, audit, and bounded export API over the same versioned persistence.
-Migration `0060_persist_trust_review_evidence_summaries.sql` adds only immutable
+Migration `0061_persist_trust_review_evidence_summaries.sql` adds only immutable
 reviewer-safe aggregate context for opponent-pattern signals; it does not alter
 trust-v1 scoring. Player appeal submission and resolution APIs remain later work.
 
@@ -194,11 +194,13 @@ or evidence behind that decision.
 ## Issue #260 reviewer API
 
 Issue `#260` reuses the private relations and integrity triggers above through a
-protected Author-only service, with migration `0060` preserving only the safe
+protected Author-only service, with migration
+`0061_persist_trust_review_evidence_summaries.sql` preserving only the safe
 aggregate basis required for opponent-pattern human review:
 
 - `GET /api/v1/author/trust-cases` defaults to active cases and provides a
-  bounded, deterministic queue with lifecycle, safe Player Name search,
+  bounded, deterministic queue with lifecycle (including `status=all`), safe
+  Player Name substring and exact case/player UUID search,
   review-band, active-restriction, signal-type, and date filters;
 - `GET /api/v1/author/trust-cases/:caseId` returns the current versioned case,
   category totals, ten-item evidence/restriction previews with total counts,
@@ -208,9 +210,17 @@ aggregate basis required for opponent-pattern human review:
 - `GET /api/v1/author/trust-cases/:caseId/history` provides the complete
   append-only decision history with bounded pagination; and
 - `POST /api/v1/author/trust-cases/:caseId/decisions` records a reasoned
-  monitoring, dismissal, restriction, or resolution decision;
+  `continue_monitoring`, `dismiss`, `mark_false_positive`, or `restrict`
+  decision;
 - `GET /api/v1/author/trust-cases/:caseId/export` returns a server-defined JSON
   export bounded to 100 records per evidence/restriction/history collection.
+
+Queue and detail expose canonical `score`, `band`, `restrictionCount`,
+`activeRestrictionCount`, and `canReview` fields. New opponent-pattern signals
+must carry a validated safe summary. A legacy opponent-pattern row without one
+is returned with `availability=unavailable` and blocks decisions until a later
+explained evaluation of the same signal type supersedes the gap. The immutable
+legacy row is not rewritten and no historical aggregates are fabricated.
 
 The authenticated local Author UUID is always the actor; no reviewer identity
 is accepted from the request body. An Author's own case is excluded from the
@@ -221,12 +231,14 @@ required `expectedVersion`. This matches account-lifecycle lock ordering. A
 stale decision returns an explicit conflict and cannot append a decision or
 restriction.
 
-Reviewer transitions follow `open -> under_review -> resolved`. Monitoring or a
-restriction may start review; dismissal and explicit resolution require an
-`under_review` case. The direct `open -> resolved` decay path remains system
+Reviewer transitions follow `open -> under_review -> resolved`. Continuing
+monitoring, marking selected evidence false-positive, or restricting may start
+review; dismissal requires an `under_review` case. The direct
+`open -> resolved` decay path remains system
 owned. The decision transaction advances the case projection, appends the
 Author decision, links at most 100 distinct safe evidence summaries, records
-any false-positive adjustments, and creates supported restrictions together. A
+false-positive adjustments only for the selected `mark_false_positive`
+evidence, and creates supported restrictions together. A
 failure rolls all of those writes back. Audit history distinguishes the full
 evidence set from the false-positive subset and returns each restriction's
 original committed start and expiry.
@@ -235,8 +247,7 @@ The writable scopes are `online_verification_required`,
 `location_reward_challenge_hold`, and `new_competitive_match_hold`; durations
 remain whole hours from 1 through 168 and the database seven-day constraint
 remains authoritative. Read projections retain the schema-level
-`card_trade_hold`, but this API cannot author it because #260 does not add the
-separate trust-v2 case-creation and policy workflow.
+`card_trade_hold`, but this API cannot author it.
 
 The API projections intentionally omit provider identifiers, raw source
 identifiers and digests, precise coordinates, exact speed/distance/accuracy,

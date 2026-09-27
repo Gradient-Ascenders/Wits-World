@@ -45,9 +45,12 @@ const detail: TrustCaseDetail = {
   playerName: 'review-candidate',
   status: 'under_review',
   version: 2,
-  currentScore: 55,
-  currentBand: 'review_required',
+  score: 55,
+  band: 'review_required',
   policyVersion: 'trust-v1',
+  restrictionCount: 0,
+  activeRestrictionCount: 0,
+  canReview: true,
   categoryTotals: {
     movement: 25,
     submissionConflicts: 10,
@@ -109,11 +112,14 @@ beforeEach(async () => {
         playerName: 'review-candidate',
         status: 'open',
         version: 1,
-        currentScore: 55,
-        currentBand: 'review_required',
+        score: 55,
+        band: 'review_required',
         policyVersion: 'trust-v1',
         signalTypes: ['impossible_movement'],
+        restrictionCount: 0,
+        activeRestrictionCount: 0,
         activeRestrictionScopes: [],
+        canReview: true,
         openedAt: '2026-09-24T10:00:00.000Z',
         updatedAt: '2026-09-24T10:00:00.000Z',
       },
@@ -276,9 +282,21 @@ describe('suspect-player review API', () => {
       pageSize: 20,
     });
     expect(response.json()).toMatchObject({
-      items: [{ caseId, playerId, currentBand: 'review_required' }],
+      items: [
+        {
+          caseId,
+          playerId,
+          score: 55,
+          band: 'review_required',
+          restrictionCount: 0,
+          activeRestrictionCount: 0,
+          canReview: true,
+        },
+      ],
       totalItems: 1,
     });
+    expect(response.json().items[0]).not.toHaveProperty('currentScore');
+    expect(response.json().items[0]).not.toHaveProperty('currentBand');
     expect(response.body).not.toContain('auth0|private-subject');
     expect(response.body).not.toContain('latitude');
     expect(response.body).not.toContain('longitude');
@@ -295,11 +313,26 @@ describe('suspect-player review API', () => {
     expect(listCases).not.toHaveBeenCalled();
 
     const invalidSearch = await authenticatedGet(
-      `/api/v1/author/trust-cases?search=${'x'.repeat(65)}`,
+      `/api/v1/author/trust-cases?search=${'x'.repeat(257)}`,
     );
     expect(invalidSearch.statusCode).toBe(400);
     expect(invalidSearch.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
     expect(listCases).not.toHaveBeenCalled();
+  });
+
+  it('accepts all statuses and bounded searches longer than 64 characters', async () => {
+    const search = 'review-candidate-'.repeat(5);
+    const response = await authenticatedGet(
+      `/api/v1/author/trust-cases?status=all&search=${search}`,
+    );
+    expect(response.statusCode).toBe(200);
+    expect(listCases).toHaveBeenCalledWith({
+      actorPlayerId: authorId,
+      status: 'all',
+      search,
+      page: 1,
+      pageSize: 20,
+    });
   });
 
   it('returns privacy-safe detail and protected paginated history', async () => {
@@ -311,6 +344,11 @@ describe('suspect-player review API', () => {
     expect(caseResponse.json()).toMatchObject({
       case: {
         caseId,
+        score: 55,
+        band: 'review_required',
+        restrictionCount: 0,
+        activeRestrictionCount: 0,
+        canReview: true,
         evidencePreview: [
           {
             evidenceId,
@@ -390,6 +428,7 @@ describe('suspect-player review API', () => {
           effectivePoints: 19,
           safeSourceType: 'pvp_pattern',
           opponentPattern: {
+            availability: 'available',
             kind: 'opponent_concentration',
             evaluationWindowStart: '2026-08-26T10:00:00.000Z',
             evaluationWindowEnd: '2026-09-25T10:00:00.000Z',
@@ -475,9 +514,8 @@ describe('suspect-player review API', () => {
       headers: { authorization: 'Bearer test-token' },
       payload: {
         expectedVersion: 1,
-        action: 'monitor',
-        reasonCode: 'needs_review',
-        note: 'Review the derived movement signal.',
+        action: 'continue_monitoring',
+        reasonNote: 'Review the derived movement signal.',
         evidenceIds: [evidenceId],
       },
     });
@@ -486,11 +524,9 @@ describe('suspect-player review API', () => {
       actorPlayerId: authorId,
       caseId,
       expectedVersion: 1,
-      action: 'monitor',
-      reasonCode: 'needs_review',
-      note: 'Review the derived movement signal.',
+      action: 'continue_monitoring',
+      reasonNote: 'Review the derived movement signal.',
       evidenceIds: [evidenceId],
-      falsePositiveEvidenceIds: [],
       restrictionScopes: [],
     });
     expect(response.json()).toMatchObject({
@@ -506,8 +542,7 @@ describe('suspect-player review API', () => {
       payload: {
         expectedVersion: 0,
         action: 'ban',
-        reasonCode: 'INVALID REASON',
-        note: '',
+        reasonNote: '',
       },
     });
     expect(malformed.statusCode).toBe(400);
@@ -520,9 +555,8 @@ describe('suspect-player review API', () => {
       headers: { authorization: 'Bearer test-token' },
       payload: {
         expectedVersion: 1,
-        action: 'resolve',
-        reasonCode: 'review_complete',
-        note: 'No active restriction remains.',
+        action: 'dismiss',
+        reasonNote: 'No active restriction remains.',
       },
     });
     expect(stale.statusCode).toBe(409);
@@ -537,60 +571,52 @@ describe('suspect-player review API', () => {
       {
         expectedVersion: 1,
         action: 'restrict',
-        reasonCode: 'activity_review',
-        note: 'A scope is required.',
+        reasonNote: 'A scope is required.',
         restrictionDurationHours: 24,
       },
       {
         expectedVersion: 1,
         action: 'restrict',
-        reasonCode: 'activity_review',
-        note: 'A duration is required.',
+        reasonNote: 'A duration is required.',
         restrictionScopes: ['new_competitive_match_hold'],
       },
       {
         expectedVersion: 1,
         action: 'restrict',
-        reasonCode: 'activity_review',
-        note: 'The duration is too short.',
+        reasonNote: 'The duration is too short.',
         restrictionScopes: ['new_competitive_match_hold'],
         restrictionDurationHours: 0,
       },
       {
         expectedVersion: 1,
         action: 'restrict',
-        reasonCode: 'activity_review',
-        note: 'The duration is too long.',
+        reasonNote: 'The duration is too long.',
         restrictionScopes: ['new_competitive_match_hold'],
         restrictionDurationHours: 169,
       },
       {
         expectedVersion: 1,
-        action: 'monitor',
-        reasonCode: 'activity_review',
-        note: 'A monitor action cannot restrict.',
+        action: 'continue_monitoring',
+        reasonNote: 'A monitor action cannot restrict.',
         restrictionScopes: ['new_competitive_match_hold'],
         restrictionDurationHours: 24,
       },
       {
         expectedVersion: 1,
         action: 'restrict',
-        reasonCode: 'activity_review',
-        note: 'The trade hold is not writable.',
+        reasonNote: 'The trade hold is not writable.',
         restrictionScopes: ['card_trade_hold'],
         restrictionDurationHours: 24,
       },
       {
         expectedVersion: 1,
-        action: 'monitor',
-        reasonCode: 'activity_review',
-        note: ' leading whitespace is invalid.',
+        action: 'continue_monitoring',
+        reasonNote: ' leading whitespace is invalid.',
       },
       {
         expectedVersion: 1,
-        action: 'monitor',
-        reasonCode: 'activity_review',
-        note: 'A control\ncharacter is invalid.',
+        action: 'continue_monitoring',
+        reasonNote: 'A control\ncharacter is invalid.',
       },
     ];
 
@@ -606,27 +632,22 @@ describe('suspect-player review API', () => {
     expect(decide).not.toHaveBeenCalled();
   });
 
-  it('accepts exactly 100 combined evidence references in the request contract', async () => {
-    const evidenceIds = Array.from({ length: 50 }, () => randomUUID());
-    const falsePositiveEvidenceIds = Array.from({ length: 50 }, () =>
-      randomUUID(),
-    );
+  it('accepts exactly 100 evidence references in the request contract', async () => {
+    const evidenceIds = Array.from({ length: 100 }, () => randomUUID());
     const response = await app.inject({
       method: 'POST',
       url: `/api/v1/author/trust-cases/${caseId}/decisions`,
       headers: { authorization: 'Bearer test-token' },
       payload: {
         expectedVersion: 1,
-        action: 'monitor',
-        reasonCode: 'evidence_review',
-        note: 'Review exactly one hundred distinct evidence summaries.',
+        action: 'continue_monitoring',
+        reasonNote: 'Review exactly one hundred distinct evidence summaries.',
         evidenceIds,
-        falsePositiveEvidenceIds,
       },
     });
     expect(response.statusCode).toBe(200);
     expect(decide).toHaveBeenCalledWith(
-      expect.objectContaining({ evidenceIds, falsePositiveEvidenceIds }),
+      expect.objectContaining({ evidenceIds }),
     );
   });
 
@@ -697,7 +718,7 @@ describe('suspect-player review API', () => {
     );
     expect(statusParameter).toMatchObject({
       schema: {
-        enum: ['active', 'open', 'under_review', 'resolved'],
+        enum: ['all', 'active', 'open', 'under_review', 'resolved'],
         default: 'active',
       },
     });
@@ -705,7 +726,7 @@ describe('suspect-player review API', () => {
       (parameter) => parameter.name === 'search',
     );
     expect(searchParameter).toMatchObject({
-      schema: { minLength: 1, maxLength: 64 },
+      schema: { minLength: 1, maxLength: 256 },
     });
     expect(casePath?.get?.parameters).toEqual(
       expect.arrayContaining([
@@ -766,6 +787,28 @@ describe('suspect-player review API', () => {
     const variants =
       requestBody?.content?.['application/json']?.schema?.oneOf ?? [];
     expect(variants).toHaveLength(4);
+    expect(
+      variants.flatMap((variant) => variant.properties?.action?.enum ?? []),
+    ).toEqual([
+      'continue_monitoring',
+      'dismiss',
+      'mark_false_positive',
+      'restrict',
+    ]);
+    for (const variant of variants) {
+      expect(variant.required).toContain('reasonNote');
+      expect(variant.properties).not.toHaveProperty('reasonCode');
+      expect(variant.properties).not.toHaveProperty('note');
+      expect(variant.properties).not.toHaveProperty('falsePositiveEvidenceIds');
+    }
+    const falsePositive = variants.find((variant) =>
+      variant.properties?.action?.enum?.includes('mark_false_positive'),
+    );
+    expect(falsePositive?.required).toContain('evidenceIds');
+    expect(falsePositive?.properties?.evidenceIds).toMatchObject({
+      minItems: 1,
+      maxItems: 100,
+    });
     const restrict = variants.find((variant) =>
       variant.properties?.action?.enum?.includes('restrict'),
     );
@@ -791,7 +834,7 @@ describe('suspect-player review API', () => {
     }
     expect(restrict?.properties?.evidenceIds).toMatchObject({ maxItems: 100 });
     expect(restrict?.properties?.evidenceIds?.description).toContain(
-      'at most 100 distinct',
+      'mark_false_positive',
     );
 
     const historyDocument = JSON.stringify(history?.responses?.['200']);
@@ -837,9 +880,8 @@ function reviewOperations() {
       url: `/api/v1/author/trust-cases/${caseId}/decisions`,
       payload: {
         expectedVersion: 1,
-        action: 'monitor',
-        reasonCode: 'needs_review',
-        note: 'Review the derived movement signal.',
+        action: 'continue_monitoring',
+        reasonNote: 'Review the derived movement signal.',
       },
     },
   ];

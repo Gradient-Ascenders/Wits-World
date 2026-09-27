@@ -17,7 +17,10 @@ import {
   createTrustRestrictionService,
   TrustActivityRestrictedError,
 } from '../src/trust/trust-restrictions.js';
-import { createTrustService } from '../src/trust/trust-service.js';
+import {
+  createTrustService,
+  type TrustSignalInput,
+} from '../src/trust/trust-service.js';
 
 const POLICY_VERSION = 'trust-v1';
 const runIntegrationTests =
@@ -60,6 +63,51 @@ describe.skipIf(!runIntegrationTests)(
         );
       });
     }, 30_000);
+
+    it('rejects opponent signals without matching reviewer-safe summaries', async () => {
+      const service = createTrustService(pool);
+      const base = {
+        playerId: randomUUID(),
+        severity: 'pattern',
+        basePoints: 20,
+        observedAt: new Date('2026-09-20T10:00:00.000Z'),
+        sourceType: 'pvp_pattern',
+        sourceIdentifier: randomUUID(),
+        deduplicationKey: randomUUID(),
+      };
+      await expect(
+        service.recordSignalWithinTransaction(pool, {
+          ...base,
+          signalType: 'opponent_concentration',
+        } as unknown as TrustSignalInput),
+      ).rejects.toThrow(/require a reviewer-safe summary/u);
+      await expect(
+        service.recordSignalWithinTransaction(pool, {
+          ...base,
+          signalType: 'opponent_concentration',
+          reviewSummary: {
+            kind: 'one_sided_outcome_pattern',
+            evaluationWindowStart: '2026-08-20T10:00:00.000Z',
+            evaluationWindowEnd: '2026-09-20T10:00:00.000Z',
+            qualifyingForfeitCount: 4,
+            minimumQualifyingForfeitCount: 4,
+          },
+        } as unknown as TrustSignalInput),
+      ).rejects.toThrow(/must match/u);
+      await expect(
+        service.recordSignalWithinTransaction(pool, {
+          ...base,
+          signalType: 'impossible_movement',
+          reviewSummary: {
+            kind: 'one_sided_outcome_pattern',
+            evaluationWindowStart: '2026-08-20T10:00:00.000Z',
+            evaluationWindowEnd: '2026-09-20T10:00:00.000Z',
+            qualifyingForfeitCount: 4,
+            minimumQualifyingForfeitCount: 4,
+          },
+        } as unknown as TrustSignalInput),
+      ).rejects.toThrow(/Only opponent-pattern/u);
+    });
 
     it('applies the forward-only trust governance hardening from migration 0048', async () => {
       const column = await pool.query<{ is_nullable: string }>(
@@ -221,6 +269,18 @@ describe.skipIf(!runIntegrationTests)(
         sourceType: 'pvp_pattern',
         sourceIdentifier: 'opponent-pattern-1',
         deduplicationKey: 'opponent-pattern-1',
+        reviewSummary: {
+          kind: 'opponent_concentration',
+          evaluationWindowStart: new Date(
+            observedAt.getTime() - 30 * 24 * 60 * 60 * 1000,
+          ).toISOString(),
+          evaluationWindowEnd: observedAt.toISOString(),
+          completedMatchCount: 8,
+          repeatedOpponentMatchCount: 7,
+          opponentConcentrationRatio: 0.875,
+          minimumCompletedMatchCount: 6,
+          minimumOpponentConcentrationRatio: 0.8,
+        },
       });
       await service.recordSignal({
         playerId: player.id,
@@ -231,6 +291,15 @@ describe.skipIf(!runIntegrationTests)(
         sourceType: 'pvp_pattern',
         sourceIdentifier: 'one-sided-pattern-1',
         deduplicationKey: 'one-sided-pattern-1',
+        reviewSummary: {
+          kind: 'one_sided_outcome_pattern',
+          evaluationWindowStart: new Date(
+            observedAt.getTime() - 30 * 24 * 60 * 60 * 1000,
+          ).toISOString(),
+          evaluationWindowEnd: observedAt.toISOString(),
+          qualifyingForfeitCount: 4,
+          minimumQualifyingForfeitCount: 4,
+        },
       });
 
       const signals = await pool.query<{ signal_type: string; count: number }>(

@@ -14,14 +14,14 @@ export const TRUST_REVIEW_MAX_PAGE_SIZE = 100;
 export const TRUST_REVIEW_DEFAULT_PAGE_SIZE = 20;
 export const TRUST_REVIEW_MAX_NOTE_LENGTH = 1000;
 export const TRUST_REVIEW_MAX_RESTRICTION_HOURS = 7 * 24;
-export const TRUST_REVIEW_MAX_SEARCH_LENGTH = 64;
+export const TRUST_REVIEW_MAX_SEARCH_LENGTH = 256;
 export const TRUST_REVIEW_DETAIL_PREVIEW_SIZE = 10;
 export const TRUST_REVIEW_EXPORT_PAGE_SIZE = 100;
 
 export type TrustCaseStatus = 'open' | 'under_review' | 'resolved';
-export type TrustCaseQueueStatus = 'active' | TrustCaseStatus;
+export type TrustCaseQueueStatus = 'all' | 'active' | TrustCaseStatus;
 export type TrustDecisionAction =
-  'monitor' | 'dismiss' | 'restrict' | 'resolve';
+  'continue_monitoring' | 'dismiss' | 'mark_false_positive' | 'restrict';
 export type WritableTrustRestrictionScope = Exclude<
   TrustRestrictionScope,
   'card_trade_hold'
@@ -63,11 +63,14 @@ export interface TrustCaseQueueItem {
   playerName: string;
   status: TrustCaseStatus;
   version: number;
-  currentScore: number;
-  currentBand: TrustReviewBand;
+  score: number;
+  band: TrustReviewBand;
   policyVersion: string;
   signalTypes: TrustSignalType[];
+  restrictionCount: number;
+  activeRestrictionCount: number;
   activeRestrictionScopes: TrustRestrictionScope[];
+  canReview: boolean;
   openedAt: string;
   updatedAt: string;
 }
@@ -82,7 +85,14 @@ export interface TrustCaseEvidenceSummary {
   decayState: 'active' | 'expired' | 'reviewed_false_positive';
   safeSourceType: string;
   reviewedFalsePositive: boolean;
-  opponentPattern: TrustSignalReviewSummary | null;
+  opponentPattern:
+    | ({ availability: 'available' } & TrustSignalReviewSummary)
+    | {
+        availability: 'unavailable';
+        reason: 'legacy_summary_not_retained';
+        remediation: 'await_fresh_detector_evaluation';
+      }
+    | null;
 }
 
 export interface TrustRestrictionSummary {
@@ -125,9 +135,12 @@ export interface TrustCaseDetail {
   playerName: string;
   status: TrustCaseStatus;
   version: number;
-  currentScore: number;
-  currentBand: TrustReviewBand;
+  score: number;
+  band: TrustReviewBand;
   policyVersion: string;
+  restrictionCount: number;
+  activeRestrictionCount: number;
+  canReview: boolean;
   categoryTotals: {
     movement: number;
     submissionConflicts: number;
@@ -153,10 +166,8 @@ export interface TrustDecisionInput {
   caseId: string;
   expectedVersion: number;
   action: TrustDecisionAction;
-  reasonCode: string;
-  note: string;
+  reasonNote: string;
   evidenceIds: string[];
-  falsePositiveEvidenceIds: string[];
   restrictionScopes: WritableTrustRestrictionScope[];
   restrictionDurationHours?: number;
 }
@@ -246,7 +257,10 @@ interface QueueRow extends pg.QueryResultRow {
   current_band: TrustReviewBand;
   policy_version: string;
   signal_types: TrustSignalType[] | null;
+  restriction_count: number;
+  active_restriction_count: number;
   active_restriction_scopes: TrustRestrictionScope[] | null;
+  can_review: boolean;
   opened_at: Date;
   updated_at: Date;
 }
@@ -264,6 +278,9 @@ interface DetailRow extends pg.QueryResultRow {
   submission_conflict_points: number;
   opponent_pattern_points: number;
   source_signal_count: number;
+  restriction_count: number;
+  active_restriction_count: number;
+  can_review: boolean;
   opened_at: Date;
   updated_at: Date;
   resolved_at: Date | null;
@@ -325,6 +342,7 @@ interface DecisionCaseRow extends pg.QueryResultRow {
   status: TrustCaseStatus;
   version: number;
   latest_score_snapshot_id: string;
+  can_review: boolean;
 }
 
 interface ReviewScoreSignalRow extends pg.QueryResultRow {
@@ -346,7 +364,6 @@ interface SnapshotProjectionRow extends pg.QueryResultRow {
 }
 
 const HISTORY_DETAIL_LIMIT = 20;
-const reasonCodePattern = /^[a-z][a-z0-9_]{0,63}$/u;
 const writableRestrictionScopes = new Set<WritableTrustRestrictionScope>([
   'online_verification_required',
   'location_reward_challenge_hold',
@@ -359,14 +376,15 @@ const reviewerTransitions: Readonly<
   >
 > = {
   open: {
-    monitor: 'under_review',
+    continue_monitoring: 'under_review',
+    mark_false_positive: 'under_review',
     restrict: 'under_review',
   },
   under_review: {
-    monitor: 'under_review',
+    continue_monitoring: 'under_review',
+    mark_false_positive: 'under_review',
     restrict: 'under_review',
     dismiss: 'resolved',
-    resolve: 'resolved',
   },
   resolved: {},
 };
@@ -377,6 +395,27 @@ const effectiveRestrictionExpirySql = `coalesce(
   end,
   restriction.original_expires_at
 )`;
+const activeRestrictionPredicateSql = `${effectiveRestrictionExpirySql} > clock_timestamp()`;
+const caseCanReviewSql = `trust_case.status <> 'resolved'
+  and not exists (
+    select 1
+      from private.trust_case_evidence legacy_evidence
+     where legacy_evidence.case_id = trust_case.id
+       and legacy_evidence.signal_type in (
+         'opponent_concentration',
+         'one_sided_outcome_pattern'
+       )
+       and legacy_evidence.safe_review_summary is null
+       and not exists (
+         select 1
+           from private.trust_case_evidence fresh_evidence
+          where fresh_evidence.case_id = legacy_evidence.case_id
+            and fresh_evidence.signal_type = legacy_evidence.signal_type
+            and fresh_evidence.safe_review_summary is not null
+            and (fresh_evidence.observed_at, fresh_evidence.id) >
+                (legacy_evidence.observed_at, legacy_evidence.id)
+       )
+  )`;
 
 export function createTrustReviewService(
   database: TrustReviewDatabase,
@@ -411,6 +450,19 @@ export function createTrustReviewService(
                       from private.trust_case_evidence evidence
                      where evidence.case_id = trust_case.id
                   ), array[]::text[]) as signal_types,
+                  (select count(*)::integer
+                     from private.trust_restrictions restriction
+                    where restriction.case_id = trust_case.id
+                  ) as restriction_count,
+                  (select count(*)::integer
+                     from private.trust_restrictions restriction
+                     left join private.trust_appeals appeal
+                       on appeal.challenged_decision_id = restriction.decision_id
+                     left join private.trust_appeal_resolutions resolution
+                       on resolution.appeal_id = appeal.id
+                    where restriction.case_id = trust_case.id
+                      and ${activeRestrictionPredicateSql}
+                  ) as active_restriction_count,
                   coalesce((
                     select array_agg(distinct restriction.scope order by restriction.scope)
                       from private.trust_restrictions restriction
@@ -419,8 +471,9 @@ export function createTrustReviewService(
                       left join private.trust_appeal_resolutions resolution
                         on resolution.appeal_id = appeal.id
                      where restriction.case_id = trust_case.id
-                       and ${effectiveRestrictionExpirySql} > clock_timestamp()
+                       and ${activeRestrictionPredicateSql}
                   ), array[]::text[]) as active_restriction_scopes,
+                  (${caseCanReviewSql}) as can_review,
                   trust_case.opened_at,
                   trust_case.updated_at
              from private.trust_cases trust_case
@@ -542,8 +595,9 @@ export function createTrustReviewService(
                   policy_version,
                   status,
                   version,
-                  latest_score_snapshot_id::text
-             from private.trust_cases
+                  latest_score_snapshot_id::text,
+                  (${caseCanReviewSql}) as can_review
+             from private.trust_cases trust_case
             where id = $1::uuid
               and player_id <> $2::uuid
             for update`,
@@ -554,12 +608,17 @@ export function createTrustReviewService(
         if (current.version !== input.expectedVersion) {
           throw new StaleTrustCaseVersionError();
         }
+        if (!current.can_review) {
+          throw new InvalidTrustDecisionError(
+            'This trust case cannot be reviewed until fresh explainable opponent-pattern evidence is available.',
+          );
+        }
         const resultingStatus = reviewerResultingStatus(
           current.status,
           input.action,
         );
         if (
-          input.falsePositiveEvidenceIds.length > 0 &&
+          input.action === 'mark_false_positive' &&
           current.policy_version !== 'trust-v1'
         ) {
           throw new InvalidTrustDecisionError(
@@ -567,10 +626,7 @@ export function createTrustReviewService(
           );
         }
 
-        const selectedEvidenceIds = unique([
-          ...input.evidenceIds,
-          ...input.falsePositiveEvidenceIds,
-        ]);
+        const selectedEvidenceIds = input.evidenceIds;
         const evidence = await loadSelectedEvidence(
           client,
           input.caseId,
@@ -581,8 +637,22 @@ export function createTrustReviewService(
             'One or more selected evidence summaries do not belong to this case.',
           );
         }
+        if (
+          evidence.some(
+            (item) =>
+              (item.signal_type === 'opponent_concentration' ||
+                item.signal_type === 'one_sided_outcome_pattern') &&
+              item.safe_review_summary === null,
+          )
+        ) {
+          throw new InvalidTrustDecisionError(
+            'A selected opponent-pattern evidence summary is unavailable.',
+          );
+        }
 
-        const falsePositiveIds = new Set(input.falsePositiveEvidenceIds);
+        const falsePositiveIds = new Set(
+          input.action === 'mark_false_positive' ? input.evidenceIds : [],
+        );
         const falsePositiveEvidence = evidence.filter((item) =>
           falsePositiveIds.has(item.evidence_id),
         );
@@ -606,10 +676,7 @@ export function createTrustReviewService(
           input.caseId,
           decidedAt,
         );
-        if (
-          (input.action === 'dismiss' || input.action === 'resolve') &&
-          hasActiveRestriction
-        ) {
+        if (input.action === 'dismiss' && hasActiveRestriction) {
           throw new InvalidTrustDecisionError(
             'A case with an active restriction cannot be resolved.',
           );
@@ -627,11 +694,7 @@ export function createTrustReviewService(
           createId,
         });
         const resolutionReason =
-          input.action === 'dismiss'
-            ? 'dismissed'
-            : input.action === 'resolve'
-              ? 'review_complete'
-              : null;
+          input.action === 'dismiss' ? 'dismissed' : null;
         const governanceFinalized =
           resultingStatus === 'resolved' &&
           (await caseHasNoRestrictionHistory(client, input.caseId));
@@ -687,8 +750,8 @@ export function createTrustReviewService(
             decisionType(input.action),
             current.status,
             resultingStatus,
-            input.reasonCode,
-            input.note,
+            reasonCodeForAction(input.action),
+            input.reasonNote,
             resultingSnapshot.snapshotId,
             decidedAt,
           ],
@@ -849,11 +912,19 @@ function buildQueueWhere(filters: TrustCaseQueueFilters): {
   };
   if (filters.status === 'active') {
     clauses.push("trust_case.status in ('open', 'under_review')");
-  } else {
+  } else if (filters.status !== 'all') {
     add('trust_case.status = ?', filters.status);
   }
   if (filters.search) {
-    add('strpos(lower(player.player_name), lower(?)) > 0', filters.search);
+    const searchParameter = `$${values.length + 1}`;
+    values.push(filters.search);
+    clauses.push(
+      isUuid(filters.search)
+        ? `(strpos(lower(player.player_name), lower(${searchParameter})) > 0
+            or trust_case.id = ${searchParameter}::uuid
+            or trust_case.player_id = ${searchParameter}::uuid)`
+        : `strpos(lower(player.player_name), lower(${searchParameter})) > 0`,
+    );
   }
   if (filters.band) add('trust_case.current_band = ?', filters.band);
   if (filters.createdFrom)
@@ -907,6 +978,20 @@ async function loadDetail(
             snapshot.submission_conflict_points,
             snapshot.opponent_pattern_points,
             snapshot.source_signal_count,
+            (select count(*)::integer
+               from private.trust_restrictions restriction
+              where restriction.case_id = trust_case.id
+            ) as restriction_count,
+            (select count(*)::integer
+               from private.trust_restrictions restriction
+               left join private.trust_appeals appeal
+                 on appeal.challenged_decision_id = restriction.decision_id
+               left join private.trust_appeal_resolutions resolution
+                 on resolution.appeal_id = appeal.id
+              where restriction.case_id = trust_case.id
+                and ${activeRestrictionPredicateSql}
+            ) as active_restriction_count,
+            (${caseCanReviewSql}) as can_review,
             trust_case.opened_at,
             trust_case.updated_at,
             trust_case.resolved_at,
@@ -948,9 +1033,12 @@ async function loadDetail(
     playerName: safePlayerName(row.player_name),
     status: row.status,
     version: row.version,
-    currentScore: row.current_score,
-    currentBand: row.current_band,
+    score: row.current_score,
+    band: row.current_band,
     policyVersion: row.policy_version,
+    restrictionCount: row.restriction_count,
+    activeRestrictionCount: row.active_restriction_count,
+    canReview: row.can_review,
     categoryTotals: {
       movement: row.movement_points,
       submissionConflicts: row.submission_conflict_points,
@@ -1346,44 +1434,30 @@ function validateDecision(input: TrustDecisionInput): void {
       'The expected case version must be a positive integer.',
     );
   }
-  if (!reasonCodePattern.test(input.reasonCode)) {
-    throw new InvalidTrustDecisionError('The reason code is invalid.');
-  }
   if (
-    input.note !== input.note.trim() ||
-    input.note.length < 1 ||
-    input.note.length > TRUST_REVIEW_MAX_NOTE_LENGTH ||
-    /\p{Cc}/u.test(input.note)
+    input.reasonNote !== input.reasonNote.trim() ||
+    input.reasonNote.length < 1 ||
+    input.reasonNote.length > TRUST_REVIEW_MAX_NOTE_LENGTH ||
+    /\p{Cc}/u.test(input.reasonNote)
   ) {
     throw new InvalidTrustDecisionError(
-      'The reviewer note must be trimmed, non-empty, and at most 1000 characters.',
+      'The reviewer reason must be trimmed, non-empty, and at most 1000 characters.',
     );
   }
-  if (
-    input.evidenceIds.length > 100 ||
-    input.falsePositiveEvidenceIds.length > 100
-  ) {
+  if (input.evidenceIds.length > 100) {
     throw new InvalidTrustDecisionError(
       'A decision may reference at most 100 evidence summaries.',
-    );
-  }
-  if (
-    unique([...input.evidenceIds, ...input.falsePositiveEvidenceIds]).length >
-    100
-  ) {
-    throw new InvalidTrustDecisionError(
-      'A decision may reference at most 100 distinct evidence summaries in total.',
     );
   }
   if (unique(input.evidenceIds).length !== input.evidenceIds.length) {
     throw new InvalidTrustDecisionError('Evidence identifiers must be unique.');
   }
   if (
-    unique(input.falsePositiveEvidenceIds).length !==
-    input.falsePositiveEvidenceIds.length
+    input.action === 'mark_false_positive' &&
+    input.evidenceIds.length === 0
   ) {
     throw new InvalidTrustDecisionError(
-      'False-positive evidence identifiers must be unique.',
+      'A false-positive decision requires at least one evidence summary.',
     );
   }
   if (
@@ -1456,11 +1530,14 @@ function mapQueueRow(row: QueueRow): TrustCaseQueueItem {
     playerName: safePlayerName(row.player_name),
     status: row.status,
     version: row.version,
-    currentScore: row.current_score,
-    currentBand: row.current_band,
+    score: row.current_score,
+    band: row.current_band,
     policyVersion: row.policy_version,
     signalTypes: row.signal_types ?? [],
+    restrictionCount: row.restriction_count,
+    activeRestrictionCount: row.active_restriction_count,
     activeRestrictionScopes: row.active_restriction_scopes ?? [],
+    canReview: row.can_review,
     openedAt: row.opened_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
@@ -1504,8 +1581,18 @@ function mapRestrictionRow(row: RestrictionRow): TrustRestrictionSummary {
 function safeOpponentPatternSummary(
   value: unknown,
   signalType: TrustSignalType,
-): TrustSignalReviewSummary | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+): TrustCaseEvidenceSummary['opponentPattern'] {
+  const isOpponentPattern =
+    signalType === 'opponent_concentration' ||
+    signalType === 'one_sided_outcome_pattern';
+  if (!isOpponentPattern) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {
+      availability: 'unavailable',
+      reason: 'legacy_summary_not_retained',
+      remediation: 'await_fresh_detector_evaluation',
+    };
+  }
   const summary = value as Record<string, unknown>;
   if (
     signalType === 'opponent_concentration' &&
@@ -1521,6 +1608,7 @@ function safeOpponentPatternSummary(
     summary.minimumOpponentConcentrationRatio === 0.8
   ) {
     return {
+      availability: 'available',
       kind: 'opponent_concentration',
       evaluationWindowStart: summary.evaluationWindowStart,
       evaluationWindowEnd: summary.evaluationWindowEnd,
@@ -1540,6 +1628,7 @@ function safeOpponentPatternSummary(
     summary.minimumQualifyingForfeitCount === 4
   ) {
     return {
+      availability: 'available',
       kind: 'one_sided_outcome_pattern',
       evaluationWindowStart: summary.evaluationWindowStart,
       evaluationWindowEnd: summary.evaluationWindowEnd,
@@ -1547,7 +1636,11 @@ function safeOpponentPatternSummary(
       minimumQualifyingForfeitCount: 4,
     };
   }
-  return null;
+  return {
+    availability: 'unavailable',
+    reason: 'legacy_summary_not_retained',
+    remediation: 'await_fresh_detector_evaluation',
+  };
 }
 
 function isDateTime(value: unknown): value is string {
@@ -1604,15 +1697,34 @@ function safePlayerName(value: string | null): string {
 
 function decisionType(action: TrustDecisionAction): string {
   switch (action) {
-    case 'monitor':
+    case 'continue_monitoring':
       return 'monitoring_continued';
     case 'dismiss':
       return 'case_dismissed';
+    case 'mark_false_positive':
+      return 'evidence_marked_false_positive';
     case 'restrict':
       return 'restriction_applied';
-    case 'resolve':
-      return 'case_resolved';
   }
+}
+
+function reasonCodeForAction(action: TrustDecisionAction): string {
+  switch (action) {
+    case 'continue_monitoring':
+      return 'review_continue_monitoring';
+    case 'dismiss':
+      return 'review_dismissed';
+    case 'mark_false_positive':
+      return 'review_false_positive';
+    case 'restrict':
+      return 'review_restriction_applied';
+  }
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(
+    value,
+  );
 }
 
 function unique<T>(values: readonly T[]): T[] {

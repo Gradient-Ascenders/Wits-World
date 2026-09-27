@@ -22,36 +22,58 @@ export interface TrustDatabase {
   connect(): Promise<TrustQueryable & { release(): void }>;
 }
 
-export interface TrustSignalInput {
+interface TrustSignalInputBase {
   playerId: string;
-  signalType: TrustSignalType;
   severity: string;
   basePoints: number;
   observedAt: Date;
   sourceType: string;
   sourceIdentifier: string;
   deduplicationKey: string;
-  reviewSummary?: TrustSignalReviewSummary;
 }
 
+export type OpponentConcentrationReviewSummary = {
+  kind: 'opponent_concentration';
+  evaluationWindowStart: string;
+  evaluationWindowEnd: string;
+  completedMatchCount: number;
+  repeatedOpponentMatchCount: number;
+  opponentConcentrationRatio: number;
+  minimumCompletedMatchCount: 6;
+  minimumOpponentConcentrationRatio: 0.8;
+};
+
+export type OneSidedOutcomeReviewSummary = {
+  kind: 'one_sided_outcome_pattern';
+  evaluationWindowStart: string;
+  evaluationWindowEnd: string;
+  qualifyingForfeitCount: number;
+  minimumQualifyingForfeitCount: 4;
+};
+
 export type TrustSignalReviewSummary =
-  | {
-      kind: 'opponent_concentration';
-      evaluationWindowStart: string;
-      evaluationWindowEnd: string;
-      completedMatchCount: number;
-      repeatedOpponentMatchCount: number;
-      opponentConcentrationRatio: number;
-      minimumCompletedMatchCount: 6;
-      minimumOpponentConcentrationRatio: 0.8;
-    }
-  | {
-      kind: 'one_sided_outcome_pattern';
-      evaluationWindowStart: string;
-      evaluationWindowEnd: string;
-      qualifyingForfeitCount: number;
-      minimumQualifyingForfeitCount: 4;
-    };
+  OpponentConcentrationReviewSummary | OneSidedOutcomeReviewSummary;
+
+type NonOpponentPatternSignalType = Exclude<
+  TrustSignalType,
+  'opponent_concentration' | 'one_sided_outcome_pattern'
+>;
+
+export type TrustSignalInput = TrustSignalInputBase &
+  (
+    | {
+        signalType: 'opponent_concentration';
+        reviewSummary: OpponentConcentrationReviewSummary;
+      }
+    | {
+        signalType: 'one_sided_outcome_pattern';
+        reviewSummary: OneSidedOutcomeReviewSummary;
+      }
+    | {
+        signalType: NonOpponentPatternSignalType;
+        reviewSummary?: never;
+      }
+  );
 
 export interface TrustEvaluationResult {
   snapshotId: string;
@@ -1106,16 +1128,32 @@ function validateSignalInput(input: TrustSignalInput): void {
   if (!Number.isInteger(input.basePoints) || input.basePoints <= 0) {
     throw new RangeError('Trust signal points must be a positive integer.');
   }
-  if (
-    input.reviewSummary !== undefined &&
-    input.reviewSummary.kind !== input.signalType
-  ) {
+  const reviewSummary = (
+    input as TrustSignalInputBase & {
+      signalType: TrustSignalType;
+      reviewSummary?: TrustSignalReviewSummary;
+    }
+  ).reviewSummary;
+  const isOpponentPattern =
+    input.signalType === 'opponent_concentration' ||
+    input.signalType === 'one_sided_outcome_pattern';
+  if (isOpponentPattern && reviewSummary === undefined) {
+    throw new RangeError(
+      'Opponent-pattern trust signals require a reviewer-safe summary.',
+    );
+  }
+  if (!isOpponentPattern && reviewSummary !== undefined) {
+    throw new RangeError(
+      'Only opponent-pattern trust signals may include a review summary.',
+    );
+  }
+  if (reviewSummary !== undefined && reviewSummary.kind !== input.signalType) {
     throw new RangeError(
       'Trust signal review summary must match its opponent-pattern signal type.',
     );
   }
-  if (input.reviewSummary !== undefined) {
-    validateSignalReviewSummary(input.reviewSummary);
+  if (reviewSummary !== undefined) {
+    validateSignalReviewSummary(reviewSummary);
   }
 }
 
