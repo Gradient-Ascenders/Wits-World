@@ -110,8 +110,7 @@ export interface TrustRestrictionSummary {
   appealStatus: 'eligible' | 'submitted' | 'resolved' | 'expired';
 }
 
-export interface TrustDecisionHistoryRestriction
-  extends TrustRestrictionSummary {
+export interface TrustDecisionHistoryRestriction extends TrustRestrictionSummary {
   expiresAt: string;
 }
 
