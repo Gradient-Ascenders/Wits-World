@@ -209,6 +209,9 @@ jobs:
       - name: Run isolated Basic E2E verification
         run: time npm run verify:automated -- --profile pr-e2e
 
+      - name: Run Explore and Account experience regressions
+        run: time npm run test:e2e:experience-regressions
+
       - name: Upload sanitized E2E verification summary
         if: ${{ always() }}
         # Never upload raw reports, traces, screenshots, logs, or auth state.

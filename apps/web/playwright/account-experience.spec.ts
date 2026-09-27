@@ -255,11 +255,42 @@ test('keeps collection and battle content readable with large high-contrast UI',
     await page.goto(`/matches/${MATCH_ID}`);
     await expect(page.locator('.battle-page')).toBeVisible();
     await expectNoHorizontalOverflow(page);
+    const combatantBounds = await page
+      .locator('.combatant')
+      .evaluateAll((combatants) =>
+        combatants.map((combatant) => {
+          const bounds = combatant.getBoundingClientRect();
+          return {
+            bottom: bounds.bottom,
+            left: bounds.left,
+            right: bounds.right,
+            top: bounds.top,
+          };
+        }),
+      );
+    expect(combatantBounds).toHaveLength(2);
+    const [firstCombatant, secondCombatant] = combatantBounds;
+    const overlapWidth = Math.max(
+      0,
+      Math.min(firstCombatant!.right, secondCombatant!.right) -
+        Math.max(firstCombatant!.left, secondCombatant!.left),
+    );
+    const overlapHeight = Math.max(
+      0,
+      Math.min(firstCombatant!.bottom, secondCombatant!.bottom) -
+        Math.max(firstCombatant!.top, secondCombatant!.top),
+    );
+    expect(overlapWidth * overlapHeight).toBe(0);
     for (const value of await page.locator('.combatant__power strong').all()) {
       const fits = await value.evaluate((node) => {
         const parent = node.closest('.combatant__hud')!.getBoundingClientRect();
         const text = node.getBoundingClientRect();
-        return text.right <= parent.right + 1;
+        return (
+          text.top >= parent.top - 1 &&
+          text.right <= parent.right + 1 &&
+          text.bottom <= parent.bottom + 1 &&
+          text.left >= parent.left - 1
+        );
       });
       expect(fits).toBe(true);
     }
@@ -300,6 +331,20 @@ async function mockAccountApi(
     if (url.pathname.endsWith('/events')) {
       await route.fulfill({
         json: { events: [], requestId: 'browser-offline-discovery' },
+      });
+      return;
+    }
+
+    if (
+      route.request().method() === 'GET' &&
+      url.pathname.endsWith('/developer/keys')
+    ) {
+      await route.fulfill({
+        json: {
+          activeKeyLimit: 3,
+          keys: [],
+          requestId: 'browser-developer-api-keys',
+        },
       });
       return;
     }
