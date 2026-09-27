@@ -1,9 +1,10 @@
-import { Cards, ArrowsLeftRight, Sparkle } from '@phosphor-icons/react';
+import { Cards, ArrowsLeftRight, Sparkle, Stack } from '@phosphor-icons/react';
 import { Link, useLocation } from 'wouter';
 import './collection-navigation.css';
 
 const sections = [
   { href: '/collection', icon: Cards, label: 'Cards' },
+  { href: '/collection/decks', icon: Stack, label: 'Decks' },
   { href: '/collection/evolutions', icon: Sparkle, label: 'Evolutions' },
   { href: '/collection/trades', icon: ArrowsLeftRight, label: 'Trades' },
 ] as const;

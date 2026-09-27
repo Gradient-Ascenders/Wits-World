@@ -350,7 +350,7 @@ function StartMatchPanel({
             >
               {isStarting ? 'Preparing battle…' : 'Start CPU battle'}
             </button>
-            <Link className="button button--quiet" href="/decks">
+            <Link className="button button--quiet" href="/collection/decks">
               Review selected deck
             </Link>
           </div>
@@ -362,7 +362,7 @@ function StartMatchPanel({
             <span>Choose a saved deck before starting.</span>
           </div>
           <div className="battle-mode-card__actions">
-            <Link className="button" href="/decks">
+            <Link className="button" href="/collection/decks">
               Choose deck
             </Link>
           </div>

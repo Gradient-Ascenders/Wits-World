@@ -996,7 +996,7 @@ export default function LiveLobbyPage({
                   </details>
                 </>
               ) : rankedEntryAvailable && queue.status !== 'restricted' ? (
-                <Link className="button" href="/decks">
+                <Link className="button" href="/collection/decks">
                   {queue.status === 'invalid_deck'
                     ? 'Review battle deck'
                     : 'Select a battle deck'}

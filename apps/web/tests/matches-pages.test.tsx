@@ -327,7 +327,7 @@ describe('CPU match entry and history', () => {
     expect(screen.getByText('No deck selected')).toBeVisible();
     expect(screen.getByRole('link', { name: 'Choose deck' })).toHaveAttribute(
       'href',
-      '/decks',
+      '/collection/decks',
     );
   });
 
@@ -398,7 +398,7 @@ describe('CPU match entry and history', () => {
     ).toBeVisible();
     expect(
       screen.getByRole('link', { name: 'Review saved decks' }),
-    ).toHaveAttribute('href', '/decks');
+    ).toHaveAttribute('href', '/collection/decks');
   });
 
   it('renders populated private history with completed detail links', async () => {

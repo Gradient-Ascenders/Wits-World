@@ -35,6 +35,7 @@ import {
 } from '../api/decks';
 import { MatchApiError } from '../api/matches';
 import { useApiAccessToken } from '../auth/useApiAccessToken';
+import { CollectionSectionNavigation } from '../components/cards/CollectionSectionNavigation';
 import { CardArtwork } from '../components/cards/CollectibleCard';
 import '../components/cards/cards.css';
 import './decks.css';
@@ -169,7 +170,7 @@ export default function DecksPage({
     setReauthFailed(false);
 
     try {
-      await loginWithRedirect({ appState: { returnTo: '/decks' } });
+      await loginWithRedirect({ appState: { returnTo: '/collection/decks' } });
     } catch {
       setReauthFailed(true);
     }
@@ -427,10 +428,13 @@ export default function DecksPage({
 
   if (state.status === 'loading') {
     return (
-      <PageLoadingState
-        title="Loading your decks and collection"
-        description="Loading your saved decks and cards…"
-      />
+      <div className="decks-page">
+        <CollectionSectionNavigation />
+        <PageLoadingState
+          title="Loading your decks and collection"
+          description="Loading your saved decks and cards…"
+        />
+      </div>
     );
   }
 
@@ -439,6 +443,7 @@ export default function DecksPage({
 
     return (
       <div className="decks-page">
+        <CollectionSectionNavigation />
         <PageHeader />
         <section
           className="deck-state state-message state-message--error"
@@ -491,6 +496,7 @@ export default function DecksPage({
 
   return (
     <div className={`decks-page${draft ? ' decks-page--editing' : ''}`}>
+      <CollectionSectionNavigation />
       <PageHeader />
 
       <RulesPanel />
