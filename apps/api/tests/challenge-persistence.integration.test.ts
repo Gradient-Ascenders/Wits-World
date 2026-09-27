@@ -141,6 +141,7 @@ describe.skipIf(!runIntegrationTests)(
           '0058_create_developer_api_access.sql',
           '0059_enable_event_editor_automatic_placement.sql',
           '0060_allow_unlocated_portable_events.sql',
+          '0061_persist_trust_review_evidence_summaries.sql',
         ],
         skipped: [],
       });
@@ -209,6 +210,7 @@ describe.skipIf(!runIntegrationTests)(
           '0058_create_developer_api_access.sql',
           '0059_enable_event_editor_automatic_placement.sql',
           '0060_allow_unlocated_portable_events.sql',
+          '0061_persist_trust_review_evidence_summaries.sql',
         ],
       });
     }, 30_000);
@@ -441,6 +443,7 @@ describe.skipIf(!runIntegrationTests)(
             '0058_create_developer_api_access.sql',
             '0059_enable_event_editor_automatic_placement.sql',
             '0060_allow_unlocated_portable_events.sql',
+            '0061_persist_trust_review_evidence_summaries.sql',
           ],
         });
 
