@@ -86,7 +86,7 @@ describe('Wits World public application shell', () => {
     expect(
       screen.queryByRole('link', { name: 'About' }),
     ).not.toBeInTheDocument();
-    for (const route of ['Explore', 'Collection', 'Decks', 'Battles']) {
+    for (const route of ['Explore', 'Collection', 'Battles', 'Leaderboard']) {
       expect(
         within(screen.getByRole('banner')).queryByRole('link', { name: route }),
       ).not.toBeInTheDocument();
@@ -115,7 +115,8 @@ describe('Wits World public application shell', () => {
   });
 
   it.each([
-    '/decks',
+    '/collection/decks',
+    '/leaderboard',
     '/matches',
     '/matches/history',
     '/matches/pvp',
