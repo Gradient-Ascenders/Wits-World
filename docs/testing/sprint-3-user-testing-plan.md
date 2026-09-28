@@ -206,6 +206,6 @@ unmatched questionnaire response alone.
 
 ## AI declaration
 
-This plan was drafted and reviewed with assistance from Codex using the
-`gpt-6-luna` model. It specifies procedures and contains no invented
+This plan was drafted with assistance from Codex-CLI[gpt-6-luna] and reviewed
+and edited with Codex-CLI[gpt-6-sol]. It specifies procedures and contains no invented
 participants, sessions, observations, or results.

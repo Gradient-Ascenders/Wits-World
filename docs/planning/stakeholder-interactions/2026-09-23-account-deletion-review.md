@@ -90,6 +90,6 @@ requires its own operational policy.
 
 ## AI declaration
 
-This review plan was generated and edited with assistance from Codex. The team
+This review plan was generated and edited with assistance from Codex-CLI[gpt-6-sol]. The team
 supplied the date and topic; implementation references and the focused re-review
 results were checked on 28 September 2026.

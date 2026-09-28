@@ -67,6 +67,7 @@ proposed features.
 
 ## AI declaration
 
-This coordination summary was drafted with Codex assistance from local Git and
+This coordination summary was drafted with Codex-CLI[gpt-6-luna] assistance
+and reviewed and edited with Codex-CLI[gpt-6-sol], using local Git and
 documentation. The referenced stakeholder records are planned interaction
 documents, not meeting minutes.

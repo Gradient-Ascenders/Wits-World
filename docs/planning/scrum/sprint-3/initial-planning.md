@@ -83,5 +83,6 @@ migration compatibility visible across layers.
 
 ## AI declaration
 
-This planning snapshot was drafted with assistance from Codex using local
-repository history and documentation. It does not represent a meeting record.
+This planning snapshot was drafted with assistance from Codex-CLI[gpt-6-luna]
+and reviewed and edited with Codex-CLI[gpt-6-sol], using local repository
+history and documentation. It does not represent a meeting record.

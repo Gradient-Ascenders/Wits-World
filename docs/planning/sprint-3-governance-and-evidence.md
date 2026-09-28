@@ -99,8 +99,9 @@ The [Sprint 3 Scrum set](scrum/index.md#sprint-3-record) mirrors Sprint 2:
 planning, four delivery checkpoints, refinement, review, and retrospective.
 The checkpoints summarize repository windows, and the review/retrospective
 capture release-readiness and process actions. Add actual meeting attendance,
-dates, approvals, and consented media when supplied; do not reuse Sprint 2
-photos as Sprint 3 evidence.
+dates and approvals when supplied. Five supplied Sprint 3 photos are retained
+with [numbered provenance](scrum/index.md#sprint-3-photo-provenance); their
+meeting mapping remains to be confirmed. Do not reuse Sprint 2 photos as Sprint 3 evidence.
 
 Keep raw survey exports, consent/provenance notes, personal information,
 credentials, auth state and exact location histories outside the public repo.
@@ -119,6 +120,6 @@ Publish sanitized aggregates, necessary explanations, links and outcomes.
 
 ## AI declaration
 
-This governance page was generated and edited with assistance from Codex using
+This governance page was generated and edited with assistance from Codex-CLI[gpt-6-sol] using
 team role guidance, existing methodology, repository evidence, and the Sprint 3
 feedback and stakeholder plans.

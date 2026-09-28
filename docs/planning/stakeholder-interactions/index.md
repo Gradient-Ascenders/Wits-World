@@ -24,6 +24,9 @@ feedback, team evaluation, decisions and follow-up evidence together.
 
 ## AI declaration
 
+Sprint 3 review-plan navigation was generated and edited with assistance from
+Codex-CLI[gpt-6-sol]. Earlier declarations remain below.
+
 Meeting index prepared with assistance from Codex-CLI[GPT-6] using the existing
 records and Kevin's identification of the Meeting 2 photo.
 

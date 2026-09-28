@@ -76,5 +76,6 @@ recommendations from artifact review; no team agreement is implied.
 
 ## AI declaration
 
-This retrospective recommendation was drafted with Codex assistance from local
+This retrospective recommendation was drafted with Codex-CLI[gpt-6-luna]
+assistance and reviewed and edited with Codex-CLI[gpt-6-sol], using local
 repository history and documentation. It is not a record of a team discussion.

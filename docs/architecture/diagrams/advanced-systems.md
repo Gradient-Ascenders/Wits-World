@@ -87,4 +87,4 @@ checks and outstanding deployment evidence.
 ## AI declaration
 
 This diagram and its explanations were generated and edited with assistance
-from Codex using the current contracts and persistence documents.
+from Codex-CLI[gpt-6-sol] using the current contracts and persistence documents.

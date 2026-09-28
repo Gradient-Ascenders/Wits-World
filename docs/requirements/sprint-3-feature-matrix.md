@@ -64,6 +64,6 @@ deployed edge case is bug-free or that participant validation is complete.
 
 ## AI declaration
 
-This matrix was generated and edited with assistance from Codex using the
+This matrix was generated and edited with assistance from Codex-CLI[gpt-6-sol] using the
 supplied Wits Quest brief, current contracts/source, and repository merge
 history. Implementation references and acceptance gaps are recorded separately.

@@ -73,6 +73,25 @@ provides the new response evidence. The separate
 retain their implementation references and follow-up actions. Sprint 1 and
 Sprint 2 photos are not reused as Sprint 3 evidence.
 
+## Sprint 3 photo provenance
+
+Uzair supplied five team-call screenshots in the Sprint 3 static image folder.
+They were renamed in the supplied numbered order and preserved byte-for-byte.
+
+| Supplied filename | Retained image                                               |
+| ----------------- | ------------------------------------------------------------ |
+| `1.png`           | [daily-scrum-01.png](/img/scrum/sprint-3/daily-scrum-01.png) |
+| `2.png`           | [daily-scrum-02.png](/img/scrum/sprint-3/daily-scrum-02.png) |
+| `3.png`           | [daily-scrum-03.png](/img/scrum/sprint-3/daily-scrum-03.png) |
+| `4.png`           | [daily-scrum-04.png](/img/scrum/sprint-3/daily-scrum-04.png) |
+| `5.png`           | [daily-scrum-05.png](/img/scrum/sprint-3/daily-scrum-05.png) |
+
+The images are retained in commit `aca1ee5`. Filenames identify the supplied
+order, not verified meeting dates. Five photos were supplied for four written
+checkpoints, so the images remain linked here until their meeting-to-record
+mapping is confirmed. They do not independently establish discussion,
+stakeholder attendance, or agreement.
+
 ## Sprint 2 record
 
 | Ceremony or record                                           | Evidence date or window     | Purpose                                                                                              |
@@ -147,4 +166,5 @@ with the historical-status notice added using Codex-CLI[GPT-5]. These original
 attributions remain part of the record. Sprint 2 navigation, image provenance,
 and integration were updated with assistance from Codex-CLI[GPT-6].
 
-The Sprint 3 record index was added with assistance from Codex.
+The Sprint 3 record index and photo provenance were added with assistance from
+Codex-CLI[gpt-6-sol].

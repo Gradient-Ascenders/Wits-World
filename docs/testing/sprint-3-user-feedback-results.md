@@ -324,7 +324,7 @@ resolved, and does not claim the existing PRs were caused by this questionnaire.
 
 ## AI declaration
 
-This sanitised report was generated and edited with assistance from Codex.
+This sanitised report was generated and edited with assistance from Codex-CLI[gpt-6-sol].
 Counts were derived from the team-supplied CSV using Python's CSV parser;
 written themes were paraphrased and implementation context checked against
 repository main. No additional responses, issue closures, or retest outcomes

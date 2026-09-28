@@ -62,6 +62,7 @@ contract and persistence documents linked by each PR as technical context.
 
 ## AI declaration
 
-This coordination summary was drafted with Codex assistance from local merge
-history and repository documents. The linked stakeholder record is marked
+This coordination summary was drafted with Codex-CLI[gpt-6-luna] assistance
+and reviewed and edited with Codex-CLI[gpt-6-sol], using local merge history and
+repository documents. The linked stakeholder record is marked
 planned and is not represented as an occurred meeting.

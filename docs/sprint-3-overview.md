@@ -97,5 +97,5 @@ and [Sprint Review](planning/scrum/sprint-3/sprint-review.md).
 ## AI declaration
 
 This Sprint 3 reading guide was generated and edited with assistance from
-Codex, using the supplied briefs, repository merge history, and existing
+Codex-CLI[gpt-6-sol], using the supplied briefs, repository merge history, and existing
 technical, feedback, and stakeholder documents.

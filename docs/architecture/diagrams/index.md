@@ -73,4 +73,5 @@ Each diagram also has a nearby explanation for readers who prefer text.
 Prepared from repository contracts, migrations, and implementation with
 assistance from Codex-CLI[GPT-6].
 
-Sprint 3 references and the live-battle journey were added with assistance from Codex.
+Sprint 3 references and the live-battle journey were added with assistance from
+Codex-CLI[gpt-6-sol].

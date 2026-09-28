@@ -19,6 +19,8 @@ use the [system context](diagrams/system-context.md),
 
 :::
 
+Sprint 3 reference links were edited with assistance from Codex-CLI[gpt-6-sol].
+
 ## Document status
 
 - **Issue:** #5 — Document the initial architecture and delivery plan

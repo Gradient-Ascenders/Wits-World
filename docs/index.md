@@ -57,4 +57,4 @@ Codex-CLI[GPT-5], Codex[GPT-5], and Codex-CLI[GPT-6].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
 
-Sprint 3 navigation was added with assistance from Codex.
+Sprint 3 navigation was added with assistance from Codex-CLI[gpt-6-sol].

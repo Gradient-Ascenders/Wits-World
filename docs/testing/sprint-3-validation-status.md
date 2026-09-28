@@ -113,6 +113,6 @@ record its exact revision before reporting one.
 
 ## AI declaration
 
-This status page was drafted and reviewed with assistance from Codex using the
-`gpt-6-luna` model. It distinguishes the supplied PR-review observations and
+This status page was drafted with assistance from Codex-CLI[gpt-6-luna] and
+reviewed and edited with Codex-CLI[gpt-6-sol]. It distinguishes the supplied PR-review observations and
 feedback report from procedures and unverified current release state.

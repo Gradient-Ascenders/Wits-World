@@ -80,5 +80,6 @@ claim stakeholder acceptance. Those conclusions require explicit evidence.
 
 ## AI declaration
 
-This release-readiness snapshot was drafted with Codex assistance from local
-Git history and repository documents. It is not a record of a Sprint Review.
+This release-readiness snapshot was drafted with Codex-CLI[gpt-6-luna]
+assistance and reviewed and edited with Codex-CLI[gpt-6-sol], using local Git
+history and repository documents. It is not a record of a Sprint Review.

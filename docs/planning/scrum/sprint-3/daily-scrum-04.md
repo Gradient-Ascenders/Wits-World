@@ -62,6 +62,7 @@ not verified defects or proof that associated UI/performance PRs resolve them.
 
 ## AI declaration
 
-This coordination summary was drafted with Codex assistance from local merge
-history and the repository's sanitized feedback report. It is not meeting
+This coordination summary was drafted with Codex-CLI[gpt-6-luna] assistance
+and reviewed and edited with Codex-CLI[gpt-6-sol], using local merge history and
+the repository's sanitized feedback report. It is not meeting
 minutes, and feedback is not presented as acceptance evidence.

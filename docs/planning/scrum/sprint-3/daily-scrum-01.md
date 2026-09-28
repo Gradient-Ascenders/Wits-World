@@ -52,8 +52,8 @@ review, and acceptance details rather than inferring them from its number.
 
 ## Impediments and uncertainty
 
-- No contemporaneous Scrum record, meeting photo, or participant list is
-  available for this window.
+- Five team-call photos are retained in the [photo index](../index.md#sprint-3-photo-provenance).
+  Their dates and mapping to this window remain to be confirmed.
 - The merge log does not establish whether any integrated deployment was
   demonstrated or whether stakeholders reviewed it.
 - Later work still needs cross-layer verification of reconnect, deadlines,
@@ -68,5 +68,6 @@ review, and acceptance details rather than inferring them from its number.
 
 ## AI declaration
 
-This coordination summary was drafted with Codex assistance from local Git
-history and repository documents; it is not a record of a meeting.
+This coordination summary was drafted with Codex-CLI[gpt-6-luna] assistance
+and reviewed and edited with Codex-CLI[gpt-6-sol], using local Git history and
+repository documents; it is not a record of a meeting.

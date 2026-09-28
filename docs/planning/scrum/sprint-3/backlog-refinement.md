@@ -79,6 +79,7 @@ PRs are context only, not assumed fixes.
 
 ## AI declaration
 
-This refinement snapshot was drafted with Codex assistance from local merge
-history and repository documentation. It does not assert a refinement meeting
+This refinement snapshot was drafted with Codex-CLI[gpt-6-luna] assistance
+and reviewed and edited with Codex-CLI[gpt-6-sol], using local merge history and
+repository documentation. It does not assert a refinement meeting
 or live tracker status.
