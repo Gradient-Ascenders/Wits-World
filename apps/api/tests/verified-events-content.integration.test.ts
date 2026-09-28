@@ -543,20 +543,30 @@ describe.skipIf(!runIntegrationTests)(
 
         await collisionPool.query(`
           delete from public.event_challenges
-          where id = md5('wits-world-verified-challenge:foundations')::uuid;
+          where id = md5('wits-world-verified-challenge:foundations')::uuid
+        `);
+        await collisionPool.query(`
           alter table public.event_challenges
-            disable trigger event_challenges_publication_integrity;
+            disable trigger event_challenges_publication_integrity
+        `);
+        await collisionPool.query(`
           insert into public.event_challenges (
             id, event_id, format, status, version, publication_provenance
           ) values (
             md5('wits-world-verified-challenge:foundations')::uuid,
             md5('wits-world-verified-event:foundations')::uuid,
             'multiple_choice', 'published', 1, 'controlled_seed'
-          );
+          )
+        `);
+        await collisionPool.query(`
           alter table public.event_challenges
-            enable trigger event_challenges_publication_integrity;
+            enable trigger event_challenges_publication_integrity
+        `);
+        await collisionPool.query(`
           alter table public.challenge_questions
-            disable trigger challenge_questions_publication_integrity;
+            disable trigger challenge_questions_publication_integrity
+        `);
+        await collisionPool.query(`
           insert into public.challenge_questions (
             id, challenge_id, prompt, difficulty, explanation, status,
             publication_provenance, source_urls
@@ -566,7 +576,9 @@ describe.skipIf(!runIntegrationTests)(
             'In which city did the institution that became Wits begin in 1896?',
             1, 'Wits began as a school in Kimberley in 1896.', 'draft', null,
             array['https://wits100.wits.ac.za/']::text[]
-          );
+          )
+        `);
+        await collisionPool.query(`
           alter table public.challenge_questions
             enable trigger challenge_questions_publication_integrity
         `);
@@ -617,19 +629,33 @@ describe.skipIf(!runIntegrationTests)(
 
         await collisionPool.query(`
           alter table public.challenge_questions
-            disable trigger challenge_questions_publication_integrity;
+            disable trigger challenge_questions_publication_integrity
+        `);
+        await collisionPool.query(`
           delete from public.challenge_questions
-          where id = md5('wits-world-verified-question:foundations:1')::uuid;
+          where id = md5('wits-world-verified-question:foundations:1')::uuid
+        `);
+        await collisionPool.query(`
           alter table public.challenge_questions
-            enable trigger challenge_questions_publication_integrity;
+            enable trigger challenge_questions_publication_integrity
+        `);
+        await collisionPool.query(`
           alter table public.event_challenges
-            disable trigger event_challenges_lifecycle_immutability;
+            disable trigger event_challenges_lifecycle_immutability
+        `);
+        await collisionPool.query(`
           alter table public.event_challenges
-            disable trigger event_challenges_publication_integrity;
+            disable trigger event_challenges_publication_integrity
+        `);
+        await collisionPool.query(`
           delete from public.event_challenges
-          where id = md5('wits-world-verified-challenge:foundations')::uuid;
+          where id = md5('wits-world-verified-challenge:foundations')::uuid
+        `);
+        await collisionPool.query(`
           alter table public.event_challenges
-            enable trigger event_challenges_publication_integrity;
+            enable trigger event_challenges_publication_integrity
+        `);
+        await collisionPool.query(`
           alter table public.event_challenges
             enable trigger event_challenges_lifecycle_immutability
         `);

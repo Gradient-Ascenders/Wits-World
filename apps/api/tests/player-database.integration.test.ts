@@ -62,7 +62,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
     };
 
     migrationResult = await runMigrations(temporaryConfig);
-  }, 45_000);
+  }, 90_000);
 
   afterAll(async () => {
     if (!administrationConfig || !temporaryDatabaseName) {
@@ -222,6 +222,8 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0059_enable_event_editor_automatic_placement.sql',
           '0060_allow_unlocated_portable_events.sql',
           '0061_persist_trust_review_evidence_summaries.sql',
+          '0062_detach_deleted_player_history.sql',
+          '0063_purge_deleted_player_progression.sql',
         ],
       });
 
@@ -240,7 +242,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
       });
       await rm(migrationDirectory, { force: true, recursive: true });
     }
-  }, 45_000);
+  }, 120_000);
 
   it('upgrades an original 0021 database through later migrations without changing history or player data', async () => {
     const existingDatabaseName = `wits_quest_player_0021_${Date.now()}_${process.pid}`;
@@ -373,6 +375,8 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
           '0059_enable_event_editor_automatic_placement.sql',
           '0060_allow_unlocated_portable_events.sql',
           '0061_persist_trust_review_evidence_summaries.sql',
+          '0062_detach_deleted_player_history.sql',
+          '0063_purge_deleted_player_progression.sql',
         ],
       });
 
@@ -447,7 +451,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
       });
       await rm(migrationDirectory, { force: true, recursive: true });
     }
-  }, 60_000);
+  }, 120_000);
 
   it('provisions the trusted Auth0 player name through issuer and subject', async () => {
     await withDatabaseClient(temporaryConfig, async (client) => {

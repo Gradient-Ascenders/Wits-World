@@ -209,6 +209,8 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0059_enable_event_editor_automatic_placement.sql',
         '0060_allow_unlocated_portable_events.sql',
         '0061_persist_trust_review_evidence_summaries.sql',
+        '0062_detach_deleted_player_history.sql',
+        '0063_purge_deleted_player_progression.sql',
       ],
       skipped: [],
     });
@@ -277,6 +279,8 @@ describe.skipIf(!runIntegrationTests)('event database integration', () => {
         '0059_enable_event_editor_automatic_placement.sql',
         '0060_allow_unlocated_portable_events.sql',
         '0061_persist_trust_review_evidence_summaries.sql',
+        '0062_detach_deleted_player_history.sql',
+        '0063_purge_deleted_player_progression.sql',
       ],
     });
     expect(readiness).toMatchObject({

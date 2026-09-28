@@ -482,16 +482,16 @@ begin
     update_definition := trigger_prefix || trigger_suffix;
 
     execute format('drop trigger %I on %s', guard.tgname, guard.relation_name);
-    execute update_definition;
     if other_events <> '' then
+      update_definition := replace(update_definition,
+        format('TRIGGER %I ', guard.tgname),
+        format('TRIGGER %I ', left(guard.tgname, 48) || '_rekey_' ||
+               substr(md5(guard.oid::text), 1, 8)));
       other_definition := left(original_definition, timing_end - 1)
         || other_events || substr(original_definition, on_at);
-      other_definition := replace(other_definition,
-        format('TRIGGER %I ', guard.tgname),
-        format('TRIGGER %I ', left(guard.tgname, 48) || '_other_' ||
-               substr(md5(guard.oid::text), 1, 8)));
       execute other_definition;
     end if;
+    execute update_definition;
   end loop;
 
   for guard in

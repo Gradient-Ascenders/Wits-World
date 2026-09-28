@@ -181,34 +181,34 @@ begin
        and attribute.attnum = constraint_record.conkey[1]
      where constraint_record.contype = 'f'
        and constraint_record.confrelid = 'public.players'::regclass
-       and constraint_record.conrelid not in (
-         'public.challenge_attempts'::regclass,
-         'public.event_completions'::regclass,
-         'public.player_wallets'::regclass,
-         'public.coin_ledger_entries'::regclass,
-         'public.player_cards'::regclass,
-         'public.player_starter_grants'::regclass,
-         'public.player_decks'::regclass,
-         'public.player_deck_selections'::regclass,
-         'public.cpu_matches'::regclass,
-         'public.movement_evidence'::regclass,
-         'public.player_point_awards'::regclass,
-         'public.player_activity_days'::regclass,
-         'public.player_monthly_progression'::regclass,
-         'public.player_progression_state'::regclass,
-         'public.player_achievement_unlocks'::regclass,
-         'public.card_evolution_transactions'::regclass,
-         'public.ranked_player_season_ratings'::regclass,
-         'public.ranked_season_standing_archives'::regclass,
-         'private.ranked_standings_snapshots'::regclass,
-         'private.ranked_standings_snapshot_rows'::regclass,
-         'private.developer_api_keys'::regclass,
-         'private.live_pvp_connection_tickets'::regclass,
-         'private.live_pvp_connection_access'::regclass,
-         'private.territory_owner_bonus_snapshots'::regclass,
-         'private.territory_owner_bonus_decisions'::regclass,
-         'private.trust_signals'::regclass
-       )
+       and constraint_record.conrelid <> all (array_remove(array[
+         to_regclass('public.challenge_attempts'),
+         to_regclass('public.event_completions'),
+         to_regclass('public.player_wallets'),
+         to_regclass('public.coin_ledger_entries'),
+         to_regclass('public.player_cards'),
+         to_regclass('public.player_starter_grants'),
+         to_regclass('public.player_decks'),
+         to_regclass('public.player_deck_selections'),
+         to_regclass('public.cpu_matches'),
+         to_regclass('public.movement_evidence'),
+         to_regclass('public.player_point_awards'),
+         to_regclass('public.player_activity_days'),
+         to_regclass('public.player_monthly_progression'),
+         to_regclass('public.player_progression_state'),
+         to_regclass('public.player_achievement_unlocks'),
+         to_regclass('public.card_evolution_transactions'),
+         to_regclass('public.ranked_player_season_ratings'),
+         to_regclass('public.ranked_season_standing_archives'),
+         to_regclass('private.ranked_standings_snapshots'),
+         to_regclass('private.ranked_standings_snapshot_rows'),
+         to_regclass('private.developer_api_keys'),
+         to_regclass('private.live_pvp_connection_tickets'),
+         to_regclass('private.live_pvp_connection_access'),
+         to_regclass('private.territory_owner_bonus_snapshots'),
+         to_regclass('private.territory_owner_bonus_decisions'),
+         to_regclass('private.trust_signals')
+       ], null))
   loop
     if dependency.column_count <> 1 then
       raise exception 'Account deletion actor migration requires single-column player references: %.%',
@@ -227,6 +227,57 @@ begin
              else 'deferrable initially immediate' end
       else 'not deferrable' end
     );
+  end loop;
+end;
+$$;
+
+-- Participant keys also appear in composite references from immutable match,
+-- rating, and completion history. Give those child columns their own actor
+-- anchor and defer the composite check until the whole rekey transaction ends.
+do $$
+declare
+  dependency record;
+begin
+  for dependency in
+    select constraint_record.conrelid::regclass as relation_name,
+           constraint_record.conrelid as relation_id,
+           constraint_record.conname,
+           child_attribute.attname as child_column,
+           child_attribute.attnum as child_attnum
+      from pg_constraint constraint_record
+      cross join lateral unnest(constraint_record.conkey,
+                                constraint_record.confkey)
+        as key_columns(child_attnum, parent_attnum)
+      join pg_attribute child_attribute
+        on child_attribute.attrelid = constraint_record.conrelid
+       and child_attribute.attnum = key_columns.child_attnum
+      join pg_attribute parent_attribute
+        on parent_attribute.attrelid = constraint_record.confrelid
+       and parent_attribute.attnum = key_columns.parent_attnum
+     where constraint_record.contype = 'f'
+       and constraint_record.confrelid in (
+         to_regclass('public.async_pvp_match_participants'),
+         to_regclass('public.live_pvp_match_participants')
+       )
+       and parent_attribute.attname = 'player_id'
+       and constraint_record.conrelid <> 'public.player_point_awards'::regclass
+  loop
+    execute format('alter table %s alter constraint %I deferrable initially deferred',
+                   dependency.relation_name, dependency.conname);
+    if not exists (
+      select 1 from pg_constraint actor_fk
+       where actor_fk.contype = 'f'
+         and actor_fk.conrelid = dependency.relation_id
+         and actor_fk.confrelid = 'private.player_history_actors'::regclass
+         and actor_fk.conkey = array[dependency.child_attnum]::smallint[]
+    ) then
+      execute format(
+        'alter table %s add constraint %I foreign key (%I) references private.player_history_actors (id) on delete restrict',
+        dependency.relation_name,
+        'account_deletion_actor_' || dependency.child_column || '_fk',
+        dependency.child_column
+      );
+    end if;
   end loop;
 end;
 $$;
