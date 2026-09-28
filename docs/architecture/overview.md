@@ -8,7 +8,10 @@ title: 'System architecture'
 
 This page began as the Sprint 1 architecture baseline and later sections contain
 subsequent updates. For current delivered scope, use the
-[Basic release overview](../basic-release-reference.md); for accepted decisions,
+[Sprint 3 overview](../sprint-3-overview.md) and
+[Advanced authority diagram](diagrams/advanced-systems.md). The
+[Basic release overview](../basic-release-reference.md) preserves the foundation;
+for accepted decisions,
 use the [ADRs](decisions/README.md); and for current system and deployment views,
 use the [system context](diagrams/system-context.md),
 [application containers](diagrams/application-containers.md), and

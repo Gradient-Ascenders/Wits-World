@@ -7,9 +7,9 @@ sidebar_position: 1
 
 :::note[Scrum evidence]
 
-These records preserve Sprint 1 and Sprint 2 planning, coordination,
-refinement, Review, and Retrospective summaries. Gitea remains the source of
-truth for current work.
+These records preserve Sprint 1 and Sprint 2 summaries and add Sprint 3
+repository-backed planning, coordination, refinement, review and retrospective
+records. Gitea remains the source of truth for current work.
 
 :::
 
@@ -17,7 +17,7 @@ Wits World uses a lightweight Scrum-inspired process in which Gitea issues are
 the product backlog, short-lived branches and pull requests carry the work, and
 CI plus human review provide the quality gate. The durable process is described
 in the [project and Git methodology](../project-and-git-methodology.md); this
-section records how that process was applied during Sprint 1 and Sprint 2.
+section records how that process was applied across the three increments.
 
 The [Sprint 2 governance and evidence](../sprint-2-governance-and-evidence.md)
 page defines issue readiness, board workflow, evidence retention, feedback
@@ -45,6 +45,33 @@ The Sprint 1 summaries remain retrospective reconstructions, not verbatim
 meeting transcripts. Their source limits, labelled inferences, and missing exact
 meeting times remain part of the historical record. The new Sprint 2 records
 and supplied images do not change those Sprint 1 claims.
+
+## Sprint 3 record
+
+The Sprint 3 set uses the Sprint 2 structure with repository-backed reporting
+windows, reviewed against main `c0fd42b` on 28 September. These windows describe
+delivery activity, not inferred ceremony dates. Team roles describe coordination
+responsibilities; attendance, meeting media, stakeholder decisions and release
+acceptance can be added when their evidence is supplied. See the
+[Sprint 3 governance page](../sprint-3-governance-and-evidence.md) for the
+current evidence boundaries and feedback workflow.
+
+| Record                                               | Evidence window or snapshot | Purpose                                                                         |
+| ---------------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------- |
+| [Planning](sprint-3/initial-planning.md)             | 16-28 September 2026        | Define the Advanced goal, roles, dependencies and release boundaries            |
+| [Checkpoint 1](sprint-3/daily-scrum-01.md)           | 16-19 September 2026        | Establish live, trust, placement, ranked, territory and trading foundations     |
+| [Checkpoint 2](sprint-3/daily-scrum-02.md)           | 20-22 September 2026        | Integrate matchmaking, territory runtime and atomic trade persistence           |
+| [Backlog refinement](sprint-3/backlog-refinement.md) | 16-28 September 2026        | Trace policy, integration, stakeholder proposals and feedback follow-up         |
+| [Checkpoint 3](sprint-3/daily-scrum-03.md)           | 23-25 September 2026        | Integrate trading APIs, analytics, developer access and accessibility           |
+| [Checkpoint 4](sprint-3/daily-scrum-04.md)           | 26-28 September 2026        | Consolidate player/Author interfaces, performance, account purge and feedback   |
+| [Review](sprint-3/sprint-review.md)                  | 28 September 2026 snapshot  | Map implementation to the goal and retain outstanding release checks            |
+| [Retrospective](sprint-3/sprint-retrospective.md)    | 28 September 2026 snapshot  | Recommend evidence-backed improvements to dependencies, validation and feedback |
+
+The [Sprint 3 survey report](../../testing/sprint-3-user-feedback-results.md)
+provides the new response evidence. The separate
+[stakeholder review plans](../stakeholder-interactions/index.md#sprint-3-review-plans)
+retain their implementation references and follow-up actions. Sprint 1 and
+Sprint 2 photos are not reused as Sprint 3 evidence.
 
 ## Sprint 2 record
 
@@ -119,3 +146,5 @@ Earlier Sprint 1 summaries were prepared with assistance from Codex[GPT-5],
 with the historical-status notice added using Codex-CLI[GPT-5]. These original
 attributions remain part of the record. Sprint 2 navigation, image provenance,
 and integration were updated with assistance from Codex-CLI[GPT-6].
+
+The Sprint 3 record index was added with assistance from Codex.

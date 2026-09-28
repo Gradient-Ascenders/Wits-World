@@ -14,9 +14,13 @@ feedback, team evaluation, decisions and follow-up evidence together.
 | [Meeting 3 — Calvin Rea](2026-09-08-trails-and-card-art-review.md) | 8 September 2026  | Trails and card artwork                                            |
 | [Meeting 4 — Calvin Rea](2026-09-11-frontend-ui-review.md)         | 11 September 2026 | Frontend UI and feedback states                                    |
 
-For the next release review, use the [stakeholder review template](../../testing/basic-release-stakeholder-review.md).
-That template is separate from these recorded meetings. Each meeting page
-retains the original evidence limits and any outstanding follow-up.
+## Sprint 3 review plans
+
+| Review                                                                                              | Date              | Topics                                                     | Implementation status                                                 |
+| --------------------------------------------------------------------------------------------------- | ----------------- | ---------------------------------------------------------- | --------------------------------------------------------------------- |
+| [CPU battle and realtime performance](2026-09-21-battle-performance-review.md)                      | 21 September 2026 | CPU query/action responsiveness and live WebSocket updates | Performance and live-PvP transport work merged; demonstration planned |
+| [Account deletion and fresh registration](2026-09-23-account-deletion-review.md)                    | 23 September 2026 | Purge account-owned data and start a new account           | PR #329 merged on 28 September; demonstration planned                 |
+| [Territory variety and distributed rate limiting](2026-09-25-territories-and-rate-limits-review.md) | 25 September 2026 | Randomized territory placement and Upstash-backed quotas   | Existing foundations merged; both requested extensions planned        |
 
 ## AI declaration
 

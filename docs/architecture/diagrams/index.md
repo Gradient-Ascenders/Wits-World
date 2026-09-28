@@ -6,7 +6,9 @@ title: 'Visual guide to Wits World'
 
 Start here for a visual explanation of the product, database, and technical
 design. These diagrams describe the implementation on this branch; they do not
-replace the [Sprint 2 test and release evidence](../../testing/sprint-2-validation-status.md).
+replace the [Sprint 3 validation evidence](../../testing/sprint-3-validation-status.md).
+The [Sprint 2 validation record](../../testing/sprint-2-validation-status.md)
+remains the historical reference for the previous increment.
 
 ## The player experience
 
@@ -23,7 +25,7 @@ flowchart TB
     Results["View score, answer review<br/>and awarded cards"]
     Collection["Grow the collection<br/>Review cards and eligible evolution"]
     Deck["Build a valid deck"]
-    Battle["Play CPU or asynchronous player battles"]
+    Battle["Play CPU, asynchronous or live player battles"]
     Progress["View progression and achievements"]
     Explore --> Eligible
     Eligible -->|"Eligible"| Challenge
@@ -41,14 +43,15 @@ return to their existing collection, decks, or matches.
 
 ## Choose a diagram
 
-| What you want to explain          | Diagram                                                 | Main takeaway                                                               |
-| --------------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------- |
-| The product and external services | [System and external services](system-context.md)       | What Wits World owns, and what Auth0, Mapbox and the hosts provide          |
-| How the applications fit together | [Frontend, API and database](application-containers.md) | The browser presents; the API validates and controls database access        |
-| How game data relates             | [Database relationships](database-relationships.md)     | Players, events, attempts, rewards, owned cards, decks and progression      |
-| How an answer becomes a result    | [Challenge and reward flow](challenge-flow.md)          | Server deadlines, private marking and atomic, retry-safe rewards            |
-| How content becomes visible       | [Content review and publication](content-review.md)     | A different Author reviews content before publication                       |
-| How changes reach production      | [Hosting and deployment](deployment.md)                 | PR checks, main deployments, guarded migrations and a separate docs publish |
+| What you want to explain          | Diagram                                                 | Main takeaway                                                                                 |
+| --------------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| The product and external services | [System and external services](system-context.md)       | What Wits World owns, and what Auth0, Mapbox and the hosts provide                            |
+| How the applications fit together | [Frontend, API and database](application-containers.md) | The browser presents; the API validates and controls database access                          |
+| How Advanced services coordinate  | [Advanced systems and authority](advanced-systems.md)   | Realtime, ranked, territory, trading, trust, placement and analytics share server-owned state |
+| How game data relates             | [Database relationships](database-relationships.md)     | Players, events, attempts, rewards, owned cards, decks and progression                        |
+| How an answer becomes a result    | [Challenge and reward flow](challenge-flow.md)          | Server deadlines, private marking and atomic, retry-safe rewards                              |
+| How content becomes visible       | [Content review and publication](content-review.md)     | A different Author reviews content before publication                                         |
+| How changes reach production      | [Hosting and deployment](deployment.md)                 | PR checks, main deployments, guarded migrations and a separate docs publish                   |
 
 For a short meeting walkthrough, use the player journey above, the system
 context, the three database views, and the challenge flow. The written
@@ -69,3 +72,5 @@ Each diagram also has a nearby explanation for readers who prefer text.
 
 Prepared from repository contracts, migrations, and implementation with
 assistance from Codex-CLI[GPT-6].
+
+Sprint 3 references and the live-battle journey were added with assistance from Codex.

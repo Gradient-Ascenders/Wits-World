@@ -14,6 +14,11 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'doc',
+          id: 'sprint-3-overview',
+          label: 'Sprint 3 overview',
+        },
+        {
+          type: 'doc',
           id: 'sprint-2-overview',
           label: 'Sprint 2 overview',
         },
@@ -40,6 +45,11 @@ const sidebars: SidebarsConfig = {
           type: 'category',
           label: 'Game rules and decisions',
           items: [
+            {
+              type: 'doc',
+              id: 'requirements/sprint-3-feature-matrix',
+              label: 'Sprint 3 Advanced features and progress',
+            },
             {
               type: 'doc',
               id: 'requirements/sprint-2-feature-matrix',
@@ -196,6 +206,11 @@ const sidebars: SidebarsConfig = {
               type: 'category',
               label: 'Architecture diagrams',
               items: [
+                {
+                  type: 'doc',
+                  id: 'architecture/diagrams/advanced-systems',
+                  label: 'Advanced services and authority',
+                },
                 {
                   type: 'doc',
                   id: 'architecture/diagrams/database-relationships',
@@ -637,6 +652,27 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'category',
+          label: 'Sprint 3 results and feedback',
+          items: [
+            {
+              type: 'doc',
+              id: 'testing/sprint-3-validation-status',
+              label: 'Sprint 3 validation and release gaps',
+            },
+            {
+              type: 'doc',
+              id: 'testing/sprint-3-user-testing-plan',
+              label: 'Sprint 3 user-testing and retest plan',
+            },
+            {
+              type: 'doc',
+              id: 'testing/sprint-3-user-feedback-results',
+              label: 'Sprint 3 user feedback and follow-up',
+            },
+          ],
+        },
+        {
+          type: 'category',
           label: 'Release testing and checklists',
           items: [
             {
@@ -732,6 +768,27 @@ const sidebars: SidebarsConfig = {
               id: 'planning/stakeholder-interactions/2026-09-11-frontend-ui-review',
               label: 'Meeting 4 — Calvin Rea',
             },
+            {
+              type: 'category',
+              label: 'Sprint 3 review plans',
+              items: [
+                {
+                  type: 'doc',
+                  id: 'planning/stakeholder-interactions/2026-09-21-battle-performance-review',
+                  label: '21 September - Battle performance',
+                },
+                {
+                  type: 'doc',
+                  id: 'planning/stakeholder-interactions/2026-09-23-account-deletion-review',
+                  label: '23 September - Account deletion',
+                },
+                {
+                  type: 'doc',
+                  id: 'planning/stakeholder-interactions/2026-09-25-territories-and-rate-limits-review',
+                  label: '25 September - Territories and rate limits',
+                },
+              ],
+            },
           ],
         },
       ],
@@ -757,6 +814,11 @@ const sidebars: SidebarsConfig = {
               type: 'doc',
               id: 'planning/work-tracking-and-issue-management',
               label: 'Track tasks, bugs and fixes',
+            },
+            {
+              type: 'doc',
+              id: 'planning/sprint-3-governance-and-evidence',
+              label: 'Sprint 3 process and evidence',
             },
             {
               type: 'doc',
@@ -790,6 +852,52 @@ const sidebars: SidebarsConfig = {
           type: 'doc',
           id: 'planning/scrum/index',
           label: 'Sprint meeting overview',
+        },
+        {
+          type: 'category',
+          label: 'Sprint 3 coordination and review',
+          items: [
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-3/initial-planning',
+              label: 'Planning',
+            },
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-3/daily-scrum-01',
+              label: 'Checkpoint 1 - Foundations',
+            },
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-3/daily-scrum-02',
+              label: 'Checkpoint 2 - Backend integration',
+            },
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-3/backlog-refinement',
+              label: 'Backlog refinement',
+            },
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-3/daily-scrum-03',
+              label: 'Checkpoint 3 - Player and Author experience',
+            },
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-3/daily-scrum-04',
+              label: 'Checkpoint 4 - Feedback and release readiness',
+            },
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-3/sprint-review',
+              label: 'Review',
+            },
+            {
+              type: 'doc',
+              id: 'planning/scrum/sprint-3/sprint-retrospective',
+              label: 'Retrospective',
+            },
+          ],
         },
         {
           type: 'category',
