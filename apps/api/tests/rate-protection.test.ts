@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { buildApp } from '../src/app.js';
 import type { AuthConfig } from '../src/config/auth.js';
-import { createAuthenticatedRateProtection } from '../src/security/rate-protection.js';
+import { createAuthenticatedRateProtection } from '../e2e/fake-rate-protection.js';
 
 const authConfig: AuthConfig = {
   domain: 'auth.example.test',
@@ -67,7 +67,9 @@ describe('authenticated API rate protection', () => {
 
     expect((await currentPlayer('second')).statusCode).toBe(200);
 
-    now += 10_000;
+    now += 9_000;
+    expect((await currentPlayer('first')).statusCode).toBe(429);
+    now += 1_000;
     expect((await currentPlayer('first')).statusCode).toBe(200);
   }, 15_000);
 

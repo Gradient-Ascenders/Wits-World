@@ -87,6 +87,7 @@ export const authorAnalyticsRoutes: FastifyPluginAsync<Options> = async (
   app.get<{ Querystring: EventLocationsQuery }>(
     '/author/analytics/event-locations',
     {
+      config: { rateLimitPolicy: 'author-expensive' },
       onRequest: [app.authenticate, app.requireActivePlayer, app.requireAuthor],
       schema: {
         operationId: 'listAuthorEventLocationAnalytics',
@@ -185,6 +186,7 @@ export const authorAnalyticsRoutes: FastifyPluginAsync<Options> = async (
   app.get<{ Querystring: QuestionsQuery }>(
     '/author/analytics/questions',
     {
+      config: { rateLimitPolicy: 'author-expensive' },
       onRequest: [app.authenticate, app.requireActivePlayer, app.requireAuthor],
       schema: {
         operationId: 'listAuthorAdvancedQuestionAnalytics',
@@ -312,6 +314,7 @@ export const authorAnalyticsRoutes: FastifyPluginAsync<Options> = async (
   app.get<{ Querystring: CardsQuery }>(
     '/author/analytics/card-issuance',
     {
+      config: { rateLimitPolicy: 'author-expensive' },
       onRequest: [app.authenticate, app.requireActivePlayer, app.requireAuthor],
       schema: {
         operationId: 'listAuthorCardIssuanceAnalytics',

@@ -213,9 +213,9 @@ request identifier used for safe correlation; intentionally empty `204`
 responses have no body.
 
 Bearer-protected active-player operations also document the implemented
-per-process `429 RATE_LIMITED` response and rate-limit headers. This does not
-claim edge throttling for invalid-token traffic or aggregation across multiple
-API processes.
+shared sliding-window `429 RATE_LIMITED` response and rate-limit headers. Named
+policies use Upstash Redis across API processes; see [API rate limiting](./rate-limiting.md).
+Invalid-token traffic remains outside this authenticated limiter.
 
 ## OpenAPI generation and maintenance
 

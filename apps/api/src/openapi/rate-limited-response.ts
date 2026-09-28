@@ -2,17 +2,17 @@ import type { FastifySchema } from 'fastify';
 
 const verifiedPlayerRateLimitedResponseSchema = {
   description:
-    'The verified local player has exceeded this API process request quota. Retry after the advertised delay.',
+    'The verified local player has exceeded a shared sliding-window request limit. Retry after the advertised delay.',
   type: 'object',
   additionalProperties: false,
   headers: {
     'Retry-After': {
-      description: 'Whole seconds until this process-local window resets.',
+      description: 'Whole seconds until the request may be retried.',
       type: 'integer',
       minimum: 1,
     },
     'RateLimit-Limit': {
-      description: 'Maximum requests allowed in the current fixed window.',
+      description: 'Maximum requests allowed in the sliding window.',
       type: 'integer',
       minimum: 1,
     },
@@ -36,7 +36,23 @@ const verifiedPlayerRateLimitedResponseSchema = {
 const developerApiRateLimitedResponseSchema = {
   ...verifiedPlayerRateLimitedResponseSchema,
   description:
-    'The authenticated developer API key has exceeded this API process request quota. Retry after the advertised delay.',
+    'The authenticated developer API key has exceeded its shared sliding-window request limit. Retry after the advertised delay.',
+} as const;
+
+export const rateLimitUnavailableResponseSchema = {
+  description:
+    'The rate-limit store is unavailable, so this protected operation cannot proceed. Retry later.',
+  type: 'object',
+  additionalProperties: false,
+  required: ['type', 'title', 'status', 'code', 'detail', 'requestId'],
+  properties: {
+    type: { type: 'string' },
+    title: { type: 'string' },
+    status: { type: 'integer', const: 503 },
+    code: { type: 'string', const: 'RATE_LIMIT_UNAVAILABLE' },
+    detail: { type: 'string' },
+    requestId: { type: 'string' },
+  },
 } as const;
 
 export function documentVerifiedPlayerRateLimit(

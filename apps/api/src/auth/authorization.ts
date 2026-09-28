@@ -7,7 +7,10 @@ import {
   PlayerNameConflictError,
   type PlayerIdentityService,
 } from '../players/player-identity.js';
-import type { AuthenticatedRateProtection } from '../security/rate-protection.js';
+import {
+  enforceRateProtection,
+  type AuthenticatedRateProtection,
+} from '../security/rate-protection.js';
 import { isInteractivePlayerPrincipal } from './interactive-player-claims.js';
 
 export function registerAuthorization(
@@ -79,21 +82,13 @@ export function registerAuthorization(
     request.player = player;
 
     if (rateProtection) {
-      const decision = rateProtection.consume(player.id);
-
-      reply.header('RateLimit-Limit', decision.limit);
-      reply.header('RateLimit-Remaining', decision.remaining);
-
-      if (!decision.allowed) {
-        reply.header('Retry-After', decision.retryAfterSeconds);
-        throw new ApiError({
-          statusCode: 429,
-          code: 'RATE_LIMITED',
-          title: 'Too many requests',
-          detail:
-            'This authenticated player has made too many API requests. Try again after the indicated delay.',
-        });
-      }
+      await enforceRateProtection(
+        request,
+        reply,
+        rateProtection,
+        player.id,
+        request.routeOptions.config.rateLimitPolicy ?? 'player-general',
+      );
     }
   };
 

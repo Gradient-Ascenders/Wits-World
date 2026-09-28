@@ -56,9 +56,9 @@ configuration, and unresolved acceptance gates are reported separately.
 Bearer signature/issuer/audience/expiry validation, exact-origin CORS, parameter
 validation, parameterised SQL, object ownership, hidden active answers, server
 request IDs, idempotency keys, row locking, atomic rewards, transactional
-account-deletion persistence, and safe errors have focused repository tests. The application now adds a
-per-process fixed-window limit keyed by verified local player identity. It does
-not aggregate across instances or cover invalid-token traffic before identity
+account-deletion persistence, and safe errors have focused repository tests. The
+current application uses a shared sliding-window limit keyed by verified local
+player identity. It does not cover invalid-token traffic before identity
 resolution; deployment-edge rate protection remains an external evidence gap.
 Location is requested only by a user action and is not sent to Mapbox.
 

@@ -128,8 +128,9 @@ part of this contract.
 
 ## Rate limiting
 
-Each validated developer key has an independent process-local fixed-window
-quota. The default is **120 requests per 60 seconds** and can be changed by the
+Each validated developer key has an independent shared Upstash Redis
+sliding-window request limit. The default is **120 requests per 60 seconds**
+and can be changed by the
 API operator through:
 
 ```text
@@ -141,9 +142,11 @@ Successful authenticated requests include `RateLimit-Limit` and
 `RateLimit-Remaining`. A request above the current window returns `429
 RATE_LIMITED` and a `Retry-After` header.
 
-This limiter protects normal application use; it is not presented as a
-distributed edge/WAF denial-of-service service. The quota is local to an API
-process.
+The limiter shares state across API processes and restarts. This changes the
+former first-request-anchored fixed-window behavior; a burst near a window
+boundary may be treated differently. On Upstash timeout or outage, this
+developer read policy fails open and logs a safe degradation warning. It does
+not replace an edge/WAF denial-of-service control. See [API rate limiting](./rate-limiting.md).
 
 ## Browser CORS boundary
 
@@ -169,6 +172,11 @@ DELETE /api/v1/developer/keys/:keyId
 These operations are account management, not part of the external read-only
 resource surface. `POST` is the only operation that returns the complete API
 key. Revoking an already-revoked owned key is idempotent.
+Creation and revocation each have a 10-request-per-60-second sliding-window
+policy. Creation returns a safe `503 RATE_LIMIT_UNAVAILABLE` if the limiter is
+unavailable; revocation remains available during a limiter outage so a player
+can disable a compromised key. Both still return `429 RATE_LIMITED` on actual
+quota exhaustion, and both retain bearer authentication and ownership checks.
 
 ## Error model
 

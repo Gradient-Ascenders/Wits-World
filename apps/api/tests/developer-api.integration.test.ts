@@ -10,7 +10,7 @@ import type {
 } from '../src/developer/developer-api-key-service.js';
 import type { DeveloperPublicDataService } from '../src/developer/developer-public-data-service.js';
 import type { PlayerIdentityService } from '../src/players/player-identity.js';
-import { createRateProtection } from '../src/security/rate-protection.js';
+import { createRateProtection } from '../e2e/fake-rate-protection.js';
 
 const authConfig: AuthConfig = {
   domain: 'auth.example.test',

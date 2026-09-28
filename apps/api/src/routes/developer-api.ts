@@ -14,6 +14,7 @@ import {
   type DeveloperPublicDataService,
 } from '../developer/developer-public-data-service.js';
 import { ApiError } from '../errors/api-error.js';
+import { rateLimitUnavailableResponseSchema } from '../openapi/rate-limited-response.js';
 import {
   PROGRESSION_MONTH_PATTERN,
   PROGRESSION_STANDINGS_MAX_PAGE,
@@ -269,6 +270,7 @@ export const developerApiRoutes: FastifyPluginAsync<
   app.post<{ Body: CreateKeyBody }>(
     '/developer/keys',
     {
+      config: { rateLimitPolicy: 'critical-write' },
       onRequest: [app.authenticate, app.loadActivePlayer],
       schema: {
         operationId: 'createDeveloperApiKey',
@@ -304,6 +306,7 @@ export const developerApiRoutes: FastifyPluginAsync<
           401: apiErrorSchema,
           403: apiErrorSchema,
           409: apiErrorSchema,
+          503: rateLimitUnavailableResponseSchema,
         },
       },
     },
@@ -325,6 +328,7 @@ export const developerApiRoutes: FastifyPluginAsync<
   app.delete<{ Params: KeyParams }>(
     '/developer/keys/:keyId',
     {
+      config: { rateLimitPolicy: 'credential-revoke' },
       onRequest: [app.authenticate, app.loadActivePlayer],
       schema: {
         operationId: 'revokeDeveloperApiKey',

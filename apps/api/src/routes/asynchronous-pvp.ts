@@ -350,6 +350,7 @@ export const asynchronousPvpRoutes: FastifyPluginAsync<Options> = async (
   }>(
     '/matches/pvp/invitations',
     {
+      config: { rateLimitPolicy: 'gameplay-write' },
       preHandler: secured,
       schema: {
         operationId: 'createPvpInvitation',
@@ -481,6 +482,7 @@ export const asynchronousPvpRoutes: FastifyPluginAsync<Options> = async (
   }>(
     '/matches/pvp/invitations/:invitationId/accept',
     {
+      config: { rateLimitPolicy: 'gameplay-write' },
       preHandler: secured,
       schema: {
         operationId: 'acceptPvpInvitation',
@@ -547,6 +549,7 @@ export const asynchronousPvpRoutes: FastifyPluginAsync<Options> = async (
   }>(
     '/matches/pvp/invitations/:invitationId/decline',
     {
+      config: { rateLimitPolicy: 'gameplay-write' },
       preHandler: secured,
       schema: {
         operationId: 'declinePvpInvitation',
@@ -598,6 +601,7 @@ export const asynchronousPvpRoutes: FastifyPluginAsync<Options> = async (
   }>(
     '/matches/pvp/invitations/:invitationId/cancel',
     {
+      config: { rateLimitPolicy: 'gameplay-write' },
       preHandler: secured,
       schema: {
         operationId: 'cancelPvpInvitation',

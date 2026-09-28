@@ -12,6 +12,7 @@ import {
   type LivePvpService,
 } from '../matches/live-pvp-service.js';
 import { apiErrorSchema } from '../openapi/battle-schemas.js';
+import { rateLimitUnavailableResponseSchema } from '../openapi/rate-limited-response.js';
 
 interface Options {
   service: LivePvpService;
@@ -138,6 +139,7 @@ export const livePvpRoutes: FastifyPluginAsync<Options> = async (
   app.post<{ Params: MatchParams; Body: TicketBody }>(
     '/matches/live/:matchId/connection-tickets',
     {
+      config: { rateLimitPolicy: 'live-ticket' },
       preHandler: [app.authenticate, app.requireActivePlayer],
       schema: {
         operationId: 'createLivePvpConnectionTicket',
@@ -155,6 +157,7 @@ export const livePvpRoutes: FastifyPluginAsync<Options> = async (
           404: apiErrorSchema,
           409: apiErrorSchema,
           429: apiErrorSchema,
+          503: rateLimitUnavailableResponseSchema,
         },
       },
     },

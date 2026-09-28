@@ -631,6 +631,7 @@ export const cpuMatchRoutes: FastifyPluginAsync<CpuMatchRoutesOptions> = async (
   app.post<{ Body: CreateMatchBody }>(
     '/matches/cpu',
     {
+      config: { rateLimitPolicy: 'gameplay-write' },
       preHandler: [app.authenticate, app.requireActivePlayer],
       schema: {
         operationId: 'createCpuMatch',

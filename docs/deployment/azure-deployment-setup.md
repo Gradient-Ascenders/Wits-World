@@ -319,6 +319,21 @@ NODE_ENV  = production
 `DATABASE_URL` and `AUTH0_MANAGEMENT_CLIENT_SECRET` are secrets and must never
 be committed.
 
+Before deploying the shared rate limiter, provision an Upstash Redis database
+for the API and set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` as
+server-only API App Service settings. These are rollout requirements, not a
+claim that the current App Service already has them. Set
+`RATE_LIMIT_BACKEND=upstash`; production rejects the local backend. The URL must be HTTPS;
+the token is a secret. `RATE_LIMIT_TIMEOUT_MS` defaults to 500 ms and the named
+policy limits and windows can be set using the safe variables in
+`apps/api/.env.example`. The production API rejects missing or malformed
+Upstash settings at startup. Keep all these values out of the Web App Service
+and all `VITE_*` variables. `/health` does not call Upstash, so Azure process
+health probes remain independent of Redis availability. Exercise both open
+and closed policy failures, multi-instance counters, latency, and command
+usage in a controlled deployment before load testing; local fake-store tests
+do not prove those properties. See [API rate limiting](../architecture/rate-limiting.md).
+
 `AUTH0_DOMAIN`, `AUTH0_TENANT_DOMAIN`, `AUTH0_AUDIENCE`, and
 `AUTH0_SPA_CLIENT_ID` are environment-specific authentication configuration.
 Production `AUTH0_DOMAIN` is the custom hostname, while

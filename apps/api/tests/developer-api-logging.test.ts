@@ -5,7 +5,7 @@ import { buildApp } from '../src/app.js';
 import type { AuthConfig } from '../src/config/auth.js';
 import type { DeveloperApiKeyService } from '../src/developer/developer-api-key-service.js';
 import type { DeveloperPublicDataService } from '../src/developer/developer-public-data-service.js';
-import { createRateProtection } from '../src/security/rate-protection.js';
+import { createRateProtection } from '../e2e/fake-rate-protection.js';
 
 const authConfig: AuthConfig = {
   domain: 'auth.example.test',

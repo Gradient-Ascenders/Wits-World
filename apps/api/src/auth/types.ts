@@ -43,6 +43,9 @@ export type AuthenticateRequest = (
 ) => Promise<void>;
 
 declare module 'fastify' {
+  interface FastifyContextConfig {
+    rateLimitPolicy?: import('../security/rate-protection.js').RateLimitPolicy;
+  }
   interface FastifyRequest {
     auth: AuthenticatedPrincipal | null;
     player: LocalPlayer | null;
