@@ -83,10 +83,10 @@ jobs:
         run: time npm ci --prefer-offline --no-audit --fund=false
 
       - name: Test shared account policy package
-        run: time npm test --workspace @wits-world/account-policy
+        run: time npm run test:coverage --workspace @wits-world/account-policy
 
       - name: Test shared game rules package
-        run: time npm test --workspace @wits-world/game-rules
+        run: time npm run test:coverage --workspace @wits-world/game-rules
 
       - name: Test web application with coverage
         run: time npm run test:coverage --workspace @wits-world/web
@@ -94,8 +94,8 @@ jobs:
       - name: Test API application with coverage
         run: time npm run validate:api:coverage
 
-      - name: Test documentation application
-        run: time npm test --workspace @wits-world/docs
+      - name: Test documentation application with coverage
+        run: time npm run test:coverage --workspace @wits-world/docs
 
       - name: Generate coverage badge
         run: time npm run coverage:badge
@@ -208,6 +208,9 @@ jobs:
 
       - name: Run isolated Basic E2E verification
         run: time npm run verify:automated -- --profile pr-e2e
+
+      - name: Run Explore, Author, and Account experience regressions
+        run: time npm run test:e2e:experience-regressions
 
       - name: Upload sanitized E2E verification summary
         if: ${{ always() }}

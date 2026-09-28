@@ -78,6 +78,7 @@ export const publicCreatureSchema = {
   properties: {
     id: { type: 'string', format: 'uuid' },
     name: { type: 'string' },
+    rarity: { enum: ['common', 'rare', 'epic', 'legendary'] },
     affinity: { enum: ['wit', 'grit', 'spark', 'spirit', 'mystic'] },
     maxHp: { type: 'integer', minimum: 1 },
     maxPower: { type: 'integer', minimum: 0 },

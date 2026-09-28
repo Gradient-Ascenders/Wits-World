@@ -1926,18 +1926,28 @@ async function loadMatchView(
       'The requested PvP match was not found.',
     );
   }
-  const names = await loadCardNames(client, matchId);
-  return projectMatch(match, names);
+  const cards = await loadCardPresentation(client, matchId);
+  return projectMatch(match, cards);
 }
 
-async function loadCardNames(
+interface SnapshotCardPresentation {
+  name: string;
+  rarity: LoadedPlayerBattleDeck['cards'][number]['rarity'];
+}
+
+async function loadCardPresentation(
   client: AsyncPvpClient,
   matchId: string,
-): Promise<Record<string, string>> {
-  const result = await client.query<{ id: string; name: string }>(
+): Promise<Record<string, SnapshotCardPresentation>> {
+  const result = await client.query<{
+    id: string;
+    name: string;
+    rarity: SnapshotCardPresentation['rarity'];
+  }>(
     `
       select card.battle_card_id::text as id,
-             card.card_snapshot ->> 'name' as name
+             card.card_snapshot ->> 'name' as name,
+             card.rarity
         from public.async_pvp_match_participants participant
         join private.async_pvp_deck_snapshot_cards card
           on card.snapshot_id = participant.deck_snapshot_id
@@ -1945,12 +1955,14 @@ async function loadCardNames(
     `,
     [matchId],
   );
-  return Object.fromEntries(result.rows.map((row) => [row.id, row.name]));
+  return Object.fromEntries(
+    result.rows.map((row) => [row.id, { name: row.name, rarity: row.rarity }]),
+  );
 }
 
 function projectMatch(
   match: MatchRow,
-  names: Readonly<Record<string, string>>,
+  cards: Readonly<Record<string, SnapshotCardPresentation>>,
 ): AsyncPvpMatchView {
   const state = match.battle_state;
   const self = state.participants[match.viewer_side];
@@ -1997,12 +2009,12 @@ function projectMatch(
       self: {
         playerName: match.viewer_name ?? 'Deleted player',
         creatures: self.creatures.map((creature) =>
-          publicCreature(creature, names),
+          publicCreature(creature, cards),
         ),
         powerCards: self.powerCards.map((card) => ({
           id: card.id,
           name:
-            names[card.id] ??
+            cards[card.id]?.name ??
             (card.affinity
               ? `${titleCase(card.affinity)} Power card`
               : 'Power card'),
@@ -2022,11 +2034,11 @@ function projectMatch(
                 opponent.creatures.find(
                   (creature) => creature.card.id === opponent.activeCreatureId,
                 )!,
-                names,
+                cards,
               ),
         defeatedCreatures: opponent.creatures
           .filter((creature) => creature.defeated)
-          .map((creature) => publicCreature(creature, names)),
+          .map((creature) => publicCreature(creature, cards)),
         remainingCreatureCount: opponent.creatures.filter(
           (creature) =>
             !creature.defeated &&
@@ -2037,7 +2049,7 @@ function projectMatch(
           .map((card) => ({
             id: card.id,
             name:
-              names[card.id] ??
+              cards[card.id]?.name ??
               (card.affinity
                 ? `${titleCase(card.affinity)} Power card`
                 : 'Power card'),
@@ -2066,13 +2078,13 @@ function projectMatch(
 
 function publicCreature(
   creature: BattleState['participants']['player']['creatures'][number],
-  names: Readonly<Record<string, string>>,
+  cards: Readonly<Record<string, SnapshotCardPresentation>>,
 ): unknown {
+  const presentation = cards[creature.card.id];
   return {
     id: creature.card.id,
-    name:
-      names[creature.card.id] ??
-      `${titleCase(creature.card.affinity)} Creature`,
+    name: presentation?.name ?? `${titleCase(creature.card.affinity)} Creature`,
+    ...(presentation ? { rarity: presentation.rarity } : {}),
     affinity: creature.card.affinity,
     maxHp: creature.card.maxHp,
     maxPower: creature.card.maxPower,

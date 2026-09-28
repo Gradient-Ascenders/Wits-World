@@ -5613,6 +5613,36 @@
   gap: var(--space-3);
 }
 
+.battle-live-layout > .battle-outcome {
+  grid-area: actions;
+}
+
+.pvp-turn-deadline {
+  display: grid;
+  gap: 0.125rem;
+  padding: var(--space-3);
+}
+
+.pvp-turn-deadline span,
+.pvp-turn-deadline small {
+  color: var(--colour-text-secondary);
+  font-size: var(--text-xs);
+}
+
+.pvp-turn-deadline span {
+  font-weight: 800;
+}
+
+.pvp-turn-deadline strong {
+  color: var(--colour-blue-300);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.pvp-turn-deadline[data-expired='true'] strong {
+  color: var(--colour-status-danger);
+}
+
 .battle-stage {
   --battle-player-zone-core: rgb(42 107 255 / 28%);
   --battle-player-zone-fade: rgb(42 107 255 / 14%);
@@ -6192,6 +6222,10 @@
   .battle-actions {
     min-height: 19rem;
     align-self: start;
+  }
+
+  .battle-live-layout > .battle-outcome {
+    min-height: 19rem;
   }
 
   .battle-live-layout > .battle-side-rail {

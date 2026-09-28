@@ -135,11 +135,24 @@ describe('asynchronous PvP routes', () => {
   it.each(['player', 'cpu'] as const)(
     'serializes engine results and old receipts for the %s viewer',
     async (viewerSide) => {
+      const creature = {
+        card: {
+          affinity: 'spark' as const,
+          id: CREATURE_ID,
+          maxHp: 80,
+          maxPower: 18,
+          moves: [],
+        },
+        currentHp: 80,
+        defeated: false,
+        modifiers: [],
+        remainingPower: 18,
+      };
       const participant = {
-        creatures: [],
+        creatures: [creature],
         powerCards: [],
         usedPowerCardIds: [],
-        activeCreatureId: null,
+        activeCreatureId: CREATURE_ID,
       };
       const state = {
         phase: 'completed',
@@ -205,6 +218,10 @@ describe('asynchronous PvP routes', () => {
               },
             ],
           };
+        if (sql.includes('from public.async_pvp_match_participants'))
+          return {
+            rows: [{ id: CREATURE_ID, name: 'Arcayx', rarity: 'epic' }],
+          };
         if (sql.includes('from private.async_pvp_submission_receipts'))
           return {
             rows: [
@@ -260,6 +277,10 @@ describe('asynchronous PvP routes', () => {
       );
       expect(response.statusCode).toBe(200);
       expect(response.json().lastAction).toEqual(expected);
+      expect(response.json().state.self.creatures[0]).toMatchObject({
+        name: 'Arcayx',
+        rarity: 'epic',
+      });
       const view = await realService.getMatch(PLAYER_ID, INVITATION_ID);
       receipt = {
         ...view,

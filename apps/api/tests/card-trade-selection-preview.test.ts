@@ -89,7 +89,120 @@ describe('card trade selection preview', () => {
     ).rejects.toMatchObject({ code: 'TRADE_INCOMPLETE' });
     expect(connect).not.toHaveBeenCalled();
   });
+
+  it('paginates privacy-safe sent and received summaries', async () => {
+    const now = new Date('2026-09-28T08:00:00.000Z');
+    const { database, release } = tradeDatabase(async (statement) => {
+      const sql = normalizedSql(statement);
+      if (sql.includes('select clock_timestamp() as now')) {
+        return { rows: [{ now }] };
+      }
+      if (sql.includes('from private.card_trades trade')) {
+        return {
+          rows: [
+            tradeListRow(1, PLAYER_ID, 'recipient-id', 'Other player'),
+            tradeListRow(2, 'sender-id', PLAYER_ID, null),
+            tradeListRow(3, PLAYER_ID, 'recipient-id', 'More results'),
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    await expect(
+      createCardTradeService(database).listTrades({
+        playerId: PLAYER_ID,
+        page: 2,
+        pageSize: 2,
+        status: 'open',
+      }),
+    ).resolves.toEqual({
+      page: 2,
+      pageSize: 2,
+      hasMore: true,
+      items: [
+        expect.objectContaining({
+          direction: 'sent',
+          counterpartyPlayerName: 'Other player',
+        }),
+        expect.objectContaining({
+          direction: 'received',
+          counterpartyPlayerName: 'Deleted player',
+        }),
+      ],
+    });
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it('rejects invalid pagination before connecting', async () => {
+    const connect = vi.fn<CardTradeDatabase['connect']>();
+    const service = createCardTradeService({ connect });
+
+    await expect(
+      service.listTrades({ playerId: PLAYER_ID, page: 0 }),
+    ).rejects.toThrow('positive integer');
+    await expect(
+      service.listTrades({ playerId: PLAYER_ID, pageSize: 51 }),
+    ).rejects.toThrow('between 1 and 50');
+    expect(connect).not.toHaveBeenCalled();
+  });
+
+  it('runs expiry and retention maintenance through database functions', async () => {
+    let call = 0;
+    const { database, release } = tradeDatabase(async () => ({
+      rows: [{ count: ++call }],
+    }));
+    const service = createCardTradeService(database);
+
+    await expect(service.expireDueTrades()).resolves.toBe(1);
+    await expect(service.purgeTerminalTrades()).resolves.toBe(2);
+    expect(release).toHaveBeenCalledTimes(2);
+  });
 });
+
+function tradeDatabase(
+  implementation: (
+    statement: string,
+    values?: unknown[],
+  ) => Promise<{
+    rows: pg.QueryResultRow[];
+    rowCount?: number | null;
+  }>,
+) {
+  const query = vi.fn(implementation);
+  const release = vi.fn();
+  const client = { query, release } as unknown as CardTradeClient;
+  const database: CardTradeDatabase = {
+    connect: vi.fn().mockResolvedValue(client),
+  };
+  return { database, release };
+}
+
+function normalizedSql(statement: string) {
+  return statement.toLowerCase().replaceAll(/\s+/gu, ' ').trim();
+}
+
+function tradeListRow(
+  index: number,
+  senderPlayerId: string,
+  recipientPlayerId: string,
+  counterpartyName: string | null,
+) {
+  return {
+    trade_id: `50000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+    sender_player_id: senderPlayerId,
+    recipient_player_id: recipientPlayerId,
+    sender_name:
+      senderPlayerId === PLAYER_ID ? 'Current player' : counterpartyName,
+    recipient_name:
+      recipientPlayerId === PLAYER_ID ? 'Current player' : counterpartyName,
+    status: 'open',
+    current_version: 1,
+    created_at: new Date('2026-09-28T08:00:00.000Z'),
+    expires_at: new Date('2026-09-29T08:00:00.000Z'),
+    terminal_at: null,
+  };
+}
 
 function createPreviewDatabase() {
   const release = vi.fn();

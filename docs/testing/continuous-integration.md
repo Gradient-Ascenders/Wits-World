@@ -104,7 +104,7 @@ construct production packages.
 ## Parallel validation
 
 PR validation has five independent C220 jobs: bundled static analysis,
-application coverage plus explicit shared-package tests, isolated database
+application and shared-package coverage, isolated database
 verification, Basic Playwright E2E, and builds. A PR validation workflow succeeds
 only when all five jobs succeed. Main validation keeps bundled static analysis,
 application/package tests, and builds separate before its validation and
@@ -153,11 +153,24 @@ reliable.
 
 ## Coverage artifacts and badge
 
-The Web and API test steps collect V8 coverage during the test run. Reports and
-the combined coverage badge are uploaded as `coverage-reports`. On a successful
-push to `main`, the validation gate downloads that artifact and publishes the
-SVG to the non-triggering `coverage-badge` branch. Pull requests upload coverage
-for inspection but do not publish the live badge.
+The API, Web, documentation, account-policy, and game-rules test steps collect
+V8 coverage during the test run. Each workspace enforces thresholds suited to
+its current production surface instead of inheriting one misleading monorepo
+number:
+
+| Workspace      | Statements | Branches | Functions | Lines |
+| -------------- | ---------: | -------: | --------: | ----: |
+| API            |        60% |      50% |       60% |   60% |
+| Web            |        75% |      70% |       80% |   80% |
+| Documentation  |       100% |     100% |      100% |  100% |
+| Account policy |       100% |     100% |      100% |  100% |
+| Game rules     |        85% |      80% |       95% |   85% |
+
+Reports and the line-weighted combined coverage badge are uploaded as
+`coverage-reports`. On a successful push to `main`, the validation gate
+downloads that artifact and publishes the SVG to the non-triggering
+`coverage-badge` branch. Pull requests upload coverage for inspection but do
+not publish the live badge.
 
 ## Production artifacts
 
@@ -299,3 +312,5 @@ Codex-CLI[GPT-6], Codex-CLI[GPT-5], Codex[GPT-5], and ChatGPT-Web[GPT-5.6 Sol]
 Page title clarified with assistance from Codex-CLI[GPT-6].
 
 Manual deployment recovery documented with assistance from Codex[GPT-5].
+
+Workspace coverage gates documented with assistance from Codex-CLI[GPT-5].

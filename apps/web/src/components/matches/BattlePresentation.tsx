@@ -54,12 +54,14 @@ export interface BattleResolutionMoment {
 export function BattleResolution({
   activeIndex,
   activeMoment,
+  emptyStatusLabel = 'Awaiting action',
   emptyText = 'Your first confirmed action will appear here.',
   heading = 'Latest resolution',
   moments,
 }: {
   activeIndex: number | null;
   activeMoment: BattleResolutionMoment | null;
+  emptyStatusLabel?: string;
   emptyText?: string;
   heading?: string;
   moments: readonly BattleResolutionMoment[];
@@ -77,7 +79,7 @@ export function BattleResolution({
             ? `Moment ${activeIndex + 1} of ${moments.length}`
             : visible.length > 0
               ? 'Server confirmed'
-              : 'Awaiting action'}
+              : emptyStatusLabel}
         </span>
       </div>
       {activeMoment ? (

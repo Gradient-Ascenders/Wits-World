@@ -323,6 +323,13 @@ Creature count, legally played Power cards and resolved effects, and remaining
 Power-card count. It contains no array, identifier, position, or placeholder
 for an unrevealed card.
 
+Each newly projected revealed Creature includes the rarity stored in its
+match-owned deck snapshot. The Web uses that value for the shared rarity frame
+and never derives rarity from the Creature name, affinity, or stats. A legacy
+idempotent action receipt created before this field was exposed may omit it; the
+Web renders the neutral frame for that receipt so replay remains byte-for-byte
+compatible. Rarity does not reveal any additional unrevealed opponent card.
+
 Creature, move, effect, modifier, legal-action, and public action-result objects
 reuse the corresponding closed public schema shapes already served by CPU
 matches. Issue `#180` must extract shared OpenAPI components for those shapes

@@ -544,11 +544,11 @@ independent of rarity. Retired cards keep readable artwork and a text label.
 
 Collection, deck picking, details, evolution and author previews share this
 frame. Revealed battle artwork uses the full shared bezel, engraving and lower
-plate in a neutral metal finish because battle identities do not supply rarity.
-The neutral plate has decoration but no rarity label. Do not infer rarity from
-names or artwork. Preserve
-existing page layouts and server-authoritative state. Hover elevation respects
-reduced motion.
+plate with the rarity supplied by the authoritative battle projection. Legacy
+projections without rarity use the neutral metal finish, with decoration but no
+rarity label. Do not infer rarity from names, affinity, stats or artwork.
+Preserve existing page layouts and server-authoritative state. Hover elevation
+respects reduced motion.
 
 ### Deck editing
 
