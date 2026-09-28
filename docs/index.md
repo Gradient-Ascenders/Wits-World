@@ -16,11 +16,12 @@ This site brings together current product and technical reference, development
 and operational guidance, testing evidence, architecture decisions, and
 preserved Sprint-specific project records.
 
-:::tip[Start with Sprint 2]
+:::tip[Start with Sprint 3]
 
-Read the [Sprint 2 overview and evidence](sprint-2-overview.md) for product
-capabilities, user-feedback findings, stakeholder reviews, and remaining
-verification gaps. The [Basic release overview](basic-release-reference.md)
+Read the [Sprint 3 overview and evidence](sprint-3-overview.md) for Advanced
+features, the Milestone 3 rubric, feedback, coordination records and remaining
+release gates. The [Sprint 2 overview](sprint-2-overview.md) preserves the
+Intermediate baseline, and the [Basic release overview](basic-release-reference.md)
 provides the underlying product and operational reference.
 
 :::
@@ -55,3 +56,5 @@ This documentation landing page was created and reviewed with assistance from
 Codex-CLI[GPT-5], Codex[GPT-5], and Codex-CLI[GPT-6].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+Sprint 3 navigation was added with assistance from Codex-CLI[gpt-6-sol].

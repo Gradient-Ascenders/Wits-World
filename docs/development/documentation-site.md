@@ -70,7 +70,8 @@ Custom document IDs require updating the path-based coverage check.
 
 The six main sections are Start here, Game rules & player experience, Technical
 guides, Development & deployment, Testing & feedback, and Project & sprint records.
-Use the Sprint 2 overview as the meeting entry point; keep dated results linked
+Use the [Sprint 3 overview](../sprint-3-overview.md) as the current milestone
+entry point and preserve the Sprint 2 overview as a historical reference. Keep dated results linked
 to their source revision rather than rewriting historical evidence as current.
 
 ## Preserve evidence and URLs
@@ -110,7 +111,7 @@ npm run build --workspace @wits-world/docs
 npm run start --workspace @wits-world/docs -- --host 127.0.0.1 --port 3000
 ```
 
-Open `http://127.0.0.1:3000/docs/sprint-2-overview` and inspect the navigation.
+Open `http://127.0.0.1:3000/docs/sprint-3-overview` and inspect the navigation.
 The build rejects broken site links; review any anchor warnings too. Tests also
 run in normal PR/main CI. Keep missing/stale/duplicate coverage failures visible
 and fix the navigation instead of excluding documents to make tests pass.
@@ -168,3 +169,5 @@ Do not infer deployment success from a local build or a successful web/API job.
 Prepared with assistance from Codex-CLI[GPT-6].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+Sprint 3 entry-point guidance was edited with assistance from Codex-CLI[gpt-6-sol].
