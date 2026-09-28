@@ -19,6 +19,7 @@ import { runMigrations } from '../src/database/migrations.js';
 import { getMigrationsDirectory } from '../src/database/paths.js';
 import { runSeeds } from '../src/database/seeds.js';
 import { createAccountDeletionLifecycle } from '../src/players/account-deletion-lifecycle.js';
+import { completeLegacyAccountDeletion } from './fixtures/complete-legacy-account-deletion.js';
 
 const MIGRATION_NAME = '0047_persist_ranked_competition.sql';
 const runIntegrationTests =
@@ -304,9 +305,7 @@ describe.skipIf(!runIntegrationTests)('ranked persistence integration', () => {
       issuer: 'https://issuer.example/',
       subject: `auth0|ranked-${deletingPlayer.id}`,
     });
-    const completed = await lifecycle.complete(request.id);
-    expect(completed.status).toBe('completed');
-    expect(await lifecycle.complete(request.id)).toEqual(completed);
+    await completeLegacyAccountDeletion(pool, deletingPlayer.id, request.id);
 
     const decks = await pool.query<{ id: string }>(
       `select id::text from public.player_decks where player_id = $1::uuid`,

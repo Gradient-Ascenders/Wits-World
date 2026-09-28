@@ -1580,7 +1580,7 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
     });
   });
 
-  it('completes deletion by anonymising the player and unlinking the audit', async () => {
+  it('completes deletion by removing the player while retaining the receipt', async () => {
     await withDatabaseClient(temporaryConfig, async (client) => {
       const issuer = 'https://auth.example.test/';
       const subject = 'auth0|complete-delete';
@@ -1607,34 +1607,11 @@ describe.skipIf(!runIntegrationTests)('player database integration', () => {
         failureReason: null,
       });
 
-      const player = await client.query<{
-        auth_issuer: string | null;
-        auth_subject: string | null;
-        player_name: string | null;
-        role: string | null;
-        lifecycle_status: string;
-        deletion_request_id: string | null;
-      }>(
-        `select
-          auth_issuer,
-          auth_subject,
-          player_name,
-          role,
-          lifecycle_status,
-          deletion_request_id
-        from public.players
-        where id = $1`,
+      const player = await client.query(
+        `select id from public.players where id = $1`,
         ['00000000-0000-4000-8000-000000000131'],
       );
-
-      expect(player.rows[0]).toEqual({
-        auth_issuer: null,
-        auth_subject: null,
-        player_name: null,
-        role: null,
-        lifecycle_status: 'deleted',
-        deletion_request_id: null,
-      });
+      expect(player.rows).toEqual([]);
 
       await expect(service.complete(requested.id)).resolves.toEqual(completed);
     });

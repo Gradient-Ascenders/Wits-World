@@ -115,8 +115,8 @@ rather than leaving the match and progression out of sync.
 
 ## Retention and deletion boundary
 
-Completed matches continue to reference the retained anonymous player
-tombstones. Snapshot source deck and owned-card identifiers are audit values,
+Completed matches continue to reference profile-free historical actor keys.
+Snapshot source deck and owned-card identifiers are audit values,
 not foreign keys, so deleting player-owned decks and cards does not destroy or
 mutate the battle snapshot. Player-facing history must render a null Player Name
 as `Deleted player` and never expose these internal identifiers.
@@ -162,3 +162,5 @@ The preceding document was generated and edited with the assistance of:
 Codex-CLI[gpt-5.6-sol medium], Codex[GPT-5], and Codex[GPT-6].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+This account-deletion update was edited with assistance from Codex[GPT-6].

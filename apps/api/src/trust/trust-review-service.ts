@@ -445,7 +445,12 @@ const effectiveRestrictionExpirySql = `coalesce(
   end,
   restriction.original_expires_at
 )`;
-const activeRestrictionPredicateSql = `${effectiveRestrictionExpirySql} > clock_timestamp()`;
+const activeRestrictionPredicateSql = `${effectiveRestrictionExpirySql} > clock_timestamp()
+  and exists (
+    select 1 from public.players restricted_player
+     where restricted_player.id = restriction.player_id
+       and restricted_player.lifecycle_status = 'active'
+  )`;
 const legacyEvidenceContributesSql = `greatest(0, floor(
   legacy_evidence.base_points * greatest(0, extract(epoch from (
     legacy_evidence.observed_at + interval '90 days' - clock_timestamp()
@@ -471,6 +476,11 @@ const freshEvidenceContributesSql = `greatest(0, floor(
        and fresh_adjustment.effective_at <= clock_timestamp()
   )`;
 const caseCanReviewSql = `trust_case.status <> 'resolved'
+  and exists (
+    select 1 from public.players active_player
+     where active_player.id = trust_case.player_id
+       and active_player.lifecycle_status = 'active'
+  )
   and not exists (
     select 1
       from private.trust_case_evidence legacy_evidence
@@ -507,7 +517,7 @@ export function createTrustReviewService(
         const count = await client.query<CountRow>(
           `select count(*)::integer as total_items
              from private.trust_cases trust_case
-             join public.players player on player.id = trust_case.player_id
+             left join public.players player on player.id = trust_case.player_id
             where ${clause}`,
           values,
         );
@@ -515,7 +525,8 @@ export function createTrustReviewService(
         const result = await client.query<QueueRow>(
           `select trust_case.id::text as case_id,
                   trust_case.player_id::text,
-                  player.player_name,
+                  case when player.id is null then 'Deleted player'
+                       else player.player_name end as player_name,
                   trust_case.status,
                   trust_case.version,
                   trust_case.current_score,
@@ -562,7 +573,7 @@ export function createTrustReviewService(
                   trust_case.opened_at,
                   trust_case.updated_at
              from private.trust_cases trust_case
-             join public.players player on player.id = trust_case.player_id
+             left join public.players player on player.id = trust_case.player_id
             where ${clause}
             order by case trust_case.current_band
                        when 'urgent_review' then 0
@@ -1039,7 +1050,7 @@ function buildQueueWhere(filters: TrustCaseQueueFilters): {
         left join private.trust_appeal_resolutions resolution
           on resolution.appeal_id = appeal.id
        where restriction.case_id = trust_case.id
-         and ${effectiveRestrictionExpirySql} > clock_timestamp()
+         and ${activeRestrictionPredicateSql}
     )`);
   }
   return { clause: clauses.join('\n and '), values };
@@ -1053,7 +1064,8 @@ async function loadDetail(
   const result = await client.query<DetailRow>(
     `select trust_case.id::text as case_id,
             trust_case.player_id::text,
-            player.player_name,
+            case when player.id is null then 'Deleted player'
+                 else player.player_name end as player_name,
             trust_case.status,
             trust_case.version,
             trust_case.current_score,
@@ -1103,7 +1115,7 @@ async function loadDetail(
             trust_case.resolved_at,
             trust_case.resolution_reason
        from private.trust_cases trust_case
-       join public.players player on player.id = trust_case.player_id
+       left join public.players player on player.id = trust_case.player_id
        join private.trust_score_snapshots snapshot
          on snapshot.id = trust_case.latest_score_snapshot_id
       where trust_case.id = $1::uuid
@@ -1254,7 +1266,7 @@ async function loadRestrictionsPage(
             restriction.starts_at,
             restriction.original_expires_at,
             ${effectiveRestrictionExpirySql} as effective_expires_at,
-            ${effectiveRestrictionExpirySql} > clock_timestamp() as active,
+            ${activeRestrictionPredicateSql} as active,
             case
               when resolution.appeal_id is not null then 'resolved'
               when appeal.id is not null then 'submitted'
@@ -1551,7 +1563,12 @@ async function caseHasActiveRestriction(
          left join private.trust_appeal_resolutions resolution
            on resolution.appeal_id = appeal.id
         where restriction.case_id = $1::uuid
-          and ${effectiveRestrictionExpirySql} > $2::timestamptz
+           and ${effectiveRestrictionExpirySql} > $2::timestamptz
+           and exists (
+             select 1 from public.players restricted_player
+              where restricted_player.id = restriction.player_id
+                and restricted_player.lifecycle_status = 'active'
+           )
      ) as active`,
     [caseId, at],
   );

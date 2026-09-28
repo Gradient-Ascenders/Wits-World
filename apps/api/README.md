@@ -599,6 +599,11 @@ continues idempotently. Safe error responses never echo credentials, identity
 claims, or provider details. The browser and API never create, accept, or render
 Wits World password fields.
 
+Completion physically removes the local player row and personal gameplay,
+progression, achievements, ratings, and standings entries. Shared outcomes,
+published content, and bounded moderation evidence can retain a private
+profile-free actor key.
+
 See the [account deletion persistence and retention contract](../../docs/database/account-deletion-retention.md)
 and [player account lifecycle validation](../../docs/testing/player-account-lifecycle-validation.md).
 

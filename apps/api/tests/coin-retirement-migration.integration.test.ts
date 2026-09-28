@@ -9,13 +9,9 @@ import {
   loadApiEnvironment,
   type DatabaseConfig,
 } from '../src/config/database.js';
-import {
-  createDatabasePool,
-  withDatabaseClient,
-} from '../src/database/connection.js';
+import { withDatabaseClient } from '../src/database/connection.js';
 import { runMigrations } from '../src/database/migrations.js';
 import { getMigrationsDirectory } from '../src/database/paths.js';
-import { createAccountDeletionLifecycle } from '../src/players/account-deletion-lifecycle.js';
 
 const COIN_RETIREMENT_MIGRATION = '0034_retire_coin_rewards.sql';
 const DELETED_IDENTITY_DENIAL_MIGRATION =
@@ -163,25 +159,48 @@ describe.skipIf(!runIntegrationTests)('coin retirement migration', () => {
         ).resolves.toMatchObject({ rowCount: 1 });
       });
 
-      const pool = createDatabasePool(databaseConfig);
-
-      try {
-        const lifecycle = createAccountDeletionLifecycle(pool, {
-          clock: () => new Date('2026-08-30T10:00:00.000Z'),
-          createId: () => DELETION_ID,
-        });
-        const requested = await lifecycle.request({
-          issuer: LEGACY_ISSUER,
-          subject: LEGACY_SUBJECT,
-        });
-
-        await expect(lifecycle.complete(requested.id)).resolves.toMatchObject({
-          id: DELETION_ID,
-          status: 'completed',
-        });
-      } finally {
-        await pool.end();
-      }
+      // This fixture intentionally stops at migration 0035. Exercise that
+      // historical schema's cleanup directly, before the later physical-purge
+      // migrations are available.
+      await withDatabaseClient(databaseConfig, async (client) => {
+        await client.query('begin');
+        try {
+          await client.query(
+            `insert into public.account_deletion_requests (id, requested_at, status)
+             values ($1::uuid, now(), 'pending')`,
+            [DELETION_ID],
+          );
+          await client.query(
+            `update public.players
+                set lifecycle_status = 'deletion_pending',
+                    deletion_request_id = $2::uuid
+              where id = $1::uuid`,
+            [LEGACY_PLAYER_ID, DELETION_ID],
+          );
+          await client.query(
+            `select private.delete_player_owned_data($1::uuid, $2::uuid)`,
+            [LEGACY_PLAYER_ID, DELETION_ID],
+          );
+          await client.query(
+            `update public.players
+                set auth_issuer = null, auth_subject = null,
+                    player_name = null, role = null,
+                    lifecycle_status = 'deleted', deletion_request_id = null
+              where id = $1::uuid`,
+            [LEGACY_PLAYER_ID],
+          );
+          await client.query(
+            `update public.account_deletion_requests
+                set status = 'completed', completed_at = now()
+              where id = $1::uuid`,
+            [DELETION_ID],
+          );
+          await client.query('commit');
+        } catch (error) {
+          await client.query('rollback');
+          throw error;
+        }
+      });
 
       await withDatabaseClient(databaseConfig, async (client) => {
         const retained = await client.query<{

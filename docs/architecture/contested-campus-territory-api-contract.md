@@ -58,7 +58,7 @@ player:
 | `GET`  | `/api/v1/territory/zones`                   | Reviewed active/suspended geometry, display name, current owner name, current ranked season/window.                                                     |
 | `GET`  | `/api/v1/territory/zones/:zoneId`           | Zone detail plus lifecycle version and last settlement time.                                                                                            |
 | `GET`  | `/api/v1/territory/zones/:zoneId/standings` | Anonymous top-three current-window influence counts, aggregate activity, and only the authenticated viewer's own current/daily count and remaining cap. |
-| `GET`  | `/api/v1/territory/zones/:zoneId/history`   | Recent ownership-changing lifecycle/settlement history with owner Player Names and deleted-player tombstones.                                           |
+| `GET`  | `/api/v1/territory/zones/:zoneId/history`   | Recent ownership-changing lifecycle/settlement history with current owner Player Names and `Deleted player` labels for removed accounts.                |
 
 The response contract never exposes contributor UUIDs, grant identifiers,
 source match identifiers, opponents, decks, location evidence, trust signals,
@@ -153,3 +153,5 @@ remains unchanged.
 
 The preceding document was generated and edited with the assistance of:
 ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].
+
+This account-deletion update was edited with assistance from Codex[GPT-6].

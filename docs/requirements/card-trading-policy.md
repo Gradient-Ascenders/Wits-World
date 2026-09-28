@@ -180,7 +180,7 @@ tokens, selected card lists, and unnecessary player identifiers.
 Entering `deletion_pending` must first invalidate the player's open offers
 and release reservations in the account-deletion transaction. The owned cards
 are then deleted under the existing account policy. Minimal completed trade
-receipts and copy provenance remain against anonymised local tombstones for
+receipts and copy provenance remain against profile-free historical actor keys for
 integrity; player-facing history resolves the current safe Player Name and
 shows `Deleted player` after deletion. It never stores an old Player Name
 snapshot. Minimal completed receipts are retained as anonymous gameplay
@@ -221,3 +221,5 @@ remain server-authoritative.
 
 This policy was drafted and reviewed with assistance from Codex[GPT-5.6 Sol] and
 ChatGPT-Web[GPT-5.6 Sol].
+
+This account-deletion update was edited with assistance from Codex[GPT-6].

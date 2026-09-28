@@ -347,14 +347,10 @@ A trusted server-side Auth0 Management API Machine-to-Machine application,
 granted only the `delete:users` permission, deletes the external Auth0 account.
 Management API credentials are server-only secrets.
 
-Successful local cleanup anonymises the local player into a deleted tombstone
-by removing the Auth0 issuer, subject, mirrored Player Name, and application
-role. The deletion request is then unlinked from that tombstone. Owned and
-active gameplay records plus individual quiz answers/snapshots are deleted;
-completed attempt summaries, reward outcomes, legacy coin transactions,
-completed matches, and Author audit history remain linked only to the anonymous
-UUID. The
-exact matrix is documented in
+Successful local cleanup removes the local player row and its owned gameplay,
+progression, rating, leaderboard, and reward records. Shared match, trade,
+territory, Author, and justified moderation history can retain a profile-free
+actor UUID; it has no Auth0 identity or application role. The exact matrix is documented in
 [Account deletion persistence and retention](../../database/account-deletion-retention.md).
 
 Because a validated Auth0 JWT remains usable until its expiry, local completion
@@ -569,3 +565,5 @@ ChatGPT-Web[GPT-5.6 Thinking], ChatGPT-Web[GPT-5.6 Sol], Codex[GPT-5],
 Codex-CLI[gpt-5.6-sol medium], and Codex-CLI[GPT-5].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+This account-deletion update was edited with assistance from Codex[GPT-6].

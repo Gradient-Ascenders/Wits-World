@@ -38,7 +38,7 @@ const completedRequest: AccountDeletionRequest = {
 };
 
 describe('account deletion coordinator', () => {
-  it('deletes the matching Auth0 user and completes local anonymisation', async () => {
+  it('deletes the matching Auth0 user and completes local account removal', async () => {
     const verify = vi.fn(async () => ({
       identity,
       authenticatedAt: new Date('2026-08-14T02:59:00.000Z'),

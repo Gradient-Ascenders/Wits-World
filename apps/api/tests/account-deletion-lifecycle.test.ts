@@ -76,7 +76,7 @@ describe('account deletion lifecycle persistence', () => {
     ).toBe(false);
   });
 
-  it('marks retry state and completes local anonymisation idempotently', async () => {
+  it('marks retry state and completes physical removal idempotently', async () => {
     let status: 'pending' | 'retry_pending' | 'completed' = 'pending';
     const { database, query } = lifecycleDatabase(async (statement) => {
       const sql = normalizedSql(statement);
@@ -91,6 +91,9 @@ describe('account deletion lifecycle persistence', () => {
         return {
           rows: [deletionRow(status, 'auth0_deletion_failed')],
         };
+      }
+      if (sql.includes('delete from public.players')) {
+        return { rows: [], rowCount: 1 };
       }
       if (sql.includes('from public.players')) {
         return { rows: [playerRow('deletion_pending')] };

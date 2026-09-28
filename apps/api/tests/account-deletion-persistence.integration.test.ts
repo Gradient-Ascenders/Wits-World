@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { copyFile, mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -27,6 +28,9 @@ import { runMigrations } from '../src/database/migrations.js';
 import { getMigrationsDirectory } from '../src/database/paths.js';
 import { runSeeds } from '../src/database/seeds.js';
 import { createAccountDeletionLifecycle } from '../src/players/account-deletion-lifecycle.js';
+import { createProgressionReadService } from '../src/progression/progression-read-service.js';
+import { createTrustReviewService } from '../src/trust/trust-review-service.js';
+import { createTrustRestrictionService } from '../src/trust/trust-restrictions.js';
 import {
   createPlayerIdentityService,
   DeletedIdentityTokenError,
@@ -46,6 +50,9 @@ const STARTER_GRANT_ID = 'd6000000-0000-4000-8000-000000000001';
 const DECK_ID = 'd7000000-0000-4000-8000-000000000001';
 const ACTIVE_MATCH_ID = 'd8000000-0000-4000-8000-000000000001';
 const COMPLETED_MATCH_ID = 'd8000000-0000-4000-8000-000000000002';
+const RANKED_SEASON_ID = 'd9000000-0000-4000-8000-000000000001';
+const OPPONENT_PLAYER_ID = 'da000000-0000-4000-8000-000000000001';
+const SHARED_INVITATION_ID = 'db000000-0000-4000-8000-000000000001';
 
 const ROLLBACK_PLAYER_ID = 'd1000000-0000-4000-8000-000000000002';
 const ROLLBACK_DELETION_ID = 'd1100000-0000-4000-8000-000000000002';
@@ -101,7 +108,7 @@ describe.skipIf(!runIntegrationTests)(
 
       await runSeeds(temporaryConfig);
       pool = createDatabasePool(temporaryConfig);
-    }, 45_000);
+    }, 180_000);
 
     afterAll(async () => {
       if (pool) {
@@ -119,7 +126,7 @@ describe.skipIf(!runIntegrationTests)(
       });
     }, 30_000);
 
-    it('deletes owned and active data while retaining anonymous completed history', async () => {
+    it('physically deletes the account and player-only history while preserving authored content', async () => {
       const identity = {
         issuer: ISSUER,
         subject: 'auth0|account-deletion-history',
@@ -127,7 +134,53 @@ describe.skipIf(!runIntegrationTests)(
 
       await withDatabaseClient(temporaryConfig, async (client) => {
         await seedCompletePlayerJourney(client, identity.subject);
+        await client.query(
+          `insert into public.players (
+             id, auth_issuer, auth_subject, player_name, role, lifecycle_status
+           ) values ($1::uuid, $2, 'auth0|deletion-opponent',
+                     'deletion_opponent', 'player', 'active')`,
+          [OPPONENT_PLAYER_ID, ISSUER],
+        );
+        await seedDeclinedSharedInvitation(client);
+        await client.query(
+          `select * from private.record_challenge_completion_progression($1::uuid)`,
+          [COMPLETION_ID],
+        );
+        await client.query(
+          `insert into public.ranked_seasons (
+             id, policy_version, name, intended_start_at
+           ) values ($1::uuid, 'ranked-v1', 'Deletion test season', now())`,
+          [RANKED_SEASON_ID],
+        );
+        await client.query(
+          `update public.ranked_seasons
+              set status = 'active', version = version + 1,
+                  activated_at = now(), active_ends_at = now() + interval '28 days',
+                  updated_at = now()
+            where id = $1::uuid`,
+          [RANKED_SEASON_ID],
+        );
+        await client.query(
+          `insert into public.ranked_player_season_ratings (
+             season_id, player_id, starting_rating, rating
+           ) values ($1::uuid, $2::uuid, 1000, 1000)`,
+          [RANKED_SEASON_ID, PLAYER_ID],
+        );
       });
+
+      const beforePurge = await pool.query<{
+        awards: string;
+        achievements: string;
+      }>(
+        `select
+           (select count(*)::text from public.player_point_awards
+             where player_id = $1::uuid) as awards,
+           (select count(*)::text from public.player_achievement_unlocks
+             where player_id = $1::uuid) as achievements`,
+        [PLAYER_ID],
+      );
+      expect(beforePurge.rows[0]?.awards).toBe('1');
+      expect(Number(beforePurge.rows[0]?.achievements)).toBeGreaterThan(0);
 
       await expect(
         pool.query(
@@ -159,36 +212,116 @@ describe.skipIf(!runIntegrationTests)(
         completed,
       );
 
-      const player = await pool.query<{
-        auth_issuer: string | null;
-        auth_subject: string | null;
-        deletion_request_id: string | null;
-        lifecycle_status: string;
-        player_name: string | null;
-        role: string | null;
-      }>(
-        `
-          select
-            auth_issuer,
-            auth_subject,
-            deletion_request_id,
-            lifecycle_status,
-            player_name,
-            role
-          from public.players
-          where id = $1::uuid
-        `,
+      const player = await pool.query(
+        `select id from public.players where id = $1::uuid`,
         [PLAYER_ID],
       );
-
-      expect(player.rows[0]).toEqual({
-        auth_issuer: null,
-        auth_subject: null,
-        deletion_request_id: null,
-        lifecycle_status: 'deleted',
-        player_name: null,
-        role: null,
+      expect(player.rows).toEqual([]);
+      const receiptAndDenial = await pool.query<{
+        receipt: Record<string, unknown>;
+        denial: Record<string, unknown>;
+      }>(
+        `select to_jsonb(request) as receipt, to_jsonb(denial) as denial
+           from public.account_deletion_requests request
+           join private.deleted_identity_token_denials denial
+             on denial.deletion_request_id = request.id
+          where request.id = $1::uuid`,
+        [DELETION_ID],
+      );
+      expect(Object.keys(receiptAndDenial.rows[0]!.receipt).sort()).toEqual([
+        'completed_at',
+        'failure_reason',
+        'id',
+        'requested_at',
+        'status',
+      ]);
+      expect(Object.keys(receiptAndDenial.rows[0]!.denial).sort()).toEqual([
+        'deletion_request_id',
+        'expires_at',
+        'identity_digest',
+        'identity_salt',
+        'tokens_issued_before',
+      ]);
+      const retainedOperationalRecord = JSON.stringify(
+        receiptAndDenial.rows[0],
+      );
+      for (const identifier of [
+        PLAYER_ID,
+        identity.subject,
+        'deleted_author',
+      ]) {
+        expect(retainedOperationalRecord).not.toContain(identifier);
+      }
+      const historicalActor = await pool.query(
+        `select id from private.player_history_actors where id = $1::uuid`,
+        [PLAYER_ID],
+      );
+      expect(historicalActor.rows).toEqual([]);
+      const sharedInvitation = await pool.query<{
+        challenger_player_id: string;
+        recipient_player_id: string;
+        status: string;
+      }>(
+        `select challenger_player_id, recipient_player_id, status
+           from public.async_pvp_invitations where id = $1::uuid`,
+        [SHARED_INVITATION_ID],
+      );
+      expect(sharedInvitation.rows[0]).toMatchObject({
+        recipient_player_id: OPPONENT_PLAYER_ID,
+        status: 'declined',
       });
+      expect(sharedInvitation.rows[0]?.challenger_player_id).not.toBe(
+        PLAYER_ID,
+      );
+      const detachedActor = await pool.query(
+        `select id from private.player_history_actors where id = $1::uuid`,
+        [sharedInvitation.rows[0]?.challenger_player_id],
+      );
+      expect(detachedActor.rows).toHaveLength(1);
+      const pvpReceipts = await pool.query<{ committed_response: unknown }>(
+        `select committed_response
+           from private.async_pvp_submission_receipts
+          where invitation_id = $1::uuid`,
+        [SHARED_INVITATION_ID],
+      );
+      expect(pvpReceipts.rows).toHaveLength(2);
+      for (const receipt of pvpReceipts.rows) {
+        const response = JSON.stringify(receipt.committed_response);
+        expect(response).not.toContain(PLAYER_ID);
+        expect(response).not.toContain('deleted_author');
+        expect(response).toContain('Deleted player');
+      }
+      const uuidColumns = await pool.query<{
+        schema_name: string;
+        table_name: string;
+        column_name: string;
+      }>(
+        `select namespace.nspname as schema_name,
+                relation.relname as table_name,
+                attribute.attname as column_name
+           from pg_attribute attribute
+           join pg_class relation on relation.oid = attribute.attrelid
+           join pg_namespace namespace on namespace.oid = relation.relnamespace
+          where namespace.nspname in ('public', 'private')
+            and relation.relkind in ('r', 'p')
+            and attribute.atttypid = 'uuid'::regtype
+            and attribute.attnum > 0
+            and not attribute.attisdropped`,
+      );
+      const quoteIdentifier = (value: string) =>
+        `"${value.replaceAll('"', '""')}"`;
+      const oldUuidReferences = await pool.query<{ location: string }>(
+        uuidColumns.rows
+          .map(
+            ({ schema_name, table_name, column_name }) =>
+              `select '${schema_name}.${table_name}.${column_name}' as location
+                 where exists (select 1 from ${quoteIdentifier(schema_name)}.${quoteIdentifier(table_name)}
+                                where ${quoteIdentifier(column_name)} = $1::uuid)`,
+          )
+          .join(' union all '),
+        [PLAYER_ID],
+      );
+      expect(oldUuidReferences.rows).toEqual([]);
 
       const deletedData = await pool.query<Record<string, string>>(
         `
@@ -272,6 +405,35 @@ describe.skipIf(!runIntegrationTests)(
         active_matches: '0',
       });
 
+      const progression = await pool.query<Record<string, string>>(
+        `select
+           (select count(*)::text from public.player_point_awards
+             where player_id = $1::uuid) as awards,
+           (select count(*)::text from public.player_activity_days
+             where player_id = $1::uuid) as days,
+           (select count(*)::text from public.player_progression_state
+             where player_id = $1::uuid) as state,
+           (select count(*)::text from public.player_monthly_progression
+             where player_id = $1::uuid) as monthly,
+           (select count(*)::text from public.player_achievement_unlocks
+             where player_id = $1::uuid) as achievements`,
+        [PLAYER_ID],
+      );
+      expect(Object.values(progression.rows[0] ?? {})).toEqual([
+        '0',
+        '0',
+        '0',
+        '0',
+        '0',
+      ]);
+      const rankedState = await pool.query<{ count: string }>(
+        `select count(*)::text as count
+           from public.ranked_player_season_ratings
+          where player_id = $1::uuid`,
+        [PLAYER_ID],
+      );
+      expect(rankedState.rows[0]?.count).toBe('0');
+
       const retainedData = await pool.query<Record<string, string>>(
         `
           select
@@ -296,7 +458,7 @@ describe.skipIf(!runIntegrationTests)(
             (select count(*)::text from public.cpu_match_actions
               where match_id = $4::uuid) as completed_match_actions,
             (select count(*)::text from public.author_content_audit
-              where actor_player_id = $1::uuid) as author_audits,
+              where actor_player_id = $9::uuid) as author_audits,
             (select count(*)::text from public.events
               where id in ($5::uuid, $6::uuid)) as retained_events,
             (select count(*)::text from public.event_challenges
@@ -311,18 +473,19 @@ describe.skipIf(!runIntegrationTests)(
           ACTIVE_EVENT_ID,
           COMPLETED_CHALLENGE_ID,
           ACTIVE_CHALLENGE_ID,
+          sharedInvitation.rows[0]?.challenger_player_id,
         ],
       );
 
       expect(retainedData.rows[0]).toEqual({
-        completed_attempts: '1',
-        completions: '1',
+        completed_attempts: '0',
+        completions: '0',
         ledger_entries: '0',
-        card_reward_outcomes: '1',
-        completed_matches: '1',
-        completed_match_cards: '1',
-        completed_match_rounds: '1',
-        completed_match_actions: '1',
+        card_reward_outcomes: '0',
+        completed_matches: '0',
+        completed_match_cards: '0',
+        completed_match_rounds: '0',
+        completed_match_actions: '0',
         author_audits: '1',
         retained_events: '2',
         retained_challenges: '2',
@@ -333,7 +496,7 @@ describe.skipIf(!runIntegrationTests)(
       }>(`select player_deck_id from public.cpu_matches where id = $1::uuid`, [
         COMPLETED_MATCH_ID,
       ]);
-      expect(retainedMatch.rows[0]?.player_deck_id).toBeNull();
+      expect(retainedMatch.rows).toEqual([]);
 
       const rejoined = await createPlayerIdentityService(pool).resolve({
         connectionStrategy: AUTH0_DATABASE_CONNECTION_STRATEGY,
@@ -349,6 +512,47 @@ describe.skipIf(!runIntegrationTests)(
         lifecycleStatus: 'active',
       });
       expect(rejoined.id).not.toBe(PLAYER_ID);
+      const rejoinedSharedHistory = await pool.query<{ count: string }>(
+        `select count(*)::text as count from public.async_pvp_invitations
+          where id = $1::uuid
+            and (challenger_player_id = $2::uuid
+                 or recipient_player_id = $2::uuid)`,
+        [SHARED_INVITATION_ID, rejoined.id],
+      );
+      expect(rejoinedSharedHistory.rows[0]?.count).toBe('0');
+
+      await pool.query(
+        `insert into public.ranked_player_season_ratings (
+           season_id, player_id, starting_rating, rating
+         ) values ($1::uuid, $2::uuid, 1000, 1000)`,
+        [RANKED_SEASON_ID, rejoined.id],
+      );
+      const freshRating = await pool.query<{
+        rating: number;
+        settled_match_count: number;
+      }>(
+        `select rating, settled_match_count
+           from public.ranked_player_season_ratings
+          where season_id = $1::uuid and player_id = $2::uuid`,
+        [RANKED_SEASON_ID, rejoined.id],
+      );
+      expect(freshRating.rows[0]).toEqual({
+        rating: 1000,
+        settled_match_count: 0,
+      });
+
+      const standings = await createProgressionReadService(pool).listStandings({
+        playerId: rejoined.id,
+        period: 'all_time',
+        page: 1,
+        pageSize: 100,
+      });
+      expect(
+        standings.entries.filter(
+          (entry) => entry.playerName === 'deleted_author',
+        ),
+      ).toHaveLength(1);
+      expect(standings.currentPlayer.points).toBe(0);
 
       const newProgress = await pool.query<{ count: string }>(
         `
@@ -364,7 +568,7 @@ describe.skipIf(!runIntegrationTests)(
       expect(newProgress.rows[0]?.count).toBe('0');
     }, 60_000);
 
-    it('removes active trust signals and non-terminal trust cases when deletion enters pending', async () => {
+    it('preserves a bounded formal trust case while removing source signals', async () => {
       const identity = {
         issuer: ISSUER,
         subject: 'auth0|trust-account-deletion',
@@ -442,6 +646,82 @@ describe.skipIf(!runIntegrationTests)(
         trustClient.release();
       }
 
+      const reviewerId = 'd1600000-0000-4000-8000-000000000007';
+      const restrictionDecisionId = 'd1700000-0000-4000-8000-000000000007';
+      const reviewedAt = new Date();
+      await pool.query(
+        `insert into public.players (
+           id, auth_issuer, auth_subject, player_name, role, lifecycle_status
+         ) values ($1::uuid, $2, 'auth0|deletion-reviewer',
+                   'deletion_reviewer', 'author', 'active')`,
+        [reviewerId, ISSUER],
+      );
+      const reviewClient = await pool.connect();
+      try {
+        await reviewClient.query('begin');
+        await reviewClient.query(
+          `update private.trust_cases
+              set status = 'under_review', version = 2,
+                  updated_at = $2::timestamptz
+            where id = $1::uuid`,
+          [caseId, reviewedAt],
+        );
+        await reviewClient.query(
+          `insert into private.trust_case_decisions (
+             id, case_id, actor_type, actor_player_id, policy_version,
+             case_version_before, case_version_after, decision_type,
+             previous_status, resulting_status, reason_code,
+             resulting_score_snapshot_id, reason_note, created_at
+           ) values ($1::uuid, $2::uuid, 'author', $3::uuid, 'trust-v1',
+                     1, 2, 'restriction', 'open', 'under_review',
+                     'review_hold', $4::uuid, $6, $5::timestamptz)`,
+          [
+            restrictionDecisionId,
+            caseId,
+            reviewerId,
+            snapshotId,
+            reviewedAt,
+            `Reviewer note about ${identity.subject}`,
+          ],
+        );
+        await reviewClient.query(
+          `insert into private.trust_restrictions (
+             id, case_id, player_id, decision_id, policy_version, scope,
+             starts_at, original_expires_at, created_at
+           ) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'trust-v1',
+                     'new_competitive_match_hold', $5::timestamptz,
+                     $5::timestamptz + interval '1 day', $5::timestamptz)`,
+          [
+            randomUUID(),
+            caseId,
+            TRUST_CLEANUP_PLAYER_ID,
+            restrictionDecisionId,
+            reviewedAt,
+          ],
+        );
+        await reviewClient.query(
+          `insert into private.trust_appeals (
+             id, case_id, challenged_decision_id, player_id, policy_version,
+             submitted_at, appeal_text, created_at
+           ) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'trust-v1',
+                     $5::timestamptz, $6, $5::timestamptz)`,
+          [
+            randomUUID(),
+            caseId,
+            restrictionDecisionId,
+            TRUST_CLEANUP_PLAYER_ID,
+            reviewedAt,
+            `Appeal from ${identity.subject} with ${TRUST_CLEANUP_PLAYER_ID}`,
+          ],
+        );
+        await reviewClient.query('commit');
+      } catch (error) {
+        await reviewClient.query('rollback');
+        throw error;
+      } finally {
+        reviewClient.release();
+      }
+
       const lifecycle = createAccountDeletionLifecycle(pool, {
         clock: () => new Date('2026-08-26T10:00:00.000Z'),
         createId: () => TRUST_CLEANUP_DELETION_ID,
@@ -452,6 +732,8 @@ describe.skipIf(!runIntegrationTests)(
         cases: string;
         signals: string;
         snapshots: string;
+        restrictions: string;
+        appeals: string;
       }>(
         `select
            (select count(*)::text from private.trust_cases
@@ -459,14 +741,127 @@ describe.skipIf(!runIntegrationTests)(
            (select count(*)::text from private.trust_signals
              where player_id = $1::uuid) as signals,
            (select count(*)::text from private.trust_score_snapshots
-             where player_id = $1::uuid) as snapshots`,
+             where player_id = $1::uuid) as snapshots,
+           (select count(*)::text from private.trust_restrictions
+             where player_id = $1::uuid) as restrictions,
+           (select count(*)::text from private.trust_appeals
+             where player_id = $1::uuid) as appeals`,
         [TRUST_CLEANUP_PLAYER_ID],
       );
       expect(trustState.rows[0]).toEqual({
-        cases: '0',
+        cases: '1',
         signals: '0',
         snapshots: '1',
+        restrictions: '1',
+        appeals: '1',
       });
+      await lifecycle.complete(TRUST_CLEANUP_DELETION_ID);
+      const removedPlayer = await pool.query(
+        `select id from public.players where id = $1::uuid`,
+        [TRUST_CLEANUP_PLAYER_ID],
+      );
+      expect(removedPlayer.rows).toEqual([]);
+      const retainedCase = await pool.query<{
+        player_id: string;
+        status: string;
+        purge_after: Date;
+      }>(
+        `select trust_case.player_id, trust_case.status, retention.purge_after
+           from private.trust_cases trust_case
+           join private.trust_case_deletion_retention retention
+             on retention.case_id = trust_case.id
+          where trust_case.id = $1::uuid`,
+        [caseId],
+      );
+      expect(retainedCase.rows[0]?.status).toBe('under_review');
+      expect(retainedCase.rows[0]?.player_id).not.toBe(TRUST_CLEANUP_PLAYER_ID);
+      expect(retainedCase.rows[0]?.purge_after).toEqual(
+        new Date('2026-11-24T10:00:00.000Z'),
+      );
+      const formerTrustIdentity = await pool.query<{ remaining: string }>(
+        `select (
+           (select count(*) from private.trust_cases where player_id = $1::uuid)
+           + (select count(*) from private.trust_restrictions where player_id = $1::uuid)
+           + (select count(*) from private.trust_appeals where player_id = $1::uuid)
+           + (select count(*) from private.trust_score_snapshots where player_id = $1::uuid)
+         )::text as remaining`,
+        [TRUST_CLEANUP_PLAYER_ID],
+      );
+      expect(formerTrustIdentity.rows[0]?.remaining).toBe('0');
+      const retainedFreeText = await pool.query<{
+        appeal_text: string;
+        reason_note: string | null;
+      }>(
+        `select appeal.appeal_text, decision.reason_note
+           from private.trust_appeals appeal
+           join private.trust_case_decisions decision
+             on decision.id = appeal.challenged_decision_id
+          where appeal.case_id = $1::uuid`,
+        [caseId],
+      );
+      expect(retainedFreeText.rows[0]).toEqual({
+        appeal_text: '[Redacted after account deletion]',
+        reason_note: null,
+      });
+      const restrictions = createTrustRestrictionService(pool);
+      await expect(
+        restrictions.activeRestriction(
+          retainedCase.rows[0]!.player_id,
+          'new_competitive_match_hold',
+        ),
+      ).resolves.toBeNull();
+      await expect(
+        restrictions.activeRestriction(
+          TRUST_CLEANUP_PLAYER_ID,
+          'new_competitive_match_hold',
+        ),
+      ).resolves.toBeNull();
+      const review = createTrustReviewService(pool);
+      const reviewQueue = await review.listCases({
+        actorPlayerId: reviewerId,
+        status: 'all',
+        page: 1,
+        pageSize: 100,
+      });
+      expect(reviewQueue.items).toContainEqual(
+        expect.objectContaining({
+          caseId,
+          playerName: 'Deleted player',
+          canReview: false,
+        }),
+      );
+      await expect(
+        review.getCase({ actorPlayerId: reviewerId, caseId }),
+      ).resolves.toMatchObject({
+        caseId,
+        playerName: 'Deleted player',
+        canReview: false,
+        restrictionCount: 1,
+        activeRestrictionCount: 0,
+      });
+      await expect(
+        review.decide({
+          actorPlayerId: reviewerId,
+          caseId,
+          expectedVersion: 2,
+          action: 'dismiss',
+          reasonNote: 'Historical case is read-only.',
+          evidenceIds: [],
+          restrictionScopes: [],
+        }),
+      ).rejects.toThrow();
+      await pool.query(
+        `update private.trust_case_deletion_retention
+            set purge_after = clock_timestamp() - interval '1 second'
+          where case_id = $1::uuid`,
+        [caseId],
+      );
+      await pool.query(`select * from private.purge_expired_trust_data()`);
+      const expiredCase = await pool.query(
+        `select id from private.trust_cases where id = $1::uuid`,
+        [caseId],
+      );
+      expect(expiredCase.rows).toEqual([]);
     }, 30_000);
 
     it('rejects the same unexpired access token after completed deletion without reprovisioning', async () => {
@@ -894,30 +1289,29 @@ describe.skipIf(!runIntegrationTests)(
 
       const retried = await pool.query<{
         cards: string;
-        lifecycle_status: string;
+        players: string;
         wallets: string;
       }>(
         `
           select
-            player.lifecycle_status,
+            (select count(*)::text from public.players
+              where id = $1::uuid) as players,
             (select count(*)::text from public.player_cards
-              where player_id = player.id) as cards,
+              where player_id = $1::uuid) as cards,
             (select count(*)::text from public.player_wallets
-              where player_id = player.id) as wallets
-          from public.players player
-          where player.id = $1::uuid
+              where player_id = $1::uuid) as wallets
         `,
         [ROLLBACK_PLAYER_ID],
       );
 
       expect(retried.rows[0]).toEqual({
         cards: '0',
-        lifecycle_status: 'deleted',
+        players: '0',
         wallets: '0',
       });
     }, 30_000);
 
-    it('serializes concurrent completion calls onto one tombstone', async () => {
+    it('serializes concurrent completion calls into one removed account', async () => {
       const identity = {
         issuer: ISSUER,
         subject: 'auth0|account-deletion-concurrent',
@@ -950,25 +1344,24 @@ describe.skipIf(!runIntegrationTests)(
 
       const persisted = await pool.query<{
         audits: string;
-        lifecycle_status: string;
+        players: string;
         wallets: string;
       }>(
         `
           select
-            player.lifecycle_status,
+            (select count(*)::text from public.players
+              where id = $1::uuid) as players,
             (select count(*)::text from public.account_deletion_requests
               where id = $2::uuid) as audits,
             (select count(*)::text from public.player_wallets
-              where player_id = player.id) as wallets
-          from public.players player
-          where player.id = $1::uuid
+              where player_id = $1::uuid) as wallets
         `,
         [CONCURRENT_PLAYER_ID, CONCURRENT_DELETION_ID],
       );
 
       expect(persisted.rows[0]).toEqual({
         audits: '1',
-        lifecycle_status: 'deleted',
+        players: '0',
         wallets: '0',
       });
     }, 30_000);
@@ -1077,6 +1470,108 @@ describe.skipIf(!runIntegrationTests)(
             awarded_at: expect.any(Date),
           });
         });
+
+        await Promise.all(
+          migrations
+            .filter(
+              (name) =>
+                name.endsWith('.sql') &&
+                name > ACCOUNT_DELETION_MIGRATION &&
+                name < '0062_detach_deleted_player_history.sql',
+            )
+            .map((name) =>
+              copyFile(
+                join(getMigrationsDirectory(), name),
+                join(migrationDirectory, name),
+              ),
+            ),
+        );
+        await runMigrations(existingConfig, migrationDirectory);
+        const legacyDeletedId = upgradePlayerId;
+        const legacyDeletionId = 'e7100000-0000-4000-8000-000000000001';
+        await withDatabaseClient(existingConfig, async (client) => {
+          await client.query('begin');
+          await client.query(
+            `insert into public.account_deletion_requests (
+               id, requested_at, status
+             ) values ($1::uuid, now(), 'pending')`,
+            [legacyDeletionId],
+          );
+          await client.query(
+            `update public.players
+                set lifecycle_status = 'deletion_pending',
+                    deletion_request_id = $2::uuid, updated_at = now()
+              where id = $1::uuid`,
+            [legacyDeletedId, legacyDeletionId],
+          );
+          await client.query(
+            `select private.delete_player_owned_data($1::uuid, $2::uuid)`,
+            [legacyDeletedId, legacyDeletionId],
+          );
+          await client.query(
+            `update public.players
+                set auth_issuer = null, auth_subject = null,
+                    player_name = null, role = null,
+                    lifecycle_status = 'deleted',
+                    deletion_request_id = null, updated_at = now()
+              where id = $1::uuid`,
+            [legacyDeletedId],
+          );
+          await client.query(
+            `update public.account_deletion_requests
+                set status = 'completed', completed_at = now()
+              where id = $1::uuid`,
+            [legacyDeletionId],
+          );
+          await client.query('commit');
+          const retainedProgress = await client.query<{ awards: string }>(
+            `select count(*)::text as awards from public.player_point_awards
+              where player_id = $1::uuid`,
+            [legacyDeletedId],
+          );
+          expect(Number(retainedProgress.rows[0]?.awards)).toBeGreaterThan(0);
+        });
+        for (const name of [
+          '0062_detach_deleted_player_history.sql',
+          '0063_purge_deleted_player_progression.sql',
+        ]) {
+          await copyFile(
+            join(getMigrationsDirectory(), name),
+            join(migrationDirectory, name),
+          );
+        }
+        await expect(
+          runMigrations(existingConfig, migrationDirectory),
+        ).resolves.toMatchObject({
+          applied: [
+            '0062_detach_deleted_player_history.sql',
+            '0063_purge_deleted_player_progression.sql',
+          ],
+        });
+        await withDatabaseClient(existingConfig, async (client) => {
+          const migrated = await client.query<{
+            players: string;
+            actors: string;
+            awards: string;
+            completions: string;
+          }>(
+            `select
+               (select count(*)::text from public.players where id = $1::uuid) as players,
+               (select count(*)::text from private.player_history_actors
+                 where id = $1::uuid) as actors,
+               (select count(*)::text from public.player_point_awards
+                 where player_id = $1::uuid) as awards,
+               (select count(*)::text from public.event_completions
+                 where player_id = $1::uuid) as completions`,
+            [legacyDeletedId],
+          );
+          expect(migrated.rows[0]).toEqual({
+            players: '0',
+            actors: '0',
+            awards: '0',
+            completions: '0',
+          });
+        });
       } finally {
         await withDatabaseClient(administrationConfig, async (client) => {
           await client.query(
@@ -1085,7 +1580,7 @@ describe.skipIf(!runIntegrationTests)(
         });
         await rm(migrationDirectory, { force: true, recursive: true });
       }
-    }, 60_000);
+    }, 180_000);
   },
 );
 
@@ -1924,6 +2419,107 @@ async function seedLegacyRewardDefinition(
       where id = $1::uuid`,
     [definitionId],
   );
+}
+
+async function seedDeclinedSharedInvitation(
+  client: pg.PoolClient,
+): Promise<void> {
+  const definitions = await client.query<{
+    id: string;
+    category: 'creature' | 'power';
+    affinity: string;
+    rarity: string;
+  }>(
+    `select id, category, affinity, rarity from (
+       (select id, category, affinity, rarity from public.card_definitions
+         where category = 'creature' and rarity = 'common' and is_active
+         order by id limit 3)
+       union all
+       (select id, category, affinity, rarity from public.card_definitions
+         where category = 'power' and rarity = 'common' and is_active
+         order by id limit 2)
+     ) cards`,
+  );
+  if (definitions.rows.length !== 5) {
+    throw new Error('Expected five seeded Common cards for PvP history.');
+  }
+
+  const snapshotId = randomUUID();
+  const initialCreatureId = randomUUID();
+  await client.query('begin');
+  try {
+    await client.query(
+      `insert into public.async_pvp_invitations (
+         id, challenger_player_id, recipient_player_id,
+         created_at, expires_at
+       ) values ($1::uuid, $2::uuid, $3::uuid,
+                 now() - interval '1 hour', now() + interval '23 hours')`,
+      [SHARED_INVITATION_ID, PLAYER_ID, OPPONENT_PLAYER_ID],
+    );
+    await client.query(
+      `insert into private.async_pvp_deck_snapshots (
+         id, invitation_id, player_id, participant_role,
+         source_deck_id, initial_creature_card_id
+       ) values ($1::uuid, $2::uuid, $3::uuid, 'challenger',
+                 $4::uuid, $5::uuid)`,
+      [snapshotId, SHARED_INVITATION_ID, PLAYER_ID, DECK_ID, initialCreatureId],
+    );
+    for (const [index, definition] of definitions.rows.entries()) {
+      await client.query(
+        `insert into private.async_pvp_deck_snapshot_cards (
+           id, snapshot_id, position, battle_card_id,
+           source_owned_card_id, source_card_definition_id,
+           category, affinity, rarity, card_snapshot
+         ) values ($1::uuid, $2::uuid, $3, $4::uuid, $5::uuid,
+                   $6::uuid, $7, $8, $9, $10::jsonb)`,
+        [
+          index === 0 ? initialCreatureId : randomUUID(),
+          snapshotId,
+          index + 1,
+          randomUUID(),
+          randomUUID(),
+          definition.id,
+          definition.category,
+          definition.affinity,
+          definition.rarity,
+          JSON.stringify({ category: definition.category }),
+        ],
+      );
+    }
+    for (const [operation, actorId] of [
+      ['invitation_create', PLAYER_ID],
+      ['invitation_decline', OPPONENT_PLAYER_ID],
+    ] as const) {
+      await client.query(
+        `insert into private.async_pvp_submission_receipts (
+           actor_player_id, operation, submission_id, invitation_id,
+           payload_hash, committed_response
+         ) values ($1::uuid, $2, $3::uuid, $4::uuid, $5, $6::jsonb)`,
+        [
+          actorId,
+          operation,
+          randomUUID(),
+          SHARED_INVITATION_ID,
+          'a'.repeat(64),
+          JSON.stringify({
+            opponent: { playerName: 'deleted_author' },
+            playerId: PLAYER_ID,
+          }),
+        ],
+      );
+    }
+    await client.query(
+      `update public.async_pvp_invitations
+          set status = 'declined', version = version + 1,
+              responded_at = now() - interval '30 minutes', updated_at = now()
+        where id = $1::uuid`,
+      [SHARED_INVITATION_ID],
+    );
+    await client.query('commit');
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  }
 }
 
 function createDeferred<T>() {

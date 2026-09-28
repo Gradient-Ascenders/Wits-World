@@ -113,7 +113,7 @@ individually submitted content when its parent event is not in review.
 `GET /api/v1/author/content/:entityType/:entityId/history` returns paginated,
 version-ordered audit records. Queue and history responses contain only stable
 local player IDs and safe actor labels. The label is the current Player Name,
-`Deleted author` for an account-deletion tombstone, or `Unnamed author` when an
+`Deleted author` when the account row has been deleted, or `Unnamed author` when an
 active account has no Player Name. They exclude Auth0 identifiers, email, private
 answers, event coordinates, and full content bodies.
 
@@ -185,3 +185,5 @@ Page title clarified with assistance from Codex-CLI[GPT-6].
 
 Event review-package, Author console, and artwork URL contract updates were
 edited with assistance from Codex[GPT-5].
+
+This account-deletion update was edited with assistance from Codex[GPT-6].

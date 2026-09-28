@@ -19,6 +19,7 @@ import { runMigrations } from '../src/database/migrations.js';
 import { getMigrationsDirectory } from '../src/database/paths.js';
 import { runSeeds } from '../src/database/seeds.js';
 import { createAccountDeletionLifecycle } from '../src/players/account-deletion-lifecycle.js';
+import { completeLegacyAccountDeletion } from './fixtures/complete-legacy-account-deletion.js';
 import {
   createLivePvpService,
   type LivePvpDatabase,
@@ -1035,7 +1036,11 @@ describe.skipIf(!runIntegrationTests)(
         issuer: active.playerOne.issuer,
         subject: active.playerOne.subject,
       });
-      await lifecycle.complete(request.id);
+      await completeLegacyAccountDeletion(
+        pool,
+        active.playerOne.id,
+        request.id,
+      );
 
       const retained = await pool.query<{
         access_count: string;
@@ -1046,8 +1051,7 @@ describe.skipIf(!runIntegrationTests)(
         snapshot_count: string;
         ticket_count: string;
       }>(
-        `select player.lifecycle_status,
-              player.player_name,
+        `select player.lifecycle_status, player.player_name,
               (select count(*)::text
                  from private.live_pvp_connection_tickets ticket
                 where ticket.player_id = player.id) as ticket_count,

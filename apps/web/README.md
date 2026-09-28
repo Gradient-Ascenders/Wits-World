@@ -881,7 +881,7 @@ reconnect snapshots, opponent dropout, terminal timeout/abandonment, exact
 rating and territory settlement, and spectator read-only presentation.
 Progression tests cover approved-field runtime validation, private-field
 rejection, populated and empty achievements, current and off-page standings,
-pagination, monthly selection, zero/no-active-rank handling, tombstones, long
+pagination, monthly selection, zero/no-active-rank handling, deleted-participant labels, long
 names, request cancellation, keyboard activation, session expiry, malformed
 data, and independent API failure recovery.
 
@@ -1293,7 +1293,7 @@ that model; the browser does not invent a replacement value.
    active standing is available instead of fabricating an unranked value.
 5. Exercise an empty achievement catalogue, an empty requested standings page,
    a nullable standings Player Name, a `401`, a general API error, and a response
-   containing an unexpected field. Confirm the tombstone reads `Deleted player`,
+   containing an unexpected field. Confirm a deleted participant reads `Deleted player`,
    errors provide safe retry/sign-in actions, and malformed/private data is not
    rendered.
 6. Inspect the populated route at approximately 390×844 and 1280×800 with a long
@@ -1345,3 +1345,5 @@ damage, turns, deadlines, or hidden opponent cards itself.
 The preceding document was generated and edited with the assistance of:
 Codex-CLI[gpt-5.6-sol medium], Codex-CLI[gpt-5.6-sol], Codex-CLI[GPT-5],
 Codex[GPT-5], and ChatGPT-Web[GPT-5.6 Sol].
+
+The account-deletion wording update was edited with assistance from Codex[GPT-6].

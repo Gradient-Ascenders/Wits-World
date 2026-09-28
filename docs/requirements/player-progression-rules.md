@@ -116,9 +116,8 @@ current streak, longest streak, and earned achievement names. Email, Auth0
 identity, precise location, internal source IDs, and private gameplay records
 are excluded.
 
-Deleted-player progression remains linked to the anonymous local tombstone for
-integrity and aggregate analysis, but deleted and deletion-pending accounts do
-not occupy live standings positions.
+Account deletion removes the player's progression and standings. A
+deletion-pending account does not occupy a live standing position.
 
 ## Delivery boundary
 
@@ -145,10 +144,8 @@ return the authenticated player's selected-period rank even when that player is
 outside the requested page. Pages are live read models rather than a frozen
 multi-request snapshot.
 
-Deleted and deletion-pending accounts remain excluded from live ranks. Retained
-progression stays private against the anonymous tombstone; `Deleted player` is
-reserved for a separate retained-history presentation that actually includes a
-deleted participant.
+Deleted and deletion-pending accounts remain excluded from live ranks.
+Shared historical results may present a deleted participant as `Deleted player`.
 
 The asynchronous PvP service calls the progression adapter inside every defeat,
 deadline/account forfeit, and voluntary-resignation transaction. Match-result
@@ -159,3 +156,5 @@ The preceding document was generated and edited with the assistance of:
 Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+This account-deletion update was edited with assistance from Codex[GPT-6].

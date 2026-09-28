@@ -334,8 +334,8 @@ Migration `0034_retire_coin_rewards.sql` leaves existing `player_wallets` rows
 read-only and makes `coin_ledger_entries` fully immutable. It blocks wallet
 inserts and updates and ledger inserts, updates, and deletes. Historical values
 are neither recalculated nor transferred into points. Account deletion remains
-the only supported wallet deletion path; the legacy ledger and completion
-outcome remain attached to the anonymised player tombstone.
+the only supported wallet deletion path; the legacy ledger and personal
+completion outcome are also purged during account deletion.
 
 The active application does not read either relation and never creates a wallet
 or ledger entry. This forward-only treatment preserves migration checksums and
@@ -784,3 +784,5 @@ Codex[gpt-5.6-sol].
 
 Page title, relationship cardinalities, and evolution status updated with
 assistance from Codex-CLI[GPT-6].
+
+This account-deletion update was edited with assistance from Codex[GPT-6].

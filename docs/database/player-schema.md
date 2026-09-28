@@ -67,9 +67,10 @@ Google onboarding while enforcing the shared canonical 3–20-character and
 allowed-character policy. It is immutable after application. Migration
 `0022_tighten_player_name_policy.sql` replaces only that check constraint to
 reject email-shaped (including single-label domains) and phone-shaped names.
-Migration `0024_complete_account_deletion_retention.sql` adds anonymous card
-reward history and the guarded player-data cleanup used before the identity is
-converted to a tombstone.
+Migration `0024_complete_account_deletion_retention.sql` added card reward
+history and the original guarded player-data cleanup. Migrations `0062` and
+`0063` detach shared actor history and extend cleanup to remove progression,
+rankings, completed player-only gameplay, and the physical player row.
 
 Apply the complete migration set before deploying the API version that performs
 account deletion.
@@ -78,3 +79,5 @@ The preceding document was generated and edited with the assistance of:
 Codex-CLI[GPT-5], Codex[GPT-5], and Codex-CLI[gpt-5.6-sol medium].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+This account-deletion update was edited with assistance from Codex[GPT-6].

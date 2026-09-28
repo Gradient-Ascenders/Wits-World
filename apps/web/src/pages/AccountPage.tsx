@@ -498,7 +498,7 @@ function DeletionResult({
       </h2>
       <p>
         {completed
-          ? 'Identifying account information and player-owned game state have been removed. You no longer have access to this account.'
+          ? 'Your Wits World account, Auth0 login identity for this app, cards, decks, rank, points, achievements, and personal game progress have been removed. A future signup starts as a new player.'
           : 'The permanent request is safely recorded. The server will retry the unfinished Auth0 or local cleanup automatically; no game access remains while it does.'}
       </p>
       <p className="account-support-reference">

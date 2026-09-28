@@ -116,7 +116,7 @@ play, or account deletion.
 When a player changes from `active` to `deletion_pending`, a lifecycle trigger
 invalidates every unfinished trade involving the player before live owned cards
 are removed. Completed settlement receipts and movements remain against the
-anonymous local player tombstone; no Player Name, Auth0 token, reauthentication
+profile-free historical actor key; no Player Name, Auth0 token, reauthentication
 claim, email address, or precise location is copied into trade history.
 
 ## Retention and maintenance
@@ -156,3 +156,5 @@ for the shared boundaries changed by this migration.
 
 The preceding document was generated with the assistance of:
 ChatGPT-Web[GPT-5.6 Sol].
+
+This account-deletion update was edited with assistance from Codex[GPT-6].

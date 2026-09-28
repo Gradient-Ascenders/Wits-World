@@ -42,8 +42,8 @@ via a public API. The player-facing API must derive player identity from the
 validated token, return only that player's provisional rating/queue state, and
 exclude provisional, deleted, or deletion-pending users from public current
 standings. Closed archives resolve the **current** safe Player Name via the
-linked `players` row; account deletion therefore displays `Deleted player`
-without rewriting historical rank, result, or rating facts. No queue, deck,
+linked `players` row; account deletion removes that player's personal archive
+and rating rows. Shared results display `Deleted player`. No queue, deck,
 proposal, email, Auth0 identity, or precise location belongs in the archive.
 
 Queue history survives saved-deck deletion and account deletion without
@@ -53,7 +53,7 @@ is terminal, deleting that deck clears only `selected_deck_id` through the
 composite foreign key, even for an active player. Queue identity, timestamps,
 status, proposal linkage, and the player reference remain immutable. Account
 deletion first cancels active queue/proposal state, then removes owned decks;
-the retained rows refer to the anonymised player tombstone.
+the retained rows refer to a profile-free actor key.
 
 ## Concurrency and transactions
 
@@ -114,7 +114,7 @@ standings still require a server-enforced bound and stable pagination. No raw
 location, trust evidence, accepted trivia answer, bearer token, or opponent
 candidate list is stored by this migration. Queue and proposal internals
 remain in `private` with public grants revoked. Retained results use stable
-local player references and the existing anonymised account tombstone.
+profile-free actor keys after account deletion.
 
 Before account-deletion cleanup removes owned decks, it cancels any searching
 queue and any awaiting proposal involving the player in the same transaction.
@@ -151,3 +151,5 @@ seeded from a second or fabricated battle authority. See
 This page and the issue `#263` implementation were drafted and reviewed with
 assistance from Codex[GPT-5.6 Sol], Codex[GPT-5] (issue `#266` update), and
 ChatGPT-Web[GPT-5.6 Sol] (issue `#268` persistence update).
+
+This account-deletion update was edited with assistance from Codex[GPT-6].

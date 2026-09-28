@@ -410,7 +410,7 @@ match payloads. Signals, score snapshots, decisions, adjustments, restrictions,
 and appeals are append-only/immutable for normal application use; only the
 versioned case projection is mutable. Account deletion removes active trust
 state at the `deletion_pending` transition while allowed closed governance can
-remain against the anonymous local player tombstone until retention expiry.
+remain against a profile-free historical actor key until retention expiry.
 Issue `#258` implements that runtime boundary. The API derives movement and
 submission-conflict signals only after it has resolved the authenticated actor
 and authoritative source operation. A periodic database-backed evaluator
@@ -458,3 +458,5 @@ boundary and longitudinal trust persistence boundary were updated with assistanc
 from ChatGPT-Web[GPT-5.6 Sol].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+This account-deletion update was edited with assistance from Codex[GPT-6].

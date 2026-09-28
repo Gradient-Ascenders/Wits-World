@@ -4,6 +4,12 @@ title: 'Confirmed game decisions'
 
 # Confirmed game decisions
 
+The original `BASIC-12` row below records the 2026 Basic-tier decision. Its
+local-player tombstone and retained personal-gameplay clauses were superseded
+by the later approved permanent-deletion redesign. The current implementation
+physically removes the player row and personal progression; see the
+[account-deletion retention contract](../database/account-deletion-retention.md).
+
 ## Status and authority
 
 This register is the issue #62 consolidation point for the remaining Wits Quest Basic-tier product and governance decisions. It was prepared on 2026-08-13 by Kevin Ebrahim, Product and Player Experience Lead, for review by Caleb Pather, Cards, Game Systems and Quality Lead, and updated on 2026-08-14 in response to the PR #84 review. The update synchronises `BASIC-09` through `BASIC-12` with the confirmed decisions recorded in issues #71, #74, #77, and #63. It was updated again on 2026-08-21 to record the final email-verification decision and the approved broken-behaviour audit resolutions as `BASIC-17` through `BASIC-19`.
@@ -128,3 +134,5 @@ Codex-CLI[GPT-5.6 Sol], and Codex[GPT-5].
 Sprint 2 status reconciliation assisted by Codex-CLI[GPT-6].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+This account-deletion update was edited with assistance from Codex[GPT-6].

@@ -115,9 +115,12 @@ export function AccountDeletionDialog({
           {isFinalConfirmation ? (
             <>
               <p>
-                This immediately locks your account. Your cards, decks, coins,
-                active game data, and identifying account information will be
-                permanently removed under the Wits World retention policy.
+                This immediately locks your account while permanent deletion
+                finishes. Your Wits World account and Auth0 login identity for
+                this app will be removed, along with your cards, decks, points,
+                rank, leaderboard position, achievements, and game progress.
+                Shared match outcomes and essential moderation or author audit
+                may remain without your account or profile.
               </p>
               <label
                 className="account-dialog__acknowledgement"
@@ -132,7 +135,7 @@ export function AccountDeletionDialog({
                 />
                 <span>
                   I understand this cannot be undone and I will lose access to
-                  this Wits World account.
+                  this Wits World account or its progress.
                 </span>
               </label>
             </>

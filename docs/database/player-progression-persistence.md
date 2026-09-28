@@ -113,7 +113,7 @@ required.
 The migration processes retained event completions and completed CPU matches
 in timestamp/source/ID order through the same private functions used for new
 awards. This reconstructs historical totals, months, activity, streaks, and
-achievement unlocks for active and anonymised deleted players.
+achievement unlocks for players present when the migration runs.
 
 Point-rule changes are prospective. Add a new inactive version, deactivate the
 old version and activate the new version in one transaction. Existing awards
@@ -122,11 +122,10 @@ rows must never be edited to rebalance points.
 
 ## Privacy and retention
 
-Progression stores no email, Auth0 subject, or location. Account deletion keeps
-the immutable award, activity, totals, and unlock history against the anonymous
-player UUID because their challenge and completed-match sources are already
-retained. Live all-time and monthly standings filter to active accounts, so a
-deleted tombstone is not publicly ranked.
+Progression stores no email, Auth0 subject, or location. Account deletion removes
+the player's awards, activity, totals, and unlock history. The deletion purge
+also removes completed challenge and CPU match sources; shared PvP outcomes
+can retain a profile-free actor UUID. Deleted accounts have no live standing.
 
 ## Verification
 
@@ -147,3 +146,5 @@ The preceding document was generated and edited with the assistance of:
 Codex-CLI[gpt-5.6-sol medium] and Codex[GPT-5].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+This account-deletion update was edited with assistance from Codex[GPT-6].

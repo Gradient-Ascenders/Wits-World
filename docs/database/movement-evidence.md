@@ -159,7 +159,7 @@ may contain a request ID and aggregate cleanup count only.
 When an account enters `deletion_pending`, a database trigger deletes all of
 that player's precise movement evidence in the same transaction. Journey
 decision rows cascade from their current evidence row, so no movement decision,
-path, coordinate, or speed remains attached to the anonymous player tombstone.
+path, coordinate, or speed remains attached to a deleted player actor key.
 
 ## Limitations
 
@@ -197,3 +197,5 @@ The preceding document was generated and edited with the assistance of:
 Codex[GPT-5].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+This account-deletion update was edited with assistance from Codex[GPT-6].

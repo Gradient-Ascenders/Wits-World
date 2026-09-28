@@ -69,7 +69,7 @@ Migration `0058` also extends the existing additive
 `private.delete_player_owned_data(uuid, uuid)` wrapper chain. During local
 account-deletion completion it deletes all developer-key rows before invoking
 the previous cleanup implementation. No reusable credential or verifier is
-retained against the deleted player tombstone.
+retained after the player row is removed.
 
 ## Privacy and logging
 
@@ -101,3 +101,5 @@ contract and public resource boundary.
 
 This document was generated and edited with the assistance of:
 ChatGPT-Web[GPT-5.6 Sol].
+
+This account-deletion update was edited with assistance from Codex[GPT-6].
