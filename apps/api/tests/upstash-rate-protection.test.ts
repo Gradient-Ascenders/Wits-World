@@ -52,7 +52,7 @@ describe('Upstash rate-limit adapter', () => {
     const protection = createUpstashRateProtection({
       url: 'https://example.test',
       token: 'private-token',
-      timeoutMs: 50,
+      timeoutMs: 8_000,
       policies,
       clock: () => 10_000,
     });
@@ -63,7 +63,9 @@ describe('Upstash rate-limit adapter', () => {
     expect(
       mocks.limiterOptions.mock.calls.every(
         ([options]) =>
-          options.analytics === false && options.ephemeralCache === false,
+          options.analytics === false &&
+          options.ephemeralCache === false &&
+          options.timeout === 8_000,
       ),
     ).toBe(true);
     expect(await protection.consume('internal-uuid', 'developer-api')).toEqual({

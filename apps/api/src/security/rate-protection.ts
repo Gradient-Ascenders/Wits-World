@@ -57,10 +57,11 @@ export function createLocalRateProtection(
       const active = (windows.get(key) ?? []).filter(
         (time) => now - time < windowMs,
       );
-      active.push(now);
+      const allowed = active.length < maxRequests;
+      if (allowed) active.push(now);
       windows.set(key, active);
       return {
-        allowed: active.length <= maxRequests,
+        allowed,
         limit: maxRequests,
         remaining: Math.max(0, maxRequests - active.length),
         retryAfterSeconds: Math.max(
@@ -159,6 +160,7 @@ export function createUpstashRateProtection({
           redis,
           limiter: Ratelimit.slidingWindow(maxRequests, `${windowMs} ms`),
           prefix: `ww:rl:v1:${policy}`,
+          timeout: timeoutMs,
           analytics: false,
           ephemeralCache: false,
         }),

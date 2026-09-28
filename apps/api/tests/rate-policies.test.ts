@@ -138,7 +138,17 @@ describe('named HTTP rate-limit policies', () => {
         })
       ).statusCode,
     ).toBe(429);
-    now += 60_000;
+    now += 59_000;
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/api/v1/auth/me',
+          headers: bearer(),
+        })
+      ).statusCode,
+    ).toBe(429);
+    now += 1_000;
     expect(
       (
         await app.inject({
@@ -148,6 +158,48 @@ describe('named HTTP rate-limit policies', () => {
         })
       ).statusCode,
     ).toBe(200);
+  });
+
+  it('documents 503 only for routes that fail closed on limiter outages', async () => {
+    const app = await makeApp(
+      createRateProtection({ maxRequests: 10, windowMs: 60_000 }),
+      true,
+    );
+    const response = await app.inject({
+      method: 'GET',
+      url: '/documentation/json',
+    });
+    const document = response.json<{
+      paths: Record<
+        string,
+        Record<string, { responses?: Record<string, unknown> }>
+      >;
+    }>();
+
+    expect(response.statusCode).toBe(200);
+    for (const [path, method] of [
+      ['/api/v1/developer/keys', 'post'],
+      ['/api/v1/matches/live/{matchId}/connection-tickets', 'post'],
+    ] as const) {
+      expect(document.paths[path]?.[method]?.responses?.['503']).toMatchObject({
+        description: expect.stringContaining('rate-limit store'),
+        content: {
+          'application/json': {
+            schema: {
+              properties: {
+                code: { enum: ['RATE_LIMIT_UNAVAILABLE'] },
+                status: { enum: [503] },
+              },
+            },
+          },
+        },
+      });
+    }
+    expect(
+      document.paths['/api/v1/developer/keys/{keyId}']?.delete?.responses?.[
+        '503'
+      ],
+    ).toBeUndefined();
   });
 
   it('uses one selected policy per request after validated identity', async () => {

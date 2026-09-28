@@ -23,10 +23,11 @@ export function createRateProtection({
       const active = (events.get(key) ?? []).filter(
         (time) => now - time < windowMs,
       );
-      active.push(now);
+      const allowed = active.length < maxRequests;
+      if (allowed) active.push(now);
       events.set(key, active);
       return {
-        allowed: active.length <= maxRequests,
+        allowed,
         limit: maxRequests,
         remaining: Math.max(0, maxRequests - active.length),
         retryAfterSeconds: Math.max(

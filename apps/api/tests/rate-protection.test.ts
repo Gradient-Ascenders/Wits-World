@@ -67,7 +67,9 @@ describe('authenticated API rate protection', () => {
 
     expect((await currentPlayer('second')).statusCode).toBe(200);
 
-    now += 10_000;
+    now += 9_000;
+    expect((await currentPlayer('first')).statusCode).toBe(429);
+    now += 1_000;
     expect((await currentPlayer('first')).statusCode).toBe(200);
   }, 15_000);
 

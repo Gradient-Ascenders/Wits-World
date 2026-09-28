@@ -39,6 +39,22 @@ const developerApiRateLimitedResponseSchema = {
     'The authenticated developer API key has exceeded its shared sliding-window request limit. Retry after the advertised delay.',
 } as const;
 
+export const rateLimitUnavailableResponseSchema = {
+  description:
+    'The rate-limit store is unavailable, so this protected operation cannot proceed. Retry later.',
+  type: 'object',
+  additionalProperties: false,
+  required: ['type', 'title', 'status', 'code', 'detail', 'requestId'],
+  properties: {
+    type: { type: 'string' },
+    title: { type: 'string' },
+    status: { type: 'integer', const: 503 },
+    code: { type: 'string', const: 'RATE_LIMIT_UNAVAILABLE' },
+    detail: { type: 'string' },
+    requestId: { type: 'string' },
+  },
+} as const;
+
 export function documentVerifiedPlayerRateLimit(
   schema: FastifySchema,
 ): FastifySchema {
