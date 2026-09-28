@@ -56,8 +56,8 @@ identity. Account deletion still invalidates pending invitations. For an active 
 whose turn deadline has not elapsed, the deleting player loses by
 `account_deletion_forfeit`. If the deadline has already elapsed when deletion or
 resignation begins, deadline authority takes precedence: the current actor loses
-by `turn_forfeit`. Completed records retain an anonymous player tombstone under
-the existing retention policy.
+by `turn_forfeit`. Completed shared records retain a profile-free historical actor
+key under the account-deletion retention policy.
 
 The following social and privacy decisions are unresolved and require separate
 product authority before a later implementation claims them:
@@ -842,3 +842,5 @@ This document was planned, generated, edited, and reviewed with the assistance
 of Codex[GPT-6], Codex[GPT-5], Codex-CLI[GPT-5], and Codex-CLI[gpt-5.6-sol medium].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+This account-deletion update was edited with assistance from Codex[GPT-6].

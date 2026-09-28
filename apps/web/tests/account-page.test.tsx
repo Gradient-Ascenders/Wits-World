@@ -4,7 +4,7 @@ import {
   initialContext,
   type Auth0ContextInterface,
 } from '@auth0/auth0-react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Router } from 'wouter';
@@ -439,11 +439,10 @@ describe('player account page', () => {
 
     await confirmPermanentDeletion(user);
 
-    expect(
-      await screen.findByRole('heading', {
-        name: 'Your identity check expired',
-      }),
-    ).toHaveFocus();
+    const errorHeading = await screen.findByRole('heading', {
+      name: 'Your identity check expired',
+    });
+    await waitFor(() => expect(errorHeading).toHaveFocus());
     expect(
       screen.getByText('Support reference: expired-request'),
     ).toBeVisible();

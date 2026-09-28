@@ -61,8 +61,8 @@ Current standings create a private, ten-minute competitive snapshot on the
 first page, then page by stable ordinal. Player Names resolve from the current
 player record on every page; deleted or deletion-pending accounts are omitted
 from current standings. An expired or foreign cursor returns 400 and the client
-starts a fresh traversal. Closed archives retain competitive facts but render
-an anonymised player as `Deleted player`.
+starts a fresh traversal. Personal archive entries are removed on deletion;
+shared match outcomes can render a deleted participant as `Deleted player`.
 
 Provisional ratings are private and never enter current standings before five
 settled matches. Rating settlement is part of the existing authoritative live
@@ -80,3 +80,5 @@ deployment. An operator schedules seasons as described in
 ## AI declaration
 
 This document was created and reviewed with assistance from Codex (GPT-5).
+
+This account-deletion update was edited with assistance from Codex[GPT-6].

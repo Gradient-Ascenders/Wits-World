@@ -18,6 +18,7 @@ import {
 import { runMigrations } from '../src/database/migrations.js';
 import { getMigrationsDirectory } from '../src/database/paths.js';
 import { createAccountDeletionLifecycle } from '../src/players/account-deletion-lifecycle.js';
+import { completeLegacyAccountDeletion } from './fixtures/complete-legacy-account-deletion.js';
 
 const MIGRATION_NAME = '0046_persist_longitudinal_trust.sql';
 const POLICY_VERSION = 'trust-v1';
@@ -931,7 +932,7 @@ describe.skipIf(!runIntegrationTests)(
         }),
       ).rejects.toThrow(/active player/u);
 
-      await lifecycle.complete(request.id);
+      await completeLegacyAccountDeletion(pool, player.id, request.id);
       const tombstone = await pool.query<{
         auth_subject: string | null;
         lifecycle_status: string;

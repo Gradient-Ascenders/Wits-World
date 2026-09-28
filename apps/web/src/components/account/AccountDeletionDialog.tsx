@@ -14,6 +14,7 @@ interface AccountDeletionDialogProps {
   onConfirm: () => void;
   phase: 'confirm' | 'prepare';
   returnFocusRef: RefObject<HTMLButtonElement | null>;
+  statusFocusRef: RefObject<HTMLHeadingElement | null>;
 }
 
 export function AccountDeletionDialog({
@@ -22,6 +23,7 @@ export function AccountDeletionDialog({
   onConfirm,
   phase,
   returnFocusRef,
+  statusFocusRef,
 }: AccountDeletionDialogProps) {
   const titleId = useId();
   const descriptionId = useId();
@@ -49,9 +51,9 @@ export function AccountDeletionDialog({
         element.inert = previousInert[index] ?? false;
       });
       document.body.style.overflow = previousOverflow;
-      returnFocusRef.current?.focus();
+      (statusFocusRef.current ?? returnFocusRef.current)?.focus();
     };
-  }, [returnFocusRef]);
+  }, [returnFocusRef, statusFocusRef]);
 
   useEffect(() => {
     if (busy) dialogRef.current?.focus();
@@ -115,9 +117,12 @@ export function AccountDeletionDialog({
           {isFinalConfirmation ? (
             <>
               <p>
-                This immediately locks your account. Your cards, decks, coins,
-                active game data, and identifying account information will be
-                permanently removed under the Wits World retention policy.
+                This immediately locks your account while permanent deletion
+                finishes. Your Wits World account and Auth0 login identity for
+                this app will be removed, along with your cards, decks, points,
+                rank, leaderboard position, achievements, and game progress.
+                Shared match outcomes and essential moderation or author audit
+                may remain without your account or profile.
               </p>
               <label
                 className="account-dialog__acknowledgement"
@@ -132,7 +137,7 @@ export function AccountDeletionDialog({
                 />
                 <span>
                   I understand this cannot be undone and I will lose access to
-                  this Wits World account.
+                  this Wits World account or its progress.
                 </span>
               </label>
             </>

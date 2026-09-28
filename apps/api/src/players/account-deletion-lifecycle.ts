@@ -121,6 +121,11 @@ export function createAccountDeletionLifecycle(
         }
 
         const deletionId = createId();
+        if (deletionId === player.id) {
+          throw new Error(
+            'Deletion request ID must differ from the player ID.',
+          );
+        }
         const requestedAt = clock();
 
         const deletionResult = await client.query<AccountDeletionRow>(
@@ -342,24 +347,27 @@ export function createAccountDeletionLifecycle(
         );
 
         await client.query(
+          `select private.schedule_deleted_trust_case_retention($1::uuid, $2::timestamptz)`,
+          [player.id, completedAt],
+        );
+
+        await client.query(
           `select private.delete_player_owned_data($1::uuid, $2::uuid)`,
           [player.id, deletionRequestId],
         );
 
-        await client.query(
+        const removedPlayer = await client.query(
           `
-            update public.players
-               set auth_issuer = null,
-                   auth_subject = null,
-                   player_name = null,
-                   role = null,
-                   lifecycle_status = 'deleted',
-                   deletion_request_id = null,
-                   updated_at = $2
+            delete from public.players
              where id = $1
+               and lifecycle_status = 'deletion_pending'
+               and deletion_request_id = $2
           `,
-          [player.id, completedAt],
+          [player.id, deletionRequestId],
         );
+        if (removedPlayer.rowCount !== 1) {
+          throw new Error('Pending player account was not removed.');
+        }
 
         const result = await client.query<AccountDeletionRow>(
           `

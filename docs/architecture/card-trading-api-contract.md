@@ -97,7 +97,7 @@ Responses deliberately omit internal player UUIDs, raw terminal/invalidation
 reasons, trust evidence, settlement movement identifiers, source provenance,
 Auth0 data, and the counterparty's wider collection. Selected cards include
 only player-safe catalogue metadata needed by the downstream trading UI. If an
-account has been anonymised, history displays `Deleted player` rather than an
+account has been deleted, history displays `Deleted player` rather than an
 old Player Name snapshot.
 
 A caller who is not a participant receives the same neutral not-found response
@@ -143,3 +143,5 @@ showing the final confirmation.
 
 This document was generated and reviewed with the assistance of:
 ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].
+
+This account-deletion update was edited with assistance from Codex[GPT-6].

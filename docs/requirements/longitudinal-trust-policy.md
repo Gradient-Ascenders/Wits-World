@@ -410,18 +410,19 @@ deduplication, and audit:
 | Score snapshots                                                        | 12 months from calculation                        |
 | Closed cases, evidence summaries, decisions, restrictions, and appeals | 12 months after final resolution                  |
 | Open cases and active restrictions                                     | Until resolved or account deletion                |
+| Unfinished case review/audit history after account deletion            | 90 days from deletion completion                  |
 
 When a signal expires, a case already opened from it retains only the immutable
 non-sensitive evidence summary required to explain a decision. It does not
 extend the source system's raw-data retention.
 
-When account deletion enters `deletion_pending`, active signals, open cases,
-active restrictions, and unresolved appeals are deleted in the same local
-cleanup transaction. Closed governance records may remain anonymously for the
-remainder of their 12-month retention, with Player Name and identity links
-removed. The existing Author tombstone preserves reviewer accountability
-without retaining Auth0 identity or email. A deleted player cannot be denied
-future re-registration because of an old trust score or restriction.
+When account deletion enters `deletion_pending`, active signals are removed and
+formal cases, evidence, restriction and appeal history remain against a new
+opaque historical actor UUID after completion. Unfinished cases retained solely
+because of deletion expire 90 days after completion. Retained restrictions are
+audit history, not active capability holds. The player account and Auth0
+identity are removed at completion. A later registration gets a new player UUID
+and does not inherit an old trust score or restriction.
 
 Trust logs contain only safe case or signal identifiers, policy version, review
 band, restriction scope, expiry, transition result, and aggregate counts. They
@@ -492,3 +493,5 @@ automated checks. It does not add implementation-mirroring production tests.
 
 This policy was planned, generated, edited, and reviewed with the assistance of
 Codex[GPT-5.6 Sol], ChatGPT-Web[GPT-5.6 Sol], and Codex[GPT-5].
+
+This account-deletion update was edited with assistance from Codex[GPT-6].

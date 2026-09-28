@@ -63,7 +63,7 @@ describe.skipIf(!runIntegrationTests)(
       };
 
       migrationResult = await runMigrations(temporaryConfig);
-    }, 45_000);
+    }, 90_000);
 
     afterAll(async () => {
       if (!administrationConfig || !temporaryDatabaseName) {
@@ -142,6 +142,8 @@ describe.skipIf(!runIntegrationTests)(
           '0059_enable_event_editor_automatic_placement.sql',
           '0060_allow_unlocated_portable_events.sql',
           '0061_persist_trust_review_evidence_summaries.sql',
+          '0062_detach_deleted_player_history.sql',
+          '0063_purge_deleted_player_progression.sql',
         ],
         skipped: [],
       });
@@ -211,6 +213,8 @@ describe.skipIf(!runIntegrationTests)(
           '0059_enable_event_editor_automatic_placement.sql',
           '0060_allow_unlocated_portable_events.sql',
           '0061_persist_trust_review_evidence_summaries.sql',
+          '0062_detach_deleted_player_history.sql',
+          '0063_purge_deleted_player_progression.sql',
         ],
       });
     }, 30_000);
@@ -444,6 +448,8 @@ describe.skipIf(!runIntegrationTests)(
             '0059_enable_event_editor_automatic_placement.sql',
             '0060_allow_unlocated_portable_events.sql',
             '0061_persist_trust_review_evidence_summaries.sql',
+            '0062_detach_deleted_player_history.sql',
+            '0063_purge_deleted_player_progression.sql',
           ],
         });
 
@@ -504,7 +510,7 @@ describe.skipIf(!runIntegrationTests)(
         });
         await rm(migrationDirectory, { force: true, recursive: true });
       }
-    }, 60_000);
+    }, 120_000);
 
     it('enforces challenge publication and attempt snapshot invariants', async () => {
       await withDatabaseClient(temporaryConfig, async (client) => {

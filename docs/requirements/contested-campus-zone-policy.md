@@ -169,7 +169,7 @@ snapshot needed for gameplay history, not the precise claim.
 Account deletion immediately removes unused grants. Used grant identifiers may
 remain only where needed to preserve referential integrity until their cleanup;
 they must not preserve provider identity or precise location, and retained
-gameplay history follows the project's anonymous tombstone policy.
+shared gameplay history follows the project's profile-free actor policy.
 
 ## Match creation and grant expiry
 
@@ -408,7 +408,7 @@ and ownership or contest state cannot rely on colour alone.
 Current owners resolve Player Name through the active local account; current
 contributors remain anonymous. Account deletion immediately ends current
 ownership and removes the player from viewer-private live state. Retained history displays
-`Deleted player` through the anonymous tombstone without changing historical
+`Deleted player` through a profile-free actor key without changing historical
 counts, settlement order, or ownership dates.
 
 ## Deterministic examples
@@ -499,3 +499,5 @@ tracking. Those require separate stakeholder decisions and a new policy version.
 
 The preceding document was generated and edited with the assistance of:
 Codex[GPT-5.6 Sol], ChatGPT-Web[GPT-5.6 Sol].
+
+This account-deletion update was edited with assistance from Codex[GPT-6].

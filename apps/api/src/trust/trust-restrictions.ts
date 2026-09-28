@@ -71,6 +71,9 @@ export function createTrustRestrictionService(
                  restriction.original_expires_at
                ) as effective_expires_at
           from private.trust_restrictions restriction
+          join public.players player
+            on player.id = restriction.player_id
+           and player.lifecycle_status = 'active'
           left join private.trust_appeals appeal
             on appeal.challenged_decision_id = restriction.decision_id
           left join private.trust_appeal_resolutions resolution

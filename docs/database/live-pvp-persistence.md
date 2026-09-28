@@ -158,8 +158,8 @@ invokes the private purge primitive.
 
 ## Account deletion
 
-Completed live matches and their immutable history remain attached to the
-existing anonymised player tombstone. Presentation code must use `Deleted
+Completed live matches and their immutable history remain attached to a
+profile-free historical actor key. Presentation code must use `Deleted
 player` rather than reconstructing identity.
 
 When a player is about to enter `deletion_pending`, the migration removes that
@@ -210,3 +210,5 @@ This document and the issue `#251` persistence implementation were generated and
 reviewed with the assistance of ChatGPT-Web[GPT-5.6 Sol].
 
 Ranked persistence handoff updated with assistance from Codex[GPT-5.6 Sol].
+
+This account-deletion update was edited with assistance from Codex[GPT-6].

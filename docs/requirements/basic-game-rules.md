@@ -107,19 +107,17 @@ player-facing profile/account experience.
 
 - Deletion requires recent authentication and explicit permanent-deletion
   confirmation. Access locks immediately; Basic has no deletion grace period.
-- The Auth0 account is permanently deleted. The local record remains only as an
-  anonymised tombstone such as `Deleted player`; the Auth0 subject, name, email,
-  and other identifying data are removed.
+- The Auth0 account and local player row are permanently deleted. Shared
+  history may retain a profile-free actor UUID and display `Deleted player`.
 - Player-owned cards, decks, active-deck selection, any retired legacy wallet,
   and starter selection are permanently deleted.
-- Completed challenges, reward records, any legacy coin transactions, matches,
-  and anonymous final results are retained for integrity and aggregate statistics.
-  Individual answers and answer snapshots are deleted. Anonymous gameplay
-  history is retained indefinitely unless a later formal retention rule is
-  established.
+- Personal challenge attempts, completions, reward outcomes, legacy coin
+  transactions, CPU matches, progression, achievements, and ratings are purged.
+  Shared PvP, trade, and territory outcomes can remain with a profile-free
+  actor key where counterparties or system integrity require them.
 - Published events, questions, and cards remain available as system-owned
-  definitions. Immutable Author audit records retain only the anonymous player
-  tombstone, and `Deleted author` is shown where needed.
+  definitions. Author audit records retain only a profile-free actor UUID,
+  and `Deleted author` is shown where needed.
 - Auth0 or database cleanup failures trigger idempotent automatic retry and an
   operational alert while the account remains locked. The workflow is marked
   pending until cleanup completes.
@@ -400,3 +398,5 @@ Codex[gpt-5.6-sol].
 Sprint 2 status reconciliation assisted by Codex-CLI[GPT-6].
 
 Page title clarified with assistance from Codex-CLI[GPT-6].
+
+This account-deletion update was edited with assistance from Codex[GPT-6].

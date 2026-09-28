@@ -188,8 +188,8 @@ reactivated.
 When a player's lifecycle changes from `active` to `deletion_pending`, migration
 `0053` immediately appends an `account_deletion` ownership version for every
 currently owned zone and makes each projection unowned. Historical player
-references remain against the existing local UUID tombstone. The standard
-account-deletion flow later clears Auth0 identity, Player Name, and role, so
+references remain against a profile-free historical actor key. The standard
+account-deletion flow later removes the player row, so
 history can render `Deleted player` without rewriting counts, receipt order, or
 ownership dates.
 
@@ -255,3 +255,5 @@ definitions are active, published, reward-eligible, Common, and non-evolved.
 
 Player-facing route and privacy details are documented in the
 [contested-campus territory API contract](../architecture/contested-campus-territory-api-contract.md).
+
+This account-deletion update was edited with assistance from Codex[GPT-6].

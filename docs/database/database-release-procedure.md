@@ -452,6 +452,21 @@ leave the complete database integration matrix to Gitea CI. A correction after
 `0054` has merged must use the next additive migration rather than changing
 either published territory migration.
 
+## Permanent account-deletion migrations `0062` and `0063`
+
+Apply `0062_detach_deleted_player_history.sql` and
+`0063_purge_deleted_player_progression.sql` in order before deploying the API
+that physically removes `public.players` rows. `0062` creates UUID-only
+historical actor keys and retargets shared, author, and moderation references;
+player-owned tables keep account foreign keys. `0063` expands the guarded purge
+to personal progression, completed challenge and CPU state, rankings, and
+territory grants. Review the migration against a disposable full-schema test
+database, including a deletion with retained shared history. Roll out the API
+only after both migrations succeed. Auth0 deletion still occurs through the
+existing retrying application workflow, never as a migration side effect.
+The migration also removes legacy `deleted` player tombstones and their retained
+personal progression; rehearse that backfill with a copy of representative data.
+
 This procedure was planned, generated, edited, and verified with the assistance
 of Codex[GPT-6], Codex[GPT-5], Codex[GPT-5.6 Sol], Codex[gpt-5.6-sol], and
 Codex-CLI[gpt-5.6-sol medium], and ChatGPT-Web[GPT-5.6 Sol].

@@ -86,8 +86,8 @@ non-terminal cases for one player, including concurrent inserts.
 
 Author decisions require an active local `author` and the reviewer cannot be
 the target player. Reviewer identity is stored only as the existing local
-player UUID, so later account deletion leaves the normal anonymised player
-tombstone instead of copying Auth0 identity into the trust schema.
+player UUID, so later account deletion can retain a profile-free actor key
+without copying Auth0 identity into the trust schema.
 
 ## Restrictions and appeals
 
@@ -119,7 +119,8 @@ process; concurrent instances remain safe because the purge is retry-safe.
 - score snapshots expire 12 months after `evaluated_at`;
 - closed case governance is retained until 12 months after
   `governance_finalized_at`;
-- open cases remain until resolution or account deletion.
+- open cases remain until resolution; after account deletion, unfinished cases
+  retained for audit expire 90 days after deletion completion.
 
 A case may be resolved before its appeal lifecycle is fully finished. For that
 reason `governance_finalized_at`, not `resolved_at`, is the retention anchor for
@@ -128,16 +129,15 @@ the case/evidence/decision/restriction/appeal graph.
 ## Account deletion
 
 When an active player enters `deletion_pending`, an `AFTER` lifecycle trigger in
-the same transaction removes active trust signals and non-terminal cases. A
-resolved case whose appeal/governance lifecycle has not yet been finalized is
-also removed so account deletion cannot leave an unbounded retained case.
-Still-active restrictions and unresolved appeals on any retained finalized
-case are removed. Finalized closed governance and score snapshots may remain
-against the anonymous local player tombstone for their remaining documented
-retention.
+the same transaction removes active trust signals but preserves open and
+under-review cases. At completion, an unfinished case receives a 90-day
+deletion-specific retention cutoff. Evidence, decisions, appeals, and
+restrictions remain as audit history against a fresh opaque actor key. Retained
+restrictions have no active capability effect without an active player account.
+Free-form appeal text and reviewer reason notes are redacted at completion;
+structured review metadata remains until the case expires.
 
-The existing account-deletion completion later clears Auth0 identity, Player
-Name, and role from the player row. A later registration gets a new local UUID,
+Account-deletion completion removes the player row. A later registration gets a new local UUID,
 so it cannot inherit the deleted account's score, case, restriction, or appeal.
 
 ## Concurrency and audit
@@ -268,3 +268,5 @@ reading arbitrary client-selected private-table columns.
 
 This persistence design and implementation guide was generated, edited, and
 reviewed with the assistance of ChatGPT-Web[GPT-5.6 Sol] and Codex[GPT-5].
+
+This account-deletion update was edited with assistance from Codex[GPT-6].

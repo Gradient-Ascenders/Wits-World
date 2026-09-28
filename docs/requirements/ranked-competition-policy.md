@@ -256,7 +256,8 @@ choosing participant order differently.
 A ranked match keeps its original season while that season is closing. A trust
 hold created after the match begins does not cancel or unrate it. Account
 deletion may complete it through the existing deletion-forfeit path; retained
-rating history follows the existing anonymous account-deletion boundary.
+shared settlement history follows the profile-free account-deletion boundary;
+the deleting player's personal rating is removed.
 
 The [contested-campus policy](contested-campus-zone-policy.md) may derive a
 separate, exactly-once influence decision from an eligible ranked winner. That
@@ -335,11 +336,11 @@ Closed-season archives preserve immutable competitive facts: rank, rating,
 wins, losses, match count, and season result. Player Name is presentation data,
 not part of that immutable result. Archive responses resolve the current safe
 display value through the linked local player record. Once deletion begins, the
-existing anonymised tombstone therefore renders `Deleted player`; the API must
+absent player row therefore renders `Deleted player`; the API must
 not return a former name or any retained name snapshot. This presentation
 change does not recompute, reorder, or rewrite the archived competitive facts.
 Normal Player Name changes likewise affect only presentation. Deleted-player
-history remains subject to the project's approved anonymous tombstone and
+history remains subject to the project's shared-history retention and
 retention rules.
 
 ## Trust, privacy, and safe failures
@@ -385,8 +386,8 @@ Persistence and services implementing this policy must verify at minimum:
   season activation;
 - private provisional state, public established standings, tie ranks, stable
   pagination, and player isolation;
-- account deletion preserving archived rank, rating, result, and aggregate
-  counts while every archive response replaces the former Player Name with
+- account deletion removing personal rating and archive rows while shared
+  match outcomes remain coherent and render the deleted participant as
   `Deleted player`; and
 - safe error and logging behavior without opponent, trust, or identity leakage.
 
@@ -406,3 +407,5 @@ decisions and a new policy version rather than silent implementation defaults.
 
 The preceding document was generated and edited with the assistance of:
 Codex[GPT-5.6 Sol] and Codex[GPT-5] (issue `#266` update).
+
+This account-deletion update was edited with assistance from Codex[GPT-6].
