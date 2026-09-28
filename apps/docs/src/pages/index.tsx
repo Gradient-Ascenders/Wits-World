@@ -13,7 +13,11 @@ const readerPaths = [
       'See what Wits Quest currently delivers, how its rules are defined, and how players move through the game.',
     links: [
       {
-        label: 'Sprint 2 overview',
+        label: 'Sprint 3 overview',
+        href: '/docs/sprint-3-overview',
+      },
+      {
+        label: 'Sprint 2 reference',
         href: '/docs/sprint-2-overview',
       },
       {
@@ -55,7 +59,7 @@ const readerPaths = [
   {
     title: 'Review quality and project evidence',
     description:
-      'Inspect Sprint 2 user-feedback results, stakeholder reviews, verification gaps, governance, and preserved Planning and Scrum meetings.',
+      'Inspect Sprint 3 user feedback, stakeholder review plans, verification gaps, governance, and coordination records alongside earlier sprint evidence.',
     links: [
       {
         label: 'Testing & feedback',
@@ -114,9 +118,9 @@ function HomepageHeader(): ReactNode {
 
           <Link
             className={clsx('button button--lg', styles.secondaryButton)}
-            to="/docs/sprint-2-overview"
+            to="/docs/sprint-3-overview"
           >
-            Explore Sprint 2
+            Explore Sprint 3
           </Link>
         </div>
       </div>
