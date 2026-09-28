@@ -6,6 +6,14 @@ declare
   owner_id uuid;
   purge_mode text;
 begin
+  -- Trust snapshots retain their original expiry-based deletion path even
+  -- after their player key has been replaced by a historical actor.
+  if tg_table_name = 'trust_score_snapshots' then
+    if old.purge_after <= clock_timestamp() then
+      return old;
+    end if;
+  end if;
+
   purge_mode := current_setting('wits.account_deletion_purge', true);
   if purge_mode not in ('on', 'legacy') then
     raise exception 'Player history cannot be deleted outside account cleanup'

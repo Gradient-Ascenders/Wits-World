@@ -568,12 +568,92 @@ describe.skipIf(!runIntegrationTests)(
       expect(newProgress.rows[0]?.count).toBe('0');
     }, 60_000);
 
+    it('purges expired trust snapshots for active players but protects unexpired snapshots', async () => {
+      const activePlayerId = randomUUID();
+      const expiredSnapshotId = randomUUID();
+      const unexpiredSnapshotId = randomUUID();
+      const expiredSignalId = randomUUID();
+      const expiredAt = new Date(Date.now() - 400 * 24 * 60 * 60 * 1000);
+      const recentAt = new Date(Date.now() - 60_000);
+
+      await pool.query(
+        `insert into public.players (
+           id, auth_issuer, auth_subject, player_name, role, lifecycle_status
+         ) values ($1::uuid, $2, $3, 'trust_expiry', 'player', 'active')`,
+        [activePlayerId, ISSUER, `auth0|trust-retention-${activePlayerId}`],
+      );
+      for (const [snapshotId, evaluatedAt] of [
+        [expiredSnapshotId, expiredAt],
+        [unexpiredSnapshotId, recentAt],
+      ] as const) {
+        await pool.query(
+          `insert into private.trust_score_snapshots (
+             id, player_id, policy_version, evaluated_at,
+             movement_points, submission_conflict_points, opponent_pattern_points,
+             final_score, review_band, source_signal_count, calculation_digest,
+             purge_after, created_at
+           ) values (
+             $1::uuid, $2::uuid, 'trust-v1', $3::timestamptz,
+             0, 0, 0, 0, 'normal', 0, decode(repeat('33', 32), 'hex'),
+             $3::timestamptz, clock_timestamp()
+           )`,
+          [snapshotId, activePlayerId, evaluatedAt],
+        );
+      }
+      await pool.query(
+        `insert into private.trust_signals (
+           id, player_id, policy_version, signal_type, severity, base_points,
+           observed_at, expires_at, source_type, source_identifier,
+           deduplication_digest, created_at
+         ) values (
+           $1::uuid, $2::uuid, 'trust-v1', 'impossible_movement', 'moderate', 15,
+           $3::timestamptz, $3::timestamptz, 'movement_decision',
+           $4, decode(repeat('44', 32), 'hex'), clock_timestamp()
+         )`,
+        [expiredSignalId, activePlayerId, expiredAt, expiredSignalId],
+      );
+
+      await expect(
+        pool.query(
+          `delete from private.trust_score_snapshots where id = $1::uuid`,
+          [unexpiredSnapshotId],
+        ),
+      ).rejects.toMatchObject({ code: '55006' });
+
+      const cleanup = await pool.query<{
+        signal_rows_deleted: number;
+        snapshot_rows_deleted: number;
+      }>(`select * from private.purge_expired_trust_data()`);
+      expect(cleanup.rows[0]?.signal_rows_deleted).toBeGreaterThanOrEqual(1);
+      expect(cleanup.rows[0]?.snapshot_rows_deleted).toBeGreaterThanOrEqual(1);
+
+      const remaining = await pool.query<{
+        expired_signals: string;
+        expired_snapshots: string;
+        unexpired_snapshots: string;
+      }>(
+        `select
+           (select count(*)::text from private.trust_signals where id = $1::uuid)
+             as expired_signals,
+           (select count(*)::text from private.trust_score_snapshots where id = $2::uuid)
+             as expired_snapshots,
+           (select count(*)::text from private.trust_score_snapshots where id = $3::uuid)
+             as unexpired_snapshots`,
+        [expiredSignalId, expiredSnapshotId, unexpiredSnapshotId],
+      );
+      expect(remaining.rows[0]).toEqual({
+        expired_signals: '0',
+        expired_snapshots: '0',
+        unexpired_snapshots: '1',
+      });
+    }, 30_000);
+
     it('preserves a bounded formal trust case while removing source signals', async () => {
       const identity = {
         issuer: ISSUER,
         subject: 'auth0|trust-account-deletion',
       };
-      const observedAt = new Date('2026-08-25T10:00:00.000Z');
+      const observedAt = new Date('2024-08-25T10:00:00.000Z');
       const snapshotId = 'd1200000-0000-4000-8000-000000000007';
       const caseId = 'd1300000-0000-4000-8000-000000000007';
 
@@ -778,6 +858,14 @@ describe.skipIf(!runIntegrationTests)(
       expect(retainedCase.rows[0]?.purge_after).toEqual(
         new Date('2026-11-24T10:00:00.000Z'),
       );
+      const retainedSnapshot = await pool.query<{ player_id: string }>(
+        `select player_id::text from private.trust_score_snapshots
+          where id = $1::uuid`,
+        [snapshotId],
+      );
+      expect(retainedSnapshot.rows[0]?.player_id).toBe(
+        retainedCase.rows[0]?.player_id,
+      );
       const formerTrustIdentity = await pool.query<{ remaining: string }>(
         `select (
            (select count(*) from private.trust_cases where player_id = $1::uuid)
@@ -856,12 +944,24 @@ describe.skipIf(!runIntegrationTests)(
           where case_id = $1::uuid`,
         [caseId],
       );
-      await pool.query(`select * from private.purge_expired_trust_data()`);
+      const expiredTrust = await pool.query<{
+        case_rows_deleted: number;
+        snapshot_rows_deleted: number;
+      }>(`select * from private.purge_expired_trust_data()`);
+      expect(expiredTrust.rows[0]?.case_rows_deleted).toBeGreaterThanOrEqual(1);
+      expect(
+        expiredTrust.rows[0]?.snapshot_rows_deleted,
+      ).toBeGreaterThanOrEqual(1);
       const expiredCase = await pool.query(
         `select id from private.trust_cases where id = $1::uuid`,
         [caseId],
       );
       expect(expiredCase.rows).toEqual([]);
+      const expiredSnapshot = await pool.query(
+        `select id from private.trust_score_snapshots where id = $1::uuid`,
+        [snapshotId],
+      );
+      expect(expiredSnapshot.rows).toEqual([]);
     }, 30_000);
 
     it('rejects the same unexpired access token after completed deletion without reprovisioning', async () => {
