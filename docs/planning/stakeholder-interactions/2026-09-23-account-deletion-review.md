@@ -46,7 +46,7 @@ safe completion and prevent an old access token from recreating the account.
 A later legitimate registration creates a new local identity with default
 progress. This is distinct from restoring the removed account.
 
-**Implementation decision:** Handled at the repository level in PR #329, merged
+**Implementation decision:** Implemented at the repository level in PR #329, merged
 on 28 September 2026. This completion date is separate from the review date
 listed above. Production deployment and the stakeholder demonstration remain
 follow-up actions.
@@ -69,13 +69,13 @@ real Auth0 deletion and fresh-registration demonstration.
 
 ## Outcome and follow-up
 
-| Item                               | Implementation outcome              | Review action                                               | Owner           |
-| ---------------------------------- | ----------------------------------- | ----------------------------------------------------------- | --------------- |
-| Owned account and progression data | Handled                             | Confirm deletion completion and absence of old progress     | Tyron and Uzair |
-| Partial failure and retry          | Existing lifecycle retained         | Demonstrate a recoverable failure without premature success | Tyron           |
-| Fresh account                      | New local identity supported        | Register again and confirm a clean player state             | Kevin and Caleb |
-| Opponent/shared history            | Retained without the former profile | Check the other player's history still displays correctly   | Uzair and Caleb |
-| Stakeholder assessment             | Handled                             | Record the outcome and any requested adjustment             | Uzair           |
+| Item                               | Current status                         | Review action                                               | Owner           |
+| ---------------------------------- | -------------------------------------- | ----------------------------------------------------------- | --------------- |
+| Owned account and progression data | Implemented in PR #329; review pending | Confirm deletion completion and absence of old progress     | Tyron and Uzair |
+| Partial failure and retry          | Existing lifecycle retained            | Demonstrate a recoverable failure without premature success | Tyron           |
+| Fresh account                      | New local identity supported           | Register again and confirm a clean player state             | Kevin and Caleb |
+| Opponent/shared history            | Retained without the former profile    | Check the other player's history still displays correctly   | Uzair and Caleb |
+| Stakeholder assessment             | Pending                                | Record the outcome and any requested adjustment             | Uzair           |
 
 Use a dedicated test account for the demonstration. Keep passwords, tokens,
 connection strings, and personal account details out of screenshots and notes.

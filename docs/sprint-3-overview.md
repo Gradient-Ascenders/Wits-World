@@ -36,8 +36,15 @@ not automatically current Sprint 3 results.
 
 ## Milestone 3 evidence map
 
-Source: _COMS3011A Project Brief_, section 3.3, printed pages 10-11. The
-Milestone 3 rubric differs from Milestone 2. Product tiers come separately from
+Source: the team-supplied _COMS3011A Project Brief_, section 3.3, printed and
+PDF pages 10-11. The [original rubric excerpt](/files/assessment/milestone-3-rubric.pdf)
+retains those two pages, including the Advanced, Intermediate, and Basic
+descriptors. Advanced Automated Testing specifies "code coverage > 60%" across
+all codebases; this is an assessment requirement, not a measured result.
+The source file is `project_briefs.pdf`, SHA-256
+`358dcf4b21c565e61fe89c9f96fe3ef6cf6252ad022db68b1a08405188679c71`.
+
+The Milestone 3 rubric differs from Milestone 2. Product tiers come separately from
 _Wits Quest_, section 1.1.3, printed pages 2-3; a product feature tier is not a
 marking band.
 
@@ -98,4 +105,5 @@ and [Sprint Review](planning/scrum/sprint-3/sprint-review.md).
 
 This Sprint 3 reading guide was generated and edited with assistance from
 Codex-CLI[gpt-6-sol], using the supplied briefs, repository merge history, and existing
-technical, feedback, and stakeholder documents.
+technical, feedback, and stakeholder documents. Codex-CLI[gpt-6-luna] assisted
+with verification of the linked rubric source.

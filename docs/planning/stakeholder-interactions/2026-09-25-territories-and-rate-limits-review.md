@@ -73,21 +73,21 @@ key from the validated credential identity, keep service credentials server-side
 and retain the existing response contract. Make limits configurable, document
 the chosen outage behavior, and confirm that multiple instances count against
 the same quota. Request an implementation issue and independent review before
-marking this action handled.
+marking this integration implemented and verified.
 
 **Proposed decision:** Accept shared enforcement as a follow-up integration.
 Upstash-backed limiting is planned, not implemented in current main.
 
 ## Outcome and follow-up
 
-| Item                           | Current outcome              | Next action                                                                    | Owner                      |
-| ------------------------------ | ---------------------------- | ------------------------------------------------------------------------------ | -------------------------- |
-| Fixed territory foundation     | Implemented                  | Retain existing integrity and settlement guarantees                            | Uzair and Tyron            |
-| Randomized territory placement | Handled                      | Agree cadence; implement versioned generation and validated activation         | Uzair and Tyron            |
-| Territory discovery interface  | Existing map/list experience | Display generated zones and lifecycle states consistently                      | Kevin                      |
-| External developer API         | Implemented                  | Retain authentication, revocation, and public-only projections                 | Tyron                      |
-| Upstash-backed shared quota    | Handled                      | Implement shared enforcement and its deployment configuration                  | Tyron                      |
-| Evaluation and evidence        | Handled                      | Check geometry/rotation, concurrent quotas, reset windows, and service failure | Caleb with Uzair and Tyron |
+| Item                           | Current status                          | Next action                                                                    | Owner                      |
+| ------------------------------ | --------------------------------------- | ------------------------------------------------------------------------------ | -------------------------- |
+| Fixed territory foundation     | Implemented                             | Retain existing integrity and settlement guarantees                            | Uzair and Tyron            |
+| Randomized territory placement | Planned; not implemented                | Agree cadence; implement versioned generation and validated activation         | Uzair and Tyron            |
+| Territory discovery interface  | Existing map/list experience            | Display generated zones and lifecycle states consistently                      | Kevin                      |
+| External developer API         | Implemented                             | Retain authentication, revocation, and public-only projections                 | Tyron                      |
+| Upstash-backed shared quota    | Planned; not implemented                | Implement shared enforcement and its deployment configuration                  | Tyron                      |
+| Evaluation and evidence        | Pending implementation and verification | Check geometry/rotation, concurrent quotas, reset windows, and service failure | Caleb with Uzair and Tyron |
 
 For territories, demonstrate that repeated reads do not move a zone and that a
 new cycle does not rewrite a completed contest. For rate limiting, exercise two

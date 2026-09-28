@@ -42,7 +42,7 @@ reported snapshot insertion improving from approximately 1.74-1.75 seconds to
 174-182 milliseconds. This measures match preparation, not deployed
 click-to-result latency.
 
-**Implementation decision:** Handled at the repository level through the merged
+**Implementation decision:** Implemented at the repository level through the merged
 performance work. Demonstrate the deployed CPU action path and record whether
 its response time meets the stakeholder's expectations.
 
@@ -67,17 +67,17 @@ projections, and PostgreSQL post-commit notification fan-out. The client battle
 experience is integrated in merged
 [PR #318](https://sdp.ms.wits.ac.za/gradient-ascent/Wits-World/pulls/318).
 
-**Implementation decision:** Handled for live PvP. CPU battles retain their
+**Implementation decision:** Implemented for live PvP. CPU battles retain their
 authoritative HTTP action flow; no CPU WebSocket migration is claimed.
 
 ## Outcome and follow-up
 
-| Item                               | Implementation outcome       | Review action                                                              | Owner           |
+| Item                               | Current status               | Review action                                                              | Owner           |
 | ---------------------------------- | ---------------------------- | -------------------------------------------------------------------------- | --------------- |
-| CPU preparation and query overhead | Handled                      | Compare warm and first-after-idle match preparation and action responses   | Tyron           |
-| Live opponent update delivery      | Handled                      | Demonstrate two clients receiving committed updates without manual refresh | Tyron and Kevin |
+| CPU preparation and query overhead | Implemented; review pending  | Compare warm and first-after-idle match preparation and action responses   | Tyron           |
+| Live opponent update delivery      | Implemented; review pending  | Demonstrate two clients receiving committed updates without manual refresh | Tyron and Kevin |
 | Recovery and pending controls      | Existing safeguards retained | Disconnect and reconnect; confirm no duplicate action or extended deadline | Kevin and Caleb |
-| Stakeholder assessment             | Handled                      | Record specific feedback, acceptance, and any further issue links          | Uzair           |
+| Stakeholder assessment             | Pending                      | Record specific feedback, acceptance, and any further issue links          | Uzair           |
 
 Use browser Network timings and the API's `Server-Timing` header to separate
 network waiting, identity work, and route work. Record the environment, sample

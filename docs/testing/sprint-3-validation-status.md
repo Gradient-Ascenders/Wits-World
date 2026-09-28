@@ -36,10 +36,19 @@ At PR #329 review revision `babc534`, the observed checks were:
 
 | Scope                            | Observed result                                              | Boundary                                                                                                                                                                                                                                                                                |
 | -------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| PostgreSQL integration           | 3 selected tests passed; 6 skipped; 9 total in the selection | `node run-review-db.mjs` wrapper invoked Vitest on `tests/account-deletion-persistence.integration.test.ts` with `--maxWorkers 1 --testTimeout 30000` and `-t 'physically deletes the account                                                                                           | purges expired trust snapshots | preserves a bounded formal trust case'`. This covers physical account removal, active-player retention, and historical-actor retention scenarios only. |
+| PostgreSQL integration           | 3 selected tests passed; 6 skipped; 9 total in the selection | `tests/account-deletion-persistence.integration.test.ts`, using the historical selection below. Covers physical account removal, active-player retention, and historical-actor retention scenarios only.                                                                                |
 | API tests                        | 28 tests passed across five files                            | `tests/account-deletion-coordinator.test.ts`, `tests/account-deletion-lifecycle.test.ts`, `tests/account-deletion-retry-processor.test.ts`, `tests/account-deletion-retry-scheduler.test.ts`, and `tests/trust-restrictions.test.ts`; focused deletion/retry/restriction coverage only. |
 | API TypeScript                   | Passed                                                       | Type-check result for the reviewed change, not the whole release.                                                                                                                                                                                                                       |
 | Changed-test lint and formatting | Passed                                                       | ESLint and Prettier checks on changed test files only.                                                                                                                                                                                                                                  |
+
+The temporary `node run-review-db.mjs` review wrapper forwarded these selection
+arguments to Vitest. This is a historical argument excerpt, not a new test run:
+
+```text
+tests/account-deletion-persistence.integration.test.ts
+--maxWorkers 1 --testTimeout 30000
+-t 'physically deletes the account|purges expired trust snapshots|preserves a bounded formal trust case'
+```
 
 This is narrow evidence for PR #329, not validation of the whole Advanced
 release, live PvP, Ranked, territory, trading, automatic placement, trust
@@ -48,9 +57,12 @@ claim that tests were run during this documentation task.
 
 ## Coverage rubric and artifacts
 
-Milestone 3 rubric section 3.3, pages 10-11, assigns Automated Testing 10%.
-Its strongest band requires coverage **greater than 60% across all
-codebases**. The strict inequality matters: exactly 60% does not meet that
+The team-supplied Milestone 3 rubric, section 3.3, printed and PDF pages 10-11,
+assigns Automated Testing 10%. The [original rubric excerpt](/files/assessment/milestone-3-rubric.pdf)
+retains its band descriptors. Its Advanced descriptor requires extensive
+automated testing across all codebases with "code coverage > 60%". See the
+[overview source record](../sprint-3-overview.md#milestone-3-evidence-map) for
+the original filename and SHA-256. The strict inequality matters: exactly 60% does not meet that
 wording. Other rubric weights are feedback 10%, feature 20%, API 20%,
 performance 5%, improvement 5%, documentation 15%, and methodology 15%; the
 [Sprint 3 overview](../sprint-3-overview.md) contains the full rubric map.

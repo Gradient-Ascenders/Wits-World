@@ -123,9 +123,6 @@ Use outcome-focused prompts. Skip unavailable capabilities honestly.
 5. Review a proposed trade: predict both players' give/receive changes before
    confirmation, then compare them with the server-confirmed outcome. Use test
    cards and preserve reservation/confirmation safeguards.
-6. Complete the available automatic-placement journey. Explain the placement
-   outcome and where it appears; do not imply the system has been validated if
-   the relevant deployment or fixture is unavailable.
 
 ## Author and reviewer tasks
 
@@ -138,6 +135,11 @@ visible and what is withheld. Do not use real private trust evidence or
 encourage self-review. Where the session is limited to package creation or
 review feedback, report only that narrower task; one response in the existing
 CSV is not broad Author validation.
+
+With an authorised Author account, complete the available automatic-placement
+preview/apply journey and explain the resulting assignments and where they
+appear. Placement controls are not a Player task. If the relevant deployment
+or fixture is unavailable, record the task as not run rather than validated.
 
 ## Analytics and developer API tasks
 
